@@ -4,7 +4,8 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { listProducts } from "@/lib/services/products";
-import { listSystemTemplates, listProductPrompts } from "@/lib/services/prompts";
+import { listSystemTemplates, listWorkspaceTemplates, listProductPrompts } from "@/lib/services/prompts";
+import { MyTemplates, DuplicateTemplateButton } from "@/components/prompts/my-templates";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,9 +23,10 @@ export default async function PromptsPage({ searchParams }: {
   if (!user) return null;
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) return null;
-  const [products, templates] = await Promise.all([
+  const [products, templates, myTemplates] = await Promise.all([
     listProducts(supabase, workspace.id),
     listSystemTemplates(supabase),
+    listWorkspaceTemplates(supabase, workspace.id),
   ]);
   const selectedId = productParam ?? products[0]?.id;
   const prompts = selectedId ? await listProductPrompts(supabase, selectedId) : [];
@@ -49,6 +51,10 @@ export default async function PromptsPage({ searchParams }: {
                 <li className="px-3 py-2 text-sm text-muted">{t("products.emptyTitle")}</li>
               )}
             </ul>
+          </Card>
+          <Card>
+            <CardHeader title={t("prompts.myTemplates")} />
+            <MyTemplates templates={myTemplates} />
           </Card>
           <Card className="p-5">
             <Badge tone="amber">{t("common.comingSoon")}</Badge>
@@ -94,6 +100,7 @@ export default async function PromptsPage({ searchParams }: {
                   <div className="flex items-center gap-2">
                     <Badge>{tpl.format}</Badge>
                     {tpl.style && <Badge tone="blue">{tpl.style}</Badge>}
+                    <DuplicateTemplateButton templateId={tpl.id} />
                   </div>
                 </li>
               ))}

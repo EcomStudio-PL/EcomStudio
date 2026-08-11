@@ -2,14 +2,22 @@
   "nav": {
     "dashboard": "Pulpit",
     "products": "Produkty",
-    "generator": "Generator",
+    "generator": "AI Studio",
     "library": "Biblioteka",
-    "prompts": "Prompty",
+    "prompts": "Generator promptów",
     "history": "Historia",
     "credits": "Kredyty",
     "plan": "Plan",
     "settings": "Ustawienia",
-    "admin": "Panel admina"
+    "admin": "Panel admina",
+    "more": "Więcej",
+    "groups": {
+      "main": "Główne",
+      "create": "Tworzenie",
+      "assets": "Zasoby",
+      "account": "Konto",
+      "admin": "Administracja"
+    }
   },
   "common": {
     "save": "Zapisz",
@@ -35,7 +43,9 @@
     "viewAll": "Zobacz wszystko",
     "confirmDelete": "Tej operacji nie można cofnąć. Usunąć?",
     "error": "Coś poszło nie tak. Spróbuj ponownie.",
-    "signOut": "Wyloguj się"
+    "signOut": "Wyloguj się",
+    "search": "Szukaj",
+    "clearFilters": "Wyczyść filtry"
   },
   "landing": {
     "headline": "Profesjonalny content produktowy w minuty, nie godziny",
@@ -71,7 +81,8 @@
     "confirmEmail": "Sprawdź skrzynkę i potwierdź adres e-mail, aby się zalogować.",
     "invalidCredentials": "Nieprawidłowy e-mail lub hasło.",
     "setupErrorTitle": "Nie udało się przygotować konta",
-    "setupErrorBody": "Twoje konto jest uwierzytelnione, ale dane aplikacji nie zostały poprawnie utworzone. Wyloguj się i zaloguj ponownie — jeśli problem wróci, skontaktuj się z administratorem."
+    "setupErrorBody": "Twoje konto jest uwierzytelnione, ale dane aplikacji nie zostały poprawnie utworzone. Wyloguj się i zaloguj ponownie — jeśli problem wróci, skontaktuj się z administratorem.",
+    "registrationDisabled": "Rejestracja jest obecnie wyłączona."
   },
   "dashboard": {
     "welcome": "Cześć, {name}",
@@ -177,7 +188,12 @@
     "created": "Utworzono {n} promptów.",
     "empty": "Ten produkt nie ma jeszcze promptów.",
     "copy": "Kopiuj",
-    "copied": "Skopiowano prompt."
+    "copied": "Skopiowano prompt.",
+    "myTemplates": "Moje szablony",
+    "noMyTemplates": "Nie masz jeszcze własnych szablonów.",
+    "newMyTemplate": "Nowy szablon",
+    "duplicateToMine": "Kopiuj do moich",
+    "duplicated": "Szablon skopiowany do Twoich szablonów."
   },
   "library": {
     "title": "Biblioteka",
@@ -216,7 +232,9 @@
       "refund": "Zwrot",
       "bonus": "Bonus",
       "admin_adjustment": "Korekta admina"
-    }
+    },
+    "usedThisMonth": "Zużyte w tym miesiącu",
+    "usageBreakdown": "Podział zużycia"
   },
   "plan": {
     "title": "Plan",
@@ -253,7 +271,9 @@
       "models": "Modele AI",
       "plans": "Plany",
       "logs": "Logi",
-      "system": "System"
+      "system": "System",
+      "providers": "Dostawcy AI",
+      "templates": "Szablony promptów"
     },
     "statUsers": "Użytkownicy",
     "statProducts": "Produkty",
@@ -282,6 +302,35 @@
     "confirmRole": "Zmienić rolę użytkownika na: {role}?",
     "creditsPrompt": "Kwota korekty kredytów (np. 100 lub -50):",
     "activate": "Aktywuj",
-    "deactivate": "Dezaktywuj"
+    "deactivate": "Dezaktywuj",
+    "providersSub": "Dostawcy AI, status kluczy API i aktywność.",
+    "templatesSub": "Systemowe szablony promptów używane w generatorze.",
+    "plansSub": "Edytuj plany bez zmian w kodzie — strona /plan czyta te wartości.",
+    "systemSub": "Globalna konfiguracja aplikacji.",
+    "plansNote": "Płatności (Stripe) zostaną podłączone później — konfiguracja planów jest już gotowa.",
+    "apiKey": "Klucz API",
+    "envVar": "Zmienna środowiskowa",
+    "configured": "Skonfigurowany",
+    "notConfigured": "Brak klucza",
+    "keyHint": "Klucz ustawiasz jako zmienną środowiskową w Vercel — nigdy w przeglądarce.",
+    "order": "Kolejność",
+    "shotType": "Typ ujęcia",
+    "category": "Kategoria",
+    "templateBody": "Treść szablonu",
+    "newTemplate": "Nowy szablon",
+    "costPrompt": "Nowy koszt kredytowy:",
+    "statFailed": "Nieudane generacje",
+    "statCreditsAvailable": "Dostępne kredyty",
+    "statActiveModels": "Aktywne modele",
+    "chartGenerations": "Generacje — 7 dni",
+    "chartNewUsers": "Nowi użytkownicy — 7 dni",
+    "settings": {
+      "general": "Ogólne",
+      "user_defaults": "Domyślne ustawienia użytkownika",
+      "generation": "Generowanie",
+      "credits": "Kredyty",
+      "security": "Bezpieczeństwo",
+      "features": "Funkcje"
+    }
   }
 }

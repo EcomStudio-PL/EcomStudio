@@ -35,7 +35,11 @@ export default function RegisterPage() {
           <Label htmlFor="password">{t("auth.password")}</Label>
           <Input id="password" name="password" type="password" required minLength={8} autoComplete="new-password" />
         </div>
-        {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
+        {state?.error && (
+          <p className="text-sm text-red-600">
+            {state.error === "registration_disabled" ? t("auth.registrationDisabled") : state.error}
+          </p>
+        )}
         <SubmitButton className="w-full" pendingLabel={t("common.loading")}>{t("auth.signUp")}</SubmitButton>
       </form>
       <p className="mt-5 text-sm text-muted">

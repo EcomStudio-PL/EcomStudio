@@ -2,14 +2,22 @@
   "nav": {
     "dashboard": "Übersicht",
     "products": "Produkte",
-    "generator": "Generator",
+    "generator": "AI Studio",
     "library": "Bibliothek",
-    "prompts": "Prompts",
+    "prompts": "Prompt-Generator",
     "history": "Verlauf",
     "credits": "Credits",
     "plan": "Tarif",
     "settings": "Einstellungen",
-    "admin": "Admin-Bereich"
+    "admin": "Admin-Bereich",
+    "more": "Mehr",
+    "groups": {
+      "main": "Haupt",
+      "create": "Erstellen",
+      "assets": "Assets",
+      "account": "Konto",
+      "admin": "Admin"
+    }
   },
   "common": {
     "save": "Speichern",
@@ -35,7 +43,9 @@
     "viewAll": "Alle anzeigen",
     "confirmDelete": "Dies kann nicht rückgängig gemacht werden. Löschen?",
     "error": "Etwas ist schiefgelaufen. Bitte erneut versuchen.",
-    "signOut": "Abmelden"
+    "signOut": "Abmelden",
+    "search": "Suchen",
+    "clearFilters": "Filter zurücksetzen"
   },
   "landing": {
     "headline": "Professioneller Produkt-Content in Minuten statt Stunden",
@@ -71,7 +81,8 @@
     "confirmEmail": "Prüfe dein Postfach und bestätige deine E-Mail, um dich anzumelden.",
     "invalidCredentials": "Ungültige E-Mail oder Passwort.",
     "setupErrorTitle": "Kontoeinrichtung fehlgeschlagen",
-    "setupErrorBody": "Dein Konto ist authentifiziert, aber die Anwendungsdaten konnten nicht erstellt werden. Melde dich ab und erneut an — falls das Problem bleibt, kontaktiere einen Administrator."
+    "setupErrorBody": "Dein Konto ist authentifiziert, aber die Anwendungsdaten konnten nicht erstellt werden. Melde dich ab und erneut an — falls das Problem bleibt, kontaktiere einen Administrator.",
+    "registrationDisabled": "Die Registrierung ist derzeit deaktiviert."
   },
   "dashboard": {
     "welcome": "Hallo, {name}",
@@ -177,7 +188,12 @@
     "created": "{n} Prompts erstellt.",
     "empty": "Dieses Produkt hat noch keine Prompts.",
     "copy": "Kopieren",
-    "copied": "Prompt kopiert."
+    "copied": "Prompt kopiert.",
+    "myTemplates": "Meine Vorlagen",
+    "noMyTemplates": "Du hast noch keine eigenen Vorlagen.",
+    "newMyTemplate": "Neue Vorlage",
+    "duplicateToMine": "In meine kopieren",
+    "duplicated": "Vorlage in deine Vorlagen kopiert."
   },
   "library": {
     "title": "Bibliothek",
@@ -216,7 +232,9 @@
       "refund": "Erstattung",
       "bonus": "Bonus",
       "admin_adjustment": "Admin-Korrektur"
-    }
+    },
+    "usedThisMonth": "Diesen Monat verbraucht",
+    "usageBreakdown": "Verbrauchsübersicht"
   },
   "plan": {
     "title": "Tarif",
@@ -253,7 +271,9 @@
       "models": "KI-Modelle",
       "plans": "Tarife",
       "logs": "Logs",
-      "system": "System"
+      "system": "System",
+      "providers": "KI-Anbieter",
+      "templates": "Prompt-Vorlagen"
     },
     "statUsers": "Benutzer",
     "statProducts": "Produkte",
@@ -282,6 +302,35 @@
     "confirmRole": "Rolle dieses Benutzers ändern zu: {role}?",
     "creditsPrompt": "Betrag der Credit-Korrektur (z. B. 100 oder -50):",
     "activate": "Aktivieren",
-    "deactivate": "Deaktivieren"
+    "deactivate": "Deaktivieren",
+    "providersSub": "KI-Anbieter, API-Schlüssel-Status und Aktivität.",
+    "templatesSub": "System-Prompt-Vorlagen für den Generator.",
+    "plansSub": "Tarife ohne Code-Änderungen bearbeiten — die /plan-Seite liest diese Werte.",
+    "systemSub": "Globale Anwendungskonfiguration.",
+    "plansNote": "Zahlungen (Stripe) folgen später — die Tarifkonfiguration ist bereits vorhanden.",
+    "apiKey": "API-Schlüssel",
+    "envVar": "Umgebungsvariable",
+    "configured": "Konfiguriert",
+    "notConfigured": "Nicht konfiguriert",
+    "keyHint": "Den Schlüssel als Vercel-Umgebungsvariable setzen — niemals im Browser.",
+    "order": "Reihenfolge",
+    "shotType": "Aufnahmetyp",
+    "category": "Kategorie",
+    "templateBody": "Vorlagentext",
+    "newTemplate": "Neue Vorlage",
+    "costPrompt": "Neue Credit-Kosten:",
+    "statFailed": "Fehlgeschlagene Generierungen",
+    "statCreditsAvailable": "Verfügbare Credits",
+    "statActiveModels": "Aktive Modelle",
+    "chartGenerations": "Generierungen — 7 Tage",
+    "chartNewUsers": "Neue Benutzer — 7 Tage",
+    "settings": {
+      "general": "Allgemein",
+      "user_defaults": "Benutzerstandards",
+      "generation": "Generierung",
+      "credits": "Credits",
+      "security": "Sicherheit",
+      "features": "Funktionen"
+    }
   }
 }

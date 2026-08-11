@@ -26,6 +26,10 @@ export async function signIn(_prev: Result | null, formData: FormData): Promise<
 export async function signUp(_prev: Result | null, formData: FormData): Promise<Result> {
   const supabase = await createClient();
   const locale = await getLocale();
+  const { data: security } = await supabase
+    .from("app_settings").select("value").eq("key", "security").maybeSingle();
+  const sec = (security?.value ?? {}) as { registration_enabled?: boolean };
+  if (sec.registration_enabled === false) return { ok: false, error: "registration_disabled" };
   const { data, error } = await supabase.auth.signUp({
     email: String(formData.get("email") ?? "").trim(),
     password: String(formData.get("password") ?? ""),

@@ -9,8 +9,14 @@ import { signImageUrls } from "@/lib/services/images";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { FilterBar } from "@/components/ui/filter-bar";
 
-export default async function ProductsPage() {
+const STATUSES = ["draft", "ready", "processing", "completed", "archived"];
+
+export default async function ProductsPage({ searchParams }: {
+  searchParams: Promise<{ q?: string; status?: string }>;
+}) {
+  const { q, status } = await searchParams;
   const supabase = await createClient();
   const { dict } = await getDictionary();
   const t = makeT(dict);
@@ -18,7 +24,7 @@ export default async function ProductsPage() {
   if (!user) return null;
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) return null;
-  const products = await listProducts(supabase, workspace.id);
+  const products = await listProducts(supabase, workspace.id, 100, { q, status });
   const thumbPaths = products
     .map((p) => (p.product_images.find((i) => i.is_primary) ?? p.product_images[0])?.storage_path)
     .filter((v): v is string => !!v);
@@ -31,6 +37,11 @@ export default async function ProductsPage() {
           + {t("products.new")}
         </Link>
       } />
+      <FilterBar filters={[{
+        param: "status",
+        labelKey: "common.status",
+        options: STATUSES.map((s) => ({ value: s, label: t(`products.status.${s}`) })),
+      }]} />
       {products.length === 0 ? (
         <EmptyState title={t("products.emptyTitle")} body={t("products.emptyBody")} action={
           <Link href="/products/new" className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 dark:text-emerald-950">

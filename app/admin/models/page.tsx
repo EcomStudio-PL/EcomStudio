@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { AdminTable } from "@/components/ui/admin-table";
 import { Badge } from "@/components/ui/badge";
 import { ModelToggle } from "@/components/admin/model-toggle";
+import { ModelCostEditor } from "@/components/admin/inline-controls";
 
 export default async function AdminModels() {
   const supabase = await createClient();
@@ -25,7 +26,10 @@ export default async function AdminModels() {
           <span key="m">{m.name} <code className="text-xs text-muted">{m.model_identifier}</code></span>,
           <Badge key="s" tone={m.active ? "green" : "amber"}>{m.active ? t("admin.active") : t("admin.inactive")}</Badge>,
           m.credit_cost,
-          <ModelToggle key="t" modelId={m.id} active={m.active} />,
+          <div key="t" className="flex gap-1.5">
+            <ModelToggle modelId={m.id} active={m.active} />
+            <ModelCostEditor modelId={m.id} cost={m.credit_cost} />
+          </div>,
         ])}
       />
       <p className="mt-4 text-sm text-muted">{t("generator.noModelsBody")}</p>

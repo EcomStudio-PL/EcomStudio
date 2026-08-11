@@ -9,8 +9,10 @@ const ITEMS = [
   { href: "/admin/products", key: "products", icon: "◨" },
   { href: "/admin/generations", key: "generations", icon: "✦" },
   { href: "/admin/credits", key: "credits", icon: "◎" },
-  { href: "/admin/models", key: "models", icon: "⌘" },
   { href: "/admin/plans", key: "plans", icon: "▲" },
+  { href: "/admin/providers", key: "providers", icon: "⇄" },
+  { href: "/admin/models", key: "models", icon: "⌘" },
+  { href: "/admin/templates", key: "templates", icon: "¶" },
   { href: "/admin/logs", key: "logs", icon: "≡" },
   { href: "/admin/system", key: "system", icon: "⚙" },
 ] as const;

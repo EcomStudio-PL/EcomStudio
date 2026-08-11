@@ -7,12 +7,17 @@ const config: Config = {
     extend: {
       colors: {
         bg: "rgb(var(--bg) / <alpha-value>)",
+        sidebar: "rgb(var(--sidebar) / <alpha-value>)",
         surface: "rgb(var(--surface) / <alpha-value>)",
         raised: "rgb(var(--raised) / <alpha-value>)",
         ink: "rgb(var(--ink) / <alpha-value>)",
         muted: "rgb(var(--muted) / <alpha-value>)",
+        faint: "rgb(var(--faint) / <alpha-value>)",
         line: "rgb(var(--line) / <alpha-value>)",
+        "line-strong": "rgb(var(--line-strong) / <alpha-value>)",
         accent: "rgb(var(--accent) / <alpha-value>)",
+        "accent-hover": "rgb(var(--accent-hover) / <alpha-value>)",
+        "accent-strong": "rgb(var(--accent-strong) / <alpha-value>)",
         "accent-soft": "rgb(var(--accent-soft) / <alpha-value>)",
       },
       fontFamily: {

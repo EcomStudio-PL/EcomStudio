@@ -12,6 +12,15 @@ export async function listSystemTemplates(supabase: Client) {
   return data ?? [];
 }
 
+export async function listWorkspaceTemplates(supabase: Client, workspaceId: string) {
+  const { data } = await supabase
+    .from("prompt_templates")
+    .select("*")
+    .eq("workspace_id", workspaceId)
+    .order("priority", { ascending: true });
+  return data ?? [];
+}
+
 export async function listProductPrompts(supabase: Client, productId: string) {
   const { data } = await supabase
     .from("generated_prompts")
@@ -51,7 +60,12 @@ export async function createPromptsFromTemplates(
   product: Pick<Tables<"products">, "id" | "workspace_id" | "name" | "category" | "instructions">,
   images: Pick<Tables<"product_images">, "id" | "is_primary" | "sort_order">[]
 ) {
-  const templates = await listSystemTemplates(supabase);
+  // System templates plus the workspace's own active custom templates.
+  const [system, custom] = await Promise.all([
+    listSystemTemplates(supabase),
+    listWorkspaceTemplates(supabase, product.workspace_id),
+  ]);
+  const templates = [...system, ...custom.filter((c) => c.active)];
   if (templates.length === 0) return 0;
 
   // Canonical gallery order = sort_order ascending; number = index + 1.

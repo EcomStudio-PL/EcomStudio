@@ -67,6 +67,100 @@ export async function adjustUserCreditsAction(userId: string, amount: number, de
   }
 }
 
+export async function toggleProviderAction(providerId: string, active: boolean): Promise<Result> {
+  try {
+    const { supabase } = await requireAdmin();
+    const { error } = await supabase.from("ai_providers").update({ active }).eq("id", providerId);
+    if (error) return { ok: false, error: "generic" };
+    revalidatePath("/admin/providers");
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "generic" };
+  }
+}
+
+export async function updateModelCostAction(modelId: string, creditCost: number): Promise<Result> {
+  try {
+    const { supabase } = await requireAdmin();
+    if (!Number.isInteger(creditCost) || creditCost < 0) return { ok: false, error: "invalid_amount" };
+    const { error } = await supabase.from("ai_models").update({ credit_cost: creditCost }).eq("id", modelId);
+    if (error) return { ok: false, error: "generic" };
+    revalidatePath("/admin/models");
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "generic" };
+  }
+}
+
+export async function updatePlanAction(planId: string, patch: {
+  name?: string; price_cents?: number; monthly_credits?: number; sort_order?: number; active?: boolean;
+}): Promise<Result> {
+  try {
+    const { supabase } = await requireAdmin();
+    const { error } = await supabase.from("subscription_plans").update(patch).eq("id", planId);
+    if (error) return { ok: false, error: "generic" };
+    revalidatePath("/admin/plans");
+    revalidatePath("/plan");
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "generic" };
+  }
+}
+
+export async function saveSystemTemplateAction(input: {
+  id?: string; name: string; shot_type: string; template: string;
+  format: string; style: string | null; priority: number; active: boolean;
+}): Promise<Result> {
+  try {
+    const { supabase } = await requireAdmin();
+    if (!input.name.trim() || !input.template.trim()) return { ok: false, error: "invalid" };
+    const row = {
+      workspace_id: null,
+      name: input.name.trim(),
+      shot_type: input.shot_type.trim() || "custom",
+      template: input.template,
+      format: input.format,
+      style: input.style,
+      priority: input.priority,
+      active: input.active,
+    };
+    const { error } = input.id
+      ? await supabase.from("prompt_templates").update(row).eq("id", input.id)
+      : await supabase.from("prompt_templates").insert(row);
+    if (error) return { ok: false, error: "generic" };
+    revalidatePath("/admin/templates");
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "generic" };
+  }
+}
+
+export async function toggleTemplateAction(templateId: string, active: boolean): Promise<Result> {
+  try {
+    const { supabase } = await requireAdmin();
+    const { error } = await supabase.from("prompt_templates").update({ active }).eq("id", templateId);
+    if (error) return { ok: false, error: "generic" };
+    revalidatePath("/admin/templates");
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "generic" };
+  }
+}
+
+export async function saveSettingAction(key: string, value: Record<string, unknown>): Promise<Result> {
+  try {
+    const { supabase } = await requireAdmin();
+    const { error } = await supabase.from("app_settings")
+      .update({ value: value as never, updated_at: new Date().toISOString() })
+      .eq("key", key);
+    if (error) return { ok: false, error: "generic" };
+    revalidatePath("/admin/system");
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "generic" };
+  }
+}
+
 export async function toggleModelAction(modelId: string, active: boolean): Promise<Result> {
   try {
     const { supabase } = await requireAdmin();

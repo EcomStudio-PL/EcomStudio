@@ -2,14 +2,22 @@
   "nav": {
     "dashboard": "Dashboard",
     "products": "Products",
-    "generator": "Generator",
+    "generator": "AI Studio",
     "library": "Library",
-    "prompts": "Prompts",
+    "prompts": "Prompt Generator",
     "history": "History",
     "credits": "Credits",
     "plan": "Plan",
     "settings": "Settings",
-    "admin": "Admin panel"
+    "admin": "Admin panel",
+    "more": "More",
+    "groups": {
+      "main": "Main",
+      "create": "Create",
+      "assets": "Assets",
+      "account": "Account",
+      "admin": "Admin"
+    }
   },
   "common": {
     "save": "Save",
@@ -35,7 +43,9 @@
     "viewAll": "View all",
     "confirmDelete": "This cannot be undone. Delete?",
     "error": "Something went wrong. Try again.",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "search": "Search",
+    "clearFilters": "Clear filters"
   },
   "landing": {
     "headline": "Professional product content in minutes, not hours",
@@ -71,7 +81,8 @@
     "confirmEmail": "Check your inbox and confirm your email to sign in.",
     "invalidCredentials": "Invalid email or password.",
     "setupErrorTitle": "Account setup failed",
-    "setupErrorBody": "Your account is authenticated, but the application data could not be created. Sign out and sign in again — if the problem persists, contact an administrator."
+    "setupErrorBody": "Your account is authenticated, but the application data could not be created. Sign out and sign in again — if the problem persists, contact an administrator.",
+    "registrationDisabled": "Registration is currently disabled."
   },
   "dashboard": {
     "welcome": "Hi, {name}",
@@ -177,7 +188,12 @@
     "created": "Created {n} prompts.",
     "empty": "This product has no prompts yet.",
     "copy": "Copy",
-    "copied": "Prompt copied."
+    "copied": "Prompt copied.",
+    "myTemplates": "My templates",
+    "noMyTemplates": "You don't have custom templates yet.",
+    "newMyTemplate": "New template",
+    "duplicateToMine": "Copy to mine",
+    "duplicated": "Template copied to your templates."
   },
   "library": {
     "title": "Library",
@@ -216,7 +232,9 @@
       "refund": "Refund",
       "bonus": "Bonus",
       "admin_adjustment": "Admin adjustment"
-    }
+    },
+    "usedThisMonth": "Used this month",
+    "usageBreakdown": "Usage breakdown"
   },
   "plan": {
     "title": "Plan",
@@ -253,7 +271,9 @@
       "models": "AI models",
       "plans": "Plans",
       "logs": "Logs",
-      "system": "System"
+      "system": "System",
+      "providers": "AI Providers",
+      "templates": "Prompt Templates"
     },
     "statUsers": "Users",
     "statProducts": "Products",
@@ -282,6 +302,35 @@
     "confirmRole": "Change this user's role to: {role}?",
     "creditsPrompt": "Credit adjustment amount (e.g. 100 or -50):",
     "activate": "Activate",
-    "deactivate": "Deactivate"
+    "deactivate": "Deactivate",
+    "providersSub": "AI providers, API key status and activity.",
+    "templatesSub": "System prompt templates used by the generator.",
+    "plansSub": "Edit plans without code changes — the /plan page reads these values.",
+    "systemSub": "Global application configuration.",
+    "plansNote": "Payments (Stripe) will be connected later — plan configuration is already in place.",
+    "apiKey": "API key",
+    "envVar": "Environment variable",
+    "configured": "Configured",
+    "notConfigured": "Not configured",
+    "keyHint": "Set the key as a Vercel environment variable — never in the browser.",
+    "order": "Order",
+    "shotType": "Shot type",
+    "category": "Category",
+    "templateBody": "Template body",
+    "newTemplate": "New template",
+    "costPrompt": "New credit cost:",
+    "statFailed": "Failed generations",
+    "statCreditsAvailable": "Credits available",
+    "statActiveModels": "Active models",
+    "chartGenerations": "Generations — 7 days",
+    "chartNewUsers": "New users — 7 days",
+    "settings": {
+      "general": "General",
+      "user_defaults": "User defaults",
+      "generation": "Generation",
+      "credits": "Credits",
+      "security": "Security",
+      "features": "Feature flags"
+    }
   }
 }

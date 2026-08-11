@@ -18,6 +18,16 @@ export default async function CreditsPage() {
   if (!workspace) return null;
   const wallet = await getWallet(supabase, workspace.id);
   const txs = wallet ? await getTransactions(supabase, wallet.id) : [];
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const usedThisMonth = txs
+    .filter((tx) => tx.amount < 0 && new Date(tx.created_at) >= monthStart)
+    .reduce((s, tx) => s + Math.abs(tx.amount), 0);
+  const byType = txs.reduce<Record<string, number>>((acc, tx) => {
+    if (tx.amount < 0) acc[tx.type] = (acc[tx.type] ?? 0) + Math.abs(tx.amount);
+    return acc;
+  }, {});
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -36,6 +46,27 @@ export default async function CreditsPage() {
           <p className="mt-1.5 text-xs text-muted">{t("credits.topupSoon")}</p>
         </div>
       </Card>
+      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <Card className="px-5 py-4">
+          <p className="text-sm text-muted">{t("credits.usedThisMonth")}</p>
+          <p className="mt-1 font-display text-2xl font-semibold tracking-tight">{formatCredits(usedThisMonth)}</p>
+        </Card>
+        <Card className="px-5 py-4">
+          <p className="text-sm text-muted">{t("credits.usageBreakdown")}</p>
+          {Object.keys(byType).length === 0 ? (
+            <p className="mt-1 text-sm text-muted">—</p>
+          ) : (
+            <ul className="mt-1.5 space-y-1 text-sm">
+              {Object.entries(byType).map(([type, amount]) => (
+                <li key={type} className="flex justify-between">
+                  <span>{t(`credits.tt.${type}`)}</span>
+                  <span className="font-medium">{formatCredits(amount)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
       <Card className="mt-5">
         <CardHeader title={t("credits.historyTitle")} />
         {txs.length === 0 ? (
