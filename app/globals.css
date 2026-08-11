@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-body: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk Variable", "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --bg: 248 248 247;
+  --surface: 255 255 255;
+  --raised: 244 244 242;
+  --ink: 23 23 26;
+  --muted: 107 107 112;
+  --line: 228 228 224;
+  --accent: 5 150 105;       /* emerald-600 */
+  --accent-soft: 209 250 229; /* emerald-100 */
+}
+
+.dark {
+  --bg: 13 14 16;
+  --surface: 22 23 26;
+  --raised: 31 32 36;
+  --ink: 243 243 241;
+  --muted: 156 156 163;
+  --line: 40 41 46;
+  --accent: 52 211 153;       /* emerald-400 */
+  --accent-soft: 6 45 34;
+}
+
+html { -webkit-tap-highlight-color: transparent; }
+body { @apply bg-bg text-ink antialiased; }
+
+/* Signature: viewfinder corner brackets (EcomStudio frame motif) */
+.frame-mark { position: relative; }
+.frame-mark::before, .frame-mark::after {
+  content: ""; position: absolute; width: 10px; height: 10px;
+  border-color: rgb(var(--accent)); border-style: solid;
+}
+.frame-mark::before { top: -3px; left: -6px; border-width: 2px 0 0 2px; }
+.frame-mark::after { bottom: -3px; right: -6px; border-width: 0 2px 2px 0; }
+
+::selection { background: rgb(var(--accent) / 0.25); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
