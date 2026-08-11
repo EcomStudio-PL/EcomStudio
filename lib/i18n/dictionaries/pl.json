@@ -69,7 +69,9 @@
     "updatePassword": "Ustaw nowe hasło",
     "passwordUpdated": "Hasło zostało zmienione.",
     "confirmEmail": "Sprawdź skrzynkę i potwierdź adres e-mail, aby się zalogować.",
-    "invalidCredentials": "Nieprawidłowy e-mail lub hasło."
+    "invalidCredentials": "Nieprawidłowy e-mail lub hasło.",
+    "setupErrorTitle": "Nie udało się przygotować konta",
+    "setupErrorBody": "Twoje konto jest uwierzytelnione, ale dane aplikacji nie zostały poprawnie utworzone. Wyloguj się i zaloguj ponownie — jeśli problem wróci, skontaktuj się z administratorem."
   },
   "dashboard": {
     "welcome": "Cześć, {name}",
@@ -230,7 +232,11 @@
     "profile": "Profil",
     "language": "Język",
     "theme": "Motyw",
-    "themes": { "light": "Jasny", "dark": "Ciemny", "system": "Systemowy" },
+    "themes": {
+      "light": "Jasny",
+      "dark": "Ciemny",
+      "system": "Systemowy"
+    },
     "saved": "Ustawienia zapisane.",
     "workspace": "Workspace"
   },
@@ -269,6 +275,13 @@
     "onBehalf": "W imieniu",
     "noData": "Brak danych",
     "sysEnv": "Środowisko",
-    "sysNote": "DEV jest środowiskiem aktywnego developmentu. PROD jest chroniony — zmiany wyłącznie przez migracje i świadomy deploy."
+    "sysNote": "DEV jest środowiskiem aktywnego developmentu. PROD jest chroniony — zmiany wyłącznie przez migracje i świadomy deploy.",
+    "makeAdmin": "Nadaj admina",
+    "removeAdmin": "Odbierz admina",
+    "selfDemotion": "Nie możesz odebrać uprawnień własnemu kontu.",
+    "confirmRole": "Zmienić rolę użytkownika na: {role}?",
+    "creditsPrompt": "Kwota korekty kredytów (np. 100 lub -50):",
+    "activate": "Aktywuj",
+    "deactivate": "Dezaktywuj"
   }
 }

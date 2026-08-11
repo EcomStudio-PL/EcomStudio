@@ -87,8 +87,11 @@ export function ImageManager({ productId, workspaceId, images }: {
                 {img.url && (
                   <Image src={img.url} alt="" fill sizes="200px" className="object-cover" />
                 )}
+                <span className="absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded-md bg-black/70 font-display text-xs font-bold text-white">
+                  {idx + 1}
+                </span>
                 {img.is_primary && (
-                  <Badge tone="green" className="absolute left-2 top-2">{t("products.primary")}</Badge>
+                  <Badge tone="green" className="absolute right-2 top-2">{t("products.primary")}</Badge>
                 )}
               </div>
               <div className="flex items-center justify-between gap-1 px-2 py-1.5">

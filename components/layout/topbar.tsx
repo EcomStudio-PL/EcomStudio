@@ -5,12 +5,18 @@ import { ThemeToggle } from "./theme-toggle";
 import { LocaleSwitcher } from "./locale-switcher";
 import { Brand } from "./brand";
 
-export function Topbar({ name, credits }: { name: string; credits: number }) {
+export function Topbar({ name, credits, workspace }: { name: string; credits: number; workspace?: string }) {
   const { t } = useI18n();
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-line bg-bg/90 px-4 backdrop-blur lg:px-8">
       <div className="lg:hidden"><Brand href="/dashboard" /></div>
-      <div className="hidden lg:block" />
+      <div className="hidden min-w-0 items-center gap-2 lg:flex">
+        {workspace && (
+          <span className="truncate rounded-lg bg-raised px-3 py-1.5 text-xs font-medium text-muted">
+            ▣ {workspace}
+          </span>
+        )}
+      </div>
       <div className="flex items-center gap-2">
         <span className="hidden rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold text-accent sm:inline-flex">
           ◎ {credits}

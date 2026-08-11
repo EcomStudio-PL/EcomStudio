@@ -2,6 +2,9 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentWorkspace, getProfile } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
+import { getDictionary } from "@/lib/i18n/server";
+import { makeT } from "@/lib/i18n/t";
+import { signOut } from "@/app/actions/auth";
 import { Sidebar, MobileNav } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 
@@ -9,18 +12,44 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  const [profile, workspace] = await Promise.all([
+  let [profile, workspace] = await Promise.all([
     getProfile(supabase, user.id),
     getCurrentWorkspace(supabase, user.id),
   ]);
-  if (!profile || !workspace) redirect("/login");
+  if (!profile || !workspace) {
+    // Recovery: the user exists in auth but application records are missing
+    // (account created outside the normal signup flow). Self-heal idempotently.
+    await supabase.rpc("bootstrap_current_user");
+    [profile, workspace] = await Promise.all([
+      getProfile(supabase, user.id),
+      getCurrentWorkspace(supabase, user.id),
+    ]);
+  }
+  if (!profile || !workspace) {
+    const { dict } = await getDictionary();
+    const t = makeT(dict);
+    return (
+      <main className="flex min-h-dvh items-center justify-center px-4">
+        <div className="max-w-md rounded-2xl border border-line bg-surface p-8 text-center shadow-sm">
+          <p className="text-3xl">⚠️</p>
+          <h1 className="mt-3 font-display text-lg font-semibold">{t("auth.setupErrorTitle")}</h1>
+          <p className="mt-2 text-sm text-muted">{t("auth.setupErrorBody")}</p>
+          <form action={signOut} className="mt-6">
+            <button className="rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-semibold hover:bg-raised">
+              {t("common.signOut")}
+            </button>
+          </form>
+        </div>
+      </main>
+    );
+  }
   const wallet = await getWallet(supabase, workspace.id);
   const isAdmin = profile.role === "admin";
   return (
     <div className="flex min-h-dvh">
       <Sidebar isAdmin={isAdmin} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar name={profile.full_name ?? profile.email} credits={wallet?.balance ?? 0} />
+        <Topbar name={profile.full_name ?? profile.email} credits={wallet?.balance ?? 0} workspace={workspace.name} />
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-6 lg:px-8 lg:pb-10">
           {children}
         </main>

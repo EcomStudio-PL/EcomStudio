@@ -53,7 +53,7 @@ export function GeneratorWizard({ products, modelCount }: {
           <div className="p-5">
             {product && product.images.length > 0 ? (
               <ul className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-                {product.images.map((img) => {
+                {product.images.map((img, idx) => {
                   const selected = selectedRefs.includes(img.id);
                   return (
                     <li key={img.id}>
@@ -63,8 +63,11 @@ export function GeneratorWizard({ products, modelCount }: {
                           selected ? "frame-mark border-accent" : "border-line opacity-80 hover:opacity-100"
                         )}>
                         {img.url && <Image src={img.url} alt="" fill sizes="120px" className="object-cover" />}
+                        <span className="absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded bg-black/70 text-[10px] font-bold text-white">
+                          {idx + 1}
+                        </span>
                         {img.isPrimary && (
-                          <span className="absolute left-1.5 top-1.5 rounded bg-accent px-1.5 text-[10px] font-semibold text-white dark:text-emerald-950">★</span>
+                          <span className="absolute right-1.5 top-1.5 rounded bg-accent px-1.5 text-[10px] font-semibold text-white dark:text-emerald-950">★</span>
                         )}
                       </button>
                     </li>

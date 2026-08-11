@@ -28,7 +28,7 @@ export default async function GeneratorPage() {
     id: p.id,
     name: p.name,
     images: p.product_images
-      .sort((a, b) => (a.is_primary === b.is_primary ? a.sort_order - b.sort_order : a.is_primary ? -1 : 1))
+      .sort((a, b) => a.sort_order - b.sort_order)
       .map((i) => ({ id: i.id, url: urls.get(i.storage_path) ?? "", isPrimary: i.is_primary })),
   }));
 

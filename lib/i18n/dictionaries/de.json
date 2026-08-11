@@ -69,7 +69,9 @@
     "updatePassword": "Neues Passwort festlegen",
     "passwordUpdated": "Passwort aktualisiert.",
     "confirmEmail": "Prüfe dein Postfach und bestätige deine E-Mail, um dich anzumelden.",
-    "invalidCredentials": "Ungültige E-Mail oder Passwort."
+    "invalidCredentials": "Ungültige E-Mail oder Passwort.",
+    "setupErrorTitle": "Kontoeinrichtung fehlgeschlagen",
+    "setupErrorBody": "Dein Konto ist authentifiziert, aber die Anwendungsdaten konnten nicht erstellt werden. Melde dich ab und erneut an — falls das Problem bleibt, kontaktiere einen Administrator."
   },
   "dashboard": {
     "welcome": "Hallo, {name}",
@@ -230,7 +232,11 @@
     "profile": "Profil",
     "language": "Sprache",
     "theme": "Design",
-    "themes": { "light": "Hell", "dark": "Dunkel", "system": "System" },
+    "themes": {
+      "light": "Hell",
+      "dark": "Dunkel",
+      "system": "System"
+    },
     "saved": "Einstellungen gespeichert.",
     "workspace": "Workspace"
   },
@@ -269,6 +275,13 @@
     "onBehalf": "Im Auftrag von",
     "noData": "Keine Daten",
     "sysEnv": "Umgebung",
-    "sysNote": "DEV ist die aktive Entwicklungsumgebung. PROD ist geschützt — Änderungen nur über Migrationen und bewusste Deployments."
+    "sysNote": "DEV ist die aktive Entwicklungsumgebung. PROD ist geschützt — Änderungen nur über Migrationen und bewusste Deployments.",
+    "makeAdmin": "Zum Admin machen",
+    "removeAdmin": "Admin entziehen",
+    "selfDemotion": "Du kannst deinem eigenen Konto die Admin-Rechte nicht entziehen.",
+    "confirmRole": "Rolle dieses Benutzers ändern zu: {role}?",
+    "creditsPrompt": "Betrag der Credit-Korrektur (z. B. 100 oder -50):",
+    "activate": "Aktivieren",
+    "deactivate": "Deaktivieren"
   }
 }

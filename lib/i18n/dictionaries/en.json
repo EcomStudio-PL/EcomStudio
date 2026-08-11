@@ -69,7 +69,9 @@
     "updatePassword": "Set new password",
     "passwordUpdated": "Password updated.",
     "confirmEmail": "Check your inbox and confirm your email to sign in.",
-    "invalidCredentials": "Invalid email or password."
+    "invalidCredentials": "Invalid email or password.",
+    "setupErrorTitle": "Account setup failed",
+    "setupErrorBody": "Your account is authenticated, but the application data could not be created. Sign out and sign in again — if the problem persists, contact an administrator."
   },
   "dashboard": {
     "welcome": "Hi, {name}",
@@ -230,7 +232,11 @@
     "profile": "Profile",
     "language": "Language",
     "theme": "Theme",
-    "themes": { "light": "Light", "dark": "Dark", "system": "System" },
+    "themes": {
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    },
     "saved": "Settings saved.",
     "workspace": "Workspace"
   },
@@ -269,6 +275,13 @@
     "onBehalf": "On behalf of",
     "noData": "No data",
     "sysEnv": "Environment",
-    "sysNote": "DEV is the active development environment. PROD is protected — changes only via migrations and deliberate deploys."
+    "sysNote": "DEV is the active development environment. PROD is protected — changes only via migrations and deliberate deploys.",
+    "makeAdmin": "Make admin",
+    "removeAdmin": "Remove admin",
+    "selfDemotion": "You cannot remove admin rights from your own account.",
+    "confirmRole": "Change this user's role to: {role}?",
+    "creditsPrompt": "Credit adjustment amount (e.g. 100 or -50):",
+    "activate": "Activate",
+    "deactivate": "Deactivate"
   }
 }

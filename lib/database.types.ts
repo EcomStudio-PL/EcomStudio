@@ -960,6 +960,18 @@ export type Database = {
     }
     Views: { [_ in never]: never }
     Functions: {
+      admin_adjust_credits: {
+        Args: {
+          p_amount: number
+          p_description?: string
+          p_wallet_id: string
+        }
+        Returns: string
+      }
+      bootstrap_current_user: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       apply_credit_transaction: {
         Args: {
           p_amount: number
