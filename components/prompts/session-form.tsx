@@ -117,7 +117,7 @@ export function SessionForm({ products, workspaceId, engineAvailable }: {
   }
 
   return (
-    <Card className="anim-pop">
+    <Card className="anim-pop min-w-0">
       <CardHeader title={t("psess.newTitle")} sub={t("psess.newSub")} />
       <div className="space-y-4 p-5 pt-3">
         {products.length > 0 && (

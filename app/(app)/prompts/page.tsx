@@ -55,10 +55,10 @@ export default async function PromptsPage() {
   return (
     <div>
       <PageHeader title={t("prompts.title")} sub={t("psess.sub")} />
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <SessionForm products={productOptions} workspaceId={workspace.id} engineAvailable={engineAvailable} />
 
-        <div className="space-y-3 lg:sticky lg:top-20 lg:h-fit">
+        <div className="min-w-0 space-y-3 lg:sticky lg:top-20 lg:h-fit">
           <h3 className="px-1 font-display text-sm font-semibold text-muted">{t("psess.recent")}</h3>
           {(sessions ?? []).length === 0 && (
             <Card className="p-6 text-center">
@@ -79,9 +79,11 @@ export default async function PromptsPage() {
                 <p className="truncate text-sm font-semibold">{s.product_name}</p>
                 <p className="text-xs text-faint">{new Date(s.created_at).toLocaleDateString()} · {s.aspect_ratio}</p>
               </div>
-              <Badge tone={statusTone[s.status as keyof typeof statusTone] ?? "amber"}>
-                {t(`psess.status_${s.status}`, {}) || s.status}
-              </Badge>
+              <span className="shrink-0">
+                <Badge tone={statusTone[s.status as keyof typeof statusTone] ?? "amber"}>
+                  {t(`psess.status_${s.status}`, {}) || s.status}
+                </Badge>
+              </span>
               <ArrowRight size={14} className="shrink-0 text-faint" />
             </Link>
           ))}
