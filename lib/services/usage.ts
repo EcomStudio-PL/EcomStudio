@@ -75,7 +75,7 @@ export async function startUsage(supabase: Client, input: {
       p_metadata: { service: service.slug, ...(input.metadata ?? {}) } as never,
     });
     if (txError) {
-      await supabase.rpc("fail_usage_event", { p_event_id: event.id, p_error: "insufficient_credits" });
+      await supabase.rpc("fail_usage_event", { p_event_id: event.id, p_error: "insufficient_credits", p_api_cost_usd_micros: 0 });
       return { ok: false, error: "insufficient_credits" };
     }
     void txId; // linked onto the event inside the RPC
@@ -83,24 +83,39 @@ export async function startUsage(supabase: Client, input: {
   return { ok: true, eventId: event.id };
 }
 
-export async function completeUsage(supabase: Client, eventId: string, resultCount: number) {
+export async function completeUsage(supabase: Client, eventId: string, resultCount: number, cost?: {
+  /** REAL provider cost of this call, in USD micros. Recorded, never guessed. */
+  apiCostUsdMicros?: number;
+  providerRequestId?: string | null;
+}) {
   // SECURITY DEFINER: members cannot update usage_events directly.
-  await supabase.rpc("complete_usage_event", { p_event_id: eventId, p_result_count: resultCount });
+  await supabase.rpc("complete_usage_event", {
+    p_event_id: eventId,
+    p_result_count: resultCount,
+    p_api_cost_usd_micros: Math.max(0, Math.round(cost?.apiCostUsdMicros ?? 0)),
+    p_request_id: cost?.providerRequestId ?? null,
+  });
 }
 
 export async function failUsage(supabase: Client, input: {
   eventId: string; walletId: string; error: string;
+  /** Provider cost incurred despite the failure (usually 0). */
+  apiCostUsdMicros?: number;
 }) {
   // SECURITY DEFINER: atomically marks failed and refunds the event's own
   // charge exactly once — repeat calls no-op, succeeded events can't refund.
-  await supabase.rpc("fail_usage_event", { p_event_id: input.eventId, p_error: input.error });
+  await supabase.rpc("fail_usage_event", {
+    p_event_id: input.eventId,
+    p_error: input.error,
+    p_api_cost_usd_micros: Math.max(0, Math.round(input.apiCostUsdMicros ?? 0)),
+  });
 }
 
 /** Dynamic per-service usage summary — powers CRM + analytics without any
  *  hardcoded per-service fields. New catalog services appear automatically. */
 export async function usageByService(supabase: Client, filter: { workspaceId?: string; userId?: string; since?: string }) {
   let q = supabase.from("usage_events")
-    .select("service_slug, status, credits_charged, api_cost_usd_micros_snapshot, sale_value_cents_snapshot, created_at, model_slug");
+    .select("service_slug, status, credits_charged, api_cost_usd_micros_snapshot, actual_api_cost_usd_micros, sale_value_cents_snapshot, created_at, model_slug");
   if (filter.workspaceId) q = q.eq("workspace_id", filter.workspaceId);
   if (filter.userId) q = q.eq("user_id", filter.userId);
   if (filter.since) q = q.gte("created_at", filter.since);
@@ -118,7 +133,9 @@ export async function usageByService(supabase: Client, filter: { workspaceId?: s
     if (e.status === "failed" || e.status === "refunded") s.failed += 1;
     if (e.status !== "refunded") {
       s.credits += e.credits_charged;
-      s.apiCostUsdMicros += e.api_cost_usd_micros_snapshot;
+      // Real recorded cost wins; the catalog snapshot is only a fallback for
+      // events written before per-call costs were captured.
+      s.apiCostUsdMicros += e.actual_api_cost_usd_micros || e.api_cost_usd_micros_snapshot;
       s.saleCents += e.sale_value_cents_snapshot;
     }
     if (!s.lastAt || e.created_at > s.lastAt) s.lastAt = e.created_at;

@@ -95,7 +95,7 @@ export default async function AdminAnalytics({ searchParams }: {
     await Promise.all([
       supabase.from("payments").select("amount_cents, status, created_at, workspace_id").limit(20000),
       supabase.from("usage_events")
-        .select("service_slug, model_slug, user_id, status, credits_charged, api_cost_usd_micros_snapshot, sale_value_cents_snapshot, created_at")
+        .select("service_slug, model_slug, user_id, workspace_id, status, credits_charged, result_count, actual_api_cost_usd_micros, api_cost_usd_micros_snapshot, sale_value_cents_snapshot, created_at")
         .limit(20000),
       supabase.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", dayIso),
       supabase.from("profiles").select("id", { count: "exact", head: true }).gte("created_at", d7),
@@ -116,11 +116,22 @@ export default async function AdminAnalytics({ searchParams }: {
     const p = since ? pay.filter((r) => r.created_at >= since) : pay;
     const u = since ? charged.filter((x) => x.created_at >= since) : charged;
     const revenue = p.reduce((s, x) => s + x.amount_cents, 0);
-    const apiCost = u.reduce((s, x) => s + x.api_cost_usd_micros_snapshot, 0);
+    // Real recorded provider cost wins; the catalog snapshot only fills in for
+    // events written before per-call costs were captured.
+    const apiCost = u.reduce((s, x) => s + (x.actual_api_cost_usd_micros || x.api_cost_usd_micros_snapshot), 0);
+    const apiCostCents = Math.round((apiCost / 1e6) * usdToPln * 100);
+    const succeeded = u.filter((x) => x.status === "succeeded");
+    const payers = new Set(p.map((x) => x.workspace_id)).size;
     return {
       revenue, apiCost,
+      contribution: revenue - apiCostCents,
+      margin: revenue > 0 ? Math.round(((revenue - apiCostCents) / revenue) * 1000) / 10 : 0,
       creditsUsed: u.reduce((s, x) => s + x.credits_charged, 0),
       generations: u.length,
+      succeeded: succeeded.length,
+      outputs: succeeded.reduce((s, x) => s + (x.result_count ?? 0), 0),
+      avgCostPerGen: u.length > 0 ? Math.round(apiCost / u.length) : 0,
+      avgRevenuePerPayer: payers > 0 ? Math.round(revenue / payers) : 0,
       failed: (since ? usage.filter((x) => x.created_at >= since) : usage).filter((x) => x.status === "failed" || x.status === "refunded").length,
     };
   };
@@ -136,7 +147,10 @@ export default async function AdminAnalytics({ searchParams }: {
     const m = models.get(key) ?? { gens: 0, users: new Set<string>(), cost: 0, revenue: 0, failed: 0 };
     m.gens += 1;
     if (u.user_id) m.users.add(u.user_id);
-    if (u.status !== "refunded") { m.cost += u.api_cost_usd_micros_snapshot; m.revenue += u.sale_value_cents_snapshot; }
+    if (u.status !== "refunded") {
+      m.cost += u.actual_api_cost_usd_micros || u.api_cost_usd_micros_snapshot;
+      m.revenue += u.sale_value_cents_snapshot;
+    }
     if (u.status === "failed" || u.status === "refunded") m.failed += 1;
     models.set(key, m);
   }
@@ -150,6 +164,35 @@ export default async function AdminAnalytics({ searchParams }: {
     : { data: [] };
   const wsName = new Map((topWsNames ?? []).map((w) => [w.id, w.name]));
 
+  // Who costs us the most, and who is actually profitable. Cost comes from the
+  // usage ledger, revenue from settled payments — both keyed by workspace.
+  const costByWorkspace = new Map<string, number>();
+  for (const u of charged) {
+    if (!u.workspace_id) continue;
+    costByWorkspace.set(u.workspace_id,
+      (costByWorkspace.get(u.workspace_id) ?? 0) + (u.actual_api_cost_usd_micros || u.api_cost_usd_micros_snapshot));
+  }
+  const workspaceIds = [...new Set([...revByWorkspace.keys(), ...costByWorkspace.keys()])];
+  const { data: wsRows } = workspaceIds.length
+    ? await supabase.from("workspaces").select("id, name").in("id", workspaceIds.slice(0, 200))
+    : { data: [] };
+  const wsAllNames = new Map((wsRows ?? []).map((w) => [w.id, w.name]));
+  const customerEconomicsRows = workspaceIds.map((id) => {
+    const revenue = revByWorkspace.get(id) ?? 0;
+    const costMicros = costByWorkspace.get(id) ?? 0;
+    const costCents = Math.round((costMicros / 1e6) * usdToPln * 100);
+    return {
+      id, name: wsAllNames.get(id) ?? id.slice(0, 8),
+      revenue, costMicros, contribution: revenue - costCents,
+      margin: revenue > 0 ? Math.round(((revenue - costCents) / revenue) * 1000) / 10 : null,
+    };
+  });
+  const mostExpensive = [...customerEconomicsRows].sort((a, b) => b.costMicros - a.costMicros).slice(0, 5);
+  const mostProfitable = [...customerEconomicsRows].sort((a, b) => b.contribution - a.contribution).slice(0, 5);
+  const lowestMargin = customerEconomicsRows
+    .filter((r) => r.margin !== null && r.costMicros > 0)
+    .sort((a, b) => (a.margin ?? 0) - (b.margin ?? 0)).slice(0, 5);
+
   const ranges: { key: RangeKey; label: string }[] =
     (Object.keys(RANGES) as RangeKey[]).map((k) => ({ key: k, label: k }));
 
@@ -162,10 +205,11 @@ export default async function AdminAnalytics({ searchParams }: {
           <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-faint">{row.label}</p>
           <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
             <Stat label={t("analytics.revenue")} value={pln(row.d.revenue)} accent2 />
-            <Stat label={t("analytics.apiCost")} value={usd(row.d.apiCost)} />
-            <Stat label={t("analytics.grossProfit")} value={pln(Math.max(row.d.revenue, 0))} hint={`- ${usd(row.d.apiCost)} API`} />
-            <Stat label={t("admin.statCreditsUsed")} value={formatCredits(row.d.creditsUsed)} />
-            <Stat label={t("analytics.generations")} value={row.d.generations} hint={row.d.failed > 0 ? `${row.d.failed} ${t("analytics.failed")}` : undefined} />
+            <Stat label={t("analytics.apiCost")} value={usd(row.d.apiCost)} hint={t("econ.perGen", { v: usd(row.d.avgCostPerGen) })} />
+            <Stat label={t("econ.contribution")} value={pln(row.d.contribution)} hint={row.d.revenue > 0 ? `${row.d.margin}%` : undefined} />
+            <Stat label={t("admin.statCreditsUsed")} value={formatCredits(row.d.creditsUsed)} hint={t("econ.arpu", { v: pln(row.d.avgRevenuePerPayer) })} />
+            <Stat label={t("analytics.generations")} value={row.d.generations}
+              hint={`${row.d.outputs} ${t("econ.outputs").toLowerCase()}${row.d.failed > 0 ? ` · ${row.d.failed} ${t("analytics.failed")}` : ""}`} />
           </div>
         </div>
       ))}
@@ -220,6 +264,48 @@ export default async function AdminAnalytics({ searchParams }: {
             ];
           })}
         />
+      </div>
+
+      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+        <Card>
+          <CardHeader title={t("econ.mostExpensive")} sub={t("econ.mostExpensiveSub")} />
+          <ul className="divide-y divide-line">
+            {mostExpensive.filter((r) => r.costMicros > 0).length === 0
+              ? <li className="px-5 py-4 text-sm text-muted">{t("admin.noData")}</li>
+              : mostExpensive.filter((r) => r.costMicros > 0).map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm">
+                  <span className="truncate">{r.name}</span>
+                  <span className="shrink-0 tabular-nums text-accent2">{usd(r.costMicros)}</span>
+                </li>
+              ))}
+          </ul>
+        </Card>
+        <Card>
+          <CardHeader title={t("econ.mostProfitable")} sub={t("econ.mostProfitableSub")} />
+          <ul className="divide-y divide-line">
+            {mostProfitable.filter((r) => r.revenue > 0).length === 0
+              ? <li className="px-5 py-4 text-sm text-muted">{t("admin.noData")}</li>
+              : mostProfitable.filter((r) => r.revenue > 0).map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm">
+                  <span className="truncate">{r.name}</span>
+                  <span className="shrink-0 tabular-nums text-accent">{pln(r.contribution)}</span>
+                </li>
+              ))}
+          </ul>
+        </Card>
+        <Card>
+          <CardHeader title={t("econ.lowestMargin")} sub={t("econ.lowestMarginSub")} />
+          <ul className="divide-y divide-line">
+            {lowestMargin.length === 0
+              ? <li className="px-5 py-4 text-sm text-muted">{t("admin.noData")}</li>
+              : lowestMargin.map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm">
+                  <span className="truncate">{r.name}</span>
+                  <Badge tone={(r.margin ?? 0) < 30 ? "red" : "amber"}>{r.margin}%</Badge>
+                </li>
+              ))}
+          </ul>
+        </Card>
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-3">

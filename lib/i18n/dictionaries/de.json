@@ -864,5 +864,46 @@
       "generation": "Generierungen",
       "user": "Kunden"
     }
+  },
+  "econ": {
+    "title": "Kundenrentabilität",
+    "sub": "Umsatz minus tatsächliche API-Kosten, aus erfassten Zahlungen und Nutzungsereignissen.",
+    "period": "Zeitraum",
+    "p": {
+      "today": "Heute",
+      "7d": "7 Tage",
+      "30d": "30 Tage",
+      "90d": "90 Tage",
+      "all": "Gesamt"
+    },
+    "revenue": "Umsatz",
+    "apiCost": "API-Kosten",
+    "contribution": "Deckungsbeitrag",
+    "margin": "Marge %",
+    "generations": "Generierungen",
+    "succeeded": "Erfolgreich",
+    "failed": "Fehlgeschlagen",
+    "outputs": "Ergebnisse",
+    "credits": "Credits",
+    "byModel": "Kosten und Gewinn pro Modell",
+    "model": "Modell",
+    "jobs": "Jobs",
+    "perOutput": "Kosten/Ergebnis",
+    "noModels": "Noch keine erfasste Nutzung.",
+    "attribution": "Umsatz wird den Modellen anteilig zu den verbrauchten Credits zugeordnet — Kunden zahlen für Credits, nicht für ein einzelnes Bild.",
+    "anomalies": "Kostenanomalien",
+    "a": {
+      "expensive_output": "teures Ergebnis",
+      "cost_without_result": "Kosten ohne Ergebnis",
+      "estimate_drift": "Abweichung zur Schätzung"
+    },
+    "perGen": "{v}/Generierung",
+    "arpu": "{v}/Kunde",
+    "mostExpensive": "Teuerste Kunden (API)",
+    "mostExpensiveSub": "Tatsächliche Anbieterkosten",
+    "mostProfitable": "Profitabelste",
+    "mostProfitableSub": "Umsatz minus API-Kosten",
+    "lowestMargin": "Niedrigste Marge",
+    "lowestMarginSub": "Kunden mit Handlungsbedarf"
   }
 }

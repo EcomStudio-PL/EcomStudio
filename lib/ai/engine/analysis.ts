@@ -39,11 +39,14 @@ const IMAGE_SCHEMA = {
     scene_reference_only: S.bool,
     primary_candidate_score: S.int,
     roles: { type: "ARRAY", items: { type: "STRING", enum: [...REFERENCE_ROLES] } },
+    observed_color: S.str,
+    observed_button_count: S.int,
+    variant_hint: S.str,
   },
   required: [
     "image_number", "view", "full_product", "product_count", "occlusion",
     "product_quality", "critical_features", "scene_reference_only",
-    "primary_candidate_score", "roles",
+    "primary_candidate_score", "roles", "observed_color", "observed_button_count",
   ],
 };
 
@@ -123,7 +126,9 @@ Rules:
 - primary_candidate_score (0-100) rates how well the image shows the product's full geometry and identity: full product, sharp, front or three-quarter view, low occlusion score highest.
 - critical_features are identification-critical visual facts (colors, button layout, logo position, antenna count, port arrangement...).
 - The manifest merges ALL images + seller text into one set of verifiable facts about the product. Never describe anything you cannot see or read in the provided material.
-- quantity = how many identical main products form the sold unit (a 2-pack = 2).`;
+- quantity = how many identical main products form the sold unit (a 2-pack = 2).
+- Report what EACH image actually shows, independently: observed_color is the product colour in THAT photo, observed_button_count the buttons visible in THAT photo (0 when none are visible), variant_hint any model/version/revision marking in THAT photo. Never harmonise these across images — disagreements are meaningful and are resolved later.
+- roles: PRIMARY_GEOMETRY for the image that best defines the whole body; REAR_DETAIL for a back view; SCENE_ONLY for infographics, size charts and packaging renders.`;
 
 export async function analyzeReferences(
   cred: VisionCredential,

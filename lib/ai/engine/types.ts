@@ -11,7 +11,7 @@ export const IMAGE_VIEWS = [
 export type ImageView = (typeof IMAGE_VIEWS)[number];
 
 export const REFERENCE_ROLES = [
-  "MAIN_GEOMETRY", "FRONT_DETAIL", "SIDE_PROFILE", "BACK_DETAIL", "MATERIAL",
+  "PRIMARY_GEOMETRY", "FRONT_DETAIL", "SIDE_PROFILE", "REAR_DETAIL", "MATERIAL",
   "BUTTON_LAYOUT", "PORT_LAYOUT", "BRANDING", "DIMENSIONS", "SCALE",
   "ACCESSORIES", "USAGE", "COLOR", "MECHANISM", "SCENE_ONLY",
 ] as const;
@@ -39,6 +39,21 @@ export type ImageAnalysis = {
   /** 0-100: how good this image is as the PRIMARY geometry/identity reference. */
   primary_candidate_score: number;
   roles: ReferenceRole[];
+  /** Raw observations, compared across images to catch variant conflicts
+   *  (a black unit in image 1 and a blue one in image 2 are NOT one product). */
+  observed_color: string;
+  observed_button_count: number;
+  variant_hint: string | null;
+};
+
+/** A disagreement between references that must never be silently merged. */
+export type ReferenceConflict = {
+  kind: "color" | "quantity" | "buttons" | "accessories" | "variant";
+  detail: string;
+  /** 1-based image numbers that disagree. */
+  images: number[];
+  /** The value the Product Lock treats as authoritative. */
+  resolution: string;
 };
 
 /** Countable, verifiable product facts. "exactly 2 identical walkie-talkies",
@@ -83,7 +98,9 @@ export type FeatureManifest = {
 };
 
 export type LockLevel = "HARD" | "STRONG" | "SOFT";
-export type LockStrength = "STANDARD" | "STRONG" | "MAXIMUM";
+/** Fidelity budget for a scene. The engine defaults to fidelity: LOW is only
+ *  reachable for plain packshots of simple, featureless products. */
+export type LockStrength = "LOW" | "MEDIUM" | "HIGH" | "MAXIMUM";
 
 /** Product Lock as data: constraints grouped by severity. Rendered into the
  *  master prompt AND stored on the session for auditability. */
@@ -91,6 +108,7 @@ export type ProductLock = {
   hard: string[];
   strong: string[];
   soft: string[];
+  conflicts: ReferenceConflict[];
 };
 
 export const SCENE_TYPES = [

@@ -864,5 +864,46 @@
       "generation": "Generations",
       "user": "Customers"
     }
+  },
+  "econ": {
+    "title": "Customer profitability",
+    "sub": "Revenue minus real API cost, computed from settled payments and recorded usage events.",
+    "period": "Period",
+    "p": {
+      "today": "Today",
+      "7d": "7 days",
+      "30d": "30 days",
+      "90d": "90 days",
+      "all": "All time"
+    },
+    "revenue": "Revenue",
+    "apiCost": "API cost",
+    "contribution": "Gross contribution",
+    "margin": "Margin %",
+    "generations": "Generations",
+    "succeeded": "Succeeded",
+    "failed": "Failed",
+    "outputs": "Outputs",
+    "credits": "Credits",
+    "byModel": "Cost and profit by model",
+    "model": "Model",
+    "jobs": "Jobs",
+    "perOutput": "Cost/output",
+    "noModels": "No recorded usage yet.",
+    "attribution": "Revenue is attributed to models in proportion to credits spent — customers pay for credits, not for a single image.",
+    "anomalies": "Cost anomalies",
+    "a": {
+      "expensive_output": "expensive output",
+      "cost_without_result": "cost without result",
+      "estimate_drift": "estimate drift"
+    },
+    "perGen": "{v}/generation",
+    "arpu": "{v}/customer",
+    "mostExpensive": "Most expensive customers (API)",
+    "mostExpensiveSub": "Real provider cost",
+    "mostProfitable": "Most profitable",
+    "mostProfitableSub": "Revenue minus API cost",
+    "lowestMargin": "Lowest margin",
+    "lowestMarginSub": "Customers worth a look"
   }
 }

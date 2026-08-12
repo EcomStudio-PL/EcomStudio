@@ -864,5 +864,46 @@
       "generation": "Generacje",
       "user": "Klienci"
     }
+  },
+  "econ": {
+    "title": "Rentowność klienta",
+    "sub": "Przychód minus rzeczywisty koszt API, liczone z zapisanych płatności i zdarzeń użycia.",
+    "period": "Okres",
+    "p": {
+      "today": "Dziś",
+      "7d": "7 dni",
+      "30d": "30 dni",
+      "90d": "90 dni",
+      "all": "Całość"
+    },
+    "revenue": "Przychód",
+    "apiCost": "Koszt API",
+    "contribution": "Marża brutto",
+    "margin": "Marża %",
+    "generations": "Generacje",
+    "succeeded": "Udane",
+    "failed": "Nieudane",
+    "outputs": "Wyniki",
+    "credits": "Kredyty",
+    "byModel": "Koszty i zysk wg modelu",
+    "model": "Model",
+    "jobs": "Zadania",
+    "perOutput": "Koszt/wynik",
+    "noModels": "Brak zarejestrowanego użycia.",
+    "attribution": "Przychód jest przypisywany do modeli proporcjonalnie do wydanych kredytów — klient płaci za kredyty, nie za pojedynczy obraz.",
+    "anomalies": "Anomalie kosztowe",
+    "a": {
+      "expensive_output": "drogi wynik",
+      "cost_without_result": "koszt bez wyniku",
+      "estimate_drift": "rozjazd z estymatą"
+    },
+    "perGen": "{v}/generację",
+    "arpu": "{v}/klienta",
+    "mostExpensive": "Najdrożsi klienci (API)",
+    "mostExpensiveSub": "Rzeczywisty koszt dostawcy",
+    "mostProfitable": "Najbardziej rentowni",
+    "mostProfitableSub": "Przychód minus koszt API",
+    "lowestMargin": "Najniższa marża",
+    "lowestMarginSub": "Klienci wymagający uwagi"
   }
 }

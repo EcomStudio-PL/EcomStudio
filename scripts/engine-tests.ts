@@ -4,7 +4,7 @@
  * protection, diversity, negative composition, master prompt assembly).
  * Run: npm run test:engine
  */
-import { buildProductLock, chooseLockStrength, renderProductLock } from "../lib/ai/engine/lock";
+import { buildProductLock, chooseLockStrength, renderProductLock, detectReferenceConflicts } from "../lib/ai/engine/lock";
 import { supportedViews, conceptSupported, diversityViolations } from "../lib/ai/engine/scenes";
 import { assembleMasterPrompt, assembleNegativePrompt } from "../lib/ai/engine/master-prompt";
 import type { FeatureManifest, ImageAnalysis, SceneConcept, SessionInput } from "../lib/ai/engine/types";
@@ -33,7 +33,8 @@ function analysis(n: number, view: ImageAnalysis["view"], extra: Partial<ImageAn
     scale_reference: false, dimension_reference: false, branding_visibility: "clear",
     text_visibility: "clear", usage_reference: false, background_complexity: "clean",
     critical_features: [], scene_reference_only: false, primary_candidate_score: 80,
-    roles: ["MAIN_GEOMETRY"], ...extra,
+    roles: ["PRIMARY_GEOMETRY"], observed_color: "matte black", observed_button_count: 1,
+    variant_hint: null, ...extra,
   };
 }
 
@@ -64,7 +65,7 @@ console.log("B. 4 photos (front / 3-4 / detail / scale) → distinct roles & vie
 {
   const analyses = [
     analysis(1, "front"),
-    analysis(2, "three_quarter", { roles: ["MAIN_GEOMETRY", "SIDE_PROFILE"] }),
+    analysis(2, "three_quarter", { roles: ["PRIMARY_GEOMETRY", "SIDE_PROFILE"] }),
     analysis(3, "detail", { roles: ["BUTTON_LAYOUT"], full_product: false }),
     analysis(4, "front", { roles: ["SCALE"], scale_reference: true }),
   ];
@@ -108,7 +109,7 @@ console.log("E. Product held in hand → Human Realism active");
 
 console.log("F. Product on a table → physical contact + shadows in prompt");
 {
-  const prompt = assembleMasterPrompt({ concept: concept(), manifest: baseManifest, lock: buildProductLock(baseManifest), strength: "STANDARD", session, imageCount: 1 });
+  const prompt = assembleMasterPrompt({ concept: concept(), manifest: baseManifest, lock: buildProductLock(baseManifest), strength: "MEDIUM", session, imageCount: 1 });
   check("PHYSICAL CONTACT section present", prompt.includes("PHYSICAL CONTACT"));
   check("contact shadows demanded", prompt.includes("contact shadows"));
   check("no-floating rule present", prompt.includes("never floats"));
@@ -126,7 +127,7 @@ console.log("G. 8 uploaded photos → scenes use a subset, not all 8");
       { image: 7, role: "MATERIAL", reason: "finish" },
     ],
   });
-  const prompt = assembleMasterPrompt({ concept: c, manifest: baseManifest, lock: buildProductLock(baseManifest), strength: "STRONG", session, imageCount: 8 });
+  const prompt = assembleMasterPrompt({ concept: c, manifest: baseManifest, lock: buildProductLock(baseManifest), strength: "HIGH", session, imageCount: 8 });
   check("prompt names only selected refs", prompt.includes("reference images 1, 2, 5, 7"));
   check("references capped at 2-4", 1 + c.supporting_references.length <= 4);
 }
@@ -149,7 +150,7 @@ console.log("H. 5 prompts must be clearly different (diversity engine)");
 
 console.log("I. Master prompt ordering: product facts before scene decor");
 {
-  const prompt = assembleMasterPrompt({ concept: concept(), manifest: baseManifest, lock: buildProductLock(baseManifest), strength: "STRONG", session, imageCount: 2 });
+  const prompt = assembleMasterPrompt({ concept: concept(), manifest: baseManifest, lock: buildProductLock(baseManifest), strength: "HIGH", session, imageCount: 2 });
   const order = ["TASK:", "FORMAT:", "REFERENCE IMAGES:", "PRIMARY REFERENCE:", "REFERENCE PRIORITY:", "PRODUCT LOCK", "CRITICAL FEATURES:", "SCENE:", "PRODUCT PLACEMENT:", "PHYSICAL CONTACT:", "COMPOSITION:", "CAMERA:", "LIGHTING:", "REALISM:", "FINAL QUALITY:"];
   let last = -1, ordered = true;
   for (const sec of order) {
@@ -173,6 +174,41 @@ console.log("J. Negative prompt engine: layered, deduped, capped");
   check("deduped", parts.filter((p) => p.includes("four green buttons")).length === 1);
   check("capped at 18", parts.length <= 18);
   check("global net present", neg.includes("watermarks"));
+}
+
+console.log("K. Reference conflicts are detected, never silently merged");
+{
+  const analyses = [
+    analysis(1, "front", { observed_color: "matte black", observed_button_count: 4, primary_candidate_score: 95 }),
+    analysis(2, "front", { observed_color: "blue", observed_button_count: 6, primary_candidate_score: 60 }),
+  ];
+  const m = { ...baseManifest, interfaces: { ...baseManifest.interfaces, buttons: 4 } };
+  const conflicts = detectReferenceConflicts(analyses, m);
+  check("colour conflict detected", conflicts.some((c) => c.kind === "color"));
+  check("button-count conflict detected", conflicts.some((c) => c.kind === "buttons"));
+  check("resolution follows the best primary candidate", conflicts.every((c) => c.resolution.length > 0));
+  const lock = buildProductLock(m, analyses);
+  const rendered = renderProductLock(lock, "MAXIMUM");
+  check("prompt warns against blending references", rendered.includes("REFERENCE CONFLICTS"));
+  check("conflicts force MAXIMUM strength", chooseLockStrength(concept(), m, lock.conflicts) === "MAXIMUM");
+  const clean = detectReferenceConflicts([analysis(1, "front"), analysis(2, "three_quarter")], baseManifest);
+  check("identical references report no conflict", clean.length === 0);
+  const neg = assembleNegativePrompt(concept(), m, lock);
+  check("negative bans wrong button counts", neg.includes("other than 4"));
+}
+
+console.log("L. Fidelity-first strength ladder");
+{
+  const simple: FeatureManifest = { ...baseManifest,
+    interfaces: { ...baseManifest.interfaces, buttons: 0, leds: 0 },
+    branding: { logos: [], text: [], position: null }, critical_features: [],
+    geometry: { ...baseManifest.geometry, major_components: ["body"] } };
+  check("plain packshot of a plain object relaxes to MEDIUM",
+    chooseLockStrength(concept({ scene_type: "premium_packshot" }), simple) === "MEDIUM");
+  check("any control keeps it at HIGH",
+    chooseLockStrength(concept({ scene_type: "premium_packshot" }), { ...simple, interfaces: { ...simple.interfaces, buttons: 1 } }) === "HIGH");
+  check("dense controls reach MAXIMUM",
+    chooseLockStrength(concept(), { ...simple, interfaces: { ...simple.interfaces, buttons: 4, ports: 2 } }) === "MAXIMUM");
 }
 
 console.log(failures === 0 ? "\nALL ENGINE TESTS PASSED" : `\n${failures} FAILURES`);

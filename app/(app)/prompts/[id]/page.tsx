@@ -42,7 +42,7 @@ export default async function PromptSessionPage({ params }: { params: Promise<{ 
   const cards: PromptCardData[] = (prompts ?? []).map((p) => {
     const supporting = (p.supporting_references ?? []) as unknown as SupportingReference[];
     const refs = [
-      ...(p.primary_reference ? [{ image: p.primary_reference, label: referenceRoleLabel("MAIN_GEOMETRY") }] : []),
+      ...(p.primary_reference ? [{ image: p.primary_reference, label: referenceRoleLabel("PRIMARY_GEOMETRY") }] : []),
       ...supporting.map((s) => ({ image: s.image, label: referenceRoleLabel(s.role) })),
     ];
     return {

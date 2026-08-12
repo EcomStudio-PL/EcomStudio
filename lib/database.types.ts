@@ -1256,6 +1256,63 @@ export type Database = {
           },
         ]
       }
+      product_analysis_cache: {
+        Row: {
+          analysis_model: string | null
+          created_at: string
+          engine_version: number
+          feature_manifest: Json
+          hits: number
+          id: string
+          image_analysis: Json
+          product_id: string | null
+          product_lock: Json
+          reference_hash: string
+          workspace_id: string
+        }
+        Insert: {
+          analysis_model?: string | null
+          created_at?: string
+          engine_version: number
+          feature_manifest: Json
+          hits?: number
+          id?: string
+          image_analysis: Json
+          product_id?: string | null
+          product_lock: Json
+          reference_hash: string
+          workspace_id: string
+        }
+        Update: {
+          analysis_model?: string | null
+          created_at?: string
+          engine_version?: number
+          feature_manifest?: Json
+          hits?: number
+          id?: string
+          image_analysis?: Json
+          product_id?: string | null
+          product_lock?: Json
+          reference_hash?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_analysis_cache_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_analysis_cache_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_images: {
         Row: {
           ai_description: string | null
@@ -1447,18 +1504,20 @@ export type Database = {
         Row: {
           analysis_model: string | null
           aspect_ratio: string
+          cache_hit: boolean
           created_at: string
           description: string | null
           error: string | null
-          latency_ms: number | null
           error_stage: string | null
           extra_info: string | null
           feature_manifest: Json
           id: string
           image_analysis: Json
+          latency_ms: number | null
           product_id: string | null
           product_lock: Json
           product_name: string
+          reference_hash: string | null
           reference_paths: string[]
           status: string
           style: string | null
@@ -1469,18 +1528,20 @@ export type Database = {
         Insert: {
           analysis_model?: string | null
           aspect_ratio?: string
+          cache_hit?: boolean
           created_at?: string
           description?: string | null
           error?: string | null
-          latency_ms?: number | null
           error_stage?: string | null
           extra_info?: string | null
           feature_manifest?: Json
           id?: string
           image_analysis?: Json
+          latency_ms?: number | null
           product_id?: string | null
           product_lock?: Json
           product_name: string
+          reference_hash?: string | null
           reference_paths?: string[]
           status?: string
           style?: string | null
@@ -1491,18 +1552,20 @@ export type Database = {
         Update: {
           analysis_model?: string | null
           aspect_ratio?: string
+          cache_hit?: boolean
           created_at?: string
           description?: string | null
           error?: string | null
-          latency_ms?: number | null
           error_stage?: string | null
           extra_info?: string | null
           feature_manifest?: Json
           id?: string
           image_analysis?: Json
+          latency_ms?: number | null
           product_id?: string | null
           product_lock?: Json
           product_name?: string
+          reference_hash?: string | null
           reference_paths?: string[]
           status?: string
           style?: string | null
@@ -1912,6 +1975,7 @@ export type Database = {
       }
       usage_events: {
         Row: {
+          actual_api_cost_usd_micros: number
           api_cost_usd_micros_snapshot: number
           created_at: string
           credit_tx_id: string | null
@@ -1923,6 +1987,7 @@ export type Database = {
           idempotency_key: string | null
           metadata: Json
           model_slug: string | null
+          provider_request_id: string | null
           provider_slug: string | null
           refund_tx_id: string | null
           result_count: number
@@ -1935,6 +2000,7 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          actual_api_cost_usd_micros?: number
           api_cost_usd_micros_snapshot?: number
           created_at?: string
           credit_tx_id?: string | null
@@ -1946,6 +2012,7 @@ export type Database = {
           idempotency_key?: string | null
           metadata?: Json
           model_slug?: string | null
+          provider_request_id?: string | null
           provider_slug?: string | null
           refund_tx_id?: string | null
           result_count?: number
@@ -1958,6 +2025,7 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          actual_api_cost_usd_micros?: number
           api_cost_usd_micros_snapshot?: number
           created_at?: string
           credit_tx_id?: string | null
@@ -1969,6 +2037,7 @@ export type Database = {
           idempotency_key?: string | null
           metadata?: Json
           model_slug?: string | null
+          provider_request_id?: string | null
           provider_slug?: string | null
           refund_tx_id?: string | null
           result_count?: number
@@ -2259,10 +2328,7 @@ export type Database = {
         }
         Returns: undefined
       }
-      providers_with_credentials: {
-        Args: Record<PropertyKey, never>
-        Returns: string[]
-      }
+      providers_with_credentials: { Args: never; Returns: string[] }
       refund_usage_event: { Args: { p_event_id: string }; Returns: string }
     }
     Enums: {

@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { usageByService } from "@/lib/services/usage";
+import { customerEconomics } from "@/lib/services/economics";
+import { Profitability } from "@/components/admin/profitability";
 import { rolePresentation } from "@/lib/roles";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Stat } from "@/components/ui/stat";
@@ -59,6 +61,10 @@ export default async function CrmProfile({ params }: { params: Promise<{ id: str
         : Promise.resolve({ data: [] }),
       workspaceId ? usageByService(supabase, { workspaceId }) : Promise.resolve([]),
     ]);
+
+  // Contribution economics: settled payments minus the REAL provider cost
+  // recorded on each usage event.
+  const economics = workspaceId ? await customerEconomics(supabase, workspaceId) : null;
 
   const wallet = walletRes.data as { id: string; balance: number } | null;
   const { data: txs } = wallet
@@ -149,6 +155,15 @@ export default async function CrmProfile({ params }: { params: Promise<{ id: str
 
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         {/* Dynamic service usage — driven by the service catalog */}
+        {economics && (
+          <div className="lg:col-span-2">
+            <Profitability locale={locale} data={{
+              slices: economics.slices, models: economics.models,
+              anomalies: economics.anomalies, usdToPln: economics.usdToPln,
+            }} />
+          </div>
+        )}
+
         <Card>
           <CardHeader title={t("crm.aiUsage")} sub={t("crm.aiUsageSub")} />
           {serviceUsage.length === 0 ? (

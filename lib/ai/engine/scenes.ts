@@ -144,7 +144,7 @@ function clampRefs(c: SceneConcept, imageCount: number, analyses: ImageAnalysis[
       .filter((a) => a.image_number !== primary && !a.scene_reference_only && a.product_quality !== "poor")
       .sort((x, y) => y.primary_candidate_score - x.primary_candidate_score)[0];
     if (extra) {
-      const role = extra.roles.find((r) => r !== "MAIN_GEOMETRY" && r !== "SCENE_ONLY") ?? "COLOR";
+      const role = extra.roles.find((r) => r !== "PRIMARY_GEOMETRY" && r !== "SCENE_ONLY") ?? "COLOR";
       supporting.push({
         image: extra.image_number, role,
         reason: `additional verified view of the product (${extra.view.replace("_", " ")})`,

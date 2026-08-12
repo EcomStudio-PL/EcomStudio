@@ -220,10 +220,18 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     return { ok: false, error: "storage_failed" };
   }
 
-  await completeUsage(supabase, usage.eventId, stored.length);
+  // REAL provider cost of this call: the admin-maintained per-image cost of
+  // this exact model multiplied by the images the provider actually
+  // delivered. Recorded on the event so admin margin reporting is built from
+  // facts rather than from the catalog estimate.
+  const requestId = (result.providerMetadata?.requestId as string | undefined) ?? null;
+  await completeUsage(supabase, usage.eventId, stored.length, {
+    apiCostUsdMicros: (model.internal_cost_usd_micros ?? 0) * stored.length,
+    providerRequestId: requestId,
+  });
   await supabase.from("generation_jobs").update({
     status: "completed", credits_charged: cost, latency_ms: Date.now() - startedAt,
-    request_id: (result.providerMetadata?.requestId as string | undefined) ?? null,
+    request_id: requestId,
     completed_at: new Date().toISOString(),
   }).eq("id", job.id);
   await supabase.from("notifications").insert({

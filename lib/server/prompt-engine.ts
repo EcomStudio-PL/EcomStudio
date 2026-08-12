@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "crypto";
 import type { Client } from "@/lib/services/workspace";
 import { decryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { ProviderError, type ReferenceImage } from "@/lib/ai/types";
@@ -24,6 +25,15 @@ export type PromptSessionInput = {
 export type PromptSessionOutput =
   | { ok: true; sessionId: string; productId: string; promptCount: number }
   | { ok: false; error: string; sessionId?: string };
+
+/** Bump when the analysis schema or lock semantics change — cached analyses
+ *  from older engines are then ignored rather than silently reused. */
+export const ENGINE_VERSION = 2;
+
+/** Stable identity of a reference SET: same photos in any order = same hash. */
+function hashReferences(paths: string[]): string {
+  return createHash("sha256").update([...paths].sort().join("\n")).digest("hex").slice(0, 40);
+}
 
 const RATIOS = new Set(["1:1", "4:5", "16:9", "9:16"]);
 const MAX_REFS = 8;
@@ -141,6 +151,8 @@ export async function runPromptSession(
     return { ok: false, error: usage.error, sessionId: session.id };
   }
 
+  const referenceHash = hashReferences(input.referencePaths.slice(0, MAX_REFS));
+
   const sessionInfo: SessionInput = {
     productName: input.productName.trim(),
     description: input.description?.trim() || null,
@@ -157,15 +169,48 @@ export async function runPromptSession(
     if (images.length === 0) throw new ProviderError("references_required");
 
     // 1) IMAGE ANALYSIS + PRODUCT FEATURE MANIFEST
+    // The same photographs always yield the same analysis, so a cached result
+    // for this exact reference set (and engine version) is reused instead of
+    // paying the latency and the provider call again. Fidelity is untouched:
+    // a different photo set, or a newer engine, misses the cache and re-runs.
     stage = "analysis";
-    const { images: analyses, manifest } = await analyzeReferences(cred, images, sessionInfo, analysisModel);
+    let analyses: ImageAnalysis[];
+    let manifest: FeatureManifest;
+    let cacheHit = false;
+    const { data: cached } = await supabase
+      .from("product_analysis_cache")
+      .select("id, image_analysis, feature_manifest, hits")
+      .eq("workspace_id", workspaceId)
+      .eq("reference_hash", referenceHash)
+      .eq("engine_version", ENGINE_VERSION)
+      .maybeSingle();
+    if (cached) {
+      analyses = cached.image_analysis as unknown as ImageAnalysis[];
+      manifest = cached.feature_manifest as unknown as FeatureManifest;
+      cacheHit = true;
+      void supabase.from("product_analysis_cache")
+        .update({ hits: (cached.hits ?? 0) + 1 }).eq("id", cached.id);
+    } else {
+      const fresh = await analyzeReferences(cred, images, sessionInfo, analysisModel);
+      analyses = fresh.images;
+      manifest = fresh.manifest;
+    }
 
     // 2) PRODUCT LOCK
-    const lock = buildProductLock(manifest);
+    const lock = buildProductLock(manifest, analyses);
     await supabase.from("prompt_sessions").update({
       image_analysis: analyses as never, feature_manifest: manifest as never,
       product_lock: lock as never, analysis_model: analysisModel,
+      reference_hash: referenceHash, cache_hit: cacheHit,
     }).eq("id", session.id);
+    if (!cacheHit) {
+      void supabase.from("product_analysis_cache").insert({
+        workspace_id: workspaceId, product_id: productId,
+        reference_hash: referenceHash, engine_version: ENGINE_VERSION,
+        image_analysis: analyses as never, feature_manifest: manifest as never,
+        product_lock: lock as never, analysis_model: analysisModel,
+      });
+    }
 
     // 3) SCENE STRATEGY + DIVERSITY (retry once to refill filtered slots)
     stage = "scenes";
@@ -184,11 +229,11 @@ export async function runPromptSession(
     // 4) MASTER + NEGATIVE PROMPTS
     stage = "prompts";
     const rows = concepts.map((concept, idx) => {
-      const strength = chooseLockStrength(concept, manifest);
+      const strength = chooseLockStrength(concept, manifest, lock.conflicts);
       const prompt = assembleMasterPrompt({
         concept, manifest, lock, strength, session: sessionInfo, imageCount: images.length,
       });
-      const negative = assembleNegativePrompt(concept, manifest);
+      const negative = assembleNegativePrompt(concept, manifest, lock);
       const rationale = referenceRationale(concept, analyses)
         .map((r) => `${r.image} — ${r.label}`).join("; ");
       return {
@@ -264,7 +309,7 @@ export async function regeneratePrompt(
   };
   const analyses = (session.image_analysis ?? []) as unknown as ImageAnalysis[];
   const manifest = session.feature_manifest as unknown as FeatureManifest;
-  const lock = buildProductLock(manifest);
+  const lock = buildProductLock(manifest, analyses);
 
   try {
     const images = await downloadReferences(supabase, session.reference_paths ?? []);
@@ -273,12 +318,12 @@ export async function regeneratePrompt(
       count: 1, avoidSceneTypes: avoid, model: analysisModel,
     });
     if (!concept) return { ok: false, error: "analysis_empty" };
-    const strength = chooseLockStrength(concept, manifest);
+    const strength = chooseLockStrength(concept, manifest, lock.conflicts);
     const rationale = referenceRationale(concept, analyses).map((r) => `${r.image} — ${r.label}`).join("; ");
     await supabase.from("generated_prompts").update({
       concept_name: concept.title, shot_type: concept.scene_type, scene_type: concept.scene_type,
       prompt_text: assembleMasterPrompt({ concept, manifest, lock, strength, session: sessionInfo, imageCount: images.length }),
-      negative_prompt: assembleNegativePrompt(concept, manifest),
+      negative_prompt: assembleNegativePrompt(concept, manifest, lock),
       primary_reference: concept.primary_reference,
       supporting_references: concept.supporting_references as never,
       reference_indices: [concept.primary_reference, ...concept.supporting_references.map((s) => s.image)],

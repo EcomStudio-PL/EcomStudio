@@ -11,9 +11,11 @@ import type {
  */
 
 const ROLE_LABEL: Record<string, string> = {
+  PRIMARY_GEOMETRY: "main geometry and identity",
   MAIN_GEOMETRY: "main geometry and identity",
   FRONT_DETAIL: "front panel details",
   SIDE_PROFILE: "side profile",
+  REAR_DETAIL: "rear details",
   BACK_DETAIL: "rear details",
   MATERIAL: "materials and finish",
   BUTTON_LAYOUT: "button layout",
@@ -99,12 +101,24 @@ const HUMAN_NEGATIVES = [
   "hand clipping through the product",
 ];
 
-export function assembleNegativePrompt(c: SceneConcept, m: FeatureManifest): string {
+export function assembleNegativePrompt(c: SceneConcept, m: FeatureManifest, lock?: ProductLock): string {
+  const i = m.interfaces;
+  // Counts the model is most likely to drift on, stated as explicit bans.
+  const numeric: string[] = [];
+  if (i.buttons > 0) numeric.push(`any number of buttons other than ${i.buttons}`);
+  if (i.ports > 0) numeric.push(`any number of ports other than ${i.ports}`);
+  if (i.screens > 0) numeric.push(`any number of screens other than ${i.screens}`);
+  if (m.accessories.length) numeric.push("missing, added or duplicated accessories");
+  if (m.branding.logos.length || m.branding.text.length) numeric.push("changed, moved or invented branding");
+
   const productSpecific = [
     ...c.product_specific_negatives,
     ...(m.quantity > 1
       ? [`showing more or fewer than ${m.quantity} product units`]
       : ["duplicating the product"]),
+    ...numeric,
+    // A detected variant conflict is the likeliest way to get a wrong product.
+    ...(lock?.conflicts ?? []).map((x) => `blending reference variants — render only ${x.resolution}`),
   ];
   const lines = [
     ...productSpecific,                       // 1. product facts first
@@ -131,7 +145,7 @@ export function referenceRationale(c: SceneConcept, analyses: ImageAnalysis[]): 
   const primary = analyses.find((a) => a.image_number === c.primary_reference);
   const rows = [{
     image: c.primary_reference,
-    label: primary ? `${referenceRoleLabel("MAIN_GEOMETRY")} (${primary.view.replace("_", " ")})` : referenceRoleLabel("MAIN_GEOMETRY"),
+    label: primary ? `${referenceRoleLabel("PRIMARY_GEOMETRY")} (${primary.view.replace("_", " ")})` : referenceRoleLabel("PRIMARY_GEOMETRY"),
   }];
   for (const s of c.supporting_references) rows.push({ image: s.image, label: referenceRoleLabel(s.role) });
   return rows;
