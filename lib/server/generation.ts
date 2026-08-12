@@ -51,10 +51,10 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   const adapter = provider ? getAdapter(provider.slug) : undefined;
   if (!model || !provider || !adapter) return { ok: false, error: "model_unavailable" };
 
-  const { data: cred } = await supabase
-    .from("ai_provider_credentials")
-    .select("encrypted_value, iv, auth_tag, base_url")
-    .eq("provider_id", provider.id).eq("active", true).maybeSingle();
+  // Definer RPC: RLS keeps the credentials table admin-only; this returns
+  // ciphertext usable only with the server-side APP_ENCRYPTION_KEY.
+  const { data: credRows } = await supabase.rpc("get_active_provider_credential", { p_provider_id: provider.id });
+  const cred = credRows?.[0];
   if (!cred) return { ok: false, error: "model_unavailable" };
   let apiKey: string;
   try { apiKey = decryptSecret(cred.encrypted_value, cred.iv, cred.auth_tag); }
@@ -120,28 +120,11 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     providerSlug: provider.slug, modelSlug: model.model_identifier,
     generationJobId: job.id, idempotencyKey: `job:${job.id}`,
     metadata: { quantity, model: model.model_identifier },
+    creditsCharged: cost,
   });
   if (!usage.ok) {
     await supabase.from("generation_jobs").update({ status: "failed", error_message: usage.error }).eq("id", job.id);
     return { ok: false, error: usage.error };
-  }
-  // The catalog charge covers one unit; charge the remaining units directly
-  // against the same event so cost == model credit_cost × quantity.
-  const { data: service } = await supabase.from("service_catalog")
-    .select("credits_cost").eq("slug", "image_generation").maybeSingle();
-  const remainder = cost - (service?.credits_cost ?? 0);
-  if (remainder !== 0) {
-    const { error: adjustError } = await supabase.rpc("apply_credit_transaction", {
-      p_wallet_id: wallet.id, p_amount: -remainder, p_type: "generation",
-      p_description: `${model.name} ×${quantity}`, p_reference_id: usage.eventId,
-      p_metadata: { adjustment: "quantity_and_model" } as never, p_created_by: userId,
-    });
-    if (adjustError) {
-      await failUsage(supabase, { eventId: usage.eventId, walletId: wallet.id, error: "insufficient_credits" });
-      await supabase.from("generation_jobs").update({ status: "failed", error_message: "insufficient_credits" }).eq("id", job.id);
-      return { ok: false, error: "insufficient_credits" };
-    }
-    await supabase.from("usage_events").update({ credits_charged: cost }).eq("id", usage.eventId);
   }
 
   // Reference images -> base64 (only when the adapter supports them)
@@ -168,14 +151,6 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   } catch (e) {
     const safe = e instanceof ProviderError ? e.safeMessage : "provider_error";
     await failUsage(supabase, { eventId: usage.eventId, walletId: wallet.id, error: safe });
-    // failUsage refunds the base charge; refund the remainder adjustment too.
-    if (remainder > 0) {
-      await supabase.rpc("apply_credit_transaction", {
-        p_wallet_id: wallet.id, p_amount: remainder, p_type: "refund",
-        p_description: "Refund: image_generation", p_reference_id: usage.eventId,
-        p_metadata: { reason: "generation_failed", part: "quantity_adjustment" } as never,
-      });
-    }
     await supabase.from("generation_jobs").update({
       status: "failed", error_message: safe, completed_at: new Date().toISOString(),
     }).eq("id", job.id);
@@ -223,13 +198,6 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
 
   if (stored.length === 0) {
     await failUsage(supabase, { eventId: usage.eventId, walletId: wallet.id, error: "storage_failed" });
-    if (remainder > 0) {
-      await supabase.rpc("apply_credit_transaction", {
-        p_wallet_id: wallet.id, p_amount: remainder, p_type: "refund",
-        p_description: "Refund: image_generation", p_reference_id: usage.eventId,
-        p_metadata: { reason: "storage_failed" } as never,
-      });
-    }
     await supabase.from("generation_jobs").update({ status: "failed", error_message: "storage_failed", completed_at: new Date().toISOString() }).eq("id", job.id);
     return { ok: false, error: "storage_failed" };
   }

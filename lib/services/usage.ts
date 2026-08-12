@@ -33,6 +33,8 @@ export async function startUsage(supabase: Client, input: {
   generationJobId?: string;
   idempotencyKey?: string;
   metadata?: Record<string, unknown>;
+  /** Override the catalog price (e.g. model credit_cost × quantity). */
+  creditsCharged?: number;
 }): Promise<{ ok: true; eventId: string } | { ok: false; error: string }> {
   const service = await getService(supabase, input.serviceSlug);
   if (!service) return { ok: false, error: "service_unavailable" };
@@ -46,6 +48,7 @@ export async function startUsage(supabase: Client, input: {
     if (existing) return { ok: true, eventId: existing.id };
   }
 
+  const credits = input.creditsCharged ?? service.credits_cost;
   const { data: event, error } = await supabase.from("usage_events").insert({
     user_id: input.userId,
     workspace_id: input.workspaceId,
@@ -53,7 +56,7 @@ export async function startUsage(supabase: Client, input: {
     service_slug: service.slug,
     provider_slug: input.providerSlug ?? null,
     model_slug: input.modelSlug ?? null,
-    credits_charged: service.credits_cost,
+    credits_charged: credits,
     api_cost_usd_micros_snapshot: service.api_cost_usd_micros,
     sale_value_cents_snapshot: service.sale_value_cents,
     generation_job_id: input.generationJobId ?? null,
@@ -62,15 +65,14 @@ export async function startUsage(supabase: Client, input: {
   }).select("id").single();
   if (error || !event) return { ok: false, error: "event_failed" };
 
-  if (service.credits_cost > 0) {
-    const { data: txId, error: txError } = await supabase.rpc("apply_credit_transaction", {
+  if (credits > 0) {
+    // SECURITY DEFINER RPC: members can only spend their own workspace wallet.
+    const { data: txId, error: txError } = await supabase.rpc("charge_usage_credits", {
       p_wallet_id: input.walletId,
-      p_amount: -service.credits_cost,
-      p_type: "generation",
+      p_amount: credits,
       p_description: service.name,
       p_reference_id: event.id,
-      p_metadata: { service: service.slug } as never,
-      p_created_by: input.userId,
+      p_metadata: { service: service.slug, ...(input.metadata ?? {}) } as never,
     });
     if (txError) {
       await supabase.from("usage_events")
@@ -93,30 +95,13 @@ export async function completeUsage(supabase: Client, eventId: string, resultCou
 export async function failUsage(supabase: Client, input: {
   eventId: string; walletId: string; error: string;
 }) {
-  // Guarded transition pending -> failed; only the row that actually
-  // transitions triggers the refund, so refunds cannot double-apply.
-  const { data: updated } = await supabase.from("usage_events")
+  // Guarded transition pending -> failed, then a SECURITY DEFINER refund
+  // that pays back the event's own charge exactly once (repeat calls no-op).
+  await supabase.from("usage_events")
     .update({ status: "failed", error: input.error, finished_at: new Date().toISOString() })
     .eq("id", input.eventId)
-    .eq("status", "pending")
-    .select("id, credits_charged, refund_tx_id, service_slug")
-    .maybeSingle();
-  if (!updated || updated.credits_charged <= 0 || updated.refund_tx_id) return;
-
-  const { data: txId } = await supabase.rpc("apply_credit_transaction", {
-    p_wallet_id: input.walletId,
-    p_amount: updated.credits_charged,
-    p_type: "refund",
-    p_description: `Refund: ${updated.service_slug}`,
-    p_reference_id: updated.id,
-    p_metadata: { reason: "generation_failed" } as never,
-  });
-  if (txId) {
-    await supabase.from("usage_events")
-      .update({ status: "refunded", refund_tx_id: txId })
-      .eq("id", updated.id)
-      .is("refund_tx_id", null);
-  }
+    .eq("status", "pending");
+  await supabase.rpc("refund_usage_event", { p_event_id: input.eventId });
 }
 
 /** Dynamic per-service usage summary — powers CRM + analytics without any

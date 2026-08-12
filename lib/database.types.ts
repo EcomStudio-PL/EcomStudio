@@ -1991,6 +1991,25 @@ export type Database = {
         Returns: string
       }
       bootstrap_current_user: { Args: never; Returns: undefined }
+      charge_usage_credits: {
+        Args: {
+          p_amount: number
+          p_description: string
+          p_metadata?: Json
+          p_reference_id: string
+          p_wallet_id: string
+        }
+        Returns: string
+      }
+      get_active_provider_credential: {
+        Args: { p_provider_id: string }
+        Returns: {
+          auth_tag: string
+          base_url: string
+          encrypted_value: string
+          iv: string
+        }[]
+      }
       get_welcome_credits: { Args: never; Returns: number }
       is_admin: { Args: { uid?: string }; Returns: boolean }
       is_workspace_manager: {
@@ -2012,6 +2031,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      refund_usage_event: { Args: { p_event_id: string }; Returns: string }
     }
     Enums: {
       asset_type: "image" | "video" | "text"
