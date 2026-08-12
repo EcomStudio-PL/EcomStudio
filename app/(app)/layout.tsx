@@ -27,6 +27,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       getCurrentWorkspace(supabase, user.id),
     ]);
   }
+  if (profile?.blocked) {
+    const { dict } = await getDictionary();
+    const t = makeT(dict);
+    return (
+      <main className="flex min-h-dvh items-center justify-center px-4">
+        <div className="max-w-md rounded-2xl border border-line bg-surface p-8 text-center shadow-sm">
+          <p className="text-3xl">🔒</p>
+          <h1 className="mt-3 font-display text-lg font-semibold">{t("auth2.blockedTitle")}</h1>
+          <p className="mt-2 text-sm text-muted">{t("auth2.blockedBody")}</p>
+          <form action={signOut} className="mt-6">
+            <button className="rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-semibold hover:bg-raised">
+              {t("common.signOut")}
+            </button>
+          </form>
+        </div>
+      </main>
+    );
+  }
   if (!profile || !workspace) {
     const { dict } = await getDictionary();
     const t = makeT(dict);

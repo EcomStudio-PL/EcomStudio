@@ -19,11 +19,12 @@ type ProductOption = {
   images: { id: string; url: string; isPrimary: boolean }[];
 };
 
-export function GeneratorWizard({ products, modelCount }: {
-  products: ProductOption[]; modelCount: number;
+export function GeneratorWizard({ products, modelCount, initialPrompt = "" }: {
+  products: ProductOption[]; modelCount: number; initialPrompt?: string;
 }) {
   const { t } = useI18n();
   const [productId, setProductId] = useState(products[0]?.id ?? "");
+  const [extra, setExtra] = useState(initialPrompt);
   const [selectedRefs, setSelectedRefs] = useState<string[]>([]);
   const [material, setMaterial] = useState<(typeof MATERIAL_TYPES)[number]>("product_hero");
   const [ratio, setRatio] = useState<(typeof RATIOS)[number]>("1:1");
@@ -110,7 +111,7 @@ export function GeneratorWizard({ products, modelCount }: {
         <Card>
           <CardHeader title={`5 · ${t("generator.stepInstructions")}`} />
           <div className="p-5">
-            <Textarea placeholder={t("generator.extraPh")} disabled={aiUnavailable} />
+            <Textarea placeholder={t("generator.extraPh")} value={extra} onChange={(e) => setExtra(e.target.value)} disabled={aiUnavailable} rows={extra ? 6 : 3} />
           </div>
         </Card>
       </div>

@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { Enums } from "@/lib/database.types";
+import { logAudit } from "@/lib/services/audit";
 
 type Result = { ok: boolean; error?: string };
 
@@ -25,6 +26,10 @@ export async function setUserRoleAction(userId: string, role: Enums<"user_role">
       p_workspace_id: null as unknown as string, p_action: "admin.role_changed",
       p_entity_type: "profile", p_entity_id: userId, p_metadata: { role },
     });
+    await logAudit(supabase, {
+      actorId: adminId, action: "user.role_changed", entityType: "profile",
+      entityId: userId, after: { role },
+    });
     revalidatePath("/admin/users");
     return { ok: true };
   } catch {
@@ -40,7 +45,7 @@ export async function adjustCreditsV2Action(input: {
   note?: string;
 }): Promise<Result> {
   try {
-    const { supabase } = await requireAdmin();
+    const { supabase, adminId: adminId2 } = await requireAdmin();
     if (!Number.isInteger(input.amount) || input.amount === 0) return { ok: false, error: "invalid_amount" };
     if (!input.reason.trim()) return { ok: false, error: "reason_required" };
     const { data: membership } = await supabase
@@ -63,6 +68,11 @@ export async function adjustCreditsV2Action(input: {
       p_workspace_id: membership.workspace_id, p_action: "admin.credits_adjusted",
       p_entity_type: "credit_wallet", p_entity_id: wallet.id,
       p_metadata: { amount: input.amount, type: input.type }, p_on_behalf_of: input.userId,
+    });
+    await logAudit(supabase, {
+      actorId: adminId2, action: input.amount > 0 ? "credits.granted" : "credits.removed",
+      entityType: "credit_wallet", entityId: wallet.id,
+      after: { amount: input.amount, type: input.type, reason: input.reason.trim(), user: input.userId },
     });
     revalidatePath("/admin/users");
     revalidatePath("/admin/credits");

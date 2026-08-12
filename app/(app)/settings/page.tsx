@@ -5,6 +5,7 @@ import { getProfile, getCurrentWorkspace } from "@/lib/services/workspace";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
 import { SettingsForm } from "@/components/settings/settings-form";
+import { BillingProfileForm, BrandingForm } from "@/components/settings/company-forms";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -17,6 +18,9 @@ export default async function SettingsPage() {
     getCurrentWorkspace(supabase, user.id),
   ]);
   if (!profile) return null;
+  const { data: billing } = workspace
+    ? await supabase.from("billing_profiles").select("*").eq("workspace_id", workspace.id).maybeSingle()
+    : { data: null };
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -27,6 +31,23 @@ export default async function SettingsPage() {
           <SettingsForm fullName={profile.full_name ?? ""} email={profile.email} />
         </div>
       </Card>
+      {workspace && (
+        <>
+          <Card className="mt-5">
+            <CardHeader title={t("company.title")} sub={t("company.sub")} />
+            <div className="p-6">
+              <BillingProfileForm workspaceId={workspace.id} billing={billing} />
+            </div>
+          </Card>
+          <Card className="mt-5">
+            <CardHeader title={t("branding.title")} sub={t("branding.sub")} />
+            <div className="p-6">
+              <BrandingForm workspaceId={workspace.id} logoUrl={workspace.logo_url ?? null}
+                brandColor={workspace.brand_color ?? null} companyName={workspace.company_name ?? null} />
+            </div>
+          </Card>
+        </>
+      )}
     </div>
   );
 }

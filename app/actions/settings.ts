@@ -27,3 +27,46 @@ export async function saveProfileAction(_prev: { ok: boolean } | null, formData:
   revalidatePath("/settings");
   return { ok: !error };
 }
+
+export async function saveBillingProfileAction(_prev: { ok: boolean } | null, formData: FormData) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false };
+  const workspaceId = String(formData.get("workspace_id") ?? "");
+  if (!workspaceId) return { ok: false };
+  const field = (k: string) => String(formData.get(k) ?? "").trim() || null;
+  const row = {
+    workspace_id: workspaceId,
+    company_name: field("company_name"),
+    vat_id: field("vat_id"),
+    regon: field("regon"),
+    address_line: field("address_line"),
+    postal_code: field("postal_code"),
+    city: field("city"),
+    country: field("country"),
+    billing_email: field("billing_email"),
+    contact_person: field("contact_person"),
+    phone: field("phone"),
+    updated_at: new Date().toISOString(),
+  };
+  // RLS enforces workspace membership on the upsert.
+  const { error } = await supabase.from("billing_profiles").upsert(row, { onConflict: "workspace_id" });
+  revalidatePath("/settings");
+  return { ok: !error };
+}
+
+export async function saveWorkspaceBrandingAction(input: {
+  workspaceId: string; logoUrl?: string | null; brandColor?: string | null; companyName?: string | null;
+}) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false };
+  if (input.brandColor && !/^#[0-9a-fA-F]{6}$/.test(input.brandColor)) return { ok: false };
+  const { error } = await supabase.from("workspaces").update({
+    logo_url: input.logoUrl ?? null,
+    brand_color: input.brandColor ?? null,
+    company_name: input.companyName?.trim() || null,
+  }).eq("id", input.workspaceId);
+  revalidatePath("/settings");
+  return { ok: !error };
+}

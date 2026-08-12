@@ -9,13 +9,32 @@ export default async function AdminLogs() {
   const supabase = await createClient();
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
-  const { data } = await supabase
-    .from("activity_logs")
-    .select("*, actor:profiles!activity_logs_actor_id_fkey(email), behalf:profiles!activity_logs_on_behalf_of_fkey(email)")
-    .order("created_at", { ascending: false }).limit(300);
+  const [{ data }, { data: audits }] = await Promise.all([
+    supabase
+      .from("activity_logs")
+      .select("*, actor:profiles!activity_logs_actor_id_fkey(email), behalf:profiles!activity_logs_on_behalf_of_fkey(email)")
+      .order("created_at", { ascending: false }).limit(200),
+    supabase
+      .from("audit_logs")
+      .select("id, action, entity_type, entity_id, after, created_at, actor:profiles(email)")
+      .order("created_at", { ascending: false }).limit(200),
+  ]);
   return (
     <div>
       <PageHeader title={t("admin.nav.logs")} />
+      <h2 className="mb-3 font-display text-base font-semibold">{t("audit.title")}</h2>
+      <AdminTable
+        headers={[t("admin.action"), t("admin.actor"), t("audit.entity"), t("audit.change"), t("common.date")]}
+        empty={t("admin.noData")}
+        rows={(audits ?? []).map((a) => [
+          <code key="a" className="text-xs">{a.action}</code>,
+          a.actor?.email ?? "—",
+          a.entity_type ? `${a.entity_type} ${a.entity_id ?? ""}` : "—",
+          <code key="c" className="block max-w-64 truncate text-[11px] text-faint">{a.after ? JSON.stringify(a.after) : "—"}</code>,
+          formatDate(a.created_at, locale),
+        ])}
+      />
+      <h2 className="mb-3 mt-8 font-display text-base font-semibold">{t("audit.activity")}</h2>
       <AdminTable
         headers={[t("admin.action"), t("admin.actor"), t("admin.onBehalf"), t("common.date")]}
         empty={t("admin.noData")}

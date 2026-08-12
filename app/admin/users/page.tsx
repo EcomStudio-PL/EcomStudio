@@ -40,7 +40,9 @@ export default async function AdminUsers({ searchParams }: {
         rows={(data ?? []).map((u) => {
           const ws = wsByUser.get(u.id);
           return [
-            u.full_name ?? "—",
+            <a key="n" href={`/admin/users/${u.id}`} className="font-medium text-accent hover:underline">
+              {u.full_name ?? u.email}
+            </a>,
             u.email,
             <Badge key="r" tone={u.role === "admin" ? "green" : "neutral"}>{u.role}</Badge>,
             ws?.name ?? "—",

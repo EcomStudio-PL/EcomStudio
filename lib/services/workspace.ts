@@ -7,7 +7,7 @@ export type Client = Awaited<ReturnType<typeof createClient>>;
 export async function getCurrentWorkspace(supabase: Client, userId: string) {
   const { data } = await supabase
     .from("workspace_members")
-    .select("workspace_id, role, workspaces(id, name, owner_id)")
+    .select("workspace_id, role, workspaces(id, name, owner_id, logo_url, brand_color, company_name)")
     .eq("user_id", userId)
     .order("created_at", { ascending: true })
     .limit(1)

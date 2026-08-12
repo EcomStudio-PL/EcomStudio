@@ -2,7 +2,8 @@ import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard, Package, Sparkles, PenLine, Images, History as HistoryIcon,
   Coins, Rocket, LifeBuoy, Settings, Shield, Users, Building2, Cpu, Plug,
-  FileText, ScrollText, SlidersHorizontal, Wand2,
+  FileText, ScrollText, SlidersHorizontal, Wand2, BarChart3, Layers, Globe,
+  FolderOpen, Lightbulb,
 } from "lucide-react";
 
 /** Single source of truth for app navigation. Client drawer, desktop
@@ -21,6 +22,7 @@ export const CLIENT_NAV: readonly NavGroup[] = [
     { href: "/products", key: "products", icon: Package },
     { href: "/generator", key: "generator", icon: Sparkles },
     { href: "/prompts", key: "prompts", icon: PenLine },
+    { href: "/inspirations", key: "inspirations", icon: Lightbulb },
     { href: "/library", key: "library", icon: Images },
     { href: "/history", key: "history", icon: HistoryIcon },
   ]},
@@ -45,6 +47,7 @@ export const CLIENT_BOTTOM: readonly NavItem[] = [
 export const ADMIN_NAV: readonly NavGroup[] = [
   { key: "overview", items: [
     { href: "/admin", key: "dashboard", icon: LayoutDashboard },
+    { href: "/admin/analytics", key: "analytics", icon: BarChart3 },
   ]},
   { key: "people", items: [
     { href: "/admin/users", key: "users", icon: Users },
@@ -54,14 +57,20 @@ export const ADMIN_NAV: readonly NavGroup[] = [
     { href: "/admin/products", key: "products", icon: Package },
     { href: "/admin/generations", key: "generations", icon: Wand2 },
     { href: "/admin/templates", key: "templates", icon: FileText },
+    { href: "/admin/inspirations", key: "inspirations", icon: Lightbulb },
   ]},
   { key: "finance", items: [
     { href: "/admin/credits", key: "credits", icon: Coins },
     { href: "/admin/plans", key: "plans", icon: Rocket },
+    { href: "/admin/services", key: "services", icon: Layers },
   ]},
   { key: "ai", items: [
     { href: "/admin/providers", key: "providers", icon: Plug },
     { href: "/admin/models", key: "models", icon: Cpu },
+  ]},
+  { key: "marketing", items: [
+    { href: "/admin/www", key: "www", icon: Globe },
+    { href: "/admin/media", key: "media", icon: FolderOpen },
   ]},
   { key: "system", items: [
     { href: "/admin/logs", key: "logs", icon: ScrollText },

@@ -10,7 +10,10 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { GeneratorWizard } from "@/components/generator/wizard";
 
-export default async function GeneratorPage() {
+export default async function GeneratorPage({ searchParams }: {
+  searchParams: Promise<{ prompt?: string }>;
+}) {
+  const { prompt: promptParam } = await searchParams;
   const supabase = await createClient();
   const { dict } = await getDictionary();
   const t = makeT(dict);
@@ -42,7 +45,7 @@ export default async function GeneratorPage() {
           </Link>
         } />
       ) : (
-        <GeneratorWizard products={data} modelCount={models.length} />
+        <GeneratorWizard products={data} modelCount={models.length} initialPrompt={promptParam?.slice(0, 4000) ?? ""} />
       )}
     </div>
   );
