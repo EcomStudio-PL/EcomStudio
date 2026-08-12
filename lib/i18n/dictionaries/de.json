@@ -754,7 +754,8 @@
       "no_wallet": "Kein Guthaben-Wallet — Support kontaktieren.",
       "maintenance": "Dieser Dienst wird gewartet. Bitte später erneut versuchen.",
       "analysis_overloaded": "Die Analyse ist überlastet. Bitte gleich erneut versuchen.",
-      "analysis_model_missing": "Die KI-Analyse ist vorübergehend nicht verfügbar."
+      "analysis_model_missing": "Die KI-Analyse ist vorübergehend nicht verfügbar.",
+      "analysis_quota": "Die KI-Analyse ist vorübergehend nicht verfügbar. Bitte später erneut versuchen."
     },
     "fromPrompts": "Prompt-Session: {name} — Prompt, Negative, Referenzen und Format sind vorausgefüllt.",
     "fromCr": "ab {n} ◆",

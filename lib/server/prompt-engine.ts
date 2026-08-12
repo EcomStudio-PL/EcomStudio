@@ -300,6 +300,7 @@ export async function runPromptSession(
     return { ok: true, sessionId: session.id, productId: productId!, promptCount: rows.length };
   } catch (e) {
     const safe = e instanceof ProviderError ? e.safeMessage : "analysis_error";
+    const providerCode = e instanceof ProviderError ? e.providerCode : undefined;
     await failUsage(supabase, { eventId: usage.eventId, walletId: wallet.id, error: safe });
     await supabase.from("prompt_sessions").update({
       status: "failed", error: safe, error_stage: stage, latency_ms: Date.now() - startedAt,
@@ -308,7 +309,7 @@ export async function runPromptSession(
       p_workspace_id: workspaceId, p_action: "prompts.failed",
       p_entity_type: "prompt_session", p_entity_id: session.id,
       p_metadata: {
-        stage, error: safe, model: analysisModel,
+        stage, error: safe, provider_code: providerCode ?? null, model: analysisModel,
         providers_tried: backends.map((b) => b.provider),
         images: input.referencePaths.length, product_id: productId,
         latency_ms: Date.now() - startedAt,

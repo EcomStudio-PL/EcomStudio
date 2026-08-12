@@ -93,7 +93,8 @@ export async function callVisionJson<T>(
       if (!isProviderFailure(safe)) throw e;
       // Remember why we left this provider so the next success can log it.
       skippedFrom = backend.provider;
-      skippedReason = safe;
+      skippedReason = e instanceof ProviderError && e.providerCode
+        ? `${safe}:${e.providerCode}` : safe;
     }
   }
   throw lastError;
@@ -138,15 +139,34 @@ function dedupe(list: string[]): string[] {
   return [...new Set(list.filter(Boolean))];
 }
 
-/** Map an HTTP status to the engine's failure vocabulary. */
-function classify(status: number): ProviderError | null {
-  if (status === 401 || status === 403) return new ProviderError("analysis_unavailable", true);
-  if (status === 404) return new ProviderError("analysis_model_missing", true);
-  if (status === 429) return new ProviderError("analysis_rate_limited", true);
-  if (status === 503) return new ProviderError("analysis_overloaded", true);
-  if (status >= 500) return new ProviderError("analysis_error", true);
-  if (status >= 400) return new ProviderError("analysis_error", false);
-  return null;
+/** Map an HTTP status to the engine's failure vocabulary, keeping the
+ *  provider's own error code for internal diagnostics. */
+async function classify(res: Response): Promise<ProviderError | null> {
+  const { status } = res;
+  if (status < 400) return null;
+  const code = await providerCode(res);
+  if (status === 401 || status === 403) return new ProviderError("analysis_unavailable", true, code);
+  if (status === 404) return new ProviderError("analysis_model_missing", true, code);
+  if (status === 429) {
+    // OpenAI reports an empty balance as 429/insufficient_quota; that is a
+    // billing state, not congestion, and no amount of waiting fixes it.
+    const quota = code === "insufficient_quota";
+    return new ProviderError(quota ? "analysis_quota" : "analysis_rate_limited", !quota, code);
+  }
+  if (status === 503) return new ProviderError("analysis_overloaded", true, code);
+  if (status >= 500) return new ProviderError("analysis_error", true, code);
+  return new ProviderError("analysis_error", false, code);
+}
+
+/** The provider's own error code — never the message, never a secret. */
+async function providerCode(res: Response): Promise<string | undefined> {
+  try {
+    const body = await res.clone().json() as {
+      error?: { code?: string; type?: string; status?: string };
+    };
+    const code = body.error?.code ?? body.error?.type ?? body.error?.status;
+    return typeof code === "string" ? code.slice(0, 60) : undefined;
+  } catch { return undefined; }
 }
 
 async function callGemini<T>(cred: VisionCredential, req: VisionRequest, model: string): Promise<T> {
@@ -175,7 +195,7 @@ async function callGemini<T>(cred: VisionCredential, req: VisionRequest, model: 
     throw new ProviderError(e?.name === "TimeoutError" ? "analysis_timeout" : "analysis_unreachable", true);
   });
 
-  const failure = classify(res.status);
+  const failure = await classify(res);
   if (failure) throw failure;
 
   const json = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
@@ -220,7 +240,7 @@ ${JSON.stringify(req.schema)}`;
     throw new ProviderError(e?.name === "TimeoutError" ? "analysis_timeout" : "analysis_unreachable", true);
   });
 
-  const failure = classify(res.status);
+  const failure = await classify(res);
   if (failure) throw failure;
 
   const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };

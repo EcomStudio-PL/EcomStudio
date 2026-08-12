@@ -754,7 +754,8 @@
       "no_wallet": "Brak portfela kredytów — skontaktuj się z supportem.",
       "maintenance": "Ta usługa jest w konserwacji. Spróbuj później.",
       "analysis_overloaded": "Analiza jest chwilowo przeciążona. Spróbuj ponownie za moment.",
-      "analysis_model_missing": "Analiza AI jest chwilowo niedostępna."
+      "analysis_model_missing": "Analiza AI jest chwilowo niedostępna.",
+      "analysis_quota": "Analiza AI jest chwilowo niedostępna — trwa uzupełnianie limitów. Spróbuj ponownie później."
     },
     "fromPrompts": "Sesja z Promptów: {name} — prompt, negative, referencje i format są już ustawione.",
     "fromCr": "od {n} ◆",

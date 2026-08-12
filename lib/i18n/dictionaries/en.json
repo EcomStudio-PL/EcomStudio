@@ -754,7 +754,8 @@
       "no_wallet": "No credit wallet — contact support.",
       "maintenance": "This service is under maintenance. Try again later.",
       "analysis_overloaded": "Analysis is temporarily overloaded. Try again in a moment.",
-      "analysis_model_missing": "AI analysis is temporarily unavailable."
+      "analysis_model_missing": "AI analysis is temporarily unavailable.",
+      "analysis_quota": "AI analysis is temporarily unavailable — capacity is being restored. Please try again later."
     },
     "fromPrompts": "Prompt session: {name} — prompt, negative, references and format are prefilled.",
     "fromCr": "from {n} ◆",

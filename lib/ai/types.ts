@@ -55,7 +55,18 @@ export interface ImageProviderAdapter {
 }
 
 export class ProviderError extends Error {
-  constructor(public safeMessage: string, public retriable = false) {
+  /**
+   * @param safeMessage localized-error key shown to the customer
+   * @param retriable   whether another attempt could plausibly succeed
+   * @param providerCode the provider's own error code/type (e.g.
+   *   "insufficient_quota"). Codes only — never the raw body, never a key —
+   *   so operators can diagnose without anything sensitive being stored.
+   */
+  constructor(
+    public safeMessage: string,
+    public retriable = false,
+    public providerCode?: string,
+  ) {
     super(safeMessage);
   }
 }
