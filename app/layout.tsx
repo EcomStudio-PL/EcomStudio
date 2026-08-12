@@ -10,8 +10,20 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: { default: "EcomStudio", template: "%s · EcomStudio" },
   description: "Professional e-commerce product content, faster.",
+  applicationName: "EcomStudio",
+  appleWebApp: { capable: true, title: "EcomStudio", statusBarStyle: "black-translucent" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
+  formatDetection: { telephone: false },
 };
-export const viewport: Viewport = { width: "device-width", initialScale: 1 };
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#F5F7F8" },
+    { media: "(prefers-color-scheme: dark)", color: "#0B0E11" },
+  ],
+};
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const { locale, dict } = await getDictionary();

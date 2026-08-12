@@ -47,14 +47,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const isAdmin = profile.role === "admin";
   return (
     <div className="flex min-h-dvh">
-      <Sidebar isAdmin={isAdmin} />
+      <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar name={profile.full_name ?? profile.email} credits={wallet?.balance ?? 0} workspace={workspace.name} isAdmin={isAdmin} />
+        <Topbar name={profile.full_name ?? profile.email} email={profile.email} credits={wallet?.balance ?? 0} workspace={workspace.name} isAdmin={isAdmin} />
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-6 lg:px-8 lg:pb-10">
           {children}
         </main>
       </div>
-      <MobileNav isAdmin={isAdmin} />
+      <MobileNav />
     </div>
   );
 }

@@ -70,6 +70,23 @@ body::before {
     radial-gradient(40rem 30rem at -10% 100%, rgb(45 212 191 / 0.045), transparent 60%);
 }
 
+/* Brand gradient — reserved for primary CTAs, the credit badge and active
+   nav indicators. Everything else stays on flat tokens. */
+.brand-gradient {
+  background-image: linear-gradient(135deg,
+    rgb(var(--accent)) 0%,
+    rgb(20 184 166) 60%,
+    rgb(45 212 191) 120%);
+}
+
+/* Micro-interactions (120–250ms). Disabled via prefers-reduced-motion below. */
+@keyframes ecs-drawer-in { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@keyframes ecs-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ecs-pop-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
+.animate-drawer { animation: ecs-drawer-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.animate-fade { animation: ecs-fade-in 150ms ease-out; }
+.animate-pop { animation: ecs-pop-in 140ms ease-out; }
+
 html { -webkit-tap-highlight-color: transparent; }
 body { @apply bg-bg text-ink antialiased; }
 

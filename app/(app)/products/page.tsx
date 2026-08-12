@@ -33,7 +33,7 @@ export default async function ProductsPage({ searchParams }: {
   return (
     <div>
       <PageHeader title={t("products.title")} sub={t("products.sub")} action={
-        <Link href="/products/new" className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 dark:text-emerald-950">
+        <Link href="/products/new" className="brand-gradient rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-90 dark:text-emerald-950">
           + {t("products.new")}
         </Link>
       } />
@@ -44,7 +44,7 @@ export default async function ProductsPage({ searchParams }: {
       }]} />
       {products.length === 0 ? (
         <EmptyState title={t("products.emptyTitle")} body={t("products.emptyBody")} action={
-          <Link href="/products/new" className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 dark:text-emerald-950">
+          <Link href="/products/new" className="brand-gradient rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-90 dark:text-emerald-950">
             + {t("products.new")}
           </Link>
         } />

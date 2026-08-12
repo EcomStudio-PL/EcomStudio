@@ -1,7 +1,8 @@
 import { cn } from "@/lib/utils";
 
+/* text-base on touch screens keeps iOS Safari from auto-zooming (<16px inputs). */
 const base =
-  "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition";
+  "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-base sm:text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition";
 
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={cn(base, props.className)} />;

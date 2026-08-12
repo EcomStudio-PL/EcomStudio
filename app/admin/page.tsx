@@ -60,17 +60,17 @@ export default async function AdminDashboard() {
   return (
     <div>
       <PageHeader title={t("admin.title")} />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Stat label={t("admin.statUsers")} value={counts.users} />
         <Stat label={t("admin.statProducts")} value={counts.products} />
         <Stat label={t("admin.statJobs")} value={counts.jobs} />
         <Stat label={t("admin.statFailed")} value={failed.count ?? 0} />
         <Stat label={t("admin.statCreditsUsed")} value={counts.creditsUsed} />
-        <Stat label={t("admin.statCreditsAvailable")} value={creditsAvailable} />
+        <Stat label={t("admin.statCreditsAvailable")} value={creditsAvailable} accent />
         <Stat label={t("admin.statActiveModels")} value={activeModels.count ?? 0} />
-        <Card className="px-5 py-4">
-          <p className="text-sm text-muted">{t("admin.nav.providers")}</p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
+        <Card className="px-4 py-3">
+          <p className="truncate text-xs font-medium text-muted">{t("admin.nav.providers")}</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
             {(providers.data ?? []).map((p) => (
               <Badge key={p.slug} tone={p.active ? "green" : "neutral"}>{p.name}</Badge>
             ))}

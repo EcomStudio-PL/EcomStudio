@@ -45,7 +45,7 @@ export default async function DashboardPage() {
               </li>
             ))}
           </ol>
-          <Link href="/products/new" className="mt-7 inline-flex rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-white hover:opacity-90 dark:text-emerald-950">
+          <Link href="/products/new" className="mt-7 brand-gradient inline-flex rounded-xl px-5 py-3 text-sm font-semibold text-white shadow-sm hover:opacity-90 dark:text-emerald-950">
             {t("dashboard.onbCta")}
           </Link>
         </Card>
@@ -60,14 +60,14 @@ export default async function DashboardPage() {
           <h1 className="font-display text-2xl font-semibold tracking-tight">{t("dashboard.welcome", { name: firstName })}</h1>
           <p className="mt-1 text-sm text-muted">{t("dashboard.sub")}</p>
         </div>
-        <Link href="/products/new" className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 dark:text-emerald-950">
+        <Link href="/products/new" className="brand-gradient rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-90 dark:text-emerald-950">
           + {t("dashboard.newProduct")}
         </Link>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Stat label={t("dashboard.statProducts")} value={products.length} />
         <Stat label={t("dashboard.statGenerations")} value={gens.count ?? 0} />
-        <Stat label={t("dashboard.statCredits")} value={wallet?.balance ?? 0} />
+        <Stat label={t("dashboard.statCredits")} value={wallet?.balance ?? 0} accent />
         <Stat label={t("dashboard.statPlan")} value="Free" />
       </div>
       <div className="mt-6 grid gap-4 lg:grid-cols-2">

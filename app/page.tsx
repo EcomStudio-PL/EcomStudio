@@ -28,7 +28,7 @@ export default async function Landing() {
         </h1>
         <p className="mt-5 max-w-xl text-base text-muted sm:text-lg">{t("landing.sub")}</p>
         <div className="mt-8 flex gap-3">
-          <Link href="/register" className="rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-sm hover:opacity-90 dark:text-emerald-950">
+          <Link href="/register" className="brand-gradient rounded-xl px-5 py-3 text-sm font-semibold text-white shadow-sm hover:opacity-90 dark:text-emerald-950">
             {t("landing.cta")}
           </Link>
           <Link href="/login" className="rounded-xl border border-line bg-surface px-5 py-3 text-sm font-semibold hover:bg-raised">

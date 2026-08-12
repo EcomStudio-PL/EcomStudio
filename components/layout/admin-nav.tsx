@@ -2,7 +2,7 @@
 import { useI18n } from "@/lib/i18n/provider";
 import { NavLink } from "./nav-link";
 
-const ITEMS = [
+export const ADMIN_ITEMS = [
   { href: "/admin", key: "dashboard", icon: "▦" },
   { href: "/admin/users", key: "users", icon: "◉" },
   { href: "/admin/workspaces", key: "workspaces", icon: "▣" },
@@ -17,12 +17,12 @@ const ITEMS = [
   { href: "/admin/system", key: "system", icon: "⚙" },
 ] as const;
 
-export function AdminNav() {
+export function AdminNav({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useI18n();
   return (
     <nav className="flex flex-col gap-1">
-      {ITEMS.map((i) => (
-        <NavLink key={i.href} href={i.href} label={t(`admin.nav.${i.key}`)} icon={i.icon} />
+      {ADMIN_ITEMS.map((i) => (
+        <NavLink key={i.href} href={i.href} label={t(`admin.nav.${i.key}`)} icon={i.icon} onNavigate={onNavigate} />
       ))}
     </nav>
   );

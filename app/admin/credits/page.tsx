@@ -31,7 +31,7 @@ export default async function AdminCredits() {
   return (
     <div>
       <PageHeader title={t("admin.nav.credits")} sub={t("admin.creditsSub")} />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
         <StatCard label={t("admin.circulation")} value={formatCredits(circulation)} accent />
         <StatCard label={t("admin.issuedMonth")} value={formatCredits(issued)} />
         <StatCard label={t("admin.consumedMonth")} value={formatCredits(consumed)} />
