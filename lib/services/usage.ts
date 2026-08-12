@@ -75,33 +75,25 @@ export async function startUsage(supabase: Client, input: {
       p_metadata: { service: service.slug, ...(input.metadata ?? {}) } as never,
     });
     if (txError) {
-      await supabase.from("usage_events")
-        .update({ status: "failed", error: "insufficient_credits", finished_at: new Date().toISOString() })
-        .eq("id", event.id);
+      await supabase.rpc("fail_usage_event", { p_event_id: event.id, p_error: "insufficient_credits" });
       return { ok: false, error: "insufficient_credits" };
     }
-    await supabase.from("usage_events").update({ credit_tx_id: txId }).eq("id", event.id);
+    void txId; // linked onto the event inside the RPC
   }
   return { ok: true, eventId: event.id };
 }
 
 export async function completeUsage(supabase: Client, eventId: string, resultCount: number) {
-  await supabase.from("usage_events")
-    .update({ status: "succeeded", result_count: resultCount, finished_at: new Date().toISOString() })
-    .eq("id", eventId)
-    .eq("status", "pending");
+  // SECURITY DEFINER: members cannot update usage_events directly.
+  await supabase.rpc("complete_usage_event", { p_event_id: eventId, p_result_count: resultCount });
 }
 
 export async function failUsage(supabase: Client, input: {
   eventId: string; walletId: string; error: string;
 }) {
-  // Guarded transition pending -> failed, then a SECURITY DEFINER refund
-  // that pays back the event's own charge exactly once (repeat calls no-op).
-  await supabase.from("usage_events")
-    .update({ status: "failed", error: input.error, finished_at: new Date().toISOString() })
-    .eq("id", input.eventId)
-    .eq("status", "pending");
-  await supabase.rpc("refund_usage_event", { p_event_id: input.eventId });
+  // SECURITY DEFINER: atomically marks failed and refunds the event's own
+  // charge exactly once — repeat calls no-op, succeeded events can't refund.
+  await supabase.rpc("fail_usage_event", { p_event_id: input.eventId, p_error: input.error });
 }
 
 /** Dynamic per-service usage summary — powers CRM + analytics without any

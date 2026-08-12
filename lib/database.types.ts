@@ -2001,6 +2001,14 @@ export type Database = {
         }
         Returns: string
       }
+      complete_usage_event: {
+        Args: { p_event_id: string; p_result_count: number }
+        Returns: undefined
+      }
+      fail_usage_event: {
+        Args: { p_error: string; p_event_id: string }
+        Returns: string
+      }
       get_active_provider_credential: {
         Args: { p_provider_id: string }
         Returns: {
