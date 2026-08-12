@@ -20,7 +20,10 @@ export const openaiAdapter: ImageProviderAdapter = {
         prompt: `${req.prompt}\n\n${req.productLock.fidelityInstructions}`,
         n: req.quantity,
         size: SIZE[req.aspectRatio] ?? "1024x1024",
-        quality: req.resolution === "2K" ? "high" : "medium",
+        // Quality comes from the display-model config (GPT Image 2 Medium vs
+        // High share one endpoint); resolution tier is the fallback.
+        quality: ((model.metadata as { quality?: string } | null)?.quality)
+          ?? (req.resolution === "2K" || req.resolution === "4K" ? "high" : "medium"),
       }),
       signal: AbortSignal.timeout(120_000),
     }).catch((e) => {

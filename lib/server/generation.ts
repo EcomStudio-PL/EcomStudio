@@ -2,7 +2,7 @@ import "server-only";
 import type { Client } from "@/lib/services/workspace";
 import { decryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { getAdapter } from "@/lib/ai/registry";
-import { ProviderError, type AspectRatio, type Resolution, type ReferenceImage } from "@/lib/ai/types";
+import { ProviderError, priceForResolution, type AspectRatio, type Resolution, type ReferenceImage } from "@/lib/ai/types";
 import { buildFidelityInstructions } from "@/lib/ai/product-lock";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
 
@@ -21,6 +21,9 @@ export type GenerateInput = {
   /** Storage paths in product-images already uploaded by the client. */
   referencePaths: string[];
   referenceImageIds: string[];
+  /** Prompt-engine handoff: link the job to its prompt + session. */
+  promptId?: string;
+  promptSessionId?: string;
 };
 
 export type GenerateOutput =
@@ -60,8 +63,15 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   try { apiKey = decryptSecret(cred.encrypted_value, cred.iv, cred.auth_tag); }
   catch { return { ok: false, error: "credential_error" }; }
 
-  // Wallet + server-side cost
-  const cost = model.credit_cost * quantity;
+  // Resolution must be one the model actually supports (capability-driven
+  // UI can never request an impossible variant; the server enforces it too).
+  const supportedRes = model.supported_resolutions ?? ["1K"];
+  const resolution = (input.resolution && supportedRes.includes(input.resolution)
+    ? input.resolution
+    : supportedRes[0]) as Resolution | undefined;
+
+  // Wallet + server-side cost (per-resolution price from the model config)
+  const cost = priceForResolution(model, resolution ?? "1K") * quantity;
   const { data: wallet } = await supabase
     .from("credit_wallets").select("id, balance").eq("workspace_id", workspaceId).maybeSingle();
   if (!wallet) return { ok: false, error: "no_wallet" };
@@ -107,10 +117,13 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   const { data: job, error: jobError } = await supabase.from("generation_jobs").insert({
     workspace_id: workspaceId, product_id: productId, user_id: userId, model_id: model.id,
     prompt_text: promptText, aspect_ratio: input.aspectRatio, quantity,
-    resolution: input.resolution ?? null, provider_slug: provider.slug,
+    resolution: resolution ?? null, provider_slug: provider.slug,
+    negative_prompt: input.negative?.trim() || null,
+    prompt_id: input.promptId ?? null,
+    prompt_session_id: input.promptSessionId ?? null,
     status: "processing", started_at: new Date().toISOString(),
     reference_image_ids: input.referenceImageIds.slice(0, 8),
-    settings: { resolution: input.resolution ?? null, negative: input.negative ?? null } as never,
+    settings: { resolution: resolution ?? null, negative: input.negative ?? null } as never,
   }).select("id").single();
   if (jobError || !job) return { ok: false, error: "job_create_failed" };
 
@@ -141,18 +154,20 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
 
   const fidelity = `${buildFidelityInstructions(productInstructions)}${productContext}`;
 
-  // Provider call
+  // Provider call (latency + error class recorded for history/admin)
+  const startedAt = Date.now();
   let result;
   try {
     result = await adapter.generate(model, {
-      prompt: promptText, aspectRatio: input.aspectRatio, resolution: input.resolution,
+      prompt: promptText, aspectRatio: input.aspectRatio, resolution,
       quantity, referenceImages: refs, productLock: { fidelityInstructions: fidelity },
     }, { apiKey, baseUrl: cred.base_url });
   } catch (e) {
     const safe = e instanceof ProviderError ? e.safeMessage : "provider_error";
     await failUsage(supabase, { eventId: usage.eventId, walletId: wallet.id, error: safe });
     await supabase.from("generation_jobs").update({
-      status: "failed", error_message: safe, completed_at: new Date().toISOString(),
+      status: "failed", error_message: safe, error_class: safe,
+      latency_ms: Date.now() - startedAt, completed_at: new Date().toISOString(),
     }).eq("id", job.id);
     await supabase.from("notifications").insert({
       user_id: userId, type: "generation_failed", title: "generation_failed",
@@ -198,13 +213,18 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
 
   if (stored.length === 0) {
     await failUsage(supabase, { eventId: usage.eventId, walletId: wallet.id, error: "storage_failed" });
-    await supabase.from("generation_jobs").update({ status: "failed", error_message: "storage_failed", completed_at: new Date().toISOString() }).eq("id", job.id);
+    await supabase.from("generation_jobs").update({
+      status: "failed", error_message: "storage_failed", error_class: "storage_failed",
+      latency_ms: Date.now() - startedAt, completed_at: new Date().toISOString(),
+    }).eq("id", job.id);
     return { ok: false, error: "storage_failed" };
   }
 
   await completeUsage(supabase, usage.eventId, stored.length);
   await supabase.from("generation_jobs").update({
-    status: "completed", credits_charged: cost, completed_at: new Date().toISOString(),
+    status: "completed", credits_charged: cost, latency_ms: Date.now() - startedAt,
+    request_id: (result.providerMetadata?.requestId as string | undefined) ?? null,
+    completed_at: new Date().toISOString(),
   }).eq("id", job.id);
   await supabase.from("notifications").insert({
     user_id: userId, type: "generation_done", title: "generation_done",

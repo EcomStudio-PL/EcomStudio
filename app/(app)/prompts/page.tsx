@@ -1,21 +1,21 @@
 import Link from "next/link";
+import { ArrowRight, Wand2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { listProducts } from "@/lib/services/products";
-import { listSystemTemplates, listWorkspaceTemplates, listProductPrompts } from "@/lib/services/prompts";
-import { MyTemplates, DuplicateTemplateButton } from "@/components/prompts/my-templates";
+import { signImageUrls } from "@/lib/services/images";
 import { PageHeader } from "@/components/ui/page-header";
-import { Card, CardHeader } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { EmptyState } from "@/components/ui/empty-state";
-import { CreatePromptsButton, CopyPromptButton } from "@/components/prompts/prompt-actions";
+import { SessionForm, type PromptProductOption } from "@/components/prompts/session-form";
 
-export default async function PromptsPage({ searchParams }: {
-  searchParams: Promise<{ product?: string }>;
-}) {
-  const { product: productParam } = await searchParams;
+export const dynamic = "force-dynamic";
+
+/** PROMPTY — the product image intelligence entry point: paste product data,
+ *  add photos, get 5 professional prompt concepts. */
+export default async function PromptsPage() {
   const supabase = await createClient();
   const { dict } = await getDictionary();
   const t = makeT(dict);
@@ -23,96 +23,66 @@ export default async function PromptsPage({ searchParams }: {
   if (!user) return null;
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) return null;
-  const [products, templates, myTemplates] = await Promise.all([
-    listProducts(supabase, workspace.id),
-    listSystemTemplates(supabase),
-    listWorkspaceTemplates(supabase, workspace.id),
+
+  const [products, { data: sessions }, { data: googleProvider }] = await Promise.all([
+    listProducts(supabase, workspace.id, 20),
+    supabase.from("prompt_sessions")
+      .select("id, product_name, status, aspect_ratio, created_at, reference_paths")
+      .eq("workspace_id", workspace.id)
+      .order("created_at", { ascending: false }).limit(12),
+    supabase.from("ai_providers").select("id, ai_provider_credentials(id)").eq("slug", "google").eq("active", true).maybeSingle(),
   ]);
-  const selectedId = productParam ?? products[0]?.id;
-  const prompts = selectedId ? await listProductPrompts(supabase, selectedId) : [];
+  const engineAvailable =
+    ((googleProvider as { ai_provider_credentials?: { id: string }[] } | null)?.ai_provider_credentials?.length ?? 0) > 0;
+
+  const productPaths = products.flatMap((p) => p.product_images.map((i) => i.storage_path));
+  const sessionThumbs = (sessions ?? []).map((s) => s.reference_paths?.[0]).filter(Boolean) as string[];
+  const urls = await signImageUrls(supabase, [...productPaths, ...sessionThumbs]);
+
+  const productOptions: PromptProductOption[] = products.map((p) => ({
+    id: p.id, name: p.name,
+    images: p.product_images
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((i) => ({ path: i.storage_path, url: urls.get(i.storage_path) ?? "" })),
+  }));
+
+  const statusTone = { ready: "green", failed: "red" } as const;
 
   return (
     <div>
-      <PageHeader title={t("prompts.title")} sub={t("prompts.sub")} />
-      <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
-        <div className="space-y-5">
-          <Card>
-            <CardHeader title={t("prompts.pickProduct")} />
-            <ul className="max-h-72 overflow-y-auto p-2">
-              {products.map((p) => (
-                <li key={p.id}>
-                  <Link href={`/prompts?product=${p.id}`}
-                    className={`block truncate rounded-lg px-3 py-2 text-sm ${p.id === selectedId ? "bg-raised font-medium" : "text-muted hover:bg-raised"}`}>
-                    {p.name}
-                  </Link>
-                </li>
-              ))}
-              {products.length === 0 && (
-                <li className="px-3 py-2 text-sm text-muted">{t("products.emptyTitle")}</li>
-              )}
-            </ul>
-          </Card>
-          <Card>
-            <CardHeader title={t("prompts.myTemplates")} />
-            <MyTemplates templates={myTemplates} />
-          </Card>
-          <Card className="p-5">
-            <Badge tone="amber">{t("common.comingSoon")}</Badge>
-            <p className="mt-2 text-sm text-muted">{t("prompts.aiSoon")}</p>
-          </Card>
-        </div>
-        <div className="space-y-5">
-          {selectedId && (
-            <Card>
-              <CardHeader title={t("prompts.forProduct")} sub={t("prompts.fromTemplatesHint")}
-                action={<CreatePromptsButton productId={selectedId} />} />
-              {prompts.length === 0 ? (
-                <p className="px-5 py-10 text-center text-sm text-muted">{t("prompts.empty")}</p>
-              ) : (
-                <ul className="divide-y divide-line">
-                  {prompts.map((p) => (
-                    <li key={p.id} className="px-5 py-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-semibold">{p.concept_name}</h4>
-                          <Badge>{p.format}</Badge>
-                        </div>
-                        <CopyPromptButton text={p.prompt_text} />
-                      </div>
-                      <p className="mt-2 text-sm text-muted">{p.prompt_text}</p>
-                      {p.reference_rationale && (
-                        <p className="mt-2 text-xs text-muted/80">
-                          <span className="font-medium">{t("prompts.rationale")}:</span> {p.reference_rationale}
-                        </p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
+      <PageHeader title={t("prompts.title")} sub={t("psess.sub")} />
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <SessionForm products={productOptions} workspaceId={workspace.id} engineAvailable={engineAvailable} />
+
+        <div className="space-y-3 lg:sticky lg:top-20 lg:h-fit">
+          <h3 className="px-1 font-display text-sm font-semibold text-muted">{t("psess.recent")}</h3>
+          {(sessions ?? []).length === 0 && (
+            <Card className="p-6 text-center">
+              <Wand2 size={20} className="mx-auto text-faint" />
+              <p className="mt-2 text-sm text-muted">{t("psess.empty")}</p>
             </Card>
           )}
-          <Card>
-            <CardHeader title={t("prompts.systemTemplates")} />
-            <ul className="divide-y divide-line">
-              {templates.map((tpl) => (
-                <li key={tpl.id} className="flex items-center justify-between gap-3 px-5 py-3">
-                  <span className="text-sm font-medium">{tpl.name}</span>
-                  <div className="flex items-center gap-2">
-                    <Badge>{tpl.format}</Badge>
-                    {tpl.style && <Badge tone="blue">{tpl.style}</Badge>}
-                    <DuplicateTemplateButton templateId={tpl.id} />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </Card>
+          {(sessions ?? []).map((s) => (
+            <Link key={s.id} href={`/prompts/${s.id}`} prefetch
+              className="glass flex items-center gap-3 rounded-2xl px-4 py-3 transition-transform duration-150 hover:-translate-y-0.5">
+              <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-line bg-raised">
+                {s.reference_paths?.[0] && urls.get(s.reference_paths[0]) && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={urls.get(s.reference_paths[0])!} alt="" className="h-full w-full object-cover" loading="lazy" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">{s.product_name}</p>
+                <p className="text-xs text-faint">{new Date(s.created_at).toLocaleDateString()} · {s.aspect_ratio}</p>
+              </div>
+              <Badge tone={statusTone[s.status as keyof typeof statusTone] ?? "amber"}>
+                {t(`psess.status_${s.status}`, {}) || s.status}
+              </Badge>
+              <ArrowRight size={14} className="shrink-0 text-faint" />
+            </Link>
+          ))}
         </div>
       </div>
-      {products.length === 0 && (
-        <div className="mt-5">
-          <EmptyState title={t("products.emptyTitle")} body={t("products.emptyBody")} />
-        </div>
-      )}
     </div>
   );
 }

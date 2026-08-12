@@ -19,6 +19,13 @@ export const googleAdapter: ImageProviderAdapter = {
       { text: `${req.prompt}\n\n${req.productLock.fidelityInstructions}` },
     ];
 
+    // Gemini 3 image models accept an explicit output size; the 2.5 flash
+    // image model only knows aspect ratio.
+    const imageConfig: Record<string, unknown> = { aspectRatio: req.aspectRatio };
+    if (req.resolution && (model.supported_resolutions ?? []).includes(req.resolution) && req.resolution !== "1K") {
+      imageConfig.imageSize = req.resolution;
+    }
+
     const images: GenerationResult["images"] = [];
     for (let i = 0; i < req.quantity; i++) {
       const res = await fetch(url, {
@@ -28,7 +35,7 @@ export const googleAdapter: ImageProviderAdapter = {
           contents: [{ role: "user", parts }],
           generationConfig: {
             responseModalities: ["IMAGE"],
-            imageConfig: { aspectRatio: req.aspectRatio },
+            imageConfig,
           },
         }),
         signal: AbortSignal.timeout(90_000),

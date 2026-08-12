@@ -75,63 +75,84 @@ export type Database = {
       ai_models: {
         Row: {
           active: boolean
+          badge: string | null
           capabilities: Json
           created_at: string
           credit_cost: number
           description: string | null
+          display_name: string | null
           estimated_api_cost: number
           id: string
           internal_cost_usd_micros: number
+          max_prompt_length: number
           max_reference_images: number
           metadata: Json
           model_identifier: string
           name: string
+          pricing: Json
           provider_id: string
           quality_tier: string
+          sort_order: number
           speed_tier: string
           supported_aspect_ratios: string[]
+          supported_resolutions: string[]
+          supports_negative_prompt: boolean
           supports_reference_images: boolean
           supports_video: boolean
           type: string
         }
         Insert: {
           active?: boolean
+          badge?: string | null
           capabilities?: Json
           created_at?: string
           credit_cost?: number
           description?: string | null
+          display_name?: string | null
           estimated_api_cost?: number
           id?: string
           internal_cost_usd_micros?: number
+          max_prompt_length?: number
           max_reference_images?: number
           metadata?: Json
           model_identifier: string
           name: string
+          pricing?: Json
           provider_id: string
           quality_tier?: string
+          sort_order?: number
           speed_tier?: string
           supported_aspect_ratios?: string[]
+          supported_resolutions?: string[]
+          supports_negative_prompt?: boolean
           supports_reference_images?: boolean
           supports_video?: boolean
           type?: string
         }
         Update: {
           active?: boolean
+          badge?: string | null
           capabilities?: Json
           created_at?: string
           credit_cost?: number
           description?: string | null
+          display_name?: string | null
           estimated_api_cost?: number
           id?: string
           internal_cost_usd_micros?: number
+          max_prompt_length?: number
           max_reference_images?: number
           metadata?: Json
           model_identifier?: string
           name?: string
+          pricing?: Json
           provider_id?: string
           quality_tier?: string
+          sort_order?: number
           speed_tier?: string
           supported_aspect_ratios?: string[]
+          supported_resolutions?: string[]
+          supports_negative_prompt?: boolean
           supports_reference_images?: boolean
           supports_video?: boolean
           type?: string
@@ -662,14 +683,21 @@ export type Database = {
           created_at: string
           format: string
           id: string
+          lock_strength: string
+          negative_prompt: string | null
+          primary_reference: number | null
           priority: number
           product_id: string
           prompt_text: string
           reference_image_ids: string[]
+          reference_indices: number[]
           reference_rationale: string | null
+          scene_type: string | null
+          session_id: string | null
           shot_type: string
           status: Database["public"]["Enums"]["prompt_status"]
           style: string | null
+          supporting_references: Json
           workspace_id: string
         }
         Insert: {
@@ -677,14 +705,21 @@ export type Database = {
           created_at?: string
           format?: string
           id?: string
+          lock_strength?: string
+          negative_prompt?: string | null
+          primary_reference?: number | null
           priority?: number
           product_id: string
           prompt_text: string
           reference_image_ids?: string[]
+          reference_indices?: number[]
           reference_rationale?: string | null
+          scene_type?: string | null
+          session_id?: string | null
           shot_type: string
           status?: Database["public"]["Enums"]["prompt_status"]
           style?: string | null
+          supporting_references?: Json
           workspace_id: string
         }
         Update: {
@@ -692,14 +727,21 @@ export type Database = {
           created_at?: string
           format?: string
           id?: string
+          lock_strength?: string
+          negative_prompt?: string | null
+          primary_reference?: number | null
           priority?: number
           product_id?: string
           prompt_text?: string
           reference_image_ids?: string[]
+          reference_indices?: number[]
           reference_rationale?: string | null
+          scene_type?: string | null
+          session_id?: string | null
           shot_type?: string
           status?: Database["public"]["Enums"]["prompt_status"]
           style?: string | null
+          supporting_references?: Json
           workspace_id?: string
         }
         Relationships: [
@@ -708,6 +750,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "generated_prompts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_sessions"
             referencedColumns: ["id"]
           },
           {
@@ -760,22 +809,85 @@ export type Database = {
           },
         ]
       }
+      generation_feedback: {
+        Row: {
+          asset_path: string | null
+          comment: string | null
+          created_at: string
+          generation_job_id: string
+          id: string
+          issues: string[]
+          user_id: string
+          verdict: string
+          workspace_id: string
+        }
+        Insert: {
+          asset_path?: string | null
+          comment?: string | null
+          created_at?: string
+          generation_job_id: string
+          id?: string
+          issues?: string[]
+          user_id: string
+          verdict: string
+          workspace_id: string
+        }
+        Update: {
+          asset_path?: string | null
+          comment?: string | null
+          created_at?: string
+          generation_job_id?: string
+          id?: string
+          issues?: string[]
+          user_id?: string
+          verdict?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "generation_feedback_generation_job_id_fkey"
+            columns: ["generation_job_id"]
+            isOneToOne: false
+            referencedRelation: "generation_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "generation_feedback_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "generation_feedback_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       generation_jobs: {
         Row: {
           aspect_ratio: string
           completed_at: string | null
           created_at: string
           credits_charged: number
+          error_class: string | null
           error_message: string | null
           id: string
+          latency_ms: number | null
           material_type: string | null
           model_id: string | null
+          negative_prompt: string | null
           product_id: string | null
           prompt_id: string | null
+          prompt_session_id: string | null
           prompt_text: string | null
           provider_slug: string | null
           quantity: number
           reference_image_ids: string[]
+          request_id: string | null
           resolution: string | null
           settings: Json
           started_at: string | null
@@ -788,16 +900,21 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           credits_charged?: number
+          error_class?: string | null
           error_message?: string | null
           id?: string
+          latency_ms?: number | null
           material_type?: string | null
           model_id?: string | null
+          negative_prompt?: string | null
           product_id?: string | null
           prompt_id?: string | null
+          prompt_session_id?: string | null
           prompt_text?: string | null
           provider_slug?: string | null
           quantity?: number
           reference_image_ids?: string[]
+          request_id?: string | null
           resolution?: string | null
           settings?: Json
           started_at?: string | null
@@ -810,16 +927,21 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           credits_charged?: number
+          error_class?: string | null
           error_message?: string | null
           id?: string
+          latency_ms?: number | null
           material_type?: string | null
           model_id?: string | null
+          negative_prompt?: string | null
           product_id?: string | null
           prompt_id?: string | null
+          prompt_session_id?: string | null
           prompt_text?: string | null
           provider_slug?: string | null
           quantity?: number
           reference_image_ids?: string[]
+          request_id?: string | null
           resolution?: string | null
           settings?: Json
           started_at?: string | null
@@ -847,6 +969,13 @@ export type Database = {
             columns: ["prompt_id"]
             isOneToOne: false
             referencedRelation: "generated_prompts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "generation_jobs_prompt_session_id_fkey"
+            columns: ["prompt_session_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_sessions"
             referencedColumns: ["id"]
           },
           {
@@ -1313,6 +1442,91 @@ export type Database = {
           sort_order?: number
         }
         Relationships: []
+      }
+      prompt_sessions: {
+        Row: {
+          analysis_model: string | null
+          aspect_ratio: string
+          created_at: string
+          description: string | null
+          error: string | null
+          extra_info: string | null
+          feature_manifest: Json
+          id: string
+          image_analysis: Json
+          product_id: string | null
+          product_lock: Json
+          product_name: string
+          reference_paths: string[]
+          status: string
+          style: string | null
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          analysis_model?: string | null
+          aspect_ratio?: string
+          created_at?: string
+          description?: string | null
+          error?: string | null
+          extra_info?: string | null
+          feature_manifest?: Json
+          id?: string
+          image_analysis?: Json
+          product_id?: string | null
+          product_lock?: Json
+          product_name: string
+          reference_paths?: string[]
+          status?: string
+          style?: string | null
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          analysis_model?: string | null
+          aspect_ratio?: string
+          created_at?: string
+          description?: string | null
+          error?: string | null
+          extra_info?: string | null
+          feature_manifest?: Json
+          id?: string
+          image_analysis?: Json
+          product_id?: string | null
+          product_lock?: Json
+          product_name?: string
+          reference_paths?: string[]
+          status?: string
+          style?: string | null
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prompt_sessions_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prompt_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prompt_sessions_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       prompt_templates: {
         Row: {

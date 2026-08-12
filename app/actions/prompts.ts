@@ -86,6 +86,23 @@ export async function duplicateSystemTemplateAction(templateId: string): Promise
   }
 }
 
+/** Inline edit of a generated prompt card (owner's workspace only via RLS). */
+export async function updatePromptTextAction(promptId: string, text: string): Promise<Result> {
+  try {
+    const { supabase, workspace } = await workspaceCtx();
+    const clean = text.trim();
+    if (!clean || clean.length > 12000) return { ok: false, error: "invalid" };
+    const { error } = await supabase
+      .from("generated_prompts").update({ prompt_text: clean })
+      .eq("id", promptId).eq("workspace_id", workspace.id);
+    if (error) return { ok: false, error: "generic" };
+    revalidatePath("/prompts");
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "generic" };
+  }
+}
+
 export async function createPromptsAction(productId: string): Promise<{ ok: boolean; count?: number; error?: string }> {
   try {
     const supabase = await createClient();

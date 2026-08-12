@@ -4,10 +4,12 @@ import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { listProducts } from "@/lib/services/products";
-import { getUsableModels } from "@/lib/ai/router";
+import { getUsableModels, toClientModel } from "@/lib/ai/router";
 import { signImageUrls } from "@/lib/services/images";
 import { PageHeader } from "@/components/ui/page-header";
-import { Studio, type StudioModel, type StudioProduct } from "@/components/generator/studio";
+import { Studio, type StudioModel, type StudioProduct, type StudioSession } from "@/components/generator/studio";
+
+export const dynamic = "force-dynamic";
 
 export default async function GeneratorPage({ searchParams }: {
   searchParams: Promise<{ prompt?: string }>;
@@ -25,6 +27,48 @@ export default async function GeneratorPage({ searchParams }: {
     getUsableModels(supabase),
     getWallet(supabase, workspace.id),
   ]);
+
+  // Prompt-engine handoff: ?prompt=<generated_prompt id> opens the Studio
+  // fully prepared — prompt, negative, references, format, product. The user
+  // re-uploads nothing and copies nothing.
+  let session: StudioSession | null = null;
+  if (promptParam && /^[0-9a-f-]{36}$/.test(promptParam)) {
+    const { data: gp } = await supabase
+      .from("generated_prompts").select("*")
+      .eq("id", promptParam).eq("workspace_id", workspace.id).maybeSingle();
+    if (gp?.session_id) {
+      const { data: ps } = await supabase
+        .from("prompt_sessions").select("*").eq("id", gp.session_id).maybeSingle();
+      if (ps) {
+        const paths = ps.reference_paths ?? [];
+        const urls = await signImageUrls(supabase, paths);
+        const selectedNumbers = new Set(
+          (gp.reference_indices?.length ? gp.reference_indices : paths.map((_, i) => i + 1))
+        );
+        // Primary reference first — the first selected image acts as the main one.
+        const ordered = [...paths.entries()].sort(([a], [b]) => {
+          const pa = a + 1 === gp.primary_reference ? -1 : 0;
+          const pb = b + 1 === gp.primary_reference ? -1 : 0;
+          return pa - pb;
+        });
+        session = {
+          promptId: gp.id,
+          sessionId: ps.id,
+          productId: ps.product_id,
+          productName: ps.product_name,
+          prompt: gp.prompt_text,
+          negative: gp.negative_prompt ?? "",
+          aspectRatio: gp.format || ps.aspect_ratio,
+          refs: ordered.map(([i, path]) => ({
+            path,
+            url: urls.get(path) ?? "",
+            selected: selectedNumbers.has(i + 1),
+          })),
+        };
+      }
+    }
+  }
+
   const allPaths = products.flatMap((p) => p.product_images.map((i) => i.storage_path));
   const urls = await signImageUrls(supabase, allPaths);
   const studioProducts: StudioProduct[] = products.map((p) => ({
@@ -36,15 +80,8 @@ export default async function GeneratorPage({ searchParams }: {
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((i) => ({ id: i.id, url: urls.get(i.storage_path) ?? "", path: i.storage_path, isPrimary: i.is_primary })),
   }));
-  const studioModels: StudioModel[] = models.map((m) => ({
-    id: m.id, name: m.name, provider_name: m.provider_name, provider_slug: m.provider_slug,
-    credit_cost: m.credit_cost, quality_tier: m.quality_tier, speed_tier: m.speed_tier,
-    capabilities_ui: {
-      resolutions: m.capabilities_ui.resolutions,
-      maxQuantity: m.capabilities_ui.maxQuantity,
-      supportsReferenceImages: m.capabilities_ui.supportsReferenceImages,
-    },
-  }));
+  // Providers never reach the client — only display identity + pricing.
+  const studioModels: StudioModel[] = models.map(toClientModel);
 
   return (
     <div>
@@ -54,7 +91,8 @@ export default async function GeneratorPage({ searchParams }: {
         models={studioModels}
         credits={wallet?.balance ?? 0}
         workspaceId={workspace.id}
-        initialPrompt={promptParam?.slice(0, 4000) ?? ""}
+        initialPrompt={session ? "" : promptParam?.slice(0, 4000) ?? ""}
+        session={session}
       />
     </div>
   );

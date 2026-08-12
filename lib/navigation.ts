@@ -36,10 +36,12 @@ export const CLIENT_NAV: readonly NavGroup[] = [
   ]},
 ] as const;
 
-/** Bottom bar keeps the five most-used destinations; "more" opens the drawer. */
+/** Bottom bar: Pulpit · Prompty · AI Studio · Biblioteka (+ "Więcej" opens
+ *  the drawer). Products stay reachable via the drawer/search — the primary
+ *  flow starts at Prompty or AI Studio, no prior product required. */
 export const CLIENT_BOTTOM: readonly NavItem[] = [
   { href: "/dashboard", key: "dashboard", icon: LayoutDashboard },
-  { href: "/products", key: "products", icon: Package },
+  { href: "/prompts", key: "prompts", icon: PenLine },
   { href: "/generator", key: "generator", icon: Sparkles },
   { href: "/library", key: "library", icon: Images },
 ] as const;

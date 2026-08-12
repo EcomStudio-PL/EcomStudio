@@ -91,10 +91,25 @@ export async function updateModelFullAction(modelId: string, patch: {
   name?: string; credit_cost?: number; internal_cost_usd_micros?: number;
   quality_tier?: string; speed_tier?: string; max_reference_images?: number;
   supports_reference_images?: boolean; description?: string | null; active?: boolean;
+  // Image Engine V2 config — all editable without code changes:
+  display_name?: string; badge?: string | null; sort_order?: number;
+  model_identifier?: string; pricing?: Record<string, number>;
+  supported_resolutions?: string[];
 }): Promise<Result> {
   try {
     const { supabase } = await requireAdmin();
-    const { error } = await supabase.from("ai_models").update(patch).eq("id", modelId);
+    if (patch.pricing) {
+      for (const [k, v] of Object.entries(patch.pricing)) {
+        if (!["1K", "2K", "4K"].includes(k) || !Number.isFinite(v) || v < 0 || v > 10000) {
+          return { ok: false, error: "invalid" };
+        }
+      }
+    }
+    if (patch.supported_resolutions) {
+      patch.supported_resolutions = patch.supported_resolutions.filter((r) => ["1K", "2K", "4K"].includes(r));
+      if (patch.supported_resolutions.length === 0) return { ok: false, error: "invalid" };
+    }
+    const { error } = await supabase.from("ai_models").update(patch as never).eq("id", modelId);
     if (error) return { ok: false, error: "generic" };
     revalidatePath("/admin/models");
     return { ok: true };

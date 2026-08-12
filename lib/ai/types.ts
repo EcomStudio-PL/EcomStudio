@@ -4,7 +4,15 @@ export type AiModelRecord = Tables<"ai_models">;
 export type AiProviderRecord = Tables<"ai_providers">;
 
 export type AspectRatio = "1:1" | "4:5" | "16:9" | "9:16";
-export type Resolution = "1K" | "2K";
+export type Resolution = "1K" | "2K" | "4K";
+
+/** Per-resolution credit price from the admin-editable model config
+ *  (ai_models.pricing). Falls back to the model's base credit_cost. */
+export function priceForResolution(model: Pick<AiModelRecord, "pricing" | "credit_cost">, resolution: string): number {
+  const pricing = (model.pricing ?? {}) as Record<string, number>;
+  const p = pricing[resolution];
+  return typeof p === "number" && p >= 0 ? p : model.credit_cost;
+}
 
 export type ProviderCredential = { apiKey: string; baseUrl?: string | null };
 

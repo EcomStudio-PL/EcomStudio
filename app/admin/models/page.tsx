@@ -9,7 +9,7 @@ export default async function AdminModels() {
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
   const [{ data: models }, { data: billing }] = await Promise.all([
-    supabase.from("ai_models").select("*, ai_providers(name)").order("created_at"),
+    supabase.from("ai_models").select("*, ai_providers(name)").order("sort_order"),
     supabase.from("app_settings").select("value").eq("key", "billing").maybeSingle(),
   ]);
   const b = (billing?.value ?? {}) as { price_per_100_credits?: number; usd_to_pln?: number };
@@ -28,6 +28,11 @@ export default async function AdminModels() {
     max_reference_images: m.max_reference_images,
     supports_reference_images: m.supports_reference_images,
     description: m.description,
+    display_name: m.display_name,
+    badge: m.badge,
+    sort_order: m.sort_order,
+    pricing: (m.pricing ?? {}) as Record<string, number>,
+    supported_resolutions: m.supported_resolutions ?? ["1K"],
     providerName: m.ai_providers?.name ?? "—",
   }));
   return (
