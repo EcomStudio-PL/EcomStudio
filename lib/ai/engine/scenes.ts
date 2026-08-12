@@ -135,6 +135,22 @@ function clampRefs(c: SceneConcept, imageCount: number, analyses: ImageAnalysis[
       return !(a?.scene_reference_only && s.role !== "SCENE_ONLY" && s.role !== "USAGE" && s.role !== "SCALE");
     })
     .slice(0, 3);
+
+  // A single reference throws away fidelity information the user already
+  // uploaded, so when another usable image exists the best remaining one is
+  // attached with the role its own analysis reports.
+  if (supporting.length === 0) {
+    const extra = analyses
+      .filter((a) => a.image_number !== primary && !a.scene_reference_only && a.product_quality !== "poor")
+      .sort((x, y) => y.primary_candidate_score - x.primary_candidate_score)[0];
+    if (extra) {
+      const role = extra.roles.find((r) => r !== "MAIN_GEOMETRY" && r !== "SCENE_ONLY") ?? "COLOR";
+      supporting.push({
+        image: extra.image_number, role,
+        reason: `additional verified view of the product (${extra.view.replace("_", " ")})`,
+      });
+    }
+  }
   return { ...c, primary_reference: primary, supporting_references: supporting };
 }
 
