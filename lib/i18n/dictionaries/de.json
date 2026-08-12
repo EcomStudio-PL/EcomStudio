@@ -481,7 +481,15 @@
     "sortOrder": "Reihenfolge",
     "pricingPerRes": "Credit-Preise pro Qualität",
     "pricingPerResHint": "Leeres Feld = Variante nicht verfügbar. Ausgefüllte Varianten werden zu den 1K/2K/4K-Buttons im Studio.",
-    "kpiUsers": "Kunden"
+    "kpiUsers": "Kunden",
+    "costSourceOfTruth": "Die hier konfigurierten API-Kosten sind die Quelle der Wahrheit für neue Generierungen. Historische Ereignisse behalten die Kosten zum Ausführungszeitpunkt.",
+    "perGeneration": "Pro Generierung",
+    "apiCostCfg": "API-Kosten (konfiguriert)",
+    "snapshotNote": "Änderungen gelten nur für künftige Generierungen.",
+    "unavailable": {
+      "provider_quota": "Nicht verfügbar — Kontingent/Billing",
+      "provider_auth": "Nicht verfügbar — Anbieter-Key abgelehnt"
+    }
   },
   "support": {
     "title": "Support & Nachrichten",

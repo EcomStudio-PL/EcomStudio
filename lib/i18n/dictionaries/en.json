@@ -481,7 +481,15 @@
     "sortOrder": "Sort order",
     "pricingPerRes": "Credit pricing per quality",
     "pricingPerResHint": "Empty field = variant unavailable. Filled variants become the 1K/2K/4K buttons in the Studio.",
-    "kpiUsers": "Customers"
+    "kpiUsers": "Customers",
+    "costSourceOfTruth": "The API cost configured here is the source of truth for new generations. Historical events keep the cost captured at execution time — changing a price today never rewrites past economics.",
+    "perGeneration": "Per generation",
+    "apiCostCfg": "API cost (configured)",
+    "snapshotNote": "Changes apply to future generations only.",
+    "unavailable": {
+      "provider_quota": "Unavailable — provider quota/billing",
+      "provider_auth": "Unavailable — provider key rejected"
+    }
   },
   "support": {
     "title": "Support & messages",

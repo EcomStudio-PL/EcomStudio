@@ -1,6 +1,6 @@
 import "server-only";
 import type { ReferenceImage } from "@/lib/ai/types";
-import { callVisionJson, type VisionCredential } from "./vision";
+import { callVisionJson, type VisionBackend, type VisionOutcome } from "./vision";
 import { IMAGE_VIEWS, REFERENCE_ROLES, type FeatureManifest, type ImageAnalysis, type SessionInput } from "./types";
 
 /**
@@ -131,11 +131,10 @@ Rules:
 - roles: PRIMARY_GEOMETRY for the image that best defines the whole body; REAR_DETAIL for a back view; SCENE_ONLY for infographics, size charts and packaging renders.`;
 
 export async function analyzeReferences(
-  cred: VisionCredential,
+  backends: VisionBackend[],
   images: ReferenceImage[],
-  info: SessionInput,
-  model?: string
-): Promise<{ images: ImageAnalysis[]; manifest: FeatureManifest }> {
+  info: SessionInput
+): Promise<{ images: ImageAnalysis[]; manifest: FeatureManifest; outcome: VisionOutcome }> {
   const user = [
     `Product name: ${info.productName}`,
     info.description ? `Seller description / marketplace listing:\n${info.description.slice(0, 4000)}` : "",
@@ -144,9 +143,9 @@ export async function analyzeReferences(
     `Return the per-image analysis for all ${images.length} images and the merged product feature manifest.`,
   ].filter(Boolean).join("\n");
 
-  const out = await callVisionJson<{ images: ImageAnalysis[]; manifest: FeatureManifest }>({
-    cred, images, system: SYSTEM, user, schema: ANALYSIS_SCHEMA, model,
-  });
+  const { data: out, outcome } = await callVisionJson<{ images: ImageAnalysis[]; manifest: FeatureManifest }>(
+    backends, { images, system: SYSTEM, user, schema: ANALYSIS_SCHEMA }
+  );
 
   // Defensive normalisation — the engine downstream relies on these shapes.
   const seen = new Set<number>();
@@ -158,5 +157,5 @@ export async function analyzeReferences(
       return true;
     })
     .sort((a, b) => a.image_number - b.image_number);
-  return { images: perImage, manifest: out.manifest };
+  return { images: perImage, manifest: out.manifest, outcome };
 }

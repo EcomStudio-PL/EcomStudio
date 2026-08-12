@@ -7,7 +7,7 @@ import { analyzeReferences } from "@/lib/ai/engine/analysis";
 import { proposeScenes } from "@/lib/ai/engine/scenes";
 import { buildProductLock, chooseLockStrength } from "@/lib/ai/engine/lock";
 import { assembleMasterPrompt, assembleNegativePrompt, referenceRationale, referenceRoleLabel } from "@/lib/ai/engine/master-prompt";
-import { VISION_MODEL, type VisionCredential } from "@/lib/ai/engine/vision";
+import { VISION_MODEL, type VisionBackend, type VisionOutcome, type VisionProvider } from "@/lib/ai/engine/vision";
 import type { FeatureManifest, ImageAnalysis, SceneConcept, SessionInput } from "@/lib/ai/engine/types";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
 
@@ -50,19 +50,36 @@ async function getAnalysisModel(supabase: Client): Promise<string> {
   return typeof configured === "string" && configured.trim() ? configured.trim() : VISION_MODEL;
 }
 
-/** The vision credential is the active Google credential from the admin
- *  store — ciphertext via definer RPC, decrypted only server-side. */
-async function getVisionCredential(supabase: Client): Promise<VisionCredential | null> {
-  if (!encryptionAvailable()) return null;
-  const { data: provider } = await supabase
-    .from("ai_providers").select("id").eq("slug", "google").eq("active", true).maybeSingle();
-  if (!provider) return null;
-  const { data: credRows } = await supabase.rpc("get_active_provider_credential", { p_provider_id: provider.id });
-  const cred = credRows?.[0];
-  if (!cred) return null;
-  try {
-    return { apiKey: decryptSecret(cred.encrypted_value, cred.iv, cred.auth_tag), baseUrl: cred.base_url };
-  } catch { return null; }
+/**
+ * Every provider that can actually serve analysis right now, in preference
+ * order. Credentials come back as ciphertext through the definer RPC and are
+ * decrypted only here, server-side. A provider without a usable key is simply
+ * absent from the chain — a broken key can never take the others down.
+ */
+const ANALYSIS_PROVIDERS: VisionProvider[] = ["google", "openai"];
+
+async function getVisionBackends(supabase: Client, primaryModel: string): Promise<VisionBackend[]> {
+  if (!encryptionAvailable()) return [];
+  const { data: providers } = await supabase
+    .from("ai_providers").select("id, slug").eq("active", true).in("slug", ANALYSIS_PROVIDERS);
+  if (!providers?.length) return [];
+
+  const backends: VisionBackend[] = [];
+  for (const slug of ANALYSIS_PROVIDERS) {
+    const provider = providers.find((p) => p.slug === slug);
+    if (!provider) continue;
+    const { data: credRows } = await supabase.rpc("get_active_provider_credential", { p_provider_id: provider.id });
+    const cred = credRows?.[0];
+    if (!cred) continue;
+    try {
+      backends.push({
+        provider: slug,
+        cred: { apiKey: decryptSecret(cred.encrypted_value, cred.iv, cred.auth_tag), baseUrl: cred.base_url },
+        model: slug === "google" ? primaryModel : undefined,
+      });
+    } catch { /* undecryptable key: skip this provider, keep the rest */ }
+  }
+  return backends;
 }
 
 async function downloadReferences(supabase: Client, paths: string[]): Promise<ReferenceImage[]> {
@@ -97,11 +114,9 @@ export async function runPromptSession(
   if (!RATIOS.has(input.aspectRatio)) return { ok: false, error: "invalid_input" };
   if (!input.referencePaths?.length) return { ok: false, error: "references_required" };
 
-  const [cred, analysisModel] = await Promise.all([
-    getVisionCredential(supabase),
-    getAnalysisModel(supabase),
-  ]);
-  if (!cred) return { ok: false, error: "analysis_unavailable" };
+  const analysisModel = await getAnalysisModel(supabase);
+  const backends = await getVisionBackends(supabase, analysisModel);
+  if (backends.length === 0) return { ok: false, error: "analysis_unavailable" };
 
   // Product: reuse the selected one or create the draft automatically —
   // the user never has to visit "Products" first.
@@ -161,8 +176,10 @@ export async function runPromptSession(
     aspectRatio: input.aspectRatio,
   };
 
-  // Stage is tracked so a failed session tells admins WHERE it broke.
+  // Stage is tracked so a failed session tells admins WHERE it broke, and the
+  // vision outcome records which provider actually served the session.
   let stage: "references" | "analysis" | "scenes" | "prompts" = "references";
+  let usedOutcome: VisionOutcome | null = null;
   const startedAt = Date.now();
   try {
     const images = await downloadReferences(supabase, input.referencePaths);
@@ -191,16 +208,21 @@ export async function runPromptSession(
       await supabase.from("product_analysis_cache")
         .update({ hits: (cached.hits ?? 0) + 1 }).eq("id", cached.id);
     } else {
-      const fresh = await analyzeReferences(cred, images, sessionInfo, analysisModel);
+      const fresh = await analyzeReferences(backends, images, sessionInfo);
       analyses = fresh.images;
       manifest = fresh.manifest;
+      usedOutcome = fresh.outcome;
     }
 
     // 2) PRODUCT LOCK
     const lock = buildProductLock(manifest, analyses);
     await supabase.from("prompt_sessions").update({
       image_analysis: analyses as never, feature_manifest: manifest as never,
-      product_lock: lock as never, analysis_model: analysisModel,
+      product_lock: lock as never,
+      analysis_model: usedOutcome?.model ?? analysisModel,
+      analysis_provider: usedOutcome?.provider ?? null,
+      fallback_from: usedOutcome?.fallbackFrom ?? null,
+      fallback_reason: usedOutcome?.fallbackReason ?? null,
       reference_hash: referenceHash, cache_hit: cacheHit,
     }).eq("id", session.id);
     if (!cacheHit) {
@@ -217,14 +239,16 @@ export async function runPromptSession(
 
     // 3) SCENE STRATEGY + DIVERSITY (retry once to refill filtered slots)
     stage = "scenes";
-    let concepts = await proposeScenes(cred, images, analyses, manifest, sessionInfo, { model: analysisModel });
+    const scened = await proposeScenes(backends, images, analyses, manifest, sessionInfo);
+    let concepts = scened.concepts;
+    usedOutcome = scened.outcome;
     if (concepts.length < 5) {
       const missing = 5 - concepts.length;
       try {
-        const extra = await proposeScenes(cred, images, analyses, manifest, sessionInfo, {
-          count: missing, avoidSceneTypes: concepts.map((c) => c.scene_type), model: analysisModel,
+        const extra = await proposeScenes(backends, images, analyses, manifest, sessionInfo, {
+          count: missing, avoidSceneTypes: concepts.map((c) => c.scene_type),
         });
-        concepts = [...concepts, ...extra.filter((e) => !concepts.some((c) => c.scene_type === e.scene_type))].slice(0, 5);
+        concepts = [...concepts, ...extra.concepts.filter((e) => !concepts.some((c) => c.scene_type === e.scene_type))].slice(0, 5);
       } catch { /* keep what we have — 3+ distinct concepts beat a hard fail */ }
     }
     if (concepts.length === 0) throw new ProviderError("analysis_empty", true);
@@ -258,10 +282,20 @@ export async function runPromptSession(
     await supabase.from("prompt_sessions")
       .update({ status: "ready", latency_ms: Date.now() - startedAt })
       .eq("id", session.id);
+    // Internal record of what served this session: primary attempted, why we
+    // left it, which provider/model succeeded and how long it took.
     await supabase.rpc("log_activity", {
       p_workspace_id: workspaceId, p_action: "prompts.generated",
       p_entity_type: "prompt_session", p_entity_id: session.id,
-      p_metadata: { prompts: rows.length, images: images.length },
+      p_metadata: {
+        prompts: rows.length, images: images.length, cache_hit: cacheHit,
+        primary_provider: backends[0]?.provider ?? null, primary_model: analysisModel,
+        used_provider: usedOutcome?.provider ?? null, used_model: usedOutcome?.model ?? null,
+        fallback_from: usedOutcome?.fallbackFrom ?? null,
+        fallback_reason: usedOutcome?.fallbackReason ?? null,
+        vision_latency_ms: usedOutcome?.latencyMs ?? null,
+        total_latency_ms: Date.now() - startedAt,
+      },
     });
     return { ok: true, sessionId: session.id, productId: productId!, promptCount: rows.length };
   } catch (e) {
@@ -274,7 +308,8 @@ export async function runPromptSession(
       p_workspace_id: workspaceId, p_action: "prompts.failed",
       p_entity_type: "prompt_session", p_entity_id: session.id,
       p_metadata: {
-        stage, error: safe, model: analysisModel, provider: "google",
+        stage, error: safe, model: analysisModel,
+        providers_tried: backends.map((b) => b.provider),
         images: input.referencePaths.length, product_id: productId,
         latency_ms: Date.now() - startedAt,
       },
@@ -296,11 +331,9 @@ export async function regeneratePrompt(
     .from("prompt_sessions").select("*").eq("id", prompt.session_id).maybeSingle();
   if (!session || session.status !== "ready") return { ok: false, error: "not_found" };
 
-  const [cred, analysisModel] = await Promise.all([
-    getVisionCredential(supabase),
-    getAnalysisModel(supabase),
-  ]);
-  if (!cred) return { ok: false, error: "analysis_unavailable" };
+  const analysisModel = await getAnalysisModel(supabase);
+  const backends = await getVisionBackends(supabase, analysisModel);
+  if (backends.length === 0) return { ok: false, error: "analysis_unavailable" };
 
   const { data: siblings } = await supabase
     .from("generated_prompts").select("id, scene_type").eq("session_id", session.id);
@@ -317,9 +350,10 @@ export async function regeneratePrompt(
   try {
     const images = await downloadReferences(supabase, session.reference_paths ?? []);
     if (images.length === 0) return { ok: false, error: "references_required" };
-    const [concept]: SceneConcept[] = await proposeScenes(cred, images, analyses, manifest, sessionInfo, {
-      count: 1, avoidSceneTypes: avoid, model: analysisModel,
+    const { concepts } = await proposeScenes(backends, images, analyses, manifest, sessionInfo, {
+      count: 1, avoidSceneTypes: avoid,
     });
+    const [concept]: SceneConcept[] = concepts;
     if (!concept) return { ok: false, error: "analysis_empty" };
     const strength = chooseLockStrength(concept, manifest, lock.conflicts);
     const rationale = referenceRationale(concept, analyses).map((r) => `${r.image} — ${r.label}`).join("; ");

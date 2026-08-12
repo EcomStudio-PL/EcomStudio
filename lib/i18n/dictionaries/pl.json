@@ -481,7 +481,15 @@
     "sortOrder": "Kolejność",
     "pricingPerRes": "Cennik kredytów wg jakości",
     "pricingPerResHint": "Puste pole = wariant niedostępny. Wypełnione warianty tworzą przyciski 1K/2K/4K w Studio.",
-    "kpiUsers": "Klienci"
+    "kpiUsers": "Klienci",
+    "costSourceOfTruth": "Konfiguracja kosztów API tutaj jest źródłem prawdy dla nowych generacji. Historyczne zdarzenia zachowują koszt z momentu wykonania — zmiana ceny dziś nie przepisuje wcześniejszej ekonomiki.",
+    "perGeneration": "Na jedną generację",
+    "apiCostCfg": "Koszt API (konfig.)",
+    "snapshotNote": "Zmiana wpływa tylko na przyszłe generacje.",
+    "unavailable": {
+      "provider_quota": "Niedostępny — limit/billing dostawcy",
+      "provider_auth": "Niedostępny — klucz dostawcy odrzucony"
+    }
   },
   "support": {
     "title": "Pomoc i wiadomości",

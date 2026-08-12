@@ -1503,6 +1503,9 @@ export type Database = {
       prompt_sessions: {
         Row: {
           analysis_model: string | null
+          fallback_reason: string | null
+          fallback_from: string | null
+          analysis_provider: string | null
           aspect_ratio: string
           cache_hit: boolean
           created_at: string
@@ -1527,6 +1530,9 @@ export type Database = {
         }
         Insert: {
           analysis_model?: string | null
+          fallback_reason?: string | null
+          fallback_from?: string | null
+          analysis_provider?: string | null
           aspect_ratio?: string
           cache_hit?: boolean
           created_at?: string
@@ -1551,6 +1557,9 @@ export type Database = {
         }
         Update: {
           analysis_model?: string | null
+          fallback_reason?: string | null
+          fallback_from?: string | null
+          analysis_provider?: string | null
           aspect_ratio?: string
           cache_hit?: boolean
           created_at?: string

@@ -1,5 +1,5 @@
 import "server-only";
-import { callVisionJson, type VisionCredential } from "./vision";
+import { callVisionJson, type VisionBackend, type VisionOutcome } from "./vision";
 import {
   IMAGE_VIEWS, REFERENCE_ROLES, SCENE_TYPES,
   type FeatureManifest, type ImageAnalysis, type ImageView, type SceneConcept, type SessionInput,
@@ -172,13 +172,13 @@ Hard rules:
 - Write everything in English (prompts are consumed by image models).`;
 
 export async function proposeScenes(
-  cred: VisionCredential,
+  backends: VisionBackend[],
   images: { base64: string; mime: string }[],
   analyses: ImageAnalysis[],
   manifest: FeatureManifest,
   info: SessionInput,
-  opts?: { count?: number; avoidSceneTypes?: string[]; model?: string }
-): Promise<SceneConcept[]> {
+  opts?: { count?: number; avoidSceneTypes?: string[] }
+): Promise<{ concepts: SceneConcept[]; outcome: VisionOutcome }> {
   const count = opts?.count ?? 5;
   const available = supportedViews(analyses);
   const user = [
@@ -192,9 +192,9 @@ export async function proposeScenes(
     `Design exactly ${count} clearly different concept${count === 1 ? "" : "s"}.`,
   ].filter(Boolean).join("\n\n");
 
-  const out = await callVisionJson<{ concepts: SceneConcept[] }>({
-    cred, images, system: SYSTEM, user, schema: SCENE_SCHEMA, model: opts?.model,
-  });
+  const { data: out, outcome } = await callVisionJson<{ concepts: SceneConcept[] }>(
+    backends, { images, system: SYSTEM, user, schema: SCENE_SCHEMA }
+  );
 
   let concepts = (out.concepts ?? []).map((c) => clampRefs(c, images.length, analyses));
 
@@ -205,5 +205,5 @@ export async function proposeScenes(
   const bad = new Set(diversityViolations(concepts));
   concepts = concepts.filter((_, i) => !bad.has(i));
 
-  return concepts.slice(0, count);
+  return { concepts: concepts.slice(0, count), outcome };
 }

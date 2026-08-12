@@ -34,6 +34,8 @@ export default async function AdminModels() {
     pricing: (m.pricing ?? {}) as Record<string, number>,
     supported_resolutions: m.supported_resolutions ?? ["1K"],
     providerName: m.ai_providers?.name ?? "—",
+    unavailableReason: (m.metadata as { unavailable_reason?: string } | null)?.unavailable_reason ?? null,
+    unavailableNote: (m.metadata as { unavailable_note?: string } | null)?.unavailable_note ?? null,
   }));
   return (
     <div>
@@ -43,6 +45,7 @@ export default async function AdminModels() {
           <ModelRow key={m.id} m={m} usdToPln={usdToPln} plnPerCredit={plnPerCredit} locale={locale} />
         ))}
       </div>
+      <p className="mt-4 text-xs text-faint">{t("admin.costSourceOfTruth")}</p>
       <p className="mt-4 text-sm text-faint">{t("admin.economicsNote")}</p>
     </div>
   );

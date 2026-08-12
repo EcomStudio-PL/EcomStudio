@@ -8,6 +8,7 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Select, Label } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 export type ModelView = {
   id: string; name: string; model_identifier: string; type: string; active: boolean;
@@ -16,6 +17,8 @@ export type ModelView = {
   description: string | null; providerName: string;
   display_name: string | null; badge: string | null; sort_order: number;
   pricing: Record<string, number>; supported_resolutions: string[];
+  /** Why this model is switched off, for staff eyes only. */
+  unavailableReason: string | null; unavailableNote: string | null;
 };
 
 const RES_TIERS = ["1K", "2K", "4K"] as const;
@@ -96,17 +99,32 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
           </p>
         </div>
         <div className="hidden text-right sm:block">
-          <p className="text-sm font-semibold text-accent">{m.credit_cost} kr</p>
-          <p className="text-xs text-faint">≈ {fmtPln(userPln)}</p>
+          <p className="text-sm font-semibold tabular-nums text-accent">{m.credit_cost} kr</p>
+          <p className="text-xs tabular-nums text-faint">≈ {fmtPln(userPln)}</p>
         </div>
         <div className="hidden text-right md:block">
-          <p className="text-xs text-muted">{t("admin.internalCost")}: {fmtPln(costPln)}</p>
-          <p className="text-xs text-muted">{t("admin.margin")}: <span className="font-medium text-ink">{fmtPln(marginPln)} / {marginPct}%</span></p>
+          <p className="text-xs tabular-nums text-muted">{t("admin.internalCost")}: {fmtPln(costPln)}</p>
+          <p className="text-xs tabular-nums text-muted">
+            {t("admin.margin")}: <span className={cn("font-medium", marginPct >= 30 ? "text-ink" : "text-accent2")}>
+              {fmtPln(marginPln)} / {marginPct}%
+            </span>
+          </p>
         </div>
-        <Badge tone={m.active ? "green" : "amber"}>{m.active ? t("admin.active") : t("admin.inactive")}</Badge>
+        {m.active
+          ? <Badge tone="green">{t("admin.active")}</Badge>
+          : (
+            <Badge tone={m.unavailableReason ? "red" : "amber"}>
+              {m.unavailableReason
+                ? t(`admin.unavailable.${m.unavailableReason}`, {}) || t("admin.inactive")
+                : t("admin.inactive")}
+            </Badge>
+          )}
       </button>
 
-      <Modal open={open} onClose={() => setOpen(false)} title={m.name} wide>
+      <Modal open={open} onClose={() => setOpen(false)} title={m.display_name ?? m.name} wide>
+        {m.unavailableNote && (
+          <p className="mb-4 rounded-xl bg-accent2-soft px-4 py-3 text-xs text-accent2">{m.unavailableNote}</p>
+        )}
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <Label>{t("common.name")}</Label>
@@ -183,11 +201,24 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
             <Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
         </div>
-        <div className="mt-4 rounded-xl bg-raised px-4 py-3 text-xs text-muted">
-          {t("admin.marginPreview", {
-            user: fmtPln(parseInt(form.credit_cost || "0", 10) * plnPerCredit),
-            cost: fmtPln(parseFloat(form.internal_usd || "0") * usdToPln),
-          })}
+        <div className="mt-4 rounded-xl bg-raised px-4 py-3">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-faint">{t("admin.perGeneration")}</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-5">
+            <Econ label={t("admin.apiCostCfg")} value={`$${(parseFloat(form.internal_usd || "0")).toFixed(4)}`} />
+            <Econ label={t("admin.userCost")} value={`${parseInt(form.credit_cost || "0", 10)} kr`} />
+            <Econ label={t("econ.revenue")} value={fmtPln(parseInt(form.credit_cost || "0", 10) * plnPerCredit)} />
+            <Econ label={t("econ.apiCost")} value={fmtPln(parseFloat(form.internal_usd || "0") * usdToPln)} tone="warm" />
+            <Econ
+              label={t("econ.margin")}
+              value={(() => {
+                const rev = parseInt(form.credit_cost || "0", 10) * plnPerCredit;
+                const cost = parseFloat(form.internal_usd || "0") * usdToPln;
+                return rev > 0 ? `${fmtPln(rev - cost)} / ${Math.round(((rev - cost) / rev) * 1000) / 10}%` : "—";
+              })()}
+              tone="good"
+            />
+          </div>
+          <p className="mt-2 text-[11px] text-faint">{t("admin.snapshotNote")}</p>
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
@@ -195,5 +226,15 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
         </div>
       </Modal>
     </>
+  );
+}
+
+function Econ({ label, value, tone }: { label: string; value: string; tone?: "warm" | "good" }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide text-muted">{label}</p>
+      <p className={cn("font-display text-sm font-semibold tabular-nums",
+        tone === "warm" && "text-accent2", tone === "good" && "text-accent")}>{value}</p>
+    </div>
   );
 }
