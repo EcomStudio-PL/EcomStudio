@@ -126,6 +126,11 @@ async function runBackend<T>(backend: VisionBackend, req: VisionRequest): Promis
       }
     }
   }
+  // Every id this provider offers is unusable — that is a provider-level
+  // problem, so the chain must move to the next provider rather than fail.
+  if (lastError instanceof ProviderError && lastError.safeMessage === "analysis_model_missing") {
+    throw new ProviderError("analysis_unavailable", true);
+  }
   throw lastError;
 }
 
