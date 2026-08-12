@@ -148,9 +148,10 @@ async function classify(res: Response): Promise<ProviderError | null> {
   if (status === 401 || status === 403) return new ProviderError("analysis_unavailable", true, code);
   if (status === 404) return new ProviderError("analysis_model_missing", true, code);
   if (status === 429) {
-    // OpenAI reports an empty balance as 429/insufficient_quota; that is a
-    // billing state, not congestion, and no amount of waiting fixes it.
-    const quota = code === "insufficient_quota";
+    // An empty balance arrives as 429 too ("insufficient_quota" /
+    // "credit_balance_exhausted"). That is a billing state, not congestion:
+    // retrying cannot fix it, so it is classified separately.
+    const quota = code === "insufficient_quota" || code === "credit_balance_exhausted";
     return new ProviderError(quota ? "analysis_quota" : "analysis_rate_limited", !quota, code);
   }
   if (status === 503) return new ProviderError("analysis_overloaded", true, code);
