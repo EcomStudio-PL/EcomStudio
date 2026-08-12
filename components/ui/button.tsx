@@ -3,17 +3,20 @@ import { cn } from "@/lib/utils";
 import { forwardRef } from "react";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
-type Size = "sm" | "md";
+type Size = "sm" | "md" | "lg";
 
 const variants: Record<Variant, string> = {
-  primary: "brand-gradient text-white hover:opacity-90 shadow-sm",
-  secondary: "bg-surface border border-line text-ink hover:bg-raised",
+  // Primary carries the lit-edge CTA treatment; everything else stays quiet
+  // so a screen never has two things shouting at the same volume.
+  primary: "cta font-semibold",
+  secondary: "plate text-ink hover:border-[rgb(var(--accent)/0.35)] hover:bg-raised",
   ghost: "text-muted hover:text-ink hover:bg-raised",
-  danger: "bg-red-600 text-white hover:bg-red-700",
+  danger: "bg-danger text-white hover:brightness-110 shadow-e1",
 };
 const sizes: Record<Size, string> = {
-  sm: "h-8 px-3 text-sm rounded-lg",
-  md: "h-10 px-4 text-sm rounded-xl",
+  sm: "h-9 px-3.5 text-[13px] rounded-lg",
+  md: "h-11 px-5 text-sm rounded-xl",
+  lg: "h-12 px-6 text-[15px] rounded-2xl w-full sm:w-auto",
 };
 
 export const Button = forwardRef<

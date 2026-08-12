@@ -16,7 +16,7 @@ export default async function InspirationsPage() {
   const categories = [...new Set(items.map((i) => i.category))];
   return (
     <div>
-      <PageHeader title={t("insp.title")} sub={t("insp.sub")} />
+      <PageHeader overline={t("nav.groups.create")} title={t("insp.title")} sub={t("insp.sub")} />
       <InspirationGallery items={items} categories={categories} />
     </div>
   );

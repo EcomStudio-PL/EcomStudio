@@ -61,7 +61,7 @@ export function InspirationManager({ items }: { items: InspirationRow[] }) {
         <Button size="sm" onClick={() => open(blank)}>+ {t("insp.new")}</Button>
       </div>
       {items.length === 0 ? (
-        <div className="glass rounded-2xl p-10 text-center">
+        <div className="panel rounded-2xl p-10 text-center">
           <p className="text-sm font-semibold">{t("insp.emptyAdminTitle")}</p>
           <p className="mt-1 text-sm text-muted">{t("insp.emptyAdminBody")}</p>
         </div>
@@ -70,7 +70,7 @@ export function InspirationManager({ items }: { items: InspirationRow[] }) {
           {items.map((r) => (
             <li key={r.id}>
               <button type="button" onClick={() => open(r)}
-                className="glass w-full rounded-2xl p-4 text-left transition-transform duration-150 hover:-translate-y-0.5">
+                className="panel panel-interactive w-full rounded-2xl p-4 text-left">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <p className="min-w-0 flex-1 truncate text-sm font-semibold">{r.title}</p>
                   <Badge tone={r.status === "published" ? "green" : "amber"}>

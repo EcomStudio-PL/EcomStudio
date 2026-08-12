@@ -2,12 +2,13 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Copy, Sparkles, Star } from "lucide-react";
+import { Copy, Lightbulb, Search, Sparkles, Star, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
+import { Chip, ChipRow } from "@/components/ui/chip";
+import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 
 export type InspirationCard = {
@@ -16,6 +17,10 @@ export type InspirationCard = {
   format: string | null; tags: string[]; premium: boolean; featured: boolean;
   before_url: string | null; after_urls: string[]; video_url: string | null;
 };
+
+/** Shown in the empty state so the page reads as a section awaiting content
+ *  rather than a dead end. */
+const PREVIEW_HINTS = ["lifestyle", "packshot", "marketplace", "detail", "studio"];
 
 export function InspirationGallery({ items, categories }: {
   items: InspirationCard[]; categories: string[];
@@ -46,38 +51,59 @@ export function InspirationGallery({ items, categories }: {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="w-full sm:w-64">
-          <Input placeholder={`${t("common.search")}…`} value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          <button type="button" onClick={() => setCat(null)}
-            className={cn("rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-              !cat ? "bg-accent-soft text-accent" : "text-muted hover:bg-raised")}>
-            {t("insp.all")}
-          </button>
-          {categories.map((c) => (
-            <button key={c} type="button" onClick={() => setCat(c === cat ? null : c)}
-              className={cn("rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-                c === cat ? "bg-accent-soft text-accent" : "text-muted hover:bg-raised")}>
-              {t(`insp.cat.${c}`)}
+      {/* Search + categories: one editorial control strip, scrollable on phones. */}
+      <div className="mb-5 space-y-3">
+        <div className="relative">
+          <Search aria-hidden size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-faint" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={`${t("common.search")}…`}
+            aria-label={t("common.search")}
+            className={cn(
+              "w-full rounded-2xl bg-sunken/70 py-3.5 pl-11 pr-11 text-base sm:text-sm",
+              "border border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.2))] placeholder:text-faint",
+              "transition-[background-color,border-color,box-shadow] duration-150",
+              "focus:bg-surface focus:border-[rgb(var(--accent)/0.55)] focus:outline-none focus:ring-4 focus:ring-[rgb(var(--accent)/0.14)]"
+            )}
+          />
+          {q && (
+            <button type="button" aria-label={t("common.clearFilters")} onClick={() => setQ("")}
+              className="absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-faint transition-colors hover:bg-raised hover:text-ink">
+              <X size={14} />
             </button>
-          ))}
+          )}
         </div>
+        {categories.length > 0 && (
+          <ChipRow>
+            <Chip active={!cat} onClick={() => setCat(null)}>{t("insp.all")}</Chip>
+            {categories.map((c) => (
+              <Chip key={c} active={c === cat} onClick={() => setCat(c === cat ? null : c)}>
+                {t(`insp.cat.${c}`)}
+              </Chip>
+            ))}
+          </ChipRow>
+        )}
       </div>
 
       {filtered.length === 0 ? (
-        <div className="glass rounded-2xl p-10 text-center">
-          <p className="text-sm font-semibold">{t("insp.emptyTitle")}</p>
-          <p className="mt-1 text-sm text-muted">{t("insp.emptyBody")}</p>
-        </div>
+        <EmptyState
+          icon={Lightbulb}
+          title={t("insp.emptyTitle")}
+          body={t("insp.emptyBody")}
+          hints={PREVIEW_HINTS.map((k) => t(`insp.cat.${k}`))}
+        />
       ) : (
         <>
           {featured.length > 0 && (
             <>
-              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-faint">
-                <Star size={12} className="text-accent2" /> Featured
-              </p>
+              <div className="mb-3 flex items-center gap-2">
+                <span aria-hidden className="accent-rule h-px w-6 rounded-full" />
+                <span className="overline flex items-center gap-1.5">
+                  <Star size={11} className="text-accent2" aria-hidden /> Featured
+                </span>
+                <span aria-hidden className="h-px flex-1 bg-[rgb(var(--hairline)/var(--hairline-alpha))]" />
+              </div>
               <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {featured.map((i) => <Card key={i.id} item={i} onOpen={setOpenItem} />)}
               </div>
@@ -144,7 +170,7 @@ export function InspirationGallery({ items, categories }: {
     const cover = item.after_urls[0] ?? item.before_url;
     return (
       <button type="button" onClick={() => onOpen(item)}
-        className="glass group overflow-hidden rounded-2xl text-left transition-transform duration-150 hover:-translate-y-0.5">
+        className="panel panel-interactive group overflow-hidden rounded-2xl text-left">
         <div className="relative aspect-[4/3] bg-gradient-to-br from-accent/15 via-raised to-accent2/10">
           {cover && (
             // eslint-disable-next-line @next/next/no-img-element

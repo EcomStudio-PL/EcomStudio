@@ -20,15 +20,25 @@ export function NavLink({ href, label, icon: Icon, onNavigate }: {
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "relative flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150",
+        "group relative flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-150",
         active
-          ? "bg-gradient-to-r from-accent-soft to-[rgb(var(--accent-soft)/0.35)] text-ink shadow-[inset_0_1px_0_rgb(var(--accent)/0.15)]"
-          : "text-muted hover:bg-accent-soft/40 hover:text-ink"
+          ? "bg-[linear-gradient(90deg,rgb(var(--accent)/0.18),rgb(var(--accent)/0.04))] font-semibold text-ink shadow-[inset_0_1px_0_rgb(255_255_255/0.06)]"
+          : "font-medium text-muted hover:bg-[rgb(var(--accent)/0.08)] hover:text-ink"
       )}
     >
-      {active && <span aria-hidden className="brand-gradient absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full" />}
-      <Icon aria-hidden size={17} strokeWidth={2} className={cn("shrink-0", active ? "text-accent" : "text-faint")} />
-      {label}
+      {/* Active rail: a lit bar on the left edge, the one place the brand
+          gradient appears in navigation. */}
+      <span aria-hidden className={cn(
+        "brand-gradient absolute left-0 top-1/2 w-[3px] -translate-y-1/2 rounded-r-full transition-all duration-200",
+        active ? "h-6 opacity-100" : "h-2 opacity-0 group-hover:h-4 group-hover:opacity-40"
+      )} />
+      <span aria-hidden className={cn(
+        "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors duration-150",
+        active ? "bg-[rgb(var(--accent)/0.18)] text-accent" : "text-faint group-hover:text-muted"
+      )}>
+        <Icon size={16} strokeWidth={active ? 2.3 : 2} />
+      </span>
+      <span className="truncate">{label}</span>
     </Link>
   );
 }

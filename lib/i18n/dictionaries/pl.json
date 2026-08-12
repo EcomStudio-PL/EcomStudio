@@ -53,7 +53,10 @@
     "signOut": "Wyloguj się",
     "search": "Szukaj",
     "clearFilters": "Wyczyść filtry",
-    "close": "Zamknij"
+    "close": "Zamknij",
+    "all": "Wszystkie",
+    "photos": "zdjęć",
+    "noPhotos": "Brak zdjęć"
   },
   "landing": {
     "headline": "Profesjonalne materiały produktowe z AI. Szybciej niż klasyczne studio.",
@@ -774,7 +777,12 @@
       "bad_scene": "słaba scena",
       "bad_quality": "słaba jakość",
       "other": "inne"
-    }
+    },
+    "step1": "Krok 1 — Produkt",
+    "step2": "Krok 2 — Referencje",
+    "step3": "Krok 3 — Prompt",
+    "step4": "Krok 4 — Model",
+    "step5": "Wynik"
   },
   "notif": {
     "title": "Powiadomienia",

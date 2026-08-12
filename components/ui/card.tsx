@@ -1,19 +1,20 @@
 import { cn } from "@/lib/utils";
+import { PanelHeader } from "./section-header";
 
+/** Card is the panel surface — kept as the app-wide alias so every existing
+ *  screen picks up the new elevation language without being rewritten. */
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div className={cn("glass rounded-2xl", className)} {...props} />
-  );
+  return <div className={cn("panel rounded-2xl", className)} {...props} />;
 }
 
-export function CardHeader({ title, sub, action }: { title: string; sub?: string; action?: React.ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
-      <div>
-        <h2 className="font-display text-base font-semibold">{title}</h2>
-        {sub && <p className="mt-0.5 text-sm text-muted">{sub}</p>}
-      </div>
-      {action}
-    </div>
-  );
+/** Card header. Accepts the original title/sub/action API, plus the overline
+ *  and icon the redesigned screens use. */
+export function CardHeader({ title, sub, action, overline, icon }: {
+  title: string;
+  sub?: string;
+  action?: React.ReactNode;
+  overline?: string;
+  icon?: React.ComponentProps<typeof PanelHeader>["icon"];
+}) {
+  return <PanelHeader title={title} sub={sub} action={action} overline={overline} icon={icon} />;
 }

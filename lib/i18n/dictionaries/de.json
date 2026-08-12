@@ -53,7 +53,10 @@
     "signOut": "Abmelden",
     "search": "Suchen",
     "clearFilters": "Filter zurücksetzen",
-    "close": "Schließen"
+    "close": "Schließen",
+    "all": "Alle",
+    "photos": "Fotos",
+    "noPhotos": "Keine Fotos"
   },
   "landing": {
     "headline": "Professionelle Produktvisuals mit KI. Schneller als ein Fotostudio.",
@@ -774,7 +777,12 @@
       "bad_scene": "schwache Szene",
       "bad_quality": "schwache Qualität",
       "other": "anderes"
-    }
+    },
+    "step1": "Schritt 1 — Produkt",
+    "step2": "Schritt 2 — Referenzen",
+    "step3": "Schritt 3 — Prompt",
+    "step4": "Schritt 4 — Modell",
+    "step5": "Ergebnis"
   },
   "notif": {
     "title": "Benachrichtigungen",

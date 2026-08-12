@@ -57,14 +57,14 @@ export function PromptBlocksManager({ blocks }: { blocks: PromptBlock[] }) {
         <Button size="sm" onClick={() => setEditing(blank)}>+ {t("admin.newBlock")}</Button>
       </div>
       {byCategory.length === 0 ? (
-        <div className="glass rounded-2xl p-8 text-center">
+        <div className="panel rounded-2xl p-8 text-center">
           <p className="text-sm font-semibold">{t("admin.noBlocksTitle")}</p>
           <p className="mt-1 text-sm text-muted">{t("admin.noBlocksBody")}</p>
         </div>
       ) : (
         <div className="space-y-4">
           {byCategory.map((g) => (
-            <div key={g.category} className="glass rounded-2xl">
+            <div key={g.category} className="panel rounded-2xl">
               <p className="border-b border-line px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-faint">
                 {t(`admin.blockCat.${g.category}`)}
               </p>

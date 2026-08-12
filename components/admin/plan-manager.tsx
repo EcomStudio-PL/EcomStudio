@@ -69,7 +69,7 @@ export function PlanManager({ plans }: { plans: PlanRow[] }) {
         {plans.map((p) => (
           <li key={p.id}>
             <button type="button" onClick={() => open(p)}
-              className="glass w-full rounded-2xl p-4 text-left transition-transform duration-150 hover:-translate-y-0.5">
+              className="panel panel-interactive w-full rounded-2xl p-4 text-left">
               <div className="flex items-center justify-between gap-2">
                 <p className="truncate text-sm font-semibold">{p.name}</p>
                 {!p.active ? <Badge tone="amber">{t("admin.inactive")}</Badge>

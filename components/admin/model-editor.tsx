@@ -87,7 +87,7 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
   return (
     <>
       <button type="button" onClick={() => setOpen(true)}
-        className="glass flex w-full flex-wrap items-center gap-3 rounded-2xl px-5 py-4 text-left transition-transform duration-150 hover:-translate-y-0.5">
+        className="panel panel-interactive flex w-full flex-wrap items-center gap-3 rounded-2xl px-5 py-4 text-left">
         <span aria-hidden className="flex h-9 w-9 items-center justify-center rounded-lg bg-raised font-display text-sm font-bold text-accent">
           {m.providerName.charAt(0)}
         </span>

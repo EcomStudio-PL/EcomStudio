@@ -50,7 +50,7 @@ export function ProviderCard({ p, encryptionReady, locale }: {
     iso ? new Intl.DateTimeFormat(locale === "pl" ? "pl-PL" : locale === "de" ? "de-DE" : "en-GB", { dateStyle: "short", timeStyle: "short" }).format(new Date(iso)) : "—";
 
   return (
-    <div className="glass rounded-2xl p-5 transition-transform duration-200 hover:-translate-y-0.5">
+    <div className="panel panel-interactive rounded-2xl p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <span aria-hidden className="flex h-10 w-10 items-center justify-center rounded-xl bg-raised font-display text-base font-bold text-accent">

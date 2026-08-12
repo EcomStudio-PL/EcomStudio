@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import { Box, ImageIcon, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
@@ -9,7 +10,7 @@ import { signImageUrls } from "@/lib/services/images";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
-import { FilterBar } from "@/components/ui/filter-bar";
+import { BrowserFilters } from "@/components/products/browser-filters";
 
 const STATUSES = ["draft", "ready", "processing", "completed", "archived"];
 
@@ -29,48 +30,77 @@ export default async function ProductsPage({ searchParams }: {
     .map((p) => (p.product_images.find((i) => i.is_primary) ?? p.product_images[0])?.storage_path)
     .filter((v): v is string => !!v);
   const urls = await signImageUrls(supabase, thumbPaths);
+  const filtering = Boolean(q || status);
 
   return (
     <div>
-      <PageHeader title={t("products.title")} sub={t("products.sub")} action={
-        <Link href="/products/new" className="brand-gradient rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-90">
-          + {t("products.new")}
-        </Link>
-      } />
-      <FilterBar filters={[{
-        param: "status",
-        labelKey: "common.status",
-        options: STATUSES.map((s) => ({ value: s, label: t(`products.status.${s}`) })),
-      }]} />
-      {products.length === 0 ? (
-        <EmptyState title={t("products.emptyTitle")} body={t("products.emptyBody")} action={
-          <Link href="/products/new" className="brand-gradient rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-90">
-            + {t("products.new")}
+      <PageHeader
+        overline={t("nav.groups.work")}
+        title={t("products.title")}
+        sub={t("products.sub")}
+        action={
+          <Link href="/products/new"
+            className="cta inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold sm:w-auto">
+            <Plus size={16} aria-hidden />
+            {t("products.new")}
           </Link>
-        } />
+        }
+      />
+
+      <BrowserFilters statuses={STATUSES.map((s) => ({ value: s, label: t(`products.status.${s}`) }))} />
+
+      {products.length === 0 ? (
+        <EmptyState
+          icon={Box}
+          title={filtering ? t("common.search") : t("products.emptyTitle")}
+          body={filtering ? undefined : t("products.emptyBody")}
+          action={
+            <Link href="/products/new"
+              className="cta inline-flex h-11 items-center gap-2 rounded-xl px-5 text-sm font-semibold">
+              <Plus size={16} aria-hidden />
+              {t("products.new")}
+            </Link>
+          }
+        />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="stagger grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
           {products.map((p) => {
             const thumb = (p.product_images.find((i) => i.is_primary) ?? p.product_images[0])?.storage_path;
             const url = thumb ? urls.get(thumb) : undefined;
+            const photos = p.product_images.length;
             return (
               <Link key={p.id} href={`/products/${p.id}`}
-                className="group overflow-hidden rounded-2xl border border-line bg-surface transition hover:border-accent/50 hover:shadow-md">
-                <div className="relative aspect-[4/3] bg-raised">
+                className="panel panel-interactive group flex flex-col overflow-hidden rounded-2xl">
+                {/* Media plate: the product is the hero, metadata floats over it. */}
+                <div className="relative aspect-[4/3] overflow-hidden bg-sunken">
                   {url ? (
-                    <Image src={url} alt={p.name} fill sizes="(max-width:640px) 100vw, 33vw" className="object-cover" />
+                    <Image src={url} alt={p.name} fill sizes="(max-width:640px) 100vw, 33vw"
+                      className="object-cover transition-transform duration-500 group-hover:scale-[1.04]" />
                   ) : (
-                    <div className="flex h-full items-center justify-center text-3xl text-muted">◨</div>
+                    <div className="flex h-full flex-col items-center justify-center gap-1.5 text-faint">
+                      <ImageIcon size={22} aria-hidden />
+                      <span className="text-[11px] font-medium">{t("common.noPhotos")}</span>
+                    </div>
                   )}
-                </div>
-                <div className="flex items-start justify-between gap-2 p-4">
-                  <div className="min-w-0">
-                    <h3 className="truncate text-sm font-semibold">{p.name}</h3>
-                    <p className="mt-0.5 truncate text-xs text-muted">
-                      {p.category ?? "—"}{p.marketplace ? ` · ${t(`products.mp.${p.marketplace}`)}` : ""}
-                    </p>
+                  <div aria-hidden className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/55 to-transparent opacity-90" />
+                  <div className="absolute inset-x-3 bottom-2.5 flex items-end justify-between gap-2">
+                    <Badge tone={p.status === "ready" ? "green" : "neutral"} dot
+                      className="backdrop-blur-md">
+                      {t(`products.status.${p.status}`)}
+                    </Badge>
+                    {photos > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-black/45 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-md">
+                        <ImageIcon size={10} aria-hidden />
+                        {photos}
+                      </span>
+                    )}
                   </div>
-                  <Badge>{t(`products.status.${p.status}`)}</Badge>
+                </div>
+                <div className="flex min-w-0 flex-1 flex-col justify-center px-4 py-3">
+                  <h3 className="truncate text-sm font-semibold tracking-tight">{p.name}</h3>
+                  <p className="mt-0.5 truncate text-[11px] text-faint">
+                    {p.category ?? "—"}{p.marketplace ? ` · ${t(`products.mp.${p.marketplace}`)}` : ""}
+                  </p>
                 </div>
               </Link>
             );

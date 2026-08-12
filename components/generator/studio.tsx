@@ -3,10 +3,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, ChevronDown, Download, ImagePlus, Loader2, RefreshCw, Sparkles, Star, X } from "lucide-react";
+import { Box, Check, ChevronDown, Download, ImageIcon, ImagePlus, Layers, Loader2, RefreshCw, Settings2, Sparkles, Star, Wand2, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardHeader } from "@/components/ui/card";
+import { Panel } from "@/components/ui/surface";
+import { PanelHeader } from "@/components/ui/section-header";
+import { Segmented } from "@/components/ui/segmented";
+import { Chip, ChipRow } from "@/components/ui/chip";
+import { ActionBar } from "@/components/ui/action-bar";
 import { Input, Textarea, Label } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -165,43 +170,44 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
 
   if (models.length === 0) {
     return (
-      <Card className="p-8 text-center">
+      <Panel className="relative overflow-hidden rounded-3xl p-9 text-center">
+        <span aria-hidden className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-raised text-accent ring-1 ring-[rgb(var(--accent)/0.25)]">
+          <Wand2 size={22} />
+        </span>
         <p className="font-display text-lg font-semibold">{t("generator.noModelsTitle")}</p>
-        <p className="mx-auto mt-2 max-w-md text-sm text-muted">{t("generator.noModelsBody")}</p>
-      </Card>
+        <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted">{t("generator.noModelsBody")}</p>
+      </Panel>
     );
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+    <div className="grid gap-4 pb-28 lg:grid-cols-[minmax(0,1fr)_360px] lg:pb-0">
       <div className="min-w-0 space-y-4">
         {session && (
-          <div className="glass anim-fade flex items-center gap-2 rounded-2xl px-4 py-3">
-            <Sparkles size={14} className="shrink-0 text-accent" />
-            <p className="text-xs text-muted">
+          <div className="animate-rise flex items-center gap-3 rounded-2xl border border-[rgb(var(--accent)/0.35)] bg-[linear-gradient(100deg,rgb(var(--accent)/0.16),transparent)] px-4 py-3">
+            <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[rgb(var(--accent)/0.2)] text-accent">
+              <Sparkles size={15} />
+            </span>
+            <p className="min-w-0 text-[13px] font-medium text-ink">
               {t("studio.fromPrompts", { name: session.productName })}
             </p>
           </div>
         )}
 
         {/* PRODUCT / CONTEXT */}
-        <Card>
-          <CardHeader title={t("studio.context")} sub={t("studio.contextSub")} />
-          <div className="space-y-3 p-5 pt-3">
-            <div className="flex flex-wrap gap-1.5">
-              <button type="button" onClick={() => { setProductId(""); setRefs([]); }}
-                className={cn("rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors",
-                  !productId ? "brand-gradient text-white" : "border border-line text-muted hover:bg-raised")}>
+        <Panel>
+          <PanelHeader overline={t("studio.step1")} title={t("studio.context")} sub={t("studio.contextSub")} icon={Box} />
+          <div className="space-y-3.5 p-4 pt-3.5 sm:p-5">
+            <ChipRow>
+              <Chip active={!productId} onClick={() => { setProductId(""); setRefs([]); }}>
                 + {t("studio.newProduct")}
-              </button>
+              </Chip>
               {products.map((p) => (
-                <button key={p.id} type="button" onClick={() => pickProduct(p.id)}
-                  className={cn("max-w-40 truncate rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors",
-                    productId === p.id ? "brand-gradient text-white" : "border border-line text-muted hover:bg-raised")}>
+                <Chip key={p.id} active={productId === p.id} onClick={() => pickProduct(p.id)}>
                   {p.name}
-                </button>
+                </Chip>
               ))}
-            </div>
+            </ChipRow>
             {productId && product ? (
               <p className="text-xs text-muted">
                 {product.name}{product.category ? ` · ${product.category}` : ""} — {t("studio.usingSaved")}
@@ -252,23 +258,43 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
               </div>
             )}
           </div>
-        </Card>
+        </Panel>
 
         {/* REFERENCES */}
-        <Card>
-          <CardHeader title={t("studio.refs")} sub={model?.supportsReferenceImages ? t("studio.refsSub") : t("studio.refsUnsupported")} />
-          <div className="p-5 pt-3">
+        <Panel>
+          <PanelHeader
+            overline={t("studio.step2")}
+            title={t("studio.refs")}
+            sub={model?.supportsReferenceImages ? t("studio.refsSub") : t("studio.refsUnsupported")}
+            icon={ImageIcon}
+            action={refs.length > 0 ? (
+              <span className="plate rounded-full px-2.5 py-1 text-[11px] font-semibold tabular-nums text-muted">
+                {refs.filter((r) => r.selected).length}/{refs.length}
+              </span>
+            ) : undefined}
+          />
+          <div className="p-4 pt-3.5 sm:p-5">
             <input ref={fileRef} type="file" multiple accept="image/jpeg,image/png,image/webp,image/avif"
               className="hidden" onChange={(e) => e.target.files && upload(e.target.files)} />
             <div className="flex flex-wrap gap-2.5">
               {refs.map((r, i) => (
-                <div key={r.key} className={cn("group relative h-24 w-24 overflow-hidden rounded-xl border-2 transition-colors",
-                  r.selected ? "border-accent" : "border-line opacity-60")}>
+                <div key={r.key} className={cn(
+                  "group relative h-24 w-24 overflow-hidden rounded-xl transition-all duration-200",
+                  r.selected
+                    ? "ring-2 ring-accent shadow-[0_8px_24px_-14px_rgb(var(--accent)/0.9)]"
+                    : "opacity-55 ring-1 ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))] grayscale hover:opacity-80 hover:grayscale-0")}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={r.url} alt="" className="h-full w-full cursor-pointer object-cover"
                     onClick={() => setRefs(refs.map((x, j) => j === i ? { ...x, selected: !x.selected } : x))} />
                   {i === 0 && r.selected && (
-                    <span className="absolute left-1 top-1 rounded-full bg-black/60 p-1"><Star size={10} className="text-accent2" /></span>
+                    <span className="absolute left-1 top-1 rounded-full bg-black/60 p-1 backdrop-blur-sm">
+                      <Star size={10} className="text-accent2" />
+                    </span>
+                  )}
+                  {r.selected && (
+                    <span aria-hidden className="absolute bottom-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-white">
+                      <Check size={10} strokeWidth={3} />
+                    </span>
                   )}
                   <button type="button" aria-label={t("common.delete")}
                     onClick={() => setRefs(refs.filter((_, j) => j !== i))}
@@ -278,20 +304,20 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
                 </div>
               ))}
               <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()}
-                className="flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-line text-muted transition-colors hover:border-accent/50 hover:text-ink"
+                className="flex h-24 w-24 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/60 text-faint transition-colors hover:border-[rgb(var(--accent)/0.6)] hover:bg-accent-soft/30 hover:text-accent"
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) upload(e.dataTransfer.files); }}>
                 {uploading ? <Loader2 size={18} className="animate-spin" /> : <ImagePlus size={18} />}
-                <span className="text-[10px] font-medium">{t("products.upload")}</span>
+                <span className="text-[10px] font-semibold">{t("products.upload")}</span>
               </button>
             </div>
           </div>
-        </Card>
+        </Panel>
 
         {/* PROMPT */}
-        <Card>
-          <CardHeader title="Prompt" sub={t("studio.promptSub")} />
-          <div className="space-y-3 p-5 pt-3">
+        <Panel>
+          <PanelHeader overline={t("studio.step3")} title="Prompt" sub={t("studio.promptSub")} icon={Wand2} />
+          <div className="space-y-3 p-4 pt-3.5 sm:p-5">
             <Textarea rows={session ? 8 : 4} value={prompt} placeholder={t("studio.promptPh")}
               onChange={(e) => setPrompt(e.target.value)} />
             {model?.supportsNegativePrompt !== false && (
@@ -308,17 +334,17 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
               </>
             )}
             <p className="text-xs text-faint">
-              {t("studio.inspHint")} <Link href="/inspirations" className="text-accent hover:underline">{t("insp.title")}</Link>
-              {" · "}<Link href="/prompts" prefetch className="text-accent hover:underline">{t("prompts.title")}</Link>
+              {t("studio.inspHint")} <Link href="/inspirations" className="font-semibold text-accent hover:underline">{t("insp.title")}</Link>
+              {" · "}<Link href="/prompts" prefetch className="font-semibold text-accent hover:underline">{t("prompts.title")}</Link>
             </p>
           </div>
-        </Card>
+        </Panel>
 
         {/* RESULTS */}
         {(busy || results.length > 0) && (
-          <Card>
-            <CardHeader title={t("studio.results")} />
-            <div className="p-5 pt-3">
+          <Panel>
+            <PanelHeader overline={t("studio.step5")} title={t("studio.results")} icon={Sparkles} />
+            <div className="p-4 pt-3.5 sm:p-5">
               {busy ? (
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {Array.from({ length: quantity }, (_, i) => (
@@ -333,107 +359,131 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
                 </div>
               )}
             </div>
-          </Card>
+          </Panel>
         )}
       </div>
 
       {/* RIGHT RAIL */}
       <div className="space-y-4 lg:sticky lg:top-20 lg:h-fit">
-        <Card>
-          <CardHeader title="Model" />
-          <div className="space-y-2 p-4 pt-2">
+        <Panel>
+          <PanelHeader overline={t("studio.step4")} title="Model" icon={Layers} />
+          <div className="space-y-2 p-3 sm:p-4">
             {models.map((m) => {
               const minPrice = Math.min(...Object.values(m.pricing));
               const hasVariants = Object.keys(m.pricing).length > 1;
+              const selected = m.id === modelId;
               return (
                 <button key={m.id} type="button" onClick={() => { setModelId(m.id); setQuantity(1); }}
-                  aria-pressed={m.id === modelId}
-                  className={cn("w-full rounded-xl border p-3 text-left transition-all duration-150",
-                    m.id === modelId ? "is-selected" : "border-line hover:-translate-y-0.5 hover:bg-raised")}>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-sm font-semibold">{m.displayName}</p>
-                    <Badge tone="indigo">{hasVariants ? t("studio.fromCr", { n: minPrice }) : `${minPrice} ◆`}</Badge>
-                  </div>
-                  {(m.badge || m.supportsReferenceImages) && (
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      {m.badge === "recommended" && <Badge tone="green">{t("studio.badgeRecommended")}</Badge>}
-                      {m.badge === "high_quality" && <Badge tone="amber">{t("studio.badgeHQ")}</Badge>}
-                      {m.supportsReferenceImages && <span className="text-[11px] text-muted">{t("studio.refsBadge")}</span>}
+                  aria-pressed={selected}
+                  className={cn(
+                    "relative w-full overflow-hidden rounded-xl border p-3.5 text-left transition-all duration-200",
+                    selected
+                      ? "is-selected"
+                      : "border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.6))] bg-sunken/50 hover:border-[rgb(var(--accent)/0.35)] hover:bg-raised/60"
+                  )}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold tracking-tight">{m.displayName}</p>
+                      {m.description && (
+                        <p className="mt-0.5 line-clamp-1 text-[11px] text-faint">{m.description}</p>
+                      )}
                     </div>
+                    {/* Price is the decision-critical number: display face,
+                        tabular figures, always the same position. */}
+                    <span className={cn(
+                      "shrink-0 rounded-lg px-2 py-1 text-[11px] font-bold tabular-nums",
+                      selected ? "bg-[rgb(var(--accent)/0.22)] text-accent" : "bg-raised text-muted"
+                    )}>
+                      {hasVariants ? t("studio.fromCr", { n: minPrice }) : `${minPrice} ◆`}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {m.badge === "recommended" && <Badge tone="green">{t("studio.badgeRecommended")}</Badge>}
+                    {m.badge === "high_quality" && <Badge tone="amber">{t("studio.badgeHQ")}</Badge>}
+                    {m.supportsReferenceImages && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-faint">
+                        <ImageIcon size={11} aria-hidden />{t("studio.refsBadge")}
+                      </span>
+                    )}
+                  </div>
+                  {selected && (
+                    <span aria-hidden className="absolute right-0 top-0 h-full w-[3px] brand-gradient" />
                   )}
                 </button>
               );
             })}
           </div>
-        </Card>
+        </Panel>
 
-        <Card>
-          <CardHeader title={t("studio.settings")} />
-          <div className="space-y-4 p-4 pt-2">
+        <Panel>
+          <PanelHeader title={t("studio.settings")} icon={Settings2} />
+          <div className="space-y-4 p-3 sm:p-4">
             <div>
               <Label>{t("generator.stepFormat")}</Label>
-              <div className="flex gap-1.5">
-                {RATIOS.map((r) => (
-                  <button key={r} type="button" onClick={() => setRatio(r)}
-                    aria-pressed={r === ratio}
-                    className={cn("flex-1 rounded-lg border py-2 text-xs font-semibold transition-colors",
-                      r === ratio ? "is-selected text-accent" : "border-line text-muted hover:bg-raised")}>
-                    {r}
-                  </button>
-                ))}
-              </div>
+              <Segmented
+                label={t("generator.stepFormat")}
+                value={ratio}
+                onChange={(v) => setRatio(v as (typeof RATIOS)[number])}
+                options={RATIOS.map((r) => ({ value: r, label: r }))}
+              />
             </div>
             {(model?.resolutions.length ?? 0) > 1 && (
               <div>
                 <Label>{t("studio.quality")}</Label>
-                <div className="flex gap-1.5">
-                  {model!.resolutions.map((r) => (
-                    <button key={r} type="button" onClick={() => setResolution(r)}
-                      aria-pressed={r === effectiveResolution}
-                      className={cn("flex-1 rounded-lg border py-2 text-xs font-semibold transition-colors",
-                        r === effectiveResolution ? "is-selected text-accent" : "border-line text-muted hover:bg-raised")}>
-                      {r}
-                      <span className="ml-1 text-[10px] opacity-70">{model!.pricing[r]}◆</span>
-                    </button>
-                  ))}
-                </div>
+                <Segmented
+                  label={t("studio.quality")}
+                  value={effectiveResolution}
+                  onChange={setResolution}
+                  options={model!.resolutions.map((r) => ({ value: r, label: r, meta: `${model!.pricing[r]} ◆` }))}
+                />
               </div>
             )}
             <div>
               <Label>{t("studio.quantity")}</Label>
-              <div className="flex gap-1.5">
-                {Array.from({ length: model?.maxQuantity ?? 1 }, (_, i) => i + 1).map((n) => (
-                  <button key={n} type="button" onClick={() => setQuantity(n)}
-                    aria-pressed={n === quantity}
-                    className={cn("flex-1 rounded-lg border py-2 text-xs font-semibold transition-colors",
-                      n === quantity ? "is-selected text-accent" : "border-line text-muted hover:bg-raised")}>
-                    {n}
-                  </button>
-                ))}
-              </div>
+              <Segmented
+                label={t("studio.quantity")}
+                value={String(quantity)}
+                onChange={(v) => setQuantity(Number(v))}
+                options={Array.from({ length: model?.maxQuantity ?? 1 }, (_, i) => ({
+                  value: String(i + 1), label: String(i + 1),
+                }))}
+              />
             </div>
           </div>
-        </Card>
+        </Panel>
 
-        <Card className="p-4">
-          <div className="mb-3 flex items-center justify-between text-sm">
-            <span className="text-muted">{t("studio.yourCredits")}</span>
-            <span className="font-display font-semibold text-accent">◆ {balance}</span>
-          </div>
+        {/* ACTION — docks above the bottom navigation on phones, sits in the
+            sticky rail on desktop. The cost is always visible next to it. */}
+        <ActionBar
+          summary={
+            <>
+              <span className="flex items-center gap-1.5 text-muted">
+                <span className="text-xs font-medium uppercase tracking-wide">{t("studio.yourCredits")}</span>
+              </span>
+              <span className="metric text-[15px] text-accent">◆ {balance}</span>
+            </>
+          }
+          note={
+            missing > 0 ? (
+              <span className="text-danger">
+                {t("studio.missing", { n: missing })}{" "}
+                <Link href="/credits" className="font-semibold text-accent hover:underline">{t("credits.topup")}</Link>
+              </span>
+            ) : !contextReady ? (
+              <span className="text-muted">{t("studio.needContext")}</span>
+            ) : undefined
+          }
+        >
           <button type="button" disabled={!canGenerate} onClick={generate}
-            className={cn("brand-gradient flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-sm font-semibold text-white shadow-sm transition-opacity",
-              canGenerate ? "hover:opacity-90" : "cursor-not-allowed opacity-50")}>
-            {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-            {t("studio.generate")} · {cost} ◆
+            className={cn(
+              "cta flex h-12 w-full items-center justify-center gap-2 rounded-xl text-[15px] font-semibold",
+              !canGenerate && "cursor-not-allowed opacity-60"
+            )}>
+            {busy ? <Loader2 size={17} className="animate-spin" /> : <Sparkles size={17} />}
+            {t("studio.generate")}
+            <span className="ml-1 rounded-md bg-white/20 px-2 py-0.5 text-[13px] tabular-nums">{cost} ◆</span>
           </button>
-          {missing > 0 && (
-            <p className="mt-2 text-center text-xs text-red-500">
-              {t("studio.missing", { n: missing })}{" "}
-              <Link href="/credits" className="font-semibold text-accent hover:underline">{t("credits.topup")}</Link>
-            </p>
-          )}
-          {!contextReady && <p className="mt-2 text-center text-xs text-muted">{t("studio.needContext")}</p>}
-        </Card>
+        </ActionBar>
       </div>
     </div>
   );

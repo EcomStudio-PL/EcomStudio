@@ -98,14 +98,14 @@ export function CmsPageEditor({ pageId, slug, status, publishedAt, blocks, isEmp
       </div>
 
       {blocks.length === 0 ? (
-        <div className="glass rounded-2xl p-10 text-center">
+        <div className="panel rounded-2xl p-10 text-center">
           <p className="text-sm font-semibold">{t("cms.emptyTitle")}</p>
           <p className="mt-1 text-sm text-muted">{t("cms.emptyBody")}</p>
         </div>
       ) : (
         <ul className="space-y-2">
           {blocks.map((b, i) => (
-            <li key={b.id} className={cn("glass flex flex-wrap items-center gap-2 rounded-2xl px-4 py-3", !b.visible && "opacity-50")}>
+            <li key={b.id} className={cn("panel flex flex-wrap items-center gap-2 rounded-2xl px-4 py-3", !b.visible && "opacity-50")}>
               <span className="w-6 text-center font-display text-xs text-faint">{i + 1}</span>
               <Badge tone="indigo">{b.type}</Badge>
               <span className="min-w-0 flex-1 truncate text-sm">

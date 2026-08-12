@@ -64,7 +64,7 @@ export function ServiceManager({ services, plnPerCredit, usdToPln }: {
           return (
             <li key={s.slug}>
               <button type="button" onClick={() => open(s)}
-                className="glass w-full rounded-2xl p-4 text-left transition-transform duration-150 hover:-translate-y-0.5">
+                className="panel panel-interactive w-full rounded-2xl p-4 text-left">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-semibold">{s.name}</p>
                   <code className="rounded bg-raised px-1.5 py-0.5 text-[10px] text-faint">{s.slug}</code>

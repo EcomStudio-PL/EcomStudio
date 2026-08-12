@@ -68,7 +68,7 @@ export default async function PromptsPage() {
           )}
           {(sessions ?? []).map((s) => (
             <Link key={s.id} href={`/prompts/${s.id}`} prefetch
-              className="glass flex items-center gap-3 rounded-2xl px-4 py-3 transition-transform duration-150 hover:-translate-y-0.5">
+              className="panel panel-interactive flex items-center gap-3 rounded-2xl px-4 py-3">
               <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-line bg-raised">
                 {s.reference_paths?.[0] && urls.get(s.reference_paths[0]) && (
                   // eslint-disable-next-line @next/next/no-img-element

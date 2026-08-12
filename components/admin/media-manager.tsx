@@ -73,14 +73,14 @@ export function MediaManager({ assets }: { assets: MediaRow[] }) {
       </div>
 
       {assets.length === 0 ? (
-        <div className="glass rounded-2xl p-10 text-center">
+        <div className="panel rounded-2xl p-10 text-center">
           <p className="text-sm font-semibold">{t("media.emptyTitle")}</p>
           <p className="mt-1 text-sm text-muted">{t("media.emptyBody")}</p>
         </div>
       ) : (
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {assets.map((a) => (
-            <li key={a.id} className="glass group relative overflow-hidden rounded-2xl">
+            <li key={a.id} className="panel group relative overflow-hidden rounded-2xl">
               <div className="flex aspect-square items-center justify-center bg-raised/60">
                 {a.kind === "image" && (a.publicUrl || a.external_url) ? (
                   // eslint-disable-next-line @next/next/no-img-element

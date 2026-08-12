@@ -18,7 +18,7 @@ export default async function AdminWww() {
         {(pages ?? []).map((p) => (
           <li key={p.id}>
             <Link href={`/admin/www/${p.slug}`}
-              className="glass flex flex-wrap items-center gap-3 rounded-2xl px-5 py-4 transition-transform duration-150 hover:-translate-y-0.5">
+              className="panel panel-interactive flex flex-wrap items-center gap-3 rounded-2xl px-5 py-4">
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold">{p.title}</p>
                 <code className="text-xs text-faint">/{p.slug === "home" ? "" : p.slug}</code>

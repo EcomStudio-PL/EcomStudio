@@ -64,7 +64,7 @@ export default async function LandingPage() {
         <p className="mt-2 text-sm text-muted">{t("landing.pricingSub")}</p>
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {(plans ?? []).map((p) => (
-            <div key={p.slug} className={`glass relative flex flex-col rounded-2xl p-5 ${p.featured ? "ring-1 ring-accent2" : ""}`}>
+            <div key={p.slug} className={`panel relative flex flex-col rounded-2xl p-5 ${p.featured ? "ring-1 ring-accent2" : ""}`}>
               {p.featured && (
                 <span className="absolute -top-2.5 left-4 rounded-full bg-accent2 px-2.5 py-0.5 text-[11px] font-semibold text-white">
                   ★ {t("plan.recommended")}

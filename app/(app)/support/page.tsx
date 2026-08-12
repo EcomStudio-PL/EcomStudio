@@ -44,7 +44,7 @@ export default async function SupportPage({ searchParams }: {
               {(threads ?? []).map((th) => (
                 <li key={th.id}>
                   <Link href={`/support?thread=${th.id}`}
-                    className={cn("glass block rounded-xl px-3.5 py-2.5 transition-colors",
+                    className={cn("panel block rounded-xl px-3.5 py-2.5 transition-colors",
                       active?.id === th.id ? "ring-1 ring-accent" : "hover:bg-raised")}>
                     <div className="flex items-center justify-between gap-2">
                       <p className="truncate text-sm font-medium">{th.subject}</p>

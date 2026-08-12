@@ -17,7 +17,7 @@ export default async function AdminSupport() {
     <div>
       <PageHeader title={t("chat.adminTitle")} sub={t("chat.adminSub")} />
       {(threads ?? []).length === 0 ? (
-        <div className="glass rounded-2xl p-10 text-center">
+        <div className="panel rounded-2xl p-10 text-center">
           <p className="text-sm font-semibold">{t("chat.noThreads")}</p>
         </div>
       ) : (
@@ -25,7 +25,7 @@ export default async function AdminSupport() {
           {(threads ?? []).map((th) => (
             <li key={th.id}>
               <Link href={`/admin/support/${th.id}`}
-                className="glass flex flex-wrap items-center gap-2 rounded-2xl px-4 py-3 transition-transform duration-150 hover:-translate-y-0.5">
+                className="panel panel-interactive flex flex-wrap items-center gap-2 rounded-2xl px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">{th.subject}</p>
                   <p className="truncate text-xs text-muted">{th.profiles?.full_name ?? th.profiles?.email}</p>

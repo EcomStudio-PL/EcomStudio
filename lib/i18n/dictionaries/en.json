@@ -53,7 +53,10 @@
     "signOut": "Sign out",
     "search": "Search",
     "clearFilters": "Clear filters",
-    "close": "Close"
+    "close": "Close",
+    "all": "All",
+    "photos": "photos",
+    "noPhotos": "No photos"
   },
   "landing": {
     "headline": "Professional product visuals with AI. Faster than a photo studio.",
@@ -774,7 +777,12 @@
       "bad_scene": "bad scene",
       "bad_quality": "bad quality",
       "other": "other"
-    }
+    },
+    "step1": "Step 1 — Product",
+    "step2": "Step 2 — References",
+    "step3": "Step 3 — Prompt",
+    "step4": "Step 4 — Model",
+    "step5": "Result"
   },
   "notif": {
     "title": "Notifications",

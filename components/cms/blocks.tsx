@@ -131,7 +131,7 @@ function Block({ block, locale, labels }: {
       return (
         <section className="py-12">
           <Reveal>
-            <div className="glass rounded-2xl p-8 sm:p-10">
+            <div className="panel rounded-2xl p-8 sm:p-10">
               {T("badge") && (
                 <p className="frame-mark mb-5 inline-block px-2 font-display text-xs uppercase tracking-[0.2em] text-accent">{T("badge")}</p>
               )}
@@ -156,7 +156,7 @@ function Block({ block, locale, labels }: {
           <div className="mt-8 grid gap-4 sm:grid-cols-3">
             {items.map((it, i) => (
               <Reveal key={i} delay={i * 100}>
-                <div className="glass h-full rounded-2xl p-6 transition-transform duration-200 hover:-translate-y-1">
+                <div className="panel panel-interactive h-full rounded-2xl p-6">
                   <span className="font-display text-3xl font-bold text-accent/40">0{i + 1}</span>
                   <p className="mt-2 font-display text-base font-semibold">{lt(it.title, locale)}</p>
                   {it.description && <p className="mt-1.5 text-sm text-muted">{lt(it.description, locale)}</p>}
@@ -205,7 +205,7 @@ function Block({ block, locale, labels }: {
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             {items.map((it, i) => (
               <Reveal key={i} delay={i * 80}>
-                <div className="glass rounded-2xl p-5 text-center">
+                <div className="panel rounded-2xl p-5 text-center">
                   <p className="font-display text-3xl font-semibold text-accent">{it.value}</p>
                   <p className="mt-1 text-xs text-muted">{lt(it.title, locale)}</p>
                 </div>
@@ -289,7 +289,7 @@ function Block({ block, locale, labels }: {
 /** Stylized dashboard mockup used when the hero has no media configured. */
 function HeroMockup() {
   return (
-    <div aria-hidden className="glass select-none rounded-2xl p-4 shadow-2xl">
+    <div aria-hidden className="panel select-none rounded-2xl p-4 shadow-2xl">
       <div className="flex items-center gap-1.5 pb-3">
         <span className="h-2.5 w-2.5 rounded-full bg-red-400/70" />
         <span className="h-2.5 w-2.5 rounded-full bg-amber-400/70" />
