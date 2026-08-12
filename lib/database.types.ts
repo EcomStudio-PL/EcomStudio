@@ -773,7 +773,11 @@ export type Database = {
           product_id: string | null
           prompt_id: string | null
           prompt_text: string | null
+          provider_slug: string | null
+          quantity: number
           reference_image_ids: string[]
+          resolution: string | null
+          settings: Json
           started_at: string | null
           status: Database["public"]["Enums"]["job_status"]
           user_id: string
@@ -791,7 +795,11 @@ export type Database = {
           product_id?: string | null
           prompt_id?: string | null
           prompt_text?: string | null
+          provider_slug?: string | null
+          quantity?: number
           reference_image_ids?: string[]
+          resolution?: string | null
+          settings?: Json
           started_at?: string | null
           status?: Database["public"]["Enums"]["job_status"]
           user_id: string
@@ -809,7 +817,11 @@ export type Database = {
           product_id?: string | null
           prompt_id?: string | null
           prompt_text?: string | null
+          provider_slug?: string | null
+          quantity?: number
           reference_image_ids?: string[]
+          resolution?: string | null
+          settings?: Json
           started_at?: string | null
           status?: Database["public"]["Enums"]["job_status"]
           user_id?: string
@@ -1030,6 +1042,47 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          body: string | null
+          created_at: string
+          href: string | null
+          id: string
+          read_at: string | null
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          href?: string | null
+          id?: string
+          read_at?: string | null
+          title: string
+          type?: string
+          user_id: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          href?: string | null
+          id?: string
+          read_at?: string | null
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount_cents: number
@@ -1123,12 +1176,15 @@ export type Database = {
           category: string | null
           created_at: string
           description: string | null
+          extra_info: string | null
           id: string
           instructions: string | null
           marketplace: string | null
           metadata: Json
           name: string
           owner_id: string
+          sku: string | null
+          source_url: string | null
           status: Database["public"]["Enums"]["product_status"]
           updated_at: string
           workspace_id: string
@@ -1137,12 +1193,15 @@ export type Database = {
           category?: string | null
           created_at?: string
           description?: string | null
+          extra_info?: string | null
           id?: string
           instructions?: string | null
           marketplace?: string | null
           metadata?: Json
           name: string
           owner_id: string
+          sku?: string | null
+          source_url?: string | null
           status?: Database["public"]["Enums"]["product_status"]
           updated_at?: string
           workspace_id: string
@@ -1151,12 +1210,15 @@ export type Database = {
           category?: string | null
           created_at?: string
           description?: string | null
+          extra_info?: string | null
           id?: string
           instructions?: string | null
           marketplace?: string | null
           metadata?: Json
           name?: string
           owner_id?: string
+          sku?: string | null
+          source_url?: string | null
           status?: Database["public"]["Enums"]["product_status"]
           updated_at?: string
           workspace_id?: string
@@ -1531,6 +1593,96 @@ export type Database = {
           },
           {
             foreignKeyName: "subscriptions_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_messages: {
+        Row: {
+          author_id: string | null
+          body: string
+          created_at: string
+          id: string
+          is_staff: boolean
+          read_at: string | null
+          thread_id: string
+        }
+        Insert: {
+          author_id?: string | null
+          body: string
+          created_at?: string
+          id?: string
+          is_staff?: boolean
+          read_at?: string | null
+          thread_id: string
+        }
+        Update: {
+          author_id?: string | null
+          body?: string
+          created_at?: string
+          id?: string
+          is_staff?: boolean
+          read_at?: string | null
+          thread_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_messages_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "support_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_threads: {
+        Row: {
+          created_at: string
+          id: string
+          last_message_at: string
+          status: string
+          subject: string
+          user_id: string
+          workspace_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_message_at?: string
+          status?: string
+          subject: string
+          user_id: string
+          workspace_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_message_at?: string
+          status?: string
+          subject?: string
+          user_id?: string
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_threads_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_threads_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"

@@ -319,7 +319,8 @@
       "services": "Services",
       "www": "Website",
       "media": "Medien",
-      "inspirations": "Inspirationen"
+      "inspirations": "Inspirationen",
+      "support": "Support"
     },
     "statUsers": "Benutzer",
     "statProducts": "Produkte",
@@ -512,7 +513,8 @@
     "aiUsageSub": "Aus dem Service-Katalog — neue Services erscheinen automatisch.",
     "products": "Produkte",
     "lastProduct": "Zuletzt",
-    "timeline": "Aktivität"
+    "timeline": "Aktivität",
+    "lastActive": "Zuletzt aktiv"
   },
   "svc": {
     "title": "Service-Katalog",
@@ -676,5 +678,80 @@
   "auth2": {
     "blockedTitle": "Konto gesperrt",
     "blockedBody": "Dein Konto wurde gesperrt. Kontaktiere den Support, falls das ein Irrtum ist."
+  },
+  "studio": {
+    "sub": "Produktkontext hinzufügen, Prompt schreiben und generieren — ohne vorher ein Produkt zu speichern.",
+    "context": "Produkt / Kontext",
+    "contextSub": "Gespeichertes Produkt wählen oder neu eingeben — wir speichern es bei der ersten Generierung automatisch.",
+    "newProduct": "Neues Produkt",
+    "usingSaved": "gespeicherte Produktdaten und Fotos werden verwendet",
+    "title": "Produkttitel",
+    "extraInfo": "Zusatzinfos / Marketplace-Beschreibung",
+    "extraInfoPh": "Füge deine Allegro/Amazon/Shop-Beschreibung ein — Merkmale, Materialien, Maße, Lieferumfang…",
+    "moreFields": "Weitere Felder (SKU, Beschreibung, URL)",
+    "sourceUrl": "Produkt-URL",
+    "refs": "Referenzbilder",
+    "refsSub": "Klicken zum An-/Abwählen. Erstes ausgewähltes = Hauptbild.",
+    "refsUnsupported": "Das gewählte Modell akzeptiert keine Referenzbilder — es generiert aus der Beschreibung.",
+    "promptSub": "Beschreibe Szene und Stil. Product Lock schützt die Produkttreue automatisch.",
+    "promptPh": "Z. B. Eleganter Packshot auf hellem Hintergrund mit weichem Schatten, Premium-Stil…",
+    "negative": "Negative / vermeiden",
+    "negativePh": "Z. B. Text, Wasserzeichen, zusätzliche Objekte…",
+    "inspHint": "Ideen gesucht? Siehe",
+    "results": "Ergebnisse",
+    "generating": "Generiere… das kann bis zu einer Minute dauern.",
+    "settings": "Einstellungen",
+    "quality": "Qualität",
+    "quantity": "Anzahl Bilder",
+    "yourCredits": "Deine Credits",
+    "generate": "Generieren",
+    "missing": "{n} Credits fehlen.",
+    "needContext": "Produkttitel eingeben oder gespeichertes Produkt wählen.",
+    "done": "Fertig! Assets in der Bibliothek gespeichert.",
+    "refsBadge": "Referenzen",
+    "err": {
+      "insufficient_credits": "Nicht genug Credits.",
+      "model_unavailable": "Modell vorübergehend nicht verfügbar.",
+      "provider_auth_failed": "Anbieter-Authentifizierung fehlgeschlagen — Administrator informieren.",
+      "provider_rate_limited": "Anbieter-Limit erreicht — gleich erneut versuchen.",
+      "provider_timeout": "Zeitüberschreitung — Credits erstattet.",
+      "provider_unreachable": "KI-Anbieter nicht erreichbar — Credits erstattet.",
+      "provider_error": "Generierung fehlgeschlagen — Credits erstattet.",
+      "provider_empty_result": "Das Modell lieferte kein Bild — Credits erstattet.",
+      "storage_failed": "Dateien konnten nicht gespeichert werden — Credits erstattet.",
+      "product_required": "Produkttitel eingeben.",
+      "invalid_input": "Prompt und Einstellungen ausfüllen."
+    }
+  },
+  "notif": {
+    "title": "Benachrichtigungen",
+    "empty": "Keine Benachrichtigungen.",
+    "generation_done": "Generierung abgeschlossen",
+    "generation_failed": "Generierung fehlgeschlagen — Credits erstattet",
+    "credits_granted": "Du hast Credits erhalten",
+    "credits_removed": "Credit-Korrektur",
+    "support_reply": "Antwort vom Support-Team"
+  },
+  "chat": {
+    "sub": "Schreib uns — wir antworten in der App und per E-Mail.",
+    "newTitle": "Neue Nachricht",
+    "subject": "Betreff",
+    "message": "Nachricht",
+    "start": "Senden",
+    "placeholder": "Nachricht schreiben… (Strg+Enter zum Senden)",
+    "send": "Senden",
+    "you": "Du",
+    "staff": "EcomStudio-Team",
+    "closed": "Thread geschlossen.",
+    "pickOrStart": "Wähle einen Thread aus der Liste oder starte eine neue Unterhaltung.",
+    "st": {
+      "open": "Offen",
+      "closed": "Geschlossen"
+    },
+    "adminTitle": "Kunden-Support",
+    "adminSub": "Nachrichten-Threads Kunde ↔ Team.",
+    "noThreads": "Keine Threads.",
+    "close": "Thread schließen",
+    "reopen": "Wieder öffnen"
   }
 }

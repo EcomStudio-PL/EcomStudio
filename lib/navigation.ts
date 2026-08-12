@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Package, Sparkles, PenLine, Images, History as HistoryIcon,
   Coins, Rocket, LifeBuoy, Settings, Shield, Users, Building2, Cpu, Plug,
   FileText, ScrollText, SlidersHorizontal, Wand2, BarChart3, Layers, Globe,
-  FolderOpen, Lightbulb,
+  FolderOpen, Lightbulb, MessageSquare,
 } from "lucide-react";
 
 /** Single source of truth for app navigation. Client drawer, desktop
@@ -52,6 +52,7 @@ export const ADMIN_NAV: readonly NavGroup[] = [
   { key: "people", items: [
     { href: "/admin/users", key: "users", icon: Users },
     { href: "/admin/workspaces", key: "workspaces", icon: Building2 },
+    { href: "/admin/support", key: "support", icon: MessageSquare },
   ]},
   { key: "content", items: [
     { href: "/admin/products", key: "products", icon: Package },

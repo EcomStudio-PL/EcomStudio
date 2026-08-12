@@ -319,7 +319,8 @@
       "services": "Services",
       "www": "Website",
       "media": "Media",
-      "inspirations": "Inspirations"
+      "inspirations": "Inspirations",
+      "support": "Support"
     },
     "statUsers": "Users",
     "statProducts": "Products",
@@ -512,7 +513,8 @@
     "aiUsageSub": "Driven by the service catalog — new services appear automatically.",
     "products": "Products",
     "lastProduct": "Latest",
-    "timeline": "Activity"
+    "timeline": "Activity",
+    "lastActive": "Last active"
   },
   "svc": {
     "title": "Service catalog",
@@ -676,5 +678,80 @@
   "auth2": {
     "blockedTitle": "Account blocked",
     "blockedBody": "Your account has been blocked. Contact support if you believe this is a mistake."
+  },
+  "studio": {
+    "sub": "Add product context, write a prompt and generate — no saved product required.",
+    "context": "Product / context",
+    "contextSub": "Pick a saved product or type a new one — we save it automatically on first generation.",
+    "newProduct": "New product",
+    "usingSaved": "using saved product data and photos",
+    "title": "Product title",
+    "extraInfo": "Additional info / marketplace description",
+    "extraInfoPh": "Paste your Allegro/Amazon/store description — features, materials, dimensions, box contents…",
+    "moreFields": "More fields (SKU, description, URL)",
+    "sourceUrl": "Product URL",
+    "refs": "Reference images",
+    "refsSub": "Click to select/deselect. First selected = primary.",
+    "refsUnsupported": "The selected model doesn't accept reference images — it generates from the description.",
+    "promptSub": "Describe the scene and style. Product Lock guards product fidelity automatically.",
+    "promptPh": "E.g. Elegant packshot on a bright background with soft shadow, premium style…",
+    "negative": "Negative / avoid",
+    "negativePh": "E.g. text, watermarks, extra objects…",
+    "inspHint": "Need ideas? Browse",
+    "results": "Results",
+    "generating": "Generating… this can take up to a minute.",
+    "settings": "Settings",
+    "quality": "Quality",
+    "quantity": "Number of images",
+    "yourCredits": "Your credits",
+    "generate": "Generate",
+    "missing": "{n} credits missing.",
+    "needContext": "Enter a product title or pick a saved product.",
+    "done": "Done! Assets saved to your Library.",
+    "refsBadge": "references",
+    "err": {
+      "insufficient_credits": "Not enough credits.",
+      "model_unavailable": "Model temporarily unavailable.",
+      "provider_auth_failed": "AI provider auth failed — notify the administrator.",
+      "provider_rate_limited": "Provider rate limit — try again shortly.",
+      "provider_timeout": "Provider timed out — credits refunded.",
+      "provider_unreachable": "AI provider unreachable — credits refunded.",
+      "provider_error": "Generation failed — credits refunded.",
+      "provider_empty_result": "The model returned no image — credits refunded.",
+      "storage_failed": "Failed to store files — credits refunded.",
+      "product_required": "Enter a product title.",
+      "invalid_input": "Fill in the prompt and settings."
+    }
+  },
+  "notif": {
+    "title": "Notifications",
+    "empty": "No notifications.",
+    "generation_done": "Generation completed",
+    "generation_failed": "Generation failed — credits refunded",
+    "credits_granted": "You received credits",
+    "credits_removed": "Credit adjustment",
+    "support_reply": "Reply from support team"
+  },
+  "chat": {
+    "sub": "Message us — we reply in-app and by email.",
+    "newTitle": "New message",
+    "subject": "Subject",
+    "message": "Message",
+    "start": "Send",
+    "placeholder": "Write a message… (Ctrl+Enter to send)",
+    "send": "Send",
+    "you": "You",
+    "staff": "EcomStudio team",
+    "closed": "Thread closed.",
+    "pickOrStart": "Pick a thread from the list or start a new conversation.",
+    "st": {
+      "open": "Open",
+      "closed": "Closed"
+    },
+    "adminTitle": "Customer support",
+    "adminSub": "Customer ↔ team message threads.",
+    "noThreads": "No threads.",
+    "close": "Close thread",
+    "reopen": "Reopen"
   }
 }

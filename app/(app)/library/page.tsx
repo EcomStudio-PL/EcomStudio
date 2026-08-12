@@ -7,16 +7,25 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { formatDate } from "@/lib/utils";
 
 export default async function LibraryPage() {
   const supabase = await createClient();
-  const { dict } = await getDictionary();
+  const { dict, locale } = await getDictionary();
   const t = makeT(dict);
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) return null;
   const generations = await listAssets(supabase, workspace.id);
+
+  // Sign all generated asset paths in one call.
+  const paths = generations.flatMap((g) => g.generation_assets.map((a) => a.storage_path));
+  const urlMap = new Map<string, string>();
+  if (paths.length > 0) {
+    const { data: signed } = await supabase.storage.from("generation-assets").createSignedUrls(paths, 3600);
+    signed?.forEach((s) => { if (s.signedUrl && s.path) urlMap.set(s.path, s.signedUrl); });
+  }
 
   return (
     <div>
@@ -26,16 +35,29 @@ export default async function LibraryPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {generations.map((g) => (
-            <Card key={g.id} className="p-4">
-              <div className="flex items-center justify-between">
-                <span className="truncate text-sm font-medium">{g.products?.name ?? "—"}</span>
-                <Badge tone={g.quality_status === "passed" ? "green" : g.quality_status === "failed" ? "red" : "neutral"}>
-                  {g.quality_status}
+            <Card key={g.id} className="overflow-hidden">
+              {g.generation_assets.length > 0 && (
+                <div className={`grid gap-0.5 ${g.generation_assets.length > 1 ? "grid-cols-2" : ""}`}>
+                  {g.generation_assets.slice(0, 4).map((a) => {
+                    const url = urlMap.get(a.storage_path);
+                    return url ? (
+                      <a key={a.id} href={url} target="_blank" className="block bg-raised">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt="" loading="lazy" className="aspect-square w-full object-cover transition-transform duration-200 hover:scale-[1.02]" />
+                      </a>
+                    ) : null;
+                  })}
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-2 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{g.products?.name ?? "—"}</p>
+                  <p className="text-xs text-muted">{formatDate(g.created_at, locale)}</p>
+                </div>
+                <Badge tone={g.generation_assets.length > 0 ? "green" : "neutral"}>
+                  {g.generation_assets.length}
                 </Badge>
               </div>
-              {g.product_match_score !== null && (
-                <p className="mt-1 text-xs text-muted">Match: {g.product_match_score}%</p>
-              )}
             </Card>
           ))}
         </div>

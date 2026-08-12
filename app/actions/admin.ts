@@ -74,6 +74,11 @@ export async function adjustCreditsV2Action(input: {
       entityType: "credit_wallet", entityId: wallet.id,
       after: { amount: input.amount, type: input.type, reason: input.reason.trim(), user: input.userId },
     });
+    await supabase.from("notifications").insert({
+      user_id: input.userId, type: input.amount > 0 ? "credits_granted" : "credits_removed",
+      title: input.amount > 0 ? "credits_granted" : "credits_removed",
+      body: `${input.amount > 0 ? "+" : ""}${input.amount} · ${input.reason.trim()}`, href: "/credits",
+    });
     revalidatePath("/admin/users");
     revalidatePath("/admin/credits");
     return { ok: true };

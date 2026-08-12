@@ -63,11 +63,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </main>
     );
   }
-  const [wallet, { data: sub }] = await Promise.all([
+  const [wallet, { data: sub }, { data: notifs }] = await Promise.all([
     getWallet(supabase, workspace.id),
     supabase.from("subscriptions").select("subscription_plans(name)")
       .eq("workspace_id", workspace.id).eq("status", "active").maybeSingle(),
+    supabase.from("notifications").select("id, type, title, body, href, read_at, created_at")
+      .eq("user_id", user.id).order("created_at", { ascending: false }).limit(10),
   ]);
+  const unread = (notifs ?? []).filter((n) => !n.read_at).length;
   const planName = sub?.subscription_plans?.name ?? "Free";
   const isAdmin = profile.role === "admin";
   const displayName = profile.full_name ?? profile.email;
@@ -76,7 +79,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <div className="flex min-h-dvh">
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col">
-          <Topbar name={displayName} credits={wallet?.balance ?? 0} workspace={workspace.name} isAdmin={isAdmin} />
+          <Topbar name={displayName} credits={wallet?.balance ?? 0} workspace={workspace.name} isAdmin={isAdmin} notifications={notifs ?? []} unread={unread} />
           <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-6 lg:px-8 lg:pb-10">
             {children}
           </main>

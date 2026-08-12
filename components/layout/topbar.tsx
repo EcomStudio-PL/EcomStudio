@@ -7,12 +7,14 @@ import { LocaleSwitcher } from "./locale-switcher";
 import { Brand } from "./brand";
 import { CommandPalette } from "./command-palette";
 import { useDrawer } from "./shell-context";
+import { NotificationsBell, type NotificationItem } from "./notifications-bell";
 
 /** Compact customer toolbar: [hamburger][logo] … [credits][flag][theme][avatar].
  *  The avatar opens the unified drawer on mobile and links to settings on
  *  desktop — there is deliberately NO second dropdown menu. */
-export function Topbar({ name, credits, workspace, isAdmin = false }: {
+export function Topbar({ name, credits, workspace, isAdmin = false, notifications = [], unread = 0 }: {
   name: string; credits: number; workspace?: string; isAdmin?: boolean;
+  notifications?: NotificationItem[]; unread?: number;
 }) {
   const { t } = useI18n();
   const { setOpen } = useDrawer();
@@ -44,6 +46,7 @@ export function Topbar({ name, credits, workspace, isAdmin = false }: {
           <span aria-hidden>◆</span>
           {new Intl.NumberFormat("pl-PL").format(credits)}
         </Link>
+        <NotificationsBell items={notifications} unread={unread} />
         <LocaleSwitcher />
         <ThemeToggle />
         {isAdmin && (

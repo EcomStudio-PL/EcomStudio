@@ -319,7 +319,8 @@
       "services": "Usługi",
       "www": "Strona WWW",
       "media": "Media",
-      "inspirations": "Inspiracje"
+      "inspirations": "Inspiracje",
+      "support": "Wsparcie"
     },
     "statUsers": "Użytkownicy",
     "statProducts": "Produkty",
@@ -512,7 +513,8 @@
     "aiUsageSub": "Dynamicznie z katalogu usług — nowe usługi pojawiają się same.",
     "products": "Produkty",
     "lastProduct": "Ostatni",
-    "timeline": "Aktywność"
+    "timeline": "Aktywność",
+    "lastActive": "Ostatnia aktywność"
   },
   "svc": {
     "title": "Katalog usług",
@@ -676,5 +678,80 @@
   "auth2": {
     "blockedTitle": "Konto zablokowane",
     "blockedBody": "Twoje konto zostało zablokowane. Skontaktuj się z pomocą, jeśli uważasz, że to pomyłka."
+  },
+  "studio": {
+    "sub": "Dodaj kontekst produktu, napisz prompt i generuj — bez wcześniejszego zapisywania produktu.",
+    "context": "Produkt / kontekst",
+    "contextSub": "Wybierz zapisany produkt albo wpisz nowy — zapiszemy go automatycznie przy pierwszej generacji.",
+    "newProduct": "Nowy produkt",
+    "usingSaved": "używam zapisanych danych i zdjęć produktu",
+    "title": "Tytuł produktu",
+    "extraInfo": "Dodatkowe informacje / opis marketplace",
+    "extraInfoPh": "Wklej opis z Allegro/Amazon/sklepu — cechy, materiały, wymiary, zawartość zestawu…",
+    "moreFields": "Więcej pól (SKU, opis, URL)",
+    "sourceUrl": "URL produktu",
+    "refs": "Zdjęcia referencyjne",
+    "refsSub": "Kliknij, aby zaznaczyć/odznaczyć. Pierwsze zaznaczone = główne.",
+    "refsUnsupported": "Wybrany model nie przyjmuje zdjęć referencyjnych — generuje z opisu.",
+    "promptSub": "Opisz scenę i styl. Product Lock pilnuje wierności produktu automatycznie.",
+    "promptPh": "Np. Elegancki packshot na jasnym tle z miękkim cieniem, styl premium…",
+    "negative": "Negative / czego unikać",
+    "negativePh": "Np. tekst, znaki wodne, dodatkowe przedmioty…",
+    "inspHint": "Szukasz pomysłu? Zobacz",
+    "results": "Wyniki",
+    "generating": "Generuję… to może potrwać do minuty.",
+    "settings": "Ustawienia",
+    "quality": "Jakość",
+    "quantity": "Liczba obrazów",
+    "yourCredits": "Twoje kredyty",
+    "generate": "Generuj",
+    "missing": "Brakuje {n} kredytów.",
+    "needContext": "Podaj tytuł produktu albo wybierz zapisany.",
+    "done": "Gotowe! Materiały zapisane w Bibliotece.",
+    "refsBadge": "referencje",
+    "err": {
+      "insufficient_credits": "Za mało kredytów.",
+      "model_unavailable": "Model jest chwilowo niedostępny.",
+      "provider_auth_failed": "Błąd autoryzacji u dostawcy AI — powiadom administratora.",
+      "provider_rate_limited": "Limit zapytań u dostawcy — spróbuj za chwilę.",
+      "provider_timeout": "Przekroczono czas oczekiwania — kredyty zostały zwrócone.",
+      "provider_unreachable": "Dostawca AI niedostępny — kredyty zostały zwrócone.",
+      "provider_error": "Błąd generacji — kredyty zostały zwrócone.",
+      "provider_empty_result": "Model nie zwrócił obrazu — kredyty zostały zwrócone.",
+      "storage_failed": "Nie udało się zapisać plików — kredyty zostały zwrócone.",
+      "product_required": "Podaj tytuł produktu.",
+      "invalid_input": "Uzupełnij prompt i ustawienia."
+    }
+  },
+  "notif": {
+    "title": "Powiadomienia",
+    "empty": "Brak powiadomień.",
+    "generation_done": "Generacja ukończona",
+    "generation_failed": "Generacja nieudana — kredyty zwrócone",
+    "credits_granted": "Otrzymałeś kredyty",
+    "credits_removed": "Korekta kredytów",
+    "support_reply": "Odpowiedź od zespołu wsparcia"
+  },
+  "chat": {
+    "sub": "Napisz do nas — odpowiadamy w aplikacji i mailowo.",
+    "newTitle": "Nowa wiadomość",
+    "subject": "Temat",
+    "message": "Wiadomość",
+    "start": "Wyślij",
+    "placeholder": "Napisz wiadomość… (Ctrl+Enter aby wysłać)",
+    "send": "Wyślij",
+    "you": "Ty",
+    "staff": "Zespół EcomStudio",
+    "closed": "Wątek zamknięty.",
+    "pickOrStart": "Wybierz wątek z listy albo rozpocznij nową rozmowę.",
+    "st": {
+      "open": "Otwarty",
+      "closed": "Zamknięty"
+    },
+    "adminTitle": "Wsparcie klientów",
+    "adminSub": "Wątki wiadomości klient ↔ zespół.",
+    "noThreads": "Brak wątków.",
+    "close": "Zamknij wątek",
+    "reopen": "Otwórz ponownie"
   }
 }
