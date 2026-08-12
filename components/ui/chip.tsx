@@ -19,8 +19,8 @@ export function Chip({ active, children, icon: Icon, count, className, ...props 
       type="button"
       aria-pressed={active}
       className={cn(
-        "inline-flex max-w-[16rem] shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5",
-        "text-xs font-semibold transition-all duration-150",
+        "inline-flex min-h-[40px] max-w-[16rem] shrink-0 items-center gap-1.5 rounded-full px-4 py-2",
+        "text-[13px] font-semibold transition-all duration-150",
         active
           ? "cta"
           : "plate text-muted hover:border-[rgb(var(--accent)/0.35)] hover:text-ink",

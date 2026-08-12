@@ -35,7 +35,7 @@ export function LocaleSwitcher() {
         aria-expanded={open}
         disabled={pending}
         onClick={() => setOpen((v) => !v)}
-        className="flex h-9 w-9 items-center justify-center rounded-xl text-base transition-colors hover:bg-raised disabled:opacity-60"
+        className="flex h-11 w-11 items-center justify-center rounded-xl lg:h-9 lg:w-9 text-base transition-colors hover:bg-raised disabled:opacity-60"
       >
         <span aria-hidden>{FLAGS[locale] ?? "🌐"}</span>
       </button>

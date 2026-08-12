@@ -12,14 +12,14 @@ export function ThemeToggle() {
   const { t } = useI18n();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  if (!mounted) return <div className="h-9 w-9" />;
+  if (!mounted) return <div className="h-11 w-11 lg:h-9 lg:w-9" />;
   const dark = resolvedTheme === "dark";
   return (
     <button
       type="button"
       aria-label={t("settings.theme")}
       onClick={() => setTheme(dark ? "light" : "dark")}
-      className="flex h-9 w-9 items-center justify-center rounded-xl text-muted transition-colors hover:bg-raised hover:text-ink"
+      className="flex h-11 w-11 items-center justify-center rounded-xl lg:h-9 lg:w-9 text-muted transition-colors hover:bg-raised hover:text-ink"
     >
       {dark ? <Sun aria-hidden size={17} /> : <Moon aria-hidden size={17} />}
     </button>

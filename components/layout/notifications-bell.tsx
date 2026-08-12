@@ -44,7 +44,7 @@ export function NotificationsBell({ items, unread }: { items: NotificationItem[]
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={toggle} aria-label={t("notif.title")} aria-expanded={open}
-        className="relative flex h-9 w-9 items-center justify-center rounded-xl text-muted transition-colors hover:bg-raised hover:text-ink">
+        className="relative flex h-11 w-11 items-center justify-center rounded-xl lg:h-9 lg:w-9 text-muted transition-colors hover:bg-raised hover:text-ink">
         <Bell size={17} />
         {unread > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent2 px-1 text-[9px] font-bold text-white">
@@ -53,7 +53,7 @@ export function NotificationsBell({ items, unread }: { items: NotificationItem[]
         )}
       </button>
       {open && (
-        <div className="overlay animate-pop absolute right-0 top-11 z-50 w-80 rounded-2xl p-1.5">
+        <div className="overlay animate-pop absolute right-0 top-12 z-50 w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl p-1.5">
           <p className="border-b border-line px-3 pb-2 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-faint">
             {t("notif.title")}
           </p>
