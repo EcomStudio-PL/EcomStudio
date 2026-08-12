@@ -78,8 +78,12 @@ export function assembleMasterPrompt(input: {
   const { concept: c, manifest: m, lock, strength, session } = input;
   const sections: string[] = [];
 
-  // 1. TASK
-  sections.push(`TASK\nCreate one professional advertising photograph of: ${m.identity}${session.productName ? ` — "${session.productName}"` : ""}.\nConcept: ${c.title}. Marketing purpose: ${c.marketing_purpose}.`);
+  // 1. TASK — the seller's own product name only when it adds information the
+  // analysed identity does not already carry.
+  const identity = m.identity.toLowerCase();
+  const sellerName = session.productName?.trim();
+  const nameAdds = Boolean(sellerName) && !identity.includes(sellerName!.toLowerCase());
+  sections.push(`TASK\nCreate one professional advertising photograph of: ${m.identity}${nameAdds ? ` (seller listing: "${sellerName}")` : ""}.\nConcept: ${c.title}. Marketing purpose: ${c.marketing_purpose}.`);
 
   // 2. FORMAT
   sections.push(`FORMAT\nAspect ratio ${session.aspectRatio}.\nOne single coherent photograph. No collage, no split frame, no multi-panel layout unless explicitly requested.`);

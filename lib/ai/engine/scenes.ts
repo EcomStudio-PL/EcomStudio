@@ -15,7 +15,7 @@ import {
  * novelty: no rear hero shot when no rear photo exists).
  */
 
-const SCENE_SCHEMA = {
+export const SCENE_SCHEMA = {
   type: "OBJECT",
   properties: {
     concepts: {
@@ -187,7 +187,7 @@ function roleForView(view: ImageView): SupportingReference["role"] {
   }
 }
 
-const SYSTEM = `You are the scene-strategy engine of a product photography platform.
+export const SCENE_SYSTEM = `You are the scene-strategy engine of a product photography platform.
 You design 5 DISTINCT professional e-commerce photo concepts for one specific product.
 
 THE SCENE IS CREATIVE. THE PRODUCT IS NOT.
@@ -226,7 +226,7 @@ export async function proposeScenes(
   ].filter(Boolean).join("\n\n");
 
   const { data: out, outcome } = await callVisionJson<{ concepts: SceneConcept[] }>(
-    backends, { images, system: SYSTEM, user, schema: SCENE_SCHEMA }
+    backends, { images, system: SCENE_SYSTEM, user, schema: SCENE_SCHEMA }
   );
 
   let concepts = (out.concepts ?? []).map((c) => clampRefs(c, images.length, analyses));
