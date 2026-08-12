@@ -118,7 +118,7 @@ export default async function DashboardPage() {
       </Panel>
 
       {/* METRICS */}
-      <div className="stagger grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="stagger grid grid-cols-2 gap-3 [&>*]:min-w-0 lg:grid-cols-4">
         <Stat label={t("dashboard.statProducts")} value={products.length} icon={Box} href="/products" />
         <Stat label={t("dashboard.statGenerations")} value={gens.count ?? 0} icon={Images} href="/library" />
         <Stat label={t("dashboard.statCredits")} value={credits} icon={Zap} tone="accent"
@@ -127,7 +127,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* WORK IN PROGRESS */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 [&>*]:min-w-0 lg:grid-cols-2">
         <Panel>
           <PanelHeader
             overline={t("nav.groups.work")}

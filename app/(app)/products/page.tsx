@@ -63,7 +63,7 @@ export default async function ProductsPage({ searchParams }: {
           }
         />
       ) : (
-        <div className="stagger grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="stagger grid gap-3.5 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3">
           {products.map((p) => {
             const thumb = (p.product_images.find((i) => i.is_primary) ?? p.product_images[0])?.storage_path;
             const url = thumb ? urls.get(thumb) : undefined;
