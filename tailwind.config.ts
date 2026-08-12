@@ -21,6 +21,9 @@ const config: Config = {
         "accent-soft": "rgb(var(--accent-soft) / <alpha-value>)",
         accent2: "rgb(var(--accent2) / <alpha-value>)",
         "accent2-soft": "rgb(var(--accent2-soft) / <alpha-value>)",
+        success: "rgb(var(--success) / <alpha-value>)",
+        warning: "rgb(var(--warning) / <alpha-value>)",
+        danger: "rgb(var(--danger) / <alpha-value>)",
       },
       fontFamily: {
         display: ["var(--font-display)"],

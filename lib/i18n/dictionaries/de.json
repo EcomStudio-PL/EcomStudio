@@ -23,7 +23,8 @@
     },
     "menu": "Menü",
     "support": "Support",
-    "inspirations": "Inspirationen"
+    "inspirations": "Inspirationen",
+    "promptsShort": "Prompts"
   },
   "common": {
     "save": "Speichern",
@@ -51,7 +52,8 @@
     "error": "Etwas ist schiefgelaufen. Bitte erneut versuchen.",
     "signOut": "Abmelden",
     "search": "Suchen",
-    "clearFilters": "Filter zurücksetzen"
+    "clearFilters": "Filter zurücksetzen",
+    "close": "Schließen"
   },
   "landing": {
     "headline": "Professionelle Produktvisuals mit KI. Schneller als ein Fotostudio.",
@@ -478,7 +480,8 @@
     "badge": "Badge",
     "sortOrder": "Reihenfolge",
     "pricingPerRes": "Credit-Preise pro Qualität",
-    "pricingPerResHint": "Leeres Feld = Variante nicht verfügbar. Ausgefüllte Varianten werden zu den 1K/2K/4K-Buttons im Studio."
+    "pricingPerResHint": "Leeres Feld = Variante nicht verfügbar. Ausgefüllte Varianten werden zu den 1K/2K/4K-Buttons im Studio.",
+    "kpiUsers": "Kunden"
   },
   "support": {
     "title": "Support & Nachrichten",
@@ -806,10 +809,7 @@
     "styleToggle": "Bevorzugter Stil (optional)",
     "stylePh": "Z. B. minimalistisch, warm, premium…",
     "unavailable": "Die KI-Analyse ist vorübergehend nicht verfügbar. Bitte später erneut versuchen.",
-    "analyzing": "Produkt wird analysiert…",
     "generate5": "5 Prompts generieren",
-    "step1": "1. Analyse jedes Fotos und Aufbau des Product Lock…",
-    "step2": "2. Auswahl von 5 Szenen und Zusammenbau der Prompts…",
     "stepHint": "Dauert in der Regel 30–60 Sekunden.",
     "recent": "Letzte Sessions",
     "empty": "Noch keine Prompt-Sessions.",
@@ -823,7 +823,11 @@
     "status_ready": "Fertig",
     "status_failed": "Fehler",
     "status_analyzing": "Analyse…",
-    "status_pending": "Wartet"
+    "status_pending": "Wartet",
+    "stage_analyzing": "Produkt wird analysiert…",
+    "stage_lock": "Product Lock wird erstellt…",
+    "stage_prompts": "5 Prompts werden erstellt…",
+    "retryHint": "Bitte erneut versuchen."
   },
   "scene": {
     "product_hero": "Produkt-Hero",
@@ -845,5 +849,20 @@
     "professional_use": "Professioneller Einsatz",
     "accessories_layout": "Zubehör-Layout",
     "premium_packshot": "Premium Packshot"
+  },
+  "search": {
+    "placeholder": "Produkte, Prompts, Generierungen suchen…",
+    "pages": "Seiten",
+    "hint": "Mindestens 2 Zeichen eingeben.",
+    "searching": "Suche…",
+    "noResults": "Keine Treffer für „{q}“.",
+    "keys": "↑↓ navigieren · Enter öffnen · Esc schließen",
+    "kind": {
+      "product": "Produkte",
+      "session": "Prompt-Sessions",
+      "prompt": "Prompts",
+      "generation": "Generierungen",
+      "user": "Kunden"
+    }
   }
 }

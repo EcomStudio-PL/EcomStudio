@@ -36,6 +36,9 @@ export function SessionForm({ products, workspaceId, engineAvailable }: {
   const [refs, setRefs] = useState<Ref[]>([]);
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [stage, setStage] = useState<"analyzing" | "lock" | "prompts">("analyzing");
+  const [failure, setFailure] = useState<string | null>(null);
+  const submitting = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const adhocFolder = useRef(`adhoc-${Math.random().toString(36).slice(2, 10)}`);
 
@@ -70,8 +73,17 @@ export function SessionForm({ products, workspaceId, engineAvailable }: {
   }
 
   async function submit() {
-    if (!canSubmit) return;
+    // Guard the request itself, not just the disabled attribute: a double tap
+    // on mobile must never start two analyses (or two draft products).
+    if (!canSubmit || submitting.current) return;
+    submitting.current = true;
+    setFailure(null);
     setBusy(true);
+    setStage("analyzing");
+    // The server runs analysis -> Product Lock -> 5 prompts in one request;
+    // these timings mirror the real stage durations so the label stays honest.
+    const toLock = setTimeout(() => setStage("lock"), 12_000);
+    const toPrompts = setTimeout(() => setStage("prompts"), 22_000);
     try {
       const res = await fetch("/api/prompts/generate", {
         method: "POST",
@@ -87,13 +99,20 @@ export function SessionForm({ products, workspaceId, engineAvailable }: {
       const json = await res.json() as { ok: boolean; sessionId?: string; error?: string };
       if (json.ok && json.sessionId) {
         router.push(`/prompts/${json.sessionId}`);
-      } else {
-        toast.error(t(`studio.err.${json.error}`, {}) || t("common.error"));
-        setBusy(false);
+        return; // keep the button busy until the new route paints
       }
+      const message = t(`studio.err.${json.error}`, {}) || t("common.error");
+      setFailure(message);
+      toast.error(message);
+      setBusy(false);
     } catch {
+      setFailure(t("common.error"));
       toast.error(t("common.error"));
       setBusy(false);
+    } finally {
+      clearTimeout(toLock);
+      clearTimeout(toPrompts);
+      submitting.current = false;
     }
   }
 
@@ -190,14 +209,29 @@ export function SessionForm({ products, workspaceId, engineAvailable }: {
           className={cn("brand-gradient flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-sm font-semibold text-white shadow-sm transition-opacity",
             canSubmit ? "hover:opacity-90" : "cursor-not-allowed opacity-50")}>
           {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-          {busy ? t("psess.analyzing") : t("psess.generate5")}
+          {busy ? t(`psess.stage_${stage}`) : t("psess.generate5")}
         </button>
         {busy && (
-          <div className="space-y-1.5 rounded-xl bg-raised px-4 py-3 anim-fade">
-            <p className="text-xs font-medium text-ink">{t("psess.step1")}</p>
-            <p className="text-xs text-muted">{t("psess.step2")}</p>
+          <div className="space-y-2 rounded-xl bg-raised px-4 py-3 anim-fade">
+            {(["analyzing", "lock", "prompts"] as const).map((s, i) => {
+              const idx = ["analyzing", "lock", "prompts"].indexOf(stage);
+              const done = i < idx;
+              return (
+                <p key={s} className={cn("flex items-center gap-2 text-xs",
+                  i === idx ? "font-medium text-ink" : done ? "text-muted" : "text-faint")}>
+                  <span aria-hidden className={cn("h-1.5 w-1.5 rounded-full",
+                    i === idx ? "bg-accent" : done ? "bg-accent/40" : "bg-line-strong")} />
+                  {t(`psess.stage_${s}`)}
+                </p>
+              );
+            })}
             <p className="text-xs text-faint">{t("psess.stepHint")}</p>
           </div>
+        )}
+        {failure && !busy && (
+          <p role="alert" className="rounded-xl bg-red-500/10 px-4 py-3 text-xs text-red-500 anim-fade">
+            {failure} <span className="text-muted">{t("psess.retryHint")}</span>
+          </p>
         )}
       </div>
     </Card>

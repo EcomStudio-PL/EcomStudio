@@ -1450,6 +1450,8 @@ export type Database = {
           created_at: string
           description: string | null
           error: string | null
+          latency_ms: number | null
+          error_stage: string | null
           extra_info: string | null
           feature_manifest: Json
           id: string
@@ -1470,6 +1472,8 @@ export type Database = {
           created_at?: string
           description?: string | null
           error?: string | null
+          latency_ms?: number | null
+          error_stage?: string | null
           extra_info?: string | null
           feature_manifest?: Json
           id?: string
@@ -1490,6 +1494,8 @@ export type Database = {
           created_at?: string
           description?: string | null
           error?: string | null
+          latency_ms?: number | null
+          error_stage?: string | null
           extra_info?: string | null
           feature_manifest?: Json
           id?: string

@@ -77,7 +77,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <DrawerProvider>
       <div className="flex min-h-dvh">
-        <Sidebar />
+        <Sidebar name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} />
         <div className="flex min-w-0 flex-1 flex-col">
           <Topbar name={displayName} credits={wallet?.balance ?? 0} workspace={workspace.name} isAdmin={isAdmin} notifications={notifs ?? []} unread={unread} />
           <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-6 lg:px-8 lg:pb-10">

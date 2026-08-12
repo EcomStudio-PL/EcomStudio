@@ -16,6 +16,7 @@ export function NavLink({ href, label, icon: Icon, onNavigate }: {
   return (
     <Link
       href={href}
+      prefetch
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       className={cn(

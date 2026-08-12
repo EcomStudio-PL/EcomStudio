@@ -24,16 +24,20 @@ export default async function PromptsPage() {
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) return null;
 
-  const [products, { data: sessions }, { data: googleProvider }] = await Promise.all([
+  // Availability check goes through the definer RPC: ai_provider_credentials
+  // is admin-only under RLS, so reading it directly told every customer the
+  // engine was unavailable even when a key was configured.
+  const [products, { data: sessions }, { data: analysisProvider }, { data: withKey }] = await Promise.all([
     listProducts(supabase, workspace.id, 20),
     supabase.from("prompt_sessions")
       .select("id, product_name, status, aspect_ratio, created_at, reference_paths")
       .eq("workspace_id", workspace.id)
       .order("created_at", { ascending: false }).limit(12),
-    supabase.from("ai_providers").select("id, ai_provider_credentials(id)").eq("slug", "google").eq("active", true).maybeSingle(),
+    supabase.from("ai_providers").select("id").eq("slug", "google").eq("active", true).maybeSingle(),
+    supabase.rpc("providers_with_credentials"),
   ]);
   const engineAvailable =
-    ((googleProvider as { ai_provider_credentials?: { id: string }[] } | null)?.ai_provider_credentials?.length ?? 0) > 0;
+    !!analysisProvider && ((withKey ?? []) as string[]).includes(analysisProvider.id);
 
   const productPaths = products.flatMap((p) => p.product_images.map((i) => i.storage_path));
   const sessionThumbs = (sessions ?? []).map((s) => s.reference_paths?.[0]).filter(Boolean) as string[];

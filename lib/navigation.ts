@@ -11,7 +11,13 @@ import {
  *  so future modules (video, marketplace, CRM, messaging) are added here
  *  once — filtered by role where needed, not re-declared per component. */
 
-export type NavItem = { href: string; key: string; icon: LucideIcon };
+export type NavItem = {
+  href: string;
+  key: string;
+  icon: LucideIcon;
+  /** Short label key for the mobile bottom bar, where one line must fit. */
+  shortKey?: string;
+};
 export type NavGroup = { key: string; items: readonly NavItem[] };
 
 export const CLIENT_NAV: readonly NavGroup[] = [
@@ -41,7 +47,7 @@ export const CLIENT_NAV: readonly NavGroup[] = [
  *  flow starts at Prompty or AI Studio, no prior product required. */
 export const CLIENT_BOTTOM: readonly NavItem[] = [
   { href: "/dashboard", key: "dashboard", icon: LayoutDashboard },
-  { href: "/prompts", key: "prompts", icon: PenLine },
+  { href: "/prompts", key: "prompts", icon: PenLine, shortKey: "promptsShort" },
   { href: "/generator", key: "generator", icon: Sparkles },
   { href: "/library", key: "library", icon: Images },
 ] as const;

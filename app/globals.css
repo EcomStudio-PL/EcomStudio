@@ -5,51 +5,61 @@
 :root {
   --font-body: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk Variable", "Inter Variable", ui-sans-serif, system-ui, sans-serif;
-  --bg: 245 247 248;          /* #F5F7F8 */
-  --sidebar: 255 255 255;
-  --surface: 255 255 255;
-  --raised: 240 243 244;      /* #F0F3F4 */
-  --ink: 17 20 24;            /* #111418 */
-  --muted: 86 96 106;         /* #56606A */
-  --faint: 135 145 155;       /* #87919B */
-  --line: 222 227 231;        /* #DEE3E7 */
-  --line-strong: 199 206 212;
+  /* Light: soft cool-lavender page, cards a touch lighter than the page —
+     never white-on-white. Violet stays the identity, orange the accent. */
+  --bg: 244 243 250;          /* #F4F3FA lavender-tinted page */
+  --sidebar: 250 249 253;
+  --surface: 253 252 255;     /* #FDFCFF card, lifts off the page */
+  --raised: 238 236 247;      /* #EEECF7 inset rows/tiles */
+  --ink: 24 22 35;            /* #181623 */
+  --muted: 88 90 110;         /* #585A6E */
+  --faint: 132 133 156;       /* #84859C */
+  --line: 224 221 240;        /* #E0DDF0 violet-tinted border */
+  --line-strong: 203 198 227;
   --accent: 124 58 237;       /* #7C3AED violet — primary brand (light) */
   --accent-hover: 109 40 217; /* #6D28D9 */
   --accent-strong: 91 33 182; /* #5B21B6 */
-  --accent-soft: 243 238 253; /* #F3EEFD */
-  --accent2: 217 119 6;       /* #D97706 warm amber — secondary accent */
-  --accent2-soft: 253 240 221;
-  --glass: 255 255 255;
-  --glass-alpha: 0.82;
-  --glass-border: 20 30 40;
-  --glass-border-alpha: 0.10;
+  --accent-soft: 238 232 252; /* #EEE8FC */
+  --accent2: 200 106 12;      /* #C86A0C warm business orange — secondary accent */
+  --accent2-soft: 252 238 220;
+  --success: 21 128 61;
+  --warning: 180 83 9;
+  --danger: 190 40 51;
+  --glass: 253 252 255;
+  --glass-alpha: 0.80;
+  --glass-border: 76 60 120;
+  --glass-border-alpha: 0.12;
 }
 
 .dark {
-  --bg: 7 9 11;               /* #07090B */
-  --sidebar: 11 14 17;        /* #0B0E11 */
-  --surface: 18 22 27;
-  --raised: 25 30 36;
-  --ink: 246 248 250;         /* #F6F8FA */
-  --muted: 168 176 186;       /* #A8B0BA */
-  --faint: 112 121 133;       /* #707985 */
+  /* Dark: deep graphite with a navy-violet cast, layered surfaces so cards
+     read clearly against the page. Never pure black. */
+  --bg: 14 15 22;             /* #0E0F16 graphite navy-violet */
+  --sidebar: 18 19 28;        /* #12131C */
+  --surface: 24 25 36;        /* #181924 card surface */
+  --raised: 33 34 48;         /* #212230 inset rows/tiles */
+  --ink: 240 241 248;         /* #F0F1F8 */
+  --muted: 174 178 196;       /* #AEB2C4 */
+  --faint: 124 128 148;       /* #7C8094 */
   --line: 255 255 255;        /* used at low alpha via glass borders */
   --line-strong: 255 255 255;
   --accent: 139 92 246;       /* #8B5CF6 electric violet — primary brand (dark) */
   --accent-hover: 124 92 252; /* #7C5CFC */
   --accent-strong: 109 40 217;/* #6D28D9 */
-  --accent-soft: 36 30 63;    /* #241E3F */
-  --accent2: 255 158 71;      /* #FF9E47 warm orange — secondary accent */
-  --accent2-soft: 58 42 24;   /* #3A2A18 */
-  --glass: 18 22 27;
-  --glass-alpha: 0.72;
+  --accent-soft: 45 38 78;    /* #2D264E */
+  --accent2: 255 165 87;      /* #FFA557 warm business orange — secondary */
+  --accent2-soft: 63 46 27;   /* #3F2E1B */
+  --success: 74 222 128;
+  --warning: 251 191 36;
+  --danger: 248 113 113;
+  --glass: 26 27 39;
+  --glass-alpha: 0.76;
   --glass-border: 255 255 255;
-  --glass-border-alpha: 0.08;
+  --glass-border-alpha: 0.09;
 }
-.dark .border-line { border-color: rgb(255 255 255 / 0.08); }
-.dark .divide-line > :not([hidden]) ~ :not([hidden]) { border-color: rgb(255 255 255 / 0.08); }
-.dark .border-line-strong { border-color: rgb(255 255 255 / 0.13); }
+.dark .border-line { border-color: rgb(255 255 255 / 0.09); }
+.dark .divide-line > :not([hidden]) ~ :not([hidden]) { border-color: rgb(255 255 255 / 0.09); }
+.dark .border-line-strong { border-color: rgb(255 255 255 / 0.15); }
 
 /* Refined glass surface: blur, 1px border, inner highlight, layered shadow */
 .glass {
@@ -65,7 +75,8 @@
   transition: border-color 180ms ease, box-shadow 180ms ease;
 }
 
-/* Ambient background lighting: subtle emerald + neutral teal glows */
+/* Ambient background lighting: a violet key light with a warm orange fill,
+   strong enough to give depth, restrained enough to stay business-grade. */
 body::before {
   content: "";
   position: fixed;
@@ -73,8 +84,28 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(48rem 32rem at 88% -8%, rgb(139 92 246 / 0.07), transparent 62%),
-    radial-gradient(40rem 30rem at -10% 100%, rgb(255 158 71 / 0.04), transparent 60%);
+    radial-gradient(48rem 32rem at 88% -8%, rgb(139 92 246 / 0.10), transparent 62%),
+    radial-gradient(40rem 30rem at -10% 100%, rgb(255 158 71 / 0.05), transparent 60%);
+}
+
+/* Cards react to the pointer: a whisper of elevation and a violet-tinted
+   border. Desktop only, and fully disabled for reduced-motion users. */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .glass:hover {
+    border-color: rgb(var(--accent) / 0.28);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.06),
+      0 14px 36px -14px rgb(var(--accent) / 0.35);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Overlay surface for drawers, dropdowns and modals: near-opaque so content
@@ -124,6 +155,3 @@ body { @apply bg-bg text-ink antialiased; }
 
 ::selection { background: rgb(var(--accent) / 0.25); }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
-}

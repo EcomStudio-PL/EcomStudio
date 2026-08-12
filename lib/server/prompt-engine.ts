@@ -149,11 +149,15 @@ export async function runPromptSession(
     aspectRatio: input.aspectRatio,
   };
 
+  // Stage is tracked so a failed session tells admins WHERE it broke.
+  let stage: "references" | "analysis" | "scenes" | "prompts" = "references";
+  const startedAt = Date.now();
   try {
     const images = await downloadReferences(supabase, input.referencePaths);
     if (images.length === 0) throw new ProviderError("references_required");
 
     // 1) IMAGE ANALYSIS + PRODUCT FEATURE MANIFEST
+    stage = "analysis";
     const { images: analyses, manifest } = await analyzeReferences(cred, images, sessionInfo, analysisModel);
 
     // 2) PRODUCT LOCK
@@ -164,6 +168,7 @@ export async function runPromptSession(
     }).eq("id", session.id);
 
     // 3) SCENE STRATEGY + DIVERSITY (retry once to refill filtered slots)
+    stage = "scenes";
     let concepts = await proposeScenes(cred, images, analyses, manifest, sessionInfo, { model: analysisModel });
     if (concepts.length < 5) {
       const missing = 5 - concepts.length;
@@ -177,6 +182,7 @@ export async function runPromptSession(
     if (concepts.length === 0) throw new ProviderError("analysis_empty", true);
 
     // 4) MASTER + NEGATIVE PROMPTS
+    stage = "prompts";
     const rows = concepts.map((concept, idx) => {
       const strength = chooseLockStrength(concept, manifest);
       const prompt = assembleMasterPrompt({
@@ -201,7 +207,9 @@ export async function runPromptSession(
     if (insertError) throw new ProviderError("session_create_failed");
 
     await completeUsage(supabase, usage.eventId, rows.length);
-    await supabase.from("prompt_sessions").update({ status: "ready" }).eq("id", session.id);
+    await supabase.from("prompt_sessions")
+      .update({ status: "ready", latency_ms: Date.now() - startedAt })
+      .eq("id", session.id);
     await supabase.rpc("log_activity", {
       p_workspace_id: workspaceId, p_action: "prompts.generated",
       p_entity_type: "prompt_session", p_entity_id: session.id,
@@ -211,7 +219,18 @@ export async function runPromptSession(
   } catch (e) {
     const safe = e instanceof ProviderError ? e.safeMessage : "analysis_error";
     await failUsage(supabase, { eventId: usage.eventId, walletId: wallet.id, error: safe });
-    await supabase.from("prompt_sessions").update({ status: "failed", error: safe }).eq("id", session.id);
+    await supabase.from("prompt_sessions").update({
+      status: "failed", error: safe, error_stage: stage, latency_ms: Date.now() - startedAt,
+    }).eq("id", session.id);
+    await supabase.rpc("log_activity", {
+      p_workspace_id: workspaceId, p_action: "prompts.failed",
+      p_entity_type: "prompt_session", p_entity_id: session.id,
+      p_metadata: {
+        stage, error: safe, model: analysisModel, provider: "google",
+        images: input.referencePaths.length, product_id: productId,
+        latency_ms: Date.now() - startedAt,
+      },
+    });
     return { ok: false, error: safe, sessionId: session.id };
   }
 }
