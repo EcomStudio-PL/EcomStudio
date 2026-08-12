@@ -25,17 +25,30 @@ export async function updateSession(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   const { pathname } = request.nextUrl;
 
+  // Any redirect must carry the cookies getUser() may have just set while
+  // refreshing the session — otherwise the refreshed token is lost and the
+  // user is bounced to /login despite having a valid session. Installed
+  // PWAs always enter through a protected path, so they hit this on every
+  // launch; dropping the cookies here is what broke standalone login.
+  const redirectWithCookies = (url: URL) => {
+    const redirect = NextResponse.redirect(url);
+    response.cookies.getAll().forEach((c) => redirect.cookies.set(c));
+    return redirect;
+  };
+
   if (!user && PROTECTED_PREFIXES.some((p) => pathname.startsWith(p))) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    url.search = "";
     url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
+    return redirectWithCookies(url);
   }
   if (user && AUTH_PAGES.some((p) => pathname.startsWith(p))) {
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    const next = request.nextUrl.searchParams.get("next");
+    url.pathname = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
     url.search = "";
-    return NextResponse.redirect(url);
+    return redirectWithCookies(url);
   }
   return response;
 }

@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "EcomStudio",
     description: "Professional e-commerce product content, faster.",
     id: "/",
-    start_url: "/dashboard",
+    start_url: "/",
     scope: "/",
     display: "standalone",
     orientation: "portrait",

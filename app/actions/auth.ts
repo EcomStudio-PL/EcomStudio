@@ -20,7 +20,12 @@ export async function signIn(_prev: Result | null, formData: FormData): Promise<
     password: String(formData.get("password") ?? ""),
   });
   if (error) return { ok: false, error: "invalid" };
-  redirect("/dashboard");
+  // Return to the page that sent the user to /login (?next=…), so installed
+  // PWA launches land back where they started. Relative paths only.
+  const referer = (await headers()).get("referer");
+  let next: string | null = null;
+  try { next = referer ? new URL(referer).searchParams.get("next") : null; } catch { /* ignore */ }
+  redirect(next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard");
 }
 
 export async function signUp(_prev: Result | null, formData: FormData): Promise<Result> {

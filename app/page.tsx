@@ -15,18 +15,19 @@ export default async function LandingPage() {
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-6xl flex-col px-5 sm:px-8">
-      <header className="sticky top-0 z-30 -mx-5 flex items-center justify-between gap-3 bg-bg/80 px-5 py-4 backdrop-blur-md sm:-mx-8 sm:px-8">
-        <Brand href="/" />
+      <header className="sticky top-0 z-30 -mx-5 flex items-center justify-between gap-2 bg-bg/80 px-5 pb-4 pt-[calc(1rem+env(safe-area-inset-top))] backdrop-blur-md sm:-mx-8 sm:px-8">
+        <div className="sm:hidden"><Brand href="/" markOnly /></div>
+        <div className="hidden sm:block"><Brand href="/" /></div>
         <nav className="hidden items-center gap-6 text-sm text-muted md:flex">
           <a href="#features" className="transition-colors hover:text-ink">{t("landing.navFeatures")}</a>
           <a href="#how" className="transition-colors hover:text-ink">{t("landing.navHow")}</a>
           <a href="#pricing" className="transition-colors hover:text-ink">{t("landing.navPricing")}</a>
         </nav>
-        <div className="flex items-center gap-2">
-          <Link href="/login" className="whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-muted transition-colors hover:text-ink">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Link href="/login" className="whitespace-nowrap rounded-xl px-2.5 py-2 text-sm font-medium text-muted transition-colors hover:text-ink">
             {t("landing.ctaLogin")}
           </Link>
-          <Link href="/register" className="brand-gradient whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 dark:text-emerald-950">
+          <Link href="/register" className="brand-gradient whitespace-nowrap rounded-xl px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90">
             {t("landing.cta")}
           </Link>
         </div>
@@ -41,7 +42,7 @@ export default async function LandingPage() {
           <p className="mt-5 max-w-lg text-base text-muted sm:text-lg">{t("landing.sub")}</p>
           <p className="mt-3 text-sm font-medium text-accent2">{t("landing.pipeline")}</p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/register" className="brand-gradient rounded-xl px-5 py-3 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 dark:text-emerald-950">
+            <Link href="/register" className="brand-gradient rounded-xl px-5 py-3 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90">
               {t("landing.cta")}
             </Link>
             <a href="#how" className="rounded-xl border border-line bg-surface px-5 py-3 text-sm font-semibold transition-colors hover:bg-raised">
@@ -93,7 +94,7 @@ export default async function LandingPage() {
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[1, 2, 3, 4].map((n) => (
             <div key={n} className="glass rounded-2xl p-5 transition-transform duration-150 hover:-translate-y-0.5">
-              <span className="brand-gradient flex h-8 w-8 items-center justify-center rounded-full font-display text-sm font-bold text-white dark:text-emerald-950">{n}</span>
+              <span className="brand-gradient flex h-8 w-8 items-center justify-center rounded-full font-display text-sm font-bold text-white">{n}</span>
               <p className="mt-3 text-sm font-semibold">{t(`landing.how${n}`)}</p>
             </div>
           ))}
@@ -149,7 +150,7 @@ export default async function LandingPage() {
 
       <section className="py-16 text-center">
         <h2 className="mx-auto max-w-xl font-display text-2xl font-semibold tracking-tight sm:text-3xl">{t("landing.finalTitle")}</h2>
-        <Link href="/register" className="brand-gradient mt-6 inline-flex rounded-xl px-6 py-3 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 dark:text-emerald-950">
+        <Link href="/register" className="brand-gradient mt-6 inline-flex rounded-xl px-6 py-3 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90">
           {t("landing.cta")}
         </Link>
       </section>

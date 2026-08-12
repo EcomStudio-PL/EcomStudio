@@ -67,7 +67,7 @@ export function GeneratorWizard({ products, modelCount }: {
                           {idx + 1}
                         </span>
                         {img.isPrimary && (
-                          <span className="absolute right-1.5 top-1.5 rounded bg-accent px-1.5 text-[10px] font-semibold text-white dark:text-emerald-950">★</span>
+                          <span className="absolute right-1.5 top-1.5 rounded bg-accent px-1.5 text-[10px] font-semibold text-white">★</span>
                         )}
                       </button>
                     </li>

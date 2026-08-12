@@ -18,7 +18,9 @@ export function Topbar({ name, credits, workspace, isAdmin = false }: {
   const { setOpen } = useDrawer();
   const initial = (name || "?").trim().charAt(0).toUpperCase();
   return (
-    <header className="glass sticky top-0 z-30 flex h-14 items-center justify-between gap-2 rounded-none border-x-0 border-t-0 px-3 pt-[env(safe-area-inset-top)] sm:px-4 lg:px-8">
+    // Single safe-area source: padding on the header; fixed 60px content row.
+    <header className="glass sticky top-0 z-30 rounded-none border-x-0 border-t-0 pt-[env(safe-area-inset-top)]">
+      <div className="flex h-[60px] items-center justify-between gap-2 px-3 sm:px-4 lg:px-8">
       <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
         <button
           type="button"
@@ -38,7 +40,7 @@ export function Topbar({ name, credits, workspace, isAdmin = false }: {
       <div className="flex items-center gap-1 sm:gap-1.5">
         <div className="hidden lg:block"><CommandPalette isAdmin={isAdmin} /></div>
         <Link href="/credits"
-          className="brand-gradient inline-flex h-8 items-center gap-1 rounded-full px-3 text-xs font-semibold text-white shadow-sm transition-opacity hover:opacity-90 dark:text-emerald-950">
+          className="brand-gradient inline-flex h-8 items-center gap-1 rounded-full px-3 text-xs font-semibold text-white shadow-sm transition-opacity hover:opacity-90">
           <span aria-hidden>◆</span>
           {new Intl.NumberFormat("pl-PL").format(credits)}
         </Link>
@@ -65,6 +67,7 @@ export function Topbar({ name, credits, workspace, isAdmin = false }: {
         >
           {initial}
         </Link>
+      </div>
       </div>
     </header>
   );

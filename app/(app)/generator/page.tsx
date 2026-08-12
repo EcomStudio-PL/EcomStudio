@@ -37,7 +37,7 @@ export default async function GeneratorPage() {
       <PageHeader title={t("generator.title")} sub={t("generator.sub")} />
       {products.length === 0 ? (
         <EmptyState title={t("generator.noProducts")} action={
-          <Link href="/products/new" className="brand-gradient rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-90 dark:text-emerald-950">
+          <Link href="/products/new" className="brand-gradient rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-90">
             + {t("products.new")}
           </Link>
         } />

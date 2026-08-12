@@ -79,7 +79,7 @@ export default async function CreditsPage() {
             return (
               <Card key={p.id} className={`relative flex flex-col p-5 ${p.featured ? "ring-1 ring-accent" : ""}`}>
                 {p.badge && (
-                  <span className="absolute -top-2.5 left-4 rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-semibold text-white dark:text-emerald-950">
+                  <span className="absolute -top-2.5 left-4 rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-semibold text-white">
                     {p.badge}
                   </span>
                 )}
