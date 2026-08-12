@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { adminCounts, adminBusinessStats } from "@/lib/services/admin";
+import { Sparkles, TrendingUp, Users, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Stat } from "@/components/ui/stat";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -76,26 +77,33 @@ export default async function AdminDashboard() {
 
   return (
     <div>
-      <PageHeader title={t("admin.title")} />
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <Stat label={t("admin.statUsers")} value={biz.users} hint={`+${biz.usersToday} ${t("admin.kpiToday").toLowerCase()}`} />
-        <Stat label={t("admin.revenueToday")} value={plnFmt.format(biz.revenueTodayCents / 100)} accent2 />
-        <Stat label={t("admin.revenue30d")} value={plnFmt.format(biz.revenue30dCents / 100)} accent2 />
-        <Stat label={t("admin.statCreditsUsed")} value={counts.creditsUsed} />
-        <Stat label={t("admin.generationsToday")} value={biz.generationsToday} />
-        <Stat label={t("admin.statFailed")} value={failed.count ?? 0} />
-        <Stat label={t("admin.statActiveModels")} value={activeModels.count ?? 0} accent />
-        <Card className="px-4 py-3">
-          <p className="truncate text-xs font-medium text-muted">{t("admin.nav.providers")}</p>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
+      <PageHeader overline={t("admin.navGroups.overview")} title={t("admin.title")} />
+
+      {/* HEADLINE KPIs — the four numbers staff open this screen for. */}
+      <div className="grid grid-cols-2 gap-3 [&>*]:min-w-0 lg:grid-cols-4">
+        <Stat label={t("admin.statUsers")} value={biz.users} icon={Users}
+          hint={`+${biz.usersToday} ${t("admin.kpiToday").toLowerCase()}`} />
+        <Stat label={t("admin.revenueToday")} value={plnFmt.format(biz.revenueTodayCents / 100)} icon={Wallet} tone="accent2" />
+        <Stat label={t("admin.revenue30d")} value={plnFmt.format(biz.revenue30dCents / 100)} icon={TrendingUp} tone="accent2" />
+        <Stat label={t("admin.generationsToday")} value={biz.generationsToday} icon={Sparkles} tone="accent" />
+      </div>
+
+      {/* SECONDARY — operational state, deliberately quieter than the KPIs. */}
+      <div className="panel mt-3 grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl px-4 py-3.5 sm:grid-cols-4 sm:px-5">
+        <MiniFact label={t("admin.statCreditsUsed")} value={counts.creditsUsed} />
+        <MiniFact label={t("admin.statFailed")} value={failed.count ?? 0} tone={(failed.count ?? 0) > 0 ? "danger" : undefined} />
+        <MiniFact label={t("admin.statActiveModels")} value={activeModels.count ?? 0} />
+        <div className="min-w-0">
+          <p className="overline text-[9px]">{t("admin.nav.providers")}</p>
+          <div className="mt-1 flex flex-wrap gap-1">
             {(providers.data ?? []).map((p) => (
               <Badge key={p.slug} tone={p.active ? "green" : "neutral"}>{p.name}</Badge>
             ))}
           </div>
-        </Card>
+        </div>
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+      <div className="mt-4 grid gap-4 [&>*]:min-w-0 lg:grid-cols-2">
         <Card className="p-5">
           <DayBars days={revenueDays} label={t("admin.chartRevenue30")} tone="accent2" empty={t("admin.noRevenueYet")} />
         </Card>
@@ -104,7 +112,7 @@ export default async function AdminDashboard() {
         </Card>
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+      <div className="mt-4 grid gap-4 [&>*]:min-w-0 lg:grid-cols-2">
         <Card>
           <CardHeader title={t("admin.latestUsers")} />
           {(latestUsers.data ?? []).length === 0 ? (
@@ -142,6 +150,17 @@ export default async function AdminDashboard() {
           )}
         </Card>
       </div>
+    </div>
+  );
+}
+
+/** A quiet secondary figure: present when needed, never competing with the
+ *  headline KPIs above it. */
+function MiniFact({ label, value, tone }: { label: string; value: number | string; tone?: "danger" }) {
+  return (
+    <div className="min-w-0">
+      <p className="overline text-[9px]">{label}</p>
+      <p className={`metric mt-1 truncate text-lg ${tone === "danger" ? "text-danger" : "text-ink"}`}>{value}</p>
     </div>
   );
 }

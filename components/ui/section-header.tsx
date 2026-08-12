@@ -39,10 +39,11 @@ export function SectionHeader({ overline, title, sub, action, icon: Icon, classN
   );
 }
 
-/** Header row bolted to the top of a Panel, with its own hairline. */
+/** Header row at the top of a Panel. Spacing separates it from the body —
+ *  a rule on every card adds noise without adding information. */
 export function PanelHeader(props: React.ComponentProps<typeof SectionHeader>) {
   return (
-    <div className="border-b border-line px-4 py-3.5 sm:px-5">
+    <div className="px-4 pb-3 pt-4 sm:px-5 sm:pt-5">
       <SectionHeader size="sm" {...props} />
     </div>
   );

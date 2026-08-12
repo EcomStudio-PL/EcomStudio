@@ -215,7 +215,7 @@ export default async function CrmProfile({ params }: { params: Promise<{ id: str
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader title={t("crm.notes")} sub={t("crm.notesSub")} />
-          <div className="p-5 pt-3">
+          <div className="px-4 pb-5 sm:px-5">
             <CrmNotes userId={profile.id}
               notes={(notesRes.data ?? []).map((n) => ({
                 id: n.id, body: n.body, pinned: n.pinned, reminder_date: n.reminder_date,

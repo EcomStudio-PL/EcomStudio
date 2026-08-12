@@ -181,7 +181,7 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
   }
 
   return (
-    <div className="grid gap-4 pb-28 lg:grid-cols-[minmax(0,1fr)_360px] lg:pb-0">
+    <div className="grid min-w-0 gap-4 pb-24 [&>*]:min-w-0 lg:grid-cols-[minmax(0,1fr)_360px] lg:pb-0">
       <div className="min-w-0 space-y-4">
         {session && (
           <div className="animate-rise flex items-center gap-3 rounded-2xl border border-[rgb(var(--accent)/0.35)] bg-[linear-gradient(100deg,rgb(var(--accent)/0.16),transparent)] px-4 py-3">
@@ -197,7 +197,7 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
         {/* PRODUCT / CONTEXT */}
         <Panel>
           <PanelHeader overline={t("studio.step1")} title={t("studio.context")} sub={t("studio.contextSub")} icon={Box} />
-          <div className="space-y-3.5 p-4 pt-3.5 sm:p-5">
+          <div className="space-y-3.5 px-4 pb-5 sm:px-5">
             <ChipRow>
               <Chip active={!productId} onClick={() => { setProductId(""); setRefs([]); }}>
                 + {t("studio.newProduct")}
@@ -273,13 +273,13 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
               </span>
             ) : undefined}
           />
-          <div className="p-4 pt-3.5 sm:p-5">
+          <div className="px-4 pb-5 sm:px-5">
             <input ref={fileRef} type="file" multiple accept="image/jpeg,image/png,image/webp,image/avif"
               className="hidden" onChange={(e) => e.target.files && upload(e.target.files)} />
-            <div className="flex flex-wrap gap-2.5">
+            <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
               {refs.map((r, i) => (
                 <div key={r.key} className={cn(
-                  "group relative h-24 w-24 overflow-hidden rounded-xl transition-all duration-200",
+                  "group relative aspect-square overflow-hidden rounded-xl transition-all duration-200",
                   r.selected
                     ? "ring-2 ring-accent shadow-[0_8px_24px_-14px_rgb(var(--accent)/0.9)]"
                     : "opacity-55 ring-1 ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))] grayscale hover:opacity-80 hover:grayscale-0")}>
@@ -304,7 +304,7 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
                 </div>
               ))}
               <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()}
-                className="flex h-24 w-24 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/60 text-faint transition-colors hover:border-[rgb(var(--accent)/0.6)] hover:bg-accent-soft/30 hover:text-accent"
+                className="flex aspect-square flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/60 text-faint transition-colors hover:border-[rgb(var(--accent)/0.6)] hover:bg-accent-soft/30 hover:text-accent"
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) upload(e.dataTransfer.files); }}>
                 {uploading ? <Loader2 size={18} className="animate-spin" /> : <ImagePlus size={18} />}
@@ -317,7 +317,7 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
         {/* PROMPT */}
         <Panel>
           <PanelHeader overline={t("studio.step3")} title="Prompt" sub={t("studio.promptSub")} icon={Wand2} />
-          <div className="space-y-3 p-4 pt-3.5 sm:p-5">
+          <div className="space-y-3 px-4 pb-5 sm:px-5">
             <Textarea rows={session ? 8 : 4} value={prompt} placeholder={t("studio.promptPh")}
               onChange={(e) => setPrompt(e.target.value)} />
             {model?.supportsNegativePrompt !== false && (
@@ -334,8 +334,8 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
               </>
             )}
             <p className="text-xs text-faint">
-              {t("studio.inspHint")} <Link href="/inspirations" className="font-semibold text-accent hover:underline">{t("insp.title")}</Link>
-              {" · "}<Link href="/prompts" prefetch className="font-semibold text-accent hover:underline">{t("prompts.title")}</Link>
+              {t("studio.inspHint")} <Link href="/inspirations" className="font-semibold text-accent hover:opacity-75">{t("insp.title")}</Link>
+              {" · "}<Link href="/prompts" prefetch className="font-semibold text-accent hover:opacity-75">{t("prompts.title")}</Link>
             </p>
           </div>
         </Panel>
@@ -344,7 +344,7 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
         {(busy || results.length > 0) && (
           <Panel>
             <PanelHeader overline={t("studio.step5")} title={t("studio.results")} icon={Sparkles} />
-            <div className="p-4 pt-3.5 sm:p-5">
+            <div className="px-4 pb-5 sm:px-5">
               {busy ? (
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {Array.from({ length: quantity }, (_, i) => (
@@ -367,7 +367,7 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
       <div className="space-y-4 lg:sticky lg:top-20 lg:h-fit">
         <Panel>
           <PanelHeader overline={t("studio.step4")} title="Model" icon={Layers} />
-          <div className="space-y-2 p-3 sm:p-4">
+          <div className="space-y-2 px-3 pb-4 sm:px-4">
             {models.map((m) => {
               const minPrice = Math.min(...Object.values(m.pricing));
               const hasVariants = Object.keys(m.pricing).length > 1;
@@ -417,7 +417,7 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
 
         <Panel>
           <PanelHeader title={t("studio.settings")} icon={Settings2} />
-          <div className="space-y-4 p-3 sm:p-4">
+          <div className="space-y-4 px-3 pb-4 sm:px-4">
             <div>
               <Label>{t("generator.stepFormat")}</Label>
               <Segmented
@@ -467,7 +467,7 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
             missing > 0 ? (
               <span className="text-danger">
                 {t("studio.missing", { n: missing })}{" "}
-                <Link href="/credits" className="font-semibold text-accent hover:underline">{t("credits.topup")}</Link>
+                <Link href="/credits" className="font-semibold text-accent hover:opacity-75">{t("credits.topup")}</Link>
               </span>
             ) : !contextReady ? (
               <span className="text-muted">{t("studio.needContext")}</span>
@@ -512,7 +512,7 @@ function ResultTile({ r, jobId, onRegenerate }: {
   return (
     <div className="group relative overflow-hidden rounded-xl border border-line">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={r.url} alt="" className="w-full object-cover" />
+      <img src={r.url} alt="" className="aspect-square w-full object-cover" />
       <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-gradient-to-t from-black/70 to-transparent p-2">
         <div className="flex gap-1">
           <button type="button" onClick={accept} aria-label={t("studio.fbAccept")}

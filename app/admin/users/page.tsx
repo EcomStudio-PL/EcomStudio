@@ -60,7 +60,7 @@ export default async function AdminUsers({ searchParams }: {
           const gens = gensByUser.get(u.id);
           return [
             <div key="n" className="min-w-0">
-              <a href={`/admin/users/${u.id}`} className="font-medium text-accent hover:underline">
+              <a href={`/admin/users/${u.id}`} className="font-medium text-accent hover:opacity-75">
                 {u.full_name ?? u.email}
               </a>
               <p className="truncate text-xs text-muted">{u.email}</p>

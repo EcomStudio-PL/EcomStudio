@@ -46,6 +46,15 @@
   --shadow-3: 0 16px 40px -18px rgb(24 22 45 / 0.28), 0 2px 6px rgb(24 22 45 / 0.06);
   --shadow-4: 0 28px 70px -24px rgb(24 22 45 / 0.34);
   --ring-accent: 0 0 0 1px rgb(var(--accent) / 0.35);
+
+  /* LAYOUT CONSTANTS — one source for chrome dimensions. */
+  --header-h: 56px;
+  --dock-h: 68px;
+  --drawer-w: 20rem;
+  --rail-w: 264px;
+  --radius-sm: 0.625rem;
+  --radius-md: 0.875rem;
+  --radius-lg: 1.125rem;
 }
 
 .dark {
@@ -90,7 +99,7 @@
   --ring-accent: 0 0 0 1px rgb(var(--accent) / 0.45);
 }
 .dark .border-line { border-color: rgb(255 255 255 / 0.08); }
-.dark .divide-line > :not([hidden]) ~ :not([hidden]) { border-color: rgb(255 255 255 / 0.07); }
+.dark .divide-line > :not([hidden]) ~ :not([hidden]) { border-color: rgb(255 255 255 / 0.055); }
 .dark .border-line-strong { border-color: rgb(255 255 255 / 0.14); }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -242,6 +251,16 @@ body::after {
   box-shadow: var(--shadow-4), inset 0 1px 0 rgb(255 255 255 / 0.06);
 }
 
+/* Drawer: one continuous premium surface. No card sits inside it — sections
+   are told apart by spacing and typography. */
+.drawer-panel {
+  background:
+    linear-gradient(180deg, rgb(var(--accent) / 0.10), transparent 26%),
+    rgb(var(--sidebar));
+  border-right: 1px solid rgb(var(--glass-border) / calc(var(--glass-border-alpha) + 0.04));
+  box-shadow: var(--shadow-4);
+}
+
 /* Scrollbars inside panels: present, thin, never a grey slab. */
 .thin-scroll { scrollbar-width: thin; scrollbar-color: rgb(var(--faint) / 0.4) transparent; }
 .thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -279,8 +298,16 @@ body::after {
 .stagger > *:nth-child(5) { animation-delay: 175ms; }
 .stagger > *:nth-child(n+6) { animation-delay: 210ms; }
 
-html { -webkit-tap-highlight-color: transparent; }
-body { @apply bg-bg text-ink antialiased; }
+/* RESPONSIVE FLOOR. Layouts are fixed at the element level; this is the
+   backstop that guarantees the PAGE itself never scrolls sideways, while
+   deliberate containers (wide admin tables) keep their own local scroll.
+   `clip` rather than `hidden` so position:sticky keeps working. */
+html { -webkit-tap-highlight-color: transparent; overflow-x: clip; }
+body { @apply bg-bg text-ink antialiased; overflow-x: clip; max-width: 100vw; }
+/* Media never widens its container, whatever the intrinsic size. */
+img, svg, video, canvas { max-width: 100%; }
+/* Long unbroken strings (URLs, IDs, prompt text) wrap instead of pushing. */
+p, li, dd, td, th, h1, h2, h3, h4 { overflow-wrap: anywhere; }
 
 /* TYPOGRAPHY. Display face for headings with tracking tightened as size
    grows, so a headline reads as one shape rather than spaced-out words.

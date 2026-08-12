@@ -325,7 +325,9 @@
       "www": "Strona WWW",
       "media": "Media",
       "inspirations": "Inspiracje",
-      "support": "Wsparcie"
+      "support": "Wsparcie",
+      "usersShort": "Klienci",
+      "generationsShort": "Generacje"
     },
     "statUsers": "Użytkownicy",
     "statProducts": "Produkty",

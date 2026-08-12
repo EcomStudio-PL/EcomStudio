@@ -30,7 +30,7 @@ export default async function AdminSupportThread({ params }: { params: Promise<{
         <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
           <p className="text-sm font-semibold">{thread.subject}</p>
           <Badge tone={thread.status === "open" ? "green" : "neutral"}>{t(`chat.st.${thread.status}`)}</Badge>
-          <Link href={`/admin/users/${thread.user_id}`} className="ml-auto truncate text-xs text-accent hover:underline">
+          <Link href={`/admin/users/${thread.user_id}`} className="ml-auto truncate text-xs text-accent hover:opacity-75">
             {thread.profiles?.full_name ?? thread.profiles?.email}
           </Link>
         </div>

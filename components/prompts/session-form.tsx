@@ -119,7 +119,7 @@ export function SessionForm({ products, workspaceId, engineAvailable }: {
   return (
     <Card className="anim-pop min-w-0">
       <CardHeader title={t("psess.newTitle")} sub={t("psess.newSub")} />
-      <div className="space-y-4 p-5 pt-3">
+      <div className="space-y-4 px-4 pb-5 sm:px-5">
         {products.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             <button type="button" onClick={() => pickProduct("")}

@@ -134,7 +134,7 @@ export default async function DashboardPage() {
             title={t("dashboard.recentProducts")}
             icon={Box}
             action={
-              <Link href="/products" className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent hover:underline">
+              <Link href="/products" className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent hover:opacity-75">
                 {t("common.viewAll")} <ArrowRight size={13} aria-hidden />
               </Link>
             }
@@ -173,7 +173,7 @@ export default async function DashboardPage() {
             title={t("dashboard.recentJobs")}
             icon={Images}
             action={
-              <Link href="/history" className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent hover:underline">
+              <Link href="/history" className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent hover:opacity-75">
                 {t("common.viewAll")} <ArrowRight size={13} aria-hidden />
               </Link>
             }
@@ -184,7 +184,7 @@ export default async function DashboardPage() {
                 <Sparkles size={18} />
               </span>
               <p className="text-sm text-muted">{t("history.emptyBody")}</p>
-              <Link href="/generator" className="mt-4 inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent hover:underline">
+              <Link href="/generator" className="mt-4 inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent hover:opacity-75">
                 {t("nav.generator")} <ArrowRight size={13} aria-hidden />
               </Link>
             </div>

@@ -87,10 +87,13 @@ export const ADMIN_NAV: readonly NavGroup[] = [
   ]},
 ] as const;
 
+/** Four admin destinations for the dock; everything else lives behind
+ *  "More", which opens the admin drawer. Labels are the short forms so a
+ *  five-slot dock never squeezes them. */
 export const ADMIN_BOTTOM: readonly NavItem[] = [
   { href: "/admin", key: "dashboard", icon: LayoutDashboard },
-  { href: "/admin/users", key: "users", icon: Users },
-  { href: "/admin/generations", key: "generations", icon: Wand2 },
+  { href: "/admin/users", key: "users", shortKey: "usersShort", icon: Users },
+  { href: "/admin/generations", key: "generations", shortKey: "generationsShort", icon: Wand2 },
   { href: "/admin/credits", key: "credits", icon: Coins },
 ] as const;
 

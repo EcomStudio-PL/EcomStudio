@@ -5,6 +5,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import { rolePresentation } from "@/lib/roles";
 import { Brand } from "./brand";
 import { AdminNav } from "./admin-nav";
+import { DrawerIdentity } from "./drawer";
 
 export type AdminSidebarStats = {
   users: number; usersToday: number; revenueTodayCents: number; revenue30dCents: number;
@@ -24,43 +25,33 @@ export function AdminSidebar({ name, email, role, stats }: {
     new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN", maximumFractionDigits: 0 }).format(cents / 100);
 
   return (
-    <aside className="glass hidden w-60 shrink-0 flex-col rounded-none border-y-0 border-l-0 px-3 py-5 lg:flex">
+    <aside className="relative hidden w-[264px] shrink-0 flex-col border-r border-line bg-sidebar/80 px-3 py-5 backdrop-blur-xl lg:flex">
+      <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-px bg-gradient-to-b from-transparent via-[rgb(var(--accent2)/0.28)] to-transparent" />
       <div className="px-3 pb-4"><Brand href="/admin" /></div>
 
-      <div className="mx-1 mb-4 rounded-2xl bg-raised/70 p-3">
-        <div className="flex items-center gap-2.5">
-          <span aria-hidden className="brand-gradient flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white">
-            {initial}
-          </span>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">{name}</p>
-            <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-accent">
+      <div className="px-3">
+        <DrawerIdentity
+          initial={initial}
+          name={name}
+          email={email}
+          tone="accent2"
+          badge={
+            <span className="inline-flex rounded-full bg-accent2-soft px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-accent2">
               {t(presentation.labelKey)}
-            </p>
-          </div>
-        </div>
-        {email && <p className="mt-2 truncate text-[11px] text-faint">{email}</p>}
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="rounded-xl bg-surface/70 px-2.5 py-2">
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted">{t("admin.kpiUsers")}</p>
-            <p className="font-display text-sm font-semibold">{stats.users}</p>
-            <p className="text-[10px] text-accent">+{stats.usersToday}</p>
-          </div>
-          <div className="rounded-xl bg-surface/70 px-2.5 py-2">
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted">{t("admin.kpiToday")}</p>
-            <p className="font-display text-sm font-semibold text-accent2">{pln(stats.revenueTodayCents)}</p>
-          </div>
-          <div className="col-span-2 rounded-xl bg-surface/70 px-2.5 py-2">
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted">{t("admin.kpi30d")}</p>
-            <p className="font-display text-sm font-semibold text-accent2">{pln(stats.revenue30dCents)}</p>
-          </div>
-        </div>
+            </span>
+          }
+          facts={[
+            { label: t("admin.kpiUsers"), value: stats.users, tone: "ink" },
+            { label: t("admin.kpiToday"), value: pln(stats.revenueTodayCents), tone: "accent2" },
+            { label: t("admin.kpi30d"), value: pln(stats.revenue30dCents), tone: "accent2" },
+          ]}
+        />
       </div>
 
-      <div className="flex-1 overflow-y-auto"><AdminNav /></div>
+      <div className="thin-scroll mt-4 min-h-0 flex-1 overflow-y-auto"><AdminNav /></div>
 
       <Link href="/dashboard"
-        className="mx-1 mt-3 flex items-center gap-2 rounded-xl border border-line px-3 py-2.5 text-sm font-semibold text-muted transition-colors hover:border-accent/40 hover:text-ink">
+        className="plate mt-3 flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-muted transition-colors hover:border-[rgb(var(--accent2)/0.4)] hover:text-ink">
         <ArrowLeft size={15} aria-hidden />
         {t("admin.backToApp")}
       </Link>

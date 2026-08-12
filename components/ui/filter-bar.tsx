@@ -39,10 +39,10 @@ export function FilterBar({ searchParam = "q", filters = [] }: {
 
   return (
     <form
-      className="mb-5 flex flex-wrap items-center gap-2"
+      className="mb-5 grid gap-2 sm:flex sm:flex-wrap sm:items-center"
       onSubmit={(e) => { e.preventDefault(); apply({ [searchParam]: q.trim() }); }}
     >
-      <div className="w-full sm:w-64">
+      <div className="min-w-0 sm:w-64">
         <Input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -51,7 +51,7 @@ export function FilterBar({ searchParam = "q", filters = [] }: {
         />
       </div>
       {filters.map((f) => (
-        <div key={f.param} className="w-full sm:w-44">
+        <div key={f.param} className="min-w-0 sm:w-44">
           <Select
             value={params.get(f.param) ?? ""}
             aria-label={t(f.labelKey)}
@@ -64,12 +64,14 @@ export function FilterBar({ searchParam = "q", filters = [] }: {
           </Select>
         </div>
       ))}
-      <Button type="submit" size="sm" variant="secondary">{t("common.search")}</Button>
-      {activeCount > 0 && (
-        <Button type="button" size="sm" variant="ghost" onClick={() => router.push(pathname)}>
-          ✕ {t("common.clearFilters")} ({activeCount})
-        </Button>
-      )}
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" variant="secondary" className="flex-1 sm:flex-none">{t("common.search")}</Button>
+        {activeCount > 0 && (
+          <Button type="button" size="sm" variant="ghost" onClick={() => router.push(pathname)}>
+            ✕ {t("common.clearFilters")} ({activeCount})
+          </Button>
+        )}
+      </div>
     </form>
   );
 }

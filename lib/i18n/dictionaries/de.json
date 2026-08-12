@@ -325,7 +325,9 @@
       "www": "Website",
       "media": "Medien",
       "inspirations": "Inspirationen",
-      "support": "Support"
+      "support": "Support",
+      "usersShort": "Nutzer",
+      "generationsShort": "Gens"
     },
     "statUsers": "Benutzer",
     "statProducts": "Produkte",

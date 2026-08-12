@@ -76,11 +76,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const displayName = profile.full_name ?? profile.email;
   return (
     <DrawerProvider>
-      <div className="flex min-h-dvh">
+      <div className="flex min-h-dvh w-full min-w-0">
         <Sidebar name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} />
         <div className="flex min-w-0 flex-1 flex-col">
           <Topbar name={displayName} credits={wallet?.balance ?? 0} workspace={workspace.name} isAdmin={isAdmin} notifications={notifs ?? []} unread={unread} />
-          <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-6 lg:px-8 lg:pb-10">
+          <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 pb-[calc(var(--dock-h)+2rem+env(safe-area-inset-bottom))] pt-6 sm:px-5 lg:px-8 lg:pb-12">
             {children}
           </main>
         </div>

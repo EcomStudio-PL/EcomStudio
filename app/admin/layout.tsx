@@ -17,13 +17,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const t = makeT(dict);
 
   return (
-    <div className="flex min-h-dvh">
+    <div className="flex min-h-dvh w-full min-w-0">
       <AdminSidebar name={profile.full_name ?? profile.email} email={profile.email} role={profile.role}
         stats={{ users: stats.users, usersToday: stats.usersToday, revenueTodayCents: stats.revenueTodayCents, revenue30dCents: stats.revenue30dCents }} />
       <div className="flex min-w-0 flex-1 flex-col">
         <AdminShell name={profile.full_name ?? profile.email} email={profile.email} role={profile.role}
           stats={{ users: stats.users, usersToday: stats.usersToday, revenueTodayCents: stats.revenueTodayCents, revenue30dCents: stats.revenue30dCents }} />
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-6 lg:px-8 lg:pb-10">
+        <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 pb-[calc(var(--dock-h)+2rem+env(safe-area-inset-bottom))] pt-6 sm:px-5 lg:px-8 lg:pb-12">
           {children}
         </main>
       </div>

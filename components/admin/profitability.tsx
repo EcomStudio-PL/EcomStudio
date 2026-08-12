@@ -51,8 +51,8 @@ export function Profitability({ data, locale }: { data: ProfitabilityData; local
           </div>
         }
       />
-      <div className="space-y-4 p-5 pt-3">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="space-y-4 px-4 pb-5 sm:px-5">
+        <div className="grid gap-3 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-4">
           <Tile label={t("econ.revenue")} value={money(s.revenueCents)} />
           <Tile label={t("econ.apiCost")} value={usd(s.apiCostUsdMicros)}
             sub={money(Math.round((s.apiCostUsdMicros / 1_000_000) * data.usdToPln * 100))} tone="warm" />
@@ -61,7 +61,7 @@ export function Profitability({ data, locale }: { data: ProfitabilityData; local
           <Tile label={t("econ.margin")} value={`${s.marginPercent}%`} tone={s.marginPercent >= 30 ? "good" : "bad"} />
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2.5 [&>*]:min-w-0 sm:grid-cols-5">
           <Mini label={t("econ.generations")} value={s.generations} />
           <Mini label={t("econ.succeeded")} value={s.succeeded} />
           <Mini label={t("econ.failed")} value={s.failed} />
@@ -75,7 +75,7 @@ export function Profitability({ data, locale }: { data: ProfitabilityData; local
           {data.models.length === 0 ? (
             <p className="rounded-xl bg-raised px-4 py-3 text-sm text-muted">{t("econ.noModels")}</p>
           ) : (
-            <div className="-mx-1 overflow-x-auto px-1">
+            <div className="thin-scroll -mx-1 overflow-x-auto px-1">
               <table className="w-full min-w-[640px] text-sm">
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-wide text-faint">

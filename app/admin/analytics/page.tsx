@@ -344,7 +344,7 @@ export default async function AdminAnalytics({ searchParams }: {
           <ul className="divide-y divide-line">
             {(recentSignups.data ?? []).map((u) => (
               <li key={u.id} className="flex items-center justify-between gap-2 px-5 py-2.5 text-sm">
-                <Link href={`/admin/users/${u.id}`} className="truncate text-accent hover:underline">
+                <Link href={`/admin/users/${u.id}`} className="truncate text-accent hover:opacity-75">
                   {u.full_name ?? u.email}
                 </Link>
                 <span className="shrink-0 text-xs text-muted">{formatDate(u.created_at, locale)}</span>

@@ -5,7 +5,7 @@ import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { listJobs } from "@/lib/services/generator";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Card } from "@/components/ui/card";
+import { AdminTable } from "@/components/ui/admin-table";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 
@@ -23,34 +23,21 @@ export default async function HistoryPage() {
 
   return (
     <div>
-      <PageHeader title={t("history.title")} sub={t("history.sub")} />
+      <PageHeader overline={t("nav.groups.assets")} title={t("history.title")} sub={t("history.sub")} />
       {jobs.length === 0 ? (
         <EmptyState title={t("history.emptyTitle")} body={t("history.emptyBody")} />
       ) : (
-        <Card className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-sm">
-            <thead>
-              <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-                <th className="px-5 py-3 font-medium">{t("history.product")}</th>
-                <th className="px-5 py-3 font-medium">{t("common.type")}</th>
-                <th className="px-5 py-3 font-medium">{t("common.status")}</th>
-                <th className="px-5 py-3 font-medium">{t("history.creditsCol")}</th>
-                <th className="px-5 py-3 font-medium">{t("common.date")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {jobs.map((j) => (
-                <tr key={j.id}>
-                  <td className="px-5 py-3">{j.products?.name ?? "—"}</td>
-                  <td className="px-5 py-3 text-muted">{j.material_type ? t(`generator.mt.${j.material_type}`) : "—"}</td>
-                  <td className="px-5 py-3"><Badge tone={TONE[j.status]}>{t(`history.st.${j.status}`)}</Badge></td>
-                  <td className="px-5 py-3">{j.credits_charged}</td>
-                  <td className="px-5 py-3 text-muted">{formatDate(j.created_at, locale)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+        <AdminTable
+          headers={[t("history.product"), t("common.type"), t("common.status"), t("history.creditsCol"), t("common.date")]}
+          empty={t("history.emptyBody")}
+          rows={jobs.map((j) => [
+            j.products?.name ?? "—",
+            j.material_type ? t(`generator.mt.${j.material_type}`) : "—",
+            <Badge key="s" tone={TONE[j.status]} dot>{t(`history.st.${j.status}`)}</Badge>,
+            <span key="c" className="tabular-nums">{j.credits_charged}</span>,
+            <span key="d" className="text-muted">{formatDate(j.created_at, locale)}</span>,
+          ])}
+        />
       )}
     </div>
   );

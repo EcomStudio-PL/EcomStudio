@@ -19,7 +19,8 @@ export function Modal({ open, onClose, title, children, wide }: {
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-label={title}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px]" onClick={onClose} />
       <div className={cn(
-        "overlay relative m-0 max-h-[92dvh] w-full overflow-y-auto rounded-t-2xl p-6 sm:m-4 sm:rounded-2xl",
+        "overlay thin-scroll relative m-0 max-h-[calc(100dvh-env(safe-area-inset-top)-1rem)] w-full overflow-y-auto overscroll-contain",
+        "rounded-t-2xl px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 sm:m-4 sm:max-h-[88dvh] sm:rounded-2xl sm:p-6",
         wide ? "sm:max-w-2xl" : "sm:max-w-md"
       )}>
         <div className="mb-5 flex items-center justify-between gap-4">
