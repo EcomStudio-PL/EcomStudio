@@ -2253,6 +2253,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      providers_with_credentials: {
+        Args: Record<PropertyKey, never>
+        Returns: string[]
+      }
       refund_usage_event: { Args: { p_event_id: string }; Returns: string }
     }
     Enums: {

@@ -31,6 +31,9 @@ export type ClientModel = {
  * credential exists in the admin credential store.
  */
 export async function getUsableModels(supabase: Client): Promise<UsableModel[]> {
+  // Credentials are admin-only under RLS, so membership of "has a key" comes
+  // from a definer RPC that returns provider ids and nothing else — a customer
+  // must be able to see which models are usable without seeing any secret.
   const [{ data: models }, { data: creds }] = await Promise.all([
     supabase
       .from("ai_models")
@@ -38,9 +41,9 @@ export async function getUsableModels(supabase: Client): Promise<UsableModel[]> 
       .eq("active", true)
       .eq("ai_providers.active", true)
       .order("sort_order", { ascending: true }),
-    supabase.from("ai_provider_credentials").select("provider_id").eq("active", true),
+    supabase.rpc("providers_with_credentials"),
   ]);
-  const withKey = new Set((creds ?? []).map((c) => c.provider_id));
+  const withKey = new Set((creds ?? []) as string[]);
   return (models ?? [])
     .filter((m) => {
       const p = (m as unknown as { ai_providers: { id: string; slug: string } }).ai_providers;
