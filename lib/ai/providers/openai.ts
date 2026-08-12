@@ -25,25 +25,27 @@ export const openaiAdapter: ImageProviderAdapter = {
       ?? (req.resolution === "2K" || req.resolution === "4K" ? "high" : "medium");
     const refs = req.referenceImages.slice(0, model.max_reference_images || MAX_REFS);
 
-    const init: RequestInit = refs.length > 0
-      ? {
-        method: "POST",
-        headers: { Authorization: `Bearer ${cred.apiKey}` },
-        body: editForm(model.model_identifier, prompt, size, quality, req.quantity, refs),
-      }
-      : {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${cred.apiKey}` },
-        body: JSON.stringify({ model: model.model_identifier, prompt, n: req.quantity, size, quality }),
-      };
-
     const path = refs.length > 0 ? "/v1/images/edits" : "/v1/images/generations";
-    const res = await fetch(`${base}${path}`, {
-      ...init,
+    const send = (highFidelity: boolean) => fetch(`${base}${path}`, {
+      method: "POST",
+      headers: refs.length > 0
+        ? { Authorization: `Bearer ${cred.apiKey}` }
+        : { "Content-Type": "application/json", Authorization: `Bearer ${cred.apiKey}` },
+      body: refs.length > 0
+        ? editForm(model.model_identifier, prompt, size, quality, req.quantity, refs, highFidelity)
+        : JSON.stringify({ model: model.model_identifier, prompt, n: req.quantity, size, quality }),
       signal: AbortSignal.timeout(180_000),
     }).catch((e) => {
       throw new ProviderError(e?.name === "TimeoutError" ? "provider_timeout" : "provider_unreachable", true);
     });
+
+    // Ask for the strongest reference-fidelity mode the endpoint offers — this
+    // is what keeps the actual product, not a lookalike. If this account or
+    // API version does not accept the parameter, the 400 is retried once
+    // without it rather than failing a generation the user paid for.
+    let res = await send(refs.length > 0);
+    if (res.status === 400 && refs.length > 0) res = await send(false);
+
     if (res.status === 401 || res.status === 403) throw new ProviderError("provider_auth_failed");
     if (res.status === 429) throw new ProviderError("provider_rate_limited", true);
     if (!res.ok) throw new ProviderError("provider_error", res.status >= 500);
@@ -58,7 +60,7 @@ export const openaiAdapter: ImageProviderAdapter = {
 /** Multipart body for the edits endpoint: every reference goes in as image[]. */
 function editForm(
   modelId: string, prompt: string, size: string, quality: string,
-  quantity: number, refs: { base64: string; mime: string }[]
+  quantity: number, refs: { base64: string; mime: string }[], highFidelity: boolean
 ): FormData {
   const form = new FormData();
   form.append("model", modelId);
@@ -66,6 +68,8 @@ function editForm(
   form.append("n", String(quantity));
   form.append("size", size);
   form.append("quality", quality);
+  // Preserve the referenced object as closely as the model allows.
+  if (highFidelity) form.append("input_fidelity", "high");
   refs.forEach((r, i) => {
     const ext = r.mime.includes("png") ? "png" : r.mime.includes("webp") ? "webp" : "jpg";
     form.append("image[]", new Blob([Buffer.from(r.base64, "base64")], { type: r.mime }), `ref${i + 1}.${ext}`);

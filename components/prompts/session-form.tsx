@@ -184,8 +184,9 @@ export function SessionForm({ products, workspaceId, engineAvailable }: {
           <div className="flex gap-1.5">
             {RATIOS.map((r) => (
               <button key={r} type="button" onClick={() => setRatio(r)}
+                aria-pressed={r === ratio}
                 className={cn("flex-1 rounded-lg border py-2 text-xs font-semibold transition-colors",
-                  r === ratio ? "border-accent bg-accent-soft text-accent" : "border-line text-muted hover:bg-raised")}>
+                  r === ratio ? "is-selected text-accent" : "border-line text-muted hover:bg-raised")}>
                 {r}
               </button>
             ))}

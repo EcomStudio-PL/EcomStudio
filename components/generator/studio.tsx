@@ -322,7 +322,7 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
               {busy ? (
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {Array.from({ length: quantity }, (_, i) => (
-                    <div key={i} className="aspect-square animate-pulse rounded-xl bg-raised" />
+                    <div key={i} className="skeleton aspect-square rounded-xl" />
                   ))}
                 </div>
               ) : (
@@ -347,10 +347,9 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
               const hasVariants = Object.keys(m.pricing).length > 1;
               return (
                 <button key={m.id} type="button" onClick={() => { setModelId(m.id); setQuantity(1); }}
+                  aria-pressed={m.id === modelId}
                   className={cn("w-full rounded-xl border p-3 text-left transition-all duration-150",
-                    m.id === modelId
-                      ? "border-accent bg-accent-soft shadow-[0_0_0_1px_rgba(139,92,246,0.35),0_4px_20px_-8px_rgba(139,92,246,0.4)]"
-                      : "border-line hover:-translate-y-0.5 hover:bg-raised")}>
+                    m.id === modelId ? "is-selected" : "border-line hover:-translate-y-0.5 hover:bg-raised")}>
                   <div className="flex items-center justify-between gap-2">
                     <p className="truncate text-sm font-semibold">{m.displayName}</p>
                     <Badge tone="indigo">{hasVariants ? t("studio.fromCr", { n: minPrice }) : `${minPrice} ◆`}</Badge>
@@ -376,8 +375,9 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
               <div className="flex gap-1.5">
                 {RATIOS.map((r) => (
                   <button key={r} type="button" onClick={() => setRatio(r)}
+                    aria-pressed={r === ratio}
                     className={cn("flex-1 rounded-lg border py-2 text-xs font-semibold transition-colors",
-                      r === ratio ? "border-accent bg-accent-soft text-accent" : "border-line text-muted hover:bg-raised")}>
+                      r === ratio ? "is-selected text-accent" : "border-line text-muted hover:bg-raised")}>
                     {r}
                   </button>
                 ))}
@@ -389,8 +389,9 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
                 <div className="flex gap-1.5">
                   {model!.resolutions.map((r) => (
                     <button key={r} type="button" onClick={() => setResolution(r)}
+                      aria-pressed={r === effectiveResolution}
                       className={cn("flex-1 rounded-lg border py-2 text-xs font-semibold transition-colors",
-                        r === effectiveResolution ? "border-accent bg-accent-soft text-accent" : "border-line text-muted hover:bg-raised")}>
+                        r === effectiveResolution ? "is-selected text-accent" : "border-line text-muted hover:bg-raised")}>
                       {r}
                       <span className="ml-1 text-[10px] opacity-70">{model!.pricing[r]}◆</span>
                     </button>
@@ -403,8 +404,9 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
               <div className="flex gap-1.5">
                 {Array.from({ length: model?.maxQuantity ?? 1 }, (_, i) => i + 1).map((n) => (
                   <button key={n} type="button" onClick={() => setQuantity(n)}
+                    aria-pressed={n === quantity}
                     className={cn("flex-1 rounded-lg border py-2 text-xs font-semibold transition-colors",
-                      n === quantity ? "border-accent bg-accent-soft text-accent" : "border-line text-muted hover:bg-raised")}>
+                      n === quantity ? "is-selected text-accent" : "border-line text-muted hover:bg-raised")}>
                     {n}
                   </button>
                 ))}
