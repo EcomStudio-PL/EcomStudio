@@ -1,23 +1,64 @@
 "use client";
-import { useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useI18n } from "@/lib/i18n/provider";
 import { setLocaleAction } from "@/app/actions/settings";
 import { LOCALES } from "@/lib/i18n/config";
+import { cn } from "@/lib/utils";
 
+const FLAGS: Record<string, string> = { pl: "🇵🇱", en: "🇬🇧", de: "🇩🇪" };
+const NAMES: Record<string, string> = { pl: "Polski", en: "English", de: "Deutsch" };
+
+/** Flag button with a custom (non-native) dropdown. */
 export function LocaleSwitcher() {
   const { locale } = useI18n();
   const [pending, start] = useTransition();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onDown);
+    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("mousedown", onDown); };
+  }, [open]);
+
   return (
-    <select
-      aria-label="Language"
-      value={locale}
-      disabled={pending}
-      onChange={(e) => start(() => setLocaleAction(e.target.value))}
-      className="h-8 rounded-lg border border-line bg-surface px-2 text-xs uppercase text-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
-    >
-      {LOCALES.map((l) => (
-        <option key={l} value={l}>{l.toUpperCase()}</option>
-      ))}
-    </select>
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-label="Language"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={pending}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-9 w-9 items-center justify-center rounded-xl text-base transition-colors hover:bg-raised disabled:opacity-60"
+      >
+        <span aria-hidden>{FLAGS[locale] ?? "🌐"}</span>
+      </button>
+      {open && (
+        <div role="menu" className="overlay animate-pop absolute right-0 top-11 z-50 w-44 rounded-2xl p-1.5">
+          {LOCALES.map((l) => (
+            <button
+              key={l}
+              role="menuitem"
+              type="button"
+              onClick={() => { setOpen(false); start(() => setLocaleAction(l)); }}
+              className={cn(
+                "flex min-h-[40px] w-full items-center gap-2.5 rounded-xl px-3 text-left text-sm transition-colors hover:bg-raised",
+                l === locale ? "font-semibold text-ink" : "text-muted"
+              )}
+            >
+              <span aria-hidden>{FLAGS[l]}</span>
+              {NAMES[l] ?? l.toUpperCase()}
+              {l === locale && <span aria-hidden className="ml-auto text-accent">✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

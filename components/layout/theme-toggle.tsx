@@ -1,24 +1,27 @@
 "use client";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
+import { Moon, Sun } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 
+/** Icon-only light/dark toggle. "System" is intentionally not offered —
+ *  the product supports exactly two themes; resolvedTheme maps any legacy
+ *  "system" preference to whichever theme is currently active. */
 export function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const { t } = useI18n();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  if (!mounted) return <div className="h-8 w-24" />;
+  if (!mounted) return <div className="h-9 w-9" />;
+  const dark = resolvedTheme === "dark";
   return (
-    <select
+    <button
+      type="button"
       aria-label={t("settings.theme")}
-      value={theme}
-      onChange={(e) => setTheme(e.target.value)}
-      className="h-8 rounded-lg border border-line bg-surface px-2 text-xs text-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
+      onClick={() => setTheme(dark ? "light" : "dark")}
+      className="flex h-9 w-9 items-center justify-center rounded-xl text-muted transition-colors hover:bg-raised hover:text-ink"
     >
-      <option value="light">{t("settings.themes.light")}</option>
-      <option value="dark">{t("settings.themes.dark")}</option>
-      <option value="system">{t("settings.themes.system")}</option>
-    </select>
+      {dark ? <Sun aria-hidden size={17} /> : <Moon aria-hidden size={17} />}
+    </button>
   );
 }

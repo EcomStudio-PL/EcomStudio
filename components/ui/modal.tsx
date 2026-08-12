@@ -17,9 +17,9 @@ export function Modal({ open, onClose, title, children, wide }: {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px]" onClick={onClose} />
       <div className={cn(
-        "glass relative m-0 max-h-[92dvh] w-full overflow-y-auto rounded-t-2xl p-6 sm:m-4 sm:rounded-2xl",
+        "overlay relative m-0 max-h-[92dvh] w-full overflow-y-auto rounded-t-2xl p-6 sm:m-4 sm:rounded-2xl",
         wide ? "sm:max-w-2xl" : "sm:max-w-md"
       )}>
         <div className="mb-5 flex items-center justify-between gap-4">

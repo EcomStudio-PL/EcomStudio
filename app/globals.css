@@ -74,6 +74,18 @@ body::before {
     radial-gradient(40rem 30rem at -10% 100%, rgb(129 140 248 / 0.05), transparent 60%);
 }
 
+/* Overlay surface for drawers, dropdowns and modals: near-opaque so content
+   underneath never bleeds through — only a whisper of glass remains. */
+.overlay {
+  background: rgb(var(--surface) / 0.98);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgb(var(--glass-border) / calc(var(--glass-border-alpha) + 0.04));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 16px 48px -12px rgb(0 0 0 / 0.5);
+}
+
 /* Brand gradient — reserved for primary CTAs, the credit badge and active
    nav indicators. Everything else stays on flat tokens. */
 .brand-gradient {

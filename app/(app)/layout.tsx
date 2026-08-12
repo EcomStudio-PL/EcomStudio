@@ -7,6 +7,8 @@ import { makeT } from "@/lib/i18n/t";
 import { signOut } from "@/app/actions/auth";
 import { Sidebar, MobileNav } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
+import { CustomerDrawer } from "@/components/layout/customer-drawer";
+import { DrawerProvider } from "@/components/layout/shell-context";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -50,16 +52,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ]);
   const planName = sub?.subscription_plans?.name ?? "Free";
   const isAdmin = profile.role === "admin";
+  const displayName = profile.full_name ?? profile.email;
   return (
-    <div className="flex min-h-dvh">
-      <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar name={profile.full_name ?? profile.email} email={profile.email} credits={wallet?.balance ?? 0} workspace={workspace.name} plan={planName} isAdmin={isAdmin} />
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-6 lg:px-8 lg:pb-10">
-          {children}
-        </main>
+    <DrawerProvider>
+      <div className="flex min-h-dvh">
+        <Sidebar />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Topbar name={displayName} credits={wallet?.balance ?? 0} workspace={workspace.name} isAdmin={isAdmin} />
+          <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-6 lg:px-8 lg:pb-10">
+            {children}
+          </main>
+        </div>
+        <MobileNav />
+        <CustomerDrawer name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} />
       </div>
-      <MobileNav />
-    </div>
+    </DrawerProvider>
   );
 }

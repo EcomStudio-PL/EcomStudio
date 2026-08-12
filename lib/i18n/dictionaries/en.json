@@ -16,7 +16,10 @@
       "create": "Create",
       "assets": "Assets",
       "account": "Account",
-      "admin": "Admin"
+      "admin": "Admin",
+      "overview": "Overview",
+      "work": "Work",
+      "help": "Help"
     },
     "menu": "Menu",
     "support": "Support"
@@ -50,7 +53,7 @@
     "clearFilters": "Clear filters"
   },
   "landing": {
-    "headline": "Professional product content in minutes, not hours",
+    "headline": "Professional product visuals with AI. Faster than a photo studio.",
     "sub": "EcomStudio turns your product's reference photos into a complete set of sales materials — while keeping the real product's exact look.",
     "cta": "Start free",
     "ctaLogin": "Sign in",
@@ -59,7 +62,34 @@
     "f2t": "E-commerce workflow",
     "f2b": "From reference photos to ready assets for Allegro, Amazon and ads.",
     "f3t": "For sellers and agencies",
-    "f3b": "Workspaces, credits and operator mode for done-for-you work."
+    "f3b": "Workspaces, credits and operator mode for done-for-you work.",
+    "navFeatures": "Features",
+    "navHow": "How it works",
+    "navPricing": "Pricing",
+    "pipeline": "product photos → prompts → visuals → sales assets",
+    "ctaHow": "See how it works",
+    "howTitle": "How it works",
+    "how1": "Add a product and reference photos",
+    "how2": "AI prepares professional prompts",
+    "how3": "Generate sales assets",
+    "how4": "Download finished creatives",
+    "featTitle": "Key benefits",
+    "feat1t": "Faithful product rendering",
+    "feat1b": "Product Lock guards shape, colors, labels and proportions.",
+    "feat2t": "Multiple AI models",
+    "feat2b": "One platform, many providers — always the best model for the job.",
+    "feat3t": "Generation history",
+    "feat3b": "Every job and result in one searchable place.",
+    "feat4t": "Style library",
+    "feat4b": "Reusable templates and prompt blocks for consistent campaigns.",
+    "feat5t": "Time savings",
+    "feat5b": "Minutes instead of days waiting for a photo studio.",
+    "feat6t": "Teamwork",
+    "feat6b": "Workspaces and roles for teams and agencies.",
+    "forTitle": "Built for e-commerce",
+    "forShops": "Online stores",
+    "pricingSub": "Start free. Scale when you grow.",
+    "finalTitle": "Start creating professional product content today"
   },
   "auth": {
     "loginTitle": "Sign in to EcomStudio",
@@ -420,7 +450,18 @@
       "fidelity": "Fidelity rules",
       "restrictions": "Restrictions",
       "extra": "Extra instructions"
-    }
+    },
+    "kpiClients": "Clients",
+    "kpiToday": "Today",
+    "kpi30d": "30 days",
+    "revenueToday": "Revenue today",
+    "revenue30d": "Revenue 30 days",
+    "generationsToday": "Generations today",
+    "chartRevenue30": "Revenue — 30 days",
+    "chartGenerations30": "Generations — 30 days",
+    "latestUsers": "Latest users",
+    "latestTx": "Latest transactions",
+    "noRevenueYet": "No revenue yet — payments are not connected"
   },
   "support": {
     "title": "Support & messages",
@@ -430,5 +471,10 @@
     "f1": "Message threads with the support team",
     "f2": "Reply notifications",
     "f3": "Request history in one place"
+  },
+  "roles": {
+    "user": "User",
+    "caretaker": "Caretaker",
+    "admin": "Admin"
   }
 }

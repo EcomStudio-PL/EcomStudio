@@ -40,7 +40,6 @@ export function SettingsForm({ fullName, email }: { fullName: string; email: str
           <Select id="theme" name="theme" value={theme} onChange={(e) => setTheme(e.target.value)}>
             <option value="light">{t("settings.themes.light")}</option>
             <option value="dark">{t("settings.themes.dark")}</option>
-            <option value="system">{t("settings.themes.system")}</option>
           </Select>
         </div>
       </div>

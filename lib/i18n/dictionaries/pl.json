@@ -16,7 +16,10 @@
       "create": "Tworzenie",
       "assets": "Zasoby",
       "account": "Konto",
-      "admin": "Administracja"
+      "admin": "Administracja",
+      "overview": "Przegląd",
+      "work": "Praca",
+      "help": "Pomoc"
     },
     "menu": "Menu",
     "support": "Pomoc"
@@ -50,7 +53,7 @@
     "clearFilters": "Wyczyść filtry"
   },
   "landing": {
-    "headline": "Profesjonalny content produktowy w minuty, nie godziny",
+    "headline": "Profesjonalne materiały produktowe z AI. Szybciej niż klasyczne studio.",
     "sub": "EcomStudio zamienia zdjęcia referencyjne Twojego produktu w komplet materiałów sprzedażowych — z zachowaniem wyglądu prawdziwego produktu.",
     "cta": "Rozpocznij za darmo",
     "ctaLogin": "Zaloguj się",
@@ -59,7 +62,34 @@
     "f2t": "Workflow e-commerce",
     "f2b": "Od zdjęć referencyjnych po gotowe materiały na Allegro, Amazon i reklamy.",
     "f3t": "Dla sprzedawców i agencji",
-    "f3b": "Workspace'y, kredyty i tryb operatora dla pracy w imieniu klienta."
+    "f3b": "Workspace'y, kredyty i tryb operatora dla pracy w imieniu klienta.",
+    "navFeatures": "Funkcje",
+    "navHow": "Jak to działa",
+    "navPricing": "Cennik",
+    "pipeline": "zdjęcia produktu → prompty → grafiki → materiały sprzedażowe",
+    "ctaHow": "Zobacz jak działa",
+    "howTitle": "Jak to działa",
+    "how1": "Dodaj produkt i zdjęcia referencyjne",
+    "how2": "AI przygotuje profesjonalne prompty",
+    "how3": "Generuj materiały sprzedażowe",
+    "how4": "Pobierz gotowe kreacje",
+    "featTitle": "Najważniejsze korzyści",
+    "feat1t": "Wierne odwzorowanie produktu",
+    "feat1b": "Product Lock pilnuje kształtu, kolorów, napisów i proporcji.",
+    "feat2t": "Wiele modeli AI",
+    "feat2b": "Jedna platforma, wielu dostawców — zawsze najlepszy model do zadania.",
+    "feat3t": "Historia generacji",
+    "feat3b": "Każde zadanie i wynik w jednym, przeszukiwalnym miejscu.",
+    "feat4t": "Biblioteka stylów",
+    "feat4b": "Reużywalne szablony i bloki promptów dla spójnych kampanii.",
+    "feat5t": "Oszczędność czasu",
+    "feat5b": "Minuty zamiast dni oczekiwania na studio fotograficzne.",
+    "feat6t": "Praca zespołowa",
+    "feat6b": "Workspace'y i role dla zespołów oraz agencji.",
+    "forTitle": "Stworzone dla e-commerce",
+    "forShops": "Sklepy internetowe",
+    "pricingSub": "Zacznij za darmo. Skaluj, kiedy urośniesz.",
+    "finalTitle": "Zacznij tworzyć profesjonalny content produktowy już dziś"
   },
   "auth": {
     "loginTitle": "Zaloguj się do EcomStudio",
@@ -420,7 +450,18 @@
       "fidelity": "Zasady wierności",
       "restrictions": "Zakazy",
       "extra": "Dodatkowe instrukcje"
-    }
+    },
+    "kpiClients": "Klienci",
+    "kpiToday": "Dzisiaj",
+    "kpi30d": "30 dni",
+    "revenueToday": "Przychód dzisiaj",
+    "revenue30d": "Przychód 30 dni",
+    "generationsToday": "Generacje dzisiaj",
+    "chartRevenue30": "Przychód — 30 dni",
+    "chartGenerations30": "Generacje — 30 dni",
+    "latestUsers": "Ostatni użytkownicy",
+    "latestTx": "Ostatnie transakcje",
+    "noRevenueYet": "Brak przychodów — płatności nie są jeszcze podłączone"
   },
   "support": {
     "title": "Pomoc i wiadomości",
@@ -430,5 +471,10 @@
     "f1": "Wątki wiadomości z zespołem wsparcia",
     "f2": "Powiadomienia o odpowiedziach",
     "f3": "Historia zgłoszeń w jednym miejscu"
+  },
+  "roles": {
+    "user": "Użytkownik",
+    "caretaker": "Opiekun",
+    "admin": "Admin"
   }
 }

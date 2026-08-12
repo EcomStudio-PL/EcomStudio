@@ -1,14 +1,15 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** Section roots ("/dashboard", "/admin") only highlight on exact match,
  *  otherwise every child route would light them up too. */
 const EXACT = new Set(["/dashboard", "/admin"]);
 
-export function NavLink({ href, label, icon, onNavigate }: {
-  href: string; label: string; icon: string; onNavigate?: () => void;
+export function NavLink({ href, label, icon: Icon, onNavigate }: {
+  href: string; label: string; icon: LucideIcon; onNavigate?: () => void;
 }) {
   const pathname = usePathname();
   const active = pathname === href || (!EXACT.has(href) && pathname.startsWith(href));
@@ -25,7 +26,7 @@ export function NavLink({ href, label, icon, onNavigate }: {
       )}
     >
       {active && <span aria-hidden className="brand-gradient absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full" />}
-      <span aria-hidden className={cn("w-5 text-center", active && "text-accent")}>{icon}</span>
+      <Icon aria-hidden size={17} strokeWidth={2} className={cn("shrink-0", active ? "text-accent" : "text-faint")} />
       {label}
     </Link>
   );
