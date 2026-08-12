@@ -1,71 +1,48 @@
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
+import { encryptionAvailable } from "@/lib/server/crypto";
 import { PageHeader } from "@/components/ui/page-header";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { ProviderToggle } from "@/components/admin/inline-controls";
-
-// Provider API keys live ONLY in server environment variables. The admin UI
-// reports configured/not-configured — the secret itself never reaches the browser.
-const ENV_KEYS: Record<string, string> = {
-  openai: "OPENAI_API_KEY",
-  google: "GOOGLE_AI_API_KEY",
-  fal: "FAL_API_KEY",
-  higgsfield: "HIGGSFIELD_API_KEY",
-  anthropic: "ANTHROPIC_API_KEY",
-};
+import { ProviderCard, type ProviderView } from "@/components/admin/provider-card";
 
 export default async function AdminProviders() {
   const supabase = await createClient();
-  const { dict } = await getDictionary();
+  const { dict, locale } = await getDictionary();
   const t = makeT(dict);
-  const { data } = await supabase
-    .from("ai_providers")
-    .select("*, ai_models(id, active)")
-    .order("name");
+  const [{ data: providers }, { data: creds }] = await Promise.all([
+    supabase.from("ai_providers").select("id, slug, name, active, ai_models(id, active)").order("name"),
+    // Only safe, masked metadata is selected — ciphertext never leaves the server.
+    supabase.from("ai_provider_credentials")
+      .select("provider_id, last_four, updated_at, last_tested_at, last_test_status, last_test_error_safe, base_url"),
+  ]);
+  const credByProvider = new Map((creds ?? []).map((c) => [c.provider_id, c]));
+  const views: ProviderView[] = (providers ?? []).map((p) => {
+    const c = credByProvider.get(p.id);
+    return {
+      id: p.id,
+      slug: p.slug,
+      name: p.name,
+      active: p.active,
+      modelsActive: p.ai_models.filter((m) => m.active).length,
+      modelsTotal: p.ai_models.length,
+      credential: c ? {
+        lastFour: c.last_four,
+        updatedAt: c.updated_at,
+        lastTestedAt: c.last_tested_at,
+        lastTestStatus: c.last_test_status,
+        lastTestError: c.last_test_error_safe,
+        baseUrl: c.base_url,
+      } : null,
+    };
+  });
+  const encryptionReady = encryptionAvailable();
   return (
     <div>
       <PageHeader title={t("admin.nav.providers")} sub={t("admin.providersSub")} />
       <div className="grid gap-4 lg:grid-cols-2">
-        {(data ?? []).map((p) => {
-          const envName = ENV_KEYS[p.slug];
-          const configured = envName ? Boolean(process.env[envName]) : false;
-          const activeModels = p.ai_models.filter((m) => m.active).length;
-          return (
-            <Card key={p.id} className="p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-display text-base font-semibold">{p.name}</h3>
-                  <code className="text-xs text-muted">{p.slug}</code>
-                </div>
-                <Badge tone={p.active ? "green" : "amber"}>
-                  {p.active ? t("admin.active") : t("admin.inactive")}
-                </Badge>
-              </div>
-              <div className="mt-4 space-y-2 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted">{t("admin.apiKey")}</span>
-                  <Badge tone={configured ? "green" : "red"}>
-                    {configured ? t("admin.configured") : t("admin.notConfigured")}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted">{t("admin.envVar")}</span>
-                  <code className="text-xs">{envName ?? "—"}</code>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted">{t("admin.nav.models")}</span>
-                  <span>{activeModels} / {p.ai_models.length} {t("admin.active").toLowerCase()}</span>
-                </div>
-              </div>
-              <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-4">
-                <p className="text-xs text-muted">{t("admin.keyHint")}</p>
-                <ProviderToggle providerId={p.id} active={p.active} />
-              </div>
-            </Card>
-          );
-        })}
+        {views.map((p) => (
+          <ProviderCard key={p.id} p={p} encryptionReady={encryptionReady} locale={locale} />
+        ))}
       </div>
     </div>
   );

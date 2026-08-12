@@ -49,7 +49,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="flex min-h-dvh">
       <Sidebar isAdmin={isAdmin} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar name={profile.full_name ?? profile.email} credits={wallet?.balance ?? 0} workspace={workspace.name} />
+        <Topbar name={profile.full_name ?? profile.email} credits={wallet?.balance ?? 0} workspace={workspace.name} isAdmin={isAdmin} />
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-6 lg:px-8 lg:pb-10">
           {children}
         </main>

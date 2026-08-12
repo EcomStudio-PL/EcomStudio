@@ -29,7 +29,7 @@ const GROUPS = [
 export function Sidebar({ isAdmin }: { isAdmin: boolean }) {
   const { t } = useI18n();
   return (
-    <aside className="hidden w-60 shrink-0 flex-col border-r border-line bg-sidebar px-3 py-5 lg:flex">
+    <aside className="glass hidden w-[250px] shrink-0 flex-col rounded-none border-y-0 border-l-0 px-3 py-5 lg:flex">
       <div className="px-3 pb-6"><Brand href="/dashboard" /></div>
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
         {GROUPS.map((g) => (

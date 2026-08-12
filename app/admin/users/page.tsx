@@ -46,7 +46,8 @@ export default async function AdminUsers({ searchParams }: {
             ws?.name ?? "—",
             ws?.credit_wallets?.balance ?? "—",
             formatDate(u.created_at, locale),
-            <UserActions key="a" userId={u.id} role={u.role} isSelf={u.id === me?.id} />,
+            <UserActions key="a" userId={u.id} role={u.role} isSelf={u.id === me?.id}
+              balance={ws?.credit_wallets?.balance ?? null} />,
           ];
         })}
       />

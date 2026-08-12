@@ -14,26 +14,60 @@
   --faint: 135 145 155;       /* #87919B */
   --line: 222 227 231;        /* #DEE3E7 */
   --line-strong: 199 206 212;
-  --accent: 24 201 139;       /* #18C98B */
-  --accent-hover: 21 185 127; /* #15B97F */
-  --accent-strong: 14 163 113;/* #0EA371 */
+  --accent: 19 190 131;       /* #13BE83 (light-mode accent) */
+  --accent-hover: 14 163 113;
+  --accent-strong: 14 143 102;/* #0E8F66 */
   --accent-soft: 233 251 244; /* #E9FBF4 */
+  --glass: 255 255 255;
+  --glass-alpha: 0.82;
+  --glass-border: 20 30 40;
+  --glass-border-alpha: 0.10;
 }
 
 .dark {
-  --bg: 9 11 13;              /* #090B0D */
-  --sidebar: 13 16 19;        /* #0D1013 */
-  --surface: 17 20 24;        /* #111418 */
-  --raised: 22 26 31;         /* #161A1F */
-  --ink: 244 246 248;         /* #F4F6F8 */
-  --muted: 165 173 183;       /* #A5ADB7 */
-  --faint: 111 120 131;       /* #6F7883 */
-  --line: 37 42 48;           /* #252A30 */
-  --line-strong: 50 56 65;    /* #323841 */
-  --accent: 24 201 139;       /* #18C98B */
-  --accent-hover: 21 185 127;
-  --accent-strong: 14 163 113;
-  --accent-soft: 18 42 38;    /* ~12% accent over surface */
+  --bg: 7 9 11;               /* #07090B */
+  --sidebar: 11 14 17;        /* #0B0E11 */
+  --surface: 18 22 27;
+  --raised: 25 30 36;
+  --ink: 246 248 250;         /* #F6F8FA */
+  --muted: 168 176 186;       /* #A8B0BA */
+  --faint: 112 121 133;       /* #707985 */
+  --line: 255 255 255;        /* used at low alpha via glass borders */
+  --line-strong: 255 255 255;
+  --accent: 32 217 154;       /* #20D99A */
+  --accent-hover: 19 190 131; /* #13BE83 */
+  --accent-strong: 14 143 102;/* #0E8F66 */
+  --accent-soft: 16 44 37;
+  --glass: 18 22 27;
+  --glass-alpha: 0.72;
+  --glass-border: 255 255 255;
+  --glass-border-alpha: 0.08;
+}
+.dark .border-line { border-color: rgb(255 255 255 / 0.08); }
+.dark .divide-line > :not([hidden]) ~ :not([hidden]) { border-color: rgb(255 255 255 / 0.08); }
+.dark .border-line-strong { border-color: rgb(255 255 255 / 0.13); }
+
+/* Refined glass surface: blur, 1px border, inner highlight, layered shadow */
+.glass {
+  background: rgb(var(--glass) / var(--glass-alpha));
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgb(var(--glass-border) / var(--glass-border-alpha));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 8px 28px -12px rgb(0 0 0 / 0.35);
+}
+
+/* Ambient background lighting: subtle emerald + neutral teal glows */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(48rem 32rem at 88% -8%, rgb(32 217 154 / 0.06), transparent 62%),
+    radial-gradient(40rem 30rem at -10% 100%, rgb(45 212 191 / 0.045), transparent 60%);
 }
 
 html { -webkit-tap-highlight-color: transparent; }

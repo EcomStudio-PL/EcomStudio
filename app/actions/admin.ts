@@ -32,6 +32,83 @@ export async function setUserRoleAction(userId: string, role: Enums<"user_role">
   }
 }
 
+export async function adjustCreditsV2Action(input: {
+  userId: string;
+  amount: number;
+  type: "bonus" | "refund" | "topup" | "admin_adjustment";
+  reason: string;
+  note?: string;
+}): Promise<Result> {
+  try {
+    const { supabase } = await requireAdmin();
+    if (!Number.isInteger(input.amount) || input.amount === 0) return { ok: false, error: "invalid_amount" };
+    if (!input.reason.trim()) return { ok: false, error: "reason_required" };
+    const { data: membership } = await supabase
+      .from("workspace_members").select("workspace_id")
+      .eq("user_id", input.userId).order("created_at", { ascending: true }).limit(1).maybeSingle();
+    if (!membership) return { ok: false, error: "no_workspace" };
+    const { data: wallet } = await supabase
+      .from("credit_wallets").select("id")
+      .eq("workspace_id", membership.workspace_id).maybeSingle();
+    if (!wallet) return { ok: false, error: "no_wallet" };
+    const { error } = await supabase.rpc("admin_adjust_credits_v2", {
+      p_wallet_id: wallet.id,
+      p_amount: input.amount,
+      p_type: input.type,
+      p_description: input.reason.trim(),
+      p_metadata: input.note?.trim() ? { note: input.note.trim() } : {},
+    });
+    if (error) return { ok: false, error: error.message.includes("insufficient") ? "insufficient" : "generic" };
+    await supabase.rpc("log_activity", {
+      p_workspace_id: membership.workspace_id, p_action: "admin.credits_adjusted",
+      p_entity_type: "credit_wallet", p_entity_id: wallet.id,
+      p_metadata: { amount: input.amount, type: input.type }, p_on_behalf_of: input.userId,
+    });
+    revalidatePath("/admin/users");
+    revalidatePath("/admin/credits");
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "generic" };
+  }
+}
+
+export async function updateModelFullAction(modelId: string, patch: {
+  name?: string; credit_cost?: number; internal_cost_usd_micros?: number;
+  quality_tier?: string; speed_tier?: string; max_reference_images?: number;
+  supports_reference_images?: boolean; description?: string | null; active?: boolean;
+}): Promise<Result> {
+  try {
+    const { supabase } = await requireAdmin();
+    const { error } = await supabase.from("ai_models").update(patch).eq("id", modelId);
+    if (error) return { ok: false, error: "generic" };
+    revalidatePath("/admin/models");
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "generic" };
+  }
+}
+
+export async function savePackageAction(input: {
+  id?: string; name: string; credits: number; bonus_credits: number;
+  price_cents: number; active: boolean; featured: boolean; sort_order: number;
+  badge: string | null;
+}): Promise<Result> {
+  try {
+    const { supabase } = await requireAdmin();
+    if (!input.name.trim() || input.credits <= 0 || input.price_cents < 0) return { ok: false, error: "invalid" };
+    const row = { ...input, name: input.name.trim(), id: undefined };
+    const { error } = input.id
+      ? await supabase.from("credit_packages").update(row).eq("id", input.id)
+      : await supabase.from("credit_packages").insert(row);
+    if (error) return { ok: false, error: "generic" };
+    revalidatePath("/admin/credits");
+    revalidatePath("/credits");
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "generic" };
+  }
+}
+
 export async function adjustUserCreditsAction(userId: string, amount: number, description: string): Promise<Result> {
   try {
     const { supabase } = await requireAdmin();

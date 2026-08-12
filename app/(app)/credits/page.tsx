@@ -17,7 +17,10 @@ export default async function CreditsPage() {
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) return null;
   const wallet = await getWallet(supabase, workspace.id);
-  const txs = wallet ? await getTransactions(supabase, wallet.id) : [];
+  const [txs, { data: packages }] = await Promise.all([
+    wallet ? getTransactions(supabase, wallet.id) : Promise.resolve([]),
+    supabase.from("credit_packages").select("*").eq("active", true).order("sort_order"),
+  ]);
   const monthStart = new Date();
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
@@ -67,7 +70,39 @@ export default async function CreditsPage() {
           )}
         </Card>
       </div>
-      <Card className="mt-5">
+      <div className="mt-8">
+        <h2 className="font-display text-lg font-semibold tracking-tight">{t("credits.topupTitle")}</h2>
+        <p className="mt-1 text-sm text-muted">{t("credits.topupSub")}</p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {(packages ?? []).map((p) => {
+            const total = p.credits + p.bonus_credits;
+            return (
+              <Card key={p.id} className={`relative flex flex-col p-5 ${p.featured ? "ring-1 ring-accent" : ""}`}>
+                {p.badge && (
+                  <span className="absolute -top-2.5 left-4 rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-semibold text-white dark:text-emerald-950">
+                    {p.badge}
+                  </span>
+                )}
+                <p className="text-sm font-semibold">{p.name}</p>
+                <p className="mt-2 font-display text-3xl font-semibold tracking-tight text-accent">
+                  {formatCredits(p.credits)}
+                </p>
+                {p.bonus_credits > 0 && (
+                  <p className="text-xs text-muted">+ {formatCredits(p.bonus_credits)} bonus · {t("credits.totalDelivered", { n: formatCredits(total) })}</p>
+                )}
+                <p className="mt-2 text-sm text-muted">{(p.price_cents / 100).toFixed(2)} {p.currency}</p>
+                <div className="mt-auto pt-4">
+                  <button disabled className="h-11 w-full rounded-xl border border-line text-sm font-semibold text-muted opacity-60">
+                    {t("credits.buy")}
+                  </button>
+                  <p className="mt-1.5 text-center text-[11px] text-faint">{t("credits.paymentsNotEnabled")}</p>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+      <Card className="mt-8">
         <CardHeader title={t("credits.historyTitle")} />
         {txs.length === 0 ? (
           <p className="px-5 py-10 text-center text-sm text-muted">{t("credits.emptyTitle")}</p>

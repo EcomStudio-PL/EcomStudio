@@ -88,18 +88,130 @@ export type Database = {
           },
         ]
       }
+      ai_provider_credentials: {
+        Row: {
+          active: boolean
+          auth_tag: string
+          base_url: string | null
+          created_at: string
+          credential_name: string
+          encrypted_value: string
+          id: string
+          iv: string
+          last_four: string
+          last_test_error_safe: string | null
+          last_test_status: string | null
+          last_tested_at: string | null
+          provider_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          active?: boolean
+          auth_tag: string
+          base_url?: string | null
+          created_at?: string
+          credential_name?: string
+          encrypted_value: string
+          id?: string
+          iv: string
+          last_four?: string
+          last_test_error_safe?: string | null
+          last_test_status?: string | null
+          last_tested_at?: string | null
+          provider_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          active?: boolean
+          auth_tag?: string
+          base_url?: string | null
+          created_at?: string
+          credential_name?: string
+          encrypted_value?: string
+          id?: string
+          iv?: string
+          last_four?: string
+          last_test_error_safe?: string | null
+          last_test_status?: string | null
+          last_tested_at?: string | null
+          provider_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_provider_credentials_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: true
+            referencedRelation: "ai_providers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_packages: {
+        Row: {
+          active: boolean
+          badge: string | null
+          bonus_credits: number
+          created_at: string
+          credits: number
+          currency: string
+          description: string | null
+          featured: boolean
+          id: string
+          name: string
+          price_cents: number
+          sort_order: number
+        }
+        Insert: {
+          active?: boolean
+          badge?: string | null
+          bonus_credits?: number
+          created_at?: string
+          credits: number
+          currency?: string
+          description?: string | null
+          featured?: boolean
+          id?: string
+          name: string
+          price_cents: number
+          sort_order?: number
+        }
+        Update: {
+          active?: boolean
+          badge?: string | null
+          bonus_credits?: number
+          created_at?: string
+          credits?: number
+          currency?: string
+          description?: string | null
+          featured?: boolean
+          id?: string
+          name?: string
+          price_cents?: number
+          sort_order?: number
+        }
+        Relationships: []
+      }
       ai_models: {
         Row: {
           active: boolean
           capabilities: Json
           created_at: string
           credit_cost: number
+          description: string | null
           estimated_api_cost: number
           id: string
+          internal_cost_usd_micros: number
+          max_reference_images: number
           metadata: Json
           model_identifier: string
           name: string
           provider_id: string
+          quality_tier: string
+          speed_tier: string
           supported_aspect_ratios: string[]
           supports_reference_images: boolean
           supports_video: boolean
@@ -110,12 +222,17 @@ export type Database = {
           capabilities?: Json
           created_at?: string
           credit_cost?: number
+          description?: string | null
           estimated_api_cost?: number
           id?: string
+          internal_cost_usd_micros?: number
+          max_reference_images?: number
           metadata?: Json
           model_identifier: string
           name: string
           provider_id: string
+          quality_tier?: string
+          speed_tier?: string
           supported_aspect_ratios?: string[]
           supports_reference_images?: boolean
           supports_video?: boolean
@@ -126,12 +243,17 @@ export type Database = {
           capabilities?: Json
           created_at?: string
           credit_cost?: number
+          description?: string | null
           estimated_api_cost?: number
           id?: string
+          internal_cost_usd_micros?: number
+          max_reference_images?: number
           metadata?: Json
           model_identifier?: string
           name?: string
           provider_id?: string
+          quality_tier?: string
+          speed_tier?: string
           supported_aspect_ratios?: string[]
           supports_reference_images?: boolean
           supports_video?: boolean
@@ -740,8 +862,11 @@ export type Database = {
       subscription_plans: {
         Row: {
           active: boolean
+          annual_price_cents: number
           created_at: string
           currency: string
+          description: string | null
+          featured: boolean
           features: Json
           id: string
           monthly_credits: number
@@ -752,8 +877,11 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          annual_price_cents?: number
           created_at?: string
           currency?: string
+          description?: string | null
+          featured?: boolean
           features?: Json
           id?: string
           monthly_credits?: number
@@ -764,8 +892,11 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          annual_price_cents?: number
           created_at?: string
           currency?: string
+          description?: string | null
+          featured?: boolean
           features?: Json
           id?: string
           monthly_credits?: number
@@ -982,6 +1113,16 @@ export type Database = {
         Args: {
           p_amount: number
           p_description?: string
+          p_wallet_id: string
+        }
+        Returns: string
+      }
+      admin_adjust_credits_v2: {
+        Args: {
+          p_amount: number
+          p_description?: string
+          p_metadata?: Json
+          p_type: Database["public"]["Enums"]["credit_tx_type"]
           p_wallet_id: string
         }
         Returns: string
