@@ -17,7 +17,9 @@
       "assets": "Assets",
       "account": "Konto",
       "admin": "Admin"
-    }
+    },
+    "menu": "Menü",
+    "support": "Support"
   },
   "common": {
     "save": "Speichern",
@@ -246,7 +248,8 @@
     "current": "Aktueller Tarif",
     "creditsMo": "{n} Credits / Monat",
     "choose": "Tarif wählen",
-    "chooseSoon": "Tarifwechsel ist verfügbar, sobald Zahlungen angebunden sind."
+    "chooseSoon": "Tarifwechsel ist verfügbar, sobald Zahlungen angebunden sind.",
+    "recommended": "Empfohlen"
   },
   "settings": {
     "title": "Einstellungen",
@@ -387,6 +390,45 @@
     "creditsAdded": "{n} Credits hinzugefügt.",
     "creditsRemoved": "{n} Credits entfernt.",
     "confirmNegative": "Wirklich {n} Credits von diesem Konto entfernen? Die Operation wird im Ledger erfasst.",
-    "insufficient": "Der Kontostand kann nicht unter null fallen."
+    "insufficient": "Der Kontostand kann nicht unter null fallen.",
+    "navGroups": {
+      "overview": "Übersicht",
+      "people": "Nutzer",
+      "content": "Inhalte",
+      "finance": "Finanzen",
+      "ai": "KI",
+      "system": "System"
+    },
+    "newPlan": "Neuer Plan",
+    "annualPrice": "Jahrespreis",
+    "limitProducts": "Produkt-Limit",
+    "limitGenerations": "Generierungs-Limit / Monat",
+    "featuresLabel": "Plan-Features (eins pro Zeile)",
+    "featuresHint": "Jede Zeile wird ein Punkt auf der Plankarte.",
+    "recommended": "Empfohlen",
+    "blocksTitle": "Prompt-Bausteine",
+    "blocksSub": "Wiederverwendbare Abschnitte, die jedem Prompt in fester Reihenfolge angehängt werden.",
+    "newBlock": "Neuer Baustein",
+    "blockContent": "Inhalt",
+    "noBlocksTitle": "Noch keine Bausteine",
+    "noBlocksBody": "Füge den ersten Baustein hinzu — z. B. globale Stilregeln oder Verbote.",
+    "blockCat": {
+      "style": "Stil",
+      "scene": "Szene",
+      "format": "Format",
+      "cta": "CTA / Anzeigentyp",
+      "fidelity": "Treue-Regeln",
+      "restrictions": "Verbote",
+      "extra": "Zusätzliche Anweisungen"
+    }
+  },
+  "support": {
+    "title": "Support & Nachrichten",
+    "sub": "Dein Kanal zum EcomStudio-Team.",
+    "comingTitle": "Nachrichtencenter — bald verfügbar",
+    "comingBody": "Wir bauen einen direkten Kunde ↔ Support-Kanal in der App. Dieser Bereich reserviert bereits Navigation und Architektur dafür.",
+    "f1": "Nachrichtenverläufe mit dem Support-Team",
+    "f2": "Benachrichtigungen bei Antworten",
+    "f3": "Anfragehistorie an einem Ort"
   }
 }

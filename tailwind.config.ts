@@ -19,6 +19,8 @@ const config: Config = {
         "accent-hover": "rgb(var(--accent-hover) / <alpha-value>)",
         "accent-strong": "rgb(var(--accent-strong) / <alpha-value>)",
         "accent-soft": "rgb(var(--accent-soft) / <alpha-value>)",
+        accent2: "rgb(var(--accent2) / <alpha-value>)",
+        "accent2-soft": "rgb(var(--accent2-soft) / <alpha-value>)",
       },
       fontFamily: {
         display: ["var(--font-display)"],

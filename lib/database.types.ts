@@ -812,6 +812,36 @@ export type Database = {
         }
         Relationships: []
       }
+      prompt_blocks: {
+        Row: {
+          active: boolean
+          category: string
+          content: string
+          created_at: string
+          id: string
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          active?: boolean
+          category: string
+          content: string
+          created_at?: string
+          id?: string
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          active?: boolean
+          category?: string
+          content?: string
+          created_at?: string
+          id?: string
+          name?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
       prompt_templates: {
         Row: {
           active: boolean
@@ -863,12 +893,14 @@ export type Database = {
         Row: {
           active: boolean
           annual_price_cents: number
+          bonus_credits: number
           created_at: string
           currency: string
           description: string | null
           featured: boolean
           features: Json
           id: string
+          limits: Json
           monthly_credits: number
           name: string
           price_cents: number
@@ -878,12 +910,14 @@ export type Database = {
         Insert: {
           active?: boolean
           annual_price_cents?: number
+          bonus_credits?: number
           created_at?: string
           currency?: string
           description?: string | null
           featured?: boolean
           features?: Json
           id?: string
+          limits?: Json
           monthly_credits?: number
           name: string
           price_cents?: number
@@ -893,12 +927,14 @@ export type Database = {
         Update: {
           active?: boolean
           annual_price_cents?: number
+          bonus_credits?: number
           created_at?: string
           currency?: string
           description?: string | null
           featured?: boolean
           features?: Json
           id?: string
+          limits?: Json
           monthly_credits?: number
           name?: string
           price_cents?: number

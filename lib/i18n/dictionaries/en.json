@@ -17,7 +17,9 @@
       "assets": "Assets",
       "account": "Account",
       "admin": "Admin"
-    }
+    },
+    "menu": "Menu",
+    "support": "Support"
   },
   "common": {
     "save": "Save",
@@ -246,7 +248,8 @@
     "current": "Current plan",
     "creditsMo": "{n} credits / mo",
     "choose": "Choose plan",
-    "chooseSoon": "Plan changes will be available once payments are connected."
+    "chooseSoon": "Plan changes will be available once payments are connected.",
+    "recommended": "Recommended"
   },
   "settings": {
     "title": "Settings",
@@ -387,6 +390,45 @@
     "creditsAdded": "Added {n} credits.",
     "creditsRemoved": "Removed {n} credits.",
     "confirmNegative": "Really remove {n} credits from this account? The operation is recorded in the ledger.",
-    "insufficient": "Balance cannot go below zero."
+    "insufficient": "Balance cannot go below zero.",
+    "navGroups": {
+      "overview": "Overview",
+      "people": "People",
+      "content": "Content",
+      "finance": "Finance",
+      "ai": "AI",
+      "system": "System"
+    },
+    "newPlan": "New plan",
+    "annualPrice": "Annual price",
+    "limitProducts": "Product limit",
+    "limitGenerations": "Generation limit / mo",
+    "featuresLabel": "Plan features (one per line)",
+    "featuresHint": "Each line becomes a bullet on the plan card.",
+    "recommended": "Recommended",
+    "blocksTitle": "Prompt blocks",
+    "blocksSub": "Reusable sections appended to every prompt in a fixed order.",
+    "newBlock": "New block",
+    "blockContent": "Block content",
+    "noBlocksTitle": "No blocks yet",
+    "noBlocksBody": "Add the first block — e.g. global style rules or restrictions.",
+    "blockCat": {
+      "style": "Style",
+      "scene": "Scene",
+      "format": "Format",
+      "cta": "CTA / ad type",
+      "fidelity": "Fidelity rules",
+      "restrictions": "Restrictions",
+      "extra": "Extra instructions"
+    }
+  },
+  "support": {
+    "title": "Support & messages",
+    "sub": "Your channel to the EcomStudio team.",
+    "comingTitle": "Message center — coming soon",
+    "comingBody": "We are building a direct customer ↔ support channel inside the app. This section already reserves the navigation and architecture for it.",
+    "f1": "Message threads with the support team",
+    "f2": "Reply notifications",
+    "f3": "Request history in one place"
   }
 }

@@ -8,8 +8,11 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 
-function DayBars({ days, label }: { days: { day: string; count: number }[]; label: string }) {
+function DayBars({ days, label, tone = "accent" }: {
+  days: { day: string; count: number }[]; label: string; tone?: "accent" | "accent2";
+}) {
   const max = Math.max(...days.map((d) => d.count), 1);
+  const bar = tone === "accent2" ? "bg-accent2/70 group-hover:bg-accent2" : "bg-accent/80 group-hover:bg-accent";
   return (
     <div>
       <p className="mb-2 text-xs font-medium uppercase tracking-wide text-faint">{label}</p>
@@ -17,7 +20,7 @@ function DayBars({ days, label }: { days: { day: string; count: number }[]; labe
         {days.map((d) => (
           <div key={d.day} className="group flex flex-1 flex-col items-center gap-1" title={`${d.day}: ${d.count}`}>
             <div
-              className="w-full rounded-sm bg-accent/80 transition-colors group-hover:bg-accent"
+              className={`w-full rounded-sm transition-colors ${bar}`}
               style={{ height: `${Math.max((d.count / max) * 100, 4)}%` }}
             />
             <span className="text-[10px] text-faint">{d.day.slice(8)}</span>
@@ -82,7 +85,7 @@ export default async function AdminDashboard() {
           <DayBars days={groupByDay(recentJobs.data ?? [])} label={t("admin.chartGenerations")} />
         </Card>
         <Card className="p-5">
-          <DayBars days={groupByDay(recentUsers.data ?? [])} label={t("admin.chartNewUsers")} />
+          <DayBars days={groupByDay(recentUsers.data ?? [])} label={t("admin.chartNewUsers")} tone="accent2" />
         </Card>
       </div>
       <Card className="mt-5">

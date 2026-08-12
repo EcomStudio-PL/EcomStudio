@@ -8,6 +8,7 @@ import { ThemeToggle } from "./theme-toggle";
 import { LocaleSwitcher } from "./locale-switcher";
 import { Brand } from "./brand";
 import { CommandPalette } from "./command-palette";
+import { CustomerDrawer } from "./customer-drawer";
 
 /** Account dropdown. This is the ONLY place in the customer app that links to
  *  /admin, and only for admins — customer navigation stays admin-free. */
@@ -76,13 +77,14 @@ function AccountMenu({ name, email, isAdmin }: { name: string; email?: string; i
   );
 }
 
-export function Topbar({ name, email, credits, workspace, isAdmin = false }: {
-  name: string; email?: string; credits: number; workspace?: string; isAdmin?: boolean;
+export function Topbar({ name, email, credits, workspace, plan = "Free", isAdmin = false }: {
+  name: string; email?: string; credits: number; workspace?: string; plan?: string; isAdmin?: boolean;
 }) {
   const { t } = useI18n();
   return (
-    <header className="glass sticky top-0 z-30 flex h-14 items-center justify-between gap-3 rounded-none border-x-0 border-t-0 px-4 pt-[env(safe-area-inset-top)] lg:px-8">
-      <div className="flex min-w-0 items-center gap-3">
+    <header className="glass sticky top-0 z-30 flex h-14 items-center justify-between gap-3 rounded-none border-x-0 border-t-0 px-3 pt-[env(safe-area-inset-top)] sm:px-4 lg:px-8">
+      <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
+        <CustomerDrawer name={name} email={email} credits={credits} plan={plan} isAdmin={isAdmin} />
         <div className="lg:hidden"><Brand href="/dashboard" markOnly /></div>
         {workspace && (
           <span className="hidden truncate rounded-lg bg-raised px-3 py-1.5 text-xs font-medium text-muted lg:inline-flex">

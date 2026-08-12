@@ -18,6 +18,8 @@
   --accent-hover: 14 163 113;
   --accent-strong: 14 143 102;/* #0E8F66 */
   --accent-soft: 233 251 244; /* #E9FBF4 */
+  --accent2: 99 102 241;      /* #6366F1 indigo — secondary accent */
+  --accent2-soft: 238 240 254;
   --glass: 255 255 255;
   --glass-alpha: 0.82;
   --glass-border: 20 30 40;
@@ -38,6 +40,8 @@
   --accent-hover: 19 190 131; /* #13BE83 */
   --accent-strong: 14 143 102;/* #0E8F66 */
   --accent-soft: 16 44 37;
+  --accent2: 129 140 248;     /* #818CF8 indigo-400 — secondary accent */
+  --accent2-soft: 28 30 52;
   --glass: 18 22 27;
   --glass-alpha: 0.72;
   --glass-border: 255 255 255;
@@ -67,7 +71,7 @@ body::before {
   pointer-events: none;
   background:
     radial-gradient(48rem 32rem at 88% -8%, rgb(32 217 154 / 0.06), transparent 62%),
-    radial-gradient(40rem 30rem at -10% 100%, rgb(45 212 191 / 0.045), transparent 60%);
+    radial-gradient(40rem 30rem at -10% 100%, rgb(129 140 248 / 0.05), transparent 60%);
 }
 
 /* Brand gradient — reserved for primary CTAs, the credit badge and active

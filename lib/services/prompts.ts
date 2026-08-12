@@ -21,6 +21,24 @@ export async function listWorkspaceTemplates(supabase: Client, workspaceId: stri
   return data ?? [];
 }
 
+/** Fixed assembly order for reusable prompt blocks — mirrors how a
+ *  production ad prompt is composed. */
+const BLOCK_ORDER = ["style", "scene", "format", "cta", "fidelity", "restrictions", "extra"] as const;
+
+export async function listActivePromptBlocks(supabase: Client) {
+  const { data } = await supabase
+    .from("prompt_blocks")
+    .select("category, content, sort_order")
+    .eq("active", true);
+  const blocks = data ?? [];
+  return BLOCK_ORDER.flatMap((cat) =>
+    blocks
+      .filter((b) => b.category === cat)
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((b) => b.content.trim())
+  ).filter(Boolean);
+}
+
 export async function listProductPrompts(supabase: Client, productId: string) {
   const { data } = await supabase
     .from("generated_prompts")
@@ -60,11 +78,14 @@ export async function createPromptsFromTemplates(
   product: Pick<Tables<"products">, "id" | "workspace_id" | "name" | "category" | "instructions">,
   images: Pick<Tables<"product_images">, "id" | "is_primary" | "sort_order">[]
 ) {
-  // System templates plus the workspace's own active custom templates.
-  const [system, custom] = await Promise.all([
+  // System templates plus the workspace's own active custom templates,
+  // plus the admin-managed reusable block library.
+  const [system, custom, blockLines] = await Promise.all([
     listSystemTemplates(supabase),
     listWorkspaceTemplates(supabase, product.workspace_id),
+    listActivePromptBlocks(supabase),
   ]);
+  const blockSection = blockLines.length > 0 ? `\n\n${blockLines.join("\n")}` : "";
   const templates = [...system, ...custom.filter((c) => c.active)];
   if (templates.length === 0) return 0;
 
@@ -96,7 +117,7 @@ export async function createPromptsFromTemplates(
       workspace_id: product.workspace_id,
       concept_name: tpl.name,
       shot_type: tpl.shot_type,
-      prompt_text: `${header}${body}\n\n${buildFidelityInstructions(product.instructions)}`,
+      prompt_text: `${header}${body}${blockSection}\n\n${buildFidelityInstructions(product.instructions)}`,
       reference_image_ids: refIds,
       reference_rationale: rationale || null,
       format: tpl.format,

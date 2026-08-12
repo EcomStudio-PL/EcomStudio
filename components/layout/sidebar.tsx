@@ -6,7 +6,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import { Brand } from "./brand";
 import { NavLink } from "./nav-link";
 
-const GROUPS = [
+export const GROUPS = [
   { key: "main", items: [
     { href: "/dashboard", key: "dashboard", icon: "▦" },
     { href: "/products", key: "products", icon: "◨" },
@@ -22,6 +22,7 @@ const GROUPS = [
   { key: "account", items: [
     { href: "/credits", key: "credits", icon: "◎" },
     { href: "/plan", key: "plan", icon: "▲" },
+    { href: "/support", key: "support", icon: "✉" },
     { href: "/settings", key: "settings", icon: "⚙" },
   ]},
 ] as const;

@@ -253,3 +253,76 @@ export async function toggleModelAction(modelId: string, active: boolean): Promi
     return { ok: false, error: "generic" };
   }
 }
+
+export async function savePlanFullAction(input: {
+  id?: string; name: string; price_cents: number; annual_price_cents: number;
+  monthly_credits: number; bonus_credits: number; description: string | null;
+  features: string[]; featured: boolean; active: boolean; sort_order: number;
+  limits: { max_products?: number; max_generations_monthly?: number };
+}): Promise<Result> {
+  try {
+    const { supabase } = await requireAdmin();
+    if (!input.name.trim() || input.price_cents < 0 || input.monthly_credits < 0) {
+      return { ok: false, error: "invalid" };
+    }
+    const row = {
+      name: input.name.trim(),
+      price_cents: input.price_cents,
+      annual_price_cents: input.annual_price_cents,
+      monthly_credits: input.monthly_credits,
+      bonus_credits: input.bonus_credits,
+      description: input.description,
+      features: input.features as never,
+      featured: input.featured,
+      active: input.active,
+      sort_order: input.sort_order,
+      limits: input.limits as never,
+    };
+    const { error } = input.id
+      ? await supabase.from("subscription_plans").update(row).eq("id", input.id)
+      : await supabase.from("subscription_plans").insert({
+          ...row,
+          slug: input.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `plan-${Date.now()}`,
+        });
+    if (error) return { ok: false, error: "generic" };
+    revalidatePath("/admin/plans");
+    revalidatePath("/plan");
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "generic" };
+  }
+}
+
+export async function savePromptBlockAction(input: {
+  id?: string; category: string; name: string; content: string;
+  active: boolean; sort_order: number;
+}): Promise<Result> {
+  try {
+    const { supabase } = await requireAdmin();
+    if (!input.name.trim() || !input.content.trim()) return { ok: false, error: "invalid" };
+    const row = {
+      category: input.category, name: input.name.trim(),
+      content: input.content.trim(), active: input.active, sort_order: input.sort_order,
+    };
+    const { error } = input.id
+      ? await supabase.from("prompt_blocks").update(row).eq("id", input.id)
+      : await supabase.from("prompt_blocks").insert(row);
+    if (error) return { ok: false, error: "generic" };
+    revalidatePath("/admin/templates");
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "generic" };
+  }
+}
+
+export async function deletePromptBlockAction(id: string): Promise<Result> {
+  try {
+    const { supabase } = await requireAdmin();
+    const { error } = await supabase.from("prompt_blocks").delete().eq("id", id);
+    if (error) return { ok: false, error: "generic" };
+    revalidatePath("/admin/templates");
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "generic" };
+  }
+}

@@ -6,6 +6,7 @@ const tones = {
   amber: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400",
   red: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400",
   blue: "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-400",
+  indigo: "bg-accent2-soft text-accent2",
 } as const;
 
 export function Badge({ tone = "neutral", className, children }: {

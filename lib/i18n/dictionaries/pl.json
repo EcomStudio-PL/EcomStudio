@@ -17,7 +17,9 @@
       "assets": "Zasoby",
       "account": "Konto",
       "admin": "Administracja"
-    }
+    },
+    "menu": "Menu",
+    "support": "Pomoc"
   },
   "common": {
     "save": "Zapisz",
@@ -246,7 +248,8 @@
     "current": "Aktualny plan",
     "creditsMo": "{n} kredytów / mies.",
     "choose": "Wybierz plan",
-    "chooseSoon": "Zmiana planu będzie dostępna po podłączeniu płatności."
+    "chooseSoon": "Zmiana planu będzie dostępna po podłączeniu płatności.",
+    "recommended": "Polecany"
   },
   "settings": {
     "title": "Ustawienia",
@@ -387,6 +390,45 @@
     "creditsAdded": "Dodano {n} kredytów.",
     "creditsRemoved": "Odjęto {n} kredytów.",
     "confirmNegative": "Na pewno odjąć {n} kredytów z konta użytkownika? Operacja trafi do księgi transakcji.",
-    "insufficient": "Saldo nie może zejść poniżej zera."
+    "insufficient": "Saldo nie może zejść poniżej zera.",
+    "navGroups": {
+      "overview": "Przegląd",
+      "people": "Użytkownicy",
+      "content": "Treści",
+      "finance": "Finanse",
+      "ai": "AI",
+      "system": "System"
+    },
+    "newPlan": "Nowy plan",
+    "annualPrice": "Cena roczna",
+    "limitProducts": "Limit produktów",
+    "limitGenerations": "Limit generacji / mies.",
+    "featuresLabel": "Cechy planu (jedna na linię)",
+    "featuresHint": "Każda linia stanie się punktem na karcie planu.",
+    "recommended": "Polecany",
+    "blocksTitle": "Bloki promptów",
+    "blocksSub": "Reużywalne sekcje doklejane do każdego promptu w stałej kolejności.",
+    "newBlock": "Nowy blok",
+    "blockContent": "Treść bloku",
+    "noBlocksTitle": "Brak bloków",
+    "noBlocksBody": "Dodaj pierwszy blok — np. globalne zasady stylu albo zakazy.",
+    "blockCat": {
+      "style": "Styl",
+      "scene": "Sceneria",
+      "format": "Format",
+      "cta": "CTA / typ reklamy",
+      "fidelity": "Zasady wierności",
+      "restrictions": "Zakazy",
+      "extra": "Dodatkowe instrukcje"
+    }
+  },
+  "support": {
+    "title": "Pomoc i wiadomości",
+    "sub": "Centrum kontaktu z zespołem EcomStudio.",
+    "comingTitle": "Centrum wiadomości — wkrótce",
+    "comingBody": "Pracujemy nad bezpośrednim kanałem klient ↔ obsługa wewnątrz aplikacji. Ta sekcja jest już zarezerwowana w nawigacji i architekturze.",
+    "f1": "Wątki wiadomości z zespołem wsparcia",
+    "f2": "Powiadomienia o odpowiedziach",
+    "f3": "Historia zgłoszeń w jednym miejscu"
   }
 }
