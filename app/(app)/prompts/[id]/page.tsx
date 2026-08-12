@@ -6,7 +6,7 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { signImageUrls } from "@/lib/services/images";
-import { referenceRoleLabel } from "@/lib/ai/engine/master-prompt";
+import { referenceRoleShort } from "@/lib/ai/engine/master-prompt";
 import type { SupportingReference } from "@/lib/ai/engine/types";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -41,9 +41,15 @@ export default async function PromptSessionPage({ params }: { params: Promise<{ 
 
   const cards: PromptCardData[] = (prompts ?? []).map((p) => {
     const supporting = (p.supporting_references ?? []) as unknown as SupportingReference[];
+    // Every reference the engine chose for this prompt, with its role and the
+    // reason it was chosen — the card must justify its own selection.
     const refs = [
-      ...(p.primary_reference ? [{ image: p.primary_reference, label: referenceRoleLabel("PRIMARY_GEOMETRY") }] : []),
-      ...supporting.map((s) => ({ image: s.image, label: referenceRoleLabel(s.role) })),
+      ...(p.primary_reference
+        ? [{ image: p.primary_reference, label: referenceRoleShort("PRIMARY_GEOMETRY"), why: null as string | null, primary: true }]
+        : []),
+      ...supporting.map((s) => ({
+        image: s.image, label: referenceRoleShort(s.role), why: s.reason ?? null, primary: false,
+      })),
     ];
     return {
       id: p.id,

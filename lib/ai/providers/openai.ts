@@ -3,7 +3,7 @@ import type { AiModelRecord, GenerationRequest, GenerationResult, ImageProviderA
 import { ProviderError } from "../types";
 
 const SIZE: Record<string, string> = { "1:1": "1024x1024", "4:5": "1024x1536", "9:16": "1024x1536", "16:9": "1536x1024" };
-const MAX_REFS = 4;
+const MAX_REFS = 6;
 
 /**
  * OpenAI Images API (gpt-image-1).

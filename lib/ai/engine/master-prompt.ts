@@ -1,37 +1,70 @@
-import { renderProductLock } from "./lock";
+import { criticalDetails, renderProductLock } from "./lock";
+import { styleCamera, styleFinalQuality, styleLighting } from "./style";
 import type {
   FeatureManifest, ImageAnalysis, LockStrength, ProductLock, SceneConcept, SessionInput,
 } from "./types";
 
 /**
- * MASTER PROMPT ASSEMBLY — provider-neutral, deterministic and ordered so
- * the product facts always precede the decorative scene description. Every
- * sentence has a function; no keyword spam. Model adapters may later trim or
- * reformat, but never touch the Product Lock, identity or critical features.
+ * MASTER PROMPT ASSEMBLY — the built-in commercial wrapper of EcomStudio.
+ *
+ * The seller writes nothing: the engine assembles a full advertising prompt
+ * around the scene concept it designed. The section ORDER is mandatory and
+ * deterministic — product truth (references, priority, lock, critical
+ * details) always precedes anything decorative, because whatever the model
+ * reads first is what it treats as the subject. Scene, camera, light and mood
+ * follow; the negative constraints and the quality floor close it.
  */
 
 const ROLE_LABEL: Record<string, string> = {
-  PRIMARY_GEOMETRY: "main geometry and identity",
-  MAIN_GEOMETRY: "main geometry and identity",
+  PRIMARY_GEOMETRY: "source of truth for product geometry, identity and proportions",
+  PRIMARY_REFERENCE: "source of truth for product geometry, identity and proportions",
+  MAIN_GEOMETRY: "source of truth for product geometry, identity and proportions",
   FRONT_DETAIL: "front panel details",
-  SIDE_PROFILE: "side profile",
-  REAR_DETAIL: "rear details",
-  BACK_DETAIL: "rear details",
+  SIDE_PROFILE: "side profile and thickness",
+  REAR_DETAIL: "rear construction details",
+  BACK_DETAIL: "rear construction details",
   MATERIAL: "materials and finish",
-  BUTTON_LAYOUT: "button layout",
-  PORT_LAYOUT: "port layout",
-  BRANDING: "branding placement",
+  BUTTON_LAYOUT: "button layout and count",
+  PORT_LAYOUT: "port and socket layout",
+  BRANDING: "branding wording and placement",
   DIMENSIONS: "declared dimensions",
   SCALE: "true physical scale",
-  ACCESSORIES: "included accessories",
-  USAGE: "how the product is used",
+  ACCESSORIES: "included accessories and their count",
+  USAGE: "how the product is used and held",
   COLOR: "exact colors",
   MECHANISM: "mechanism construction",
-  SCENE_ONLY: "scene inspiration only (not a product source)",
+  SCENE_ONLY: "scene inspiration only — never a product source",
 };
 
 export function referenceRoleLabel(role: string): string {
   return ROLE_LABEL[role] ?? role.toLowerCase().replace(/_/g, " ");
+}
+
+/** Compact role label for the prompt cards, where the full prompt-side
+ *  sentence would not fit. */
+const ROLE_SHORT: Record<string, string> = {
+  PRIMARY_GEOMETRY: "geometry & identity",
+  PRIMARY_REFERENCE: "geometry & identity",
+  MAIN_GEOMETRY: "geometry & identity",
+  FRONT_DETAIL: "front details",
+  SIDE_PROFILE: "side profile",
+  REAR_DETAIL: "rear details",
+  BACK_DETAIL: "rear details",
+  MATERIAL: "materials",
+  BUTTON_LAYOUT: "buttons",
+  PORT_LAYOUT: "ports",
+  BRANDING: "branding",
+  DIMENSIONS: "dimensions",
+  SCALE: "scale",
+  ACCESSORIES: "accessories",
+  USAGE: "usage",
+  COLOR: "colors",
+  MECHANISM: "mechanism",
+  SCENE_ONLY: "scene only",
+};
+
+export function referenceRoleShort(role: string): string {
+  return ROLE_SHORT[role] ?? role.toLowerCase().replace(/_/g, " ");
 }
 
 export function assembleMasterPrompt(input: {
@@ -43,62 +76,111 @@ export function assembleMasterPrompt(input: {
   imageCount: number;
 }): string {
   const { concept: c, manifest: m, lock, strength, session } = input;
-  const refNumbers = [c.primary_reference, ...c.supporting_references.map((s) => s.image)];
-
   const sections: string[] = [];
 
-  sections.push(`TASK:\nCreate one professional e-commerce product photograph: ${c.title}. Purpose: ${c.marketing_purpose}.`);
-  sections.push(`FORMAT:\nAspect ratio ${session.aspectRatio}. Photorealistic commercial photography.`);
-  sections.push(`REFERENCE IMAGES:\nUse ONLY reference image${refNumbers.length === 1 ? "" : "s"} ${refNumbers.join(", ")} as the product source.`);
-  sections.push(`PRIMARY REFERENCE:\nImage ${c.primary_reference} defines the product's geometry, proportions and identity.`);
+  // 1. TASK
+  sections.push(`TASK\nCreate one professional advertising photograph of: ${m.identity}${session.productName ? ` — "${session.productName}"` : ""}.\nConcept: ${c.title}. Marketing purpose: ${c.marketing_purpose}.`);
+
+  // 2. FORMAT
+  sections.push(`FORMAT\nAspect ratio ${session.aspectRatio}.\nOne single coherent photograph. No collage, no split frame, no multi-panel layout unless explicitly requested.`);
+
+  // 3. REFERENCE IMAGES — roles before anything scenic.
+  const refLines = [
+    `PRIMARY REFERENCE:\nImage ${c.primary_reference}\nRole: ${referenceRoleLabel("PRIMARY_GEOMETRY")}.`,
+  ];
   if (c.supporting_references.length) {
-    sections.push(`SUPPORTING REFERENCES:\n${c.supporting_references.map((s) => `Image ${s.image} — ${referenceRoleLabel(s.role)}: ${s.reason}`).join("\n")}`);
+    refLines.push(`SUPPORTING REFERENCES:\n${c.supporting_references
+      .map((s) => `Image ${s.image}: ${referenceRoleLabel(s.role)} — ${s.reason}`)
+      .join("\n")}`);
   }
-  sections.push(`REFERENCE PRIORITY:\nWhen references disagree, the primary reference wins for shape and identity; supporting references win only for their stated role.`);
+  sections.push(`REFERENCE IMAGES\nThe attached reference photographs show the real product that must appear in this photograph.\n${refLines.join("\n\n")}`);
+
+  // 4. REFERENCE PRIORITY
+  sections.push(`REFERENCE PRIORITY\nProduct geometry, proportions and identity must follow the PRIMARY REFERENCE.\nSupporting references may only clarify the detail assigned to them; they never override the primary reference on shape or identity.\nScene-only references must not redefine the product.\nWhen references disagree, follow the primary reference and never merge two versions into one object.`);
+
+  // 5. PRODUCT LOCK
   sections.push(renderProductLock(lock, strength));
-  if (m.critical_features.length) {
-    sections.push(`CRITICAL FEATURES:\n${m.critical_features.map((f) => `- ${f}`).join("\n")}`);
+
+  // 6. CRITICAL DETAILS TO PRESERVE — scene-aware shortlist.
+  const critical = criticalDetails(m, c);
+  if (critical.length) {
+    sections.push(`CRITICAL DETAILS TO PRESERVE\n${critical.map((f) => `- ${f}`).join("\n")}`);
   }
-  sections.push(`SCENE:\n${c.scene_description}\nEnvironment: ${c.environment}.`);
-  sections.push(`PRODUCT PLACEMENT:\n${c.product_placement} Orientation: ${c.product_orientation}.`);
-  sections.push(`PHYSICAL CONTACT:\n${c.physical_contact} Realistic contact shadows, correct perspective and reflections; the product never floats and never intersects other objects.`);
-  sections.push(`COMPOSITION:\nCamera distance: ${c.camera_distance}. ${c.camera_angle}`);
-  sections.push(`CAMERA:\nProfessional commercial photography look, sharp focus on the product, natural depth of field.`);
-  sections.push(`LIGHTING:\n${c.lighting}`);
+
+  // 7. SCENE — the creative half starts only here.
+  sections.push(`SCENE\n${c.scene_description}\nEnvironment: ${c.environment}.`);
+
+  // 8. PRODUCT PLACEMENT & PHYSICAL CONTACT
+  sections.push(`PRODUCT PLACEMENT & PHYSICAL CONTACT\n${c.product_placement}\nOrientation: ${c.product_orientation}.\n${c.physical_contact}\nThe product rests in real physical contact with what supports it: full contact with the surface, a correct contact shadow directly beneath it, correct occlusion where objects overlap. The product never floats, never hovers, never intersects another object, and is never cut by geometry that should be behind it.`);
+
+  // 9. COMPOSITION
+  sections.push(`COMPOSITION\nThe product is the unmistakable subject and the largest point of interest in frame; everything else supports it.\nCamera distance: ${c.camera_distance}. Framing keeps the whole product inside the frame with clean breathing room and no distracting clutter overlapping it.`);
+
+  // 10. CAMERA
+  sections.push(`CAMERA\n${styleCamera(c)}`);
+
+  // 11. LIGHTING
+  sections.push(`LIGHTING\n${styleLighting(c)}`);
+
+  // 12. HUMAN REALISM
   if (c.human_presence) {
-    sections.push(`HUMAN REALISM:\n${c.human_interaction ?? "A person interacts with the product naturally."}\nTrue photorealistic human: natural skin texture with visible pores and subtle imperfections, realistic hair strands, correct anatomy, correct hands with five fingers per visible hand, realistic nails, natural joints. No fused fingers, no duplicated limbs, no plastic or mannequin skin, no hand/product intersections.`);
+    sections.push(`HUMAN REALISM\n${c.human_interaction ?? "A person interacts with the product naturally."}\nTrue photorealistic human: natural skin texture with visible pores and subtle imperfections, realistic hair strands, correct anatomy and correct joints.\nHands: exactly five fingers on each visible hand, natural grip with realistic finger placement and realistic contact pressure, realistic nails, correct hand-to-product scale. Fingers wrap around the product surface and never pass through it, never fuse, and never duplicate.`);
   }
-  sections.push(`REALISM:\nTrue-to-life photography: physically correct light, shadows and materials. No 3D-render or illustration look.`);
-  sections.push(`FINAL QUALITY:\nCrisp commercial-grade output ready for a marketplace listing. The product must be instantly recognisable as the exact referenced item.`);
+
+  // 13. REALISM
+  sections.push(`REALISM\nPhysically correct light, shadows, reflections and perspective. Real materials behaving like real materials. Correct scale relationships between every object in frame. No floating objects, no impossible intersections, no 3D-render or illustration look.`);
+
+  // 14. NEGATIVE CONSTRAINTS + FINAL QUALITY
+  sections.push(`NEGATIVE CONSTRAINTS\nDo not produce any of the following: ${assembleNegativePrompt(c, m, lock)}.`);
+  sections.push(`FINAL QUALITY REQUIREMENTS\n${styleFinalQuality(session, m)}\nUltra realistic commercial product photography, sharp product detail, realistic materials, photographic and not illustrative. No unnecessary text, icons, graphics or 3D overlays.`);
 
   return sections.join("\n\n");
 }
 
 /**
- * NEGATIVE PROMPT ENGINE — GLOBAL + CONDITIONAL + PRODUCT-SPECIFIC, ranked so
- * the most fragile product facts come first and the list stays short.
+ * NEGATIVE PROMPT ENGINE — PRODUCT-SPECIFIC → CONDITIONAL → GLOBAL, ranked so
+ * the most fragile product facts come first and survive any provider-side
+ * truncation. Conditional groups switch on what the product and the scene
+ * actually are (a human in frame, an interfaced device, a multi-item set).
  */
 const GLOBAL_NEGATIVES = [
-  "different product than the references",
-  "redesigned, simplified or 'improved' product",
-  "wrong colors or wrong proportions",
-  "invented text, invented logos, watermarks",
+  "a different product than the references",
+  "redesigned, restyled, simplified or 'improved' product",
+  "deformed product, wrong proportions or wrong colors",
+  "missing parts or invented parts",
+  "duplicated product",
+  "invented text, invented logos, random branding, watermarks",
+  "collage, split frame, multiple panels",
+  "graphic overlays, badges, icons, arrows, infographic elements",
   "cartoon, illustration or 3D-render look",
 ];
 
 const CONTACT_NEGATIVES = [
   "floating or levitating product",
   "missing contact shadow",
-  "impossible intersections with surfaces or objects",
+  "impossible contact or intersections with surfaces and objects",
 ];
 
 const HUMAN_NEGATIVES = [
-  "deformed or fused fingers",
-  "extra or missing fingers",
-  "duplicated or missing limbs",
-  "broken anatomy",
+  "extra fingers, missing fingers or fused fingers",
+  "extra hands, duplicated or missing limbs",
+  "bad anatomy, broken joints",
   "plastic doll-like skin or mannequin look",
-  "hand clipping through the product",
+  "hand clipping through or intersecting the product",
+  "unnatural grip or wrong hand-to-product scale",
+];
+
+const DEVICE_NEGATIVES = [
+  "invented buttons or removed buttons",
+  "moved or restyled labels and markings",
+  "wrong port count or rearranged ports",
+  "invented screen layout or fake interface graphics",
+];
+
+const SET_NEGATIVES = [
+  "missing accessories",
+  "duplicated accessories",
+  "accessories in the wrong color",
 ];
 
 export function assembleNegativePrompt(c: SceneConcept, m: FeatureManifest, lock?: ProductLock): string {
@@ -108,23 +190,30 @@ export function assembleNegativePrompt(c: SceneConcept, m: FeatureManifest, lock
   if (i.buttons > 0) numeric.push(`any number of buttons other than ${i.buttons}`);
   if (i.ports > 0) numeric.push(`any number of ports other than ${i.ports}`);
   if (i.screens > 0) numeric.push(`any number of screens other than ${i.screens}`);
-  if (m.accessories.length) numeric.push("missing, added or duplicated accessories");
-  if (m.branding.logos.length || m.branding.text.length) numeric.push("changed, moved or invented branding");
+  if (i.leds > 0) numeric.push(`any number of indicator lights other than ${i.leds}`);
+  if (m.branding.logos.length || m.branding.text.length) numeric.push("changed, moved, translated or invented branding");
+  else numeric.push("any logo or brand text added to an unbranded product");
+
+  const isDevice = i.buttons + i.ports + i.screens + i.sockets + i.switches + i.leds > 0;
+  const isSet = m.quantity > 1 || m.accessories.length > 0;
 
   const productSpecific = [
     ...c.product_specific_negatives,
     ...(m.quantity > 1
       ? [`showing more or fewer than ${m.quantity} product units`]
       : ["duplicating the product"]),
+    `a body colour other than ${m.primary_color}`,
     ...numeric,
     // A detected variant conflict is the likeliest way to get a wrong product.
     ...(lock?.conflicts ?? []).map((x) => `blending reference variants — render only ${x.resolution}`),
   ];
   const lines = [
-    ...productSpecific,                       // 1. product facts first
-    ...CONTACT_NEGATIVES,                     // 2. physics of this scene
-    ...(c.human_presence ? HUMAN_NEGATIVES : []), // 3. human errors when relevant
-    ...GLOBAL_NEGATIVES,                      // 4. global safety net
+    ...productSpecific,                            // 1. this product's facts
+    ...(isDevice ? DEVICE_NEGATIVES : []),         // 2. interfaced-product errors
+    ...(isSet && m.accessories.length ? SET_NEGATIVES : []), // 3. set integrity
+    ...CONTACT_NEGATIVES,                          // 4. physics of this scene
+    ...(c.human_presence ? HUMAN_NEGATIVES : []),  // 5. human errors when relevant
+    ...GLOBAL_NEGATIVES,                           // 6. global safety net
   ];
   // Dedupe, keep it tight — priority order guarantees the important ones stay.
   const seen = new Set<string>();
@@ -134,7 +223,7 @@ export function assembleNegativePrompt(c: SceneConcept, m: FeatureManifest, lock
     if (!key || seen.has(key)) continue;
     seen.add(key);
     out.push(l.trim().replace(/[;.]+$/, ""));
-    if (out.length >= 18) break;
+    if (out.length >= 26) break;
   }
   // Semicolons separate entries so entries may contain commas themselves.
   return out.join("; ");
@@ -145,7 +234,7 @@ export function referenceRationale(c: SceneConcept, analyses: ImageAnalysis[]): 
   const primary = analyses.find((a) => a.image_number === c.primary_reference);
   const rows = [{
     image: c.primary_reference,
-    label: primary ? `${referenceRoleLabel("PRIMARY_GEOMETRY")} (${primary.view.replace("_", " ")})` : referenceRoleLabel("PRIMARY_GEOMETRY"),
+    label: primary ? `primary reference (${primary.view.replace("_", " ")})` : "primary reference",
   }];
   for (const s of c.supporting_references) rows.push({ image: s.image, label: referenceRoleLabel(s.role) });
   return rows;

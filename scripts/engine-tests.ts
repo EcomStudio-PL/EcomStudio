@@ -4,8 +4,8 @@
  * protection, diversity, negative composition, master prompt assembly).
  * Run: npm run test:engine
  */
-import { buildProductLock, chooseLockStrength, renderProductLock, detectReferenceConflicts } from "../lib/ai/engine/lock";
-import { supportedViews, conceptSupported, diversityViolations } from "../lib/ai/engine/scenes";
+import { buildProductLock, chooseLockStrength, renderProductLock, detectReferenceConflicts, criticalDetails } from "../lib/ai/engine/lock";
+import { supportedViews, conceptSupported, diversityViolations, clampRefs } from "../lib/ai/engine/scenes";
 import { assembleMasterPrompt, assembleNegativePrompt } from "../lib/ai/engine/master-prompt";
 import type { FeatureManifest, ImageAnalysis, SceneConcept, SessionInput } from "../lib/ai/engine/types";
 
@@ -101,7 +101,7 @@ console.log("E. Product held in hand → Human Realism active");
   });
   const prompt = assembleMasterPrompt({ concept: c, manifest: baseManifest, lock: buildProductLock(baseManifest), strength: chooseLockStrength(c, baseManifest), session, imageCount: 2 });
   check("HUMAN REALISM section present", prompt.includes("HUMAN REALISM"));
-  check("five fingers rule present", prompt.includes("five fingers per visible hand"));
+  check("five fingers rule present", prompt.includes("exactly five fingers on each visible hand"));
   check("in-hand forces MAXIMUM", chooseLockStrength(c, { ...baseManifest, geometry: { ...baseManifest.geometry, major_components: ["body"] }, interfaces: { ...baseManifest.interfaces, buttons: 1, leds: 0 } }) === "MAXIMUM");
   const neg = assembleNegativePrompt(c, baseManifest);
   check("human negatives included", neg.includes("fused fingers"));
@@ -111,7 +111,7 @@ console.log("F. Product on a table → physical contact + shadows in prompt");
 {
   const prompt = assembleMasterPrompt({ concept: concept(), manifest: baseManifest, lock: buildProductLock(baseManifest), strength: "MEDIUM", session, imageCount: 1 });
   check("PHYSICAL CONTACT section present", prompt.includes("PHYSICAL CONTACT"));
-  check("contact shadows demanded", prompt.includes("contact shadows"));
+  check("contact shadow demanded", prompt.includes("contact shadow"));
   check("no-floating rule present", prompt.includes("never floats"));
   const neg = assembleNegativePrompt(concept(), baseManifest);
   check("negative bans floating", neg.includes("floating or levitating"));
@@ -128,8 +128,9 @@ console.log("G. 8 uploaded photos → scenes use a subset, not all 8");
     ],
   });
   const prompt = assembleMasterPrompt({ concept: c, manifest: baseManifest, lock: buildProductLock(baseManifest), strength: "HIGH", session, imageCount: 8 });
-  check("prompt names only selected refs", prompt.includes("reference images 1, 2, 5, 7"));
-  check("references capped at 2-4", 1 + c.supporting_references.length <= 4);
+  for (const n of [1, 2, 5, 7]) check(`prompt names reference ${n}`, prompt.includes(`Image ${n}`));
+  check("unselected references stay out", !prompt.includes("Image 8"));
+  check("references capped at 6", 1 + c.supporting_references.length <= 6);
 }
 
 console.log("H. 5 prompts must be clearly different (diversity engine)");
@@ -151,7 +152,13 @@ console.log("H. 5 prompts must be clearly different (diversity engine)");
 console.log("I. Master prompt ordering: product facts before scene decor");
 {
   const prompt = assembleMasterPrompt({ concept: concept(), manifest: baseManifest, lock: buildProductLock(baseManifest), strength: "HIGH", session, imageCount: 2 });
-  const order = ["TASK:", "FORMAT:", "REFERENCE IMAGES:", "PRIMARY REFERENCE:", "REFERENCE PRIORITY:", "PRODUCT LOCK", "CRITICAL FEATURES:", "SCENE:", "PRODUCT PLACEMENT:", "PHYSICAL CONTACT:", "COMPOSITION:", "CAMERA:", "LIGHTING:", "REALISM:", "FINAL QUALITY:"];
+  // PART 6 mandatory order — product truth first, scene decor after.
+  const order = [
+    "TASK\n", "FORMAT\n", "REFERENCE IMAGES\n", "PRIMARY REFERENCE:", "REFERENCE PRIORITY\n",
+    "PRODUCT LOCK — EXACT PRODUCT PRESERVATION", "CRITICAL DETAILS TO PRESERVE\n", "SCENE\n",
+    "PRODUCT PLACEMENT & PHYSICAL CONTACT\n", "COMPOSITION\n", "CAMERA\n", "LIGHTING\n",
+    "REALISM\n", "NEGATIVE CONSTRAINTS\n", "FINAL QUALITY REQUIREMENTS\n",
+  ];
   let last = -1, ordered = true;
   for (const sec of order) {
     const i = prompt.indexOf(sec);
@@ -172,7 +179,7 @@ console.log("J. Negative prompt engine: layered, deduped, capped");
   const parts = neg.split("; ");
   check("product-specific negatives lead", parts[0].includes("four green buttons"));
   check("deduped", parts.filter((p) => p.includes("four green buttons")).length === 1);
-  check("capped at 18", parts.length <= 18);
+  check("capped at 26", parts.length <= 26);
   check("global net present", neg.includes("watermarks"));
 }
 
@@ -209,6 +216,95 @@ console.log("L. Fidelity-first strength ladder");
     chooseLockStrength(concept({ scene_type: "premium_packshot" }), { ...simple, interfaces: { ...simple.interfaces, buttons: 1 } }) === "HIGH");
   check("dense controls reach MAXIMUM",
     chooseLockStrength(concept(), { ...simple, interfaces: { ...simple.interfaces, buttons: 4, ports: 2 } }) === "MAXIMUM");
+}
+
+console.log("M. V3 ordering: no scene word appears before the product lock");
+{
+  const c = concept({ scene_description: "Kettle on a sunlit marble counter", environment: "bright scandinavian kitchen" });
+  const prompt = assembleMasterPrompt({ concept: c, manifest: baseManifest, lock: buildProductLock(baseManifest), strength: "HIGH", session, imageCount: 3 });
+  const lockAt = prompt.indexOf("PRODUCT LOCK — EXACT PRODUCT PRESERVATION");
+  check("scene description comes after the lock", prompt.indexOf("sunlit marble counter") > lockAt);
+  check("environment comes after the lock", prompt.indexOf("scandinavian kitchen") > lockAt);
+  check("lighting comes after the lock", prompt.indexOf("LIGHTING\n") > lockAt);
+  check("references come before the lock", prompt.indexOf("REFERENCE PRIORITY\n") < lockAt);
+  check("negatives are inside the prompt too", prompt.includes("NEGATIVE CONSTRAINTS"));
+  check("locked-object wording present", prompt.includes("already manufactured physical object"));
+  check("no hybrid variants", prompt.includes("Do not combine conflicting variants"));
+}
+
+console.log("N. Reference usage: 3-6 per prompt, roles intact, scene-only never defines product");
+{
+  const analyses = [
+    analysis(1, "front", { primary_candidate_score: 95 }),
+    analysis(2, "three_quarter", { primary_candidate_score: 88, roles: ["SIDE_PROFILE"] }),
+    analysis(3, "detail", { primary_candidate_score: 40, roles: ["BUTTON_LAYOUT"], full_product: false }),
+    analysis(4, "front", { primary_candidate_score: 30, roles: ["SCENE_ONLY"], scene_reference_only: true }),
+    analysis(5, "rear", { primary_candidate_score: 70, roles: ["REAR_DETAIL"] }),
+    analysis(6, "macro", { primary_candidate_score: 35, roles: ["MATERIAL"], full_product: false }),
+  ];
+  const thin = clampRefs(concept({ primary_reference: 1, supporting_references: [] }), 6, analyses);
+  check("a lone primary is enriched to at least 3 references", 1 + thin.supporting_references.length >= 3);
+  check("enrichment never picks a scene-only image", thin.supporting_references.every((s) => s.image !== 4));
+
+  const rich = clampRefs(concept({
+    primary_reference: 1,
+    supporting_references: [
+      { image: 2, role: "SIDE_PROFILE", reason: "profile" },
+      { image: 3, role: "BUTTON_LAYOUT", reason: "controls" },
+      { image: 5, role: "REAR_DETAIL", reason: "back" },
+      { image: 6, role: "MATERIAL", reason: "finish" },
+    ],
+  }), 6, analyses);
+  check("five well-argued references are kept", 1 + rich.supporting_references.length === 5);
+  check("roles survive selection", rich.supporting_references.map((s) => s.role).join() === "SIDE_PROFILE,BUTTON_LAYOUT,REAR_DETAIL,MATERIAL");
+
+  const spam = clampRefs(concept({
+    primary_reference: 1,
+    supporting_references: [2, 3, 5, 6, 2, 3].map((image) => ({ image, role: "COLOR" as const, reason: "x" })),
+  }), 6, analyses);
+  check("never more than 6 references total", 1 + spam.supporting_references.length <= 6);
+  check("no duplicate reference numbers", new Set(spam.supporting_references.map((s) => s.image)).size === spam.supporting_references.length);
+
+  const sceneOnly = clampRefs(concept({
+    primary_reference: 1,
+    supporting_references: [{ image: 4, role: "PRIMARY_GEOMETRY", reason: "steal identity" }],
+  }), 6, analyses);
+  check("scene-only image is refused a product role", sceneOnly.supporting_references.every((s) => s.image !== 4 || s.role !== "PRIMARY_GEOMETRY"));
+}
+
+console.log("O. Critical details + adaptive style baseline");
+{
+  const m = { ...baseManifest, interfaces: { ...baseManifest.interfaces, buttons: 4, ports: 2, ports_detail: "USB-C and DC" } };
+  const details = criticalDetails(m, { camera_distance: "macro", human_presence: false, scene_type: "macro_detail" });
+  check("counts listed as critical details", details.some((d) => d.includes("4 button")) && details.some((d) => d.includes("2 port")));
+  check("branding listed as critical detail", details.some((d) => d.includes("ACME")));
+  check("critical list stays focused", details.length <= 12);
+
+  const indoor = assembleMasterPrompt({ concept: concept({ environment: "modern kitchen counter" }), manifest: m, lock: buildProductLock(m), strength: "HIGH", session, imageCount: 2 });
+  const outdoor = assembleMasterPrompt({ concept: concept({ environment: "sunny garden terrace", scene_description: "Kettle on an outdoor table" }), manifest: m, lock: buildProductLock(m), strength: "HIGH", session, imageCount: 2 });
+  check("interior scene gets interior light", indoor.includes("window key"));
+  check("outdoor scene gets daylight", outdoor.includes("natural daylight"));
+  check("blue sky is not forced indoors", !indoor.includes("natural daylight with a clear directional key"));
+  check("commercial baseline always present", indoor.includes("premium") && outdoor.includes("premium"));
+  check("seller style stays scene-only", assembleMasterPrompt({
+    concept: concept(), manifest: m, lock: buildProductLock(m), strength: "HIGH",
+    session: { ...session, style: "warm nordic" }, imageCount: 2,
+  }).includes("never to the product"));
+}
+
+console.log("P. Negative engine: conditional device and set groups");
+{
+  const device = { ...baseManifest, interfaces: { ...baseManifest.interfaces, buttons: 4, ports: 2 } };
+  const negDevice = assembleNegativePrompt(concept(), device);
+  check("device negatives applied", negDevice.includes("invented buttons") && negDevice.includes("wrong port count"));
+  const set = { ...baseManifest, accessories: [{ name: "charging dock", count: 2, color: "black" }] };
+  check("set negatives applied", assembleNegativePrompt(concept(), set).includes("duplicated accessories"));
+  const plain = { ...baseManifest, interfaces: { buttons: 0, buttons_detail: null, switches: 0, ports: 0, ports_detail: null, sockets: 0, screens: 0, leds: 0, labels: [] }, accessories: [] };
+  const negPlain = assembleNegativePrompt(concept(), plain);
+  check("no device negatives for a plain object", !negPlain.includes("wrong port count"));
+  check("colour is always protected", negPlain.includes("body colour other than matte black"));
+  const unbranded = { ...plain, branding: { logos: [], text: [], position: null } };
+  check("unbranded products ban invented logos", assembleNegativePrompt(concept(), unbranded).includes("added to an unbranded product"));
 }
 
 console.log(failures === 0 ? "\nALL ENGINE TESTS PASSED" : `\n${failures} FAILURES`);

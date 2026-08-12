@@ -143,7 +143,10 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   // Reference images -> base64 (only when the adapter supports them)
   const refs: ReferenceImage[] = [];
   if (adapter.capabilities.supportsReferenceImages && model.supports_reference_images) {
-    for (const path of input.referencePaths.slice(0, model.max_reference_images || 4)) {
+    // The prompt engine hands over 3-6 role-assigned references; the cap comes
+    // from the model config so the extra verified angles actually reach the
+    // provider instead of being silently dropped.
+    for (const path of input.referencePaths.slice(0, model.max_reference_images || 6)) {
       const { data: blob } = await supabase.storage.from("product-images").download(path);
       if (!blob) continue;
       const buf = Buffer.from(await blob.arrayBuffer());

@@ -2,7 +2,8 @@ import "server-only";
 import { callVisionJson, type VisionBackend, type VisionOutcome } from "./vision";
 import {
   IMAGE_VIEWS, REFERENCE_ROLES, SCENE_TYPES,
-  type FeatureManifest, type ImageAnalysis, type ImageView, type SceneConcept, type SessionInput,
+  type FeatureManifest, type ImageAnalysis, type ImageView, type SceneConcept,
+  type SessionInput, type SupportingReference,
 } from "./types";
 
 /**
@@ -117,7 +118,21 @@ function similarText(a: string, b: string): boolean {
   return common / Math.min(wa.size, wb.size) > 0.6;
 }
 
-function clampRefs(c: SceneConcept, imageCount: number, analyses: ImageAnalysis[]): SceneConcept {
+/** Roles that only clarify a detail — never a product-identity source. */
+const CONTEXT_ROLES = new Set(["SCENE_ONLY", "USAGE", "SCALE", "DIMENSIONS"]);
+
+/**
+ * REFERENCE SELECTION. The engine deliberately uses MORE of what the seller
+ * uploaded — typically 3-6 references per scene — because every extra verified
+ * angle is fidelity the model would otherwise have to invent. It still never
+ * dumps the whole library into every prompt: each supporting image must carry
+ * a distinct role, scene-only images can never define the product, and the
+ * primary reference always stays the single source of truth for geometry.
+ */
+const MAX_SUPPORTING = 5;
+const MIN_SUPPORTING = 2;
+
+export function clampRefs(c: SceneConcept, imageCount: number, analyses: ImageAnalysis[]): SceneConcept {
   const usable = analyses.filter((a) => !a.scene_reference_only);
   const bestPrimary = [...usable].sort((x, y) => y.primary_candidate_score - x.primary_candidate_score)[0];
   let primary = Math.trunc(c.primary_reference);
@@ -125,33 +140,51 @@ function clampRefs(c: SceneConcept, imageCount: number, analyses: ImageAnalysis[
   if (primary < 1 || primary > imageCount || primaryAnalysis?.scene_reference_only) {
     primary = bestPrimary?.image_number ?? 1;
   }
-  // 2-4 references per scene: primary + up to 3 supporting, never scene-only
-  // images as identity sources, never duplicates, never ALL images blindly.
+
+  const taken = new Set<number>([primary]);
   const supporting = (c.supporting_references ?? [])
     .filter((s) => {
       const n = Math.trunc(s.image);
-      if (n < 1 || n > imageCount || n === primary) return false;
+      if (n < 1 || n > imageCount || taken.has(n)) return false;
       const a = analyses.find((x) => x.image_number === n);
-      return !(a?.scene_reference_only && s.role !== "SCENE_ONLY" && s.role !== "USAGE" && s.role !== "SCALE");
+      // A scene-only image may still ride along as context (usage, scale) but
+      // must never be handed a product-defining role.
+      if (a?.scene_reference_only && !CONTEXT_ROLES.has(s.role)) return false;
+      taken.add(n);
+      return true;
     })
-    .slice(0, 3);
+    .slice(0, MAX_SUPPORTING);
 
-  // A single reference throws away fidelity information the user already
-  // uploaded, so when another usable image exists the best remaining one is
-  // attached with the role its own analysis reports.
-  if (supporting.length === 0) {
-    const extra = analyses
-      .filter((a) => a.image_number !== primary && !a.scene_reference_only && a.product_quality !== "poor")
-      .sort((x, y) => y.primary_candidate_score - x.primary_candidate_score)[0];
-    if (extra) {
-      const role = extra.roles.find((r) => r !== "PRIMARY_GEOMETRY" && r !== "SCENE_ONLY") ?? "COLOR";
+  // Under-using references is the cheapest way to lose fidelity, so the
+  // remaining verified views are attached (best first) until the scene carries
+  // a useful set. Each gets the role its own analysis reports.
+  if (supporting.length < MIN_SUPPORTING) {
+    const extras = analyses
+      .filter((a) => !taken.has(a.image_number) && !a.scene_reference_only && a.product_quality !== "poor")
+      .sort((x, y) => y.primary_candidate_score - x.primary_candidate_score);
+    for (const extra of extras) {
+      if (supporting.length >= MIN_SUPPORTING) break;
+      const role = extra.roles.find((r) => !CONTEXT_ROLES.has(r) && r !== "PRIMARY_GEOMETRY" && r !== "PRIMARY_REFERENCE")
+        ?? roleForView(extra.view);
       supporting.push({
         image: extra.image_number, role,
         reason: `additional verified view of the product (${extra.view.replace("_", " ")})`,
       });
+      taken.add(extra.image_number);
     }
   }
   return { ...c, primary_reference: primary, supporting_references: supporting };
+}
+
+/** Fallback role when the analysis reported none usable for a supporting image. */
+function roleForView(view: ImageView): SupportingReference["role"] {
+  switch (view) {
+    case "rear": return "REAR_DETAIL";
+    case "side": case "left": case "right": return "SIDE_PROFILE";
+    case "front": return "FRONT_DETAIL";
+    case "macro": case "detail": return "MATERIAL";
+    default: return "COLOR";
+  }
 }
 
 const SYSTEM = `You are the scene-strategy engine of a product photography platform.
@@ -165,7 +198,7 @@ Hard rules:
 - Choose scenes that genuinely fit THIS product and its buyer — not a generic set.
 - The 5 concepts must differ in scene type, camera distance/angle, environment, human presence, use case and marketing purpose. Never five variations of the same photograph.
 - FIDELITY OVER NOVELTY: you receive the list of product views actually covered by the references. Never propose a scene that requires an uncovered view (e.g. no full rear shot without a rear reference). required_views must list the views each scene needs.
-- References per scene: pick ONE primary_reference (the image that best defines geometry/identity for this scene) and only the 1-3 supporting references that add needed facts (controls, scale, material...). Do not use all images everywhere. Images marked scene-only may only inspire the scene or give scale — never define the product.
+- References per scene: pick ONE primary_reference (the image that best defines geometry/identity for this scene) plus every supporting reference that genuinely adds a fact this photograph needs — controls, ports, branding, material, colour, accessories, scale, usage. Aim for 3-6 references in total (2-5 supporting): under-using references makes the model invent the product, but do not pad the list with images that repeat a role you already have. Images marked scene-only may only inspire the scene or give scale — never define the product.
 - physical_contact must describe REAL physics: full contact with the surface, exact grip, actual mounting — no floating products.
 - If human_presence is true, human_interaction must describe the exact grip/pose (which hand, which fingers where), not "person holding product".
 - product_specific_negatives: 2-5 short "do not ..." lines protecting THIS product's most fragile facts in THIS scene (e.g. "do not change the four green buttons", "do not add a third device").

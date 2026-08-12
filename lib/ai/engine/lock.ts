@@ -3,15 +3,18 @@ import type {
 } from "./types";
 
 /**
- * PRODUCT LOCK V2 — the core quality mechanism of EcomStudio.
+ * PRODUCT LOCK V3 — the core quality mechanism of EcomStudio.
  *
  * The lock exists as structured data (stored on the session, auditable) AND is
  * rendered into every master prompt. Creativity belongs to the scene; the
  * product is an already-manufactured physical object that is never redesigned.
  *
- * V2 adds: reference-conflict detection (never silently merge two variants),
- * explicit numeric constraints, silhouette/proportion protection, and a
- * fidelity-first strength ladder.
+ * V2 added reference-conflict detection, explicit numeric constraints and a
+ * fidelity-first strength ladder. V3 groups the constraints the way the
+ * product actually exists — identity, geometry, interfaces, branding,
+ * accessories, scale — states them as verifiable facts, promotes confident
+ * dimensions and branding placement to HARD, and derives the per-scene
+ * "critical details to preserve" list that rides in its own prompt section.
  */
 
 /** Normalised colour word, so "matte black" and "Black" compare equal. */
@@ -109,13 +112,17 @@ export function buildProductLock(m: FeatureManifest, analyses: ImageAnalysis[] =
   const strong: string[] = [];
   const soft: string[] = [];
 
-  hard.push(`Product identity: ${m.identity}${m.variant ? ` (variant: ${m.variant})` : ""}.`);
+  // 1. IDENTITY — what the object IS. Everything else describes this object.
+  hard.push(`Identity: ${m.identity}${m.variant ? ` (variant: ${m.variant})` : ""}. This exact manufactured item, not a similar product from the same category.`);
   hard.push(`Exact quantity: ${m.quantity} identical product unit${m.quantity === 1 ? "" : "s"} — never more, never fewer.`);
-  hard.push(`Primary color: ${m.primary_color}${m.secondary_colors.length ? `; secondary colors: ${m.secondary_colors.join(", ")}` : ""}. Colors must match the references exactly.`);
+  hard.push(`Primary color: ${m.primary_color}${m.secondary_colors.length ? `; secondary colors: ${m.secondary_colors.join(", ")}` : ""}. Colors must match the references exactly — no recolouring, no "premium" finish swap, no colour grading applied to the product body.`);
+
+  // 2. GEOMETRY — silhouette, proportions, structure.
   hard.push(`Silhouette and geometry: ${m.geometry.shape}; proportions: ${m.geometry.proportions}. Keep the width-to-height-to-depth relationship of the references — do not stretch, slim, round off or bulk up the body.`);
   if (m.geometry.major_components.length)
-    hard.push(`Major components (all must appear, none added): ${m.geometry.major_components.join(", ")}.`);
+    hard.push(`Structural parts (all must appear, none added, none merged): ${m.geometry.major_components.join(", ")}.`);
 
+  // 3. INTERFACES — the countable details a model drifts on first.
   const i = m.interfaces;
   const interfaceFacts: string[] = [];
   if (i.buttons > 0) interfaceFacts.push(`exactly ${i.buttons} button${i.buttons === 1 ? "" : "s"}${i.buttons_detail ? ` (${i.buttons_detail})` : ""}`);
@@ -125,25 +132,75 @@ export function buildProductLock(m: FeatureManifest, analyses: ImageAnalysis[] =
   if (i.screens > 0) interfaceFacts.push(`exactly ${i.screens} screen${i.screens === 1 ? "" : "s"}`);
   if (i.leds > 0) interfaceFacts.push(`exactly ${i.leds} LED indicator${i.leds === 1 ? "" : "s"}`);
   if (interfaceFacts.length)
-    hard.push(`Controls and connections — keep count AND placement exactly as referenced: ${interfaceFacts.join("; ")}. Never add, remove, resize or relocate any of them.`);
+    hard.push(`Controls and connections — keep count AND placement exactly as referenced: ${interfaceFacts.join("; ")}. Never add, remove, resize, restyle or relocate any of them, and never invent a screen layout that is not in the references.`);
   if (i.labels.length) hard.push(`Labels/markings that must stay unchanged and legible: ${i.labels.join(", ")}.`);
 
+  // 4. BRANDING — visible marks stay; nothing new is ever invented.
   if (m.branding.logos.length || m.branding.text.length) {
-    hard.push(`Branding stays exactly as in the references: ${[...m.branding.logos, ...m.branding.text].join(", ")}${m.branding.position ? ` at ${m.branding.position}` : ""}. Never invent, move, mirror or restyle branding.`);
+    hard.push(`Branding stays exactly as in the references: ${[...m.branding.logos, ...m.branding.text].join(", ")}${m.branding.position ? `, positioned at ${m.branding.position}` : ""}. Never invent, translate, move, mirror, resize or restyle branding, and never add a second logo.`);
+  } else {
+    hard.push("The product carries no visible branding in the references — do not invent any logo, brand name, model number or product text on it.");
   }
   for (const f of m.critical_features) hard.push(f);
 
-  if (m.materials.length) strong.push(`Materials and finish: ${m.materials.join(", ")}.`);
-  if (m.geometry.profile) strong.push(`Side profile: ${m.geometry.profile}.`);
-  if (m.geometry.curvature) strong.push(`Curvature: ${m.geometry.curvature}.`);
-  if (m.accessories.length)
-    strong.push(`Included accessories — exact set: ${m.accessories.map((a) => `${a.count}× ${a.name}${a.color ? ` (${a.color})` : ""}`).join(", ")}. No accessory may be added, removed, duplicated or recolored.`);
-  if (m.scale.dimensions)
-    strong.push(`True physical size: ${m.scale.dimensions}${m.scale.scale_reference ? ` (scale reference: ${m.scale.scale_reference})` : ""}. Keep believable real-world scale against everything else in frame.`);
+  // 5. ACCESSORIES — a set is defined by its exact contents.
+  if (m.accessories.length) {
+    hard.push(`Included accessories — exact set: ${m.accessories.map((a) => `${a.count}× ${a.name}${a.color ? ` (${a.color})` : ""}`).join(", ")}. No accessory may be added, removed, duplicated or recoloured; each keeps the placement logic of the references.`);
+  }
 
-  soft.push("Minor surface micro-texture may follow the scene lighting as long as identity is untouched.");
+  // 6. SCALE — a confidently known size is a hard fact, an inferred one is not.
+  if (m.scale.dimensions) {
+    const line = `True physical size: ${m.scale.dimensions}${m.scale.scale_reference ? ` (scale reference: ${m.scale.scale_reference})` : ""}. Keep believable real-world scale against every other object in frame.`;
+    if (m.scale.confidence === "high") hard.push(line); else strong.push(line);
+  }
+
+  if (m.materials.length) strong.push(`Materials and finish: ${m.materials.join(", ")}. Real material behaviour — matte stays matte, gloss stays gloss.`);
+  if (m.geometry.profile) strong.push(`Side profile / thickness: ${m.geometry.profile}.`);
+  if (m.geometry.curvature) strong.push(`Curvature: ${m.geometry.curvature}.`);
+
+  soft.push("Minor surface micro-texture and reflections may follow the scene lighting as long as identity, colour and geometry are untouched.");
 
   return { hard, strong, soft, conflicts: detectReferenceConflicts(analyses, m) };
+}
+
+/**
+ * CRITICAL DETAILS TO PRESERVE — the short, scene-aware shortlist that gets
+ * its own prompt section right after the lock. The full lock states every
+ * fact; this list re-states the handful most at risk in THIS photograph
+ * (what the camera will actually see up close), because a model follows a
+ * focused list far better than a long one.
+ */
+export function criticalDetails(
+  m: FeatureManifest,
+  scene: Pick<SceneConcept, "camera_distance" | "human_presence" | "scene_type">
+): string[] {
+  const out: string[] = [];
+  const i = m.interfaces;
+  const closeUp = scene.camera_distance === "close" || scene.camera_distance === "macro";
+
+  if (i.buttons > 0) out.push(`${i.buttons} button${i.buttons === 1 ? "" : "s"}${i.buttons_detail ? ` — ${i.buttons_detail}` : ""}, same count, same layout, same size`);
+  if (i.ports > 0) out.push(`${i.ports} port${i.ports === 1 ? "" : "s"}${i.ports_detail ? ` — ${i.ports_detail}` : ""}, same count and same position`);
+  if (i.screens > 0) out.push(`${i.screens} screen${i.screens === 1 ? "" : "s"} with the referenced shape and bezel — no invented interface graphics`);
+  if (i.leds > 0) out.push(`${i.leds} LED indicator${i.leds === 1 ? "" : "s"} in the referenced position`);
+  if (i.switches > 0) out.push(`${i.switches} switch${i.switches === 1 ? "" : "es"} unchanged`);
+  if (m.branding.logos.length || m.branding.text.length)
+    out.push(`branding "${[...m.branding.logos, ...m.branding.text].join('", "')}"${m.branding.position ? ` at ${m.branding.position}` : ""} — identical wording, identical placement`);
+  if (i.labels.length) out.push(`printed markings: ${i.labels.join(", ")} — legible and unchanged`);
+  if (m.quantity > 1) out.push(`${m.quantity} identical units visible together`);
+  if (m.accessories.length)
+    out.push(`accessories exactly as sold: ${m.accessories.map((a) => `${a.count}× ${a.name}`).join(", ")}`);
+  out.push(`${m.primary_color} body colour${m.secondary_colors.length ? ` with ${m.secondary_colors.join(" / ")} accents` : ""}`);
+  if (closeUp && m.materials.length) out.push(`true material rendering at close range: ${m.materials.join(", ")}`);
+  if (scene.human_presence && m.scale.dimensions) out.push(`real size (${m.scale.dimensions}) — correct proportion against the person`);
+  for (const f of m.critical_features) out.push(f);
+
+  const seen = new Set<string>();
+  return out.filter((l) => {
+    const k = l.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  }).slice(0, 12);
 }
 
 /**
@@ -186,26 +243,27 @@ const STRENGTH_PREAMBLE: Record<LockStrength, string> = {
 /** Render the structured lock into the PRODUCT LOCK prompt section. */
 export function renderProductLock(lock: ProductLock, strength: LockStrength): string {
   const lines: string[] = [
-    `PRODUCT LOCK (${strength}):`,
-    "Treat the referenced product as an already manufactured physical object.",
-    "Do not redesign it. Do not reinterpret it. Do not simplify it. Do not improve it.",
-    "Do not replace it with a similar product from the same category. Do not invent a new variant.",
+    `PRODUCT LOCK — EXACT PRODUCT PRESERVATION (${strength}):`,
+    "Treat the referenced product as an already manufactured physical object that exists and is being photographed.",
+    "Do not redesign it. Do not reinterpret it. Do not simplify it. Do not improve it. Do not modernise it.",
+    "Do not replace it with a similar product from the same category. Do not create a better-looking variant.",
+    "Do not combine conflicting variants from different references into one hybrid object.",
     STRENGTH_PREAMBLE[strength],
-    "Preserve exact geometry, proportions, silhouette, colors, materials, component count, component placement, buttons, ports, labels, branding and accessories.",
+    "Preserve exact identity, geometry, proportions, silhouette, dimensions, visible structure, colors, materials, component count, component placement, buttons, ports, panels, labels, branding and accessories.",
     "Adapt the environment to the product. Never adapt the product to the environment.",
     "",
-    "Non-negotiable product facts:",
+    "Non-negotiable product facts (HARD LOCK):",
     ...lock.hard.map((l) => `- ${l}`),
   ];
   if (lock.strong.length) {
-    lines.push("", "Strict product facts:", ...lock.strong.map((l) => `- ${l}`));
+    lines.push("", "Strict product facts (STRONG LOCK):", ...lock.strong.map((l) => `- ${l}`));
   }
   if (lock.conflicts.length) {
     lines.push("", "REFERENCE CONFLICTS — the references are not identical. Never blend them:",
       ...lock.conflicts.map((c) => `- ${c.detail}. Render ONLY: ${c.resolution}.`));
   }
   if ((strength === "LOW" || strength === "MEDIUM") && lock.soft.length) {
-    lines.push("", ...lock.soft.map((l) => `- ${l}`));
+    lines.push("", "Soft context:", ...lock.soft.map((l) => `- ${l}`));
   }
   return lines.join("\n");
 }

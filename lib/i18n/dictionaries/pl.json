@@ -836,7 +836,8 @@
     "stage_analyzing": "Analizuję produkt…",
     "stage_lock": "Tworzę Product Lock…",
     "stage_prompts": "Tworzę 5 promptów…",
-    "retryHint": "Spróbuj ponownie."
+    "retryHint": "Spróbuj ponownie.",
+    "primaryRef": "Główna"
   },
   "scene": {
     "product_hero": "Hero produktu",

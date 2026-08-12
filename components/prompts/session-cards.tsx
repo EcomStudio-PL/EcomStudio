@@ -18,7 +18,7 @@ export type PromptCardData = {
   promptText: string;
   negativePrompt: string | null;
   lockStrength: string;
-  references: { image: number; url: string | null; label: string }[];
+  references: { image: number; url: string | null; label: string; why: string | null; primary: boolean }[];
 };
 
 /** The five prompt-concept cards: scene, chosen references with WHY, the
@@ -83,9 +83,11 @@ function PromptCard({ p, index }: { p: PromptCardData; index: number }) {
       <div className="space-y-3 p-5">
         {p.references.length > 0 && (
           <div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {p.references.map((r) => (
-                <div key={r.image} className="relative h-14 w-14 overflow-hidden rounded-lg border border-line">
+                <div key={r.image} className={cn(
+                  "relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border",
+                  r.primary ? "border-accent ring-1 ring-accent" : "border-line")}>
                   {r.url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={r.url} alt="" className="h-full w-full object-cover" />
@@ -96,8 +98,10 @@ function PromptCard({ p, index }: { p: PromptCardData; index: number }) {
             </div>
             <ul className="mt-2 space-y-0.5">
               {p.references.map((r) => (
-                <li key={r.image} className="text-xs text-muted">
-                  <span className="font-semibold text-ink">{r.image}</span> — {r.label}
+                <li key={r.image} className="min-w-0 text-xs text-muted">
+                  <span className="font-semibold text-ink">{r.image}</span>
+                  {r.primary && <span className="ml-1 rounded bg-accent/10 px-1 text-[9px] font-bold uppercase tracking-wide text-accent">{t("psess.primaryRef")}</span>}
+                  {" — "}{r.label}{r.why ? `: ${r.why}` : ""}
                 </li>
               ))}
             </ul>

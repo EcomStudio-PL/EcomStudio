@@ -128,7 +128,8 @@ Rules:
 - The manifest merges ALL images + seller text into one set of verifiable facts about the product. Never describe anything you cannot see or read in the provided material.
 - quantity = how many identical main products form the sold unit (a 2-pack = 2).
 - Report what EACH image actually shows, independently: observed_color is the product colour in THAT photo, observed_button_count the buttons visible in THAT photo (0 when none are visible), variant_hint any model/version/revision marking in THAT photo. Never harmonise these across images — disagreements are meaningful and are resolved later.
-- roles: PRIMARY_GEOMETRY for the image that best defines the whole body; REAR_DETAIL for a back view; SCENE_ONLY for infographics, size charts and packaging renders.`;
+- Reliability flags describe what THIS image can be trusted for: color_reference only when the colour is rendered faithfully (not washed out or colour-cast), material_reference only when the finish is readable, scale_reference when the photo shows the product against something of known size, dimension_reference when measurements are printed on it, usage_reference when it shows the product being used.
+- roles: assign EVERY role the image can genuinely serve, so later stages can pick references by purpose. PRIMARY_GEOMETRY (or PRIMARY_REFERENCE) for the image that best defines the whole body; FRONT_DETAIL, SIDE_PROFILE, REAR_DETAIL/BACK_DETAIL for those views; BUTTON_LAYOUT, PORT_LAYOUT, BRANDING, MATERIAL, COLOR, MECHANISM for images that show those clearly; ACCESSORIES for images showing what is included; SCALE and DIMENSIONS for size evidence; USAGE for in-use photos; SCENE_ONLY for infographics, size charts and packaging renders.`;
 
 export async function analyzeReferences(
   backends: VisionBackend[],

@@ -28,7 +28,7 @@ export type PromptSessionOutput =
 
 /** Bump when the analysis schema or lock semantics change — cached analyses
  *  from older engines are then ignored rather than silently reused. */
-export const ENGINE_VERSION = 2;
+export const ENGINE_VERSION = 3;
 
 /** Stable identity of a reference SET: same photos in any order = same hash. */
 function hashReferences(paths: string[]): string {
