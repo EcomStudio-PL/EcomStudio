@@ -913,6 +913,7 @@
     "mostProfitable": "Najbardziej rentowni",
     "mostProfitableSub": "Przychód minus koszt API",
     "lowestMargin": "Najniższa marża",
-    "lowestMarginSub": "Klienci wymagający uwagi"
+    "lowestMarginSub": "Klienci wymagający uwagi",
+    "promptSessions": "Sesje promptów"
   }
 }

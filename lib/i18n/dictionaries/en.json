@@ -913,6 +913,7 @@
     "mostProfitable": "Most profitable",
     "mostProfitableSub": "Revenue minus API cost",
     "lowestMargin": "Lowest margin",
-    "lowestMarginSub": "Customers worth a look"
+    "lowestMarginSub": "Customers worth a look",
+    "promptSessions": "Prompt sessions"
   }
 }

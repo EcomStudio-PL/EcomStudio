@@ -913,6 +913,7 @@
     "mostProfitable": "Profitabelste",
     "mostProfitableSub": "Umsatz minus API-Kosten",
     "lowestMargin": "Niedrigste Marge",
-    "lowestMarginSub": "Kunden mit Handlungsbedarf"
+    "lowestMarginSub": "Kunden mit Handlungsbedarf",
+    "promptSessions": "Prompt-Sessions"
   }
 }

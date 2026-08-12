@@ -61,11 +61,12 @@ export function Profitability({ data, locale }: { data: ProfitabilityData; local
           <Tile label={t("econ.margin")} value={`${s.marginPercent}%`} tone={s.marginPercent >= 30 ? "good" : "bad"} />
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-5">
           <Mini label={t("econ.generations")} value={s.generations} />
           <Mini label={t("econ.succeeded")} value={s.succeeded} />
           <Mini label={t("econ.failed")} value={s.failed} />
           <Mini label={t("econ.outputs")} value={s.outputs} />
+          <Mini label={t("econ.promptSessions")} value={s.promptSessions} />
         </div>
 
         {/* Per-model cost audit */}

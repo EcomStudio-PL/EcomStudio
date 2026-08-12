@@ -32,10 +32,13 @@ export type MoneySlice = {
   /** revenue − provider cost, in cents (cost converted with usdToPln). */
   contributionCents: number;
   marginPercent: number;
+  /** Paid work only (image/video/edit) — prompt sessions are counted apart. */
   generations: number;
   succeeded: number;
   failed: number;
+  /** Media actually delivered. Prompt sessions do not produce media. */
   outputs: number;
+  promptSessions: number;
   creditsCharged: number;
 };
 
@@ -66,14 +69,21 @@ export function sliceEconomics(
     .reduce((s, p) => s + p.amount_cents, 0);
 
   let apiCostUsdMicros = 0, succeeded = 0, failed = 0, outputs = 0, creditsCharged = 0;
+  let generations = 0, promptSessions = 0;
   for (const e of events) {
     apiCostUsdMicros += eventCost(e);
+    // A prompt session returns 5 prompts, not 5 images; counting those as
+    // "outputs" would overstate delivered media, so they are tracked apart.
+    const isPromptWork = e.service_slug === "prompt_generation";
+    if (isPromptWork) promptSessions += 1; else generations += 1;
     if (e.status === "succeeded") {
-      succeeded += 1;
-      outputs += e.result_count ?? 0;
+      if (!isPromptWork) {
+        succeeded += 1;
+        outputs += e.result_count ?? 0;
+      }
       creditsCharged += e.credits_charged;
     } else if (e.status === "failed" || e.status === "refunded") {
-      failed += 1;
+      if (!isPromptWork) failed += 1;
     }
   }
   const apiCostCents = Math.round((apiCostUsdMicros / 1_000_000) * usdToPln * 100);
@@ -81,7 +91,7 @@ export function sliceEconomics(
   return {
     revenueCents, apiCostUsdMicros, contributionCents,
     marginPercent: revenueCents > 0 ? Math.round((contributionCents / revenueCents) * 1000) / 10 : 0,
-    generations: events.length, succeeded, failed, outputs, creditsCharged,
+    generations, succeeded, failed, outputs, promptSessions, creditsCharged,
   };
 }
 
