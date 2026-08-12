@@ -188,7 +188,7 @@ export async function runPromptSession(
       analyses = cached.image_analysis as unknown as ImageAnalysis[];
       manifest = cached.feature_manifest as unknown as FeatureManifest;
       cacheHit = true;
-      void supabase.from("product_analysis_cache")
+      await supabase.from("product_analysis_cache")
         .update({ hits: (cached.hits ?? 0) + 1 }).eq("id", cached.id);
     } else {
       const fresh = await analyzeReferences(cred, images, sessionInfo, analysisModel);
@@ -204,7 +204,10 @@ export async function runPromptSession(
       reference_hash: referenceHash, cache_hit: cacheHit,
     }).eq("id", session.id);
     if (!cacheHit) {
-      void supabase.from("product_analysis_cache").insert({
+      // Awaited deliberately: a serverless function can freeze the moment the
+      // response is sent, and a fire-and-forget insert would never land — the
+      // cache would then never hit and every run would pay for analysis again.
+      await supabase.from("product_analysis_cache").insert({
         workspace_id: workspaceId, product_id: productId,
         reference_hash: referenceHash, engine_version: ENGINE_VERSION,
         image_analysis: analyses as never, feature_manifest: manifest as never,
