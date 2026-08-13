@@ -12,7 +12,7 @@ import type { LucideIcon } from "lucide-react";
  * managing the plan, reaching support. Both drawers use this component, so
  * customer and admin read as two modes of one product rather than two apps.
  */
-export function AccountIsland({ initial, name, email, tone = "accent", badge, facts, primaryAction, secondaryActions, close }: {
+export function AccountIsland({ initial, name, email, tone = "accent", badge, facts, primaryAction, secondaryActions, close, standalone }: {
   initial: string;
   name: string;
   email?: string;
@@ -24,10 +24,19 @@ export function AccountIsland({ initial, name, email, tone = "accent", badge, fa
   secondaryActions?: { href: string; label: string; icon?: LucideIcon }[];
   /** Close control, rendered in the island's top-right corner. */
   close?: React.ReactNode;
+  /** True in the desktop rail, where the island is a card in its own right. */
+  standalone?: boolean;
 }) {
   return (
     <div className={cn(
-      "island relative overflow-hidden rounded-3xl p-4",
+      // Flush to the drawer's top and side edges; only the bottom corners are
+      // rounded, so this reads as the drawer's own account area rather than a
+      // card dropped inside it. `standalone` restores the full radius for the
+      // desktop rail, where the island genuinely is a card.
+      "island relative overflow-hidden",
+      standalone
+        ? "rounded-3xl p-4"
+        : "rounded-b-3xl px-4 pb-4 pt-[max(1rem,calc(env(safe-area-inset-top)+0.5rem))]",
       tone === "accent2" && "island-admin"
     )}>
       <div className="relative flex items-start gap-3">

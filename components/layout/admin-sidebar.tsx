@@ -31,6 +31,7 @@ export function AdminSidebar({ name, email, role, stats }: {
 
       <div className="px-3">
         <AccountIsland
+          standalone
           initial={initial}
           name={name}
           email={email}

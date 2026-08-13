@@ -75,7 +75,7 @@ export function Profitability({ data, locale }: { data: ProfitabilityData; local
           {data.models.length === 0 ? (
             <p className="rounded-xl bg-raised px-4 py-3 text-sm text-muted">{t("econ.noModels")}</p>
           ) : (
-            <div className="thin-scroll -mx-1 overflow-x-auto px-1">
+            <div className="table-scroll thin-scroll -mx-1 px-1">
               <table className="w-full min-w-[640px] text-sm">
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-wide text-faint">

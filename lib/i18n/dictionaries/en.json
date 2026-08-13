@@ -500,7 +500,8 @@
       "provider_auth": "Unavailable — provider key rejected"
     },
     "messages": "Messages",
-    "duplicate": "Duplicate"
+    "duplicate": "Duplicate",
+    "report": "Report"
   },
   "support": {
     "title": "Support & messages",
@@ -932,5 +933,16 @@
     "lowestMargin": "Lowest margin",
     "lowestMarginSub": "Customers worth a look",
     "promptSessions": "Prompt sessions"
+  },
+  "picker": {
+    "title": "Choose a product",
+    "sub": "Search by name, category or SKU.",
+    "search": "Search products…",
+    "choose": "Choose product",
+    "change": "Change",
+    "uncategorised": "Uncategorised",
+    "noMatch": "No products match your search.",
+    "emptyTitle": "No products yet",
+    "emptyBody": "Add your first product to use it in the generator."
   }
 }

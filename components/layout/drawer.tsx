@@ -54,7 +54,7 @@ export function Drawer({ open, onClose, label, header, children, footer }: {
       )}>
         {/* The header is the account island; it hosts the close control so the
             X sits inside the island rather than floating over the panel. */}
-        <div className="shrink-0 px-3 pb-4 pt-[max(0.875rem,calc(env(safe-area-inset-top)+0.5rem))]">
+        <div className="shrink-0 pb-3">
           {typeof header === "function" ? (header as (close: () => void) => React.ReactNode)(close) : header}
         </div>
 

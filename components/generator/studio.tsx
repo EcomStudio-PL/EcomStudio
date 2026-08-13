@@ -12,6 +12,7 @@ import { PanelHeader } from "@/components/ui/section-header";
 import { Segmented } from "@/components/ui/segmented";
 import { Chip, ChipRow } from "@/components/ui/chip";
 import { ActionBar } from "@/components/ui/action-bar";
+import { ProductPicker, ProductChoice, type PickableProduct } from "@/components/products/product-picker";
 import { Input, Textarea, Label } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -84,6 +85,13 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
   const [balance, setBalance] = useState(credits);
   const fileRef = useRef<HTMLInputElement>(null);
   const adhocFolder = useRef(`adhoc-${Math.random().toString(36).slice(2, 10)}`);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  /** The product library in the picker's shape — one selector everywhere. */
+  const pickable: PickableProduct[] = useMemo(() => products.map((p) => ({
+    id: p.id, name: p.name, category: p.category,
+    thumbnail: p.images[0]?.url ?? null, imageCount: p.images.length,
+  })), [products]);
 
   const model = useMemo(() => models.find((m) => m.id === modelId), [models, modelId]);
   // Capability-driven UI: only resolutions this model supports are shown,
@@ -198,16 +206,12 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
         <Panel>
           <PanelHeader overline={t("studio.step1")} title={t("studio.context")} sub={t("studio.contextSub")} icon={Box} />
           <div className="space-y-3.5 px-4 pb-5 sm:px-5">
-            <ChipRow>
-              <Chip active={!productId} onClick={() => { setProductId(""); setRefs([]); }}>
-                + {t("studio.newProduct")}
-              </Chip>
-              {products.map((p) => (
-                <Chip key={p.id} active={productId === p.id} onClick={() => pickProduct(p.id)}>
-                  {p.name}
-                </Chip>
-              ))}
-            </ChipRow>
+            <ProductChoice
+              product={productId ? pickable.find((x) => x.id === productId) : null}
+              onPick={() => setPickerOpen(true)}
+              onClear={() => { setProductId(""); setRefs([]); }}
+              newLabel={t("studio.newProduct")}
+            />
             {productId && product ? (
               <p className="text-xs text-muted">
                 {product.name}{product.category ? ` · ${product.category}` : ""} — {t("studio.usingSaved")}
@@ -485,6 +489,14 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
           </button>
         </ActionBar>
       </div>
+
+      <ProductPicker
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        products={pickable}
+        selectedId={productId || undefined}
+        onSelect={(p) => pickProduct(p.id)}
+      />
     </div>
   );
 }

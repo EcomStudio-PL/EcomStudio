@@ -37,9 +37,6 @@ export const CLIENT_NAV: readonly NavGroup[] = [
     { href: "/credits", key: "credits", icon: Coins },
     { href: "/settings", key: "settings", icon: Settings },
   ]},
-  { key: "help", items: [
-    { href: "/support", key: "support", icon: LifeBuoy },
-  ]},
 ] as const;
 
 /** Bottom bar: Pulpit · Prompty · AI Studio · Biblioteka (+ "Więcej" opens

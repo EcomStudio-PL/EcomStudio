@@ -64,7 +64,7 @@ export function AdminTable({ headers, rows, empty, primary = 0 }: {
 
       {/* DESKTOP — the table, scrolling inside its own container. */}
       <div className="panel relative hidden overflow-hidden rounded-2xl lg:block">
-        <div ref={scroller} className="thin-scroll max-h-[70dvh] overflow-auto">
+        <div ref={scroller} className="table-scroll thin-scroll max-h-[70dvh] overflow-y-auto">
           <table className="w-full min-w-[720px] text-sm">
             <thead className="sticky top-0 z-10">
               <tr className="bg-surface/95 text-left text-[11px] uppercase tracking-[0.08em] text-faint backdrop-blur">

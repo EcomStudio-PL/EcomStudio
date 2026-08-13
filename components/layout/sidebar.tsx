@@ -58,6 +58,7 @@ export function ProfileCard({ name, email, credits, plan, initial }: {
   return (
     <div className="px-3">
       <AccountIsland
+        standalone
         initial={initial}
         name={name}
         email={email}

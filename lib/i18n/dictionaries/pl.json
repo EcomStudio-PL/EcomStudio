@@ -500,7 +500,8 @@
       "provider_auth": "Niedostępny — klucz dostawcy odrzucony"
     },
     "messages": "Wiadomości",
-    "duplicate": "Duplikuj"
+    "duplicate": "Duplikuj",
+    "report": "Raport"
   },
   "support": {
     "title": "Pomoc i wiadomości",
@@ -932,5 +933,16 @@
     "lowestMargin": "Najniższa marża",
     "lowestMarginSub": "Klienci wymagający uwagi",
     "promptSessions": "Sesje promptów"
+  },
+  "picker": {
+    "title": "Wybierz produkt",
+    "sub": "Szukaj po nazwie, kategorii lub SKU.",
+    "search": "Szukaj produktu…",
+    "choose": "Wybierz produkt",
+    "change": "Zmień",
+    "uncategorised": "Bez kategorii",
+    "noMatch": "Brak produktów pasujących do wyszukiwania.",
+    "emptyTitle": "Nie masz jeszcze produktów",
+    "emptyBody": "Dodaj pierwszy produkt, aby wykorzystać go w generatorze."
   }
 }

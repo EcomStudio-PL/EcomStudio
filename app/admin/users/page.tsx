@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { PageHeader } from "@/components/ui/page-header";
+import Link from "next/link";
+import { FileBarChart } from "lucide-react";
 import { AdminTable } from "@/components/ui/admin-table";
 import { Badge } from "@/components/ui/badge";
 import { UserActions } from "@/components/admin/user-actions";
@@ -74,8 +76,17 @@ export default async function AdminUsers({ searchParams }: {
             ws ? pln(revByWs.get(ws.id) ?? 0) : "—",
             gens?.n ?? 0,
             gens?.last ? formatDate(gens.last, locale) : formatDate(u.created_at, locale),
-            <UserActions key="a" userId={u.id} role={u.role} isSelf={u.id === me?.id}
-              balance={ws?.credit_wallets?.balance ?? null} />,
+            // The report was only reachable by knowing the name was a link;
+            // it is now an explicit, labelled action next to the rest.
+            <span key="a" className="flex flex-wrap items-center gap-1.5">
+              <Link href={`/admin/users/${u.id}`}
+                className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-accent2-soft px-2.5 text-[13px] font-semibold text-accent2 transition-colors hover:brightness-110">
+                <FileBarChart size={14} aria-hidden />
+                {t("admin.report")}
+              </Link>
+              <UserActions userId={u.id} role={u.role} isSelf={u.id === me?.id}
+                balance={ws?.credit_wallets?.balance ?? null} />
+            </span>,
           ];
         })}
       />

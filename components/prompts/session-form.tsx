@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ChevronDown, ImagePlus, Loader2, Sparkles, X } from "lucide-react";
@@ -8,9 +8,11 @@ import { createClient } from "@/lib/supabase/client";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Textarea, Label } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { ProductPicker, ProductChoice, type PickableProduct } from "@/components/products/product-picker";
 
 export type PromptProductOption = {
   id: string; name: string;
+  category?: string | null;
   images: { path: string; url: string }[];
 };
 
@@ -41,6 +43,13 @@ export function SessionForm({ products, workspaceId, engineAvailable }: {
   const submitting = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const adhocFolder = useRef(`adhoc-${Math.random().toString(36).slice(2, 10)}`);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  /** Same picker shape as AI Studio — one selector for the whole product. */
+  const pickable: PickableProduct[] = useMemo(() => products.map((p) => ({
+    id: p.id, name: p.name, category: p.category,
+    thumbnail: p.images[0]?.url ?? null, imageCount: p.images.length,
+  })), [products]);
 
   const canSubmit = engineAvailable && name.trim().length > 1 && refs.length > 0 && !busy && !uploading;
 
@@ -120,22 +129,12 @@ export function SessionForm({ products, workspaceId, engineAvailable }: {
     <Card className="anim-pop min-w-0">
       <CardHeader title={t("psess.newTitle")} sub={t("psess.newSub")} />
       <div className="space-y-4 px-4 pb-5 sm:px-5">
-        {products.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            <button type="button" onClick={() => pickProduct("")}
-              className={cn("rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors",
-                !productId ? "brand-gradient text-white" : "border border-line text-muted hover:bg-raised")}>
-              + {t("studio.newProduct")}
-            </button>
-            {products.map((p) => (
-              <button key={p.id} type="button" onClick={() => pickProduct(p.id)}
-                className={cn("max-w-40 truncate rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors",
-                  productId === p.id ? "brand-gradient text-white" : "border border-line text-muted hover:bg-raised")}>
-                {p.name}
-              </button>
-            ))}
-          </div>
-        )}
+        <ProductChoice
+          product={productId ? pickable.find((x) => x.id === productId) : null}
+          onPick={() => setPickerOpen(true)}
+          onClear={() => pickProduct("")}
+          newLabel={t("studio.newProduct")}
+        />
 
         <div>
           <Label>{t("psess.name")} *</Label>
@@ -235,6 +234,14 @@ export function SessionForm({ products, workspaceId, engineAvailable }: {
           </p>
         )}
       </div>
+
+      <ProductPicker
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        products={pickable}
+        selectedId={productId || undefined}
+        onSelect={(p) => pickProduct(p.id)}
+      />
     </Card>
   );
 }

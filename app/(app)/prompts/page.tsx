@@ -44,7 +44,7 @@ export default async function PromptsPage() {
   const urls = await signImageUrls(supabase, [...productPaths, ...sessionThumbs]);
 
   const productOptions: PromptProductOption[] = products.map((p) => ({
-    id: p.id, name: p.name,
+    id: p.id, name: p.name, category: (p as { category?: string | null }).category ?? null,
     images: p.product_images
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((i) => ({ path: i.storage_path, url: urls.get(i.storage_path) ?? "" })),

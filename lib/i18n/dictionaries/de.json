@@ -500,7 +500,8 @@
       "provider_auth": "Nicht verfügbar — Anbieter-Key abgelehnt"
     },
     "messages": "Nachrichten",
-    "duplicate": "Duplizieren"
+    "duplicate": "Duplizieren",
+    "report": "Bericht"
   },
   "support": {
     "title": "Support & Nachrichten",
@@ -932,5 +933,16 @@
     "lowestMargin": "Niedrigste Marge",
     "lowestMarginSub": "Kunden mit Handlungsbedarf",
     "promptSessions": "Prompt-Sessions"
+  },
+  "picker": {
+    "title": "Produkt wählen",
+    "sub": "Suche nach Name, Kategorie oder SKU.",
+    "search": "Produkte suchen…",
+    "choose": "Produkt wählen",
+    "change": "Ändern",
+    "uncategorised": "Ohne Kategorie",
+    "noMatch": "Keine Produkte gefunden.",
+    "emptyTitle": "Noch keine Produkte",
+    "emptyBody": "Füge dein erstes Produkt hinzu, um es im Generator zu nutzen."
   }
 }
