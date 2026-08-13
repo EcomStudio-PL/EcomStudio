@@ -27,7 +27,7 @@ export function Sidebar({ name, email, credits, plan, isAdmin }: {
 
       <ProfileCard name={name} email={email} credits={credits} plan={plan} initial={initial} />
 
-      <nav className="thin-scroll mt-4 flex flex-1 flex-col gap-0.5 overflow-y-auto">
+      <nav className="thin-scroll mt-4 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
         {CLIENT_NAV.map((g) => (
           <div key={g.key} className="mb-3">
             <NavGroupLabel>{t(`nav.groups.${g.key}`)}</NavGroupLabel>
