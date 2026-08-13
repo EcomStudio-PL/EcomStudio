@@ -24,7 +24,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <PageHeader title={t("settings.title")} sub={t("settings.sub")} />
+      <PageHeader overline={t("nav.groups.account")} title={t("settings.title")} sub={t("settings.sub")} />
       <Card>
         <CardHeader title={t("settings.profile")} sub={workspace ? `${t("settings.workspace")}: ${workspace.name}` : undefined} />
         <div className="p-6">

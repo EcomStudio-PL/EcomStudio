@@ -27,7 +27,7 @@ export function EmptyState({ title, body, action, icon: Icon, hints, className }
         style={{ background: "radial-gradient(28rem 12rem at 50% 0%, rgb(var(--accent) / 0.20), transparent 70%)" }}
       />
       <div className="relative">
-        <span aria-hidden className="frame-mark mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-raised text-accent shadow-e2 ring-1 ring-[rgb(var(--accent)/0.25)]">
+        <span aria-hidden className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-raised text-accent shadow-e2 ring-1 ring-[rgb(var(--accent)/0.25)]">
           {Icon ? <Icon size={22} /> : <span className="text-xl">◨</span>}
         </span>
         <h3 className="font-display text-lg font-semibold tracking-tight">{title}</h3>

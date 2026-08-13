@@ -34,7 +34,7 @@ export default async function CreditsPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader title={t("credits.title")} sub={t("credits.sub")} />
+      <PageHeader overline={t("nav.groups.account")} title={t("credits.title")} sub={t("credits.sub")} />
       <Card className="flex flex-wrap items-center justify-between gap-4 p-6">
         <div>
           <p className="text-sm text-muted">{t("credits.balance")}</p>
@@ -49,7 +49,7 @@ export default async function CreditsPage() {
           <p className="mt-1.5 text-xs text-muted">{t("credits.topupSoon")}</p>
         </div>
       </Card>
-      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+      <div className="mt-5 grid gap-3.5 [&>*]:min-w-0 sm:grid-cols-2">
         <Card className="px-5 py-4">
           <p className="text-sm text-muted">{t("credits.usedThisMonth")}</p>
           <p className="mt-1 font-display text-2xl font-semibold tracking-tight">{formatCredits(usedThisMonth)}</p>
@@ -73,7 +73,7 @@ export default async function CreditsPage() {
       <div className="mt-8">
         <h2 className="font-display text-lg font-semibold tracking-tight">{t("credits.topupTitle")}</h2>
         <p className="mt-1 text-sm text-muted">{t("credits.topupSub")}</p>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-4 grid gap-3 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-4">
           {(packages ?? []).map((p) => {
             const total = p.credits + p.bonus_credits;
             return (

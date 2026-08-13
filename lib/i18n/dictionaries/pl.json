@@ -24,7 +24,11 @@
     "menu": "Menu",
     "support": "Pomoc",
     "inspirations": "Inspiracje",
-    "promptsShort": "Prompty"
+    "promptsShort": "Prompty",
+    "topUp": "Dokup kredyty",
+    "managePlan": "Zarządzaj planem",
+    "upgrade": "Ulepsz plan",
+    "help": "Pomoc"
   },
   "common": {
     "save": "Zapisz",
@@ -494,7 +498,9 @@
     "unavailable": {
       "provider_quota": "Niedostępny — limit/billing dostawcy",
       "provider_auth": "Niedostępny — klucz dostawcy odrzucony"
-    }
+    },
+    "messages": "Wiadomości",
+    "duplicate": "Duplikuj"
   },
   "support": {
     "title": "Pomoc i wiadomości",

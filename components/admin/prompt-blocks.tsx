@@ -8,6 +8,10 @@ import { Modal, ConfirmModal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Select, Label } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Blocks, Pencil, Plus, Trash2 } from "lucide-react";
+import { RecordRow, RowAction } from "@/components/ui/record";
+import { SectionHeader } from "@/components/ui/section-header";
+import { EmptyState } from "@/components/ui/empty-state";
 
 export const BLOCK_CATEGORIES = ["style", "scene", "format", "cta", "fidelity", "restrictions", "extra"] as const;
 
@@ -52,33 +56,46 @@ export function PromptBlocksManager({ blocks }: { blocks: PromptBlock[] }) {
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <p className="text-sm text-muted">{t("admin.blocksSub")}</p>
-        <Button size="sm" onClick={() => setEditing(blank)}>+ {t("admin.newBlock")}</Button>
-      </div>
+      <SectionHeader
+        title={t("admin.blocksTitle")}
+        sub={t("admin.blocksSub")}
+        action={
+          <Button size="sm" onClick={() => setEditing(blank)}>
+            <Plus size={15} aria-hidden /> {t("admin.newBlock")}
+          </Button>
+        }
+        className="mb-4"
+      />
       {byCategory.length === 0 ? (
-        <div className="panel rounded-2xl p-8 text-center">
-          <p className="text-sm font-semibold">{t("admin.noBlocksTitle")}</p>
-          <p className="mt-1 text-sm text-muted">{t("admin.noBlocksBody")}</p>
-        </div>
+        <EmptyState
+          icon={Blocks}
+          title={t("admin.noBlocksTitle")}
+          body={t("admin.noBlocksBody")}
+          action={
+            <Button size="sm" onClick={() => setEditing(blank)}>
+              <Plus size={15} aria-hidden /> {t("admin.newBlock")}
+            </Button>
+          }
+        />
       ) : (
         <div className="space-y-4">
           {byCategory.map((g) => (
-            <div key={g.category} className="panel rounded-2xl">
-              <p className="border-b border-line px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-faint">
-                {t(`admin.blockCat.${g.category}`)}
-              </p>
-              <ul className="divide-y divide-line">
+            <div key={g.category}>
+              <p className="overline mb-2 px-1">{t(`admin.blockCat.${g.category}`)}</p>
+              <ul className="panel divide-y divide-line overflow-hidden rounded-2xl">
                 {g.items.map((b) => (
-                  <li key={b.id} className="flex flex-wrap items-center gap-2 px-5 py-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold">{b.name}</p>
-                      <p className="truncate text-xs text-muted">{b.content}</p>
-                    </div>
-                    <Badge tone={b.active ? "green" : "amber"}>{b.active ? t("admin.active") : t("admin.inactive")}</Badge>
-                    <Button size="sm" variant="ghost" onClick={() => setEditing(b)}>{t("common.edit")}</Button>
-                    <Button size="sm" variant="ghost" onClick={() => setDeleting(b)}>✕</Button>
-                  </li>
+                  <RecordRow
+                    key={b.id}
+                    title={b.name}
+                    meta={b.content}
+                    state={<Badge tone={b.active ? "green" : "amber"} dot>{b.active ? t("admin.active") : t("admin.inactive")}</Badge>}
+                    actions={
+                      <>
+                        <RowAction icon={Pencil} label={t("common.edit")} onClick={() => setEditing(b)} />
+                        <RowAction icon={Trash2} label={t("common.delete")} tone="danger" onClick={() => setDeleting(b)} />
+                      </>
+                    }
+                  />
                 ))}
               </ul>
             </div>

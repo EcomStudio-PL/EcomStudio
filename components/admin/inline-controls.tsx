@@ -9,7 +9,10 @@ import {
 } from "@/app/actions/admin";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Select, Label } from "@/components/ui/input";
+import { Copy, Pencil, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { RecordRow, RowAction, Switch } from "@/components/ui/record";
+import { SectionHeader } from "@/components/ui/section-header";
 
 type Res = { ok: boolean; error?: string };
 
@@ -164,29 +167,50 @@ export function TemplateManager({ templates }: { templates: Tpl[] }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button size="sm" onClick={() => setEditing(blank)}>+ {t("admin.newTemplate")}</Button>
-      </div>
-      <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
-        {templates.map((tpl) => (
-          <li key={tpl.id} className="flex flex-wrap items-center gap-2 px-5 py-3">
-            <span className="w-8 text-center font-display text-sm text-faint">{tpl.priority}</span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">{tpl.name}</p>
-              <p className="truncate text-xs text-muted">{tpl.shot_type} · {tpl.format}{tpl.style ? ` · ${tpl.style}` : ""}</p>
-            </div>
-            <Badge tone={tpl.active ? "green" : "amber"}>{tpl.active ? t("admin.active") : t("admin.inactive")}</Badge>
-            <Button size="sm" variant="ghost" onClick={() => setEditing(tpl)}>{t("common.edit")}</Button>
-            <Button size="sm" variant="ghost" onClick={() => setEditing({ ...tpl, id: undefined, name: `${tpl.name} (copy)` })}>
-              ⧉
-            </Button>
-            <Button size="sm" variant="secondary" disabled={pending}
-              onClick={() => tpl.id && run(toggleTemplateAction(tpl.id, !tpl.active))}>
-              {tpl.active ? t("admin.deactivate") : t("admin.activate")}
-            </Button>
-          </li>
-        ))}
-      </ul>
+      <SectionHeader
+        overline={t("admin.navGroups.ai")}
+        title={t("admin.nav.templates")}
+        sub={t("admin.templatesSub")}
+        action={
+          <Button size="sm" onClick={() => setEditing(blank)}>
+            <Plus size={15} aria-hidden /> {t("admin.newTemplate")}
+          </Button>
+        }
+        className="mb-4"
+      />
+      {templates.length === 0 ? (
+        <div className="panel rounded-2xl px-5 py-10 text-center text-sm text-muted">{t("admin.noData")}</div>
+      ) : (
+        <ul className="panel divide-y divide-line overflow-hidden rounded-2xl">
+          {templates.map((tpl) => (
+            <RecordRow
+              key={tpl.id}
+              leading={
+                <span aria-hidden className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-raised text-[11px] font-bold tabular-nums text-faint">
+                  {tpl.priority}
+                </span>
+              }
+              title={tpl.name}
+              meta={`${tpl.shot_type} · ${tpl.format}${tpl.style ? ` · ${tpl.style}` : ""}`}
+              state={
+                <Switch
+                  checked={tpl.active}
+                  disabled={pending}
+                  label={tpl.active ? t("admin.deactivate") : t("admin.activate")}
+                  onChange={() => tpl.id && run(toggleTemplateAction(tpl.id, !tpl.active))}
+                />
+              }
+              actions={
+                <>
+                  <RowAction icon={Pencil} label={t("common.edit")} onClick={() => setEditing(tpl)} />
+                  <RowAction icon={Copy} label={t("admin.duplicate")}
+                    onClick={() => setEditing({ ...tpl, id: undefined, name: `${tpl.name} (copy)` })} />
+                </>
+              }
+            />
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

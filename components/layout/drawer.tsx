@@ -17,8 +17,9 @@ export function Drawer({ open, onClose, label, header, children, footer }: {
   open: boolean;
   onClose: () => void;
   label: string;
-  /** Identity block, rendered flush at the top of the panel. */
-  header: React.ReactNode;
+  /** Account island. Receives the drawer's own close handler so the X can
+   *  live inside it. */
+  header: React.ReactNode | ((close: () => void) => React.ReactNode);
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
@@ -51,18 +52,10 @@ export function Drawer({ open, onClose, label, header, children, footer }: {
         "drawer-panel absolute inset-y-0 left-0 flex w-[var(--drawer-w)] max-w-[88vw] flex-col",
         closing ? "animate-drawer-out" : "animate-drawer"
       )}>
-        {/* Close sits INSIDE the panel, top right, with a 44px touch target. */}
-        <button
-          type="button"
-          onClick={close}
-          aria-label={label}
-          className="absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-10 flex h-11 w-11 items-center justify-center rounded-xl text-muted transition-colors hover:bg-raised hover:text-ink active:scale-95"
-        >
-          <X aria-hidden size={20} />
-        </button>
-
-        <div className="shrink-0 px-5 pb-5 pt-[max(1.25rem,calc(env(safe-area-inset-top)+0.5rem))]">
-          {header}
+        {/* The header is the account island; it hosts the close control so the
+            X sits inside the island rather than floating over the panel. */}
+        <div className="shrink-0 px-3 pb-4 pt-[max(0.875rem,calc(env(safe-area-inset-top)+0.5rem))]">
+          {typeof header === "function" ? (header as (close: () => void) => React.ReactNode)(close) : header}
         </div>
 
         <nav className="thin-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-2">
@@ -128,6 +121,20 @@ export function DrawerIdentity({ initial, name, email, badge, tone = "accent", f
         </dl>
       )}
     </div>
+  );
+}
+
+/** Close control for the account island: 44px target, inside the surface. */
+export function IslandClose({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="-mr-1 -mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-muted transition-colors duration-200 hover:bg-[rgb(var(--ink)/0.08)] hover:text-ink active:scale-95"
+    >
+      <X aria-hidden size={19} />
+    </button>
   );
 }
 

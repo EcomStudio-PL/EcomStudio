@@ -17,12 +17,7 @@ export function PageHeader({ title, sub, action, overline, className }: {
     <div className={cn("mb-6 sm:mb-7", className)}>
       <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <div className="min-w-0 flex-1">
-          {overline && (
-            <div className="mb-2 flex items-center gap-2">
-              <span aria-hidden className="accent-rule h-px w-7 rounded-full" />
-              <span className="overline">{overline}</span>
-            </div>
-          )}
+          {overline && <p className="overline mb-2">{overline}</p>}
           <h1 className="display-lg">{title}</h1>
           {sub && <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted">{sub}</p>}
         </div>

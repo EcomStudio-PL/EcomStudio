@@ -1,13 +1,14 @@
 "use client";
 import Link from "next/link";
-import { Shield } from "lucide-react";
+import { ArrowUpRight, LifeBuoy, Plus, Shield } from "lucide-react";
 import { CLIENT_NAV, CLIENT_BOTTOM } from "@/lib/navigation";
 import { useI18n } from "@/lib/i18n/provider";
 import { Brand } from "./brand";
 import { NavLink } from "./nav-link";
 import { useDrawer } from "./shell-context";
 import { BottomNav } from "./bottom-nav";
-import { DrawerIdentity, NavGroupLabel } from "./drawer";
+import { NavGroupLabel } from "./drawer";
+import { AccountIsland } from "./account-island";
 
 /** Customer sidebar (desktop): a persistent rail with the identity block on
  *  top, grouped navigation below and admin access pinned to the bottom.
@@ -56,13 +57,18 @@ export function ProfileCard({ name, email, credits, plan, initial }: {
   const { t } = useI18n();
   return (
     <div className="px-3">
-      <DrawerIdentity
+      <AccountIsland
         initial={initial}
         name={name}
         email={email}
         facts={[
-          { label: t("nav.credits"), value: `◆ ${new Intl.NumberFormat("pl-PL").format(credits)}`, href: "/credits" },
-          { label: t("nav.plan"), value: plan, href: "/plan", tone: "accent2" },
+          { label: t("nav.credits"), value: `◆ ${new Intl.NumberFormat("pl-PL").format(credits)}` },
+          { label: t("nav.plan"), value: plan, tone: "accent2" },
+        ]}
+        primaryAction={{ href: "/credits", label: t("nav.topUp"), icon: Plus }}
+        secondaryActions={[
+          { href: "/plan", label: plan.trim().toLowerCase() === "free" ? t("nav.upgrade") : t("nav.managePlan"), icon: ArrowUpRight },
+          { href: "/support", label: t("nav.help"), icon: LifeBuoy },
         ]}
       />
     </div>

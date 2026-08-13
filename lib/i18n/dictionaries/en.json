@@ -24,7 +24,11 @@
     "menu": "Menu",
     "support": "Support",
     "inspirations": "Inspirations",
-    "promptsShort": "Prompts"
+    "promptsShort": "Prompts",
+    "topUp": "Buy credits",
+    "managePlan": "Manage plan",
+    "upgrade": "Upgrade",
+    "help": "Help"
   },
   "common": {
     "save": "Save",
@@ -494,7 +498,9 @@
     "unavailable": {
       "provider_quota": "Unavailable — provider quota/billing",
       "provider_auth": "Unavailable — provider key rejected"
-    }
+    },
+    "messages": "Messages",
+    "duplicate": "Duplicate"
   },
   "support": {
     "title": "Support & messages",

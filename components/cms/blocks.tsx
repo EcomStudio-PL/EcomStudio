@@ -38,7 +38,7 @@ function Block({ block, locale, labels }: {
         <section className="grid items-center gap-10 py-14 sm:py-20 lg:grid-cols-2">
           <div>
             {T("badge") && (
-              <p className="frame-mark mb-6 inline-block px-2 font-display text-xs uppercase tracking-[0.2em] text-accent">{T("badge")}</p>
+              <p className="mb-6 inline-block font-display text-xs uppercase tracking-[0.2em] text-accent">{T("badge")}</p>
             )}
             <h1 className="max-w-xl font-display text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">{T("title")}</h1>
             {T("subtitle") && <p className="mt-5 max-w-lg text-base text-muted sm:text-lg">{T("subtitle")}</p>}
@@ -133,7 +133,7 @@ function Block({ block, locale, labels }: {
           <Reveal>
             <div className="panel rounded-2xl p-8 sm:p-10">
               {T("badge") && (
-                <p className="frame-mark mb-5 inline-block px-2 font-display text-xs uppercase tracking-[0.2em] text-accent">{T("badge")}</p>
+                <p className="mb-5 inline-block font-display text-xs uppercase tracking-[0.2em] text-accent">{T("badge")}</p>
               )}
               <h2 className="max-w-2xl font-display text-2xl font-semibold tracking-tight sm:text-3xl">{T("title")}</h2>
               {T("description") && <p className="mt-2 max-w-xl text-sm text-muted">{T("description")}</p>}

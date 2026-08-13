@@ -17,14 +17,9 @@ export function SectionHeader({ overline, title, sub, action, icon: Icon, classN
   size?: "sm" | "md";
 }) {
   return (
-    <div className={cn("flex items-start justify-between gap-3", className)}>
+    <div className={cn("flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between", className)}>
       <div className="min-w-0">
-        {overline && (
-          <div className="mb-1.5 flex items-center gap-2">
-            <span aria-hidden className="accent-rule h-px w-6 rounded-full" />
-            <span className="overline">{overline}</span>
-          </div>
-        )}
+        {overline && <p className="overline mb-1.5">{overline}</p>}
         <h2 className={cn(
           "flex min-w-0 items-center gap-2 font-display font-semibold tracking-tight",
           size === "sm" ? "text-[0.95rem]" : "text-lg"
@@ -34,7 +29,7 @@ export function SectionHeader({ overline, title, sub, action, icon: Icon, classN
         </h2>
         {sub && <p className="mt-1 text-sm leading-relaxed text-muted">{sub}</p>}
       </div>
-      {action && <div className="shrink-0">{action}</div>}
+      {action && <div className="shrink-0 [&>*]:w-full sm:[&>*]:w-auto">{action}</div>}
     </div>
   );
 }

@@ -54,7 +54,7 @@ export default async function PromptsPage() {
 
   return (
     <div>
-      <PageHeader title={t("prompts.title")} sub={t("psess.sub")} />
+      <PageHeader overline={t("nav.groups.create")} title={t("prompts.title")} sub={t("psess.sub")} />
       <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <SessionForm products={productOptions} workspaceId={workspace.id} engineAvailable={engineAvailable} />
 

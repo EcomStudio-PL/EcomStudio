@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeft, Menu } from "lucide-react";
+import { ArrowLeft, LifeBuoy, Menu, Shield, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/provider";
 import { rolePresentation } from "@/lib/roles";
@@ -10,7 +10,8 @@ import { Brand } from "./brand";
 import { NavLink } from "./nav-link";
 import { ThemeToggle } from "./theme-toggle";
 import { LocaleSwitcher } from "./locale-switcher";
-import { Drawer, DrawerIdentity, NavGroupLabel } from "./drawer";
+import { Drawer, IslandClose, NavGroupLabel } from "./drawer";
+import { AccountIsland } from "./account-island";
 import { BottomNav } from "./bottom-nav";
 
 export type AdminShellStats = {
@@ -58,7 +59,11 @@ export function AdminShell({ name, email, role, stats }: {
               <Menu aria-hidden size={20} />
             </button>
             <div className="lg:hidden"><Brand href="/admin" markOnly /></div>
-            <div className="hidden sm:block">{roleBadge}</div>
+            {/* The badge marks the mode; it must never outweigh the brand. */}
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-accent2-soft px-2 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-accent2">
+              <Shield size={11} aria-hidden />
+              {t(rp.labelKey)}
+            </span>
             <span className="hidden truncate text-sm text-muted lg:inline">{t("admin.title")}</span>
           </div>
           <div className="flex items-center gap-1 sm:gap-1.5">
@@ -73,11 +78,11 @@ export function AdminShell({ name, email, role, stats }: {
               type="button"
               onClick={() => setOpen(true)}
               aria-label={t("admin.title")}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-accent2-soft text-xs font-bold text-accent2 lg:hidden"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-accent2 text-xs font-bold text-[rgb(var(--bg))] shadow-e2 ring-1 ring-white/15 lg:hidden"
             >
               {initial}
             </button>
-            <span aria-hidden className="hidden h-9 w-9 items-center justify-center rounded-full bg-accent2-soft text-xs font-bold text-accent2 lg:flex">
+            <span aria-hidden className="hidden h-9 w-9 items-center justify-center rounded-full bg-accent2 text-xs font-bold text-[rgb(var(--bg))] shadow-e2 ring-1 ring-white/15 lg:flex">
               {initial}
             </span>
           </div>
@@ -88,20 +93,25 @@ export function AdminShell({ name, email, role, stats }: {
         open={open}
         onClose={() => setOpen(false)}
         label={t("admin.title")}
-        header={
-          <DrawerIdentity
+        header={(close) => (
+          <AccountIsland
             initial={initial}
             name={name}
             email={email}
             tone="accent2"
             badge={roleBadge}
+            close={<IslandClose onClick={close} label={t("common.close")} />}
             facts={[
               { label: t("admin.kpiClients"), value: stats.users, tone: "ink" },
               { label: t("admin.kpiToday"), value: pln(stats.revenueTodayCents), tone: "accent2" },
               { label: t("admin.kpi30d"), value: pln(stats.revenue30dCents), tone: "accent2" },
             ]}
+            secondaryActions={[
+              { href: "/admin/support", label: t("admin.messages"), icon: LifeBuoy },
+              { href: "/admin/users", label: t("admin.nav.usersShort"), icon: Users },
+            ]}
           />
-        }
+        )}
         footer={
           <Link href="/dashboard"
             className="flex min-h-[46px] items-center gap-3 rounded-xl px-3 text-sm font-medium text-muted transition-colors hover:bg-raised hover:text-ink">

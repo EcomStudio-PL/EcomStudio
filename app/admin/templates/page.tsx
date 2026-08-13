@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
-import { PageHeader } from "@/components/ui/page-header";
 import { TemplateManager } from "@/components/admin/inline-controls";
 import { PromptBlocksManager } from "@/components/admin/prompt-blocks";
 
@@ -9,6 +8,7 @@ export default async function AdminTemplates() {
   const supabase = await createClient();
   const { dict } = await getDictionary();
   const t = makeT(dict);
+  void t;
   const [{ data: templates }, { data: blocks }] = await Promise.all([
     supabase
       .from("prompt_templates")
@@ -19,10 +19,8 @@ export default async function AdminTemplates() {
   ]);
   return (
     <div>
-      <PageHeader title={t("admin.nav.templates")} sub={t("admin.templatesSub")} />
       <TemplateManager templates={templates ?? []} />
-      <div className="mt-8">
-        <h2 className="mb-1 font-display text-lg font-semibold tracking-tight">{t("admin.blocksTitle")}</h2>
+      <div className="mt-10">
         <PromptBlocksManager blocks={blocks ?? []} />
       </div>
     </div>

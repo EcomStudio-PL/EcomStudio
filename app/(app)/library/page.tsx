@@ -29,11 +29,11 @@ export default async function LibraryPage() {
 
   return (
     <div>
-      <PageHeader title={t("library.title")} sub={t("library.sub")} />
+      <PageHeader overline={t("nav.groups.assets")} title={t("library.title")} sub={t("library.sub")} />
       {generations.length === 0 ? (
         <EmptyState title={t("library.emptyTitle")} body={t("library.emptyBody")} />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="stagger grid gap-3.5 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3">
           {generations.map((g) => (
             <Card key={g.id} className="overflow-hidden">
               {g.generation_assets.length > 0 && (

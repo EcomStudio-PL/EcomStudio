@@ -1,11 +1,11 @@
 "use client";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, LifeBuoy } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { rolePresentation } from "@/lib/roles";
 import { Brand } from "./brand";
 import { AdminNav } from "./admin-nav";
-import { DrawerIdentity } from "./drawer";
+import { AccountIsland } from "./account-island";
 
 export type AdminSidebarStats = {
   users: number; usersToday: number; revenueTodayCents: number; revenue30dCents: number;
@@ -30,7 +30,7 @@ export function AdminSidebar({ name, email, role, stats }: {
       <div className="px-3 pb-4"><Brand href="/admin" /></div>
 
       <div className="px-3">
-        <DrawerIdentity
+        <AccountIsland
           initial={initial}
           name={name}
           email={email}
@@ -45,6 +45,7 @@ export function AdminSidebar({ name, email, role, stats }: {
             { label: t("admin.kpiToday"), value: pln(stats.revenueTodayCents), tone: "accent2" },
             { label: t("admin.kpi30d"), value: pln(stats.revenue30dCents), tone: "accent2" },
           ]}
+          secondaryActions={[{ href: "/admin/support", label: t("admin.messages"), icon: LifeBuoy }]}
         />
       </div>
 

@@ -18,8 +18,8 @@ export default async function PlanPage() {
 
   return (
     <div>
-      <PageHeader title={t("plan.title")} sub={t("plan.sub")} />
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <PageHeader overline={t("nav.groups.account")} title={t("plan.title")} sub={t("plan.sub")} />
+      <div className="grid gap-3.5 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-4">
         {(plans ?? []).map((p) => {
           const isCurrent = p.slug === "free";
           const features = Array.isArray(p.features)

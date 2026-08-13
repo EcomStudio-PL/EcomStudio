@@ -48,7 +48,7 @@ export default async function DashboardPage() {
             style={{ background: "radial-gradient(30rem 14rem at 50% 0%, rgb(var(--accent) / 0.26), transparent 70%)" }}
           />
           <div className="relative">
-            <p className="frame-mark mx-auto mb-6 inline-block px-2 font-display text-[11px] uppercase tracking-[0.24em] text-accent">
+            <p className="mx-auto mb-6 inline-block font-display text-[11px] uppercase tracking-[0.24em] text-accent">
               EcomStudio
             </p>
             <h1 className="display-lg">{t("dashboard.onbTitle")}</h1>
@@ -89,10 +89,7 @@ export default async function DashboardPage() {
           style={{ background: "radial-gradient(20rem 12rem at 70% 40%, rgb(var(--accent) / 0.30), transparent 72%)" }}
         />
         <div className="relative p-5 sm:p-7">
-          <div className="flex items-center gap-2">
-            <span aria-hidden className="accent-rule h-px w-7 rounded-full" />
-            <span className="overline">{workspace.name}</span>
-          </div>
+          <p className="overline">{workspace.name}</p>
           <h1 className="display-xl mt-2.5">{t("dashboard.welcome", { name: firstName })}</h1>
           <p className="mt-2 max-w-lg text-sm leading-relaxed text-muted">{t("dashboard.sub")}</p>
 

@@ -24,7 +24,11 @@
     "menu": "Menü",
     "support": "Support",
     "inspirations": "Inspirationen",
-    "promptsShort": "Prompts"
+    "promptsShort": "Prompts",
+    "topUp": "Credits kaufen",
+    "managePlan": "Plan verwalten",
+    "upgrade": "Upgrade",
+    "help": "Hilfe"
   },
   "common": {
     "save": "Speichern",
@@ -494,7 +498,9 @@
     "unavailable": {
       "provider_quota": "Nicht verfügbar — Kontingent/Billing",
       "provider_auth": "Nicht verfügbar — Anbieter-Key abgelehnt"
-    }
+    },
+    "messages": "Nachrichten",
+    "duplicate": "Duplizieren"
   },
   "support": {
     "title": "Support & Nachrichten",
