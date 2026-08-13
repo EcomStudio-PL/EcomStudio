@@ -3,7 +3,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n/provider";
-import { saveMyTemplateAction, deleteMyTemplateAction, duplicateSystemTemplateAction } from "@/app/actions/prompts";
+import { saveMyTemplateAction, deleteMyTemplateAction } from "@/app/actions/prompts";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Select, Label } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -12,24 +12,6 @@ type Tpl = {
   id?: string; name: string; shot_type: string; template: string;
   format: string; style: string | null; priority: number; active: boolean;
 };
-
-export function DuplicateTemplateButton({ templateId }: { templateId: string }) {
-  const { t } = useI18n();
-  const router = useRouter();
-  const [pending, start] = useTransition();
-  return (
-    <button type="button" disabled={pending}
-      title={t("prompts.duplicateToMine")}
-      className="rounded-lg px-2 py-1 text-xs text-muted transition-colors hover:bg-raised hover:text-ink disabled:opacity-50"
-      onClick={() => start(async () => {
-        const res = await duplicateSystemTemplateAction(templateId);
-        if (res.ok) { toast.success(t("prompts.duplicated")); router.refresh(); }
-        else toast.error(t("common.error"));
-      })}>
-      ⧉ {t("prompts.duplicateToMine")}
-    </button>
-  );
-}
 
 export function MyTemplates({ templates }: { templates: Tpl[] }) {
   const { t } = useI18n();

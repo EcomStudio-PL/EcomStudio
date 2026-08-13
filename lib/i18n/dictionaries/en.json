@@ -28,7 +28,8 @@
     "topUp": "Buy credits",
     "managePlan": "Manage plan",
     "upgrade": "Upgrade",
-    "help": "Help"
+    "help": "Help",
+    "tools": "Tools"
   },
   "common": {
     "save": "Save",
@@ -187,7 +188,8 @@
       "social": "Social media",
       "meta_ads": "Meta Ads",
       "other": "Other"
-    }
+    },
+    "importCsv": "Import CSV"
   },
   "generator": {
     "title": "Generator",
@@ -944,5 +946,76 @@
     "noMatch": "No products match your search.",
     "emptyTitle": "No products yet",
     "emptyBody": "Add your first product to use it in the generator."
+  },
+  "import": {
+    "title": "Import products from CSV",
+    "intro": "Upload a CSV of your catalogue. Photos can be added later — a product can be created without them.",
+    "pick": "Choose a CSV file",
+    "pickHint": "or drop it here",
+    "sample": "Download a sample CSV",
+    "emptyFile": "The file is empty or could not be read.",
+    "rows": "{n} rows",
+    "mapping": "Column mapping",
+    "auto": "Match automatically",
+    "ignore": "— skip —",
+    "mapTo": "Map column {column}",
+    "needName": "Point one column at the product name — a product cannot be created without it.",
+    "preview": "Preview",
+    "ok": "OK",
+    "more": "…and {n} more rows",
+    "errors": "Errors: {n}.",
+    "warnings": "Warnings: {n}.",
+    "start": "Import {n}",
+    "running": "Importing…",
+    "progress": "Importing {done} / {total}",
+    "doneTitle": "Import finished",
+    "summary": "Imported {imported}. Skipped {skipped}. Failed {failed}.",
+    "downloadIssues": "Download failed rows",
+    "field": {
+      "name": "Product name",
+      "category": "Category",
+      "sku": "SKU",
+      "description": "Description",
+      "extra_info": "Marketplace description",
+      "marketplace": "Marketplace",
+      "brand": "Brand",
+      "price": "Price",
+      "tags": "Tags"
+    },
+    "issue": {
+      "missing_name": "No name",
+      "duplicate_sku": "Duplicate SKU"
+    }
+  },
+  "tools": {
+    "title": "Tools",
+    "sub": "Quick operations on product photos.",
+    "open": "Open",
+    "needsProvider": "Awaiting an AI provider",
+    "note": "Tool results save to your Library and can be linked to a product. Each operation will cost the credits shown on its card.",
+    "remove_background": {
+      "name": "Remove background",
+      "body": "Automatic cutout and a transparent PNG."
+    },
+    "white_background": {
+      "name": "White background",
+      "body": "Remove the background and set a clean e-commerce white."
+    },
+    "replace_background": {
+      "name": "Change background colour",
+      "body": "Pick a colour from the palette, a preset or a HEX value."
+    },
+    "remove_object": {
+      "name": "Remove an object",
+      "body": "Select or describe what should disappear from the photo."
+    },
+    "expand": {
+      "name": "Expand the photo",
+      "body": "Fit the frame to 1:1, 4:5, 16:9 or 9:16."
+    },
+    "enhance": {
+      "name": "Improve quality",
+      "body": "Subtle sharpening and upscale without changing the product."
+    }
   }
 }

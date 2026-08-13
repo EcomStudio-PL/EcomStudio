@@ -2,6 +2,8 @@ import type { Client } from "./workspace";
 import type { Tables } from "@/lib/database.types";
 import { buildFidelityInstructions } from "@/lib/ai/product-lock";
 
+/** SERVER/ADMIN ONLY. The system library is EcomStudio's own prompt logic:
+ *  RLS restricts these rows to staff, and nothing customer-facing reads it. */
 export async function listSystemTemplates(supabase: Client) {
   const { data } = await supabase
     .from("prompt_templates")
@@ -25,6 +27,8 @@ export async function listWorkspaceTemplates(supabase: Client, workspaceId: stri
  *  production ad prompt is composed. */
 const BLOCK_ORDER = ["style", "scene", "format", "cta", "fidelity", "restrictions", "extra"] as const;
 
+/** SERVER/ADMIN ONLY — see listSystemTemplates. Blocks are composed into the
+ *  final prompt on the server and never returned to a browser. */
 export async function listActivePromptBlocks(supabase: Client) {
   const { data } = await supabase
     .from("prompt_blocks")

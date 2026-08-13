@@ -60,31 +60,6 @@ export async function deleteMyTemplateAction(templateId: string): Promise<Result
   }
 }
 
-/** Copy a system template into the user's workspace so they can edit the copy. */
-export async function duplicateSystemTemplateAction(templateId: string): Promise<Result> {
-  try {
-    const { supabase, workspace } = await workspaceCtx();
-    const { data: tpl } = await supabase
-      .from("prompt_templates").select("*")
-      .eq("id", templateId).is("workspace_id", null).maybeSingle();
-    if (!tpl) return { ok: false, error: "not_found" };
-    const { error } = await supabase.from("prompt_templates").insert({
-      workspace_id: workspace.id,
-      name: `${tpl.name} (my)`,
-      shot_type: tpl.shot_type,
-      template: tpl.template,
-      format: tpl.format,
-      style: tpl.style,
-      priority: tpl.priority,
-      active: true,
-    });
-    if (error) return { ok: false, error: "generic" };
-    revalidatePath("/prompts");
-    return { ok: true };
-  } catch {
-    return { ok: false, error: "generic" };
-  }
-}
 
 /** Inline edit of a generated prompt card (owner's workspace only via RLS). */
 export async function updatePromptTextAction(promptId: string, text: string): Promise<Result> {

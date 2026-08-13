@@ -28,7 +28,8 @@
     "topUp": "Dokup kredyty",
     "managePlan": "Zarządzaj planem",
     "upgrade": "Ulepsz plan",
-    "help": "Pomoc"
+    "help": "Pomoc",
+    "tools": "Narzędzia"
   },
   "common": {
     "save": "Zapisz",
@@ -187,7 +188,8 @@
       "social": "Social media",
       "meta_ads": "Meta Ads",
       "other": "Inne"
-    }
+    },
+    "importCsv": "Importuj CSV"
   },
   "generator": {
     "title": "Generator",
@@ -944,5 +946,76 @@
     "noMatch": "Brak produktów pasujących do wyszukiwania.",
     "emptyTitle": "Nie masz jeszcze produktów",
     "emptyBody": "Dodaj pierwszy produkt, aby wykorzystać go w generatorze."
+  },
+  "import": {
+    "title": "Import produktów z CSV",
+    "intro": "Wgraj plik CSV z katalogiem produktów. Zdjęcia dodasz później — produkt może powstać bez nich.",
+    "pick": "Wybierz plik CSV",
+    "pickHint": "lub przeciągnij go tutaj",
+    "sample": "Pobierz przykładowy CSV",
+    "emptyFile": "Plik jest pusty lub nie udało się go odczytać.",
+    "rows": "{n} wierszy",
+    "mapping": "Mapowanie kolumn",
+    "auto": "Dopasuj automatycznie",
+    "ignore": "— pomiń —",
+    "mapTo": "Mapuj kolumnę {column}",
+    "needName": "Wskaż kolumnę z nazwą produktu — bez niej nie da się utworzyć produktu.",
+    "preview": "Podgląd",
+    "ok": "OK",
+    "more": "…i {n} kolejnych wierszy",
+    "errors": "Błędy: {n}.",
+    "warnings": "Ostrzeżenia: {n}.",
+    "start": "Importuj {n}",
+    "running": "Importowanie…",
+    "progress": "Importowanie {done} / {total}",
+    "doneTitle": "Import zakończony",
+    "summary": "Zaimportowano {imported}. Pominięto {skipped}. Błędy: {failed}.",
+    "downloadIssues": "Pobierz błędne wiersze",
+    "field": {
+      "name": "Nazwa produktu",
+      "category": "Kategoria",
+      "sku": "SKU",
+      "description": "Opis",
+      "extra_info": "Opis marketplace",
+      "marketplace": "Marketplace",
+      "brand": "Marka",
+      "price": "Cena",
+      "tags": "Tagi"
+    },
+    "issue": {
+      "missing_name": "Brak nazwy",
+      "duplicate_sku": "Duplikat SKU"
+    }
+  },
+  "tools": {
+    "title": "Narzędzia",
+    "sub": "Szybkie operacje na zdjęciach produktowych.",
+    "open": "Otwórz",
+    "needsProvider": "Czeka na dostawcę AI",
+    "note": "Wyniki narzędzi zapiszesz w Bibliotece i powiążesz z produktem. Każda operacja będzie kosztować kredyty zgodnie z cennikiem widocznym na kafelku.",
+    "remove_background": {
+      "name": "Usuń tło",
+      "body": "Automatyczne usunięcie tła i przezroczysty PNG."
+    },
+    "white_background": {
+      "name": "Białe tło",
+      "body": "Usuń tło i ustaw czyste, e-commerce’owe białe tło."
+    },
+    "replace_background": {
+      "name": "Zmień kolor tła",
+      "body": "Wybierz kolor z palety, presetu albo podaj HEX."
+    },
+    "remove_object": {
+      "name": "Usuń element",
+      "body": "Zaznacz lub opisz element, który ma zniknąć ze zdjęcia."
+    },
+    "expand": {
+      "name": "Rozszerz zdjęcie",
+      "body": "Dopasuj kadr do formatu 1:1, 4:5, 16:9 lub 9:16."
+    },
+    "enhance": {
+      "name": "Popraw jakość",
+      "body": "Subtelne wyostrzenie i upscale bez zmiany produktu."
+    }
   }
 }

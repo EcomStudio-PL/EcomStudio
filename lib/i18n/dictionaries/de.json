@@ -28,7 +28,8 @@
     "topUp": "Credits kaufen",
     "managePlan": "Plan verwalten",
     "upgrade": "Upgrade",
-    "help": "Hilfe"
+    "help": "Hilfe",
+    "tools": "Werkzeuge"
   },
   "common": {
     "save": "Speichern",
@@ -187,7 +188,8 @@
       "social": "Social Media",
       "meta_ads": "Meta Ads",
       "other": "Andere"
-    }
+    },
+    "importCsv": "CSV importieren"
   },
   "generator": {
     "title": "Generator",
@@ -944,5 +946,76 @@
     "noMatch": "Keine Produkte gefunden.",
     "emptyTitle": "Noch keine Produkte",
     "emptyBody": "Füge dein erstes Produkt hinzu, um es im Generator zu nutzen."
+  },
+  "import": {
+    "title": "Produkte aus CSV importieren",
+    "intro": "Lade eine CSV deines Katalogs hoch. Fotos kannst du später ergänzen.",
+    "pick": "CSV-Datei wählen",
+    "pickHint": "oder hierher ziehen",
+    "sample": "Beispiel-CSV laden",
+    "emptyFile": "Die Datei ist leer oder nicht lesbar.",
+    "rows": "{n} Zeilen",
+    "mapping": "Spaltenzuordnung",
+    "auto": "Automatisch zuordnen",
+    "ignore": "— überspringen —",
+    "mapTo": "Spalte {column} zuordnen",
+    "needName": "Wähle eine Spalte mit dem Produktnamen.",
+    "preview": "Vorschau",
+    "ok": "OK",
+    "more": "…und {n} weitere Zeilen",
+    "errors": "Fehler: {n}.",
+    "warnings": "Warnungen: {n}.",
+    "start": "{n} importieren",
+    "running": "Importiere…",
+    "progress": "Importiere {done} / {total}",
+    "doneTitle": "Import abgeschlossen",
+    "summary": "Importiert {imported}. Übersprungen {skipped}. Fehler {failed}.",
+    "downloadIssues": "Fehlerhafte Zeilen laden",
+    "field": {
+      "name": "Produktname",
+      "category": "Kategorie",
+      "sku": "SKU",
+      "description": "Beschreibung",
+      "extra_info": "Marketplace-Beschreibung",
+      "marketplace": "Marketplace",
+      "brand": "Marke",
+      "price": "Preis",
+      "tags": "Tags"
+    },
+    "issue": {
+      "missing_name": "Kein Name",
+      "duplicate_sku": "Doppelte SKU"
+    }
+  },
+  "tools": {
+    "title": "Werkzeuge",
+    "sub": "Schnelle Operationen an Produktfotos.",
+    "open": "Öffnen",
+    "needsProvider": "Wartet auf einen KI-Anbieter",
+    "note": "Ergebnisse landen in deiner Bibliothek und lassen sich einem Produkt zuordnen. Jede Operation kostet die auf der Karte gezeigten Credits.",
+    "remove_background": {
+      "name": "Hintergrund entfernen",
+      "body": "Automatischer Freisteller als transparentes PNG."
+    },
+    "white_background": {
+      "name": "Weißer Hintergrund",
+      "body": "Hintergrund entfernen und sauberes E-Commerce-Weiß setzen."
+    },
+    "replace_background": {
+      "name": "Hintergrundfarbe ändern",
+      "body": "Farbe aus Palette, Preset oder HEX wählen."
+    },
+    "remove_object": {
+      "name": "Objekt entfernen",
+      "body": "Markiere oder beschreibe, was verschwinden soll."
+    },
+    "expand": {
+      "name": "Bild erweitern",
+      "body": "Format auf 1:1, 4:5, 16:9 oder 9:16 anpassen."
+    },
+    "enhance": {
+      "name": "Qualität verbessern",
+      "body": "Sanftes Schärfen und Upscale ohne Produktänderung."
+    }
   }
 }

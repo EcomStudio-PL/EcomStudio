@@ -6,6 +6,12 @@ import { getCurrentWorkspace } from "@/lib/services/workspace";
 import * as products from "@/lib/services/products";
 import * as images from "@/lib/services/images";
 import type { Enums, TablesInsert } from "@/lib/database.types";
+import { validateRows, type ImportRow } from "@/lib/services/csv";
+
+/** Import limits: one action call stays well inside the request budget, and
+ *  a batch of 200 rows is a comfortable insert size for Postgres. */
+const MAX_IMPORT_ROWS = 500;
+const IMPORT_BATCH = 200;
 
 type Result = { ok: boolean; error?: string };
 
@@ -135,5 +141,70 @@ export async function moveImageAction(productId: string, imageId: string, dir: -
     return { ok: true };
   } catch {
     return { ok: false, error: "generic" };
+  }
+}
+
+/**
+ * BULK IMPORT — a mapped CSV becomes products in batches.
+ *
+ * The client sends already-mapped rows (never a file), the server re-validates
+ * them and writes in chunks so a 5000-row catalogue is a few dozen inserts
+ * rather than a few thousand round trips. Rows without a name are refused
+ * here as well as in the browser; duplicate SKUs are imported, since a seller
+ * re-uploading a corrected file is a normal thing to do.
+ */
+export async function importProductsAction(rows: ImportRow[]): Promise<{
+  ok: true; imported: number; skipped: number; failed: number;
+} | { ok: false; error: string }> {
+  try {
+    const { supabase, user, workspace } = await ctx();
+    const usable = (rows ?? []).slice(0, MAX_IMPORT_ROWS);
+    const errors = validateRows(usable);
+    const badLines = new Set(errors.filter((e) => e.level === "error").map((e) => e.line));
+
+    const payload: TablesInsert<"products">[] = [];
+    usable.forEach((r, i) => {
+      if (badLines.has(i + 2)) return;
+      const name = r.name!.trim();
+      // Brand, price and tags have no dedicated columns; they are kept as
+      // structured metadata rather than silently dropped.
+      const metadata: Record<string, string> = {};
+      if (r.brand) metadata.brand = r.brand;
+      if (r.price) metadata.price = r.price;
+      if (r.tags) metadata.tags = r.tags;
+      payload.push({
+        workspace_id: workspace.id,
+        owner_id: user.id,
+        name: name.slice(0, 200),
+        category: r.category?.slice(0, 120) ?? null,
+        sku: r.sku?.slice(0, 80) ?? null,
+        description: r.description?.slice(0, 4000) ?? null,
+        extra_info: r.extra_info?.slice(0, 8000) ?? null,
+        marketplace: r.marketplace?.slice(0, 40) ?? null,
+        metadata: (Object.keys(metadata).length ? metadata : {}) as never,
+        status: "draft",
+      });
+    });
+
+    let imported = 0;
+    let failed = 0;
+    for (let i = 0; i < payload.length; i += IMPORT_BATCH) {
+      const batch = payload.slice(i, i + IMPORT_BATCH);
+      const { error } = await supabase.from("products").insert(batch);
+      if (error) failed += batch.length;
+      else imported += batch.length;
+    }
+
+    if (imported > 0) {
+      await supabase.rpc("log_activity", {
+        p_workspace_id: workspace.id, p_action: "products.imported",
+        p_entity_type: "product",
+        p_metadata: { imported, skipped: badLines.size, failed },
+      });
+      revalidatePath("/products");
+    }
+    return { ok: true, imported, skipped: badLines.size, failed };
+  } catch {
+    return { ok: false, error: "import_failed" };
   }
 }

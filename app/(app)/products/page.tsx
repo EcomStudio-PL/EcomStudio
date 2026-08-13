@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { BrowserFilters } from "@/components/products/browser-filters";
+import { ImportButton } from "@/components/products/import-button";
 
 const STATUSES = ["draft", "ready", "processing", "completed", "archived"];
 
@@ -39,11 +40,14 @@ export default async function ProductsPage({ searchParams }: {
         title={t("products.title")}
         sub={t("products.sub")}
         action={
-          <Link href="/products/new"
-            className="cta inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold sm:w-auto">
-            <Plus size={16} aria-hidden />
-            {t("products.new")}
-          </Link>
+          <div className="flex w-full gap-2 sm:w-auto">
+            <ImportButton />
+            <Link href="/products/new"
+              className="cta inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold sm:flex-none">
+              <Plus size={16} aria-hidden />
+              {t("products.new")}
+            </Link>
+          </div>
         }
       />
 

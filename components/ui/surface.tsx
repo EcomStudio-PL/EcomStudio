@@ -23,16 +23,3 @@ export function Panel({ className, interactive, ...props }: React.HTMLAttributes
 export function Plate({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("plate rounded-xl", className)} {...props} />;
 }
-
-/** A hairline divider that fades at both ends — softer than a full-width rule. */
-export function Divider({ className }: { className?: string }) {
-  return (
-    <div
-      aria-hidden
-      className={cn(
-        "h-px w-full bg-gradient-to-r from-transparent via-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.6))] to-transparent",
-        className
-      )}
-    />
-  );
-}

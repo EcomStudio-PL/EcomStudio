@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard, Package, Sparkles, PenLine, Images, History as HistoryIcon,
-  Coins, Rocket, LifeBuoy, Settings, Shield, Users, Building2, Cpu, Plug,
+  Coins, Rocket, LifeBuoy, Settings, Shield, Users, Building2, Cpu, Plug, Wrench,
   FileText, ScrollText, SlidersHorizontal, Wand2, BarChart3, Layers, Globe,
   FolderOpen, Lightbulb, MessageSquare,
 } from "lucide-react";
@@ -28,6 +28,7 @@ export const CLIENT_NAV: readonly NavGroup[] = [
     { href: "/products", key: "products", icon: Package },
     { href: "/generator", key: "generator", icon: Sparkles },
     { href: "/prompts", key: "prompts", icon: PenLine },
+    { href: "/tools", key: "tools", icon: Wrench },
     { href: "/inspirations", key: "inspirations", icon: Lightbulb },
     { href: "/library", key: "library", icon: Images },
     { href: "/history", key: "history", icon: HistoryIcon },
