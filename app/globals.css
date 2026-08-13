@@ -49,7 +49,7 @@
 
   /* LAYOUT CONSTANTS — one source for chrome dimensions. */
   --header-h: 56px;
-  --dock-h: 68px;
+  --dock-h: 84px;
   --drawer-w: 20rem;
   --rail-w: 264px;
   --radius-sm: 0.625rem;

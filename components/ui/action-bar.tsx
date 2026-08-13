@@ -20,7 +20,7 @@ export function ActionBar({ summary, children, className, note }: {
   return (
     <div
       className={cn(
-        "dock fixed inset-x-3 bottom-[calc(var(--dock-h)+0.75rem+env(safe-area-inset-bottom))] z-30 rounded-2xl p-3",
+        "dock fixed inset-x-3 bottom-[calc(var(--dock-h)+0.5rem+env(safe-area-inset-bottom))] z-30 rounded-2xl p-3",
         "lg:static lg:inset-auto lg:rounded-2xl lg:p-4 lg:shadow-e2",
         className
       )}
