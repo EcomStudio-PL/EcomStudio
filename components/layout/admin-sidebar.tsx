@@ -25,7 +25,7 @@ export function AdminSidebar({ name, email, role, stats }: {
     new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN", maximumFractionDigits: 0 }).format(cents / 100);
 
   return (
-    <aside className="relative hidden w-[264px] shrink-0 flex-col border-r border-line bg-sidebar/80 px-3 py-5 backdrop-blur-xl lg:flex">
+    <aside className="sticky top-0 hidden h-dvh w-[264px] shrink-0 flex-col border-r border-line bg-sidebar/80 px-3 py-5 backdrop-blur-xl lg:flex">
       <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-px bg-gradient-to-b from-transparent via-[rgb(var(--accent2)/0.28)] to-transparent" />
       <div className="px-3 pb-4"><Brand href="/admin" /></div>
 

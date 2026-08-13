@@ -20,7 +20,7 @@ export function Sidebar({ name, email, credits, plan, isAdmin }: {
   const { t } = useI18n();
   const initial = (name || "?").trim().charAt(0).toUpperCase();
   return (
-    <aside className="relative hidden w-[264px] shrink-0 flex-col border-r border-line bg-sidebar/80 px-3 py-5 backdrop-blur-xl lg:flex">
+    <aside className="sticky top-0 hidden h-dvh w-[264px] shrink-0 flex-col border-r border-line bg-sidebar/80 px-3 py-5 backdrop-blur-xl lg:flex">
       {/* The rail catches the ambient key light along its inner edge. */}
       <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-px bg-gradient-to-b from-transparent via-[rgb(var(--accent)/0.28)] to-transparent" />
       <div className="px-3 pb-5"><Brand href="/dashboard" /></div>
