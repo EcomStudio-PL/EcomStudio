@@ -69,10 +69,19 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
   const [product, setProduct] = useState<PickableProduct | null>(null);
   const cancelled = useRef(false);
 
-  // Object URLs are the only thing here that leaks if left alone.
-  useEffect(() => () => {
-    items.forEach((i) => { URL.revokeObjectURL(i.sourceUrl); if (i.resultUrl) URL.revokeObjectURL(i.resultUrl); });
-  }, [items]);
+  /**
+   * Object URLs are the only thing here that leaks, and they must outlive
+   * every render: revoking them when `items` changes would kill thumbnails
+   * that are still on screen. So they are tracked in a ref and released once,
+   * when the panel actually goes away.
+   */
+  const urls = useRef<string[]>([]);
+  const trackUrl = useCallback((blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    urls.current.push(url);
+    return url;
+  }, []);
+  useEffect(() => () => { urls.current.forEach(URL.revokeObjectURL); urls.current = []; }, []);
 
   const done = items.filter((i) => i.status === "done");
   const failed = items.filter((i) => i.status === "error");
@@ -88,7 +97,7 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
       if (!ACCEPTED_MIME.includes(file.type) || file.size > MAX_UPLOAD_BYTES) { rejected++; continue; }
       accepted.push({
         id: `${file.name}-${file.size}-${accepted.length}-${Math.random().toString(36).slice(2, 8)}`,
-        file, sourceUrl: URL.createObjectURL(file), status: "queued",
+        file, sourceUrl: trackUrl(file), status: "queued",
       });
     }
     if (rejected > 0) toast.error(t("tools.rejected", { n: rejected }));
@@ -98,7 +107,7 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
       if (accepted.length > room) toast.error(t("tools.batchFull", { n: MAX_BATCH_FILES }));
       return [...prev, ...accepted.slice(0, room)];
     });
-  }, [t]);
+  }, [t, trackUrl]);
 
   async function runOne(item: Item): Promise<Partial<Item>> {
     const form = new FormData();
@@ -120,7 +129,7 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
     };
     const blob = await res.blob();
     return {
-      status: "done", resultBlob: blob, resultUrl: URL.createObjectURL(blob),
+      status: "done", resultBlob: blob, resultUrl: trackUrl(blob),
       credits: meta.credits ?? 0, before: meta.before, after: meta.after, error: undefined,
     };
   }
@@ -167,7 +176,8 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
     a.href = url;
     a.download = outputName(item.file.name, t(`tools.${tool}.suffix`), item.resultBlob.type, index);
     a.click();
-    URL.revokeObjectURL(url);
+    // Revoking in the same tick can cancel the download the click just began.
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
 
   async function downloadAll() {
@@ -182,7 +192,7 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
     a.href = url;
     a.download = `ecomstudio-${tool}.zip`;
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
 
   async function saveAll() {
@@ -368,7 +378,7 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
               <input ref={logoRef} type="file" accept="image/png,image/webp,image/svg+xml" className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
-                  if (file) setLogo({ file, url: URL.createObjectURL(file) });
+                  if (file) setLogo({ file, url: trackUrl(file) });
                   e.target.value = "";
                 }} />
               <Button variant={logo ? "secondary" : "primary"} size="sm" className="w-full"
