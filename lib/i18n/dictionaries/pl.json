@@ -61,7 +61,11 @@
     "close": "Zamknij",
     "all": "Wszystkie",
     "photos": "zdjęć",
-    "noPhotos": "Brak zdjęć"
+    "noPhotos": "Brak zdjęć",
+    "clear": "Wyczyść",
+    "remove": "Usuń",
+    "download": "Pobierz",
+    "noData": "Brak danych"
   },
   "landing": {
     "headline": "Profesjonalne materiały produktowe z AI. Szybciej niż klasyczne studio.",
@@ -333,7 +337,8 @@
       "inspirations": "Inspiracje",
       "support": "Wsparcie",
       "usersShort": "Klienci",
-      "generationsShort": "Generacje"
+      "generationsShort": "Generacje",
+      "tools": "Image Tools"
     },
     "statUsers": "Użytkownicy",
     "statProducts": "Produkty",
@@ -503,7 +508,39 @@
     },
     "messages": "Wiadomości",
     "duplicate": "Duplikuj",
-    "report": "Raport"
+    "report": "Raport",
+    "tools": {
+      "title": "Image Tools",
+      "sub": "Status dostawców i ekonomia ośmiu narzędzi do obróbki zdjęć.",
+      "providers": "Dostawcy",
+      "connectedCount": "Podłączone: {n} / {total}",
+      "status": {
+        "connected": "Podłączony",
+        "not_configured": "Brak klucza"
+      },
+      "source": {
+        "env": "Klucz ze zmiennej środowiskowej",
+        "vault": "Klucz z panelu (szyfrowany)"
+      },
+      "cap": {
+        "background": "usuwanie tła",
+        "upscale": "upscale",
+        "expand": "rozszerzanie kadru"
+      },
+      "getKey": "Wygeneruj klucz",
+      "keyNote": "Klucz ustawiasz zmienną środowiskową na serwerze albo wklejasz w panelu — nigdy nie trafia do przeglądarki ani do repozytorium.",
+      "economics": "Ekonomia",
+      "paid": "Płatne",
+      "assumptions": "1 kr. = {credit} zł · USD/PLN {fx} · min. marża {margin}% · bufor {buffer}%",
+      "col": {
+        "tool": "Narzędzie",
+        "type": "Typ",
+        "provider": "Dostawca",
+        "cost": "Koszt / operacja",
+        "price": "Cena",
+        "margin": "Marża"
+      }
+    }
   },
   "support": {
     "title": "Pomoc i wiadomości",
@@ -989,33 +1026,178 @@
   },
   "tools": {
     "title": "Narzędzia",
-    "sub": "Szybkie operacje na zdjęciach produktowych.",
-    "open": "Otwórz",
-    "needsProvider": "Czeka na dostawcę AI",
-    "note": "Wyniki narzędzi zapiszesz w Bibliotece i powiążesz z produktem. Każda operacja będzie kosztować kredyty zgodnie z cennikiem widocznym na kafelku.",
-    "remove_background": {
+    "sub": "Szybkie, konkretne operacje na zdjęciach produktowych — pojedynczo albo hurtem.",
+    "freeGroup": "Za darmo",
+    "freeNote": "Robimy je na własnym serwerze, bez płatnego API. Nie kosztują ani jednego kredytu.",
+    "paidGroup": "Za kredyty",
+    "paidNote": "Wymagają modelu AI. Cena jest liczona z realnego kosztu operacji u aktualnie podłączonego dostawcy.",
+    "free": "Za darmo",
+    "creditsTotal": "{n} kr.",
+    "settings": "Ustawienia",
+    "drop": "Przeciągnij zdjęcia albo kliknij",
+    "dropHint": "JPG, PNG, WebP, AVIF · do {n} plików · maks. {size} każdy",
+    "queue": "Kolejka ({n})",
+    "progress": "Przetwarzam {done} / {total}",
+    "pendingCount": "{n} do przetworzenia",
+    "noQueue": "Dodaj zdjęcia, żeby zacząć",
+    "run": "Przetwórz ({n})",
+    "result": "Wynik",
+    "before": "Przed",
+    "after": "Po",
+    "compare": "Porównanie przed / po",
+    "saved": "{percent}% mniej · {before} → {after}",
+    "downloadZip": "Pobierz ZIP ({n})",
+    "save": "Zapisz",
+    "allSaved": "Zapisane",
+    "savedLibrary": "Zapisano w bibliotece ({n})",
+    "savedProduct": "Dodano do produktu ({n})",
+    "saveFailed": "Nie udało się zapisać.",
+    "linkProduct": "Przypisz do produktu",
+    "retryFailed": "Ponów nieudane ({n})",
+    "rejected": "Pominięto {n} plików — zły format albo za duży rozmiar.",
+    "batchFull": "Maksymalnie {n} plików naraz.",
+    "pickLogo": "Wybierz logo (PNG)",
+    "changeLogo": "Zmień logo",
+    "needLogo": "Najpierw wgraj logo.",
+    "previewNote": "Podgląd rozmieszczenia — finalny plik renderuje serwer.",
+    "unavailableTitle": "To narzędzie jest teraz niedostępne",
+    "unavailable": {
+      "no_provider": "Nie podłączono jeszcze dostawcy AI dla tej operacji. Napisz do nas — włączymy je, gdy tylko klucz będzie gotowy.",
+      "maintenance": "Trwa przerwa techniczna. Spróbuj za chwilę.",
+      "disabled": "Narzędzie jest wyłączone w Twoim planie."
+    },
+    "state": {
+      "no_provider": "Wkrótce",
+      "maintenance": "Przerwa",
+      "disabled": "Wyłączone",
+      "ok": ""
+    },
+    "shadowStyle": {
+      "soft": "Miękki",
+      "contact": "Kontaktowy",
+      "floating": "Unoszący"
+    },
+    "level": {
+      "light": "Lekka",
+      "balanced": "Zbalansowana",
+      "strong": "Mocna",
+      "auto": "Auto"
+    },
+    "fit": {
+      "inside": "Zmieść",
+      "cover": "Wypełnij"
+    },
+    "preset": {
+      "original": "Oryginalny rozmiar",
+      "square2000": "Kwadrat 2000×2000",
+      "square1600": "Kwadrat 1600×1600",
+      "allegro": "Allegro 1600×1600",
+      "amazon": "Amazon 2000×2000",
+      "shopify": "Shopify 2048×2048",
+      "web1200": "Web 1200 px szerokości",
+      "custom": "Własny"
+    },
+    "pos": {
+      "top-left": "Lewy górny",
+      "top-center": "Górny środek",
+      "top-right": "Prawy górny",
+      "center-left": "Lewy środek",
+      "center": "Środek",
+      "center-right": "Prawy środek",
+      "bottom-left": "Lewy dolny",
+      "bottom-center": "Dolny środek",
+      "bottom-right": "Prawy dolny",
+      "pattern": "Powtarzany wzór",
+      "patternHint": "Znak w kratkę na całym zdjęciu"
+    },
+    "opt": {
+      "factor": "Powiększenie",
+      "format": "Format",
+      "ratio": "Proporcje",
+      "color": "Kolor tła",
+      "padding": "Margines wokół produktu",
+      "quality": "Jakość",
+      "style": "Rodzaj cienia",
+      "opacity": "Krycie",
+      "blur": "Rozmycie",
+      "offsetX": "Przesunięcie X",
+      "offsetY": "Przesunięcie Y",
+      "background": "Tło",
+      "preset": "Gotowy rozmiar",
+      "width": "Szerokość",
+      "height": "Wysokość",
+      "auto": "auto",
+      "fit": "Dopasowanie",
+      "level": "Siła kompresji",
+      "keep": "Bez zmian",
+      "position": "Pozycja",
+      "scale": "Wielkość znaku",
+      "margin": "Odstęp od krawędzi",
+      "rotation": "Obrót",
+      "spacing": "Odstęp między znakami",
+      "alphaHint": "PNG i WebP zachowują przezroczystość.",
+      "ratioHint": "Kadr jest dorysowywany na zewnątrz — nic nie zostaje przycięte.",
+      "shadowHint": "Wymaga zdjęcia z przezroczystym tłem.",
+      "fitHint": "„Zmieść” nie kadruje, „Wypełnij” przycina do ramki.",
+      "levelHint": "Auto schodzi z jakością tylko tak długo, aż plik realnie schudnie."
+    },
+    "err": {
+      "insufficient_credits": "Za mało kredytów.",
+      "no_provider": "Brak podłączonego dostawcy.",
+      "needs_transparency": "Najpierw usuń tło — to narzędzie potrzebuje przezroczystości.",
+      "already_that_ratio": "Zdjęcie ma już te proporcje.",
+      "image_too_large": "Zdjęcie jest za duże.",
+      "unsupported_format": "Nieobsługiwany format pliku.",
+      "unreadable_image": "Nie udało się odczytać pliku.",
+      "missing_logo": "Brak logo.",
+      "provider_auth_failed": "Błąd klucza API dostawcy.",
+      "provider_out_of_credit": "Dostawca nie ma środków.",
+      "provider_rate_limited": "Limit zapytań dostawcy — spróbuj za chwilę.",
+      "provider_timeout": "Dostawca nie odpowiedział na czas.",
+      "provider_unreachable": "Brak połączenia z dostawcą.",
+      "network_error": "Błąd połączenia.",
+      "tool_unavailable": "Narzędzie chwilowo wyłączone.",
+      "processing_failed": "Nie udało się przetworzyć."
+    },
+    "upscale": {
+      "name": "Upscale",
+      "body": "Powiększ zdjęcie 2× lub 4× bez utraty ostrości.",
+      "suffix": "powiekszone"
+    },
+    "remove_bg": {
       "name": "Usuń tło",
-      "body": "Automatyczne usunięcie tła i przezroczysty PNG."
+      "body": "Wytnij produkt z tła i zapisz przezroczysty PNG.",
+      "suffix": "bez-tla"
     },
-    "white_background": {
+    "white_bg": {
       "name": "Białe tło",
-      "body": "Usuń tło i ustaw czyste, e-commerce’owe białe tło."
-    },
-    "replace_background": {
-      "name": "Zmień kolor tła",
-      "body": "Wybierz kolor z palety, presetu albo podaj HEX."
-    },
-    "remove_object": {
-      "name": "Usuń element",
-      "body": "Zaznacz lub opisz element, który ma zniknąć ze zdjęcia."
+      "body": "Połóż wycięty produkt na czystym, sklepowym tle.",
+      "suffix": "biale-tlo"
     },
     "expand": {
-      "name": "Rozszerz zdjęcie",
-      "body": "Dopasuj kadr do formatu 1:1, 4:5, 16:9 lub 9:16."
+      "name": "Rozszerz kadr AI",
+      "body": "Dorysuj kadr do 1:1, 4:5, 9:16 albo 16:9 — bez przycinania.",
+      "suffix": "kadr"
     },
-    "enhance": {
-      "name": "Popraw jakość",
-      "body": "Subtelne wyostrzenie i upscale bez zmiany produktu."
+    "shadow": {
+      "name": "Cień produktu",
+      "body": "Dodaj naturalny cień, żeby produkt nie wisiał w powietrzu.",
+      "suffix": "cien"
+    },
+    "format": {
+      "name": "Format i rozmiar",
+      "body": "Przeskaluj i przekonwertuj do JPG, PNG albo WebP.",
+      "suffix": "format"
+    },
+    "compress": {
+      "name": "Kompresja",
+      "body": "Zmniejsz wagę pliku bez widocznej straty jakości.",
+      "suffix": "lekkie"
+    },
+    "watermark": {
+      "name": "Watermark",
+      "body": "Nałóż logo w jednym z dziewięciu miejsc albo jako wzór.",
+      "suffix": "znak"
     }
   }
 }

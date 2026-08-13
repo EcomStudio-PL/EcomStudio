@@ -1,73 +1,125 @@
-import { Eraser, ImageOff, Maximize2, Palette, Sparkles, SquareDashed, Wand2 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import Link from "next/link";
+import {
+  ArrowUpRight, Crop, Gauge, Maximize2, Scissors, Square, Stamp, Sun, Wand2,
+} from "lucide-react";
+import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
+import { getCurrentWorkspace } from "@/lib/services/workspace";
+import { toolCatalogue } from "@/lib/server/image-tools";
 import { PageHeader } from "@/components/ui/page-header";
-import { Panel } from "@/components/ui/surface";
 import { Badge } from "@/components/ui/badge";
-import { TOOLS, toolAvailable, type ToolSlug } from "@/lib/ai/tools";
+import type { ToolSlug } from "@/lib/images/tools";
+import { cn } from "@/lib/utils";
 
-/** Each tool's icon and the colour it carries through the module. */
-const PRESENTATION: Record<ToolSlug, { icon: LucideIcon; tone: string }> = {
-  remove_background: { icon: ImageOff, tone: "text-accent bg-accent-soft" },
-  white_background: { icon: SquareDashed, tone: "text-indigo bg-[rgb(var(--indigo)/0.14)]" },
-  replace_background: { icon: Palette, tone: "text-accent2 bg-accent2-soft" },
-  remove_object: { icon: Eraser, tone: "text-danger bg-[rgb(var(--danger)/0.12)]" },
-  expand: { icon: Maximize2, tone: "text-indigo bg-[rgb(var(--indigo)/0.14)]" },
-  enhance: { icon: Sparkles, tone: "text-success bg-[rgb(var(--success)/0.14)]" },
+export const dynamic = "force-dynamic";
+
+const ICONS: Record<ToolSlug, typeof Wand2> = {
+  upscale: Maximize2,
+  remove_bg: Scissors,
+  white_bg: Square,
+  expand: Crop,
+  shadow: Sun,
+  format: Wand2,
+  compress: Gauge,
+  watermark: Stamp,
 };
 
+const TONES: Record<ToolSlug, string> = {
+  upscale: "bg-accent-soft text-accent",
+  remove_bg: "bg-accent2-soft text-accent2",
+  white_bg: "bg-sunken text-muted",
+  expand: "bg-accent-soft text-accent",
+  shadow: "bg-sunken text-muted",
+  format: "bg-accent2-soft text-accent2",
+  compress: "bg-sunken text-muted",
+  watermark: "bg-accent-soft text-accent",
+};
+
+/**
+ * TOOLS — the hub.
+ *
+ * Every card states what it costs before it is opened, and the price is the
+ * real one: the free tools say free because they genuinely never touch a paid
+ * API, and the paid ones show the credits the currently connected provider
+ * implies. A tool with no backend says so instead of opening onto a button
+ * that cannot work.
+ */
 export default async function ToolsPage() {
+  const supabase = await createClient();
   const { dict } = await getDictionary();
   const t = makeT(dict);
-  const tools = [...TOOLS].sort((a, b) => a.sortOrder - b.sortOrder);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const workspace = await getCurrentWorkspace(supabase, user.id);
+  if (!workspace) return null;
+
+  const catalogue = await toolCatalogue(supabase);
+  const free = catalogue.filter((c) => c.kind === "local");
+  const paid = catalogue.filter((c) => c.kind === "paid");
 
   return (
     <div>
       <PageHeader overline={t("nav.groups.create")} title={t("tools.title")} sub={t("tools.sub")} />
 
-      <div className="stagger grid gap-3.5 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3">
-        {tools.map((tool) => {
-          const { icon: Icon, tone } = PRESENTATION[tool.slug];
-          const available = toolAvailable(tool);
-          return (
-            <Panel key={tool.slug} className="flex flex-col gap-3 p-4">
-              <div className="flex items-start justify-between gap-2">
-                <span aria-hidden className={`flex h-11 w-11 items-center justify-center rounded-2xl ${tone}`}>
+      <Section title={t("tools.freeGroup")} note={t("tools.freeNote")} items={free} t={t} />
+      <Section title={t("tools.paidGroup")} note={t("tools.paidNote")} items={paid} t={t} className="mt-7" />
+    </div>
+  );
+}
+
+type Item = Awaited<ReturnType<typeof toolCatalogue>>[number];
+
+function Section({ title, note, items, t, className }: {
+  title: string;
+  note: string;
+  items: Item[];
+  t: (key: string, vars?: Record<string, string | number>) => string;
+  className?: string;
+}) {
+  return (
+    <section className={className}>
+      <div className="mb-3">
+        <h2 className="font-display text-[15px] font-semibold tracking-tight">{title}</h2>
+        <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{note}</p>
+      </div>
+      <div className="stagger grid gap-3 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((item) => {
+          const Icon = ICONS[item.slug];
+          const body = (
+            <>
+              <div className="flex items-start justify-between gap-3">
+                <span aria-hidden className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl", TONES[item.slug])}>
                   <Icon size={19} />
                 </span>
-                <span className="shrink-0 rounded-lg bg-raised px-2 py-1 text-[11px] font-bold tabular-nums text-muted">
-                  {tool.defaultCost} ◆
-                </span>
+                {item.available ? (
+                  item.credits === 0
+                    ? <Badge tone="green">{t("tools.free")}</Badge>
+                    : <Badge tone="neutral">{t("tools.creditsTotal", { n: item.credits })}</Badge>
+                ) : (
+                  <Badge tone="amber">{t(`tools.state.${item.reason}`)}</Badge>
+                )}
               </div>
-              <div className="min-w-0 flex-1">
-                <h2 className="text-sm font-semibold tracking-tight">{t(`tools.${tool.slug}.name`)}</h2>
-                <p className="mt-1 text-[13px] leading-relaxed text-muted">{t(`tools.${tool.slug}.body`)}</p>
+              <div className="mt-3 min-w-0">
+                <h3 className="flex items-center gap-1 text-sm font-semibold tracking-tight">
+                  <span className="truncate">{t(`tools.${item.slug}.name`)}</span>
+                  {item.available && <ArrowUpRight size={14} className="shrink-0 text-faint" aria-hidden />}
+                </h3>
+                <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{t(`tools.${item.slug}.body`)}</p>
               </div>
-              {available ? (
-                <button type="button"
-                  className="cta flex h-10 items-center justify-center gap-1.5 rounded-xl text-[13px] font-semibold">
-                  {t("tools.open")}
-                </button>
-              ) : (
-                /* No provider offers this capability yet. The card states that
-                   honestly rather than opening a panel that cannot work. */
-                <div className="flex items-center justify-between gap-2 rounded-xl bg-sunken/70 px-3 py-2.5">
-                  <Badge tone="amber">{t("common.comingSoon")}</Badge>
-                  <span className="text-[11px] text-faint">{t("tools.needsProvider")}</span>
-                </div>
-              )}
-            </Panel>
+            </>
+          );
+
+          return item.available ? (
+            <Link key={item.slug} href={`/tools/${item.slug}`}
+              className="panel panel-interactive flex flex-col rounded-2xl p-4">
+              {body}
+            </Link>
+          ) : (
+            <div key={item.slug} className="panel flex flex-col rounded-2xl p-4 opacity-65">{body}</div>
           );
         })}
       </div>
-
-      <Panel className="mt-5 flex items-start gap-3 p-4">
-        <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
-          <Wand2 size={16} />
-        </span>
-        <p className="text-[13px] leading-relaxed text-muted">{t("tools.note")}</p>
-      </Panel>
-    </div>
+    </section>
   );
 }

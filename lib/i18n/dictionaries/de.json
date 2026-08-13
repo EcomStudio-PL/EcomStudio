@@ -61,7 +61,11 @@
     "close": "Schließen",
     "all": "Alle",
     "photos": "Fotos",
-    "noPhotos": "Keine Fotos"
+    "noPhotos": "Keine Fotos",
+    "clear": "Leeren",
+    "remove": "Entfernen",
+    "download": "Herunterladen",
+    "noData": "Keine Daten"
   },
   "landing": {
     "headline": "Professionelle Produktvisuals mit KI. Schneller als ein Fotostudio.",
@@ -333,7 +337,8 @@
       "inspirations": "Inspirationen",
       "support": "Support",
       "usersShort": "Nutzer",
-      "generationsShort": "Gens"
+      "generationsShort": "Gens",
+      "tools": "Image Tools"
     },
     "statUsers": "Benutzer",
     "statProducts": "Produkte",
@@ -503,7 +508,39 @@
     },
     "messages": "Nachrichten",
     "duplicate": "Duplizieren",
-    "report": "Bericht"
+    "report": "Bericht",
+    "tools": {
+      "title": "Image Tools",
+      "sub": "Anbieterstatus und Wirtschaftlichkeit der acht Foto-Werkzeuge.",
+      "providers": "Anbieter",
+      "connectedCount": "Verbunden: {n} / {total}",
+      "status": {
+        "connected": "Verbunden",
+        "not_configured": "Nicht konfiguriert"
+      },
+      "source": {
+        "env": "Schlüssel aus einer Umgebungsvariable",
+        "vault": "Schlüssel aus dem Panel (verschlüsselt)"
+      },
+      "cap": {
+        "background": "Freistellen",
+        "upscale": "Upscale",
+        "expand": "Rahmenerweiterung"
+      },
+      "getKey": "Schlüssel erzeugen",
+      "keyNote": "Ein Schlüssel wird als Server-Umgebungsvariable gesetzt oder im Panel eingefügt — er erreicht nie den Browser oder das Repository.",
+      "economics": "Wirtschaftlichkeit",
+      "paid": "Kostenpflichtig",
+      "assumptions": "1 Cr. = {credit} zł · USD/PLN {fx} · Mindestmarge {margin}% · Puffer {buffer}%",
+      "col": {
+        "tool": "Werkzeug",
+        "type": "Typ",
+        "provider": "Anbieter",
+        "cost": "Kosten / Vorgang",
+        "price": "Preis",
+        "margin": "Marge"
+      }
+    }
   },
   "support": {
     "title": "Support & Nachrichten",
@@ -989,33 +1026,178 @@
   },
   "tools": {
     "title": "Werkzeuge",
-    "sub": "Schnelle Operationen an Produktfotos.",
-    "open": "Öffnen",
-    "needsProvider": "Wartet auf einen KI-Anbieter",
-    "note": "Ergebnisse landen in deiner Bibliothek und lassen sich einem Produkt zuordnen. Jede Operation kostet die auf der Karte gezeigten Credits.",
-    "remove_background": {
+    "sub": "Schnelle, konkrete Eingriffe an Produktfotos — einzeln oder als Stapel.",
+    "freeGroup": "Kostenlos",
+    "freeNote": "Laufen auf unserem eigenen Server ohne bezahlte API. Sie kosten keinen einzigen Credit.",
+    "paidGroup": "Gegen Credits",
+    "paidNote": "Brauchen ein KI-Modell. Der Preis folgt den echten Kosten beim aktuell verbundenen Anbieter.",
+    "free": "Kostenlos",
+    "creditsTotal": "{n} Cr.",
+    "settings": "Einstellungen",
+    "drop": "Fotos hierher ziehen oder klicken",
+    "dropHint": "JPG, PNG, WebP, AVIF · bis zu {n} Dateien · max. {size} pro Datei",
+    "queue": "Warteschlange ({n})",
+    "progress": "Verarbeite {done} / {total}",
+    "pendingCount": "{n} zu verarbeiten",
+    "noQueue": "Fotos hinzufügen, um zu starten",
+    "run": "Verarbeiten ({n})",
+    "result": "Ergebnis",
+    "before": "Vorher",
+    "after": "Nachher",
+    "compare": "Vergleich vorher / nachher",
+    "saved": "{percent}% kleiner · {before} → {after}",
+    "downloadZip": "ZIP laden ({n})",
+    "save": "Speichern",
+    "allSaved": "Gespeichert",
+    "savedLibrary": "In der Bibliothek gespeichert ({n})",
+    "savedProduct": "Zum Produkt hinzugefügt ({n})",
+    "saveFailed": "Speichern fehlgeschlagen.",
+    "linkProduct": "Einem Produkt zuordnen",
+    "retryFailed": "Fehlgeschlagene wiederholen ({n})",
+    "rejected": "{n} Dateien übersprungen — falsches Format oder zu groß.",
+    "batchFull": "Maximal {n} Dateien auf einmal.",
+    "pickLogo": "Logo wählen (PNG)",
+    "changeLogo": "Logo ändern",
+    "needLogo": "Zuerst ein Logo hochladen.",
+    "previewNote": "Positionsvorschau — die finale Datei rendert der Server.",
+    "unavailableTitle": "Dieses Werkzeug ist gerade nicht verfügbar",
+    "unavailable": {
+      "no_provider": "Für diesen Vorgang ist noch kein KI-Anbieter verbunden. Es schaltet sich frei, sobald ein Schlüssel hinterlegt ist.",
+      "maintenance": "Wartung läuft. Bitte gleich noch einmal versuchen.",
+      "disabled": "Dieses Werkzeug gehört nicht zu Ihrem Tarif."
+    },
+    "state": {
+      "no_provider": "Bald",
+      "maintenance": "Wartung",
+      "disabled": "Aus",
+      "ok": ""
+    },
+    "shadowStyle": {
+      "soft": "Weich",
+      "contact": "Kontakt",
+      "floating": "Schwebend"
+    },
+    "level": {
+      "light": "Leicht",
+      "balanced": "Ausgewogen",
+      "strong": "Stark",
+      "auto": "Auto"
+    },
+    "fit": {
+      "inside": "Einpassen",
+      "cover": "Füllen"
+    },
+    "preset": {
+      "original": "Originalgröße",
+      "square2000": "Quadrat 2000×2000",
+      "square1600": "Quadrat 1600×1600",
+      "allegro": "Allegro 1600×1600",
+      "amazon": "Amazon 2000×2000",
+      "shopify": "Shopify 2048×2048",
+      "web1200": "Web 1200 px breit",
+      "custom": "Eigene"
+    },
+    "pos": {
+      "top-left": "Oben links",
+      "top-center": "Oben mittig",
+      "top-right": "Oben rechts",
+      "center-left": "Mitte links",
+      "center": "Mitte",
+      "center-right": "Mitte rechts",
+      "bottom-left": "Unten links",
+      "bottom-center": "Unten mittig",
+      "bottom-right": "Unten rechts",
+      "pattern": "Wiederholtes Muster",
+      "patternHint": "Über das ganze Foto gekachelt"
+    },
+    "opt": {
+      "factor": "Vergrößerung",
+      "format": "Format",
+      "ratio": "Seitenverhältnis",
+      "color": "Hintergrundfarbe",
+      "padding": "Abstand um das Produkt",
+      "quality": "Qualität",
+      "style": "Schattenart",
+      "opacity": "Deckkraft",
+      "blur": "Weichzeichnen",
+      "offsetX": "Versatz X",
+      "offsetY": "Versatz Y",
+      "background": "Hintergrund",
+      "preset": "Vorgabegröße",
+      "width": "Breite",
+      "height": "Höhe",
+      "auto": "auto",
+      "fit": "Anpassung",
+      "level": "Kompression",
+      "keep": "Unverändert",
+      "position": "Position",
+      "scale": "Zeichengröße",
+      "margin": "Randabstand",
+      "rotation": "Drehung",
+      "spacing": "Abstand",
+      "alphaHint": "PNG und WebP behalten die Transparenz.",
+      "ratioHint": "Der Rahmen wird nach außen gemalt — nichts wird beschnitten.",
+      "shadowHint": "Braucht ein Foto mit transparentem Hintergrund.",
+      "fitHint": "„Einpassen“ beschneidet nie, „Füllen“ schneidet auf den Rahmen zu.",
+      "levelHint": "Auto senkt die Qualität nur so lange, wie die Datei wirklich kleiner wird."
+    },
+    "err": {
+      "insufficient_credits": "Zu wenig Credits.",
+      "no_provider": "Kein Anbieter verbunden.",
+      "needs_transparency": "Erst den Hintergrund entfernen — dieses Werkzeug braucht Transparenz.",
+      "already_that_ratio": "Das Foto hat dieses Verhältnis bereits.",
+      "image_too_large": "Das Bild ist zu groß.",
+      "unsupported_format": "Dateiformat nicht unterstützt.",
+      "unreadable_image": "Die Datei konnte nicht gelesen werden.",
+      "missing_logo": "Kein Logo.",
+      "provider_auth_failed": "Fehler beim API-Schlüssel des Anbieters.",
+      "provider_out_of_credit": "Der Anbieter hat kein Guthaben.",
+      "provider_rate_limited": "Anbieterlimit — bitte gleich erneut versuchen.",
+      "provider_timeout": "Der Anbieter hat nicht rechtzeitig geantwortet.",
+      "provider_unreachable": "Anbieter nicht erreichbar.",
+      "network_error": "Verbindungsfehler.",
+      "tool_unavailable": "Werkzeug vorübergehend aus.",
+      "processing_failed": "Verarbeitung fehlgeschlagen."
+    },
+    "upscale": {
+      "name": "Upscale",
+      "body": "Foto 2× oder 4× vergrößern, ohne Schärfe zu verlieren.",
+      "suffix": "vergroessert"
+    },
+    "remove_bg": {
       "name": "Hintergrund entfernen",
-      "body": "Automatischer Freisteller als transparentes PNG."
+      "body": "Produkt freistellen und als transparentes PNG sichern.",
+      "suffix": "ohne-hintergrund"
     },
-    "white_background": {
+    "white_bg": {
       "name": "Weißer Hintergrund",
-      "body": "Hintergrund entfernen und sauberes E-Commerce-Weiß setzen."
-    },
-    "replace_background": {
-      "name": "Hintergrundfarbe ändern",
-      "body": "Farbe aus Palette, Preset oder HEX wählen."
-    },
-    "remove_object": {
-      "name": "Objekt entfernen",
-      "body": "Markiere oder beschreibe, was verschwinden soll."
+      "body": "Freigestelltes Produkt auf sauberen Shop-Hintergrund setzen.",
+      "suffix": "weiss"
     },
     "expand": {
-      "name": "Bild erweitern",
-      "body": "Format auf 1:1, 4:5, 16:9 oder 9:16 anpassen."
+      "name": "KI-Erweiterung",
+      "body": "Rahmen auf 1:1, 4:5, 9:16 oder 16:9 erweitern — ohne Beschnitt.",
+      "suffix": "erweitert"
     },
-    "enhance": {
-      "name": "Qualität verbessern",
-      "body": "Sanftes Schärfen und Upscale ohne Produktänderung."
+    "shadow": {
+      "name": "Produktschatten",
+      "body": "Natürlichen Schatten ergänzen, damit das Produkt nicht schwebt.",
+      "suffix": "schatten"
+    },
+    "format": {
+      "name": "Format und Größe",
+      "body": "Skalieren und nach JPG, PNG oder WebP wandeln.",
+      "suffix": "format"
+    },
+    "compress": {
+      "name": "Kompression",
+      "body": "Dateigröße senken, ohne sichtbaren Qualitätsverlust.",
+      "suffix": "komprimiert"
+    },
+    "watermark": {
+      "name": "Wasserzeichen",
+      "body": "Logo an einem von neun Ankern oder als Muster auflegen.",
+      "suffix": "markiert"
     }
   }
 }

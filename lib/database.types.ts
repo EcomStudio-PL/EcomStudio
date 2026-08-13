@@ -1503,8 +1503,6 @@ export type Database = {
       prompt_sessions: {
         Row: {
           analysis_model: string | null
-          fallback_reason: string | null
-          fallback_from: string | null
           analysis_provider: string | null
           aspect_ratio: string
           cache_hit: boolean
@@ -1513,6 +1511,8 @@ export type Database = {
           error: string | null
           error_stage: string | null
           extra_info: string | null
+          fallback_from: string | null
+          fallback_reason: string | null
           feature_manifest: Json
           id: string
           image_analysis: Json
@@ -1530,8 +1530,6 @@ export type Database = {
         }
         Insert: {
           analysis_model?: string | null
-          fallback_reason?: string | null
-          fallback_from?: string | null
           analysis_provider?: string | null
           aspect_ratio?: string
           cache_hit?: boolean
@@ -1540,6 +1538,8 @@ export type Database = {
           error?: string | null
           error_stage?: string | null
           extra_info?: string | null
+          fallback_from?: string | null
+          fallback_reason?: string | null
           feature_manifest?: Json
           id?: string
           image_analysis?: Json
@@ -1557,8 +1557,6 @@ export type Database = {
         }
         Update: {
           analysis_model?: string | null
-          fallback_reason?: string | null
-          fallback_from?: string | null
           analysis_provider?: string | null
           aspect_ratio?: string
           cache_hit?: boolean
@@ -1567,6 +1565,8 @@ export type Database = {
           error?: string | null
           error_stage?: string | null
           extra_info?: string | null
+          fallback_from?: string | null
+          fallback_reason?: string | null
           feature_manifest?: Json
           id?: string
           image_analysis?: Json
@@ -1982,6 +1982,67 @@ export type Database = {
           },
         ]
       }
+      tool_results: {
+        Row: {
+          created_at: string
+          file_size: number
+          id: string
+          metadata: Json
+          mime_type: string
+          product_id: string | null
+          storage_path: string
+          tool_slug: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          file_size?: number
+          id?: string
+          metadata?: Json
+          mime_type?: string
+          product_id?: string | null
+          storage_path: string
+          tool_slug: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          file_size?: number
+          id?: string
+          metadata?: Json
+          mime_type?: string
+          product_id?: string | null
+          storage_path?: string
+          tool_slug?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tool_results_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tool_results_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tool_results_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       usage_events: {
         Row: {
           actual_api_cost_usd_micros: number
@@ -2299,14 +2360,30 @@ export type Database = {
         }
         Returns: string
       }
-      complete_usage_event: {
-        Args: { p_event_id: string; p_result_count: number }
-        Returns: undefined
-      }
-      fail_usage_event: {
-        Args: { p_error: string; p_event_id: string }
-        Returns: string
-      }
+      complete_usage_event:
+        | {
+            Args: { p_event_id: string; p_result_count: number }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_api_cost_usd_micros?: number
+              p_event_id: string
+              p_request_id?: string
+              p_result_count: number
+            }
+            Returns: undefined
+          }
+      fail_usage_event:
+        | { Args: { p_error: string; p_event_id: string }; Returns: string }
+        | {
+            Args: {
+              p_api_cost_usd_micros?: number
+              p_error: string
+              p_event_id: string
+            }
+            Returns: string
+          }
       get_active_provider_credential: {
         Args: { p_provider_id: string }
         Returns: {

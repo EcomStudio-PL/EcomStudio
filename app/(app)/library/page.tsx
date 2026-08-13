@@ -18,9 +18,20 @@ export default async function LibraryPage() {
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) return null;
   const generations = await listAssets(supabase, workspace.id);
+  // Tool results are saved the same way but are not generations, so they get
+  // their own shelf rather than being folded into the generation grid.
+  const { data: toolResults } = await supabase
+    .from("tool_results")
+    .select("id, tool_slug, storage_path, created_at")
+    .eq("workspace_id", workspace.id)
+    .order("created_at", { ascending: false })
+    .limit(60);
 
   // Sign all generated asset paths in one call.
-  const paths = generations.flatMap((g) => g.generation_assets.map((a) => a.storage_path));
+  const paths = [
+    ...generations.flatMap((g) => g.generation_assets.map((a) => a.storage_path)),
+    ...(toolResults ?? []).map((r) => r.storage_path),
+  ];
   const urlMap = new Map<string, string>();
   if (paths.length > 0) {
     const { data: signed } = await supabase.storage.from("generation-assets").createSignedUrls(paths, 3600);
@@ -30,7 +41,7 @@ export default async function LibraryPage() {
   return (
     <div>
       <PageHeader overline={t("nav.groups.assets")} title={t("library.title")} sub={t("library.sub")} />
-      {generations.length === 0 ? (
+      {generations.length === 0 && (toolResults ?? []).length === 0 ? (
         <EmptyState title={t("library.emptyTitle")} body={t("library.emptyBody")} />
       ) : (
         <div className="stagger grid gap-3.5 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3">
@@ -61,6 +72,25 @@ export default async function LibraryPage() {
             </Card>
           ))}
         </div>
+      )}
+
+      {(toolResults ?? []).length > 0 && (
+        <section className="mt-7">
+          <h2 className="mb-3 font-display text-[15px] font-semibold tracking-tight">{t("tools.title")}</h2>
+          <div className="grid grid-cols-2 gap-2 [&>*]:min-w-0 sm:grid-cols-4 lg:grid-cols-6">
+            {(toolResults ?? []).map((r) => {
+              const url = urlMap.get(r.storage_path);
+              return url ? (
+                <a key={r.id} href={url} target="_blank" rel="noreferrer noopener"
+                  className="panel panel-interactive block overflow-hidden rounded-xl">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt="" loading="lazy" className="aspect-square w-full bg-checker object-contain" />
+                  <p className="truncate px-2 py-1.5 text-[11px] font-medium">{t(`tools.${r.tool_slug}.name`)}</p>
+                </a>
+              ) : null;
+            })}
+          </div>
+        </section>
       )}
     </div>
   );

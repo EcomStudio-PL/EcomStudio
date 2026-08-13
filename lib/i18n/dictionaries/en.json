@@ -61,7 +61,11 @@
     "close": "Close",
     "all": "All",
     "photos": "photos",
-    "noPhotos": "No photos"
+    "noPhotos": "No photos",
+    "clear": "Clear",
+    "remove": "Remove",
+    "download": "Download",
+    "noData": "No data"
   },
   "landing": {
     "headline": "Professional product visuals with AI. Faster than a photo studio.",
@@ -333,7 +337,8 @@
       "inspirations": "Inspirations",
       "support": "Support",
       "usersShort": "Users",
-      "generationsShort": "Gens"
+      "generationsShort": "Gens",
+      "tools": "Image Tools"
     },
     "statUsers": "Users",
     "statProducts": "Products",
@@ -503,7 +508,39 @@
     },
     "messages": "Messages",
     "duplicate": "Duplicate",
-    "report": "Report"
+    "report": "Report",
+    "tools": {
+      "title": "Image Tools",
+      "sub": "Provider status and the economics of the eight photo tools.",
+      "providers": "Providers",
+      "connectedCount": "Connected: {n} / {total}",
+      "status": {
+        "connected": "Connected",
+        "not_configured": "Not configured"
+      },
+      "source": {
+        "env": "Key from an environment variable",
+        "vault": "Key from the panel (encrypted)"
+      },
+      "cap": {
+        "background": "background removal",
+        "upscale": "upscale",
+        "expand": "frame expansion"
+      },
+      "getKey": "Generate a key",
+      "keyNote": "A key is set as a server environment variable or pasted in the panel — it never reaches the browser or the repository.",
+      "economics": "Economics",
+      "paid": "Paid",
+      "assumptions": "1 cr. = {credit} zł · USD/PLN {fx} · min margin {margin}% · buffer {buffer}%",
+      "col": {
+        "tool": "Tool",
+        "type": "Type",
+        "provider": "Provider",
+        "cost": "Cost / op",
+        "price": "Price",
+        "margin": "Margin"
+      }
+    }
   },
   "support": {
     "title": "Support & messages",
@@ -989,33 +1026,178 @@
   },
   "tools": {
     "title": "Tools",
-    "sub": "Quick operations on product photos.",
-    "open": "Open",
-    "needsProvider": "Awaiting an AI provider",
-    "note": "Tool results save to your Library and can be linked to a product. Each operation will cost the credits shown on its card.",
-    "remove_background": {
+    "sub": "Fast, specific operations on product photos — one at a time or in bulk.",
+    "freeGroup": "Free",
+    "freeNote": "Run on our own server with no paid API. They never cost a credit.",
+    "paidGroup": "Paid in credits",
+    "paidNote": "These need an AI model. The price follows the real cost at the provider currently connected.",
+    "free": "Free",
+    "creditsTotal": "{n} cr.",
+    "settings": "Settings",
+    "drop": "Drop photos here or click",
+    "dropHint": "JPG, PNG, WebP, AVIF · up to {n} files · max {size} each",
+    "queue": "Queue ({n})",
+    "progress": "Processing {done} / {total}",
+    "pendingCount": "{n} to process",
+    "noQueue": "Add photos to start",
+    "run": "Process ({n})",
+    "result": "Result",
+    "before": "Before",
+    "after": "After",
+    "compare": "Before / after comparison",
+    "saved": "{percent}% smaller · {before} → {after}",
+    "downloadZip": "Download ZIP ({n})",
+    "save": "Save",
+    "allSaved": "Saved",
+    "savedLibrary": "Saved to the library ({n})",
+    "savedProduct": "Added to the product ({n})",
+    "saveFailed": "Could not save.",
+    "linkProduct": "Attach to a product",
+    "retryFailed": "Retry failed ({n})",
+    "rejected": "Skipped {n} files — wrong format or too large.",
+    "batchFull": "Up to {n} files at once.",
+    "pickLogo": "Choose a logo (PNG)",
+    "changeLogo": "Change logo",
+    "needLogo": "Upload a logo first.",
+    "previewNote": "Placement preview — the final file is rendered on the server.",
+    "unavailableTitle": "This tool is unavailable right now",
+    "unavailable": {
+      "no_provider": "No AI provider is connected for this operation yet. It turns on the moment a key is in place.",
+      "maintenance": "Maintenance in progress. Try again shortly.",
+      "disabled": "This tool is not part of your plan."
+    },
+    "state": {
+      "no_provider": "Soon",
+      "maintenance": "Maintenance",
+      "disabled": "Off",
+      "ok": ""
+    },
+    "shadowStyle": {
+      "soft": "Soft",
+      "contact": "Contact",
+      "floating": "Floating"
+    },
+    "level": {
+      "light": "Light",
+      "balanced": "Balanced",
+      "strong": "Strong",
+      "auto": "Auto"
+    },
+    "fit": {
+      "inside": "Fit",
+      "cover": "Fill"
+    },
+    "preset": {
+      "original": "Original size",
+      "square2000": "Square 2000×2000",
+      "square1600": "Square 1600×1600",
+      "allegro": "Allegro 1600×1600",
+      "amazon": "Amazon 2000×2000",
+      "shopify": "Shopify 2048×2048",
+      "web1200": "Web 1200 px wide",
+      "custom": "Custom"
+    },
+    "pos": {
+      "top-left": "Top left",
+      "top-center": "Top centre",
+      "top-right": "Top right",
+      "center-left": "Middle left",
+      "center": "Centre",
+      "center-right": "Middle right",
+      "bottom-left": "Bottom left",
+      "bottom-center": "Bottom centre",
+      "bottom-right": "Bottom right",
+      "pattern": "Repeating pattern",
+      "patternHint": "Tiled across the whole photo"
+    },
+    "opt": {
+      "factor": "Scale",
+      "format": "Format",
+      "ratio": "Aspect ratio",
+      "color": "Background colour",
+      "padding": "Padding around the product",
+      "quality": "Quality",
+      "style": "Shadow type",
+      "opacity": "Opacity",
+      "blur": "Blur",
+      "offsetX": "Offset X",
+      "offsetY": "Offset Y",
+      "background": "Background",
+      "preset": "Preset size",
+      "width": "Width",
+      "height": "Height",
+      "auto": "auto",
+      "fit": "Fit",
+      "level": "Compression",
+      "keep": "Keep",
+      "position": "Position",
+      "scale": "Mark size",
+      "margin": "Edge margin",
+      "rotation": "Rotation",
+      "spacing": "Spacing",
+      "alphaHint": "PNG and WebP keep transparency.",
+      "ratioHint": "The frame is painted outwards — nothing is ever cropped.",
+      "shadowHint": "Needs a photo with a transparent background.",
+      "fitHint": "“Fit” never crops, “Fill” crops to the frame.",
+      "levelHint": "Auto lowers quality only while the file actually gets smaller."
+    },
+    "err": {
+      "insufficient_credits": "Not enough credits.",
+      "no_provider": "No provider connected.",
+      "needs_transparency": "Remove the background first — this tool needs transparency.",
+      "already_that_ratio": "The photo already has that ratio.",
+      "image_too_large": "The image is too large.",
+      "unsupported_format": "Unsupported file format.",
+      "unreadable_image": "The file could not be read.",
+      "missing_logo": "No logo.",
+      "provider_auth_failed": "Provider API key error.",
+      "provider_out_of_credit": "The provider is out of funds.",
+      "provider_rate_limited": "Provider rate limit — try again shortly.",
+      "provider_timeout": "The provider did not answer in time.",
+      "provider_unreachable": "Cannot reach the provider.",
+      "network_error": "Connection error.",
+      "tool_unavailable": "Tool temporarily off.",
+      "processing_failed": "Processing failed."
+    },
+    "upscale": {
+      "name": "Upscale",
+      "body": "Enlarge a photo 2× or 4× without losing sharpness.",
+      "suffix": "upscaled"
+    },
+    "remove_bg": {
       "name": "Remove background",
-      "body": "Automatic cutout and a transparent PNG."
+      "body": "Cut the product out and save a transparent PNG.",
+      "suffix": "no-bg"
     },
-    "white_background": {
+    "white_bg": {
       "name": "White background",
-      "body": "Remove the background and set a clean e-commerce white."
-    },
-    "replace_background": {
-      "name": "Change background colour",
-      "body": "Pick a colour from the palette, a preset or a HEX value."
-    },
-    "remove_object": {
-      "name": "Remove an object",
-      "body": "Select or describe what should disappear from the photo."
+      "body": "Place a cut-out product on a clean retail background.",
+      "suffix": "white-bg"
     },
     "expand": {
-      "name": "Expand the photo",
-      "body": "Fit the frame to 1:1, 4:5, 16:9 or 9:16."
+      "name": "AI expand",
+      "body": "Paint the frame out to 1:1, 4:5, 9:16 or 16:9 — never cropping.",
+      "suffix": "expanded"
     },
-    "enhance": {
-      "name": "Improve quality",
-      "body": "Subtle sharpening and upscale without changing the product."
+    "shadow": {
+      "name": "Product shadow",
+      "body": "Add a natural shadow so the product does not float.",
+      "suffix": "shadow"
+    },
+    "format": {
+      "name": "Format and size",
+      "body": "Resize and convert to JPG, PNG or WebP.",
+      "suffix": "resized"
+    },
+    "compress": {
+      "name": "Compression",
+      "body": "Cut the file size with no visible loss of quality.",
+      "suffix": "compressed"
+    },
+    "watermark": {
+      "name": "Watermark",
+      "body": "Place a logo on one of nine anchors or as a pattern.",
+      "suffix": "marked"
     }
   }
 }
