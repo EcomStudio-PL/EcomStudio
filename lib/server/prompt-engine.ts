@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash } from "crypto";
 import type { Client } from "@/lib/services/workspace";
-import { decryptSecret, encryptionAvailable } from "@/lib/server/crypto";
+import { decryptSecret, encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { ProviderError, type ReferenceImage } from "@/lib/ai/types";
 import { analyzeReferences } from "@/lib/ai/engine/analysis";
 import { proposeScenes } from "@/lib/ai/engine/scenes";
@@ -20,7 +20,42 @@ export type PromptSessionInput = {
   aspectRatio: string;
   /** Storage paths in product-images already uploaded by the client. */
   referencePaths: string[];
+  /** How many shot concepts to design (5-10; the server clamps). */
+  shots?: number;
+  /** Locale for the customer-facing card copy (pl / en / de). */
+  locale?: string;
 };
+
+export const MIN_SHOTS = 5;
+export const MAX_SHOTS = 10;
+export function clampShots(raw: unknown): number {
+  const n = typeof raw === "number" ? Math.trunc(raw) : Number(raw);
+  return Number.isFinite(n) ? Math.min(MAX_SHOTS, Math.max(MIN_SHOTS, n)) : MIN_SHOTS;
+}
+
+const CUSTOMER_LANGUAGE: Record<string, string> = { pl: "Polish", en: "English", de: "German" };
+
+/**
+ * The seller-facing concept payload that IS allowed to leave the server.
+ * There is deliberately no field for the prompt: everything internal travels
+ * only as AES-256-GCM ciphertext in the encrypted columns.
+ */
+export function encryptConceptPayload(prompt: string, negative: string): { ciphertext: string; iv: string; authTag: string } {
+  return encryptSecret(JSON.stringify({ p: prompt, n: negative }));
+}
+
+export function decryptConceptPayload(row: {
+  prompt_encrypted: string | null; prompt_iv: string | null; prompt_tag: string | null;
+}): { prompt: string; negative: string } | null {
+  if (!row.prompt_encrypted || !row.prompt_iv || !row.prompt_tag) return null;
+  try {
+    const parsed = JSON.parse(decryptSecret(row.prompt_encrypted, row.prompt_iv, row.prompt_tag)) as { p?: string; n?: string };
+    if (typeof parsed.p !== "string" || !parsed.p) return null;
+    return { prompt: parsed.p, negative: parsed.n ?? "" };
+  } catch {
+    return null;
+  }
+}
 
 export type PromptSessionOutput =
   | { ok: true; sessionId: string; productId: string; promptCount: number }
@@ -239,21 +274,27 @@ export async function runPromptSession(
 
     // 3) SCENE STRATEGY + DIVERSITY (retry once to refill filtered slots)
     stage = "scenes";
-    const scened = await proposeScenes(backends, images, analyses, manifest, sessionInfo);
+    const shots = clampShots(input.shots);
+    const customerLanguage = CUSTOMER_LANGUAGE[input.locale ?? "pl"] ?? "Polish";
+    const scened = await proposeScenes(backends, images, analyses, manifest, sessionInfo, {
+      count: shots, customerLanguage,
+    });
     let concepts = scened.concepts;
     usedOutcome = scened.outcome;
-    if (concepts.length < 5) {
-      const missing = 5 - concepts.length;
+    if (concepts.length < shots) {
+      const missing = shots - concepts.length;
       try {
         const extra = await proposeScenes(backends, images, analyses, manifest, sessionInfo, {
-          count: missing, avoidSceneTypes: concepts.map((c) => c.scene_type),
+          count: missing, avoidSceneTypes: concepts.map((c) => c.scene_type), customerLanguage,
         });
-        concepts = [...concepts, ...extra.concepts.filter((e) => !concepts.some((c) => c.scene_type === e.scene_type))].slice(0, 5);
+        concepts = [...concepts, ...extra.concepts.filter((e) => !concepts.some((c) => c.scene_type === e.scene_type))].slice(0, shots);
       } catch { /* keep what we have — 3+ distinct concepts beat a hard fail */ }
     }
     if (concepts.length === 0) throw new ProviderError("analysis_empty", true);
 
-    // 4) MASTER + NEGATIVE PROMPTS
+    // 4) MASTER + NEGATIVE PROMPTS — assembled server-side and stored ONLY as
+    // ciphertext. The row a client can read carries the card copy and the
+    // reference selection; the prompt itself never leaves the server in clear.
     stage = "prompts";
     const rows = concepts.map((concept, idx) => {
       const strength = chooseLockStrength(concept, manifest, lock.conflicts);
@@ -261,12 +302,16 @@ export async function runPromptSession(
         concept, manifest, lock, strength, session: sessionInfo, imageCount: images.length,
       });
       const negative = assembleNegativePrompt(concept, manifest, lock);
+      const sealed = encryptConceptPayload(prompt, negative);
       const rationale = referenceRationale(concept, analyses)
         .map((r) => `${r.image} — ${r.label}`).join("; ");
       return {
         product_id: productId!, workspace_id: workspaceId, session_id: session.id,
         concept_name: concept.title, shot_type: concept.scene_type, scene_type: concept.scene_type,
-        prompt_text: prompt, negative_prompt: negative,
+        customer_title: concept.customer_title?.trim() || concept.title,
+        customer_description: concept.customer_description?.trim() || null,
+        prompt_text: "", negative_prompt: null,
+        prompt_encrypted: sealed.ciphertext, prompt_iv: sealed.iv, prompt_tag: sealed.authTag,
         primary_reference: concept.primary_reference,
         supporting_references: concept.supporting_references as never,
         reference_indices: [concept.primary_reference, ...concept.supporting_references.map((s) => s.image)],
@@ -357,15 +402,22 @@ export async function regeneratePrompt(
     const [concept]: SceneConcept[] = concepts;
     if (!concept) return { ok: false, error: "analysis_empty" };
     const strength = chooseLockStrength(concept, manifest, lock.conflicts);
+    const sealed = encryptConceptPayload(
+      assembleMasterPrompt({ concept, manifest, lock, strength, session: sessionInfo, imageCount: images.length }),
+      assembleNegativePrompt(concept, manifest, lock),
+    );
     const rationale = referenceRationale(concept, analyses).map((r) => `${r.image} — ${r.label}`).join("; ");
     await supabase.from("generated_prompts").update({
       concept_name: concept.title, shot_type: concept.scene_type, scene_type: concept.scene_type,
-      prompt_text: assembleMasterPrompt({ concept, manifest, lock, strength, session: sessionInfo, imageCount: images.length }),
-      negative_prompt: assembleNegativePrompt(concept, manifest, lock),
+      customer_title: concept.customer_title?.trim() || concept.title,
+      customer_description: concept.customer_description?.trim() || null,
+      prompt_text: "", negative_prompt: null,
+      prompt_encrypted: sealed.ciphertext, prompt_iv: sealed.iv, prompt_tag: sealed.authTag,
       primary_reference: concept.primary_reference,
       supporting_references: concept.supporting_references as never,
       reference_indices: [concept.primary_reference, ...concept.supporting_references.map((s) => s.image)],
       reference_rationale: rationale, lock_strength: strength,
+      generation_count: 0, last_job_id: null,
     }).eq("id", promptId);
     return { ok: true };
   } catch (e) {

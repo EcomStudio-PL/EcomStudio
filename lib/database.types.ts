@@ -681,13 +681,20 @@ export type Database = {
         Row: {
           concept_name: string
           created_at: string
+          customer_description: string | null
+          customer_title: string | null
           format: string
+          generation_count: number
           id: string
+          last_job_id: string | null
           lock_strength: string
           negative_prompt: string | null
           primary_reference: number | null
           priority: number
           product_id: string
+          prompt_encrypted: string | null
+          prompt_iv: string | null
+          prompt_tag: string | null
           prompt_text: string
           reference_image_ids: string[]
           reference_indices: number[]
@@ -703,13 +710,20 @@ export type Database = {
         Insert: {
           concept_name: string
           created_at?: string
+          customer_description?: string | null
+          customer_title?: string | null
           format?: string
+          generation_count?: number
           id?: string
+          last_job_id?: string | null
           lock_strength?: string
           negative_prompt?: string | null
           primary_reference?: number | null
           priority?: number
           product_id: string
+          prompt_encrypted?: string | null
+          prompt_iv?: string | null
+          prompt_tag?: string | null
           prompt_text: string
           reference_image_ids?: string[]
           reference_indices?: number[]
@@ -725,13 +739,20 @@ export type Database = {
         Update: {
           concept_name?: string
           created_at?: string
+          customer_description?: string | null
+          customer_title?: string | null
           format?: string
+          generation_count?: number
           id?: string
+          last_job_id?: string | null
           lock_strength?: string
           negative_prompt?: string | null
           primary_reference?: number | null
           priority?: number
           product_id?: string
+          prompt_encrypted?: string | null
+          prompt_iv?: string | null
+          prompt_tag?: string | null
           prompt_text?: string
           reference_image_ids?: string[]
           reference_indices?: number[]
@@ -745,6 +766,13 @@ export type Database = {
           workspace_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "generated_prompts_last_job_id_fkey"
+            columns: ["last_job_id"]
+            isOneToOne: false
+            referencedRelation: "generation_jobs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "generated_prompts_product_id_fkey"
             columns: ["product_id"]

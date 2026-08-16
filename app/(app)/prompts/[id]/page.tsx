@@ -5,18 +5,23 @@ import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
+import { getWallet } from "@/lib/services/credits";
 import { signImageUrls } from "@/lib/services/images";
-import { referenceRoleShort } from "@/lib/ai/engine/master-prompt";
-import type { SupportingReference } from "@/lib/ai/engine/types";
+import { conceptUnitCost, resolveConceptModel } from "@/lib/server/concept-generation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
-import { SessionCards, SessionStatusBadge, type PromptCardData } from "@/components/prompts/session-cards";
+import { ConceptBoard, SessionStatusBadge, type ConceptCardData } from "@/components/prompts/concept-board";
 
 export const dynamic = "force-dynamic";
 
-/** One prompt session: the 5 generated concepts as cards, each with its
- *  chosen references + why, prompt, negative and the Studio handoff. */
-export default async function PromptSessionPage({ params }: { params: Promise<{ id: string }> }) {
+/**
+ * One shot session: the prepared concepts as customer cards. The projection
+ * built here is the ONLY data the browser receives about a concept — title,
+ * description, scene type, reference thumbnails, price, status and the latest
+ * generated photo. The prompt exists solely as ciphertext and is never
+ * selected, let alone rendered.
+ */
+export default async function ConceptSessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
   const { dict } = await getDictionary();
@@ -27,41 +32,60 @@ export default async function PromptSessionPage({ params }: { params: Promise<{ 
   if (!workspace) return null;
 
   const { data: session } = await supabase
-    .from("prompt_sessions").select("*")
+    .from("prompt_sessions")
+    .select("id, workspace_id, product_id, product_name, status, error, aspect_ratio, reference_paths, created_at")
     .eq("id", id).eq("workspace_id", workspace.id).maybeSingle();
   if (!session) notFound();
 
   const { data: prompts } = await supabase
-    .from("generated_prompts").select("*")
+    .from("generated_prompts")
+    .select("id, concept_name, customer_title, customer_description, scene_type, primary_reference, reference_indices, generation_count, last_job_id")
     .eq("session_id", session.id)
     .order("priority", { ascending: true });
 
-  const urls = await signImageUrls(supabase, session.reference_paths ?? []);
-  const pathByNumber = new Map((session.reference_paths ?? []).map((p, i) => [i + 1, p]));
+  // Latest result per concept: the last job's generation assets.
+  const jobIds = (prompts ?? []).map((p) => p.last_job_id).filter((v): v is string => !!v);
+  const resultByJob = new Map<string, { path: string; status: string }>();
+  if (jobIds.length > 0) {
+    const { data: jobs } = await supabase
+      .from("generation_jobs")
+      .select("id, status, generations(generation_assets(storage_path))")
+      .in("id", jobIds);
+    for (const job of jobs ?? []) {
+      const path = job.generations?.[0]?.generation_assets?.[0]?.storage_path;
+      resultByJob.set(job.id, { path: path ?? "", status: job.status });
+    }
+  }
 
-  const cards: PromptCardData[] = (prompts ?? []).map((p) => {
-    const supporting = (p.supporting_references ?? []) as unknown as SupportingReference[];
-    // Every reference the engine chose for this prompt, with its role and the
-    // reason it was chosen — the card must justify its own selection.
-    const refs = [
-      ...(p.primary_reference
-        ? [{ image: p.primary_reference, label: referenceRoleShort("PRIMARY_GEOMETRY"), why: null as string | null, primary: true }]
-        : []),
-      ...supporting.map((s) => ({
-        image: s.image, label: referenceRoleShort(s.role), why: s.reason ?? null, primary: false,
-      })),
-    ];
+  const [refUrls, model, wallet] = await Promise.all([
+    signImageUrls(supabase, session.reference_paths ?? []),
+    resolveConceptModel(supabase),
+    getWallet(supabase, workspace.id),
+  ]);
+
+  // Result thumbnails live in the generation-assets bucket.
+  const resultPaths = [...resultByJob.values()].map((r) => r.path).filter(Boolean);
+  const resultUrls = new Map<string, string>();
+  if (resultPaths.length > 0) {
+    const { data: signed } = await supabase.storage.from("generation-assets").createSignedUrls(resultPaths, 3600);
+    signed?.forEach((s) => { if (s.signedUrl && s.path) resultUrls.set(s.path, s.signedUrl); });
+  }
+
+  const paths = session.reference_paths ?? [];
+  const cards: ConceptCardData[] = (prompts ?? []).map((p, i) => {
+    const result = p.last_job_id ? resultByJob.get(p.last_job_id) : undefined;
     return {
       id: p.id,
-      conceptName: p.concept_name,
+      index: i + 1,
+      title: p.customer_title || p.concept_name,
+      description: p.customer_description,
       sceneType: p.scene_type,
-      promptText: p.prompt_text,
-      negativePrompt: p.negative_prompt,
-      lockStrength: p.lock_strength,
-      references: refs.map((r) => ({
-        ...r,
-        url: pathByNumber.get(r.image) ? urls.get(pathByNumber.get(r.image)!) ?? null : null,
-      })),
+      references: (p.reference_indices ?? [])
+        .map((n) => ({ image: n, url: paths[n - 1] ? refUrls.get(paths[n - 1]) ?? null : null, primary: n === p.primary_reference }))
+        .filter((r) => r.url),
+      generationCount: p.generation_count ?? 0,
+      resultUrl: result?.path ? resultUrls.get(result.path) ?? null : null,
+      resultPending: result ? result.status === "processing" || result.status === "queued" : false,
     };
   });
 
@@ -71,7 +95,7 @@ export default async function PromptSessionPage({ params }: { params: Promise<{ 
         <ArrowLeft size={14} /> {t("prompts.title")}
       </Link>
       <div className="flex flex-wrap items-center gap-3">
-        <PageHeader title={session.product_name} sub={t("psess.detailSub")} />
+        <PageHeader title={session.product_name} sub={t("concepts.detailSub")} />
         <div className="-mt-4 mb-4"><SessionStatusBadge status={session.status} /></div>
       </div>
 
@@ -82,7 +106,14 @@ export default async function PromptSessionPage({ params }: { params: Promise<{ 
       )}
 
       {cards.length > 0
-        ? <SessionCards prompts={cards} />
+        ? (
+          <ConceptBoard
+            concepts={cards}
+            unitCost={model ? conceptUnitCost(model) : 0}
+            balance={wallet?.balance ?? 0}
+            engineReady={!!model}
+          />
+        )
         : session.status !== "failed" && (
           <Card className="p-8 text-center"><p className="text-sm text-muted">{t("psess.processing")}</p></Card>
         )}

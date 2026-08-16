@@ -24,6 +24,12 @@ export type GenerateInput = {
   /** Prompt-engine handoff: link the job to its prompt + session. */
   promptId?: string;
   promptSessionId?: string;
+  /** Concept engine: the prompt is EcomStudio IP — the job row must not
+   *  mirror it in clear (the encrypted copy lives on the concept). */
+  hidePromptText?: boolean;
+  /** Concept regeneration lineage, kept in the job's settings. */
+  parentJobId?: string;
+  conceptId?: string;
 };
 
 export type GenerateOutput =
@@ -116,14 +122,19 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     .filter(Boolean).join("\n");
   const { data: job, error: jobError } = await supabase.from("generation_jobs").insert({
     workspace_id: workspaceId, product_id: productId, user_id: userId, model_id: model.id,
-    prompt_text: promptText, aspect_ratio: input.aspectRatio, quantity,
+    prompt_text: input.hidePromptText ? null : promptText, aspect_ratio: input.aspectRatio, quantity,
     resolution: resolution ?? null, provider_slug: provider.slug,
-    negative_prompt: input.negative?.trim() || null,
+    negative_prompt: input.hidePromptText ? null : input.negative?.trim() || null,
     prompt_id: input.promptId ?? null,
     prompt_session_id: input.promptSessionId ?? null,
     status: "processing", started_at: new Date().toISOString(),
     reference_image_ids: input.referenceImageIds.slice(0, 8),
-    settings: { resolution: resolution ?? null, negative: input.negative ?? null } as never,
+    settings: {
+      resolution: resolution ?? null,
+      negative: input.hidePromptText ? null : input.negative ?? null,
+      concept_id: input.conceptId ?? null,
+      parent_job_id: input.parentJobId ?? null,
+    } as never,
   }).select("id").single();
   if (jobError || !job) return { ok: false, error: "job_create_failed" };
 

@@ -23,8 +23,10 @@ const RATIOS = ["1:1", "4:5", "16:9", "9:16"] as const;
 /** "+ Nowe prompty": product name + marketplace description + photos →
  *  GENERUJ 5 PROMPTÓW. No prior product required; picking an existing
  *  product prefills everything and avoids duplicates. */
-export function SessionForm({ products, workspaceId, engineAvailable }: {
+export function SessionForm({ products, workspaceId, engineAvailable, unitCost }: {
   products: PromptProductOption[]; workspaceId: string; engineAvailable: boolean;
+  /** Credits one generated shot will cost at the current default model. */
+  unitCost: number;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -34,7 +36,8 @@ export function SessionForm({ products, workspaceId, engineAvailable }: {
   const [extraInfo, setExtraInfo] = useState("");
   const [style, setStyle] = useState("");
   const [styleOpen, setStyleOpen] = useState(false);
-  const [ratio, setRatio] = useState<(typeof RATIOS)[number]>("1:1");
+  const [ratio, setRatio] = useState<(typeof RATIOS)[number]>("16:9");
+  const [shots, setShots] = useState(5);
   const [refs, setRefs] = useState<Ref[]>([]);
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -102,6 +105,7 @@ export function SessionForm({ products, workspaceId, engineAvailable }: {
           productName: name, description: description || undefined,
           extraInfo: extraInfo || undefined, style: style || undefined,
           aspectRatio: ratio,
+          shots,
           referencePaths: refs.map((r) => r.path).slice(0, 8),
         }),
       });
@@ -192,6 +196,23 @@ export function SessionForm({ products, workspaceId, engineAvailable }: {
           </div>
         </div>
 
+        <div>
+          <Label>{t("concepts.shots")}</Label>
+          <div className="flex gap-1.5">
+            {[5, 6, 7, 8, 9, 10].map((n) => (
+              <button key={n} type="button" onClick={() => setShots(n)}
+                aria-pressed={n === shots}
+                className={cn("flex-1 rounded-lg border py-2 text-xs font-semibold tabular-nums transition-colors",
+                  n === shots ? "is-selected text-accent" : "border-line text-muted hover:bg-raised")}>
+                {n}
+              </button>
+            ))}
+          </div>
+          {unitCost > 0 && (
+            <p className="mt-1.5 text-[11px] text-faint">{t("concepts.shotsCost", { n: shots, cost: shots * unitCost })}</p>
+          )}
+        </div>
+
         <button type="button" onClick={() => setStyleOpen(!styleOpen)}
           className="flex items-center gap-1 text-xs font-medium text-muted hover:text-ink">
           <ChevronDown size={13} className={cn("transition-transform", styleOpen && "rotate-180")} />
@@ -209,7 +230,7 @@ export function SessionForm({ products, workspaceId, engineAvailable }: {
           className={cn("brand-gradient flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-sm font-semibold text-white shadow-sm transition-opacity",
             canSubmit ? "hover:opacity-90" : "cursor-not-allowed opacity-50")}>
           {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-          {busy ? t(`psess.stage_${stage}`) : t("psess.generate5")}
+          {busy ? t(`psess.stage_${stage}`) : t("concepts.prepare")}
         </button>
         {busy && (
           <div className="space-y-2 rounded-xl bg-raised px-4 py-3 anim-fade">

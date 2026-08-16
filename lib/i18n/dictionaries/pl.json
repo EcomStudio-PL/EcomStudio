@@ -338,7 +338,8 @@
       "support": "Wsparcie",
       "usersShort": "Klienci",
       "generationsShort": "Generacje",
-      "tools": "Image Tools"
+      "tools": "Image Tools",
+      "concepts": "Silnik ujęć"
     },
     "statUsers": "Użytkownicy",
     "statProducts": "Produkty",
@@ -540,6 +541,18 @@
         "price": "Cena",
         "margin": "Marża"
       }
+    },
+    "concepts": {
+      "title": "Silnik ujęć",
+      "sub": "Sesje konceptów, ukryte prompty i przypisania referencji — podgląd tylko dla administracji.",
+      "session": "Sesja",
+      "shots": "Ujęcia",
+      "generated": "Wygenerowane",
+      "viewPrompt": "Pełny prompt",
+      "negative": "Prompt negatywny",
+      "noPrompt": "Brak zaszyfrowanego promptu (starsza sesja).",
+      "refsUsed": "Referencje",
+      "empty": "Brak sesji."
     }
   },
   "support": {
@@ -1199,5 +1212,27 @@
       "body": "Nałóż logo w jednym z dziewięciu miejsc albo jako wzór.",
       "suffix": "znak"
     }
+  },
+  "concepts": {
+    "detailSub": "Gotowe propozycje ujęć dla Twojego produktu. Wybierz i generuj.",
+    "shots": "Liczba ujęć",
+    "shotsCost": "{n} ujęć × {cost} kr. = pełny komplet po przygotowaniu",
+    "prepare": "Przygotuj ujęcia",
+    "readyTitle": "Przygotowaliśmy {n} ujęć",
+    "generateAll": "Generuj wszystkie ({n})",
+    "batchCost": "{n} ujęć do wygenerowania · razem {cost} kr.",
+    "batchProgress": "Wygenerowano {done} / {total}",
+    "allDone": "Wszystkie ujęcia gotowe",
+    "generateOne": "Generuj · {n} kr.",
+    "retake": "Wygeneruj ponownie",
+    "retakeCost": "kolejne ujęcie: {n} kr.",
+    "changeScene": "Zmień scenę",
+    "sceneChanged": "Scena zmieniona — możesz generować.",
+    "stateQueued": "W kolejce…",
+    "stateGenerating": "Generowanie…",
+    "notGenerated": "Jeszcze nie wygenerowano",
+    "refs": "Zdjęcia",
+    "takes": "Ujęcie {n}",
+    "failed": "Nie udało się wygenerować. Spróbuj ponownie."
   }
 }

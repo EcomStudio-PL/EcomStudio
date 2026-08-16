@@ -40,7 +40,9 @@ function analysis(n: number, view: ImageAnalysis["view"], extra: Partial<ImageAn
 
 function concept(over: Partial<SceneConcept> = {}): SceneConcept {
   return {
-    scene_type: "product_hero", title: "Hero", scene_description: "Kettle on a stone counter",
+    scene_type: "product_hero", title: "Hero",
+    customer_title: "Hero produktu", customer_description: "Czajnik w roli głównej.",
+    scene_description: "Kettle on a stone counter",
     environment: "modern kitchen counter", camera_distance: "medium", camera_angle: "eye level",
     lighting: "soft window light", human_presence: false, human_interaction: null,
     product_placement: "The kettle stands centered on the counter.",

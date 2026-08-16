@@ -338,7 +338,8 @@
       "support": "Support",
       "usersShort": "Nutzer",
       "generationsShort": "Gens",
-      "tools": "Image Tools"
+      "tools": "Image Tools",
+      "concepts": "Aufnahme-Engine"
     },
     "statUsers": "Benutzer",
     "statProducts": "Produkte",
@@ -540,6 +541,18 @@
         "price": "Preis",
         "margin": "Marge"
       }
+    },
+    "concepts": {
+      "title": "Aufnahme-Engine",
+      "sub": "Konzeptsitzungen, verborgene Prompts und Referenzzuordnung — nur für Admins.",
+      "session": "Sitzung",
+      "shots": "Aufnahmen",
+      "generated": "Generiert",
+      "viewPrompt": "Voller Prompt",
+      "negative": "Negativ-Prompt",
+      "noPrompt": "Kein verschlüsselter Prompt (ältere Sitzung).",
+      "refsUsed": "Referenzen",
+      "empty": "Keine Sitzungen."
     }
   },
   "support": {
@@ -1199,5 +1212,27 @@
       "body": "Logo an einem von neun Ankern oder als Muster auflegen.",
       "suffix": "markiert"
     }
+  },
+  "concepts": {
+    "detailSub": "Fertige Aufnahme-Vorschläge für Ihr Produkt. Auswählen und generieren.",
+    "shots": "Anzahl der Aufnahmen",
+    "shotsCost": "{n} Aufnahmen × {cost} Cr. = das komplette Set nach der Vorbereitung",
+    "prepare": "Aufnahmen vorbereiten",
+    "readyTitle": "Wir haben {n} Aufnahmen vorbereitet",
+    "generateAll": "Alle generieren ({n})",
+    "batchCost": "{n} Aufnahmen zu generieren · insgesamt {cost} Cr.",
+    "batchProgress": "Generiert {done} / {total}",
+    "allDone": "Alle Aufnahmen fertig",
+    "generateOne": "Generieren · {n} Cr.",
+    "retake": "Neu generieren",
+    "retakeCost": "weitere Aufnahme: {n} Cr.",
+    "changeScene": "Szene ändern",
+    "sceneChanged": "Szene geändert — bereit zum Generieren.",
+    "stateQueued": "In der Warteschlange…",
+    "stateGenerating": "Wird generiert…",
+    "notGenerated": "Noch nicht generiert",
+    "refs": "Fotos",
+    "takes": "Aufnahme {n}",
+    "failed": "Generierung fehlgeschlagen. Erneut versuchen."
   }
 }

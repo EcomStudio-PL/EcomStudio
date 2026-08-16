@@ -123,11 +123,16 @@ export type SceneType = (typeof SCENE_TYPES)[number];
 
 export type SupportingReference = { image: number; role: ReferenceRole; reason: string };
 
-/** One of the five scene concepts. Everything here is CREATIVE freedom —
- *  environment, light, composition, humans — never the product itself. */
+/** One scene concept (the engine designs 5-10 per session). Everything here
+ *  is CREATIVE freedom — environment, light, composition, humans — never the
+ *  product itself. */
 export type SceneConcept = {
   scene_type: SceneType;
   title: string;
+  /** Card copy for the SELLER, in the seller's language: what this shot is
+   *  and why it sells — never engine internals, never prompt fragments. */
+  customer_title: string;
+  customer_description: string;
   scene_description: string;
   environment: string;
   camera_distance: "wide" | "medium" | "close" | "macro";

@@ -9,6 +9,7 @@ import { signImageUrls } from "@/lib/services/images";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { conceptUnitCost, resolveConceptModel } from "@/lib/server/concept-generation";
 import { SessionForm, type PromptProductOption } from "@/components/prompts/session-form";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +39,7 @@ export default async function PromptsPage() {
   ]);
   const engineAvailable =
     !!analysisProvider && ((withKey ?? []) as string[]).includes(analysisProvider.id);
+  const conceptModel = await resolveConceptModel(supabase);
 
   const productPaths = products.flatMap((p) => p.product_images.map((i) => i.storage_path));
   const sessionThumbs = (sessions ?? []).map((s) => s.reference_paths?.[0]).filter(Boolean) as string[];
@@ -56,7 +58,8 @@ export default async function PromptsPage() {
     <div>
       <PageHeader overline={t("nav.groups.create")} title={t("prompts.title")} sub={t("psess.sub")} />
       <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <SessionForm products={productOptions} workspaceId={workspace.id} engineAvailable={engineAvailable} />
+        <SessionForm products={productOptions} workspaceId={workspace.id} engineAvailable={engineAvailable}
+          unitCost={conceptModel ? conceptUnitCost(conceptModel) : 0} />
 
         <div className="min-w-0 space-y-3 lg:sticky lg:top-20 lg:h-fit">
           <h3 className="px-1 font-display text-sm font-semibold text-muted">{t("psess.recent")}</h3>

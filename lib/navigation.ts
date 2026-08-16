@@ -74,6 +74,7 @@ export const ADMIN_NAV: readonly NavGroup[] = [
   { key: "ai", items: [
     { href: "/admin/providers", key: "providers", icon: Plug },
     { href: "/admin/models", key: "models", icon: Cpu },
+    { href: "/admin/concepts", key: "concepts", icon: PenLine },
     { href: "/admin/tools", key: "tools", icon: Wrench },
   ]},
   { key: "marketing", items: [

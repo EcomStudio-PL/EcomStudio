@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
-import { runPromptSession, type PromptSessionInput } from "@/lib/server/prompt-engine";
+import { clampShots, runPromptSession, type PromptSessionInput } from "@/lib/server/prompt-engine";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
-/** "GENERUJ 5 PROMPTÓW" — real reference analysis + scene strategy.
- *  Auth + workspace membership via Supabase RLS. */
+/** "PRZYGOTUJ UJĘCIA" — reference analysis + scene strategy → 5-10 hidden
+ *  concepts. Auth + workspace membership via Supabase RLS. The response
+ *  carries ids and counts only; prompts never leave the server. */
 export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -19,8 +21,11 @@ export async function POST(request: Request) {
   try { body = (await request.json()) as PromptSessionInput; }
   catch { return NextResponse.json({ ok: false, error: "invalid_input" }, { status: 400 }); }
 
+  const locale = (await cookies()).get("ecs_locale")?.value ?? "pl";
   const result = await runPromptSession(supabase, user.id, workspace.id, {
     ...body,
+    shots: clampShots(body.shots),
+    locale,
     referencePaths: (body.referencePaths ?? []).filter(
       (p) => typeof p === "string" && p.startsWith(`${workspace.id}/`)
     ),

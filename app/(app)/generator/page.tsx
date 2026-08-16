@@ -36,7 +36,9 @@ export default async function GeneratorPage({ searchParams }: {
     const { data: gp } = await supabase
       .from("generated_prompts").select("*")
       .eq("id", promptParam).eq("workspace_id", workspace.id).maybeSingle();
-    if (gp?.session_id) {
+    // Concept rows carry no readable prompt (it is EcomStudio IP, stored
+    // encrypted) — they generate in place on the concept page, never here.
+    if (gp?.session_id && gp.prompt_text) {
       const { data: ps } = await supabase
         .from("prompt_sessions").select("*").eq("id", gp.session_id).maybeSingle();
       if (ps) {

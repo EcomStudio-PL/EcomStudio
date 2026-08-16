@@ -25,6 +25,8 @@ export const SCENE_SCHEMA = {
         properties: {
           scene_type: { type: "STRING", enum: [...SCENE_TYPES] },
           title: { type: "STRING" },
+          customer_title: { type: "STRING" },
+          customer_description: { type: "STRING" },
           scene_description: { type: "STRING" },
           environment: { type: "STRING" },
           camera_distance: { type: "STRING", enum: ["wide", "medium", "close", "macro"] },
@@ -53,7 +55,8 @@ export const SCENE_SCHEMA = {
           product_specific_negatives: { type: "ARRAY", items: { type: "STRING" } },
         },
         required: [
-          "scene_type", "title", "scene_description", "environment", "camera_distance",
+          "scene_type", "title", "customer_title", "customer_description",
+          "scene_description", "environment", "camera_distance",
           "camera_angle", "lighting", "human_presence", "product_placement",
           "physical_contact", "product_orientation", "marketing_purpose",
           "required_views", "primary_reference", "supporting_references",
@@ -188,15 +191,25 @@ function roleForView(view: ImageView): SupportingReference["role"] {
 }
 
 export const SCENE_SYSTEM = `You are the scene-strategy engine of a product photography platform.
-You design 5 DISTINCT professional e-commerce photo concepts for one specific product.
+You design DISTINCT professional e-commerce photo concepts for one specific product (the requested count is given in the task).
 
 THE SCENE IS CREATIVE. THE PRODUCT IS NOT.
 You may design environment, light, composition, perspective, mood, humans and presentation.
 You never redesign the product.
 
+PROVEN SHOT PATTERNS — use the ones that fit THIS product (never force one that does not):
+- PROBLEM CONTEXT: the product placed in the real environment of the problem it solves, with the problem visible (e.g. a mouse trap on a barn floor with rodents approaching). Strongest for pest control, repair, cleaning, protection products.
+- LIFESTYLE WITH A PERSON: a person naturally performing the activity that leads to using the product (e.g. a couple slicing mushrooms beside a food dehydrator), in a premium environment that matches the product's category. Show the activity, not a posed model.
+- CONTROL DETAIL: for any product with buttons, a panel, a dial or a mechanism — a close-up of that control, often with a well-groomed photorealistic hand pressing it, keeping the framing of the reference close-up when one exists.
+- PROBLEM → SOLUTION: when the result is visually obvious, one frame split cleanly (e.g. 50/50) between the before state and the after state.
+- TECHNICAL VISUALIZATION: when the mechanism is invisible (underground, internal, wireless), one deliberately explanatory scene may visualize it (soil cross-section, radiating waves) — clearly composed, still premium.
+- WORK DEMONSTRATION: a product that performs an action shown mid-action with believable dynamics and physically plausible debris/motion.
+- Use the seller's stated dimensions and facts from the description inside the scene when they help scale and credibility.
+
 Hard rules:
 - Choose scenes that genuinely fit THIS product and its buyer — not a generic set.
-- The 5 concepts must differ in scene type, camera distance/angle, environment, human presence, use case and marketing purpose. Never five variations of the same photograph.
+- The concepts must differ in scene type, camera distance/angle, environment, human presence, use case and marketing purpose. Never variations of the same photograph.
+- customer_title and customer_description are the ONLY texts the seller will read: write them in the seller's language given in the task (default Polish), 2-4 words for the title, one short benefit-oriented sentence for the description. Plain seller language — never mention prompts, references, locks, engines or any internal mechanics.
 - FIDELITY OVER NOVELTY: you receive the list of product views actually covered by the references. Never propose a scene that requires an uncovered view (e.g. no full rear shot without a rear reference). required_views must list the views each scene needs.
 - References per scene: pick ONE primary_reference (the image that best defines geometry/identity for this scene) plus every supporting reference that genuinely adds a fact this photograph needs — controls, ports, branding, material, colour, accessories, scale, usage. Aim for 3-6 references in total (2-5 supporting): under-using references makes the model invent the product, but do not pad the list with images that repeat a role you already have. Images marked scene-only may only inspire the scene or give scale — never define the product.
 - physical_contact must describe REAL physics: full contact with the surface, exact grip, actual mounting — no floating products.
@@ -210,7 +223,7 @@ export async function proposeScenes(
   analyses: ImageAnalysis[],
   manifest: FeatureManifest,
   info: SessionInput,
-  opts?: { count?: number; avoidSceneTypes?: string[] }
+  opts?: { count?: number; avoidSceneTypes?: string[]; customerLanguage?: string }
 ): Promise<{ concepts: SceneConcept[]; outcome: VisionOutcome }> {
   const count = opts?.count ?? 5;
   const available = supportedViews(analyses);
@@ -222,6 +235,7 @@ export async function proposeScenes(
     info.style ? `Preferred style from the seller: ${info.style}` : "",
     opts?.avoidSceneTypes?.length ? `Do NOT use these scene types (already used): ${opts.avoidSceneTypes.join(", ")}` : "",
     `Output aspect ratio: ${info.aspectRatio}.`,
+    `Seller language for customer_title and customer_description: ${opts?.customerLanguage ?? "Polish"}.`,
     `Design exactly ${count} clearly different concept${count === 1 ? "" : "s"}.`,
   ].filter(Boolean).join("\n\n");
 

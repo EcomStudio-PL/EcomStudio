@@ -338,7 +338,8 @@
       "support": "Support",
       "usersShort": "Users",
       "generationsShort": "Gens",
-      "tools": "Image Tools"
+      "tools": "Image Tools",
+      "concepts": "Shot engine"
     },
     "statUsers": "Users",
     "statProducts": "Products",
@@ -540,6 +541,18 @@
         "price": "Price",
         "margin": "Margin"
       }
+    },
+    "concepts": {
+      "title": "Shot engine",
+      "sub": "Concept sessions, hidden prompts and reference routing — admin-only view.",
+      "session": "Session",
+      "shots": "Shots",
+      "generated": "Generated",
+      "viewPrompt": "Full prompt",
+      "negative": "Negative prompt",
+      "noPrompt": "No encrypted prompt (older session).",
+      "refsUsed": "References",
+      "empty": "No sessions."
     }
   },
   "support": {
@@ -1199,5 +1212,27 @@
       "body": "Place a logo on one of nine anchors or as a pattern.",
       "suffix": "marked"
     }
+  },
+  "concepts": {
+    "detailSub": "Ready shot proposals for your product. Pick and generate.",
+    "shots": "Number of shots",
+    "shotsCost": "{n} shots × {cost} cr. = the full set once prepared",
+    "prepare": "Prepare shots",
+    "readyTitle": "We prepared {n} shots",
+    "generateAll": "Generate all ({n})",
+    "batchCost": "{n} shots to generate · {cost} cr. total",
+    "batchProgress": "Generated {done} / {total}",
+    "allDone": "All shots ready",
+    "generateOne": "Generate · {n} cr.",
+    "retake": "Regenerate",
+    "retakeCost": "another take: {n} cr.",
+    "changeScene": "Change scene",
+    "sceneChanged": "Scene changed — ready to generate.",
+    "stateQueued": "Queued…",
+    "stateGenerating": "Generating…",
+    "notGenerated": "Not generated yet",
+    "refs": "Photos",
+    "takes": "Take {n}",
+    "failed": "Generation failed. Try again."
   }
 }
