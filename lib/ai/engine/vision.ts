@@ -235,6 +235,9 @@ ${JSON.stringify(req.schema)}`;
       ],
       response_format: { type: "json_object" },
       max_completion_tokens: 16384,
+      // Structured planning against an explicit schema needs speed, not long
+      // deliberation — default effort has taken 100s+ on a single scenes call.
+      ...(model.startsWith("gpt-5") ? { reasoning_effort: "low" } : {}),
     }),
     signal: AbortSignal.timeout(120_000),
   }).catch((e) => {

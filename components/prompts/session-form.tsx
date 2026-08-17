@@ -84,6 +84,28 @@ export function SessionForm({ products, workspaceId, engineAvailable, unitCost }
     setUploading(false);
   }
 
+  /** After a dropped connection: watch for the session the server is still
+   *  preparing (same workspace, same product, started moments ago). */
+  async function rescueSession(): Promise<string | null> {
+    const supabase = createClient();
+    const deadline = Date.now() + 180_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 4000));
+      const { data } = await supabase
+        .from("prompt_sessions")
+        .select("id,status")
+        .eq("workspace_id", workspaceId)
+        .eq("product_name", name.trim())
+        .gte("created_at", new Date(Date.now() - 10 * 60_000).toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data?.status === "ready") return data.id;
+      if (data?.status === "failed") return null;
+    }
+    return null;
+  }
+
   async function submit() {
     // Guard the request itself, not just the disabled attribute: a double tap
     // on mobile must never start two analyses (or two draft products).
@@ -120,8 +142,16 @@ export function SessionForm({ products, workspaceId, engineAvailable, unitCost }
       toast.error(message);
       setBusy(false);
     } catch {
-      setFailure(t("common.error"));
-      toast.error(t("common.error"));
+      // The connection died mid-preparation (proxies cap long responses) but
+      // the pipeline usually finishes server-side — find its session before
+      // declaring failure. The server dedupes replays the same way.
+      const rescued = await rescueSession();
+      if (rescued) {
+        router.push(`/prompts/${rescued}`);
+        return;
+      }
+      setFailure(t("concepts.prepareFailed"));
+      toast.error(t("concepts.prepareFailed"));
       setBusy(false);
     } finally {
       clearTimeout(toLock);
