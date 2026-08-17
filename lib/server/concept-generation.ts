@@ -81,14 +81,14 @@ export function conceptUnitCost(model: UsableModel): number {
  * consecutive retries do not all ask for the same change.
  */
 const VARIATIONS = [
-  "Shift the camera a few degrees and adjust the framing slightly; keep the same scene idea, environment and mood.",
-  "Rearrange the secondary scene elements slightly and vary the product's exact position in frame; same scene idea.",
-  "Vary the light direction subtly (same character of light) and give any person present a slightly different natural pose; same scene idea.",
-  "Choose a slightly different focal framing — a touch closer or wider — keeping the same scene idea and composition intent.",
+  "Przesuń kamerę o kilka stopni i delikatnie zmień kadr; zachowaj tę samą scenę, otoczenie i nastrój.",
+  "Delikatnie przestaw drugoplanowe elementy sceny i minimalnie zmień pozycję produktu w kadrze; ta sama scena.",
+  "Subtelnie zmień kierunek światła (ten sam charakter światła), a osobie w kadrze nadaj nieco inną naturalną pozę; ta sama scena.",
+  "Wybierz odrobinę inny kadr — nieco bliżej lub szerzej — zachowując tę samą scenę i zamysł kompozycji.",
 ];
 
 export function variationInstruction(generationCount: number): string {
-  return `TAKE VARIATION\nThis is another take of the same approved concept. ${VARIATIONS[Math.max(0, generationCount - 1) % VARIATIONS.length]} Do not change the scene concept, the environment type or the product.`;
+  return `Kolejne podejście:\nTo jest kolejne podejście do tego samego zatwierdzonego ujęcia. ${VARIATIONS[Math.max(0, generationCount - 1) % VARIATIONS.length]} Nie zmieniaj koncepcji sceny, typu otoczenia ani produktu.`;
 }
 
 export async function generateFromConcept(

@@ -146,6 +146,10 @@ export type SceneConcept = {
   physical_contact: string;
   product_orientation: string;
   marketing_purpose: string;
+  /** The variable section of the FULL template prompt, written in Polish in
+   *  the house PDF style: a concrete description of exactly what is visible
+   *  in this shot (product, placement, person, perspective, dynamics). */
+  scene_text_pl?: string | null;
   /** Views of the product this scene requires to be visible. */
   required_views: ImageView[];
   primary_reference: number;

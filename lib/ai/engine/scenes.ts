@@ -18,6 +18,11 @@ import {
 export const SCENE_SCHEMA = {
   type: "OBJECT",
   properties: {
+    scenery_category: {
+      type: "STRING",
+      enum: ["kitchen", "garden", "living_room", "bedroom", "bathroom", "office", "workshop", "outdoor", "sport", "kids", "beauty", "tech", "generic"],
+    },
+    brand_domain_pl: { type: "STRING" },
     concepts: {
       type: "ARRAY",
       items: {
@@ -38,6 +43,7 @@ export const SCENE_SCHEMA = {
           physical_contact: { type: "STRING" },
           product_orientation: { type: "STRING" },
           marketing_purpose: { type: "STRING" },
+          scene_text_pl: { type: "STRING" },
           required_views: { type: "ARRAY", items: { type: "STRING", enum: [...IMAGE_VIEWS] } },
           primary_reference: { type: "INTEGER" },
           supporting_references: {
@@ -59,13 +65,14 @@ export const SCENE_SCHEMA = {
           "scene_description", "environment", "camera_distance",
           "camera_angle", "lighting", "human_presence", "product_placement",
           "physical_contact", "product_orientation", "marketing_purpose",
+          "scene_text_pl",
           "required_views", "primary_reference", "supporting_references",
           "product_specific_negatives",
         ],
       },
     },
   },
-  required: ["concepts"],
+  required: ["scenery_category", "brand_domain_pl", "concepts"],
 };
 
 /** Views that the references genuinely support (full product, not scene-only). */
@@ -215,7 +222,18 @@ Hard rules:
 - physical_contact must describe REAL physics: full contact with the surface, exact grip, actual mounting — no floating products.
 - If human_presence is true, human_interaction must describe the exact grip/pose (which hand, which fingers where), not "person holding product".
 - product_specific_negatives: 2-5 short "do not ..." lines protecting THIS product's most fragile facts in THIS scene (e.g. "do not change the four green buttons", "do not add a third device").
-- Write everything in English (prompts are consumed by image models).`;
+- Write the structured fields in English — EXCEPT customer_title / customer_description (seller's language) and scene_text_pl (always Polish).
+
+SCENE_TEXT_PL — THE SHOT DESCRIPTION THAT GOES INTO THE FINAL ADVERTISING PROMPT:
+For every concept write scene_text_pl in POLISH: 3-6 concrete sentences describing exactly what is visible in this photograph, in the house style of these examples:
+- "Jest to łapka na myszy. Łapka stoi na podłodze w stodole z widocznym bydłem w tle. W stronę łapki biegnie mysz i szczur."
+- "Suszarka spożywcza stoi na wyspie kuchennej. Na blacie kobieta z mężem kroją pieczarki i grzyby, które zaraz będą suszyć w suszarce. Perspektywa od góry 3/4 pod kątem 45 stopni."
+- "Ujęcie podzielone 50/50 cienką białą linią z widocznymi kretowiskami po lewej stronie, a po prawej stronie brak kretowisk i niezniszczony trawnik."
+Rules for scene_text_pl: start by naming the product ("Jest to ..." or the product as subject), state where it stands/lies and on what, who does what with it (exact action), the perspective/kadr when it matters, believable dynamics, and the one benefit this shot sells. Concrete nouns and actions — never vague mood words alone. Do not describe the product's design (the fidelity section handles that), describe the SCENE around it.
+
+SESSION-LEVEL FIELDS:
+- scenery_category: the world this product's photos live in (kitchen, garden, living_room, bedroom, bathroom, office, workshop, outdoor, sport, kids, beauty, tech, generic).
+- brand_domain_pl: Polish genitive naming the brand's domain for the sentence "jak wizualizacja premium dla ..." — e.g. "marki kuchennej", "marki odstraszaczy", "marki narzędzi ogrodniczych", "marki meblowej".`;
 
 /**
  * EXACT-COUNT BACKSTOP. The diversity and supported-view filters may reject
@@ -231,6 +249,7 @@ const SYNTH_TEMPLATES: {
   angle: string;
   environment: string;
   scene: (identity: string) => string;
+  scenePl: (identity: string) => string;
   title: Record<string, string>;
   body: Record<string, string>;
 }[] = [
@@ -238,6 +257,7 @@ const SYNTH_TEMPLATES: {
     type: "premium_packshot", camera: "medium", angle: "three-quarter view, slightly above eye level",
     environment: "seamless premium studio backdrop with a soft gradient",
     scene: (p) => `${p} presented as a premium studio packshot on a clean seamless backdrop, hero placement in the centre of the frame.`,
+    scenePl: (p) => `Jest to ${p}. Produkt stoi centralnie na eleganckim, jednolitym tle studyjnym z delikatnym gradientem, w całości widoczny w kadrze, z czystym marginesem wokół. Ujęcie 3/4 lekko z góry. Czysty packshot premium bez żadnych dodatkowych obiektów.`,
     title: { pl: "Premium packshot", en: "Premium packshot", de: "Premium-Packshot" },
     body: {
       pl: "Czyste studyjne ujęcie produktu na eleganckim tle.",
@@ -249,6 +269,7 @@ const SYNTH_TEMPLATES: {
     type: "closeup", camera: "close", angle: "close three-quarter detail view",
     environment: "shallow depth of field over a neutral premium surface",
     scene: (p) => `A close-up of the most characteristic detail of ${p}, filling the frame, with the rest of the product softly visible behind it.`,
+    scenePl: (p) => `Jest to ${p}. Zbliżenie na najbardziej charakterystyczny detal produktu, który wypełnia kadr; reszta produktu miękko widoczna w tle na neutralnej powierzchni premium. Mała głębia ostrości podkreśla jakość wykonania.`,
     title: { pl: "Detal produktu", en: "Product detail", de: "Produktdetail" },
     body: {
       pl: "Zbliżenie na najważniejszy detal produktu.",
@@ -260,6 +281,7 @@ const SYNTH_TEMPLATES: {
     type: "marketplace_hero", camera: "medium", angle: "frontal, straight-on hero view",
     environment: "bright neutral background suitable for a marketplace listing",
     scene: (p) => `${p} shown frontally as the main marketplace listing photo, perfectly lit, no distractions.`,
+    scenePl: (p) => `Jest to ${p}. Produkt pokazany frontalnie jako główne zdjęcie oferty, na jasnym, neutralnym tle, idealnie oświetlony, bez żadnych rozpraszaczy. Produkt w całości w kadrze, centralnie.`,
     title: { pl: "Zdjęcie główne", en: "Main listing shot", de: "Hauptbild" },
     body: {
       pl: "Idealne zdjęcie główne do oferty marketplace.",
@@ -271,6 +293,7 @@ const SYNTH_TEMPLATES: {
     type: "product_hero", camera: "medium", angle: "low three-quarter hero angle",
     environment: "premium surface matching the product's world, softly lit background",
     scene: (p) => `${p} staged as the hero of the frame on a premium surface that matches its category, with gentle depth behind it.`,
+    scenePl: (p) => `Jest to ${p}. Produkt jako bohater kadru stoi na powierzchni premium pasującej do jego kategorii, z delikatną głębią i miękko oświetlonym tłem. Ujęcie 3/4 z lekko niskiej perspektywy podkreśla jego sylwetkę.`,
     title: { pl: "Ujęcie hero", en: "Hero shot", de: "Hero-Aufnahme" },
     body: {
       pl: "Produkt w roli głównej, w eleganckim otoczeniu.",
@@ -282,6 +305,7 @@ const SYNTH_TEMPLATES: {
     type: "scale_demo", camera: "wide", angle: "eye-level view with context",
     environment: "realistic interior surface with everyday objects for scale",
     scene: (p) => `${p} placed next to familiar everyday objects so its true size reads instantly.`,
+    scenePl: (p) => `Jest to ${p}. Produkt stoi na realistycznej powierzchni wnętrza obok znanych przedmiotów codziennego użytku, dzięki czemu od razu widać jego prawdziwy rozmiar. Perspektywa na wysokości oczu.`,
     title: { pl: "Skala produktu", en: "True size", de: "Größenvergleich" },
     body: {
       pl: "Produkt obok znanych przedmiotów — od razu widać rozmiar.",
@@ -293,6 +317,7 @@ const SYNTH_TEMPLATES: {
     type: "technical_detail", camera: "close", angle: "slightly top-down technical view",
     environment: "clean neutral surface, even technical lighting",
     scene: (p) => `${p} photographed to clearly show its construction and materials, evenly lit, every functional element readable.`,
+    scenePl: (p) => `Jest to ${p}. Ujęcie techniczne z lekkiej góry pokazujące konstrukcję i materiały produktu w równomiernym świetle; każdy element funkcyjny jest czytelny. Neutralna, czysta powierzchnia bez rozpraszaczy.`,
     title: { pl: "Budowa i materiały", en: "Build and materials", de: "Verarbeitung" },
     body: {
       pl: "Czytelne ujęcie konstrukcji i materiałów.",
@@ -323,6 +348,7 @@ export function synthesizeConcepts(
       customer_title: tpl.title[lang],
       customer_description: tpl.body[lang],
       scene_description: tpl.scene(identity),
+      scene_text_pl: tpl.scenePl(identity),
       environment: tpl.environment,
       camera_distance: tpl.camera,
       camera_angle: tpl.angle,
@@ -349,7 +375,7 @@ export async function proposeScenes(
   manifest: FeatureManifest,
   info: SessionInput,
   opts?: { count?: number; avoidSceneTypes?: string[]; customerLanguage?: string }
-): Promise<{ concepts: SceneConcept[]; outcome: VisionOutcome }> {
+): Promise<{ concepts: SceneConcept[]; outcome: VisionOutcome; sceneryCategory: string; brandDomainPl: string }> {
   const count = opts?.count ?? 5;
   const available = supportedViews(analyses);
   const user = [
@@ -364,9 +390,9 @@ export async function proposeScenes(
     `Design exactly ${count} clearly different concept${count === 1 ? "" : "s"}.`,
   ].filter(Boolean).join("\n\n");
 
-  const { data: out, outcome } = await callVisionJson<{ concepts: SceneConcept[] }>(
-    backends, { images, system: SCENE_SYSTEM, user, schema: SCENE_SCHEMA }
-  );
+  const { data: out, outcome } = await callVisionJson<{
+    concepts: SceneConcept[]; scenery_category?: string; brand_domain_pl?: string;
+  }>(backends, { images, system: SCENE_SYSTEM, user, schema: SCENE_SCHEMA });
 
   let concepts = (out.concepts ?? []).map((c) => clampRefs(c, images.length, analyses));
 
@@ -377,5 +403,9 @@ export async function proposeScenes(
   const bad = new Set(diversityViolations(concepts));
   concepts = concepts.filter((_, i) => !bad.has(i));
 
-  return { concepts: concepts.slice(0, count), outcome };
+  return {
+    concepts: concepts.slice(0, count), outcome,
+    sceneryCategory: out.scenery_category ?? "generic",
+    brandDomainPl: out.brand_domain_pl ?? "",
+  };
 }

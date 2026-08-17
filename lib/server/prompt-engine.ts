@@ -6,7 +6,11 @@ import { ProviderError, type ReferenceImage } from "@/lib/ai/types";
 import { analyzeReferences } from "@/lib/ai/engine/analysis";
 import { proposeScenes, synthesizeConcepts } from "@/lib/ai/engine/scenes";
 import { buildProductLock, chooseLockStrength } from "@/lib/ai/engine/lock";
-import { assembleMasterPrompt, assembleNegativePrompt, referenceRationale, referenceRoleLabel } from "@/lib/ai/engine/master-prompt";
+import { assembleNegativePrompt, referenceRationale, referenceRoleLabel } from "@/lib/ai/engine/master-prompt";
+import {
+  composeTemplatePrompt, normalizeSceneryCategory, sceneTextFallback,
+  validateTemplatePrompt, PROMPT_TEMPLATE_VERSION,
+} from "@/lib/ai/engine/template-prompt";
 import { VISION_MODEL, type VisionBackend, type VisionOutcome, type VisionProvider } from "@/lib/ai/engine/vision";
 import type { FeatureManifest, ImageAnalysis, SceneConcept, SessionInput } from "@/lib/ai/engine/types";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
@@ -40,18 +44,35 @@ const CUSTOMER_LANGUAGE: Record<string, string> = { pl: "Polish", en: "English",
  * There is deliberately no field for the prompt: everything internal travels
  * only as AES-256-GCM ciphertext in the encrypted columns.
  */
-export function encryptConceptPayload(prompt: string, negative: string): { ciphertext: string; iv: string; authTag: string } {
-  return encryptSecret(JSON.stringify({ p: prompt, n: negative }));
+export type ConceptPayloadMeta = {
+  /** prompt_template_version */
+  tv?: number;
+  /** scene_goal — what this shot is meant to sell */
+  goal?: string;
+  /** composition_type — camera distance / framing family */
+  comp?: string;
+  /** scenery category the template used */
+  cat?: string;
+};
+
+export function encryptConceptPayload(
+  prompt: string, negative: string, meta?: ConceptPayloadMeta,
+): { ciphertext: string; iv: string; authTag: string } {
+  return encryptSecret(JSON.stringify({ p: prompt, n: negative, ...(meta ?? {}) }));
 }
 
 export function decryptConceptPayload(row: {
   prompt_encrypted: string | null; prompt_iv: string | null; prompt_tag: string | null;
-}): { prompt: string; negative: string } | null {
+}): { prompt: string; negative: string; meta: ConceptPayloadMeta } | null {
   if (!row.prompt_encrypted || !row.prompt_iv || !row.prompt_tag) return null;
   try {
-    const parsed = JSON.parse(decryptSecret(row.prompt_encrypted, row.prompt_iv, row.prompt_tag)) as { p?: string; n?: string };
+    const parsed = JSON.parse(decryptSecret(row.prompt_encrypted, row.prompt_iv, row.prompt_tag)) as
+      { p?: string; n?: string } & ConceptPayloadMeta;
     if (typeof parsed.p !== "string" || !parsed.p) return null;
-    return { prompt: parsed.p, negative: parsed.n ?? "" };
+    return {
+      prompt: parsed.p, negative: parsed.n ?? "",
+      meta: { tv: parsed.tv, goal: parsed.goal, comp: parsed.comp, cat: parsed.cat },
+    };
   } catch {
     return null;
   }
@@ -392,6 +413,8 @@ export async function runPromptSession(
     });
     let concepts = scened.concepts.slice(0, shots);
     usedOutcome = scened.outcome;
+    const sceneryCategory = normalizeSceneryCategory(scened.sceneryCategory);
+    const brandDomainPl = scened.brandDomainPl;
     if (concepts.length < shots) {
       const missing = shots - concepts.length;
       try {
@@ -409,17 +432,32 @@ export async function runPromptSession(
     }
     lap("scenesMs");
 
-    // 4) MASTER + NEGATIVE PROMPTS — assembled server-side and stored ONLY as
-    // ciphertext. The row a client can read carries the card copy and the
-    // reference selection; the prompt itself never leaves the server in clear.
+    // 4) FULL TEMPLATE PROMPTS — the PDF playbook composed server-side and
+    // stored ONLY as ciphertext: fixed intro + scenery + quality signature,
+    // product fidelity from verified facts, the concrete Polish shot
+    // description, constraints. Each stored full_prompt goes 1:1 to the image
+    // model later; the negative prompt is only a technical helper. QA rejects
+    // a too-generic shot description and repairs it deterministically so the
+    // ordered count never drops.
     stage = "prompts";
+    let qaRepaired = 0;
     const rows = concepts.map((concept, idx) => {
       const strength = chooseLockStrength(concept, manifest, lock.conflicts);
-      const prompt = assembleMasterPrompt({
-        concept, manifest, lock, strength, session: sessionInfo, imageCount: images.length,
+      const compose = (c: typeof concept) => composeTemplatePrompt({
+        concept: c, manifest, lock, aspectRatio: input.aspectRatio,
+        category: sceneryCategory, brandDomainPl,
       });
+      let prompt = compose(concept);
+      if (!validateTemplatePrompt(prompt).ok) {
+        qaRepaired++;
+        concept = { ...concept, scene_text_pl: sceneTextFallback(concept, manifest.identity) };
+        prompt = compose(concept);
+      }
       const negative = assembleNegativePrompt(concept, manifest, lock);
-      const sealed = encryptConceptPayload(prompt, negative);
+      const sealed = encryptConceptPayload(prompt, negative, {
+        tv: PROMPT_TEMPLATE_VERSION, goal: concept.marketing_purpose,
+        comp: concept.camera_distance, cat: sceneryCategory,
+      });
       const rationale = referenceRationale(concept, analyses)
         .map((r) => `${r.image} — ${r.label}`).join("; ");
       return {
@@ -460,6 +498,9 @@ export async function runPromptSession(
         fallback_from: usedOutcome?.fallbackFrom ?? null,
         fallback_reason: usedOutcome?.fallbackReason ?? null,
         vision_latency_ms: usedOutcome?.latencyMs ?? null,
+        prompt_template_version: PROMPT_TEMPLATE_VERSION,
+        scenery_category: sceneryCategory,
+        qa_repaired: qaRepaired,
         timings,
         retried_session: Boolean(retryable),
         total_latency_ms: Date.now() - startedAt,
@@ -520,15 +561,28 @@ export async function regeneratePrompt(
   try {
     const images = await downloadReferences(supabase, session.reference_paths ?? []);
     if (images.length === 0) return { ok: false, error: "references_required" };
-    const { concepts } = await proposeScenes(backends, images, analyses, manifest, sessionInfo, {
+    const scened = await proposeScenes(backends, images, analyses, manifest, sessionInfo, {
       count: 1, avoidSceneTypes: avoid,
     });
-    const [concept]: SceneConcept[] = concepts;
+    let [concept]: SceneConcept[] = scened.concepts;
     if (!concept) return { ok: false, error: "analysis_empty" };
     const strength = chooseLockStrength(concept, manifest, lock.conflicts);
+    const category = normalizeSceneryCategory(scened.sceneryCategory);
+    let prompt = composeTemplatePrompt({
+      concept, manifest, lock, aspectRatio: session.aspect_ratio,
+      category, brandDomainPl: scened.brandDomainPl,
+    });
+    if (!validateTemplatePrompt(prompt).ok) {
+      concept = { ...concept, scene_text_pl: sceneTextFallback(concept, manifest.identity) };
+      prompt = composeTemplatePrompt({
+        concept, manifest, lock, aspectRatio: session.aspect_ratio,
+        category, brandDomainPl: scened.brandDomainPl,
+      });
+    }
     const sealed = encryptConceptPayload(
-      assembleMasterPrompt({ concept, manifest, lock, strength, session: sessionInfo, imageCount: images.length }),
+      prompt,
       assembleNegativePrompt(concept, manifest, lock),
+      { tv: PROMPT_TEMPLATE_VERSION, goal: concept.marketing_purpose, comp: concept.camera_distance, cat: category },
     );
     const rationale = referenceRationale(concept, analyses).map((r) => `${r.image} — ${r.label}`).join("; ");
     await supabase.from("generated_prompts").update({

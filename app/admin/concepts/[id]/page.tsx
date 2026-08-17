@@ -64,6 +64,9 @@ export default async function AdminConceptSessionPage({ params }: { params: Prom
                 <h3 className="text-sm font-semibold">{p.customer_title || p.concept_name}</h3>
                 {p.scene_type && <Badge tone="indigo">{p.scene_type}</Badge>}
                 <Badge>{p.lock_strength}</Badge>
+                {payload?.meta.tv != null && <Badge tone="green">tpl v{payload.meta.tv}</Badge>}
+                {payload?.meta.cat && <Badge>{payload.meta.cat}</Badge>}
+                {payload?.meta.goal && <Badge>{payload.meta.goal}</Badge>}
                 <span className="ml-auto text-xs tabular-nums text-faint">
                   {t("admin.concepts.generated")}: {p.generation_count ?? 0}
                 </span>

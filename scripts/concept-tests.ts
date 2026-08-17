@@ -10,7 +10,11 @@ import { candidatePoolSize, clampShots, decryptConceptPayload, encryptConceptPay
 import { variationInstruction } from "../lib/server/concept-generation";
 import { synthesizeConcepts, diversityViolations } from "../lib/ai/engine/scenes";
 import { retryDelayMs } from "../lib/server/provider-router";
-import type { ImageAnalysis, SceneConcept } from "../lib/ai/engine/types";
+import {
+  composeTemplatePrompt, normalizeSceneryCategory, sceneTextFallback,
+  validateTemplatePrompt, PROMPT_TEMPLATE_VERSION,
+} from "../lib/ai/engine/template-prompt";
+import type { FeatureManifest, ImageAnalysis, ProductLock, SceneConcept } from "../lib/ai/engine/types";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string) {
@@ -44,8 +48,8 @@ console.log("\nC. RETAKE VARIATION — controlled, rotating, never a new scene")
 const takes = [1, 2, 3, 4, 5].map((n) => variationInstruction(n));
 check("consecutive retakes vary differently", new Set(takes.slice(0, 4)).size === 4);
 check("the rotation wraps", takes[4] === takes[0]);
-check("every variation forbids changing the concept", takes.every((v) => v.includes("Do not change the scene concept")));
-check("variation is additive, not a replacement", takes.every((v) => v.startsWith("TAKE VARIATION")));
+check("every variation forbids changing the concept", takes.every((v) => v.includes("Nie zmieniaj koncepcji sceny")));
+check("variation is additive, not a replacement", takes.every((v) => v.startsWith("Kolejne podejście:")));
 
 console.log("\nD. EXACT COUNT — the diversity filter can reject, never shrink the order");
 const analysis = (n: number): ImageAnalysis => ({
@@ -73,6 +77,60 @@ const synth2 = synthesizeConcepts(existing, 2, "gray kettle", [analysis(1), anal
 check("synthesized cards speak Polish", synth2.every((c) => /produktu|packshot|główne|hero|Skala|Budowa|Detal/i.test(c.customer_title)));
 check("synthesized concepts carry references", synth2.every((c) => c.primary_reference >= 1 && c.supporting_references.length >= 1));
 check("synthesized concepts need no unavailable views", synth2.every((c) => c.required_views.length === 0));
+
+console.log("\nF. TEMPLATE PROMPT — the PDF playbook composed as the full prompt");
+const manifest: FeatureManifest = {
+  identity: "ręczna łapka na myszy z żółtym pedałem",
+  quantity: 1, variant: null, primary_color: "czarny", secondary_colors: ["żółty"],
+  geometry: { shape: "prostokątna podstawa", proportions: "10x5 cm", profile: "niski", curvature: "kanciasta", major_components: ["podstawa", "sprężyna", "pedał"] },
+  materials: ["tworzywo ABS", "stal"],
+  interfaces: { buttons: 2, buttons_detail: "dźwignia i blokada", switches: 0, ports: 0, ports_detail: null, sockets: 0, screens: 0, leds: 0, labels: [] },
+  branding: { logos: [], text: [], position: null },
+  accessories: [], scale: { dimensions: "10 x 5 x 6 cm", confidence: "high", scale_reference: null },
+  critical_features: ["żółty pedał spustowy"],
+};
+const lock: ProductLock = { hard: [], strong: [], soft: [], conflicts: [] };
+const tplConcept: SceneConcept = {
+  ...existing[0],
+  scene_type: "benefit_shot",
+  human_presence: true,
+  scene_text_pl: "Jest to łapka na myszy. Łapka stoi na podłodze w stodole z widocznym bydłem w tle. W stronę łapki biegnie mysz i szczur. Perspektywa z poziomu podłogi, dynamiczna scena.",
+};
+const full = composeTemplatePrompt({
+  concept: tplConcept, manifest, lock, aspectRatio: "16:9", category: "garden", brandDomainPl: "marki odstraszaczy",
+});
+check("starts with the PDF intro", full.startsWith("Stwórz zdjęcie reklamowe."));
+const order = ["Stwórz zdjęcie reklamowe.", "Sceneria:", "Ultra realistic, 8k, cinematic daylight", "Dokładne odwzorowanie produktu:", "Ujęcie:", "Ograniczenia:"];
+check("sections appear in the PDF order", order.every((s, i) => i === 0 || full.indexOf(s) > full.indexOf(order[i - 1])));
+check("brand domain lands in the scenery block", full.includes("jak wizualizacja premium dla marki odstraszaczy"));
+check("format shapes the composition", full.includes("16:9"));
+check("fidelity carries exact colours", full.includes("czarny, żółty"));
+check("fidelity carries exact control counts", full.includes("przycisków: dokładnie 2"));
+check("unbranded product bans invented logos", full.includes("nie dodawaj własnych"));
+check("the planner's Polish shot text is the Ujęcie section", full.includes("W stronę łapki biegnie mysz i szczur."));
+check("human realism block present when a person is in frame", full.includes("dokładnie pięć palców"));
+check("full prompt passes QA", validateTemplatePrompt(full).ok);
+const noHuman = composeTemplatePrompt({
+  concept: { ...tplConcept, human_presence: false }, manifest, lock, aspectRatio: "1:1", category: "kitchen", brandDomainPl: "",
+});
+check("no human block without a person", !noHuman.includes("dokładnie pięć palców"));
+check("empty brand domain falls back", noHuman.includes("dla marki premium"));
+check("QA rejects a bare fragment", !validateTemplatePrompt("szara sofa w salonie").ok);
+const tooShort = composeTemplatePrompt({
+  concept: { ...tplConcept, scene_text_pl: "Sofa." }, manifest, lock, aspectRatio: "1:1", category: "generic", brandDomainPl: "x",
+});
+check("QA catches a too-generic shot description", !validateTemplatePrompt(tooShort).ok);
+const repaired = composeTemplatePrompt({
+  concept: { ...tplConcept, scene_text_pl: sceneTextFallback(tplConcept, manifest.identity) },
+  manifest, lock, aspectRatio: "1:1", category: "generic", brandDomainPl: "x",
+});
+check("the deterministic repair passes QA", validateTemplatePrompt(repaired).ok);
+check("category normalisation is safe", normalizeSceneryCategory("KITCHEN") === "kitchen" && normalizeSceneryCategory("weird") === "generic");
+const sealedMeta = encryptConceptPayload("Stwórz zdjęcie reklamowe. …", "neg", { tv: PROMPT_TEMPLATE_VERSION, goal: "hero", comp: "medium", cat: "garden" });
+const openedMeta = decryptConceptPayload({ prompt_encrypted: sealedMeta.ciphertext, prompt_iv: sealedMeta.iv, prompt_tag: sealedMeta.authTag });
+check("payload meta survives the round trip", openedMeta?.meta.tv === PROMPT_TEMPLATE_VERSION && openedMeta?.meta.cat === "garden");
+const synthPl = synthesizeConcepts(existing, 3, "szary czajnik", [analysis(1), analysis(2)], "pl");
+check("synthesized concepts carry Polish shot text", synthPl.every((c) => (c.scene_text_pl ?? "").startsWith("Jest to szary czajnik.")));
 
 console.log("\nE. RETRY PACING — backoff grows, Retry-After wins");
 const d1 = retryDelayMs(1), d2 = retryDelayMs(2), d3 = retryDelayMs(3);
