@@ -21,24 +21,52 @@ export type ConceptGenerateOutput =
   | { ok: false; error: string; missingCredits?: number };
 
 /**
- * The model the concept engine generates with. The admin can pin one via
- * app_settings("generation").concept_model_id; otherwise the first usable
- * model that accepts reference images wins (a concept without its references
- * would break the Product Lock, so reference support is not negotiable
- * while any such model exists).
+ * The ORDERED model chain the concept engine generates with.
+ *
+ * Priority comes from admin configuration, not from an accident of
+ * sort_order: app_settings("generation").provider_priority is a list of
+ * "provider:model_identifier" entries (e.g. "openai:gpt-image-2"), tried in
+ * order; concept_model_id can additionally pin the primary. Only models that
+ * accept reference images qualify — a concept generated without its
+ * references would break the Product Lock. Providers sitting in a health
+ * cooldown (dead quota, bad key) sink to the end of the chain rather than
+ * being retried first on every click.
  */
-export async function resolveConceptModel(supabase: Client): Promise<UsableModel | null> {
-  const [models, { data: settings }] = await Promise.all([
+export async function resolveConceptModels(supabase: Client): Promise<UsableModel[]> {
+  const [models, { data: settings }, { data: healthRows }] = await Promise.all([
     getUsableModels(supabase),
     supabase.from("app_settings").select("value").eq("key", "generation").maybeSingle(),
+    supabase.from("provider_health").select("provider_slug, state, cooldown_until"),
   ]);
-  if (models.length === 0) return null;
-  const pinned = (settings?.value as { concept_model_id?: string } | null)?.concept_model_id;
-  if (pinned) {
-    const match = models.find((m) => m.id === pinned);
-    if (match) return match;
+  const usable = models.filter((m) => m.capabilities_ui.supportsReferenceImages);
+  if (usable.length === 0) return [];
+
+  const cfg = (settings?.value ?? {}) as { concept_model_id?: string; provider_priority?: string[] };
+  const chain: UsableModel[] = [];
+  const push = (m: UsableModel | undefined) => {
+    if (m && !chain.some((x) => x.id === m.id)) chain.push(m);
+  };
+
+  push(usable.find((m) => m.id === cfg.concept_model_id));
+  for (const entry of cfg.provider_priority ?? []) {
+    const [provider, identifier] = String(entry).split(":");
+    push(usable.find((m) => m.provider_slug === provider && m.model_identifier === identifier));
   }
-  return models.find((m) => m.capabilities_ui.supportsReferenceImages) ?? models[0];
+  for (const m of usable) push(m);
+
+  // Providers inside a cooldown are demoted, never removed — if everything
+  // is unhealthy, the chain still tries them all.
+  const blocked = new Set(
+    (healthRows ?? [])
+      .filter((h) => h.state !== "healthy" && (!h.cooldown_until || new Date(h.cooldown_until).getTime() > Date.now()))
+      .map((h) => h.provider_slug)
+  );
+  return [...chain.filter((m) => !blocked.has(m.provider_slug)), ...chain.filter((m) => blocked.has(m.provider_slug))];
+}
+
+/** The primary of the chain — what the price preview is quoted from. */
+export async function resolveConceptModel(supabase: Client): Promise<UsableModel | null> {
+  return (await resolveConceptModels(supabase))[0] ?? null;
 }
 
 /** Credits one concept image costs at the current default model. */
@@ -97,7 +125,8 @@ export async function generateFromConcept(
     }
   }
 
-  const model = await resolveConceptModel(supabase);
+  const chain = await resolveConceptModels(supabase);
+  const model = chain[0];
   if (!model) return { ok: false, error: "model_unavailable" };
 
   // The exact reference set the planner routed to this concept, in its order
@@ -115,6 +144,7 @@ export async function generateFromConcept(
 
   const result = await runGeneration(supabase, userId, workspaceId, {
     modelId: model.id,
+    fallbackModelIds: chain.slice(1).map((m) => m.id),
     prompt,
     negative: payload.negative || undefined,
     aspectRatio: (session.aspect_ratio || "16:9") as AspectRatio,

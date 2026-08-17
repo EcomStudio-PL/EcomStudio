@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n/provider";
 import { toggleProviderAction } from "@/app/actions/admin";
 import {
-  saveProviderCredentialAction, deleteProviderCredentialAction, testProviderConnectionAction,
+  saveProviderCredentialAction, deleteProviderCredentialAction,
+  testProviderConnectionAction, testProviderImageAction,
 } from "@/app/actions/credentials";
 import { Modal, ConfirmModal, SecretInput } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ export type ProviderView = {
   credential: {
     lastFour: string; updatedAt: string | null; lastTestedAt: string | null;
     lastTestStatus: string | null; lastTestError: string | null; baseUrl: string | null;
+    lastImageTestAt: string | null; lastImageTestStatus: string | null; lastImageTestError: string | null;
   } | null;
 };
 
@@ -86,11 +88,31 @@ export function ProviderCard({ p, encryptionReady, locale }: {
             <span className="text-xs text-faint">{fmt(p.credential?.lastTestedAt ?? null)}</span>
           </dd>
         </div>
+        {/* Separate truth: the key answering /models is NOT proof it can
+            generate — this row reports the last REAL image generation. */}
+        <div className="flex items-center justify-between">
+          <dt className="text-muted">{t("admin.imageTest")}</dt>
+          <dd className="flex items-center gap-2">
+            {p.credential?.lastImageTestStatus ? (
+              <Badge tone={p.credential.lastImageTestStatus === "image_ok" ? "green" : "red"}>
+                {p.credential.lastImageTestStatus === "image_ok" ? t("admin.imageTestOk") : t("admin.imageTestFailed")}
+              </Badge>
+            ) : (
+              <Badge tone="neutral">{t("admin.imageTestNever")}</Badge>
+            )}
+            <span className="text-xs text-faint">{fmt(p.credential?.lastImageTestAt ?? null)}</span>
+          </dd>
+        </div>
         <div className="flex items-center justify-between">
           <dt className="text-muted">{t("admin.nav.models")}</dt>
           <dd className="text-xs">{p.modelsActive} / {p.modelsTotal} {t("admin.active").toLowerCase()}</dd>
         </div>
       </dl>
+      {p.credential?.lastImageTestError && (
+        <p className="mt-2 truncate text-xs text-red-500" title={p.credential.lastImageTestError}>
+          {p.credential.lastImageTestError}
+        </p>
+      )}
       {p.credential?.lastTestError && (
         <p className="mt-2 truncate text-xs text-red-500" title={p.credential.lastTestError}>{p.credential.lastTestError}</p>
       )}
@@ -106,6 +128,14 @@ export function ProviderCard({ p, encryptionReady, locale }: {
             router.refresh();
           })}>
           {t("admin.testConnection")}
+        </Button>
+        <Button size="sm" variant="secondary" disabled={pending || !p.credential}
+          onClick={() => run(testProviderImageAction(p.id), (res) => {
+            if (res.ok) toast.success(t("admin.imageTestOk"));
+            else toast.error(res.message ?? t("common.error"));
+            router.refresh();
+          })}>
+          {t("admin.imageTest")}
         </Button>
         {p.credential && (
           <Button size="sm" variant="ghost" disabled={pending} onClick={() => setDeleteOpen(true)}>

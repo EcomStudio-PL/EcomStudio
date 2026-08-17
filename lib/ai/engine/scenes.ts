@@ -3,7 +3,7 @@ import { callVisionJson, type VisionBackend, type VisionOutcome } from "./vision
 import {
   IMAGE_VIEWS, REFERENCE_ROLES, SCENE_TYPES,
   type FeatureManifest, type ImageAnalysis, type ImageView, type SceneConcept,
-  type SessionInput, type SupportingReference,
+  type SceneType, type SessionInput, type SupportingReference,
 } from "./types";
 
 /**
@@ -216,6 +216,131 @@ Hard rules:
 - If human_presence is true, human_interaction must describe the exact grip/pose (which hand, which fingers where), not "person holding product".
 - product_specific_negatives: 2-5 short "do not ..." lines protecting THIS product's most fragile facts in THIS scene (e.g. "do not change the four green buttons", "do not add a third device").
 - Write everything in English (prompts are consumed by image models).`;
+
+/**
+ * EXACT-COUNT BACKSTOP. The diversity and supported-view filters may reject
+ * model-proposed concepts; when the AI refill also comes up short, the
+ * remaining slots are synthesized deterministically from safe, always-
+ * renderable shot patterns. A seller who orders 8 shots gets exactly 8 —
+ * a synthesized packshot or close-up is a real, honest concept, and every
+ * card still has "Zmień scenę" if they want the AI to redesign it.
+ */
+const SYNTH_TEMPLATES: {
+  type: SceneType;
+  camera: SceneConcept["camera_distance"];
+  angle: string;
+  environment: string;
+  scene: (identity: string) => string;
+  title: Record<string, string>;
+  body: Record<string, string>;
+}[] = [
+  {
+    type: "premium_packshot", camera: "medium", angle: "three-quarter view, slightly above eye level",
+    environment: "seamless premium studio backdrop with a soft gradient",
+    scene: (p) => `${p} presented as a premium studio packshot on a clean seamless backdrop, hero placement in the centre of the frame.`,
+    title: { pl: "Premium packshot", en: "Premium packshot", de: "Premium-Packshot" },
+    body: {
+      pl: "Czyste studyjne ujęcie produktu na eleganckim tle.",
+      en: "A clean studio shot of the product on an elegant backdrop.",
+      de: "Eine saubere Studioaufnahme des Produkts auf elegantem Hintergrund.",
+    },
+  },
+  {
+    type: "closeup", camera: "close", angle: "close three-quarter detail view",
+    environment: "shallow depth of field over a neutral premium surface",
+    scene: (p) => `A close-up of the most characteristic detail of ${p}, filling the frame, with the rest of the product softly visible behind it.`,
+    title: { pl: "Detal produktu", en: "Product detail", de: "Produktdetail" },
+    body: {
+      pl: "Zbliżenie na najważniejszy detal produktu.",
+      en: "A close-up of the product's most important detail.",
+      de: "Nahaufnahme des wichtigsten Produktdetails.",
+    },
+  },
+  {
+    type: "marketplace_hero", camera: "medium", angle: "frontal, straight-on hero view",
+    environment: "bright neutral background suitable for a marketplace listing",
+    scene: (p) => `${p} shown frontally as the main marketplace listing photo, perfectly lit, no distractions.`,
+    title: { pl: "Zdjęcie główne", en: "Main listing shot", de: "Hauptbild" },
+    body: {
+      pl: "Idealne zdjęcie główne do oferty marketplace.",
+      en: "The perfect main photo for a marketplace listing.",
+      de: "Das perfekte Hauptfoto für ein Marktplatz-Angebot.",
+    },
+  },
+  {
+    type: "product_hero", camera: "medium", angle: "low three-quarter hero angle",
+    environment: "premium surface matching the product's world, softly lit background",
+    scene: (p) => `${p} staged as the hero of the frame on a premium surface that matches its category, with gentle depth behind it.`,
+    title: { pl: "Ujęcie hero", en: "Hero shot", de: "Hero-Aufnahme" },
+    body: {
+      pl: "Produkt w roli głównej, w eleganckim otoczeniu.",
+      en: "The product as the hero in an elegant setting.",
+      de: "Das Produkt als Held in eleganter Umgebung.",
+    },
+  },
+  {
+    type: "scale_demo", camera: "wide", angle: "eye-level view with context",
+    environment: "realistic interior surface with everyday objects for scale",
+    scene: (p) => `${p} placed next to familiar everyday objects so its true size reads instantly.`,
+    title: { pl: "Skala produktu", en: "True size", de: "Größenvergleich" },
+    body: {
+      pl: "Produkt obok znanych przedmiotów — od razu widać rozmiar.",
+      en: "The product beside familiar objects — the size reads instantly.",
+      de: "Das Produkt neben bekannten Objekten — die Größe ist sofort klar.",
+    },
+  },
+  {
+    type: "technical_detail", camera: "close", angle: "slightly top-down technical view",
+    environment: "clean neutral surface, even technical lighting",
+    scene: (p) => `${p} photographed to clearly show its construction and materials, evenly lit, every functional element readable.`,
+    title: { pl: "Budowa i materiały", en: "Build and materials", de: "Verarbeitung" },
+    body: {
+      pl: "Czytelne ujęcie konstrukcji i materiałów.",
+      en: "A clear view of the build quality and materials.",
+      de: "Ein klarer Blick auf Verarbeitung und Materialien.",
+    },
+  },
+];
+
+export function synthesizeConcepts(
+  existing: SceneConcept[], missing: number, identity: string,
+  analyses: ImageAnalysis[], locale: string = "pl",
+): SceneConcept[] {
+  if (missing <= 0) return [];
+  const used = new Set(existing.map((c) => c.scene_type));
+  const usable = analyses.filter((a) => !a.scene_reference_only && a.product_quality !== "poor");
+  const primary = [...usable].sort((a, b) => b.primary_candidate_score - a.primary_candidate_score)[0]?.image_number ?? 1;
+  const lang = ["pl", "en", "de"].includes(locale) ? locale : "pl";
+
+  const out: SceneConcept[] = [];
+  for (const tpl of SYNTH_TEMPLATES) {
+    if (out.length >= missing) break;
+    if (used.has(tpl.type)) continue;
+    used.add(tpl.type);
+    out.push(clampRefs({
+      scene_type: tpl.type,
+      title: tpl.title.en,
+      customer_title: tpl.title[lang],
+      customer_description: tpl.body[lang],
+      scene_description: tpl.scene(identity),
+      environment: tpl.environment,
+      camera_distance: tpl.camera,
+      camera_angle: tpl.angle,
+      lighting: "bright, clean commercial lighting appropriate to the setting",
+      human_presence: false,
+      human_interaction: null,
+      product_placement: "The product stands fully inside the frame as the unmistakable subject.",
+      physical_contact: "The product rests in full physical contact with the surface beneath it, with a correct contact shadow.",
+      product_orientation: "the most recognisable orientation shown in the primary reference",
+      marketing_purpose: "reliable conversion shot",
+      required_views: [],
+      primary_reference: primary,
+      supporting_references: [],
+      product_specific_negatives: [],
+    }, analyses.length, analyses));
+  }
+  return out;
+}
 
 export async function proposeScenes(
   backends: VisionBackend[],

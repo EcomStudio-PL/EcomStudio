@@ -322,8 +322,11 @@ function ConceptCard({ c, state, url, error, unitCost, engineReady, canAfford, o
         )}
 
         {state === "failed" && error && error !== "insufficient_credits" && (
+          /* The server already retried and fell back across providers before
+             answering — whatever code it returned, the seller only needs to
+             know the outcome and that their credits are safe. */
           <p role="alert" className="rounded-lg bg-[rgb(var(--danger)/0.1)] px-2.5 py-1.5 text-[11px] text-danger">
-            {t(`studio.err.${error}`) === `studio.err.${error}` ? t("concepts.failed") : t(`studio.err.${error}`)}
+            {t("concepts.failedFinal")}
           </p>
         )}
 

@@ -8,6 +8,9 @@ process.env.APP_ENCRYPTION_KEY = "a".repeat(64); // throwaway key for the round 
 
 import { clampShots, decryptConceptPayload, encryptConceptPayload, MAX_SHOTS, MIN_SHOTS } from "../lib/server/prompt-engine";
 import { variationInstruction } from "../lib/server/concept-generation";
+import { synthesizeConcepts, diversityViolations } from "../lib/ai/engine/scenes";
+import { retryDelayMs } from "../lib/server/provider-router";
+import type { ImageAnalysis, SceneConcept } from "../lib/ai/engine/types";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string) {
@@ -41,6 +44,39 @@ check("consecutive retakes vary differently", new Set(takes.slice(0, 4)).size ==
 check("the rotation wraps", takes[4] === takes[0]);
 check("every variation forbids changing the concept", takes.every((v) => v.includes("Do not change the scene concept")));
 check("variation is additive, not a replacement", takes.every((v) => v.startsWith("TAKE VARIATION")));
+
+console.log("\nD. EXACT COUNT — the diversity filter can reject, never shrink the order");
+const analysis = (n: number): ImageAnalysis => ({
+  image_number: n, view: "front", full_product: true, product_count: 1, occlusion: "none",
+  product_quality: "sharp", color_reference: true, material_reference: true,
+  scale_reference: false, dimension_reference: false, branding_visibility: "clear",
+  text_visibility: "clear", usage_reference: false, background_complexity: "clean",
+  critical_features: [], scene_reference_only: false, primary_candidate_score: 90 - n,
+  roles: ["PRIMARY_GEOMETRY"], observed_color: "gray", observed_button_count: 0, variant_hint: null,
+});
+const existing: SceneConcept[] = [{
+  scene_type: "product_in_use", title: "Use", customer_title: "W użyciu", customer_description: "x",
+  scene_description: "s", environment: "kitchen", camera_distance: "medium", camera_angle: "eye",
+  lighting: "soft", human_presence: true, human_interaction: "grip", product_placement: "p",
+  physical_contact: "c", product_orientation: "front", marketing_purpose: "m",
+  required_views: ["front"], primary_reference: 1, supporting_references: [], product_specific_negatives: [],
+}];
+for (const missing of [1, 3, 5]) {
+  const synth = synthesizeConcepts(existing, missing, "gray kettle", [analysis(1), analysis(2), analysis(3)], "pl");
+  check(`synthesizes exactly ${missing} replacement(s)`, synth.length === missing);
+  const all = [...existing, ...synth];
+  check(`no diversity collisions at +${missing}`, diversityViolations(all).length === 0);
+}
+const synth2 = synthesizeConcepts(existing, 2, "gray kettle", [analysis(1), analysis(2), analysis(3)], "pl");
+check("synthesized cards speak Polish", synth2.every((c) => /produktu|packshot|główne|hero|Skala|Budowa|Detal/i.test(c.customer_title)));
+check("synthesized concepts carry references", synth2.every((c) => c.primary_reference >= 1 && c.supporting_references.length >= 1));
+check("synthesized concepts need no unavailable views", synth2.every((c) => c.required_views.length === 0));
+
+console.log("\nE. RETRY PACING — backoff grows, Retry-After wins");
+const d1 = retryDelayMs(1), d2 = retryDelayMs(2), d3 = retryDelayMs(3);
+check("backoff grows with attempts", d1 < d2 && d2 < d3, `${Math.round(d1)} < ${Math.round(d2)} < ${Math.round(d3)}`);
+check("Retry-After takes precedence", Math.abs(retryDelayMs(1, 21000) - 21000) < 600);
+check("delays are capped", retryDelayMs(10, 300000) <= 30600);
 
 console.log(failures === 0 ? "\nALL CONCEPT TESTS PASSED\n" : `\n${failures} test(s) failed\n`);
 process.exit(failures === 0 ? 0 : 1);

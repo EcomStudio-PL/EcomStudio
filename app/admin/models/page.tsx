@@ -3,15 +3,25 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { PageHeader } from "@/components/ui/page-header";
 import { ModelRow, type ModelView } from "@/components/admin/model-editor";
+import { GenerationPriority, type PriorityModelOption } from "@/components/admin/generation-priority";
 
 export default async function AdminModels() {
   const supabase = await createClient();
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
-  const [{ data: models }, { data: billing }] = await Promise.all([
-    supabase.from("ai_models").select("*, ai_providers(name)").order("sort_order"),
+  const [{ data: models }, { data: billing }, { data: generation }] = await Promise.all([
+    supabase.from("ai_models").select("*, ai_providers(name, slug)").order("sort_order"),
     supabase.from("app_settings").select("value").eq("key", "billing").maybeSingle(),
+    supabase.from("app_settings").select("value").eq("key", "generation").maybeSingle(),
   ]);
+  const priority = ((generation?.value as { provider_priority?: string[] } | null)?.provider_priority ?? []);
+  const priorityOptions: PriorityModelOption[] = (models ?? [])
+    .filter((m) => m.active && m.supports_reference_images)
+    .map((m) => ({
+      key: `${(m.ai_providers as { slug?: string } | null)?.slug}:${m.model_identifier}`,
+      label: `${m.display_name || m.name} (${m.ai_providers?.name ?? "?"})`,
+    }))
+    .filter((o, i, arr) => arr.findIndex((x) => x.key === o.key) === i);
   const b = (billing?.value ?? {}) as { price_per_100_credits?: number; usd_to_pln?: number };
   const plnPerCredit = (b.price_per_100_credits ?? 19) / 100;
   const usdToPln = b.usd_to_pln ?? 4.0;
@@ -40,6 +50,7 @@ export default async function AdminModels() {
   return (
     <div>
       <PageHeader title={t("admin.nav.models")} sub={t("admin.modelsSub")} />
+      <GenerationPriority options={priorityOptions} current={priority} />
       <div className="space-y-3">
         {views.map((m) => (
           <ModelRow key={m.id} m={m} usdToPln={usdToPln} plnPerCredit={plnPerCredit} locale={locale} />

@@ -2,12 +2,24 @@ import "server-only";
 import type { Client } from "@/lib/services/workspace";
 import { decryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { getAdapter } from "@/lib/ai/registry";
-import { ProviderError, priceForResolution, type AspectRatio, type Resolution, type ReferenceImage } from "@/lib/ai/types";
+import {
+  ProviderError, priceForResolution,
+  type AspectRatio, type ImageProviderAdapter, type Resolution, type ReferenceImage,
+} from "@/lib/ai/types";
 import { buildFidelityInstructions } from "@/lib/ai/product-lock";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
+import {
+  MAX_ATTEMPTS_PER_PROVIDER, getProviderHealth, providerBlocked,
+  recordProviderFailure, recordProviderSuccess, retryDelayMs, sleep, withProviderLimit,
+} from "@/lib/server/provider-router";
 
 export type GenerateInput = {
   modelId: string;
+  /** Ordered fallback models tried when the primary fails for a
+   *  provider-side reason. Same prompt, same references, same single credit
+   *  reservation — a fallback is EcomStudio's infrastructure problem, never a
+   *  second charge. */
+  fallbackModelIds?: string[];
   prompt: string;
   negative?: string;
   aspectRatio: AspectRatio;
@@ -168,26 +180,123 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
 
   const fidelity = `${buildFidelityInstructions(productInstructions)}${productContext}`;
 
-  // Provider call (latency + error class recorded for history/admin)
+  /**
+   * PROVIDER LOOP — one credit reservation, many chances to deliver.
+   *
+   * The primary model goes first; every retryable error gets backoff (with
+   * the provider's Retry-After when sent), a quota/auth failure marks the
+   * provider's health and moves straight to the next candidate. Whatever
+   * finally serves the image is written back onto the job, and every attempt
+   * is logged for the admin — provider, model, HTTP status, upstream code —
+   * never the prompt, never a key.
+   */
   const startedAt = Date.now();
-  let result;
-  try {
-    result = await adapter.generate(model, {
-      prompt: promptText, aspectRatio: input.aspectRatio, resolution,
-      quantity, referenceImages: refs, productLock: { fidelityInstructions: fidelity },
-    }, { apiKey, baseUrl: cred.base_url });
-  } catch (e) {
-    const safe = e instanceof ProviderError ? e.safeMessage : "provider_error";
+  const health = await getProviderHealth(supabase);
+  const candidateIds = [input.modelId, ...(input.fallbackModelIds ?? [])]
+    .filter((id, i, arr) => arr.indexOf(id) === i);
+
+  type Attempt = {
+    provider: string; model: string; attempt: number;
+    error: string; code?: string; status?: number; message?: string;
+  };
+  const attempts: Attempt[] = [];
+  let result: Awaited<ReturnType<ImageProviderAdapter["generate"]>> | null = null;
+  let served: { model: typeof model; providerSlug: string } | null = null;
+  let lastError: ProviderError | null = null;
+
+  for (const candidateId of candidateIds) {
+    // The primary is already resolved; fallbacks resolve on demand.
+    let cModel = model, cProviderSlug = provider.slug, cAdapter = adapter;
+    let cApiKey = apiKey, cBaseUrl: string | null = cred.base_url;
+    if (candidateId !== input.modelId) {
+      const resolved = await resolveModelCandidate(supabase, candidateId);
+      if (!resolved) { attempts.push({ provider: "?", model: candidateId, attempt: 0, error: "model_unavailable" }); continue; }
+      cModel = resolved.model; cProviderSlug = resolved.providerSlug;
+      cAdapter = resolved.adapter; cApiKey = resolved.apiKey; cBaseUrl = resolved.baseUrl;
+    }
+
+    // A fallback that cannot carry the concept's references would break the
+    // Product Lock — skip it rather than render a lookalike.
+    const supportsRefs = cAdapter.capabilities.supportsReferenceImages && cModel.supports_reference_images;
+    if (refs.length > 0 && !supportsRefs && candidateId !== input.modelId) {
+      attempts.push({ provider: cProviderSlug, model: cModel.model_identifier, attempt: 0, error: "references_unsupported" });
+      continue;
+    }
+
+    // Respect health cooldowns while an alternative remains.
+    const isLastCandidate = candidateId === candidateIds[candidateIds.length - 1];
+    if (providerBlocked(health, cProviderSlug) && !isLastCandidate) {
+      attempts.push({
+        provider: cProviderSlug, model: cModel.model_identifier, attempt: 0,
+        error: "skipped_unhealthy", code: health.get(cProviderSlug)?.state,
+      });
+      continue;
+    }
+
+    const cResolution = (input.resolution && (cModel.supported_resolutions ?? []).includes(input.resolution)
+      ? input.resolution
+      : (cModel.supported_resolutions ?? ["1K"])[0]) as Resolution | undefined;
+    const cRefs = supportsRefs ? refs.slice(0, cModel.max_reference_images || 6) : [];
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_PROVIDER; attempt++) {
+      try {
+        result = await withProviderLimit(cProviderSlug, () => cAdapter.generate(cModel, {
+          prompt: promptText, aspectRatio: input.aspectRatio, resolution: cResolution,
+          quantity, referenceImages: cRefs, productLock: { fidelityInstructions: fidelity },
+        }, { apiKey: cApiKey, baseUrl: cBaseUrl }));
+        served = { model: cModel, providerSlug: cProviderSlug };
+        if (health.get(cProviderSlug) && health.get(cProviderSlug)!.state !== "healthy") {
+          await recordProviderSuccess(supabase, cProviderSlug);
+        }
+        break;
+      } catch (e) {
+        const pe = e instanceof ProviderError ? e : new ProviderError("provider_error");
+        lastError = pe;
+        attempts.push({
+          provider: cProviderSlug, model: cModel.model_identifier, attempt,
+          error: pe.safeMessage, code: pe.providerCode,
+          status: pe.upstream?.status, message: pe.upstream?.message,
+        });
+        await recordProviderFailure(supabase, cProviderSlug, pe);
+        if (!pe.retriable || attempt === MAX_ATTEMPTS_PER_PROVIDER) break; // next candidate
+        await sleep(retryDelayMs(attempt, pe.upstream?.retryAfterMs));
+      }
+    }
+    if (result) break;
+  }
+
+  if (!result || !served) {
+    const safe = lastError?.safeMessage ?? "provider_error";
     await failUsage(supabase, { eventId: usage.eventId, walletId: wallet.id, error: safe });
     await supabase.from("generation_jobs").update({
       status: "failed", error_message: safe, error_class: safe,
       latency_ms: Date.now() - startedAt, completed_at: new Date().toISOString(),
+      settings: {
+        resolution: resolution ?? null,
+        concept_id: input.conceptId ?? null,
+        parent_job_id: input.parentJobId ?? null,
+        attempts,
+      } as never,
     }).eq("id", job.id);
     await supabase.from("notifications").insert({
       user_id: userId, type: "generation_failed", title: "generation_failed",
       body: safe, href: "/history",
     });
     return { ok: false, error: safe };
+  }
+
+  // The job records whoever actually delivered, plus the attempt trail.
+  const model2 = served.model;
+  if (served.model.id !== model.id || attempts.length > 0) {
+    await supabase.from("generation_jobs").update({
+      model_id: served.model.id, provider_slug: served.providerSlug,
+      settings: {
+        resolution: resolution ?? null,
+        concept_id: input.conceptId ?? null,
+        parent_job_id: input.parentJobId ?? null,
+        attempts,
+      } as never,
+    }).eq("id", job.id);
   }
 
   // Store outputs + records
@@ -217,7 +326,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       await supabase.from("generation_assets").insert({
         generation_id: generation.id, asset_type: "image", storage_path: path,
         width: img.width ?? null, height: img.height ?? null,
-        metadata: { provider: provider.slug, model: model.model_identifier } as never,
+        metadata: { provider: served.providerSlug, model: model2.model_identifier } as never,
       });
       const { data: signed } = await supabase.storage.from("generation-assets").createSignedUrl(path, 3600);
       if (signed) stored.push({ url: signed.signedUrl, path });
@@ -240,7 +349,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   // facts rather than from the catalog estimate.
   const requestId = (result.providerMetadata?.requestId as string | undefined) ?? null;
   await completeUsage(supabase, usage.eventId, stored.length, {
-    apiCostUsdMicros: (model.internal_cost_usd_micros ?? 0) * stored.length,
+    apiCostUsdMicros: (model2.internal_cost_usd_micros ?? 0) * stored.length,
     providerRequestId: requestId,
   });
   await supabase.from("generation_jobs").update({
@@ -250,15 +359,38 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   }).eq("id", job.id);
   await supabase.from("notifications").insert({
     user_id: userId, type: "generation_done", title: "generation_done",
-    body: `${model.name} ×${stored.length}`, href: "/library",
+    body: `${model2.name} ×${stored.length}`, href: "/library",
   });
   await supabase.rpc("log_activity", {
     p_workspace_id: workspaceId, p_action: "generation.completed",
     p_entity_type: "generation_job", p_entity_id: job.id,
-    p_metadata: { model: model.model_identifier, count: stored.length, credits: cost },
+    p_metadata: { model: model2.model_identifier, provider: served.providerSlug, count: stored.length, credits: cost, fallback_attempts: attempts.length },
   });
 
   return { ok: true, jobId: job.id, productId: productId!, images: stored };
+}
+
+/** Resolve one fallback candidate: active model + active provider + adapter
+ *  + decrypted credential. A candidate missing any of those is skipped. */
+async function resolveModelCandidate(supabase: Client, modelId: string) {
+  const { data: model } = await supabase
+    .from("ai_models")
+    .select("*, ai_providers!inner(id, slug, active)")
+    .eq("id", modelId).eq("active", true).eq("ai_providers.active", true)
+    .maybeSingle();
+  const provider = (model as unknown as { ai_providers: { id: string; slug: string } } | null)?.ai_providers;
+  const adapter = provider ? getAdapter(provider.slug) : undefined;
+  if (!model || !provider || !adapter) return null;
+  const { data: credRows } = await supabase.rpc("get_active_provider_credential", { p_provider_id: provider.id });
+  const cred = credRows?.[0];
+  if (!cred) return null;
+  try {
+    return {
+      model, providerSlug: provider.slug, adapter,
+      apiKey: decryptSecret(cred.encrypted_value, cred.iv, cred.auth_tag),
+      baseUrl: cred.base_url,
+    };
+  } catch { return null; }
 }
 
 function buildProductContext(name: string, description: string | null, extraInfo: string | null): string {

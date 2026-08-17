@@ -4,7 +4,7 @@ import type { Client } from "@/lib/services/workspace";
 import { decryptSecret, encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { ProviderError, type ReferenceImage } from "@/lib/ai/types";
 import { analyzeReferences } from "@/lib/ai/engine/analysis";
-import { proposeScenes } from "@/lib/ai/engine/scenes";
+import { proposeScenes, synthesizeConcepts } from "@/lib/ai/engine/scenes";
 import { buildProductLock, chooseLockStrength } from "@/lib/ai/engine/lock";
 import { assembleMasterPrompt, assembleNegativePrompt, referenceRationale, referenceRoleLabel } from "@/lib/ai/engine/master-prompt";
 import { VISION_MODEL, type VisionBackend, type VisionOutcome, type VisionProvider } from "@/lib/ai/engine/vision";
@@ -281,16 +281,25 @@ export async function runPromptSession(
     });
     let concepts = scened.concepts;
     usedOutcome = scened.outcome;
-    if (concepts.length < shots) {
+    // EXACT COUNT GUARANTEE: the seller ordered N shots and receives N.
+    // First the AI refills the slots its own rejected concepts left open
+    // (up to twice); anything still missing is synthesized from safe,
+    // always-renderable shot patterns.
+    for (let refill = 0; refill < 2 && concepts.length < shots; refill++) {
       const missing = shots - concepts.length;
       try {
         const extra = await proposeScenes(backends, images, analyses, manifest, sessionInfo, {
           count: missing, avoidSceneTypes: concepts.map((c) => c.scene_type), customerLanguage,
         });
         concepts = [...concepts, ...extra.concepts.filter((e) => !concepts.some((c) => c.scene_type === e.scene_type))].slice(0, shots);
-      } catch { /* keep what we have — 3+ distinct concepts beat a hard fail */ }
+      } catch { break; /* AI refill unavailable — synthesis below still guarantees the count */ }
     }
     if (concepts.length === 0) throw new ProviderError("analysis_empty", true);
+    if (concepts.length < shots) {
+      concepts = [...concepts, ...synthesizeConcepts(
+        concepts, shots - concepts.length, manifest.identity, analyses, input.locale ?? "pl",
+      )].slice(0, shots);
+    }
 
     // 4) MASTER + NEGATIVE PROMPTS — assembled server-side and stored ONLY as
     // ciphertext. The row a client can read carries the card copy and the

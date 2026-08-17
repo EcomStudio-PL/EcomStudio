@@ -3,6 +3,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { encryptSecret, decryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { testProviderConnection } from "@/lib/server/provider-test";
+import { getAdapter } from "@/lib/ai/registry";
+import { ProviderError } from "@/lib/ai/types";
 
 type Result = { ok: boolean; error?: string; status?: string; message?: string };
 
@@ -71,6 +73,68 @@ export async function deleteProviderCredentialAction(providerId: string): Promis
   }
 }
 
+/**
+ * REAL image-generation test. A key can list models and still fail to
+ * generate (dead quota, model access, billing) — the production incident
+ * proved it. This runs one minimal, cheapest-possible generation through the
+ * SAME adapter and model the customers use and stores the verdict separately
+ * from the connection test. It costs a fraction of a cent; that is the price
+ * of certainty.
+ */
+export async function testProviderImageAction(providerId: string): Promise<Result> {
+  try {
+    const { supabase } = await requireAdmin();
+    const { data: provider } = await supabase.from("ai_providers").select("slug").eq("id", providerId).maybeSingle();
+    const { data: cred } = await supabase
+      .from("ai_provider_credentials")
+      .select("encrypted_value, iv, auth_tag, base_url")
+      .eq("provider_id", providerId).maybeSingle();
+    if (!provider || !cred) return { ok: false, error: "no_credential" };
+    const adapter = getAdapter(provider.slug);
+    if (!adapter) return { ok: false, error: "no_adapter" };
+    const { data: model } = await supabase
+      .from("ai_models").select("*")
+      .eq("provider_id", providerId).eq("active", true)
+      .order("sort_order", { ascending: true }).limit(1).maybeSingle();
+    if (!model) return { ok: false, error: "no_model" };
+
+    let apiKey: string;
+    try { apiKey = decryptSecret(cred.encrypted_value, cred.iv, cred.auth_tag); }
+    catch { return { ok: false, error: "decrypt_failed" }; }
+
+    let status = "image_ok";
+    let message: string | null = null;
+    try {
+      const result = await adapter.generate(model, {
+        prompt: "A plain matte gray cube on a clean white studio background",
+        aspectRatio: "1:1", resolution: "1K", quantity: 1, referenceImages: [],
+        productLock: { fidelityInstructions: "" },
+      }, { apiKey, baseUrl: cred.base_url });
+      if (!result.images.length) { status = "image_failed"; message = "empty_result"; }
+    } catch (e) {
+      status = "image_failed";
+      message = e instanceof ProviderError
+        ? [e.safeMessage, e.providerCode, e.upstream?.status ? `http=${e.upstream.status}` : null].filter(Boolean).join(" · ")
+        : "unknown_error";
+    }
+
+    await supabase.from("ai_provider_credentials").update({
+      last_image_test_at: new Date().toISOString(),
+      last_image_test_status: status,
+      last_image_test_error_safe: message,
+    }).eq("provider_id", providerId);
+    // A positive proof of real generation clears any stored cooldown; a
+    // failed one records the honest state so the router routes around it.
+    if (status === "image_ok") {
+      await supabase.rpc("set_provider_health", { p_slug: provider.slug, p_state: "healthy", p_cooldown_seconds: 0 });
+    }
+    revalidatePath("/admin/providers");
+    return { ok: status === "image_ok", status, message: message ?? undefined };
+  } catch {
+    return { ok: false, error: "generic" };
+  }
+}
+
 /** Decrypts server-side only, probes the provider, stores a safe test result. */
 export async function testProviderConnectionAction(providerId: string): Promise<Result> {
   try {
@@ -94,6 +158,11 @@ export async function testProviderConnectionAction(providerId: string): Promise<
       last_test_status: result.status,
       last_test_error_safe: result.status === "connected" ? null : result.message,
     }).eq("provider_id", providerId);
+    // A passing test lifts any stored cooldown so the router tries the
+    // provider again immediately instead of waiting it out.
+    if (result.status === "connected") {
+      await supabase.rpc("set_provider_health", { p_slug: provider.slug, p_state: "healthy", p_cooldown_seconds: 0 });
+    }
     revalidatePath("/admin/providers");
     return { ok: true, status: result.status, message: result.message };
   } catch {

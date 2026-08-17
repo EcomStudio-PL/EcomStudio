@@ -1,6 +1,55 @@
 import "server-only";
 import type { AiModelRecord, GenerationRequest, GenerationResult, ImageProviderAdapter, ProviderCredential } from "../types";
-import { ProviderError } from "../types";
+import { ProviderError, sanitizeUpstreamMessage } from "../types";
+
+/**
+ * Google's 429 body decides everything: a per-minute quota violation is a
+ * genuine rate limit (retry after RetryInfo.retryDelay), while a plan/billing
+ * quota ("check your plan and billing details", per-day quotaIds) means the
+ * key has no capacity at all — retrying is pointless and the router should
+ * fall back to another provider.
+ */
+async function classifyGoogleError(res: Response): Promise<ProviderError> {
+  let status = "", message = "", reasons: string[] = [], quotaIds = "", retryDelayMs: number | undefined;
+  try {
+    const parsed = JSON.parse(await res.text()) as {
+      error?: {
+        status?: string; message?: string;
+        details?: { "@type"?: string; reason?: string; retryDelay?: string; violations?: { quotaId?: string }[] }[];
+      };
+    };
+    status = parsed.error?.status ?? "";
+    message = parsed.error?.message ?? "";
+    for (const d of parsed.error?.details ?? []) {
+      if (d.reason) reasons.push(d.reason);
+      if (d.retryDelay) {
+        const seconds = Number(String(d.retryDelay).replace(/s$/i, ""));
+        if (Number.isFinite(seconds)) retryDelayMs = seconds * 1000;
+      }
+      quotaIds += (d.violations ?? []).map((v) => v.quotaId ?? "").join(",");
+    }
+  } catch { /* non-JSON body */ }
+
+  const upstream = {
+    status: res.status, type: status, code: reasons.join(",") || quotaIds.slice(0, 80) || undefined,
+    message: sanitizeUpstreamMessage(message), requestId: null, retryAfterMs: retryDelayMs,
+  };
+
+  if (res.status === 401 || res.status === 403) return new ProviderError("provider_auth_failed", false, status || "auth", upstream);
+  if (res.status === 429) {
+    const perMinute = /PerMinute/i.test(quotaIds);
+    const billing = /plan and billing|billing details/i.test(message) || /PerDay/i.test(quotaIds);
+    return billing && !perMinute
+      ? new ProviderError("provider_quota", false, "quota_exhausted", upstream)
+      : new ProviderError("provider_rate_limited", true, "rate_limited", upstream);
+  }
+  if (res.status === 404) return new ProviderError("model_unavailable", false, "model_not_found", upstream);
+  if (res.status === 400 && /safety|blocked/i.test(message)) {
+    return new ProviderError("content_policy", false, "safety", upstream);
+  }
+  if (res.status === 400) return new ProviderError("provider_invalid_request", false, "invalid_request", upstream);
+  return new ProviderError("provider_error", res.status >= 500, `http_${res.status}`, upstream);
+}
 
 /** Google Gemini image generation (gemini-2.5-flash-image family) via the
  *  REST generateContent endpoint. Reference images go inline as base64;
@@ -42,9 +91,7 @@ export const googleAdapter: ImageProviderAdapter = {
       }).catch((e) => {
         throw new ProviderError(e?.name === "TimeoutError" ? "provider_timeout" : "provider_unreachable", true);
       });
-      if (res.status === 401 || res.status === 403) throw new ProviderError("provider_auth_failed");
-      if (res.status === 429) throw new ProviderError("provider_rate_limited", true);
-      if (!res.ok) throw new ProviderError("provider_error", res.status >= 500);
+      if (!res.ok) throw await classifyGoogleError(res);
       const json = (await res.json()) as {
         candidates?: { content?: { parts?: { inlineData?: { mimeType: string; data: string } }[] } }[];
       };

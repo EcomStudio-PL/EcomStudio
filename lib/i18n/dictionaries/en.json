@@ -553,6 +553,17 @@
       "noPrompt": "No encrypted prompt (older session).",
       "refsUsed": "References",
       "empty": "No sessions."
+    },
+    "imageTest": "Generation test",
+    "imageTestOk": "Generates",
+    "imageTestFailed": "Generation error",
+    "imageTestNever": "Never tested",
+    "priority": {
+      "title": "Default image model",
+      "sub": "Engine order for automatic shots: primary first, then fallbacks on failure or empty quota. Credits are charged once regardless of which fallback served.",
+      "primary": "Primary model",
+      "fallback1": "Fallback #1",
+      "fallback2": "Fallback #2"
     }
   },
   "support": {
@@ -819,7 +830,12 @@
       "maintenance": "This service is under maintenance. Try again later.",
       "analysis_overloaded": "Analysis is temporarily overloaded. Try again in a moment.",
       "analysis_model_missing": "AI analysis is temporarily unavailable.",
-      "analysis_quota": "AI analysis is temporarily unavailable — capacity is being restored. Please try again later."
+      "analysis_quota": "AI analysis is temporarily unavailable — capacity is being restored. Please try again later.",
+      "provider_quota": "The AI provider ran out of funds.",
+      "content_policy": "Content rejected by the provider's safety filter.",
+      "provider_invalid_request": "The provider rejected the request.",
+      "concept_locked": "This concept has no encrypted prompt.",
+      "already_running": "Generation already in progress."
     },
     "fromPrompts": "Prompt session: {name} — prompt, negative, references and format are prefilled.",
     "fromCr": "from {n} ◆",
@@ -1233,6 +1249,7 @@
     "notGenerated": "Not generated yet",
     "refs": "Photos",
     "takes": "Take {n}",
-    "failed": "Generation failed. Try again."
+    "failed": "Generation failed. Try again.",
+    "failedFinal": "The photo could not be generated. No credits were charged."
   }
 }

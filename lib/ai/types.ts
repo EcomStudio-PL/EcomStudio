@@ -54,6 +54,18 @@ export interface ImageProviderAdapter {
   generate(model: AiModelRecord, req: GenerationRequest, cred: ProviderCredential): Promise<GenerationResult>;
 }
 
+/** Sanitized upstream facts for the admin: status + codes + a masked message.
+ *  Never the raw body, never a key, never the prompt. */
+export type UpstreamError = {
+  status?: number;
+  type?: string;
+  code?: string;
+  message?: string;
+  requestId?: string | null;
+  /** Provider-suggested wait before retrying (Retry-After / RetryInfo). */
+  retryAfterMs?: number;
+};
+
 export class ProviderError extends Error {
   /**
    * @param safeMessage localized-error key shown to the customer
@@ -61,12 +73,25 @@ export class ProviderError extends Error {
    * @param providerCode the provider's own error code/type (e.g.
    *   "insufficient_quota"). Codes only — never the raw body, never a key —
    *   so operators can diagnose without anything sensitive being stored.
+   * @param upstream    sanitized upstream diagnostics for admin telemetry
    */
   constructor(
     public safeMessage: string,
     public retriable = false,
     public providerCode?: string,
+    public upstream?: UpstreamError,
   ) {
     super(safeMessage);
   }
+}
+
+/** Strip anything secret-shaped out of an upstream message before it is
+ *  stored: API keys, bearer tokens, query keys. */
+export function sanitizeUpstreamMessage(message: string | undefined | null, max = 300): string | undefined {
+  if (!message) return undefined;
+  return message
+    .replace(/sk-[A-Za-z0-9_-]{8,}/g, "sk-***")
+    .replace(/(key|token|authorization)=([A-Za-z0-9_-]{8,})/gi, "$1=***")
+    .replace(/Bearer\s+[A-Za-z0-9._-]{8,}/gi, "Bearer ***")
+    .slice(0, max);
 }

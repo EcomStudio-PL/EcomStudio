@@ -1,6 +1,6 @@
 import "server-only";
 import type { AiModelRecord, GenerationRequest, GenerationResult, ImageProviderAdapter, ProviderCredential } from "../types";
-import { ProviderError } from "../types";
+import { ProviderError, sanitizeUpstreamMessage } from "../types";
 
 const SIZE: Record<string, string> = { "1:1": "1024x1024", "4:5": "1024x1536", "9:16": "1024x1536", "16:9": "1536x1024" };
 const MAX_REFS = 6;
@@ -46,9 +46,7 @@ export const openaiAdapter: ImageProviderAdapter = {
     let res = await send(refs.length > 0);
     if (res.status === 400 && refs.length > 0) res = await send(false);
 
-    if (res.status === 401 || res.status === 403) throw new ProviderError("provider_auth_failed");
-    if (res.status === 429) throw new ProviderError("provider_rate_limited", true);
-    if (!res.ok) throw new ProviderError("provider_error", res.status >= 500);
+    if (!res.ok) throw await classifyOpenAiError(res);
 
     const json = (await res.json()) as { data?: { b64_json?: string }[] };
     const images = (json.data ?? []).filter((d) => d.b64_json).map((d) => ({ base64: d.b64_json!, mime: "image/png" }));
@@ -56,6 +54,49 @@ export const openaiAdapter: ImageProviderAdapter = {
     return { images, providerMetadata: { requestId: res.headers.get("x-request-id") ?? undefined } };
   },
 };
+
+/**
+ * REAL upstream classification. A 429 is NOT one thing: OpenAI uses it both
+ * for "slow down" (retryable) and for "your account has no funds"
+ * (insufficient_quota — retrying is pointless, fall back to another
+ * provider). Everything is preserved for the admin as sanitized codes.
+ */
+async function classifyOpenAiError(res: Response): Promise<ProviderError> {
+  let type = "", code = "", message = "";
+  try {
+    const parsed = JSON.parse(await res.text()) as { error?: { type?: string; code?: string; message?: string } };
+    type = parsed.error?.type ?? "";
+    code = parsed.error?.code ?? "";
+    message = parsed.error?.message ?? "";
+  } catch { /* non-JSON body */ }
+
+  const retryAfter = Number(res.headers.get("retry-after"));
+  const upstream = {
+    status: res.status, type, code,
+    message: sanitizeUpstreamMessage(message),
+    requestId: res.headers.get("x-request-id"),
+    retryAfterMs: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : undefined,
+  };
+
+  if (res.status === 401) return new ProviderError("provider_auth_failed", false, code || "invalid_key", upstream);
+  if (res.status === 403) return new ProviderError("provider_auth_failed", false, code || "access_denied", upstream);
+  if (res.status === 429) {
+    const quota = code === "insufficient_quota" || type === "insufficient_quota" || /quota|billing/i.test(message);
+    return quota
+      ? new ProviderError("provider_quota", false, code || "insufficient_quota", upstream)
+      : new ProviderError("provider_rate_limited", true, code || "rate_limit_exceeded", upstream);
+  }
+  if (res.status === 404 || code === "model_not_found" || /model .* (does not exist|not found)/i.test(message)) {
+    return new ProviderError("model_unavailable", false, code || "model_not_found", upstream);
+  }
+  if (res.status === 400 && (code === "content_policy_violation" || /content policy|safety system/i.test(message))) {
+    return new ProviderError("content_policy", false, code || "content_policy_violation", upstream);
+  }
+  if (res.status === 400 || res.status === 422) {
+    return new ProviderError("provider_invalid_request", false, code || "invalid_request", upstream);
+  }
+  return new ProviderError("provider_error", res.status >= 500 || res.status === 408, code || `http_${res.status}`, upstream);
+}
 
 /** Multipart body for the edits endpoint: every reference goes in as image[]. */
 function editForm(

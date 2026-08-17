@@ -553,6 +553,17 @@
       "noPrompt": "Brak zaszyfrowanego promptu (starsza sesja).",
       "refsUsed": "Referencje",
       "empty": "Brak sesji."
+    },
+    "imageTest": "Test generacji",
+    "imageTestOk": "Generuje",
+    "imageTestFailed": "Błąd generacji",
+    "imageTestNever": "Nie testowano",
+    "priority": {
+      "title": "Domyślny model zdjęć",
+      "sub": "Kolejność silników dla automatycznych ujęć: primary, potem fallbacki przy awarii lub braku środków. Kredyty pobierane są raz, niezależnie od użytego fallbacku.",
+      "primary": "Model główny",
+      "fallback1": "Fallback #1",
+      "fallback2": "Fallback #2"
     }
   },
   "support": {
@@ -819,7 +830,12 @@
       "maintenance": "Ta usługa jest w konserwacji. Spróbuj później.",
       "analysis_overloaded": "Analiza jest chwilowo przeciążona. Spróbuj ponownie za moment.",
       "analysis_model_missing": "Analiza AI jest chwilowo niedostępna.",
-      "analysis_quota": "Analiza AI jest chwilowo niedostępna — trwa uzupełnianie limitów. Spróbuj ponownie później."
+      "analysis_quota": "Analiza AI jest chwilowo niedostępna — trwa uzupełnianie limitów. Spróbuj ponownie później.",
+      "provider_quota": "Dostawca AI wyczerpał limit środków.",
+      "content_policy": "Treść odrzucona przez filtr bezpieczeństwa dostawcy.",
+      "provider_invalid_request": "Dostawca odrzucił żądanie.",
+      "concept_locked": "Ten koncept nie ma zaszyfrowanego promptu.",
+      "already_running": "Generowanie już trwa."
     },
     "fromPrompts": "Sesja z Promptów: {name} — prompt, negative, referencje i format są już ustawione.",
     "fromCr": "od {n} ◆",
@@ -1233,6 +1249,7 @@
     "notGenerated": "Jeszcze nie wygenerowano",
     "refs": "Zdjęcia",
     "takes": "Ujęcie {n}",
-    "failed": "Nie udało się wygenerować. Spróbuj ponownie."
+    "failed": "Nie udało się wygenerować. Spróbuj ponownie.",
+    "failedFinal": "Nie udało się wygenerować zdjęcia. Kredyty nie zostały pobrane."
   }
 }

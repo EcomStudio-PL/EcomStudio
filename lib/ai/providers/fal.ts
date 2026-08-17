@@ -1,6 +1,6 @@
 import "server-only";
 import type { AiModelRecord, GenerationRequest, GenerationResult, ImageProviderAdapter, ProviderCredential } from "../types";
-import { ProviderError } from "../types";
+import { ProviderError, sanitizeUpstreamMessage } from "../types";
 
 const SIZE: Record<string, Record<string, { width: number; height: number }>> = {
   "1K": {
@@ -26,7 +26,11 @@ export const falAdapter: ImageProviderAdapter = {
 
   async generate(model: AiModelRecord, req: GenerationRequest, cred: ProviderCredential): Promise<GenerationResult> {
     const base = cred.baseUrl?.replace(/\/$/, "") || "https://fal.run";
-    const path = model.model_identifier === "flux-pro-1.1" ? "fal-ai/flux-pro/v1.1" : model.model_identifier;
+    // Endpoint is data, not code: an admin can point any fal model at its
+    // path via ai_models.metadata.fal_endpoint (e.g. "fal-ai/flux-pro/v1.1",
+    // "fal-ai/flux-kontext", …) without a deploy.
+    const path = ((model.metadata as { fal_endpoint?: string } | null)?.fal_endpoint)
+      || (model.model_identifier === "flux-pro-1.1" ? "fal-ai/flux-pro/v1.1" : model.model_identifier);
     const size = SIZE[req.resolution ?? "1K"]?.[req.aspectRatio] ?? SIZE["1K"]["1:1"];
 
     const res = await fetch(`${base}/${path}`, {
@@ -42,9 +46,24 @@ export const falAdapter: ImageProviderAdapter = {
     }).catch((e) => {
       throw new ProviderError(e?.name === "TimeoutError" ? "provider_timeout" : "provider_unreachable", true);
     });
-    if (res.status === 401 || res.status === 403) throw new ProviderError("provider_auth_failed");
-    if (res.status === 429) throw new ProviderError("provider_rate_limited", true);
-    if (!res.ok) throw new ProviderError("provider_error", res.status >= 500);
+    if (!res.ok) {
+      // fal answers 403 both for a bad key AND for a locked/unfunded account
+      // ("User is locked. Reason: TOP_UP.") — only the body tells them apart.
+      let detail = "";
+      try { detail = String((JSON.parse(await res.text()) as { detail?: unknown }).detail ?? ""); } catch { /* ignore */ }
+      const upstream = {
+        status: res.status, message: sanitizeUpstreamMessage(detail),
+        requestId: res.headers.get("x-fal-request-id"), code: undefined as string | undefined,
+      };
+      if (res.status === 429) throw new ProviderError("provider_rate_limited", true, "rate_limited", upstream);
+      if (/locked|top.?up|balance|exhausted|insufficient/i.test(detail)) {
+        throw new ProviderError("provider_quota", false, "account_locked_top_up", upstream);
+      }
+      if (res.status === 401 || res.status === 403) throw new ProviderError("provider_auth_failed", false, "auth", upstream);
+      if (res.status === 404) throw new ProviderError("model_unavailable", false, "endpoint_not_found", upstream);
+      if (res.status === 422 || res.status === 400) throw new ProviderError("provider_invalid_request", false, `http_${res.status}`, upstream);
+      throw new ProviderError("provider_error", res.status >= 500, `http_${res.status}`, upstream);
+    }
     const json = (await res.json()) as { images?: { url: string; width?: number; height?: number; content_type?: string }[] };
     if (!json.images?.length) throw new ProviderError("provider_empty_result");
     return {

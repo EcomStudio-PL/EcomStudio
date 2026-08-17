@@ -13,7 +13,7 @@ export default async function AdminProviders() {
     supabase.from("ai_providers").select("id, slug, name, active, ai_models(id, active)").order("name"),
     // Only safe, masked metadata is selected — ciphertext never leaves the server.
     supabase.from("ai_provider_credentials")
-      .select("provider_id, last_four, updated_at, last_tested_at, last_test_status, last_test_error_safe, base_url"),
+      .select("provider_id, last_four, updated_at, last_tested_at, last_test_status, last_test_error_safe, base_url, last_image_test_at, last_image_test_status, last_image_test_error_safe"),
   ]);
   const credByProvider = new Map((creds ?? []).map((c) => [c.provider_id, c]));
   const views: ProviderView[] = (providers ?? []).map((p) => {
@@ -32,6 +32,9 @@ export default async function AdminProviders() {
         lastTestStatus: c.last_test_status,
         lastTestError: c.last_test_error_safe,
         baseUrl: c.base_url,
+        lastImageTestAt: c.last_image_test_at,
+        lastImageTestStatus: c.last_image_test_status,
+        lastImageTestError: c.last_image_test_error_safe,
       } : null,
     };
   });

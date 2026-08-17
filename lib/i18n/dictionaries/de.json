@@ -553,6 +553,17 @@
       "noPrompt": "Kein verschlüsselter Prompt (ältere Sitzung).",
       "refsUsed": "Referenzen",
       "empty": "Keine Sitzungen."
+    },
+    "imageTest": "Generierungstest",
+    "imageTestOk": "Generiert",
+    "imageTestFailed": "Generierungsfehler",
+    "imageTestNever": "Nie getestet",
+    "priority": {
+      "title": "Standard-Bildmodell",
+      "sub": "Engine-Reihenfolge für automatische Aufnahmen: primär, dann Fallbacks bei Ausfall oder leerem Kontingent. Credits werden einmal berechnet, unabhängig vom Fallback.",
+      "primary": "Primärmodell",
+      "fallback1": "Fallback #1",
+      "fallback2": "Fallback #2"
     }
   },
   "support": {
@@ -819,7 +830,12 @@
       "maintenance": "Dieser Dienst wird gewartet. Bitte später erneut versuchen.",
       "analysis_overloaded": "Die Analyse ist überlastet. Bitte gleich erneut versuchen.",
       "analysis_model_missing": "Die KI-Analyse ist vorübergehend nicht verfügbar.",
-      "analysis_quota": "Die KI-Analyse ist vorübergehend nicht verfügbar. Bitte später erneut versuchen."
+      "analysis_quota": "Die KI-Analyse ist vorübergehend nicht verfügbar. Bitte später erneut versuchen.",
+      "provider_quota": "Der KI-Anbieter hat kein Guthaben mehr.",
+      "content_policy": "Inhalt vom Sicherheitsfilter des Anbieters abgelehnt.",
+      "provider_invalid_request": "Der Anbieter hat die Anfrage abgelehnt.",
+      "concept_locked": "Dieses Konzept hat keinen verschlüsselten Prompt.",
+      "already_running": "Generierung läuft bereits."
     },
     "fromPrompts": "Prompt-Session: {name} — Prompt, Negative, Referenzen und Format sind vorausgefüllt.",
     "fromCr": "ab {n} ◆",
@@ -1233,6 +1249,7 @@
     "notGenerated": "Noch nicht generiert",
     "refs": "Fotos",
     "takes": "Aufnahme {n}",
-    "failed": "Generierung fehlgeschlagen. Erneut versuchen."
+    "failed": "Generierung fehlgeschlagen. Erneut versuchen.",
+    "failedFinal": "Das Foto konnte nicht generiert werden. Es wurden keine Credits abgebucht."
   }
 }

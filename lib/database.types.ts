@@ -178,6 +178,9 @@ export type Database = {
           id: string
           iv: string
           last_four: string
+          last_image_test_at: string | null
+          last_image_test_error_safe: string | null
+          last_image_test_status: string | null
           last_test_error_safe: string | null
           last_test_status: string | null
           last_tested_at: string | null
@@ -195,6 +198,9 @@ export type Database = {
           id?: string
           iv: string
           last_four?: string
+          last_image_test_at?: string | null
+          last_image_test_error_safe?: string | null
+          last_image_test_status?: string | null
           last_test_error_safe?: string | null
           last_test_status?: string | null
           last_tested_at?: string | null
@@ -212,6 +218,9 @@ export type Database = {
           id?: string
           iv?: string
           last_four?: string
+          last_image_test_at?: string | null
+          last_image_test_error_safe?: string | null
+          last_image_test_status?: string | null
           last_test_error_safe?: string | null
           last_test_status?: string | null
           last_tested_at?: string | null
@@ -1681,6 +1690,30 @@ export type Database = {
           },
         ]
       }
+      provider_health: {
+        Row: {
+          cooldown_until: string | null
+          note: string | null
+          provider_slug: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          cooldown_until?: string | null
+          note?: string | null
+          provider_slug: string
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          cooldown_until?: string | null
+          note?: string | null
+          provider_slug?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       service_catalog: {
         Row: {
           api_cost_usd_micros: number
@@ -2444,6 +2477,15 @@ export type Database = {
       }
       providers_with_credentials: { Args: never; Returns: string[] }
       refund_usage_event: { Args: { p_event_id: string }; Returns: string }
+      set_provider_health: {
+        Args: {
+          p_cooldown_seconds?: number
+          p_note?: string
+          p_slug: string
+          p_state: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       asset_type: "image" | "video" | "text"
