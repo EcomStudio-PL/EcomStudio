@@ -92,10 +92,10 @@ export function SessionForm({ products, workspaceId, engineAvailable, unitCost }
     setFailure(null);
     setBusy(true);
     setStage("analyzing");
-    // The server runs analysis -> Product Lock -> 5 prompts in one request;
+    // The server runs analysis -> Product Lock -> N hidden concepts in one request;
     // these timings mirror the real stage durations so the label stays honest.
-    const toLock = setTimeout(() => setStage("lock"), 12_000);
-    const toPrompts = setTimeout(() => setStage("prompts"), 22_000);
+    const toLock = setTimeout(() => setStage("lock"), 9_000);
+    const toPrompts = setTimeout(() => setStage("prompts"), 14_000);
     try {
       const res = await fetch("/api/prompts/generate", {
         method: "POST",
@@ -114,7 +114,8 @@ export function SessionForm({ products, workspaceId, engineAvailable, unitCost }
         router.push(`/prompts/${json.sessionId}`);
         return; // keep the button busy until the new route paints
       }
-      const message = t(`studio.err.${json.error}`, {}) || t("common.error");
+      const known = t(`studio.err.${json.error}`, {});
+      const message = known && known !== `studio.err.${json.error}` ? known : t("concepts.prepareFailed");
       setFailure(message);
       toast.error(message);
       setBusy(false);
@@ -230,7 +231,7 @@ export function SessionForm({ products, workspaceId, engineAvailable, unitCost }
           className={cn("brand-gradient flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-sm font-semibold text-white shadow-sm transition-opacity",
             canSubmit ? "hover:opacity-90" : "cursor-not-allowed opacity-50")}>
           {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-          {busy ? t(`psess.stage_${stage}`) : t("concepts.prepare")}
+          {busy ? t(`psess.stage_${stage}`, { n: shots }) : t("concepts.prepare", { n: shots })}
         </button>
         {busy && (
           <div className="space-y-2 rounded-xl bg-raised px-4 py-3 anim-fade">
@@ -242,7 +243,7 @@ export function SessionForm({ products, workspaceId, engineAvailable, unitCost }
                   i === idx ? "font-medium text-ink" : done ? "text-muted" : "text-faint")}>
                   <span aria-hidden className={cn("h-1.5 w-1.5 rounded-full",
                     i === idx ? "bg-accent" : done ? "bg-accent/40" : "bg-line-strong")} />
-                  {t(`psess.stage_${s}`)}
+                  <span className="tabular-nums text-faint">{i + 1}/3</span> {t(`psess.stage_${s}`, { n: shots })}
                 </p>
               );
             })}

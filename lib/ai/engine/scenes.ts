@@ -8,9 +8,9 @@ import {
 
 /**
  * SCENE STRATEGY + DIVERSITY ENGINE.
- * Picks 5 scene concepts FOR THIS SPECIFIC PRODUCT (a TV remote gets a
- * family-couch scene; a soldering iron gets a workbench macro — never the
- * same five for everything), assigns the primary + supporting references per
+ * Designs the requested number of scene concepts (5-10) FOR THIS SPECIFIC
+ * PRODUCT (a TV remote gets a family-couch scene; a soldering iron gets a
+ * workbench macro — never the same set for everything), assigns references per
  * scene, and refuses angles the references cannot support (fidelity >
  * novelty: no rear hero shot when no rear photo exists).
  */

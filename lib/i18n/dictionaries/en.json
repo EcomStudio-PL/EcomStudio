@@ -893,9 +893,9 @@
     "reopen": "Reopen"
   },
   "psess": {
-    "sub": "Paste your product data, add photos — AI analyses the product and prepares 5 professional prompts.",
+    "sub": "Add product data and photos — the AI analyses the product and prepares professional selling shots.",
     "newTitle": "New prompts",
-    "newSub": "The system analyses every photo, builds a Product Lock and picks 5 distinct scenes.",
+    "newSub": "The system analyses every photo, locks the product's look and designs varied scenes.",
     "name": "Product name",
     "description": "Product description",
     "descriptionPh": "Paste the full listing from Allegro/Amazon/WooCommerce…",
@@ -903,11 +903,10 @@
     "styleToggle": "Preferred style (optional)",
     "stylePh": "E.g. minimalist, warm, premium…",
     "unavailable": "AI analysis is temporarily unavailable. Try again later or contact support.",
-    "generate5": "Generate 5 prompts",
-    "stepHint": "This usually takes 30–60 seconds.",
+    "stepHint": "This usually takes under half a minute.",
     "recent": "Recent sessions",
     "empty": "No prompt sessions yet.",
-    "detailSub": "5 concepts tailored to this product — each with its own references and Product Lock.",
+    "detailSub": "Concepts designed for this product — each with its own references.",
     "ready": "Ready",
     "failed": "Failed",
     "processing": "Processing…",
@@ -919,8 +918,8 @@
     "status_analyzing": "Analysing…",
     "status_pending": "Pending",
     "stage_analyzing": "Analysing the product…",
-    "stage_lock": "Building the Product Lock…",
-    "stage_prompts": "Writing 5 prompts…",
+    "stage_lock": "Locking the product's look…",
+    "stage_prompts": "Preparing {n} shots…",
     "retryHint": "Please try again.",
     "primaryRef": "Primary"
   },
@@ -1233,7 +1232,7 @@
     "detailSub": "Ready shot proposals for your product. Pick and generate.",
     "shots": "Number of shots",
     "shotsCost": "{n} shots × {cost} cr. = the full set once prepared",
-    "prepare": "Prepare shots",
+    "prepare": "Prepare {n} shots",
     "readyTitle": "We prepared {n} shots",
     "generateAll": "Generate all ({n})",
     "batchCost": "{n} shots to generate · {cost} cr. total",
@@ -1250,6 +1249,7 @@
     "refs": "Photos",
     "takes": "Take {n}",
     "failed": "Generation failed. Try again.",
-    "failedFinal": "The photo could not be generated. No credits were charged."
+    "failedFinal": "The photo could not be generated. No credits were charged.",
+    "prepareFailed": "Could not prepare the shots. Try again."
   }
 }

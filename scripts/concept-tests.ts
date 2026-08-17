@@ -6,7 +6,7 @@
  */
 process.env.APP_ENCRYPTION_KEY = "a".repeat(64); // throwaway key for the round trip
 
-import { clampShots, decryptConceptPayload, encryptConceptPayload, MAX_SHOTS, MIN_SHOTS } from "../lib/server/prompt-engine";
+import { candidatePoolSize, clampShots, decryptConceptPayload, encryptConceptPayload, MAX_SHOTS, MIN_SHOTS } from "../lib/server/prompt-engine";
 import { variationInstruction } from "../lib/server/concept-generation";
 import { synthesizeConcepts, diversityViolations } from "../lib/ai/engine/scenes";
 import { retryDelayMs } from "../lib/server/provider-router";
@@ -24,6 +24,8 @@ check("below range clamps up", clampShots(1) === MIN_SHOTS && clampShots(-3) ===
 check("above range clamps down", clampShots(50) === MAX_SHOTS);
 check("valid values pass through", clampShots(7) === 7 && clampShots(10) === 10);
 check("garbage becomes the default", clampShots("abc") === 5 && clampShots(NaN) === 5);
+check("candidate pool over-provisions by two", candidatePoolSize(5) === 7 && candidatePoolSize(7) === 9);
+check("candidate pool caps at twelve", candidatePoolSize(10) === 12);
 
 console.log("\nB. HIDDEN PROMPT — encrypt → store → decrypt round trip");
 const prompt = "TASK\nCreate one professional advertising photograph…\n\nPRODUCT LOCK\n- exact colors";

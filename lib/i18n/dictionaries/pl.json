@@ -893,9 +893,9 @@
     "reopen": "Otwórz ponownie"
   },
   "psess": {
-    "sub": "Wklej dane produktu, dodaj zdjęcia — AI przeanalizuje produkt i przygotuje 5 profesjonalnych promptów.",
+    "sub": "Dodaj dane i zdjęcia produktu — AI przeanalizuje produkt i przygotuje profesjonalne ujęcia sprzedażowe.",
     "newTitle": "Nowe prompty",
-    "newSub": "System przeanalizuje każde zdjęcie, zbuduje Product Lock i dobierze 5 różnych scen.",
+    "newSub": "System przeanalizuje każde zdjęcie, zabezpieczy wygląd produktu i dobierze różnorodne sceny.",
     "name": "Nazwa produktu",
     "description": "Opis produktu",
     "descriptionPh": "Wklej cały opis z Allegro/Amazon/WooCommerce…",
@@ -903,11 +903,10 @@
     "styleToggle": "Preferowany styl (opcjonalnie)",
     "stylePh": "Np. minimalistyczny, ciepły, premium…",
     "unavailable": "Analiza AI jest chwilowo niedostępna. Spróbuj później lub skontaktuj się z supportem.",
-    "generate5": "Generuj 5 promptów",
-    "stepHint": "To zwykle trwa 30–60 sekund.",
+    "stepHint": "To zwykle trwa kilkanaście sekund.",
     "recent": "Ostatnie sesje",
     "empty": "Nie masz jeszcze żadnej sesji promptów.",
-    "detailSub": "5 koncepcji dobranych do tego produktu — każda z własnymi referencjami i Product Lock.",
+    "detailSub": "Koncepcje dobrane do tego produktu — każda z własnymi referencjami.",
     "ready": "Gotowe",
     "failed": "Błąd",
     "processing": "Przetwarzanie…",
@@ -919,8 +918,8 @@
     "status_analyzing": "Analiza…",
     "status_pending": "Oczekuje",
     "stage_analyzing": "Analizuję produkt…",
-    "stage_lock": "Tworzę Product Lock…",
-    "stage_prompts": "Tworzę 5 promptów…",
+    "stage_lock": "Zabezpieczam wygląd produktu…",
+    "stage_prompts": "Przygotowuję {n} ujęć…",
     "retryHint": "Spróbuj ponownie.",
     "primaryRef": "Główna"
   },
@@ -1233,7 +1232,7 @@
     "detailSub": "Gotowe propozycje ujęć dla Twojego produktu. Wybierz i generuj.",
     "shots": "Liczba ujęć",
     "shotsCost": "{n} ujęć × {cost} kr. = pełny komplet po przygotowaniu",
-    "prepare": "Przygotuj ujęcia",
+    "prepare": "Przygotuj {n} ujęć",
     "readyTitle": "Przygotowaliśmy {n} ujęć",
     "generateAll": "Generuj wszystkie ({n})",
     "batchCost": "{n} ujęć do wygenerowania · razem {cost} kr.",
@@ -1250,6 +1249,7 @@
     "refs": "Zdjęcia",
     "takes": "Ujęcie {n}",
     "failed": "Nie udało się wygenerować. Spróbuj ponownie.",
-    "failedFinal": "Nie udało się wygenerować zdjęcia. Kredyty nie zostały pobrane."
+    "failedFinal": "Nie udało się wygenerować zdjęcia. Kredyty nie zostały pobrane.",
+    "prepareFailed": "Nie udało się przygotować ujęć. Spróbuj ponownie."
   }
 }

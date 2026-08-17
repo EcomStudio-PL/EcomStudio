@@ -893,9 +893,9 @@
     "reopen": "Wieder öffnen"
   },
   "psess": {
-    "sub": "Produktdaten einfügen, Fotos hochladen — die KI analysiert das Produkt und erstellt 5 professionelle Prompts.",
+    "sub": "Produktdaten und Fotos hinzufügen — die KI analysiert das Produkt und bereitet professionelle Verkaufsaufnahmen vor.",
     "newTitle": "Neue Prompts",
-    "newSub": "Das System analysiert jedes Foto, erstellt den Product Lock und wählt 5 unterschiedliche Szenen.",
+    "newSub": "Das System analysiert jedes Foto, sichert das Produktaussehen und entwirft abwechslungsreiche Szenen.",
     "name": "Produktname",
     "description": "Produktbeschreibung",
     "descriptionPh": "Kompletten Marketplace-Text einfügen…",
@@ -903,11 +903,10 @@
     "styleToggle": "Bevorzugter Stil (optional)",
     "stylePh": "Z. B. minimalistisch, warm, premium…",
     "unavailable": "Die KI-Analyse ist vorübergehend nicht verfügbar. Bitte später erneut versuchen.",
-    "generate5": "5 Prompts generieren",
-    "stepHint": "Dauert in der Regel 30–60 Sekunden.",
+    "stepHint": "Dauert in der Regel unter einer halben Minute.",
     "recent": "Letzte Sessions",
     "empty": "Noch keine Prompt-Sessions.",
-    "detailSub": "5 Konzepte für dieses Produkt — jedes mit eigenen Referenzen und Product Lock.",
+    "detailSub": "Konzepte für dieses Produkt — jedes mit eigenen Referenzen.",
     "ready": "Fertig",
     "failed": "Fehler",
     "processing": "Wird verarbeitet…",
@@ -918,9 +917,9 @@
     "status_failed": "Fehler",
     "status_analyzing": "Analyse…",
     "status_pending": "Wartet",
-    "stage_analyzing": "Produkt wird analysiert…",
-    "stage_lock": "Product Lock wird erstellt…",
-    "stage_prompts": "5 Prompts werden erstellt…",
+    "stage_analyzing": "Analysiere das Produkt…",
+    "stage_lock": "Sichere das Produktaussehen…",
+    "stage_prompts": "Bereite {n} Aufnahmen vor…",
     "retryHint": "Bitte erneut versuchen.",
     "primaryRef": "Primär"
   },
@@ -1233,7 +1232,7 @@
     "detailSub": "Fertige Aufnahme-Vorschläge für Ihr Produkt. Auswählen und generieren.",
     "shots": "Anzahl der Aufnahmen",
     "shotsCost": "{n} Aufnahmen × {cost} Cr. = das komplette Set nach der Vorbereitung",
-    "prepare": "Aufnahmen vorbereiten",
+    "prepare": "{n} Aufnahmen vorbereiten",
     "readyTitle": "Wir haben {n} Aufnahmen vorbereitet",
     "generateAll": "Alle generieren ({n})",
     "batchCost": "{n} Aufnahmen zu generieren · insgesamt {cost} Cr.",
@@ -1250,6 +1249,7 @@
     "refs": "Fotos",
     "takes": "Aufnahme {n}",
     "failed": "Generierung fehlgeschlagen. Erneut versuchen.",
-    "failedFinal": "Das Foto konnte nicht generiert werden. Es wurden keine Credits abgebucht."
+    "failedFinal": "Das Foto konnte nicht generiert werden. Es wurden keine Credits abgebucht.",
+    "prepareFailed": "Aufnahmen konnten nicht vorbereitet werden. Erneut versuchen."
   }
 }
