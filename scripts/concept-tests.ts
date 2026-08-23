@@ -7,7 +7,8 @@
 process.env.APP_ENCRYPTION_KEY = "a".repeat(64); // throwaway key for the round trip
 
 import { candidatePoolSize, clampShots, decryptConceptPayload, encryptConceptPayload, MAX_SHOTS, MIN_SHOTS } from "../lib/server/prompt-engine";
-import { variationInstruction } from "../lib/server/concept-generation";
+import { variationInstruction, originCost } from "../lib/server/concept-generation";
+import type { UsableModel } from "../lib/ai/router";
 import { synthesizeConcepts, diversityViolations } from "../lib/ai/engine/scenes";
 import { retryDelayMs } from "../lib/server/provider-router";
 import {
@@ -131,6 +132,18 @@ const openedMeta = decryptConceptPayload({ prompt_encrypted: sealedMeta.cipherte
 check("payload meta survives the round trip", openedMeta?.meta.tv === PROMPT_TEMPLATE_VERSION && openedMeta?.meta.cat === "garden");
 const synthPl = synthesizeConcepts(existing, 3, "szary czajnik", [analysis(1), analysis(2)], "pl");
 check("synthesized concepts carry Polish shot text", synthPl.every((c) => (c.scene_text_pl ?? "").startsWith("Jest to szary czajnik.")));
+
+console.log("\nG. DUAL PRICING — custom pays base, EcomStudio adds the surcharge");
+const fakeModel = {
+  credit_cost: 4, pricing: { "1K": 4 }, supported_resolutions: ["1K"],
+  ecom_surcharge_credits: 49,
+} as unknown as UsableModel;
+check("custom prompt pays the base price", originCost(fakeModel, "custom") === 4);
+check("EcomStudio prompt adds the surcharge", originCost(fakeModel, "ecomstudio") === 53);
+const noSurcharge = { ...fakeModel, ecom_surcharge_credits: 0 } as unknown as UsableModel;
+check("zero surcharge collapses to base", originCost(noSurcharge, "ecomstudio") === 4);
+const negSurcharge = { ...fakeModel, ecom_surcharge_credits: -5 } as unknown as UsableModel;
+check("negative surcharge never discounts", originCost(negSurcharge, "ecomstudio") === 4);
 
 console.log("\nE. RETRY PACING — backoff grows, Retry-After wins");
 const d1 = retryDelayMs(1), d2 = retryDelayMs(2), d3 = retryDelayMs(3);

@@ -95,6 +95,9 @@ export async function updateModelFullAction(modelId: string, patch: {
   display_name?: string; badge?: string | null; sort_order?: number;
   model_identifier?: string; pricing?: Record<string, number>;
   supported_resolutions?: string[];
+  /** EcomStudio Prompt Engine surcharge in credits, added on top of the base
+   *  price when a generation uses our hidden prompt. */
+  ecom_surcharge_credits?: number;
 }): Promise<Result> {
   try {
     const { supabase } = await requireAdmin();
@@ -108,6 +111,12 @@ export async function updateModelFullAction(modelId: string, patch: {
     if (patch.supported_resolutions) {
       patch.supported_resolutions = patch.supported_resolutions.filter((r) => ["1K", "2K", "4K"].includes(r));
       if (patch.supported_resolutions.length === 0) return { ok: false, error: "invalid" };
+    }
+    if (patch.ecom_surcharge_credits != null) {
+      if (!Number.isFinite(patch.ecom_surcharge_credits) || patch.ecom_surcharge_credits < 0 || patch.ecom_surcharge_credits > 10000) {
+        return { ok: false, error: "invalid" };
+      }
+      patch.ecom_surcharge_credits = Math.trunc(patch.ecom_surcharge_credits);
     }
     const { error } = await supabase.from("ai_models").update(patch as never).eq("id", modelId);
     if (error) return { ok: false, error: "generic" };

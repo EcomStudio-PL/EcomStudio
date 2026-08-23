@@ -24,15 +24,17 @@ export async function POST(request: Request) {
   if (!workspace) return NextResponse.json({ ok: false, error: "no_workspace" }, { status: 400 });
 
   let conceptId = "";
+  let modelId: string | undefined;
   try {
-    const body = (await request.json()) as { conceptId?: string };
+    const body = (await request.json()) as { conceptId?: string; modelId?: string };
     conceptId = typeof body.conceptId === "string" ? body.conceptId : "";
+    if (typeof body.modelId === "string" && /^[0-9a-f-]{36}$/.test(body.modelId)) modelId = body.modelId;
   } catch { /* fall through to validation */ }
   if (!/^[0-9a-f-]{36}$/.test(conceptId)) {
     return NextResponse.json({ ok: false, error: "invalid_input" }, { status: 400 });
   }
 
-  const result = await generateFromConcept(supabase, user.id, workspace.id, conceptId);
+  const result = await generateFromConcept(supabase, user.id, workspace.id, conceptId, { modelId });
   const status = result.ok ? 200
     : result.error === "insufficient_credits" ? 402
       : result.error === "already_running" ? 409

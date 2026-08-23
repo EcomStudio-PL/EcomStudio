@@ -7,7 +7,7 @@ import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { signImageUrls } from "@/lib/services/images";
-import { conceptUnitCost, resolveConceptModel } from "@/lib/server/concept-generation";
+import { conceptModelOptions } from "@/lib/server/concept-generation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { ConceptBoard, SessionStatusBadge, type ConceptCardData } from "@/components/prompts/concept-board";
@@ -33,33 +33,41 @@ export default async function ConceptSessionPage({ params }: { params: Promise<{
 
   const { data: session } = await supabase
     .from("prompt_sessions")
-    .select("id, workspace_id, product_id, product_name, status, error, aspect_ratio, reference_paths, created_at")
+    .select("id, workspace_id, product_id, product_name, status, error, aspect_ratio, reference_paths, created_at, mode")
     .eq("id", id).eq("workspace_id", workspace.id).maybeSingle();
   if (!session) notFound();
 
   const { data: prompts } = await supabase
     .from("generated_prompts")
-    .select("id, concept_name, customer_title, customer_description, scene_type, primary_reference, reference_indices, generation_count, last_job_id")
+    .select("id, concept_name, customer_title, customer_description, scene_type, primary_reference, reference_indices, generation_count, last_job_id, prompt_origin, model_id, prompt_text")
     .eq("session_id", session.id)
     .order("priority", { ascending: true });
 
-  // Latest result per concept: the last job's generation assets.
+  // Latest result per concept: the last job's generation assets + which
+  // model actually served it (shown as "Wygenerowano: …" on the card).
   const jobIds = (prompts ?? []).map((p) => p.last_job_id).filter((v): v is string => !!v);
-  const resultByJob = new Map<string, { path: string; status: string }>();
+  const resultByJob = new Map<string, { path: string; status: string; modelId: string | null }>();
   if (jobIds.length > 0) {
     const { data: jobs } = await supabase
       .from("generation_jobs")
-      .select("id, status, generations(generation_assets(storage_path))")
+      .select("id, status, model_id, generations(generation_assets(storage_path))")
       .in("id", jobIds);
     for (const job of jobs ?? []) {
       const path = job.generations?.[0]?.generation_assets?.[0]?.storage_path;
-      resultByJob.set(job.id, { path: path ?? "", status: job.status });
+      resultByJob.set(job.id, { path: path ?? "", status: job.status, modelId: job.model_id });
     }
   }
+  const servedModelIds = [...resultByJob.values()].map((r) => r.modelId).filter((v): v is string => !!v);
+  const servedNames = new Map<string, string>();
+  if (servedModelIds.length > 0) {
+    const { data: served } = await supabase
+      .from("ai_models").select("id, name, display_name").in("id", servedModelIds);
+    for (const m of served ?? []) servedNames.set(m.id, m.display_name || m.name);
+  }
 
-  const [refUrls, model, wallet] = await Promise.all([
+  const [refUrls, models, wallet] = await Promise.all([
     signImageUrls(supabase, session.reference_paths ?? []),
-    resolveConceptModel(supabase),
+    conceptModelOptions(supabase),
     getWallet(supabase, workspace.id),
   ]);
 
@@ -74,6 +82,7 @@ export default async function ConceptSessionPage({ params }: { params: Promise<{
   const paths = session.reference_paths ?? [];
   const cards: ConceptCardData[] = (prompts ?? []).map((p, i) => {
     const result = p.last_job_id ? resultByJob.get(p.last_job_id) : undefined;
+    const origin = p.prompt_origin === "custom" ? "custom" as const : "ecomstudio" as const;
     return {
       id: p.id,
       index: i + 1,
@@ -86,6 +95,12 @@ export default async function ConceptSessionPage({ params }: { params: Promise<{
       generationCount: p.generation_count ?? 0,
       resultUrl: result?.path ? resultUrls.get(result.path) ?? null : null,
       resultPending: result ? result.status === "processing" || result.status === "queued" : false,
+      origin,
+      modelId: p.model_id,
+      // The customer's own prompt is theirs to read and edit; an EcomStudio
+      // prompt never rides along (it exists only as ciphertext).
+      customPrompt: origin === "custom" ? p.prompt_text : null,
+      generatedWith: result?.modelId ? servedNames.get(result.modelId) ?? null : null,
     };
   });
 
@@ -109,9 +124,9 @@ export default async function ConceptSessionPage({ params }: { params: Promise<{
         ? (
           <ConceptBoard
             concepts={cards}
-            unitCost={model ? conceptUnitCost(model) : 0}
+            models={models}
             balance={wallet?.balance ?? 0}
-            engineReady={!!model}
+            engineReady={models.length > 0}
           />
         )
         : session.status !== "failed" && (

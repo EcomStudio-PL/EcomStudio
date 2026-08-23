@@ -17,6 +17,7 @@ export type ModelView = {
   description: string | null; providerName: string;
   display_name: string | null; badge: string | null; sort_order: number;
   pricing: Record<string, number>; supported_resolutions: string[];
+  ecom_surcharge_credits: number;
   /** Why this model is switched off, for staff eyes only. */
   unavailableReason: string | null; unavailableNote: string | null;
 };
@@ -43,6 +44,7 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
     max_refs: String(m.max_reference_images),
     description: m.description ?? "",
     active: m.active,
+    ecom_surcharge: String(m.ecom_surcharge_credits),
     pricing: Object.fromEntries(RES_TIERS.map((r) => [r, m.pricing[r] != null ? String(m.pricing[r]) : ""])),
   });
 
@@ -75,6 +77,7 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
         quality_tier: form.quality_tier,
         speed_tier: form.speed_tier,
         max_reference_images: parseInt(form.max_refs || "0", 10),
+        ecom_surcharge_credits: parseInt(form.ecom_surcharge || "0", 10),
         description: form.description.trim() || null,
         active: form.active,
         ...(resolutions.length > 0 ? { pricing, supported_resolutions: resolutions } : {}),
@@ -100,7 +103,9 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
         </div>
         <div className="hidden text-right sm:block">
           <p className="text-sm font-semibold tabular-nums text-accent">{m.credit_cost} kr</p>
-          <p className="text-xs tabular-nums text-faint">≈ {fmtPln(userPln)}</p>
+          <p className="text-xs tabular-nums text-faint">
+            {t("admin.ecomPriceShort", { n: m.credit_cost + m.ecom_surcharge_credits })} · ≈ {fmtPln((m.credit_cost + m.ecom_surcharge_credits) * plnPerCredit)}
+          </p>
         </div>
         <div className="hidden text-right md:block">
           <p className="text-xs tabular-nums text-muted">{t("admin.internalCost")}: {fmtPln(costPln)}</p>
@@ -173,6 +178,17 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
           <div>
             <Label>{t("admin.internalCost")} (USD)</Label>
             <Input type="number" min={0} step="0.001" value={form.internal_usd} onChange={(e) => setForm({ ...form, internal_usd: e.target.value })} />
+          </div>
+          <div>
+            <Label>{t("admin.ecomSurcharge")}</Label>
+            <Input type="number" min={0} value={form.ecom_surcharge}
+              onChange={(e) => setForm({ ...form, ecom_surcharge: e.target.value })} />
+            <p className="mt-1 text-[11px] text-faint">
+              {t("admin.ecomSurchargeHint", {
+                total: parseInt(form.credit_cost || "0", 10) + parseInt(form.ecom_surcharge || "0", 10),
+                pln: fmtPln((parseInt(form.credit_cost || "0", 10) + parseInt(form.ecom_surcharge || "0", 10)) * plnPerCredit),
+              })}
+            </p>
           </div>
           <div>
             <Label>{t("admin.qualityTier")}</Label>

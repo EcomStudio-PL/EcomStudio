@@ -24,7 +24,8 @@ export type ProviderView = {
 };
 
 const TEST_TONE: Record<string, "green" | "red" | "amber" | "neutral"> = {
-  connected: "green", auth_failed: "red", rate_limited: "amber", unavailable: "amber",
+  connected: "green", auth_failed: "red", quota: "red", rate_limited: "amber",
+  model_unavailable: "red", unavailable: "amber", timeout: "amber",
   invalid: "red", unsupported: "neutral",
 };
 
@@ -171,7 +172,7 @@ export function ProviderCard({ p, encryptionReady, locale }: {
             <Button disabled={pending || key.trim().length < 8 || !encryptionReady}
               onClick={() => run(saveProviderCredentialAction(p.id, key, baseUrl), (res) => {
                 if (res.ok) { toast.success(t("admin.credentialSaved")); setKey(""); setConfigOpen(false); router.refresh(); }
-                else toast.error(res.error === "encryption_unavailable" ? t("admin.encryptionMissing") : t("common.error"));
+                else toast.error(res.error === "encryption_unavailable" ? t("admin.encryptionMissing") : `${t("common.error")}${res.error ? ` (${res.error})` : ""}`);
               })}>
               {p.credential ? t("admin.replaceCredential") : t("admin.saveCredential")}
             </Button>

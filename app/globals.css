@@ -9,26 +9,26 @@
   /* LIGHT — a cold lavender-white studio, not office paper. Surfaces stay
      translucent over the ambient wash so the theme reads as glass rather
      than as a dark theme with the lights turned off. */
-  --bg: 245 244 252;
-  --sunken: 237 236 248;
-  --sidebar: 249 248 254;
+  --bg: 250 245 251;
+  --sunken: 245 238 246;
+  --sidebar: 253 248 253;
   --surface: 255 255 255;
-  --raised: 240 238 250;
+  --raised: 248 240 248;
   --float: 255 255 255;
 
-  --ink: 22 21 38;
-  --muted: 84 84 110;
-  --faint: 124 124 152;
+  --ink: 32 20 36;
+  --muted: 96 82 100;
+  --faint: 138 122 142;
 
-  --line: 224 221 242;
-  --line-strong: 198 193 228;
-  --hairline: 76 56 140;
+  --line: 240 224 240;
+  --line-strong: 220 192 220;
+  --hairline: 130 40 132;
   --hairline-alpha: 0.13;
 
-  --accent: 118 52 232;
-  --accent-hover: 104 42 214;
-  --accent-strong: 86 30 178;
-  --accent-soft: 238 232 253;
+  --accent: 245 1 246;
+  --accent-hover: 222 0 223;
+  --accent-strong: 178 0 179;
+  --accent-soft: 253 231 253;
   --accent2: 190 96 6;
   --accent2-soft: 253 240 220;
   --indigo: 74 66 224;
@@ -38,14 +38,14 @@
 
   --glass: 255 255 255;
   --glass-alpha: 0.72;
-  --glass-border: 76 56 140;
+  --glass-border: 130 40 132;
   --glass-border-alpha: 0.13;
 
   /* SHADOW LANGUAGE — one family, four steps. */
-  --shadow-1: 0 1px 2px rgb(38 28 78 / 0.06), 0 1px 1px rgb(38 28 78 / 0.03);
-  --shadow-2: 0 4px 14px -6px rgb(38 28 78 / 0.14), 0 1px 3px rgb(38 28 78 / 0.05);
-  --shadow-3: 0 16px 40px -18px rgb(38 28 78 / 0.24), 0 2px 6px rgb(38 28 78 / 0.06);
-  --shadow-4: 0 28px 70px -24px rgb(38 28 78 / 0.30);
+  --shadow-1: 0 1px 2px rgb(70 24 72 / 0.06), 0 1px 1px rgb(70 24 72 / 0.03);
+  --shadow-2: 0 4px 14px -6px rgb(70 24 72 / 0.14), 0 1px 3px rgb(70 24 72 / 0.05);
+  --shadow-3: 0 16px 40px -18px rgb(70 24 72 / 0.24), 0 2px 6px rgb(70 24 72 / 0.06);
+  --shadow-4: 0 28px 70px -24px rgb(70 24 72 / 0.30);
   --ring-accent: 0 0 0 1px rgb(var(--accent) / 0.35);
 
   /* LAYOUT CONSTANTS — one source for chrome dimensions. */
@@ -60,8 +60,8 @@
 
 
 .dark {
-  /* Dark: near-black navy with a violet cast. Five distinct layers so a card
-     on a panel on the page still reads as three separate planes. */
+  /* Dark: near-black navy under a neon-magenta key light. Five distinct
+     layers so a card on a panel on the page still reads as three planes. */
   --bg: 9 10 17;
   --sunken: 12 13 21;
   --sidebar: 14 15 24;
@@ -78,10 +78,10 @@
   --hairline: 255 255 255;
   --hairline-alpha: 0.08;
 
-  --accent: 145 100 255;
-  --accent-hover: 133 88 250;
-  --accent-strong: 109 55 232;
-  --accent-soft: 44 35 76;
+  --accent: 248 82 249;
+  --accent-hover: 250 110 251;
+  --accent-strong: 245 1 246;
+  --accent-soft: 66 26 66;
   --accent2: 255 168 92;
   --accent2-soft: 60 43 25;
   --indigo: 122 130 255;
@@ -149,7 +149,7 @@
 }
 .panel-interactive:active { transform: translateY(0); }
 
-/* Ambient light: a violet key from the top right, a cool indigo fill bottom
+/* Ambient light: a neon-magenta key from the top right, a cool indigo fill bottom
    left, and a faint vignette that keeps the eye on the content column. */
 body::before {
   content: "";
@@ -243,7 +243,7 @@ body::after {
 }
 
 /* ACCOUNT ISLAND — the one deliberately elevated surface in the drawer:
-   a violet-lit plane with a soft glow, a fine border and a large radius.
+   a magenta-lit plane with a soft glow, a fine border and a large radius.
    Admin swaps the light for amber, which is its functional colour. */
 .island {
   background:

@@ -416,7 +416,10 @@
       "rate_limited": "Limit zapytań",
       "unavailable": "Niedostępny",
       "invalid": "Błędna konfiguracja",
-      "unsupported": "Test niedostępny"
+      "unsupported": "Test niedostępny",
+      "quota": "Brak środków / limit",
+      "timeout": "Timeout",
+      "model_unavailable": "Model niedostępny"
     },
     "modelsSub": "Modele, ceny kredytowe i wewnętrzna ekonomika platformy.",
     "userCost": "Cena dla użytkownika (kredyty)",
@@ -564,6 +567,16 @@
       "primary": "Model główny",
       "fallback1": "Fallback #1",
       "fallback2": "Fallback #2"
+    },
+    "ecomSurcharge": "Dopłata EcomStudio (kr)",
+    "ecomSurchargeHint": "Prompt EcomStudio: razem {total} kr ≈ {pln}",
+    "ecomPriceShort": "EcomStudio: {n} kr",
+    "planner": {
+      "title": "Planner ujęć",
+      "sub": "Silnik analizy i scen — niezależny od modeli obrazów. Fallback działa tylko, gdy go włączysz.",
+      "primary": "Planner główny",
+      "fallback": "Planner zapasowy",
+      "off": "Wyłączony"
     }
   },
   "support": {
@@ -779,7 +792,7 @@
     "usingSaved": "używam zapisanych danych i zdjęć produktu",
     "title": "Tytuł produktu",
     "extraInfo": "Dodatkowe informacje / opis marketplace",
-    "extraInfoPh": "Wklej opis z Allegro/Amazon/sklepu — cechy, materiały, wymiary, zawartość zestawu…",
+    "extraInfoPh": "Dodaj informacje, które AI musi bezwzględnie uwzględnić: wymiary, materiał, kolor, liczba elementów, zawartość zestawu, funkcje, specyfikacja techniczna itp.",
     "moreFields": "Więcej pól (SKU, opis, URL)",
     "sourceUrl": "URL produktu",
     "refs": "Zdjęcia referencyjne",
@@ -898,7 +911,7 @@
     "newSub": "System przeanalizuje każde zdjęcie, zabezpieczy wygląd produktu i dobierze różnorodne sceny.",
     "name": "Nazwa produktu",
     "description": "Opis produktu",
-    "descriptionPh": "Wklej cały opis z Allegro/Amazon/WooCommerce…",
+    "descriptionPh": "Wklej opis produktu z Allegro, WooCommerce, Amazon lub sklepu internetowego. AI wyciągnie najważniejsze cechy produktu.",
     "photos": "Zdjęcia produktu",
     "styleToggle": "Preferowany styl (opcjonalnie)",
     "stylePh": "Np. minimalistyczny, ciepły, premium…",
@@ -921,7 +934,19 @@
     "stage_lock": "Zabezpieczam wygląd produktu…",
     "stage_prompts": "Przygotowuję {n} ujęć…",
     "retryHint": "Spróbuj ponownie.",
-    "primaryRef": "Główna"
+    "primaryRef": "Główna",
+    "modeTitle": "Jak chcesz przygotować ujęcia?",
+    "modeEngine": "Prompty EcomStudio",
+    "modeEngineBadge": "Najlepsza jakość",
+    "modeEngineSub": "AI analizuje produkt i zdjęcia, buduje scenariusze sprzedażowe i pilnuje wyglądu produktu.",
+    "modeCustom": "Własne prompty",
+    "modeCustomSub": "Sam opisujesz każde ujęcie. Zdjęcia referencyjne i ochrona produktu nadal działają.",
+    "modePrice": "{model} · {n} kr. / ujęcie",
+    "customPrompts": "Twoje prompty (1–10)",
+    "customPromptPh": "Ujęcie {n} — opisz, co ma być na zdjęciu…",
+    "customAdd": "Dodaj ujęcie",
+    "customCta": "Zapisz {n} ujęć",
+    "costPreview": "{n} ujęć • {model} • {cost} kr."
   },
   "scene": {
     "product_hero": "Hero produktu",
@@ -1250,6 +1275,18 @@
     "takes": "Ujęcie {n}",
     "failed": "Nie udało się wygenerować. Spróbuj ponownie.",
     "failedFinal": "Nie udało się wygenerować zdjęcia. Kredyty nie zostały pobrane.",
-    "prepareFailed": "Nie udało się przygotować ujęć. Spróbuj ponownie."
+    "prepareFailed": "Nie udało się przygotować ujęć. Spróbuj ponownie.",
+    "model": "Model",
+    "chooseModel": "Wybierz model",
+    "perShot": "{n} kr. / ujęcie",
+    "bulkShots": "Ujęcia do wygenerowania",
+    "bulkTotal": "Łączny koszt",
+    "bulkConfirm": "Generuj {n} ujęć",
+    "generatedWith": "Wygenerowano: {model}",
+    "retakeSame": "Ten sam model",
+    "retakeWith": "{model} · {n} kr.",
+    "yourPrompt": "Twój prompt",
+    "promptSave": "Zapisz prompt",
+    "promptSaved": "Prompt zapisany."
   }
 }

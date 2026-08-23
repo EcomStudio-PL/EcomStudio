@@ -9,7 +9,7 @@ import { signImageUrls } from "@/lib/services/images";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { conceptUnitCost, resolveConceptModel } from "@/lib/server/concept-generation";
+import { conceptModelOptions } from "@/lib/server/concept-generation";
 import { SessionForm, type PromptProductOption } from "@/components/prompts/session-form";
 
 export const dynamic = "force-dynamic";
@@ -28,18 +28,21 @@ export default async function PromptsPage() {
   // Availability check goes through the definer RPC: ai_provider_credentials
   // is admin-only under RLS, so reading it directly told every customer the
   // engine was unavailable even when a key was configured.
-  const [products, { data: sessions }, { data: analysisProvider }, { data: withKey }] = await Promise.all([
+  const [products, { data: sessions }, { data: plannerProviders }, { data: withKey }] = await Promise.all([
     listProducts(supabase, workspace.id, 20),
     supabase.from("prompt_sessions")
       .select("id, product_name, status, aspect_ratio, created_at, reference_paths")
       .eq("workspace_id", workspace.id)
       .order("created_at", { ascending: false }).limit(12),
-    supabase.from("ai_providers").select("id").eq("slug", "google").eq("active", true).maybeSingle(),
+    // The PLANNER is available when ANY planner-capable provider is active
+    // with a stored key — not just Google (the planner may run on OpenAI).
+    supabase.from("ai_providers").select("id").eq("active", true).in("slug", ["openai", "google"]),
     supabase.rpc("providers_with_credentials"),
   ]);
-  const engineAvailable =
-    !!analysisProvider && ((withKey ?? []) as string[]).includes(analysisProvider.id);
-  const conceptModel = await resolveConceptModel(supabase);
+  const keyed = new Set((withKey ?? []) as string[]);
+  const engineAvailable = (plannerProviders ?? []).some((p) => keyed.has(p.id));
+  const modelOptions = await conceptModelOptions(supabase);
+  const defaultModel = modelOptions[0] ?? null;
 
   const productPaths = products.flatMap((p) => p.product_images.map((i) => i.storage_path));
   const sessionThumbs = (sessions ?? []).map((s) => s.reference_paths?.[0]).filter(Boolean) as string[];
@@ -47,6 +50,8 @@ export default async function PromptsPage() {
 
   const productOptions: PromptProductOption[] = products.map((p) => ({
     id: p.id, name: p.name, category: (p as { category?: string | null }).category ?? null,
+    description: (p as { description?: string | null }).description ?? null,
+    extraInfo: (p as { extra_info?: string | null }).extra_info ?? null,
     images: p.product_images
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((i) => ({ path: i.storage_path, url: urls.get(i.storage_path) ?? "" })),
@@ -59,7 +64,7 @@ export default async function PromptsPage() {
       <PageHeader overline={t("nav.groups.create")} title={t("prompts.title")} sub={t("psess.sub")} />
       <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <SessionForm products={productOptions} workspaceId={workspace.id} engineAvailable={engineAvailable}
-          unitCost={conceptModel ? conceptUnitCost(conceptModel) : 0} />
+          pricing={defaultModel ? { modelName: defaultModel.name, ecomCost: defaultModel.costEcom, customCost: defaultModel.costCustom } : null} />
 
         <div className="min-w-0 space-y-3 lg:sticky lg:top-20 lg:h-fit">
           <h3 className="px-1 font-display text-sm font-semibold text-muted">{t("psess.recent")}</h3>

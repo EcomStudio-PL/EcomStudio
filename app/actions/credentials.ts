@@ -42,10 +42,20 @@ export async function saveProviderCredentialAction(
       updated_at: new Date().toISOString(),
       updated_by: adminId,
     };
-    const { error } = await supabase
-      .from("ai_provider_credentials")
-      .upsert(row, { onConflict: "provider_id" });
-    if (error) return { ok: false, error: "generic" };
+    // Explicit replace-or-insert: an UPDATE on the existing row (a key swap
+    // must really overwrite the previous secret) or a fresh INSERT — and on
+    // failure the REAL database error code comes back instead of "generic",
+    // so the admin sees why a save was refused.
+    const { data: existing, error: readError } = await supabase
+      .from("ai_provider_credentials").select("id").eq("provider_id", providerId).maybeSingle();
+    if (readError) return { ok: false, error: `db:${readError.code || readError.message}` };
+    const write = existing
+      ? await supabase.from("ai_provider_credentials").update(row).eq("provider_id", providerId).select("id").maybeSingle()
+      : await supabase.from("ai_provider_credentials").insert(row).select("id").maybeSingle();
+    if (write.error) return { ok: false, error: `db:${write.error.code || write.error.message}` };
+    // RLS can silently swallow a write (0 rows) without an error object —
+    // report that honestly instead of pretending the key was replaced.
+    if (!write.data) return { ok: false, error: "db:rls_denied" };
     await supabase.rpc("log_activity", {
       p_workspace_id: null as unknown as string, p_action: "admin.provider_credential_saved",
       p_entity_type: "ai_provider", p_entity_id: providerId,

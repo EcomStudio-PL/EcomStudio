@@ -81,6 +81,7 @@ export type Database = {
           credit_cost: number
           description: string | null
           display_name: string | null
+          ecom_surcharge_credits: number
           estimated_api_cost: number
           id: string
           internal_cost_usd_micros: number
@@ -109,6 +110,7 @@ export type Database = {
           credit_cost?: number
           description?: string | null
           display_name?: string | null
+          ecom_surcharge_credits?: number
           estimated_api_cost?: number
           id?: string
           internal_cost_usd_micros?: number
@@ -137,6 +139,7 @@ export type Database = {
           credit_cost?: number
           description?: string | null
           display_name?: string | null
+          ecom_surcharge_credits?: number
           estimated_api_cost?: number
           id?: string
           internal_cost_usd_micros?: number
@@ -697,12 +700,14 @@ export type Database = {
           id: string
           last_job_id: string | null
           lock_strength: string
+          model_id: string | null
           negative_prompt: string | null
           primary_reference: number | null
           priority: number
           product_id: string
           prompt_encrypted: string | null
           prompt_iv: string | null
+          prompt_origin: string
           prompt_tag: string | null
           prompt_text: string
           reference_image_ids: string[]
@@ -726,12 +731,14 @@ export type Database = {
           id?: string
           last_job_id?: string | null
           lock_strength?: string
+          model_id?: string | null
           negative_prompt?: string | null
           primary_reference?: number | null
           priority?: number
           product_id: string
           prompt_encrypted?: string | null
           prompt_iv?: string | null
+          prompt_origin?: string
           prompt_tag?: string | null
           prompt_text: string
           reference_image_ids?: string[]
@@ -755,12 +762,14 @@ export type Database = {
           id?: string
           last_job_id?: string | null
           lock_strength?: string
+          model_id?: string | null
           negative_prompt?: string | null
           primary_reference?: number | null
           priority?: number
           product_id?: string
           prompt_encrypted?: string | null
           prompt_iv?: string | null
+          prompt_origin?: string
           prompt_tag?: string | null
           prompt_text?: string
           reference_image_ids?: string[]
@@ -780,6 +789,13 @@ export type Database = {
             columns: ["last_job_id"]
             isOneToOne: false
             referencedRelation: "generation_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "generated_prompts_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "ai_models"
             referencedColumns: ["id"]
           },
           {
@@ -917,8 +933,10 @@ export type Database = {
           material_type: string | null
           model_id: string | null
           negative_prompt: string | null
+          parent_job_id: string | null
           product_id: string | null
           prompt_id: string | null
+          prompt_origin: string | null
           prompt_session_id: string | null
           prompt_text: string | null
           provider_slug: string | null
@@ -944,8 +962,10 @@ export type Database = {
           material_type?: string | null
           model_id?: string | null
           negative_prompt?: string | null
+          parent_job_id?: string | null
           product_id?: string | null
           prompt_id?: string | null
+          prompt_origin?: string | null
           prompt_session_id?: string | null
           prompt_text?: string | null
           provider_slug?: string | null
@@ -971,8 +991,10 @@ export type Database = {
           material_type?: string | null
           model_id?: string | null
           negative_prompt?: string | null
+          parent_job_id?: string | null
           product_id?: string | null
           prompt_id?: string | null
+          prompt_origin?: string | null
           prompt_session_id?: string | null
           prompt_text?: string | null
           provider_slug?: string | null
@@ -992,6 +1014,13 @@ export type Database = {
             columns: ["model_id"]
             isOneToOne: false
             referencedRelation: "ai_models"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "generation_jobs_parent_job_id_fkey"
+            columns: ["parent_job_id"]
+            isOneToOne: false
+            referencedRelation: "generation_jobs"
             referencedColumns: ["id"]
           },
           {
@@ -1554,6 +1583,7 @@ export type Database = {
           id: string
           image_analysis: Json
           latency_ms: number | null
+          mode: string
           product_id: string | null
           product_lock: Json
           product_name: string
@@ -1581,6 +1611,7 @@ export type Database = {
           id?: string
           image_analysis?: Json
           latency_ms?: number | null
+          mode?: string
           product_id?: string | null
           product_lock?: Json
           product_name: string
@@ -1608,6 +1639,7 @@ export type Database = {
           id?: string
           image_analysis?: Json
           latency_ms?: number | null
+          mode?: string
           product_id?: string | null
           product_lock?: Json
           product_name?: string

@@ -75,6 +75,40 @@ export function conceptUnitCost(model: UsableModel): number {
   return priceForResolution(model, res);
 }
 
+/** One image-model choice as the customer sees it: display identity plus BOTH
+ *  prices — own prompt (base credits) and EcomStudio prompt (base + engine
+ *  surcharge). Ordered like the routing chain, default first. */
+export type ConceptModelOption = {
+  id: string;
+  name: string;
+  badge: string | null;
+  costCustom: number;
+  costEcom: number;
+};
+
+export async function conceptModelOptions(supabase: Client): Promise<ConceptModelOption[]> {
+  const chain = await resolveConceptModels(supabase);
+  return chain.map((m) => {
+    const base = conceptUnitCost(m);
+    const surcharge = (m as { ecom_surcharge_credits?: number }).ecom_surcharge_credits ?? 0;
+    return {
+      id: m.id,
+      name: m.display_name || m.name,
+      badge: m.badge,
+      costCustom: base,
+      costEcom: base + Math.max(0, surcharge),
+    };
+  });
+}
+
+/** Price of one generation for a given origin. */
+export function originCost(model: UsableModel, origin: "ecomstudio" | "custom"): number {
+  const base = conceptUnitCost(model);
+  if (origin === "custom") return base;
+  const surcharge = (model as { ecom_surcharge_credits?: number }).ecom_surcharge_credits ?? 0;
+  return base + Math.max(0, surcharge);
+}
+
 /**
  * Regeneration keeps the concept and varies only what a photographer would
  * vary between two takes of the same shot. The variation index rotates so
@@ -93,18 +127,31 @@ export function variationInstruction(generationCount: number): string {
 
 export async function generateFromConcept(
   supabase: Client, userId: string, workspaceId: string, conceptId: string,
-): Promise<ConceptGenerateOutput> {
+  opts?: { modelId?: string },
+): Promise<ConceptGenerateOutput & { modelName?: string }> {
   // The concept row is readable by the member (title, refs, status) — the
-  // prompt within it is ciphertext until this exact point.
+  // EcomStudio prompt within it is ciphertext until this exact point; a
+  // custom card carries the customer's own prompt in clear instead.
   const { data: concept } = await supabase
     .from("generated_prompts")
-    .select("id, session_id, workspace_id, product_id, prompt_encrypted, prompt_iv, prompt_tag, reference_indices, generation_count, last_job_id")
+    .select("id, session_id, workspace_id, product_id, prompt_encrypted, prompt_iv, prompt_tag, reference_indices, generation_count, last_job_id, prompt_origin, prompt_text, negative_prompt, model_id")
     .eq("id", conceptId).eq("workspace_id", workspaceId)
     .maybeSingle();
   if (!concept || !concept.session_id) return { ok: false, error: "not_found" };
 
-  const payload = decryptConceptPayload(concept);
-  if (!payload) return { ok: false, error: "concept_locked" };
+  const origin: "ecomstudio" | "custom" = concept.prompt_origin === "custom" ? "custom" : "ecomstudio";
+  let basePrompt: string;
+  let negative: string | undefined;
+  if (origin === "custom") {
+    basePrompt = (concept.prompt_text ?? "").trim();
+    negative = concept.negative_prompt ?? CUSTOM_TECH_NEGATIVE;
+    if (!basePrompt) return { ok: false, error: "invalid_input" };
+  } else {
+    const payload = decryptConceptPayload(concept);
+    if (!payload) return { ok: false, error: "concept_locked" };
+    basePrompt = payload.prompt;
+    negative = payload.negative || undefined;
+  }
 
   const { data: session } = await supabase
     .from("prompt_sessions")
@@ -126,8 +173,16 @@ export async function generateFromConcept(
   }
 
   const chain = await resolveConceptModels(supabase);
-  const model = chain[0];
-  if (!model) return { ok: false, error: "model_unavailable" };
+  if (chain.length === 0) return { ok: false, error: "model_unavailable" };
+
+  // MODEL CHOICE — request > card override > default chain. An EXPLICIT
+  // choice is honoured exactly: no silent cross-provider fallback onto an
+  // engine the customer did not pick (retries within the provider still run).
+  const requestedId = opts?.modelId ?? concept.model_id ?? null;
+  const explicit = requestedId ? chain.find((m) => m.id === requestedId) : undefined;
+  if (requestedId && !explicit) return { ok: false, error: "model_unavailable" };
+  const model = explicit ?? chain[0];
+  const fallbackModelIds = explicit ? [] : chain.slice(1).map((m) => m.id);
 
   // The exact reference set the planner routed to this concept, in its order
   // (primary first). 1-based indices into the session's reference paths.
@@ -139,14 +194,15 @@ export async function generateFromConcept(
 
   const isRetake = (concept.generation_count ?? 0) > 0;
   const prompt = isRetake
-    ? `${payload.prompt}\n\n${variationInstruction(concept.generation_count ?? 1)}`
-    : payload.prompt;
+    ? `${basePrompt}\n\n${variationInstruction(concept.generation_count ?? 1)}`
+    : basePrompt;
 
+  const credits = originCost(model, origin);
   const result = await runGeneration(supabase, userId, workspaceId, {
     modelId: model.id,
-    fallbackModelIds: chain.slice(1).map((m) => m.id),
+    fallbackModelIds,
     prompt,
-    negative: payload.negative || undefined,
+    negative,
     aspectRatio: (session.aspect_ratio || "16:9") as AspectRatio,
     quantity: 1,
     productId: session.product_id ?? concept.product_id ?? undefined,
@@ -154,9 +210,11 @@ export async function generateFromConcept(
     referenceImageIds: [],
     promptId: concept.id,
     promptSessionId: session.id,
-    hidePromptText: true,
+    hidePromptText: origin === "ecomstudio",
     conceptId: concept.id,
     parentJobId: isRetake ? concept.last_job_id ?? undefined : undefined,
+    promptOrigin: origin,
+    costOverride: credits,
   });
   if (!result.ok) return result;
 
@@ -164,8 +222,16 @@ export async function generateFromConcept(
     generation_count: (concept.generation_count ?? 0) + 1,
     last_job_id: result.jobId,
     status: "used",
+    ...(opts?.modelId ? { model_id: opts.modelId } : {}),
   }).eq("id", concept.id);
 
-  const credits = conceptUnitCost(model);
-  return { ok: true, jobId: result.jobId, images: result.images, credits };
+  return { ok: true, jobId: result.jobId, images: result.images, credits, modelName: model.display_name || model.name };
 }
+
+/** Technical guard-rails appended as the negative for CUSTOM prompts — the
+ *  product-protection layer the customer keeps even without our engine. */
+const CUSTOM_TECH_NEGATIVE =
+  "a different product than the reference photos; redesigned or restyled product; " +
+  "wrong colors or proportions; missing or invented parts; duplicated product; " +
+  "invented text, invented logos, watermarks; floating or levitating product; " +
+  "missing contact shadow; cartoon, illustration or 3D-render look";

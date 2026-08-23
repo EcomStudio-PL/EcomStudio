@@ -33,7 +33,7 @@
   },
   "common": {
     "save": "Speichern",
-    "saving": "Wird gespeichert…",
+    "saving": "Speichern…",
     "cancel": "Abbrechen",
     "delete": "Löschen",
     "edit": "Bearbeiten",
@@ -416,7 +416,10 @@
       "rate_limited": "Rate-Limit",
       "unavailable": "Nicht erreichbar",
       "invalid": "Ungültige Konfiguration",
-      "unsupported": "Test nicht verfügbar"
+      "unsupported": "Test nicht verfügbar",
+      "quota": "Kein Guthaben / Kontingent",
+      "timeout": "Timeout",
+      "model_unavailable": "Modell nicht verfügbar"
     },
     "modelsSub": "Modelle, Credit-Preise und interne Plattform-Ökonomie.",
     "userCost": "Nutzerpreis (Credits)",
@@ -564,6 +567,16 @@
       "primary": "Primärmodell",
       "fallback1": "Fallback #1",
       "fallback2": "Fallback #2"
+    },
+    "ecomSurcharge": "EcomStudio-Aufschlag (Kr)",
+    "ecomSurchargeHint": "EcomStudio-Prompt: gesamt {total} Kr ≈ {pln}",
+    "ecomPriceShort": "EcomStudio: {n} Kr",
+    "planner": {
+      "title": "Aufnahmen-Planner",
+      "sub": "Analyse- und Szenen-Engine — unabhängig von Bildmodellen. Fallback läuft nur, wenn du ihn aktivierst.",
+      "primary": "Primärer Planner",
+      "fallback": "Fallback-Planner",
+      "off": "Deaktiviert"
     }
   },
   "support": {
@@ -779,7 +792,7 @@
     "usingSaved": "gespeicherte Produktdaten und Fotos werden verwendet",
     "title": "Produkttitel",
     "extraInfo": "Zusatzinfos / Marketplace-Beschreibung",
-    "extraInfoPh": "Füge deine Allegro/Amazon/Shop-Beschreibung ein — Merkmale, Materialien, Maße, Lieferumfang…",
+    "extraInfoPh": "Ergänze Fakten, die die KI zwingend beachten muss: Maße, Material, Farbe, Teileanzahl, Set-Inhalt, Funktionen, technische Daten usw.",
     "moreFields": "Weitere Felder (SKU, Beschreibung, URL)",
     "sourceUrl": "Produkt-URL",
     "refs": "Referenzbilder",
@@ -898,7 +911,7 @@
     "newSub": "Das System analysiert jedes Foto, sichert das Produktaussehen und entwirft abwechslungsreiche Szenen.",
     "name": "Produktname",
     "description": "Produktbeschreibung",
-    "descriptionPh": "Kompletten Marketplace-Text einfügen…",
+    "descriptionPh": "Füge die Produktbeschreibung aus Allegro, WooCommerce, Amazon oder deinem Shop ein. Die KI extrahiert die wichtigsten Produktdaten.",
     "photos": "Produktfotos",
     "styleToggle": "Bevorzugter Stil (optional)",
     "stylePh": "Z. B. minimalistisch, warm, premium…",
@@ -921,7 +934,19 @@
     "stage_lock": "Sichere das Produktaussehen…",
     "stage_prompts": "Bereite {n} Aufnahmen vor…",
     "retryHint": "Bitte erneut versuchen.",
-    "primaryRef": "Primär"
+    "primaryRef": "Primär",
+    "modeTitle": "Wie möchtest du die Aufnahmen vorbereiten?",
+    "modeEngine": "EcomStudio-Prompts",
+    "modeEngineBadge": "Beste Qualität",
+    "modeEngineSub": "Die KI analysiert Produkt und Fotos, entwirft Verkaufsszenen und schützt das Produktbild.",
+    "modeCustom": "Eigene Prompts",
+    "modeCustomSub": "Du beschreibst jede Aufnahme selbst. Referenzfotos und Produktschutz gelten weiterhin.",
+    "modePrice": "{model} · {n} Kr. / Aufnahme",
+    "customPrompts": "Deine Prompts (1–10)",
+    "customPromptPh": "Aufnahme {n} — beschreibe, was das Foto zeigen soll…",
+    "customAdd": "Aufnahme hinzufügen",
+    "customCta": "{n} Aufnahmen speichern",
+    "costPreview": "{n} Aufnahmen • {model} • {cost} Kr."
   },
   "scene": {
     "product_hero": "Produkt-Hero",
@@ -1250,6 +1275,18 @@
     "takes": "Aufnahme {n}",
     "failed": "Generierung fehlgeschlagen. Erneut versuchen.",
     "failedFinal": "Das Foto konnte nicht generiert werden. Es wurden keine Credits abgebucht.",
-    "prepareFailed": "Aufnahmen konnten nicht vorbereitet werden. Erneut versuchen."
+    "prepareFailed": "Aufnahmen konnten nicht vorbereitet werden. Erneut versuchen.",
+    "model": "Modell",
+    "chooseModel": "Modell wählen",
+    "perShot": "{n} Kr. / Aufnahme",
+    "bulkShots": "Zu generierende Aufnahmen",
+    "bulkTotal": "Gesamtkosten",
+    "bulkConfirm": "{n} Aufnahmen generieren",
+    "generatedWith": "Generiert mit: {model}",
+    "retakeSame": "Gleiches Modell",
+    "retakeWith": "{model} · {n} Kr.",
+    "yourPrompt": "Dein Prompt",
+    "promptSave": "Prompt speichern",
+    "promptSaved": "Prompt gespeichert."
   }
 }

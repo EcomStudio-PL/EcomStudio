@@ -13,7 +13,17 @@ import { ProductPicker, ProductChoice, type PickableProduct } from "@/components
 export type PromptProductOption = {
   id: string; name: string;
   category?: string | null;
+  description?: string | null;
+  extraInfo?: string | null;
   images: { path: string; url: string }[];
+};
+
+export type SessionPricing = {
+  modelName: string;
+  /** Credits per shot with the EcomStudio Prompt Engine. */
+  ecomCost: number;
+  /** Credits per shot with the customer's own prompt. */
+  customCost: number;
 };
 
 type Ref = { key: string; path: string; url: string };
@@ -23,13 +33,15 @@ const RATIOS = ["1:1", "4:5", "16:9", "9:16"] as const;
 /** "+ Nowe prompty": product name + marketplace description + photos →
  *  GENERUJ 5 PROMPTÓW. No prior product required; picking an existing
  *  product prefills everything and avoids duplicates. */
-export function SessionForm({ products, workspaceId, engineAvailable, unitCost }: {
+export function SessionForm({ products, workspaceId, engineAvailable, pricing }: {
   products: PromptProductOption[]; workspaceId: string; engineAvailable: boolean;
-  /** Credits one generated shot will cost at the current default model. */
-  unitCost: number;
+  /** Per-shot prices at the current default model, for the honest preview. */
+  pricing: SessionPricing | null;
 }) {
   const { t } = useI18n();
   const router = useRouter();
+  const [mode, setMode] = useState<"engine" | "custom">("engine");
+  const [customPrompts, setCustomPrompts] = useState<string[]>([""]);
   const [productId, setProductId] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -54,7 +66,9 @@ export function SessionForm({ products, workspaceId, engineAvailable, unitCost }
     thumbnail: p.images[0]?.url ?? null, imageCount: p.images.length,
   })), [products]);
 
-  const canSubmit = engineAvailable && name.trim().length > 1 && refs.length > 0 && !busy && !uploading;
+  const validCustom = customPrompts.filter((p) => p.trim().length >= 3);
+  const canSubmit = name.trim().length > 1 && refs.length > 0 && !busy && !uploading
+    && (mode === "engine" ? engineAvailable : validCustom.length > 0);
 
   function pickProduct(id: string) {
     if (id === productId) return;
@@ -62,9 +76,11 @@ export function SessionForm({ products, workspaceId, engineAvailable, unitCost }
     const p = products.find((x) => x.id === id);
     if (p) {
       setName(p.name);
+      setDescription(p.description ?? "");
+      setExtraInfo(p.extraInfo ?? "");
       setRefs(p.images.map((img) => ({ key: img.path, path: img.path, url: img.url })));
     } else {
-      setName(""); setRefs([]);
+      setName(""); setDescription(""); setExtraInfo(""); setRefs([]);
     }
   }
 
@@ -106,7 +122,45 @@ export function SessionForm({ products, workspaceId, engineAvailable, unitCost }
     return null;
   }
 
+  async function submitCustom() {
+    if (!canSubmit || submitting.current) return;
+    submitting.current = true;
+    setFailure(null);
+    setBusy(true);
+    try {
+      const res = await fetch("/api/prompts/custom", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId: productId || undefined,
+          productName: name, description: description || undefined,
+          extraInfo: extraInfo || undefined,
+          aspectRatio: ratio,
+          referencePaths: refs.map((r) => r.path).slice(0, 8),
+          prompts: validCustom.slice(0, 10),
+        }),
+      });
+      const json = await res.json() as { ok: boolean; sessionId?: string; error?: string };
+      if (json.ok && json.sessionId) {
+        router.push(`/prompts/${json.sessionId}`);
+        return;
+      }
+      const known = t(`studio.err.${json.error}`, {});
+      const message = known && known !== `studio.err.${json.error}` ? known : t("common.error");
+      setFailure(message);
+      toast.error(message);
+      setBusy(false);
+    } catch {
+      setFailure(t("common.error"));
+      toast.error(t("common.error"));
+      setBusy(false);
+    } finally {
+      submitting.current = false;
+    }
+  }
+
   async function submit() {
+    if (mode === "custom") return submitCustom();
     // Guard the request itself, not just the disabled attribute: a double tap
     // on mobile must never start two analyses (or two draft products).
     if (!canSubmit || submitting.current) return;
@@ -227,6 +281,63 @@ export function SessionForm({ products, workspaceId, engineAvailable, unitCost }
           </div>
         </div>
 
+        {/* MODE — EcomStudio Prompt Engine vs the customer's own prompts. */}
+        <div>
+          <Label>{t("psess.modeTitle")}</Label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button type="button" onClick={() => setMode("engine")} aria-pressed={mode === "engine"}
+              className={cn("rounded-xl border p-3 text-left transition-colors",
+                mode === "engine" ? "is-selected" : "border-line hover:bg-raised")}>
+              <span className="flex items-center gap-2 text-sm font-semibold">
+                {t("psess.modeEngine")}
+                <span className="rounded-full brand-gradient px-2 py-0.5 text-[10px] font-bold text-white">{t("psess.modeEngineBadge")}</span>
+              </span>
+              <span className="mt-1 block text-[11px] leading-relaxed text-muted">{t("psess.modeEngineSub")}</span>
+              {pricing && <span className="mt-1 block text-[11px] font-medium tabular-nums text-accent">{t("psess.modePrice", { model: pricing.modelName, n: pricing.ecomCost })}</span>}
+            </button>
+            <button type="button" onClick={() => setMode("custom")} aria-pressed={mode === "custom"}
+              className={cn("rounded-xl border p-3 text-left transition-colors",
+                mode === "custom" ? "is-selected" : "border-line hover:bg-raised")}>
+              <span className="text-sm font-semibold">{t("psess.modeCustom")}</span>
+              <span className="mt-1 block text-[11px] leading-relaxed text-muted">{t("psess.modeCustomSub")}</span>
+              {pricing && <span className="mt-1 block text-[11px] font-medium tabular-nums text-accent">{t("psess.modePrice", { model: pricing.modelName, n: pricing.customCost })}</span>}
+            </button>
+          </div>
+        </div>
+
+        {mode === "custom" && (
+          <div>
+            <Label>{t("psess.customPrompts")}</Label>
+            <div className="space-y-2">
+              {customPrompts.map((cp, i) => (
+                <div key={i} className="relative">
+                  <Textarea rows={3} value={cp} placeholder={t("psess.customPromptPh", { n: i + 1 })}
+                    onChange={(e) => setCustomPrompts(customPrompts.map((v, j) => j === i ? e.target.value : v))} />
+                  {customPrompts.length > 1 && (
+                    <button type="button" aria-label={t("common.delete")}
+                      onClick={() => setCustomPrompts(customPrompts.filter((_, j) => j !== i))}
+                      className="absolute right-2 top-2 rounded-full bg-black/40 p-1 text-white hover:bg-black/60">
+                      <X size={10} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            {customPrompts.length < 10 && (
+              <button type="button" onClick={() => setCustomPrompts([...customPrompts, ""])}
+                className="mt-2 rounded-lg bg-raised px-3 py-2 text-xs font-semibold text-ink hover:bg-sunken">
+                + {t("psess.customAdd")}
+              </button>
+            )}
+            {pricing && validCustom.length > 0 && (
+              <p className="mt-1.5 text-[11px] text-faint">
+                {t("psess.costPreview", { n: validCustom.length, model: pricing.modelName, cost: validCustom.length * pricing.customCost })}
+              </p>
+            )}
+          </div>
+        )}
+
+        {mode === "engine" && (
         <div>
           <Label>{t("concepts.shots")}</Label>
           <div className="flex gap-1.5">
@@ -239,21 +350,26 @@ export function SessionForm({ products, workspaceId, engineAvailable, unitCost }
               </button>
             ))}
           </div>
-          {unitCost > 0 && (
-            <p className="mt-1.5 text-[11px] text-faint">{t("concepts.shotsCost", { n: shots, cost: shots * unitCost })}</p>
+          {pricing && (
+            <p className="mt-1.5 text-[11px] text-faint">{t("psess.costPreview", { n: shots, model: pricing.modelName, cost: shots * pricing.ecomCost })}</p>
           )}
         </div>
-
-        <button type="button" onClick={() => setStyleOpen(!styleOpen)}
-          className="flex items-center gap-1 text-xs font-medium text-muted hover:text-ink">
-          <ChevronDown size={13} className={cn("transition-transform", styleOpen && "rotate-180")} />
-          {t("psess.styleToggle")}
-        </button>
-        {styleOpen && (
-          <Input value={style} placeholder={t("psess.stylePh")} onChange={(e) => setStyle(e.target.value)} />
         )}
 
-        {!engineAvailable && (
+        {mode === "engine" && (
+          <>
+            <button type="button" onClick={() => setStyleOpen(!styleOpen)}
+              className="flex items-center gap-1 text-xs font-medium text-muted hover:text-ink">
+              <ChevronDown size={13} className={cn("transition-transform", styleOpen && "rotate-180")} />
+              {t("psess.styleToggle")}
+            </button>
+            {styleOpen && (
+              <Input value={style} placeholder={t("psess.stylePh")} onChange={(e) => setStyle(e.target.value)} />
+            )}
+          </>
+        )}
+
+        {mode === "engine" && !engineAvailable && (
           <p className="rounded-xl bg-raised px-4 py-3 text-xs text-muted">{t("psess.unavailable")}</p>
         )}
 
@@ -261,9 +377,11 @@ export function SessionForm({ products, workspaceId, engineAvailable, unitCost }
           className={cn("brand-gradient flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-sm font-semibold text-white shadow-sm transition-opacity",
             canSubmit ? "hover:opacity-90" : "cursor-not-allowed opacity-50")}>
           {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-          {busy ? t(`psess.stage_${stage}`, { n: shots }) : t("concepts.prepare", { n: shots })}
+          {mode === "custom"
+            ? (busy ? t("common.saving") : t("psess.customCta", { n: validCustom.length }))
+            : (busy ? t(`psess.stage_${stage}`, { n: shots }) : t("concepts.prepare", { n: shots }))}
         </button>
-        {busy && (
+        {busy && mode === "engine" && (
           <div className="space-y-2 rounded-xl bg-raised px-4 py-3 anim-fade">
             {(["analyzing", "lock", "prompts"] as const).map((s, i) => {
               const idx = ["analyzing", "lock", "prompts"].indexOf(stage);

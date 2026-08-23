@@ -7,13 +7,24 @@ import {
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Card } from "@/components/ui/card";
+import { Select, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
+
+export type ConceptModelChoice = {
+  id: string;
+  name: string;
+  badge: string | null;
+  costCustom: number;
+  costEcom: number;
+};
 
 export type ConceptCardData = {
   id: string;
   index: number;
-  /** Customer-facing copy — the only text a seller ever sees for a concept. */
+  /** Customer-facing copy — the only text a seller ever sees for an
+   *  EcomStudio concept. */
   title: string;
   description: string | null;
   sceneType: string | null;
@@ -21,6 +32,14 @@ export type ConceptCardData = {
   generationCount: number;
   resultUrl: string | null;
   resultPending: boolean;
+  /** Pricing origin: EcomStudio engine prompt vs the customer's own prompt. */
+  origin: "ecomstudio" | "custom";
+  /** Saved per-card model override (wins over the global choice). */
+  modelId: string | null;
+  /** The customer's own prompt — present ONLY on custom cards, editable. */
+  customPrompt: string | null;
+  /** Display name of the model that served the current photo. */
+  generatedWith: string | null;
 };
 
 type CardState = "idle" | "queued" | "generating" | "done" | "failed";
@@ -30,6 +49,7 @@ type Live = {
   url?: string | null;
   error?: string;
   credits?: number;
+  modelName?: string;
 };
 
 /** Two provider calls in flight keeps a 10-shot batch fast without tripping
@@ -39,14 +59,15 @@ const CONCURRENCY = 2;
 /**
  * CONCEPT BOARD — the prepared shots as cards, generation in place.
  *
- * The seller reads a title and one sentence, sees which of their photos the
- * shot will use, and presses Generuj — on one card or on the whole set. The
- * board never mentions prompts, engines or models, because the seller's job
- * ended at the upload.
+ * The customer now picks the IMAGE MODEL: globally in the "Generuj
+ * wszystkie" sheet, or per card via its own selector (a card override always
+ * wins). EcomStudio prompts stay invisible; a custom card shows the
+ * customer's own editable prompt. Prices come from admin pricing per model
+ * and per origin — never from the client.
  */
-export function ConceptBoard({ concepts, unitCost, balance, engineReady }: {
+export function ConceptBoard({ concepts, models, balance, engineReady }: {
   concepts: ConceptCardData[];
-  unitCost: number;
+  models: ConceptModelChoice[];
   balance: number;
   engineReady: boolean;
 }) {
@@ -54,7 +75,19 @@ export function ConceptBoard({ concepts, unitCost, balance, engineReady }: {
   const router = useRouter();
   const [live, setLive] = useState<Record<string, Live>>({});
   const [batchRunning, setBatchRunning] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkModelId, setBulkModelId] = useState(models[0]?.id ?? "");
+  /** The model each card currently points at (override or the default). */
+  const [chosen, setChosen] = useState<Record<string, string>>(() =>
+    Object.fromEntries(concepts.map((c) => [c.id, c.modelId ?? models[0]?.id ?? ""])));
   const batchGuard = useRef(false);
+
+  const modelById = useMemo(() => new Map(models.map((m) => [m.id, m])), [models]);
+  const costFor = (c: ConceptCardData, modelId?: string) => {
+    const m = modelById.get(modelId ?? chosen[c.id]) ?? models[0];
+    if (!m) return 0;
+    return c.origin === "custom" ? m.costCustom : m.costEcom;
+  };
 
   const stateOf = (c: ConceptCardData): CardState => {
     const s = live[c.id]?.state;
@@ -64,25 +97,37 @@ export function ConceptBoard({ concepts, unitCost, balance, engineReady }: {
   };
   const urlOf = (c: ConceptCardData) => live[c.id]?.url ?? c.resultUrl;
 
-  const pendingIds = concepts.filter((c) => stateOf(c) === "idle" || stateOf(c) === "failed").map((c) => c.id);
-  const totalCost = unitCost * pendingIds.length;
+  const pending = concepts.filter((c) => stateOf(c) === "idle" || stateOf(c) === "failed");
   const doneCount = concepts.filter((c) => stateOf(c) === "done").length;
   const activeCount = concepts.filter((c) => { const s = stateOf(c); return s === "generating" || s === "queued"; }).length;
-  const notEnough = totalCost > balance;
 
-  async function generateOne(conceptId: string): Promise<"done" | "failed" | "insufficient"> {
+  /** Bulk total: a card override wins over the sheet's global model. */
+  const bulkTotal = pending.reduce((sum, c) => sum + costFor(c, c.modelId ?? bulkModelId), 0);
+  const notEnough = bulkTotal > balance;
+
+  async function persistModel(conceptId: string, modelId: string) {
+    setChosen((prev) => ({ ...prev, [conceptId]: modelId }));
+    try {
+      await fetch("/api/prompts/card", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ promptId: conceptId, modelId }),
+      });
+    } catch { /* the choice still rides along with the generate call */ }
+  }
+
+  async function generateOne(conceptId: string, modelId?: string): Promise<"done" | "failed" | "insufficient"> {
     setLive((prev) => ({ ...prev, [conceptId]: { state: "generating" } }));
     try {
       const res = await fetch("/api/concepts/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conceptId }),
+        body: JSON.stringify({ conceptId, modelId: modelId ?? (chosen[conceptId] || undefined) }),
       });
       const json = await res.json() as {
-        ok: boolean; error?: string; images?: { url: string }[]; credits?: number;
+        ok: boolean; error?: string; images?: { url: string }[]; credits?: number; modelName?: string;
       };
       if (json.ok && json.images?.length) {
-        setLive((prev) => ({ ...prev, [conceptId]: { state: "done", url: json.images![0].url, credits: json.credits } }));
+        setLive((prev) => ({ ...prev, [conceptId]: { state: "done", url: json.images![0].url, credits: json.credits, modelName: json.modelName } }));
         return "done";
       }
       // A run already in flight is not a failure — just keep showing progress.
@@ -102,24 +147,24 @@ export function ConceptBoard({ concepts, unitCost, balance, engineReady }: {
     }
   }
 
-  /** GENERUJ WSZYSTKIE — a small worker pool over the not-yet-generated
-   *  cards. A ref guards the whole batch against double taps. */
+  /** GENERUJ WSZYSTKIE — confirmed in the model sheet; a small worker pool
+   *  over the not-yet-generated cards. A ref guards against double taps. */
   async function generateAll() {
-    if (batchGuard.current || pendingIds.length === 0) return;
+    if (batchGuard.current || pending.length === 0) return;
     batchGuard.current = true;
+    setBulkOpen(false);
     setBatchRunning(true);
-    const queue = [...pendingIds];
-    queue.forEach((id) => setLive((prev) => ({ ...prev, [id]: { state: "queued" } })));
+    // Card override wins over the sheet's global model.
+    const queue = pending.map((c) => ({ id: c.id, modelId: c.modelId ?? bulkModelId }));
+    queue.forEach((q) => setLive((prev) => ({ ...prev, [q.id]: { state: "queued" } })));
 
     let cursor = 0;
     let insufficient = false;
     const worker = async () => {
-      // An empty wallet fails every remaining shot identically — stop the
-      // batch at the first such answer instead of toasting once per card.
       while (!insufficient) {
         const index = cursor++;
         if (index >= queue.length) return;
-        const outcome = await generateOne(queue[index]);
+        const outcome = await generateOne(queue[index].id, queue[index].modelId);
         if (outcome === "insufficient") insufficient = true;
       }
     };
@@ -127,7 +172,7 @@ export function ConceptBoard({ concepts, unitCost, balance, engineReady }: {
     if (insufficient) {
       setLive((prev) => {
         const next = { ...prev };
-        for (const id of queue) if (next[id]?.state === "queued") next[id] = { state: "idle" };
+        for (const q of queue) if (next[q.id]?.state === "queued") next[q.id] = { state: "idle" };
         return next;
       });
     }
@@ -154,10 +199,10 @@ export function ConceptBoard({ concepts, unitCost, balance, engineReady }: {
     if (batchRunning || activeCount > 0) {
       return t("concepts.batchProgress", { done: doneCount, total: concepts.length });
     }
-    return pendingIds.length > 0
-      ? t("concepts.batchCost", { n: pendingIds.length, cost: totalCost })
+    return pending.length > 0
+      ? t("concepts.batchCost", { n: pending.length, cost: bulkTotal })
       : t("concepts.allDone");
-  }, [batchRunning, activeCount, doneCount, concepts.length, pendingIds.length, totalCost, t]);
+  }, [batchRunning, activeCount, doneCount, concepts.length, pending.length, bulkTotal, t]);
 
   return (
     <div className="min-w-0">
@@ -166,21 +211,21 @@ export function ConceptBoard({ concepts, unitCost, balance, engineReady }: {
         <div className="dock sticky top-2 z-20 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl p-3 sm:static sm:p-4">
           <div className="min-w-0">
             <p className="text-sm font-semibold">{t("concepts.readyTitle", { n: concepts.length })}</p>
-            <p className={cn("text-xs", notEnough && pendingIds.length > 0 ? "text-danger" : "text-muted")}>{summary}</p>
+            <p className={cn("text-xs", notEnough && pending.length > 0 ? "text-danger" : "text-muted")}>{summary}</p>
           </div>
           <button
             type="button"
-            disabled={batchRunning || pendingIds.length === 0 || notEnough}
-            onClick={generateAll}
+            disabled={batchRunning || pending.length === 0}
+            onClick={() => setBulkOpen(true)}
             className={cn(
               "cta inline-flex h-11 shrink-0 items-center gap-2 rounded-xl px-5 text-sm font-semibold",
-              (batchRunning || pendingIds.length === 0 || notEnough) && "cursor-not-allowed opacity-50",
+              (batchRunning || pending.length === 0) && "cursor-not-allowed opacity-50",
             )}
           >
             {batchRunning ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Zap size={15} aria-hidden />}
             {batchRunning
               ? t("concepts.batchProgress", { done: doneCount, total: concepts.length })
-              : t("concepts.generateAll", { n: pendingIds.length })}
+              : t("concepts.generateAll", { n: pending.length })}
           </button>
         </div>
       )}
@@ -193,31 +238,85 @@ export function ConceptBoard({ concepts, unitCost, balance, engineReady }: {
             state={stateOf(c)}
             url={urlOf(c)}
             error={live[c.id]?.error}
-            unitCost={unitCost}
+            models={models}
+            chosenId={chosen[c.id]}
+            cost={costFor(c)}
+            generatedWith={live[c.id]?.modelName ?? c.generatedWith}
             engineReady={engineReady}
-            canAfford={unitCost <= balance}
-            onGenerate={() => generateOne(c.id).then(() => router.refresh())}
+            canAfford={costFor(c) <= balance}
+            onPickModel={(id) => persistModel(c.id, id)}
+            onGenerate={(modelId) => generateOne(c.id, modelId).then(() => router.refresh())}
             onChangeScene={() => regenerateScene(c.id)}
           />
         ))}
       </div>
+
+      {/* MODEL SHEET for the whole batch: model list with per-shot price,
+          then the honest math — shots × price = total — before any charge. */}
+      <Modal open={bulkOpen} onClose={() => setBulkOpen(false)} title={t("concepts.chooseModel")}>
+        <div className="space-y-2">
+          {models.map((m) => {
+            const per = pending[0]?.origin === "custom" ? m.costCustom : m.costEcom;
+            return (
+              <button key={m.id} type="button" onClick={() => setBulkModelId(m.id)}
+                aria-pressed={bulkModelId === m.id}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors",
+                  bulkModelId === m.id ? "is-selected" : "border-line hover:bg-raised",
+                )}>
+                <span className="flex items-center gap-2 text-sm font-semibold">
+                  {m.name}
+                  {m.badge && <Badge tone="indigo">{t(`models.badge.${m.badge}`, {}) || m.badge}</Badge>}
+                </span>
+                <span className="text-xs tabular-nums text-muted">{t("concepts.perShot", { n: per })}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-4 rounded-xl bg-raised px-4 py-3 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-muted">{t("concepts.bulkShots")}</span>
+            <span className="font-semibold tabular-nums">{pending.length}</span>
+          </div>
+          <div className="mt-1 flex items-center justify-between">
+            <span className="text-muted">{t("concepts.bulkTotal")}</span>
+            <span className={cn("font-semibold tabular-nums", notEnough && "text-danger")}>{bulkTotal} kr.</span>
+          </div>
+          {notEnough && <p className="mt-2 text-xs text-danger">{t("studio.err.insufficient_credits")}</p>}
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" onClick={() => setBulkOpen(false)}
+            className="rounded-xl px-4 py-2 text-sm font-medium text-muted hover:bg-raised">{t("common.cancel")}</button>
+          <button type="button" disabled={notEnough || pending.length === 0} onClick={generateAll}
+            className={cn("cta rounded-xl px-5 py-2 text-sm font-semibold", (notEnough || pending.length === 0) && "cursor-not-allowed opacity-50")}>
+            {t("concepts.bulkConfirm", { n: pending.length })}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
 
-function ConceptCard({ c, state, url, error, unitCost, engineReady, canAfford, onGenerate, onChangeScene }: {
+function ConceptCard({ c, state, url, error, models, chosenId, cost, generatedWith, engineReady, canAfford, onPickModel, onGenerate, onChangeScene }: {
   c: ConceptCardData;
   state: CardState;
   url: string | null | undefined;
   error?: string;
-  unitCost: number;
+  models: ConceptModelChoice[];
+  chosenId: string;
+  cost: number;
+  generatedWith: string | null;
   engineReady: boolean;
   canAfford: boolean;
-  onGenerate: () => void;
+  onPickModel: (modelId: string) => void;
+  onGenerate: (modelId?: string) => void;
   onChangeScene: () => void;
 }) {
   const { t } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [retakeOpen, setRetakeOpen] = useState(false);
+  const [promptDraft, setPromptDraft] = useState(c.customPrompt ?? "");
+  const [savingPrompt, setSavingPrompt] = useState(false);
   const busy = state === "generating" || state === "queued";
 
   function download() {
@@ -230,6 +329,20 @@ function ConceptCard({ c, state, url, error, unitCost, engineReady, canAfford, o
     a.click();
   }
 
+  async function savePrompt() {
+    setSavingPrompt(true);
+    try {
+      const res = await fetch("/api/prompts/card", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ promptId: c.id, promptText: promptDraft }),
+      });
+      const json = await res.json() as { ok: boolean };
+      if (json.ok) toast.success(t("concepts.promptSaved"));
+      else toast.error(t("common.error"));
+    } catch { toast.error(t("common.error")); }
+    setSavingPrompt(false);
+  }
+
   return (
     <Card className="anim-pop flex min-w-0 flex-col overflow-hidden">
       {/* RESULT / PREVIEW AREA */}
@@ -238,18 +351,18 @@ function ConceptCard({ c, state, url, error, unitCost, engineReady, canAfford, o
           // eslint-disable-next-line @next/next/no-img-element
           <img src={url} alt={c.title} className="h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-faint">
             {busy ? (
               <>
                 <Loader2 size={22} className="animate-spin text-accent" aria-hidden />
-                <p className="text-xs font-medium text-muted">
+                <span className="text-xs font-medium">
                   {state === "queued" ? t("concepts.stateQueued") : t("concepts.stateGenerating")}
-                </p>
+                </span>
               </>
             ) : (
               <>
-                <Sparkles size={20} className="text-faint" aria-hidden />
-                <p className="text-xs text-faint">{t("concepts.notGenerated")}</p>
+                <Sparkles size={22} aria-hidden />
+                <span className="text-xs font-medium">{t("concepts.notGenerated")}</span>
               </>
             )}
           </div>
@@ -266,24 +379,41 @@ function ConceptCard({ c, state, url, error, unitCost, engineReady, canAfford, o
         {/* On-image actions once a photo exists. */}
         {url && !busy && (
           <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-1.5 bg-gradient-to-t from-black/55 to-transparent p-2.5">
-            <button type="button" onClick={onGenerate} aria-label={t("concepts.retake")}
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur transition-colors hover:bg-black/70">
-              <RefreshCw size={14} aria-hidden />
-            </button>
+            <div className="relative">
+              <button type="button" onClick={() => { setRetakeOpen(!retakeOpen); setMenuOpen(false); }} aria-label={t("concepts.retake")}
+                aria-expanded={retakeOpen}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur transition-colors hover:bg-black/70">
+                <RefreshCw size={14} aria-hidden />
+              </button>
+              {retakeOpen && (
+                <div className="panel absolute bottom-10 right-0 z-10 w-52 rounded-xl p-1 shadow-e3">
+                  <p className="px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-faint">{t("concepts.retake")}</p>
+                  <MenuItem icon={RefreshCw} label={t("concepts.retakeSame")}
+                    onClick={() => { setRetakeOpen(false); onGenerate(); }} />
+                  {models.filter((m) => m.id !== chosenId).map((m) => (
+                    <MenuItem key={m.id} icon={Sparkles}
+                      label={t("concepts.retakeWith", { model: m.name, n: c.origin === "custom" ? m.costCustom : m.costEcom })}
+                      onClick={() => { setRetakeOpen(false); onPickModel(m.id); onGenerate(m.id); }} />
+                  ))}
+                </div>
+              )}
+            </div>
             <button type="button" onClick={download} aria-label={t("common.download")}
               className="flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur transition-colors hover:bg-black/70">
               <Download size={14} aria-hidden />
             </button>
             <div className="relative">
-              <button type="button" onClick={() => setMenuOpen(!menuOpen)} aria-label={t("common.actions")}
+              <button type="button" onClick={() => { setMenuOpen(!menuOpen); setRetakeOpen(false); }} aria-label={t("common.actions")}
                 aria-expanded={menuOpen}
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur transition-colors hover:bg-black/70">
                 <MoreHorizontal size={14} aria-hidden />
               </button>
               {menuOpen && (
                 <div className="panel absolute bottom-10 right-0 z-10 w-44 rounded-xl p-1 shadow-e3">
-                  <MenuItem icon={RefreshCw} label={t("concepts.retake")} onClick={() => { setMenuOpen(false); onGenerate(); }} />
-                  <MenuItem icon={Sparkles} label={t("concepts.changeScene")} onClick={() => { setMenuOpen(false); onChangeScene(); }} />
+                  <MenuItem icon={RefreshCw} label={t("concepts.retake")} onClick={() => { setMenuOpen(false); setRetakeOpen(true); }} />
+                  {c.origin === "ecomstudio" && (
+                    <MenuItem icon={Sparkles} label={t("concepts.changeScene")} onClick={() => { setMenuOpen(false); onChangeScene(); }} />
+                  )}
                   <MenuItem icon={Download} label={t("common.download")} onClick={() => { setMenuOpen(false); download(); }} />
                 </div>
               )}
@@ -304,6 +434,25 @@ function ConceptCard({ c, state, url, error, unitCost, engineReady, canAfford, o
           <p className="text-[12.5px] leading-relaxed text-muted">{c.description}</p>
         )}
 
+        {/* The customer's own prompt — theirs to read and edit. */}
+        {c.customPrompt !== null && (
+          <div>
+            <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-faint">{t("concepts.yourPrompt")}</p>
+            <Textarea
+              value={promptDraft}
+              onChange={(e) => setPromptDraft(e.target.value)}
+              rows={3}
+              className="min-h-16 resize-y !py-2 text-xs sm:!text-xs"
+            />
+            {promptDraft.trim() !== (c.customPrompt ?? "").trim() && (
+              <button type="button" disabled={savingPrompt || promptDraft.trim().length < 3} onClick={savePrompt}
+                className="mt-1 rounded-lg bg-raised px-2.5 py-1.5 text-[11px] font-semibold text-ink hover:bg-sunken">
+                {savingPrompt ? t("common.saving") : t("concepts.promptSave")}
+              </button>
+            )}
+          </div>
+        )}
+
         {c.references.length > 0 && (
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-faint">{t("concepts.refs")}</span>
@@ -321,10 +470,31 @@ function ConceptCard({ c, state, url, error, unitCost, engineReady, canAfford, o
           </div>
         )}
 
+        {/* MODEL — the customer's pick for this card; the override wins. */}
+        {models.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-faint">{t("concepts.model")}</span>
+            <div className="min-w-0 flex-1">
+              <Select
+                value={chosenId}
+                disabled={busy}
+                onChange={(e) => onPickModel(e.target.value)}
+                aria-label={t("concepts.model")}
+                className="!py-1.5 text-xs sm:!text-xs"
+              >
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} · {c.origin === "custom" ? m.costCustom : m.costEcom} kr.
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+        )}
+
         {state === "failed" && error && error !== "insufficient_credits" && (
-          /* The server already retried and fell back across providers before
-             answering — whatever code it returned, the seller only needs to
-             know the outcome and that their credits are safe. */
+          /* The server already retried before answering — the seller only
+             needs the outcome and that their credits are safe. */
           <p role="alert" className="rounded-lg bg-[rgb(var(--danger)/0.1)] px-2.5 py-1.5 text-[11px] text-danger">
             {t("concepts.failedFinal")}
           </p>
@@ -332,15 +502,17 @@ function ConceptCard({ c, state, url, error, unitCost, engineReady, canAfford, o
 
         <div className="mt-auto pt-1">
           {state === "done" || url ? (
-            <div className="flex items-center justify-between text-[11px] text-faint">
-              <span>{t("concepts.takes", { n: Math.max(1, c.generationCount) })}</span>
-              <span className="tabular-nums">{unitCost > 0 ? t("concepts.retakeCost", { n: unitCost }) : ""}</span>
+            <div className="flex items-center justify-between gap-2 text-[11px] text-faint">
+              <span className="truncate">
+                {generatedWith ? t("concepts.generatedWith", { model: generatedWith }) : t("concepts.takes", { n: Math.max(1, c.generationCount) })}
+              </span>
+              <span className="shrink-0 tabular-nums">{cost > 0 ? t("concepts.retakeCost", { n: cost }) : ""}</span>
             </div>
           ) : (
             <button
               type="button"
               disabled={!engineReady || busy || !canAfford}
-              onClick={onGenerate}
+              onClick={() => onGenerate()}
               className={cn(
                 "cta flex h-10 w-full items-center justify-center gap-2 rounded-xl text-[13px] font-semibold",
                 (!engineReady || busy || !canAfford) && "cursor-not-allowed opacity-50",
@@ -349,7 +521,7 @@ function ConceptCard({ c, state, url, error, unitCost, engineReady, canAfford, o
               {busy ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Sparkles size={14} aria-hidden />}
               {busy
                 ? t("concepts.stateGenerating")
-                : t("concepts.generateOne", { n: unitCost })}
+                : t("concepts.generateOne", { n: cost })}
             </button>
           )}
         </div>

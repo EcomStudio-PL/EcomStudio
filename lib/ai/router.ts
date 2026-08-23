@@ -39,6 +39,7 @@ export async function getUsableModels(supabase: Client): Promise<UsableModel[]> 
       .from("ai_models")
       .select("*, ai_providers!inner(id, slug, name, active)")
       .eq("active", true)
+      .eq("type", "image")
       .eq("ai_providers.active", true)
       .order("sort_order", { ascending: true }),
     supabase.rpc("providers_with_credentials"),

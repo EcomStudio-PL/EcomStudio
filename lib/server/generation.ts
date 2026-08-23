@@ -39,9 +39,15 @@ export type GenerateInput = {
   /** Concept engine: the prompt is EcomStudio IP — the job row must not
    *  mirror it in clear (the encrypted copy lives on the concept). */
   hidePromptText?: boolean;
-  /** Concept regeneration lineage, kept in the job's settings. */
+  /** Concept regeneration lineage, recorded on the job row. */
   parentJobId?: string;
   conceptId?: string;
+  /** Where the prompt came from — prices differ: "custom" charges the model's
+   *  base credits, "ecomstudio" adds the admin-configured engine surcharge. */
+  promptOrigin?: "ecomstudio" | "custom";
+  /** Full credit price decided by the caller (base + surcharge). The server
+   *  still verifies balance and reserves exactly this amount. */
+  costOverride?: number;
 };
 
 export type GenerateOutput =
@@ -89,7 +95,9 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     : supportedRes[0]) as Resolution | undefined;
 
   // Wallet + server-side cost (per-resolution price from the model config)
-  const cost = priceForResolution(model, resolution ?? "1K") * quantity;
+  const baseCost = priceForResolution(model, resolution ?? "1K") * quantity;
+  const cost = typeof input.costOverride === "number" && input.costOverride >= baseCost
+    ? Math.trunc(input.costOverride) : baseCost;
   const { data: wallet } = await supabase
     .from("credit_wallets").select("id, balance").eq("workspace_id", workspaceId).maybeSingle();
   if (!wallet) return { ok: false, error: "no_wallet" };
@@ -139,6 +147,8 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     negative_prompt: input.hidePromptText ? null : input.negative?.trim() || null,
     prompt_id: input.promptId ?? null,
     prompt_session_id: input.promptSessionId ?? null,
+    prompt_origin: input.promptOrigin ?? null,
+    parent_job_id: input.parentJobId ?? null,
     status: "processing", started_at: new Date().toISOString(),
     reference_image_ids: input.referenceImageIds.slice(0, 8),
     settings: {
@@ -155,7 +165,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     userId, workspaceId, walletId: wallet.id, serviceSlug: "image_generation",
     providerSlug: provider.slug, modelSlug: model.model_identifier,
     generationJobId: job.id, idempotencyKey: `job:${job.id}`,
-    metadata: { quantity, model: model.model_identifier },
+    metadata: { quantity, model: model.model_identifier, prompt_origin: input.promptOrigin ?? null },
     creditsCharged: cost,
   });
   if (!usage.ok) {

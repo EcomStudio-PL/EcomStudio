@@ -124,21 +124,36 @@ async function getAnalysisModel(supabase: Client): Promise<string> {
 }
 
 /**
- * Every provider that can actually serve analysis right now, in preference
- * order. Credentials come back as ciphertext through the definer RPC and are
+ * PLANNER PROVIDER CHAIN — its own admin configuration, fully independent of
+ * the image models: app_settings("generation").planner_provider is the
+ * primary, planner_fallback is OPTIONAL and used only when the admin set it.
+ * Credentials come back as ciphertext through the definer RPC and are
  * decrypted only here, server-side. A provider without a usable key is simply
  * absent from the chain — a broken key can never take the others down.
  */
-const ANALYSIS_PROVIDERS: VisionProvider[] = ["google", "openai"];
+const PLANNER_CAPABLE: VisionProvider[] = ["openai", "google"];
+
+async function plannerProviderOrder(supabase: Client): Promise<VisionProvider[]> {
+  const { data } = await supabase
+    .from("app_settings").select("value").eq("key", "generation").maybeSingle();
+  const cfg = (data?.value ?? {}) as { planner_provider?: string; planner_fallback?: string };
+  const primary = PLANNER_CAPABLE.includes(cfg.planner_provider as VisionProvider)
+    ? (cfg.planner_provider as VisionProvider) : "openai";
+  const fallback = PLANNER_CAPABLE.includes(cfg.planner_fallback as VisionProvider)
+    && cfg.planner_fallback !== primary
+    ? (cfg.planner_fallback as VisionProvider) : null;
+  return fallback ? [primary, fallback] : [primary];
+}
 
 async function getVisionBackends(supabase: Client, primaryModel: string): Promise<VisionBackend[]> {
   if (!encryptionAvailable()) return [];
+  const order = await plannerProviderOrder(supabase);
   const { data: providers } = await supabase
-    .from("ai_providers").select("id, slug").eq("active", true).in("slug", ANALYSIS_PROVIDERS);
+    .from("ai_providers").select("id, slug").eq("active", true).in("slug", order);
   if (!providers?.length) return [];
 
   const backends: VisionBackend[] = [];
-  for (const slug of ANALYSIS_PROVIDERS) {
+  for (const slug of order) {
     const provider = providers.find((p) => p.slug === slug);
     if (!provider) continue;
     const { data: credRows } = await supabase.rpc("get_active_provider_credential", { p_provider_id: provider.id });
@@ -243,8 +258,19 @@ export async function runPromptSession(
   let productId = input.productId ?? null;
   if (productId) {
     const { data: product } = await supabase
-      .from("products").select("id").eq("id", productId).eq("workspace_id", workspaceId).maybeSingle();
+      .from("products").select("id, name, description, extra_info").eq("id", productId).eq("workspace_id", workspaceId).maybeSingle();
     if (!product) return { ok: false, error: "product_not_found" };
+    // The session snapshots its own copy, but the PRODUCT stays the living
+    // record: edits made in the form update it so the next visit is prefilled
+    // with what the seller last wrote.
+    const nextName = input.productName.trim();
+    const nextDesc = input.description?.trim() || null;
+    const nextExtra = input.extraInfo?.trim() || null;
+    if (nextName !== product.name || nextDesc !== (product.description ?? null) || nextExtra !== (product.extra_info ?? null)) {
+      await supabase.from("products")
+        .update({ name: nextName, description: nextDesc, extra_info: nextExtra })
+        .eq("id", productId).eq("workspace_id", workspaceId);
+    }
   } else {
     const { data: created, error: createError } = await supabase.from("products").insert({
       workspace_id: workspaceId, owner_id: userId, name: input.productName.trim(),
@@ -292,6 +318,7 @@ export async function runPromptSession(
       reference_paths: input.referencePaths.slice(0, MAX_REFS),
       reference_hash: referenceHash,
       status: "analyzing",
+      mode: "engine",
     }).select("id").single();
     if (sessionError || !session) return { ok: false, error: "session_create_failed" };
     sessionId = session.id;

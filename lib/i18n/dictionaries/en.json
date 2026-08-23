@@ -416,7 +416,10 @@
       "rate_limited": "Rate limited",
       "unavailable": "Unavailable",
       "invalid": "Invalid configuration",
-      "unsupported": "Test unavailable"
+      "unsupported": "Test unavailable",
+      "quota": "Insufficient balance / quota",
+      "timeout": "Timeout",
+      "model_unavailable": "Model unavailable"
     },
     "modelsSub": "Models, credit pricing and internal platform economics.",
     "userCost": "User price (credits)",
@@ -564,6 +567,16 @@
       "primary": "Primary model",
       "fallback1": "Fallback #1",
       "fallback2": "Fallback #2"
+    },
+    "ecomSurcharge": "EcomStudio surcharge (cr)",
+    "ecomSurchargeHint": "EcomStudio prompt: total {total} cr ≈ {pln}",
+    "ecomPriceShort": "EcomStudio: {n} cr",
+    "planner": {
+      "title": "Shot planner",
+      "sub": "The analysis & scene engine — independent of image models. Fallback runs only when you enable it.",
+      "primary": "Primary planner",
+      "fallback": "Fallback planner",
+      "off": "Disabled"
     }
   },
   "support": {
@@ -779,7 +792,7 @@
     "usingSaved": "using saved product data and photos",
     "title": "Product title",
     "extraInfo": "Additional info / marketplace description",
-    "extraInfoPh": "Paste your Allegro/Amazon/store description — features, materials, dimensions, box contents…",
+    "extraInfoPh": "Add facts the AI must respect: dimensions, material, colour, number of parts, set contents, functions, technical specs, etc.",
     "moreFields": "More fields (SKU, description, URL)",
     "sourceUrl": "Product URL",
     "refs": "Reference images",
@@ -898,7 +911,7 @@
     "newSub": "The system analyses every photo, locks the product's look and designs varied scenes.",
     "name": "Product name",
     "description": "Product description",
-    "descriptionPh": "Paste the full listing from Allegro/Amazon/WooCommerce…",
+    "descriptionPh": "Paste the product description from Allegro, WooCommerce, Amazon or your store. AI extracts the key product facts.",
     "photos": "Product photos",
     "styleToggle": "Preferred style (optional)",
     "stylePh": "E.g. minimalist, warm, premium…",
@@ -921,7 +934,19 @@
     "stage_lock": "Locking the product's look…",
     "stage_prompts": "Preparing {n} shots…",
     "retryHint": "Please try again.",
-    "primaryRef": "Primary"
+    "primaryRef": "Primary",
+    "modeTitle": "How do you want to prepare the shots?",
+    "modeEngine": "EcomStudio prompts",
+    "modeEngineBadge": "Best quality",
+    "modeEngineSub": "AI analyses the product and photos, designs selling scenes and protects the product look.",
+    "modeCustom": "Your own prompts",
+    "modeCustomSub": "You describe each shot yourself. Reference photos and product protection still apply.",
+    "modePrice": "{model} · {n} cr. / shot",
+    "customPrompts": "Your prompts (1–10)",
+    "customPromptPh": "Shot {n} — describe what the photo should show…",
+    "customAdd": "Add shot",
+    "customCta": "Save {n} shots",
+    "costPreview": "{n} shots • {model} • {cost} cr."
   },
   "scene": {
     "product_hero": "Product hero",
@@ -1250,6 +1275,18 @@
     "takes": "Take {n}",
     "failed": "Generation failed. Try again.",
     "failedFinal": "The photo could not be generated. No credits were charged.",
-    "prepareFailed": "Could not prepare the shots. Try again."
+    "prepareFailed": "Could not prepare the shots. Try again.",
+    "model": "Model",
+    "chooseModel": "Choose a model",
+    "perShot": "{n} cr. / shot",
+    "bulkShots": "Shots to generate",
+    "bulkTotal": "Total cost",
+    "bulkConfirm": "Generate {n} shots",
+    "generatedWith": "Generated with: {model}",
+    "retakeSame": "Same model",
+    "retakeWith": "{model} · {n} cr.",
+    "yourPrompt": "Your prompt",
+    "promptSave": "Save prompt",
+    "promptSaved": "Prompt saved."
   }
 }

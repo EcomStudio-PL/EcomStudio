@@ -14,7 +14,8 @@ export default async function AdminModels() {
     supabase.from("app_settings").select("value").eq("key", "billing").maybeSingle(),
     supabase.from("app_settings").select("value").eq("key", "generation").maybeSingle(),
   ]);
-  const priority = ((generation?.value as { provider_priority?: string[] } | null)?.provider_priority ?? []);
+  const genCfg = (generation?.value ?? {}) as { provider_priority?: string[]; planner_provider?: string; planner_fallback?: string };
+  const priority = genCfg.provider_priority ?? [];
   const priorityOptions: PriorityModelOption[] = (models ?? [])
     .filter((m) => m.active && m.supports_reference_images)
     .map((m) => ({
@@ -44,13 +45,15 @@ export default async function AdminModels() {
     pricing: (m.pricing ?? {}) as Record<string, number>,
     supported_resolutions: m.supported_resolutions ?? ["1K"],
     providerName: m.ai_providers?.name ?? "—",
+    ecom_surcharge_credits: (m as { ecom_surcharge_credits?: number }).ecom_surcharge_credits ?? 0,
     unavailableReason: (m.metadata as { unavailable_reason?: string } | null)?.unavailable_reason ?? null,
     unavailableNote: (m.metadata as { unavailable_note?: string } | null)?.unavailable_note ?? null,
   }));
   return (
     <div>
       <PageHeader title={t("admin.nav.models")} sub={t("admin.modelsSub")} />
-      <GenerationPriority options={priorityOptions} current={priority} />
+      <GenerationPriority options={priorityOptions} current={priority}
+        planner={{ primary: genCfg.planner_provider ?? "openai", fallback: genCfg.planner_fallback ?? "" }} />
       <div className="space-y-3">
         {views.map((m) => (
           <ModelRow key={m.id} m={m} usdToPln={usdToPln} plnPerCredit={plnPerCredit} locale={locale} />
