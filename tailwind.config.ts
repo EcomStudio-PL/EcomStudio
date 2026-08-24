@@ -35,7 +35,7 @@ const config: Config = {
         display: ["var(--font-display)"],
         sans: ["var(--font-body)"],
       },
-      borderRadius: { xl: "0.875rem", "2xl": "1.125rem", "3xl": "1.5rem" },
+      borderRadius: { lg: "0.5rem", xl: "0.625rem", "2xl": "0.875rem", "3xl": "1.125rem" },
       boxShadow: {
         e1: "var(--shadow-1)", e2: "var(--shadow-2)", e3: "var(--shadow-3)", e4: "var(--shadow-4)",
       },

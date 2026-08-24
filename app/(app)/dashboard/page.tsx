@@ -99,7 +99,7 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-4">
       {/* HERO — the greeting as a stage: neon studio scene on the right,
           the two actions that start work on the left. */}
       <Panel className="relative overflow-hidden rounded-2xl">
@@ -109,28 +109,28 @@ export default async function DashboardPage() {
           style={{ background: "radial-gradient(24rem 14rem at 70% 40%, rgb(var(--accent) / 0.28), transparent 72%)" }}
         />
         <HeroArt className="pointer-events-none absolute -right-6 top-1/2 hidden h-[125%] w-auto -translate-y-1/2 lg:block" />
-        <div className="relative p-5 sm:p-8 lg:max-w-[58%] lg:py-12 xl:px-12 xl:py-14">
+        <div className="relative p-5 sm:p-7 lg:max-w-[58%] lg:py-8 xl:px-9 xl:py-10">
           <p className="overline">{t("dashboard.welcomeBack")}</p>
           {/* The greeting is the loudest thing on the page, as in the
               reference: fluid from phone to 2K. */}
-          <h1 className="mt-3 font-display font-semibold leading-[1.02] tracking-[-0.035em] text-[clamp(2rem,1.35rem+2.6vw,3.4rem)]">
+          <h1 className="mt-3 font-display font-semibold leading-[1.02] tracking-[-0.035em] text-[clamp(1.9rem,1rem+1.9vw,3.25rem)]">
             {t("dashboard.welcome", { name: firstName })}
           </h1>
-          <p className="mt-3 max-w-lg text-[15px] leading-relaxed text-muted">{t("dashboard.sub")}</p>
+          <p className="mt-2 max-w-lg text-[14px] leading-relaxed text-muted">{t("dashboard.sub")}</p>
 
-          <div className="mt-7 flex flex-col gap-2.5 sm:flex-row sm:items-center">
+          <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:items-center">
             <Link href="/products/new"
-              className="cta inline-flex h-12 items-center justify-center gap-2 rounded-2xl px-6 text-[15px] font-semibold">
+              className="cta inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold">
               <Plus size={18} aria-hidden />
               {t("dashboard.newProduct")}
             </Link>
             <Link href="/generator"
-              className="plate inline-flex h-12 items-center justify-center gap-2 rounded-2xl px-5 text-[15px] font-semibold text-ink transition-colors hover:border-[rgb(var(--accent)/0.45)] hover:bg-raised">
+              className="plate inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold text-ink transition-colors hover:border-[rgb(var(--accent)/0.45)] hover:bg-raised">
               <Wand2 size={17} className="text-accent" aria-hidden />
               {t("nav.generator")}
             </Link>
             <Link href="/prompts"
-              className="plate inline-flex h-12 items-center justify-center gap-2 rounded-2xl px-5 text-[15px] font-semibold text-ink transition-colors hover:border-[rgb(var(--accent)/0.45)] hover:bg-raised">
+              className="plate inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold text-ink transition-colors hover:border-[rgb(var(--accent)/0.45)] hover:bg-raised">
               <Sparkles size={17} className="text-violet" aria-hidden />
               {t("nav.promptsShort")}
               <ArrowRight size={14} aria-hidden className="text-faint" />
@@ -140,7 +140,7 @@ export default async function DashboardPage() {
       </Panel>
 
       {/* METRICS — each metric owns a hue; credits carry the traffic light. */}
-      <div className="stagger grid grid-cols-2 gap-3 [&>*]:min-w-0 lg:grid-cols-4 lg:gap-5">
+      <div className="stagger grid grid-cols-2 gap-3 [&>*]:min-w-0 lg:grid-cols-4 lg:gap-4">
         <Stat label={t("dashboard.statProducts")} value={products.length} icon={Box} tone="violet"
           hint={t("dashboard.statProductsSub")} href="/products" />
         <Stat label={t("dashboard.statGenerations")} value={gens.count ?? 0} icon={Images} tone="purple"
@@ -154,7 +154,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* WORK IN PROGRESS */}
-      <div className="grid gap-4 [&>*]:min-w-0 lg:grid-cols-2 lg:gap-5">
+      <div className="grid gap-4 [&>*]:min-w-0 lg:grid-cols-2">
         <Panel>
           <PanelHeader
             overline={t("nav.groups.work")}

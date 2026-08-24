@@ -62,8 +62,8 @@
   --header-h: 56px;
   --dock-h: 84px;
   --drawer-w: 20rem;
-  --rail-w: 244px;
-  --rail-w-collapsed: 76px;
+  --rail-w: 208px;
+  --rail-w-collapsed: 68px;
   /* The work surface fills the monitor like the reference does: 1920 is
      edge-to-edge, and the cap only engages past 2.5K so text keeps a
      readable measure on cinema displays. */

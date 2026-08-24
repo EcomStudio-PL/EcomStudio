@@ -39,7 +39,7 @@ export function Topbar({ name, credits, workspace, isAdmin = false, notification
     <header className="glass sticky top-0 z-30 rounded-none border-x-0 border-t-0 pt-[env(safe-area-inset-top)]">
       {/* Same measure as <main>, so the search field and the avatar line up
           with the content columns instead of hugging the viewport edges. */}
-      <div className="mx-auto flex h-[58px] w-full max-w-[var(--content-max)] items-center justify-between gap-2 px-3 sm:px-4 lg:px-6 xl:px-7">
+      <div className="mx-auto flex h-[54px] w-full max-w-[var(--content-max)] items-center justify-between gap-2 px-3 sm:px-4 lg:px-6 xl:px-7">
         <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
           <button
             type="button"

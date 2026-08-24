@@ -29,7 +29,7 @@ export function NavLink({ href, label, icon: Icon, onNavigate, compact = false, 
         compact
           ? "min-h-[44px] justify-center px-0 py-2 text-sm"
           : dense
-            ? "min-h-[38px] gap-2.5 px-2.5 py-1.5 text-[13.5px]"
+            ? "min-h-[32px] gap-2.5 px-2.5 py-1 text-[13px]"
             : "min-h-[44px] gap-3 px-3 py-2.5 text-sm",
         active
           ? "bg-[linear-gradient(90deg,rgb(var(--accent)/0.20),rgb(var(--accent)/0.05))] font-semibold text-ink shadow-[inset_0_1px_0_rgb(var(--hairline)/0.08)]"

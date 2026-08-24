@@ -50,23 +50,23 @@ export function Stat({ label, value, hint, icon: Icon, tone, meter, meterClass, 
       <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">{label}</p>
-          <p className={cn("metric mt-2 truncate text-[clamp(1.6rem,1.2rem+1.1vw,2.35rem)] leading-none", toneText)}>
+          <p className={cn("metric mt-1.5 truncate text-[clamp(1.45rem,1.15rem+0.75vw,2rem)] leading-none", toneText)}>
             {value}
           </p>
-          {hint && <p className="mt-2 truncate text-[11.5px] text-muted">{hint}</p>}
+          {hint && <p className="mt-1.5 truncate text-[11px] text-muted">{hint}</p>}
         </div>
         {Icon && (
           <span aria-hidden className={cn(
             "flex shrink-0 items-center justify-center rounded-full",
-            "h-12 w-12 sm:h-14 sm:w-14",
+            "h-11 w-11 sm:h-12 sm:w-12",
             toneChip,
           )}>
-            <Icon size={22} strokeWidth={1.9} />
+            <Icon size={20} strokeWidth={1.9} />
           </span>
         )}
       </div>
       {typeof meter === "number" && (
-        <div className="absolute inset-x-4 bottom-3 h-[3px] overflow-hidden rounded-full bg-[rgb(var(--ink)/0.10)] sm:inset-x-5">
+        <div className="absolute inset-x-4 bottom-2.5 h-[3px] overflow-hidden rounded-full bg-[rgb(var(--ink)/0.10)]">
           <div
             className={cn("h-full rounded-full", meterClass ?? (resolved === "accent2" ? "bg-accent2" : "brand-gradient"))}
             style={{ width: `${Math.max(3, Math.min(100, meter * 100))}%` }}
@@ -78,8 +78,8 @@ export function Stat({ label, value, hint, icon: Icon, tone, meter, meterClass, 
 
   const className = cn(
     "panel panel-interactive relative block overflow-hidden rounded-2xl",
-    "px-4 py-4 sm:px-5 sm:py-5",
-    typeof meter === "number" && "pb-7 sm:pb-8",
+    "px-4 py-3.5 sm:py-4",
+    typeof meter === "number" && "pb-6",
   );
   return href
     ? <a href={href} className={className}>{inner}</a>
