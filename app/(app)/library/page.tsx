@@ -1,3 +1,4 @@
+import { Maximize2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
@@ -44,17 +45,25 @@ export default async function LibraryPage() {
       {generations.length === 0 && (toolResults ?? []).length === 0 ? (
         <EmptyState title={t("library.emptyTitle")} body={t("library.emptyBody")} />
       ) : (
-        <div className="stagger grid gap-3.5 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="stagger grid gap-3.5 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 xl:gap-4">
           {generations.map((g) => (
-            <Card key={g.id} className="overflow-hidden">
+            <Card key={g.id} className="group overflow-hidden">
               {g.generation_assets.length > 0 && (
                 <div className={`grid gap-0.5 ${g.generation_assets.length > 1 ? "grid-cols-2" : ""}`}>
                   {g.generation_assets.slice(0, 4).map((a) => {
                     const url = urlMap.get(a.storage_path);
                     return url ? (
-                      <a key={a.id} href={url} target="_blank" className="block bg-raised">
+                      <a key={a.id} href={url} target="_blank" rel="noreferrer noopener"
+                        className="group/tile relative block overflow-hidden bg-raised">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={url} alt="" loading="lazy" className="aspect-square w-full object-cover transition-transform duration-200 hover:scale-[1.02]" />
+                        <img src={url} alt="" loading="lazy"
+                          className="aspect-square w-full object-cover transition-transform duration-500 group-hover/tile:scale-[1.05]" />
+                        {/* Hover: the photo dims and offers the one action it has. */}
+                        <span aria-hidden className="absolute inset-0 flex items-center justify-center bg-[rgb(var(--scrim)/0.55)] opacity-0 backdrop-blur-[1px] transition-opacity duration-200 group-hover/tile:opacity-100">
+                          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white ring-1 ring-white/30">
+                            <Maximize2 size={15} />
+                          </span>
+                        </span>
                       </a>
                     ) : null;
                   })}
@@ -62,8 +71,8 @@ export default async function LibraryPage() {
               )}
               <div className="flex items-center justify-between gap-2 px-4 py-3">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{g.products?.name ?? "—"}</p>
-                  <p className="text-xs text-muted">{formatDate(g.created_at, locale)}</p>
+                  <p className="truncate text-sm font-semibold tracking-tight">{g.products?.name ?? "—"}</p>
+                  <p className="caption mt-0.5">{formatDate(g.created_at, locale)}</p>
                 </div>
                 <Badge tone={g.generation_assets.length > 0 ? "green" : "neutral"}>
                   {g.generation_assets.length}
@@ -77,7 +86,7 @@ export default async function LibraryPage() {
       {(toolResults ?? []).length > 0 && (
         <section className="mt-7">
           <h2 className="mb-3 font-display text-[15px] font-semibold tracking-tight">{t("tools.title")}</h2>
-          <div className="grid grid-cols-2 gap-2 [&>*]:min-w-0 sm:grid-cols-4 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-2 [&>*]:min-w-0 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
             {(toolResults ?? []).map((r) => {
               const url = urlMap.get(r.storage_path);
               return url ? (

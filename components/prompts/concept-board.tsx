@@ -247,7 +247,7 @@ export function ConceptBoard({ concepts, models, balance, engineReady, initialMo
         </div>
       )}
 
-      <div className="stagger grid gap-4 [&>*]:min-w-0 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="stagger grid gap-4 [&>*]:min-w-0 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {concepts.map((c) => (
           <ConceptCard
             key={c.id}

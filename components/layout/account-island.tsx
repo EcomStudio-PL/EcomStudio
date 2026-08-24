@@ -35,7 +35,7 @@ export function AccountIsland({ initial, name, email, tone = "accent", badge, fa
       // desktop rail, where the island genuinely is a card.
       "island relative overflow-hidden",
       standalone
-        ? "rounded-3xl p-4"
+        ? "rounded-2xl p-4"
         : "rounded-b-3xl px-4 pb-4 pt-[max(1rem,calc(env(safe-area-inset-top)+0.5rem))]",
       tone === "accent2" && "island-admin"
     )}>

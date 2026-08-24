@@ -47,7 +47,7 @@ export function AdminShell({ name, email, role, stats }: {
   return (
     <>
       <header className="glass sticky top-0 z-30 rounded-none border-x-0 border-t-0 pt-[env(safe-area-inset-top)]">
-        <div className="flex h-[60px] items-center justify-between gap-2 px-3 sm:px-4 lg:px-8">
+        <div className="mx-auto flex h-[60px] w-full max-w-[var(--content-max)] items-center justify-between gap-2 px-3 sm:px-4 lg:px-8 xl:px-10 2xl:px-12">
           <div className="flex min-w-0 items-center gap-2">
             <button
               type="button"

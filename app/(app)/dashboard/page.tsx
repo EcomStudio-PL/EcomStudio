@@ -1,13 +1,13 @@
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, Box, Images, Plus, Sparkles, Wand2, Zap } from "lucide-react";
+import { ArrowRight, Box, ImageIcon, Images, Plus, Sparkles, Wand2, Zap } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace, getProfile } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { listProducts } from "@/lib/services/products";
-import { listJobs } from "@/lib/services/generator";
+import { listAssets, listJobs } from "@/lib/services/generator";
 import { signImageUrls } from "@/lib/services/images";
 import { Stat } from "@/components/ui/stat";
 import { Panel } from "@/components/ui/surface";
@@ -29,10 +29,11 @@ export default async function DashboardPage() {
     getCurrentWorkspace(supabase, user.id),
   ]);
   if (!workspace || !profile) return null;
-  const [wallet, products, jobs, gens, { data: sub }] = await Promise.all([
+  const [wallet, products, jobs, recentGens, gens, { data: sub }] = await Promise.all([
     getWallet(supabase, workspace.id),
     listProducts(supabase, workspace.id, 5),
     listJobs(supabase, workspace.id, 5),
+    listAssets(supabase, workspace.id, 8),
     supabase.from("generations").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id),
     supabase.from("subscriptions").select("subscription_plans(name)")
       .eq("workspace_id", workspace.id).eq("status", "active").maybeSingle(),
@@ -83,6 +84,20 @@ export default async function DashboardPage() {
     .filter((v): v is string => !!v);
   const urls = await signImageUrls(supabase, thumbPaths);
 
+  // Real generated photos for the gallery strip — the same signed-URL path
+  // the Library uses, just capped at six tiles.
+  const genTiles = recentGens
+    .flatMap((g) => g.generation_assets.map((a) => ({
+      id: a.id, path: a.storage_path, product: g.products?.name ?? null, created: g.created_at,
+    })))
+    .slice(0, 6);
+  const genUrls = new Map<string, string>();
+  if (genTiles.length > 0) {
+    const { data: signed } = await supabase.storage
+      .from("generation-assets").createSignedUrls(genTiles.map((g) => g.path), 3600);
+    signed?.forEach((s) => { if (s.signedUrl && s.path) genUrls.set(s.path, s.signedUrl); });
+  }
+
   return (
     <div className="space-y-5 sm:space-y-6">
       {/* HERO — the greeting as a stage: neon studio scene on the right,
@@ -94,7 +109,7 @@ export default async function DashboardPage() {
           style={{ background: "radial-gradient(24rem 14rem at 70% 40%, rgb(var(--accent) / 0.28), transparent 72%)" }}
         />
         <HeroArt className="pointer-events-none absolute -right-6 top-1/2 hidden h-[125%] w-auto -translate-y-1/2 lg:block" />
-        <div className="relative p-5 sm:p-7 lg:max-w-[54%]">
+        <div className="relative p-5 sm:p-7 lg:max-w-[56%] lg:py-10 xl:px-10 xl:py-12">
           <p className="overline">{t("dashboard.welcomeBack")}</p>
           <h1 className="display-xl mt-2.5">{t("dashboard.welcome", { name: firstName })}</h1>
           <p className="mt-2 max-w-lg text-sm leading-relaxed text-muted">{t("dashboard.sub")}</p>
@@ -121,7 +136,7 @@ export default async function DashboardPage() {
       </Panel>
 
       {/* METRICS — each metric owns a hue; credits carry the traffic light. */}
-      <div className="stagger grid grid-cols-2 gap-3 [&>*]:min-w-0 lg:grid-cols-4">
+      <div className="stagger grid grid-cols-2 gap-3 [&>*]:min-w-0 lg:grid-cols-4 lg:gap-5">
         <Stat label={t("dashboard.statProducts")} value={products.length} icon={Box} tone="indigo"
           hint={t("dashboard.statProductsSub")} href="/products" />
         <Stat label={t("dashboard.statGenerations")} value={gens.count ?? 0} icon={Images} tone="success"
@@ -135,7 +150,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* WORK IN PROGRESS */}
-      <div className="grid gap-4 [&>*]:min-w-0 lg:grid-cols-2">
+      <div className="grid gap-4 [&>*]:min-w-0 lg:grid-cols-2 lg:gap-5">
         <Panel>
           <PanelHeader
             overline={t("nav.groups.work")}
@@ -157,7 +172,7 @@ export default async function DashboardPage() {
                     <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-sunken ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]">
                       {url
                         ? <Image src={url} alt="" fill sizes="44px" className="object-cover" />
-                        : <span className="flex h-full items-center justify-center text-muted">◨</span>}
+                        : <span className="flex h-full items-center justify-center text-faint"><ImageIcon size={16} aria-hidden /></span>}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold">{p.name}</span>
@@ -176,28 +191,41 @@ export default async function DashboardPage() {
           </ul>
         </Panel>
 
-        <Panel>
+        <Panel className="flex flex-col">
           <PanelHeader
             overline={t("nav.groups.assets")}
             title={t("dashboard.recentJobs")}
             icon={Images}
             action={
-              <Link href="/history" className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent hover:opacity-75">
+              <Link href="/library" className="inline-flex items-center gap-1 text-[13px] font-semibold text-accent hover:opacity-75">
                 {t("common.viewAll")} <ArrowRight size={13} aria-hidden />
               </Link>
             }
           />
-          {jobs.length === 0 ? (
-            <div className="px-5 py-10 text-center">
-              <span aria-hidden className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-raised text-accent">
-                <Sparkles size={18} />
-              </span>
-              <p className="text-sm text-muted">{t("history.emptyBody")}</p>
-              <Link href="/generator" className="mt-4 inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent hover:opacity-75">
-                {t("nav.generator")} <ArrowRight size={13} aria-hidden />
-              </Link>
+          {genTiles.length > 0 ? (
+            /* The real photos, as a gallery — the point of the product. */
+            <div className="grid grid-cols-3 gap-2 px-4 pb-4 sm:px-5 sm:pb-5">
+              {genTiles.map((g) => {
+                const url = genUrls.get(g.path);
+                return (
+                  <Link key={g.id} href="/library"
+                    className="group relative aspect-square overflow-hidden rounded-xl bg-sunken ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]">
+                    {url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={url} alt={g.product ?? ""} loading="lazy"
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]" />
+                    )}
+                    <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                    {g.product && (
+                      <span className="absolute inset-x-2 bottom-1.5 truncate text-[10px] font-semibold text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                        {g.product}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
             </div>
-          ) : (
+          ) : jobs.length > 0 ? (
             <ul className="divide-y divide-line">
               {jobs.map((j) => (
                 <li key={j.id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
@@ -209,6 +237,19 @@ export default async function DashboardPage() {
                 </li>
               ))}
             </ul>
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center px-5 py-12 text-center">
+              <span aria-hidden className="glow-accent mb-3.5 flex h-12 w-12 items-center justify-center rounded-2xl bg-[linear-gradient(140deg,rgb(var(--accent)/0.22),rgb(var(--accent)/0.05))] text-accent">
+                <Sparkles size={19} />
+              </span>
+              <p className="text-sm font-semibold">{t("history.emptyTitle")}</p>
+              <p className="mx-auto mt-1 max-w-xs text-[13px] leading-relaxed text-muted">{t("history.emptyBody")}</p>
+              <Link href="/prompts"
+                className="cta mt-5 inline-flex h-10 items-center gap-2 rounded-xl px-4 text-[13px] font-semibold">
+                <Sparkles size={14} aria-hidden />
+                {t("nav.promptsShort")}
+              </Link>
+            </div>
           )}
         </Panel>
       </div>

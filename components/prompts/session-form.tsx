@@ -251,7 +251,7 @@ export function SessionForm({ products, workspaceId, engineAvailable, models, ba
   }
 
   return (
-    <div className="grid min-w-0 gap-5 [&>*]:min-w-0 lg:grid-cols-[minmax(0,1fr)_340px]">
+    <div className="grid min-w-0 gap-5 [&>*]:min-w-0 lg:grid-cols-[minmax(0,1fr)_340px] xl:gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="min-w-0 space-y-5 pb-32 lg:pb-0">
         {/* KROK 1 — PRODUKT */}
         <StepPanel n={1} overline={t("psess.step1")} title={t("studio.context")} sub={t("psess.step1Sub")}>

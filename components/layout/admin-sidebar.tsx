@@ -25,10 +25,10 @@ export function AdminSidebar({ name, email, role, stats }: {
     new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN", maximumFractionDigits: 0 }).format(cents / 100);
 
   return (
-    <aside className="sticky top-0 hidden h-dvh w-[264px] shrink-0 flex-col border-r border-line bg-sidebar/80 px-3 py-5 backdrop-blur-xl lg:flex">
-      <div className="px-3 pb-4"><Brand href="/admin" /></div>
+    <aside className="rail sticky top-0 hidden h-dvh w-[var(--rail-w)] shrink-0 flex-col px-3.5 py-5 lg:flex">
+      <div className="px-2.5 pb-4"><Brand href="/admin" /></div>
 
-      <div className="px-3">
+      <div className="px-0.5">
         <AccountIsland
           standalone
           initial={initial}

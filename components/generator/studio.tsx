@@ -208,7 +208,7 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
   }
 
   return (
-    <div className="grid min-w-0 gap-5 pb-24 [&>*]:min-w-0 lg:grid-cols-[minmax(0,1fr)_360px] lg:pb-0">
+    <div className="grid min-w-0 gap-5 pb-24 [&>*]:min-w-0 lg:grid-cols-[minmax(0,1fr)_360px] lg:pb-0 xl:gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
       <div className="min-w-0 space-y-5">
         {session && (
           <div className="animate-rise flex items-center gap-3 rounded-2xl border border-[rgb(var(--accent)/0.35)] bg-[linear-gradient(100deg,rgb(var(--accent)/0.16),transparent)] px-4 py-3">
