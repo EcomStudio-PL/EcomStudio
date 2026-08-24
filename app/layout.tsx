@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   description: "Professional e-commerce product content, faster.",
   applicationName: "EcomStudio",
   appleWebApp: { capable: true, title: "EcomStudio", statusBarStyle: "black-translucent" },
-  icons: { apple: "/icons/apple-touch-icon.png" },
+  icons: { apple: "/icons/apple-touch-icon.png?v=3" },
   formatDetection: { telephone: false },
 };
 export const viewport: Viewport = {
@@ -20,8 +20,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#FAF5FB" },
-    { media: "(prefers-color-scheme: dark)", color: "#0B0E11" },
+    { media: "(prefers-color-scheme: light)", color: "#FFF8FD" },
+    { media: "(prefers-color-scheme: dark)", color: "#0F1015" },
   ],
 };
 

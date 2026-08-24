@@ -9,11 +9,11 @@
   /* LIGHT — a cold lavender-white studio, not office paper. Surfaces stay
      translucent over the ambient wash so the theme reads as glass rather
      than as a dark theme with the lights turned off. */
-  --bg: 250 245 251;
-  --sunken: 245 238 246;
-  --sidebar: 253 248 253;
-  --surface: 255 255 255;
-  --raised: 248 240 248;
+  --bg: 255 248 253;
+  --sunken: 249 240 247;
+  --sidebar: 253 246 251;
+  --surface: 255 253 255;
+  --raised: 250 242 249;
   --float: 255 255 255;
 
   --ink: 32 20 36;
@@ -25,10 +25,11 @@
   --hairline: 130 40 132;
   --hairline-alpha: 0.13;
 
-  --accent: 245 1 246;
-  --accent-hover: 222 0 223;
-  --accent-strong: 178 0 179;
+  --accent: 248 0 248;
+  --accent-hover: 224 0 226;
+  --accent-strong: 201 0 207;
   --accent-soft: 253 231 253;
+  --accent-glow: 255 61 218;
   --accent2: 190 96 6;
   --accent2-soft: 253 240 220;
   --indigo: 74 66 224;
@@ -62,12 +63,12 @@
 .dark {
   /* Dark: near-black navy under a neon-magenta key light. Five distinct
      layers so a card on a panel on the page still reads as three planes. */
-  --bg: 9 10 17;
-  --sunken: 12 13 21;
-  --sidebar: 14 15 24;
-  --surface: 20 21 32;
-  --raised: 29 31 45;
-  --float: 36 38 54;
+  --bg: 15 16 21;
+  --sunken: 12 13 17;
+  --sidebar: 18 19 25;
+  --surface: 23 24 32;
+  --raised: 29 30 39;
+  --float: 36 37 47;
 
   --ink: 244 245 251;
   --muted: 168 173 193;
@@ -78,10 +79,11 @@
   --hairline: 255 255 255;
   --hairline-alpha: 0.08;
 
-  --accent: 248 82 249;
-  --accent-hover: 250 110 251;
-  --accent-strong: 245 1 246;
-  --accent-soft: 66 26 66;
+  --accent: 249 64 244;
+  --accent-hover: 251 96 246;
+  --accent-strong: 201 0 207;
+  --accent-soft: 64 24 60;
+  --accent-glow: 255 61 218;
   --accent2: 255 168 92;
   --accent2-soft: 60 43 25;
   --indigo: 122 130 255;
@@ -158,9 +160,17 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(52rem 34rem at 86% -10%, rgb(var(--accent) / 0.16), transparent 60%),
-    radial-gradient(44rem 32rem at -12% 108%, rgb(var(--indigo) / 0.10), transparent 58%),
+    radial-gradient(52rem 34rem at 86% -10%, rgb(var(--accent) / 0.10), transparent 60%),
+    radial-gradient(44rem 32rem at -12% 108%, rgb(var(--indigo) / 0.08), transparent 58%),
     radial-gradient(30rem 24rem at 50% 40%, rgb(var(--accent2) / 0.03), transparent 70%);
+}
+/* Dark keeps a slightly stronger pink key light — the glow that makes the
+   graphite stage feel lit instead of empty. */
+.dark body::before {
+  background:
+    radial-gradient(52rem 34rem at 86% -10%, rgb(var(--accent) / 0.15), transparent 60%),
+    radial-gradient(44rem 32rem at -12% 108%, rgb(var(--indigo) / 0.10), transparent 58%),
+    radial-gradient(30rem 24rem at 50% 40%, rgb(var(--accent-glow) / 0.05), transparent 70%);
 }
 /* Fine grain over the ambient wash: kills gradient banding on OLED screens
    and gives the background a photographic rather than digital texture. */
@@ -200,31 +210,68 @@ body::after {
 .brand-gradient {
   background-image: linear-gradient(135deg,
     rgb(var(--accent-strong)) 0%,
-    rgb(var(--accent)) 52%,
-    rgb(var(--indigo)) 118%);
+    rgb(var(--accent)) 55%,
+    rgb(var(--accent-glow)) 115%);
 }
-/* CTA treatment: gradient body, lit top edge, coloured shadow underneath. */
+/* CTA treatment: magenta→pink gradient body, lit top edge, coloured shadow,
+   and a LIVING finish: a slow highlight drifting across the face plus a soft
+   breathing glow. Pure transform/opacity work on overlays — GPU-composited,
+   no layout shift, and switched off for prefers-reduced-motion. */
 .cta {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
   background-image: linear-gradient(135deg,
     rgb(var(--accent-strong)) 0%,
-    rgb(var(--accent)) 52%,
-    rgb(var(--indigo)) 118%);
+    rgb(var(--accent)) 55%,
+    rgb(var(--accent-glow)) 115%);
   color: #fff;
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.22),
     0 8px 22px -10px rgb(var(--accent) / 0.75);
   transition: box-shadow 180ms ease, transform 140ms ease, filter 180ms ease;
 }
+@media (prefers-reduced-motion: no-preference) {
+  .cta::before {
+    content: "";
+    position: absolute;
+    inset: -40% -60%;
+    z-index: -1;
+    background: linear-gradient(115deg,
+      transparent 42%,
+      rgb(255 255 255 / 0.16) 50%,
+      transparent 58%);
+    transform: translateX(-60%);
+    animation: cta-sheen 6.5s ease-in-out infinite;
+    will-change: transform;
+    pointer-events: none;
+  }
+  .cta:not(:disabled) {
+    animation: cta-breathe 7s ease-in-out infinite;
+  }
+}
+@keyframes cta-sheen {
+  0%, 55% { transform: translateX(-60%); }
+  80%, 100% { transform: translateX(60%); }
+}
+@keyframes cta-breathe {
+  0%, 100% { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), 0 8px 22px -10px rgb(var(--accent) / 0.62); }
+  50% { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.26), 0 10px 30px -10px rgb(var(--accent) / 0.9); }
+}
 .cta:hover:not(:disabled) { filter: brightness(1.07); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.26), 0 12px 30px -10px rgb(var(--accent) / 0.85); }
 .cta:disabled { box-shadow: none; filter: saturate(0.35) brightness(0.9); }
 
-/* Overline: the small tracked label above a headline. */
+/* Overline: the small tracked label above a headline.
+   NOTE the class name collides with Tailwind's `overline` utility
+   (text-decoration-line: overline) — that utility painted a stray rule above
+   every section label. The decoration is force-disabled here, at the root. */
 .overline {
   font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: rgb(var(--faint));
+  text-decoration-line: none !important;
 }
 
 /* Status dot with a matching halo — used in lists and cards. */

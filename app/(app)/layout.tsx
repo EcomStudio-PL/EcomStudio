@@ -4,7 +4,6 @@ import { getCurrentWorkspace, getProfile } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
-import { signOut } from "@/app/actions/auth";
 import { Sidebar, MobileNav } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { CustomerDrawer } from "@/components/layout/customer-drawer";
@@ -36,7 +35,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <p className="text-3xl">🔒</p>
           <h1 className="mt-3 font-display text-lg font-semibold">{t("auth2.blockedTitle")}</h1>
           <p className="mt-2 text-sm text-muted">{t("auth2.blockedBody")}</p>
-          <form action={signOut} className="mt-6">
+          <form method="post" action="/auth/sign-out" className="mt-6">
             <button className="rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-semibold hover:bg-raised">
               {t("common.signOut")}
             </button>
@@ -54,7 +53,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <p className="text-3xl">⚠️</p>
           <h1 className="mt-3 font-display text-lg font-semibold">{t("auth.setupErrorTitle")}</h1>
           <p className="mt-2 text-sm text-muted">{t("auth.setupErrorBody")}</p>
-          <form action={signOut} className="mt-6">
+          <form method="post" action="/auth/sign-out" className="mt-6">
             <button className="rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-semibold hover:bg-raised">
               {t("common.signOut")}
             </button>

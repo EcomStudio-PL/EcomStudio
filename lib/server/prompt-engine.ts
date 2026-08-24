@@ -3,16 +3,10 @@ import { createHash } from "crypto";
 import type { Client } from "@/lib/services/workspace";
 import { decryptSecret, encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { ProviderError, type ReferenceImage } from "@/lib/ai/types";
-import { analyzeReferences } from "@/lib/ai/engine/analysis";
-import { proposeScenes, synthesizeConcepts } from "@/lib/ai/engine/scenes";
-import { buildProductLock, chooseLockStrength } from "@/lib/ai/engine/lock";
-import { assembleNegativePrompt, referenceRationale, referenceRoleLabel } from "@/lib/ai/engine/master-prompt";
-import {
-  composeTemplatePrompt, normalizeSceneryCategory, sceneTextFallback,
-  validateTemplatePrompt, PROMPT_TEMPLATE_VERSION,
-} from "@/lib/ai/engine/template-prompt";
+import { proposeScenes, synthesizeScenes, type PlannedScene } from "@/lib/ai/engine/scenes";
+import { composeFinalPrompt, validateFinalPrompt, PROMPT_TEMPLATE_VERSION } from "@/lib/ai/engine/template-prompt";
 import { VISION_MODEL, type VisionBackend, type VisionOutcome, type VisionProvider } from "@/lib/ai/engine/vision";
-import type { FeatureManifest, ImageAnalysis, SceneConcept, SessionInput } from "@/lib/ai/engine/types";
+import type { ImageAnalysis, SessionInput } from "@/lib/ai/engine/types";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
 
 export type PromptSessionInput = {
@@ -365,141 +359,81 @@ export async function runPromptSession(
     if (images.length === 0) throw new ProviderError("references_required");
     lap("referencesMs");
 
-    // 1) IMAGE ANALYSIS + PRODUCT FEATURE MANIFEST
-    // The same photographs always yield the same analysis, so a cached result
-    // for this exact reference set (and engine version) is reused instead of
-    // paying the latency and the provider call again. Fidelity is untouched:
-    // a different photo set, or a newer engine, misses the cache and re-runs.
-    stage = "analysis";
-    let analyses: ImageAnalysis[];
-    let manifest: FeatureManifest;
-    let cacheHit = false;
-    const { data: cached } = await supabase
-      .from("product_analysis_cache")
-      .select("id, image_analysis, feature_manifest, hits")
-      .eq("workspace_id", workspaceId)
-      .eq("reference_hash", referenceHash)
-      .eq("engine_version", ENGINE_VERSION)
-      .maybeSingle();
-    if (cached) {
-      analyses = cached.image_analysis as unknown as ImageAnalysis[];
-      manifest = cached.feature_manifest as unknown as FeatureManifest;
-      cacheHit = true;
-      await supabase.from("product_analysis_cache")
-        .update({ hits: (cached.hits ?? 0) + 1 }).eq("id", cached.id);
-    } else {
-      const fresh = await analyzeReferences(backends, images, sessionInfo);
-      analyses = fresh.images;
-      manifest = fresh.manifest;
-      usedOutcome = fresh.outcome;
+    // 1) SCENE PLAN — ONE planner call. The planner returns scenes only
+    // (title, Polish scene description, humans, reference numbers); nothing
+    // it says can alter the master template. Pool over-provisioning plus a
+    // deterministic synthesis backstop keeps the ordered count exact.
+    stage = "scenes";
+    const shots = clampShots(input.shots);
+    const scannerInfo = {
+      productName: sessionInfo.productName, description: sessionInfo.description,
+      extraInfo: sessionInfo.extraInfo, style: sessionInfo.style,
+    };
+    const scened = await proposeScenes(backends, images, scannerInfo, {
+      count: candidatePoolSize(shots),
+    });
+    let scenes = scened.scenes.slice(0, shots);
+    usedOutcome = scened.outcome;
+    if (scenes.length < shots) {
+      const missing = shots - scenes.length;
+      try {
+        const extra = await proposeScenes(backends, images, scannerInfo, {
+          count: missing + 1, avoidTitles: scenes.map((c) => c.title),
+        });
+        scenes = [...scenes, ...extra.scenes.filter((e) => !scenes.some((c) => c.title.toLowerCase() === e.title.toLowerCase()))].slice(0, shots);
+      } catch { /* AI refill unavailable — synthesis below still guarantees the count */ }
     }
-
-    lap("analysisMs");
-
-    // 2) PRODUCT LOCK
-    const lock = buildProductLock(manifest, analyses);
+    if (scenes.length === 0) throw new ProviderError("analysis_empty", true);
+    if (scenes.length < shots) {
+      scenes = [...scenes, ...synthesizeScenes(scenes, shots - scenes.length, sessionInfo.productName, images.length)].slice(0, shots);
+    }
     await supabase.from("prompt_sessions").update({
-      image_analysis: analyses as never, feature_manifest: manifest as never,
-      product_lock: lock as never,
       analysis_model: usedOutcome?.model ?? analysisModel,
       analysis_provider: usedOutcome?.provider ?? null,
       fallback_from: usedOutcome?.fallbackFrom ?? null,
       fallback_reason: usedOutcome?.fallbackReason ?? null,
-      reference_hash: referenceHash, cache_hit: cacheHit,
+      reference_hash: referenceHash,
     }).eq("id", session.id);
-    if (!cacheHit) {
-      // Awaited deliberately: a serverless function can freeze the moment the
-      // response is sent, and a fire-and-forget insert would never land — the
-      // cache would then never hit and every run would pay for analysis again.
-      await supabase.from("product_analysis_cache").insert({
-        workspace_id: workspaceId, product_id: productId,
-        reference_hash: referenceHash, engine_version: ENGINE_VERSION,
-        image_analysis: analyses as never, feature_manifest: manifest as never,
-        product_lock: lock as never, analysis_model: analysisModel,
-      });
-    }
-
-    // 3) SCENE STRATEGY + DIVERSITY
-    // EXACT COUNT GUARANTEE, cheapest first: the single planner call asks for
-    // a POOL of shots+2 candidates so the diversity/supported-view filters
-    // can discard duds without a second sequential AI request. Only when the
-    // trimmed pool is still short does one refill call run; whatever remains
-    // missing after that is synthesized from always-renderable patterns. The
-    // seller ordered N and receives exactly N.
-    stage = "scenes";
-    const shots = clampShots(input.shots);
-    const customerLanguage = CUSTOMER_LANGUAGE[input.locale ?? "pl"] ?? "Polish";
-    // When analysis already fell back, later calls in this run start directly
-    // at the backend that answered — re-trying the throttled provider would
-    // re-pay its whole model-id churn on every call.
-    const liveBackends = usedOutcome?.fallbackFrom
-      ? backends.filter((b) => b.provider === usedOutcome?.provider)
-      : backends;
-    const scened = await proposeScenes(liveBackends.length ? liveBackends : backends, images, analyses, manifest, sessionInfo, {
-      count: candidatePoolSize(shots), customerLanguage,
-    });
-    let concepts = scened.concepts.slice(0, shots);
-    usedOutcome = scened.outcome;
-    const sceneryCategory = normalizeSceneryCategory(scened.sceneryCategory);
-    const brandDomainPl = scened.brandDomainPl;
-    if (concepts.length < shots) {
-      const missing = shots - concepts.length;
-      try {
-        const extra = await proposeScenes(liveBackends.length ? liveBackends : backends, images, analyses, manifest, sessionInfo, {
-          count: missing + 1, avoidSceneTypes: concepts.map((c) => c.scene_type), customerLanguage,
-        });
-        concepts = [...concepts, ...extra.concepts.filter((e) => !concepts.some((c) => c.scene_type === e.scene_type))].slice(0, shots);
-      } catch { /* AI refill unavailable — synthesis below still guarantees the count */ }
-    }
-    if (concepts.length === 0) throw new ProviderError("analysis_empty", true);
-    if (concepts.length < shots) {
-      concepts = [...concepts, ...synthesizeConcepts(
-        concepts, shots - concepts.length, manifest.identity, analyses, input.locale ?? "pl",
-      )].slice(0, shots);
-    }
     lap("scenesMs");
 
-    // 4) FULL TEMPLATE PROMPTS — the PDF playbook composed server-side and
-    // stored ONLY as ciphertext: fixed intro + scenery + quality signature,
-    // product fidelity from verified facts, the concrete Polish shot
-    // description, constraints. Each stored full_prompt goes 1:1 to the image
-    // model later; the negative prompt is only a technical helper. QA rejects
-    // a too-generic shot description and repairs it deterministically so the
-    // ordered count never drops.
+    // 2) FINAL PROMPTS — assembled by PLAIN CODE from the one master
+    // template + product name + scene description. No negative prompt, no
+    // LLM rewriting, stored only as ciphertext. A scene that would produce
+    // an invalid prompt is replaced by a deterministic synthesized scene so
+    // the count never drops.
     stage = "prompts";
     let qaRepaired = 0;
-    const rows = concepts.map((concept, idx) => {
-      const strength = chooseLockStrength(concept, manifest, lock.conflicts);
-      const compose = (c: typeof concept) => composeTemplatePrompt({
-        concept: c, manifest, lock, aspectRatio: input.aspectRatio,
-        category: sceneryCategory, brandDomainPl,
+    const rows = scenes.map((scene, idx) => {
+      let prompt = composeFinalPrompt({
+        productName: sessionInfo.productName,
+        sceneDescription: scene.scene_description,
+        humanPresence: scene.human_presence,
       });
-      let prompt = compose(concept);
-      if (!validateTemplatePrompt(prompt).ok) {
+      if (!validateFinalPrompt(prompt)) {
         qaRepaired++;
-        concept = { ...concept, scene_text_pl: sceneTextFallback(concept, manifest.identity) };
-        prompt = compose(concept);
+        const replacement = synthesizeScenes(scenes, 1, sessionInfo.productName, images.length)[0]
+          ?? { title: scene.title, scene_description: `${sessionInfo.productName} w eleganckim, czystym kadrze reklamowym, produkt w całości widoczny.`, human_presence: false, reference_indices: scene.reference_indices };
+        scene = { ...scene, scene_description: replacement.scene_description, human_presence: replacement.human_presence };
+        prompt = composeFinalPrompt({
+          productName: sessionInfo.productName,
+          sceneDescription: scene.scene_description,
+          humanPresence: scene.human_presence,
+        });
       }
-      const negative = assembleNegativePrompt(concept, manifest, lock);
-      const sealed = encryptConceptPayload(prompt, negative, {
-        tv: PROMPT_TEMPLATE_VERSION, goal: concept.marketing_purpose,
-        comp: concept.camera_distance, cat: sceneryCategory,
-      });
-      const rationale = referenceRationale(concept, analyses)
-        .map((r) => `${r.image} — ${r.label}`).join("; ");
+      const sealed = encryptConceptPayload(prompt, "", { tv: PROMPT_TEMPLATE_VERSION });
       return {
         product_id: productId!, workspace_id: workspaceId, session_id: session.id,
-        concept_name: concept.title, shot_type: concept.scene_type, scene_type: concept.scene_type,
-        customer_title: concept.customer_title?.trim() || concept.title,
-        customer_description: concept.customer_description?.trim() || null,
+        concept_name: scene.title, shot_type: "scene", scene_type: null,
+        customer_title: scene.title,
+        customer_description: scene.scene_description,
         prompt_text: "", negative_prompt: null,
         prompt_encrypted: sealed.ciphertext, prompt_iv: sealed.iv, prompt_tag: sealed.authTag,
-        primary_reference: concept.primary_reference,
-        supporting_references: concept.supporting_references as never,
-        reference_indices: [concept.primary_reference, ...concept.supporting_references.map((s) => s.image)],
-        reference_image_ids: [], reference_rationale: rationale,
+        primary_reference: scene.reference_indices[0] ?? 1,
+        supporting_references: [] as never,
+        reference_indices: scene.reference_indices,
+        reference_image_ids: [], reference_rationale: null,
         format: input.aspectRatio, style: input.style?.trim() || null,
-        priority: idx + 1, status: "ready" as const, lock_strength: strength,
+        priority: idx + 1, status: "ready" as const, lock_strength: "LOW",
       };
     });
     lap("promptsMs");
@@ -519,14 +453,13 @@ export async function runPromptSession(
       p_workspace_id: workspaceId, p_action: "prompts.generated",
       p_entity_type: "prompt_session", p_entity_id: session.id,
       p_metadata: {
-        prompts: rows.length, requested: shots, images: images.length, cache_hit: cacheHit,
+        prompts: rows.length, requested: shots, images: images.length,
         primary_provider: backends[0]?.provider ?? null, primary_model: analysisModel,
         used_provider: usedOutcome?.provider ?? null, used_model: usedOutcome?.model ?? null,
         fallback_from: usedOutcome?.fallbackFrom ?? null,
         fallback_reason: usedOutcome?.fallbackReason ?? null,
         vision_latency_ms: usedOutcome?.latencyMs ?? null,
         prompt_template_version: PROMPT_TEMPLATE_VERSION,
-        scenery_category: sceneryCategory,
         qa_repaired: qaRepaired,
         timings,
         retried_session: Boolean(retryable),
@@ -556,8 +489,9 @@ export async function runPromptSession(
   }
 }
 
-/** Regenerate ONE prompt card: a fresh scene concept that avoids the
- *  session's already-used scene types, written over the same row. */
+/** Regenerate ONE card ("Zmień scenę"): one fresh planner scene that avoids
+ *  the session's existing titles, assembled into the same master template
+ *  and written over the same row. */
 export async function regeneratePrompt(
   supabase: Client, workspaceId: string, promptId: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -574,54 +508,42 @@ export async function regeneratePrompt(
   if (backends.length === 0) return { ok: false, error: "analysis_unavailable" };
 
   const { data: siblings } = await supabase
-    .from("generated_prompts").select("id, scene_type").eq("session_id", session.id);
-  const avoid = (siblings ?? []).filter((s) => s.id !== promptId).map((s) => s.scene_type).filter(Boolean) as string[];
-
-  const sessionInfo: SessionInput = {
-    productName: session.product_name, description: session.description,
-    extraInfo: session.extra_info, style: session.style, aspectRatio: session.aspect_ratio,
-  };
-  const analyses = (session.image_analysis ?? []) as unknown as ImageAnalysis[];
-  const manifest = session.feature_manifest as unknown as FeatureManifest;
-  const lock = buildProductLock(manifest, analyses);
+    .from("generated_prompts").select("id, concept_name").eq("session_id", session.id);
+  const avoid = (siblings ?? []).filter((s) => s.id !== promptId).map((s) => s.concept_name).filter(Boolean) as string[];
 
   try {
     const images = await downloadReferences(supabase, session.reference_paths ?? []);
     if (images.length === 0) return { ok: false, error: "references_required" };
-    const scened = await proposeScenes(backends, images, analyses, manifest, sessionInfo, {
-      count: 1, avoidSceneTypes: avoid,
+    const scened = await proposeScenes(backends, images, {
+      productName: session.product_name, description: session.description,
+      extraInfo: session.extra_info, style: session.style,
+    }, { count: 1, avoidTitles: avoid });
+    let scene: PlannedScene | undefined = scened.scenes[0];
+    if (!scene) return { ok: false, error: "analysis_empty" };
+    let finalPrompt = composeFinalPrompt({
+      productName: session.product_name,
+      sceneDescription: scene.scene_description,
+      humanPresence: scene.human_presence,
     });
-    let [concept]: SceneConcept[] = scened.concepts;
-    if (!concept) return { ok: false, error: "analysis_empty" };
-    const strength = chooseLockStrength(concept, manifest, lock.conflicts);
-    const category = normalizeSceneryCategory(scened.sceneryCategory);
-    let prompt = composeTemplatePrompt({
-      concept, manifest, lock, aspectRatio: session.aspect_ratio,
-      category, brandDomainPl: scened.brandDomainPl,
-    });
-    if (!validateTemplatePrompt(prompt).ok) {
-      concept = { ...concept, scene_text_pl: sceneTextFallback(concept, manifest.identity) };
-      prompt = composeTemplatePrompt({
-        concept, manifest, lock, aspectRatio: session.aspect_ratio,
-        category, brandDomainPl: scened.brandDomainPl,
+    if (!validateFinalPrompt(finalPrompt)) {
+      scene = synthesizeScenes([], 1, session.product_name, images.length)[0];
+      finalPrompt = composeFinalPrompt({
+        productName: session.product_name,
+        sceneDescription: scene.scene_description,
+        humanPresence: scene.human_presence,
       });
     }
-    const sealed = encryptConceptPayload(
-      prompt,
-      assembleNegativePrompt(concept, manifest, lock),
-      { tv: PROMPT_TEMPLATE_VERSION, goal: concept.marketing_purpose, comp: concept.camera_distance, cat: category },
-    );
-    const rationale = referenceRationale(concept, analyses).map((r) => `${r.image} — ${r.label}`).join("; ");
+    const sealed = encryptConceptPayload(finalPrompt, "", { tv: PROMPT_TEMPLATE_VERSION });
     await supabase.from("generated_prompts").update({
-      concept_name: concept.title, shot_type: concept.scene_type, scene_type: concept.scene_type,
-      customer_title: concept.customer_title?.trim() || concept.title,
-      customer_description: concept.customer_description?.trim() || null,
+      concept_name: scene.title, shot_type: "scene", scene_type: null,
+      customer_title: scene.title,
+      customer_description: scene.scene_description,
       prompt_text: "", negative_prompt: null,
       prompt_encrypted: sealed.ciphertext, prompt_iv: sealed.iv, prompt_tag: sealed.authTag,
-      primary_reference: concept.primary_reference,
-      supporting_references: concept.supporting_references as never,
-      reference_indices: [concept.primary_reference, ...concept.supporting_references.map((s) => s.image)],
-      reference_rationale: rationale, lock_strength: strength,
+      primary_reference: scene.reference_indices[0] ?? 1,
+      supporting_references: [] as never,
+      reference_indices: scene.reference_indices,
+      reference_rationale: null, lock_strength: "LOW",
       generation_count: 0, last_job_id: null,
     }).eq("id", promptId);
     return { ok: true };
@@ -630,4 +552,3 @@ export async function regeneratePrompt(
   }
 }
 
-export { referenceRoleLabel };

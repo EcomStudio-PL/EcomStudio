@@ -139,18 +139,18 @@ export async function generateFromConcept(
     .maybeSingle();
   if (!concept || !concept.session_id) return { ok: false, error: "not_found" };
 
+  // ONE final prompt per card — no negative prompt channel, ever. The
+  // customer's own text or the decrypted master-template prompt goes to the
+  // image model verbatim (plus the deterministic retake note on retakes).
   const origin: "ecomstudio" | "custom" = concept.prompt_origin === "custom" ? "custom" : "ecomstudio";
   let basePrompt: string;
-  let negative: string | undefined;
   if (origin === "custom") {
     basePrompt = (concept.prompt_text ?? "").trim();
-    negative = concept.negative_prompt ?? CUSTOM_TECH_NEGATIVE;
     if (!basePrompt) return { ok: false, error: "invalid_input" };
   } else {
     const payload = decryptConceptPayload(concept);
     if (!payload) return { ok: false, error: "concept_locked" };
     basePrompt = payload.prompt;
-    negative = payload.negative || undefined;
   }
 
   const { data: session } = await supabase
@@ -202,7 +202,6 @@ export async function generateFromConcept(
     modelId: model.id,
     fallbackModelIds,
     prompt,
-    negative,
     aspectRatio: (session.aspect_ratio || "16:9") as AspectRatio,
     quantity: 1,
     productId: session.product_id ?? concept.product_id ?? undefined,
@@ -228,10 +227,3 @@ export async function generateFromConcept(
   return { ok: true, jobId: result.jobId, images: result.images, credits, modelName: model.display_name || model.name };
 }
 
-/** Technical guard-rails appended as the negative for CUSTOM prompts — the
- *  product-protection layer the customer keeps even without our engine. */
-const CUSTOM_TECH_NEGATIVE =
-  "a different product than the reference photos; redesigned or restyled product; " +
-  "wrong colors or proportions; missing or invented parts; duplicated product; " +
-  "invented text, invented logos, watermarks; floating or levitating product; " +
-  "missing contact shadow; cartoon, illustration or 3D-render look";

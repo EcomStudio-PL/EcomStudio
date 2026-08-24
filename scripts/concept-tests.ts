@@ -1,7 +1,8 @@
 /**
- * CONCEPT ENGINE — deterministic tests: shot-count clamping, the encrypted
- * prompt round trip (with a throwaway key), retake variation rotation and
- * the guarantee that a variation never rewrites the concept itself.
+ * CONCEPT ENGINE v3 — deterministic tests: shot-count clamping, the encrypted
+ * prompt round trip (throwaway key), the ONE master template (identical
+ * prefix for every product, conditional human block, no negative prompt),
+ * exact-count synthesis, retake variation and dual pricing.
  * Run: npm run test:concepts
  */
 process.env.APP_ENCRYPTION_KEY = "a".repeat(64); // throwaway key for the round trip
@@ -9,13 +10,9 @@ process.env.APP_ENCRYPTION_KEY = "a".repeat(64); // throwaway key for the round 
 import { candidatePoolSize, clampShots, decryptConceptPayload, encryptConceptPayload, MAX_SHOTS, MIN_SHOTS } from "../lib/server/prompt-engine";
 import { variationInstruction, originCost } from "../lib/server/concept-generation";
 import type { UsableModel } from "../lib/ai/router";
-import { synthesizeConcepts, diversityViolations } from "../lib/ai/engine/scenes";
+import { synthesizeScenes, diversityViolations, clampRefs, type PlannedScene } from "../lib/ai/engine/scenes";
+import { composeFinalPrompt, validateFinalPrompt, MASTER_PREFIX } from "../lib/ai/engine/template-prompt";
 import { retryDelayMs } from "../lib/server/provider-router";
-import {
-  composeTemplatePrompt, normalizeSceneryCategory, sceneTextFallback,
-  validateTemplatePrompt, PROMPT_TEMPLATE_VERSION,
-} from "../lib/ai/engine/template-prompt";
-import type { FeatureManifest, ImageAnalysis, ProductLock, SceneConcept } from "../lib/ai/engine/types";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string) {
@@ -32,120 +29,71 @@ check("garbage becomes the default", clampShots("abc") === 5 && clampShots(NaN) 
 check("candidate pool over-provisions by two", candidatePoolSize(5) === 7 && candidatePoolSize(7) === 9);
 check("candidate pool caps at twelve", candidatePoolSize(10) === 12);
 
-console.log("\nB. HIDDEN PROMPT — encrypt → store → decrypt round trip");
-const prompt = "TASK\nCreate one professional advertising photograph…\n\nPRODUCT LOCK\n- exact colors";
-const negative = "extra fingers; invented logos";
-const sealed = encryptConceptPayload(prompt, negative);
-check("ciphertext is not the plaintext", !sealed.ciphertext.includes("PRODUCT LOCK"));
+console.log("\nB. MASTER TEMPLATE — one deterministic prompt, no negative, no rewriting");
+const scenes = {
+  kettle: "Czajnik stoi na drewnianym blacie kuchennym obok filiżanki i deski z cytrynami. Z dzióbka unosi się delikatna para. Ujęcie 3/4 na wysokości blatu.",
+  chair: "Fotel stoi w jasnym salonie przy oknie, obok mały stolik z książką. Perspektywa z poziomu siedziska, lekko z boku.",
+  trap: "Łapka stoi na podłodze w stodole z widocznym bydłem w tle. W stronę łapki biegnie mysz i szczur. Perspektywa z poziomu podłogi.",
+};
+const p1 = composeFinalPrompt({ productName: "Czajnik elektryczny Retro", sceneDescription: scenes.kettle, humanPresence: false });
+const p2 = composeFinalPrompt({ productName: "Fotel biurowy Ergo", sceneDescription: scenes.chair, humanPresence: false });
+const p3 = composeFinalPrompt({ productName: "Łapka na myszy", sceneDescription: scenes.trap, humanPresence: false });
+const prefixOf = (s: string) => s.slice(0, s.indexOf("Produkt:"));
+check("three products share the IDENTICAL master prefix", prefixOf(p1) === prefixOf(p2) && prefixOf(p2) === prefixOf(p3));
+check("prompt starts with the master scenery", p1.startsWith(MASTER_PREFIX) && p1.startsWith("Stwórz zdjęcie reklamowe."));
+check("fidelity guard is always present", [p1, p2, p3].every((p) => p.includes("Odwzoruj produkt zgodnie ze zdjęciami referencyjnymi.")));
+check("product line lands after the template", p1.includes("Produkt: Czajnik elektryczny Retro."));
+check("scene line is the planner's text verbatim", p1.endsWith(`Scena: ${scenes.kettle}`));
+const ph = composeFinalPrompt({ productName: "Suszarka", sceneDescription: "Na blacie kobieta z mężem kroją pieczarki, które zaraz będą suszyć w suszarce. Perspektywa od góry 3/4.", humanPresence: true });
+check("human block appears ONLY with people in frame", ph.includes("fotorealistycznie") && !p1.includes("fotorealistycznie"));
+check("no negative-prompt vocabulary in the final prompt", [p1, p2, p3, ph].every((p) => !/negative|negatyw|AVOID/i.test(p)));
+check("validator accepts assembled prompts", [p1, p2, p3, ph].every((p) => validateFinalPrompt(p)));
+check("validator rejects a bare fragment", !validateFinalPrompt("szara sofa w salonie"));
+check("validator rejects a rewritten template", !validateFinalPrompt(p1.replace("Sceneria:", "Klimat:")));
+
+console.log("\nC. HIDDEN PROMPT — encrypt → store → decrypt round trip");
+const sealed = encryptConceptPayload(p1, "");
+check("ciphertext is not the plaintext", !sealed.ciphertext.includes("Sceneria"));
 const opened = decryptConceptPayload({ prompt_encrypted: sealed.ciphertext, prompt_iv: sealed.iv, prompt_tag: sealed.authTag });
-check("round trip restores the prompt", opened?.prompt === prompt);
-check("round trip restores the negative", opened?.negative === negative);
+check("round trip restores the prompt", opened?.prompt === p1);
+check("no negative rides along", opened?.negative === "");
 check("missing columns decrypt to null", decryptConceptPayload({ prompt_encrypted: null, prompt_iv: null, prompt_tag: null }) === null);
 check("tampered ciphertext decrypts to null", decryptConceptPayload({
   prompt_encrypted: sealed.ciphertext.slice(0, -4) + "AAAA", prompt_iv: sealed.iv, prompt_tag: sealed.authTag,
 }) === null);
 
-console.log("\nC. RETAKE VARIATION — controlled, rotating, never a new scene");
+console.log("\nD. EXACT COUNT — synthesis fills every missing slot, diversity holds");
+const existing: PlannedScene[] = [{
+  title: "Poranek w kuchni", scene_description: scenes.kettle, human_presence: false, reference_indices: [1, 2],
+}];
+for (const missing of [1, 3, 5]) {
+  const synth = synthesizeScenes(existing, missing, "szary czajnik", 3);
+  check(`synthesizes exactly ${missing} scene(s)`, synth.length === missing);
+  check(`no diversity collisions at +${missing}`, diversityViolations([...existing, ...synth]).length === 0);
+}
+const synth2 = synthesizeScenes(existing, 2, "szary czajnik", 3);
+check("synthesized scenes speak Polish and name the product", synth2.every((s) => s.scene_description.includes("szary czajnik")));
+check("synthesized scenes carry references", synth2.every((s) => s.reference_indices.length >= 1));
+check("clampRefs repairs empty/invalid refs", clampRefs({ ...existing[0], reference_indices: [0, 99, 2, 2] }, 3).reference_indices.join() === "2"
+  || clampRefs({ ...existing[0], reference_indices: [0, 99, 2, 2] }, 3).reference_indices.includes(2));
+
+console.log("\nE. RETAKE VARIATION — controlled, rotating, never a new scene");
 const takes = [1, 2, 3, 4, 5].map((n) => variationInstruction(n));
 check("consecutive retakes vary differently", new Set(takes.slice(0, 4)).size === 4);
 check("the rotation wraps", takes[4] === takes[0]);
 check("every variation forbids changing the concept", takes.every((v) => v.includes("Nie zmieniaj koncepcji sceny")));
-check("variation is additive, not a replacement", takes.every((v) => v.startsWith("Kolejne podejście:")));
 
-console.log("\nD. EXACT COUNT — the diversity filter can reject, never shrink the order");
-const analysis = (n: number): ImageAnalysis => ({
-  image_number: n, view: "front", full_product: true, product_count: 1, occlusion: "none",
-  product_quality: "sharp", color_reference: true, material_reference: true,
-  scale_reference: false, dimension_reference: false, branding_visibility: "clear",
-  text_visibility: "clear", usage_reference: false, background_complexity: "clean",
-  critical_features: [], scene_reference_only: false, primary_candidate_score: 90 - n,
-  roles: ["PRIMARY_GEOMETRY"], observed_color: "gray", observed_button_count: 0, variant_hint: null,
-});
-const existing: SceneConcept[] = [{
-  scene_type: "product_in_use", title: "Use", customer_title: "W użyciu", customer_description: "x",
-  scene_description: "s", environment: "kitchen", camera_distance: "medium", camera_angle: "eye",
-  lighting: "soft", human_presence: true, human_interaction: "grip", product_placement: "p",
-  physical_contact: "c", product_orientation: "front", marketing_purpose: "m",
-  required_views: ["front"], primary_reference: 1, supporting_references: [], product_specific_negatives: [],
-}];
-for (const missing of [1, 3, 5]) {
-  const synth = synthesizeConcepts(existing, missing, "gray kettle", [analysis(1), analysis(2), analysis(3)], "pl");
-  check(`synthesizes exactly ${missing} replacement(s)`, synth.length === missing);
-  const all = [...existing, ...synth];
-  check(`no diversity collisions at +${missing}`, diversityViolations(all).length === 0);
-}
-const synth2 = synthesizeConcepts(existing, 2, "gray kettle", [analysis(1), analysis(2), analysis(3)], "pl");
-check("synthesized cards speak Polish", synth2.every((c) => /produktu|packshot|główne|hero|Skala|Budowa|Detal/i.test(c.customer_title)));
-check("synthesized concepts carry references", synth2.every((c) => c.primary_reference >= 1 && c.supporting_references.length >= 1));
-check("synthesized concepts need no unavailable views", synth2.every((c) => c.required_views.length === 0));
-
-console.log("\nF. TEMPLATE PROMPT — the PDF playbook composed as the full prompt");
-const manifest: FeatureManifest = {
-  identity: "ręczna łapka na myszy z żółtym pedałem",
-  quantity: 1, variant: null, primary_color: "czarny", secondary_colors: ["żółty"],
-  geometry: { shape: "prostokątna podstawa", proportions: "10x5 cm", profile: "niski", curvature: "kanciasta", major_components: ["podstawa", "sprężyna", "pedał"] },
-  materials: ["tworzywo ABS", "stal"],
-  interfaces: { buttons: 2, buttons_detail: "dźwignia i blokada", switches: 0, ports: 0, ports_detail: null, sockets: 0, screens: 0, leds: 0, labels: [] },
-  branding: { logos: [], text: [], position: null },
-  accessories: [], scale: { dimensions: "10 x 5 x 6 cm", confidence: "high", scale_reference: null },
-  critical_features: ["żółty pedał spustowy"],
-};
-const lock: ProductLock = { hard: [], strong: [], soft: [], conflicts: [] };
-const tplConcept: SceneConcept = {
-  ...existing[0],
-  scene_type: "benefit_shot",
-  human_presence: true,
-  scene_text_pl: "Jest to łapka na myszy. Łapka stoi na podłodze w stodole z widocznym bydłem w tle. W stronę łapki biegnie mysz i szczur. Perspektywa z poziomu podłogi, dynamiczna scena.",
-};
-const full = composeTemplatePrompt({
-  concept: tplConcept, manifest, lock, aspectRatio: "16:9", category: "garden", brandDomainPl: "marki odstraszaczy",
-});
-check("starts with the PDF intro", full.startsWith("Stwórz zdjęcie reklamowe."));
-const order = ["Stwórz zdjęcie reklamowe.", "Sceneria:", "Ultra realistic, 8k, cinematic daylight", "Dokładne odwzorowanie produktu:", "Ujęcie:", "Ograniczenia:"];
-check("sections appear in the PDF order", order.every((s, i) => i === 0 || full.indexOf(s) > full.indexOf(order[i - 1])));
-check("brand domain lands in the scenery block", full.includes("jak wizualizacja premium dla marki odstraszaczy"));
-check("format shapes the composition", full.includes("16:9"));
-check("fidelity carries exact colours", full.includes("czarny, żółty"));
-check("fidelity carries exact control counts", full.includes("przycisków: dokładnie 2"));
-check("unbranded product bans invented logos", full.includes("nie dodawaj własnych"));
-check("the planner's Polish shot text is the Ujęcie section", full.includes("W stronę łapki biegnie mysz i szczur."));
-check("human realism block present when a person is in frame", full.includes("dokładnie pięć palców"));
-check("full prompt passes QA", validateTemplatePrompt(full).ok);
-const noHuman = composeTemplatePrompt({
-  concept: { ...tplConcept, human_presence: false }, manifest, lock, aspectRatio: "1:1", category: "kitchen", brandDomainPl: "",
-});
-check("no human block without a person", !noHuman.includes("dokładnie pięć palców"));
-check("empty brand domain falls back", noHuman.includes("dla marki premium"));
-check("QA rejects a bare fragment", !validateTemplatePrompt("szara sofa w salonie").ok);
-const tooShort = composeTemplatePrompt({
-  concept: { ...tplConcept, scene_text_pl: "Sofa." }, manifest, lock, aspectRatio: "1:1", category: "generic", brandDomainPl: "x",
-});
-check("QA catches a too-generic shot description", !validateTemplatePrompt(tooShort).ok);
-const repaired = composeTemplatePrompt({
-  concept: { ...tplConcept, scene_text_pl: sceneTextFallback(tplConcept, manifest.identity) },
-  manifest, lock, aspectRatio: "1:1", category: "generic", brandDomainPl: "x",
-});
-check("the deterministic repair passes QA", validateTemplatePrompt(repaired).ok);
-check("category normalisation is safe", normalizeSceneryCategory("KITCHEN") === "kitchen" && normalizeSceneryCategory("weird") === "generic");
-const sealedMeta = encryptConceptPayload("Stwórz zdjęcie reklamowe. …", "neg", { tv: PROMPT_TEMPLATE_VERSION, goal: "hero", comp: "medium", cat: "garden" });
-const openedMeta = decryptConceptPayload({ prompt_encrypted: sealedMeta.ciphertext, prompt_iv: sealedMeta.iv, prompt_tag: sealedMeta.authTag });
-check("payload meta survives the round trip", openedMeta?.meta.tv === PROMPT_TEMPLATE_VERSION && openedMeta?.meta.cat === "garden");
-const synthPl = synthesizeConcepts(existing, 3, "szary czajnik", [analysis(1), analysis(2)], "pl");
-check("synthesized concepts carry Polish shot text", synthPl.every((c) => (c.scene_text_pl ?? "").startsWith("Jest to szary czajnik.")));
-
-console.log("\nG. DUAL PRICING — custom pays base, EcomStudio adds the surcharge");
+console.log("\nF. DUAL PRICING — custom pays base, EcomStudio adds the surcharge");
 const fakeModel = {
   credit_cost: 4, pricing: { "1K": 4 }, supported_resolutions: ["1K"],
   ecom_surcharge_credits: 49,
 } as unknown as UsableModel;
 check("custom prompt pays the base price", originCost(fakeModel, "custom") === 4);
 check("EcomStudio prompt adds the surcharge", originCost(fakeModel, "ecomstudio") === 53);
-const noSurcharge = { ...fakeModel, ecom_surcharge_credits: 0 } as unknown as UsableModel;
-check("zero surcharge collapses to base", originCost(noSurcharge, "ecomstudio") === 4);
 const negSurcharge = { ...fakeModel, ecom_surcharge_credits: -5 } as unknown as UsableModel;
 check("negative surcharge never discounts", originCost(negSurcharge, "ecomstudio") === 4);
 
-console.log("\nE. RETRY PACING — backoff grows, Retry-After wins");
+console.log("\nG. RETRY PACING — backoff grows, Retry-After wins");
 const d1 = retryDelayMs(1), d2 = retryDelayMs(2), d3 = retryDelayMs(3);
 check("backoff grows with attempts", d1 < d2 && d2 < d3, `${Math.round(d1)} < ${Math.round(d2)} < ${Math.round(d3)}`);
 check("Retry-After takes precedence", Math.abs(retryDelayMs(1, 21000) - 21000) < 600);

@@ -8,7 +8,6 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:engine": "esbuild scripts/engine-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --outfile=.next/engine-tests.cjs --log-level=silent && node .next/engine-tests.cjs",
     "test:tools": "esbuild scripts/tool-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/tool-tests.cjs --log-level=silent && node .next/tool-tests.cjs",
     "test:concepts": "esbuild scripts/concept-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/concept-tests.cjs --log-level=silent && node .next/concept-tests.cjs"
   },

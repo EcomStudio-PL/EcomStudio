@@ -2,7 +2,6 @@
 import Link from "next/link";
 import { ArrowUpRight, LifeBuoy, LogOut, Plus, Shield } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
-import { signOut } from "@/app/actions/auth";
 import { CLIENT_NAV } from "@/lib/navigation";
 import { NavLink } from "./nav-link";
 import { Drawer, IslandClose, NavGroupLabel } from "./drawer";
@@ -53,7 +52,7 @@ export function CustomerDrawer({ name, email, credits, plan, isAdmin }: {
               {t("nav.admin")}
             </Link>
           )}
-          <form action={signOut}>
+          <form method="post" action="/auth/sign-out">
             <button className="flex min-h-[46px] w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-medium text-muted transition-colors hover:bg-raised hover:text-ink">
               <span aria-hidden className="flex h-7 w-7 items-center justify-center rounded-lg text-faint">
                 <LogOut size={15} />
