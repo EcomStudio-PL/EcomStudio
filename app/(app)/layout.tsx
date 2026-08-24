@@ -19,12 +19,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ]);
   if (!profile || !workspace) {
     // Recovery: the user exists in auth but application records are missing
-    // (account created outside the normal signup flow). Self-heal idempotently.
+    // (account created outside the normal signup flow), OR this is the very
+    // first request after sign-in and the read raced the fresh session.
+    // Self-heal idempotently, then read again — the second read is what
+    // usually succeeds, so a real account never lands on the error screen
+    // just because it arrived a few hundred milliseconds early.
     await supabase.rpc("bootstrap_current_user");
-    [profile, workspace] = await Promise.all([
-      getProfile(supabase, user.id),
-      getCurrentWorkspace(supabase, user.id),
-    ]);
+    for (let attempt = 0; attempt < 2 && (!profile || !workspace); attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 350));
+      [profile, workspace] = await Promise.all([
+        getProfile(supabase, user.id),
+        getCurrentWorkspace(supabase, user.id),
+      ]);
+    }
   }
   if (profile?.blocked) {
     const { dict } = await getDictionary();
