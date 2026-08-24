@@ -8,8 +8,10 @@ import { cn } from "@/lib/utils";
  *  otherwise every child route would light them up too. */
 const EXACT = new Set(["/dashboard", "/admin"]);
 
-export function NavLink({ href, label, icon: Icon, onNavigate }: {
+export function NavLink({ href, label, icon: Icon, onNavigate, compact = false }: {
   href: string; label: string; icon: LucideIcon; onNavigate?: () => void;
+  /** Icon-only rendering for the collapsed desktop rail (label → tooltip). */
+  compact?: boolean;
 }) {
   const pathname = usePathname();
   const active = pathname === href || (!EXACT.has(href) && pathname.startsWith(href));
@@ -19,8 +21,11 @@ export function NavLink({ href, label, icon: Icon, onNavigate }: {
       prefetch
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
+      aria-label={compact ? label : undefined}
+      title={compact ? label : undefined}
       className={cn(
-        "group relative flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-150",
+        "group relative flex min-h-[44px] items-center rounded-xl py-2.5 text-sm transition-all duration-150",
+        compact ? "justify-center px-0" : "gap-3 px-3",
         active
           ? "bg-[linear-gradient(90deg,rgb(var(--accent)/0.18),rgb(var(--accent)/0.04))] font-semibold text-ink shadow-[inset_0_1px_0_rgb(255_255_255/0.06)]"
           : "font-medium text-muted hover:bg-[rgb(var(--accent)/0.08)] hover:text-ink"
@@ -38,7 +43,7 @@ export function NavLink({ href, label, icon: Icon, onNavigate }: {
       )}>
         <Icon size={16} strokeWidth={active ? 2.3 : 2} />
       </span>
-      <span className="truncate">{label}</span>
+      {!compact && <span className="truncate">{label}</span>}
     </Link>
   );
 }

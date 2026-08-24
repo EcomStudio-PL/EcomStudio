@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { Menu, Shield } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
+import { creditLevel } from "@/lib/credit-level";
+import { cn } from "@/lib/utils";
 import { ThemeToggle } from "./theme-toggle";
 import { LocaleSwitcher } from "./locale-switcher";
 import { Brand } from "./brand";
@@ -9,7 +11,10 @@ import { CommandPalette } from "./command-palette";
 import { useDrawer } from "./shell-context";
 import { NotificationsBell, type NotificationItem } from "./notifications-bell";
 
-/** Compact customer toolbar: [hamburger][logo] … [credits][bell][flag][theme][avatar].
+/** Customer toolbar: [hamburger][logo] [search ⌘K] … [credits][bell][flag][theme][avatar].
+ *  Search sits on the LEFT like a proper workbench top bar; the credit pill
+ *  carries the traffic-light state from the UX spec (brand → orange → red,
+ *  and a "buy credits" CTA at zero) so the wallet warns before it blocks.
  *  The avatar opens the unified drawer on mobile and links to settings on
  *  desktop — there is deliberately NO second dropdown menu. */
 export function Topbar({ name, credits, workspace, isAdmin = false, notifications = [], unread = 0 }: {
@@ -19,6 +24,16 @@ export function Topbar({ name, credits, workspace, isAdmin = false, notification
   const { t } = useI18n();
   const { setOpen } = useDrawer();
   const initial = (name || "?").trim().charAt(0).toUpperCase();
+  const level = creditLevel(credits);
+  const pillClass = {
+    ok: "cta",
+    low: "bg-[rgb(var(--warning)/0.15)] text-warning ring-1 ring-[rgb(var(--warning)/0.4)]",
+    critical: "bg-[rgb(var(--danger)/0.15)] text-danger ring-1 ring-[rgb(var(--danger)/0.4)]",
+    empty: "bg-[rgb(var(--danger)/0.15)] text-danger ring-1 ring-[rgb(var(--danger)/0.45)]",
+  }[level];
+  const pillTitle = level === "critical" ? t("creditsPanel.low")
+    : level === "empty" ? t("creditsPanel.buy")
+    : t("nav.credits");
   return (
     // Single safe-area source: padding on the header; fixed 60px content row.
     <header className="glass sticky top-0 z-30 rounded-none border-x-0 border-t-0 pt-[env(safe-area-inset-top)]">
@@ -33,23 +48,33 @@ export function Topbar({ name, credits, workspace, isAdmin = false, notification
             <Menu aria-hidden size={20} />
           </button>
           <div className="lg:hidden"><Brand href="/dashboard" markOnly /></div>
+          <div className="hidden lg:block"><CommandPalette isAdmin={isAdmin} wide /></div>
           {workspace && (
-            <span className="plate hidden max-w-[16rem] truncate rounded-lg px-3 py-1.5 text-xs font-medium text-muted lg:inline-flex">
+            <span className="plate hidden max-w-[14rem] truncate rounded-lg px-3 py-1.5 text-xs font-medium text-muted xl:inline-flex">
               {workspace}
             </span>
           )}
         </div>
         <div className="flex items-center gap-1 sm:gap-1.5">
-          <div className="hidden lg:block"><CommandPalette isAdmin={isAdmin} /></div>
-          {/* Credits: the one persistent piece of account state, treated as a
-              lit pill so it reads as currency rather than as a nav item. */}
+          {/* Credits: the one persistent piece of account state. Healthy = the
+              lit brand pill; running low it turns orange, then red, and at
+              zero it names the way out instead of silently failing later. */}
           <Link
             href="/credits"
-            aria-label={t("nav.credits")}
-            className="cta inline-flex h-9 items-center gap-1.5 rounded-full pl-2.5 pr-3.5 text-[13px] font-bold"
+            aria-label={pillTitle}
+            title={pillTitle}
+            className={cn("inline-flex h-9 items-center gap-1.5 rounded-full pl-2.5 pr-3.5 text-[13px] font-bold", pillClass)}
           >
-            <span aria-hidden className="flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-[10px]">◆</span>
+            <span aria-hidden className={cn(
+              "flex h-5 w-5 items-center justify-center rounded-full text-[10px]",
+              level === "ok" && "bg-white/20",
+              level === "low" && "bg-[rgb(var(--warning)/0.2)]",
+              (level === "critical" || level === "empty") && "bg-[rgb(var(--danger)/0.2)]",
+            )}>◆</span>
             <span className="tabular-nums">{new Intl.NumberFormat("pl-PL").format(credits)}</span>
+            {level === "empty" && (
+              <span className="hidden text-[11px] font-semibold sm:inline">· {t("creditsPanel.buy")}</span>
+            )}
           </Link>
           <NotificationsBell items={notifications} unread={unread} />
           <LocaleSwitcher />

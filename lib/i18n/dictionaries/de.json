@@ -29,7 +29,9 @@
     "managePlan": "Plan verwalten",
     "upgrade": "Upgrade",
     "help": "Hilfe",
-    "tools": "Werkzeuge"
+    "tools": "Werkzeuge",
+    "collapse": "Panel einklappen",
+    "expand": "Panel ausklappen"
   },
   "common": {
     "save": "Speichern",
@@ -135,7 +137,7 @@
     "registrationDisabled": "Die Registrierung ist derzeit deaktiviert."
   },
   "dashboard": {
-    "welcome": "Hallo, {name}",
+    "welcome": "Hallo, {name}! 👋",
     "sub": "Der aktuelle Stand deines Studios.",
     "statProducts": "Produkte",
     "statGenerations": "Generierte Assets",
@@ -150,7 +152,15 @@
     "onb2": "Referenzfotos hochladen",
     "onb3": "Marktplatz wählen",
     "onb4": "Erstes Content-Pack vorbereiten",
-    "onbCta": "Erstes Produkt erstellen"
+    "onbCta": "Erstes Produkt erstellen",
+    "welcomeBack": "Willkommen zurück",
+    "statProductsSub": "Insgesamt erstellt",
+    "statGenerationsSub": "Erfolgreich generiert",
+    "statCreditsSub": "Credits auf dem Konto",
+    "statPlanSub": "Dein aktueller Plan",
+    "tipTitle": "Tipp 💡",
+    "tipBody": "Nutze den Aufnahmen-Generator — füge Produktfotos hinzu und die EcomStudio-Engine erstellt in Minuten eine komplette Verkaufssession.",
+    "tipCta": "Aufnahmen-Generator öffnen"
   },
   "products": {
     "title": "Produkte",
@@ -872,7 +882,17 @@
     "step2": "Schritt 2 — Referenzen",
     "step3": "Schritt 3 — Prompt",
     "step4": "Schritt 4 — Modell",
-    "step5": "Ergebnis"
+    "step5": "Ergebnis",
+    "stepsSub": "Erstelle ein herausragendes Produktfoto in 4 einfachen Schritten.",
+    "tipRefs": "Füge Fotos des Produkts, Inspiration oder Kontext hinzu — je besser du das Produkt zeigst, desto treuer das Ergebnis.",
+    "chooseModelSub": "Jedes Modell liefert einen anderen Look.",
+    "randomPrompt": "Zufälliger Prompt",
+    "rp1": "Elegantes Packshot auf hellem Hintergrund mit weichem Schatten, Premium-Stil.",
+    "rp2": "Produkt auf einer Marmorplatte im Morgenlicht, daneben eine Tasse Kaffee und eine grüne Pflanze.",
+    "rp3": "Dynamische Lifestyle-Aufnahme in urbaner Umgebung, natürliches Tageslicht, unscharfer Hintergrund.",
+    "rp4": "Minimalistische Szene auf pastellfarbenem Hintergrund mit geometrischen Podesten und klarem Schatten.",
+    "rp5": "Produkt in Wohnumgebung auf einem Holztisch am Fenster, warmes Nachmittagslicht.",
+    "rp6": "Hero-Aufnahme mit dramatischem Licht auf dunklem Hintergrund, dezente Reflexion auf der Oberfläche."
   },
   "notif": {
     "title": "Benachrichtigungen",
@@ -946,7 +966,24 @@
     "customPromptPh": "Aufnahme {n} — beschreibe, was das Foto zeigen soll…",
     "customAdd": "Aufnahme hinzufügen",
     "customCta": "{n} Aufnahmen speichern",
-    "costPreview": "{n} Aufnahmen • {model} • {cost} Kr."
+    "costPreview": "{n} Aufnahmen • {model} • {cost} Kr.",
+    "step1": "Schritt 1 — Produkt",
+    "step1Sub": "Wähle ein gespeichertes Produkt oder beschreibe ein neues — wir speichern die Daten automatisch.",
+    "step2": "Schritt 2 — Referenzen",
+    "step2Sub": "Füge Fotos hinzu, die der KI helfen, Produkt, Stil und Details zu verstehen.",
+    "step3": "Schritt 3 — Arbeitsmodus",
+    "step3Sub": "Die fertige EcomStudio-Engine oder volle Kontrolle mit eigenen Prompts.",
+    "step4": "Schritt 4 — Generieren",
+    "step4Title": "Format & Zusammenfassung",
+    "step4Sub": "Prüfe die Kosten und bereite das Aufnahmen-Board vor.",
+    "tipRefs": "Am besten funktionieren 2–6 Fotos aus verschiedenen Perspektiven: Front, Detail, Verpackung. Das erste Foto gilt als Hauptfoto.",
+    "tipCustom": "Beschreibe Szene, Umgebung und Bildausschnitt für jede Aufnahme. Referenzfotos und Produktschutz gelten auch bei eigenen Prompts.",
+    "modeCustomBadge": "Günstiger",
+    "slotHint": "Jeder Slot ist eine Aufnahme — die Szene wählt die EcomStudio-Engine. Alles siehst du auf dem Board, bevor Credits abgebucht werden.",
+    "summaryShots": "Anzahl der Aufnahmen",
+    "summaryPer": "Preis pro Aufnahme",
+    "summaryTotal": "Gesamt beim Generieren",
+    "chargeNote": "Die Vorbereitung ist kostenlos — Credits werden erst abgebucht, wenn du Fotos auf dem Board generierst."
   },
   "scene": {
     "product_hero": "Produkt-Hero",
@@ -1288,5 +1325,11 @@
     "yourPrompt": "Dein Prompt",
     "promptSave": "Prompt speichern",
     "promptSaved": "Prompt gespeichert."
+  },
+  "creditsPanel": {
+    "unit": "Credits",
+    "low": "Credits werden knapp",
+    "buy": "Credits kaufen",
+    "upgrade": "Plan upgraden"
   }
 }

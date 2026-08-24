@@ -21,8 +21,12 @@ export const dynamic = "force-dynamic";
  * generated photo. The prompt exists solely as ciphertext and is never
  * selected, let alone rendered.
  */
-export default async function ConceptSessionPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ConceptSessionPage({ params, searchParams }: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ m?: string }>;
+}) {
   const { id } = await params;
+  const { m: pickedModel } = await searchParams;
   const supabase = await createClient();
   const { dict } = await getDictionary();
   const t = makeT(dict);
@@ -127,6 +131,7 @@ export default async function ConceptSessionPage({ params }: { params: Promise<{
             models={models}
             balance={wallet?.balance ?? 0}
             engineReady={models.length > 0}
+            initialModelId={models.some((m) => m.id === pickedModel) ? pickedModel ?? null : null}
           />
         )
         : session.status !== "failed" && (

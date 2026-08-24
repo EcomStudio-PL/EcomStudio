@@ -20,7 +20,7 @@ type Row = { key: string; label: string; sub: string | null; href: string; icon:
  * customer lookup). Debounced server search, full keyboard control, client-side
  * navigation only — no page reloads.
  */
-export function CommandPalette({ isAdmin }: { isAdmin: boolean }) {
+export function CommandPalette({ isAdmin, wide = false }: { isAdmin: boolean; wide?: boolean }) {
   const { t } = useI18n();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -120,9 +120,15 @@ export function CommandPalette({ isAdmin }: { isAdmin: boolean }) {
     <>
       <button type="button" onClick={() => setOpen(true)} aria-label={t("common.search")}
         aria-keyshortcuts="Control+K"
-        className="hidden h-9 items-center gap-2 rounded-lg border border-line bg-surface/60 px-3 text-xs text-muted transition-colors hover:border-accent/40 hover:text-ink sm:flex">
-        <Search size={13} aria-hidden />
-        {t("common.search")}
+        className={cn(
+          "hidden h-9 items-center gap-2 rounded-lg border border-line bg-surface/60 px-3 text-xs text-muted transition-colors hover:border-accent/40 hover:text-ink sm:flex",
+          // Wide variant: the top bar's search field, Higgsfield-style.
+          wide && "w-56 justify-between rounded-xl xl:w-72",
+        )}>
+        <span className="flex min-w-0 items-center gap-2">
+          <Search size={13} aria-hidden className="shrink-0" />
+          <span className="truncate">{t("common.search")}</span>
+        </span>
         <kbd className="rounded border border-line px-1.5 py-0.5 text-[10px] text-faint">⌘K</kbd>
       </button>
 

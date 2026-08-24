@@ -87,7 +87,7 @@ export default async function GeneratorPage({ searchParams }: {
 
   return (
     <div>
-      <PageHeader title={t("generator.title")} sub={t("studio.sub")} />
+      <PageHeader overline={t("nav.groups.work")} title={t("nav.generator")} sub={t("studio.stepsSub")} />
       <Studio
         products={studioProducts}
         models={studioModels}

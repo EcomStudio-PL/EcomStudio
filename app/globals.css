@@ -274,6 +274,36 @@ body::after {
   text-decoration-line: none !important;
 }
 
+/* STEP CHIP — the big numbered marker of a generator step. Display face,
+   brand gradient, a lit top edge and a soft coloured drop so the sequence
+   1→4 is the first thing the eye finds on the screen. */
+.step-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.875rem;
+  flex-shrink: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: #fff;
+  background-image: linear-gradient(135deg,
+    rgb(var(--accent-strong)) 0%,
+    rgb(var(--accent)) 55%,
+    rgb(var(--accent-glow)) 115%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.28),
+    0 10px 24px -10px rgb(var(--accent) / 0.8);
+}
+.step-chip-sm {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.625rem;
+  font-size: 0.8rem;
+}
+
 /* Status dot with a matching halo — used in lists and cards. */
 .dot { position: relative; display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 9999px; }
 .dot::after { content: ""; position: absolute; inset: -3px; border-radius: 9999px; background: currentColor; opacity: 0.18; }

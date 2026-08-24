@@ -3,12 +3,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Box, Check, ChevronDown, Download, ImageIcon, ImagePlus, Layers, Loader2, RefreshCw, Settings2, Sparkles, Star, Wand2, X } from "lucide-react";
+import { Check, ChevronDown, Dices, Download, ImageIcon, ImagePlus, Layers, Loader2, RefreshCw, Settings2, Sparkles, Star, Wand2, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
-import { Card, CardHeader } from "@/components/ui/card";
 import { Panel } from "@/components/ui/surface";
 import { PanelHeader } from "@/components/ui/section-header";
+import { StepPanel, TipCard } from "@/components/ui/step-panel";
 import { Segmented } from "@/components/ui/segmented";
 import { Chip, ChipRow } from "@/components/ui/chip";
 import { ActionBar } from "@/components/ui/action-bar";
@@ -55,6 +55,20 @@ type Ref = { key: string; path: string; url: string; imageId?: string; selected:
 type ResultImage = { url: string; path: string };
 
 const RATIOS = ["1:1", "4:5", "16:9", "9:16"] as const;
+
+/** Starter prompts behind the "Losowy prompt" chip — dictionary keys so all
+ *  three languages get native suggestions, not translations of one. */
+const RANDOM_PROMPT_KEYS = ["rp1", "rp2", "rp3", "rp4", "rp5", "rp6"] as const;
+
+/** Gradient monogram tiles that give each model card a visual identity —
+ *  deterministic by list position, no fake screenshots. */
+const MODEL_TILES = [
+  "bg-[linear-gradient(135deg,#C900CF,#F800F8_60%,#FF3DDA)]",
+  "bg-[linear-gradient(135deg,#4338CA,#7A82FF_60%,#A5B4FC)]",
+  "bg-[linear-gradient(135deg,#B45309,#F59E0B_60%,#FCD34D)]",
+  "bg-[linear-gradient(135deg,#047857,#10B981_60%,#6EE7B7)]",
+  "bg-[linear-gradient(135deg,#0E7490,#06B6D4_60%,#67E8F9)]",
+] as const;
 const ISSUE_KEYS = ["wrong_product", "wrong_color", "wrong_quantity", "wrong_anatomy", "wrong_scale", "bad_scene", "bad_quality", "other"] as const;
 
 export function Studio({ products, models, credits, workspaceId, initialPrompt = "", session = null }: {
@@ -108,6 +122,11 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
     if (model && !model.resolutions.includes(resolution)) setResolution(model.resolutions[0] ?? "1K");
     if (model && quantity > model.maxQuantity) setQuantity(model.maxQuantity);
   }, [model, resolution, quantity]);
+
+  function randomPrompt() {
+    const key = RANDOM_PROMPT_KEYS[Math.floor(Math.random() * RANDOM_PROMPT_KEYS.length)];
+    setPrompt(t(`studio.${key}`));
+  }
 
   function pickProduct(id: string) {
     setProductId(id);
@@ -203,9 +222,8 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
         )}
 
         {/* PRODUCT / CONTEXT */}
-        <Panel>
-          <PanelHeader overline={t("studio.step1")} title={t("studio.context")} sub={t("studio.contextSub")} icon={Box} />
-          <div className="space-y-3.5 px-4 pb-5 sm:px-5">
+        <StepPanel n={1} overline={t("studio.step1")} title={t("studio.context")} sub={t("studio.contextSub")}>
+          <div className="space-y-3.5">
             <ProductChoice
               product={productId ? pickable.find((x) => x.id === productId) : null}
               onPick={() => setPickerOpen(true)}
@@ -262,22 +280,21 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
               </div>
             )}
           </div>
-        </Panel>
+        </StepPanel>
 
         {/* REFERENCES */}
-        <Panel>
-          <PanelHeader
-            overline={t("studio.step2")}
-            title={t("studio.refs")}
-            sub={model?.supportsReferenceImages ? t("studio.refsSub") : t("studio.refsUnsupported")}
-            icon={ImageIcon}
-            action={refs.length > 0 ? (
-              <span className="plate rounded-full px-2.5 py-1 text-[11px] font-semibold tabular-nums text-muted">
-                {refs.filter((r) => r.selected).length}/{refs.length}
-              </span>
-            ) : undefined}
-          />
-          <div className="px-4 pb-5 sm:px-5">
+        <StepPanel
+          n={2}
+          overline={t("studio.step2")}
+          title={t("studio.refs")}
+          sub={model?.supportsReferenceImages ? t("studio.refsSub") : t("studio.refsUnsupported")}
+          action={refs.length > 0 ? (
+            <span className="plate rounded-full px-2.5 py-1 text-[11px] font-semibold tabular-nums text-muted">
+              {refs.filter((r) => r.selected).length}/{refs.length}
+            </span>
+          ) : undefined}
+        >
+          <div className="space-y-3">
             <input ref={fileRef} type="file" multiple accept="image/jpeg,image/png,image/webp,image/avif"
               className="hidden" onChange={(e) => e.target.files && upload(e.target.files)} />
             <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
@@ -315,34 +332,44 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
                 <span className="text-[10px] font-semibold">{t("products.upload")}</span>
               </button>
             </div>
+            <TipCard>{t("studio.tipRefs")}</TipCard>
           </div>
-        </Panel>
+        </StepPanel>
 
         {/* PROMPT */}
-        <Panel>
-          <PanelHeader overline={t("studio.step3")} title="Prompt" sub={t("studio.promptSub")} icon={Wand2} />
-          <div className="space-y-3 px-4 pb-5 sm:px-5">
-            <Textarea rows={session ? 8 : 4} value={prompt} placeholder={t("studio.promptPh")}
-              onChange={(e) => setPrompt(e.target.value)} />
-            {model?.supportsNegativePrompt !== false && (
-              <>
-                <button type="button" onClick={() => setNegOpen(!negOpen)}
-                  className="flex items-center gap-1 text-xs font-medium text-muted hover:text-ink">
-                  <ChevronDown size={13} className={cn("transition-transform", (negOpen || !!negative) && "rotate-180")} />
-                  {t("studio.negative")}{negative ? " ✓" : ""}
-                </button>
-                {(negOpen || (!!negative && session)) && (
-                  <Textarea rows={3} value={negative} placeholder={t("studio.negativePh")}
-                    onChange={(e) => setNegative(e.target.value)} />
-                )}
-              </>
+        <StepPanel n={3} overline={t("studio.step3")} title="Prompt" sub={t("studio.promptSub")}>
+          <div className="space-y-3">
+            <div>
+              <Textarea rows={session ? 8 : 4} value={prompt} placeholder={t("studio.promptPh")}
+                onChange={(e) => setPrompt(e.target.value)} />
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {model?.supportsNegativePrompt !== false && (
+                    <Chip active={negOpen || !!negative} onClick={() => setNegOpen(!negOpen)}
+                      className="min-h-[32px] px-3 py-1 text-xs">
+                      {t("studio.negative")}{negative ? " ✓" : ""}
+                    </Chip>
+                  )}
+                  <Chip icon={Dices} onClick={randomPrompt} className="min-h-[32px] px-3 py-1 text-xs">
+                    {t("studio.randomPrompt")}
+                  </Chip>
+                </div>
+                <span className={cn("shrink-0 text-[11px] font-medium tabular-nums",
+                  prompt.length > 1000 ? "text-accent2" : "text-faint")}>
+                  {prompt.length} / 1000
+                </span>
+              </div>
+            </div>
+            {model?.supportsNegativePrompt !== false && (negOpen || (!!negative && session)) && (
+              <Textarea rows={3} value={negative} placeholder={t("studio.negativePh")}
+                onChange={(e) => setNegative(e.target.value)} />
             )}
             <p className="text-xs text-faint">
               {t("studio.inspHint")} <Link href="/inspirations" className="font-semibold text-accent hover:opacity-75">{t("insp.title")}</Link>
               {" · "}<Link href="/prompts" prefetch className="font-semibold text-accent hover:opacity-75">{t("prompts.title")}</Link>
             </p>
           </div>
-        </Panel>
+        </StepPanel>
 
         {/* RESULTS */}
         {(busy || results.length > 0) && (
@@ -370,9 +397,9 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
       {/* RIGHT RAIL */}
       <div className="space-y-4 lg:sticky lg:top-20 lg:h-fit">
         <Panel>
-          <PanelHeader overline={t("studio.step4")} title="Model" icon={Layers} />
+          <PanelHeader overline={t("studio.step4")} title={t("concepts.chooseModel")} sub={t("studio.chooseModelSub")} icon={Layers} />
           <div className="space-y-2 px-3 pb-4 sm:px-4">
-            {models.map((m) => {
+            {models.map((m, idx) => {
               const minPrice = Math.min(...Object.values(m.pricing));
               const hasVariants = Object.keys(m.pricing).length > 1;
               const selected = m.id === modelId;
@@ -380,35 +407,45 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
                 <button key={m.id} type="button" onClick={() => { setModelId(m.id); setQuantity(1); }}
                   aria-pressed={selected}
                   className={cn(
-                    "relative w-full overflow-hidden rounded-xl border p-3.5 text-left transition-all duration-200",
+                    "relative w-full overflow-hidden rounded-xl border p-3 text-left transition-all duration-200",
                     selected
                       ? "is-selected"
                       : "border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.6))] bg-sunken/50 hover:border-[rgb(var(--accent)/0.35)] hover:bg-raised/60"
                   )}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold tracking-tight">{m.displayName}</p>
+                  <div className="flex items-start gap-3">
+                    {/* Monogram tile: the card's "thumbnail" — an honest one. */}
+                    <span aria-hidden className={cn(
+                      "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-display text-sm font-bold text-white",
+                      "shadow-[inset_0_1px_0_rgb(255_255_255/0.25),0_6px_14px_-6px_rgb(0_0_0/0.45)]",
+                      MODEL_TILES[idx % MODEL_TILES.length],
+                    )}>
+                      {m.displayName.replace(/[^A-Za-z0-9]/g, "").slice(0, 1).toUpperCase() || "AI"}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="min-w-0 truncate text-sm font-semibold tracking-tight">{m.displayName}</p>
+                        {/* Price is the decision-critical number: display face,
+                            tabular figures, always the same position. */}
+                        <span className={cn(
+                          "shrink-0 rounded-lg px-2 py-1 text-[11px] font-bold tabular-nums",
+                          selected ? "bg-[rgb(var(--accent)/0.22)] text-accent" : "bg-raised text-muted"
+                        )}>
+                          {hasVariants ? t("studio.fromCr", { n: minPrice }) : `${minPrice} ◆`}
+                        </span>
+                      </div>
                       {m.description && (
                         <p className="mt-0.5 line-clamp-1 text-[11px] text-faint">{m.description}</p>
                       )}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        {m.badge === "recommended" && <Badge tone="green">{t("studio.badgeRecommended")}</Badge>}
+                        {m.badge === "high_quality" && <Badge tone="amber">{t("studio.badgeHQ")}</Badge>}
+                        {m.supportsReferenceImages && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-faint">
+                            <ImageIcon size={11} aria-hidden />{t("studio.refsBadge")}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    {/* Price is the decision-critical number: display face,
-                        tabular figures, always the same position. */}
-                    <span className={cn(
-                      "shrink-0 rounded-lg px-2 py-1 text-[11px] font-bold tabular-nums",
-                      selected ? "bg-[rgb(var(--accent)/0.22)] text-accent" : "bg-raised text-muted"
-                    )}>
-                      {hasVariants ? t("studio.fromCr", { n: minPrice }) : `${minPrice} ◆`}
-                    </span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    {m.badge === "recommended" && <Badge tone="green">{t("studio.badgeRecommended")}</Badge>}
-                    {m.badge === "high_quality" && <Badge tone="amber">{t("studio.badgeHQ")}</Badge>}
-                    {m.supportsReferenceImages && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-faint">
-                        <ImageIcon size={11} aria-hidden />{t("studio.refsBadge")}
-                      </span>
-                    )}
                   </div>
                   {selected && (
                     <span aria-hidden className="absolute right-0 top-0 h-full w-[3px] brand-gradient" />

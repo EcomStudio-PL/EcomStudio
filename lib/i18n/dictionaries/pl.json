@@ -29,7 +29,9 @@
     "managePlan": "Zarządzaj planem",
     "upgrade": "Ulepsz plan",
     "help": "Pomoc",
-    "tools": "Narzędzia"
+    "tools": "Narzędzia",
+    "collapse": "Zwiń panel",
+    "expand": "Rozwiń panel"
   },
   "common": {
     "save": "Zapisz",
@@ -135,7 +137,7 @@
     "registrationDisabled": "Rejestracja jest obecnie wyłączona."
   },
   "dashboard": {
-    "welcome": "Cześć, {name}",
+    "welcome": "Cześć, {name}! 👋",
     "sub": "Oto stan Twojego studia.",
     "statProducts": "Produkty",
     "statGenerations": "Wygenerowane materiały",
@@ -150,7 +152,15 @@
     "onb2": "Wgraj zdjęcia referencyjne",
     "onb3": "Wybierz marketplace",
     "onb4": "Przygotuj pierwszy content pack",
-    "onbCta": "Stwórz pierwszy produkt"
+    "onbCta": "Stwórz pierwszy produkt",
+    "welcomeBack": "Witaj ponownie",
+    "statProductsSub": "Łącznie utworzonych",
+    "statGenerationsSub": "Pomyślnie wygenerowanych",
+    "statCreditsSub": "Kredyty na koncie",
+    "statPlanSub": "Twój obecny plan",
+    "tipTitle": "Wskazówka 💡",
+    "tipBody": "Użyj Generatora ujęć — dodaj zdjęcia produktu, a silnik EcomStudio przygotuje całą sesję sprzedażową w kilka minut.",
+    "tipCta": "Otwórz Generator ujęć"
   },
   "products": {
     "title": "Produkty",
@@ -872,7 +882,17 @@
     "step2": "Krok 2 — Referencje",
     "step3": "Krok 3 — Prompt",
     "step4": "Krok 4 — Model",
-    "step5": "Wynik"
+    "step5": "Wynik",
+    "stepsSub": "Stwórz wyjątkowe zdjęcie produktu w 4 prostych krokach.",
+    "tipRefs": "Dodaj zdjęcia produktu, inspiracji lub kontekstu — im lepiej pokażesz produkt, tym wierniejszy będzie wynik.",
+    "chooseModelSub": "Każdy model daje inny efekt.",
+    "randomPrompt": "Losowy prompt",
+    "rp1": "Elegancki packshot na jasnym tle z miękkim cieniem, styl premium.",
+    "rp2": "Produkt na marmurowym blacie w porannym świetle, obok filiżanka kawy i zielona roślina.",
+    "rp3": "Dynamiczne ujęcie lifestyle w miejskim otoczeniu, naturalne światło dzienne, rozmyte tło.",
+    "rp4": "Minimalistyczna scena na pastelowym tle z geometrycznymi podestami i wyraźnym cieniem.",
+    "rp5": "Produkt w aranżacji domowej na drewnianym stole przy oknie, ciepłe popołudniowe światło.",
+    "rp6": "Ujęcie hero z dramatycznym oświetleniem na ciemnym tle, delikatny refleks na powierzchni."
   },
   "notif": {
     "title": "Powiadomienia",
@@ -946,7 +966,24 @@
     "customPromptPh": "Ujęcie {n} — opisz, co ma być na zdjęciu…",
     "customAdd": "Dodaj ujęcie",
     "customCta": "Zapisz {n} ujęć",
-    "costPreview": "{n} ujęć • {model} • {cost} kr."
+    "costPreview": "{n} ujęć • {model} • {cost} kr.",
+    "step1": "Krok 1 — Produkt",
+    "step1Sub": "Wybierz zapisany produkt albo opisz nowy — dane zapiszemy automatycznie.",
+    "step2": "Krok 2 — Referencje",
+    "step2Sub": "Dodaj zdjęcia, które pomogą AI zrozumieć produkt, styl i szczegóły.",
+    "step3": "Krok 3 — Tryb pracy",
+    "step3Sub": "Gotowy silnik EcomStudio albo pełna kontrola z własnymi promptami.",
+    "step4": "Krok 4 — Generuj",
+    "step4Title": "Format i podsumowanie",
+    "step4Sub": "Sprawdź koszt i przygotuj tablicę ujęć.",
+    "tipRefs": "Najlepiej działa 2–6 zdjęć z różnych stron: przód, detal, opakowanie. Pierwsze zdjęcie traktujemy jako główne.",
+    "tipCustom": "Opisz scenę, otoczenie i kadr dla każdego ujęcia. Zdjęcia referencyjne i ochrona wyglądu produktu działają także przy własnych promptach.",
+    "modeCustomBadge": "Taniej",
+    "slotHint": "Każdy slot to jedno ujęcie — scenę dobierze silnik EcomStudio. Wszystko zobaczysz na tablicy i zatwierdzisz, zanim pobierzemy kredyty.",
+    "summaryShots": "Liczba ujęć",
+    "summaryPer": "Cena za ujęcie",
+    "summaryTotal": "Razem przy generowaniu",
+    "chargeNote": "Przygotowanie ujęć jest bezpłatne — kredyty pobieramy dopiero, gdy generujesz zdjęcia na tablicy."
   },
   "scene": {
     "product_hero": "Hero produktu",
@@ -1288,5 +1325,11 @@
     "yourPrompt": "Twój prompt",
     "promptSave": "Zapisz prompt",
     "promptSaved": "Prompt zapisany."
+  },
+  "creditsPanel": {
+    "unit": "kredytów",
+    "low": "Kredyty się kończą",
+    "buy": "Dokup kredyty",
+    "upgrade": "Ulepsz plan"
   }
 }

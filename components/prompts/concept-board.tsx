@@ -65,21 +65,26 @@ const CONCURRENCY = 2;
  * customer's own editable prompt. Prices come from admin pricing per model
  * and per origin — never from the client.
  */
-export function ConceptBoard({ concepts, models, balance, engineReady }: {
+export function ConceptBoard({ concepts, models, balance, engineReady, initialModelId = null }: {
   concepts: ConceptCardData[];
   models: ConceptModelChoice[];
   balance: number;
   engineReady: boolean;
+  /** The model picked in the session form — the board's starting default. */
+  initialModelId?: string | null;
 }) {
   const { t } = useI18n();
   const router = useRouter();
+  const defaultModelId = (initialModelId && models.some((m) => m.id === initialModelId))
+    ? initialModelId
+    : models[0]?.id ?? "";
   const [live, setLive] = useState<Record<string, Live>>({});
   const [batchRunning, setBatchRunning] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkModelId, setBulkModelId] = useState(models[0]?.id ?? "");
+  const [bulkModelId, setBulkModelId] = useState(defaultModelId);
   /** The model each card currently points at (override or the default). */
   const [chosen, setChosen] = useState<Record<string, string>>(() =>
-    Object.fromEntries(concepts.map((c) => [c.id, c.modelId ?? models[0]?.id ?? ""])));
+    Object.fromEntries(concepts.map((c) => [c.id, c.modelId ?? defaultModelId])));
   const batchGuard = useRef(false);
 
   const modelById = useMemo(() => new Map(models.map((m) => [m.id, m])), [models]);
@@ -209,9 +214,21 @@ export function ConceptBoard({ concepts, models, balance, engineReady }: {
       {/* GENERUJ WSZYSTKIE — always visible above the grid, sticky-safe on phones. */}
       {engineReady && concepts.length > 0 && (
         <div className="dock sticky top-2 z-20 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl p-3 sm:static sm:p-4">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold">{t("concepts.readyTitle", { n: concepts.length })}</p>
             <p className={cn("text-xs", notEnough && pending.length > 0 ? "text-danger" : "text-muted")}>{summary}</p>
+            {/* Live batch meter: the board's state at a glance. */}
+            <div className="mt-2 flex items-center gap-2">
+              <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-sunken">
+                <div
+                  className="brand-gradient h-full rounded-full transition-all duration-500"
+                  style={{ width: `${Math.max(doneCount > 0 ? 4 : 0, (doneCount / Math.max(1, concepts.length)) * 100)}%` }}
+                />
+              </div>
+              <span className="shrink-0 text-[11px] font-semibold tabular-nums text-muted">
+                {doneCount}/{concepts.length}
+              </span>
+            </div>
           </div>
           <button
             type="button"

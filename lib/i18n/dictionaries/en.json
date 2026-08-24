@@ -29,7 +29,9 @@
     "managePlan": "Manage plan",
     "upgrade": "Upgrade",
     "help": "Help",
-    "tools": "Tools"
+    "tools": "Tools",
+    "collapse": "Collapse panel",
+    "expand": "Expand panel"
   },
   "common": {
     "save": "Save",
@@ -135,7 +137,7 @@
     "registrationDisabled": "Registration is currently disabled."
   },
   "dashboard": {
-    "welcome": "Hi, {name}",
+    "welcome": "Hi, {name}! 👋",
     "sub": "Here's the state of your studio.",
     "statProducts": "Products",
     "statGenerations": "Generated assets",
@@ -150,7 +152,15 @@
     "onb2": "Upload reference photos",
     "onb3": "Pick a marketplace",
     "onb4": "Prepare your first content pack",
-    "onbCta": "Create first product"
+    "onbCta": "Create first product",
+    "welcomeBack": "Welcome back",
+    "statProductsSub": "Created in total",
+    "statGenerationsSub": "Successfully generated",
+    "statCreditsSub": "Credits on account",
+    "statPlanSub": "Your current plan",
+    "tipTitle": "Tip 💡",
+    "tipBody": "Use the Shot Generator — add product photos and the EcomStudio engine will prepare a full sales session in minutes.",
+    "tipCta": "Open Shot Generator"
   },
   "products": {
     "title": "Products",
@@ -872,7 +882,17 @@
     "step2": "Step 2 — References",
     "step3": "Step 3 — Prompt",
     "step4": "Step 4 — Model",
-    "step5": "Result"
+    "step5": "Result",
+    "stepsSub": "Create a standout product photo in 4 simple steps.",
+    "tipRefs": "Add photos of the product, inspiration or context — the better you show the product, the more faithful the result.",
+    "chooseModelSub": "Each model gives a different look.",
+    "randomPrompt": "Random prompt",
+    "rp1": "Elegant packshot on a light background with a soft shadow, premium style.",
+    "rp2": "Product on a marble countertop in morning light, a cup of coffee and a green plant beside it.",
+    "rp3": "Dynamic lifestyle shot in an urban setting, natural daylight, blurred background.",
+    "rp4": "Minimalist scene on a pastel background with geometric pedestals and a crisp shadow.",
+    "rp5": "Product in a home setting on a wooden table by the window, warm afternoon light.",
+    "rp6": "Hero shot with dramatic lighting on a dark background, a subtle reflection on the surface."
   },
   "notif": {
     "title": "Notifications",
@@ -946,7 +966,24 @@
     "customPromptPh": "Shot {n} — describe what the photo should show…",
     "customAdd": "Add shot",
     "customCta": "Save {n} shots",
-    "costPreview": "{n} shots • {model} • {cost} cr."
+    "costPreview": "{n} shots • {model} • {cost} cr.",
+    "step1": "Step 1 — Product",
+    "step1Sub": "Pick a saved product or describe a new one — we save the data automatically.",
+    "step2": "Step 2 — References",
+    "step2Sub": "Add photos that help the AI understand the product, style and details.",
+    "step3": "Step 3 — Working mode",
+    "step3Sub": "The ready EcomStudio engine, or full control with your own prompts.",
+    "step4": "Step 4 — Generate",
+    "step4Title": "Format & summary",
+    "step4Sub": "Check the cost and prepare the shot board.",
+    "tipRefs": "2–6 photos from different angles work best: front, detail, packaging. The first photo is treated as the main one.",
+    "tipCustom": "Describe the scene, setting and framing for every shot. Reference photos and product protection also apply to your own prompts.",
+    "modeCustomBadge": "Cheaper",
+    "slotHint": "Each slot is one shot — the EcomStudio engine picks the scene. You review everything on the board before any credits are charged.",
+    "summaryShots": "Number of shots",
+    "summaryPer": "Price per shot",
+    "summaryTotal": "Total when generating",
+    "chargeNote": "Preparing shots is free — credits are charged only when you generate photos on the board."
   },
   "scene": {
     "product_hero": "Product hero",
@@ -1288,5 +1325,11 @@
     "yourPrompt": "Your prompt",
     "promptSave": "Save prompt",
     "promptSaved": "Prompt saved."
+  },
+  "creditsPanel": {
+    "unit": "credits",
+    "low": "Credits running low",
+    "buy": "Buy credits",
+    "upgrade": "Upgrade plan"
   }
 }

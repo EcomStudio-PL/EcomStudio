@@ -13,10 +13,10 @@ import { Stat } from "@/components/ui/stat";
 import { Panel } from "@/components/ui/surface";
 import { PanelHeader } from "@/components/ui/section-header";
 import { Badge } from "@/components/ui/badge";
+import { HeroArt } from "@/components/dashboard/hero-art";
+import { TipBanner } from "@/components/dashboard/tip-banner";
+import { creditLevel, CREDIT_METER_CLASS, CREDIT_REFERENCE } from "@/lib/credit-level";
 import { formatDate } from "@/lib/utils";
-
-/** Credits at which the wallet meter reads "full" — a visual scale, never a cap. */
-const CREDIT_SCALE = 200;
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -29,14 +29,18 @@ export default async function DashboardPage() {
     getCurrentWorkspace(supabase, user.id),
   ]);
   if (!workspace || !profile) return null;
-  const [wallet, products, jobs, gens] = await Promise.all([
+  const [wallet, products, jobs, gens, { data: sub }] = await Promise.all([
     getWallet(supabase, workspace.id),
     listProducts(supabase, workspace.id, 5),
     listJobs(supabase, workspace.id, 5),
     supabase.from("generations").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id),
+    supabase.from("subscriptions").select("subscription_plans(name)")
+      .eq("workspace_id", workspace.id).eq("status", "active").maybeSingle(),
   ]);
   const firstName = (profile.full_name ?? profile.email).split(" ")[0];
   const credits = wallet?.balance ?? 0;
+  const planName = sub?.subscription_plans?.name ?? "Free";
+  const level = creditLevel(credits);
 
   if (products.length === 0) {
     return (
@@ -81,15 +85,17 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      {/* HERO — greeting, workspace state and the two actions that start work. */}
+      {/* HERO — the greeting as a stage: neon studio scene on the right,
+          the two actions that start work on the left. */}
       <Panel className="relative overflow-hidden rounded-3xl">
         <div
           aria-hidden
-          className="pointer-events-none absolute -right-16 -top-24 h-64 w-[26rem]"
-          style={{ background: "radial-gradient(20rem 12rem at 70% 40%, rgb(var(--accent) / 0.30), transparent 72%)" }}
+          className="pointer-events-none absolute -right-16 -top-24 h-72 w-[30rem]"
+          style={{ background: "radial-gradient(24rem 14rem at 70% 40%, rgb(var(--accent) / 0.28), transparent 72%)" }}
         />
-        <div className="relative p-5 sm:p-7">
-          <p className="overline">{workspace.name}</p>
+        <HeroArt className="pointer-events-none absolute -right-6 top-1/2 hidden h-[125%] w-auto -translate-y-1/2 lg:block" />
+        <div className="relative p-5 sm:p-7 lg:max-w-[54%]">
+          <p className="overline">{t("dashboard.welcomeBack")}</p>
           <h1 className="display-xl mt-2.5">{t("dashboard.welcome", { name: firstName })}</h1>
           <p className="mt-2 max-w-lg text-sm leading-relaxed text-muted">{t("dashboard.sub")}</p>
 
@@ -99,28 +105,33 @@ export default async function DashboardPage() {
               <Plus size={17} aria-hidden />
               {t("dashboard.newProduct")}
             </Link>
-            <Link href="/generator"
-              className="plate inline-flex h-12 items-center justify-center gap-2 rounded-2xl px-5 text-sm font-semibold text-ink transition-colors hover:border-[rgb(var(--accent)/0.4)]">
-              <Wand2 size={17} className="text-accent" aria-hidden />
-              {t("nav.generator")}
-            </Link>
             <Link href="/prompts"
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold text-muted transition-colors hover:text-ink">
-              <Sparkles size={16} className="text-accent2" aria-hidden />
+              className="plate inline-flex h-12 items-center justify-center gap-2 rounded-2xl px-5 text-sm font-semibold text-ink transition-colors hover:border-[rgb(var(--accent)/0.4)]">
+              <Sparkles size={17} className="text-accent" aria-hidden />
               {t("nav.promptsShort")}
+            </Link>
+            <Link href="/generator"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold text-muted transition-colors hover:text-ink">
+              <Wand2 size={16} className="text-accent2" aria-hidden />
+              {t("nav.generator")}
               <ArrowRight size={14} aria-hidden />
             </Link>
           </div>
         </div>
       </Panel>
 
-      {/* METRICS */}
+      {/* METRICS — each metric owns a hue; credits carry the traffic light. */}
       <div className="stagger grid grid-cols-2 gap-3 [&>*]:min-w-0 lg:grid-cols-4">
-        <Stat label={t("dashboard.statProducts")} value={products.length} icon={Box} href="/products" />
-        <Stat label={t("dashboard.statGenerations")} value={gens.count ?? 0} icon={Images} href="/library" />
+        <Stat label={t("dashboard.statProducts")} value={products.length} icon={Box} tone="indigo"
+          hint={t("dashboard.statProductsSub")} href="/products" />
+        <Stat label={t("dashboard.statGenerations")} value={gens.count ?? 0} icon={Images} tone="success"
+          hint={t("dashboard.statGenerationsSub")} href="/library" />
         <Stat label={t("dashboard.statCredits")} value={credits} icon={Zap} tone="accent"
-          meter={Math.min(1, credits / CREDIT_SCALE)} href="/credits" />
-        <Stat label={t("dashboard.statPlan")} value="Free" icon={Sparkles} tone="accent2" href="/plan" />
+          meter={Math.min(1, credits / CREDIT_REFERENCE)} meterClass={CREDIT_METER_CLASS[level]}
+          hint={level === "empty" ? t("creditsPanel.buy") : level === "critical" ? t("creditsPanel.low") : t("dashboard.statCreditsSub")}
+          href="/credits" />
+        <Stat label={t("dashboard.statPlan")} value={planName} icon={Sparkles} tone="accent2"
+          hint={t("dashboard.statPlanSub")} href="/plan" />
       </div>
 
       {/* WORK IN PROGRESS */}
@@ -157,6 +168,7 @@ export default async function DashboardPage() {
                     <Badge tone={p.status === "ready" ? "green" : "neutral"} dot>
                       {t(`products.status.${p.status}`)}
                     </Badge>
+                    <ArrowRight size={13} aria-hidden className="shrink-0 text-faint opacity-0 transition-opacity group-hover:opacity-100" />
                   </Link>
                 </li>
               );
@@ -189,7 +201,7 @@ export default async function DashboardPage() {
             <ul className="divide-y divide-line">
               {jobs.map((j) => (
                 <li key={j.id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
-                  <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-raised text-accent">
+                  <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(140deg,rgb(var(--accent)/0.22),rgb(var(--accent)/0.05))] text-accent">
                     <Sparkles size={15} />
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">{j.products?.name ?? "—"}</span>
@@ -200,6 +212,14 @@ export default async function DashboardPage() {
           )}
         </Panel>
       </div>
+
+      {/* WSKAZÓWKA — one dismissible nudge, never a modal (UX spec §9). */}
+      <TipBanner
+        id="open-prompts-v1"
+        text={t("dashboard.tipBody")}
+        ctaLabel={t("dashboard.tipCta")}
+        ctaHref="/prompts"
+      />
     </div>
   );
 }
