@@ -21,7 +21,7 @@ export function PageHeader({ title, sub, action, overline, className }: {
           <h1 className="display-lg">{title}</h1>
           {sub && <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted">{sub}</p>}
         </div>
-        {action && <div className="w-full shrink-0 sm:w-auto">{action}</div>}
+        {action && <div className="w-full shrink-0 sm:w-auto [&>*]:w-full sm:[&>*]:w-auto">{action}</div>}
       </div>
     </div>
   );

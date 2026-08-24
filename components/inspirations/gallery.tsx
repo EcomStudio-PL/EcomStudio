@@ -144,7 +144,7 @@ export function InspirationGallery({ items, categories }: {
               </div>
             )}
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-              {openItem.model_slug && <Badge tone="indigo">{openItem.model_slug}</Badge>}
+              {openItem.model_slug && <Badge tone="amber">{openItem.model_slug}</Badge>}
               {openItem.format && <Badge tone="neutral">{openItem.format}</Badge>}
               {openItem.tags.map((tg) => <span key={tg} className="text-faint">#{tg}</span>)}
             </div>
@@ -180,7 +180,7 @@ export function InspirationGallery({ items, categories }: {
           <p className="truncate text-sm font-semibold">{item.title}</p>
           <p className="mt-0.5 truncate text-xs text-muted">{item.description ?? item.prompt}</p>
           <div className="mt-2 flex items-center gap-1.5">
-            <Badge tone="indigo">{t(`insp.cat.${item.category}`)}</Badge>
+            <Badge tone="amber">{t(`insp.cat.${item.category}`)}</Badge>
             <span className="ml-auto text-xs font-medium text-accent opacity-0 transition-opacity group-hover:opacity-100">
               {t("insp.use")} →
             </span>

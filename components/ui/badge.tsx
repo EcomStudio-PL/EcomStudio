@@ -9,7 +9,7 @@ const tones = {
   red: "bg-[rgb(var(--danger)/0.14)] text-danger ring-[rgb(var(--danger)/0.30)]",
   blue: "bg-[rgb(var(--indigo)/0.14)] text-indigo ring-[rgb(var(--indigo)/0.32)]",
   info: "bg-[rgb(var(--indigo)/0.14)] text-indigo ring-[rgb(var(--indigo)/0.32)]",
-  indigo: "bg-accent2-soft text-accent2 ring-[rgb(var(--accent2)/0.30)]",
+  indigo: "bg-[rgb(var(--indigo)/0.14)] text-indigo ring-[rgb(var(--indigo)/0.32)]",
   success: "bg-[rgb(var(--success)/0.14)] text-success ring-[rgb(var(--success)/0.30)]",
 } as const;
 

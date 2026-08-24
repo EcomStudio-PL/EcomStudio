@@ -45,7 +45,7 @@ export function Drawer({ open, onClose, label, header, children, footer }: {
   return (
     <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label={label}>
       <div
-        className={cn("absolute inset-0 bg-black/70 backdrop-blur-[2px]", closing ? "animate-fade-out" : "animate-fade")}
+        className={cn("scrim absolute inset-0 backdrop-blur-[2px]", closing ? "animate-fade-out" : "animate-fade")}
         onClick={close}
       />
       <div className={cn(
@@ -107,7 +107,7 @@ export function DrawerIdentity({ initial, name, email, badge, tone = "accent", f
           {facts.map((f) => {
             const body = (
               <>
-                <dt className="overline text-[9px]">{f.label}</dt>
+                <dt className="overline text-[10px]">{f.label}</dt>
                 <dd className={cn("metric mt-0.5 truncate text-[15px]",
                   f.tone === "accent2" ? "text-accent2" : f.tone === "ink" ? "text-ink" : "text-accent")}>
                   {f.value}

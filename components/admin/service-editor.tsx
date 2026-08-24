@@ -71,7 +71,7 @@ export function ServiceManager({ services, plnPerCredit, usdToPln }: {
                   <Badge tone="neutral">{s.service_type}</Badge>
                   {!s.enabled && <Badge tone="amber">{t("admin.inactive")}</Badge>}
                   {s.maintenance_mode && <Badge tone="red">{t("svc.maintenance")}</Badge>}
-                  {s.featured && <Badge tone="indigo">★</Badge>}
+                  {s.featured && <Badge tone="amber">★</Badge>}
                   <span className="ml-auto text-right text-xs text-muted">
                     <span className="font-display text-sm font-semibold text-accent">{s.credits_cost}</span> {t("nav.credits").toLowerCase()}
                     {" · "}≈{e.userPln.toFixed(2)} PLN

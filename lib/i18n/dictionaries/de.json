@@ -67,7 +67,9 @@
     "clear": "Leeren",
     "remove": "Entfernen",
     "download": "Herunterladen",
-    "noData": "Keine Daten"
+    "noData": "Keine Daten",
+    "show": "Anzeigen",
+    "hide": "Verbergen"
   },
   "landing": {
     "headline": "Professionelle Produktvisuals mit KI. Schneller als ein Fotostudio.",

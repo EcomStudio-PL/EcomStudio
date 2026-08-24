@@ -16,7 +16,7 @@ export function CreditsPanel({ credits, plan, className }: {
   plan?: string;
   className?: string;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const level = creditLevel(credits);
   return (
     <div className={cn("panel relative overflow-hidden rounded-2xl", className)}>
@@ -28,9 +28,9 @@ export function CreditsPanel({ credits, plan, className }: {
       <svg aria-hidden viewBox="0 0 120 60" className="pointer-events-none absolute -bottom-1 right-2 h-16 w-32 opacity-70">
         <defs>
           <linearGradient id="cp-wave" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor="rgb(201 0 207)" stopOpacity="0" />
+            <stop offset="0" stopColor="rgb(var(--accent-strong))" stopOpacity="0" />
             <stop offset="0.5" stopColor="rgb(var(--accent))" />
-            <stop offset="1" stopColor="rgb(255 61 218)" stopOpacity="0.3" />
+            <stop offset="1" stopColor="rgb(var(--accent-glow))" stopOpacity="0.3" />
           </linearGradient>
         </defs>
         <path d="M0 48 C 24 46 30 20 52 24 S 86 52 120 18" fill="none" stroke="url(#cp-wave)" strokeWidth="2.5" strokeLinecap="round" />
@@ -42,7 +42,7 @@ export function CreditsPanel({ credits, plan, className }: {
         <div className="mt-2 flex items-end justify-between gap-3">
           <div className="min-w-0">
             <p className="metric text-[2rem] leading-none text-ink">
-              {new Intl.NumberFormat("pl-PL").format(credits)}
+              {new Intl.NumberFormat(locale).format(credits)}
             </p>
             <p className="mt-1 text-[11px] font-medium text-faint">{t("creditsPanel.unit")}</p>
           </div>
@@ -68,7 +68,7 @@ export function CreditsPanel({ credits, plan, className }: {
             </span>
           )}
           {level === "empty" || level === "critical" ? (
-            <Link href="/credits" className="cta inline-flex h-9 items-center gap-1.5 rounded-xl px-3.5 text-xs font-semibold">
+            <Link href="/credits" className="cta inline-flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-semibold">
               {t("creditsPanel.buy")}
             </Link>
           ) : (

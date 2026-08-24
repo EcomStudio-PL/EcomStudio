@@ -21,7 +21,7 @@ export function Topbar({ name, credits, workspace, isAdmin = false, notification
   name: string; credits: number; workspace?: string; isAdmin?: boolean;
   notifications?: NotificationItem[]; unread?: number;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { setOpen } = useDrawer();
   const initial = (name || "?").trim().charAt(0).toUpperCase();
   const level = creditLevel(credits);
@@ -50,7 +50,7 @@ export function Topbar({ name, credits, workspace, isAdmin = false, notification
           <div className="lg:hidden"><Brand href="/dashboard" markOnly /></div>
           <div className="hidden lg:block"><CommandPalette isAdmin={isAdmin} wide /></div>
           {workspace && (
-            <span className="plate hidden max-w-[14rem] truncate rounded-lg px-3 py-1.5 text-xs font-medium text-muted xl:inline-flex">
+            <span className="plate hidden max-w-[14rem] truncate rounded-xl px-3 py-1.5 text-xs font-medium text-muted xl:inline-flex">
               {workspace}
             </span>
           )}
@@ -71,7 +71,7 @@ export function Topbar({ name, credits, workspace, isAdmin = false, notification
               level === "low" && "bg-[rgb(var(--warning)/0.2)]",
               (level === "critical" || level === "empty") && "bg-[rgb(var(--danger)/0.2)]",
             )}>◆</span>
-            <span className="tabular-nums">{new Intl.NumberFormat("pl-PL").format(credits)}</span>
+            <span className="tabular-nums">{new Intl.NumberFormat(locale).format(credits)}</span>
             {level === "empty" && (
               <span className="hidden text-[11px] font-semibold sm:inline">· {t("creditsPanel.buy")}</span>
             )}
@@ -89,7 +89,7 @@ export function Topbar({ name, credits, workspace, isAdmin = false, notification
             type="button"
             onClick={() => setOpen(true)}
             aria-label={t("nav.menu")}
-            className="brand-gradient flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white shadow-e2 ring-1 ring-white/15 transition-shadow hover:ring-white/30 lg:hidden"
+            className="brand-gradient flex h-10 w-10 items-center justify-center rounded-full text-xs font-bold text-white shadow-e2 ring-1 ring-white/15 transition-shadow hover:ring-white/30 lg:hidden"
           >
             {initial}
           </button>

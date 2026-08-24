@@ -14,7 +14,7 @@ const base = cn(
   "transition-[background-color,border-color,box-shadow] duration-150",
   "hover:border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))]",
   "focus:bg-surface focus:border-[rgb(var(--accent)/0.55)] focus:outline-none focus:ring-4 focus:ring-[rgb(var(--accent)/0.14)]",
-  "disabled:opacity-50"
+  "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.2))]"
 );
 
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
@@ -32,7 +32,9 @@ export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
       className={cn(
         base,
         "appearance-none bg-[length:14px] bg-[right_0.9rem_center] bg-no-repeat pr-10",
-        "bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23808198%22 stroke-width=%223%22 stroke-linecap=%22round%22><path d=%22M5 9l7 7 7-7%22/></svg>')]",
+        // Chevron per theme, matched to --faint (light #88859E, dark #7A7EA0).
+        "bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%2388859E%22 stroke-width=%223%22 stroke-linecap=%22round%22><path d=%22M5 9l7 7 7-7%22/></svg>')]",
+        "dark:bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%237A7EA0%22 stroke-width=%223%22 stroke-linecap=%22round%22><path d=%22M5 9l7 7 7-7%22/></svg>')]",
         props.className
       )}
     />

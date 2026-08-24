@@ -50,7 +50,7 @@ export function FlagManager({ flags }: { flags: FlagRow[] }) {
             <li key={f.flag} className="flex flex-wrap items-center gap-2 px-5 py-3">
               <code className="text-sm font-semibold">{f.flag}</code>
               <Badge tone={f.enabled ? "green" : "neutral"}>{f.enabled ? "ON" : "OFF"}</Badge>
-              {f.plans && <Badge tone="indigo">{f.plans.join(",")}</Badge>}
+              {f.plans && <Badge tone="amber">{f.plans.join(",")}</Badge>}
               {f.roles && <Badge tone="blue">{f.roles.join(",")}</Badge>}
               {f.rollout_percent != null && <Badge tone="amber">{f.rollout_percent}%</Badge>}
               {f.description && <span className="text-xs text-muted">{f.description}</span>}

@@ -33,7 +33,7 @@ export function StepPanel({ n, overline, title, sub, action, last, children, cla
         <div className="flex items-start justify-between gap-3 px-4 pb-3 pt-4 sm:px-5 sm:pt-5">
           <div className="min-w-0">
             <p className="overline !text-accent">{overline}</p>
-            <h2 className="mt-1.5 flex min-w-0 items-center gap-2.5 font-display text-[17px] font-semibold tracking-tight">
+            <h2 className="mt-1.5 flex min-w-0 items-center gap-2.5 font-display text-lg font-semibold tracking-tight">
               <span aria-hidden className="step-chip step-chip-sm sm:hidden">{n}</span>
               <span className="min-w-0">{title}</span>
             </h2>

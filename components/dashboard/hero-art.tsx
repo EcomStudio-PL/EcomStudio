@@ -25,8 +25,8 @@ export function HeroArt({ className }: { className?: string }) {
           <stop offset="1" stopColor="#7A82FF" stopOpacity="0.15" />
         </linearGradient>
         <linearGradient id="ha-screen" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="rgb(36 37 47)" />
-          <stop offset="1" stopColor="rgb(23 24 32)" />
+          <stop offset="0" stopColor="rgb(32 36 64)" />
+          <stop offset="1" stopColor="rgb(18 21 40)" />
         </linearGradient>
         <linearGradient id="ha-glass" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="rgb(255 255 255)" stopOpacity="0.14" />
@@ -70,7 +70,7 @@ export function HeroArt({ className }: { className?: string }) {
           <rect x="126" y="31" width="22" height="4" rx="2" fill="#F800F8" opacity="0.8" />
         </g>
         {/* Base */}
-        <path d="M-26 138 L 226 128 L 252 164 L -48 178 Z" fill="rgb(29 30 39)" stroke="rgb(255 255 255 / 0.14)" />
+        <path d="M-26 138 L 226 128 L 252 164 L -48 178 Z" fill="rgb(25 28 52)" stroke="rgb(255 255 255 / 0.14)" />
         <path d="M-26 138 L 226 128 L 230 134 L -28 145 Z" fill="rgb(255 255 255 / 0.06)" />
         {/* Keyboard hint rows */}
         <path d="M-10 150 L 210 141" stroke="rgb(255 255 255 / 0.08)" strokeWidth="3" strokeLinecap="round" />

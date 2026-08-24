@@ -10,7 +10,7 @@ const NAMES: Record<string, string> = { pl: "Polski", en: "English", de: "Deutsc
 
 /** Flag button with a custom (non-native) dropdown. */
 export function LocaleSwitcher() {
-  const { locale } = useI18n();
+  const { t, locale } = useI18n();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -30,7 +30,7 @@ export function LocaleSwitcher() {
     <div ref={ref} className="relative">
       <button
         type="button"
-        aria-label="Language"
+        aria-label={t("settings.language")}
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={pending}
@@ -40,7 +40,7 @@ export function LocaleSwitcher() {
         <span aria-hidden>{FLAGS[locale] ?? "🌐"}</span>
       </button>
       {open && (
-        <div role="menu" className="overlay animate-pop absolute right-0 top-11 z-50 w-44 rounded-2xl p-1.5">
+        <div role="menu" className="overlay animate-pop absolute right-0 top-full z-50 mt-2 w-44 rounded-2xl p-1.5">
           {LOCALES.map((l) => (
             <button
               key={l}

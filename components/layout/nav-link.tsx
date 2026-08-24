@@ -27,7 +27,7 @@ export function NavLink({ href, label, icon: Icon, onNavigate, compact = false }
         "group relative flex min-h-[44px] items-center rounded-xl py-2.5 text-sm transition-all duration-150",
         compact ? "justify-center px-0" : "gap-3 px-3",
         active
-          ? "bg-[linear-gradient(90deg,rgb(var(--accent)/0.18),rgb(var(--accent)/0.04))] font-semibold text-ink shadow-[inset_0_1px_0_rgb(255_255_255/0.06)]"
+          ? "bg-[linear-gradient(90deg,rgb(var(--accent)/0.18),rgb(var(--accent)/0.04))] font-semibold text-ink shadow-[inset_0_1px_0_rgb(var(--hairline)/0.08)]"
           : "font-medium text-muted hover:bg-[rgb(var(--accent)/0.08)] hover:text-ink"
       )}
     >

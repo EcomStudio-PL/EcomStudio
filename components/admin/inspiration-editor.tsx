@@ -79,7 +79,7 @@ export function InspirationManager({ items }: { items: InspirationRow[] }) {
                 </div>
                 <p className="mt-1 truncate text-xs text-muted">{r.prompt}</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  <Badge tone="indigo">{r.category}</Badge>
+                  <Badge tone="amber">{r.category}</Badge>
                   {r.featured && <Badge tone="blue">★</Badge>}
                   {r.premium && <Badge tone="amber">PREMIUM</Badge>}
                   {r.locale && <Badge tone="neutral">{r.locale.toUpperCase()}</Badge>}

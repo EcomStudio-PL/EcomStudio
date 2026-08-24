@@ -67,7 +67,9 @@
     "clear": "Wyczyść",
     "remove": "Usuń",
     "download": "Pobierz",
-    "noData": "Brak danych"
+    "noData": "Brak danych",
+    "show": "Pokaż",
+    "hide": "Ukryj"
   },
   "landing": {
     "headline": "Profesjonalne materiały produktowe z AI. Szybciej niż klasyczne studio.",

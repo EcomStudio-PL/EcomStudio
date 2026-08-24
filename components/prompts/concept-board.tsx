@@ -283,7 +283,7 @@ export function ConceptBoard({ concepts, models, balance, engineReady, initialMo
                 )}>
                 <span className="flex items-center gap-2 text-sm font-semibold">
                   {m.name}
-                  {m.badge && <Badge tone="indigo">{t(`models.badge.${m.badge}`, {}) || m.badge}</Badge>}
+                  {m.badge && <Badge tone="amber">{t(`models.badge.${m.badge}`, {}) || m.badge}</Badge>}
                 </span>
                 <span className="text-xs tabular-nums text-muted">{t("concepts.perShot", { n: per })}</span>
               </button>
@@ -444,7 +444,7 @@ function ConceptCard({ c, state, url, error, models, chosenId, cost, generatedWi
         <div className="flex items-start justify-between gap-2">
           <h3 className="min-w-0 text-sm font-semibold tracking-tight">{c.title}</h3>
           {c.sceneType && (
-            <Badge tone="indigo" className="shrink-0">{t(`scene.${c.sceneType}`) || c.sceneType}</Badge>
+            <Badge tone="amber" className="shrink-0">{t(`scene.${c.sceneType}`) || c.sceneType}</Badge>
           )}
         </div>
         {c.description && (

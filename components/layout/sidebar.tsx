@@ -21,7 +21,7 @@ import { AccountIsland } from "./account-island";
 export function Sidebar({ name, email, credits, plan, isAdmin }: {
   name: string; email?: string; credits: number; plan: string; isAdmin: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const initial = (name || "?").trim().charAt(0).toUpperCase();
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => {
@@ -46,7 +46,7 @@ export function Sidebar({ name, email, credits, plan, isAdmin }: {
       {collapsed ? (
         <Link
           href="/credits"
-          title={`${t("nav.credits")}: ${new Intl.NumberFormat("pl-PL").format(credits)}`}
+          title={`${t("nav.credits")}: ${new Intl.NumberFormat(locale).format(credits)}`}
           className="brand-gradient mx-auto flex h-10 w-10 flex-col items-center justify-center rounded-2xl text-white shadow-e2 ring-1 ring-white/15 transition-shadow hover:ring-white/30"
         >
           <span className="text-[9px] leading-none opacity-80">◆</span>
@@ -104,7 +104,7 @@ export function Sidebar({ name, email, credits, plan, isAdmin }: {
 export function ProfileCard({ name, email, credits, plan, initial }: {
   name: string; email?: string; credits: number; plan: string; initial: string;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   return (
     <div className="px-3">
       <AccountIsland
@@ -113,7 +113,7 @@ export function ProfileCard({ name, email, credits, plan, initial }: {
         name={name}
         email={email}
         facts={[
-          { label: t("nav.credits"), value: `◆ ${new Intl.NumberFormat("pl-PL").format(credits)}` },
+          { label: t("nav.credits"), value: `◆ ${new Intl.NumberFormat(locale).format(credits)}` },
           { label: t("nav.plan"), value: plan, tone: "accent2" },
         ]}
         primaryAction={{ href: "/credits", label: t("nav.topUp"), icon: Plus }}

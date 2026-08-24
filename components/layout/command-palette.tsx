@@ -33,6 +33,13 @@ export function CommandPalette({ isAdmin, wide = false }: { isAdmin: boolean; wi
 
   const close = useCallback(() => { setOpen(false); setQ(""); setHits([]); setCursor(0); }, []);
 
+  // The binding is ⌘K on Apple hardware, Ctrl K everywhere else. SSR renders
+  // the Mac glyph; the effect corrects it post-hydration to avoid a mismatch.
+  const [kbdHint, setKbdHint] = useState("⌘K");
+  useEffect(() => {
+    if (!/Mac|iPhone|iPad|iPod/.test(navigator.platform)) setKbdHint("Ctrl K");
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -129,14 +136,14 @@ export function CommandPalette({ isAdmin, wide = false }: { isAdmin: boolean; wi
           <Search size={13} aria-hidden className="shrink-0" />
           <span className="truncate">{t("common.search")}</span>
         </span>
-        <kbd className="rounded border border-line px-1.5 py-0.5 text-[10px] text-faint">⌘K</kbd>
+        <kbd className="whitespace-nowrap rounded border border-line px-1.5 py-0.5 text-[10px] text-faint">{kbdHint}</kbd>
       </button>
 
       {open && (
         <div className="fixed inset-0 z-[60] flex items-start justify-center px-4 pt-[12vh]"
           role="dialog" aria-modal="true" aria-label={t("common.search")}>
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] anim-fade" onClick={close} />
-          <div className="overlay anim-pop relative w-full max-w-xl overflow-hidden rounded-2xl">
+          <div className="scrim animate-fade absolute inset-0 backdrop-blur-[2px]" onClick={close} />
+          <div className="overlay animate-pop relative w-full max-w-xl overflow-hidden rounded-2xl">
             <div className="flex items-center gap-2 border-b border-line px-4">
               <Search size={15} className="shrink-0 text-faint" aria-hidden />
               <input
@@ -159,13 +166,13 @@ export function CommandPalette({ isAdmin, wide = false }: { isAdmin: boolean; wi
                 return (
                   <li key={row.key}>
                     {header && (
-                      <p className="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-faint">
+                      <p className="overline px-3 pb-1 pt-3">
                         {header}
                       </p>
                     )}
                     <button type="button" onMouseEnter={() => setCursor(i)} onClick={() => go(row)}
                       aria-current={i === cursor ? "true" : undefined}
-                      className={cn("flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
+                      className={cn("flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors",
                         i === cursor ? "bg-accent-soft text-ink" : "text-muted hover:bg-raised")}>
                       <Icon size={15} className="shrink-0 text-accent" aria-hidden />
                       <span className="min-w-0 flex-1">

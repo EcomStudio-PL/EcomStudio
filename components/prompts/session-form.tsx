@@ -63,7 +63,7 @@ export function SessionForm({ products, workspaceId, engineAvailable, models, ba
   /** Server-rendered extras for the right rail (recent sessions). */
   aside?: React.ReactNode;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const router = useRouter();
   const [mode, setMode] = useState<"engine" | "custom">("engine");
   const [customPrompts, setCustomPrompts] = useState<string[]>([""]);
@@ -466,7 +466,7 @@ export function SessionForm({ products, workspaceId, engineAvailable, models, ba
               summary={
                 <>
                   <span className="text-xs font-medium uppercase tracking-wide text-muted">{t("studio.yourCredits")}</span>
-                  <span className="metric text-[15px] text-accent">◆ {new Intl.NumberFormat("pl-PL").format(balance)}</span>
+                  <span className="metric text-[15px] text-accent">◆ {new Intl.NumberFormat(locale).format(balance)}</span>
                 </>
               }
               note={failure && !busy ? (
@@ -543,7 +543,7 @@ export function SessionForm({ products, workspaceId, engineAvailable, models, ba
                         </div>
                         {m.badge && (
                           <div className="mt-1">
-                            <Badge tone="indigo">{t(`models.badge.${m.badge}`, {}) || m.badge}</Badge>
+                            <Badge tone="amber">{t(`models.badge.${m.badge}`, {}) || m.badge}</Badge>
                           </div>
                         )}
                       </div>

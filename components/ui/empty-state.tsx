@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react";
+import { ImageIcon, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -18,7 +18,7 @@ export function EmptyState({ title, body, action, icon: Icon, hints, className }
 }) {
   return (
     <div className={cn(
-      "panel relative overflow-hidden rounded-3xl px-6 py-14 text-center sm:py-16",
+      "panel relative overflow-hidden rounded-2xl px-6 py-14 text-center sm:py-16",
       className
     )}>
       <div
@@ -28,7 +28,7 @@ export function EmptyState({ title, body, action, icon: Icon, hints, className }
       />
       <div className="relative">
         <span aria-hidden className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-raised text-accent shadow-e2 ring-1 ring-[rgb(var(--accent)/0.25)]">
-          {Icon ? <Icon size={22} /> : <span className="text-xl">◨</span>}
+          {Icon ? <Icon size={22} /> : <ImageIcon size={22} />}
         </span>
         <h3 className="font-display text-lg font-semibold tracking-tight">{title}</h3>
         {body && <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted">{body}</p>}

@@ -43,7 +43,7 @@ export function Stat({ label, value, hint, icon: Icon, tone, meter, meterClass, 
   const inner = (
     <>
       <div className="flex items-start justify-between gap-2">
-        <p className="truncate text-[11px] font-semibold uppercase tracking-[0.1em] text-faint">{label}</p>
+        <p className="truncate text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">{label}</p>
         {Icon && (
           <span aria-hidden className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", toneChip)}>
             <Icon size={16} />
@@ -59,7 +59,7 @@ export function Stat({ label, value, hint, icon: Icon, tone, meter, meterClass, 
           />
         </div>
       )}
-      {hint && <p className="mt-1.5 truncate text-[11px] text-muted">{hint}</p>}
+      {hint && <p className="mt-1.5 truncate text-[11px] text-faint">{hint}</p>}
     </>
   );
 

@@ -73,7 +73,7 @@ export function PlanManager({ plans }: { plans: PlanRow[] }) {
               <div className="flex items-center justify-between gap-2">
                 <p className="truncate text-sm font-semibold">{p.name}</p>
                 {!p.active ? <Badge tone="amber">{t("admin.inactive")}</Badge>
-                  : p.featured ? <Badge tone="indigo">★ {t("admin.featured")}</Badge> : null}
+                  : p.featured ? <Badge tone="amber">★ {t("admin.featured")}</Badge> : null}
               </div>
               <p className="mt-2 font-display text-xl font-semibold text-accent">
                 {(p.price_cents / 100).toFixed(2)} <span className="text-sm">{p.currency ?? "PLN"}</span>

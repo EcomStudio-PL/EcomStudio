@@ -14,7 +14,7 @@ import { useDrawer } from "./shell-context";
 export function CustomerDrawer({ name, email, credits, plan, isAdmin }: {
   name: string; email?: string; credits: number; plan: string; isAdmin: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { open, setOpen } = useDrawer();
   const initial = (name || "?").trim().charAt(0).toUpperCase();
   const isFree = plan.trim().toLowerCase() === "free";
@@ -31,7 +31,7 @@ export function CustomerDrawer({ name, email, credits, plan, isAdmin }: {
           email={email}
           close={<IslandClose onClick={close} label={t("common.close")} />}
           facts={[
-            { label: t("nav.credits"), value: `◆ ${new Intl.NumberFormat("pl-PL").format(credits)}` },
+            { label: t("nav.credits"), value: `◆ ${new Intl.NumberFormat(locale).format(credits)}` },
             { label: t("nav.plan"), value: plan, tone: "accent2" },
           ]}
           primaryAction={{ href: "/credits", label: t("nav.topUp"), icon: Plus }}
@@ -53,8 +53,8 @@ export function CustomerDrawer({ name, email, credits, plan, isAdmin }: {
             </Link>
           )}
           <form method="post" action="/auth/sign-out">
-            <button className="flex min-h-[46px] w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-medium text-muted transition-colors hover:bg-raised hover:text-ink">
-              <span aria-hidden className="flex h-7 w-7 items-center justify-center rounded-lg text-faint">
+            <button className="flex min-h-[46px] w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold text-muted transition-colors hover:bg-raised hover:text-ink">
+              <span aria-hidden className="flex h-7 w-7 items-center justify-center rounded-lg bg-raised text-muted">
                 <LogOut size={15} />
               </span>
               {t("common.signOut")}

@@ -67,7 +67,9 @@
     "clear": "Clear",
     "remove": "Remove",
     "download": "Download",
-    "noData": "No data"
+    "noData": "No data",
+    "show": "Show",
+    "hide": "Hide"
   },
   "landing": {
     "headline": "Professional product visuals with AI. Faster than a photo studio.",

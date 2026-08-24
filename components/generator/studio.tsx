@@ -208,8 +208,8 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
   }
 
   return (
-    <div className="grid min-w-0 gap-4 pb-24 [&>*]:min-w-0 lg:grid-cols-[minmax(0,1fr)_360px] lg:pb-0">
-      <div className="min-w-0 space-y-4">
+    <div className="grid min-w-0 gap-5 pb-24 [&>*]:min-w-0 lg:grid-cols-[minmax(0,1fr)_360px] lg:pb-0">
+      <div className="min-w-0 space-y-5">
         {session && (
           <div className="animate-rise flex items-center gap-3 rounded-2xl border border-[rgb(var(--accent)/0.35)] bg-[linear-gradient(100deg,rgb(var(--accent)/0.16),transparent)] px-4 py-3">
             <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[rgb(var(--accent)/0.2)] text-accent">
@@ -395,7 +395,7 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
       </div>
 
       {/* RIGHT RAIL */}
-      <div className="space-y-4 lg:sticky lg:top-20 lg:h-fit">
+      <div className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:h-fit">
         <Panel>
           <PanelHeader overline={t("studio.step4")} title={t("concepts.chooseModel")} sub={t("studio.chooseModelSub")} icon={Layers} />
           <div className="space-y-2 px-3 pb-4 sm:px-4">

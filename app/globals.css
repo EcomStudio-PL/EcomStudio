@@ -6,47 +6,53 @@
   --font-body: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk Variable", "Inter Variable", ui-sans-serif, system-ui, sans-serif;
 
-  /* LIGHT — a cold lavender-white studio, not office paper. Surfaces stay
-     translucent over the ambient wash so the theme reads as glass rather
-     than as a dark theme with the lights turned off. */
-  --bg: 255 248 253;
-  --sunken: 249 240 247;
-  --sidebar: 253 246 251;
-  --surface: 255 253 255;
-  --raised: 250 242 249;
+  /* LIGHT — elegant soft-gray glass, not office paper and not plain white.
+     The page is a cool silver-lavender; cards are barely-off-white glass
+     floating on it, so the theme reads as material rather than as a form. */
+  --bg: 241 241 248;
+  --sunken: 233 233 242;
+  --sidebar: 245 245 250;
+  --surface: 252 252 255;
+  --raised: 240 240 247;
   --float: 255 255 255;
 
-  --ink: 32 20 36;
-  --muted: 96 82 100;
-  --faint: 138 122 142;
+  --ink: 30 27 46;
+  --muted: 95 92 116;
+  --faint: 136 133 158;
 
-  --line: 240 224 240;
-  --line-strong: 220 192 220;
-  --hairline: 130 40 132;
-  --hairline-alpha: 0.13;
+  --line: 226 225 237;
+  --line-strong: 204 202 222;
+  --hairline: 76 60 122;
+  --hairline-alpha: 0.14;
 
   --accent: 248 0 248;
   --accent-hover: 224 0 226;
   --accent-strong: 201 0 207;
-  --accent-soft: 253 231 253;
+  --accent-soft: 250 232 251;
   --accent-glow: 255 61 218;
   --accent2: 190 96 6;
-  --accent2-soft: 253 240 220;
-  --indigo: 74 66 224;
+  --accent2-soft: 250 239 222;
+  --indigo: 84 76 228;
   --success: 15 122 68;
   --warning: 176 82 8;
   --danger: 194 38 52;
 
-  --glass: 255 255 255;
-  --glass-alpha: 0.72;
-  --glass-border: 130 40 132;
+  --glass: 250 250 253;
+  --glass-alpha: 0.68;
+  --glass-border: 76 60 122;
   --glass-border-alpha: 0.13;
 
-  /* SHADOW LANGUAGE — one family, four steps. */
-  --shadow-1: 0 1px 2px rgb(70 24 72 / 0.06), 0 1px 1px rgb(70 24 72 / 0.03);
-  --shadow-2: 0 4px 14px -6px rgb(70 24 72 / 0.14), 0 1px 3px rgb(70 24 72 / 0.05);
-  --shadow-3: 0 16px 40px -18px rgb(70 24 72 / 0.24), 0 2px 6px rgb(70 24 72 / 0.06);
-  --shadow-4: 0 28px 70px -24px rgb(70 24 72 / 0.30);
+  /* Overlay scrim — one veil for drawer, modal and palette. Light keeps it
+     airy (violet-gray), dark drops near-black navy. */
+  --scrim: 44 38 76;
+  --scrim-alpha: 0.44;
+
+  /* SHADOW LANGUAGE — one family, four steps, cool violet-gray so depth
+     reads as air rather than as smudged ink. */
+  --shadow-1: 0 1px 2px rgb(54 46 96 / 0.06), 0 1px 1px rgb(54 46 96 / 0.03);
+  --shadow-2: 0 4px 14px -6px rgb(54 46 96 / 0.14), 0 1px 3px rgb(54 46 96 / 0.05);
+  --shadow-3: 0 16px 40px -18px rgb(54 46 96 / 0.24), 0 2px 6px rgb(54 46 96 / 0.06);
+  --shadow-4: 0 28px 70px -24px rgb(54 46 96 / 0.30);
   --ring-accent: 0 0 0 1px rgb(var(--accent) / 0.35);
 
   /* LAYOUT CONSTANTS — one source for chrome dimensions. */
@@ -61,53 +67,68 @@
 
 
 .dark {
-  /* Dark: near-black navy under a neon-magenta key light. Five distinct
-     layers so a card on a panel on the page still reads as three planes. */
-  --bg: 15 16 21;
-  --sunken: 12 13 17;
-  --sidebar: 18 19 25;
-  --surface: 23 24 32;
-  --raised: 29 30 39;
-  --float: 36 37 47;
+  /* Dark: DEEP NAVY under a neon magenta-violet key light — never flat
+     black. Five distinct layers, each a step up the same navy ramp, so a
+     card on a panel on the page still reads as three planes with air
+     between them. */
+  --bg: 11 13 26;
+  --sunken: 8 10 20;
+  --sidebar: 14 16 32;
+  --surface: 18 21 40;
+  --raised: 25 28 52;
+  --float: 32 36 64;
 
-  --ink: 244 245 251;
-  --muted: 168 173 193;
-  --faint: 118 123 145;
+  --ink: 242 244 254;
+  --muted: 170 176 206;
+  --faint: 120 126 160;
 
-  --line: 255 255 255;
-  --line-strong: 255 255 255;
-  --hairline: 255 255 255;
-  --hairline-alpha: 0.08;
+  --line: 190 200 255;
+  --line-strong: 190 200 255;
+  --hairline: 190 200 255;
+  --hairline-alpha: 0.10;
 
   --accent: 249 64 244;
   --accent-hover: 251 96 246;
   --accent-strong: 201 0 207;
-  --accent-soft: 64 24 60;
+  --accent-soft: 62 26 72;
   --accent-glow: 255 61 218;
   --accent2: 255 168 92;
-  --accent2-soft: 60 43 25;
-  --indigo: 122 130 255;
+  --accent2-soft: 62 44 28;
+  --indigo: 124 132 255;
   --success: 74 222 128;
   --warning: 251 191 36;
   --danger: 248 113 113;
 
-  --glass: 22 23 35;
+  --glass: 15 17 34;
   --glass-alpha: 0.72;
-  --glass-border: 255 255 255;
-  --glass-border-alpha: 0.08;
+  --glass-border: 190 200 255;
+  --glass-border-alpha: 0.10;
 
-  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
-  --shadow-2: 0 6px 18px -8px rgb(0 0 0 / 0.55), inset 0 1px 0 rgb(255 255 255 / 0.04);
-  --shadow-3: 0 20px 48px -22px rgb(0 0 0 / 0.75), inset 0 1px 0 rgb(255 255 255 / 0.05);
-  --shadow-4: 0 32px 80px -28px rgb(0 0 0 / 0.85), inset 0 1px 0 rgb(255 255 255 / 0.06);
+  --scrim: 3 5 14;
+  --scrim-alpha: 0.72;
+
+  /* Navy-black shadows with a whisper of violet in the ambient steps. */
+  --shadow-1: 0 1px 2px rgb(2 4 16 / 0.5);
+  --shadow-2: 0 6px 18px -8px rgb(2 4 16 / 0.6), inset 0 1px 0 rgb(190 200 255 / 0.06);
+  --shadow-3: 0 20px 48px -22px rgb(2 4 16 / 0.8), inset 0 1px 0 rgb(190 200 255 / 0.07);
+  --shadow-4: 0 32px 80px -28px rgb(2 4 16 / 0.9), inset 0 1px 0 rgb(190 200 255 / 0.08);
   --ring-accent: 0 0 0 1px rgb(var(--accent) / 0.45);
 }
 /* Dark mode is opaque: the wash is already dark, and dropping the blur on
-   every card keeps scrolling cheap on phones. */
-.dark .panel { background: linear-gradient(180deg, rgb(255 255 255 / 0.028), transparent 42%), rgb(var(--surface)); backdrop-filter: none; -webkit-backdrop-filter: none; }
-.dark .border-line { border-color: rgb(255 255 255 / 0.08); }
-.dark .divide-line > :not([hidden]) ~ :not([hidden]) { border-color: rgb(255 255 255 / 0.055); }
-.dark .border-line-strong { border-color: rgb(255 255 255 / 0.14); }
+   every card keeps scrolling cheap on phones. The top-light on every card
+   is a cool violet-white, so surfaces read as glass lit by the neon key
+   light rather than as gray boxes. */
+.dark .panel {
+  background:
+    linear-gradient(180deg, rgb(190 200 255 / 0.045), transparent 46%),
+    linear-gradient(160deg, rgb(var(--accent) / 0.025), transparent 38%),
+    rgb(var(--surface));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.dark .border-line { border-color: rgb(190 200 255 / 0.10); }
+.dark .divide-line > :not([hidden]) ~ :not([hidden]) { border-color: rgb(190 200 255 / 0.07); }
+.dark .border-line-strong { border-color: rgb(190 200 255 / 0.17); }
 
 /* ─────────────────────────────────────────────────────────────────────────
    SURFACES. Three named planes instead of one glass class used everywhere.
@@ -151,8 +172,9 @@
 }
 .panel-interactive:active { transform: translateY(0); }
 
-/* Ambient light: a neon-magenta key from the top right, a cool indigo fill bottom
-   left, and a faint vignette that keeps the eye on the content column. */
+/* Ambient light — LIGHT: a silver-violet studio wash. A soft violet key
+   top-right, an indigo fill bottom-left and a barely-there cool sheen so
+   the gray page reads as brushed glass instead of plain white. */
 body::before {
   content: "";
   position: fixed;
@@ -160,17 +182,21 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(52rem 34rem at 86% -10%, rgb(var(--accent) / 0.10), transparent 60%),
-    radial-gradient(44rem 32rem at -12% 108%, rgb(var(--indigo) / 0.08), transparent 58%),
-    radial-gradient(30rem 24rem at 50% 40%, rgb(var(--accent2) / 0.03), transparent 70%);
+    radial-gradient(52rem 34rem at 86% -10%, rgb(var(--accent) / 0.07), transparent 60%),
+    radial-gradient(46rem 34rem at -12% 108%, rgb(var(--indigo) / 0.08), transparent 58%),
+    radial-gradient(40rem 28rem at 55% 30%, rgb(255 255 255 / 0.5), transparent 70%),
+    linear-gradient(180deg, rgb(255 255 255 / 0.35), transparent 30%);
 }
-/* Dark keeps a slightly stronger pink key light — the glow that makes the
-   graphite stage feel lit instead of empty. */
+/* Ambient light — DARK: the deep-navy stage under neon. A magenta key
+   top-right, indigo fill bottom-left, a violet pool mid-stage and a navy
+   tonal wash from the top, so no region of the page is ever flat black. */
 .dark body::before {
   background:
-    radial-gradient(52rem 34rem at 86% -10%, rgb(var(--accent) / 0.15), transparent 60%),
-    radial-gradient(44rem 32rem at -12% 108%, rgb(var(--indigo) / 0.10), transparent 58%),
-    radial-gradient(30rem 24rem at 50% 40%, rgb(var(--accent-glow) / 0.05), transparent 70%);
+    radial-gradient(52rem 34rem at 86% -10%, rgb(var(--accent) / 0.17), transparent 60%),
+    radial-gradient(48rem 36rem at -12% 108%, rgb(var(--indigo) / 0.14), transparent 58%),
+    radial-gradient(36rem 26rem at 48% 42%, rgb(139 92 246 / 0.07), transparent 70%),
+    radial-gradient(30rem 22rem at 70% 85%, rgb(var(--accent-glow) / 0.05), transparent 72%),
+    linear-gradient(180deg, rgb(46 44 110 / 0.16), transparent 34%);
 }
 /* Fine grain over the ambient wash: kills gradient banding on OLED screens
    and gives the background a photographic rather than digital texture. */
@@ -194,6 +220,9 @@ body::after {
   box-shadow: var(--ring-accent), 0 10px 28px -16px rgb(var(--accent) / 0.7);
   color: rgb(var(--ink));
 }
+
+/* The one overlay veil (drawer, modal, command palette). */
+.scrim { background: rgb(var(--scrim) / var(--scrim-alpha)); }
 
 /* Overlay surface for drawers and modals: near-opaque so nothing bleeds. */
 .overlay {
@@ -258,7 +287,16 @@ body::after {
   0%, 100% { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), 0 8px 22px -10px rgb(var(--accent) / 0.62); }
   50% { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.26), 0 10px 30px -10px rgb(var(--accent) / 0.9); }
 }
-.cta:hover:not(:disabled) { filter: brightness(1.07); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.26), 0 12px 30px -10px rgb(var(--accent) / 0.85); }
+/* Hover: the button warms up — brighter face plus an ember-coloured bloom
+   (magenta core, warm pink halo). Subtle, no size change, no gimmick. */
+.cta:hover:not(:disabled) {
+  filter: brightness(1.08) saturate(1.05);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.28),
+    0 12px 32px -10px rgb(var(--accent) / 0.9),
+    0 4px 40px -6px rgb(var(--accent-glow) / 0.35);
+}
+.cta:active:not(:disabled) { filter: brightness(0.98); }
 .cta:disabled { box-shadow: none; filter: saturate(0.35) brightness(0.9); }
 
 /* Overline: the small tracked label above a headline.
@@ -311,12 +349,12 @@ body::after {
 /* The mobile dock: a floating bar rather than a bar welded to the screen. */
 .dock {
   background:
-    linear-gradient(180deg, rgb(255 255 255 / 0.05), transparent 55%),
-    rgb(var(--glass) / 0.92);
+    linear-gradient(180deg, rgb(190 200 255 / 0.06), transparent 55%),
+    rgb(var(--glass) / 0.94);
   backdrop-filter: blur(28px) saturate(1.5);
   -webkit-backdrop-filter: blur(28px) saturate(1.5);
   border: 1px solid rgb(var(--glass-border) / calc(var(--glass-border-alpha) + 0.05));
-  box-shadow: var(--shadow-4), inset 0 1px 0 rgb(255 255 255 / 0.06);
+  box-shadow: var(--shadow-4), inset 0 1px 0 rgb(190 200 255 / 0.07);
 }
 
 /* ACCOUNT ISLAND — the one deliberately elevated surface in the drawer:

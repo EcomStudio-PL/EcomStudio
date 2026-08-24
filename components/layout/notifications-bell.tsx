@@ -14,7 +14,7 @@ export type NotificationItem = {
 /** Topbar bell: unread badge + near-opaque dropdown. Opening marks all as
  *  read. Titles use i18n keys when known (notif.<type>), else raw title. */
 export function NotificationsBell({ items, unread }: { items: NotificationItem[]; unread: number }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [open, setOpen] = useState(false);
   const [, start] = useTransition();
   const ref = useRef<HTMLDivElement>(null);
@@ -47,14 +47,14 @@ export function NotificationsBell({ items, unread }: { items: NotificationItem[]
         className="relative flex h-11 w-11 items-center justify-center rounded-xl lg:h-9 lg:w-9 text-muted transition-colors hover:bg-raised hover:text-ink">
         <Bell size={17} />
         {unread > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent2 px-1 text-[9px] font-bold text-white">
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent2 px-1 text-[9px] font-bold text-[rgb(var(--bg))]">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
       </button>
       {open && (
-        <div className="overlay animate-pop absolute right-0 top-12 z-50 w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl p-1.5">
-          <p className="border-b border-line px-3 pb-2 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-faint">
+        <div className="overlay animate-pop absolute right-0 top-full z-50 mt-2 w-[min(20rem,calc(100vw-1.5rem))] rounded-2xl p-1.5">
+          <p className="overline border-b border-line px-3 pb-2 pt-1.5">
             {t("notif.title")}
           </p>
           {items.length === 0 ? (
@@ -67,7 +67,9 @@ export function NotificationsBell({ items, unread }: { items: NotificationItem[]
                     className={cn("block rounded-xl px-3 py-2.5 transition-colors hover:bg-raised", !n.read_at && "bg-accent-soft/40")}>
                     <p className="text-sm font-medium">{label(n)}</p>
                     {n.body && <p className="truncate text-xs text-muted">{n.body}</p>}
-                    <p className="mt-0.5 text-[10px] text-faint">{new Date(n.created_at).toLocaleString("pl-PL")}</p>
+                    <p className="mt-0.5 text-[10px] text-faint">
+                      {new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(new Date(n.created_at))}
+                    </p>
                   </Link>
                 </li>
               ))}
