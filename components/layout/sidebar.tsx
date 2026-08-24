@@ -36,11 +36,11 @@ export function Sidebar({ name, email, credits, plan, isAdmin }: {
   }
   return (
     <aside className={cn(
-      "rail sticky top-0 hidden h-dvh shrink-0 flex-col py-5 lg:flex",
+      "rail sticky top-0 hidden h-dvh shrink-0 flex-col py-4 lg:flex",
       "transition-[width] duration-300 ease-[cubic-bezier(0.2,0.9,0.2,1)]",
-      collapsed ? "w-[var(--rail-w-collapsed)] px-3" : "w-[var(--rail-w)] px-3.5",
+      collapsed ? "w-[var(--rail-w-collapsed)] px-3" : "w-[var(--rail-w)] px-3",
     )}>
-      <div className={cn("pb-5", collapsed ? "flex justify-center" : "px-2.5")}>
+      <div className={cn("pb-4", collapsed ? "flex justify-center" : "px-2")}>
         <Brand href="/dashboard" markOnly={collapsed} />
       </div>
 
@@ -64,16 +64,16 @@ export function Sidebar({ name, email, credits, plan, isAdmin }: {
       {/* Navigation. Expanded scrolls internally; collapsed stays visible so
           the hover tooltips are never clipped by an overflow context. */}
       <nav className={cn(
-        "mt-5 flex min-h-0 flex-1 flex-col gap-0.5",
+        "mt-4 flex min-h-0 flex-1 flex-col gap-0.5",
         collapsed ? "items-stretch overflow-visible" : "thin-scroll overflow-y-auto",
       )}>
         {CLIENT_NAV.map((g, gi) => (
-          <div key={g.key} className={cn(collapsed ? "mb-2" : "mb-3.5")}>
+          <div key={g.key} className={cn(collapsed ? "mb-2" : "mb-3")}>
             {collapsed
               ? gi > 0 && <span aria-hidden className="mx-auto mb-2 block h-px w-7 bg-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.6))]" />
               : <NavGroupLabel>{t(`nav.groups.${g.key}`)}</NavGroupLabel>}
             {g.items.map((i) => (
-              <NavLink key={i.href} href={i.href} label={t(`nav.${i.key}`)} icon={i.icon} compact={collapsed} />
+              <NavLink key={i.href} href={i.href} label={t(`nav.${i.key}`)} icon={i.icon} compact={collapsed} dense />
             ))}
           </div>
         ))}

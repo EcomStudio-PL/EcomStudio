@@ -15,18 +15,18 @@ export function HeroArt({ className }: { className?: string }) {
     >
       <defs>
         <linearGradient id="ha-brand" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#C900CF" />
-          <stop offset="0.55" stopColor="#F800F8" />
-          <stop offset="1" stopColor="#FF3DDA" />
+          <stop offset="0" stopColor="#C014BE" />
+          <stop offset="0.55" stopColor="#F03CE0" />
+          <stop offset="1" stopColor="#FF5CE2" />
         </linearGradient>
         <linearGradient id="ha-wave" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0" stopColor="#F800F8" stopOpacity="0" />
-          <stop offset="0.45" stopColor="#F800F8" stopOpacity="0.75" />
-          <stop offset="1" stopColor="#7A82FF" stopOpacity="0.15" />
+          <stop offset="0" stopColor="#F03CE0" stopOpacity="0" />
+          <stop offset="0.45" stopColor="#F03CE0" stopOpacity="0.75" />
+          <stop offset="1" stopColor="#A855F7" stopOpacity="0.15" />
         </linearGradient>
         <linearGradient id="ha-screen" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="rgb(32 36 64)" />
-          <stop offset="1" stopColor="rgb(18 21 40)" />
+          <stop offset="0" stopColor="rgb(45 30 62)" />
+          <stop offset="1" stopColor="rgb(26 17 37)" />
         </linearGradient>
         <linearGradient id="ha-glass" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="rgb(255 255 255)" stopOpacity="0.14" />
@@ -41,9 +41,9 @@ export function HeroArt({ className }: { className?: string }) {
       </defs>
 
       {/* Ambient glow pools. */}
-      <ellipse cx="330" cy="200" rx="200" ry="110" fill="#F800F8" opacity="0.16" filter="url(#ha-blur)" />
-      <ellipse cx="470" cy="110" rx="110" ry="70" fill="#FF3DDA" opacity="0.14" filter="url(#ha-blur)" />
-      <ellipse cx="180" cy="270" rx="120" ry="60" fill="#7A82FF" opacity="0.12" filter="url(#ha-blur)" />
+      <ellipse cx="330" cy="200" rx="200" ry="110" fill="#F03CE0" opacity="0.16" filter="url(#ha-blur)" />
+      <ellipse cx="470" cy="110" rx="110" ry="70" fill="#FF5CE2" opacity="0.14" filter="url(#ha-blur)" />
+      <ellipse cx="180" cy="270" rx="120" ry="60" fill="#A855F7" opacity="0.12" filter="url(#ha-blur)" />
 
       {/* Energy waves sweeping behind the laptop. */}
       <path d="M20 250 C 120 240 160 150 260 168 S 430 260 560 150" stroke="url(#ha-wave)" strokeWidth="2.5" strokeLinecap="round" />
@@ -54,7 +54,7 @@ export function HeroArt({ className }: { className?: string }) {
       <g transform="translate(215 88)">
         <g transform="skewY(-4)">
           {/* Lid glow edge */}
-          <rect x="-4" y="-4" width="208" height="138" rx="14" fill="#F800F8" opacity="0.35" filter="url(#ha-soft)" />
+          <rect x="-4" y="-4" width="208" height="138" rx="14" fill="#F03CE0" opacity="0.35" filter="url(#ha-soft)" />
           <rect x="0" y="0" width="200" height="130" rx="12" fill="url(#ha-screen)" stroke="rgb(255 255 255 / 0.18)" />
           {/* Screen content: header bar, bars, trend line */}
           <rect x="14" y="14" width="70" height="8" rx="4" fill="rgb(255 255 255 / 0.22)" />
@@ -63,20 +63,20 @@ export function HeroArt({ className }: { className?: string }) {
           <rect x="44" y="68" width="14" height="44" rx="3" fill="url(#ha-brand)" opacity="0.75" />
           <rect x="66" y="56" width="14" height="56" rx="3" fill="url(#ha-brand)" />
           <rect x="88" y="74" width="14" height="38" rx="3" fill="url(#ha-brand)" opacity="0.65" />
-          <path d="M118 100 L 138 78 L 154 88 L 182 52" stroke="#FF3DDA" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-          <circle cx="182" cy="52" r="4" fill="#FF3DDA" />
+          <path d="M118 100 L 138 78 L 154 88 L 182 52" stroke="#FF5CE2" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="182" cy="52" r="4" fill="#FF5CE2" />
           <rect x="118" y="14" width="68" height="26" rx="6" fill="rgb(255 255 255 / 0.07)" stroke="rgb(255 255 255 / 0.10)" />
           <rect x="126" y="22" width="34" height="5" rx="2.5" fill="rgb(255 255 255 / 0.25)" />
-          <rect x="126" y="31" width="22" height="4" rx="2" fill="#F800F8" opacity="0.8" />
+          <rect x="126" y="31" width="22" height="4" rx="2" fill="#F03CE0" opacity="0.8" />
         </g>
         {/* Base */}
-        <path d="M-26 138 L 226 128 L 252 164 L -48 178 Z" fill="rgb(25 28 52)" stroke="rgb(255 255 255 / 0.14)" />
+        <path d="M-26 138 L 226 128 L 252 164 L -48 178 Z" fill="rgb(35 23 49)" stroke="rgb(255 255 255 / 0.14)" />
         <path d="M-26 138 L 226 128 L 230 134 L -28 145 Z" fill="rgb(255 255 255 / 0.06)" />
         {/* Keyboard hint rows */}
         <path d="M-10 150 L 210 141" stroke="rgb(255 255 255 / 0.08)" strokeWidth="3" strokeLinecap="round" />
         <path d="M-18 160 L 218 150" stroke="rgb(255 255 255 / 0.06)" strokeWidth="3" strokeLinecap="round" />
         {/* Under-glow */}
-        <ellipse cx="102" cy="182" rx="150" ry="16" fill="#F800F8" opacity="0.25" filter="url(#ha-soft)" />
+        <ellipse cx="102" cy="182" rx="150" ry="16" fill="#F03CE0" opacity="0.25" filter="url(#ha-soft)" />
       </g>
 
       {/* Floating glass panel: image tile with checkmark. */}
@@ -87,7 +87,7 @@ export function HeroArt({ className }: { className?: string }) {
         <path d="M14 54 L 34 38 L 50 50 L 66 32" stroke="rgb(255 255 255 / 0.85)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
         <rect x="10" y="70" width="42" height="6" rx="3" fill="rgb(255 255 255 / 0.30)" />
         <rect x="10" y="82" width="28" height="5" rx="2.5" fill="rgb(255 255 255 / 0.16)" />
-        <circle cx="68" cy="80" r="9" fill="#22C55E" opacity="0.9" />
+        <circle cx="68" cy="80" r="9" fill="#A855F7" opacity="0.9" />
         <path d="M64 80 L 67 83 L 72 76" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       </g>
 
@@ -101,7 +101,7 @@ export function HeroArt({ className }: { className?: string }) {
       </g>
 
       {/* Sparkles. */}
-      <g fill="#FF3DDA">
+      <g fill="#FF5CE2">
         <path d="M120 60 l2.5 6 6 2.5 -6 2.5 -2.5 6 -2.5 -6 -6 -2.5 6 -2.5 Z" opacity="0.9" />
         <path d="M508 208 l2 4.5 4.5 2 -4.5 2 -2 4.5 -2 -4.5 -4.5 -2 4.5 -2 Z" opacity="0.7" />
         <path d="M96 200 l1.6 3.8 3.8 1.6 -3.8 1.6 -1.6 3.8 -1.6 -3.8 -3.8 -1.6 3.8 -1.6 Z" opacity="0.55" />

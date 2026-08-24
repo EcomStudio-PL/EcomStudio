@@ -141,5 +141,5 @@ export function IslandClose({ onClick, label }: { onClick: () => void; label: st
 /** Group label inside a drawer or sidebar: spacing and tracking do the work,
  *  no boxes and no rules. */
 export function NavGroupLabel({ children }: { children: React.ReactNode }) {
-  return <p className="overline px-3 pb-1.5 pt-3 text-[10px]">{children}</p>;
+  return <p className="overline px-2.5 pb-1 pt-2.5 text-[9.5px] tracking-[0.2em] opacity-80">{children}</p>;
 }

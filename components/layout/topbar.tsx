@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Menu, Shield } from "lucide-react";
+import { Menu, Plus, Shield } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { creditLevel } from "@/lib/credit-level";
 import { cn } from "@/lib/utils";
@@ -39,7 +39,7 @@ export function Topbar({ name, credits, workspace, isAdmin = false, notification
     <header className="glass sticky top-0 z-30 rounded-none border-x-0 border-t-0 pt-[env(safe-area-inset-top)]">
       {/* Same measure as <main>, so the search field and the avatar line up
           with the content columns instead of hugging the viewport edges. */}
-      <div className="mx-auto flex h-[60px] w-full max-w-[var(--content-max)] items-center justify-between gap-2 px-3 sm:px-4 lg:px-8 xl:px-10 2xl:px-12">
+      <div className="mx-auto flex h-[58px] w-full max-w-[var(--content-max)] items-center justify-between gap-2 px-3 sm:px-4 lg:px-6 xl:px-7">
         <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
           <button
             type="button"
@@ -61,23 +61,37 @@ export function Topbar({ name, credits, workspace, isAdmin = false, notification
           {/* Credits: the one persistent piece of account state. Healthy = the
               lit brand pill; running low it turns orange, then red, and at
               zero it names the way out instead of silently failing later. */}
-          <Link
-            href="/credits"
-            aria-label={pillTitle}
-            title={pillTitle}
-            className={cn("inline-flex h-9 items-center gap-1.5 rounded-full pl-2.5 pr-3.5 text-[13px] font-bold", pillClass)}
-          >
-            <span aria-hidden className={cn(
-              "flex h-5 w-5 items-center justify-center rounded-full text-[10px]",
-              level === "ok" && "bg-white/20",
-              level === "low" && "bg-[rgb(var(--warning)/0.2)]",
-              (level === "critical" || level === "empty") && "bg-[rgb(var(--danger)/0.2)]",
-            )}>◆</span>
-            <span className="tabular-nums">{new Intl.NumberFormat(locale).format(credits)}</span>
-            {level === "empty" && (
-              <span className="hidden text-[11px] font-semibold sm:inline">· {t("creditsPanel.buy")}</span>
-            )}
-          </Link>
+          {/* Wallet pill with an attached "+" — the reference's top-right
+              control: balance and top-up as one object. */}
+          <div className={cn("inline-flex h-9 items-center rounded-full", pillClass)}>
+            <Link
+              href="/credits"
+              aria-label={pillTitle}
+              title={pillTitle}
+              className="inline-flex h-full items-center gap-1.5 rounded-l-full pl-2.5 pr-2.5 text-[13px] font-bold"
+            >
+              <span aria-hidden className={cn(
+                "flex h-5 w-5 items-center justify-center rounded-full text-[10px]",
+                level === "ok" && "bg-white/20",
+                level === "low" && "bg-[rgb(var(--warning)/0.2)]",
+                (level === "critical" || level === "empty") && "bg-[rgb(var(--danger)/0.2)]",
+              )}>◆</span>
+              <span className="tabular-nums">{new Intl.NumberFormat(locale).format(credits)}</span>
+            </Link>
+            <Link
+              href="/credits"
+              aria-label={t("creditsPanel.buy")}
+              title={t("creditsPanel.buy")}
+              className={cn(
+                "flex h-full w-8 items-center justify-center rounded-r-full border-l transition-colors",
+                level === "ok"
+                  ? "border-white/25 hover:bg-white/15"
+                  : "border-current/25 hover:bg-current/10",
+              )}
+            >
+              <Plus size={14} aria-hidden strokeWidth={2.6} />
+            </Link>
+          </div>
           <NotificationsBell items={notifications} unread={unread} />
           <LocaleSwitcher />
           <ThemeToggle />

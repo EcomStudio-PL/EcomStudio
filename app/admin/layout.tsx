@@ -23,7 +23,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <div className="flex min-w-0 flex-1 flex-col">
         <AdminShell name={profile.full_name ?? profile.email} email={profile.email} role={profile.role}
           stats={{ users: stats.users, usersToday: stats.usersToday, revenueTodayCents: stats.revenueTodayCents, revenue30dCents: stats.revenue30dCents }} />
-        <main className="mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-4 pb-[calc(var(--dock-h)+2rem+env(safe-area-inset-bottom))] pt-6 sm:px-5 lg:px-8 lg:pb-14 lg:pt-8 xl:px-10 2xl:px-12">
+        <main className="mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-4 pb-[calc(var(--dock-h)+2rem+env(safe-area-inset-bottom))] pt-5 sm:px-5 lg:px-6 lg:pb-12 lg:pt-6 xl:px-7">
           {children}
         </main>
       </div>

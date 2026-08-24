@@ -404,47 +404,61 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
               const hasVariants = Object.keys(m.pricing).length > 1;
               const selected = m.id === modelId;
               return (
+                /* The chosen model becomes a full card with its story; the
+                   rest stay one-line rows — the reference's model sheet. */
                 <button key={m.id} type="button" onClick={() => { setModelId(m.id); setQuantity(1); }}
                   aria-pressed={selected}
                   className={cn(
-                    "relative w-full overflow-hidden rounded-xl border p-3 text-left transition-all duration-200",
+                    "relative w-full overflow-hidden rounded-xl border text-left transition-all duration-200",
                     selected
-                      ? "is-selected"
-                      : "border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.6))] bg-sunken/50 hover:border-[rgb(var(--accent)/0.35)] hover:bg-raised/60"
+                      ? "is-selected p-3.5"
+                      : "border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.4))] bg-sunken/40 p-2.5 hover:border-[rgb(var(--accent)/0.35)] hover:bg-raised/60"
                   )}>
-                  <div className="flex items-start gap-3">
+                  <div className={cn("flex gap-3", selected ? "items-start" : "items-center")}>
                     {/* Monogram tile: the card's "thumbnail" — an honest one. */}
                     <span aria-hidden className={cn(
-                      "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-display text-sm font-bold text-white",
+                      "flex shrink-0 items-center justify-center rounded-xl font-display font-bold text-white",
                       "shadow-[inset_0_1px_0_rgb(255_255_255/0.25),0_6px_14px_-6px_rgb(0_0_0/0.45)]",
+                      selected ? "h-11 w-11 text-base" : "h-8 w-8 text-xs",
                       MODEL_TILES[idx % MODEL_TILES.length],
                     )}>
                       {m.displayName.replace(/[^A-Za-z0-9]/g, "").slice(0, 1).toUpperCase() || "AI"}
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
-                        <p className="min-w-0 truncate text-sm font-semibold tracking-tight">{m.displayName}</p>
+                        <p className={cn("min-w-0 truncate font-semibold tracking-tight",
+                          selected ? "text-[15px]" : "text-[13px]")}>
+                          {m.displayName}
+                        </p>
                         {/* Price is the decision-critical number: display face,
                             tabular figures, always the same position. */}
                         <span className={cn(
-                          "shrink-0 rounded-lg px-2 py-1 text-[11px] font-bold tabular-nums",
-                          selected ? "bg-[rgb(var(--accent)/0.22)] text-accent" : "bg-raised text-muted"
+                          "shrink-0 rounded-lg text-[11px] font-bold tabular-nums",
+                          selected ? "bg-[rgb(var(--accent)/0.22)] px-2 py-1 text-accent" : "px-1.5 py-0.5 text-muted"
                         )}>
                           {hasVariants ? t("studio.fromCr", { n: minPrice }) : `${minPrice} ◆`}
                         </span>
                       </div>
-                      {m.description && (
-                        <p className="mt-0.5 line-clamp-1 text-[11px] text-faint">{m.description}</p>
+                      {selected ? (
+                        <>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            {m.badge === "recommended" && <Badge tone="green">{t("studio.badgeRecommended")}</Badge>}
+                            {m.badge === "high_quality" && <Badge tone="amber">{t("studio.badgeHQ")}</Badge>}
+                            {m.supportsReferenceImages && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-faint">
+                                <ImageIcon size={11} aria-hidden />{t("studio.refsBadge")}
+                              </span>
+                            )}
+                          </div>
+                          {m.description && (
+                            <p className="mt-2 text-[12px] leading-relaxed text-muted">{m.description}</p>
+                          )}
+                        </>
+                      ) : (
+                        m.description && (
+                          <p className="mt-0.5 line-clamp-1 text-[11px] text-faint">{m.description}</p>
+                        )
                       )}
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                        {m.badge === "recommended" && <Badge tone="green">{t("studio.badgeRecommended")}</Badge>}
-                        {m.badge === "high_quality" && <Badge tone="amber">{t("studio.badgeHQ")}</Badge>}
-                        {m.supportsReferenceImages && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-faint">
-                            <ImageIcon size={11} aria-hidden />{t("studio.refsBadge")}
-                          </span>
-                        )}
-                      </div>
                     </div>
                   </div>
                   {selected && (
@@ -458,29 +472,28 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
 
         <Panel>
           <PanelHeader title={t("studio.settings")} icon={Settings2} />
-          <div className="space-y-4 px-3 pb-4 sm:px-4">
-            <div>
-              <Label>{t("generator.stepFormat")}</Label>
+          {/* Label on the left, control on the right — the reference's
+              settings sheet, so the eye scans one column of names. */}
+          <div className="space-y-3 px-3 pb-4 sm:px-4">
+            <SettingRow label={t("generator.stepFormat")}>
               <Segmented
                 label={t("generator.stepFormat")}
                 value={ratio}
                 onChange={(v) => setRatio(v as (typeof RATIOS)[number])}
                 options={RATIOS.map((r) => ({ value: r, label: r }))}
               />
-            </div>
+            </SettingRow>
             {(model?.resolutions.length ?? 0) > 1 && (
-              <div>
-                <Label>{t("studio.quality")}</Label>
+              <SettingRow label={t("studio.quality")}>
                 <Segmented
                   label={t("studio.quality")}
                   value={effectiveResolution}
                   onChange={setResolution}
                   options={model!.resolutions.map((r) => ({ value: r, label: r, meta: `${model!.pricing[r]} ◆` }))}
                 />
-              </div>
+              </SettingRow>
             )}
-            <div>
-              <Label>{t("studio.quantity")}</Label>
+            <SettingRow label={t("studio.quantity")}>
               <Segmented
                 label={t("studio.quantity")}
                 value={String(quantity)}
@@ -489,7 +502,7 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
                   value: String(i + 1), label: String(i + 1),
                 }))}
               />
-            </div>
+            </SettingRow>
           </div>
         </Panel>
 
@@ -534,6 +547,19 @@ export function Studio({ products, models, credits, workspaceId, initialPrompt =
         selectedId={productId || undefined}
         onSelect={(p) => pickProduct(p.id)}
       />
+    </div>
+  );
+}
+
+/** One settings line: name on the left, control filling the rest. Stacks on
+ *  the narrowest rails so the segments never get squeezed. */
+function SettingRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+      <span className="w-full shrink-0 text-[12px] font-semibold leading-tight text-muted sm:w-[5.5rem]">
+        {label}
+      </span>
+      <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
 }

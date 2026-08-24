@@ -8,10 +8,12 @@ import { cn } from "@/lib/utils";
  *  otherwise every child route would light them up too. */
 const EXACT = new Set(["/dashboard", "/admin"]);
 
-export function NavLink({ href, label, icon: Icon, onNavigate, compact = false }: {
+export function NavLink({ href, label, icon: Icon, onNavigate, compact = false, dense = false }: {
   href: string; label: string; icon: LucideIcon; onNavigate?: () => void;
   /** Icon-only rendering for the collapsed desktop rail (label → tooltip). */
   compact?: boolean;
+  /** Tighter rows for the desktop rail; the touch drawer keeps 44px. */
+  dense?: boolean;
 }) {
   const pathname = usePathname();
   const active = pathname === href || (!EXACT.has(href) && pathname.startsWith(href));
@@ -23,8 +25,12 @@ export function NavLink({ href, label, icon: Icon, onNavigate, compact = false }
       aria-current={active ? "page" : undefined}
       aria-label={compact ? label : undefined}
       className={cn(
-        "group relative flex items-center rounded-xl text-sm transition-all duration-150",
-        compact ? "min-h-[46px] justify-center px-0 py-2.5" : "min-h-[44px] gap-3 px-3 py-2.5",
+        "group relative flex items-center rounded-xl transition-all duration-150",
+        compact
+          ? "min-h-[44px] justify-center px-0 py-2 text-sm"
+          : dense
+            ? "min-h-[38px] gap-2.5 px-2.5 py-1.5 text-[13.5px]"
+            : "min-h-[44px] gap-3 px-3 py-2.5 text-sm",
         active
           ? "bg-[linear-gradient(90deg,rgb(var(--accent)/0.20),rgb(var(--accent)/0.05))] font-semibold text-ink shadow-[inset_0_1px_0_rgb(var(--hairline)/0.08)]"
           : "font-medium text-muted hover:bg-[rgb(var(--accent)/0.08)] hover:text-ink"
@@ -38,12 +44,12 @@ export function NavLink({ href, label, icon: Icon, onNavigate, compact = false }
       )} />
       <span aria-hidden className={cn(
         "flex shrink-0 items-center justify-center rounded-lg transition-colors duration-150",
-        compact ? "h-9 w-9" : "h-7 w-7",
+        compact ? "h-9 w-9" : dense ? "h-6 w-6" : "h-7 w-7",
         active
           ? "bg-[rgb(var(--accent)/0.20)] text-accent shadow-[0_6px_16px_-10px_rgb(var(--accent)/0.9)]"
           : "text-faint group-hover:text-muted"
       )}>
-        <Icon size={compact ? 17 : 16} strokeWidth={active ? 2.3 : 2} />
+        <Icon size={compact ? 17 : dense ? 15 : 16} strokeWidth={active ? 2.3 : 2} />
       </span>
       {!compact && <span className="truncate">{label}</span>}
       {/* Collapsed rail: the label becomes a tooltip on hover. */}

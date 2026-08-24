@@ -9,61 +9,65 @@
   /* LIGHT — elegant soft-gray glass, not office paper and not plain white.
      The page is a cool silver-lavender; cards are barely-off-white glass
      floating on it, so the theme reads as material rather than as a form. */
-  --bg: 241 241 248;
-  --sunken: 233 233 242;
-  --sidebar: 245 245 250;
-  --surface: 252 252 255;
-  --raised: 240 240 247;
+  --bg: 245 242 251;
+  --sunken: 237 232 246;
+  --sidebar: 249 246 253;
+  --surface: 253 251 255;
+  --raised: 243 239 251;
   --float: 255 255 255;
 
-  --ink: 30 27 46;
-  --muted: 95 92 116;
-  --faint: 136 133 158;
+  --ink: 32 22 45;
+  --muted: 100 88 120;
+  --faint: 142 130 162;
 
-  --line: 226 225 237;
-  --line-strong: 204 202 222;
-  --hairline: 76 60 122;
-  --hairline-alpha: 0.14;
+  --line: 231 224 243;
+  --line-strong: 210 198 232;
+  --hairline: 96 50 150;
+  --hairline-alpha: 0.15;
 
-  --accent: 248 0 248;
-  --accent-hover: 224 0 226;
-  --accent-strong: 201 0 207;
-  --accent-soft: 250 232 251;
-  --accent-glow: 255 61 218;
+  --accent: 226 0 214;
+  --accent-hover: 205 0 196;
+  --accent-strong: 176 0 172;
+  --accent-soft: 251 232 252;
+  --accent-glow: 246 70 214;
+  --violet: 147 51 234;
+  --purple: 124 58 237;
+  --pink: 219 39 176;
   --accent2: 190 96 6;
   --accent2-soft: 250 239 222;
-  --indigo: 84 76 228;
+  --indigo: 124 58 237;
   --success: 15 122 68;
   --warning: 176 82 8;
   --danger: 194 38 52;
 
-  --glass: 250 250 253;
-  --glass-alpha: 0.68;
-  --glass-border: 76 60 122;
-  --glass-border-alpha: 0.13;
+  --glass: 252 250 255;
+  --glass-alpha: 0.72;
+  --glass-border: 96 50 150;
+  --glass-border-alpha: 0.14;
 
   /* Overlay scrim — one veil for drawer, modal and palette. Light keeps it
-     airy (violet-gray), dark drops near-black navy. */
-  --scrim: 44 38 76;
+     airy (violet haze), dark drops to plum-black. */
+  --scrim: 52 30 82;
   --scrim-alpha: 0.44;
 
   /* SHADOW LANGUAGE — one family, four steps, cool violet-gray so depth
      reads as air rather than as smudged ink. */
-  --shadow-1: 0 1px 2px rgb(54 46 96 / 0.06), 0 1px 1px rgb(54 46 96 / 0.03);
-  --shadow-2: 0 4px 14px -6px rgb(54 46 96 / 0.14), 0 1px 3px rgb(54 46 96 / 0.05);
-  --shadow-3: 0 16px 40px -18px rgb(54 46 96 / 0.24), 0 2px 6px rgb(54 46 96 / 0.06);
-  --shadow-4: 0 28px 70px -24px rgb(54 46 96 / 0.30);
+  --shadow-1: 0 1px 2px rgb(66 36 104 / 0.07), 0 1px 1px rgb(66 36 104 / 0.04);
+  --shadow-2: 0 4px 14px -6px rgb(66 36 104 / 0.16), 0 1px 3px rgb(66 36 104 / 0.06);
+  --shadow-3: 0 16px 40px -18px rgb(66 36 104 / 0.26), 0 2px 6px rgb(66 36 104 / 0.07);
+  --shadow-4: 0 28px 70px -24px rgb(66 36 104 / 0.32);
   --ring-accent: 0 0 0 1px rgb(var(--accent) / 0.35);
 
   /* LAYOUT CONSTANTS — one source for chrome dimensions. */
   --header-h: 56px;
   --dock-h: 84px;
   --drawer-w: 20rem;
-  --rail-w: 272px;
-  --rail-w-collapsed: 78px;
-  /* The work surface. Wide enough that a 1440p monitor stops feeling like a
-     stretched phone, capped so text columns never lose their measure. */
-  --content-max: 1560px;
+  --rail-w: 244px;
+  --rail-w-collapsed: 76px;
+  /* The work surface fills the monitor like the reference does: 1920 is
+     edge-to-edge, and the cap only engages past 2.5K so text keeps a
+     readable measure on cinema displays. */
+  --content-max: 2100px;
   --radius-sm: 0.625rem;
   --radius-md: 0.875rem;
   --radius-lg: 1.125rem;
@@ -75,48 +79,52 @@
      black. Five distinct layers, each a step up the same navy ramp, so a
      card on a panel on the page still reads as three planes with air
      between them. */
-  --bg: 11 13 26;
-  --sunken: 8 10 20;
-  --sidebar: 14 16 32;
-  --surface: 18 21 40;
-  --raised: 25 28 52;
-  --float: 32 36 64;
+  --bg: 13 8 19;
+  --sunken: 9 5 14;
+  --sidebar: 18 11 26;
+  --surface: 26 17 37;
+  --raised: 35 23 49;
+  --float: 45 30 62;
 
-  --ink: 242 244 254;
-  --muted: 170 176 206;
-  --faint: 120 126 160;
+  --ink: 244 238 250;
+  --muted: 176 163 194;
+  --faint: 130 117 150;
 
-  --line: 190 200 255;
-  --line-strong: 190 200 255;
-  --hairline: 190 200 255;
-  --hairline-alpha: 0.10;
+  --line: 196 150 255;
+  --line-strong: 196 150 255;
+  --hairline: 196 150 255;
+  --hairline-alpha: 0.14;
 
-  --accent: 249 64 244;
-  --accent-hover: 251 96 246;
-  --accent-strong: 201 0 207;
-  --accent-soft: 62 26 72;
-  --accent-glow: 255 61 218;
+  --accent: 240 60 224;
+  --accent-hover: 246 96 232;
+  --accent-strong: 192 20 190;
+  --accent-soft: 66 24 68;
+  --accent-glow: 255 92 226;
+  /* The violet family the reference uses for icon tiles and fills. */
+  --violet: 168 85 247;
+  --purple: 139 92 246;
+  --pink: 244 114 208;
   --accent2: 255 168 92;
-  --accent2-soft: 62 44 28;
-  --indigo: 124 132 255;
+  --accent2-soft: 66 44 30;
+  --indigo: 139 92 246;
   --success: 74 222 128;
   --warning: 251 191 36;
   --danger: 248 113 113;
 
-  --glass: 15 17 34;
-  --glass-alpha: 0.72;
-  --glass-border: 190 200 255;
-  --glass-border-alpha: 0.10;
+  --glass: 21 13 30;
+  --glass-alpha: 0.78;
+  --glass-border: 196 150 255;
+  --glass-border-alpha: 0.14;
 
-  --scrim: 3 5 14;
-  --scrim-alpha: 0.72;
+  --scrim: 8 3 14;
+  --scrim-alpha: 0.74;
 
-  /* Navy-black shadows with a whisper of violet in the ambient steps. */
-  --shadow-1: 0 1px 2px rgb(2 4 16 / 0.5);
-  --shadow-2: 0 6px 18px -8px rgb(2 4 16 / 0.6), inset 0 1px 0 rgb(190 200 255 / 0.06);
-  --shadow-3: 0 20px 48px -22px rgb(2 4 16 / 0.8), inset 0 1px 0 rgb(190 200 255 / 0.07);
-  --shadow-4: 0 32px 80px -28px rgb(2 4 16 / 0.9), inset 0 1px 0 rgb(190 200 255 / 0.08);
-  --ring-accent: 0 0 0 1px rgb(var(--accent) / 0.45);
+  /* Plum-black shadows with a violet inner light on every raised edge. */
+  --shadow-1: 0 1px 2px rgb(6 2 12 / 0.6);
+  --shadow-2: 0 6px 18px -8px rgb(6 2 12 / 0.7), inset 0 1px 0 rgb(196 150 255 / 0.08);
+  --shadow-3: 0 20px 48px -22px rgb(6 2 12 / 0.85), inset 0 1px 0 rgb(196 150 255 / 0.10);
+  --shadow-4: 0 32px 80px -28px rgb(6 2 12 / 0.92), inset 0 1px 0 rgb(196 150 255 / 0.12);
+  --ring-accent: 0 0 0 1px rgb(var(--accent) / 0.5);
 }
 /* Dark mode is opaque: the wash is already dark, and dropping the blur on
    every card keeps scrolling cheap on phones. The top-light on every card
@@ -124,15 +132,15 @@
    light rather than as gray boxes. */
 .dark .panel {
   background:
-    linear-gradient(180deg, rgb(190 200 255 / 0.045), transparent 46%),
-    linear-gradient(160deg, rgb(var(--accent) / 0.025), transparent 38%),
+    linear-gradient(180deg, rgb(196 150 255 / 0.055), transparent 46%),
+    linear-gradient(160deg, rgb(var(--accent) / 0.035), transparent 40%),
     rgb(var(--surface));
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
-.dark .border-line { border-color: rgb(190 200 255 / 0.10); }
-.dark .divide-line > :not([hidden]) ~ :not([hidden]) { border-color: rgb(190 200 255 / 0.07); }
-.dark .border-line-strong { border-color: rgb(190 200 255 / 0.17); }
+.dark .border-line { border-color: rgb(196 150 255 / 0.14); }
+.dark .divide-line > :not([hidden]) ~ :not([hidden]) { border-color: rgb(196 150 255 / 0.10); }
+.dark .border-line-strong { border-color: rgb(196 150 255 / 0.22); }
 
 /* ─────────────────────────────────────────────────────────────────────────
    SURFACES. Three named planes instead of one glass class used everywhere.
@@ -186,21 +194,21 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(52rem 34rem at 86% -10%, rgb(var(--accent) / 0.07), transparent 60%),
-    radial-gradient(46rem 34rem at -12% 108%, rgb(var(--indigo) / 0.08), transparent 58%),
-    radial-gradient(40rem 28rem at 55% 30%, rgb(255 255 255 / 0.5), transparent 70%),
-    linear-gradient(180deg, rgb(255 255 255 / 0.35), transparent 30%);
+    radial-gradient(52rem 34rem at 86% -10%, rgb(var(--accent) / 0.08), transparent 60%),
+    radial-gradient(46rem 34rem at -12% 108%, rgb(var(--violet) / 0.09), transparent 58%),
+    radial-gradient(40rem 28rem at 55% 30%, rgb(255 255 255 / 0.55), transparent 70%),
+    linear-gradient(180deg, rgb(255 255 255 / 0.4), transparent 30%);
 }
 /* Ambient light — DARK: the deep-navy stage under neon. A magenta key
    top-right, indigo fill bottom-left, a violet pool mid-stage and a navy
    tonal wash from the top, so no region of the page is ever flat black. */
 .dark body::before {
   background:
-    radial-gradient(52rem 34rem at 86% -10%, rgb(var(--accent) / 0.17), transparent 60%),
-    radial-gradient(48rem 36rem at -12% 108%, rgb(var(--indigo) / 0.14), transparent 58%),
-    radial-gradient(36rem 26rem at 48% 42%, rgb(139 92 246 / 0.07), transparent 70%),
-    radial-gradient(30rem 22rem at 70% 85%, rgb(var(--accent-glow) / 0.05), transparent 72%),
-    linear-gradient(180deg, rgb(46 44 110 / 0.16), transparent 34%);
+    radial-gradient(52rem 34rem at 86% -10%, rgb(var(--accent) / 0.18), transparent 60%),
+    radial-gradient(48rem 36rem at -12% 108%, rgb(var(--violet) / 0.16), transparent 58%),
+    radial-gradient(36rem 26rem at 48% 42%, rgb(var(--purple) / 0.09), transparent 70%),
+    radial-gradient(30rem 22rem at 70% 85%, rgb(var(--accent-glow) / 0.06), transparent 72%),
+    linear-gradient(180deg, rgb(74 32 96 / 0.22), transparent 34%);
 }
 /* Fine grain over the ambient wash: kills gradient banding on OLED screens
    and gives the background a photographic rather than digital texture. */
@@ -353,13 +361,11 @@ body::after {
    ───────────────────────────────────────────────────────────────────────── */
 .rail {
   background:
-    radial-gradient(22rem 16rem at 0% 0%, rgb(var(--accent) / 0.10), transparent 70%),
-    linear-gradient(180deg, rgb(var(--indigo) / 0.07), transparent 34%),
-    rgb(var(--sidebar) / 0.92);
-  backdrop-filter: blur(24px) saturate(1.3);
-  -webkit-backdrop-filter: blur(24px) saturate(1.3);
+    radial-gradient(22rem 16rem at 0% 0%, rgb(var(--accent) / 0.12), transparent 70%),
+    linear-gradient(180deg, rgb(var(--violet) / 0.09), transparent 34%),
+    rgb(var(--sidebar));
   border-right: 1px solid rgb(var(--glass-border) / var(--glass-border-alpha));
-  box-shadow: 1px 0 0 rgb(var(--accent) / 0.06);
+  box-shadow: 1px 0 0 rgb(var(--accent) / 0.07);
 }
 
 /* Tooltip for the collapsed rail — CSS only, no library, no positioning JS. */
