@@ -1,16 +1,33 @@
-import { Maximize2 } from "lucide-react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
-import { listAssets } from "@/lib/services/generator";
+import { listAssets, listJobs } from "@/lib/services/generator";
+import { listProducts } from "@/lib/services/products";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Card } from "@/components/ui/card";
+import { AdminTable } from "@/components/ui/admin-table";
 import { Badge } from "@/components/ui/badge";
+import { LibraryGrid, type LibraryCard } from "@/components/library/library-grid";
 import { formatDate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
-export default async function LibraryPage() {
+export const dynamic = "force-dynamic";
+
+const JOB_TONE = { queued: "neutral", processing: "blue", completed: "green", failed: "red", cancelled: "neutral" } as const;
+
+/**
+ * BIBLIOTEKA — the one destination for everything the account produced
+ * (UX spec §6): a grid of generations with hover preview and multi-select
+ * ZIP download, the tool outputs on their own shelf, filters by product,
+ * and HISTORIA as a tab instead of a separate application area.
+ */
+export default async function LibraryPage({ searchParams }: {
+  searchParams: Promise<{ tab?: string; product?: string }>;
+}) {
+  const { tab: tabParam, product: productFilter } = await searchParams;
+  const tab = tabParam === "history" ? "history" : tabParam === "tools" ? "tools" : "all";
   const supabase = await createClient();
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
@@ -18,19 +35,24 @@ export default async function LibraryPage() {
   if (!user) return null;
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) return null;
-  const generations = await listAssets(supabase, workspace.id);
-  // Tool results are saved the same way but are not generations, so they get
-  // their own shelf rather than being folded into the generation grid.
-  const { data: toolResults } = await supabase
-    .from("tool_results")
-    .select("id, tool_slug, storage_path, created_at")
-    .eq("workspace_id", workspace.id)
-    .order("created_at", { ascending: false })
-    .limit(60);
 
-  // Sign all generated asset paths in one call.
+  const [generations, products, jobs, { data: toolResults }] = await Promise.all([
+    listAssets(supabase, workspace.id),
+    listProducts(supabase, workspace.id, 100),
+    tab === "history" ? listJobs(supabase, workspace.id) : Promise.resolve([]),
+    supabase.from("tool_results")
+      .select("id, tool_slug, storage_path, created_at")
+      .eq("workspace_id", workspace.id)
+      .order("created_at", { ascending: false })
+      .limit(60),
+  ]);
+
+  const filtered = productFilter
+    ? generations.filter((g) => g.product_id === productFilter)
+    : generations;
+
   const paths = [
-    ...generations.flatMap((g) => g.generation_assets.map((a) => a.storage_path)),
+    ...filtered.flatMap((g) => g.generation_assets.map((a) => a.storage_path)),
     ...(toolResults ?? []).map((r) => r.storage_path),
   ];
   const urlMap = new Map<string, string>();
@@ -39,53 +61,79 @@ export default async function LibraryPage() {
     signed?.forEach((s) => { if (s.signedUrl && s.path) urlMap.set(s.path, s.signedUrl); });
   }
 
+  const cards: LibraryCard[] = filtered.map((g) => ({
+    id: g.id,
+    product: g.products?.name ?? null,
+    created: g.created_at,
+    assets: g.generation_assets.map((a) => ({ id: a.id, path: a.storage_path, url: urlMap.get(a.storage_path) ?? null })),
+  }));
+
+  const tabs = [
+    { key: "all", href: "/library", label: t("library.tabAll") },
+    { key: "tools", href: "/library?tab=tools", label: t("library.tabTools") },
+    { key: "history", href: "/library?tab=history", label: t("library.tabHistory") },
+  ];
+
+  // Product filter — products become a Library dimension, per the spec.
+  const usedProductIds = new Set(generations.map((g) => g.product_id).filter(Boolean));
+  const filterableProducts = products.filter((p) => usedProductIds.has(p.id));
+
   return (
     <div>
       <PageHeader overline={t("nav.groups.assets")} title={t("library.title")} sub={t("library.sub")} />
-      {generations.length === 0 && (toolResults ?? []).length === 0 ? (
-        <EmptyState title={t("library.emptyTitle")} body={t("library.emptyBody")} />
-      ) : (
-        <div className="stagger grid gap-3.5 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 xl:gap-4">
-          {generations.map((g) => (
-            <Card key={g.id} className="group overflow-hidden">
-              {g.generation_assets.length > 0 && (
-                <div className={`grid gap-0.5 ${g.generation_assets.length > 1 ? "grid-cols-2" : ""}`}>
-                  {g.generation_assets.slice(0, 4).map((a) => {
-                    const url = urlMap.get(a.storage_path);
-                    return url ? (
-                      <a key={a.id} href={url} target="_blank" rel="noreferrer noopener"
-                        className="group/tile relative block overflow-hidden bg-raised">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={url} alt="" loading="lazy"
-                          className="aspect-square w-full object-cover transition-transform duration-500 group-hover/tile:scale-[1.05]" />
-                        {/* Hover: the photo dims and offers the one action it has. */}
-                        <span aria-hidden className="absolute inset-0 flex items-center justify-center bg-[rgb(var(--scrim)/0.55)] opacity-0 backdrop-blur-[1px] transition-opacity duration-200 group-hover/tile:opacity-100">
-                          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white ring-1 ring-white/30">
-                            <Maximize2 size={15} />
-                          </span>
-                        </span>
-                      </a>
-                    ) : null;
-                  })}
-                </div>
-              )}
-              <div className="flex items-center justify-between gap-2 px-4 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold tracking-tight">{g.products?.name ?? "—"}</p>
-                  <p className="caption mt-0.5">{formatDate(g.created_at, locale)}</p>
-                </div>
-                <Badge tone={g.generation_assets.length > 0 ? "green" : "neutral"}>
-                  {g.generation_assets.length}
-                </Badge>
-              </div>
-            </Card>
+
+      {/* TABS + FILTERS */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2.5">
+        <div className="flex items-stretch gap-1 rounded-xl border border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*0.8))] bg-sunken/80 p-1">
+          {tabs.map((tb) => (
+            <Link key={tb.key} href={tb.href}
+              aria-current={tab === tb.key ? "page" : undefined}
+              className={cn(
+                "rounded-lg px-3.5 py-1.5 text-[13px] font-semibold transition-all",
+                tab === tb.key ? "bg-surface text-ink shadow-e2 ring-1 ring-[rgb(var(--accent)/0.45)]" : "text-muted hover:text-ink",
+              )}>
+              {tb.label}
+            </Link>
           ))}
         </div>
-      )}
+        {tab === "all" && filterableProducts.length > 0 && (
+          <div className="flex max-w-full items-center gap-1.5 overflow-x-auto">
+            <Link href="/library"
+              className={cn("shrink-0 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors",
+                !productFilter ? "bg-[rgb(var(--accent)/0.16)] text-ink ring-1 ring-[rgb(var(--accent)/0.4)]" : "plate text-muted hover:text-ink")}>
+              {t("library.allProducts")}
+            </Link>
+            {filterableProducts.slice(0, 8).map((p) => (
+              <Link key={p.id} href={`/library?product=${p.id}`}
+                className={cn("max-w-[12rem] shrink-0 truncate rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors",
+                  productFilter === p.id ? "bg-[rgb(var(--accent)/0.16)] text-ink ring-1 ring-[rgb(var(--accent)/0.4)]" : "plate text-muted hover:text-ink")}>
+                {p.name}
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
 
-      {(toolResults ?? []).length > 0 && (
-        <section className="mt-7">
-          <h2 className="mb-3 font-display text-[15px] font-semibold tracking-tight">{t("tools.title")}</h2>
+      {tab === "history" ? (
+        jobs.length === 0 ? (
+          <EmptyState title={t("history.emptyTitle")} body={t("history.emptyBody")} />
+        ) : (
+          <AdminTable
+            headers={[t("history.product"), t("common.type"), t("common.status"), t("history.creditsCol"), t("common.date")]}
+            empty={t("history.emptyBody")}
+            rows={jobs.map((j) => [
+              j.products?.name ?? "—",
+              j.material_type ? t(`generator.mt.${j.material_type}`) : "—",
+              <Badge key="s" tone={JOB_TONE[j.status as keyof typeof JOB_TONE] ?? "neutral"} dot>{t(`history.st.${j.status}`)}</Badge>,
+              <span key="c" className="tabular-nums">{j.credits_charged}</span>,
+              <span key="d" className="text-muted">{formatDate(j.created_at, locale)}</span>,
+            ])}
+          />
+        )
+      ) : tab === "tools" ? (
+        (toolResults ?? []).length === 0 ? (
+          <EmptyState title={t("library.emptyTitle")} body={t("library.emptyBody")} />
+        ) : (
           <div className="grid grid-cols-2 gap-2 [&>*]:min-w-0 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
             {(toolResults ?? []).map((r) => {
               const url = urlMap.get(r.storage_path);
@@ -99,7 +147,11 @@ export default async function LibraryPage() {
               ) : null;
             })}
           </div>
-        </section>
+        )
+      ) : cards.length === 0 ? (
+        <EmptyState title={t("library.emptyTitle")} body={t("library.emptyBody")} />
+      ) : (
+        <LibraryGrid cards={cards} locale={locale} />
       )}
     </div>
   );

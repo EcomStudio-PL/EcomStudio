@@ -1931,6 +1931,39 @@ export type Database = {
         }
         Relationships: []
       }
+      search_queries: {
+        Row: {
+          clicked: boolean
+          created_at: string
+          id: string
+          media_type: string
+          query: string
+          result_count: number
+          user_id: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          clicked?: boolean
+          created_at?: string
+          id?: string
+          media_type?: string
+          query: string
+          result_count?: number
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          clicked?: boolean
+          created_at?: string
+          id?: string
+          media_type?: string
+          query?: string
+          result_count?: number
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: []
+      }
       subscriptions: {
         Row: {
           created_at: string

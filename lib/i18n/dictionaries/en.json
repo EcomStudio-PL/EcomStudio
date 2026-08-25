@@ -1,6 +1,6 @@
 {
   "nav": {
-    "dashboard": "Dashboard",
+    "dashboard": "Home",
     "products": "Products",
     "generator": "AI Studio",
     "library": "Library",
@@ -69,7 +69,8 @@
     "download": "Download",
     "noData": "No data",
     "show": "Show",
-    "hide": "Hide"
+    "hide": "Hide",
+    "soon": "Soon"
   },
   "landing": {
     "headline": "Professional product visuals with AI. Faster than a photo studio.",
@@ -262,7 +263,15 @@
     "title": "Library",
     "sub": "Generated assets of your workspace.",
     "emptyTitle": "Library is empty",
-    "emptyBody": "Assets will appear here after your first generation."
+    "emptyBody": "Assets will appear here after your first generation.",
+    "tabAll": "Generations",
+    "tabTools": "Tools",
+    "tabHistory": "History",
+    "allProducts": "All products",
+    "selectOn": "Select",
+    "selectOff": "Cancel selection",
+    "zip": "Download ZIP ({n})",
+    "editAsset": "Edit in tools"
   },
   "history": {
     "title": "History",
@@ -1021,7 +1030,9 @@
       "prompt": "Shots",
       "generation": "Generations",
       "user": "Customers"
-    }
+    },
+    "imagesSection": "Images",
+    "videosSection": "Video"
   },
   "econ": {
     "title": "Customer profitability",
@@ -1333,5 +1344,63 @@
     "low": "Credits running low",
     "buy": "Buy credits",
     "upgrade": "Upgrade plan"
+  },
+  "topnav": {
+    "home": "Home",
+    "image": "Image",
+    "video": "Video",
+    "library": "Library",
+    "primary": "Primary navigation"
+  },
+  "mega": {
+    "create": "Create",
+    "edit": "Edit",
+    "engine": "Ready generator",
+    "custom": "Own prompt",
+    "allTools": "All tools",
+    "videoSoon": "Video generation is in the works — the architecture is already waiting for it."
+  },
+  "cats": {
+    "moda": "Fashion",
+    "modaSub": "Model shots, items and outdoor styling.",
+    "modaStyle": "Fashion editorial styling, natural light",
+    "ecommerce": "E-commerce",
+    "ecommerceSub": "Thumbnails, packshots and marketplace photo sets.",
+    "ecommerceStyle": "Clean marketplace packshot, bright background, crisp product",
+    "social": "Social Media",
+    "socialSub": "Lifestyle content for Instagram, TikTok and ads.",
+    "socialStyle": "Social media lifestyle, dynamic mood, natural frames",
+    "mailing": "Mailing",
+    "mailingSub": "Offer graphics for e-mail campaigns.",
+    "mailingStyle": "Offer graphic, clear composition with space for text",
+    "inne": "Other",
+    "inneSub": "Labels, packaging, pictograms and flyers.",
+    "inneStyle": "Branding materials: labels, packaging, flyers",
+    "matching": "Matching",
+    "matchingSub": "Generate in the style of an inspiration — soon."
+  },
+  "vids": {
+    "product": "Product video",
+    "fashion": "Fashion",
+    "ecommerce": "E-commerce",
+    "social": "Social Media",
+    "img2vid": "Image → video",
+    "prompt2vid": "Prompt → video",
+    "captions": "Captioned edit",
+    "thumbnail": "Thumbnail pick"
+  },
+  "gen": {
+    "title": "Generator",
+    "customSub": "Advanced mode: full control over the prompt, references and parameters."
+  },
+  "home": {
+    "sub": "From a product photo to a ready sales session — in minutes.",
+    "startCta": "Start generating",
+    "continue": "Continue: {name}",
+    "statCredits": "Available credits",
+    "statWeek": "Generations this week",
+    "statMonth": "Generations this month",
+    "categoriesTitle": "What do you want to create today?",
+    "recentTitle": "Recent activity"
   }
 }

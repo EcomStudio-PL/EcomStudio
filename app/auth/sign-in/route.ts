@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   const email = String(form.get("email") ?? "").trim();
   const password = String(form.get("password") ?? "");
   const nextRaw = String(form.get("next") ?? "");
-  const next = nextRaw.startsWith("/") && !nextRaw.startsWith("//") ? nextRaw : "/dashboard";
+  const next = nextRaw.startsWith("/") && !nextRaw.startsWith("//") ? nextRaw : "/home";
   const origin = new URL(request.url).origin;
 
   const redirectTo = (path: string) => {

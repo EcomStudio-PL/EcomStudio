@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, AUTH_COOKIE_OPTIONS } from "./config";
 
-const PROTECTED_PREFIXES = ["/dashboard","/products","/generator","/library","/prompts","/history","/credits","/plan","/settings","/admin"];
+const PROTECTED_PREFIXES = ["/home","/dashboard","/products","/generator","/library","/prompts","/history","/credits","/plan","/settings","/admin","/tools","/inspirations","/support"];
 const AUTH_PAGES = ["/login", "/register", "/forgot-password"];
 
 export async function updateSession(request: NextRequest) {
@@ -47,7 +47,7 @@ export async function updateSession(request: NextRequest) {
   if (user && AUTH_PAGES.some((p) => pathname.startsWith(p))) {
     const url = request.nextUrl.clone();
     const next = request.nextUrl.searchParams.get("next");
-    url.pathname = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+    url.pathname = next && next.startsWith("/") && !next.startsWith("//") ? next : "/home";
     url.search = "";
     return redirectWithCookies(url);
   }

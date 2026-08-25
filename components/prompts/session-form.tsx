@@ -55,13 +55,15 @@ const MODEL_TILES = [
  * Preparing a session charges nothing; credits move only when shots are
  * generated on the board — the summary says so out loud.
  */
-export function SessionForm({ products, workspaceId, engineAvailable, models, balance, plan, aside }: {
+export function SessionForm({ products, workspaceId, engineAvailable, models, balance, plan, aside, initialStyle }: {
   products: PromptProductOption[]; workspaceId: string; engineAvailable: boolean;
   models: SessionModelOption[];
   balance: number;
   plan?: string;
   /** Server-rendered extras for the right rail (recent sessions). */
   aside?: React.ReactNode;
+  /** Style hint preselected by a homepage/mega-menu category tile. */
+  initialStyle?: string;
 }) {
   const { t, locale } = useI18n();
   const router = useRouter();
@@ -71,8 +73,8 @@ export function SessionForm({ products, workspaceId, engineAvailable, models, ba
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [extraInfo, setExtraInfo] = useState("");
-  const [style, setStyle] = useState("");
-  const [styleOpen, setStyleOpen] = useState(false);
+  const [style, setStyle] = useState(initialStyle ?? "");
+  const [styleOpen, setStyleOpen] = useState(Boolean(initialStyle));
   const [ratio, setRatio] = useState<(typeof RATIOS)[number]>("16:9");
   const [shots, setShots] = useState(5);
   const [modelId, setModelId] = useState(models[0]?.id ?? "");

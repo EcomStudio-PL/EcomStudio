@@ -1,6 +1,6 @@
 {
   "nav": {
-    "dashboard": "Übersicht",
+    "dashboard": "Startseite",
     "products": "Produkte",
     "generator": "AI Studio",
     "library": "Bibliothek",
@@ -69,7 +69,8 @@
     "download": "Herunterladen",
     "noData": "Keine Daten",
     "show": "Anzeigen",
-    "hide": "Verbergen"
+    "hide": "Verbergen",
+    "soon": "Bald"
   },
   "landing": {
     "headline": "Professionelle Produktvisuals mit KI. Schneller als ein Fotostudio.",
@@ -262,7 +263,15 @@
     "title": "Bibliothek",
     "sub": "Generierte Assets deines Workspace.",
     "emptyTitle": "Bibliothek ist leer",
-    "emptyBody": "Assets erscheinen hier nach deiner ersten Generierung."
+    "emptyBody": "Assets erscheinen hier nach deiner ersten Generierung.",
+    "tabAll": "Generierungen",
+    "tabTools": "Werkzeuge",
+    "tabHistory": "Verlauf",
+    "allProducts": "Alle Produkte",
+    "selectOn": "Auswählen",
+    "selectOff": "Auswahl abbrechen",
+    "zip": "ZIP herunterladen ({n})",
+    "editAsset": "In Werkzeugen bearbeiten"
   },
   "history": {
     "title": "Verlauf",
@@ -1021,7 +1030,9 @@
       "prompt": "Aufnahmen",
       "generation": "Generierungen",
       "user": "Kunden"
-    }
+    },
+    "imagesSection": "Bilder",
+    "videosSection": "Video"
   },
   "econ": {
     "title": "Kundenrentabilität",
@@ -1333,5 +1344,63 @@
     "low": "Credits werden knapp",
     "buy": "Credits kaufen",
     "upgrade": "Plan upgraden"
+  },
+  "topnav": {
+    "home": "Startseite",
+    "image": "Bild",
+    "video": "Video",
+    "library": "Bibliothek",
+    "primary": "Hauptnavigation"
+  },
+  "mega": {
+    "create": "Erstellen",
+    "edit": "Bearbeiten",
+    "engine": "Fertiger Generator",
+    "custom": "Eigener Prompt",
+    "allTools": "Alle Werkzeuge",
+    "videoSoon": "Video-Generierung ist in Arbeit — die Architektur wartet schon darauf."
+  },
+  "cats": {
+    "moda": "Mode",
+    "modaSub": "Model-Shots, Objekte und Outdoor-Styling.",
+    "modaStyle": "Mode-Editorial-Styling, natürliches Licht",
+    "ecommerce": "E-Commerce",
+    "ecommerceSub": "Thumbnails, Packshots und Marketplace-Fotosets.",
+    "ecommerceStyle": "Sauberer Marketplace-Packshot, heller Hintergrund, klares Produkt",
+    "social": "Social Media",
+    "socialSub": "Lifestyle-Content für Instagram, TikTok und Ads.",
+    "socialStyle": "Social-Media-Lifestyle, dynamische Stimmung, natürliche Bilder",
+    "mailing": "Mailing",
+    "mailingSub": "Angebotsgrafiken für E-Mail-Kampagnen.",
+    "mailingStyle": "Angebotsgrafik, klare Komposition mit Platz für Text",
+    "inne": "Sonstiges",
+    "inneSub": "Etiketten, Verpackungen, Piktogramme und Flyer.",
+    "inneStyle": "Branding-Materialien: Etiketten, Verpackungen, Flyer",
+    "matching": "Matching",
+    "matchingSub": "Generierung im Stil einer Inspiration — bald."
+  },
+  "vids": {
+    "product": "Produktvideo",
+    "fashion": "Mode",
+    "ecommerce": "E-Commerce",
+    "social": "Social Media",
+    "img2vid": "Bild → Video",
+    "prompt2vid": "Prompt → Video",
+    "captions": "Schnitt mit Untertiteln",
+    "thumbnail": "Thumbnail-Auswahl"
+  },
+  "gen": {
+    "title": "Generator",
+    "customSub": "Erweiterter Modus: volle Kontrolle über Prompt, Referenzen und Parameter."
+  },
+  "home": {
+    "sub": "Vom Produktfoto zur fertigen Verkaufssession — in Minuten.",
+    "startCta": "Jetzt generieren",
+    "continue": "Fortsetzen: {name}",
+    "statCredits": "Verfügbare Credits",
+    "statWeek": "Generierungen diese Woche",
+    "statMonth": "Generierungen diesen Monat",
+    "categoriesTitle": "Was möchtest du heute erstellen?",
+    "recentTitle": "Letzte Aktivität"
   }
 }

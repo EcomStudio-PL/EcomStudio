@@ -71,5 +71,10 @@ export async function GET(request: Request) {
     }
   }
 
+  // Search analytics (spec §2.2): best-effort, never blocks the response.
+  void supabase.from("search_queries").insert({
+    user_id: user.id, workspace_id: workspace.id, query: q.slice(0, 200),
+    media_type: "image", result_count: hits.length,
+  }).then(() => {});
   return NextResponse.json({ hits });
 }

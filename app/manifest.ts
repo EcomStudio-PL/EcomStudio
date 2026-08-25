@@ -9,7 +9,7 @@ export default function manifest(): MetadataRoute.Manifest {
     // Launching the installed app straight into the workspace: signed-in
     // users land on the dashboard, signed-out users are sent to /login by
     // middleware and return to the dashboard once they authenticate.
-    start_url: "/dashboard",
+    start_url: "/home",
     scope: "/",
     display: "standalone",
     orientation: "portrait",

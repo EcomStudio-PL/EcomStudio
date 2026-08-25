@@ -1,6 +1,6 @@
 {
   "nav": {
-    "dashboard": "Pulpit",
+    "dashboard": "Strona główna",
     "products": "Produkty",
     "generator": "AI Studio",
     "library": "Biblioteka",
@@ -69,7 +69,8 @@
     "download": "Pobierz",
     "noData": "Brak danych",
     "show": "Pokaż",
-    "hide": "Ukryj"
+    "hide": "Ukryj",
+    "soon": "Wkrótce"
   },
   "landing": {
     "headline": "Profesjonalne materiały produktowe z AI. Szybciej niż klasyczne studio.",
@@ -262,7 +263,15 @@
     "title": "Biblioteka",
     "sub": "Wygenerowane materiały Twojego workspace.",
     "emptyTitle": "Biblioteka jest pusta",
-    "emptyBody": "Materiały pojawią się tutaj po pierwszej generacji."
+    "emptyBody": "Materiały pojawią się tutaj po pierwszej generacji.",
+    "tabAll": "Generacje",
+    "tabTools": "Narzędzia",
+    "tabHistory": "Historia",
+    "allProducts": "Wszystkie produkty",
+    "selectOn": "Zaznacz",
+    "selectOff": "Anuluj zaznaczanie",
+    "zip": "Pobierz ZIP ({n})",
+    "editAsset": "Edytuj w narzędziach"
   },
   "history": {
     "title": "Historia",
@@ -1021,7 +1030,9 @@
       "prompt": "Ujęcia",
       "generation": "Generacje",
       "user": "Klienci"
-    }
+    },
+    "imagesSection": "Zdjęcia",
+    "videosSection": "Wideo"
   },
   "econ": {
     "title": "Rentowność klienta",
@@ -1333,5 +1344,63 @@
     "low": "Kredyty się kończą",
     "buy": "Dokup kredyty",
     "upgrade": "Ulepsz plan"
+  },
+  "topnav": {
+    "home": "Strona główna",
+    "image": "Obraz",
+    "video": "Wideo",
+    "library": "Biblioteka",
+    "primary": "Nawigacja główna"
+  },
+  "mega": {
+    "create": "Twórz",
+    "edit": "Edytuj",
+    "engine": "Gotowy generator",
+    "custom": "Własny prompt",
+    "allTools": "Wszystkie narzędzia",
+    "videoSoon": "Generowanie wideo jest w przygotowaniu — architektura już na nie czeka."
+  },
+  "cats": {
+    "moda": "Moda",
+    "modaSub": "Zdjęcia modeli, przedmiotów i stylizacji w plenerze.",
+    "modaStyle": "Stylizacja modowa, editorial, naturalne światło",
+    "ecommerce": "E-commerce",
+    "ecommerceSub": "Miniaturki, packshoty i pakiety zdjęć pod marketplace.",
+    "ecommerceStyle": "Czysty packshot marketplace, jasne tło, wyraźny produkt",
+    "social": "Social Media",
+    "socialSub": "Lifestyle i content pod Instagram, TikTok i reklamy.",
+    "socialStyle": "Lifestyle social media, dynamiczny klimat, naturalne kadry",
+    "mailing": "Mailing",
+    "mailingSub": "Grafiki o nowej ofercie pod wysyłki mailowe.",
+    "mailingStyle": "Grafika ofertowa, czytelna kompozycja z miejscem na tekst",
+    "inne": "Inne",
+    "inneSub": "Etykiety, opakowania, piktogramy i ulotki.",
+    "inneStyle": "Materiały brandingowe: etykiety, opakowania, ulotki",
+    "matching": "Matching",
+    "matchingSub": "Generacja w stylu inspiracji — wkrótce."
+  },
+  "vids": {
+    "product": "Wideo produktowe",
+    "fashion": "Moda",
+    "ecommerce": "E-commerce",
+    "social": "Social Media",
+    "img2vid": "Obraz → wideo",
+    "prompt2vid": "Prompt → wideo",
+    "captions": "Montaż z napisami",
+    "thumbnail": "Dobór miniatury"
+  },
+  "gen": {
+    "title": "Generator",
+    "customSub": "Tryb zaawansowany: pełna kontrola nad promptem, referencjami i parametrami."
+  },
+  "home": {
+    "sub": "Od zdjęcia produktu do gotowej sesji sprzedażowej — w kilka minut.",
+    "startCta": "Zacznij generować",
+    "continue": "Kontynuuj: {name}",
+    "statCredits": "Dostępne kredyty",
+    "statWeek": "Generacje w tym tygodniu",
+    "statMonth": "Generacje w tym miesiącu",
+    "categoriesTitle": "Co chcesz dziś stworzyć?",
+    "recentTitle": "Ostatnia aktywność"
   }
 }

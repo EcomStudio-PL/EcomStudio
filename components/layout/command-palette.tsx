@@ -5,6 +5,7 @@ import { Images, Loader2, Package, PenLine, Search, Sparkles, User, X } from "lu
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { CLIENT_NAV, ADMIN_NAV } from "@/lib/navigation";
+import { IMAGE_CREATE } from "@/lib/topnav";
 import { cn } from "@/lib/utils";
 import type { SearchHit } from "@/app/api/search/route";
 
@@ -20,7 +21,11 @@ type Row = { key: string; label: string; sub: string | null; href: string; icon:
  * customer lookup). Debounced server search, full keyboard control, client-side
  * navigation only — no page reloads.
  */
-export function CommandPalette({ isAdmin, wide = false }: { isAdmin: boolean; wide?: boolean }) {
+export function CommandPalette({ isAdmin, wide = false, iconOnly = false }: {
+  isAdmin: boolean; wide?: boolean;
+  /** Icon-only trigger for the mobile top bar; the overlay is full-screen. */
+  iconOnly?: boolean;
+}) {
   const { t } = useI18n();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -90,17 +95,31 @@ export function CommandPalette({ isAdmin, wide = false }: { isAdmin: boolean; wi
     return rows;
   }, [t, isAdmin]);
 
+  // Empty state per the UX spec: suggestions split into ZDJĘCIA and WIDEO,
+  // most-used generation entries first; typing switches to live results.
+  const suggestions = useMemo<Row[]>(() => {
+    const img: Row[] = IMAGE_CREATE.filter((e) => !e.soon).map((e) => ({
+      key: `sugg:${e.key}`, label: t(`cats.${e.key}`), sub: t(`cats.${e.key}Sub`),
+      href: e.href, icon: e.icon, group: t("search.imagesSection"),
+    }));
+    img.push({ key: "sugg:custom", label: t("mega.custom"), sub: null, href: "/generator", icon: PenLine, group: t("search.imagesSection") });
+    const vid: Row[] = [{
+      key: "sugg:video", label: `${t("topnav.video")} — ${t("common.soon")}`, sub: t("mega.videoSoon"),
+      href: "/home", icon: Sparkles, group: t("search.videosSection"),
+    }];
+    return [...img, ...vid];
+  }, [t]);
+
   const rows = useMemo<Row[]>(() => {
     const term = q.trim().toLowerCase();
-    const matchedCommands = term
-      ? commands.filter((c) => c.label.toLowerCase().includes(term)).slice(0, 6)
-      : commands.slice(0, 8);
+    if (!term) return suggestions;
+    const matchedCommands = commands.filter((c) => c.label.toLowerCase().includes(term)).slice(0, 6);
     const resultRows: Row[] = hits.map((h) => ({
       key: `${h.kind}:${h.id}`, label: h.title, sub: h.sub, href: h.href,
       icon: KIND_ICON[h.kind], group: t(`search.kind.${h.kind}`),
     }));
     return [...resultRows, ...matchedCommands];
-  }, [commands, hits, q, t]);
+  }, [commands, suggestions, hits, q, t]);
 
   useEffect(() => { setCursor(0); }, [q, hits.length]);
 
@@ -125,19 +144,26 @@ export function CommandPalette({ isAdmin, wide = false }: { isAdmin: boolean; wi
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} aria-label={t("common.search")}
-        aria-keyshortcuts="Control+K"
-        className={cn(
-          "hidden h-9 items-center gap-2 rounded-lg border border-line bg-surface/60 px-3 text-xs text-muted transition-colors hover:border-accent/40 hover:text-ink sm:flex",
-          // Wide variant: the top bar's search field, Higgsfield-style.
-          wide && "w-56 justify-between rounded-xl xl:w-72",
-        )}>
-        <span className="flex min-w-0 items-center gap-2">
-          <Search size={13} aria-hidden className="shrink-0" />
-          <span className="truncate">{t("common.search")}</span>
-        </span>
-        <kbd className="whitespace-nowrap rounded border border-line px-1.5 py-0.5 text-[10px] text-faint">{kbdHint}</kbd>
-      </button>
+      {iconOnly ? (
+        <button type="button" onClick={() => setOpen(true)} aria-label={t("common.search")}
+          className="flex h-10 w-10 items-center justify-center rounded-xl text-muted transition-colors hover:bg-raised hover:text-ink">
+          <Search size={18} aria-hidden />
+        </button>
+      ) : (
+        <button type="button" onClick={() => setOpen(true)} aria-label={t("common.search")}
+          aria-keyshortcuts="Control+K"
+          className={cn(
+            "hidden h-9 items-center gap-2 rounded-lg border border-line bg-surface/60 px-3 text-xs text-muted transition-colors hover:border-accent/40 hover:text-ink sm:flex",
+            // Wide variant: the top bar's search field, Higgsfield-style.
+            wide && "w-52 justify-between rounded-xl xl:w-64",
+          )}>
+          <span className="flex min-w-0 items-center gap-2">
+            <Search size={13} aria-hidden className="shrink-0" />
+            <span className="truncate">{t("common.search")}</span>
+          </span>
+          <kbd className="whitespace-nowrap rounded border border-line px-1.5 py-0.5 text-[10px] text-faint">{kbdHint}</kbd>
+        </button>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-[60] flex items-start justify-center px-4 pt-[12vh]"

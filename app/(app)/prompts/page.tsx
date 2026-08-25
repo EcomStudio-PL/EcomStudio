@@ -12,12 +12,16 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
 import { SessionForm, type PromptProductOption, type SessionModelOption } from "@/components/prompts/session-form";
+import { GeneratorModeSwitch } from "@/components/generator/mode-switch";
 
 export const dynamic = "force-dynamic";
 
 /** GENERATOR UJĘĆ — the batch workspace entry: product data + photos in,
  *  a board of prepared shots out. */
-export default async function PromptsPage() {
+export default async function PromptsPage({ searchParams }: {
+  searchParams: Promise<{ cat?: string }>;
+}) {
+  const { cat } = await searchParams;
   const supabase = await createClient();
   const { dict } = await getDictionary();
   const t = makeT(dict);
@@ -95,10 +99,23 @@ export default async function PromptsPage() {
     </div>
   );
 
+  // Category tiles land here with ?cat= — preselect a matching style hint.
+  const KNOWN_CATS = ["moda", "ecommerce", "social", "mailing", "inne"];
+  const initialStyle = cat && KNOWN_CATS.includes(cat) ? t(`cats.${cat}Style`) : undefined;
+
   return (
     <div>
-      <PageHeader overline={t("nav.groups.create")} title={t("prompts.title")} sub={t("psess.sub")} />
+      <PageHeader overline={t("mega.create")} title={t("gen.title")} sub={t("psess.sub")} />
+      <GeneratorModeSwitch
+        active="engine"
+        engineLabel={t("mega.engine")}
+        customLabel={t("mega.custom")}
+        engineCost={modelOptions[0]?.costEcom ?? null}
+        customCost={modelOptions[0]?.costCustom ?? null}
+        perShotLabel={(n) => t("concepts.perShot", { n })}
+      />
       <SessionForm
+        initialStyle={initialStyle}
         products={productOptions}
         workspaceId={workspace.id}
         engineAvailable={engineAvailable}

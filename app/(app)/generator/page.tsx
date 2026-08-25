@@ -7,6 +7,8 @@ import { listProducts } from "@/lib/services/products";
 import { getUsableModels, toClientModel } from "@/lib/ai/router";
 import { signImageUrls } from "@/lib/services/images";
 import { PageHeader } from "@/components/ui/page-header";
+import { GeneratorModeSwitch } from "@/components/generator/mode-switch";
+import { conceptModelOptions } from "@/lib/server/concept-generation";
 import { Studio, type StudioModel, type StudioProduct, type StudioSession } from "@/components/generator/studio";
 
 export const dynamic = "force-dynamic";
@@ -22,10 +24,11 @@ export default async function GeneratorPage({ searchParams }: {
   if (!user) return null;
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) return null;
-  const [products, models, wallet] = await Promise.all([
+  const [products, models, wallet, priceOptions] = await Promise.all([
     listProducts(supabase, workspace.id, 30),
     getUsableModels(supabase),
     getWallet(supabase, workspace.id),
+    conceptModelOptions(supabase),
   ]);
 
   // Prompt-engine handoff: ?prompt=<generated_prompt id> opens the Studio
@@ -87,7 +90,15 @@ export default async function GeneratorPage({ searchParams }: {
 
   return (
     <div>
-      <PageHeader overline={t("nav.groups.work")} title={t("nav.generator")} sub={t("studio.stepsSub")} />
+      <PageHeader overline={t("mega.create")} title={t("gen.title")} sub={t("gen.customSub")} />
+      <GeneratorModeSwitch
+        active="custom"
+        engineLabel={t("mega.engine")}
+        customLabel={t("mega.custom")}
+        engineCost={priceOptions[0]?.costEcom ?? null}
+        customCost={priceOptions[0]?.costCustom ?? null}
+        perShotLabel={(n) => t("concepts.perShot", { n })}
+      />
       <Studio
         products={studioProducts}
         models={studioModels}

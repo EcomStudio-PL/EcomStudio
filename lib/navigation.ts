@@ -22,7 +22,7 @@ export type NavGroup = { key: string; items: readonly NavItem[] };
 
 export const CLIENT_NAV: readonly NavGroup[] = [
   { key: "overview", items: [
-    { href: "/dashboard", key: "dashboard", icon: LayoutDashboard },
+    { href: "/home", key: "dashboard", icon: LayoutDashboard },
   ]},
   { key: "work", items: [
     { href: "/products", key: "products", icon: Package },
@@ -31,7 +31,7 @@ export const CLIENT_NAV: readonly NavGroup[] = [
     { href: "/tools", key: "tools", icon: Wrench },
     { href: "/inspirations", key: "inspirations", icon: Lightbulb },
     { href: "/library", key: "library", icon: Images },
-    { href: "/history", key: "history", icon: HistoryIcon },
+    { href: "/library?tab=history", key: "history", icon: HistoryIcon },
   ]},
   { key: "account", items: [
     { href: "/plan", key: "plan", icon: Rocket },
