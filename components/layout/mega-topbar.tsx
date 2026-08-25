@@ -61,7 +61,12 @@ export function MegaTopbar({ name, credits, plan, isAdmin = false, notifications
   };
   const hoverLeave = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
-    closeTimer.current = setTimeout(() => setMenu(null), 180);
+    // Only the hover-driven menus close on pointer-leave — never the avatar
+    // dropdown, which the pointer legitimately travels to from a trigger.
+    closeTimer.current = setTimeout(
+      () => setMenu((m) => (m === "image" || m === "video" ? null : m)),
+      180,
+    );
   };
 
   const level = creditLevel(credits);
