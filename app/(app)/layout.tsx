@@ -6,6 +6,7 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { MegaTopbar } from "@/components/layout/mega-topbar";
 import { CustomerDrawer } from "@/components/layout/customer-drawer";
+import { CustomerBottomNav } from "@/components/layout/customer-bottom-nav";
 import { DrawerProvider } from "@/components/layout/shell-context";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -84,10 +85,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       {/* Horizontal-navigation shell per the UX spec: no permanent left
           sidebar — the full width belongs to the work. */}
       <div className="flex min-h-dvh w-full min-w-0 flex-col">
-        <MegaTopbar name={displayName} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} notifications={notifs ?? []} unread={unread} />
-        <main className="mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-4 pb-16 pt-5 sm:px-5 lg:px-8 lg:pb-14 lg:pt-6 xl:px-10">
+        <MegaTopbar name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} notifications={notifs ?? []} unread={unread} />
+        {/* Full-width work surface: 24–40px of padding, no arbitrary column
+            cap, and enough bottom room on phones to clear the dock. */}
+        <main className="mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-4 pt-5 sm:px-6 lg:px-8 lg:pt-6 xl:px-10 pb-[calc(var(--dock-h)+1.5rem+env(safe-area-inset-bottom))] lg:pb-14">
           {children}
         </main>
+        <CustomerBottomNav name={displayName} />
         <CustomerDrawer name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} />
       </div>
     </DrawerProvider>

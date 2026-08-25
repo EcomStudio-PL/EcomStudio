@@ -1,15 +1,20 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { Check } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { setLocaleAction } from "@/app/actions/settings";
 import { LOCALES } from "@/lib/i18n/config";
 import { cn } from "@/lib/utils";
+import { Flag } from "./flag";
 
-const FLAGS: Record<string, string> = { pl: "🇵🇱", en: "🇬🇧", de: "🇩🇪" };
 const NAMES: Record<string, string> = { pl: "Polski", en: "English", de: "Deutsch" };
 
-/** Flag button with a custom (non-native) dropdown. */
-export function LocaleSwitcher() {
+/**
+ * LANGUAGE — the trigger is the flag and nothing else: no "PL" label, no
+ * caret. The popover lists every language as flag + native name with a
+ * checkmark on the active one.
+ */
+export function LocaleSwitcher({ align = "right" }: { align?: "right" | "left" }) {
   const { t, locale } = useI18n();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
@@ -31,16 +36,20 @@ export function LocaleSwitcher() {
       <button
         type="button"
         aria-label={t("settings.language")}
+        title={NAMES[locale] ?? locale}
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={pending}
         onClick={() => setOpen((v) => !v)}
-        className="flex h-11 w-11 items-center justify-center rounded-xl lg:h-9 lg:w-9 text-base transition-colors hover:bg-raised disabled:opacity-60"
+        className="flex h-10 w-10 items-center justify-center rounded-xl transition-colors duration-200 hover:bg-raised disabled:opacity-60 lg:h-9 lg:w-9"
       >
-        <span aria-hidden>{FLAGS[locale] ?? "🌐"}</span>
+        <Flag code={locale} size={20} />
       </button>
       {open && (
-        <div role="menu" className="overlay animate-pop absolute right-0 top-full z-50 mt-2 w-44 rounded-2xl p-1.5">
+        <div role="menu" className={cn(
+          "overlay animate-pop absolute top-full z-50 mt-2 w-48 rounded-2xl p-1.5",
+          align === "left" ? "left-0" : "right-0",
+        )}>
           {LOCALES.map((l) => (
             <button
               key={l}
@@ -48,13 +57,13 @@ export function LocaleSwitcher() {
               type="button"
               onClick={() => { setOpen(false); start(() => setLocaleAction(l)); }}
               className={cn(
-                "flex min-h-[40px] w-full items-center gap-2.5 rounded-xl px-3 text-left text-sm transition-colors hover:bg-raised",
-                l === locale ? "font-semibold text-ink" : "text-muted"
+                "flex min-h-[42px] w-full items-center gap-2.5 rounded-xl px-3 text-left text-sm transition-colors duration-200 hover:bg-raised",
+                l === locale ? "font-semibold text-ink" : "text-muted",
               )}
             >
-              <span aria-hidden>{FLAGS[l]}</span>
+              <Flag code={l} size={20} />
               {NAMES[l] ?? l.toUpperCase()}
-              {l === locale && <span aria-hidden className="ml-auto text-accent">✓</span>}
+              {l === locale && <Check size={15} aria-hidden className="ml-auto text-accent" strokeWidth={3} />}
             </button>
           ))}
         </div>

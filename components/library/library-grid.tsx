@@ -90,7 +90,9 @@ export function LibraryGrid({ cards, locale }: { cards: LibraryCard[]; locale: s
         )}
       </div>
 
-      <div className="stagger grid gap-3.5 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 xl:gap-4">
+      {/* Denser on wide monitors — the full-width surface should show more
+          work, not the same four cards stretched. */}
+      <div className="stagger grid gap-3 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 xl:gap-3.5">
         {cards.map((g) => (
           <Card key={g.id} className="group overflow-hidden">
             {g.assets.length > 0 && (

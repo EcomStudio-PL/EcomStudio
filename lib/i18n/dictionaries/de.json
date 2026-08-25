@@ -1032,7 +1032,25 @@
       "user": "Kunden"
     },
     "imagesSection": "Bilder",
-    "videosSection": "Video"
+    "videosSection": "Video",
+    "title": "Suche",
+    "tabs": {
+      "all": "Alles",
+      "image": "Bild",
+      "video": "Video",
+      "tools": "Werkzeuge",
+      "products": "Produkte"
+    },
+    "sections": {
+      "recent": "Zuletzt",
+      "suggested": "Vorschläge",
+      "generators": "Generatoren",
+      "products": "Produkte",
+      "tools": "Werkzeuge",
+      "video": "Video"
+    },
+    "emptyTab": "Keine Treffer in diesem Tab.",
+    "clearRecent": "Leeren"
   },
   "econ": {
     "title": "Kundenrentabilität",
@@ -1350,7 +1368,10 @@
     "image": "Bild",
     "video": "Video",
     "library": "Bibliothek",
-    "primary": "Hauptnavigation"
+    "primary": "Hauptnavigation",
+    "account": "Konto",
+    "notifications": "Benachrichtigungen",
+    "generate": "Generieren"
   },
   "mega": {
     "create": "Erstellen",
@@ -1377,7 +1398,13 @@
     "inneSub": "Etiketten, Verpackungen, Piktogramme und Flyer.",
     "inneStyle": "Branding-Materialien: Etiketten, Verpackungen, Flyer",
     "matching": "Matching",
-    "matchingSub": "Generierung im Stil einer Inspiration — bald."
+    "matchingSub": "Generierung im Stil einer Inspiration — bald.",
+    "modaLead": "Modeshootings ohne Studio, Model und Fotograf.",
+    "ecommerceLead": "Fotos, die auf Marktplätzen verkaufen.",
+    "socialLead": "Content für Instagram, TikTok und Ads.",
+    "mailingLead": "Grafiken für Newsletter und E-Mail-Kampagnen.",
+    "inneLead": "Etiketten, Verpackungen, Flyer und Piktogramme.",
+    "matchingLead": "Den Stil einer Inspiration auf dein Produkt übertragen."
   },
   "vids": {
     "product": "Produktvideo",
@@ -1402,5 +1429,290 @@
     "statMonth": "Generierungen diesen Monat",
     "categoriesTitle": "Was möchtest du heute erstellen?",
     "recentTitle": "Letzte Aktivität"
+  },
+  "catpage": {
+    "overline": "Kategorie",
+    "chooseTitle": "Workflow wählen",
+    "chooseSub": "Jeder Workflow hat eigene Seitenverhältnisse, Aufnahmezahl und Stil. Auswählen und direkt in den Generator.",
+    "presetRatio": "Format",
+    "presetShots": "Aufnahmen",
+    "start": "Starten",
+    "openGenerator": "Generator öffnen",
+    "customPrompt": "Eigener Prompt",
+    "recentTitle": "Deine letzten Generierungen",
+    "recentEmpty": "Noch nichts da — deine erste Generierung erscheint an dieser Stelle.",
+    "howTitle": "So funktioniert es",
+    "how1": "Produkt hinzufügen",
+    "how1Sub": "Gespeichertes Produkt wählen oder Referenzfotos hochladen.",
+    "how2": "Workflow wählen",
+    "how2Sub": "Bildausschnitt und Stil füllen wir für dich aus.",
+    "how3": "Generieren",
+    "how3Sub": "Die EcomStudio-Engine erstellt einen vollständigen Satz produkttreuer Aufnahmen.",
+    "soonTitle": "Diese Kategorie ist in Vorbereitung",
+    "soonBody": "Der Workflow ist entworfen, die Engine unterstützt ihn aber noch nicht. Wir starten keine Generierungen, die wir nicht liefern können — nutze in der Zwischenzeit die anderen Kategorien.",
+    "allCategories": "Alle Kategorien"
+  },
+  "wf": {
+    "moda": {
+      "onModel": {
+        "name": "Am Model",
+        "sub": "Produkt getragen, Ganzkörperaufnahmen.",
+        "style": "Modefoto am Model, natürliche Haltung, weiches Studiolicht, Kleidungsstück vollständig sichtbar"
+      },
+      "flatlay": {
+        "name": "Flat Lay",
+        "sub": "Produkt ausgelegt, von oben.",
+        "style": "Flat Lay von oben, gleichmäßiges Licht, minimalistischer Hintergrund, klare Stoffstruktur"
+      },
+      "street": {
+        "name": "Street Style",
+        "sub": "Styling im urbanen Umfeld.",
+        "style": "Street Style im urbanen Außenbereich, natürliches Tageslicht, dynamische Pose, unscharfer Straßenhintergrund"
+      },
+      "editorial": {
+        "name": "Editorial",
+        "sub": "Modeshooting mit Charakter.",
+        "style": "Mode-Editorial, kontrastreiches gerichtetes Licht, ausdrucksstarke Komposition, Magazin-Stimmung"
+      },
+      "detail": {
+        "name": "Detail",
+        "sub": "Nahaufnahmen von Stoff und Verarbeitung.",
+        "style": "Makro-Produktdetail, scharfe Stoffstruktur, Nähte und Verarbeitung, geringe Schärfentiefe"
+      }
+    },
+    "ecommerce": {
+      "packshot": {
+        "name": "Packshot",
+        "sub": "Sauberes Produkt auf schlichtem Hintergrund.",
+        "style": "Produkt-Packshot auf schlichtem hellem Hintergrund, gleichmäßiges Licht, keine Schlagschatten, durchgehend scharf"
+      },
+      "thumbnail": {
+        "name": "Thumbnail",
+        "sub": "Ausschnitt für das erste Angebotsbild.",
+        "style": "Angebots-Thumbnail, Produkt füllt das Bild, weißer Hintergrund, maximale Lesbarkeit in kleiner Größe"
+      },
+      "context": {
+        "name": "Im Kontext",
+        "sub": "Produkt in natürlicher Umgebung.",
+        "style": "Produkt im natürlichen Wohnumfeld im Einsatz, realistisches Umgebungslicht, Anwendungskontext"
+      },
+      "set": {
+        "name": "Bilderset",
+        "sub": "Kompletter Satz für ein Angebot.",
+        "style": "Stimmiger Aufnahmesatz eines Produkts: Front, Seite, Detail, Kontext — eine Lichtkonvention"
+      },
+      "scale": {
+        "name": "Größe und Maße",
+        "sub": "Aufnahmen, die die Größe zeigen.",
+        "style": "Aufnahme, die die Produktgröße im Verhältnis zur Umgebung zeigt, klare Proportionen, neutraler Hintergrund"
+      }
+    },
+    "social": {
+      "reels": {
+        "name": "Reels / TikTok",
+        "sub": "Hochformat für Kurzvideos.",
+        "style": "Hochformat für Social Video, kräftige Farben, dynamische Komposition, Platz für Text oben und unten"
+      },
+      "feed": {
+        "name": "Feed-Post",
+        "sub": "Der klassische Produktpost.",
+        "style": "Produkt-Feed-Post, Lifestyle, warmes Licht, ästhetische Komposition"
+      },
+      "ads": {
+        "name": "Werbemotiv",
+        "sub": "Für bezahlte Kampagnen gebaut.",
+        "style": "Werbemotiv, starker Blickfang auf dem Produkt, freie Fläche für die Headline, hoher Kontrast"
+      },
+      "ugc": {
+        "name": "UGC",
+        "sub": "Natürlich, wie mit dem Handy fotografiert.",
+        "style": "Foto im UGC-Stil, natürliches Licht, Handy-Look, authentisch unperfekte Stimmung"
+      },
+      "carousel": {
+        "name": "Karussell",
+        "sub": "Eine Serie stimmiger Slides.",
+        "style": "Serie stimmiger Karussell-Slides, eine Palette und ein Licht, Erzählung von der Totale zum Detail"
+      }
+    },
+    "mailing": {
+      "header": {
+        "name": "E-Mail-Header",
+        "sub": "Banner für den Anfang der Nachricht.",
+        "style": "Newsletter-Headerbanner, horizontale Komposition, klare Textfläche auf einer Seite"
+      },
+      "promo": {
+        "name": "Aktion",
+        "sub": "Grafik für Rabatt oder Sale.",
+        "style": "Aktionsgrafik, Produkt im Vordergrund, freie Fläche für die Rabattbotschaft"
+      },
+      "newsletter": {
+        "name": "Newsletter-Block",
+        "sub": "Quadratisches Inhaltsmodul.",
+        "style": "Quadratisches Newsletter-Modul, Produkt zentriert, ruhiger Hintergrund, in kleiner Größe lesbar"
+      },
+      "seasonal": {
+        "name": "Saisonal",
+        "sub": "Feiertags- und Saisonkampagnen.",
+        "style": "Saisonkampagne, dezente Anlassdekoration, warme Palette, Produkt bleibt der Held"
+      }
+    },
+    "inne": {
+      "label": {
+        "name": "Etikett",
+        "sub": "Entwurf eines Produktetiketts.",
+        "style": "Visualisierung eines Produktetiketts, klare Komposition, realistische Materialwiedergabe"
+      },
+      "packaging": {
+        "name": "Verpackung",
+        "sub": "Schachteln, Kartons, Verpackungen.",
+        "style": "Visualisierung der Produktverpackung, realistischer Karton, Studiolicht, sichtbare Kanten und Druck"
+      },
+      "leaflet": {
+        "name": "Flyer",
+        "sub": "Informationsmaterial.",
+        "style": "Produktflyer, geordnete Komposition, klare Hierarchie, Platz für Text"
+      },
+      "icons": {
+        "name": "Piktogramme",
+        "sub": "Ein Satz einfacher Icons.",
+        "style": "Satz stimmiger Piktogramme, einfache Form, einheitliche Strichstärke, neutraler Hintergrund"
+      },
+      "free": {
+        "name": "Beliebiges Material",
+        "sub": "Wenn nichts davon passt.",
+        "style": "Marketingmaterial nach Beschreibung des Nutzers, stimmige Markenästhetik"
+      }
+    },
+    "matching": {
+      "fromInspiration": {
+        "name": "Aus Inspiration",
+        "sub": "Den Stil eines Fotos übernehmen.",
+        "style": ""
+      },
+      "brandStyle": {
+        "name": "Markenstil",
+        "sub": "Eine Konvention durchhalten.",
+        "style": ""
+      },
+      "series": {
+        "name": "Stimmige Serie",
+        "sub": "Viele Produkte, ein Stil.",
+        "style": ""
+      }
+    }
+  },
+  "video": {
+    "overline": "Video",
+    "title": "Video",
+    "sub": "Ein vollständiger Video-Arbeitsbereich — vom Produktclip bis zum Social-Material.",
+    "createTitle": "Video erstellen",
+    "editTitle": "Video bearbeiten",
+    "notReadyTitle": "Videogenerierung ist noch nicht aktiv",
+    "notReadyBody": "Der Arbeitsbereich steht, aber es ist noch keine Video-Engine angebunden. Wir starten keine Generierungen, die wir nicht liefern können — du verlierst keinen einzigen Credit für etwas, das nicht entsteht.",
+    "notify": "Benachrichtige mich zum Start",
+    "notifySent": "Wir melden uns, sobald Video verfügbar ist.",
+    "meanwhile": "In der Zwischenzeit",
+    "meanwhileBody": "Bereite deine Produktfotos vor — sie sind der Ausgangspunkt für das erste Videomaterial.",
+    "length": "Länge",
+    "ratio": "Format",
+    "wf": {
+      "product": {
+        "name": "Produktvideo",
+        "sub": "Drehung und Produktpräsentation."
+      },
+      "fashion": {
+        "name": "Mode",
+        "sub": "Bewegung, Stoff, Styling."
+      },
+      "ecommerce": {
+        "name": "E-Commerce",
+        "sub": "Kurzvideo für die Produktseite."
+      },
+      "social": {
+        "name": "Social Media",
+        "sub": "Reels und kurze Hochformate."
+      },
+      "img2vid": {
+        "name": "Bild → Video",
+        "sub": "Ein vorhandenes Foto animieren."
+      },
+      "prompt2vid": {
+        "name": "Prompt → Video",
+        "sub": "Material allein aus der Beschreibung."
+      },
+      "captions": {
+        "name": "Schnitt mit Untertiteln",
+        "sub": "Automatische Untertitel und Schnitte."
+      },
+      "thumbnail": {
+        "name": "Thumbnail-Auswahl",
+        "sub": "Das beste Bild fürs Cover."
+      }
+    }
+  },
+  "account": {
+    "title": "Konto",
+    "plan": "Tarif",
+    "credits": "Credits",
+    "creditsLeft": "{n} übrig",
+    "topUp": "Credits kaufen",
+    "upgrade": "Tarif upgraden",
+    "profile": "Profil",
+    "settings": "Einstellungen",
+    "help": "Hilfe",
+    "admin": "Admin-Panel",
+    "language": "Sprache"
+  },
+  "plans": {
+    "overline": "Preise",
+    "title": "Ein Tarif, der zu deiner Größe passt",
+    "sub": "Von ersten Tests bis zur Agenturarbeit. Credits erneuern sich monatlich.",
+    "monthly": "Monatlich",
+    "annual": "Jährlich",
+    "annualNote": "2 Monate gratis bei jährlicher Zahlung",
+    "perMonth": "/ Mon.",
+    "billedAnnually": "jährlich abgerechnet",
+    "mostPopular": "Am beliebtesten",
+    "bestValue": "Bester Wert",
+    "current": "Dein Tarif",
+    "choose": "Tarif wählen",
+    "creditsMo": "{n} Credits pro Monat",
+    "approx": "das sind etwa {n} Produktaufnahmen",
+    "soon": "Tarifwechsel ist verfügbar, sobald Zahlungen angebunden sind.",
+    "compare": "Was jeder Tarif enthält",
+    "feat": {
+      "generator": "EcomStudio Aufnahme-Generator",
+      "custom": "Eigene Prompts",
+      "tools": "Bearbeitungswerkzeuge",
+      "library": "Bibliothek und Verlauf",
+      "products": "Produktdatenbank",
+      "priority": "Priorität in der Warteschlange",
+      "support": "E-Mail-Support",
+      "supportFast": "Priorisierter Support",
+      "team": "Teamarbeit",
+      "api": "API-Zugang"
+    }
+  },
+  "packs": {
+    "title": "Credit-Pakete",
+    "sub": "Einmalige Aufladung — Credits verfallen nicht.",
+    "tier": {
+      "small": "Für den Start",
+      "standard": "Standard",
+      "popular": "Beliebt",
+      "power": "Für Vielnutzer"
+    },
+    "bonus": "+{n} Bonus",
+    "total": "insgesamt {n}",
+    "perCredit": "{n} PLN / Credit",
+    "buy": "Paket kaufen",
+    "soon": "Zahlungen sind noch nicht aktiviert"
+  },
+  "mobilenav": {
+    "home": "Start",
+    "generate": "Generieren",
+    "library": "Bibliothek",
+    "products": "Produkte",
+    "account": "Konto"
   }
 }

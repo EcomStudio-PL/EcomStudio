@@ -72,6 +72,12 @@ export default async function HomePage() {
     signed?.forEach((s) => { if (s.signedUrl && s.path) genUrls.set(s.path, s.signedUrl); });
   }
 
+  // Category tiles preview the account's own work rather than stock art.
+  const categoryPreviews = Array.from({ length: 6 }, (_, i) => {
+    const tile = genTiles[i];
+    return tile ? genUrls.get(tile.path) ?? null : null;
+  });
+
   const stats: { label: string; value: string; meter?: number; meterClass?: string; href: string }[] = [
     {
       label: t("home.statCredits"), value: new Intl.NumberFormat(locale).format(credits),
@@ -91,28 +97,32 @@ export default async function HomePage() {
           style={{ background: "radial-gradient(24rem 14rem at 70% 40%, rgb(var(--accent) / 0.28), transparent 72%)" }}
         />
         <HeroArt className="pointer-events-none absolute -right-6 top-1/2 hidden h-[125%] w-auto -translate-y-1/2 lg:block" />
-        <div className="relative p-5 sm:p-7 lg:max-w-[58%] lg:py-8 xl:px-9 xl:py-10">
+        {/* The hero states who you are and where to start, then gets out of
+            the way: on a phone it occupies roughly a third of the first
+            screen instead of all of it, so the categories are visible without
+            scrolling. */}
+        <div className="relative p-4 sm:p-6 lg:max-w-[56%] lg:py-7 xl:px-8 xl:py-8">
           <p className="overline">{t("dashboard.welcomeBack")}</p>
-          <h1 className="mt-3 font-display font-semibold leading-[1.02] tracking-[-0.035em] text-[clamp(1.9rem,1rem+1.9vw,3.25rem)]">
+          <h1 className="mt-2 font-display font-semibold leading-[1.04] tracking-[-0.035em] text-[clamp(1.45rem,0.95rem+1.5vw,2.6rem)]">
             {t("dashboard.welcome", { name: firstName })}
           </h1>
-          <p className="mt-2 max-w-lg text-[14px] leading-relaxed text-muted">{t("home.sub")}</p>
+          <p className="mt-1.5 max-w-lg text-[13px] leading-relaxed text-muted sm:text-[14px]">{t("home.sub")}</p>
 
-          <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:items-center">
+          <div className="mt-4 flex flex-wrap items-center gap-2 sm:mt-5 sm:gap-2.5">
             <a href="#kategorie"
-              className="cta inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold">
+              className="cta inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold sm:flex-none">
               <Sparkles size={16} aria-hidden />
               {t("home.startCta")}
             </a>
             {continueHref && (
               <Link href={continueHref}
-                className="plate inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold text-ink transition-colors hover:border-[rgb(var(--accent)/0.45)] hover:bg-raised">
+                className="plate inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold text-ink transition-colors duration-200 hover:border-[rgb(var(--accent)/0.45)] hover:bg-raised">
                 <PenLine size={15} className="text-accent" aria-hidden />
-                {t("home.continue", { name: continueLabel })}
+                <span className="truncate">{t("home.continue", { name: continueLabel })}</span>
               </Link>
             )}
             <Link href="/products"
-              className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl px-3 text-sm font-semibold text-muted transition-colors hover:text-ink">
+              className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl px-3 text-sm font-semibold text-muted transition-colors duration-200 hover:text-ink">
               <Package size={15} aria-hidden />
               {t("nav.products")}
               <ArrowRight size={13} aria-hidden />
@@ -149,7 +159,7 @@ export default async function HomePage() {
       {/* 3 — CATEGORY GRID */}
       <section>
         <SectionHeader overline={t("mega.create")} title={t("home.categoriesTitle")} className="mb-3.5 mt-1" />
-        <CategoryGrid t={t} />
+        <CategoryGrid t={t} previews={categoryPreviews} />
       </section>
 
       {/* 4 — ONE AI SUGGESTION, dismissible, never a modal */}

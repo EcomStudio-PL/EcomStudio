@@ -68,10 +68,12 @@ export default async function LibraryPage({ searchParams }: {
     assets: g.generation_assets.map((a) => ({ id: a.id, path: a.storage_path, url: urlMap.get(a.storage_path) ?? null })),
   }));
 
+  // Counts on the tabs: the user can see where their work actually is
+  // before clicking through three empty shelves.
   const tabs = [
-    { key: "all", href: "/library", label: t("library.tabAll") },
-    { key: "tools", href: "/library?tab=tools", label: t("library.tabTools") },
-    { key: "history", href: "/library?tab=history", label: t("library.tabHistory") },
+    { key: "all", href: "/library", label: t("library.tabAll"), count: generations.length },
+    { key: "tools", href: "/library?tab=tools", label: t("library.tabTools"), count: (toolResults ?? []).length },
+    { key: "history", href: "/library?tab=history", label: t("library.tabHistory"), count: tab === "history" ? jobs.length : null },
   ];
 
   // Product filter — products become a Library dimension, per the spec.
@@ -89,10 +91,16 @@ export default async function LibraryPage({ searchParams }: {
             <Link key={tb.key} href={tb.href}
               aria-current={tab === tb.key ? "page" : undefined}
               className={cn(
-                "rounded-lg px-3.5 py-1.5 text-[13px] font-semibold transition-all",
+                "inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[13px] font-semibold transition-all duration-200",
                 tab === tb.key ? "bg-surface text-ink shadow-e2 ring-1 ring-[rgb(var(--accent)/0.45)]" : "text-muted hover:text-ink",
               )}>
               {tb.label}
+              {typeof tb.count === "number" && tb.count > 0 && (
+                <span className={cn("rounded-full px-1.5 text-[10px] font-bold tabular-nums",
+                  tab === tb.key ? "bg-[rgb(var(--accent)/0.18)] text-accent" : "bg-raised text-faint")}>
+                  {tb.count}
+                </span>
+              )}
             </Link>
           ))}
         </div>

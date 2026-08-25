@@ -55,7 +55,7 @@ const MODEL_TILES = [
  * Preparing a session charges nothing; credits move only when shots are
  * generated on the board — the summary says so out loud.
  */
-export function SessionForm({ products, workspaceId, engineAvailable, models, balance, plan, aside, initialStyle }: {
+export function SessionForm({ products, workspaceId, engineAvailable, models, balance, plan, aside, initialStyle, initialRatio, initialShots }: {
   products: PromptProductOption[]; workspaceId: string; engineAvailable: boolean;
   models: SessionModelOption[];
   balance: number;
@@ -64,6 +64,10 @@ export function SessionForm({ products, workspaceId, engineAvailable, models, ba
   aside?: React.ReactNode;
   /** Style hint preselected by a homepage/mega-menu category tile. */
   initialStyle?: string;
+  /** Workflow defaults — a category workspace opens with its own framing
+   *  and shot count rather than one shared default for every use case. */
+  initialRatio?: (typeof RATIOS)[number];
+  initialShots?: number;
 }) {
   const { t, locale } = useI18n();
   const router = useRouter();
@@ -75,8 +79,8 @@ export function SessionForm({ products, workspaceId, engineAvailable, models, ba
   const [extraInfo, setExtraInfo] = useState("");
   const [style, setStyle] = useState(initialStyle ?? "");
   const [styleOpen, setStyleOpen] = useState(Boolean(initialStyle));
-  const [ratio, setRatio] = useState<(typeof RATIOS)[number]>("16:9");
-  const [shots, setShots] = useState(5);
+  const [ratio, setRatio] = useState<(typeof RATIOS)[number]>(initialRatio ?? "16:9");
+  const [shots, setShots] = useState(initialShots ?? 5);
   const [modelId, setModelId] = useState(models[0]?.id ?? "");
   const [refs, setRefs] = useState<Ref[]>([]);
   const [uploading, setUploading] = useState(false);

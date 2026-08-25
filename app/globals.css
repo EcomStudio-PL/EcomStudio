@@ -60,7 +60,8 @@
 
   /* LAYOUT CONSTANTS — one source for chrome dimensions. */
   --header-h: 56px;
-  --dock-h: 84px;
+  /* Bottom dock: 5 slots of icon + label inside a 4px-padded bar. */
+  --dock-h: 72px;
   --drawer-w: 20rem;
   --rail-w: 208px;
   --rail-w-collapsed: 68px;

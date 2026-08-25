@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 
 /** EcomStudio brand mark: viewfinder frame + product focus point.
- *  Works standalone (collapsed sidebar, favicon) or with the wordmark. */
+ *  Works standalone (favicon, compact chrome) or with the wordmark. */
 export function BrandMark({ size = 26 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden>
@@ -15,12 +16,24 @@ export function BrandMark({ size = 26 }: { size?: number }) {
   );
 }
 
-export function Brand({ href = "/", markOnly = false }: { href?: string; markOnly?: boolean }) {
+/**
+ * BRAND — exactly one mark and (optionally) one wordmark.
+ *
+ * The wordmark is hidden with a class rather than by rendering a second
+ * `Brand`, so no layout can ever end up showing the mark twice.
+ */
+export function Brand({ href = "/", markOnly = false, className, wordmarkClassName }: {
+  href?: string;
+  markOnly?: boolean;
+  className?: string;
+  /** Responsive visibility for the wordmark, e.g. "hidden sm:inline-flex". */
+  wordmarkClassName?: string;
+}) {
   return (
-    <Link href={href} className="inline-flex items-center gap-2.5 font-display text-lg font-semibold tracking-tight">
+    <Link href={href} className={cn("inline-flex items-center gap-2.5 font-display text-lg font-semibold tracking-tight", className)}>
       <BrandMark />
       {!markOnly && (
-        <span className="inline-flex items-baseline gap-0.5 leading-none">
+        <span className={cn("inline-flex items-baseline gap-0.5 leading-none", wordmarkClassName)}>
           <span>ecom</span>
           <span className="text-accent">studio</span>
         </span>

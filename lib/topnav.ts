@@ -1,40 +1,41 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  Boxes, Crop, Gauge, Layers, Mail, Maximize2, Megaphone, PenLine, Scissors,
-  Shirt, ShoppingBag, Square, Stamp, Sun, SwatchBook, Video, Wand2, Clapperboard,
-  Image as ImageIcon, Sparkles, Film, MessageSquareText,
+  Crop, Gauge, Maximize2, PenLine, Scissors, Square, Stamp, Sun, SwatchBook,
+  Wand2, Sparkles,
 } from "lucide-react";
+import { CATEGORIES, VIDEO_CREATE_WF, VIDEO_EDIT_WF, VIDEO_ICON, categoryHref, type CategoryAccent } from "./categories";
 
 /**
- * TOP NAVIGATION TREE — the customer app's information architecture from the
- * UX spec: a horizontal bar with two mega-menus (Image / Video), each split
- * into TWÓRZ (generation categories) and EDYTUJ (operations on an existing
- * asset). Entries carry real destinations; anything without a working
- * backend is marked `soon` and rendered disabled — never as a dead link.
+ * TOP NAVIGATION TREE — the customer app's information architecture: a
+ * horizontal bar with two mega-menus (Image / Video), each split into TWÓRZ
+ * (generation categories) and EDYTUJ (operations on an existing asset).
+ *
+ * Categories resolve to their own workspace pages (`/k/{slug}`), not to a
+ * query string on one shared form. Anything without a working backend is
+ * marked `soon` and rendered disabled — never as a dead link.
  */
 
 export type MegaEntry = {
   key: string;
   href: string;
   icon: LucideIcon;
+  /** Per-category accent, used for the icon tile inside menus and tiles. */
+  accent?: CategoryAccent;
   /** No backend yet — rendered with a "Wkrótce" badge, not clickable. */
   soon?: boolean;
 };
 
-/** TWÓRZ — image generation categories. All real categories route into the
- *  Generator (EcomStudio engine) with the category preselected; Matching is
- *  a Phase-3 workflow and is honestly marked as coming soon. */
-export const IMAGE_CREATE: readonly MegaEntry[] = [
-  { key: "moda", href: "/prompts?cat=moda", icon: Shirt },
-  { key: "ecommerce", href: "/prompts?cat=ecommerce", icon: ShoppingBag },
-  { key: "social", href: "/prompts?cat=social", icon: Megaphone },
-  { key: "mailing", href: "/prompts?cat=mailing", icon: Mail },
-  { key: "inne", href: "/prompts?cat=inne", icon: Boxes },
-  { key: "matching", href: "/prompts", icon: SwatchBook, soon: true },
-] as const;
+/** TWÓRZ — image generation categories, each its own workspace. */
+export const IMAGE_CREATE: readonly MegaEntry[] = CATEGORIES.map((c) => ({
+  key: c.key,
+  href: categoryHref(c),
+  icon: c.icon,
+  accent: c.accent,
+  soon: c.soon,
+}));
 
-/** The two working modes of the one Generator (spec: AI Studio is not a
- *  separate application — it is the advanced mode of the Generator). */
+/** The two working modes of the one Generator (AI Studio is not a separate
+ *  application — it is the advanced mode of the Generator). */
 export const IMAGE_MODES: readonly MegaEntry[] = [
   { key: "engine", href: "/prompts", icon: Sparkles },
   { key: "custom", href: "/generator", icon: PenLine },
@@ -53,25 +54,18 @@ export const IMAGE_EDIT: readonly MegaEntry[] = [
   { key: "recolor", href: "/tools", icon: SwatchBook, soon: true },
 ] as const;
 
-/** VIDEO — the mirror structure. No video backend exists yet, so every
- *  entry is an honest "Wkrótce": the architecture is in place, the promise
- *  is not faked. */
-export const VIDEO_CREATE: readonly MegaEntry[] = [
-  { key: "product", href: "/home", icon: Clapperboard, soon: true },
-  { key: "fashion", href: "/home", icon: Shirt, soon: true },
-  { key: "ecommerce", href: "/home", icon: ShoppingBag, soon: true },
-  { key: "social", href: "/home", icon: Megaphone, soon: true },
-  { key: "img2vid", href: "/home", icon: ImageIcon, soon: true },
-  { key: "prompt2vid", href: "/home", icon: MessageSquareText, soon: true },
-] as const;
+/** VIDEO — the mirror structure. No video backend exists yet, so every entry
+ *  routes to the video workspace, which states plainly that generation is not
+ *  available. The architecture is in place; the promise is not faked. */
+export const VIDEO_CREATE: readonly MegaEntry[] = VIDEO_CREATE_WF.map((w) => ({
+  key: w.key, href: `/wideo#${w.key}`, icon: w.icon, soon: true,
+}));
 
-export const VIDEO_EDIT: readonly MegaEntry[] = [
-  { key: "captions", href: "/home", icon: Film, soon: true },
-  { key: "thumbnail", href: "/home", icon: Layers, soon: true },
-] as const;
+export const VIDEO_EDIT: readonly MegaEntry[] = VIDEO_EDIT_WF.map((w) => ({
+  key: w.key, href: `/wideo#${w.key}`, icon: w.icon, soon: true,
+}));
 
-export const VIDEO_ICON = Video;
+export { VIDEO_ICON };
 
-/** Homepage category tiles — the same six categories as the Image mega-menu,
- *  with a one-line description key per tile. */
+/** Homepage category tiles — the same six categories as the Image mega-menu. */
 export const HOME_CATEGORIES = IMAGE_CREATE;

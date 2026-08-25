@@ -22,26 +22,35 @@ export function StepPanel({ n, overline, title, sub, action, last, children, cla
   className?: string;
 }) {
   return (
-    <section className={cn("relative flex min-w-0 gap-4", className)}>
+    <section className={cn(
+      "relative flex min-w-0 gap-4",
+      // Without card chrome on phones, a hairline keeps the steps apart.
+      "max-sm:border-t max-sm:border-line max-sm:pt-5 max-sm:first:border-t-0 max-sm:first:pt-0",
+      className,
+    )}>
       <div className="hidden w-12 shrink-0 flex-col items-center sm:flex" aria-hidden>
         <span className="step-chip">{n}</span>
         {!last && (
           <span className="mt-3 w-px flex-1 bg-gradient-to-b from-[rgb(var(--accent)/0.4)] via-[rgb(var(--accent)/0.14)] to-transparent" />
         )}
       </div>
-      <Panel className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-3 px-4 pb-3 pt-4 sm:px-5 sm:pt-5">
+      {/* On phones the panel drops its card chrome and becomes a plain
+          section: the numbered heading already separates the steps, and one
+          less nested box means the controls inside stop reading as
+          cards-inside-cards. */}
+      <Panel className="min-w-0 flex-1 max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:shadow-none">
+        <div className="flex items-start justify-between gap-3 px-0 pb-3 pt-1 sm:px-5 sm:pt-5">
           <div className="min-w-0">
             <p className="overline !text-accent">{overline}</p>
-            <h2 className="mt-1.5 flex min-w-0 items-center gap-2.5 font-display text-lg font-semibold tracking-tight">
+            <h2 className="mt-1.5 flex min-w-0 items-center gap-2.5 font-display text-[17px] font-semibold tracking-tight sm:text-lg">
               <span aria-hidden className="step-chip step-chip-sm sm:hidden">{n}</span>
               <span className="min-w-0">{title}</span>
             </h2>
-            {sub && <p className="mt-1 text-[13px] leading-relaxed text-muted">{sub}</p>}
+            {sub && <p className="mt-1 text-[12.5px] leading-relaxed text-muted sm:text-[13px]">{sub}</p>}
           </div>
           {action && <div className="shrink-0">{action}</div>}
         </div>
-        <div className="px-4 pb-5 sm:px-5">{children}</div>
+        <div className="px-0 pb-2 sm:px-5 sm:pb-5">{children}</div>
       </Panel>
     </section>
   );

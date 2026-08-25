@@ -1032,7 +1032,25 @@
       "user": "Customers"
     },
     "imagesSection": "Images",
-    "videosSection": "Video"
+    "videosSection": "Video",
+    "title": "Search",
+    "tabs": {
+      "all": "All",
+      "image": "Image",
+      "video": "Video",
+      "tools": "Tools",
+      "products": "Products"
+    },
+    "sections": {
+      "recent": "Recent",
+      "suggested": "Suggested",
+      "generators": "Generators",
+      "products": "Products",
+      "tools": "Tools",
+      "video": "Video"
+    },
+    "emptyTab": "No results in this tab.",
+    "clearRecent": "Clear"
   },
   "econ": {
     "title": "Customer profitability",
@@ -1350,7 +1368,10 @@
     "image": "Image",
     "video": "Video",
     "library": "Library",
-    "primary": "Primary navigation"
+    "primary": "Primary navigation",
+    "account": "Account",
+    "notifications": "Notifications",
+    "generate": "Generate"
   },
   "mega": {
     "create": "Create",
@@ -1377,7 +1398,13 @@
     "inneSub": "Labels, packaging, pictograms and flyers.",
     "inneStyle": "Branding materials: labels, packaging, flyers",
     "matching": "Matching",
-    "matchingSub": "Generate in the style of an inspiration — soon."
+    "matchingSub": "Generate in the style of an inspiration — soon.",
+    "modaLead": "Fashion shoots without a studio, a model or a photographer.",
+    "ecommerceLead": "Photos that sell on marketplaces.",
+    "socialLead": "Content for Instagram, TikTok and ads.",
+    "mailingLead": "Graphics for newsletters and email campaigns.",
+    "inneLead": "Labels, packaging, leaflets and pictograms.",
+    "matchingLead": "Reproduce an inspiration's style on your own product."
   },
   "vids": {
     "product": "Product video",
@@ -1402,5 +1429,290 @@
     "statMonth": "Generations this month",
     "categoriesTitle": "What do you want to create today?",
     "recentTitle": "Recent activity"
+  },
+  "catpage": {
+    "overline": "Category",
+    "chooseTitle": "Choose a workflow",
+    "chooseSub": "Every workflow has its own ratio, shot count and style. Pick one and go straight to the generator.",
+    "presetRatio": "Ratio",
+    "presetShots": "Shots",
+    "start": "Start",
+    "openGenerator": "Open generator",
+    "customPrompt": "Custom prompt",
+    "recentTitle": "Your recent generations",
+    "recentEmpty": "Nothing here yet — your first generation will show up in this spot.",
+    "howTitle": "How it works",
+    "how1": "Add a product",
+    "how1Sub": "Pick a saved product or upload reference photos.",
+    "how2": "Choose a workflow",
+    "how2Sub": "We fill in the framing and style settings for you.",
+    "how3": "Generate",
+    "how3Sub": "The EcomStudio engine prepares a full set of on-product shots.",
+    "soonTitle": "This category is in preparation",
+    "soonBody": "The workflow is designed, but the engine does not support it yet. We do not launch generations we cannot deliver — use the other categories in the meantime.",
+    "allCategories": "All categories"
+  },
+  "wf": {
+    "moda": {
+      "onModel": {
+        "name": "On model",
+        "sub": "The product worn, full-body framing.",
+        "style": "Fashion photo on a model, natural posture, soft studio light, garment fully visible"
+      },
+      "flatlay": {
+        "name": "Flat lay",
+        "sub": "The product laid out, seen from above.",
+        "style": "Top-down flat lay, even light, minimal background, clear fabric texture"
+      },
+      "street": {
+        "name": "Street style",
+        "sub": "Styling shot in an urban setting.",
+        "style": "Street style outdoors in an urban setting, natural daylight, dynamic pose, blurred street background"
+      },
+      "editorial": {
+        "name": "Editorial",
+        "sub": "A fashion shoot with character.",
+        "style": "Fashion editorial, contrasty directional light, bold composition, magazine mood"
+      },
+      "detail": {
+        "name": "Detail",
+        "sub": "Close-ups on fabric and finishing.",
+        "style": "Macro product detail, sharp fabric texture, seams and finishing, shallow depth of field"
+      }
+    },
+    "ecommerce": {
+      "packshot": {
+        "name": "Packshot",
+        "sub": "Clean product on a plain background.",
+        "style": "Product packshot on a plain bright background, even light, no cast shadows, full sharpness"
+      },
+      "thumbnail": {
+        "name": "Thumbnail",
+        "sub": "Framing for the listing's first image.",
+        "style": "Listing thumbnail, product fills the frame, white background, maximum legibility at small size"
+      },
+      "context": {
+        "name": "In context",
+        "sub": "The product in a natural setting.",
+        "style": "Product in a natural interior in use, realistic ambient light, context of application"
+      },
+      "set": {
+        "name": "Photo set",
+        "sub": "A full set of shots for one listing.",
+        "style": "Consistent set of shots of one product: front, side, detail, context — one lighting convention"
+      },
+      "scale": {
+        "name": "Scale and size",
+        "sub": "Shots that convey the real size.",
+        "style": "Shot conveying the product's scale against its surroundings, clear proportions, neutral background"
+      }
+    },
+    "social": {
+      "reels": {
+        "name": "Reels / TikTok",
+        "sub": "Vertical framing for short video.",
+        "style": "Vertical frame for social video, vivid colours, dynamic composition, space for captions top and bottom"
+      },
+      "feed": {
+        "name": "Feed post",
+        "sub": "The classic product post.",
+        "style": "Product feed post, lifestyle, warm light, aesthetic composition"
+      },
+      "ads": {
+        "name": "Ad creative",
+        "sub": "Built for paid campaigns.",
+        "style": "Ad creative, strong focal point on the product, clean space for a headline, high contrast"
+      },
+      "ugc": {
+        "name": "UGC",
+        "sub": "Natural, shot-on-a-phone feel.",
+        "style": "UGC-style photo, natural light, shot-on-a-phone feel, authentic imperfect mood"
+      },
+      "carousel": {
+        "name": "Carousel",
+        "sub": "A series of consistent slides.",
+        "style": "Series of consistent carousel slides, one palette and one light, narrative from wide to detail"
+      }
+    },
+    "mailing": {
+      "header": {
+        "name": "Email header",
+        "sub": "Banner for the top of the message.",
+        "style": "Newsletter header banner, horizontal composition, clear space for text on one side"
+      },
+      "promo": {
+        "name": "Promotion",
+        "sub": "Graphic for a discount or sale.",
+        "style": "Promotional graphic, product in the foreground, clean space for the discount message"
+      },
+      "newsletter": {
+        "name": "Newsletter block",
+        "sub": "A square content module.",
+        "style": "Square newsletter module, product centred, calm background, legible at small size"
+      },
+      "seasonal": {
+        "name": "Seasonal",
+        "sub": "Holiday and seasonal campaigns.",
+        "style": "Seasonal campaign, subtle occasion decor, warm palette, product stays the hero"
+      }
+    },
+    "inne": {
+      "label": {
+        "name": "Label",
+        "sub": "A product label design.",
+        "style": "Product label visualisation, clear composition, realistic material rendering"
+      },
+      "packaging": {
+        "name": "Packaging",
+        "sub": "Boxes, cartons, packaging.",
+        "style": "Product packaging visualisation, realistic carton, studio light, visible edges and print"
+      },
+      "leaflet": {
+        "name": "Leaflet",
+        "sub": "An informational piece.",
+        "style": "Product leaflet, ordered composition, clear hierarchy, space for copy"
+      },
+      "icons": {
+        "name": "Pictograms",
+        "sub": "A set of simple icons.",
+        "style": "Set of consistent pictograms, simple form, one stroke weight, neutral background"
+      },
+      "free": {
+        "name": "Anything else",
+        "sub": "When nothing above fits.",
+        "style": "Marketing material per the user's description, consistent brand aesthetic"
+      }
+    },
+    "matching": {
+      "fromInspiration": {
+        "name": "From inspiration",
+        "sub": "Reproduce the style of a chosen photo.",
+        "style": ""
+      },
+      "brandStyle": {
+        "name": "Brand style",
+        "sub": "Stick to a single convention.",
+        "style": ""
+      },
+      "series": {
+        "name": "Consistent series",
+        "sub": "Many products, one style.",
+        "style": ""
+      }
+    }
+  },
+  "video": {
+    "overline": "Video",
+    "title": "Video",
+    "sub": "A complete video workspace — from the product shot to social-ready material.",
+    "createTitle": "Create video",
+    "editTitle": "Edit video",
+    "notReadyTitle": "Video generation is not live yet",
+    "notReadyBody": "The workspace is ready, but no video engine is connected yet. We do not launch generations we cannot deliver — you will not lose a single credit on something that will not be produced.",
+    "notify": "Notify me when it launches",
+    "notifySent": "We will let you know when video is available.",
+    "meanwhile": "In the meantime",
+    "meanwhileBody": "Prepare your product photos — they will be the starting point for the first video material.",
+    "length": "Length",
+    "ratio": "Frame",
+    "wf": {
+      "product": {
+        "name": "Product video",
+        "sub": "Rotation and product presentation."
+      },
+      "fashion": {
+        "name": "Fashion",
+        "sub": "Movement, fabric, styling."
+      },
+      "ecommerce": {
+        "name": "E-commerce",
+        "sub": "Short video for the product page."
+      },
+      "social": {
+        "name": "Social Media",
+        "sub": "Reels and short vertical formats."
+      },
+      "img2vid": {
+        "name": "Image → video",
+        "sub": "Animate an existing photo."
+      },
+      "prompt2vid": {
+        "name": "Prompt → video",
+        "sub": "Material from a description alone."
+      },
+      "captions": {
+        "name": "Captions edit",
+        "sub": "Automatic captions and cuts."
+      },
+      "thumbnail": {
+        "name": "Thumbnail pick",
+        "sub": "The best frame for the cover."
+      }
+    }
+  },
+  "account": {
+    "title": "Account",
+    "plan": "Plan",
+    "credits": "Credits",
+    "creditsLeft": "{n} left",
+    "topUp": "Buy credits",
+    "upgrade": "Upgrade plan",
+    "profile": "Profile",
+    "settings": "Settings",
+    "help": "Help",
+    "admin": "Admin panel",
+    "language": "Language"
+  },
+  "plans": {
+    "overline": "Pricing",
+    "title": "A plan that matches your scale",
+    "sub": "From first tests to agency workloads. Credits renew every month.",
+    "monthly": "Monthly",
+    "annual": "Annual",
+    "annualNote": "2 months free on annual billing",
+    "perMonth": "/ mo",
+    "billedAnnually": "billed annually",
+    "mostPopular": "Most popular",
+    "bestValue": "Best value",
+    "current": "Your plan",
+    "choose": "Choose plan",
+    "creditsMo": "{n} credits per month",
+    "approx": "that is roughly {n} product shots",
+    "soon": "Plan changes will be available once payments are connected.",
+    "compare": "What each plan includes",
+    "feat": {
+      "generator": "EcomStudio shot generator",
+      "custom": "Custom prompts",
+      "tools": "Editing toolbox",
+      "library": "Library and history",
+      "products": "Product database",
+      "priority": "Queue priority",
+      "support": "Email support",
+      "supportFast": "Priority support",
+      "team": "Team collaboration",
+      "api": "API access"
+    }
+  },
+  "packs": {
+    "title": "Credit packages",
+    "sub": "One-off top-up — credits never expire.",
+    "tier": {
+      "small": "Starter",
+      "standard": "Standard",
+      "popular": "Popular",
+      "power": "Power user"
+    },
+    "bonus": "+{n} bonus",
+    "total": "{n} total",
+    "perCredit": "{n} PLN / credit",
+    "buy": "Buy package",
+    "soon": "Payments are not enabled yet"
+  },
+  "mobilenav": {
+    "home": "Home",
+    "generate": "Generate",
+    "library": "Library",
+    "products": "Products",
+    "account": "Account"
   }
 }

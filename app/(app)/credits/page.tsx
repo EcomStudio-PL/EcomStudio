@@ -4,9 +4,15 @@ import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet, getTransactions } from "@/lib/services/credits";
 import { PageHeader } from "@/components/ui/page-header";
+import { SectionHeader } from "@/components/ui/section-header";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CreditPacks, type CreditPack } from "@/components/plan/credit-packs";
+import { creditLevel, CREDIT_METER_CLASS, CREDIT_REFERENCE } from "@/lib/credit-level";
 import { formatCredits, formatDate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+
+export const dynamic = "force-dynamic";
 
 export default async function CreditsPage() {
   const supabase = await createClient();
@@ -32,77 +38,58 @@ export default async function CreditsPage() {
     return acc;
   }, {});
 
+  const balance = wallet?.balance ?? 0;
+  const level = creditLevel(balance);
+  const packs: CreditPack[] = (packages ?? []).map((p) => ({
+    id: p.id, name: p.name, credits: p.credits, bonusCredits: p.bonus_credits,
+    priceCents: p.price_cents, currency: p.currency, featured: p.featured, badge: p.badge,
+  }));
+
   return (
-    <div className="mx-auto max-w-3xl">
+    <div>
       <PageHeader overline={t("nav.groups.account")} title={t("credits.title")} sub={t("credits.sub")} />
-      <Card className="flex flex-wrap items-center justify-between gap-4 p-6">
-        <div>
-          <p className="text-sm text-muted">{t("credits.balance")}</p>
-          <p className="font-display text-4xl font-semibold tracking-tight text-accent">
-            {formatCredits(wallet?.balance ?? 0)}
+
+      {/* BALANCE — one wide panel with the meter, then the two usage facts. */}
+      <div className="grid gap-3.5 [&>*]:min-w-0 lg:grid-cols-[1.6fr_1fr_1fr]">
+        <Card className="relative overflow-hidden p-5 sm:p-6">
+          <span aria-hidden className="pointer-events-none absolute inset-0"
+            style={{ background: "radial-gradient(24rem 12rem at 8% -20%, rgb(var(--accent) / 0.20), transparent 70%)" }} />
+          <p className="overline relative">{t("credits.balance")}</p>
+          <p className="metric relative mt-2 text-[clamp(2.1rem,1.4rem+1.6vw,3rem)] leading-none text-accent">
+            {formatCredits(balance)}
           </p>
-        </div>
-        <div className="text-right">
-          <button disabled className="rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-muted opacity-60">
-            {t("credits.topup")}
-          </button>
-          <p className="mt-1.5 text-xs text-muted">{t("credits.topupSoon")}</p>
-        </div>
-      </Card>
-      <div className="mt-5 grid gap-3.5 [&>*]:min-w-0 sm:grid-cols-2">
-        <Card className="px-5 py-4">
-          <p className="text-sm text-muted">{t("credits.usedThisMonth")}</p>
-          <p className="mt-1 font-display text-2xl font-semibold tracking-tight">{formatCredits(usedThisMonth)}</p>
+          <span className="relative mt-4 block h-[5px] w-full max-w-md overflow-hidden rounded-full bg-[rgb(var(--ink)/0.12)]">
+            <span className={cn("block h-full rounded-full transition-[width] duration-300", CREDIT_METER_CLASS[level])}
+              style={{ width: `${Math.max(4, Math.min(1, balance / CREDIT_REFERENCE) * 100)}%` }} />
+          </span>
         </Card>
         <Card className="px-5 py-4">
-          <p className="text-sm text-muted">{t("credits.usageBreakdown")}</p>
+          <p className="overline">{t("credits.usedThisMonth")}</p>
+          <p className="metric mt-2 text-[1.6rem] leading-none">{formatCredits(usedThisMonth)}</p>
+        </Card>
+        <Card className="px-5 py-4">
+          <p className="overline">{t("credits.usageBreakdown")}</p>
           {Object.keys(byType).length === 0 ? (
-            <p className="mt-1 text-sm text-muted">—</p>
+            <p className="mt-2 text-sm text-muted">—</p>
           ) : (
-            <ul className="mt-1.5 space-y-1 text-sm">
+            <ul className="mt-2 space-y-1 text-sm">
               {Object.entries(byType).map(([type, amount]) => (
-                <li key={type} className="flex justify-between">
-                  <span>{t(`credits.tt.${type}`)}</span>
-                  <span className="font-medium">{formatCredits(amount)}</span>
+                <li key={type} className="flex justify-between gap-2">
+                  <span className="truncate text-muted">{t(`credits.tt.${type}`)}</span>
+                  <span className="shrink-0 font-medium tabular-nums">{formatCredits(amount)}</span>
                 </li>
               ))}
             </ul>
           )}
         </Card>
       </div>
-      <div className="mt-8">
-        <h2 className="font-display text-lg font-semibold tracking-tight">{t("credits.topupTitle")}</h2>
-        <p className="mt-1 text-sm text-muted">{t("credits.topupSub")}</p>
-        <div className="mt-4 grid gap-3 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-4">
-          {(packages ?? []).map((p) => {
-            const total = p.credits + p.bonus_credits;
-            return (
-              <Card key={p.id} className={`relative flex flex-col p-5 ${p.featured ? "ring-1 ring-accent" : ""}`}>
-                {p.badge && (
-                  <span className="absolute -top-2.5 left-4 rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-semibold text-white">
-                    {p.badge}
-                  </span>
-                )}
-                <p className="text-sm font-semibold">{p.name}</p>
-                <p className="mt-2 font-display text-3xl font-semibold tracking-tight text-accent">
-                  {formatCredits(p.credits)}
-                </p>
-                {p.bonus_credits > 0 && (
-                  <p className="text-xs text-muted">+ {formatCredits(p.bonus_credits)} bonus · {t("credits.totalDelivered", { n: formatCredits(total) })}</p>
-                )}
-                <p className="mt-2 text-sm text-muted">{(p.price_cents / 100).toFixed(2)} {p.currency}</p>
-                <div className="mt-auto pt-4">
-                  <button disabled className="h-11 w-full rounded-xl border border-line text-sm font-semibold text-muted opacity-60">
-                    {t("credits.buy")}
-                  </button>
-                  <p className="mt-1.5 text-center text-[11px] text-faint">{t("credits.paymentsNotEnabled")}</p>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      </div>
-      <Card className="mt-8">
+
+      <section className="mt-7">
+        <SectionHeader overline={t("nav.groups.account")} title={t("packs.title")} sub={t("packs.sub")} className="mb-4" />
+        <CreditPacks packs={packs} />
+      </section>
+
+      <Card className="mt-7">
         <CardHeader title={t("credits.historyTitle")} />
         {txs.length === 0 ? (
           <p className="px-5 py-10 text-center text-sm text-muted">{t("credits.emptyTitle")}</p>
