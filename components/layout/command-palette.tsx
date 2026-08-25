@@ -48,6 +48,10 @@ export function CommandPalette({ isAdmin, wide = false, iconOnly = false }: {
   /** Icon-only trigger for the mobile top bar; the overlay is full-screen. */
   iconOnly?: boolean;
 }) {
+  // The bar mounts two triggers — a wide field for desktop and an icon for
+  // phones — but only ONE may own Ctrl/⌘K, or the shortcut opens two
+  // overlays at once and the second one fights the first for focus.
+  const ownsShortcut = !iconOnly;
   const { t } = useI18n();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -70,6 +74,7 @@ export function CommandPalette({ isAdmin, wide = false, iconOnly = false }: {
   }, []);
 
   useEffect(() => {
+    if (!ownsShortcut) return;
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -78,7 +83,7 @@ export function CommandPalette({ isAdmin, wide = false, iconOnly = false }: {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [ownsShortcut]);
 
   useEffect(() => {
     if (!open) return;

@@ -14,11 +14,9 @@ import { MatchingWorkspace } from "@/components/category/matching-workspace";
 import { SectionHeader } from "@/components/ui/section-header";
 import { cn } from "@/lib/utils";
 
+// Per request only: the page reads the caller's workspace, and a prebuilt
+// shell behind the authenticated layout bakes in a redirect to /login.
 export const dynamic = "force-dynamic";
-
-export function generateStaticParams() {
-  return CATEGORIES.map((c) => ({ cat: c.slug }));
-}
 
 /**
  * CATEGORY LANDING — discovery, then workflow, then generation.

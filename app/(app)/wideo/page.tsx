@@ -6,7 +6,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { SectionHeader } from "@/components/ui/section-header";
 import { VIDEO_CREATE_WF, VIDEO_EDIT_WF, VIDEO_ENABLED, type VideoWorkflow } from "@/lib/categories";
 
-export const dynamic = "force-static";
+// The page sits behind the authenticated layout, which reads cookies — it
+// must render per request, never as a prebuilt static shell.
+export const dynamic = "force-dynamic";
 
 /**
  * VIDEO — the section is built for real: the workflows, their framing and
