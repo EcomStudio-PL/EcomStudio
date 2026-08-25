@@ -27,7 +27,9 @@ export default async function LibraryPage({ searchParams }: {
   searchParams: Promise<{ tab?: string; product?: string }>;
 }) {
   const { tab: tabParam, product: productFilter } = await searchParams;
-  const tab = tabParam === "history" ? "history" : tabParam === "tools" ? "tools" : "all";
+  const tab = tabParam === "history" ? "history"
+    : tabParam === "tools" ? "tools"
+      : tabParam === "favorites" ? "favorites" : "all";
   const supabase = await createClient();
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
@@ -47,9 +49,10 @@ export default async function LibraryPage({ searchParams }: {
       .limit(60),
   ]);
 
-  const filtered = productFilter
+  const byProduct = productFilter
     ? generations.filter((g) => g.product_id === productFilter)
     : generations;
+  const filtered = tab === "favorites" ? byProduct.filter((g) => g.favorite) : byProduct;
 
   const paths = [
     ...filtered.flatMap((g) => g.generation_assets.map((a) => a.storage_path)),
@@ -65,13 +68,15 @@ export default async function LibraryPage({ searchParams }: {
     id: g.id,
     product: g.products?.name ?? null,
     created: g.created_at,
+    favorite: g.favorite,
     assets: g.generation_assets.map((a) => ({ id: a.id, path: a.storage_path, url: urlMap.get(a.storage_path) ?? null })),
   }));
 
   // Counts on the tabs: the user can see where their work actually is
-  // before clicking through three empty shelves.
+  // before clicking through four empty shelves.
   const tabs = [
     { key: "all", href: "/library", label: t("library.tabAll"), count: generations.length },
+    { key: "favorites", href: "/library?tab=favorites", label: t("library.tabFavorites"), count: generations.filter((g) => g.favorite).length },
     { key: "tools", href: "/library?tab=tools", label: t("library.tabTools"), count: (toolResults ?? []).length },
     { key: "history", href: "/library?tab=history", label: t("library.tabHistory"), count: tab === "history" ? jobs.length : null },
   ];
@@ -104,7 +109,7 @@ export default async function LibraryPage({ searchParams }: {
             </Link>
           ))}
         </div>
-        {tab === "all" && filterableProducts.length > 0 && (
+        {(tab === "all" || tab === "favorites") && filterableProducts.length > 0 && (
           <div className="flex max-w-full items-center gap-1.5 overflow-x-auto">
             <Link href="/library"
               className={cn("shrink-0 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors",

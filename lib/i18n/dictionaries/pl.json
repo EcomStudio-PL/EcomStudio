@@ -271,7 +271,12 @@
     "selectOn": "Zaznacz",
     "selectOff": "Anuluj zaznaczanie",
     "zip": "Pobierz ZIP ({n})",
-    "editAsset": "Edytuj w narzędziach"
+    "editAsset": "Edytuj w narzędziach",
+    "quickOpen": "Podgląd",
+    "quickDownload": "Pobierz",
+    "favorite": "Ulubione",
+    "unfavorite": "Usuń z ulubionych",
+    "tabFavorites": "Ulubione"
   },
   "history": {
     "title": "Historia",
@@ -1450,7 +1455,9 @@
     "how3Sub": "Silnik EcomStudio przygotuje komplet ujęć zgodnych z produktem.",
     "soonTitle": "Ta kategoria jest w przygotowaniu",
     "soonBody": "Workflow jest zaprojektowany, ale silnik jeszcze go nie obsługuje. Nie uruchamiamy generacji, których nie umiemy dowieźć — w międzyczasie skorzystaj z pozostałych kategorii.",
-    "allCategories": "Wszystkie kategorie"
+    "allCategories": "Wszystkie kategorie",
+    "featured": "Polecany workflow",
+    "cost": "{n} kr / ujęcie"
   },
   "wf": {
     "moda": {
@@ -1647,6 +1654,14 @@
       "thumbnail": {
         "name": "Dobór miniatury",
         "sub": "Najlepsza klatka na okładkę."
+      },
+      "ugc": {
+        "name": "UGC produktowe",
+        "sub": "Autentyczny klip jak z telefonu."
+      },
+      "lifestyle": {
+        "name": "Lifestyle produktu",
+        "sub": "Produkt w realnym użyciu."
       }
     }
   },
@@ -1714,5 +1729,21 @@
     "library": "Biblioteka",
     "products": "Produkty",
     "account": "Konto"
+  },
+  "match": {
+    "overline": "Matching",
+    "inspirationTitle": "Inspiracja",
+    "inspirationSub": "Zdjęcie, którego styl chcesz odtworzyć.",
+    "productTitle": "Twój produkt",
+    "productSub": "Zdjęcia referencyjne produktu, który ma trafić w ten styl.",
+    "upload": "Dodaj zdjęcie",
+    "settingsTitle": "Ustawienia",
+    "strength": "Siła stylu",
+    "strengthSub": "Jak mocno trzymać się inspiracji względem wierności produktu.",
+    "generate": "Generuj w tym stylu",
+    "disabledTitle": "Matching jeszcze nie generuje",
+    "disabledBody": "Warsztat jest gotowy, ale silnik dopasowania stylu nie jest jeszcze podłączony. Nie uruchamiamy generacji, których nie umiemy dowieźć — żaden kredyt nie zostanie pobrany.",
+    "resultsTitle": "Wyniki",
+    "resultsEmpty": "Wyniki pojawią się tutaj po uruchomieniu silnika."
   }
 }

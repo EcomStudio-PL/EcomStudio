@@ -12,12 +12,14 @@ import { cn } from "@/lib/utils";
  * six names would defeat the point, so the ratio/shots pair is printed on the
  * card — the user can see the presets differ before clicking.
  */
-export function WorkflowCards({ category, t, previews }: {
+export function WorkflowCards({ category, t, previews, costPerShot }: {
   category: Category;
   t: (key: string, vars?: Record<string, string | number>) => string;
   /** Signed thumbnails from the user's own library, one per card when
    *  available — otherwise the ratio frame stands in. */
   previews?: (string | null)[];
+  /** Credits one shot costs at the default model, when a model is usable. */
+  costPerShot?: number | null;
 }) {
   const { rgb, rgb2 } = category.accent;
   return (
@@ -56,6 +58,14 @@ export function WorkflowCards({ category, t, previews }: {
               <span className="absolute right-2 top-2 rounded-md bg-[rgb(var(--bg)/0.72)] px-1.5 py-0.5 text-[9.5px] font-bold tracking-wide text-[rgb(var(--cat))] backdrop-blur-sm">
                 {w.ratio}
               </span>
+              {/* The first workflow is the category's flagship — labelled, so
+                  a new user has an obvious place to start. */}
+              {i === 0 && !disabled && (
+                <span className="absolute left-2 top-2 rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-white backdrop-blur-sm"
+                  style={{ background: `rgb(${rgb} / 0.85)` }}>
+                  {t("catpage.featured")}
+                </span>
+              )}
             </span>
 
             <span className="flex items-center gap-1.5 text-[13.5px] font-semibold tracking-tight">
@@ -70,9 +80,14 @@ export function WorkflowCards({ category, t, previews }: {
               {t(`wf.${category.key}.${w.key}.sub`)}
             </span>
 
-            <span className="mt-3 flex items-center gap-3 border-t border-line pt-2.5 text-[11px] font-medium text-faint">
+            <span className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2.5 text-[11px] font-medium text-faint">
               <span className="inline-flex items-center gap-1"><Ratio size={11} aria-hidden />{w.ratio}</span>
-              <span className="inline-flex items-center gap-1"><Layers size={11} aria-hidden />{t("catpage.presetShots")}: {w.shots}</span>
+              <span className="inline-flex items-center gap-1"><Layers size={11} aria-hidden />{w.shots}</span>
+              {typeof costPerShot === "number" && costPerShot > 0 && !disabled && (
+                <span className="inline-flex items-center gap-1 tabular-nums text-[rgb(var(--cat))]">
+                  {t("catpage.cost", { n: costPerShot })}
+                </span>
+              )}
               {!disabled && (
                 <ArrowRight size={12} aria-hidden
                   className="ml-auto text-[rgb(var(--cat))] transition-transform duration-200 group-hover:translate-x-0.5" />

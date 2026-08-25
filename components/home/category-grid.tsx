@@ -12,10 +12,12 @@ import { cn } from "@/lib/utils";
  * hue per tile from a single family: the grid reads as six rooms in one
  * building, not six unrelated apps.
  */
-export function CategoryGrid({ t, previews }: {
+export function CategoryGrid({ t, previews, hoverStrip }: {
   t: (key: string) => string;
   /** One signed thumbnail per tile, from the account's own library. */
   previews?: (string | null)[];
+  /** Two or three extra thumbnails revealed on desktop hover. */
+  hoverStrip?: string[];
 }) {
   return (
     <div id="kategorie" className="stagger grid grid-cols-2 gap-3 [&>*]:min-w-0 md:grid-cols-3 xl:grid-cols-6 xl:gap-3.5">
@@ -61,6 +63,17 @@ export function CategoryGrid({ t, previews }: {
             <span className="relative mt-1 line-clamp-2 text-[11.5px] leading-snug text-muted">
               {t(`cats.${c.key}Sub`)}
             </span>
+            {/* HOVER STRIP — a glimpse of what this category produces,
+                revealed only on pointer devices where there is room. */}
+            {!c.soon && hoverStrip && hoverStrip.length > 0 && (
+              <span aria-hidden className="relative mt-3 hidden gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 xl:flex">
+                {hoverStrip.slice(0, 3).map((url, k) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img key={k} src={url} alt="" loading="lazy"
+                    className="h-9 w-9 rounded-md object-cover ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]" />
+                ))}
+              </span>
+            )}
             {!c.soon && (
               <ArrowRight
                 size={13}

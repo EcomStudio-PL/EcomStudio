@@ -271,7 +271,12 @@
     "selectOn": "Auswählen",
     "selectOff": "Auswahl abbrechen",
     "zip": "ZIP herunterladen ({n})",
-    "editAsset": "In Werkzeugen bearbeiten"
+    "editAsset": "In Werkzeugen bearbeiten",
+    "quickOpen": "Vorschau",
+    "quickDownload": "Herunterladen",
+    "favorite": "Favorit",
+    "unfavorite": "Aus Favoriten entfernen",
+    "tabFavorites": "Favoriten"
   },
   "history": {
     "title": "Verlauf",
@@ -1450,7 +1455,9 @@
     "how3Sub": "Die EcomStudio-Engine erstellt einen vollständigen Satz produkttreuer Aufnahmen.",
     "soonTitle": "Diese Kategorie ist in Vorbereitung",
     "soonBody": "Der Workflow ist entworfen, die Engine unterstützt ihn aber noch nicht. Wir starten keine Generierungen, die wir nicht liefern können — nutze in der Zwischenzeit die anderen Kategorien.",
-    "allCategories": "Alle Kategorien"
+    "allCategories": "Alle Kategorien",
+    "featured": "Empfohlener Workflow",
+    "cost": "{n} Cr / Aufnahme"
   },
   "wf": {
     "moda": {
@@ -1647,6 +1654,14 @@
       "thumbnail": {
         "name": "Thumbnail-Auswahl",
         "sub": "Das beste Bild fürs Cover."
+      },
+      "ugc": {
+        "name": "Produkt-UGC",
+        "sub": "Authentischer Handy-Clip."
+      },
+      "lifestyle": {
+        "name": "Produkt-Lifestyle",
+        "sub": "Das Produkt im echten Einsatz."
       }
     }
   },
@@ -1714,5 +1729,21 @@
     "library": "Bibliothek",
     "products": "Produkte",
     "account": "Konto"
+  },
+  "match": {
+    "overline": "Matching",
+    "inspirationTitle": "Inspiration",
+    "inspirationSub": "Das Foto, dessen Stil du übernehmen willst.",
+    "productTitle": "Dein Produkt",
+    "productSub": "Referenzfotos des Produkts, das diesen Stil bekommen soll.",
+    "upload": "Foto hinzufügen",
+    "settingsTitle": "Einstellungen",
+    "strength": "Stilstärke",
+    "strengthSub": "Wie eng der Inspiration gefolgt wird gegenüber der Produkttreue.",
+    "generate": "In diesem Stil generieren",
+    "disabledTitle": "Matching generiert noch nicht",
+    "disabledBody": "Der Arbeitsbereich steht, aber die Stil-Matching-Engine ist noch nicht angebunden. Wir starten keine Generierungen, die wir nicht liefern können — es wird kein Credit abgebucht.",
+    "resultsTitle": "Ergebnisse",
+    "resultsEmpty": "Ergebnisse erscheinen hier, sobald die Engine live ist."
   }
 }

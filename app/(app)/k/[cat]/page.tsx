@@ -7,8 +7,10 @@ import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { listAssets } from "@/lib/services/generator";
 import { CATEGORIES, findCategory } from "@/lib/categories";
+import { conceptModelOptions } from "@/lib/server/concept-generation";
 import { CategoryHeader } from "@/components/category/category-header";
 import { WorkflowCards } from "@/components/category/workflow-cards";
+import { MatchingWorkspace } from "@/components/category/matching-workspace";
 import { SectionHeader } from "@/components/ui/section-header";
 import { cn } from "@/lib/utils";
 
@@ -49,6 +51,11 @@ export default async function CategoryPage({ params }: { params: Promise<{ cat: 
   const thumbs = paths.map((p) => urls.get(p) ?? null);
   const previews = category.workflows.map((_, i) => thumbs[i] ?? null);
 
+  // Per-shot price at the default model, so a preset card can say what it
+  // will cost before the user opens the generator.
+  const models = await conceptModelOptions(supabase);
+  const costPerShot = models[0]?.costEcom ?? null;
+
   const steps = [
     { n: 1, title: t("catpage.how1"), sub: t("catpage.how1Sub") },
     { n: 2, title: t("catpage.how2"), sub: t("catpage.how2Sub") },
@@ -79,33 +86,35 @@ export default async function CategoryPage({ params }: { params: Promise<{ cat: 
         )}
       </CategoryHeader>
 
-      {category.soon && (
-        <div className="panel mb-5 rounded-2xl p-5">
-          <h2 className="font-display text-base font-semibold tracking-tight">{t("catpage.soonTitle")}</h2>
-          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted">{t("catpage.soonBody")}</p>
-        </div>
-      )}
+      {/* MATCHING gets its own two-panel workspace instead of the standard
+          preset grid: the whole point of the category is inspiration next to
+          product, so the page is built that way. */}
+      {category.key === "matching" ? (
+        <MatchingWorkspace accent={category.accent.rgb} />
+      ) : (
+        <>
+          <section>
+            <SectionHeader overline={t("catpage.overline")} title={t("catpage.chooseTitle")} sub={t("catpage.chooseSub")} className="mb-3.5" />
+            <WorkflowCards category={category} t={t} previews={previews} costPerShot={costPerShot} />
+          </section>
 
-      <section>
-        <SectionHeader overline={t("catpage.overline")} title={t("catpage.chooseTitle")} sub={t("catpage.chooseSub")} className="mb-3.5" />
-        <WorkflowCards category={category} t={t} previews={previews} />
-      </section>
-
-      {/* HOW IT WORKS — three steps, in the category's own accent. */}
-      <section className="mt-6" style={{ ["--cat" as string]: category.accent.rgb }}>
-        <SectionHeader title={t("catpage.howTitle")} className="mb-3" />
-        <div className="grid gap-3 [&>*]:min-w-0 sm:grid-cols-3">
-          {steps.map((s) => (
-            <div key={s.n} className="panel rounded-2xl p-4">
-              <span aria-hidden className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgb(var(--cat)/0.16)] text-[13px] font-bold text-[rgb(var(--cat))]">
-                {s.n}
-              </span>
-              <p className="mt-3 text-sm font-semibold tracking-tight">{s.title}</p>
-              <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{s.sub}</p>
+          {/* HOW IT WORKS — three steps, in the category's own accent. */}
+          <section className="mt-6" style={{ ["--cat" as string]: category.accent.rgb }}>
+            <SectionHeader title={t("catpage.howTitle")} className="mb-3" />
+            <div className="grid gap-3 [&>*]:min-w-0 sm:grid-cols-3">
+              {steps.map((s) => (
+                <div key={s.n} className="panel rounded-2xl p-4">
+                  <span aria-hidden className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgb(var(--cat)/0.16)] text-[13px] font-bold text-[rgb(var(--cat))]">
+                    {s.n}
+                  </span>
+                  <p className="mt-3 text-sm font-semibold tracking-tight">{s.title}</p>
+                  <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{s.sub}</p>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </section>
+          </section>
+        </>
+      )}
 
       {/* RECENT WORK */}
       <section className="mt-6">

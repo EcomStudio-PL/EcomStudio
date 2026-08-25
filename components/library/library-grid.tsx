@@ -1,8 +1,9 @@
 "use client";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Check, Download, Loader2, Maximize2, SquareDashedMousePointer, Wrench, X } from "lucide-react";
+import { Check, Download, Heart, Loader2, Maximize2, SquareDashedMousePointer, Wrench, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
+import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,7 @@ export type LibraryCard = {
   id: string;
   product: string | null;
   created: string;
+  favorite: boolean;
   assets: { id: string; path: string; url: string | null }[];
 };
 
@@ -28,8 +30,23 @@ export function LibraryGrid({ cards, locale }: { cards: LibraryCard[]; locale: s
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [zipping, setZipping] = useState(false);
   const [preview, setPreview] = useState<{ url: string; path: string; product: string | null } | null>(null);
+  // Optimistic favourite state, keyed by generation id.
+  const [faves, setFaves] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(cards.map((c) => [c.id, c.favorite])));
 
   const fmt = useMemo(() => new Intl.DateTimeFormat(locale, { dateStyle: "medium" }), [locale]);
+
+  /** Starring goes through the definer RPC — clients never get UPDATE on
+   *  `generations`, which would also expose the prompt and cost columns. */
+  async function toggleFavorite(id: string) {
+    const next = !faves[id];
+    setFaves((p) => ({ ...p, [id]: next }));
+    const { error } = await createClient().rpc("set_generation_favorite", { gen_id: id, value: next });
+    if (error) {
+      setFaves((p) => ({ ...p, [id]: !next }));
+      toast.error(t("common.error"));
+    }
+  }
 
   function toggle(path: string) {
     setPicked((prev) => {
@@ -118,9 +135,20 @@ export function LibraryGrid({ cards, locale }: { cards: LibraryCard[]; locale: s
                           {isPicked && <Check size={13} strokeWidth={3} />}
                         </span>
                       ) : (
-                        <span aria-hidden className="absolute inset-0 flex items-center justify-center bg-[rgb(var(--scrim)/0.55)] opacity-0 backdrop-blur-[1px] transition-opacity duration-200 group-hover/tile:opacity-100">
-                          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white ring-1 ring-white/30">
+                        // QUICK ACTIONS on hover: preview and download without
+                        // opening the asset first.
+                        <span aria-hidden className="absolute inset-0 flex items-center justify-center gap-2 bg-[rgb(var(--scrim)/0.55)] opacity-0 backdrop-blur-[1px] transition-opacity duration-200 group-hover/tile:opacity-100">
+                          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white ring-1 ring-white/30 transition-colors duration-200 hover:bg-white/25">
                             <Maximize2 size={15} />
+                          </span>
+                          <span
+                            role="button"
+                            tabIndex={-1}
+                            title={t("library.quickDownload")}
+                            onClick={(e) => { e.stopPropagation(); window.open(a.url!, "_blank", "noopener"); }}
+                            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white ring-1 ring-white/30 transition-colors duration-200 hover:bg-white/25"
+                          >
+                            <Download size={15} />
                           </span>
                         </span>
                       )}
@@ -134,7 +162,24 @@ export function LibraryGrid({ cards, locale }: { cards: LibraryCard[]; locale: s
                 <p className="truncate text-sm font-semibold tracking-tight">{g.product ?? "—"}</p>
                 <p className="caption mt-0.5">{fmt.format(new Date(g.created))}</p>
               </div>
-              <Badge tone={g.assets.length > 0 ? "green" : "neutral"}>{g.assets.length}</Badge>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => toggleFavorite(g.id)}
+                  aria-pressed={faves[g.id] ?? false}
+                  aria-label={faves[g.id] ? t("library.unfavorite") : t("library.favorite")}
+                  title={faves[g.id] ? t("library.unfavorite") : t("library.favorite")}
+                  className={cn(
+                    "flex h-8 w-8 items-center justify-center rounded-lg transition-colors duration-200",
+                    faves[g.id] ? "text-accent hover:bg-accent-soft" : "text-faint hover:bg-raised hover:text-ink",
+                  )}
+                >
+                  <Heart size={15} aria-hidden fill={faves[g.id] ? "currentColor" : "none"} />
+                </button>
+                {/* A count is not a success state — green is reserved for
+                    things that are genuinely good news. */}
+                <Badge tone="neutral">{g.assets.length}</Badge>
+              </div>
             </div>
           </Card>
         ))}

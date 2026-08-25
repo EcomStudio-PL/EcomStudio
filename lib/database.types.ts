@@ -1063,6 +1063,7 @@ export type Database = {
       generations: {
         Row: {
           created_at: string
+          favorite: boolean
           id: string
           job_id: string
           product_id: string | null
@@ -1074,6 +1075,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          favorite?: boolean
           id?: string
           job_id: string
           product_id?: string | null
@@ -1085,6 +1087,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          favorite?: boolean
           id?: string
           job_id?: string
           product_id?: string | null
@@ -2541,6 +2544,10 @@ export type Database = {
         Returns: undefined
       }
       providers_with_credentials: { Args: never; Returns: string[] }
+      set_generation_favorite: {
+        Args: { gen_id: string; value: boolean }
+        Returns: boolean
+      }
       refund_usage_event: { Args: { p_event_id: string }; Returns: string }
       set_provider_health: {
         Args: {

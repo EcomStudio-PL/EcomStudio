@@ -78,6 +78,12 @@ export default async function HomePage() {
     return tile ? genUrls.get(tile.path) ?? null : null;
   });
 
+  // Three recent images shown on desktop hover over a category tile.
+  const hoverStrip = genTiles
+    .map((g) => genUrls.get(g.path))
+    .filter((u): u is string => Boolean(u))
+    .slice(0, 3);
+
   const stats: { label: string; value: string; meter?: number; meterClass?: string; href: string }[] = [
     {
       label: t("home.statCredits"), value: new Intl.NumberFormat(locale).format(credits),
@@ -159,7 +165,7 @@ export default async function HomePage() {
       {/* 3 — CATEGORY GRID */}
       <section>
         <SectionHeader overline={t("mega.create")} title={t("home.categoriesTitle")} className="mb-3.5 mt-1" />
-        <CategoryGrid t={t} previews={categoryPreviews} />
+        <CategoryGrid t={t} previews={categoryPreviews} hoverStrip={hoverStrip} />
       </section>
 
       {/* 4 — ONE AI SUGGESTION, dismissible, never a modal */}

@@ -143,10 +143,10 @@ export type VideoWorkflow = { key: string; icon: LucideIcon; ratio: string; leng
 
 export const VIDEO_CREATE_WF: readonly VideoWorkflow[] = [
   { key: "product", icon: Clapperboard, ratio: "16:9", length: "8 s" },
-  { key: "fashion", icon: Shirt, ratio: "9:16", length: "10 s" },
-  { key: "ecommerce", icon: ShoppingBag, ratio: "1:1", length: "6 s" },
-  { key: "social", icon: Megaphone, ratio: "9:16", length: "15 s" },
   { key: "img2vid", icon: ImageIcon, ratio: "16:9", length: "5 s" },
+  { key: "social", icon: Megaphone, ratio: "9:16", length: "15 s" },
+  { key: "ugc", icon: Smartphone, ratio: "9:16", length: "12 s" },
+  { key: "lifestyle", icon: Camera, ratio: "4:5", length: "10 s" },
   { key: "prompt2vid", icon: MessageSquareText, ratio: "16:9", length: "8 s" },
 ] as const;
 

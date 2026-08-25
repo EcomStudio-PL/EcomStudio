@@ -271,7 +271,12 @@
     "selectOn": "Select",
     "selectOff": "Cancel selection",
     "zip": "Download ZIP ({n})",
-    "editAsset": "Edit in tools"
+    "editAsset": "Edit in tools",
+    "quickOpen": "Preview",
+    "quickDownload": "Download",
+    "favorite": "Favourite",
+    "unfavorite": "Remove from favourites",
+    "tabFavorites": "Favourites"
   },
   "history": {
     "title": "History",
@@ -1450,7 +1455,9 @@
     "how3Sub": "The EcomStudio engine prepares a full set of on-product shots.",
     "soonTitle": "This category is in preparation",
     "soonBody": "The workflow is designed, but the engine does not support it yet. We do not launch generations we cannot deliver — use the other categories in the meantime.",
-    "allCategories": "All categories"
+    "allCategories": "All categories",
+    "featured": "Featured workflow",
+    "cost": "{n} cr / shot"
   },
   "wf": {
     "moda": {
@@ -1647,6 +1654,14 @@
       "thumbnail": {
         "name": "Thumbnail pick",
         "sub": "The best frame for the cover."
+      },
+      "ugc": {
+        "name": "Product UGC",
+        "sub": "Authentic phone-shot clip."
+      },
+      "lifestyle": {
+        "name": "Product lifestyle",
+        "sub": "The product in real use."
       }
     }
   },
@@ -1714,5 +1729,21 @@
     "library": "Library",
     "products": "Products",
     "account": "Account"
+  },
+  "match": {
+    "overline": "Matching",
+    "inspirationTitle": "Inspiration",
+    "inspirationSub": "The photo whose style you want to reproduce.",
+    "productTitle": "Your product",
+    "productSub": "Reference photos of the product that should take on that style.",
+    "upload": "Add photo",
+    "settingsTitle": "Settings",
+    "strength": "Style strength",
+    "strengthSub": "How closely to follow the inspiration versus product fidelity.",
+    "generate": "Generate in this style",
+    "disabledTitle": "Matching does not generate yet",
+    "disabledBody": "The workspace is ready, but the style-matching engine is not connected yet. We do not launch generations we cannot deliver — no credit will be charged.",
+    "resultsTitle": "Results",
+    "resultsEmpty": "Results will appear here once the engine is live."
   }
 }
