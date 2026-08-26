@@ -204,7 +204,6 @@ export async function generateFromConcept(
   const explicit = requestedId ? chain.find((m) => m.id === requestedId) : undefined;
   if (requestedId && !explicit) return { ok: false, error: "model_unavailable" };
   const model = explicit ?? chain[0];
-  const fallbackModelIds = explicit ? [] : chain.slice(1).map((m) => m.id);
 
   // The exact reference set the planner routed to this concept, in its order
   // (primary first). 1-based indices into the session's reference paths.
@@ -223,6 +222,16 @@ export async function generateFromConcept(
   const resolution = (session.resolution && (model.supported_resolutions ?? []).includes(session.resolution)
     ? session.resolution
     : undefined) as Resolution | undefined;
+
+  // A fallback may only stand in if it renders the size that was paid for.
+  // Without this, a 4K session that fell back to a 1K-only engine would be
+  // charged the 4K price and delivered a 1K image.
+  const fallbackModelIds = explicit
+    ? []
+    : chain.slice(1)
+      .filter((m) => !resolution || (m.supported_resolutions ?? []).includes(resolution))
+      .map((m) => m.id);
+
   const credits = originCost(model, origin, resolution);
   const result = await runGeneration(supabase, userId, workspaceId, {
     modelId: model.id,

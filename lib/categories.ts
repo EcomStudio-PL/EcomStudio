@@ -33,6 +33,8 @@ export type Workflow = {
   icon: LucideIcon;
   /** Generator defaults this workflow hands to the session form. */
   ratio: "1:1" | "4:5" | "16:9" | "9:16";
+  /** Must sit inside the planner's own range (MIN_SHOTS..MAX_SHOTS). Asking
+   *  for fewer would quote a batch smaller than the one the server builds. */
   shots: number;
   /** Dictionary key holding the style directive prefilled into the form. */
   styleKey: string;
@@ -61,20 +63,20 @@ export const CATEGORIES: readonly Category[] = [
     key: "moda", slug: "moda", icon: Shirt, accent: VIOLET,
     workflows: [
       { key: "onModel", icon: Users, ratio: "4:5", shots: 6, styleKey: "wf.moda.onModel.style" },
-      { key: "flatlay", icon: Grid2X2, ratio: "1:1", shots: 4, styleKey: "wf.moda.flatlay.style" },
+      { key: "flatlay", icon: Grid2X2, ratio: "1:1", shots: 5, styleKey: "wf.moda.flatlay.style" },
       { key: "street", icon: Camera, ratio: "4:5", shots: 6, styleKey: "wf.moda.street.style" },
       { key: "editorial", icon: Sparkles, ratio: "9:16", shots: 5, styleKey: "wf.moda.editorial.style" },
-      { key: "detail", icon: ImageIcon, ratio: "1:1", shots: 4, styleKey: "wf.moda.detail.style" },
+      { key: "detail", icon: ImageIcon, ratio: "1:1", shots: 5, styleKey: "wf.moda.detail.style" },
     ],
   },
   {
     key: "ecommerce", slug: "ecommerce", icon: ShoppingBag, accent: MAGENTA,
     workflows: [
       { key: "packshot", icon: Package, ratio: "1:1", shots: 5, styleKey: "wf.ecommerce.packshot.style" },
-      { key: "thumbnail", icon: Images, ratio: "1:1", shots: 4, styleKey: "wf.ecommerce.thumbnail.style" },
+      { key: "thumbnail", icon: Images, ratio: "1:1", shots: 5, styleKey: "wf.ecommerce.thumbnail.style" },
       { key: "context", icon: LayoutTemplate, ratio: "4:5", shots: 6, styleKey: "wf.ecommerce.context.style" },
       { key: "set", icon: Boxes, ratio: "1:1", shots: 8, styleKey: "wf.ecommerce.set.style" },
-      { key: "scale", icon: Tag, ratio: "1:1", shots: 4, styleKey: "wf.ecommerce.scale.style" },
+      { key: "scale", icon: Tag, ratio: "1:1", shots: 5, styleKey: "wf.ecommerce.scale.style" },
     ],
   },
   {
@@ -90,18 +92,18 @@ export const CATEGORIES: readonly Category[] = [
   {
     key: "mailing", slug: "mailing", icon: Mail, accent: INDIGO,
     workflows: [
-      { key: "header", icon: LayoutTemplate, ratio: "16:9", shots: 4, styleKey: "wf.mailing.header.style" },
+      { key: "header", icon: LayoutTemplate, ratio: "16:9", shots: 5, styleKey: "wf.mailing.header.style" },
       { key: "promo", icon: Percent, ratio: "16:9", shots: 5, styleKey: "wf.mailing.promo.style" },
-      { key: "newsletter", icon: Mail, ratio: "1:1", shots: 4, styleKey: "wf.mailing.newsletter.style" },
+      { key: "newsletter", icon: Mail, ratio: "1:1", shots: 5, styleKey: "wf.mailing.newsletter.style" },
       { key: "seasonal", icon: Gift, ratio: "16:9", shots: 5, styleKey: "wf.mailing.seasonal.style" },
     ],
   },
   {
     key: "inne", slug: "inne", icon: Boxes, accent: CYAN,
     workflows: [
-      { key: "label", icon: Tag, ratio: "1:1", shots: 4, styleKey: "wf.inne.label.style" },
+      { key: "label", icon: Tag, ratio: "1:1", shots: 5, styleKey: "wf.inne.label.style" },
       { key: "packaging", icon: Package, ratio: "1:1", shots: 5, styleKey: "wf.inne.packaging.style" },
-      { key: "leaflet", icon: LayoutTemplate, ratio: "4:5", shots: 4, styleKey: "wf.inne.leaflet.style" },
+      { key: "leaflet", icon: LayoutTemplate, ratio: "4:5", shots: 5, styleKey: "wf.inne.leaflet.style" },
       { key: "icons", icon: Grid2X2, ratio: "1:1", shots: 6, styleKey: "wf.inne.icons.style" },
       { key: "free", icon: PenLine, ratio: "16:9", shots: 5, styleKey: "wf.inne.free.style" },
     ],

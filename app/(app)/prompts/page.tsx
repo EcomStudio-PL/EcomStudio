@@ -69,7 +69,12 @@ export default async function PromptsPage({ searchParams }: {
   // Legacy `?cat=` links still land on the right workspace flavour.
   const category = findCategory(cat);
   const variant = category ? CATEGORY_VARIANT[category.key] ?? DEFAULT_VARIANT : DEFAULT_VARIANT;
-  const initialStyle = category ? t(`cats.${category.key}Style`, {}) || undefined : undefined;
+  // makeT echoes the key when an entry is missing (Matching has no style
+  // hint), and shipping "cats.matchingStyle" to the planner as the seller's
+  // preferred style would be worse than sending nothing.
+  const styleKey = category ? `cats.${category.key}Style` : "";
+  const styleValue = styleKey ? t(styleKey) : "";
+  const initialStyle = styleValue && styleValue !== styleKey ? styleValue : undefined;
 
   return (
     <div>

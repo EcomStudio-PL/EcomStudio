@@ -72,6 +72,13 @@ export default async function WorkflowPage({ params }: {
     thumbnail: s.reference_paths?.[0] ? urls.get(s.reference_paths[0]) ?? null : null,
   }));
 
+  // An empty or missing style entry must stay empty: makeT echoes the key on
+  // a miss, and that key would otherwise become the seller's "preferred
+  // style" in the planner brief.
+  const styleKey = `wf.${category.key}.${workflow.key}.style`;
+  const styleValue = t(styleKey);
+  const styleHint = styleValue && styleValue !== styleKey ? styleValue : undefined;
+
   return (
     <div>
       <CategoryHeader
@@ -105,7 +112,7 @@ export default async function WorkflowPage({ params }: {
       </div>
 
       <SessionForm
-        initialStyle={t(`wf.${category.key}.${workflow.key}.style`)}
+        initialStyle={styleHint}
         initialRatio={workflow.ratio}
         initialShots={workflow.shots}
         variant={CATEGORY_VARIANT[category.key] ?? DEFAULT_VARIANT}

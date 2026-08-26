@@ -39,8 +39,7 @@ export function MatchingWorkspace({ accent, models = [], credits = 0 }: {
   });
 
   return (
-    // Bottom padding clears the docked toolbar (and the phone dock under it).
-    <div className={cn(models.length > 0 && "pb-[13rem] lg:pb-[8.5rem]")} style={{ ["--cat" as string]: accent }}>
+    <div style={{ ["--cat" as string]: accent }}>
       {/* THE TWO REFERENCE PANELS, side by side on desktop. */}
       <div className="grid gap-3.5 [&>*]:min-w-0 lg:grid-cols-2">
         <DropPanel

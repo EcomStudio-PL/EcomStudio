@@ -37,7 +37,10 @@ export type SessionModelOption = {
 type Ref = { key: string; path: string; url: string };
 
 const RATIOS = ["1:1", "4:5", "16:9", "9:16"] as const;
+/** Must mirror MIN_SHOTS..MAX_SHOTS in lib/server/prompt-engine.ts. */
 const SHOT_CHOICES = [5, 6, 7, 8, 9, 10] as const;
+const clampShots = (n: number) =>
+  Math.min(SHOT_CHOICES[SHOT_CHOICES.length - 1], Math.max(SHOT_CHOICES[0], Math.trunc(n) || SHOT_CHOICES[0]));
 
 /**
  * GENERATOR WORKSPACE — one compact screen instead of four tall steps.
@@ -74,7 +77,11 @@ export function SessionForm({
   const { t } = useI18n();
   const router = useRouter();
 
-  const [customPrompts, setCustomPrompts] = useState<string[]>([""]);
+  // Rows carry an id so removing one from the middle does not make React
+  // reuse the wrong textarea's DOM node (and its cursor) for the next row.
+  const nextPromptId = useRef(1);
+  const [customPrompts, setCustomPrompts] = useState<{ id: number; text: string }[]>(
+    [{ id: 0, text: "" }]);
   const [productId, setProductId] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -100,7 +107,11 @@ export function SessionForm({
     modelId: firstModel?.id ?? "",
     ratio: initialRatio ?? (variant.ratioOrder[0] as string) ?? "16:9",
     resolution: firstModel?.resolutions[0] ?? "1K",
-    shots: initialShots ?? 5,
+    // The planner has its own floor and ceiling and silently clamps a request
+    // that falls outside them. Quoting a count the server would not honour
+    // would price a batch smaller than the one it builds, so a preset can
+    // never open the toolbar outside the range it is allowed to ask for.
+    shots: clampShots(initialShots ?? SHOT_CHOICES[0]),
   });
   const patchBar = (next: Partial<ToolbarState>) => setBar((b) => ({ ...b, ...next }));
 
@@ -117,7 +128,7 @@ export function SessionForm({
     thumbnail: p.images[0]?.url ?? null, imageCount: p.images.length,
   })), [products]);
 
-  const validCustom = customPrompts.filter((p) => p.trim().length >= 3);
+  const validCustom = customPrompts.map((p) => p.text).filter((v) => v.trim().length >= 3);
   const plannedCount = bar.mode === "engine" ? bar.shots : validCustom.length;
   const canSubmit = name.trim().length > 1 && refs.length > 0 && !busy && !uploading
     && (bar.mode === "engine" ? engineAvailable : validCustom.length > 0);
@@ -283,11 +294,14 @@ export function SessionForm({
     }
   }
 
+  // Step 3 is the preset section (engine mode only) and step 4 is the
+  // progress panel (only while the engine runs); a step whose section is not
+  // mounted is rendered as plain text rather than as a link to nowhere.
   const steps = [
-    { n: 1, key: "step1", done: name.trim().length > 1 },
-    { n: 2, key: "step2", done: refs.length > 0 },
-    { n: 3, key: "step3", done: bar.mode === "custom" ? validCustom.length > 0 : shotTypes.length > 0 },
-    { n: 4, key: "step4", done: canSubmit },
+    { n: 1, key: "step1", done: name.trim().length > 1, target: true },
+    { n: 2, key: "step2", done: refs.length > 0, target: true },
+    { n: 3, key: "step3", done: bar.mode === "custom" ? validCustom.length > 0 : shotTypes.length > 0, target: bar.mode === "engine" },
+    { n: 4, key: "step4", done: canSubmit, target: busy && bar.mode === "engine" },
   ];
   const current = steps.find((s) => !s.done)?.n ?? 4;
   const chosenProduct = productId ? pickable.find((x) => x.id === productId) : null;
@@ -296,10 +310,12 @@ export function SessionForm({
     <div className="min-w-0">
       {/* STEPPER — four compact cards, not four tall sections. */}
       <div className="thin-scroll mb-4 flex gap-2 overflow-x-auto pb-1 [&>*]:min-w-0">
-        {steps.map((s) => (
-          <a
+        {steps.map((s) => {
+          const Tag = (s.target ? "a" : "div") as "a" | "div";
+          return (
+          <Tag
             key={s.n}
-            href={`#ws-${s.key}`}
+            href={s.target ? `#ws-${s.key}` : undefined}
             className={cn(
               "panel flex min-w-[10rem] flex-1 items-center gap-2.5 rounded-xl px-3 py-2.5 transition-colors duration-200",
               s.n === current && "border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.06)]",
@@ -316,14 +332,17 @@ export function SessionForm({
               <span className="block truncate text-[12.5px] font-semibold">{t(`ws.${s.key}`)}</span>
               <span className="block truncate text-[10.5px] text-faint">{t(`ws.${s.key}Sub`)}</span>
             </span>
-          </a>
-        ))}
+          </Tag>
+          );
+        })}
       </div>
 
       <div className="grid min-w-0 gap-4 [&>*]:min-w-0 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
         {/* Bottom padding clears the docked toolbar (and, on phones, the
             bottom navigation underneath it). */}
-        <div className="min-w-0 space-y-4 pb-[13rem] lg:pb-[8.5rem]">
+        {/* <main> already reserves the phone dock; this adds only the room
+            the toolbar itself needs on top of it. */}
+        <div className="min-w-0 space-y-4 pb-[7.5rem] lg:pb-[8.5rem]">
           {/* PRODUCT */}
           <section id="ws-step1" className="panel rounded-2xl p-4 sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-2">
@@ -362,10 +381,12 @@ export function SessionForm({
                   <Textarea rows={2} value={extraInfo} placeholder={t("studio.extraInfoPh")}
                     onChange={(e) => setExtraInfo(e.target.value)} />
                 </div>
-                <div>
-                  <Label>{t("ws.styleLabel")}</Label>
-                  <Input value={style} placeholder={t("psess.stylePh")} onChange={(e) => setStyle(e.target.value)} />
-                </div>
+                {bar.mode === "engine" && (
+                  <div>
+                    <Label>{t("ws.styleLabel")}</Label>
+                    <Input value={style} placeholder={t("psess.stylePh")} onChange={(e) => setStyle(e.target.value)} />
+                  </div>
+                )}
               </div>
             )}
           </section>
@@ -387,7 +408,7 @@ export function SessionForm({
                   <img src={r.url} alt="" className="h-full w-full object-cover" />
                   <span className="absolute left-1.5 top-1.5 rounded-md bg-black/60 px-1.5 text-[10px] font-bold text-white">{i + 1}</span>
                   <button type="button" aria-label={t("common.delete")}
-                    onClick={() => setRefs(refs.filter((_, j) => j !== i))}
+                    onClick={() => setRefs((prev) => prev.filter((_, j) => j !== i))}
                     className="absolute right-1.5 top-1.5 rounded-full bg-black/60 p-1 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                     <X size={10} />
                   </button>
@@ -506,7 +527,7 @@ export function SessionForm({
         {/* RIGHT RAIL — recent generations only. Model, framing, size and
             count all live in the toolbar; repeating them here is what made
             the old page twice as tall as it needed to be. */}
-        <aside className="hidden min-w-0 xl:sticky xl:top-20 xl:block xl:h-fit">
+        <aside className="hidden min-w-0 pb-[8.5rem] xl:sticky xl:top-20 xl:block xl:h-fit">
           <RecentPanel sessions={recent} />
         </aside>
       </div>
@@ -516,6 +537,7 @@ export function SessionForm({
         state={bar}
         onChange={patchBar}
         shotRange={SHOT_CHOICES}
+        billableCount={plannedCount}
         credits={balance}
         disabled={!canSubmit}
         busy={busy}
@@ -532,15 +554,16 @@ export function SessionForm({
             <Label>{t("psess.customPrompts")}</Label>
             <div className="space-y-2">
               {customPrompts.map((cp, i) => (
-                <div key={i} className="relative">
+                <div key={cp.id} className="relative">
                   <span className="absolute -top-2 left-3 z-10 rounded-md bg-[rgb(var(--accent)/0.14)] px-1.5 text-[10px] font-bold tabular-nums text-accent">
                     {String(i + 1).padStart(2, "0")}
                   </span>
-                  <Textarea rows={2} value={cp} placeholder={t("psess.customPromptPh", { n: i + 1 })}
-                    onChange={(e) => setCustomPrompts(customPrompts.map((v, j) => j === i ? e.target.value : v))} />
+                  <Textarea rows={2} value={cp.text} placeholder={t("psess.customPromptPh", { n: i + 1 })}
+                    onChange={(e) => setCustomPrompts((prev) =>
+                      prev.map((v) => v.id === cp.id ? { ...v, text: e.target.value } : v))} />
                   {customPrompts.length > 1 && (
                     <button type="button" aria-label={t("common.delete")}
-                      onClick={() => setCustomPrompts(customPrompts.filter((_, j) => j !== i))}
+                      onClick={() => setCustomPrompts((prev) => prev.filter((v) => v.id !== cp.id))}
                       className="absolute right-2 top-2 rounded-full bg-black/40 p-1 text-white transition-colors duration-200 hover:bg-black/60">
                       <X size={10} />
                     </button>
@@ -549,7 +572,8 @@ export function SessionForm({
               ))}
             </div>
             {customPrompts.length < 10 && (
-              <button type="button" onClick={() => setCustomPrompts([...customPrompts, ""])}
+              <button type="button"
+                onClick={() => setCustomPrompts((prev) => [...prev, { id: nextPromptId.current++, text: "" }])}
                 className="mt-2 rounded-lg bg-raised px-3 py-2 text-xs font-semibold text-ink transition-colors duration-200 hover:bg-sunken">
                 + {t("psess.customAdd")}
               </button>

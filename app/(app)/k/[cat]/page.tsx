@@ -64,8 +64,12 @@ export default async function CategoryPage({ params }: { params: Promise<{ cat: 
     { n: 3, title: t("catpage.how3"), sub: t("catpage.how3Sub") },
   ];
 
+  // Matching docks the shared toolbar, so everything below it — including
+  // the recent-work and sibling-category sections — needs room to clear it.
+  const isMatching = category.key === "matching";
+
   return (
-    <div>
+    <div className={isMatching ? "pb-[7.5rem] lg:pb-[8.5rem]" : undefined}>
       <CategoryHeader
         category={category}
         title={t(`cats.${category.key}`)}
@@ -91,7 +95,7 @@ export default async function CategoryPage({ params }: { params: Promise<{ cat: 
       {/* MATCHING gets its own two-panel workspace instead of the standard
           preset grid: the whole point of the category is inspiration next to
           product, so the page is built that way. */}
-      {category.key === "matching" ? (
+      {isMatching ? (
         <MatchingWorkspace
           accent={category.accent.rgb}
           credits={wallet?.balance ?? 0}

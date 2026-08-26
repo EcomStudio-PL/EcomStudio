@@ -64,7 +64,7 @@ function RatioGlyph({ ratio, className }: { ratio: string; className?: string })
 
 export function GenerationToolbar({
   models, state, onChange, shotRange, credits, disabled, busy, busyLabel, ctaLabel,
-  onGenerate, note, promptSlot, modeLabels, extras,
+  onGenerate, note, promptSlot, modeLabels, extras, billableCount,
 }: {
   models: ToolbarModel[];
   state: ToolbarState;
@@ -85,6 +85,11 @@ export function GenerationToolbar({
   modeLabels?: { engine: string; custom: string };
   /** Category-specific controls appended before the cost block. */
   extras?: React.ReactNode;
+  /** How many images this run will actually bill for. Defaults to the shot
+   *  count, but a custom-prompt run bills per prompt written, so the caller
+   *  passes that instead — quoting `shots` there priced a batch that would
+   *  never be produced. */
+  billableCount?: number;
 }) {
   const { t, locale } = useI18n();
   const [sheet, setSheet] = useState<null | "mode" | "model" | "ratio" | "res" | "shots">(null);
@@ -96,9 +101,11 @@ export function GenerationToolbar({
   );
 
   // Only what this engine can actually do.
+  // The category decides which framing leads; an engine with no declared
+  // capability is treated as "no restriction", not as "offers nothing".
   const ratios = useMemo(() => {
     const supported = model?.ratios?.length ? model.ratios : [...ALL_RATIOS];
-    return ALL_RATIOS.filter((r) => supported.includes(r));
+    return supported.filter((r) => (ALL_RATIOS as readonly string[]).includes(r));
   }, [model]);
   const resolutions = model?.resolutions ?? [];
 
@@ -108,7 +115,7 @@ export function GenerationToolbar({
   useEffect(() => {
     if (!model) return;
     const patch: Partial<ToolbarState> = {};
-    if (ratios.length > 0 && !ratios.includes(state.ratio as (typeof ALL_RATIOS)[number])) patch.ratio = ratios[0];
+    if (ratios.length > 0 && !ratios.includes(state.ratio)) patch.ratio = ratios[0];
     if (resolutions.length > 0 && !resolutions.includes(state.resolution)) patch.resolution = resolutions[0];
     if (Object.keys(patch).length > 0) onChange(patch);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -129,7 +136,8 @@ export function GenerationToolbar({
     ? (model.pricing[state.resolution] ?? Object.values(model.pricing)[0] ?? 0)
       + (state.mode === "engine" ? model.ecomSurcharge : 0)
     : 0;
-  const total = perShot * state.shots;
+  const count = billableCount ?? state.shots;
+  const total = perShot * count;
   const short = (n: number) => new Intl.NumberFormat(locale).format(n);
   const labels = modeLabels ?? { engine: t("mega.engine"), custom: t("mega.custom") };
 
@@ -148,9 +156,12 @@ export function GenerationToolbar({
     >
       <div className="mx-auto w-full max-w-[var(--content-max)]">
         {/* SHEETS — every setting opens above the bar, so the page behind it
-            never scrolls and the form is never covered. */}
+            never scrolls and the form is never covered. The height budget is
+            the viewport minus the sticky header, the bar itself and the phone
+            dock beneath it: a fixed dvh fraction ran past the top of the
+            screen and under the header. */}
         {sheet && (
-          <div className="dock animate-pop mb-2 max-h-[52dvh] overflow-y-auto rounded-2xl p-3.5 shadow-e4">
+          <div className="dock animate-pop mb-2 overflow-y-auto rounded-2xl p-3.5 shadow-e4 max-h-[calc(100dvh-var(--header-h)-var(--dock-h)-9rem)] lg:max-h-[calc(100dvh-var(--header-h)-10rem)]">
             <div className="mb-2.5 flex items-center justify-between gap-2">
               <p className="overline">{t(`gtb.${sheet}`)}</p>
               <button type="button" onClick={() => setSheet(null)} aria-label={t("common.close")}
@@ -308,9 +319,10 @@ export function GenerationToolbar({
             <button
               type="button"
               onClick={onGenerate}
-              disabled={disabled || busy}
+              disabled={disabled || busy || models.length === 0}
               className={cn(
                 "cta flex h-auto min-h-[3rem] shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[14px] font-semibold sm:px-6",
+                "max-w-[9.5rem] sm:max-w-none",
                 (disabled || busy) && "cursor-not-allowed opacity-50",
               )}
             >
