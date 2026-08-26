@@ -2,6 +2,7 @@
 import { useRef, useState } from "react";
 import { ImagePlus, Info, Sparkles, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
+import { GenerationToolbar, type ToolbarModel, type ToolbarState } from "@/components/generator/generation-toolbar";
 import { cn } from "@/lib/utils";
 
 type Slot = { url: string; name: string };
@@ -17,14 +18,29 @@ type Slot = { url: string; name: string };
  * an asset that would never arrive. Files are held in the browser only; the
  * page uploads nothing until there is a backend to upload for.
  */
-export function MatchingWorkspace({ accent }: { accent: string }) {
+export function MatchingWorkspace({ accent, models = [], credits = 0 }: {
+  accent: string;
+  /** The same engines every other generator offers, so the toolbar reads
+   *  identically here — only the CTA is disabled. */
+  models?: ToolbarModel[];
+  credits?: number;
+}) {
   const { t } = useI18n();
   const [inspiration, setInspiration] = useState<Slot | null>(null);
   const [product, setProduct] = useState<Slot[]>([]);
   const [strength, setStrength] = useState(60);
+  const first = models[0];
+  const [bar, setBar] = useState<ToolbarState>({
+    mode: "engine",
+    modelId: first?.id ?? "",
+    ratio: "4:5",
+    resolution: first?.resolutions[0] ?? "1K",
+    shots: 5,
+  });
 
   return (
-    <div style={{ ["--cat" as string]: accent }}>
+    // Bottom padding clears the docked toolbar (and the phone dock under it).
+    <div className={cn(models.length > 0 && "pb-[13rem] lg:pb-[8.5rem]")} style={{ ["--cat" as string]: accent }}>
       {/* THE TWO REFERENCE PANELS, side by side on desktop. */}
       <div className="grid gap-3.5 [&>*]:min-w-0 lg:grid-cols-2">
         <DropPanel
@@ -71,25 +87,15 @@ export function MatchingWorkspace({ accent }: { accent: string }) {
         </div>
       </div>
 
-      {/* CTA — disabled, with the reason stated next to it. */}
-      <div className="panel mt-3.5 flex flex-col gap-3 rounded-2xl p-5 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[rgb(var(--cat)/0.18)] text-[rgb(var(--cat))]">
-            <Info size={16} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold">{t("match.disabledTitle")}</p>
-            <p className="mt-1 max-w-2xl text-[12.5px] leading-relaxed text-muted">{t("match.disabledBody")}</p>
-          </div>
+      {/* WHY THE CTA IS DEAD — stated in full, above the bar that carries it. */}
+      <div className="panel mt-3.5 flex items-start gap-3 rounded-2xl p-5">
+        <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[rgb(var(--cat)/0.18)] text-[rgb(var(--cat))]">
+          <Info size={16} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">{t("match.disabledTitle")}</p>
+          <p className="mt-1 max-w-2xl text-[12.5px] leading-relaxed text-muted">{t("match.disabledBody")}</p>
         </div>
-        <button
-          type="button"
-          disabled
-          className="inline-flex h-11 shrink-0 cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-line px-5 text-sm font-semibold text-muted opacity-60"
-        >
-          <Sparkles size={16} aria-hidden />
-          {t("match.generate")}
-        </button>
       </div>
 
       {/* RESULTS SHELF — the space the output will occupy, so the workspace
@@ -106,6 +112,22 @@ export function MatchingWorkspace({ accent }: { accent: string }) {
         </div>
         <p className="mt-2.5 text-[12.5px] text-faint">{t("match.resultsEmpty")}</p>
       </section>
+
+      {/* THE SAME TOOLBAR every other generator uses — one component, one
+          set of behaviours. Only the CTA is disabled, because no matching
+          engine is connected; nothing here can spend a credit. */}
+      {models.length > 0 && (
+        <GenerationToolbar
+          models={models}
+          state={bar}
+          onChange={(next) => setBar((b) => ({ ...b, ...next }))}
+          shotRange={[3, 4, 5, 6, 7, 8]}
+          credits={credits}
+          disabled
+          ctaLabel={t("match.generate")}
+          onGenerate={() => { /* no engine: the button never fires */ }}
+        />
+      )}
     </div>
   );
 }

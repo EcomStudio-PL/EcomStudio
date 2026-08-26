@@ -93,6 +93,18 @@ check("EcomStudio prompt adds the surcharge", originCost(fakeModel, "ecomstudio"
 const negSurcharge = { ...fakeModel, ecom_surcharge_credits: -5 } as unknown as UsableModel;
 check("negative surcharge never discounts", originCost(negSurcharge, "ecomstudio") === 4);
 
+// The toolbar lets a seller pick 2K/4K where the engine offers it; the quote
+// and the charge must both move, and an unsupported size must fall back the
+// same way the generation path does rather than quoting a cheaper render.
+const multiRes = {
+  credit_cost: 4, pricing: { "1K": 4, "2K": 9, "4K": 20 },
+  supported_resolutions: ["1K", "2K", "4K"], ecom_surcharge_credits: 49,
+} as unknown as UsableModel;
+check("2K costs the 2K price", originCost(multiRes, "custom", "2K") === 9);
+check("4K adds the surcharge on the 4K price", originCost(multiRes, "ecomstudio", "4K") === 69);
+check("an unsupported size falls back to the default", originCost(fakeModel, "custom", "4K") === 4);
+check("no size means the model default", originCost(multiRes, "custom") === 4);
+
 console.log("\nG. RETRY PACING — backoff grows, Retry-After wins");
 const d1 = retryDelayMs(1), d2 = retryDelayMs(2), d3 = retryDelayMs(3);
 check("backoff grows with attempts", d1 < d2 && d2 < d3, `${Math.round(d1)} < ${Math.round(d2)} < ${Math.round(d3)}`);

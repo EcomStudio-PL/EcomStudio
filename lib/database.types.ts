@@ -1592,6 +1592,7 @@ export type Database = {
           product_name: string
           reference_hash: string | null
           reference_paths: string[]
+          resolution: string | null
           status: string
           style: string | null
           updated_at: string
@@ -1620,6 +1621,7 @@ export type Database = {
           product_name: string
           reference_hash?: string | null
           reference_paths?: string[]
+          resolution?: string | null
           status?: string
           style?: string | null
           updated_at?: string
@@ -1648,6 +1650,7 @@ export type Database = {
           product_name?: string
           reference_hash?: string | null
           reference_paths?: string[]
+          resolution?: string | null
           status?: string
           style?: string | null
           updated_at?: string

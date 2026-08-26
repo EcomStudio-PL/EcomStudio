@@ -156,3 +156,133 @@ export const VIDEO_EDIT_WF: readonly VideoWorkflow[] = [
 ] as const;
 
 export const VIDEO_ICON: LucideIcon = Video;
+
+/* ── WORKSPACE VARIANTS ───────────────────────────────────────────────────
+ * What actually makes a category a different tool rather than the same form
+ * with a new heading.
+ *
+ * Each variant names the shot presets that make sense for the work, the
+ * extra decisions that only that work needs (a fashion shoot chooses a
+ * framing, a mailing layout reserves space for copy), and the framings the
+ * category leads with. Every one of these feeds the style directive the
+ * planner actually reads — none of it is decoration.
+ */
+
+/** One extra decision offered by a category, rendered as a chip row. The
+ *  chosen option's `directive` is appended to the style the engine gets. */
+export type VariantOption = { key: string; directive: string };
+export type VariantControl = {
+  key: string;
+  /** i18n namespace for the label and the option names: `vc.{key}` */
+  options: readonly VariantOption[];
+  /** Preselected option key, if any. */
+  initial?: string;
+};
+
+export type CategoryVariant = {
+  /** Preset shot types, as `generator.mt.*` keys. */
+  shotTypes: readonly string[];
+  /** Category-specific controls, in display order. */
+  controls: readonly VariantControl[];
+  /** Framings this category leads with; the toolbar still filters by model. */
+  ratioOrder: readonly string[];
+};
+
+const FRAMING: VariantControl = {
+  key: "framing",
+  initial: "full",
+  options: [
+    { key: "full", directive: "pełna sylwetka w kadrze" },
+    { key: "half", directive: "kadr do pasa" },
+    { key: "detail", directive: "kadr detalu, zbliżenie" },
+  ],
+};
+
+const MODEL_PRESENCE: VariantControl = {
+  key: "model",
+  initial: "any",
+  options: [
+    { key: "any", directive: "" },
+    { key: "female", directive: "modelka" },
+    { key: "male", directive: "model" },
+    { key: "none", directive: "bez osoby w kadrze, sam produkt" },
+  ],
+};
+
+const COPY_SPACE: VariantControl = {
+  key: "copy",
+  initial: "right",
+  options: [
+    { key: "left", directive: "wolna przestrzeń na tekst po lewej stronie kadru" },
+    { key: "right", directive: "wolna przestrzeń na tekst po prawej stronie kadru" },
+    { key: "top", directive: "wolna przestrzeń na tekst u góry kadru" },
+    { key: "none", directive: "kompozycja wypełniona, bez miejsca na tekst" },
+  ],
+};
+
+const PLATFORM: VariantControl = {
+  key: "platform",
+  initial: "instagram",
+  options: [
+    { key: "instagram", directive: "kompozycja pod Instagram" },
+    { key: "tiktok", directive: "kompozycja pod TikTok" },
+    { key: "ads", directive: "kompozycja pod płatną reklamę" },
+  ],
+};
+
+const MARKETPLACE: VariantControl = {
+  key: "marketplace",
+  initial: "any",
+  options: [
+    { key: "any", directive: "" },
+    { key: "allegro", directive: "zgodnie z wymogami Allegro: produkt na białym tle, pełna widoczność" },
+    { key: "amazon", directive: "zgodnie z wymogami Amazon: czyste białe tło, produkt wypełnia 85% kadru" },
+    { key: "shop", directive: "pod własny sklep: spójna estetyka marki" },
+  ],
+};
+
+const SURFACE: VariantControl = {
+  key: "surface",
+  initial: "label",
+  options: [
+    { key: "label", directive: "wizualizacja etykiety na produkcie" },
+    { key: "box", directive: "wizualizacja opakowania kartonowego" },
+    { key: "print", directive: "materiał drukowany, płaska kompozycja" },
+  ],
+};
+
+export const CATEGORY_VARIANT: Record<string, CategoryVariant> = {
+  ecommerce: {
+    shotTypes: ["packshot", "marketplace_gallery", "premium_lifestyle", "product_in_use", "closeup", "scale", "technical"],
+    controls: [MARKETPLACE],
+    ratioOrder: ["1:1", "4:5", "16:9", "9:16"],
+  },
+  moda: {
+    shotTypes: ["premium_lifestyle", "product_hero", "closeup", "macro_detail", "product_in_use"],
+    controls: [MODEL_PRESENCE, FRAMING],
+    ratioOrder: ["4:5", "9:16", "1:1", "16:9"],
+  },
+  social: {
+    shotTypes: ["social_ad", "premium_lifestyle", "product_in_use", "benefit", "product_hero"],
+    controls: [PLATFORM, COPY_SPACE],
+    ratioOrder: ["9:16", "4:5", "1:1", "16:9"],
+  },
+  mailing: {
+    shotTypes: ["product_hero", "benefit", "premium_lifestyle", "packshot"],
+    controls: [COPY_SPACE],
+    ratioOrder: ["16:9", "1:1", "4:5", "9:16"],
+  },
+  inne: {
+    shotTypes: ["packshot", "closeup", "macro_detail", "technical", "scale"],
+    controls: [SURFACE],
+    ratioOrder: ["1:1", "4:5", "16:9", "9:16"],
+  },
+  matching: {
+    shotTypes: ["premium_lifestyle", "product_hero", "packshot"],
+    controls: [],
+    ratioOrder: ["4:5", "1:1", "16:9", "9:16"],
+  },
+};
+
+/** The default workspace when a generator is opened outside a category. */
+export const DEFAULT_VARIANT: CategoryVariant = CATEGORY_VARIANT.ecommerce;

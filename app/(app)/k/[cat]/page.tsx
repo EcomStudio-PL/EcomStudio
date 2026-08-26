@@ -8,6 +8,7 @@ import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { listAssets } from "@/lib/services/generator";
 import { CATEGORIES, findCategory } from "@/lib/categories";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
+import { getWallet } from "@/lib/services/credits";
 import { CategoryHeader } from "@/components/category/category-header";
 import { WorkflowCards } from "@/components/category/workflow-cards";
 import { MatchingWorkspace } from "@/components/category/matching-workspace";
@@ -51,7 +52,10 @@ export default async function CategoryPage({ params }: { params: Promise<{ cat: 
 
   // Per-shot price at the default model, so a preset card can say what it
   // will cost before the user opens the generator.
-  const models = await conceptModelOptions(supabase);
+  const [models, wallet] = await Promise.all([
+    conceptModelOptions(supabase),
+    getWallet(supabase, workspace.id),
+  ]);
   const costPerShot = models[0]?.costEcom ?? null;
 
   const steps = [
@@ -88,7 +92,14 @@ export default async function CategoryPage({ params }: { params: Promise<{ cat: 
           preset grid: the whole point of the category is inspiration next to
           product, so the page is built that way. */}
       {category.key === "matching" ? (
-        <MatchingWorkspace accent={category.accent.rgb} />
+        <MatchingWorkspace
+          accent={category.accent.rgb}
+          credits={wallet?.balance ?? 0}
+          models={models.map((m) => ({
+            id: m.id, name: m.name, badge: m.badge, pricing: m.pricing,
+            resolutions: m.resolutions, ratios: m.ratios, ecomSurcharge: m.ecomSurcharge,
+          }))}
+        />
       ) : (
         <>
           <section>

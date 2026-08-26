@@ -20,9 +20,18 @@ export type PromptSessionInput = {
   referencePaths: string[];
   /** How many shot concepts to design (5-10; the server clamps). */
   shots?: number;
+  /** Output size for every shot in the batch ("1K" | "2K" | "4K"). The
+   *  model's real capabilities are enforced again at generation time. */
+  resolution?: string;
   /** Locale for the customer-facing card copy (pl / en / de). */
   locale?: string;
 };
+
+/** Only the three sizes the platform knows are ever stored; anything else
+ *  falls back to the model default at generation time. */
+export function normalizeResolution(raw: unknown): string | null {
+  return raw === "1K" || raw === "2K" || raw === "4K" ? raw : null;
+}
 
 export const MIN_SHOTS = 5;
 export const MAX_SHOTS = 10;
@@ -297,6 +306,7 @@ export async function runPromptSession(
     const { error: reuseError } = await supabase.from("prompt_sessions").update({
       status: "analyzing", error: null, error_stage: null,
       product_id: productId, aspect_ratio: input.aspectRatio,
+      resolution: normalizeResolution(input.resolution),
       style: input.style?.trim() || null,
       extra_info: input.extraInfo?.trim() || null,
     }).eq("id", retryable.id);
@@ -309,6 +319,7 @@ export async function runPromptSession(
       description: input.description?.trim() || null,
       extra_info: input.extraInfo?.trim() || null,
       aspect_ratio: input.aspectRatio, style: input.style?.trim() || null,
+      resolution: normalizeResolution(input.resolution),
       reference_paths: input.referencePaths.slice(0, MAX_REFS),
       reference_hash: referenceHash,
       status: "analyzing",

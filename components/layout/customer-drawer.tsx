@@ -13,6 +13,7 @@ import { Drawer, IslandClose, NavGroupLabel } from "./drawer";
 import { LocaleSwitcher } from "./locale-switcher";
 import { ThemeToggle } from "./theme-toggle";
 import { Diamond } from "./credits-control";
+import { planTone, PLAN_BADGE } from "@/lib/plan-tone";
 import { useDrawer } from "./shell-context";
 import { cn } from "@/lib/utils";
 
@@ -63,7 +64,12 @@ export function CustomerDrawer({ name, email, credits, plan, isAdmin }: {
                 <Diamond size={8} />
                 {new Intl.NumberFormat(locale).format(credits)}
               </span>
-              <span className="mt-1 block text-[10px] font-bold uppercase tracking-wide text-muted">{plan}</span>
+              <span className={cn(
+                "mt-1 inline-block rounded-full px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide",
+                PLAN_BADGE[planTone(plan)],
+              )}>
+                {plan}
+              </span>
             </div>
           </div>
 

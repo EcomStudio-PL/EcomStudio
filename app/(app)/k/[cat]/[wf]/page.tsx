@@ -1,6 +1,4 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowRight, Wand2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
@@ -8,21 +6,21 @@ import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { listProducts } from "@/lib/services/products";
 import { signImageUrls } from "@/lib/services/images";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
 import { SessionForm, type PromptProductOption, type SessionModelOption } from "@/components/prompts/session-form";
+import type { RecentSession } from "@/components/prompts/recent-panel";
 import { CategoryHeader } from "@/components/category/category-header";
-import { findCategory } from "@/lib/categories";
+import { CATEGORY_VARIANT, DEFAULT_VARIANT, findCategory } from "@/lib/categories";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 /**
- * WORKFLOW WORKSPACE — the generator, opened with this workflow's own
- * defaults: its framing, its shot count and its style directive. Sibling
- * workflows are a row of chips at the top, so switching preset is one click
- * and never a trip back to the category page.
+ * WORKFLOW WORKSPACE — the generator opened with this workflow's own
+ * defaults: its framing, its shot count, its style directive and the extra
+ * decisions its category actually needs. Sibling workflows sit in a chip row
+ * at the top, so switching preset never means going back a page.
  */
 export default async function WorkflowPage({ params }: {
   params: Promise<{ cat: string; wf: string }>;
@@ -41,17 +39,15 @@ export default async function WorkflowPage({ params }: {
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) return null;
 
-  const [products, { data: sessions }, { data: plannerProviders }, { data: withKey }, wallet, { data: sub }] = await Promise.all([
+  const [products, { data: sessions }, { data: plannerProviders }, { data: withKey }, wallet] = await Promise.all([
     listProducts(supabase, workspace.id, 20),
     supabase.from("prompt_sessions")
       .select("id, product_name, status, aspect_ratio, created_at, reference_paths")
       .eq("workspace_id", workspace.id)
-      .order("created_at", { ascending: false }).limit(8),
+      .order("created_at", { ascending: false }).limit(20),
     supabase.from("ai_providers").select("id").eq("active", true).in("slug", ["openai", "google"]),
     supabase.rpc("providers_with_credentials"),
     getWallet(supabase, workspace.id),
-    supabase.from("subscriptions").select("subscription_plans(name)")
-      .eq("workspace_id", workspace.id).eq("status", "active").maybeSingle(),
   ]);
   const keyed = new Set((withKey ?? []) as string[]);
   const engineAvailable = (plannerProviders ?? []).some((p) => keyed.has(p.id));
@@ -70,39 +66,11 @@ export default async function WorkflowPage({ params }: {
       .map((i) => ({ path: i.storage_path, url: urls.get(i.storage_path) ?? "" })),
   }));
 
-  const statusTone = { ready: "green", failed: "red" } as const;
-  const recent = (
-    <div className="min-w-0 space-y-3">
-      <h3 className="px-1 font-display text-sm font-semibold text-muted">{t("psess.recent")}</h3>
-      {(sessions ?? []).length === 0 && (
-        <Card className="p-6 text-center">
-          <Wand2 size={20} className="mx-auto text-faint" />
-          <p className="mt-2 text-sm text-muted">{t("psess.empty")}</p>
-        </Card>
-      )}
-      {(sessions ?? []).map((s) => (
-        <Link key={s.id} href={`/prompts/${s.id}`} prefetch
-          className="panel panel-interactive flex items-center gap-3 rounded-2xl px-4 py-3">
-          <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-line bg-raised">
-            {s.reference_paths?.[0] && urls.get(s.reference_paths[0]) && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={urls.get(s.reference_paths[0])!} alt="" className="h-full w-full object-cover" loading="lazy" />
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">{s.product_name}</p>
-            <p className="text-xs text-faint">{new Date(s.created_at).toLocaleDateString()} · {s.aspect_ratio}</p>
-          </div>
-          <span className="shrink-0">
-            <Badge tone={statusTone[s.status as keyof typeof statusTone] ?? "amber"}>
-              {t(`psess.status_${s.status}`, {}) || s.status}
-            </Badge>
-          </span>
-          <ArrowRight size={14} className="shrink-0 text-faint" />
-        </Link>
-      ))}
-    </div>
-  );
+  const recent: RecentSession[] = (sessions ?? []).map((s) => ({
+    id: s.id, productName: s.product_name, status: s.status, ratio: s.aspect_ratio,
+    createdAt: s.created_at,
+    thumbnail: s.reference_paths?.[0] ? urls.get(s.reference_paths[0]) ?? null : null,
+  }));
 
   return (
     <div>
@@ -116,7 +84,7 @@ export default async function WorkflowPage({ params }: {
       />
 
       {/* SIBLING PRESETS — switch workflow without leaving the workspace. */}
-      <div className="mb-5 flex flex-wrap gap-1.5" style={{ ["--cat" as string]: category.accent.rgb }}>
+      <div className="mb-4 flex flex-wrap gap-1.5" style={{ ["--cat" as string]: category.accent.rgb }}>
         {category.workflows.filter((w) => !w.soon).map((w) => {
           const active = w.key === workflow.key;
           return (
@@ -140,13 +108,13 @@ export default async function WorkflowPage({ params }: {
         initialStyle={t(`wf.${category.key}.${workflow.key}.style`)}
         initialRatio={workflow.ratio}
         initialShots={workflow.shots}
+        variant={CATEGORY_VARIANT[category.key] ?? DEFAULT_VARIANT}
         products={productOptions}
         workspaceId={workspace.id}
         engineAvailable={engineAvailable}
         models={modelOptions}
         balance={wallet?.balance ?? 0}
-        plan={sub?.subscription_plans?.name ?? "Free"}
-        aside={recent}
+        recent={recent}
       />
     </div>
   );

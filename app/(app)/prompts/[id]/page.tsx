@@ -37,7 +37,7 @@ export default async function ConceptSessionPage({ params, searchParams }: {
 
   const { data: session } = await supabase
     .from("prompt_sessions")
-    .select("id, workspace_id, product_id, product_name, status, error, aspect_ratio, reference_paths, created_at, mode")
+    .select("id, workspace_id, product_id, product_name, status, error, aspect_ratio, resolution, reference_paths, created_at, mode")
     .eq("id", id).eq("workspace_id", workspace.id).maybeSingle();
   if (!session) notFound();
 
@@ -129,6 +129,7 @@ export default async function ConceptSessionPage({ params, searchParams }: {
           <ConceptBoard
             concepts={cards}
             models={models}
+            resolution={session.resolution}
             balance={wallet?.balance ?? 0}
             engineReady={models.length > 0}
             initialModelId={models.some((m) => m.id === pickedModel) ? pickedModel ?? null : null}

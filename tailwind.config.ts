@@ -27,6 +27,7 @@ const config: Config = {
         purple: "rgb(var(--purple) / <alpha-value>)",
         pink: "rgb(var(--pink) / <alpha-value>)",
         "accent2-soft": "rgb(var(--accent2-soft) / <alpha-value>)",
+        info: "rgb(var(--info) / <alpha-value>)",
         success: "rgb(var(--success) / <alpha-value>)",
         warning: "rgb(var(--warning) / <alpha-value>)",
         danger: "rgb(var(--danger) / <alpha-value>)",

@@ -19,8 +19,9 @@ import { NotificationsBell, type NotificationItem } from "./notifications-bell";
 
 /**
  * MEGA TOPBAR — the customer app's ONLY chrome. Left to right:
- * logo · Obraz ▾ · Wideo ▾ · search … plan · credits · Biblioteka · language
- * · theme · bell · avatar ▾.
+ * logo · Obraz ▾ · Wideo ▾ · search … credits · Biblioteka · language ·
+ * theme · bell · avatar ▾. The plan tier is deliberately absent — it lives
+ * in the account popover.
  *
  * The mega panel is positioned inside the SAME relative wrapper as its
  * trigger, so it opens flush under the button with no dead pixels for the
@@ -114,12 +115,9 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, notifi
 
         <div className="min-w-0 flex-1" />
 
-        {/* RIGHT: plan · credits · library · locale · theme · bell · avatar */}
-        <Link href="/plan"
-          className="plate hidden h-9 items-center rounded-xl px-3 text-xs font-bold uppercase tracking-[0.08em] text-muted transition-colors duration-200 hover:border-[rgb(var(--accent)/0.4)] hover:text-ink md:inline-flex">
-          {plan}
-        </Link>
-
+        {/* RIGHT: credits · library · locale · theme · bell · avatar. The
+            plan is NOT here — it lives in the account popover, where it is a
+            fact about the account rather than permanent chrome. */}
         <CreditsControl credits={credits} />
 
         <Link href="/library"
@@ -138,8 +136,13 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, notifi
         <div className="hidden sm:block"><ThemeToggle /></div>
         <NotificationsBell items={notifications} unread={unread} />
 
-        <div className="hidden lg:block">
+        {/* Wide desktops get name + caret as the trigger; laptops keep the
+            bare avatar so the bar never overflows. */}
+        <div className="hidden lg:block 2xl:hidden">
           <AccountMenu name={name} email={email} credits={credits} plan={plan} isAdmin={isAdmin} />
+        </div>
+        <div className="hidden 2xl:block">
+          <AccountMenu name={name} email={email} credits={credits} plan={plan} isAdmin={isAdmin} showName />
         </div>
         <button
           type="button"

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
+import { normalizeResolution } from "@/lib/server/prompt-engine";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
 
   let body: {
     productId?: string; productName?: string; description?: string; extraInfo?: string;
-    aspectRatio?: string; referencePaths?: string[]; prompts?: string[];
+    aspectRatio?: string; resolution?: string; referencePaths?: string[]; prompts?: string[];
   };
   try { body = await request.json(); }
   catch { return NextResponse.json({ ok: false, error: "invalid_input" }, { status: 400 }); }
@@ -73,6 +74,7 @@ export async function POST(request: Request) {
     description: body.description?.trim() || null,
     extra_info: body.extraInfo?.trim() || null,
     aspect_ratio: ratio,
+    resolution: normalizeResolution(body.resolution),
     reference_paths: referencePaths,
     status: "ready",
     mode: "custom",

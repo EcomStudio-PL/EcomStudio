@@ -84,6 +84,15 @@ export type ConceptModelOption = {
   badge: string | null;
   costCustom: number;
   costEcom: number;
+  /** Base credits per output size, straight from the admin price table. */
+  pricing: Record<string, number>;
+  /** Sizes this engine actually renders — the toolbar shows nothing else. */
+  resolutions: string[];
+  /** Framings this engine actually accepts. */
+  ratios: string[];
+  /** Credits added on top of the base price when EcomStudio writes the
+   *  prompt; zero for the customer's own prompt. */
+  ecomSurcharge: number;
 };
 
 export async function conceptModelOptions(supabase: Client): Promise<ConceptModelOption[]> {
@@ -91,19 +100,32 @@ export async function conceptModelOptions(supabase: Client): Promise<ConceptMode
   return chain.map((m) => {
     const base = conceptUnitCost(m);
     const surcharge = (m as { ecom_surcharge_credits?: number }).ecom_surcharge_credits ?? 0;
+    const pricing: Record<string, number> = {};
+    for (const r of m.supported_resolutions ?? []) pricing[r] = priceForResolution(m, r);
     return {
       id: m.id,
       name: m.display_name || m.name,
       badge: m.badge,
       costCustom: base,
       costEcom: base + Math.max(0, surcharge),
+      pricing,
+      resolutions: m.supported_resolutions ?? [],
+      ratios: m.supported_aspect_ratios ?? [],
+      ecomSurcharge: Math.max(0, surcharge),
     };
   });
 }
 
-/** Price of one generation for a given origin. */
-export function originCost(model: UsableModel, origin: "ecomstudio" | "custom"): number {
-  const base = conceptUnitCost(model);
+/** Price of one generation for a given origin and output size. An unknown or
+ *  unsupported size falls back to the model's default, exactly like the
+ *  generation path itself — the quote can never promise a cheaper render than
+ *  the one that will actually run. */
+export function originCost(
+  model: UsableModel, origin: "ecomstudio" | "custom", resolution?: string | null,
+): number {
+  const supported = model.supported_resolutions ?? [];
+  const res = resolution && supported.includes(resolution) ? resolution : supported[0] ?? "1K";
+  const base = priceForResolution(model, res);
   if (origin === "custom") return base;
   const surcharge = (model as { ecom_surcharge_credits?: number }).ecom_surcharge_credits ?? 0;
   return base + Math.max(0, surcharge);
@@ -155,7 +177,7 @@ export async function generateFromConcept(
 
   const { data: session } = await supabase
     .from("prompt_sessions")
-    .select("id, workspace_id, product_id, aspect_ratio, reference_paths, status")
+    .select("id, workspace_id, product_id, aspect_ratio, resolution, reference_paths, status")
     .eq("id", concept.session_id).maybeSingle();
   if (!session || session.workspace_id !== workspaceId) return { ok: false, error: "not_found" };
 
@@ -197,12 +219,17 @@ export async function generateFromConcept(
     ? `${basePrompt}\n\n${variationInstruction(concept.generation_count ?? 1)}`
     : basePrompt;
 
-  const credits = originCost(model, origin);
+  // The size the seller picked in the toolbar, if this engine renders it.
+  const resolution = (session.resolution && (model.supported_resolutions ?? []).includes(session.resolution)
+    ? session.resolution
+    : undefined) as Resolution | undefined;
+  const credits = originCost(model, origin, resolution);
   const result = await runGeneration(supabase, userId, workspaceId, {
     modelId: model.id,
     fallbackModelIds,
     prompt,
     aspectRatio: (session.aspect_ratio || "16:9") as AspectRatio,
+    resolution,
     quantity: 1,
     productId: session.product_id ?? concept.product_id ?? undefined,
     referencePaths,

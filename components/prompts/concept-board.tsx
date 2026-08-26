@@ -18,6 +18,9 @@ export type ConceptModelChoice = {
   badge: string | null;
   costCustom: number;
   costEcom: number;
+  /** Base credits per output size, so a 2K session quotes the 2K price. */
+  pricing: Record<string, number>;
+  ecomSurcharge: number;
 };
 
 export type ConceptCardData = {
@@ -65,13 +68,16 @@ const CONCURRENCY = 2;
  * customer's own editable prompt. Prices come from admin pricing per model
  * and per origin — never from the client.
  */
-export function ConceptBoard({ concepts, models, balance, engineReady, initialModelId = null }: {
+export function ConceptBoard({ concepts, models, balance, engineReady, initialModelId = null, resolution = null }: {
   concepts: ConceptCardData[];
   models: ConceptModelChoice[];
   balance: number;
   engineReady: boolean;
   /** The model picked in the session form — the board's starting default. */
   initialModelId?: string | null;
+  /** Output size chosen for this session; every quote here uses it, so the
+   *  board never shows a price lower than the one the server charges. */
+  resolution?: string | null;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -91,7 +97,12 @@ export function ConceptBoard({ concepts, models, balance, engineReady, initialMo
   const costFor = (c: ConceptCardData, modelId?: string) => {
     const m = modelById.get(modelId ?? chosen[c.id]) ?? models[0];
     if (!m) return 0;
-    return c.origin === "custom" ? m.costCustom : m.costEcom;
+    // An unsupported size falls back exactly like the server does, so the
+    // quote and the charge always agree.
+    const base = (resolution && m.pricing[resolution] !== undefined)
+      ? m.pricing[resolution]
+      : (c.origin === "custom" ? m.costCustom : m.costEcom - m.ecomSurcharge);
+    return c.origin === "custom" ? base : base + m.ecomSurcharge;
   };
 
   const stateOf = (c: ConceptCardData): CardState => {
