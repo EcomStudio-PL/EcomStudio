@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Select, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
+import { modelBadgeLabel } from "@/lib/model-badge";
 import { cn } from "@/lib/utils";
 
 export type ConceptModelChoice = {
@@ -294,7 +295,7 @@ export function ConceptBoard({ concepts, models, balance, engineReady, initialMo
                 )}>
                 <span className="flex items-center gap-2 text-sm font-semibold">
                   {m.name}
-                  {m.badge && <Badge tone="amber">{t(`models.badge.${m.badge}`, {}) || m.badge}</Badge>}
+                  {m.badge && <Badge tone="amber">{modelBadgeLabel(m.badge, t)}</Badge>}
                 </span>
                 <span className="text-xs tabular-nums text-muted">{t("concepts.perShot", { n: per })}</span>
               </button>

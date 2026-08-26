@@ -1810,5 +1810,15 @@
     "morning": "Good morning, {name}",
     "afternoon": "Good afternoon, {name}",
     "evening": "Good evening, {name}"
+  },
+  "models": {
+    "badge": {
+      "recommended": "Recommended",
+      "high_quality": "Best quality",
+      "fast": "Fast",
+      "creative": "Creative",
+      "budget": "Budget",
+      "new": "New"
+    }
   }
 }

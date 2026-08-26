@@ -1810,5 +1810,15 @@
     "morning": "Dzień dobry, {name}",
     "afternoon": "Dzień dobry, {name}",
     "evening": "Dobry wieczór, {name}"
+  },
+  "models": {
+    "badge": {
+      "recommended": "Rekomendowany",
+      "high_quality": "Najlepsza jakość",
+      "fast": "Szybki",
+      "creative": "Kreatywny",
+      "budget": "Ekonomiczny",
+      "new": "Nowość"
+    }
   }
 }

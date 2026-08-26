@@ -6,6 +6,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Diamond } from "@/components/layout/credits-control";
+import { modelBadgeLabel } from "@/lib/model-badge";
 import { cn } from "@/lib/utils";
 
 /**
@@ -210,7 +211,7 @@ export function GenerationToolbar({
                           <span className="text-[11px] font-bold tabular-nums text-accent">{t("concepts.perShot", { n: price })}</span>
                           {m.badge && (
                             <span className="truncate rounded-full bg-raised px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-muted">
-                              {t(`models.badge.${m.badge}`, {}) || m.badge}
+                              {modelBadgeLabel(m.badge, t)}
                             </span>
                           )}
                         </span>
