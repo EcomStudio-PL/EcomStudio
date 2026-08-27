@@ -17,8 +17,13 @@ export async function GET(request: Request) {
 
   if (code) {
     const { supabase, applyCookies } = await createAuthRouteClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
+      // Same warm-up as the password route: spend the clock-skew window here
+      // rather than on the first authenticated page. See lib/supabase/skew-retry.ts.
+      if (data.user) {
+        await supabase.from("profiles").select("id").eq("id", data.user.id).maybeSingle();
+      }
       const redirect = NextResponse.redirect(`${origin}${next}`);
       redirect.headers.set("Cache-Control", "no-store");
       return applyCookies(redirect);

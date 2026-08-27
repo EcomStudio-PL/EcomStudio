@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import type { NextResponse } from "next/server";
 import type { Database } from "@/lib/database.types";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, AUTH_COOKIE_OPTIONS } from "./config";
+import { fetchWithSkewRetry } from "./skew-retry";
 
 type WrittenCookie = { name: string; value: string; options?: Record<string, unknown> };
 
@@ -39,6 +40,7 @@ export async function createAuthRouteClient() {
 
   const supabase = createServerClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookieOptions: AUTH_COOKIE_OPTIONS,
+    global: { fetch: fetchWithSkewRetry() },
     cookies: {
       getAll() {
         return cookieStore.getAll();

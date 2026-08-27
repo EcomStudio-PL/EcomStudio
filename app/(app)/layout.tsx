@@ -53,6 +53,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     );
   }
   if (!profile || !workspace) {
+    // Tell a FAILED read apart from an account that genuinely has no records:
+    // reporting "your account could not be set up" for what is really a
+    // transport or policy failure is what made a transient look permanent.
+    // A real failure raises, and the error boundary offers a retry.
+    const { error: probe } = await supabase.from("profiles").select("id").eq("id", user.id).maybeSingle();
+    if (probe) throw new Error(`account read failed (${probe.code ?? "unknown"})`);
     console.error("app.setup-missing", user.id, "profile:", Boolean(profile), "workspace:", Boolean(workspace));
     const { dict } = await getDictionary();
     const t = makeT(dict);

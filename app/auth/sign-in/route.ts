@@ -33,8 +33,19 @@ export async function POST(request: Request) {
   if (!email || !password) return redirectTo("/login?error=invalid");
 
   const { supabase, applyCookies } = await createAuthRouteClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return redirectTo(`/login?error=invalid${nextRaw ? `&next=${encodeURIComponent(next)}` : ""}`);
+
+  // WARM-UP READ. The token was minted a millisecond ago, and until the
+  // database node's clock catches up with the auth server's, PostgREST
+  // rejects it as "issued at future" (PGRST303) — so the first page after
+  // login would render as an account with no records. The client retries
+  // that code, so doing one throwaway authenticated read HERE spends the
+  // skew window inside the redirect, where nobody sees it, instead of on
+  // the dashboard. Failure is not fatal: the app retries its own reads.
+  if (data.user) {
+    await supabase.from("profiles").select("id").eq("id", data.user.id).maybeSingle();
+  }
 
   return applyCookies(redirectTo(next));
 }
