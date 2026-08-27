@@ -5,7 +5,7 @@ import type {
 } from "./types";
 
 /**
- * MASTER PROMPT ASSEMBLY — the built-in commercial wrapper of EcomStudio.
+ * MASTER PROMPT ASSEMBLY — the built-in commercial wrapper of GrovBase.
  *
  * The seller writes nothing: the engine assembles a full advertising prompt
  * around the scene concept it designed. The section ORDER is mandatory and

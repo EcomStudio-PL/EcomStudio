@@ -3,7 +3,7 @@ import type {
 } from "./types";
 
 /**
- * PRODUCT LOCK V3 — the core quality mechanism of EcomStudio.
+ * PRODUCT LOCK V3 — the core quality mechanism of GrovBase.
  *
  * The lock exists as structured data (stored on the session, auditable) AND is
  * rendered into every master prompt. Creativity belongs to the scene; the

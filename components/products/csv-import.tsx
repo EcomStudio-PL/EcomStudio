@@ -106,7 +106,7 @@ export function CsvImport({ open, onClose }: { open: boolean; onClose: () => voi
             <span className="text-sm font-semibold">{t("import.pick")}</span>
             <span className="text-xs">{t("import.pickHint")}</span>
           </button>
-          <Button variant="ghost" size="sm" onClick={() => download(SAMPLE_CSV, "ecomstudio-products.csv")}>
+          <Button variant="ghost" size="sm" onClick={() => download(SAMPLE_CSV, "grovbase-products.csv")}>
             <Download size={14} aria-hidden /> {t("import.sample")}
           </Button>
         </div>
@@ -241,7 +241,7 @@ export function CsvImport({ open, onClose }: { open: boolean; onClose: () => voi
           </div>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-center">
             {issues.length > 0 && (
-              <Button variant="secondary" onClick={() => download(issuesToCsv(mapped, issues), "ecomstudio-import-issues.csv")}>
+              <Button variant="secondary" onClick={() => download(issuesToCsv(mapped, issues), "grovbase-import-issues.csv")}>
                 <Download size={14} aria-hidden /> {t("import.downloadIssues")}
               </Button>
             )}

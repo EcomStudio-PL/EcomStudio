@@ -5,7 +5,6 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { listAssets, listJobs } from "@/lib/services/generator";
-import { listProducts } from "@/lib/services/products";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AdminTable } from "@/components/ui/admin-table";
@@ -41,7 +40,11 @@ export default async function LibraryPage({ searchParams }: {
 
   const [generations, products, jobs, { data: toolResults }] = await Promise.all([
     listAssets(supabase, workspace.id),
-    listProducts(supabase, workspace.id, 100),
+    // Filter chips need names only — the full product rows carry
+    // description/instructions/metadata blobs this page never shows.
+    supabase.from("products").select("id, name")
+      .eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(100)
+      .then((r) => r.data ?? []),
     tab === "history" ? listJobs(supabase, workspace.id) : Promise.resolve([]),
     supabase.from("tool_results")
       .select("id, tool_slug, storage_path, created_at")

@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentWorkspace, getProfile } from "@/lib/services/workspace";
+import {
+  getCurrentWorkspace, getCurrentWorkspaceFresh, getProfile, getProfileFresh,
+} from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
@@ -28,9 +30,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     if (bootstrapError) console.error("bootstrap", bootstrapError.code, bootstrapError.message);
     for (let attempt = 0; attempt < 2 && (!profile || !workspace); attempt++) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 350));
+      // The Fresh readers bypass the per-request memo: this loop exists to
+      // observe rows the bootstrap RPC just created, and the cached getters
+      // would replay the pre-bootstrap null.
       [profile, workspace] = await Promise.all([
-        getProfile(supabase, user.id),
-        getCurrentWorkspace(supabase, user.id),
+        getProfileFresh(supabase, user.id),
+        getCurrentWorkspaceFresh(supabase, user.id),
       ]);
     }
   }

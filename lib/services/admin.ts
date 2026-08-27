@@ -1,9 +1,10 @@
+import { cache } from "react";
 import type { Client } from "./workspace";
 
 /** Business KPIs for the admin shell and dashboard. Revenue comes from the
  *  real `payments` table — before a PSP is connected it is legitimately 0;
  *  the structure is already what Stripe webhooks will write into. */
-export async function adminBusinessStats(supabase: Client) {
+export const adminBusinessStats = cache(async (supabase: Client) => {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const d30 = new Date(Date.now() - 30 * 86400000).toISOString();
@@ -25,16 +26,18 @@ export async function adminBusinessStats(supabase: Client) {
     payments30d: (pay30.data ?? []).filter((p) => SETTLED.has(p.status)),
     generationsToday: gensToday.count ?? 0,
   };
-}
+});
 
 export async function adminCounts(supabase: Client) {
   const [users, products, jobs, credits] = await Promise.all([
     supabase.from("profiles").select("id", { count: "exact", head: true }),
     supabase.from("products").select("id", { count: "exact", head: true }),
     supabase.from("generation_jobs").select("id", { count: "exact", head: true }),
-    supabase.from("credit_transactions").select("amount").eq("type", "generation"),
+    // Summed in SQL (SECURITY INVOKER — RLS still applies): the old version
+    // pulled every generation transaction ever written into JS to add them.
+    supabase.rpc("generation_credits_total"),
   ]);
-  const creditsUsed = (credits.data ?? []).reduce((s, r) => s + Math.abs(r.amount), 0);
+  const creditsUsed = Number(credits.data ?? 0);
   return {
     users: users.count ?? 0,
     products: products.count ?? 0,

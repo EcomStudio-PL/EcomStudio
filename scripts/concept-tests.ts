@@ -83,13 +83,13 @@ check("consecutive retakes vary differently", new Set(takes.slice(0, 4)).size ==
 check("the rotation wraps", takes[4] === takes[0]);
 check("every variation forbids changing the concept", takes.every((v) => v.includes("Nie zmieniaj koncepcji sceny")));
 
-console.log("\nF. DUAL PRICING — custom pays base, EcomStudio adds the surcharge");
+console.log("\nF. DUAL PRICING — custom pays base, GrovBase adds the surcharge");
 const fakeModel = {
   credit_cost: 4, pricing: { "1K": 4 }, supported_resolutions: ["1K"],
   ecom_surcharge_credits: 49,
 } as unknown as UsableModel;
 check("custom prompt pays the base price", originCost(fakeModel, "custom") === 4);
-check("EcomStudio prompt adds the surcharge", originCost(fakeModel, "ecomstudio") === 53);
+check("GrovBase prompt adds the surcharge", originCost(fakeModel, "ecomstudio") === 53);
 const negSurcharge = { ...fakeModel, ecom_surcharge_credits: -5 } as unknown as UsableModel;
 check("negative surcharge never discounts", originCost(negSurcharge, "ecomstudio") === 4);
 

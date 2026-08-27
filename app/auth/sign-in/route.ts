@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAuthRouteClient } from "@/lib/supabase/auth-route";
+import { rateLimit, clientIp } from "@/lib/server/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
   const email = String(form.get("email") ?? "").trim();
   const password = String(form.get("password") ?? "");
   const nextRaw = String(form.get("next") ?? "");
-  const next = nextRaw.startsWith("/") && !nextRaw.startsWith("//") ? nextRaw : "/home";
+  const next = nextRaw.startsWith("/") && !nextRaw.startsWith("//") && !nextRaw.includes("\\") ? nextRaw : "/home";
   const origin = new URL(request.url).origin;
 
   const redirectTo = (path: string) => {
@@ -31,6 +32,12 @@ export async function POST(request: Request) {
   };
 
   if (!email || !password) return redirectTo("/login?error=invalid");
+
+  // Brute-force brake: 10 attempts per minute per address. A limited caller
+  // sees the ordinary invalid-credentials screen — nothing to enumerate.
+  if (!rateLimit(`signin:${clientIp(request)}`, 10, 60_000)) {
+    return redirectTo("/login?error=invalid");
+  }
 
   const { supabase, applyCookies } = await createAuthRouteClient();
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });

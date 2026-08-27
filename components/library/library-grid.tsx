@@ -69,7 +69,7 @@ export function LibraryGrid({ cards, locale }: { cards: LibraryCard[]; locale: s
       const blob = await res.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `ecomstudio-${new Date().toISOString().slice(0, 10)}.zip`;
+      a.download = `grovbase-${new Date().toISOString().slice(0, 10)}.zip`;
       a.click();
       URL.revokeObjectURL(a.href);
       setSelecting(false);

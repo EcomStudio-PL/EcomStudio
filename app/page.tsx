@@ -1,5 +1,8 @@
 import Link from "next/link";
+import { unstable_cache } from "next/cache";
+import { createClient as createAnonClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase/config";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { Brand } from "@/components/layout/brand";
@@ -12,10 +15,25 @@ export default async function LandingPage() {
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
   const supabase = await createClient();
-  const [{ data: page }, { data: plans }, { data: { user } }] = await Promise.all([
-    supabase.from("cms_pages").select("published_snapshot, status").eq("slug", "home").maybeSingle(),
-    supabase.from("subscription_plans").select("name, price_cents, currency, monthly_credits, featured, slug")
-      .eq("active", true).order("sort_order").limit(4),
+  // The CMS snapshot and the plan table are identical for every visitor, so
+  // anonymous landing hits are served from a 5-minute cache instead of two
+  // DB round-trips. Only the auth check stays per-request. The cached client
+  // is anonymous on purpose — nothing user-scoped may live in this closure.
+  const loadLandingContent = unstable_cache(
+    async () => {
+      const anon = createAnonClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      const [{ data: page }, { data: plans }] = await Promise.all([
+        anon.from("cms_pages").select("published_snapshot, status").eq("slug", "home").maybeSingle(),
+        anon.from("subscription_plans").select("name, price_cents, currency, monthly_credits, featured, slug")
+          .eq("active", true).order("sort_order").limit(4),
+      ]);
+      return { page, plans };
+    },
+    ["landing-content"],
+    { revalidate: 300 },
+  );
+  const [{ page, plans }, { data: { user } }] = await Promise.all([
+    loadLandingContent(),
     supabase.auth.getUser(),
   ]);
 
@@ -86,7 +104,7 @@ export default async function LandingPage() {
       <BlockRenderer blocks={ctaBlocks} locale={locale} labels={labels} />
 
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line py-8 text-xs text-muted">
-        <span>© {new Date().getFullYear()} EcomStudio</span>
+        <span>© {new Date().getFullYear()} GrovBase</span>
         <div className="flex gap-4">
           <a href="#showcase" className="hover:text-ink">{t("landing.navFeatures")}</a>
           <a href="#pricing" className="hover:text-ink">{t("landing.navPricing")}</a>

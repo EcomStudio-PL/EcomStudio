@@ -10,7 +10,7 @@ import { ChatThread, NewThreadForm } from "@/components/support/chat";
 import { formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
-/** Customer ↔ EcomStudio team message center. */
+/** Customer ↔ GrovBase team message center. */
 export default async function SupportPage({ searchParams }: {
   searchParams: Promise<{ thread?: string }>;
 }) {

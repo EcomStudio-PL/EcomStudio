@@ -47,7 +47,7 @@ export type ConceptCardData = {
   id: string;
   index: number;
   /** Customer-facing copy — the only text a seller ever sees for an
-   *  EcomStudio concept. */
+   *  GrovBase concept. */
   title: string;
   description: string | null;
   sceneType: string | null;
@@ -55,7 +55,7 @@ export type ConceptCardData = {
   generationCount: number;
   resultUrl: string | null;
   resultPending: boolean;
-  /** Pricing origin: EcomStudio engine prompt vs the customer's own prompt. */
+  /** Pricing origin: GrovBase engine prompt vs the customer's own prompt. */
   origin: "ecomstudio" | "custom";
   /** Saved per-card model override (wins over the global choice). */
   modelId: string | null;
@@ -84,7 +84,7 @@ const CONCURRENCY = 2;
  *
  * The customer now picks the IMAGE MODEL: globally in the "Generuj
  * wszystkie" sheet, or per card via its own selector (a card override always
- * wins). EcomStudio prompts stay invisible; a custom card shows the
+ * wins). GrovBase prompts stay invisible; a custom card shows the
  * customer's own editable prompt. Prices come from admin pricing per model
  * and per origin — never from the client.
  */
@@ -368,7 +368,7 @@ function ConceptCard({ c, state, url, error, models, chosenId, cost, generatedWi
     if (!url) return;
     const a = document.createElement("a");
     a.href = url;
-    a.download = `ecomstudio-${c.index}.png`;
+    a.download = `grovbase-${c.index}.png`;
     a.target = "_blank";
     a.rel = "noreferrer noopener";
     a.click();

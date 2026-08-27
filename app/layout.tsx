@@ -8,11 +8,11 @@ import { getDictionary } from "@/lib/i18n/server";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "EcomStudio", template: "%s · EcomStudio" },
+  title: { default: "GrovBase", template: "%s · GrovBase" },
   description: "Professional e-commerce product content, faster.",
-  applicationName: "EcomStudio",
-  appleWebApp: { capable: true, title: "EcomStudio", statusBarStyle: "black-translucent" },
-  icons: { apple: "/icons/apple-touch-icon.png?v=3" },
+  applicationName: "GrovBase",
+  appleWebApp: { capable: true, title: "GrovBase", statusBarStyle: "black-translucent" },
+  icons: { apple: "/icons/apple-touch-icon.png?v=4" },
   formatDetection: { telephone: false },
 };
 export const viewport: Viewport = {

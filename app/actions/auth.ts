@@ -2,6 +2,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { rateLimit } from "@/lib/server/rate-limit";
 import { getLocale } from "@/lib/i18n/server";
 
 type Result = { ok: boolean; error?: string; info?: string };
@@ -25,7 +26,7 @@ export async function signIn(_prev: Result | null, formData: FormData): Promise<
   const referer = (await headers()).get("referer");
   let next: string | null = null;
   try { next = referer ? new URL(referer).searchParams.get("next") : null; } catch { /* ignore */ }
-  redirect(next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard");
+  redirect(next && next.startsWith("/") && !next.startsWith("//") && !next.includes("\\") ? next : "/dashboard");
 }
 
 export async function signUp(_prev: Result | null, formData: FormData): Promise<Result> {
@@ -49,6 +50,12 @@ export async function signUp(_prev: Result | null, formData: FormData): Promise<
 }
 
 export async function requestPasswordReset(_prev: Result | null, formData: FormData): Promise<Result> {
+  // Reset emails are a spam vector: 3 per 10 minutes per address is plenty
+  // for a real person and starves a script. The response stays identical, so
+  // the limiter leaks nothing about which emails exist.
+  const fwd = (await headers()).get("x-forwarded-for");
+  const ip = (fwd?.split(",")[0] ?? "").trim() || "unknown";
+  if (!rateLimit(`pwreset:${ip}`, 3, 600_000)) return { ok: true, info: "sent" };
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(
     String(formData.get("email") ?? "").trim(),

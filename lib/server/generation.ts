@@ -17,7 +17,7 @@ export type GenerateInput = {
   modelId: string;
   /** Ordered fallback models tried when the primary fails for a
    *  provider-side reason. Same prompt, same references, same single credit
-   *  reservation — a fallback is EcomStudio's infrastructure problem, never a
+   *  reservation — a fallback is GrovBase's infrastructure problem, never a
    *  second charge. */
   fallbackModelIds?: string[];
   prompt: string;
@@ -36,7 +36,7 @@ export type GenerateInput = {
   /** Prompt-engine handoff: link the job to its prompt + session. */
   promptId?: string;
   promptSessionId?: string;
-  /** Concept engine: the prompt is EcomStudio IP — the job row must not
+  /** Concept engine: the prompt is GrovBase IP — the job row must not
    *  mirror it in clear (the encrypted copy lives on the concept). */
   hidePromptText?: boolean;
   /** Concept regeneration lineage, recorded on the job row. */
@@ -338,10 +338,18 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         width: img.width ?? null, height: img.height ?? null,
         metadata: { provider: served.providerSlug, model: model2.model_identifier } as never,
       });
-      const { data: signed } = await supabase.storage.from("generation-assets").createSignedUrl(path, 3600);
-      if (signed) stored.push({ url: signed.signedUrl, path });
+      stored.push({ url: "", path });
     }
     idx++;
+  }
+  // One batched signing call for the whole set instead of one per image.
+  if (stored.length > 0) {
+    const { data: signed } = await supabase.storage.from("generation-assets")
+      .createSignedUrls(stored.map((s) => s.path), 3600);
+    signed?.forEach((entry) => {
+      const hit = stored.find((s) => s.path === entry.path);
+      if (hit && entry.signedUrl) hit.url = entry.signedUrl;
+    });
   }
 
   if (stored.length === 0) {
@@ -377,7 +385,10 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     p_metadata: { model: model2.model_identifier, provider: served.providerSlug, count: stored.length, credits: cost, fallback_attempts: attempts.length },
   });
 
-  return { ok: true, jobId: job.id, productId: productId!, images: stored };
+  // Only entries that actually got a signed URL go back to the caller — an
+  // asset whose signing failed still exists in the library and will sign on
+  // the next page load.
+  return { ok: true, jobId: job.id, productId: productId!, images: stored.filter((s) => s.url) };
 }
 
 /** Resolve one fallback candidate: active model + active provider + adapter

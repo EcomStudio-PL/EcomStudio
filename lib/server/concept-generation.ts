@@ -10,7 +10,7 @@ import { decryptConceptPayload } from "@/lib/server/prompt-engine";
  *
  * The customer clicks "Generuj" on a concept card; everything that matters
  * happens here, server-side: the hidden prompt is decrypted, the model is
- * chosen by EcomStudio (the seller never picks engines), the references the
+ * chosen by GrovBase (the seller never picks engines), the references the
  * planner assigned are resolved, credits move through the existing ledger and
  * the result lands in the same generations/assets pipeline as every other
  * image. The browser sends a concept id and gets back a picture.
@@ -76,7 +76,7 @@ export function conceptUnitCost(model: UsableModel): number {
 }
 
 /** One image-model choice as the customer sees it: display identity plus BOTH
- *  prices — own prompt (base credits) and EcomStudio prompt (base + engine
+ *  prices — own prompt (base credits) and GrovBase prompt (base + engine
  *  surcharge). Ordered like the routing chain, default first. */
 export type ConceptModelOption = {
   id: string;
@@ -90,7 +90,7 @@ export type ConceptModelOption = {
   resolutions: string[];
   /** Framings this engine actually accepts. */
   ratios: string[];
-  /** Credits added on top of the base price when EcomStudio writes the
+  /** Credits added on top of the base price when GrovBase writes the
    *  prompt; zero for the customer's own prompt. */
   ecomSurcharge: number;
 };
@@ -152,7 +152,7 @@ export async function generateFromConcept(
   opts?: { modelId?: string },
 ): Promise<ConceptGenerateOutput & { modelName?: string }> {
   // The concept row is readable by the member (title, refs, status) — the
-  // EcomStudio prompt within it is ciphertext until this exact point; a
+  // GrovBase prompt within it is ciphertext until this exact point; a
   // custom card carries the customer's own prompt in clear instead.
   const { data: concept } = await supabase
     .from("generated_prompts")

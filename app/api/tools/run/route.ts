@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
@@ -34,7 +35,9 @@ export async function POST(request: Request) {
   const file = form.get("file");
   if (!(file instanceof File)) return NextResponse.json({ ok: false, error: "missing_file" }, { status: 400 });
   if (file.size > MAX_UPLOAD_BYTES) return NextResponse.json({ ok: false, error: "image_too_large" }, { status: 413 });
-  if (file.type && !ACCEPTED_MIME.includes(file.type)) {
+  // An empty declared type used to skip validation entirely; now anything
+  // that is not on the allowlist — including "no type" — is refused.
+  if (!ACCEPTED_MIME.includes(file.type)) {
     return NextResponse.json({ ok: false, error: "unsupported_format" }, { status: 415 });
   }
 
@@ -43,16 +46,20 @@ export async function POST(request: Request) {
   try { settings = JSON.parse(String(form.get("settings") ?? "{}")); }
   catch { settings = {}; }
 
+  const fileBytes = Buffer.from(await file.arrayBuffer());
   const result = await runTool(supabase, user.id, workspace.id, {
     tool: tool.slug,
     settings,
-    file: Buffer.from(await file.arrayBuffer()),
+    file: fileBytes,
     mime: file.type || "image/jpeg",
     logo: logo instanceof File ? Buffer.from(await logo.arrayBuffer()) : null,
-    // Scopes the key to this workspace so one seller can never replay
-    // another's charge, while a refreshed page repeating the same run is
-    // recognised instead of billed twice.
-    idempotencyKey: idempotency(form.get("idempotencyKey"), workspace.id),
+    // The key is DERIVED, never accepted from the client: a hash of the
+    // tool, its settings and the exact file bytes. An identical retry (a
+    // refreshed page re-sending the same run) still dedupes to one charge,
+    // but a different tool or settings can no longer ride an earlier cheap
+    // charge for a free run — the old client-supplied key allowed exactly
+    // that billing bypass.
+    idempotencyKey: idempotency(workspace.id, tool.slug, settings, fileBytes),
   });
 
   if (!result.ok) {
@@ -79,8 +86,12 @@ export async function POST(request: Request) {
   });
 }
 
-function idempotency(raw: FormDataEntryValue | null, workspaceId: string): string | undefined {
-  const value = typeof raw === "string" ? raw.trim() : "";
-  if (!value || value.length > 120) return undefined;
-  return `tools:${workspaceId}:${value}`;
+function idempotency(workspaceId: string, tool: string, settings: unknown, file: Buffer): string {
+  const digest = createHash("sha256")
+    .update(tool)
+    .update(JSON.stringify(settings ?? {}))
+    .update(file)
+    .digest("hex")
+    .slice(0, 40);
+  return `tools:${workspaceId}:${digest}`;
 }

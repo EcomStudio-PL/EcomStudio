@@ -70,8 +70,8 @@ export async function staffReplyAction(threadId: string, body: string): Promise<
     if (thread.profiles?.email) {
       await sendEmail({
         to: thread.profiles.email,
-        subject: `EcomStudio — odpowiedź: ${thread.subject}`,
-        text: `${body.trim().slice(0, 2000)}\n\n— Zespół EcomStudio\nhttps://ecomstudio-prod.vercel.app/support?thread=${threadId}`,
+        subject: `GrovBase — odpowiedź: ${thread.subject}`,
+        text: `${body.trim().slice(0, 2000)}\n\n— Zespół GrovBase\nhttps://ecomstudio-prod.vercel.app/support?thread=${threadId}`,
       });
     }
     revalidatePath(`/admin/support/${threadId}`);

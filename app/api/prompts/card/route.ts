@@ -10,7 +10,7 @@ const UUID = /^[0-9a-f-]{36}$/;
  * Card-level settings the CUSTOMER may change:
  * - modelId: the image-model override for this one card (null clears it);
  * - promptText: the prompt body — allowed ONLY on the customer's own
- *   custom cards. EcomStudio prompts are never writable (or readable) here.
+ *   custom cards. GrovBase prompts are never writable (or readable) here.
  */
 export async function PATCH(request: Request) {
   const supabase = await createClient();

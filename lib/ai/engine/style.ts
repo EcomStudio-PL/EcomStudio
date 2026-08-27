@@ -1,7 +1,7 @@
 import type { FeatureManifest, SceneConcept, SessionInput } from "./types";
 
 /**
- * SYSTEM STYLE BASELINE — the built-in commercial look of EcomStudio.
+ * SYSTEM STYLE BASELINE — the built-in commercial look of GrovBase.
  *
  * The seller never has to write the big advertising prompt: the wrapper is
  * baked in here and the scene-specific concept is inserted into it. The

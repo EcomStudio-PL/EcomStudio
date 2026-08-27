@@ -64,7 +64,7 @@ export async function POST(request: Request) {
   return new NextResponse(Buffer.from(zip), {
     headers: {
       "Content-Type": "application/zip",
-      "Content-Disposition": `attachment; filename="ecomstudio-${new Date().toISOString().slice(0, 10)}.zip"`,
+      "Content-Disposition": `attachment; filename="grovbase-${new Date().toISOString().slice(0, 10)}.zip"`,
       "Cache-Control": "no-store",
     },
   });

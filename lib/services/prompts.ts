@@ -2,7 +2,7 @@ import type { Client } from "./workspace";
 import type { Tables } from "@/lib/database.types";
 import { buildFidelityInstructions } from "@/lib/ai/product-lock";
 
-/** SERVER/ADMIN ONLY. The system library is EcomStudio's own prompt logic:
+/** SERVER/ADMIN ONLY. The system library is GrovBase's own prompt logic:
  *  RLS restricts these rows to staff, and nothing customer-facing reads it. */
 export async function listSystemTemplates(supabase: Client) {
   const { data } = await supabase

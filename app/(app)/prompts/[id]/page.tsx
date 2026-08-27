@@ -101,7 +101,7 @@ export default async function ConceptSessionPage({ params, searchParams }: {
       resultPending: result ? result.status === "processing" || result.status === "queued" : false,
       origin,
       modelId: p.model_id,
-      // The customer's own prompt is theirs to read and edit; an EcomStudio
+      // The customer's own prompt is theirs to read and edit; an GrovBase
       // prompt never rides along (it exists only as ciphertext).
       customPrompt: origin === "custom" ? p.prompt_text : null,
       generatedWith: result?.modelId ? servedNames.get(result.modelId) ?? null : null,

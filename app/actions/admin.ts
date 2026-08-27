@@ -95,7 +95,7 @@ export async function updateModelFullAction(modelId: string, patch: {
   display_name?: string; badge?: string | null; sort_order?: number;
   model_identifier?: string; pricing?: Record<string, number>;
   supported_resolutions?: string[];
-  /** EcomStudio Prompt Engine surcharge in credits, added on top of the base
+  /** GrovBase Prompt Engine surcharge in credits, added on top of the base
    *  price when a generation uses our hidden prompt. */
   ecom_surcharge_credits?: number;
 }): Promise<Result> {

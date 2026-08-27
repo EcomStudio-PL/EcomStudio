@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * MASTER PROMPT — the one deterministic template EcomStudio sends to image
+ * MASTER PROMPT — the one deterministic template GrovBase sends to image
  * models. Assembled by PLAIN CODE: master scenery + fixed product-fidelity
  * guard + (only when the scene includes people) the fixed human-realism
  * block + the product name + the scene description from the planner.

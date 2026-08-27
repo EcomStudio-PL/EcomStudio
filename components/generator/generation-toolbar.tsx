@@ -35,7 +35,7 @@ export type ToolbarModel = {
   pricing: Record<string, number>;
   resolutions: string[];
   ratios: string[];
-  /** Added to the base price when EcomStudio writes the prompt. */
+  /** Added to the base price when GrovBase writes the prompt. */
   ecomSurcharge: number;
 };
 

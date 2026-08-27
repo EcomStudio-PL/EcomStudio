@@ -47,7 +47,7 @@ export async function updateSession(request: NextRequest) {
   if (user && AUTH_PAGES.some((p) => pathname.startsWith(p))) {
     const url = request.nextUrl.clone();
     const next = request.nextUrl.searchParams.get("next");
-    url.pathname = next && next.startsWith("/") && !next.startsWith("//") ? next : "/home";
+    url.pathname = next && next.startsWith("/") && !next.startsWith("//") && !next.includes("\\") ? next : "/home";
     url.search = "";
     return redirectWithCookies(url);
   }

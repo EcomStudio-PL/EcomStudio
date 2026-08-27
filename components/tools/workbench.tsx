@@ -117,7 +117,6 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
     if (logo) form.append("logo", logo.file);
     // Stable per-item key: a refresh mid-batch re-sends the same key and the
     // ledger recognises the run instead of charging for it twice.
-    form.append("idempotencyKey", item.id);
 
     const res = await fetch("/api/tools/run", { method: "POST", body: form });
     if (!res.ok) {
@@ -190,7 +189,7 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
     const url = URL.createObjectURL(createZip(entries));
     const a = document.createElement("a");
     a.href = url;
-    a.download = `ecomstudio-${tool}.zip`;
+    a.download = `grovbase-${tool}.zip`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }

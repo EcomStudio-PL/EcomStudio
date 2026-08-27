@@ -2506,6 +2506,10 @@ export type Database = {
             }
             Returns: undefined
           }
+      generation_credits_total: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
       fail_usage_event:
         | { Args: { p_error: string; p_event_id: string }; Returns: string }
         | {

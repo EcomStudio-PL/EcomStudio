@@ -2,7 +2,7 @@ import "server-only";
 import sharp from "sharp";
 
 /**
- * LOCAL IMAGE PROCESSOR — everything EcomStudio can do without paying a
+ * LOCAL IMAGE PROCESSOR — everything GrovBase can do without paying a
  * provider. Resize, format conversion, compression, watermarking, flattening
  * an alpha channel onto white and casting a product shadow are all
  * deterministic pixel work, so they run in our own Node runtime and cost the

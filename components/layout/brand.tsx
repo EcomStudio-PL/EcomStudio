@@ -1,18 +1,42 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-/** EcomStudio brand mark: viewfinder frame + product focus point.
- *  Works standalone (favicon, compact chrome) or with the wordmark. */
+/**
+ * GROVBASE LOGO — the single brand component for the whole product.
+ *
+ * All artwork comes from the official master assets in /public/brand
+ * (generated losslessly from the supplied PNGs — never redrawn in CSS):
+ *   mark.png        — the pink G symbol alone, transparent
+ *   text-dark.png   — "GrovBase" wordmark text, WHITE, for dark surfaces
+ *   text-light.png  — "GrovBase" wordmark text, BLACK, for light surfaces
+ *   wordmark-*.png  — symbol + text combined, for standalone brand areas
+ *
+ * Theme switching is pure CSS (`dark:` classes on the two text images), so
+ * the correct variant is right on the server render with no flash and no
+ * hydration dance. Sizes are fixed via width/height attributes so the logo
+ * never causes layout shift and is never stretched.
+ */
+
+/** The G symbol alone — compact chrome, collapsed rails, small surfaces. */
 export function BrandMark({ size = 26 }: { size?: number }) {
+  // Master is 253x256; near-square, rendered square-height with true ratio.
+  const w = Math.round(size * (253 / 256));
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden>
-      <path d="M11 4H7a3 3 0 0 0-3 3v4" stroke="rgb(var(--accent))" strokeWidth="2.6" strokeLinecap="round" />
-      <path d="M21 28h4a3 3 0 0 0 3-3v-4" stroke="rgb(var(--accent))" strokeWidth="2.6" strokeLinecap="round" />
-      <path d="M28 11V7a3 3 0 0 0-3-3h-4" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" opacity="0.9" />
-      <path d="M4 21v4a3 3 0 0 0 3 3h4" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" opacity="0.9" />
-      <rect x="11" y="11" width="10" height="10" rx="3" fill="rgb(var(--accent))" />
-      <rect x="14.2" y="14.2" width="3.6" height="3.6" rx="1.2" fill="rgb(var(--bg))" />
-    </svg>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src="/brand/mark.png" alt="" aria-hidden width={w} height={size} className="shrink-0 select-none" />
+  );
+}
+
+/** Wordmark text at a given pixel height (master 685x120). */
+function BrandText({ height = 18, className }: { height?: number; className?: string }) {
+  const w = Math.round(height * (685 / 120));
+  return (
+    <span className={cn("inline-flex items-center", className)} aria-hidden>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/brand/text-light.png" alt="" width={w} height={height} className="select-none dark:hidden" />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/brand/text-dark.png" alt="" width={w} height={height} className="hidden select-none dark:inline" />
+    </span>
   );
 }
 
@@ -30,14 +54,9 @@ export function Brand({ href = "/", markOnly = false, className, wordmarkClassNa
   wordmarkClassName?: string;
 }) {
   return (
-    <Link href={href} className={cn("inline-flex items-center gap-2.5 font-display text-lg font-semibold tracking-tight", className)}>
+    <Link href={href} aria-label="GrovBase" className={cn("inline-flex items-center gap-2", className)}>
       <BrandMark />
-      {!markOnly && (
-        <span className={cn("inline-flex items-baseline gap-0.5 leading-none", wordmarkClassName)}>
-          <span>ecom</span>
-          <span className="text-accent">studio</span>
-        </span>
-      )}
+      {!markOnly && <BrandText className={wordmarkClassName} />}
     </Link>
   );
 }

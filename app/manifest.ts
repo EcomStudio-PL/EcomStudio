@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "EcomStudio",
-    short_name: "EcomStudio",
+    name: "GrovBase",
+    short_name: "GrovBase",
     description: "Professional e-commerce product content, faster.",
     id: "/",
     // Launching the installed app straight into the workspace: signed-in
@@ -15,11 +15,11 @@ export default function manifest(): MetadataRoute.Manifest {
     orientation: "portrait",
     background_color: "#0F1015",
     theme_color: "#0F1015",
-    // ?v=3 busts the icon cache on phones that pinned the old artwork.
+    // ?v=4 busts the icon cache on phones that pinned the old artwork.
     icons: [
-      { src: "/icons/icon-192.png?v=3", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/icons/icon-512.png?v=3", sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: "/icons/icon-512-maskable.png?v=3", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      { src: "/icons/icon-192.png?v=4", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icons/icon-512.png?v=4", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/icons/icon-512-maskable.png?v=4", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
   };
 }

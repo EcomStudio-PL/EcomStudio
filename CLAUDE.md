@@ -1,4 +1,4 @@
-# EcomStudio — project guide for AI-assisted development
+# GrovBase (formerly EcomStudio) — project guide for AI-assisted development
 
 Production SaaS for e-commerce sellers: turn product reference photos into professional sales content (photos → prompts → AI generations → marketplace export). Product fidelity beats artistic creativity.
 
