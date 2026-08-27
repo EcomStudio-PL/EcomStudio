@@ -24,7 +24,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // Self-heal idempotently, then read again — the second read is what
     // usually succeeds, so a real account never lands on the error screen
     // just because it arrived a few hundred milliseconds early.
-    await supabase.rpc("bootstrap_current_user");
+    const { error: bootstrapError } = await supabase.rpc("bootstrap_current_user");
+    if (bootstrapError) console.error("bootstrap", bootstrapError.code, bootstrapError.message);
     for (let attempt = 0; attempt < 2 && (!profile || !workspace); attempt++) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 350));
       [profile, workspace] = await Promise.all([
@@ -52,6 +53,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     );
   }
   if (!profile || !workspace) {
+    console.error("app.setup-missing", user.id, "profile:", Boolean(profile), "workspace:", Boolean(workspace));
     const { dict } = await getDictionary();
     const t = makeT(dict);
     return (
