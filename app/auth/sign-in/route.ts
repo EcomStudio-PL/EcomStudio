@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthRouteClient } from "@/lib/supabase/auth-route";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +11,10 @@ export const dynamic = "force-dynamic";
  * the session cookies written on that fetch response. A native form POST
  * answered with 303 + Set-Cookie is the one flow every WebView on earth
  * handles identically — no JavaScript, no fetch, no client router involved.
+ *
+ * The session cookies ride the redirect WITH their attributes; see
+ * lib/supabase/auth-route.ts for why copying name+value alone was breaking
+ * roughly every other login.
  */
 export async function POST(request: Request) {
   const form = await request.formData();
@@ -29,13 +32,9 @@ export async function POST(request: Request) {
 
   if (!email || !password) return redirectTo("/login?error=invalid");
 
-  const supabase = await createClient();
+  const { supabase, applyCookies } = await createAuthRouteClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return redirectTo(`/login?error=invalid${nextRaw ? `&next=${encodeURIComponent(next)}` : ""}`);
 
-  // The session cookies were written into the request-scoped cookie store —
-  // copy them onto the redirect explicitly, exactly like /auth/callback.
-  const redirect = redirectTo(next);
-  (await cookies()).getAll().forEach((c) => redirect.cookies.set(c.name, c.value));
-  return redirect;
+  return applyCookies(redirectTo(next));
 }

@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { Box, ImageIcon, Plus } from "lucide-react";
@@ -23,9 +24,9 @@ export default async function ProductsPage({ searchParams }: {
   const { dict } = await getDictionary();
   const t = makeT(dict);
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) redirect("/login");
   const workspace = await getCurrentWorkspace(supabase, user.id);
-  if (!workspace) return null;
+  if (!workspace) redirect("/home");
   const products = await listProducts(supabase, workspace.id, 100, { q, status });
   const thumbPaths = products
     .map((p) => (p.product_images.find((i) => i.is_primary) ?? p.product_images[0])?.storage_path)

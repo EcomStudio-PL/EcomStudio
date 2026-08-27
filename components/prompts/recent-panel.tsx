@@ -47,7 +47,7 @@ export function RecentPanel({ sessions, className, horizontal }: {
   };
 
   const header = (
-    <div className="mb-2.5 flex items-center justify-between gap-2">
+    <div className="mb-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
       <p className="overline">{t("psess.recent")}</p>
       <Link href="/library?tab=history"
         className="inline-flex items-center gap-1 text-[12px] font-semibold text-accent transition-opacity duration-200 hover:opacity-75">
@@ -68,34 +68,50 @@ export function RecentPanel({ sessions, className, horizontal }: {
     );
   }
 
+  /**
+   * One session. The carousel variant stacks its metadata instead of laying
+   * it out in a row: date, time, format AND status never fit on one 15rem
+   * line, which is why the phone screenshots showed "26.08.2026 · 1:1" with
+   * the status chip pushed off the card.
+   */
   const row = (s: RecentSession, compact: boolean) => (
     <Link
       key={s.id}
       href={`/prompts/${s.id}`}
       prefetch
       className={cn(
-        "group flex items-center gap-3 rounded-xl border border-transparent px-2 py-2 transition-colors duration-200 hover:border-[rgb(var(--accent)/0.3)] hover:bg-raised",
-        compact && "w-[15rem] shrink-0",
+        "group rounded-xl border border-transparent transition-colors duration-200 hover:border-[rgb(var(--accent)/0.3)] hover:bg-raised",
+        compact
+          ? "panel flex w-[13.5rem] flex-col gap-2 p-2.5"
+          : "flex items-center gap-3 px-2 py-2",
       )}
     >
-      <span className="h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-raised ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]">
-        {s.thumbnail && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={s.thumbnail} alt="" loading="lazy" className="h-full w-full object-cover" />
+      <span className={cn("flex min-w-0 items-center gap-2.5", compact && "w-full")}>
+        <span className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-raised ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]">
+          {s.thumbnail && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={s.thumbnail} alt="" loading="lazy" className="h-full w-full object-cover" />
+          )}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-semibold">{s.productName}</span>
+          <span className="mt-0.5 flex items-center gap-1 text-[11px] tabular-nums text-faint">
+            <Clock size={10} aria-hidden className="shrink-0" />
+            <span className="truncate">{fmt(s.createdAt)}</span>
+          </span>
+        </span>
+        {!compact && (
+          <span className="shrink-0">
+            <Badge tone={TONE[s.status] ?? "amber"}>{t(`psess.status_${s.status}`, {}) || s.status}</Badge>
+          </span>
         )}
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-semibold">{s.productName}</span>
-        <span className="mt-0.5 flex items-center gap-1 text-[11px] tabular-nums text-faint">
-          <Clock size={10} aria-hidden />
-          {fmt(s.createdAt)}
-          <span className="text-line-strong">·</span>
-          {s.ratio}
+      {compact && (
+        <span className="flex items-center justify-between gap-2">
+          <span className="rounded-md bg-raised px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums text-muted">{s.ratio}</span>
+          <Badge tone={TONE[s.status] ?? "amber"}>{t(`psess.status_${s.status}`, {}) || s.status}</Badge>
         </span>
-      </span>
-      <span className="shrink-0">
-        <Badge tone={TONE[s.status] ?? "amber"}>{t(`psess.status_${s.status}`, {}) || s.status}</Badge>
-      </span>
+      )}
     </Link>
   );
 
@@ -103,7 +119,7 @@ export function RecentPanel({ sessions, className, horizontal }: {
     return (
       <section className={cn("min-w-0", className)}>
         {header}
-        <div className="thin-scroll -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+        <div className="rail-x">
           {sessions.map((s) => row(s, true))}
         </div>
       </section>

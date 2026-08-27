@@ -308,52 +308,71 @@ export function SessionForm({
 
   return (
     <div className="min-w-0">
-      {/* STEPPER — four compact cards, not four tall sections. */}
-      <div className="thin-scroll mb-4 flex gap-2 overflow-x-auto pb-1 [&>*]:min-w-0">
-        {steps.map((s) => {
-          const Tag = (s.target ? "a" : "div") as "a" | "div";
-          return (
-          <Tag
-            key={s.n}
-            href={s.target ? `#ws-${s.key}` : undefined}
-            className={cn(
-              "panel flex min-w-[10rem] flex-1 items-center gap-2.5 rounded-xl px-3 py-2.5 transition-colors duration-200",
-              s.n === current && "border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.06)]",
-            )}
-          >
-            <span aria-hidden className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[12px] font-bold",
-              s.done ? "bg-[rgb(var(--success)/0.16)] text-success"
-                : s.n === current ? "brand-gradient text-white" : "bg-raised text-faint",
-            )}>
-              {s.done ? <Check size={13} strokeWidth={3} /> : s.n}
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-[12.5px] font-semibold">{t(`ws.${s.key}`)}</span>
-              <span className="block truncate text-[10.5px] text-faint">{t(`ws.${s.key}Sub`)}</span>
-            </span>
-          </Tag>
-          );
-        })}
+      {/* STEPPER — a progress bar on phones, cards on desktop.
+          Four mini cards at 360px left room for three letters per label
+          ("Pr…", "Uję…"), which tells the user nothing. On a phone the same
+          state is one line of readable text plus a segmented bar. */}
+      <div className="mb-4">
+        <div className="sm:hidden">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="text-[13px] font-semibold">
+              <span className="tabular-nums text-accent">{current}/4</span>
+              <span className="ml-1.5">{t(`ws.step${current}`)}</span>
+            </p>
+            <p className="text-[11.5px] text-faint">{t(`ws.step${current}Sub`)}</p>
+          </div>
+          <div className="mt-2 flex gap-1" role="progressbar"
+            aria-valuemin={1} aria-valuemax={4} aria-valuenow={current}
+            aria-label={t(`ws.step${current}`)}>
+            {steps.map((s) => (
+              <span key={s.n} className={cn(
+                "h-1.5 flex-1 rounded-full transition-colors duration-200",
+                s.done ? "bg-success" : s.n === current ? "brand-gradient" : "bg-[rgb(var(--ink)/0.12)]",
+              )} />
+            ))}
+          </div>
+        </div>
+
+        <div className="hidden gap-2 sm:flex [&>*]:min-w-0">
+          {steps.map((s) => {
+            const Tag = (s.target ? "a" : "div") as "a" | "div";
+            return (
+              <Tag
+                key={s.n}
+                href={s.target ? `#ws-${s.key}` : undefined}
+                className={cn(
+                  "panel flex flex-1 items-center gap-2.5 rounded-xl px-3 py-2.5 transition-colors duration-200",
+                  s.n === current && "border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.06)]",
+                )}
+              >
+                <span aria-hidden className={cn(
+                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[12px] font-bold",
+                  s.done ? "bg-[rgb(var(--success)/0.16)] text-success"
+                    : s.n === current ? "brand-gradient text-white" : "bg-raised text-faint",
+                )}>
+                  {s.done ? <Check size={13} strokeWidth={3} /> : s.n}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-[12.5px] font-semibold">{t(`ws.${s.key}`)}</span>
+                  <span className="block truncate text-[10.5px] text-faint">{t(`ws.${s.key}Sub`)}</span>
+                </span>
+              </Tag>
+            );
+          })}
+        </div>
       </div>
 
       <div className="grid min-w-0 gap-4 [&>*]:min-w-0 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
         {/* Bottom padding clears the docked toolbar (and, on phones, the
             bottom navigation underneath it). */}
-        {/* <main> already reserves the phone dock; this adds only the room
-            the toolbar itself needs on top of it. */}
-        <div className="min-w-0 space-y-4 pb-[7.5rem] lg:pb-[8.5rem]">
+        {/* Both fixed bars are reserved from one derived token, so content
+            can never end up underneath the dock or the navigation. */}
+        <div className="min-w-0 space-y-4 pb-[var(--gen-page-bottom)] lg:pb-[7.5rem]">
           {/* PRODUCT */}
           <section id="ws-step1" className="panel rounded-2xl p-4 sm:p-5">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <p className="overline">{t("ws.yourProduct")}</p>
-              {chosenProduct && (
-                <button type="button" onClick={() => setPickerOpen(true)}
-                  className="text-[12px] font-semibold text-accent transition-opacity duration-200 hover:opacity-75">
-                  {t("ws.changeProduct")}
-                </button>
-              )}
-            </div>
+            {/* One "change" affordance, inside the product card itself —
+                the header used to carry a second one saying the same thing. */}
+            <p className="overline mb-2.5">{t("ws.yourProduct")}</p>
             <ProductChoice
               product={chosenProduct ?? null}
               onPick={() => setPickerOpen(true)}
@@ -392,7 +411,7 @@ export function SessionForm({
           </section>
 
           {/* REFERENCES */}
-          <section id="ws-step2" className="panel rounded-2xl p-4 sm:p-5">
+          <section id="ws-step2" className="panel rounded-2xl p-3.5 sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-2">
               <p className="overline">{t("psess.photos")}</p>
               <span className="plate rounded-full px-2.5 py-1 text-[11px] font-semibold tabular-nums text-muted">
@@ -401,7 +420,7 @@ export function SessionForm({
             </div>
             <input ref={fileRef} type="file" multiple accept="image/jpeg,image/png,image/webp,image/avif"
               className="hidden" onChange={(e) => e.target.files && upload(e.target.files)} />
-            <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8 [&>*]:min-w-0">
               {refs.map((r, i) => (
                 <div key={r.key} className="group relative aspect-square overflow-hidden rounded-xl ring-1 ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -429,7 +448,7 @@ export function SessionForm({
 
           {/* SHOT TYPES + CATEGORY DECISIONS */}
           {bar.mode === "engine" && (
-            <section id="ws-step3" className="panel rounded-2xl p-4 sm:p-5">
+            <section id="ws-step3" className="panel rounded-2xl p-3.5 sm:p-5">
               <div className="mb-1 flex items-center justify-between gap-2">
                 <p className="overline">{t("ws.shotTypes")}</p>
                 {shotTypes.length > 0 && (
@@ -437,9 +456,11 @@ export function SessionForm({
                 )}
               </div>
               <p className="mb-3 text-[12px] leading-relaxed text-muted">{t("ws.shotTypesSub")}</p>
-              {/* A horizontal scroller on phones — seven tall cards stacked
-                  is exactly the scrolling this rebuild removes. */}
-              <div className="thin-scroll -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 lg:grid-cols-4 xl:grid-cols-5">
+              {/* An intentional carousel on phones: the row owns the
+                  overflow, the first card lines up with the page text and the
+                  last one can be scrolled fully into view. Seven tall cards
+                  stacked is exactly the scrolling this rebuild removes. */}
+              <div className="rail-x-sm sm:grid sm:grid-cols-3 sm:gap-2 lg:grid-cols-4 xl:grid-cols-5 [&>*]:min-w-0">
                 {variant.shotTypes.map((k) => {
                   const on = shotTypes.includes(k);
                   return (
@@ -449,7 +470,7 @@ export function SessionForm({
                       aria-pressed={on}
                       onClick={() => setShotTypes((p) => on ? p.filter((x) => x !== k) : [...p, k])}
                       className={cn(
-                        "relative flex w-[8.5rem] shrink-0 flex-col overflow-hidden rounded-xl border p-2.5 text-left transition-colors duration-200 sm:w-auto",
+                        "relative flex w-[10.25rem] flex-col overflow-hidden rounded-xl border p-2.5 text-left transition-colors duration-200 sm:w-auto",
                         on ? "is-selected" : "border-line hover:bg-raised",
                       )}
                     >
@@ -459,7 +480,10 @@ export function SessionForm({
                       )}>
                         <Package size={18} strokeWidth={1.8} />
                       </span>
-                      <span className={cn("truncate text-[12px] font-semibold", on ? "text-ink" : "text-muted")}>
+                      <span className={cn(
+                        "line-clamp-2 min-h-[2.1rem] text-[12px] font-semibold leading-snug",
+                        on ? "text-ink" : "text-muted",
+                      )}>
                         {t(`generator.mt.${k}`)}
                       </span>
                       {on && (
@@ -477,13 +501,13 @@ export function SessionForm({
                   {variant.controls.map((c) => (
                     <div key={c.key}>
                       <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-faint">{t(`vc.${c.key}`)}</p>
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="rail-x-sm sm:flex sm:flex-wrap sm:gap-2">
                         {c.options.map((o) => {
                           const on = (choices[c.key] ?? c.initial) === o.key;
                           return (
                             <button key={o.key} type="button" aria-pressed={on}
                               onClick={() => setChoices((p) => ({ ...p, [c.key]: o.key }))}
-                              className={cn("rounded-lg border px-3 py-1.5 text-[12px] font-semibold transition-colors duration-200",
+                              className={cn("min-h-[38px] whitespace-nowrap rounded-lg border px-3 text-[12.5px] font-semibold transition-colors duration-200",
                                 on ? "is-selected text-accent" : "border-line text-muted hover:bg-raised")}>
                               {t(`vc.${c.key}_${o.key}`)}
                             </button>
@@ -527,7 +551,7 @@ export function SessionForm({
         {/* RIGHT RAIL — recent generations only. Model, framing, size and
             count all live in the toolbar; repeating them here is what made
             the old page twice as tall as it needed to be. */}
-        <aside className="hidden min-w-0 pb-[8.5rem] xl:sticky xl:top-20 xl:block xl:h-fit">
+        <aside className="hidden min-w-0 pb-[7.5rem] xl:sticky xl:top-20 xl:block xl:h-fit">
           <RecentPanel sessions={recent} />
         </aside>
       </div>

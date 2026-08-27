@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
@@ -34,9 +35,9 @@ export default async function LibraryPage({ searchParams }: {
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) redirect("/login");
   const workspace = await getCurrentWorkspace(supabase, user.id);
-  if (!workspace) return null;
+  if (!workspace) redirect("/home");
 
   const [generations, products, jobs, { data: toolResults }] = await Promise.all([
     listAssets(supabase, workspace.id),

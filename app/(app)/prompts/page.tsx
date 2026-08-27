@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
@@ -24,9 +25,9 @@ export default async function PromptsPage({ searchParams }: {
   const { dict } = await getDictionary();
   const t = makeT(dict);
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) redirect("/login");
   const workspace = await getCurrentWorkspace(supabase, user.id);
-  if (!workspace) return null;
+  if (!workspace) redirect("/home");
 
   // Availability check goes through the definer RPC: ai_provider_credentials
   // is admin-only under RLS, so reading it directly told every customer the

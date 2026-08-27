@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ArrowRight, PenLine, Sparkles } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
@@ -35,9 +35,9 @@ export default async function CategoryPage({ params }: { params: Promise<{ cat: 
   const { dict } = await getDictionary();
   const t = makeT(dict);
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) redirect("/login");
   const workspace = await getCurrentWorkspace(supabase, user.id);
-  if (!workspace) return null;
+  if (!workspace) redirect("/home");
 
   // Preview thumbnails come from the account's own work — never stock art.
   const recent = await listAssets(supabase, workspace.id, 12);
@@ -69,7 +69,7 @@ export default async function CategoryPage({ params }: { params: Promise<{ cat: 
   const isMatching = category.key === "matching";
 
   return (
-    <div className={isMatching ? "pb-[7.5rem] lg:pb-[8.5rem]" : undefined}>
+    <div className={isMatching ? "pb-[var(--gen-page-bottom)] lg:pb-[7.5rem]" : undefined}>
       <CategoryHeader
         category={category}
         title={t(`cats.${category.key}`)}

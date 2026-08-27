@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
@@ -18,7 +19,7 @@ export default async function SupportPage({ searchParams }: {
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) redirect("/login");
 
   const { data: threads } = await supabase.from("support_threads")
     .select("id, subject, status, last_message_at")

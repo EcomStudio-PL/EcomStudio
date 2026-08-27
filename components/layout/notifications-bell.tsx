@@ -44,7 +44,7 @@ export function NotificationsBell({ items, unread }: { items: NotificationItem[]
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={toggle} aria-label={t("notif.title")} aria-expanded={open}
-        className="relative flex h-11 w-11 items-center justify-center rounded-xl lg:h-9 lg:w-9 text-muted transition-colors hover:bg-raised hover:text-ink">
+        className="relative flex h-10 w-10 items-center justify-center rounded-xl lg:h-9 lg:w-9 text-muted transition-colors hover:bg-raised hover:text-ink">
         <Bell size={17} />
         {unread > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent2 px-1 text-[9px] font-bold text-[rgb(var(--bg))]">

@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -24,9 +24,9 @@ export default async function ToolPage({ params }: { params: Promise<{ slug: str
   const { dict } = await getDictionary();
   const t = makeT(dict);
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) redirect("/login");
   const workspace = await getCurrentWorkspace(supabase, user.id);
-  if (!workspace) return null;
+  if (!workspace) redirect("/home");
 
   const [catalogue, wallet, products] = await Promise.all([
     toolCatalogue(supabase),

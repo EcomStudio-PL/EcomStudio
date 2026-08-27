@@ -60,10 +60,29 @@
   --ring-accent: 0 0 0 1px rgb(var(--accent) / 0.35);
 
   /* LAYOUT CONSTANTS — one source for chrome dimensions. */
-  --header-h: 56px;
-  /* Bottom dock: 5 slots of icon + label inside a 4px-padded bar. */
-  --dock-h: 72px;
-  --drawer-w: 20rem;
+  --header-h: 54px;
+
+  /* MOBILE CHROME — one source of truth for the two fixed bars, so page
+     padding is derived rather than guessed. `--dock-h` is what a page must
+     reserve at the bottom: the bar plus the breathing room around it. The
+     safe-area inset is added separately by whoever uses it, because on a
+     phone with a home indicator the bar sits above the inset while the page
+     must clear both. */
+  --bottom-nav-h: 62px;
+  --bottom-nav-gap: 8px;
+  --dock-h: calc(var(--bottom-nav-h) + var(--bottom-nav-gap) * 2);
+  /* Room a page leaves under its last element so nothing hides behind the
+     bar — the dock plus a comfortable margin. */
+  --page-bottom: calc(var(--dock-h) + 1.25rem + env(safe-area-inset-bottom));
+  /* The generation toolbar when a workspace docks one above the nav: two
+     rows on a phone (settings, price, CTA), one row on desktop. */
+  --gen-dock-h: 148px;
+  /* What a generator page reserves at the bottom: both bars plus margin. */
+  --gen-page-bottom: calc(var(--dock-h) + var(--gen-dock-h) + 0.75rem + env(safe-area-inset-bottom));
+
+  --drawer-w: 22.5rem;
+  /* Phone page gutter — 16px normally, 14px on the narrowest handsets. */
+  --page-x: 1rem;
   --rail-w: 208px;
   --rail-w-collapsed: 68px;
   /* The work surface fills the monitor like the reference does: 1920 is
@@ -563,4 +582,87 @@ h2 { letter-spacing: -0.022em; line-height: 1.15; }
     linear-gradient(-45deg, transparent 75%, rgb(var(--faint) / 0.16) 75%);
   background-size: 16px 16px;
   background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   MOBILE SYSTEM. A phone is a different device, not a narrow desktop: the
+   gutter, the card radius and the scroll behaviour are declared once here so
+   every screen shares the same rhythm instead of inventing its own.
+   ───────────────────────────────────────────────────────────────────────── */
+@media (max-width: 359px) {
+  :root { --page-x: 0.875rem; }
+}
+
+/* A row that scrolls sideways INSIDE itself. The negative margin plus the
+   matching padding let the first card line up with the page text while the
+   row still bleeds to both edges — the alternative (a plain overflow box)
+   is what left cards visibly sliced at the screen edge. */
+.rail-x {
+  display: flex;
+  gap: 0.625rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-padding-left: var(--page-x);
+  margin-inline: calc(var(--page-x) * -1);
+  padding-inline: var(--page-x);
+  padding-bottom: 0.25rem;
+  -webkit-overflow-scrolling: touch;
+}
+.rail-x > * { scroll-snap-align: start; flex: 0 0 auto; }
+.rail-x::-webkit-scrollbar { height: 0; }
+
+/* The same rail, but ONLY on phones. This file is loaded after Tailwind's
+   utilities, so a plain `.rail-x` would beat `sm:grid` / `sm:mx-0` in the
+   cascade and the rail would survive onto the desktop. Scoping the rule to
+   the phone breakpoint means the class simply stops existing above it and the
+   ordinary grid utilities take over. */
+@media (max-width: 639.98px) {
+  .rail-x-sm {
+    display: flex;
+    gap: 0.625rem;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scroll-padding-left: var(--page-x);
+    margin-inline: calc(var(--page-x) * -1);
+    padding-inline: var(--page-x);
+    padding-bottom: 0.25rem;
+    -webkit-overflow-scrolling: touch;
+  }
+  .rail-x-sm > * { scroll-snap-align: start; flex: 0 0 auto; }
+  .rail-x-sm::-webkit-scrollbar { height: 0; }
+}
+
+/* Bottom sheet: a real sheet anchored to the bottom edge, capped so it can
+   never grow past the viewport, scrolling inside itself. */
+.sheet {
+  max-height: min(78dvh, calc(100dvh - var(--header-h) - 1.5rem));
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+/* Media frame: reserves its aspect ratio BEFORE the image exists, so a card
+   never changes height when the picture arrives. */
+.media-frame { position: relative; overflow: hidden; background: rgb(var(--sunken)); }
+.media-frame > img {
+  position: absolute; inset: 0; height: 100%; width: 100%; object-fit: cover;
+  opacity: 0; transition: opacity 260ms ease;
+}
+.media-frame > img[data-loaded="true"] { opacity: 1; }
+.media-skeleton {
+  position: absolute; inset: 0;
+  background: linear-gradient(100deg,
+    rgb(var(--raised) / 0.5) 30%,
+    rgb(var(--float) / 0.75) 50%,
+    rgb(var(--raised) / 0.5) 70%);
+  background-size: 220% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+@keyframes shimmer {
+  from { background-position: 140% 0; }
+  to { background-position: -40% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .media-skeleton { animation: none; }
+  .media-frame > img { transition: none; }
 }

@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowUpRight, Crop, Gauge, Maximize2, Scissors, Square, Stamp, Sun, Wand2,
@@ -50,9 +51,9 @@ export default async function ToolsPage() {
   const { dict } = await getDictionary();
   const t = makeT(dict);
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) redirect("/login");
   const workspace = await getCurrentWorkspace(supabase, user.id);
-  if (!workspace) return null;
+  if (!workspace) redirect("/home");
 
   const catalogue = await toolCatalogue(supabase);
   const free = catalogue.filter((c) => c.kind === "local");

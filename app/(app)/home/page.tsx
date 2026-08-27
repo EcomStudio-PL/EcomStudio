@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight, Package, PenLine, Sparkles, Zap } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -11,7 +12,10 @@ import { PanelHeader, SectionHeader } from "@/components/ui/section-header";
 import { HeroArt } from "@/components/dashboard/hero-art";
 import { TipBanner } from "@/components/dashboard/tip-banner";
 import { CategoryGrid } from "@/components/home/category-grid";
+import { Media } from "@/components/mobile/media";
 import { creditLevel, CREDIT_METER_CLASS, CREDIT_REFERENCE } from "@/lib/credit-level";
+import { firstName } from "@/lib/plan-tone";
+import { Greeting } from "@/components/home/greeting";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -28,12 +32,12 @@ export default async function HomePage() {
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) redirect("/login");
   const [profile, workspace] = await Promise.all([
     getProfile(supabase, user.id),
     getCurrentWorkspace(supabase, user.id),
   ]);
-  if (!workspace || !profile) return null;
+  if (!workspace || !profile) redirect("/login");
 
   const now = new Date();
   const weekStart = new Date(now);
@@ -53,7 +57,9 @@ export default async function HomePage() {
       .limit(1).maybeSingle(),
   ]);
 
-  const firstName = (profile.full_name ?? profile.email).split(" ")[0];
+  // A real name if the profile has one; otherwise the email local part,
+  // capitalised — never the raw handle the screenshots exposed.
+  const who = firstName(profile.full_name, profile.email);
   const credits = wallet?.balance ?? 0;
   const level = creditLevel(credits);
   // "Kontynuuj" points at whichever generator mode the user last worked in.
@@ -109,26 +115,28 @@ export default async function HomePage() {
             scrolling. */}
         <div className="relative p-4 sm:p-6 lg:max-w-[56%] lg:py-7 xl:px-8 xl:py-8">
           <p className="overline">{t("dashboard.welcomeBack")}</p>
-          <h1 className="mt-2 font-display font-semibold leading-[1.04] tracking-[-0.035em] text-[clamp(1.45rem,0.95rem+1.5vw,2.6rem)]">
-            {t("dashboard.welcome", { name: firstName })}
+          <h1 className="mt-2 font-display font-semibold leading-[1.04] tracking-[-0.035em] text-[clamp(1.35rem,0.95rem+1.5vw,2.6rem)]">
+            <Greeting name={who} fallback={t("dashboard.welcome", { name: who })} />
           </h1>
           <p className="mt-1.5 max-w-lg text-[13px] leading-relaxed text-muted sm:text-[14px]">{t("home.sub")}</p>
 
-          <div className="mt-4 flex flex-wrap items-center gap-2 sm:mt-5 sm:gap-2.5">
+          {/* One primary action, one secondary, one quiet tertiary — and the
+              primary owns a full line on a phone so its label cannot wrap. */}
+          <div className="mt-4 flex flex-col gap-2 sm:mt-5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2.5">
             <a href="#kategorie"
-              className="cta inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold sm:flex-none">
+              className="cta inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-5 text-sm font-semibold">
               <Sparkles size={16} aria-hidden />
               {t("home.startCta")}
             </a>
             {continueHref && (
               <Link href={continueHref}
                 className="plate inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold text-ink transition-colors duration-200 hover:border-[rgb(var(--accent)/0.45)] hover:bg-raised">
-                <PenLine size={15} className="text-accent" aria-hidden />
+                <PenLine size={15} className="shrink-0 text-accent" aria-hidden />
                 <span className="truncate">{t("home.continue", { name: continueLabel })}</span>
               </Link>
             )}
             <Link href="/products"
-              className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl px-3 text-sm font-semibold text-muted transition-colors duration-200 hover:text-ink">
+              className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl text-[13px] font-semibold text-muted transition-colors duration-200 hover:text-ink sm:h-11 sm:px-3 sm:text-sm">
               <Package size={15} aria-hidden />
               {t("nav.products")}
               <ArrowRight size={13} aria-hidden />
@@ -138,26 +146,21 @@ export default async function HomePage() {
       </Panel>
 
       {/* 2 — COMPACT STATS STRIP */}
-      <div className="panel flex flex-col gap-3 rounded-2xl px-4 py-3 sm:flex-row sm:items-center sm:gap-0 sm:divide-x sm:divide-line">
+      {/* Three facts in three columns — the stacked version spent a third of
+          the first screen restating numbers the header already shows. */}
+      <div className="panel grid grid-cols-3 gap-1 rounded-2xl px-2 py-3 sm:gap-0 sm:divide-x sm:divide-line sm:px-4">
         {stats.map((s) => (
-          <Link key={s.label} href={s.href} className="group flex min-w-0 flex-1 items-center gap-3 sm:px-4 sm:first:pl-0 sm:last:pr-0">
-            <span aria-hidden className={cn(
-              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-              s.meter !== undefined
-                ? "bg-[linear-gradient(145deg,rgb(var(--accent)/0.26),rgb(var(--accent)/0.07))] text-accent"
-                : "bg-raised text-muted",
-            )}>
-              <Zap size={14} />
+          <Link key={s.label} href={s.href} className="group flex min-w-0 flex-col px-1.5 sm:px-4 sm:first:pl-0 sm:last:pr-0">
+            <span className="flex items-center gap-1.5">
+              <Zap size={11} aria-hidden className={cn("shrink-0", s.meter !== undefined ? "text-accent" : "text-faint")} />
+              <span className="min-w-0 truncate text-[9.5px] font-semibold uppercase tracking-[0.1em] text-faint">{s.label}</span>
             </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-faint">{s.label}</span>
-              <span className="metric block text-[17px] leading-tight text-ink group-hover:text-accent">{s.value}</span>
-              {s.meter !== undefined && (
-                <span className="mt-1 block h-[3px] w-full max-w-[9rem] overflow-hidden rounded-full bg-[rgb(var(--ink)/0.10)]">
-                  <span className={cn("block h-full rounded-full", s.meterClass)} style={{ width: `${Math.max(3, s.meter * 100)}%` }} />
-                </span>
-              )}
-            </span>
+            <span className="metric mt-1 block truncate text-[19px] leading-none text-ink group-hover:text-accent">{s.value}</span>
+            {s.meter !== undefined && (
+              <span className="mt-1.5 block h-[3px] w-full overflow-hidden rounded-full bg-[rgb(var(--ink)/0.10)]">
+                <span className={cn("block h-full rounded-full", s.meterClass)} style={{ width: `${Math.max(3, s.meter * 100)}%` }} />
+              </span>
+            )}
           </Link>
         ))}
       </div>
@@ -188,20 +191,27 @@ export default async function HomePage() {
               </Link>
             }
           />
-          <div className="grid grid-cols-3 gap-2 px-4 pb-4 sm:grid-cols-6 sm:px-5 sm:pb-5">
-            {genTiles.map((g) => {
-              const url = genUrls.get(g.path);
-              return (
-                <Link key={g.id} href="/library"
-                  className="group relative aspect-square overflow-hidden rounded-xl bg-sunken ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]">
-                  {url && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={url} alt={g.product ?? ""} loading="lazy"
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.06]" />
-                  )}
+          {/* Phone: a swipeable rail of squares — the tiles stay big enough to
+              recognise instead of shrinking to six thumbnails per line.
+              Tablet and up: the six-column grid. Both use the same framed
+              media, so every tile is square before its picture loads. */}
+          <div className="px-4 pb-4 sm:hidden">
+            <div className="rail-x">
+              {genTiles.map((g) => (
+                <Link key={g.id} href="/library" className="group w-[6.75rem]">
+                  <Media src={genUrls.get(g.path) ?? null} alt={g.product ?? ""} ratio="1/1"
+                    className="w-full ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]" />
                 </Link>
-              );
-            })}
+              ))}
+            </div>
+          </div>
+          <div className="hidden grid-cols-6 gap-2 px-4 pb-4 sm:grid sm:px-5 sm:pb-5">
+            {genTiles.map((g) => (
+              <Link key={g.id} href="/library" className="group block">
+                <Media src={genUrls.get(g.path) ?? null} alt={g.product ?? ""} ratio="1/1"
+                  className="w-full ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]" />
+              </Link>
+            ))}
           </div>
         </Panel>
       )}

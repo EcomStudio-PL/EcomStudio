@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
@@ -12,12 +13,12 @@ export default async function SettingsPage() {
   const { dict } = await getDictionary();
   const t = makeT(dict);
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) redirect("/login");
   const [profile, workspace] = await Promise.all([
     getProfile(supabase, user.id),
     getCurrentWorkspace(supabase, user.id),
   ]);
-  if (!profile) return null;
+  if (!profile) redirect("/login");
   const { data: billing } = workspace
     ? await supabase.from("billing_profiles").select("*").eq("workspace_id", workspace.id).maybeSingle()
     : { data: null };

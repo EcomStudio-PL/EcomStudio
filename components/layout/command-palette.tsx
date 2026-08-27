@@ -257,10 +257,10 @@ export function CommandPalette({ isAdmin, wide = false, iconOnly = false }: {
       )}
 
       {open && (
-        <div className="fixed inset-0 z-[60] flex items-start justify-center px-3 pt-[8vh] sm:px-4 sm:pt-[11vh]"
+        <div className="fixed inset-0 z-[60] flex items-start justify-center px-2.5 pt-[max(3.5vh,calc(env(safe-area-inset-top)+0.5rem))] sm:px-4 sm:pt-[11vh]"
           role="dialog" aria-modal="true" aria-label={t("search.title")}>
           <div className="scrim animate-fade absolute inset-0 backdrop-blur-[2px]" onClick={close} />
-          <div className="overlay animate-pop relative flex max-h-[82dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl">
+          <div className="overlay animate-pop relative flex max-h-[88dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl sm:max-h-[82dvh]">
             {/* FIELD */}
             <div className="flex items-center gap-2 px-4">
               <Search size={16} className="shrink-0 text-faint" aria-hidden />
@@ -277,7 +277,7 @@ export function CommandPalette({ isAdmin, wide = false, iconOnly = false }: {
             </div>
 
             {/* TABS — these actually filter the body below. */}
-            <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-4 pb-3">
+            <div className="thin-scroll flex items-center gap-1.5 overflow-x-auto border-b border-line px-4 pb-3 sm:flex-wrap sm:overflow-visible">
               {TABS.map((tb) => {
                 const Icon = tabIcon[tb];
                 const active = tab === tb;
@@ -288,7 +288,7 @@ export function CommandPalette({ isAdmin, wide = false, iconOnly = false }: {
                     onClick={() => setTab(tb)}
                     aria-pressed={active}
                     className={cn(
-                      "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-semibold transition-colors duration-200",
+                      "inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-[12.5px] font-semibold transition-colors duration-200",
                       active
                         ? "bg-[rgb(var(--accent)/0.16)] text-ink ring-1 ring-[rgb(var(--accent)/0.45)]"
                         : "plate text-muted hover:text-ink",
@@ -302,7 +302,7 @@ export function CommandPalette({ isAdmin, wide = false, iconOnly = false }: {
             </div>
 
             {/* BODY */}
-            <div ref={listRef} className="thin-scroll min-h-0 flex-1 overflow-y-auto p-2">
+            <div ref={listRef} className="thin-scroll min-h-0 flex-1 overflow-y-auto p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-2">
               {rows.map((row, i) => {
                 const Icon = row.icon;
                 const header = row.section !== lastSection ? row.section : null;
@@ -351,7 +351,7 @@ export function CommandPalette({ isAdmin, wide = false, iconOnly = false }: {
               )}
             </div>
 
-            <p className="border-t border-line px-4 py-2 text-[11px] text-faint">{t("search.keys")}</p>
+            <p className="hidden border-t border-line px-4 py-2 text-[11px] text-faint sm:block">{t("search.keys")}</p>
           </div>
         </div>
       )}

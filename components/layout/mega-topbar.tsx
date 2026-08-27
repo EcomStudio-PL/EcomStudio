@@ -39,7 +39,6 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, notifi
   const [menu, setMenu] = useState<"image" | "video" | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const barRef = useRef<HTMLElement>(null);
-  const initial = (name || "?").trim().charAt(0).toUpperCase();
 
   const close = useCallback(() => setMenu(null), []);
   useEffect(() => { close(); }, [pathname, close]);
@@ -71,7 +70,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, notifi
 
   return (
     <header ref={barRef} className="glass sticky top-0 z-40 rounded-none border-x-0 border-t-0 pt-[env(safe-area-inset-top)]">
-      <div className="mx-auto flex h-[54px] w-full max-w-[var(--content-max)] items-center gap-1.5 px-3 sm:px-4 lg:px-6 xl:px-8">
+      <div className="mx-auto flex h-[52px] w-full min-w-0 max-w-[var(--content-max)] items-center gap-1 px-2.5 sm:h-[54px] sm:gap-1.5 sm:px-4 lg:px-6 xl:px-8">
         {/* Mobile: hamburger opens the drawer (full hierarchy inside). */}
         <button
           type="button"
@@ -144,14 +143,9 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, notifi
         <div className="hidden 2xl:block">
           <AccountMenu name={name} email={email} credits={credits} plan={plan} isAdmin={isAdmin} showName />
         </div>
-        <button
-          type="button"
-          onClick={() => setDrawerOpen(true)}
-          aria-label={t("topnav.account")}
-          className="brand-gradient flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white shadow-e2 ring-1 ring-white/15 lg:hidden"
-        >
-          {initial}
-        </button>
+        {/* No avatar button on phones: the hamburger on the left and the
+            account slot in the bottom navigation already open the same
+            drawer, and a third trigger is what pushed this bar past 320px. */}
       </div>
     </header>
   );

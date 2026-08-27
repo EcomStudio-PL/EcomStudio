@@ -37,17 +37,17 @@ export function CategoryHeader({ category, title, lead, backLabel, backHref = "/
             `radial-gradient(26rem 16rem at 92% 120%, rgb(${rgb2} / 0.16), transparent 70%)`,
         }}
       />
-      <div className={cn("relative flex flex-col gap-4 p-5 sm:p-6 lg:flex-row lg:items-end lg:justify-between", compact ? "lg:p-6" : "lg:p-8")}>
+      <div className={cn("relative flex flex-col gap-3.5 p-4 sm:gap-4 sm:p-6 lg:flex-row lg:items-end lg:justify-between", compact ? "lg:p-6" : "lg:p-8")}>
         <div className="min-w-0">
           <Link href={backHref}
             className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-[rgb(var(--cat))] transition-opacity duration-200 hover:opacity-75">
             <ArrowLeft size={12} aria-hidden />
             {backLabel}
           </Link>
-          <div className="mt-3 flex items-center gap-3.5">
+          <div className="mt-2.5 flex items-center gap-3 sm:mt-3 sm:gap-3.5">
             <span
               aria-hidden
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-[rgb(var(--cat))] shadow-[0_14px_30px_-18px_rgb(var(--cat)/0.9)] sm:h-14 sm:w-14"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl sm:h-12 sm:w-12 text-[rgb(var(--cat))] shadow-[0_14px_30px_-18px_rgb(var(--cat)/0.9)] sm:h-14 sm:w-14"
               style={{ background: `linear-gradient(145deg, rgb(${rgb} / 0.30), rgb(${rgb2} / 0.12))` }}
             >
               <Icon size={24} strokeWidth={1.8} />
@@ -59,11 +59,11 @@ export function CategoryHeader({ category, title, lead, backLabel, backHref = "/
               )}>
                 {title}
               </h1>
-              <p className="mt-1.5 max-w-xl text-[13.5px] leading-relaxed text-muted">{lead}</p>
+              <p className="mt-1 max-w-xl text-[12.5px] leading-relaxed text-muted sm:mt-1.5 sm:text-[13.5px]">{lead}</p>
             </div>
           </div>
         </div>
-        {children && <div className="flex shrink-0 flex-wrap items-center gap-2">{children}</div>}
+        {children && <div className="flex shrink-0 flex-wrap items-center gap-2 [&>*]:min-w-0">{children}</div>}
       </div>
     </header>
   );

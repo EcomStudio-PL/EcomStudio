@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
@@ -19,9 +20,9 @@ export default async function CreditsPage() {
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) redirect("/login");
   const workspace = await getCurrentWorkspace(supabase, user.id);
-  if (!workspace) return null;
+  if (!workspace) redirect("/home");
   const wallet = await getWallet(supabase, workspace.id);
   const [txs, { data: packages }] = await Promise.all([
     wallet ? getTransactions(supabase, wallet.id) : Promise.resolve([]),

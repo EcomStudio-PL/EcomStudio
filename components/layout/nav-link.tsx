@@ -31,9 +31,12 @@ export function NavLink({ href, label, icon: Icon, onNavigate, compact = false, 
           : dense
             ? "min-h-[32px] gap-2.5 px-2.5 py-1 text-[13px]"
             : "min-h-[44px] gap-3 px-3 py-2.5 text-sm",
+        // The active row is a tinted strip with a lit rail, not a filled
+        // magenta block: at drawer scale a solid brand fill reads as an
+        // error state rather than as "you are here".
         active
-          ? "bg-[linear-gradient(90deg,rgb(var(--accent)/0.20),rgb(var(--accent)/0.05))] font-semibold text-ink shadow-[inset_0_1px_0_rgb(var(--hairline)/0.08)]"
-          : "font-medium text-muted hover:bg-[rgb(var(--accent)/0.08)] hover:text-ink"
+          ? "bg-[rgb(var(--accent)/0.10)] font-semibold text-ink"
+          : "font-medium text-muted hover:bg-[rgb(var(--ink)/0.05)] hover:text-ink"
       )}
     >
       {/* Active rail: a lit bar on the left edge, the one place the brand
@@ -46,7 +49,7 @@ export function NavLink({ href, label, icon: Icon, onNavigate, compact = false, 
         "flex shrink-0 items-center justify-center rounded-lg transition-colors duration-150",
         compact ? "h-9 w-9" : dense ? "h-6 w-6" : "h-7 w-7",
         active
-          ? "bg-[rgb(var(--accent)/0.20)] text-accent shadow-[0_6px_16px_-10px_rgb(var(--accent)/0.9)]"
+          ? "bg-[rgb(var(--accent)/0.18)] text-accent"
           : "text-faint group-hover:text-muted"
       )}>
         <Icon size={compact ? 17 : dense ? 15 : 16} strokeWidth={active ? 2.3 : 2} />
