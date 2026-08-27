@@ -94,7 +94,16 @@ export function RecentPanel({ sessions, className, horizontal }: {
           )}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] font-semibold">{s.productName}</span>
+          {/* A product name is the seller's own text and can be long. On the
+              carousel card it gets two lines with the space reserved for both,
+              so the cards stay the same height and no name ends mid-word; the
+              list variant, which has the full panel width, keeps one line. */}
+          <span className={cn(
+            "block text-[13px] font-semibold leading-tight",
+            compact ? "line-clamp-2 min-h-[2.1rem]" : "truncate",
+          )}>
+            {s.productName}
+          </span>
           <span className="mt-0.5 flex items-center gap-1 text-[11px] tabular-nums text-faint">
             <Clock size={10} aria-hidden className="shrink-0" />
             <span className="truncate">{fmt(s.createdAt)}</span>
