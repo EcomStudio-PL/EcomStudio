@@ -1437,7 +1437,11 @@
     "statWeek": "Generations this week",
     "statMonth": "Generations this month",
     "categoriesTitle": "What do you want to create today?",
-    "recentTitle": "Recent activity"
+    "recentTitle": "Recent activity",
+    "statCreditsShort": "Credits",
+    "statWeekShort": "This week",
+    "statMonthShort": "This month",
+    "continueShort": "Continue session"
   },
   "catpage": {
     "overline": "Category",
@@ -1460,7 +1464,7 @@
     "soonTitle": "This category is in preparation",
     "soonBody": "The workflow is designed, but the engine does not support it yet. We do not launch generations we cannot deliver — use the other categories in the meantime.",
     "allCategories": "All categories",
-    "featured": "Featured workflow",
+    "featured": "Featured",
     "cost": "{n} cr / shot"
   },
   "wf": {

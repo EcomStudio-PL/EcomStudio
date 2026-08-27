@@ -90,13 +90,17 @@ export default async function HomePage() {
     .filter((u): u is string => Boolean(u))
     .slice(0, 3);
 
-  const stats: { label: string; value: string; meter?: number; meterClass?: string; href: string }[] = [
+  // Two labels per stat: the phone gets a short one that FITS at 320px, the
+  // desktop keeps the full wording. Ellipsising "Generacje w tym tygodniu"
+  // down to "Generacje w tym…" told the user nothing.
+  const stats: { label: string; short: string; value: string; meter?: number; meterClass?: string; href: string }[] = [
     {
-      label: t("home.statCredits"), value: new Intl.NumberFormat(locale).format(credits),
+      label: t("home.statCredits"), short: t("home.statCreditsShort"),
+      value: new Intl.NumberFormat(locale).format(credits),
       meter: Math.min(1, credits / CREDIT_REFERENCE), meterClass: CREDIT_METER_CLASS[level], href: "/credits",
     },
-    { label: t("home.statWeek"), value: String(weekCount.count ?? 0), href: "/library" },
-    { label: t("home.statMonth"), value: String(monthCount.count ?? 0), href: "/library" },
+    { label: t("home.statWeek"), short: t("home.statWeekShort"), value: String(weekCount.count ?? 0), href: "/library" },
+    { label: t("home.statMonth"), short: t("home.statMonthShort"), value: String(monthCount.count ?? 0), href: "/library" },
   ];
 
   return (
@@ -132,7 +136,10 @@ export default async function HomePage() {
               <Link href={continueHref}
                 className="plate inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold text-ink transition-colors duration-200 hover:border-[rgb(var(--accent)/0.45)] hover:bg-raised">
                 <PenLine size={15} className="shrink-0 text-accent" aria-hidden />
-                <span className="truncate">{t("home.continue", { name: continueLabel })}</span>
+                {/* The phone shows the short form so the label never loses
+                    its ending; the desktop names the mode it will resume. */}
+                <span className="sm:hidden">{t("home.continueShort")}</span>
+                <span className="hidden sm:inline">{t("home.continue", { name: continueLabel })}</span>
               </Link>
             )}
             <Link href="/products"
@@ -153,7 +160,10 @@ export default async function HomePage() {
           <Link key={s.label} href={s.href} className="group flex min-w-0 flex-col px-1.5 sm:px-4 sm:first:pl-0 sm:last:pr-0">
             <span className="flex items-center gap-1.5">
               <Zap size={11} aria-hidden className={cn("shrink-0", s.meter !== undefined ? "text-accent" : "text-faint")} />
-              <span className="min-w-0 truncate text-[9.5px] font-semibold uppercase tracking-[0.1em] text-faint">{s.label}</span>
+              <span className="min-w-0 text-[9.5px] font-semibold uppercase leading-tight tracking-[0.08em] text-faint">
+                <span className="sm:hidden">{s.short}</span>
+                <span className="hidden sm:inline">{s.label}</span>
+              </span>
             </span>
             <span className="metric mt-1 block truncate text-[19px] leading-none text-ink group-hover:text-accent">{s.value}</span>
             {s.meter !== undefined && (

@@ -1437,7 +1437,11 @@
     "statWeek": "Generierungen diese Woche",
     "statMonth": "Generierungen diesen Monat",
     "categoriesTitle": "Was möchtest du heute erstellen?",
-    "recentTitle": "Letzte Aktivität"
+    "recentTitle": "Letzte Aktivität",
+    "statCreditsShort": "Credits",
+    "statWeekShort": "Diese Woche",
+    "statMonthShort": "Dieser Monat",
+    "continueShort": "Sitzung fortsetzen"
   },
   "catpage": {
     "overline": "Kategorie",
@@ -1460,7 +1464,7 @@
     "soonTitle": "Diese Kategorie ist in Vorbereitung",
     "soonBody": "Der Workflow ist entworfen, die Engine unterstützt ihn aber noch nicht. Wir starten keine Generierungen, die wir nicht liefern können — nutze in der Zwischenzeit die anderen Kategorien.",
     "allCategories": "Alle Kategorien",
-    "featured": "Empfohlener Workflow",
+    "featured": "Empfohlen",
     "cost": "{n} Cr / Aufnahme"
   },
   "wf": {

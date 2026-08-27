@@ -42,7 +42,9 @@ export function TipBanner({ id, text, ctaLabel, ctaHref }: {
         <Lightbulb size={15} />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[12.5px] font-semibold text-ink">{t("dashboard.tipTitle")}</p>
+        {/* The title is a fixed two-word label: it wraps rather than losing
+            half of itself to an ellipsis on a 320px screen. */}
+        <p className="text-[12.5px] font-semibold leading-tight text-ink">{t("dashboard.tipTitle")}</p>
         <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-muted">{text}</p>
       </div>
       <Link href={ctaHref}

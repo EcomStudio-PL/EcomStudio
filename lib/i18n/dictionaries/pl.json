@@ -1437,7 +1437,11 @@
     "statWeek": "Generacje w tym tygodniu",
     "statMonth": "Generacje w tym miesiącu",
     "categoriesTitle": "Co chcesz dziś stworzyć?",
-    "recentTitle": "Ostatnia aktywność"
+    "recentTitle": "Ostatnia aktywność",
+    "statCreditsShort": "Kredyty",
+    "statWeekShort": "Ten tydzień",
+    "statMonthShort": "Ten miesiąc",
+    "continueShort": "Kontynuuj sesję"
   },
   "catpage": {
     "overline": "Kategoria",
@@ -1460,7 +1464,7 @@
     "soonTitle": "Ta kategoria jest w przygotowaniu",
     "soonBody": "Workflow jest zaprojektowany, ale silnik jeszcze go nie obsługuje. Nie uruchamiamy generacji, których nie umiemy dowieźć — w międzyczasie skorzystaj z pozostałych kategorii.",
     "allCategories": "Wszystkie kategorie",
-    "featured": "Polecany workflow",
+    "featured": "Polecany",
     "cost": "{n} kr / ujęcie"
   },
   "wf": {

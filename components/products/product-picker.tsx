@@ -176,7 +176,7 @@ export function ProductPicker({ open, onClose, products, onSelect, selectedId }:
                               : <span className="flex h-full items-center justify-center text-faint"><Box size={16} /></span>}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-semibold">{p.name}</span>
+                            <span className="block line-clamp-2 text-sm font-semibold leading-tight">{p.name}</span>
                             <span className="mt-0.5 flex items-center gap-2 text-[11px] text-faint">
                               <span className="truncate">{p.category?.trim() || t("picker.uncategorised")}</span>
                               {!!p.imageCount && (
@@ -227,7 +227,7 @@ export function ProductChoice({ product, onPick, onClear, newLabel }: {
             : <span className="flex h-full items-center justify-center text-faint"><Box size={16} /></span>}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold">{product.name}</span>
+          <span className="block line-clamp-2 text-sm font-semibold leading-tight">{product.name}</span>
           <span className="block truncate text-[11px] text-faint">
             {product.category?.trim() || t("picker.uncategorised")}
           </span>
@@ -240,16 +240,18 @@ export function ProductChoice({ product, onPick, onClear, newLabel }: {
     );
   }
   return (
-    <div className="grid grid-cols-2 gap-2">
+    /* One column until there is room for two: side by side at 320px the
+       labels lost their endings, and half a word is not a button. */
+    <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2">
       <button type="button" onClick={onClear}
-        className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl bg-[rgb(var(--accent)/0.14)] px-3 text-[13px] font-semibold text-accent transition-colors hover:bg-[rgb(var(--accent)/0.2)]">
-        <Plus size={15} aria-hidden />
-        <span className="truncate">{newLabel}</span>
+        className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl bg-[rgb(var(--accent)/0.14)] px-2.5 text-[13px] font-semibold text-accent transition-colors hover:bg-[rgb(var(--accent)/0.2)]">
+        <Plus size={15} aria-hidden className="shrink-0" />
+        <span className="whitespace-nowrap">{newLabel}</span>
       </button>
       <button type="button" onClick={onPick}
-        className="plate flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold text-muted transition-colors hover:border-[rgb(var(--accent)/0.35)] hover:text-ink">
-        <Package size={15} aria-hidden />
-        <span className="truncate">{t("picker.choose")}</span>
+        className="plate flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl px-2.5 text-[13px] font-semibold text-muted transition-colors hover:border-[rgb(var(--accent)/0.35)] hover:text-ink">
+        <Package size={15} aria-hidden className="shrink-0" />
+        <span className="whitespace-nowrap">{t("picker.choose")}</span>
       </button>
     </div>
   );
