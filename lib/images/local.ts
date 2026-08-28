@@ -1,5 +1,5 @@
 import "server-only";
-import sharp from "sharp";
+import sharp, { type Sharp, type OverlayOptions } from "sharp";
 
 /**
  * LOCAL IMAGE PROCESSOR — everything GrovBase can do without paying a
@@ -37,7 +37,7 @@ export async function inspect(input: Buffer): Promise<ImageFacts> {
   };
 }
 
-function encode(pipeline: sharp.Sharp, format: OutputFormat, quality: number) {
+function encode(pipeline: Sharp, format: OutputFormat, quality: number) {
   const q = Math.min(100, Math.max(1, Math.round(quality)));
   if (format === "jpeg") return pipeline.jpeg({ quality: q, mozjpeg: true, chromaSubsampling: "4:4:4" });
   if (format === "webp") return pipeline.webp({ quality: q, effort: 4 });
@@ -160,7 +160,7 @@ export async function watermark(input: Buffer, logo: Buffer, opts: {
     .toBuffer();
 
   const format = opts.format ?? (meta.format === "png" ? "png" : meta.format === "webp" ? "webp" : "jpeg");
-  const encodeAs = (p: sharp.Sharp) => encode(p, format as OutputFormat, opts.quality ?? 90);
+  const encodeAs = (p: Sharp) => encode(p, format as OutputFormat, opts.quality ?? 90);
 
   if (opts.position !== "pattern") {
     // sharp accepts either a gravity or an absolute top/left, never a gravity
@@ -191,7 +191,7 @@ export async function watermark(input: Buffer, logo: Buffer, opts: {
   const stepX = (rotatedMeta.width ?? markWidth) + Math.max(0, opts.spacing ?? Math.round(markWidth * 0.5));
   const stepY = (rotatedMeta.height ?? markWidth) + Math.max(0, opts.spacing ?? Math.round(markWidth * 0.5));
 
-  const tiles: sharp.OverlayOptions[] = [];
+  const tiles: OverlayOptions[] = [];
   // Cap the tile count so a huge image with a tiny mark cannot exhaust memory.
   const maxTiles = 600;
   for (let y = -stepY; y < height + stepY && tiles.length < maxTiles; y += stepY) {
