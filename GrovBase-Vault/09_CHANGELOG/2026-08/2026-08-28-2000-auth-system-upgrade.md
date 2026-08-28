@@ -1,0 +1,78 @@
+# Change
+Date: 2026-08-28 ~20:00 UTC
+Author/agent: Claude (Claude Code session)
+Type: Feature/Security — authentication system final upgrade
+
+## Objective
+Premium auth pages (login/register/forgot/reset/verify), real "Pozostań
+zalogowany", rich registration (phone, acquisition, company + NIP checksum,
+consents), email-verification flow, OAuth scaffold, PL/EN/DE.
+
+## Before
+Minimal login/register (name+email+password), always-persistent cookies,
+raw error strings, no consents, no company data, no resend flow.
+
+## Implementation
+- Remember-me is REAL: authCookieOptions(persist) drops maxAge for
+  session logins; the choice travels as the ecs_persist marker cookie and
+  is honored by ALL THREE auth-cookie writers (sign-in route, middleware
+  refresh, browser-client refresh). Marker absent → persistent (existing
+  behavior). Sign-out clears the marker.
+- Registration: shared client/server validation (lib/auth-validation.ts —
+  password rules, Polish NIP checksum, acquisition enum); profile data
+  rides auth metadata; the 0039 trigger copies it into profiles with
+  length caps and stamps consent timestamps server-side (now()).
+- Verification: check-inbox screen with rate-limited resend (1/min);
+  unconfirmed login maps to its own message + resend; expired/invalid
+  links land on /login?error=link, never a blank page.
+- Password reset: recovery-session check renders an honest expired-link
+  card; new-password form with live rules; generic non-enumerating
+  responses everywhere (request, resend, signUp errors).
+- OAuth: full PKCE client path implemented, buttons gated by
+  NEXT_PUBLIC_AUTH_PROVIDERS (probed Supabase: google+apple NOT enabled →
+  buttons hidden until configured; checklist in the task report).
+- Legal placeholder pages /regulamin + /polityka-prywatnosci (honest
+  "in preparation" copy — no invented legal text) linked from consent.
+
+## Files
+lib/supabase/{config,client,middleware,auth-route}.ts,
+app/auth/{sign-in,sign-out,callback}/route.ts, app/actions/auth.ts,
+lib/auth-validation.ts, app/(auth)/** (layout + 4 pages),
+components/auth/{password-field,password-rules,oauth-buttons,
+reset-password-form}.tsx, app/{regulamin,polityka-prywatnosci}/page.tsx,
+lib/i18n/dictionaries/*, lib/database.types.ts,
+supabase/migrations/0039_registration_profile.sql.
+
+## Database
+Migrations: 0039 (applied to PROD). Tables: profiles +16 nullable/defaulted
+columns; handle_new_user extended (same side effects, adds field copy +
+consent stamps). RLS: unchanged (own-or-admin still covers the row).
+
+## Environment
+New OPTIONAL env NAME: NEXT_PUBLIC_AUTH_PROVIDERS (unset = no OAuth
+buttons). No values documented.
+
+## Security impact
+Non-enumerating flows preserved and extended; signup rate limit 5/10min/IP,
+resend 1/min; consent timestamps server-stamped; metadata length-capped in
+the trigger; persistence marker carries no security authority (worst-case
+tamper = cookie lifetime choice for your own session).
+
+## Performance impact
+None material (auth pages only).
+
+## Tests
+typecheck PASS, production build PASS; adversarial review workflow (4
+dimensions + verification) and live production E2E — see task report.
+
+## Git / Deployment / Rollback
+Commit-after, deployment id and rollback (previous Vercel deployment;
+migration 0039 is additive/backward-safe — old code runs against it) are
+recorded in the task report and Releases.
+
+## Result
+(recorded after deploy — see report)
+
+## Follow-up
+Owner: enable Google/Apple in Supabase + set NEXT_PUBLIC_AUTH_PROVIDERS;
+replace legal placeholder text with lawyer-approved documents.

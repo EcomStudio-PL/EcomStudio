@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAuthRouteClient } from "@/lib/supabase/auth-route";
+import { PERSIST_COOKIE } from "@/lib/supabase/config";
 
 export const dynamic = "force-dynamic";
 
@@ -13,5 +14,8 @@ export async function POST(request: Request) {
   const origin = new URL(request.url).origin;
   const res = NextResponse.redirect(`${origin}/login`, { status: 303 });
   res.headers.set("Cache-Control", "no-store");
-  return applyCookies(res);
+  const out = applyCookies(res);
+  // The remember-me marker belongs to the session that just ended.
+  out.cookies.set({ name: PERSIST_COOKIE, value: "", path: "/", maxAge: 0 });
+  return out;
 }

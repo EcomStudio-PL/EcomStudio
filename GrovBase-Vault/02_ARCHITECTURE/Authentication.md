@@ -16,6 +16,20 @@ the only flow installed PWAs handle reliably.
    Fix: transport-level retry (`lib/supabase/skew-retry.ts`) + a warm-up
    read inside the sign-in/callback redirect.
 
+## Remember me
+"Pozostań zalogowany" drops maxAge from every auth cookie (browser-session
+login). The choice travels as the `ecs_persist` marker and is honored by all
+three cookie writers: sign-in route, middleware refresh, browser-client
+refresh. Marker absent → persistent (pre-feature behavior).
+
+## Registration & verification
+Rich signup (phone, acquisition, company + NIP checksum, consents) validated
+in lib/auth-validation.ts on BOTH sides; profile data rides auth metadata and
+the 0039 trigger copies it (length-capped) with server-stamped consent
+timestamps. Email confirmation flow: check-inbox screen, 1/min resend,
+unconfirmed-login mapping, /login?error=link for dead links. OAuth (PKCE)
+implemented app-side, gated by NEXT_PUBLIC_AUTH_PROVIDERS.
+
 ## Guards
 - Middleware refreshes sessions, carries refreshed cookies on redirects,
   no-store on authed HTML, guards protected prefixes.

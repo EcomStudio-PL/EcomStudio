@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import type { NextResponse } from "next/server";
 import type { Database } from "@/lib/database.types";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, AUTH_COOKIE_OPTIONS } from "./config";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, authCookieOptions, stripPersistence } from "./config";
 import { fetchWithSkewRetry } from "./skew-retry";
 
 type WrittenCookie = { name: string; value: string; options?: Record<string, unknown> };
@@ -34,12 +34,12 @@ type WrittenCookie = { name: string; value: string; options?: Record<string, unk
  * This client records what Supabase writes WITH its options, so the redirect
  * can carry the real thing.
  */
-export async function createAuthRouteClient() {
+export async function createAuthRouteClient(persist = true) {
   const cookieStore = await cookies();
   const written: WrittenCookie[] = [];
 
   const supabase = createServerClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    cookieOptions: AUTH_COOKIE_OPTIONS,
+    cookieOptions: authCookieOptions(persist),
     global: { fetch: fetchWithSkewRetry() },
     cookies: {
       getAll() {
@@ -47,7 +47,11 @@ export async function createAuthRouteClient() {
       },
       setAll(cookiesToSet) {
         for (const { name, value, options } of cookiesToSet) {
-          written.push({ name, value, options: options as Record<string, unknown> | undefined });
+          // @supabase/ssr force-reapplies its default maxAge over our
+          // cookieOptions, so session-only logins are enforced HERE, on the
+          // final options, not via configuration. See stripPersistence.
+          const opts = stripPersistence(options as { maxAge?: number } | undefined, persist);
+          written.push({ name, value, options: opts as Record<string, unknown> | undefined });
           try {
             cookieStore.set(name, value, options);
           } catch {

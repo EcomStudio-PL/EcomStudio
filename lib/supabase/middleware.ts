@@ -1,14 +1,18 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, AUTH_COOKIE_OPTIONS } from "./config";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, authCookieOptions, PERSIST_COOKIE, stripPersistence } from "./config";
 
 const PROTECTED_PREFIXES = ["/home","/dashboard","/products","/generator","/library","/prompts","/history","/credits","/plan","/settings","/admin","/tools","/inspirations","/support"];
 const AUTH_PAGES = ["/login", "/register", "/forgot-password"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
+  // Honor the login-time "remember me" choice on every token refresh: a
+  // session login must keep producing session cookies here, or the first
+  // middleware refresh would quietly upgrade it to a persistent one.
+  const persist = request.cookies.get(PERSIST_COOKIE)?.value !== "0";
   const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    cookieOptions: AUTH_COOKIE_OPTIONS,
+    cookieOptions: authCookieOptions(persist),
     cookies: {
       getAll() {
         return request.cookies.getAll();
@@ -17,7 +21,9 @@ export async function updateSession(request: NextRequest) {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
         response = NextResponse.next({ request });
         cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options)
+          // The library force-restores its default maxAge; session-only
+          // logins are enforced on the final write. See stripPersistence.
+          response.cookies.set(name, value, stripPersistence(options, persist))
         );
       },
     },

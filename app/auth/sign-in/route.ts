@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAuthRouteClient } from "@/lib/supabase/auth-route";
+import { authCookieOptions, PERSIST_COOKIE } from "@/lib/supabase/config";
 import { rateLimit, clientIp } from "@/lib/server/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -13,14 +14,15 @@ export const dynamic = "force-dynamic";
  * answered with 303 + Set-Cookie is the one flow every WebView on earth
  * handles identically — no JavaScript, no fetch, no client router involved.
  *
- * The session cookies ride the redirect WITH their attributes; see
- * lib/supabase/auth-route.ts for why copying name+value alone was breaking
- * roughly every other login.
+ * "Pozostań zalogowany" is real, not cosmetic: unchecked, every auth cookie
+ * (and the marker that tells later refreshes to keep doing this) is written
+ * WITHOUT maxAge — a browser-session login that ends when the browser does.
  */
 export async function POST(request: Request) {
   const form = await request.formData();
   const email = String(form.get("email") ?? "").trim();
   const password = String(form.get("password") ?? "");
+  const remember = form.get("remember") != null;
   const nextRaw = String(form.get("next") ?? "");
   const next = nextRaw.startsWith("/") && !nextRaw.startsWith("//") && !nextRaw.includes("\\") ? nextRaw : "/home";
   const origin = new URL(request.url).origin;
@@ -39,9 +41,16 @@ export async function POST(request: Request) {
     return redirectTo("/login?error=invalid");
   }
 
-  const { supabase, applyCookies } = await createAuthRouteClient();
+  const { supabase, applyCookies } = await createAuthRouteClient(remember);
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) return redirectTo(`/login?error=invalid${nextRaw ? `&next=${encodeURIComponent(next)}` : ""}`);
+  if (error) {
+    // An unconfirmed address gets its own message (with a resend action);
+    // everything else collapses to one non-enumerating "invalid" screen.
+    const code = /confirm/i.test(error.message) ? "unconfirmed" : "invalid";
+    const keep = nextRaw ? `&next=${encodeURIComponent(next)}` : "";
+    const mail = code === "unconfirmed" ? `&email=${encodeURIComponent(email)}` : "";
+    return redirectTo(`/login?error=${code}${mail}${keep}`);
+  }
 
   // WARM-UP READ. The token was minted a millisecond ago, and until the
   // database node's clock catches up with the auth server's, PostgREST
@@ -54,5 +63,10 @@ export async function POST(request: Request) {
     await supabase.from("profiles").select("id").eq("id", data.user.id).maybeSingle();
   }
 
-  return applyCookies(redirectTo(next));
+  const res = applyCookies(redirectTo(next));
+  // Record the persistence choice for every later cookie writer (middleware
+  // refresh, browser-client refresh). The "0" marker is itself a session
+  // cookie, so a closed browser resets cleanly to the default.
+  res.cookies.set({ name: PERSIST_COOKIE, value: remember ? "1" : "0", ...authCookieOptions(remember) });
+  return res;
 }

@@ -2,7 +2,7 @@ import { cache } from "react";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import type { Database } from "@/lib/database.types";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, AUTH_COOKIE_OPTIONS } from "./config";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, authCookieOptions, PERSIST_COOKIE, stripPersistence } from "./config";
 import { fetchWithSkewRetry } from "./skew-retry";
 
 /**
@@ -14,8 +14,11 @@ import { fetchWithSkewRetry } from "./skew-retry";
  */
 export const createClient = cache(async () => {
   const cookieStore = await cookies();
+  // A token auto-refresh inside a server action / route handler rewrites the
+  // auth cookies; it must respect the login-time remember-me choice.
+  const persist = cookieStore.get(PERSIST_COOKIE)?.value !== "0";
   return createServerClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    cookieOptions: AUTH_COOKIE_OPTIONS,
+    cookieOptions: authCookieOptions(persist),
     // A token minted seconds ago is briefly "from the future" for the
     // database node; without this every read right after sign-in fails.
     global: { fetch: fetchWithSkewRetry() },
@@ -26,7 +29,7 @@ export const createClient = cache(async () => {
       setAll(cookiesToSet) {
         try {
           cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
+            cookieStore.set(name, value, stripPersistence(options, persist))
           );
         } catch {
           // Called from a Server Component — middleware refreshes sessions.

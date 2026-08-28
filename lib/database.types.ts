@@ -1498,6 +1498,22 @@ export type Database = {
       profiles: {
         Row: {
           account_manager_id: string | null
+          accepted_privacy_at: string | null
+          accepted_terms_at: string | null
+          acquisition_source: string | null
+          acquisition_source_other: string | null
+          company_account: boolean
+          company_city: string | null
+          company_country: string | null
+          company_name: string | null
+          company_postal_code: string | null
+          company_street: string | null
+          first_name: string | null
+          last_name: string | null
+          marketing_consent: boolean
+          marketing_consent_at: string | null
+          phone: string | null
+          tax_id: string | null
           avatar_url: string | null
           blocked: boolean
           created_at: string
@@ -1509,6 +1525,22 @@ export type Database = {
         }
         Insert: {
           account_manager_id?: string | null
+          accepted_privacy_at?: string | null
+          accepted_terms_at?: string | null
+          acquisition_source?: string | null
+          acquisition_source_other?: string | null
+          company_account?: boolean
+          company_city?: string | null
+          company_country?: string | null
+          company_name?: string | null
+          company_postal_code?: string | null
+          company_street?: string | null
+          first_name?: string | null
+          last_name?: string | null
+          marketing_consent?: boolean
+          marketing_consent_at?: string | null
+          phone?: string | null
+          tax_id?: string | null
           avatar_url?: string | null
           blocked?: boolean
           created_at?: string
@@ -1520,6 +1552,22 @@ export type Database = {
         }
         Update: {
           account_manager_id?: string | null
+          accepted_privacy_at?: string | null
+          accepted_terms_at?: string | null
+          acquisition_source?: string | null
+          acquisition_source_other?: string | null
+          company_account?: boolean
+          company_city?: string | null
+          company_country?: string | null
+          company_name?: string | null
+          company_postal_code?: string | null
+          company_street?: string | null
+          first_name?: string | null
+          last_name?: string | null
+          marketing_consent?: boolean
+          marketing_consent_at?: string | null
+          phone?: string | null
+          tax_id?: string | null
           avatar_url?: string | null
           blocked?: boolean
           created_at?: string
