@@ -5,7 +5,7 @@ Last updated: 2026-08-31
 | Item | Value |
 |---|---|
 | Production version | v1.1 (auth system final upgrade) |
-| Production commit | `76a6c4d` (deployment dpl_EKrSToLeWcJSYgtaoPqXjxYvrLLe) |
+| Production commit | `977c43b` (deployment dpl_FBseKnBagd6fy2aC3JCJ8arnN1cg) |
 | Rollback reference | branch `rollback/prod-2026-08-28` → `42425ed` |
 | Production URL | https://ecomstudio-prod.vercel.app |
 | Vercel project | ecomstudio-prod (legacy name, kept — internal id) |

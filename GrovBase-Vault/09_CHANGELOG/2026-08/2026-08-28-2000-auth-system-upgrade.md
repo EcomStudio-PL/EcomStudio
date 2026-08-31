@@ -68,9 +68,10 @@ typecheck PASS, production build PASS; adversarial review workflow (4
 dimensions + verification) and live production E2E — see task report.
 
 ## Git / Deployment / Rollback
-Commits: 562b1a5 (auth system) + 76a6c4d (map GoTrue email_address_invalid
-to the email field instead of the generic banner). Production deployment:
-dpl_EKrSToLeWcJSYgtaoPqXjxYvrLLe → https://ecomstudio-prod.vercel.app.
+Commits: 562b1a5 (auth system), 76a6c4d (map GoTrue email_address_invalid
+to the email field), 977c43b (honest "too many attempts" message when the
+built-in mailer quota 429s /signup). Production deployment:
+dpl_FBseKnBagd6fy2aC3JCJ8arnN1cg → https://ecomstudio-prod.vercel.app.
 Rollback: previous Vercel deployment; migration 0039 (+ welcome-credits
 follow-up) is additive/backward-safe — old code runs against it.
 
