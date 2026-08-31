@@ -22,7 +22,7 @@ const SIZE: Record<string, Record<string, { width: number; height: number }>> = 
  *  points at fal's CDN. FLUX 1.1 Pro is text-to-image (no reference input). */
 export const falAdapter: ImageProviderAdapter = {
   slug: "fal",
-  capabilities: { resolutions: ["1K", "2K"], maxQuantity: 4, supportsReferenceImages: false },
+  capabilities: { resolutions: ["1K", "2K"], maxQuantity: 4, supportsReferenceImages: false, ratios: ["1:1", "4:5", "16:9", "9:16"] },
 
   async generate(model: AiModelRecord, req: GenerationRequest, cred: ProviderCredential): Promise<GenerationResult> {
     const base = cred.baseUrl?.replace(/\/$/, "") || "https://fal.run";

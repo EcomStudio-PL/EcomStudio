@@ -98,6 +98,12 @@ export async function updateModelFullAction(modelId: string, patch: {
   /** GrovBase Prompt Engine surcharge in credits, added on top of the base
    *  price when a generation uses our hidden prompt. */
   ecom_surcharge_credits?: number;
+  // Generator V3 config:
+  badge_tone?: string | null;
+  supported_aspect_ratios?: string[];
+  max_outputs?: number | null;
+  visible_managed?: boolean;
+  visible_custom?: boolean;
 }): Promise<Result> {
   try {
     const { supabase } = await requireAdmin();
@@ -118,8 +124,32 @@ export async function updateModelFullAction(modelId: string, patch: {
       }
       patch.ecom_surcharge_credits = Math.trunc(patch.ecom_surcharge_credits);
     }
+    if (patch.badge_tone != null && patch.badge_tone !== "") {
+      if (!["neutral", "green", "amber", "blue", "info", "indigo", "success"].includes(patch.badge_tone)) {
+        return { ok: false, error: "invalid" };
+      }
+    }
+    if (patch.supported_aspect_ratios) {
+      patch.supported_aspect_ratios = patch.supported_aspect_ratios
+        .filter((r) => ["1:1", "3:4", "4:5", "16:9", "9:16"].includes(r));
+      if (patch.supported_aspect_ratios.length === 0) return { ok: false, error: "invalid" };
+    }
+    if (patch.max_outputs != null) {
+      if (!Number.isFinite(patch.max_outputs) || patch.max_outputs < 1 || patch.max_outputs > 4) {
+        return { ok: false, error: "invalid" };
+      }
+      patch.max_outputs = Math.trunc(patch.max_outputs);
+    }
     const { error } = await supabase.from("ai_models").update(patch as never).eq("id", modelId);
     if (error) return { ok: false, error: "generic" };
+    // Pricing/visibility changes are business decisions — leave a trail like
+    // the activation toggle does.
+    await supabase.rpc("log_activity", {
+      p_workspace_id: null as unknown as string,
+      p_action: "admin.model_updated",
+      p_entity_type: "ai_model", p_entity_id: modelId,
+      p_metadata: { fields: Object.keys(patch) },
+    });
     revalidatePath("/admin/models");
     return { ok: true };
   } catch {

@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
@@ -6,18 +7,18 @@ import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { listProducts } from "@/lib/services/products";
 import { signImageUrls } from "@/lib/services/images";
+import { listGalleryItems } from "@/lib/server/gallery";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
-import { SessionForm, type PromptProductOption, type SessionModelOption } from "@/components/prompts/session-form";
-import type { RecentSession } from "@/components/prompts/recent-panel";
+import { GeneratorWorkspace, type WorkspaceProduct } from "@/components/genv3/workspace";
+import type { GenModel } from "@/components/genv3/types";
 import { CategoryHeader } from "@/components/category/category-header";
 import { CATEGORY_VARIANT, DEFAULT_VARIANT, findCategory } from "@/lib/categories";
-import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 /**
- * WORKFLOW WORKSPACE — the generator opened with this workflow's own
+ * WORKFLOW WORKSPACE — the managed generator opened with this workflow's own
  * defaults: its framing, its shot count, its style directive and the extra
  * decisions its category actually needs. Sibling workflows sit in a chip row
  * at the top, so switching preset never means going back a page.
@@ -39,37 +40,33 @@ export default async function WorkflowPage({ params }: {
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) redirect("/home");
 
-  const [products, { data: sessions }, { data: plannerProviders }, { data: withKey }, wallet] = await Promise.all([
+  const [products, { data: plannerProviders }, { data: withKey }, wallet, modelOptions, gallery] = await Promise.all([
     listProducts(supabase, workspace.id, 20),
-    supabase.from("prompt_sessions")
-      .select("id, product_name, status, aspect_ratio, created_at, reference_paths")
-      .eq("workspace_id", workspace.id)
-      .order("created_at", { ascending: false }).limit(20),
     supabase.from("ai_providers").select("id").eq("active", true).in("slug", ["openai", "google"]),
     supabase.rpc("providers_with_credentials"),
     getWallet(supabase, workspace.id),
+    conceptModelOptions(supabase),
+    listGalleryItems(supabase, workspace.id, { limit: 24 }),
   ]);
   const keyed = new Set((withKey ?? []) as string[]);
   const engineAvailable = (plannerProviders ?? []).some((p) => keyed.has(p.id));
-  const modelOptions: SessionModelOption[] = await conceptModelOptions(supabase);
+
+  const models: GenModel[] = modelOptions.map((m) => ({
+    id: m.id, name: m.name, badge: m.badge, badgeTone: m.badgeTone,
+    description: m.description, pricing: m.pricing,
+    resolutions: m.resolutions, ratios: m.ratios,
+    maxOutputs: 1, supportsRefs: true, surcharge: m.ecomSurcharge,
+  }));
 
   const productPaths = products.flatMap((p) => p.product_images.map((i) => i.storage_path));
-  const sessionThumbs = (sessions ?? []).map((s) => s.reference_paths?.[0]).filter(Boolean) as string[];
-  const urls = await signImageUrls(supabase, [...productPaths, ...sessionThumbs]);
-
-  const productOptions: PromptProductOption[] = products.map((p) => ({
-    id: p.id, name: p.name, category: (p as { category?: string | null }).category ?? null,
+  const urls = await signImageUrls(supabase, productPaths);
+  const workspaceProducts: WorkspaceProduct[] = products.map((p) => ({
+    id: p.id, name: p.name,
+    category: (p as { category?: string | null }).category ?? null,
     description: (p as { description?: string | null }).description ?? null,
-    extraInfo: (p as { extra_info?: string | null }).extra_info ?? null,
     images: p.product_images
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((i) => ({ path: i.storage_path, url: urls.get(i.storage_path) ?? "" })),
-  }));
-
-  const recent: RecentSession[] = (sessions ?? []).map((s) => ({
-    id: s.id, productName: s.product_name, status: s.status, ratio: s.aspect_ratio,
-    createdAt: s.created_at,
-    thumbnail: s.reference_paths?.[0] ? urls.get(s.reference_paths[0]) ?? null : null,
   }));
 
   // An empty or missing style entry must stay empty: makeT echoes the key on
@@ -111,17 +108,19 @@ export default async function WorkflowPage({ params }: {
         })}
       </div>
 
-      <SessionForm
+      <GeneratorWorkspace
+        mode="managed"
+        models={models}
+        products={workspaceProducts}
+        credits={wallet?.balance ?? 0}
+        workspaceId={workspace.id}
+        engineAvailable={engineAvailable}
+        initialItems={gallery.items}
+        initialCursor={gallery.nextCursor}
         initialStyle={styleHint}
         initialRatio={workflow.ratio}
         initialShots={workflow.shots}
         variant={CATEGORY_VARIANT[category.key] ?? DEFAULT_VARIANT}
-        products={productOptions}
-        workspaceId={workspace.id}
-        engineAvailable={engineAvailable}
-        models={modelOptions}
-        balance={wallet?.balance ?? 0}
-        recent={recent}
       />
     </div>
   );

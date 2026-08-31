@@ -18,11 +18,21 @@ export type ModelView = {
   display_name: string | null; badge: string | null; sort_order: number;
   pricing: Record<string, number>; supported_resolutions: string[];
   ecom_surcharge_credits: number;
+  supported_aspect_ratios: string[];
+  badge_tone: string | null;
+  max_outputs: number | null;
+  visible_managed: boolean;
+  visible_custom: boolean;
   /** Why this model is switched off, for staff eyes only. */
   unavailableReason: string | null; unavailableNote: string | null;
 };
 
 const RES_TIERS = ["1K", "2K", "4K"] as const;
+const RATIO_CHOICES = ["1:1", "3:4", "4:5", "16:9", "9:16"] as const;
+/** Curated badges shown to customers; the DB column stays free text so a
+ *  custom label typed by the admin is stored verbatim. */
+const BADGE_KEYS = ["recommended", "high_quality", "best_value", "fast", "new", "premium", "experimental"] as const;
+const TONE_KEYS = ["neutral", "green", "amber", "blue", "info", "indigo", "success"] as const;
 
 export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
   m: ModelView; usdToPln: number; plnPerCredit: number; locale: string;
@@ -31,11 +41,19 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
+  const knownBadge = !m.badge || (BADGE_KEYS as readonly string[]).includes(m.badge);
   const [form, setForm] = useState({
     name: m.name,
     display_name: m.display_name ?? m.name,
     model_identifier: m.model_identifier,
-    badge: m.badge ?? "",
+    badge: knownBadge ? (m.badge ?? "") : "__custom",
+    badge_custom: knownBadge ? "" : (m.badge ?? ""),
+    badge_tone: m.badge_tone ?? "",
+    ratios: m.supported_aspect_ratios.length > 0 ? m.supported_aspect_ratios : ["1:1"],
+    max_outputs: m.max_outputs != null ? String(m.max_outputs) : "",
+    visible_managed: m.visible_managed,
+    visible_custom: m.visible_custom,
+    supports_refs: m.supports_reference_images,
     sort_order: String(m.sort_order),
     credit_cost: String(m.credit_cost),
     internal_usd: String(m.internal_cost_usd_micros / 1_000_000),
@@ -66,11 +84,18 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
           resolutions.push(r);
         }
       }
+      const badge = form.badge === "__custom" ? form.badge_custom.trim() : form.badge.trim();
       const res = await updateModelFullAction(m.id, {
         name: form.name.trim(),
         display_name: form.display_name.trim() || form.name.trim(),
         model_identifier: form.model_identifier.trim(),
-        badge: form.badge.trim() || null,
+        badge: badge || null,
+        badge_tone: form.badge_tone || null,
+        supported_aspect_ratios: form.ratios,
+        max_outputs: form.max_outputs.trim() === "" ? null : parseInt(form.max_outputs, 10),
+        visible_managed: form.visible_managed,
+        visible_custom: form.visible_custom,
+        supports_reference_images: form.supports_refs,
         sort_order: parseInt(form.sort_order || "100", 10),
         credit_cost: parseInt(form.credit_cost || "0", 10),
         internal_cost_usd_micros: Math.round(parseFloat(form.internal_usd || "0") * 1_000_000),
@@ -149,14 +174,75 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
               <Label>{t("admin.badge")}</Label>
               <Select value={form.badge} onChange={(e) => setForm({ ...form, badge: e.target.value })}>
                 <option value="">—</option>
-                <option value="recommended">recommended</option>
-                <option value="high_quality">high_quality</option>
+                {BADGE_KEYS.map((k) => <option key={k} value={k}>{t(`models.badge.${k}`)}</option>)}
+                <option value="__custom">{t("admin.badgeCustom")}</option>
+              </Select>
+              {form.badge === "__custom" && (
+                <Input className="mt-2" value={form.badge_custom} placeholder={t("admin.badgeLabel")}
+                  onChange={(e) => setForm({ ...form, badge_custom: e.target.value })} />
+              )}
+            </div>
+            <div>
+              <Label>{t("admin.badgeTone")}</Label>
+              <Select value={form.badge_tone} onChange={(e) => setForm({ ...form, badge_tone: e.target.value })}>
+                <option value="">{t("admin.toneAuto")}</option>
+                {TONE_KEYS.map((k) => <option key={k} value={k}>{t(`admin.tone.${k}`)}</option>)}
               </Select>
             </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>{t("admin.sortOrder")}</Label>
               <Input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: e.target.value })} />
             </div>
+            <div>
+              <Label>{t("admin.maxOutputs")}</Label>
+              <Input type="number" min={1} max={4} placeholder="—" value={form.max_outputs}
+                onChange={(e) => setForm({ ...form, max_outputs: e.target.value })} />
+            </div>
+          </div>
+          <div className="sm:col-span-2">
+            <Label>{t("admin.ratios")}</Label>
+            <div className="flex flex-wrap gap-2">
+              {RATIO_CHOICES.map((r) => {
+                const on = form.ratios.includes(r);
+                const last = on && form.ratios.length === 1;
+                return (
+                  <button key={r} type="button" aria-pressed={on} disabled={last}
+                    onClick={() => setForm({
+                      ...form,
+                      ratios: on ? form.ratios.filter((x) => x !== r) : [...RATIO_CHOICES.filter((x) => form.ratios.includes(x) || x === r)],
+                    })}
+                    className={cn("rounded-lg border px-3 py-1.5 text-xs font-bold tabular-nums transition-colors",
+                      on ? "border-[rgb(var(--accent)/0.5)] bg-accent-soft/40 text-accent" : "border-line text-muted hover:bg-raised",
+                      last && "cursor-default opacity-70")}>
+                    {r}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-xs text-faint">{t("admin.ratiosHint")}</p>
+          </div>
+          <div className="flex flex-col gap-2 sm:col-span-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={form.visible_managed}
+                onChange={(e) => setForm({ ...form, visible_managed: e.target.checked })}
+                className="h-4 w-4 accent-[rgb(var(--accent))]" />
+              {t("admin.visibleManaged")}
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={form.visible_custom}
+                onChange={(e) => setForm({ ...form, visible_custom: e.target.checked })}
+                className="h-4 w-4 accent-[rgb(var(--accent))]" />
+              {t("admin.visibleCustom")}
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={form.supports_refs}
+                onChange={(e) => setForm({ ...form, supports_refs: e.target.checked })}
+                className="h-4 w-4 accent-[rgb(var(--accent))]" />
+              {t("admin.supportsRefs")}
+            </label>
+            <p className="text-xs text-faint">{t("admin.supportsRefsHint")}</p>
           </div>
           <div className="sm:col-span-2">
             <Label>{t("admin.pricingPerRes")}</Label>

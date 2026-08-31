@@ -3,8 +3,12 @@ import type { Tables } from "@/lib/database.types";
 export type AiModelRecord = Tables<"ai_models">;
 export type AiProviderRecord = Tables<"ai_providers">;
 
-export type AspectRatio = "1:1" | "4:5" | "16:9" | "9:16";
+export type AspectRatio = "1:1" | "3:4" | "4:5" | "16:9" | "9:16";
 export type Resolution = "1K" | "2K" | "4K";
+
+/** Every format the platform knows, in display order. What a given model
+ *  actually offers = this ∩ adapter capability ∩ ai_models.supported_aspect_ratios. */
+export const ALL_ASPECT_RATIOS: readonly AspectRatio[] = ["1:1", "3:4", "4:5", "16:9", "9:16"];
 
 /** Per-resolution credit price from the admin-editable model config
  *  (ai_models.pricing). Falls back to the model's base credit_cost. */
@@ -50,6 +54,9 @@ export interface ImageProviderAdapter {
     resolutions: Resolution[];
     maxQuantity: number;
     supportsReferenceImages: boolean;
+    /** Framings this provider genuinely renders (not merely approximates).
+     *  Absent = the four classic ratios. */
+    ratios?: AspectRatio[];
   };
   generate(model: AiModelRecord, req: GenerationRequest, cred: ProviderCredential): Promise<GenerationResult>;
 }

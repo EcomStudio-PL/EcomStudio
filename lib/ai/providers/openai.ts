@@ -15,7 +15,7 @@ const MAX_REFS = 6;
  */
 export const openaiAdapter: ImageProviderAdapter = {
   slug: "openai",
-  capabilities: { resolutions: ["1K", "2K"], maxQuantity: 4, supportsReferenceImages: true },
+  capabilities: { resolutions: ["1K", "2K"], maxQuantity: 4, supportsReferenceImages: true, ratios: ["1:1", "4:5", "16:9", "9:16"] },
 
   async generate(model: AiModelRecord, req: GenerationRequest, cred: ProviderCredential): Promise<GenerationResult> {
     const base = cred.baseUrl?.replace(/\/$/, "") || "https://api.openai.com";

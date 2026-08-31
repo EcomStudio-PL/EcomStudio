@@ -76,6 +76,7 @@ export type Database = {
         Row: {
           active: boolean
           badge: string | null
+          badge_tone: string | null
           capabilities: Json
           created_at: string
           credit_cost: number
@@ -85,6 +86,7 @@ export type Database = {
           estimated_api_cost: number
           id: string
           internal_cost_usd_micros: number
+          max_outputs: number | null
           max_prompt_length: number
           max_reference_images: number
           metadata: Json
@@ -101,10 +103,13 @@ export type Database = {
           supports_reference_images: boolean
           supports_video: boolean
           type: string
+          visible_custom: boolean
+          visible_managed: boolean
         }
         Insert: {
           active?: boolean
           badge?: string | null
+          badge_tone?: string | null
           capabilities?: Json
           created_at?: string
           credit_cost?: number
@@ -114,6 +119,7 @@ export type Database = {
           estimated_api_cost?: number
           id?: string
           internal_cost_usd_micros?: number
+          max_outputs?: number | null
           max_prompt_length?: number
           max_reference_images?: number
           metadata?: Json
@@ -130,10 +136,13 @@ export type Database = {
           supports_reference_images?: boolean
           supports_video?: boolean
           type?: string
+          visible_custom?: boolean
+          visible_managed?: boolean
         }
         Update: {
           active?: boolean
           badge?: string | null
+          badge_tone?: string | null
           capabilities?: Json
           created_at?: string
           credit_cost?: number
@@ -143,6 +152,7 @@ export type Database = {
           estimated_api_cost?: number
           id?: string
           internal_cost_usd_micros?: number
+          max_outputs?: number | null
           max_prompt_length?: number
           max_reference_images?: number
           metadata?: Json
@@ -159,6 +169,8 @@ export type Database = {
           supports_reference_images?: boolean
           supports_video?: boolean
           type?: string
+          visible_custom?: boolean
+          visible_managed?: boolean
         }
         Relationships: [
           {
@@ -1071,6 +1083,7 @@ export type Database = {
           quality_check_data: Json
           quality_notes: string | null
           quality_status: Database["public"]["Enums"]["quality_status"]
+          user_note: string | null
           workspace_id: string
         }
         Insert: {
@@ -1083,6 +1096,7 @@ export type Database = {
           quality_check_data?: Json
           quality_notes?: string | null
           quality_status?: Database["public"]["Enums"]["quality_status"]
+          user_note?: string | null
           workspace_id: string
         }
         Update: {
@@ -1095,6 +1109,7 @@ export type Database = {
           quality_check_data?: Json
           quality_notes?: string | null
           quality_status?: Database["public"]["Enums"]["quality_status"]
+          user_note?: string | null
           workspace_id?: string
         }
         Relationships: [
@@ -1641,6 +1656,8 @@ export type Database = {
           reference_hash: string | null
           reference_paths: string[]
           resolution: string | null
+          session_type: string | null
+          shot_briefs: Json | null
           status: string
           style: string | null
           updated_at: string
@@ -1670,6 +1687,8 @@ export type Database = {
           reference_hash?: string | null
           reference_paths?: string[]
           resolution?: string | null
+          session_type?: string | null
+          shot_briefs?: Json | null
           status?: string
           style?: string | null
           updated_at?: string
@@ -1699,6 +1718,8 @@ export type Database = {
           reference_hash?: string | null
           reference_paths?: string[]
           resolution?: string | null
+          session_type?: string | null
+          shot_briefs?: Json | null
           status?: string
           style?: string | null
           updated_at?: string
@@ -2599,6 +2620,14 @@ export type Database = {
         Returns: undefined
       }
       providers_with_credentials: { Args: never; Returns: string[] }
+      delete_generation: {
+        Args: { gen_id: string }
+        Returns: string[]
+      }
+      set_generation_note: {
+        Args: { gen_id: string; note: string }
+        Returns: undefined
+      }
       set_generation_favorite: {
         Args: { gen_id: string; value: boolean }
         Returns: boolean

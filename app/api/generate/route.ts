@@ -19,10 +19,26 @@ export async function POST(request: Request) {
   try { body = (await request.json()) as GenerateInput; }
   catch { return NextResponse.json({ ok: false, error: "invalid_input" }, { status: 400 }); }
 
+  // WHITELISTED input — this endpoint serves the customer's own prompt
+  // ("Własny prompt"), so billing-relevant fields are never read from the
+  // body: no costOverride, no hidePromptText, no fallback chain, and the
+  // origin is pinned to "custom" (base price, prompt stored in clear on the
+  // job as the customer's own words).
   const result = await runGeneration(supabase, user.id, workspace.id, {
-    ...body,
+    modelId: String(body.modelId ?? ""),
+    prompt: String(body.prompt ?? ""),
+    negative: typeof body.negative === "string" ? body.negative : undefined,
+    aspectRatio: body.aspectRatio,
+    resolution: body.resolution,
+    quantity: Number(body.quantity) || 1,
+    productId: typeof body.productId === "string" ? body.productId : undefined,
+    newProduct: body.newProduct,
+    promptId: typeof body.promptId === "string" ? body.promptId : undefined,
+    promptSessionId: typeof body.promptSessionId === "string" ? body.promptSessionId : undefined,
+    promptOrigin: "custom",
     referencePaths: (body.referencePaths ?? []).filter((p) => typeof p === "string" && p.startsWith(`${workspace.id}/`)),
     referenceImageIds: (body.referenceImageIds ?? []).filter((x) => typeof x === "string"),
+    inspirationPaths: (body.inspirationPaths ?? []).filter((p) => typeof p === "string" && p.startsWith(`${workspace.id}/`)).slice(0, 5),
   });
   return NextResponse.json(result, { status: result.ok ? 200 : 400 });
 }

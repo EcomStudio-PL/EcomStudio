@@ -33,6 +33,10 @@ export type GenerateInput = {
   /** Storage paths in product-images already uploaded by the client. */
   referencePaths: string[];
   referenceImageIds: string[];
+  /** Style/scene INSPIRATION images (custom mode): they steer mood, light,
+   *  framing and environment but must never redefine the product itself —
+   *  the instruction block below makes that contract explicit per call. */
+  inspirationPaths?: string[];
   /** Prompt-engine handoff: link the job to its prompt + session. */
   promptId?: string;
   promptSessionId?: string;
@@ -54,7 +58,11 @@ export type GenerateOutput =
   | { ok: true; jobId: string; productId: string; images: { url: string; path: string }[] }
   | { ok: false; error: string; missingCredits?: number };
 
-const RATIOS = new Set(["1:1", "4:5", "16:9", "9:16"]);
+const RATIOS = new Set(["1:1", "3:4", "4:5", "16:9", "9:16"]);
+
+/** Longest edge of the gallery thumbnail derivative. Originals stay the
+ *  source of truth; the thumb only spares the grid from full-size loads. */
+const THUMB_EDGE = 640;
 
 /**
  * The full real generation path: resolve model + decrypted credential →
@@ -93,6 +101,16 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   const resolution = (input.resolution && supportedRes.includes(input.resolution)
     ? input.resolution
     : supportedRes[0]) as Resolution | undefined;
+
+  // Same contract for the framing: a ratio outside what this model + adapter
+  // genuinely render snaps to the first supported one instead of silently
+  // producing a mislabeled crop (3:4 exists only on engines that draw it).
+  const adapterRatios = adapter.capabilities.ratios ?? ["1:1", "4:5", "16:9", "9:16"];
+  const modelRatios = (model.supported_aspect_ratios?.length ? model.supported_aspect_ratios : adapterRatios)
+    .filter((r) => (adapterRatios as string[]).includes(r));
+  const aspectRatio = (modelRatios.includes(input.aspectRatio)
+    ? input.aspectRatio
+    : modelRatios[0] ?? "1:1") as AspectRatio;
 
   // Wallet + server-side cost (per-resolution price from the model config)
   const baseCost = priceForResolution(model, resolution ?? "1K") * quantity;
@@ -142,7 +160,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     .filter(Boolean).join("\n");
   const { data: job, error: jobError } = await supabase.from("generation_jobs").insert({
     workspace_id: workspaceId, product_id: productId, user_id: userId, model_id: model.id,
-    prompt_text: input.hidePromptText ? null : promptText, aspect_ratio: input.aspectRatio, quantity,
+    prompt_text: input.hidePromptText ? null : promptText, aspect_ratio: aspectRatio, quantity,
     resolution: resolution ?? null, provider_slug: provider.slug,
     negative_prompt: input.hidePromptText ? null : input.negative?.trim() || null,
     prompt_id: input.promptId ?? null,
@@ -156,6 +174,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       negative: input.hidePromptText ? null : input.negative ?? null,
       concept_id: input.conceptId ?? null,
       parent_job_id: input.parentJobId ?? null,
+      inspiration_count: input.inspirationPaths?.length || undefined,
     } as never,
   }).select("id").single();
   if (jobError || !job) return { ok: false, error: "job_create_failed" };
@@ -175,20 +194,40 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
 
   // Reference images -> base64 (only when the adapter supports them)
   const refs: ReferenceImage[] = [];
+  let inspirationCount = 0;
   if (adapter.capabilities.supportsReferenceImages && model.supports_reference_images) {
+    const maxRefs = model.max_reference_images || 6;
+    // Product identity comes first: inspiration may take at most two slots,
+    // and only the slots the product references leave free.
+    const inspWanted = (input.inspirationPaths ?? []).slice(0, 5);
+    const productBudget = inspWanted.length > 0 ? Math.max(1, maxRefs - Math.min(2, inspWanted.length)) : maxRefs;
+    const download = async (path: string) => {
+      const { data: blob } = await supabase.storage.from("product-images").download(path);
+      if (!blob) return null;
+      const buf = Buffer.from(await blob.arrayBuffer());
+      const ext = path.split(".").pop()?.toLowerCase();
+      return { base64: buf.toString("base64"), mime: ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg" };
+    };
     // The prompt engine hands over 3-6 role-assigned references; the cap comes
     // from the model config so the extra verified angles actually reach the
     // provider instead of being silently dropped.
-    for (const path of input.referencePaths.slice(0, model.max_reference_images || 6)) {
-      const { data: blob } = await supabase.storage.from("product-images").download(path);
-      if (!blob) continue;
-      const buf = Buffer.from(await blob.arrayBuffer());
-      const ext = path.split(".").pop()?.toLowerCase();
-      refs.push({ base64: buf.toString("base64"), mime: ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg" });
+    for (const path of input.referencePaths.slice(0, productBudget)) {
+      const ref = await download(path);
+      if (ref) refs.push(ref);
+    }
+    for (const path of inspWanted) {
+      if (refs.length >= maxRefs) break;
+      const ref = await download(path);
+      if (ref) { refs.push(ref); inspirationCount++; }
     }
   }
 
-  const fidelity = `${buildFidelityInstructions(productInstructions)}${productContext}`;
+  // Inspiration steers the scene, never the product: the contract rides in
+  // the same protected block as the Product Lock, in the model's language.
+  const inspirationContract = inspirationCount > 0
+    ? `\n\nINSPIRATION IMAGES: the final ${inspirationCount} attached image(s) are style and scene inspiration ONLY. Take mood, lighting, environment, framing and atmosphere from them. The PRODUCT itself must match ONLY the first ${refs.length - inspirationCount} product reference image(s) exactly — never copy products, shapes, colors, labels or branding from the inspiration images.`
+    : "";
+  const fidelity = `${buildFidelityInstructions(productInstructions)}${productContext}${inspirationContract}`;
 
   /**
    * PROVIDER LOOP — one credit reservation, many chances to deliver.
@@ -251,7 +290,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_PROVIDER; attempt++) {
       try {
         result = await withProviderLimit(cProviderSlug, () => cAdapter.generate(cModel, {
-          prompt: promptText, aspectRatio: input.aspectRatio, resolution: cResolution,
+          prompt: promptText, aspectRatio, resolution: cResolution,
           quantity, referenceImages: cRefs, productLock: { fidelityInstructions: fidelity },
         }, { apiKey: cApiKey, baseUrl: cBaseUrl }));
         served = { model: cModel, providerSlug: cProviderSlug };
@@ -333,10 +372,29 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     const { error: upErr } = await supabase.storage.from("generation-assets")
       .upload(path, bytes, { contentType: mime, upsert: true });
     if (!upErr && generation) {
+      // Gallery thumbnail derivative: grids load ~40KB instead of a full
+      // render. Best-effort — a failed thumb never fails the generation,
+      // the gallery just falls back to the original.
+      let thumbPath: string | null = null;
+      let dims: { width?: number; height?: number } = { width: img.width, height: img.height };
+      try {
+        const { default: sharp } = await import("sharp");
+        const pipeline = sharp(bytes, { failOn: "none" });
+        const meta = await pipeline.metadata();
+        if (meta.width && meta.height) dims = { width: meta.width, height: meta.height };
+        const thumb = await pipeline
+          .resize({ width: THUMB_EDGE, height: THUMB_EDGE, fit: "inside", withoutEnlargement: true })
+          .webp({ quality: 72 })
+          .toBuffer();
+        const tPath = `${workspaceId}/${job.id}/${idx}_t.webp`;
+        const { error: tErr } = await supabase.storage.from("generation-assets")
+          .upload(tPath, thumb, { contentType: "image/webp", upsert: true });
+        if (!tErr) thumbPath = tPath;
+      } catch { /* originals remain the source of truth */ }
       await supabase.from("generation_assets").insert({
         generation_id: generation.id, asset_type: "image", storage_path: path,
-        width: img.width ?? null, height: img.height ?? null,
-        metadata: { provider: served.providerSlug, model: model2.model_identifier } as never,
+        width: dims.width ?? null, height: dims.height ?? null,
+        metadata: { provider: served.providerSlug, model: model2.model_identifier, thumb: thumbPath } as never,
       });
       stored.push({ url: "", path });
     }

@@ -46,6 +46,11 @@ export default async function AdminModels() {
     supported_resolutions: m.supported_resolutions ?? ["1K"],
     providerName: m.ai_providers?.name ?? "—",
     ecom_surcharge_credits: (m as { ecom_surcharge_credits?: number }).ecom_surcharge_credits ?? 0,
+    supported_aspect_ratios: m.supported_aspect_ratios ?? [],
+    badge_tone: (m as { badge_tone?: string | null }).badge_tone ?? null,
+    max_outputs: (m as { max_outputs?: number | null }).max_outputs ?? null,
+    visible_managed: (m as { visible_managed?: boolean }).visible_managed !== false,
+    visible_custom: (m as { visible_custom?: boolean }).visible_custom !== false,
     unavailableReason: (m.metadata as { unavailable_reason?: string } | null)?.unavailable_reason ?? null,
     unavailableNote: (m.metadata as { unavailable_note?: string } | null)?.unavailable_note ?? null,
   }));

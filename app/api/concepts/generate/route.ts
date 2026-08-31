@@ -25,16 +25,18 @@ export async function POST(request: Request) {
 
   let conceptId = "";
   let modelId: string | undefined;
+  let instruction: string | undefined;
   try {
-    const body = (await request.json()) as { conceptId?: string; modelId?: string };
+    const body = (await request.json()) as { conceptId?: string; modelId?: string; instruction?: string };
     conceptId = typeof body.conceptId === "string" ? body.conceptId : "";
     if (typeof body.modelId === "string" && /^[0-9a-f-]{36}$/.test(body.modelId)) modelId = body.modelId;
+    if (typeof body.instruction === "string" && body.instruction.trim()) instruction = body.instruction.slice(0, 600);
   } catch { /* fall through to validation */ }
   if (!/^[0-9a-f-]{36}$/.test(conceptId)) {
     return NextResponse.json({ ok: false, error: "invalid_input" }, { status: 400 });
   }
 
-  const result = await generateFromConcept(supabase, user.id, workspace.id, conceptId, { modelId });
+  const result = await generateFromConcept(supabase, user.id, workspace.id, conceptId, { modelId, instruction });
   const status = result.ok ? 200
     : result.error === "insufficient_credits" ? 402
       : result.error === "already_running" ? 409

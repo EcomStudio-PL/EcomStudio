@@ -1,12 +1,17 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
 import { getAdapter } from "./registry";
-import type { AiModelRecord } from "./types";
+import { ALL_ASPECT_RATIOS, type AiModelRecord, type AspectRatio } from "./types";
 
 export type UsableModel = AiModelRecord & {
   provider_slug: string;
   provider_name: string;
-  capabilities_ui: { resolutions: string[]; maxQuantity: number; supportsReferenceImages: boolean };
+  capabilities_ui: {
+    resolutions: string[];
+    maxQuantity: number;
+    supportsReferenceImages: boolean;
+    ratios: string[];
+  };
 };
 
 /** What the CLIENT sees: display identity + capabilities + per-resolution
@@ -16,14 +21,29 @@ export type ClientModel = {
   id: string;
   displayName: string;
   badge: string | null;
+  badgeTone: string | null;
   description: string | null;
   pricing: Record<string, number>;
   resolutions: string[];
+  /** Framings this model genuinely renders — the UI offers nothing else. */
+  ratios: string[];
   maxQuantity: number;
   supportsReferenceImages: boolean;
   supportsNegativePrompt: boolean;
   maxReferenceImages: number;
+  /** Credits added per image when the GrovBase engine writes the prompt. */
+  engineSurcharge: number;
 };
+
+/** Ratios a model may offer: platform list ∩ adapter capability ∩ the
+ *  admin-managed column. Falls back to 1:1 so a misconfigured model still
+ *  renders something rather than nothing. */
+function effectiveRatios(m: AiModelRecord, adapterRatios?: AspectRatio[]): string[] {
+  const adapterSet = new Set<string>(adapterRatios ?? ["1:1", "4:5", "16:9", "9:16"]);
+  const modelSet = new Set<string>(m.supported_aspect_ratios ?? []);
+  const out = ALL_ASPECT_RATIOS.filter((r) => adapterSet.has(r) && (modelSet.size === 0 || modelSet.has(r)));
+  return out.length > 0 ? out : ["1:1"];
+}
 
 /**
  * Model router: a model is usable only when it is active, its provider is
@@ -53,17 +73,35 @@ export async function getUsableModels(supabase: Client): Promise<UsableModel[]> 
     .map((m) => {
       const p = (m as unknown as { ai_providers: { slug: string; name: string } }).ai_providers;
       const adapter = getAdapter(p.slug)!;
+      const capOutputs = (m as { max_outputs?: number | null }).max_outputs;
       return {
         ...(m as AiModelRecord),
         provider_slug: p.slug,
         provider_name: p.name,
         capabilities_ui: {
           resolutions: m.supported_resolutions ?? ["1K"],
-          maxQuantity: adapter.capabilities.maxQuantity,
+          // The admin cap can only narrow what the adapter can do.
+          maxQuantity: Math.max(1, Math.min(adapter.capabilities.maxQuantity,
+            typeof capOutputs === "number" && capOutputs > 0 ? capOutputs : adapter.capabilities.maxQuantity)),
           supportsReferenceImages: adapter.capabilities.supportsReferenceImages && m.supports_reference_images,
+          ratios: effectiveRatios(m, adapter.capabilities.ratios),
         },
       };
     });
+}
+
+/** The managed generator ("Gotowy generator") offers only models the admin
+ *  switched on for it — and only ones that can carry reference images, since
+ *  the Product Lock depends on them. */
+export function managedModels(models: UsableModel[]): UsableModel[] {
+  return models.filter((m) =>
+    (m as { visible_managed?: boolean }).visible_managed !== false
+    && m.capabilities_ui.supportsReferenceImages);
+}
+
+/** The custom-prompt generator ("Własny prompt") list. */
+export function customModels(models: UsableModel[]): UsableModel[] {
+  return models.filter((m) => (m as { visible_custom?: boolean }).visible_custom !== false);
 }
 
 /** Strip a usable model down to its provider-free client shape. */
@@ -77,12 +115,15 @@ export function toClientModel(m: UsableModel): ClientModel {
     id: m.id,
     displayName: m.display_name || m.name,
     badge: m.badge,
+    badgeTone: (m as { badge_tone?: string | null }).badge_tone ?? null,
     description: m.description,
     pricing,
     resolutions: m.capabilities_ui.resolutions,
+    ratios: m.capabilities_ui.ratios,
     maxQuantity: m.capabilities_ui.maxQuantity,
     supportsReferenceImages: m.capabilities_ui.supportsReferenceImages,
     supportsNegativePrompt: m.supports_negative_prompt,
     maxReferenceImages: m.max_reference_images,
+    engineSurcharge: Math.max(0, (m as { ecom_surcharge_credits?: number }).ecom_surcharge_credits ?? 0),
   };
 }

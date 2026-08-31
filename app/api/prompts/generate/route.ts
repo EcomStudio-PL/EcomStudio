@@ -26,6 +26,17 @@ export async function POST(request: Request) {
     ...body,
     shots: clampShots(body.shots),
     locale,
+    sessionType: body.sessionType === "advertising" || body.sessionType === "lifestyle"
+      ? body.sessionType : undefined,
+    // Brief contents are sanitized again inside the engine; here only the
+    // shape is constrained so a hostile body cannot smuggle anything odd.
+    shotBriefs: Array.isArray(body.shotBriefs)
+      ? body.shotBriefs.slice(0, 10).map((b) => ({
+        text: typeof b?.text === "string" ? b.text.slice(0, 400) : undefined,
+        keepFraming: b?.keepFraming === true,
+        refIndex: Number.isInteger(b?.refIndex) ? (b!.refIndex as number) : undefined,
+      }))
+      : undefined,
     referencePaths: (body.referencePaths ?? []).filter(
       (p) => typeof p === "string" && p.startsWith(`${workspace.id}/`)
     ),

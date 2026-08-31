@@ -5,15 +5,20 @@ import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { listProducts } from "@/lib/services/products";
-import { getUsableModels, toClientModel } from "@/lib/ai/router";
 import { signImageUrls } from "@/lib/services/images";
+import { listGalleryItems } from "@/lib/server/gallery";
+import { customModels, getUsableModels, toClientModel } from "@/lib/ai/router";
+import { conceptModelOptions } from "@/lib/server/concept-generation";
 import { PageHeader } from "@/components/ui/page-header";
 import { GeneratorModeSwitch } from "@/components/generator/mode-switch";
-import { conceptModelOptions } from "@/lib/server/concept-generation";
-import { Studio, type StudioModel, type StudioProduct, type StudioSession } from "@/components/generator/studio";
+import { GeneratorWorkspace, type WorkspaceProduct } from "@/components/genv3/workspace";
+import type { GenModel } from "@/components/genv3/types";
 
 export const dynamic = "force-dynamic";
 
+/** WŁASNY PROMPT — the customer's own words drive the generation. Product
+ *  reference photos define the product; optional inspiration photos steer
+ *  scene and mood without ever overriding product identity. */
 export default async function GeneratorPage({ searchParams }: {
   searchParams: Promise<{ prompt?: string }>;
 }) {
@@ -25,88 +30,68 @@ export default async function GeneratorPage({ searchParams }: {
   if (!user) redirect("/login");
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) redirect("/home");
-  const [products, models, wallet, priceOptions] = await Promise.all([
+
+  const [products, usable, wallet, gallery, priceOptions] = await Promise.all([
     listProducts(supabase, workspace.id, 30),
     getUsableModels(supabase),
     getWallet(supabase, workspace.id),
+    listGalleryItems(supabase, workspace.id, { limit: 24 }),
     conceptModelOptions(supabase),
   ]);
 
-  // Prompt-engine handoff: ?prompt=<generated_prompt id> opens the Studio
-  // fully prepared — prompt, negative, references, format, product. The user
-  // re-uploads nothing and copies nothing.
-  let session: StudioSession | null = null;
+  const models: GenModel[] = customModels(usable).map(toClientModel).map((m) => ({
+    id: m.id, name: m.displayName, badge: m.badge, badgeTone: m.badgeTone,
+    description: m.description, pricing: m.pricing,
+    resolutions: m.resolutions, ratios: m.ratios,
+    maxOutputs: m.maxQuantity, supportsRefs: m.supportsReferenceImages,
+    surcharge: m.engineSurcharge,
+  }));
+
+  // Prompt handoff: ?prompt=<generated_prompt uuid> prefills the customer's
+  // own saved prompt text; any other value is treated as raw prompt text
+  // (inspiration gallery "use this"). Engine concepts carry no readable
+  // prompt (GrovBase IP, stored encrypted) and never open here.
+  let initialPrompt = "";
   if (promptParam && /^[0-9a-f-]{36}$/.test(promptParam)) {
     const { data: gp } = await supabase
-      .from("generated_prompts").select("*")
+      .from("generated_prompts").select("prompt_text, prompt_origin")
       .eq("id", promptParam).eq("workspace_id", workspace.id).maybeSingle();
-    // Concept rows carry no readable prompt (it is GrovBase IP, stored
-    // encrypted) — they generate in place on the concept page, never here.
-    if (gp?.session_id && gp.prompt_text) {
-      const { data: ps } = await supabase
-        .from("prompt_sessions").select("*").eq("id", gp.session_id).maybeSingle();
-      if (ps) {
-        const paths = ps.reference_paths ?? [];
-        const urls = await signImageUrls(supabase, paths);
-        const selectedNumbers = new Set(
-          (gp.reference_indices?.length ? gp.reference_indices : paths.map((_, i) => i + 1))
-        );
-        // Primary reference first — the first selected image acts as the main one.
-        const ordered = [...paths.entries()].sort(([a], [b]) => {
-          const pa = a + 1 === gp.primary_reference ? -1 : 0;
-          const pb = b + 1 === gp.primary_reference ? -1 : 0;
-          return pa - pb;
-        });
-        session = {
-          promptId: gp.id,
-          sessionId: ps.id,
-          productId: ps.product_id,
-          productName: ps.product_name,
-          prompt: gp.prompt_text,
-          negative: gp.negative_prompt ?? "",
-          aspectRatio: gp.format || ps.aspect_ratio,
-          refs: ordered.map(([i, path]) => ({
-            path,
-            url: urls.get(path) ?? "",
-            selected: selectedNumbers.has(i + 1),
-          })),
-        };
-      }
-    }
+    if (gp?.prompt_text && gp.prompt_origin === "custom") initialPrompt = gp.prompt_text.slice(0, 2000);
+  } else if (promptParam) {
+    initialPrompt = promptParam.slice(0, 2000);
   }
 
-  const allPaths = products.flatMap((p) => p.product_images.map((i) => i.storage_path));
-  const urls = await signImageUrls(supabase, allPaths);
-  const studioProducts: StudioProduct[] = products.map((p) => ({
+  const productPaths = products.flatMap((p) => p.product_images.map((i) => i.storage_path));
+  const urls = await signImageUrls(supabase, productPaths);
+  const workspaceProducts: WorkspaceProduct[] = products.map((p) => ({
     id: p.id, name: p.name,
-    description: (p as { description?: string | null }).description ?? null,
     category: (p as { category?: string | null }).category ?? null,
-    extra_info: (p as { extra_info?: string | null }).extra_info ?? null,
+    description: (p as { description?: string | null }).description ?? null,
     images: p.product_images
       .sort((a, b) => a.sort_order - b.sort_order)
-      .map((i) => ({ id: i.id, url: urls.get(i.storage_path) ?? "", path: i.storage_path, isPrimary: i.is_primary })),
+      .map((i) => ({ path: i.storage_path, url: urls.get(i.storage_path) ?? "" })),
   }));
-  // Providers never reach the client — only display identity + pricing.
-  const studioModels: StudioModel[] = models.map(toClientModel);
 
   return (
     <div>
-      <PageHeader overline={t("mega.create")} title={t("gen.title")} sub={t("gen.customSub")} />
+      <PageHeader overline={t("mega.create")} title={t("genv3.customTitle")} sub={t("genv3.customSub")} />
       <GeneratorModeSwitch
         active="custom"
-        engineLabel={t("mega.engine")}
-        customLabel={t("mega.custom")}
+        engineLabel={t("genv3.modeManaged")}
+        customLabel={t("genv3.modeCustom")}
         engineCost={priceOptions[0]?.costEcom ?? null}
         customCost={priceOptions[0]?.costCustom ?? null}
         perShotLabel={(n) => t("concepts.perShot", { n })}
       />
-      <Studio
-        products={studioProducts}
-        models={studioModels}
+      <GeneratorWorkspace
+        mode="custom"
+        models={models}
+        products={workspaceProducts}
         credits={wallet?.balance ?? 0}
         workspaceId={workspace.id}
-        initialPrompt={session ? "" : promptParam?.slice(0, 4000) ?? ""}
-        session={session}
+        initialItems={gallery.items}
+        initialCursor={gallery.nextCursor}
+        initialPrompt={initialPrompt}
       />
     </div>
   );

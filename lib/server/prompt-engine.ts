@@ -9,6 +9,15 @@ import { VISION_MODEL, type VisionBackend, type VisionOutcome, type VisionProvid
 import type { ImageAnalysis, SessionInput } from "@/lib/ai/engine/types";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
 
+export type ShotBrief = {
+  /** The customer's own words for this shot — optional, max ~300 chars. */
+  text?: string;
+  /** Keep the framing/composition of the reference photo tied to this shot. */
+  keepFraming?: boolean;
+  /** 1-based reference image this shot leans on (defaults to the primary). */
+  refIndex?: number;
+};
+
 export type PromptSessionInput = {
   productId?: string;
   productName: string;
@@ -18,14 +27,41 @@ export type PromptSessionInput = {
   aspectRatio: string;
   /** Storage paths in product-images already uploaded by the client. */
   referencePaths: string[];
-  /** How many shot concepts to design (5-10; the server clamps). */
+  /** How many shot concepts to design (1-10; the server clamps). */
   shots?: number;
   /** Output size for every shot in the batch ("1K" | "2K" | "4K"). The
    *  model's real capabilities are enforced again at generation time. */
   resolution?: string;
   /** Locale for the customer-facing card copy (pl / en / de). */
   locale?: string;
+  /** Customer-chosen session flavour: steers the internal scene planning. */
+  sessionType?: "advertising" | "lifestyle";
+  /** Optional per-shot customer briefs, index-aligned with the shot order. */
+  shotBriefs?: ShotBrief[];
 };
+
+/** The internal directive each session type feeds the planner. These are
+ *  engine IP: they never leave the server. */
+const SESSION_TYPE_DIRECTIVES: Record<"advertising" | "lifestyle", string> = {
+  advertising:
+    "Sesja reklamowa: dopracowana, komercyjna sceneria premium, studyjna precyzja światła, kompozycje jak z profesjonalnej kampanii reklamowej.",
+  lifestyle:
+    "Sesja lifestyle: naturalne, codzienne otoczenie i swobodny klimat, produkt pokazany w realnym użyciu, autentyczne wnętrza lub plenery, miękkie naturalne światło.",
+};
+
+/** One customer brief, cleaned to travel inside an engine scene: control
+ *  characters out, single line, hard cap. */
+export function sanitizeBriefText(raw: unknown): string {
+  return String(raw ?? "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 300);
+}
+
+const KEEP_FRAMING_DIRECTIVE =
+  "Zachowaj kadr, kompozycję i perspektywę wskazanego zdjęcia referencyjnego — zmień tylko scenerię i otoczenie.";
 
 /** Only the three sizes the platform knows are ever stored; anything else
  *  falls back to the model default at generation time. */
@@ -33,7 +69,7 @@ export function normalizeResolution(raw: unknown): string | null {
   return raw === "1K" || raw === "2K" || raw === "4K" ? raw : null;
 }
 
-export const MIN_SHOTS = 5;
+export const MIN_SHOTS = 1;
 export const MAX_SHOTS = 10;
 export function clampShots(raw: unknown): number {
   const n = typeof raw === "number" ? Math.trunc(raw) : Number(raw);
@@ -92,11 +128,14 @@ export const ENGINE_VERSION = 3;
 /** Stable fingerprint of the ANALYSIS INPUT: the reference set (order-free)
  *  plus the product name and description, because both feed the manifest.
  *  Same fingerprint ⇒ the cached analysis and Product Lock are still true. */
-function hashAnalysisInput(paths: string[], name: string, description: string | null): string {
+function hashAnalysisInput(
+  paths: string[], name: string, description: string | null, extra = "",
+): string {
   return createHash("sha256")
     .update([...paths].sort().join("\n"))
     .update("\x00" + name.trim().toLowerCase())
     .update("\x00" + (description ?? "").trim().toLowerCase())
+    .update("\x00" + extra)
     .digest("hex").slice(0, 40);
 }
 
@@ -111,7 +150,7 @@ export function candidatePoolSize(shots: number): number {
   return Math.min(shots + 2, 12);
 }
 
-const RATIOS = new Set(["1:1", "4:5", "16:9", "9:16"]);
+const RATIOS = new Set(["1:1", "3:4", "4:5", "16:9", "9:16"]);
 const MAX_REFS = 8;
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 18 * 1024 * 1024;
@@ -230,8 +269,24 @@ export async function runPromptSession(
   const backends = await getVisionBackends(supabase, analysisModel);
   if (backends.length === 0) return { ok: false, error: "analysis_unavailable" };
 
+  // Normalized customer briefs — index-aligned with the shot order. A brief
+  // participates only when it carries at least a few characters of text.
+  const shotsOrdered = clampShots(input.shots);
+  const sessionType = input.sessionType === "advertising" || input.sessionType === "lifestyle"
+    ? input.sessionType : null;
+  const briefs = Array.from({ length: shotsOrdered }, (_, i) => {
+    const raw = input.shotBriefs?.[i];
+    const refIndex = Number.isInteger(raw?.refIndex) && (raw!.refIndex as number) >= 1 && (raw!.refIndex as number) <= MAX_REFS
+      ? (raw!.refIndex as number) : null;
+    return { text: sanitizeBriefText(raw?.text), keepFraming: !!raw?.keepFraming, refIndex };
+  });
+  const briefedCount = briefs.filter((b) => b.text.length >= 3).length;
+
+  // Session flavour + briefs change what gets planned, so they are part of
+  // the replay/retry fingerprint — a different brief is a different session.
   const referenceHash = hashAnalysisInput(
     input.referencePaths.slice(0, MAX_REFS), input.productName, input.description ?? null,
+    JSON.stringify({ st: sessionType, b: briefs.filter((b) => b.text || b.keepFraming) }),
   );
 
   // A NETWORK REPLAY MUST NOT START A SECOND PIPELINE. A preparation can
@@ -309,6 +364,8 @@ export async function runPromptSession(
       resolution: normalizeResolution(input.resolution),
       style: input.style?.trim() || null,
       extra_info: input.extraInfo?.trim() || null,
+      session_type: sessionType,
+      shot_briefs: briefs as never,
     }).eq("id", retryable.id);
     if (!reuseError) sessionId = retryable.id;
   }
@@ -324,6 +381,8 @@ export async function runPromptSession(
       reference_hash: referenceHash,
       status: "analyzing",
       mode: "engine",
+      session_type: sessionType,
+      shot_briefs: briefs as never,
     }).select("id").single();
     if (sessionError || !session) return { ok: false, error: "session_create_failed" };
     sessionId = session.id;
@@ -370,34 +429,75 @@ export async function runPromptSession(
     if (images.length === 0) throw new ProviderError("references_required");
     lap("referencesMs");
 
-    // 1) SCENE PLAN — ONE planner call. The planner returns scenes only
-    // (title, Polish scene description, humans, reference numbers); nothing
-    // it says can alter the master template. Pool over-provisioning plus a
-    // deterministic synthesis backstop keeps the ordered count exact.
+    // 1) SCENE PLAN — ONE planner call for the shots the customer did NOT
+    // brief themselves. The planner returns scenes only (title, Polish scene
+    // description, humans, reference numbers); nothing it says can alter the
+    // master template. Pool over-provisioning plus a deterministic synthesis
+    // backstop keeps the ordered count exact. The session flavour
+    // (advertising / lifestyle) rides as an internal style directive.
     stage = "scenes";
-    const shots = clampShots(input.shots);
+    const shots = shotsOrdered;
+    const planned = shots - briefedCount;
+    const flavorStyle = [sessionInfo.style, sessionType ? SESSION_TYPE_DIRECTIVES[sessionType] : null]
+      .filter(Boolean).join(". ");
     const scannerInfo = {
       productName: sessionInfo.productName, description: sessionInfo.description,
-      extraInfo: sessionInfo.extraInfo, style: sessionInfo.style,
+      extraInfo: sessionInfo.extraInfo, style: flavorStyle || null,
     };
-    const scened = await proposeScenes(backends, images, scannerInfo, {
-      count: candidatePoolSize(shots),
-    });
-    let scenes = scened.scenes.slice(0, shots);
-    usedOutcome = scened.outcome;
-    if (scenes.length < shots) {
-      const missing = shots - scenes.length;
-      try {
-        const extra = await proposeScenes(backends, images, scannerInfo, {
-          count: missing + 1, avoidTitles: scenes.map((c) => c.title),
-        });
-        scenes = [...scenes, ...extra.scenes.filter((e) => !scenes.some((c) => c.title.toLowerCase() === e.title.toLowerCase()))].slice(0, shots);
-      } catch { /* AI refill unavailable — synthesis below still guarantees the count */ }
+    let scenes: PlannedScene[] = [];
+    if (planned > 0) {
+      const scened = await proposeScenes(backends, images, scannerInfo, {
+        count: candidatePoolSize(planned),
+      });
+      scenes = scened.scenes.slice(0, planned);
+      usedOutcome = scened.outcome;
+      if (scenes.length < planned) {
+        const missing = planned - scenes.length;
+        try {
+          const extra = await proposeScenes(backends, images, scannerInfo, {
+            count: missing + 1, avoidTitles: scenes.map((c) => c.title),
+          });
+          scenes = [...scenes, ...extra.scenes.filter((e) => !scenes.some((c) => c.title.toLowerCase() === e.title.toLowerCase()))].slice(0, planned);
+        } catch { /* AI refill unavailable — synthesis below still guarantees the count */ }
+      }
+      if (scenes.length === 0) throw new ProviderError("analysis_empty", true);
+      if (scenes.length < planned) {
+        scenes = [...scenes, ...synthesizeScenes(scenes, planned - scenes.length, sessionInfo.productName, images.length)].slice(0, planned);
+      }
     }
-    if (scenes.length === 0) throw new ProviderError("analysis_empty", true);
-    if (scenes.length < shots) {
-      scenes = [...scenes, ...synthesizeScenes(scenes, shots - scenes.length, sessionInfo.productName, images.length)].slice(0, shots);
-    }
+
+    // A BRIEFED SHOT is the customer's own scene: their words become the
+    // scene description verbatim (sanitized), the chosen reference leads,
+    // and "Zachowaj kadr referencyjny" pins the reference composition. The
+    // master template and fidelity block still wrap it — briefs steer the
+    // scene, never the Product Lock.
+    const briefScene = (b: { text: string; keepFraming: boolean; refIndex: number | null }, i: number): PlannedScene => {
+      const lead = b.refIndex ?? 1;
+      const refIdx = [...new Set([lead, 1, 2])].filter((n) => n >= 1 && n <= images.length).slice(0, 3);
+      const humans = /\b(kobiet|mężczyz|osob|model|człowiek|dziec|ręk|dłoni)/i.test(b.text);
+      let description = [
+        b.text,
+        b.keepFraming ? KEEP_FRAMING_DIRECTIVE : null,
+        sessionType ? SESSION_TYPE_DIRECTIVES[sessionType] : null,
+      ].filter(Boolean).join(" ");
+      // The template validator requires a real scene sentence — a terse brief
+      // gets a neutral engine tail instead of being silently replaced.
+      if (description.length < 24) description += " Zadbana, realistyczna sceneria dopasowana do produktu.";
+      const title = b.text.length > 44 ? `${b.text.slice(0, 44).trimEnd()}…` : (b.text || `Ujęcie ${i + 1}`);
+      return {
+        title, scene_description: description, human_presence: humans,
+        reference_indices: refIdx.length > 0 ? refIdx : [1],
+      };
+    };
+
+    // Merge into shot order: briefed slots keep their position; planner
+    // scenes fill the rest in the order the planner ranked them.
+    const plannerQueue = [...scenes];
+    scenes = briefs.map((b, i) =>
+      b.text.length >= 3
+        ? briefScene(b, i)
+        : plannerQueue.shift() ?? synthesizeScenes([], 1, sessionInfo.productName, images.length)[0]
+    ).filter(Boolean) as PlannedScene[];
     await supabase.from("prompt_sessions").update({
       analysis_model: usedOutcome?.model ?? analysisModel,
       analysis_provider: usedOutcome?.provider ?? null,

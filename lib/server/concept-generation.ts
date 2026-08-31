@@ -82,6 +82,8 @@ export type ConceptModelOption = {
   id: string;
   name: string;
   badge: string | null;
+  badgeTone: string | null;
+  description: string | null;
   costCustom: number;
   costEcom: number;
   /** Base credits per output size, straight from the admin price table. */
@@ -97,23 +99,29 @@ export type ConceptModelOption = {
 
 export async function conceptModelOptions(supabase: Client): Promise<ConceptModelOption[]> {
   const chain = await resolveConceptModels(supabase);
-  return chain.map((m) => {
-    const base = conceptUnitCost(m);
-    const surcharge = (m as { ecom_surcharge_credits?: number }).ecom_surcharge_credits ?? 0;
-    const pricing: Record<string, number> = {};
-    for (const r of m.supported_resolutions ?? []) pricing[r] = priceForResolution(m, r);
-    return {
-      id: m.id,
-      name: m.display_name || m.name,
-      badge: m.badge,
-      costCustom: base,
-      costEcom: base + Math.max(0, surcharge),
-      pricing,
-      resolutions: m.supported_resolutions ?? [],
-      ratios: m.supported_aspect_ratios ?? [],
-      ecomSurcharge: Math.max(0, surcharge),
-    };
-  });
+  return chain
+    // Admin decides which models the MANAGED generator offers; the routing
+    // chain itself stays complete so fallbacks are unaffected.
+    .filter((m) => (m as { visible_managed?: boolean }).visible_managed !== false)
+    .map((m) => {
+      const base = conceptUnitCost(m);
+      const surcharge = (m as { ecom_surcharge_credits?: number }).ecom_surcharge_credits ?? 0;
+      const pricing: Record<string, number> = {};
+      for (const r of m.supported_resolutions ?? []) pricing[r] = priceForResolution(m, r);
+      return {
+        id: m.id,
+        name: m.display_name || m.name,
+        badge: m.badge,
+        badgeTone: (m as { badge_tone?: string | null }).badge_tone ?? null,
+        description: m.description,
+        costCustom: base,
+        costEcom: base + Math.max(0, surcharge),
+        pricing,
+        resolutions: m.supported_resolutions ?? [],
+        ratios: m.capabilities_ui.ratios,
+        ecomSurcharge: Math.max(0, surcharge),
+      };
+    });
 }
 
 /** Price of one generation for a given origin and output size. An unknown or
@@ -149,7 +157,7 @@ export function variationInstruction(generationCount: number): string {
 
 export async function generateFromConcept(
   supabase: Client, userId: string, workspaceId: string, conceptId: string,
-  opts?: { modelId?: string },
+  opts?: { modelId?: string; instruction?: string },
 ): Promise<ConceptGenerateOutput & { modelName?: string }> {
   // The concept row is readable by the member (title, refs, status) — the
   // GrovBase prompt within it is ciphertext until this exact point; a
@@ -213,10 +221,23 @@ export async function generateFromConcept(
     .filter((p): p is string => typeof p === "string" && p.length > 0);
   if (referencePaths.length === 0) return { ok: false, error: "references_required" };
 
+  // The customer's regeneration note travels as an appendix to the hidden
+  // prompt — their words never replace the engine's, and the product-lock
+  // contract is restated right next to them.
+  const instruction = String(opts?.instruction ?? "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+
   const isRetake = (concept.generation_count ?? 0) > 0;
-  const prompt = isRetake
-    ? `${basePrompt}\n\n${variationInstruction(concept.generation_count ?? 1)}`
-    : basePrompt;
+  const parts = [basePrompt];
+  if (isRetake && !instruction) parts.push(variationInstruction(concept.generation_count ?? 1));
+  if (instruction) {
+    parts.push(`Poprawki klienta do tego samego ujęcia (zastosuj je, ale nie zmieniaj samego produktu ani jego cech): ${instruction}`);
+  }
+  const prompt = parts.join("\n\n");
 
   // The size the seller picked in the toolbar, if this engine renders it.
   const resolution = (session.resolution && (model.supported_resolutions ?? []).includes(session.resolution)
