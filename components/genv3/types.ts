@@ -55,6 +55,7 @@ export type GalleryItem = {
   ratio: string | null;
   resolution: string | null;
   model: string | null;
+  modelId: string | null;
   product: string | null;
   sessionType: GallerySessionType | null;
   origin: "engine" | "custom" | null;

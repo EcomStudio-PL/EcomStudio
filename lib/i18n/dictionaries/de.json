@@ -2061,6 +2061,8 @@
     "regenDone": "Die neue Version erscheint in der Galerie mit der Markierung NEU.",
     "regenRunning": "Die vorherige Generierung dieser Aufnahme läuft noch.",
     "regenBusy": "Regeneriere…",
-    "regenCta": "Bild regenerieren"
+    "regenCta": "Bild regenerieren",
+    "capReached": "Es können höchstens {max} Bilder hinzugefügt werden.",
+    "regenModelGone": "Das zuvor verwendete Modell ist hier nicht verfügbar — wähle ein Modell aus der Liste unten."
   }
 }

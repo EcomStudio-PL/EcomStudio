@@ -41,25 +41,33 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
   }, [onClose, busy]);
 
   // Cost preview mirrors the server's originCost: base price at this image's
-  // resolution, plus the engine surcharge for managed generations. The
-  // default "same model" quote comes from the model that served this image.
+  // resolution, plus the engine surcharge for managed generations. The quote
+  // is keyed on the REAL model id that served this image — when that model is
+  // no longer offered here, no price is invented: the customer must pick one.
   const sameModel = useMemo(
-    () => models.find((m) => m.name === item.model) ?? models[0],
-    [models, item.model],
+    () => models.find((m) => m.id === item.modelId),
+    [models, item.modelId],
   );
-  const chosen = modelId ? models.find((m) => m.id === modelId) ?? sameModel : sameModel;
+  const chosen = modelId ? models.find((m) => m.id === modelId) : sameModel;
   const mode = item.origin === "engine" ? "managed" : "custom";
-  const res = chosen && item.resolution && chosen.resolutions.includes(item.resolution)
-    ? item.resolution : chosen?.resolutions[0] ?? "1K";
-  const cost = unitPrice(chosen, res, mode);
-  const notEnough = cost > balance;
+  const priceAt = (m: GenModel | undefined) => m
+    ? unitPrice(m, item.resolution && m.resolutions.includes(item.resolution) ? item.resolution : m.resolutions[0] ?? "1K", mode)
+    : 0;
+  const cost = priceAt(chosen);
+  const notEnough = !!chosen && cost > balance;
 
   // Only models that can carry the reference photos qualify for a switch —
   // regenerating without references would break product fidelity.
   const switchable = models.filter((m) => m.supportsRefs);
 
+  // Original model gone from this page's list → force an explicit switch.
+  useEffect(() => {
+    if (!sameModel && modelId === null) setModelId(switchable[0]?.id ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sameModel]);
+
   async function run() {
-    if (busy || notEnough) return;
+    if (busy || notEnough || !chosen) return;
     setBusy(true);
     try {
       const res = await fetch("/api/generations/regenerate", {
@@ -155,15 +163,21 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
             <div>
               <p className="mb-1.5 text-[13px] font-semibold tracking-tight">2. {t("genv3.regenModel")}</p>
               <div className="space-y-1.5">
-                <button type="button" aria-pressed={modelId === null} onClick={() => setModelId(null)}
-                  className={cn("flex w-full items-center gap-2.5 rounded-xl border p-2.5 text-left transition-colors duration-200",
-                    modelId === null ? "is-selected" : "border-line hover:bg-raised")}>
-                  <RefreshCw size={14} aria-hidden className="shrink-0 text-muted" />
-                  <span className="min-w-0 flex-1 text-[13px] font-semibold">{t("genv3.regenSameModel")}</span>
-                  <span className="shrink-0 text-[11.5px] font-bold tabular-nums text-accent">
-                    {t("genv3.perShotShort", { n: unitPrice(sameModel, sameModel && item.resolution && sameModel.resolutions.includes(item.resolution) ? item.resolution : sameModel?.resolutions[0] ?? "1K", mode) })}
-                  </span>
-                </button>
+                {sameModel ? (
+                  <button type="button" aria-pressed={modelId === null} onClick={() => setModelId(null)}
+                    className={cn("flex w-full items-center gap-2.5 rounded-xl border p-2.5 text-left transition-colors duration-200",
+                      modelId === null ? "is-selected" : "border-line hover:bg-raised")}>
+                    <RefreshCw size={14} aria-hidden className="shrink-0 text-muted" />
+                    <span className="min-w-0 flex-1 text-[13px] font-semibold">{t("genv3.regenSameModel")}</span>
+                    <span className="shrink-0 text-[11.5px] font-bold tabular-nums text-accent">
+                      {t("genv3.perShotShort", { n: priceAt(sameModel) })}
+                    </span>
+                  </button>
+                ) : (
+                  <p className="rounded-xl bg-raised px-3 py-2.5 text-[11.5px] leading-relaxed text-muted">
+                    {t("genv3.regenModelGone")}
+                  </p>
+                )}
                 {switchable.filter((m) => m.id !== sameModel?.id || modelId !== null).slice(0, 6).map((m, idx) => {
                   const on = modelId === m.id;
                   return (
@@ -176,7 +190,7 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
                         <ModelBadge model={m} />
                       </span>
                       <span className="shrink-0 text-[11.5px] font-bold tabular-nums text-accent">
-                        {t("genv3.perShotShort", { n: unitPrice(m, item.resolution && m.resolutions.includes(item.resolution) ? item.resolution : m.resolutions[0] ?? "1K", mode) })}
+                        {t("genv3.perShotShort", { n: priceAt(m) })}
                       </span>
                     </button>
                   );
@@ -192,12 +206,12 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
             className="rounded-xl px-4 py-2.5 text-[13px] font-semibold text-muted transition-colors hover:bg-raised">
             {t("common.cancel")}
           </button>
-          <button type="button" disabled={busy || notEnough} onClick={run}
+          <button type="button" disabled={busy || notEnough || !chosen} onClick={run}
             className={cn("cta flex h-11 items-center gap-2 rounded-xl px-5 text-[13.5px] font-semibold",
-              (busy || notEnough) && "cursor-not-allowed opacity-55")}>
+              (busy || notEnough || !chosen) && "cursor-not-allowed opacity-55")}>
             {busy ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <RefreshCw size={15} aria-hidden />}
             {busy ? t("genv3.regenBusy") : t("genv3.regenCta")}
-            {!busy && <span className="rounded-md bg-white/20 px-1.5 py-0.5 text-[12px] tabular-nums">◇ {n(cost)}</span>}
+            {!busy && !!chosen && <span className="rounded-md bg-white/20 px-1.5 py-0.5 text-[12px] tabular-nums">◇ {n(cost)}</span>}
           </button>
         </div>
       </div>

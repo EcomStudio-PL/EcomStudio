@@ -2624,6 +2624,10 @@ export type Database = {
         Args: { gen_id: string }
         Returns: string[]
       }
+      refund_usage_partial: {
+        Args: { p_event_id: string; p_amount: number }
+        Returns: string
+      }
       set_generation_note: {
         Args: { gen_id: string; note: string }
         Returns: undefined

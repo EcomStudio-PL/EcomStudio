@@ -52,10 +52,13 @@ export type GenerateInput = {
   /** Full credit price decided by the caller (base + surcharge). The server
    *  still verifies balance and reserves exactly this amount. */
   costOverride?: number;
+  /** Set by routes serving customer model choices: a model the admin hid
+   *  from the custom generator cannot be requested by id. */
+  requireCustomVisible?: boolean;
 };
 
 export type GenerateOutput =
-  | { ok: true; jobId: string; productId: string; images: { url: string; path: string }[] }
+  | { ok: true; jobId: string; productId: string; images: { url: string; path: string }[]; credits: number }
   | { ok: false; error: string; missingCredits?: number };
 
 const RATIOS = new Set(["1:1", "3:4", "4:5", "16:9", "9:16"]);
@@ -85,6 +88,9 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   const provider = (model as unknown as { ai_providers: { id: string; slug: string } } | null)?.ai_providers;
   const adapter = provider ? getAdapter(provider.slug) : undefined;
   if (!model || !provider || !adapter) return { ok: false, error: "model_unavailable" };
+  if (input.requireCustomVisible && (model as { visible_custom?: boolean }).visible_custom === false) {
+    return { ok: false, error: "model_unavailable" };
+  }
 
   // Definer RPC: RLS keeps the credentials table admin-only; this returns
   // ciphertext usable only with the server-side APP_ENCRYPTION_KEY.
@@ -272,6 +278,16 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       continue;
     }
 
+    // A fallback that cannot render the paid framing would deliver a
+    // mislabeled crop (a 3:4 session must not silently become 1:1).
+    const cAdapterRatios = cAdapter.capabilities.ratios ?? ["1:1", "4:5", "16:9", "9:16"];
+    const cModelRatios = (cModel.supported_aspect_ratios?.length ? cModel.supported_aspect_ratios : cAdapterRatios)
+      .filter((r) => (cAdapterRatios as string[]).includes(r));
+    if (candidateId !== input.modelId && !cModelRatios.includes(aspectRatio)) {
+      attempts.push({ provider: cProviderSlug, model: cModel.model_identifier, attempt: 0, error: "ratio_unsupported" });
+      continue;
+    }
+
     // Respect health cooldowns while an alternative remains.
     const isLastCandidate = candidateId === candidateIds[candidateIds.length - 1];
     if (providerBlocked(health, cProviderSlug) && !isLastCandidate) {
@@ -419,6 +435,20 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     return { ok: false, error: "storage_failed" };
   }
 
+  // PARTIAL DELIVERY: a batch that stored fewer images than were paid for
+  // hands the undelivered share back before the event closes. Definer RPC,
+  // once per event, never below zero — see 0041_partial_refund.sql.
+  const perImage = quantity > 0 ? Math.floor(cost / quantity) : 0;
+  const shortfall = quantity - stored.length;
+  let refunded = 0;
+  if (shortfall > 0 && perImage > 0) {
+    const { data: refundTx } = await supabase.rpc("refund_usage_partial", {
+      p_event_id: usage.eventId, p_amount: shortfall * perImage,
+    });
+    if (refundTx) refunded = shortfall * perImage;
+  }
+  const charged = cost - refunded;
+
   // REAL provider cost of this call: the admin-maintained per-image cost of
   // this exact model multiplied by the images the provider actually
   // delivered. Recorded on the event so admin margin reporting is built from
@@ -429,7 +459,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     providerRequestId: requestId,
   });
   await supabase.from("generation_jobs").update({
-    status: "completed", credits_charged: cost, latency_ms: Date.now() - startedAt,
+    status: "completed", credits_charged: charged, latency_ms: Date.now() - startedAt,
     request_id: requestId,
     completed_at: new Date().toISOString(),
   }).eq("id", job.id);
@@ -440,13 +470,13 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   await supabase.rpc("log_activity", {
     p_workspace_id: workspaceId, p_action: "generation.completed",
     p_entity_type: "generation_job", p_entity_id: job.id,
-    p_metadata: { model: model2.model_identifier, provider: served.providerSlug, count: stored.length, credits: cost, fallback_attempts: attempts.length },
+    p_metadata: { model: model2.model_identifier, provider: served.providerSlug, count: stored.length, credits: charged, fallback_attempts: attempts.length },
   });
 
   // Only entries that actually got a signed URL go back to the caller — an
   // asset whose signing failed still exists in the library and will sign on
   // the next page load.
-  return { ok: true, jobId: job.id, productId: productId!, images: stored.filter((s) => s.url) };
+  return { ok: true, jobId: job.id, productId: productId!, images: stored.filter((s) => s.url), credits: charged };
 }
 
 /** Resolve one fallback candidate: active model + active provider + adapter

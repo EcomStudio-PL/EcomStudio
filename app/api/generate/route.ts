@@ -21,9 +21,10 @@ export async function POST(request: Request) {
 
   // WHITELISTED input — this endpoint serves the customer's own prompt
   // ("Własny prompt"), so billing-relevant fields are never read from the
-  // body: no costOverride, no hidePromptText, no fallback chain, and the
-  // origin is pinned to "custom" (base price, prompt stored in clear on the
-  // job as the customer's own words).
+  // body: no costOverride, no hidePromptText, no fallback chain, no
+  // concept/session lineage (a custom job must never point at an engine
+  // concept), and the origin is pinned to "custom" (base price, prompt
+  // stored in clear on the job as the customer's own words).
   const result = await runGeneration(supabase, user.id, workspace.id, {
     modelId: String(body.modelId ?? ""),
     prompt: String(body.prompt ?? ""),
@@ -33,9 +34,8 @@ export async function POST(request: Request) {
     quantity: Number(body.quantity) || 1,
     productId: typeof body.productId === "string" ? body.productId : undefined,
     newProduct: body.newProduct,
-    promptId: typeof body.promptId === "string" ? body.promptId : undefined,
-    promptSessionId: typeof body.promptSessionId === "string" ? body.promptSessionId : undefined,
     promptOrigin: "custom",
+    requireCustomVisible: true,
     referencePaths: (body.referencePaths ?? []).filter((p) => typeof p === "string" && p.startsWith(`${workspace.id}/`)),
     referenceImageIds: (body.referenceImageIds ?? []).filter((x) => typeof x === "string"),
     inspirationPaths: (body.inspirationPaths ?? []).filter((p) => typeof p === "string" && p.startsWith(`${workspace.id}/`)).slice(0, 5),

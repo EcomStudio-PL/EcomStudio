@@ -53,7 +53,15 @@ export function ImageDetails({ items, index, onIndex, onClose, onRegenerate, onF
   // ESC + arrows; body scroll lock.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { if (fullscreen) setFullscreen(false); else onClose(); }
+      // Typing in the note (or any field) must never navigate away or close
+      // the modal mid-draft — Escape merely leaves the field.
+      const el = e.target as HTMLElement | null;
+      const editing = el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement || !!el?.isContentEditable;
+      if (e.key === "Escape") {
+        if (editing) { el?.blur(); return; }
+        if (fullscreen) setFullscreen(false); else onClose();
+      }
+      if (editing) return;
       if (e.key === "ArrowLeft" && index > 0) onIndex(index - 1);
       if (e.key === "ArrowRight" && index < items.length - 1) onIndex(index + 1);
     };
@@ -201,11 +209,13 @@ export function ImageDetails({ items, index, onIndex, onClose, onRegenerate, onF
                 <ChevronRight size={17} aria-hidden />
               </button>
             )}
+            {/* The layout box itself scales, so zoomed overflow starts at the
+                scroll origin and every edge stays reachable. */}
             <div className="h-full max-h-[64dvh] w-full overflow-auto lg:max-h-none">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={item.url} alt={item.product ?? ""}
-                style={{ transform: `scale(${zoom / 100})`, transformOrigin: "center center" }}
-                className="mx-auto h-full w-full object-contain transition-transform duration-200" />
+              <div className="mx-auto" style={{ width: `${zoom}%`, height: `${zoom}%`, minWidth: "100%", minHeight: "100%" }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={item.url} alt={item.product ?? ""} className="h-full w-full object-contain" />
+              </div>
             </div>
             <div className="absolute bottom-2.5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/55 px-1.5 py-1 backdrop-blur">
               <button type="button" aria-label={t("genv3.zoomOut")} disabled={zoom <= 50}

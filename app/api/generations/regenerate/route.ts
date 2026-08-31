@@ -55,8 +55,9 @@ export async function POST(request: Request) {
   if (!gen || !job) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
 
   // ENGINE CONCEPT — the hidden-prompt path handles pricing (surcharge),
-  // references, variation and the customer's correction.
-  if (job.prompt_id) {
+  // references, variation and the customer's correction. A custom-origin job
+  // always re-runs its own stored prompt, even if it carries a prompt link.
+  if (job.prompt_id && job.prompt_origin !== "custom") {
     const result = await generateFromConcept(supabase, user.id, workspace.id, job.prompt_id, {
       modelId, instruction: instruction || undefined,
     });
@@ -71,6 +72,17 @@ export async function POST(request: Request) {
   // correction appended; references come from the product's current photos.
   const basePrompt = job.prompt_text?.trim();
   if (!basePrompt) return NextResponse.json({ ok: false, error: "not_supported" }, { status: 400 });
+
+  // One live regeneration per source job: a network replay or second tab
+  // must not buy a second image (mirrors the concept path's guard, keyed on
+  // the lineage this branch itself writes).
+  const { data: live } = await supabase
+    .from("generation_jobs").select("id")
+    .eq("workspace_id", workspace.id).eq("parent_job_id", job.id)
+    .in("status", ["queued", "processing"])
+    .gte("created_at", new Date(Date.now() - 5 * 60_000).toISOString())
+    .limit(1).maybeSingle();
+  if (live) return NextResponse.json({ ok: false, error: "already_running" }, { status: 409 });
 
   let referencePaths: string[] = [];
   if (gen.product_id) {
@@ -90,6 +102,9 @@ export async function POST(request: Request) {
 
   const result = await runGeneration(supabase, user.id, workspace.id, {
     modelId: modelId ?? job.model_id ?? "",
+    // Only a client-chosen model must pass the custom-visibility gate; the
+    // job's own original model keeps working even if later hidden.
+    requireCustomVisible: !!modelId,
     prompt,
     aspectRatio: (job.aspect_ratio || "1:1") as AspectRatio,
     resolution: (job.resolution ?? undefined) as Resolution | undefined,

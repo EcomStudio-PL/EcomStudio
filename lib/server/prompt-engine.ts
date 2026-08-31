@@ -71,9 +71,12 @@ export function normalizeResolution(raw: unknown): string | null {
 
 export const MIN_SHOTS = 1;
 export const MAX_SHOTS = 10;
+/** The batch size a request gets when it names none — NOT the minimum:
+ *  one shot is a deliberate choice, five is the sensible session. */
+const DEFAULT_SHOTS = 5;
 export function clampShots(raw: unknown): number {
   const n = typeof raw === "number" ? Math.trunc(raw) : Number(raw);
-  return Number.isFinite(n) ? Math.min(MAX_SHOTS, Math.max(MIN_SHOTS, n)) : MIN_SHOTS;
+  return Number.isFinite(n) ? Math.min(MAX_SHOTS, Math.max(MIN_SHOTS, n)) : DEFAULT_SHOTS;
 }
 
 const CUSTOMER_LANGUAGE: Record<string, string> = { pl: "Polish", en: "English", de: "German" };
@@ -282,11 +285,20 @@ export async function runPromptSession(
   });
   const briefedCount = briefs.filter((b) => b.text.length >= 3).length;
 
-  // Session flavour + briefs change what gets planned, so they are part of
-  // the replay/retry fingerprint — a different brief is a different session.
+  // Everything that changes WHAT gets planned or rendered is part of the
+  // replay/retry fingerprint: flavour, briefs, shot count, framing, size and
+  // style. A true network replay (identical body) still dedupes; a request
+  // that differs in any output parameter is its own session.
   const referenceHash = hashAnalysisInput(
     input.referencePaths.slice(0, MAX_REFS), input.productName, input.description ?? null,
-    JSON.stringify({ st: sessionType, b: briefs.filter((b) => b.text || b.keepFraming) }),
+    JSON.stringify({
+      st: sessionType,
+      b: briefs.filter((b) => b.text || b.keepFraming),
+      n: shotsOrdered,
+      ar: input.aspectRatio,
+      rs: normalizeResolution(input.resolution),
+      sty: input.style?.trim() || null,
+    }),
   );
 
   // A NETWORK REPLAY MUST NOT START A SECOND PIPELINE. A preparation can
@@ -470,7 +482,9 @@ export async function runPromptSession(
     // scene description verbatim (sanitized), the chosen reference leads,
     // and "Zachowaj kadr referencyjny" pins the reference composition. The
     // master template and fidelity block still wrap it — briefs steer the
-    // scene, never the Product Lock.
+    // scene, never the Product Lock. The session directive joins the HIDDEN
+    // prompt only; the customer-facing card copy stays their own words.
+    const briefCustomerText = new Map<number, string>();
     const briefScene = (b: { text: string; keepFraming: boolean; refIndex: number | null }, i: number): PlannedScene => {
       const lead = b.refIndex ?? 1;
       const refIdx = [...new Set([lead, 1, 2])].filter((n) => n >= 1 && n <= images.length).slice(0, 3);
@@ -484,6 +498,7 @@ export async function runPromptSession(
       // gets a neutral engine tail instead of being silently replaced.
       if (description.length < 24) description += " Zadbana, realistyczna sceneria dopasowana do produktu.";
       const title = b.text.length > 44 ? `${b.text.slice(0, 44).trimEnd()}…` : (b.text || `Ujęcie ${i + 1}`);
+      briefCustomerText.set(i, [b.text, b.keepFraming ? KEEP_FRAMING_DIRECTIVE : null].filter(Boolean).join(" ") || title);
       return {
         title, scene_description: description, human_presence: humans,
         reference_indices: refIdx.length > 0 ? refIdx : [1],
@@ -536,7 +551,9 @@ export async function runPromptSession(
         product_id: productId!, workspace_id: workspaceId, session_id: session.id,
         concept_name: scene.title, shot_type: "scene", scene_type: null,
         customer_title: scene.title,
-        customer_description: scene.scene_description,
+        // Briefed shots show the customer their own words — the engine's
+        // internal session directive lives only inside the ciphertext.
+        customer_description: briefCustomerText.get(idx) ?? scene.scene_description,
         prompt_text: "", negative_prompt: null,
         prompt_encrypted: sealed.ciphertext, prompt_iv: sealed.iv, prompt_tag: sealed.authTag,
         primary_reference: scene.reference_indices[0] ?? 1,

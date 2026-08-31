@@ -2061,6 +2061,8 @@
     "regenDone": "The new version will appear in the gallery marked NEW.",
     "regenRunning": "The previous generation of this shot is still running.",
     "regenBusy": "Regenerating…",
-    "regenCta": "Regenerate image"
+    "regenCta": "Regenerate image",
+    "capReached": "You can add at most {max} images.",
+    "regenModelGone": "The previously used model is not available here — pick a model from the list below."
   }
 }

@@ -2061,6 +2061,8 @@
     "regenDone": "Nowa wersja pojawi się w galerii z oznaczeniem NOWE.",
     "regenRunning": "Poprzednia generacja tego ujęcia jeszcze trwa.",
     "regenBusy": "Regeneruję…",
-    "regenCta": "Regeneruj obraz"
+    "regenCta": "Regeneruj obraz",
+    "capReached": "Można dodać maksymalnie {max} zdjęć.",
+    "regenModelGone": "Model użyty poprzednio nie jest tu dostępny — wybierz model z listy poniżej."
   }
 }

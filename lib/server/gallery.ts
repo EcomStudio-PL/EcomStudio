@@ -28,6 +28,8 @@ export type GalleryItem = {
   resolution: string | null;
   /** Customer-facing model display name. */
   model: string | null;
+  /** Model id, so quotes (e.g. regeneration) price the REAL model. */
+  modelId: string | null;
   product: string | null;
   sessionType: GallerySessionType | null;
   origin: "engine" | "custom" | null;
@@ -56,7 +58,7 @@ const SELECT_BASE = `
   products(name),
   generation_assets(id, storage_path, width, height, metadata),
   generation_jobs!inner(
-    aspect_ratio, resolution, prompt_origin, prompt_text, prompt_id, status,
+    aspect_ratio, resolution, prompt_origin, prompt_text, prompt_id, status, model_id,
     ai_models(display_name, name),
     prompt_sessions(session_type),
     generated_prompts!generation_jobs_prompt_id_fkey(customer_description)
@@ -80,6 +82,7 @@ type Row = {
     prompt_text: string | null;
     prompt_id: string | null;
     status: string;
+    model_id: string | null;
     ai_models: { display_name: string | null; name: string } | null;
     prompt_sessions: { session_type: string | null } | null;
     generated_prompts: { customer_description: string | null } | null;
@@ -111,6 +114,9 @@ export async function listGalleryItems(
   let rows = data as unknown as Row[];
   const hasMore = rows.length > limit;
   rows = rows.slice(0, limit);
+  // The cursor must advance through the FULL fetched window — deriving it
+  // from the q-filtered subset would stall pagination on a sparse match.
+  const pageEnd = rows.length > 0 ? rows[rows.length - 1].created_at : null;
 
   // Product-name search is applied to the fetched window (names are not
   // indexed for ilike through the embed) — the client widens by paging.
@@ -163,6 +169,7 @@ export async function listGalleryItems(
         ratio: job?.aspect_ratio ?? null,
         resolution: job?.resolution ?? null,
         model,
+        modelId: job?.model_id ?? null,
         product: r.products?.name ?? null,
         sessionType: st === "advertising" || st === "lifestyle" ? st : null,
         origin,
@@ -176,6 +183,6 @@ export async function listGalleryItems(
 
   return {
     items,
-    nextCursor: hasMore && rows.length > 0 ? rows[rows.length - 1].created_at : null,
+    nextCursor: hasMore ? pageEnd : null,
   };
 }

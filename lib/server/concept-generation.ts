@@ -211,6 +211,13 @@ export async function generateFromConcept(
   const requestedId = opts?.modelId ?? concept.model_id ?? null;
   const explicit = requestedId ? chain.find((m) => m.id === requestedId) : undefined;
   if (requestedId && !explicit) return { ok: false, error: "model_unavailable" };
+  // Admin visibility is enforced, not just hidden: a model switched off for
+  // the managed generator cannot be requested by id from the client. (Stored
+  // card overrides and the fallback chain keep working — hiding a model must
+  // not strand concepts that already point at it.)
+  if (opts?.modelId && explicit && (explicit as { visible_managed?: boolean }).visible_managed === false) {
+    return { ok: false, error: "model_unavailable" };
+  }
   const model = explicit ?? chain[0];
 
   // The exact reference set the planner routed to this concept, in its order

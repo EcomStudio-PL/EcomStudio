@@ -132,12 +132,19 @@ export function GeneratorWorkspace({
 
   // ── Uploads (browser → private bucket; only paths travel to the API) ───
   async function upload(files: FileList, target: "refs" | "insp") {
-    setUploading(true);
     const supabase = createClient();
     const folder = target === "insp" ? inspFolder.current : (productId || adhocFolder.current);
     const setter = target === "insp" ? setInsp : setRefs;
     const cap = target === "insp" ? 5 : 8;
-    for (const file of Array.from(files)) {
+    // Room is checked BEFORE anything uploads — an over-cap file must not
+    // land in storage only to be silently dropped from the state.
+    const existing = target === "insp" ? insp.length : refs.length;
+    const room = Math.max(0, cap - existing);
+    const list = Array.from(files);
+    if (list.length > room) toast.error(t("genv3.capReached", { max: cap }));
+    if (room === 0) return;
+    setUploading(true);
+    for (const file of list.slice(0, room)) {
       if (!["image/jpeg", "image/png", "image/webp", "image/avif"].includes(file.type)) { toast.error(t("products.invalidType")); continue; }
       if (file.size > 10 * 1024 * 1024) { toast.error(t("products.tooLarge")); continue; }
       const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
@@ -186,9 +193,12 @@ export function GeneratorWorkspace({
           resolution: effResolution,
           shots: effCount,
           sessionType,
-          shotBriefs: briefs.slice(0, effCount).map((b) => ({
+          // refIndex ties each row to the photo its thumbnail shows; rows
+          // beyond the uploaded set fall back to the primary server-side.
+          shotBriefs: briefs.slice(0, effCount).map((b, i) => ({
             text: b?.text?.trim() || undefined,
             keepFraming: !!b?.keepFraming && !!b?.text?.trim(),
+            refIndex: i < refs.length ? i + 1 : undefined,
           })),
           referencePaths: refs.map((r) => r.path).slice(0, 8),
         }),
@@ -407,6 +417,7 @@ export function GeneratorWorkspace({
         initialItems={initialItems}
         initialCursor={initialCursor}
         freshItems={freshItems}
+        onFresh={setFreshItems}
         pendingCount={pendingCount}
         pendingRatio={effRatio}
         models={models}

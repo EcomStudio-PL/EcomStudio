@@ -24,12 +24,13 @@ type Filter = { session: GallerySessionType | "all"; fav: boolean; q: string; or
  * that exist: open, regenerate, download, favourite, delete.
  */
 export function GenerationGallery({
-  initialItems, initialCursor, freshItems, pendingCount, pendingRatio,
+  initialItems, initialCursor, freshItems, onFresh, pendingCount, pendingRatio,
   models, balance, onBalance, onAbsorb,
 }: {
   initialItems: GalleryItem[];
   initialCursor: string | null;
   freshItems: GalleryItem[];
+  onFresh: (fn: (prev: GalleryItem[]) => GalleryItem[]) => void;
   pendingCount: number;
   pendingRatio: string;
   models: GenModel[];
@@ -44,7 +45,7 @@ export function GenerationGallery({
   const [cursor, setCursor] = useState<string | null>(initialCursor);
   const [loading, setLoading] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [detailsIdx, setDetailsIdx] = useState<number | null>(null);
+  const [detailsId, setDetailsId] = useState<string | null>(null);
   const [regenItem, setRegenItem] = useState<GalleryItem | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -101,6 +102,9 @@ export function GenerationGallery({
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => void refetch(next), 320);
     } else {
+      // A pending search debounce would replay a STALE filter over this
+      // immediate fetch — cancel it; `next` already carries the typed text.
+      if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
       void refetch(next);
     }
   }
@@ -124,14 +128,18 @@ export function GenerationGallery({
       && (!filter.q.trim() || [i.product, i.model, i.prompt].some((v) => v?.toLowerCase().includes(filter.q.trim().toLowerCase())));
     const seen = new Set<string>();
     const out: GalleryItem[] = [];
-    const source = filter.order === "asc" ? [...items] : [...freshItems.filter(matches), ...items];
+    // Oldest-first: fresh items belong at the TAIL, and only once every
+    // older page is loaded — otherwise they would appear mid-history.
+    const source = filter.order === "asc"
+      ? (cursor ? [...items] : [...items, ...freshItems.filter(matches)])
+      : [...freshItems.filter(matches), ...items];
     for (const i of source) {
       if (seen.has(i.assetId)) continue;
       seen.add(i.assetId);
       if (filter.order === "asc" || matches(i) || items.includes(i)) out.push(i);
     }
     return out;
-  }, [items, freshItems, filter]);
+  }, [items, freshItems, filter, cursor]);
 
   // ── Card actions ───────────────────────────────────────────────────────
   async function toggleFavorite(item: GalleryItem) {
@@ -144,8 +152,7 @@ export function GenerationGallery({
   function mutate(generationId: string, patch: Partial<GalleryItem>) {
     const map = (arr: GalleryItem[]) => arr.map((i) => i.generationId === generationId ? { ...i, ...patch } : i);
     setItems(map);
-    // freshItems live in the parent; favorite/note changes there are cosmetic
-    // and refresh on the next page load — the details modal patches locally.
+    onFresh(map);
   }
 
   async function remove(item: GalleryItem) {
@@ -156,8 +163,10 @@ export function GenerationGallery({
     });
     const json = await res.json() as { ok: boolean };
     if (json.ok) {
-      setItems((prev) => prev.filter((i) => i.generationId !== item.generationId));
-      setDetailsIdx(null);
+      const drop = (prev: GalleryItem[]) => prev.filter((i) => i.generationId !== item.generationId);
+      setItems(drop);
+      onFresh(drop);
+      setDetailsId(null);
       toast.success(t("genv3.deleted"));
     } else {
       toast.error(t("common.error"));
@@ -177,7 +186,7 @@ export function GenerationGallery({
   const skeletonRatio = pendingRatio.includes(":") ? pendingRatio.replace(":", "/") : "1/1";
 
   return (
-    <div className="min-w-0" onClick={() => menuFor && setMenuFor(null)}>
+    <div className="min-w-0">
       <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2">
         <h2 className="font-display text-lg font-semibold tracking-tight">{t("genv3.galleryTitle")}</h2>
         <div className="flex min-w-0 items-center gap-1.5">
@@ -264,7 +273,7 @@ export function GenerationGallery({
               item={item}
               menuOpen={menuFor === item.assetId}
               onMenu={(open) => setMenuFor(open ? item.assetId : null)}
-              onOpen={() => setDetailsIdx(idx)}
+              onOpen={() => setDetailsId(item.assetId)}
               onRegenerate={() => setRegenItem(item)}
               onDownload={() => download(item)}
               onFavorite={() => toggleFavorite(item)}
@@ -275,7 +284,7 @@ export function GenerationGallery({
       ) : (
         <div className="space-y-2">
           {merged.map((item, idx) => (
-            <button key={item.assetId} type="button" onClick={() => setDetailsIdx(idx)}
+            <button key={item.assetId} type="button" onClick={() => setDetailsId(item.assetId)}
               className="flex w-full items-center gap-3 rounded-xl border border-line bg-surface/60 p-2 text-left transition-colors hover:bg-raised">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={item.thumbUrl} alt="" loading="lazy" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
@@ -304,18 +313,21 @@ export function GenerationGallery({
         </p>
       )}
 
-      {detailsIdx !== null && merged[detailsIdx] && (
+      {(() => {
+        const detailsIdx = detailsId ? merged.findIndex((i) => i.assetId === detailsId) : -1;
+        return detailsIdx >= 0 ? (
         <ImageDetails
           items={merged}
           index={detailsIdx}
-          onIndex={setDetailsIdx}
-          onClose={() => setDetailsIdx(null)}
-          onRegenerate={(item) => { setDetailsIdx(null); setRegenItem(item); }}
+          onIndex={(i) => merged[i] && setDetailsId(merged[i].assetId)}
+          onClose={() => setDetailsId(null)}
+          onRegenerate={(item) => { setDetailsId(null); setRegenItem(item); }}
           onFavorite={toggleFavorite}
           onDelete={remove}
           onNote={(item, note) => mutate(item.generationId, { note })}
         />
-      )}
+        ) : null;
+      })()}
 
       {regenItem && (
         <RegenerateModal
@@ -349,6 +361,17 @@ function GalleryCard({ item, menuOpen, onMenu, onOpen, onRegenerate, onDownload,
   onDelete: () => void;
 }) {
   const { t } = useI18n();
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Close on any press outside the menu — scrolling past a card with an
+  // open menu must not leave it floating.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onMenu(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [menuOpen, onMenu]);
   return (
     <div className="group relative overflow-hidden rounded-xl bg-sunken ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]">
       <button type="button" onClick={onOpen} aria-label={t("genv3.openImage")} className="block w-full">
@@ -373,7 +396,7 @@ function GalleryCard({ item, menuOpen, onMenu, onOpen, onRegenerate, onDownload,
           className="flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-black/75">
           <RefreshCw size={13} aria-hidden />
         </button>
-        <div className="relative">
+        <div className="relative" ref={menuRef}>
           <button type="button" aria-label={t("common.actions")} aria-expanded={menuOpen}
             onClick={(e) => { e.stopPropagation(); onMenu(!menuOpen); }}
             className="flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-black/75">
