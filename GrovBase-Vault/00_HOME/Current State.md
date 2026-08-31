@@ -4,15 +4,15 @@ Last updated: 2026-08-31
 
 | Item | Value |
 |---|---|
-| Production version | v1.1 (auth system final upgrade) |
-| Production commit | `977c43b` (deployment dpl_FBseKnBagd6fy2aC3JCJ8arnN1cg) |
+| Production version | v1.2 (Generator V3) |
+| Production commit | `5d54d28` (deployment dpl_5pQhrPcrvyorMVWLrpFYiYrA66MC) |
 | Rollback reference | branch `rollback/prod-2026-08-28` → `42425ed` |
 | Production URL | https://ecomstudio-prod.vercel.app |
 | Vercel project | ecomstudio-prod (legacy name, kept — internal id) |
 | Supabase PROD | project ref `orjkxijqpecnbzhxhfct` |
 | Supabase DEV | project ref `ezyhwkcrrysanbcbkzsq` |
 | Repo | github.com/EcomStudio-PL/EcomStudio, branch `main` (mirror of `claude/ecomstudio-extract-push-f8ceir`) |
-| DB migrations applied | 0001 – 0039 (+ welcome-credits follow-up to 0039) |
+| DB migrations applied | 0001 – 0041 (+ welcome-credits follow-up to 0039) |
 
 ## Active major features
 Auth (Supabase, native form POST) · workspace multi-tenancy · products +
