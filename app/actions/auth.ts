@@ -146,6 +146,12 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
     // returns a success-shaped response for it, and we show the same
     // "check your inbox" screen either way.
     if (/password/i.test(error.message)) return { ok: false, errors: { password: "pw_length" }, values };
+    // GoTrue validates deliverability beyond our format regex (it rejects
+    // reserved TLDs like .test and known-bad domains) — that belongs on the
+    // email field, not on a generic "server unreachable" banner.
+    if (error.code === "email_address_invalid" || /email.+invalid/i.test(error.message)) {
+      return { ok: false, errors: { email: "email" }, values };
+    }
     return { ok: false, errors: { form: "network" }, values };
   }
 
