@@ -202,7 +202,8 @@
     "err_pw_digit": "The password must contain at least one digit.",
     "err_network": "Could not reach the server. Please try again.",
     "err_no_session": "The password-reset session expired. Request a new link.",
-    "err_same_password": "The new password must differ from the old one."
+    "err_same_password": "The new password must differ from the old one.",
+    "err_rate_limited": "Too many attempts. Please wait a moment and try again."
   },
   "dashboard": {
     "welcome": "Hi, {name}! 👋",

@@ -202,7 +202,8 @@
     "err_pw_digit": "Hasło musi zawierać przynajmniej jedną cyfrę.",
     "err_network": "Nie udało się połączyć z serwerem. Spróbuj ponownie.",
     "err_no_session": "Sesja zmiany hasła wygasła. Poproś o nowy link.",
-    "err_same_password": "Nowe hasło musi różnić się od poprzedniego."
+    "err_same_password": "Nowe hasło musi różnić się od poprzedniego.",
+    "err_rate_limited": "Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie."
   },
   "dashboard": {
     "welcome": "Cześć, {name}! 👋",

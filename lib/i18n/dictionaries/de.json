@@ -202,7 +202,8 @@
     "err_pw_digit": "Das Passwort muss mindestens eine Ziffer enthalten.",
     "err_network": "Verbindung zum Server fehlgeschlagen. Bitte erneut versuchen.",
     "err_no_session": "Die Sitzung ist abgelaufen. Fordere einen neuen Link an.",
-    "err_same_password": "Das neue Passwort muss sich vom alten unterscheiden."
+    "err_same_password": "Das neue Passwort muss sich vom alten unterscheiden.",
+    "err_rate_limited": "Zu viele Versuche. Bitte warte einen Moment und versuche es erneut."
   },
   "dashboard": {
     "welcome": "Hallo, {name}! 👋",

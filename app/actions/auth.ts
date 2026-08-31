@@ -152,6 +152,12 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
     if (error.code === "email_address_invalid" || /email.+invalid/i.test(error.message)) {
       return { ok: false, errors: { email: "email" }, values };
     }
+    // Confirmation e-mails are quota-limited (Supabase built-in mailer:
+    // ~2/hour until custom SMTP is configured). "Try again shortly" is the
+    // truth here, not "server unreachable".
+    if (error.status === 429 || error.code === "over_email_send_rate_limit") {
+      return { ok: false, errors: { form: "rate_limited" }, values };
+    }
     return { ok: false, errors: { form: "network" }, values };
   }
 
