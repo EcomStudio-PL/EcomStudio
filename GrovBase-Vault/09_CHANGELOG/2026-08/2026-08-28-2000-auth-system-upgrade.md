@@ -13,10 +13,12 @@ Minimal login/register (name+email+password), always-persistent cookies,
 raw error strings, no consents, no company data, no resend flow.
 
 ## Implementation
-- Remember-me is REAL: authCookieOptions(persist) drops maxAge for
-  session logins; the choice travels as the ecs_persist marker cookie and
-  is honored by ALL THREE auth-cookie writers (sign-in route, middleware
-  refresh, browser-client refresh). Marker absent → persistent (existing
+- Remember-me is REAL: @supabase/ssr force-reapplies its default maxAge
+  over cookieOptions, so session-only cookies are enforced at the WRITE
+  points via stripPersistence(); the choice travels as the ecs_persist
+  marker cookie and is honored by ALL FIVE auth-cookie writers (sign-in
+  route, callback route, middleware refresh, server-client refresh,
+  browser-client refresh). Marker absent → persistent (existing
   behavior). Sign-out clears the marker.
 - Registration: shared client/server validation (lib/auth-validation.ts —
   password rules, Polish NIP checksum, acquisition enum); profile data
@@ -66,12 +68,31 @@ typecheck PASS, production build PASS; adversarial review workflow (4
 dimensions + verification) and live production E2E — see task report.
 
 ## Git / Deployment / Rollback
-Commit-after, deployment id and rollback (previous Vercel deployment;
-migration 0039 is additive/backward-safe — old code runs against it) are
-recorded in the task report and Releases.
+Commits: 562b1a5 (auth system) + 76a6c4d (map GoTrue email_address_invalid
+to the email field instead of the generic banner). Production deployment:
+dpl_EKrSToLeWcJSYgtaoPqXjxYvrLLe → https://ecomstudio-prod.vercel.app.
+Rollback: previous Vercel deployment; migration 0039 (+ welcome-credits
+follow-up) is additive/backward-safe — old code runs against it.
 
 ## Result
-(recorded after deploy — see report)
+Verified live on production (2026-08-31):
+- Login PASS (wrong password → friendly error; unconfirmed → resend flow).
+- Remember-me PASS both ways: ON → persistent sb-* cookies, marker "1";
+  OFF → browser-session cookies (expires −1) + marker "0", preserved
+  through a middleware-refresh reload.
+- Registration PASS (company account): user created, all 16 profile
+  fields + consent timestamps correct, welcome credits granted via
+  get_welcome_credits() (25), role=user, confirmation gating ON →
+  "Sprawdź swoją skrzynkę" + working resend. QA user removed afterwards.
+- Diagnosis note: GoTrue's e-mail validation rejects reserved TLDs
+  (.test) with email_address_invalid — now mapped to the e-mail field
+  error (76a6c4d). Test addresses must use a real-MX domain.
+- Forgot password → generic non-enumerating message PASS; /reset-password
+  without recovery session → expired-link card PASS.
+- Existing users preserved: 2 auth users, 1 admin, profiles consistent;
+  e2e test account re-blocked after QA.
+- OAuth google/apple: NOT enabled in Supabase (probed) — buttons hidden;
+  configuration is an owner action (see Follow-up).
 
 ## Follow-up
 Owner: enable Google/Apple in Supabase + set NEXT_PUBLIC_AUTH_PROVIDERS;

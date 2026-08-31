@@ -1,18 +1,18 @@
 # Current State
 
-Last updated: 2026-08-28
+Last updated: 2026-08-31
 
 | Item | Value |
 |---|---|
-| Production version | v1.0 (GrovBase rebrand release) |
-| Production commit | `42425ed` (runtime) / repo HEAD adds docs + sharp bump |
+| Production version | v1.1 (auth system final upgrade) |
+| Production commit | `76a6c4d` (deployment dpl_EKrSToLeWcJSYgtaoPqXjxYvrLLe) |
 | Rollback reference | branch `rollback/prod-2026-08-28` → `42425ed` |
 | Production URL | https://ecomstudio-prod.vercel.app |
 | Vercel project | ecomstudio-prod (legacy name, kept — internal id) |
 | Supabase PROD | project ref `orjkxijqpecnbzhxhfct` |
 | Supabase DEV | project ref `ezyhwkcrrysanbcbkzsq` |
 | Repo | github.com/EcomStudio-PL/EcomStudio, branch `main` (mirror of `claude/ecomstudio-extract-push-f8ceir`) |
-| DB migrations applied | 0001 – 0038 |
+| DB migrations applied | 0001 – 0039 (+ welcome-credits follow-up to 0039) |
 
 ## Active major features
 Auth (Supabase, native form POST) · workspace multi-tenancy · products +
@@ -22,9 +22,16 @@ image tools (8) · library/favorites · plans page · admin panel (CRM, models,
 providers, credentials, CMS, economics) · PWA · i18n PL/EN/DE · dark/light.
 
 ## Authentication status
-STABLE. Two historical root causes fixed and regression-tested: cookie
-attributes lost on auth redirects (2026-08-27) and PGRST303 JWT clock-skew
-after sign-in (2026-08-27). See [[02_ARCHITECTURE/Authentication]].
+STABLE, upgraded 2026-08-31: real remember-me (session vs persistent
+cookies via ecs_persist marker at all five cookie-write points), rich
+registration (phone, acquisition source, company + NIP checksum, consent
+timestamps, welcome credits), e-mail verification flow with rate-limited
+resend, non-enumerating password reset, OAuth PKCE scaffold (buttons
+hidden until google/apple are enabled in Supabase). Verified live —
+see the 2026-08-28 auth changelog entry. Historical root causes fixed
+earlier: cookie attributes lost on auth redirects (2026-08-27) and
+PGRST303 JWT clock-skew after sign-in (2026-08-27).
+See [[02_ARCHITECTURE/Authentication]].
 
 ## Active AI providers
 Configured via admin panel + encrypted credentials in DB. Adapters exist for
