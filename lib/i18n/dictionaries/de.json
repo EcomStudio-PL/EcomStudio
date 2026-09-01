@@ -500,7 +500,11 @@
       "deleteExampleConfirm": "Dieses Beispiel löschen?",
       "rulesSub": "Regeln, die die Engine bei jeder Szenenplanung anwendet (Stil, Qualität, Verbote). Regelinhalte erreichen die Engine nur als Chiffrat.",
       "addRule": "Regel hinzufügen",
-      "ruleType": { "style": "Stil", "quality": "Qualität", "avoid": "Vermeiden" },
+      "ruleType": {
+        "style": "Stil",
+        "quality": "Qualität",
+        "avoid": "Vermeiden"
+      },
       "ruleName": "Regelname",
       "ruleTypeLabel": "Typ",
       "priority": "Priorität",
@@ -2038,7 +2042,7 @@
     "perShotShort": "{n} Kr. / Aufnahme",
     "briefs": "Aufnahmebeschreibungen",
     "briefsHint": "Beschreibe ausgewählte Aufnahmen mit eigenen Worten — den Rest entwirft GrovBase.",
-    "briefPh": "Aufnahme beschreiben oder leer lassen",
+    "briefPh": "Aufnahme beschreiben…",
     "briefAria": "Beschreibung der Aufnahme {n}",
     "keepFraming": "Referenzbildausschnitt beibehalten",
     "keepFramingHint": "Behält Bildausschnitt und Komposition des Referenzfotos — nur die Szenerie ändert sich.",
@@ -2168,6 +2172,15 @@
     "toolColorAria": "Markierungsfarbe",
     "toolCustomColor": "Eigene Farbe",
     "regenToolsNote": "Nutze die Werkzeuge oben, um die zu ändernden Bereiche zu markieren. Du kannst zeichnen, auswählen, löschen oder Elemente verschieben.",
-    "regenMarkFailed": "Markierungen konnten nicht angehängt werden — bitte erneut versuchen."
+    "regenMarkFailed": "Markierungen konnten nicht angehängt werden — bitte erneut versuchen.",
+    "dropHere": "Hier ablegen",
+    "uploadWays": "Dateien hineinziehen, einfügen (Strg/Cmd+V) oder klicken.",
+    "pickReference": "Referenzfoto wählen",
+    "pickReferenceAria": "Referenz für Aufnahme {n} wählen",
+    "pickReferenceEmpty": "Zuerst Produktfotos hinzufügen",
+    "noReference": "Ohne Referenz",
+    "keepFramingNeedsRef": "Wähle zuerst ein Referenzfoto für diese Aufnahme.",
+    "generateN": "{n} Bilder generieren",
+    "keepFramingShort": "Bildaus."
   }
 }

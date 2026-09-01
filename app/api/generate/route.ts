@@ -32,8 +32,10 @@ export async function POST(request: Request) {
     aspectRatio: body.aspectRatio,
     resolution: body.resolution,
     quantity: Number(body.quantity) || 1,
-    productId: typeof body.productId === "string" ? body.productId : undefined,
-    newProduct: body.newProduct,
+    // The generator no longer creates or requires a product: only free-text
+    // context travels, and `newProduct` is deliberately NOT read from the
+    // body so this endpoint can never write to the catalogue.
+    productDescription: typeof body.productDescription === "string" ? body.productDescription.slice(0, 2000) : undefined,
     promptOrigin: "custom",
     requireCustomVisible: true,
     referencePaths: (body.referencePaths ?? []).filter((p) => typeof p === "string" && p.startsWith(`${workspace.id}/`)),

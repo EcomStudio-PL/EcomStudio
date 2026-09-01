@@ -500,7 +500,11 @@
       "deleteExampleConfirm": "Delete this example?",
       "rulesSub": "Rules the engine applies to every scene plan (style, quality, avoid). Rule content reaches the engine only as ciphertext.",
       "addRule": "Add rule",
-      "ruleType": { "style": "Style", "quality": "Quality", "avoid": "Avoid" },
+      "ruleType": {
+        "style": "Style",
+        "quality": "Quality",
+        "avoid": "Avoid"
+      },
       "ruleName": "Rule name",
       "ruleTypeLabel": "Type",
       "priority": "Priority",
@@ -2038,7 +2042,7 @@
     "perShotShort": "{n} cr. / shot",
     "briefs": "Shot descriptions",
     "briefsHint": "Describe selected shots in your own words — GrovBase designs the rest.",
-    "briefPh": "Describe the shot or leave empty",
+    "briefPh": "Describe the shot…",
     "briefAria": "Shot description {n}",
     "keepFraming": "Keep reference framing",
     "keepFramingHint": "Keeps the reference photo's framing and composition — only the scenery changes.",
@@ -2168,6 +2172,15 @@
     "toolColorAria": "Marking color",
     "toolCustomColor": "Custom color",
     "regenToolsNote": "Use the tools above to mark the areas to change. You can draw, select, erase or move elements on the image.",
-    "regenMarkFailed": "Could not attach your markings — please try again."
+    "regenMarkFailed": "Could not attach your markings — please try again.",
+    "dropHere": "Drop here",
+    "uploadWays": "Drag files in, paste (Ctrl/Cmd+V) or click to choose.",
+    "pickReference": "Choose a reference photo",
+    "pickReferenceAria": "Choose a reference for shot {n}",
+    "pickReferenceEmpty": "Add product photos first",
+    "noReference": "No reference",
+    "keepFramingNeedsRef": "Pick a reference photo for this shot first.",
+    "generateN": "Generate {n} images",
+    "keepFramingShort": "Framing"
   }
 }

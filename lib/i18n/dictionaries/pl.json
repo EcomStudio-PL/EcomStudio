@@ -500,7 +500,11 @@
       "deleteExampleConfirm": "Usunąć ten przykład?",
       "rulesSub": "Reguły stosowane przez silnik przy każdym planowaniu sceny (styl, jakość, zakazy). Treść reguły trafia do silnika wyłącznie jako szyfrogram.",
       "addRule": "Dodaj regułę",
-      "ruleType": { "style": "Styl", "quality": "Jakość", "avoid": "Unikaj" },
+      "ruleType": {
+        "style": "Styl",
+        "quality": "Jakość",
+        "avoid": "Unikaj"
+      },
       "ruleName": "Nazwa reguły",
       "ruleTypeLabel": "Typ",
       "priority": "Priorytet",
@@ -2038,7 +2042,7 @@
     "perShotShort": "{n} kr. / ujęcie",
     "briefs": "Opisy ujęć",
     "briefsHint": "Opisz własnymi słowami wybrane ujęcia — pozostałe zaprojektuje GrovBase.",
-    "briefPh": "Opisz ujęcie lub pozostaw puste",
+    "briefPh": "Opisz ujęcie…",
     "briefAria": "Opis ujęcia {n}",
     "keepFraming": "Zachowaj kadr referencyjny",
     "keepFramingHint": "Zachowuje kadr i kompozycję zdjęcia referencyjnego — zmienia tylko scenerię.",
@@ -2168,6 +2172,15 @@
     "toolColorAria": "Kolor oznaczeń",
     "toolCustomColor": "Własny kolor",
     "regenToolsNote": "Użyj narzędzi powyżej, aby zaznaczyć obszary do zmiany. Możesz rysować, zaznaczać, usuwać lub przesuwać elementy na obrazie.",
-    "regenMarkFailed": "Nie udało się dołączyć oznaczeń — spróbuj ponownie."
+    "regenMarkFailed": "Nie udało się dołączyć oznaczeń — spróbuj ponownie.",
+    "dropHere": "Upuść tutaj",
+    "uploadWays": "Przeciągnij pliki, wklej (Ctrl/Cmd+V) lub kliknij, aby wybrać.",
+    "pickReference": "Wybierz zdjęcie referencyjne",
+    "pickReferenceAria": "Wybierz referencję dla ujęcia {n}",
+    "pickReferenceEmpty": "Najpierw dodaj zdjęcia produktu",
+    "noReference": "Bez referencji",
+    "keepFramingNeedsRef": "Najpierw wybierz zdjęcie referencyjne dla tego ujęcia.",
+    "generateN": "Generuj {n} obrazów",
+    "keepFramingShort": "Kadr"
   }
 }

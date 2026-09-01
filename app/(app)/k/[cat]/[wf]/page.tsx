@@ -5,11 +5,9 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
-import { listProducts } from "@/lib/services/products";
-import { signImageUrls } from "@/lib/services/images";
 import { listGalleryItems } from "@/lib/server/gallery";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
-import { GeneratorWorkspace, type WorkspaceProduct } from "@/components/genv3/workspace";
+import { GeneratorWorkspace } from "@/components/genv3/workspace";
 import type { GenModel } from "@/components/genv3/types";
 import { CategoryHeader } from "@/components/category/category-header";
 import { CATEGORY_VARIANT, DEFAULT_VARIANT, findCategory } from "@/lib/categories";
@@ -39,9 +37,7 @@ export default async function WorkflowPage({ params }: {
   if (!user) redirect("/login");
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) redirect("/home");
-
-  const [products, { data: plannerProviders }, { data: withKey }, wallet, modelOptions, gallery] = await Promise.all([
-    listProducts(supabase, workspace.id, 20),
+  const [{ data: plannerProviders }, { data: withKey }, wallet, modelOptions, gallery] = await Promise.all([
     supabase.from("ai_providers").select("id").eq("active", true).in("slug", ["openai", "google"]),
     supabase.rpc("providers_with_credentials"),
     getWallet(supabase, workspace.id),
@@ -58,16 +54,6 @@ export default async function WorkflowPage({ params }: {
     maxOutputs: 1, supportsRefs: true, surcharge: m.ecomSurcharge,
   }));
 
-  const productPaths = products.flatMap((p) => p.product_images.map((i) => i.storage_path));
-  const urls = await signImageUrls(supabase, productPaths);
-  const workspaceProducts: WorkspaceProduct[] = products.map((p) => ({
-    id: p.id, name: p.name,
-    category: (p as { category?: string | null }).category ?? null,
-    description: (p as { description?: string | null }).description ?? null,
-    images: p.product_images
-      .sort((a, b) => a.sort_order - b.sort_order)
-      .map((i) => ({ path: i.storage_path, url: urls.get(i.storage_path) ?? "" })),
-  }));
 
   // An empty or missing style entry must stay empty: makeT echoes the key on
   // a miss, and that key would otherwise become the seller's "preferred
@@ -113,7 +99,6 @@ export default async function WorkflowPage({ params }: {
       <GeneratorWorkspace
         mode="managed"
         models={models}
-        products={workspaceProducts}
         credits={wallet?.balance ?? 0}
         workspaceId={workspace.id}
         engineAvailable={engineAvailable}

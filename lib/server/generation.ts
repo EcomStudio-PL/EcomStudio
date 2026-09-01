@@ -30,6 +30,10 @@ export type GenerateInput = {
     name: string; sku?: string; category?: string; description?: string;
     extraInfo?: string; sourceUrl?: string; marketplace?: string;
   };
+  /** Free-text product context when the request carries NO product row —
+   *  the generator works on today's photos and saves nothing to a catalogue,
+   *  so whatever the seller typed is the only written context there is. */
+  productDescription?: string;
   /** Storage paths in product-images already uploaded by the client. */
   referencePaths: string[];
   referenceImageIds: string[];
@@ -163,7 +167,12 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       );
     }
   } else {
-    return { ok: false, error: "product_required" };
+    // NO PRODUCT AT ALL — the generator's normal case. The job and the
+    // generation rows carry a null product_id (both columns are nullable);
+    // the reference photos plus the typed description are the whole context.
+    productContext = input.productDescription?.trim()
+      ? buildProductContext("", input.productDescription.trim(), null)
+      : "";
   }
 
   // Job (queued -> processing)
@@ -553,7 +562,9 @@ async function resolveModelCandidate(supabase: Client, modelId: string) {
 }
 
 function buildProductContext(name: string, description: string | null, extraInfo: string | null): string {
-  const parts = [`\nPRODUCT CONTEXT:\nProduct: ${name}`];
+  // Without a catalogue entry there is no name to state — the reference
+  // photos define the product, so an empty "Product:" line is left out.
+  const parts = [name.trim() ? `\nPRODUCT CONTEXT:\nProduct: ${name.trim()}` : "\nPRODUCT CONTEXT:"];
   if (description) parts.push(`Description: ${description.slice(0, 1200)}`);
   if (extraInfo) parts.push(`Additional information: ${extraInfo.slice(0, 2500)}`);
   return parts.join("\n");

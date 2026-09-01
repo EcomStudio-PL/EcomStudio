@@ -716,7 +716,7 @@ export type Database = {
           negative_prompt: string | null
           primary_reference: number | null
           priority: number
-          product_id: string
+          product_id: string | null
           prompt_encrypted: string | null
           prompt_iv: string | null
           prompt_origin: string
@@ -747,7 +747,7 @@ export type Database = {
           negative_prompt?: string | null
           primary_reference?: number | null
           priority?: number
-          product_id: string
+          product_id: string | null
           prompt_encrypted?: string | null
           prompt_iv?: string | null
           prompt_origin?: string
@@ -778,7 +778,7 @@ export type Database = {
           negative_prompt?: string | null
           primary_reference?: number | null
           priority?: number
-          product_id?: string
+          product_id?: string | null
           prompt_encrypted?: string | null
           prompt_iv?: string | null
           prompt_origin?: string

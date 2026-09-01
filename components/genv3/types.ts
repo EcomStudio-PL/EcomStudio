@@ -40,7 +40,10 @@ export function snapTo(list: string[], value: string): string {
 
 export type UploadedRef = { key: string; path: string; url: string };
 
-export type BriefState = { text: string; keepFraming: boolean };
+/** One row of "Opisy ujęć". Everything starts EMPTY: the reference is only
+ *  ever set by the customer picking a photo — uploading photos never assigns
+ *  them to shots. `refIndex` is 1-based into the uploaded reference pool. */
+export type BriefState = { text: string; keepFraming: boolean; refIndex: number | null };
 
 export type GallerySessionType = "advertising" | "lifestyle";
 

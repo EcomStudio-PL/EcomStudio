@@ -44,7 +44,6 @@ export function GenerationGallery({
   const [items, setItems] = useState<GalleryItem[]>(initialItems);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
   const [loading, setLoading] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [regenItem, setRegenItem] = useState<GalleryItem | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -187,9 +186,30 @@ export function GenerationGallery({
 
   return (
     <div className="min-w-0">
-      <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2">
-        <h2 className="font-display text-lg font-semibold tracking-tight">{t("genv3.galleryTitle")}</h2>
-        <div className="flex min-w-0 items-center gap-1.5">
+      <h2 className="mb-2.5 font-display text-lg font-semibold tracking-tight">{t("genv3.galleryTitle")}</h2>
+
+      {/* ONE toolbar row: session chips on the left, view/search/filter/sort
+          on the right, every control the same 36px height on a shared centre
+          line. Below `lg` the two groups wrap onto their own rows instead of
+          being squeezed. */}
+      <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="thin-scroll -mx-1 order-2 flex min-w-0 items-center gap-1.5 overflow-x-auto px-1 pb-0.5 lg:order-1">
+          {chips.map((c) => {
+            const on = filter.session === c.key;
+            return (
+              <button key={c.key} type="button" aria-pressed={on}
+                onClick={() => applyFilter({ session: c.key })}
+                className={cn(
+                  "flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-[12.5px] font-semibold transition-colors duration-200",
+                  on ? "is-selected text-ink" : "border-line text-muted hover:bg-raised",
+                )}>
+                {c.icon && <c.icon size={13} aria-hidden className={on ? "text-accent" : "text-faint"} />}
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="order-1 flex min-w-0 flex-1 items-center gap-1.5 lg:order-2 lg:flex-none">
           <div className="hidden items-center rounded-xl border border-line p-0.5 md:flex" role="group" aria-label={t("genv3.viewLabel")}>
             <button type="button" aria-pressed={view === "grid"} aria-label={t("genv3.viewGrid")}
               onClick={() => setView("grid")}
@@ -203,9 +223,8 @@ export function GenerationGallery({
             </button>
           </div>
           {/* Desktop: the search field is ALWAYS visible, same height as its
-              neighbours. Phones keep the tap-to-expand variant to save row
-              width. */}
-          <div className="relative hidden md:block md:w-48 lg:w-40 xl:w-64 2xl:w-72">
+              neighbours. Phones get it full-width on its own row. */}
+          <div className="relative hidden md:block md:min-w-0 md:flex-1 lg:w-40 lg:flex-none xl:w-64 2xl:w-72">
             <Search size={14} aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
             <input
               value={filter.q}
@@ -215,23 +234,17 @@ export function GenerationGallery({
               className="h-9 w-full rounded-xl border border-line bg-sunken/60 pl-8 pr-2 text-[12.5px] font-medium outline-none transition-colors placeholder:text-faint focus:border-[rgb(var(--accent)/0.55)] focus:shadow-[0_0_0_3px_rgb(var(--accent)/0.12)]"
             />
           </div>
-          <div className={cn("relative md:hidden", searchOpen ? "w-44" : "w-9")}>
-            <button type="button" aria-label={t("genv3.searchLabel")}
-              onClick={() => setSearchOpen(true)}
-              className={cn("absolute left-0 top-0 flex h-9 w-9 items-center justify-center rounded-xl text-faint transition-colors hover:text-ink", searchOpen && "pointer-events-none")}>
-              <Search size={14} aria-hidden />
-            </button>
-            {searchOpen && (
-              <input
-                autoFocus
-                value={filter.q}
-                onChange={(e) => applyFilter({ q: e.target.value })}
-                onBlur={() => { if (!filter.q) setSearchOpen(false); }}
-                placeholder={t("genv3.searchPh")}
-                aria-label={t("genv3.searchLabel")}
-                className="h-9 w-full rounded-xl border border-line bg-sunken/60 pl-8 pr-2 text-[12.5px] font-medium outline-none transition-colors focus:border-[rgb(var(--accent)/0.5)]"
-              />
-            )}
+          {/* Phones: the field takes the whole row instead of hiding behind a
+              magnifier — searching is a primary action here too. */}
+          <div className="relative min-w-0 flex-1 md:hidden">
+            <Search size={14} aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
+            <input
+              value={filter.q}
+              onChange={(e) => applyFilter({ q: e.target.value })}
+              placeholder={t("genv3.searchPh")}
+              aria-label={t("genv3.searchLabel")}
+              className="h-9 w-full rounded-xl border border-line bg-sunken/60 pl-8 pr-2 text-[12.5px] font-medium outline-none transition-colors placeholder:text-faint focus:border-[rgb(var(--accent)/0.55)]"
+            />
           </div>
           {/* Favourites filter wears the same HEART the rest of GrovBase
               uses — outline off, filled + accent on. */}
@@ -250,23 +263,6 @@ export function GenerationGallery({
             <option value="asc">{t("genv3.sortOldest")}</option>
           </select>
         </div>
-      </div>
-
-      <div className="thin-scroll -mx-1 mb-3 flex items-center gap-1.5 overflow-x-auto px-1 pb-0.5">
-        {chips.map((c) => {
-          const on = filter.session === c.key;
-          return (
-            <button key={c.key} type="button" aria-pressed={on}
-              onClick={() => applyFilter({ session: c.key })}
-              className={cn(
-                "flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-[12.5px] font-semibold transition-colors duration-200",
-                on ? "is-selected text-ink" : "border-line text-muted hover:bg-raised",
-              )}>
-              {c.icon && <c.icon size={13} aria-hidden className={on ? "text-accent" : "text-faint"} />}
-              {c.label}
-            </button>
-          );
-        })}
       </div>
 
       {merged.length === 0 && pendingCount === 0 && !loading ? (

@@ -1,13 +1,13 @@
 "use client";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  Check, HelpCircle, ImagePlus, Loader2, Megaphone, Minus, Plus, Sparkles, Sun, Upload, X,
+  Check, HelpCircle, ImageOff, Loader2, Megaphone, Minus, Plus, Sparkles, Sun,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
-import { Input, Label, Select, Textarea } from "@/components/ui/input";
+import { Label, Select, Textarea } from "@/components/ui/input";
 import { Switch } from "@/components/ui/record";
-import { ProductChoice, type PickableProduct } from "@/components/products/product-picker";
+import { PhotoUploader } from "@/components/genv3/uploader";
 import { cn } from "@/lib/utils";
 import type { BriefState, GenModel, UploadedRef } from "@/components/genv3/types";
 import type { CategoryVariant } from "@/lib/categories";
@@ -31,86 +31,47 @@ export function SectionLabel({ children, optional, hint }: {
   );
 }
 
-const ACCEPT = "image/jpeg,image/png,image/webp,image/avif";
-
 /* ── Zdjęcia produktu ─────────────────────────────────────────────────── */
 
-export function ProductRefsSection({ refs, uploading, product, onPickProduct, onClearProduct, onUpload, onRemove }: {
+export function ProductRefsSection({ refs, uploading, max, onUpload, onRemove }: {
   refs: UploadedRef[];
   uploading: boolean;
-  product: PickableProduct | null;
-  onPickProduct: () => void;
-  onClearProduct: () => void;
-  onUpload: (files: FileList) => void;
+  max: number;
+  onUpload: (files: File[]) => void;
   onRemove: (index: number) => void;
 }) {
   const { t } = useI18n();
-  const fileRef = useRef<HTMLInputElement>(null);
   return (
-    <section>
-      <SectionLabel hint={t("genv3.photosHint")}>{t("genv3.photos")}</SectionLabel>
-      <div className="mb-2.5">
-        <ProductChoice
-          subtle
-          product={product}
-          onPick={onPickProduct}
-          onClear={onClearProduct}
-          newLabel={t("studio.newProduct")}
-        />
-      </div>
-      <input ref={fileRef} type="file" multiple accept={ACCEPT} className="hidden"
-        onChange={(e) => { if (e.target.files?.length) onUpload(e.target.files); e.target.value = ""; }} />
-      <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 [&>*]:min-w-0">
-        {refs.map((r, i) => (
-          <div key={r.key} className="group relative aspect-square overflow-hidden rounded-xl ring-1 ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={r.url} alt="" className="h-full w-full object-cover" loading="lazy" />
-            <button type="button" aria-label={t("common.delete")}
-              onClick={() => onRemove(i)}
-              className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white opacity-0 transition-opacity duration-200 focus-visible:opacity-100 group-hover:opacity-100">
-              <X size={10} aria-hidden />
-            </button>
-          </div>
-        ))}
-        {refs.length < 8 && (
-          <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()}
-            aria-label={t("genv3.addPhotos")}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) onUpload(e.dataTransfer.files); }}
-            className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/60 text-faint transition-colors duration-200 hover:border-[rgb(var(--accent)/0.6)] hover:bg-accent-soft/30 hover:text-accent">
-            {uploading ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <ImagePlus size={16} aria-hidden />}
-            <span className="px-1 text-center text-[9.5px] font-semibold leading-tight">{t("genv3.addPhotos")}</span>
-          </button>
-        )}
-      </div>
-      <p className="mt-2 text-[11.5px] leading-relaxed text-faint">{t("genv3.photosTip")}</p>
-    </section>
+    <PhotoUploader
+      items={refs}
+      max={max}
+      uploading={uploading}
+      onFiles={onUpload}
+      onRemove={onRemove}
+      label={
+        <>
+          {t("genv3.photos")}
+          <span title={t("genv3.photosHint")} className="cursor-help text-faint" aria-label={t("genv3.photosHint")}>
+            <HelpCircle size={13} aria-hidden />
+          </span>
+        </>
+      }
+    />
   );
 }
 
 /* ── Opis produktu ────────────────────────────────────────────────────── */
 
-export function DescriptionSection({ showName, name, onName, description, onDescription }: {
-  showName: boolean;
-  name: string; onName: (v: string) => void;
+export function DescriptionSection({ description, onDescription }: {
   description: string; onDescription: (v: string) => void;
 }) {
   const { t } = useI18n();
   return (
     <section>
       <SectionLabel optional hint={t("genv3.descHint")}>{t("genv3.desc")}</SectionLabel>
-      <div className="space-y-2.5">
-        {showName && (
-          <div>
-            <Label htmlFor="gen-name">{t("psess.name")} *</Label>
-            <Input id="gen-name" value={name} placeholder={t("products.namePh")}
-              onChange={(e) => onName(e.target.value)} />
-          </div>
-        )}
-        <Textarea rows={2} value={description} placeholder={t("genv3.descPh")}
-          aria-label={t("genv3.desc")}
-          onChange={(e) => onDescription(e.target.value)} />
-      </div>
+      <Textarea rows={2} value={description} placeholder={t("genv3.descPh")}
+        aria-label={t("genv3.desc")}
+        onChange={(e) => onDescription(e.target.value)} />
     </section>
   );
 }
@@ -269,6 +230,88 @@ export function SettingsSection({ managed, model, ratio, onRatio, resolution, on
 
 /* ── Opisy ujęć (managed) ─────────────────────────────────────────────── */
 
+/** Pick which uploaded photo (if any) a shot should build on. The pool is
+ *  shared: the same photo may drive several shots, and "no reference" is a
+ *  first-class choice — nothing is ever assigned automatically. */
+function ReferencePicker({ refs, value, onChange, index }: {
+  refs: UploadedRef[];
+  value: number | null;
+  onChange: (next: number | null) => void;
+  index: number;
+}) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const chosen = value && refs[value - 1] ? refs[value - 1] : null;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("mousedown", onDown); window.removeEventListener("keydown", onKey); };
+  }, [open]);
+
+  return (
+    <div ref={boxRef} className="relative shrink-0">
+      <button type="button"
+        aria-haspopup="dialog" aria-expanded={open}
+        aria-label={t("genv3.pickReferenceAria", { n: index + 1 })}
+        title={refs.length === 0 ? t("genv3.pickReferenceEmpty") : t("genv3.pickReference")}
+        disabled={refs.length === 0}
+        onClick={() => setOpen((o) => !o)}
+        className={cn(
+          "flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg ring-1 transition-colors disabled:opacity-50",
+          chosen ? "ring-[rgb(var(--accent)/0.6)]" : "bg-sunken ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.5))] hover:ring-[rgb(var(--accent)/0.5)]",
+        )}>
+        {chosen ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={chosen.url} alt="" className="h-full w-full object-cover" loading="lazy" />
+        ) : (
+          <Plus size={12} aria-hidden className="text-faint" />
+        )}
+      </button>
+
+      {open && (
+        <div role="dialog" aria-label={t("genv3.pickReference")}
+          className="overlay animate-pop absolute left-0 top-[calc(100%+6px)] z-30 w-56 rounded-xl p-2">
+          <p className="mb-1.5 px-0.5 text-[11px] font-semibold text-muted">{t("genv3.pickReference")}</p>
+          <div className="grid grid-cols-4 gap-1.5">
+            {refs.map((r, i) => {
+              const on = value === i + 1;
+              return (
+                <button key={r.key} type="button" aria-pressed={on}
+                  aria-label={t("genv3.thumbAria", { n: i + 1 })}
+                  onClick={() => { onChange(i + 1); setOpen(false); }}
+                  className={cn("relative aspect-square overflow-hidden rounded-lg ring-2 transition-all",
+                    on ? "ring-accent" : "opacity-80 ring-transparent hover:opacity-100")}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={r.url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  {on && (
+                    <span aria-hidden className="absolute right-0.5 top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-accent text-white">
+                      <Check size={9} strokeWidth={3} />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <button type="button"
+            onClick={() => { onChange(null); setOpen(false); }}
+            className={cn("mt-2 flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px] font-semibold transition-colors hover:bg-raised",
+              value === null ? "text-accent" : "text-muted")}>
+            <ImageOff size={12} aria-hidden />
+            {t("genv3.noReference")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ShotBriefsSection({ count, refs, briefs, onChange }: {
   count: number;
   refs: UploadedRef[];
@@ -280,26 +323,31 @@ export function ShotBriefsSection({ count, refs, briefs, onChange }: {
     <section>
       <SectionLabel optional hint={t("genv3.briefsHint")}>{t("genv3.briefs")}</SectionLabel>
       <div className="space-y-1.5">
+        {/* One row per ordered shot — and every row starts empty. Photos are a
+            POOL: a shot only gets a reference when the customer picks one. */}
         {Array.from({ length: count }, (_, i) => {
-          const b = briefs[i] ?? { text: "", keepFraming: false };
-          const ref = refs[i] ?? null;
+          const b = briefs[i] ?? { text: "", keepFraming: false, refIndex: null };
           const hasText = b.text.trim().length > 0;
+          const hasRef = !!b.refIndex && !!refs[b.refIndex - 1];
+          const touched = hasText || hasRef;
           return (
             <div key={i} className={cn(
               "flex items-center gap-2 rounded-xl border p-1.5 pl-2.5 transition-colors duration-200",
-              hasText ? "border-[rgb(var(--accent)/0.35)] bg-accent-soft/20" : "border-line bg-sunken/40",
+              touched ? "border-[rgb(var(--accent)/0.35)] bg-accent-soft/20" : "border-line bg-sunken/40",
             )}>
-              <span className={cn("w-4 shrink-0 text-center text-[11px] font-bold tabular-nums", hasText ? "text-accent" : "text-faint")}>
+              <span className={cn("w-4 shrink-0 text-center text-[11px] font-bold tabular-nums", touched ? "text-accent" : "text-faint")}>
                 {i + 1}
               </span>
-              <span className="h-8 w-8 shrink-0 overflow-hidden rounded-lg bg-sunken ring-1 ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.5))]">
-                {ref ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={ref.url} alt="" className="h-full w-full object-cover" loading="lazy" />
-                ) : (
-                  <span className="flex h-full w-full items-center justify-center text-faint"><Upload size={11} aria-hidden /></span>
-                )}
-              </span>
+              <ReferencePicker
+                refs={refs}
+                index={i}
+                value={b.refIndex}
+                onChange={(next) => onChange(i, {
+                  refIndex: next,
+                  // Framing can only be preserved from a reference that exists.
+                  ...(next === null ? { keepFraming: false } : {}),
+                })}
+              />
               <input
                 value={b.text}
                 onChange={(e) => onChange(i, { text: e.target.value })}
@@ -308,13 +356,21 @@ export function ShotBriefsSection({ count, refs, briefs, onChange }: {
                 aria-label={t("genv3.briefAria", { n: i + 1 })}
                 className="h-9 min-w-0 flex-1 bg-transparent text-[12.5px] font-medium text-ink outline-none placeholder:text-faint"
               />
-              <span className="flex shrink-0 items-center gap-1.5 pr-1" title={t("genv3.keepFramingHint")}>
-                <span className={cn("hidden text-[10px] font-semibold sm:block", hasText && b.keepFraming ? "text-accent" : "text-faint")}>
+              {/* The panel is ~420px wide whatever the viewport, so the full
+                  label only appears where it genuinely fits; below that the
+                  switch carries its meaning through the tooltip and its
+                  accessible name, and the description keeps the room. */}
+              <span className="flex shrink-0 items-center gap-1.5 pr-1"
+                title={hasRef ? t("genv3.keepFramingHint") : t("genv3.keepFramingNeedsRef")}>
+                <span className={cn("hidden text-[10px] font-semibold 2xl:block", hasRef && b.keepFraming ? "text-accent" : "text-faint")}>
                   {t("genv3.keepFraming")}
                 </span>
+                <span className={cn("text-[10px] font-semibold 2xl:hidden", hasRef && b.keepFraming ? "text-accent" : "text-faint")}>
+                  {t("genv3.keepFramingShort")}
+                </span>
                 <Switch
-                  checked={hasText && b.keepFraming}
-                  disabled={!hasText}
+                  checked={hasRef && b.keepFraming}
+                  disabled={!hasRef}
                   onChange={(next) => onChange(i, { keepFraming: next })}
                   label={t("genv3.keepFraming")}
                 />
@@ -333,48 +389,37 @@ export function InspirationSection({ items, uploading, disabled, onUpload, onRem
   items: UploadedRef[];
   uploading: boolean;
   disabled?: boolean;
-  onUpload: (files: FileList) => void;
+  onUpload: (files: File[]) => void;
   onRemove: (index: number) => void;
 }) {
   const { t } = useI18n();
-  const fileRef = useRef<HTMLInputElement>(null);
-  return (
-    <section>
-      <SectionLabel optional hint={t("genv3.inspHint")}>{t("genv3.insp")}</SectionLabel>
-      {disabled ? (
+  if (disabled) {
+    return (
+      <section>
+        <SectionLabel optional hint={t("genv3.inspHint")}>{t("genv3.insp")}</SectionLabel>
         <p className="rounded-xl bg-raised px-3.5 py-3 text-[12px] leading-relaxed text-muted">{t("genv3.inspUnsupported")}</p>
-      ) : (
+      </section>
+    );
+  }
+  return (
+    <PhotoUploader
+      items={items}
+      max={5}
+      columns={5}
+      uploading={uploading}
+      onFiles={onUpload}
+      onRemove={onRemove}
+      hint={t("genv3.inspSub")}
+      label={
         <>
-          <input ref={fileRef} type="file" multiple accept={ACCEPT} className="hidden"
-            onChange={(e) => { if (e.target.files?.length) onUpload(e.target.files); e.target.value = ""; }} />
-          {items.length > 0 && (
-            <div className="mb-2 grid grid-cols-5 gap-2 [&>*]:min-w-0">
-              {items.map((r, i) => (
-                <div key={r.key} className="group relative aspect-square overflow-hidden rounded-xl ring-1 ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={r.url} alt="" className="h-full w-full object-cover" loading="lazy" />
-                  <button type="button" aria-label={t("common.delete")} onClick={() => onRemove(i)}
-                    className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white opacity-0 transition-opacity duration-200 focus-visible:opacity-100 group-hover:opacity-100">
-                    <X size={10} aria-hidden />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          {items.length < 5 && (
-            <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) onUpload(e.dataTransfer.files); }}
-              className="flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/40 px-3 py-5 text-faint transition-colors duration-200 hover:border-[rgb(var(--accent)/0.6)] hover:bg-accent-soft/20 hover:text-accent">
-              {uploading ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Upload size={15} aria-hidden />}
-              <span className="text-[12px] font-semibold">{t("genv3.inspAdd")}</span>
-              <span className="text-[10.5px] text-faint">{t("genv3.inspSub")}</span>
-            </button>
-          )}
-          <p className="mt-1.5 text-right text-[10.5px] font-semibold tabular-nums text-faint">{items.length}/5</p>
+          {t("genv3.insp")}
+          <span className="font-normal text-faint">({t("genv3.optional")})</span>
+          <span title={t("genv3.inspHint")} className="cursor-help text-faint" aria-label={t("genv3.inspHint")}>
+            <HelpCircle size={13} aria-hidden />
+          </span>
         </>
-      )}
-    </section>
+      }
+    />
   );
 }
 
@@ -382,54 +427,60 @@ export function InspirationSection({ items, uploading, disabled, onUpload, onRem
 
 export function CostSummary({
   perShot, total, count, balance, missing, busy, busyLabel, canGenerate,
-  engineUnavailable, needsPhotos, needsContext, needsPrompt, onGenerate,
+  engineUnavailable, needsPhotos, needsPrompt, onGenerate,
 }: {
   perShot: number; total: number; count: number; balance: number; missing: number;
   busy: boolean; busyLabel: string; canGenerate: boolean;
   engineUnavailable?: boolean;
-  needsPhotos?: boolean; needsContext?: boolean; needsPrompt?: boolean;
+  needsPhotos?: boolean; needsPrompt?: boolean;
   onGenerate: () => void;
 }) {
   const { t, locale } = useI18n();
   const n = (v: number) => new Intl.NumberFormat(locale).format(v);
   const note = engineUnavailable ? t("psess.unavailable")
     : needsPhotos ? t("genv3.needPhotos")
-      : needsContext ? t("studio.needContext")
-        : needsPrompt ? t("genv3.needPrompt")
-          : missing > 0 ? null : null;
+      : needsPrompt ? t("genv3.needPrompt")
+        : null;
+  /**
+   * THE ACTION ISLAND — pinned to the bottom of the left column so the cost
+   * and the CTA are reachable from any scroll position. Deliberately small:
+   * two figures, one button, one status line.
+   */
   return (
-    <div className="panel shrink-0 rounded-2xl p-4">
-      <p className="mb-2.5 text-[13.5px] font-semibold tracking-tight">{t("genv3.costTitle")}</p>
-      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
-        <div className="flex gap-5">
-          <div>
-            <p className="text-[10.5px] font-medium text-faint">{t("genv3.costPerShot")}</p>
-            <p className="metric text-[15px] leading-tight text-accent">{n(perShot)} <span className="text-[11px] font-semibold text-muted">{t("genv3.credits")}</span></p>
+    <div className="panel shrink-0 rounded-2xl px-3.5 py-3">
+      <div className="flex items-center gap-3">
+        <div className="flex min-w-0 shrink-0 gap-4">
+          <div className="min-w-0">
+            <p className="text-[10px] font-medium leading-tight text-faint">{t("genv3.costPerShot")}</p>
+            <p className="metric text-[14px] leading-tight text-accent">
+              {n(perShot)} <span className="text-[10px] font-semibold text-muted">{t("genv3.credits")}</span>
+            </p>
           </div>
-          <div>
-            <p className="text-[10.5px] font-medium text-faint">{t("genv3.costTotal")}</p>
-            <p className="metric text-[15px] leading-tight text-accent">{n(total)} <span className="text-[11px] font-semibold text-muted">{t("genv3.credits")}</span></p>
+          <div className="min-w-0">
+            <p className="text-[10px] font-medium leading-tight text-faint">{t("genv3.costTotal")}</p>
+            <p className="metric text-[14px] leading-tight text-accent">
+              {n(total)} <span className="text-[10px] font-semibold text-muted">{t("genv3.credits")}</span>
+            </p>
           </div>
         </div>
         <button type="button" disabled={!canGenerate} onClick={onGenerate}
           className={cn(
-            "cta flex h-11 min-w-[11rem] flex-1 items-center justify-center gap-2 rounded-xl px-4 text-[14px] font-semibold sm:flex-none",
+            "cta flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
             !canGenerate && "cursor-not-allowed opacity-55",
           )}>
-          {busy ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Sparkles size={15} aria-hidden />}
-          <span className="truncate">{busy && busyLabel ? busyLabel : t("genv3.generateCta")}</span>
-          {!busy && <span className="shrink-0 rounded-md bg-white/20 px-1.5 py-0.5 text-[12px] tabular-nums">◇ {n(total)}</span>}
+          {busy ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Sparkles size={14} aria-hidden />}
+          <span className="truncate">{busy && busyLabel ? busyLabel : t("genv3.generateN", { n: count })}</span>
         </button>
       </div>
       {missing > 0 ? (
-        <p className="mt-2 text-[11.5px] font-medium text-danger">
-          {t("studio.missing", { n: missing })}{" "}
+        <p className="mt-1.5 text-[11px] font-medium text-danger">
+          {t("studio.missing", { n: missing })}{" · "}
           <Link href="/credits" className="font-semibold text-accent hover:opacity-75">{t("credits.topup")}</Link>
         </p>
       ) : note ? (
-        <p className="mt-2 text-[11.5px] text-muted">{note}</p>
+        <p className="mt-1.5 text-[11px] text-muted">{note}</p>
       ) : (
-        <p className="mt-2 text-[11px] tabular-nums text-faint">{t("gtb.balance", { n: n(balance) })} · {t("genv3.countLabel", { n: count })}</p>
+        <p className="mt-1.5 text-[10.5px] tabular-nums text-faint">{t("gtb.balance", { n: n(balance) })}</p>
       )}
     </div>
   );

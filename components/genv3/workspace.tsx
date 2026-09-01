@@ -3,7 +3,6 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
-import { ProductPicker, type PickableProduct } from "@/components/products/product-picker";
 import { GenerationGallery } from "@/components/genv3/gallery";
 import { MobileDock } from "@/components/genv3/mobile-dock";
 import {
@@ -17,21 +16,23 @@ import {
 } from "@/components/genv3/types";
 import type { CategoryVariant } from "@/lib/categories";
 
-export type WorkspaceProduct = {
-  id: string; name: string;
-  category: string | null;
-  description: string | null;
-  images: { path: string; url: string }[];
-};
+/** Reference photos the seller may drop in for one generation session. */
+const MAX_REFS = 8;
 
 /**
  * GENERATOR WORKSPACE — one screen, two flavours.
  *
  * LEFT: the whole configuration (photos, description, session type or
- * prompt, settings, model, briefs/inspiration, cost). RIGHT: the living
- * gallery of this workspace's generations. On phones the configuration
- * stacks and every generation-critical control also lives in the docked
- * toolbar above the bottom navigation, opening bottom sheets.
+ * prompt, settings, model, shots/inspiration) scrolling inside itself, with
+ * the cost + CTA island pinned to its bottom edge. RIGHT: the living gallery
+ * of this workspace's generations. On phones the configuration stacks and
+ * every generation-critical control also lives in the docked toolbar above
+ * the bottom navigation, opening bottom sheets.
+ *
+ * NO PRODUCT CATALOGUE: the seller drops today's photos straight in. Nothing
+ * is saved as a product, nothing has to be picked first, and an uploaded
+ * photo is never auto-assigned to a shot — the photos are a POOL the
+ * customer draws from per shot.
  *
  * The managed flavour drives the hidden GrovBase engine: prepare (one
  * planner pass, prompts sealed server-side) then generate each shot through
@@ -41,13 +42,12 @@ export type WorkspaceProduct = {
  * server also uses; the server re-computes and enforces them regardless.
  */
 export function GeneratorWorkspace({
-  mode, models, products, credits, workspaceId, engineAvailable = true,
+  mode, models, credits, workspaceId, engineAvailable = true,
   initialItems, initialCursor, initialStyle, initialRatio, initialShots,
   variant, initialPrompt = "",
 }: {
   mode: GenMode;
   models: GenModel[];
-  products: WorkspaceProduct[];
   credits: number;
   workspaceId: string;
   engineAvailable?: boolean;
@@ -64,8 +64,6 @@ export function GeneratorWorkspace({
   const firstModel = models[0];
 
   // ── Configuration state ────────────────────────────────────────────────
-  const [productId, setProductId] = useState("");
-  const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [refs, setRefs] = useState<UploadedRef[]>([]);
   const [insp, setInsp] = useState<UploadedRef[]>([]);
@@ -82,7 +80,6 @@ export function GeneratorWorkspace({
   const [busy, setBusy] = useState(false);
   const [stageLabel, setStageLabel] = useState("");
   const [balance, setBalance] = useState(credits);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const adhocFolder = useRef(`adhoc-${Math.random().toString(36).slice(2, 10)}`);
   const inspFolder = useRef(`insp-${Math.random().toString(36).slice(2, 10)}`);
   const submitting = useRef(false);
@@ -113,34 +110,19 @@ export function GeneratorWorkspace({
     }
   }
 
-  const pickable: PickableProduct[] = useMemo(() => products.map((p) => ({
-    id: p.id, name: p.name, category: p.category,
-    thumbnail: p.images[0]?.url ?? null, imageCount: p.images.length,
-  })), [products]);
-
-  function pickProduct(id: string) {
-    setProductId(id);
-    const p = products.find((x) => x.id === id);
-    if (p) {
-      setName(p.name);
-      setDescription(p.description ?? "");
-      setRefs(p.images.map((img) => ({ key: img.path, path: img.path, url: img.url })));
-    } else {
-      setName(""); setDescription(""); setRefs([]);
-    }
-  }
-
   // ── Uploads (browser → private bucket; only paths travel to the API) ───
-  async function upload(files: FileList, target: "refs" | "insp") {
+  // Accepts files from ALL three entry points — picker, drag & drop and a
+  // clipboard paste — because they all arrive here as plain File objects.
+  async function upload(files: File[], target: "refs" | "insp") {
     const supabase = createClient();
-    const folder = target === "insp" ? inspFolder.current : (productId || adhocFolder.current);
+    const folder = target === "insp" ? inspFolder.current : adhocFolder.current;
     const setter = target === "insp" ? setInsp : setRefs;
-    const cap = target === "insp" ? 5 : 8;
+    const cap = target === "insp" ? 5 : MAX_REFS;
     // Room is checked BEFORE anything uploads — an over-cap file must not
     // land in storage only to be silently dropped from the state.
     const existing = target === "insp" ? insp.length : refs.length;
     const room = Math.max(0, cap - existing);
-    const list = Array.from(files);
+    const list = files;
     if (list.length > room) toast.error(t("genv3.capReached", { max: cap }));
     if (room === 0) return;
     setUploading(true);
@@ -185,22 +167,25 @@ export function GeneratorWorkspace({
       const prep = await fetch("/api/prompts/generate", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          productId: productId || undefined,
-          productName: name.trim(),
           description: description.trim() || undefined,
           style: composeVariantStyle() || undefined,
           aspectRatio: effRatio,
           resolution: effResolution,
           shots: effCount,
           sessionType,
-          // refIndex ties each row to the photo its thumbnail shows; rows
-          // beyond the uploaded set fall back to the primary server-side.
-          shotBriefs: briefs.slice(0, effCount).map((b, i) => ({
-            text: b?.text?.trim() || undefined,
-            keepFraming: !!b?.keepFraming && !!b?.text?.trim(),
-            refIndex: i < refs.length ? i + 1 : undefined,
-          })),
-          referencePaths: refs.map((r) => r.path).slice(0, 8),
+          // refIndex is ONLY what the customer picked for that row. Nothing is
+          // inferred from the upload order — an untouched row carries no
+          // reference and lets the engine plan the scene itself.
+          shotBriefs: Array.from({ length: effCount }, (_, i) => {
+            const b = briefs[i];
+            const ref = b?.refIndex && refs[b.refIndex - 1] ? b.refIndex : undefined;
+            return {
+              text: b?.text?.trim() || undefined,
+              keepFraming: !!b?.keepFraming && !!ref,
+              refIndex: ref,
+            };
+          }),
+          referencePaths: refs.map((r) => r.path).slice(0, MAX_REFS),
         }),
       });
       const prepJson = await prep.json() as { ok: boolean; sessionId?: string; error?: string };
@@ -286,16 +271,15 @@ export function GeneratorWorkspace({
         body: JSON.stringify({
           modelId: model?.id, prompt: prompt.trim(),
           aspectRatio: effRatio, resolution: effResolution, quantity: effCount,
-          productId: productId || undefined,
-          newProduct: productId ? undefined : { name: name.trim(), description: description.trim() || undefined },
-          referencePaths: refs.map((r) => r.path).slice(0, 8),
+          // Free-text context only — the generator never creates a product.
+          productDescription: description.trim() || undefined,
+          referencePaths: refs.map((r) => r.path).slice(0, MAX_REFS),
           referenceImageIds: [],
           inspirationPaths: insp.map((r) => r.path).slice(0, 5),
         }),
       });
-      const json = await res.json() as { ok: boolean; error?: string; productId?: string; images?: unknown[] };
+      const json = await res.json() as { ok: boolean; error?: string; images?: unknown[] };
       if (json.ok) {
-        if (!productId && json.productId) setProductId(json.productId);
         setBalance((b) => Math.max(0, b - total));
         await absorbLatest(effCount);
         toast.success(t("studio.done"));
@@ -312,8 +296,8 @@ export function GeneratorWorkspace({
     }
   }
 
-  const contextReady = productId ? true : name.trim().length > 1;
-  const canGenerate = !!model && !busy && !uploading && refs.length > 0 && contextReady
+  // Photos are the only hard requirement now — no product, no name.
+  const canGenerate = !!model && !busy && !uploading && refs.length > 0
     && missing === 0
     && (managed ? engineAvailable : prompt.trim().length > 2);
   const generate = managed ? generateManaged : generateCustom;
@@ -330,22 +314,18 @@ export function GeneratorWorkspace({
   return (
     <div className="grid min-w-0 items-start gap-5 pb-[var(--gen-page-bottom)] [&>*]:min-w-0 lg:grid-cols-[clamp(420px,29vw,470px)_minmax(0,1fr)] lg:gap-6 lg:pb-10">
       {/* ── LEFT: configuration ─────────────────────────────────────────── */}
-      <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-[calc(var(--header-h)+0.875rem)] lg:h-[calc(100dvh-var(--header-h)-1.75rem)]">
+      {/* The column owns the viewport height; only the FORM scrolls, so the
+          action island below never leaves the screen. */}
+      <div className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-[calc(var(--header-h)+0.875rem)] lg:h-[calc(100dvh-var(--header-h)-1.75rem)]">
         <div className="panel thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto rounded-2xl p-4 sm:p-5">
           <ProductRefsSection
             refs={refs}
+            max={MAX_REFS}
             uploading={uploading}
-            product={productId ? pickable.find((p) => p.id === productId) ?? null : null}
-            onPickProduct={() => setPickerOpen(true)}
-            onClearProduct={() => pickProduct("")}
             onUpload={(files) => upload(files, "refs")}
             onRemove={(i) => setRefs((prev) => prev.filter((_, j) => j !== i))}
           />
-          <DescriptionSection
-            showName={!productId}
-            name={name} onName={setName}
-            description={description} onDescription={setDescription}
-          />
+          <DescriptionSection description={description} onDescription={setDescription} />
           {managed ? (
             <>
               <SessionTypeSection value={sessionType} onChange={setSessionType} />
@@ -379,7 +359,7 @@ export function GeneratorWorkspace({
               briefs={briefs}
               onChange={(i, patch) => setBriefs((prev) => {
                 const next = [...prev];
-                const base = next[i] ?? { text: "", keepFraming: false };
+                const base = next[i] ?? { text: "", keepFraming: false, refIndex: null };
                 next[i] = { ...base, ...patch };
                 return next;
               })}
@@ -406,7 +386,6 @@ export function GeneratorWorkspace({
           canGenerate={canGenerate}
           engineUnavailable={managed && !engineAvailable}
           needsPhotos={refs.length === 0}
-          needsContext={!contextReady}
           needsPrompt={!managed && prompt.trim().length <= 2}
           onGenerate={generate}
         />
@@ -424,14 +403,6 @@ export function GeneratorWorkspace({
         balance={balance}
         onBalance={setBalance}
         onAbsorb={absorbLatest}
-      />
-
-      <ProductPicker
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        products={pickable}
-        selectedId={productId || undefined}
-        onSelect={(p) => pickProduct(p.id)}
       />
 
       <MobileDock

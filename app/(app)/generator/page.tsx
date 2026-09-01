@@ -4,13 +4,11 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
-import { listProducts } from "@/lib/services/products";
-import { signImageUrls } from "@/lib/services/images";
 import { listGalleryItems } from "@/lib/server/gallery";
 import { customModels, getUsableModels, toClientModel } from "@/lib/ai/router";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
 import { GeneratorModeSwitch } from "@/components/generator/mode-switch";
-import { GeneratorWorkspace, type WorkspaceProduct } from "@/components/genv3/workspace";
+import { GeneratorWorkspace } from "@/components/genv3/workspace";
 import type { GenModel } from "@/components/genv3/types";
 
 export const dynamic = "force-dynamic";
@@ -29,9 +27,7 @@ export default async function GeneratorPage({ searchParams }: {
   if (!user) redirect("/login");
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) redirect("/home");
-
-  const [products, usable, wallet, gallery, priceOptions] = await Promise.all([
-    listProducts(supabase, workspace.id, 30),
+  const [usable, wallet, gallery, priceOptions] = await Promise.all([
     getUsableModels(supabase),
     getWallet(supabase, workspace.id),
     listGalleryItems(supabase, workspace.id, { limit: 24 }),
@@ -60,16 +56,6 @@ export default async function GeneratorPage({ searchParams }: {
     initialPrompt = promptParam.slice(0, 2000);
   }
 
-  const productPaths = products.flatMap((p) => p.product_images.map((i) => i.storage_path));
-  const urls = await signImageUrls(supabase, productPaths);
-  const workspaceProducts: WorkspaceProduct[] = products.map((p) => ({
-    id: p.id, name: p.name,
-    category: (p as { category?: string | null }).category ?? null,
-    description: (p as { description?: string | null }).description ?? null,
-    images: p.product_images
-      .sort((a, b) => a.sort_order - b.sort_order)
-      .map((i) => ({ path: i.storage_path, url: urls.get(i.storage_path) ?? "" })),
-  }));
 
   return (
     // §3: no page header — mode toggle first, workspace tokens scoped here.
@@ -85,7 +71,6 @@ export default async function GeneratorPage({ searchParams }: {
       <GeneratorWorkspace
         mode="custom"
         models={models}
-        products={workspaceProducts}
         credits={wallet?.balance ?? 0}
         workspaceId={workspace.id}
         initialItems={gallery.items}

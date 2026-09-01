@@ -20,8 +20,12 @@ export type ShotBrief = {
 };
 
 export type PromptSessionInput = {
+  /** Only ever supplied by callers that already hold a catalogue product;
+   *  the generator sends none and creates none. */
   productId?: string;
-  productName: string;
+  /** Optional label. The generator does not ask for a product name — the
+   *  vision pass reads the product off the reference photos. */
+  productName?: string;
   description?: string;
   extraInfo?: string;
   style?: string;
@@ -81,6 +85,10 @@ export function clampShots(raw: unknown): number {
 }
 
 const CUSTOMER_LANGUAGE: Record<string, string> = { pl: "Polish", en: "English", de: "German" };
+
+/** `prompt_sessions.product_name` is NOT NULL and shows up in the admin's
+ *  session list; without a typed description this is the readable stand-in. */
+const SESSION_FALLBACK_LABEL = "Sesja generowania";
 
 /**
  * The seller-facing concept payload that IS allowed to leave the server.
@@ -265,9 +273,13 @@ async function waitForSession(supabase: Client, sessionId: string): Promise<Prom
 export async function runPromptSession(
   supabase: Client, userId: string, workspaceId: string, input: PromptSessionInput
 ): Promise<PromptSessionOutput> {
-  if (!input.productName?.trim() || input.productName.trim().length < 2) return { ok: false, error: "invalid_input" };
   if (!RATIOS.has(input.aspectRatio)) return { ok: false, error: "invalid_input" };
   if (!input.referencePaths?.length) return { ok: false, error: "references_required" };
+
+  // NO PRODUCT NAME IS REQUIRED. The seller drops photos and generates; the
+  // vision pass reads the product off the references themselves. Whatever
+  // they typed as a description doubles as the session's readable label.
+  const productLabel = (input.productName?.trim() || input.description?.trim().split(/[.\n]/)[0] || "").slice(0, 80).trim();
 
   const analysisModel = await getAnalysisModel(supabase);
   const backends = await getVisionBackends(supabase, analysisModel);
@@ -291,7 +303,7 @@ export async function runPromptSession(
   // style. A true network replay (identical body) still dedupes; a request
   // that differs in any output parameter is its own session.
   const referenceHash = hashAnalysisInput(
-    input.referencePaths.slice(0, MAX_REFS), input.productName, input.description ?? null,
+    input.referencePaths.slice(0, MAX_REFS), productLabel, input.description ?? null,
     JSON.stringify({
       st: sessionType,
       b: briefs.filter((b) => b.text || b.keepFraming),
@@ -324,37 +336,17 @@ export async function runPromptSession(
     // session is picked up and reused by the retry block below.
   }
 
-  // Product: reuse the selected one or create the draft automatically —
-  // the user never has to visit "Products" first.
-  let productId = input.productId ?? null;
-  if (productId) {
+  // THE GENERATOR NEVER WRITES TO THE PRODUCT CATALOGUE. A session used to
+  // create a `products` row (plus its images) just because photos were
+  // uploaded; sellers work from today's photos instead, so the session IS
+  // the record. An explicitly supplied product (e.g. from the products page)
+  // is still honoured read-only — it is never created or modified here.
+  let productId: string | null = null;
+  if (input.productId) {
     const { data: product } = await supabase
-      .from("products").select("id, name, description, extra_info").eq("id", productId).eq("workspace_id", workspaceId).maybeSingle();
+      .from("products").select("id").eq("id", input.productId).eq("workspace_id", workspaceId).maybeSingle();
     if (!product) return { ok: false, error: "product_not_found" };
-    // The session snapshots its own copy, but the PRODUCT stays the living
-    // record: edits made in the form update it so the next visit is prefilled
-    // with what the seller last wrote.
-    const nextName = input.productName.trim();
-    const nextDesc = input.description?.trim() || null;
-    const nextExtra = input.extraInfo?.trim() || null;
-    if (nextName !== product.name || nextDesc !== (product.description ?? null) || nextExtra !== (product.extra_info ?? null)) {
-      await supabase.from("products")
-        .update({ name: nextName, description: nextDesc, extra_info: nextExtra })
-        .eq("id", productId).eq("workspace_id", workspaceId);
-    }
-  } else {
-    const { data: created, error: createError } = await supabase.from("products").insert({
-      workspace_id: workspaceId, owner_id: userId, name: input.productName.trim(),
-      description: input.description?.trim() || null, extra_info: input.extraInfo?.trim() || null,
-      status: "ready",
-    }).select("id").single();
-    if (createError || !created) return { ok: false, error: "product_create_failed" };
-    productId = created.id;
-    await supabase.from("product_images").insert(
-      input.referencePaths.slice(0, MAX_REFS).map((path, i) => ({
-        product_id: created.id, storage_path: path, sort_order: i, is_primary: i === 0,
-      }))
-    );
+    productId = product.id;
   }
 
   // RETRY REUSES THE FAILED SESSION. A click → error → click again must not
@@ -385,7 +377,7 @@ export async function runPromptSession(
   if (!sessionId) {
     const { data: session, error: sessionError } = await supabase.from("prompt_sessions").insert({
       workspace_id: workspaceId, user_id: userId, product_id: productId,
-      product_name: input.productName.trim(),
+      product_name: productLabel || SESSION_FALLBACK_LABEL,
       description: input.description?.trim() || null,
       extra_info: input.extraInfo?.trim() || null,
       aspect_ratio: input.aspectRatio, style: input.style?.trim() || null,
@@ -420,7 +412,7 @@ export async function runPromptSession(
   }
 
   const sessionInfo: SessionInput = {
-    productName: input.productName.trim(),
+    productName: productLabel,
     description: input.description?.trim() || null,
     extraInfo: input.extraInfo?.trim() || null,
     style: input.style?.trim() || null,
@@ -570,7 +562,7 @@ export async function runPromptSession(
       }
       const sealed = encryptConceptPayload(prompt, "", { tv: PROMPT_TEMPLATE_VERSION });
       return {
-        product_id: productId!, workspace_id: workspaceId, session_id: session.id,
+        product_id: productId, workspace_id: workspaceId, session_id: session.id,
         concept_name: scene.title, shot_type: "scene", scene_type: null,
         customer_title: scene.title,
         // Briefed shots show the customer their own words — the engine's
@@ -623,7 +615,7 @@ export async function runPromptSession(
         total_latency_ms: Date.now() - startedAt,
       },
     });
-    return { ok: true, sessionId: session.id, productId: productId!, promptCount: rows.length };
+    return { ok: true, sessionId: session.id, productId: productId ?? "", promptCount: rows.length };
   } catch (e) {
     const safe = e instanceof ProviderError ? e.safeMessage : "analysis_error";
     const providerCode = e instanceof ProviderError ? e.providerCode : undefined;
