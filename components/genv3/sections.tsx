@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
-  Check, HelpCircle, ImageOff, Loader2, Megaphone, Minus, Plus, Sparkles, Sun,
+  Check, ChevronDown, HelpCircle, ImageOff, Loader2, Megaphone, Minus, Plus, Sparkles, Sun,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Label, Select, Textarea } from "@/components/ui/input";
@@ -348,6 +348,10 @@ function ReferencePicker({ refs, value, onChange, index }: {
   );
 }
 
+/** Room for a few real sentences. The old single-line input capped at 300,
+ *  which cut people off mid-description of a scene. */
+const BRIEF_MAX = 500;
+
 export function ShotBriefsSection({ count, refs, briefs, onChange }: {
   count: number;
   refs: UploadedRef[];
@@ -355,62 +359,116 @@ export function ShotBriefsSection({ count, refs, briefs, onChange }: {
   onChange: (index: number, patch: Partial<BriefState>) => void;
 }) {
   const { t } = useI18n();
+  /**
+   * ONE shot open at a time. Five textareas expanded at once would push the
+   * form into a scroll marathon and defeat the compact panel; opening a
+   * second row therefore closes the first.
+   */
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const openBoxRef = useRef<HTMLTextAreaElement>(null);
+
+  // Focusing the freshly opened textarea also brings it into view, which is
+  // what keeps it above the on-screen keyboard on a phone.
+  useEffect(() => {
+    if (openIndex === null) return;
+    const box = openBoxRef.current;
+    if (!box) return;
+    box.focus({ preventScroll: true });
+    box.scrollIntoView({ block: "nearest" });
+  }, [openIndex]);
+
   return (
     <section>
       <SectionLabel optional hint={t("genv3.briefsHint")}>{t("genv3.briefs")}</SectionLabel>
       <div className="space-y-1.5">
-        {/* One row per ordered shot — and every row starts empty. Photos are a
-            POOL: a shot only gets a reference when the customer picks one. */}
+        {/* One tile per ordered shot — and every tile starts empty. Photos are
+            a POOL: a shot only gets a reference when the customer picks one. */}
         {Array.from({ length: count }, (_, i) => {
           const b = briefs[i] ?? { text: "", keepFraming: false, refIndex: null };
-          const hasText = b.text.trim().length > 0;
+          const text = b.text;
+          const hasText = text.trim().length > 0;
           const hasRef = !!b.refIndex && !!refs[b.refIndex - 1];
           const touched = hasText || hasRef;
+          const open = openIndex === i;
           return (
             <div key={i} className={cn(
-              "flex items-center gap-2 rounded-xl border p-1.5 pl-2.5 transition-colors duration-200",
-              touched ? "border-[rgb(var(--accent)/0.35)] bg-accent-soft/20" : "border-line bg-sunken/40",
+              "overflow-hidden rounded-xl border transition-colors duration-200",
+              touched || open ? "border-[rgb(var(--accent)/0.35)] bg-accent-soft/20" : "border-line bg-sunken/40",
             )}>
-              <span className={cn("w-4 shrink-0 text-center text-[11px] font-bold tabular-nums", touched ? "text-accent" : "text-faint")}>
-                {i + 1}
-              </span>
-              <ReferencePicker
-                refs={refs}
-                index={i}
-                value={b.refIndex}
-                onChange={(next) => onChange(i, {
-                  refIndex: next,
-                  // Framing can only be preserved from a reference that exists.
-                  ...(next === null ? { keepFraming: false } : {}),
-                })}
-              />
-              <input
-                value={b.text}
-                onChange={(e) => onChange(i, { text: e.target.value })}
-                placeholder={t("genv3.briefPh")}
-                maxLength={300}
-                aria-label={t("genv3.briefAria", { n: i + 1 })}
-                className="h-9 min-w-0 flex-1 bg-transparent text-[12.5px] font-medium text-ink outline-none placeholder:text-faint"
-              />
-              {/* The panel is ~420px wide whatever the viewport, so the full
-                  label only appears where it genuinely fits; below that the
-                  switch carries its meaning through the tooltip and its
-                  accessible name, and the description keeps the room. */}
-              <span className="flex shrink-0 items-center gap-1.5 pr-1"
-                title={hasRef ? t("genv3.keepFramingHint") : t("genv3.keepFramingNeedsRef")}>
-                <span className={cn("hidden text-[10px] font-semibold 2xl:block", hasRef && b.keepFraming ? "text-accent" : "text-faint")}>
-                  {t("genv3.keepFraming")}
+              <div className="flex items-center gap-2 p-1.5 pl-2.5">
+                <span className={cn("w-4 shrink-0 text-center text-[11px] font-bold tabular-nums", touched ? "text-accent" : "text-faint")}>
+                  {i + 1}
                 </span>
-                <span className={cn("text-[10px] font-semibold 2xl:hidden", hasRef && b.keepFraming ? "text-accent" : "text-faint")}>
-                  {t("genv3.keepFramingShort")}
-                </span>
-                <Switch
-                  checked={hasRef && b.keepFraming}
-                  disabled={!hasRef}
-                  onChange={(next) => onChange(i, { keepFraming: next })}
-                  label={t("genv3.keepFraming")}
+                {/* Sibling of the toggle, never inside it: the picker is its
+                    own popover control and must not be nested in a button. */}
+                <ReferencePicker
+                  refs={refs}
+                  index={i}
+                  value={b.refIndex}
+                  onChange={(next) => onChange(i, {
+                    refIndex: next,
+                    // Framing can only be preserved from a reference that exists.
+                    ...(next === null ? { keepFraming: false } : {}),
+                  })}
                 />
-              </span>
+                <button
+                  type="button"
+                  onClick={() => setOpenIndex(open ? null : i)}
+                  aria-expanded={open}
+                  aria-controls={`shot-brief-${i}`}
+                  className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg text-left"
+                >
+                  {/* Collapsed shows a PREVIEW, not the whole description:
+                      `truncate` ellipsises at the tile's own width, so the
+                      row keeps its height whatever the customer wrote. */}
+                  <span className={cn(
+                    "min-w-0 flex-1 truncate text-[12.5px] font-medium",
+                    hasText ? "text-ink" : "text-faint",
+                  )}>
+                    {hasText ? text : t("genv3.briefPh")}
+                  </span>
+                  <ChevronDown
+                    size={14} aria-hidden
+                    className={cn("shrink-0 text-faint transition-transform duration-200", open && "rotate-180")}
+                  />
+                </button>
+              </div>
+
+              {/* Expands DIRECTLY BENEATH its own tile — no modal, no sideways
+                  shift, no change to the column's width. The form body is the
+                  only thing that scrolls, so growing this cannot move the
+                  action island below it. */}
+              {open && (
+                <div id={`shot-brief-${i}`} className="space-y-2 border-t border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.6))] p-2">
+                  <textarea
+                    ref={openBoxRef}
+                    value={text}
+                    onChange={(e) => onChange(i, { text: e.target.value })}
+                    placeholder={t("genv3.briefPh")}
+                    maxLength={BRIEF_MAX}
+                    rows={3}
+                    aria-label={t("genv3.briefAria", { n: i + 1 })}
+                    className="thin-scroll w-full resize-y rounded-lg border border-line bg-surface px-2.5 py-2 text-[12.5px] leading-relaxed text-ink outline-none transition-colors duration-200 placeholder:text-faint focus:border-[rgb(var(--accent)/0.55)]"
+                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="shrink-0 text-[10px] tabular-nums text-faint">
+                      {text.length}/{BRIEF_MAX}
+                    </span>
+                    <span className="flex min-w-0 items-center gap-1.5"
+                      title={hasRef ? t("genv3.keepFramingHint") : t("genv3.keepFramingNeedsRef")}>
+                      <span className={cn("truncate text-[10px] font-semibold", hasRef && b.keepFraming ? "text-accent" : "text-faint")}>
+                        {t("genv3.keepFraming")}
+                      </span>
+                      <Switch
+                        checked={hasRef && b.keepFraming}
+                        disabled={!hasRef}
+                        onChange={(next) => onChange(i, { keepFraming: next })}
+                        label={t("genv3.keepFraming")}
+                      />
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}

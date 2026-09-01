@@ -2,4 +2,9 @@ node_modules
 .next
 .env*.local
 .env
+# Real connection details for a deployment. `.env.example` stays tracked as
+# the documented shape; anything carrying actual keys must never be a commit
+# away from the repository.
+.env.production
+.env.development
 *.tsbuildinfo

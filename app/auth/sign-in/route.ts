@@ -1,9 +1,42 @@
 import { NextResponse } from "next/server";
+import type { AuthError } from "@supabase/supabase-js";
 import { createAuthRouteClient } from "@/lib/supabase/auth-route";
-import { authCookieOptions, PERSIST_COOKIE } from "@/lib/supabase/config";
+import { authCookieOptions, PERSIST_COOKIE, SUPABASE_CONFIG_FROM_ENV } from "@/lib/supabase/config";
 import { rateLimit, clientIp } from "@/lib/server/rate-limit";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Sign-in outcomes the LOGIN SCREEN can talk about. Deliberately coarse: the
+ * user gets a category, never a backend detail, and "invalid" stays the
+ * catch-all so nothing here can be used to work out whether an address has
+ * an account.
+ *
+ * The categories exist because one message for everything is actively
+ * misleading — an outage, a rate limit and a typo are different problems
+ * with different next steps, and telling someone their password is wrong
+ * when the database is unreachable sends them off resetting a password that
+ * was never the issue.
+ */
+type SignInFailure = "invalid" | "unconfirmed" | "ratelimit" | "unavailable" | "config";
+
+/**
+ * Supabase reports failures through `code` (stable), `status` (HTTP) and
+ * `message` (human, translated, liable to change) — so match in that order
+ * and only fall back to the message.
+ */
+function classify(error: AuthError): SignInFailure {
+  const code = error.code ?? "";
+  if (code === "email_not_confirmed" || /confirm/i.test(error.message)) return "unconfirmed";
+  if (code === "over_request_rate_limit" || code === "over_email_send_rate_limit" || error.status === 429) {
+    return "ratelimit";
+  }
+  if (code === "invalid_credentials" || error.status === 400) return "invalid";
+  // No status at all means the request never got an answer; 5xx means the
+  // auth service answered badly. Neither is the customer's password.
+  if (!error.status || error.status >= 500) return "unavailable";
+  return "invalid";
+}
 
 /**
  * Password sign-in as a CLASSIC full-page POST.
@@ -33,23 +66,52 @@ export async function POST(request: Request) {
     return res;
   };
 
-  if (!email || !password) return redirectTo("/login?error=invalid");
+  const keep = nextRaw ? `&next=${encodeURIComponent(next)}` : "";
+  const fail = (code: SignInFailure, mail?: string) => redirectTo(
+    `/login?error=${code}${mail ? `&email=${encodeURIComponent(mail)}` : ""}${keep}`,
+  );
 
-  // Brute-force brake: 10 attempts per minute per address. A limited caller
-  // sees the ordinary invalid-credentials screen — nothing to enumerate.
+  if (!email || !password) return fail("invalid");
+
+  /**
+   * Never sign in against the DEV project from a production deployment: the
+   * account would not exist there and the customer would be told their
+   * password is wrong. `config.ts` already fails a production BUILD without
+   * env vars; this is the runtime half, so a misconfiguration announces
+   * itself instead of masquerading as a bad password.
+   */
+  if (process.env.VERCEL_ENV === "production" && !SUPABASE_CONFIG_FROM_ENV) {
+    console.error("auth.sign-in.misconfigured: production deployment is missing NEXT_PUBLIC_SUPABASE_* env vars");
+    return fail("config");
+  }
+
+  // Brute-force brake: 10 attempts per minute per address. Saying so is safe
+  // — the limit is per IP and reveals nothing about whether an account exists.
   if (!rateLimit(`signin:${clientIp(request)}`, 10, 60_000)) {
-    return redirectTo("/login?error=invalid");
+    return fail("ratelimit");
   }
 
   const { supabase, applyCookies } = await createAuthRouteClient(remember);
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+  // A transport failure THROWS rather than returning an error, and an
+  // unhandled throw here is a 500 on the login form — which reads to the
+  // user as "the site is broken" with no way forward.
+  let result;
+  try {
+    result = await supabase.auth.signInWithPassword({ email, password });
+  } catch (cause) {
+    console.error("auth.sign-in.transport", cause);
+    return fail("unavailable");
+  }
+  const { data, error } = result;
   if (error) {
-    // An unconfirmed address gets its own message (with a resend action);
-    // everything else collapses to one non-enumerating "invalid" screen.
-    const code = /confirm/i.test(error.message) ? "unconfirmed" : "invalid";
-    const keep = nextRaw ? `&next=${encodeURIComponent(next)}` : "";
-    const mail = code === "unconfirmed" ? `&email=${encodeURIComponent(email)}` : "";
-    return redirectTo(`/login?error=${code}${mail}${keep}`);
+    const code = classify(error);
+    // The technical detail stays HERE, in the server log. The redirect below
+    // carries a category and nothing else.
+    console.error("auth.sign-in.failed", {
+      code, supabaseCode: error.code, status: error.status, message: error.message,
+    });
+    return fail(code, code === "unconfirmed" ? email : undefined);
   }
 
   // WARM-UP READ. The token was minted a millisecond ago, and until the

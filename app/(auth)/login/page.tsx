@@ -9,6 +9,18 @@ import { Card } from "@/components/ui/card";
 import { PasswordField } from "@/components/auth/password-field";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
 import { resendConfirmation } from "@/app/actions/auth";
+import { cn } from "@/lib/utils";
+
+/** Error codes /auth/sign-in may redirect back with, and how each one reads.
+ *  `unconfirmed` is absent on purpose: it renders as its own block below the
+ *  form, because it carries a resend action. */
+const NOTICES: Record<string, { key: string; tone: "danger" | "warning" }> = {
+  invalid: { key: "auth.invalidCredentials", tone: "danger" },
+  link: { key: "auth.linkInvalid", tone: "warning" },
+  ratelimit: { key: "auth.errRateLimit", tone: "warning" },
+  unavailable: { key: "auth.errUnavailable", tone: "warning" },
+  config: { key: "auth.errConfig", tone: "danger" },
+};
 
 /** Login is a NATIVE form POST to /auth/sign-in (303 + Set-Cookie) — the only
  *  flow installed standalone PWAs handle as reliably as a browser tab. No
@@ -20,6 +32,7 @@ export default function LoginPage() {
   const params = useSearchParams();
   const [submitting, setSubmitting] = useState(false);
   const error = params.get("error");
+  const notice = error ? NOTICES[error] : undefined;
   const next = params.get("next") ?? "";
   const unconfirmedEmail = params.get("email") ?? "";
   const [resendState, resendAction, resendPending] = useActionState(resendConfirmation, null);
@@ -60,14 +73,19 @@ export default function LoginPage() {
           </Link>
         </div>
 
-        {error === "invalid" && !submitting && (
-          <p role="alert" className="rounded-xl bg-[rgb(var(--danger)/0.10)] px-3.5 py-2.5 text-[13px] font-medium text-danger">
-            {t("auth.invalidCredentials")}
-          </p>
-        )}
-        {error === "link" && !submitting && (
-          <p role="alert" className="rounded-xl bg-[rgb(var(--warning)/0.10)] px-3.5 py-2.5 text-[13px] font-medium text-warning">
-            {t("auth.linkInvalid")}
+        {/* One category per real cause. Only "invalid" is about the
+            credentials — telling someone their password is wrong when the
+            service is down or they have simply tried too often sends them
+            off resetting a password that was never the problem. The
+            technical detail never leaves the server log. */}
+        {notice && !submitting && (
+          <p role="alert" className={cn(
+            "rounded-xl px-3.5 py-2.5 text-[13px] font-medium",
+            notice.tone === "danger"
+              ? "bg-[rgb(var(--danger)/0.10)] text-danger"
+              : "bg-[rgb(var(--warning)/0.10)] text-warning",
+          )}>
+            {t(notice.key)}
           </p>
         )}
         <button type="submit" disabled={submitting}

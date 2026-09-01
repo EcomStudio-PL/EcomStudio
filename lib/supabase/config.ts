@@ -4,12 +4,42 @@
  * The fallback below is the DEV project's PUBLIC anon key — safe to ship to browsers by design
  * (all access is enforced by Row Level Security). Never put a service-role key here.
  */
-export const SUPABASE_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://ezyhwkcrrysanbcbkzsq.supabase.co";
+const ENV_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const ENV_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+/**
+ * Whether the connection details came from the environment rather than the
+ * DEV fallback below. Server code uses this to refuse to serve a production
+ * request that would otherwise reach the wrong database.
+ */
+export const SUPABASE_CONFIG_FROM_ENV = Boolean(ENV_URL && ENV_ANON_KEY);
+
+/**
+ * A PRODUCTION deployment must bring its own connection details.
+ *
+ * This is not hypothetical: a deployment once shipped without its env file,
+ * the fallback below quietly took over, and the live site authenticated
+ * against the DEV project. Every real customer was told their correct
+ * password was wrong, because their account does not exist there — and
+ * nothing in the build or the logs said so. Silently serving the wrong
+ * database is worse than not building at all, so it is a BUILD FAILURE now.
+ *
+ * Only a real production deployment is guarded. A local `next build` and
+ * preview deployments keep the fallback, which is the whole point of having
+ * one — a fresh checkout runs with no setup.
+ */
+if (process.env.VERCEL_ENV === "production" && !SUPABASE_CONFIG_FROM_ENV) {
+  throw new Error(
+    "Supabase is not configured for production. NEXT_PUBLIC_SUPABASE_URL and " +
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY must both be set for a production deployment; " +
+    "refusing to fall back to the development project.",
+  );
+}
+
+export const SUPABASE_URL = ENV_URL ?? "https://ezyhwkcrrysanbcbkzsq.supabase.co";
 
 export const SUPABASE_ANON_KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-  "sb_publishable_eXRZtrYfvb4nICOx-jE-TA_mJH3xz21";
+  ENV_ANON_KEY ?? "sb_publishable_eXRZtrYfvb4nICOx-jE-TA_mJH3xz21";
 
 /**
  * Auth cookie attributes, shared by the server, browser and middleware
