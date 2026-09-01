@@ -67,7 +67,9 @@ export type GenerateInput = {
 };
 
 export type GenerateOutput =
-  | { ok: true; jobId: string; productId: string; images: { url: string; path: string }[]; credits: number }
+  // `productId` is null for the generator's normal, catalogue-free path — the
+  // type says so rather than asserting a string that is not there.
+  | { ok: true; jobId: string; productId: string | null; images: { url: string; path: string }[]; credits: number }
   | { ok: false; error: string; missingCredits?: number };
 
 const RATIOS = new Set(["1:1", "3:4", "4:5", "16:9", "9:16"]);
@@ -195,6 +197,12 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       concept_id: input.conceptId ?? null,
       parent_job_id: input.parentJobId ?? null,
       inspiration_count: input.inspirationPaths?.length || undefined,
+      // THE JOB REMEMBERS ITS OWN REFERENCES. Generations no longer hang off
+      // a product row, so `product_images` can no longer be used to rebuild
+      // the reference set when this shot is regenerated later — without this
+      // the correction would be rendered with NO product photo attached and
+      // the Product Lock would be lost silently.
+      reference_paths: input.referencePaths.slice(0, 8),
     } as never,
   }).select("id").single();
   if (jobError || !job) return { ok: false, error: "job_create_failed" };
@@ -535,7 +543,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   // Only entries that actually got a signed URL go back to the caller — an
   // asset whose signing failed still exists in the library and will sign on
   // the next page load.
-  return { ok: true, jobId: job.id, productId: productId!, images: stored.filter((s) => s.url), credits: charged };
+  return { ok: true, jobId: job.id, productId, images: stored.filter((s) => s.url), credits: charged };
 }
 
 /** Resolve one fallback candidate: active model + active provider + adapter

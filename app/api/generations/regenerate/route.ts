@@ -55,7 +55,7 @@ export async function POST(request: Request) {
   // explicit eq is belt-and-braces on top of RLS.
   const { data: gen } = await supabase
     .from("generations")
-    .select("id, product_id, generation_jobs(id, prompt_id, prompt_text, prompt_origin, aspect_ratio, resolution, model_id)")
+    .select("id, product_id, generation_jobs(id, prompt_id, prompt_text, prompt_origin, aspect_ratio, resolution, model_id, settings)")
     .eq("id", generationId).eq("workspace_id", workspace.id)
     .maybeSingle();
   const job = (gen as unknown as {
@@ -63,6 +63,7 @@ export async function POST(request: Request) {
       id: string; prompt_id: string | null; prompt_text: string | null;
       prompt_origin: string | null; aspect_ratio: string | null;
       resolution: string | null; model_id: string | null;
+      settings: { reference_paths?: unknown } | null;
     } | null;
   } | null)?.generation_jobs;
   if (!gen || !job) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
@@ -97,8 +98,18 @@ export async function POST(request: Request) {
     .limit(1).maybeSingle();
   if (live) return NextResponse.json({ ok: false, error: "already_running" }, { status: 409 });
 
-  let referencePaths: string[] = [];
-  if (gen.product_id) {
+  // REFERENCES FOR THE RETAKE. The job's own recorded set comes first: a
+  // generation no longer belongs to a product, so `product_images` cannot
+  // rebuild it. Jobs created before that was recorded still fall back to the
+  // product's photos, which is exactly the case those older rows have.
+  const recorded = Array.isArray(job.settings?.reference_paths)
+    ? (job.settings!.reference_paths as unknown[])
+      .filter((p): p is string =>
+        typeof p === "string" && p.startsWith(`${workspace.id}/`) && !p.includes(".."))
+      .slice(0, 8)
+    : [];
+  let referencePaths: string[] = recorded;
+  if (referencePaths.length === 0 && gen.product_id) {
     const { data: imgs } = await supabase
       .from("product_images")
       .select("storage_path, sort_order, products!inner(workspace_id)")
@@ -107,6 +118,12 @@ export async function POST(request: Request) {
       .order("sort_order", { ascending: true })
       .limit(8);
     referencePaths = (imgs ?? []).map((i) => i.storage_path);
+  }
+  // Without a single product reference the retake would be rendered from the
+  // prompt alone and the product would drift — refuse instead of charging for
+  // an image that cannot honour the Product Lock.
+  if (referencePaths.length === 0) {
+    return NextResponse.json({ ok: false, error: "references_required" }, { status: 400 });
   }
 
   const prompt = instruction
