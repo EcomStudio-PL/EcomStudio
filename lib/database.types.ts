@@ -1632,6 +1632,200 @@ export type Database = {
         }
         Relationships: []
       }
+      knowledge_examples: {
+        Row: {
+          correction: string | null
+          created_at: string
+          embedding: string | null
+          enabled: boolean
+          generated_path: string | null
+          hint_encrypted: string | null
+          hint_iv: string | null
+          hint_tag: string | null
+          id: string
+          prompt_used: string | null
+          reference_path: string | null
+          result_rating: number | null
+          set_id: string
+          tags: string[]
+          what_failed: string | null
+          what_worked: string | null
+        }
+        Insert: {
+          correction?: string | null
+          created_at?: string
+          embedding?: string | null
+          enabled?: boolean
+          generated_path?: string | null
+          hint_encrypted?: string | null
+          hint_iv?: string | null
+          hint_tag?: string | null
+          id?: string
+          prompt_used?: string | null
+          reference_path?: string | null
+          result_rating?: number | null
+          set_id: string
+          tags?: string[]
+          what_failed?: string | null
+          what_worked?: string | null
+        }
+        Update: {
+          correction?: string | null
+          created_at?: string
+          embedding?: string | null
+          enabled?: boolean
+          generated_path?: string | null
+          hint_encrypted?: string | null
+          hint_iv?: string | null
+          hint_tag?: string | null
+          id?: string
+          prompt_used?: string | null
+          reference_path?: string | null
+          result_rating?: number | null
+          set_id?: string
+          tags?: string[]
+          what_failed?: string | null
+          what_worked?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_examples_set_id_fkey"
+            columns: ["set_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_sets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      knowledge_sets: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          doc_text: string | null
+          error: string | null
+          file_count: number
+          id: string
+          model: string | null
+          name: string
+          notes: string | null
+          product_category: string | null
+          product_description: string | null
+          status: string
+          updated_at: string
+          version: number
+          zip_path: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          doc_text?: string | null
+          error?: string | null
+          file_count?: number
+          id?: string
+          model?: string | null
+          name: string
+          notes?: string | null
+          product_category?: string | null
+          product_description?: string | null
+          status?: string
+          updated_at?: string
+          version?: number
+          zip_path?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          doc_text?: string | null
+          error?: string | null
+          file_count?: number
+          id?: string
+          model?: string | null
+          name?: string
+          notes?: string | null
+          product_category?: string | null
+          product_description?: string | null
+          status?: string
+          updated_at?: string
+          version?: number
+          zip_path?: string | null
+        }
+        Relationships: []
+      }
+      prompt_engine_rules: {
+        Row: {
+          content: string
+          content_encrypted: string | null
+          content_iv: string | null
+          content_tag: string | null
+          created_at: string
+          created_by: string | null
+          enabled: boolean
+          id: string
+          name: string
+          priority: number
+          rule_type: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          content: string
+          content_encrypted?: string | null
+          content_iv?: string | null
+          content_tag?: string | null
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          id?: string
+          name: string
+          priority?: number
+          rule_type?: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          content?: string
+          content_encrypted?: string | null
+          content_iv?: string | null
+          content_tag?: string | null
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          id?: string
+          name?: string
+          priority?: number
+          rule_type?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      prompt_engine_versions: {
+        Row: {
+          active: boolean
+          changelog: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          version: string
+        }
+        Insert: {
+          active?: boolean
+          changelog?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          version: string
+        }
+        Update: {
+          active?: boolean
+          changelog?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          version?: string
+        }
+        Relationships: []
+      }
       prompt_sessions: {
         Row: {
           analysis_model: string | null
@@ -1655,6 +1849,8 @@ export type Database = {
           product_name: string
           reference_hash: string | null
           reference_paths: string[]
+          engine_version: number | null
+          knowledge_used: Json | null
           resolution: string | null
           session_type: string | null
           shot_briefs: Json | null
@@ -1686,6 +1882,8 @@ export type Database = {
           product_name: string
           reference_hash?: string | null
           reference_paths?: string[]
+          engine_version?: number | null
+          knowledge_used?: Json | null
           resolution?: string | null
           session_type?: string | null
           shot_briefs?: Json | null
@@ -1717,6 +1915,8 @@ export type Database = {
           product_name?: string
           reference_hash?: string | null
           reference_paths?: string[]
+          engine_version?: number | null
+          knowledge_used?: Json | null
           resolution?: string | null
           session_type?: string | null
           shot_briefs?: Json | null
@@ -2623,6 +2823,27 @@ export type Database = {
       delete_generation: {
         Args: { gen_id: string }
         Returns: string[]
+      }
+      get_engine_rules: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string
+          rule_type: string
+          priority: number
+          content_encrypted: string | null
+          content_iv: string | null
+          content_tag: string | null
+        }[]
+      }
+      match_knowledge_examples: {
+        Args: { p_embedding: string; p_top_k?: number }
+        Returns: {
+          id: string
+          similarity: number
+          hint_encrypted: string | null
+          hint_iv: string | null
+          hint_tag: string | null
+        }[]
       }
       refund_usage_partial: {
         Args: { p_event_id: string; p_amount: number }

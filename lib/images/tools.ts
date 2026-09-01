@@ -51,7 +51,9 @@ export function toolBySlug(slug: string): ToolDefinition | undefined {
 
 /* ── Option shapes ─────────────────────────────────────────────────────── */
 
-export const OUTPUT_FORMATS = ["jpeg", "png", "webp"] as const;
+/** Local sharp encodes all four honestly — TIFF (LZW, lossless) included,
+ *  which print/marketplace pipelines still ask for. */
+export const OUTPUT_FORMATS = ["jpeg", "png", "webp", "tiff"] as const;
 export type OutputFormatOption = (typeof OUTPUT_FORMATS)[number];
 
 /** Presets sellers actually ask for, plus "original" and a free box. */

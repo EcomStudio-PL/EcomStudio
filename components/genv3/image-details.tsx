@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Check, ChevronDown, ChevronLeft, ChevronRight, Copy, Download, Eraser, Expand,
-  Heart, Link2, Loader2, Maximize2, Minus, Plus, Save, Scaling, Trash2, Wand2, X,
+  Heart, Link2, Loader2, Maximize2, Minus, Plus, Save, Scaling, Sparkles, Trash2, Wand2, X,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
@@ -108,7 +108,7 @@ export function ImageDetails({ items, index, onIndex, onClose, onRegenerate, onF
 
   /** Convert + download through the LOCAL format tool: the browser gets a
    *  same-origin blob, so "download" really downloads. */
-  async function downloadAs(format: "jpeg" | "png" | "webp" | "original") {
+  async function downloadAs(format: "jpeg" | "png" | "webp" | "tiff" | "original") {
     setDlOpen(false);
     const base = (item.product ?? "grovbase").toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "grovbase";
     if (format === "original") {
@@ -319,6 +319,9 @@ export function ImageDetails({ items, index, onIndex, onClose, onRegenerate, onF
               <EditTile icon={Eraser} busy={toolBusy === "remove_bg"} title={t("genv3.editRemoveBg")} sub={t("genv3.editRemoveBgSub")}
                 onClick={() => runTool("remove_bg", { format: "png" })} />
               <EditTile icon={Wand2} disabled title={t("genv3.editElements")} sub={t("genv3.editElementsSub")} soonLabel={t("genv3.soon")} />
+              {/* Honest state: no AI-enhance backend exists yet — the tile is
+                  visible per the mockup but disabled, never a fake button. */}
+              <EditTile icon={Sparkles} disabled title={t("genv3.editEnhance")} sub={t("genv3.editEnhanceSub")} soonLabel={t("genv3.soon")} />
             </div>
             {expandPick && (
               <div className="animate-fade mt-2 flex flex-wrap items-center gap-1.5 rounded-xl border border-line bg-sunken/40 p-2">
@@ -383,6 +386,7 @@ export function ImageDetails({ items, index, onIndex, onClose, onRegenerate, onF
                     <DlItem label="JPG" sub={t("genv3.dlJpg")} onClick={() => downloadAs("jpeg")} />
                     <DlItem label="PNG" sub={t("genv3.dlPng")} onClick={() => downloadAs("png")} />
                     <DlItem label="WEBP" sub={t("genv3.dlWebp")} onClick={() => downloadAs("webp")} />
+                    <DlItem label="TIFF" sub={t("genv3.dlTiff")} onClick={() => downloadAs("tiff")} />
                     <DlItem label={t("genv3.dlOriginal")} sub={t("genv3.dlOriginalSub")} onClick={() => downloadAs("original")} />
                   </div>
                 )}

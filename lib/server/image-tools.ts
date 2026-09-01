@@ -204,7 +204,7 @@ export function parseSettings<K extends ToolSlug>(tool: K, raw: unknown): ToolSe
       return {
         color: hex(r.color, d.white_bg.color),
         padding: clamp(r.padding, 0, 25, d.white_bg.padding),
-        format: pick(r.format, ["jpeg", "png", "webp"] as const, d.white_bg.format),
+        format: pick(r.format, ["jpeg", "png", "webp", "tiff"] as const, d.white_bg.format),
         quality: clamp(r.quality, 40, 100, d.white_bg.quality),
       } as ToolSettings[K];
     case "expand":
@@ -220,7 +220,7 @@ export function parseSettings<K extends ToolSlug>(tool: K, raw: unknown): ToolSe
       } as ToolSettings[K];
     case "format":
       return {
-        format: pick(r.format, ["jpeg", "png", "webp"] as const, d.format.format),
+        format: pick(r.format, ["jpeg", "png", "webp", "tiff"] as const, d.format.format),
         width: r.width == null || r.width === "" ? null : clamp(r.width, 16, 8000, 1600),
         height: r.height == null || r.height === "" ? null : clamp(r.height, 16, 8000, 1600),
         quality: clamp(r.quality, 40, 100, d.format.quality),
@@ -229,7 +229,7 @@ export function parseSettings<K extends ToolSlug>(tool: K, raw: unknown): ToolSe
     case "compress":
       return {
         level: pick(r.level, ["light", "balanced", "strong", "auto"] as const, d.compress.level),
-        format: pick(r.format, ["keep", "jpeg", "png", "webp"] as const, d.compress.format),
+        format: pick(r.format, ["keep", "jpeg", "png", "webp", "tiff"] as const, d.compress.format),
       } as ToolSettings[K];
     default:
       return {
@@ -242,7 +242,7 @@ export function parseSettings<K extends ToolSlug>(tool: K, raw: unknown): ToolSe
         margin: clamp(r.margin, 0, 40, d.watermark.margin),
         rotation: clamp(r.rotation, -90, 90, d.watermark.rotation),
         spacing: clamp(r.spacing, 0, 200, d.watermark.spacing),
-        format: pick(r.format, ["keep", "jpeg", "png", "webp"] as const, d.watermark.format),
+        format: pick(r.format, ["keep", "jpeg", "png", "webp", "tiff"] as const, d.watermark.format),
         quality: clamp(r.quality, 40, 100, d.watermark.quality),
       } as ToolSettings[K];
   }
@@ -523,5 +523,6 @@ function mimeOf(format: string): string {
   if (format === "jpeg" || format === "jpg") return "image/jpeg";
   if (format === "webp") return "image/webp";
   if (format === "avif") return "image/avif";
+  if (format === "tiff") return "image/tiff";
   return "image/png";
 }

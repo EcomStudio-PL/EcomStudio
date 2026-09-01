@@ -8,7 +8,6 @@ import { listProducts } from "@/lib/services/products";
 import { signImageUrls } from "@/lib/services/images";
 import { listGalleryItems } from "@/lib/server/gallery";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
-import { PageHeader } from "@/components/ui/page-header";
 import { GeneratorModeSwitch } from "@/components/generator/mode-switch";
 import { GeneratorWorkspace, type WorkspaceProduct } from "@/components/genv3/workspace";
 import type { GenModel } from "@/components/genv3/types";
@@ -70,8 +69,10 @@ export default async function PromptsPage({ searchParams }: {
   const initialStyle = styleValue && styleValue !== styleKey ? styleValue : undefined;
 
   return (
-    <div>
-      <PageHeader overline={t("mega.create")} title={t("genv3.managedTitle")} sub={t("genv3.managedSub")} />
+    // §3: no page header — the workspace starts right under the navbar; the
+    // mode toggle is the first element. `workspace` re-maps the surface
+    // tokens onto the calm ramp, `workspace-page` paints the flat ground.
+    <div className="workspace workspace-page pt-1">
       <GeneratorModeSwitch
         active="engine"
         engineLabel={t("genv3.modeManaged")}

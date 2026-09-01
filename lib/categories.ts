@@ -232,17 +232,6 @@ const PLATFORM: VariantControl = {
   ],
 };
 
-const MARKETPLACE: VariantControl = {
-  key: "marketplace",
-  initial: "any",
-  options: [
-    { key: "any", directive: "" },
-    { key: "allegro", directive: "zgodnie z wymogami Allegro: produkt na białym tle, pełna widoczność" },
-    { key: "amazon", directive: "zgodnie z wymogami Amazon: czyste białe tło, produkt wypełnia 85% kadru" },
-    { key: "shop", directive: "pod własny sklep: spójna estetyka marki" },
-  ],
-};
-
 const SURFACE: VariantControl = {
   key: "surface",
   initial: "label",
@@ -256,7 +245,7 @@ const SURFACE: VariantControl = {
 export const CATEGORY_VARIANT: Record<string, CategoryVariant> = {
   ecommerce: {
     shotTypes: ["packshot", "marketplace_gallery", "premium_lifestyle", "product_in_use", "closeup", "scale", "technical"],
-    controls: [MARKETPLACE],
+    controls: [],
     ratioOrder: ["1:1", "4:5", "16:9", "9:16"],
   },
   moda: {

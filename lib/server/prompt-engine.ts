@@ -8,6 +8,7 @@ import { composeFinalPrompt, validateFinalPrompt, PROMPT_TEMPLATE_VERSION } from
 import { VISION_MODEL, type VisionBackend, type VisionOutcome, type VisionProvider } from "@/lib/ai/engine/vision";
 import type { ImageAnalysis, SessionInput } from "@/lib/ai/engine/types";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
+import { getEngineRuleDirectives, retrieveKnowledgeHints } from "@/lib/server/knowledge";
 
 export type ShotBrief = {
   /** The customer's own words for this shot — optional, max ~300 chars. */
@@ -450,8 +451,29 @@ export async function runPromptSession(
     stage = "scenes";
     const shots = shotsOrdered;
     const planned = shots - briefedCount;
-    const flavorStyle = [sessionInfo.style, sessionType ? SESSION_TYPE_DIRECTIVES[sessionType] : null]
-      .filter(Boolean).join(". ");
+
+    // ENGINE MEMORY — admin-authored rules plus the most similar curated
+    // examples from the knowledge base. Both arrive as ciphertext through
+    // definer RPCs and are decrypted only here; both are failure-safe and
+    // feed EXCLUSIVELY the internal planner brief, never any customer copy.
+    const [ruleDirectives, knowledge] = await Promise.all([
+      getEngineRuleDirectives(supabase),
+      retrieveKnowledgeHints(
+        supabase,
+        [sessionInfo.productName, sessionInfo.description, sessionInfo.extraInfo].filter(Boolean).join("\n"),
+        3,
+      ),
+    ]);
+    const knowledgeBlock = knowledge.hints.length > 0
+      ? `Wewnętrzne doświadczenia z podobnych produktów: ${knowledge.hints.join(" | ")}`.slice(0, 1200)
+      : null;
+
+    const flavorStyle = [
+      sessionInfo.style,
+      sessionType ? SESSION_TYPE_DIRECTIVES[sessionType] : null,
+      ...ruleDirectives,
+      knowledgeBlock,
+    ].filter(Boolean).join(". ").slice(0, 2600);
     const scannerInfo = {
       productName: sessionInfo.productName, description: sessionInfo.description,
       extraInfo: sessionInfo.extraInfo, style: flavorStyle || null,
@@ -573,7 +595,11 @@ export async function runPromptSession(
 
     await completeUsage(supabase, usage.eventId, rows.length);
     await supabase.from("prompt_sessions")
-      .update({ status: "ready", latency_ms: Date.now() - startedAt })
+      .update({
+        status: "ready", latency_ms: Date.now() - startedAt,
+        engine_version: ENGINE_VERSION,
+        knowledge_used: knowledge.exampleIds.length > 0 ? (knowledge.exampleIds as unknown as never) : null,
+      })
       .eq("id", session.id);
     // Internal record of what served this session: primary attempted, why we
     // left it, which provider/model succeeded and how long it took.
@@ -588,6 +614,9 @@ export async function runPromptSession(
         fallback_reason: usedOutcome?.fallbackReason ?? null,
         vision_latency_ms: usedOutcome?.latencyMs ?? null,
         prompt_template_version: PROMPT_TEMPLATE_VERSION,
+        engine_version: ENGINE_VERSION,
+        engine_rules: ruleDirectives.length,
+        knowledge_examples: knowledge.exampleIds,
         qa_repaired: qaRepaired,
         timings,
         retried_session: Boolean(retryable),

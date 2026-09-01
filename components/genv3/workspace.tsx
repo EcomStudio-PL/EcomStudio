@@ -328,7 +328,7 @@ export function GeneratorWorkspace({
   }
 
   return (
-    <div className="grid min-w-0 items-start gap-5 pb-[var(--gen-page-bottom)] [&>*]:min-w-0 lg:grid-cols-[400px_minmax(0,1fr)] lg:pb-10 xl:grid-cols-[420px_minmax(0,1fr)]">
+    <div className="grid min-w-0 items-start gap-5 pb-[var(--gen-page-bottom)] [&>*]:min-w-0 lg:grid-cols-[clamp(420px,29vw,470px)_minmax(0,1fr)] lg:gap-6 lg:pb-10">
       {/* ── LEFT: configuration ─────────────────────────────────────────── */}
       <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-[calc(var(--header-h)+0.875rem)] lg:h-[calc(100dvh-var(--header-h)-1.75rem)]">
         <div className="panel thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto rounded-2xl p-4 sm:p-5">

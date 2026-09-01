@@ -12,7 +12,7 @@ import sharp, { type Sharp, type OverlayOptions } from "sharp";
  * route, a batch worker and any future queue without changes.
  */
 
-export type OutputFormat = "jpeg" | "png" | "webp";
+export type OutputFormat = "jpeg" | "png" | "webp" | "tiff";
 
 export const MAX_DIMENSION = 8000;
 /** Above this the serverless function starts fighting its memory limit. */
@@ -41,6 +41,8 @@ function encode(pipeline: Sharp, format: OutputFormat, quality: number) {
   const q = Math.min(100, Math.max(1, Math.round(quality)));
   if (format === "jpeg") return pipeline.jpeg({ quality: q, mozjpeg: true, chromaSubsampling: "4:4:4" });
   if (format === "webp") return pipeline.webp({ quality: q, effort: 4 });
+  // TIFF for print pipelines: LZW is lossless, so the quality dial is moot.
+  if (format === "tiff") return pipeline.tiff({ compression: "lzw" });
   // PNG has no quality dial; the palette+effort pair is the closest analogue.
   return pipeline.png({ compressionLevel: 9, palette: q < 90, quality: q, effort: 7 });
 }

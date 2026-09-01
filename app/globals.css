@@ -92,6 +92,20 @@
   --radius-sm: 0.625rem;
   --radius-md: 0.875rem;
   --radius-lg: 1.125rem;
+
+  /* ── WORKSPACE TOKENS — LIGHT ──────────────────────────────────────────
+     The working panels (generators, gallery, their modals) run on their own
+     calmer ramp: clean whites and neutral grays, thin borders, purple only
+     as an accent. Marketing surfaces (home, dashboard) keep the glassy
+     brand look above — these tokens apply only inside `.workspace`. */
+  --workspace-bg: 247 247 249;
+  --workspace-surface: 255 255 255;
+  --workspace-surface-elevated: 246 246 249;
+  --workspace-border: 228 228 236;
+  --workspace-text-primary: 24 24 31;
+  --workspace-text-secondary: 108 108 124;
+  --workspace-accent: 226 0 214;
+  --workspace-accent-hover: 205 0 196;
 }
 
 
@@ -147,6 +161,19 @@
   --shadow-3: 0 20px 48px -22px rgb(6 2 12 / 0.85), inset 0 1px 0 rgb(196 150 255 / 0.10);
   --shadow-4: 0 32px 80px -28px rgb(6 2 12 / 0.92), inset 0 1px 0 rgb(196 150 255 / 0.12);
   --ring-accent: 0 0 0 1px rgb(var(--accent) / 0.5);
+
+  /* ── WORKSPACE TOKENS — DARK ───────────────────────────────────────────
+     Near-black graphite with a whisper of navy — never pure #000, never a
+     purple wash. Surfaces are flat planes a step apart; borders are thin
+     neutral grays; magenta appears only on active/selected/CTA/focus. */
+  --workspace-bg: 11 11 15;
+  --workspace-surface: 19 19 25;
+  --workspace-surface-elevated: 27 27 35;
+  --workspace-border: 44 44 56;
+  --workspace-text-primary: 240 240 246;
+  --workspace-text-secondary: 148 148 164;
+  --workspace-accent: 240 60 224;
+  --workspace-accent-hover: 246 96 232;
 }
 /* Dark mode is opaque: the wash is already dark, and dropping the blur on
    every card keeps scrolling cheap on phones. The top-light on every card
@@ -665,4 +692,104 @@ h2 { letter-spacing: -0.022em; line-height: 1.15; }
 @media (prefers-reduced-motion: reduce) {
   .media-skeleton { animation: none; }
   .media-frame > img { transition: none; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   WORKSPACE SCOPE. The generator work surfaces (and every modal mounted
+   inside them) re-map the generic surface tokens onto the calmer
+   `--workspace-*` ramp declared in :root / .dark above. Components keep
+   their classes — inside `.workspace` the same classes simply resolve to
+   flat professional planes: thin neutral borders, no glass blur, no panel
+   gradients. Magenta/violet survives only where it means something:
+   selected state, focus, badges and the primary CTA (.cta is untouched).
+   Marketing pages never carry this class and keep the brand glass look.
+   ───────────────────────────────────────────────────────────────────────── */
+.workspace {
+  --surface: var(--workspace-surface);
+  --raised: var(--workspace-surface-elevated);
+  --float: var(--workspace-surface-elevated);
+  --sunken: var(--workspace-bg);
+  --ink: var(--workspace-text-primary);
+  --muted: var(--workspace-text-secondary);
+  --line: var(--workspace-border);
+  --hairline: var(--workspace-border);
+  --hairline-alpha: 0.9;
+  --accent: var(--workspace-accent);
+  --accent-hover: var(--workspace-accent-hover);
+  --glass: var(--workspace-surface);
+  --glass-border: var(--workspace-border);
+  --glass-border-alpha: 0.9;
+  --ring-accent: 0 0 0 1px rgb(var(--accent) / 0.4);
+}
+.workspace, .dark .workspace {
+  --faint: 128 128 142;
+}
+.dark .workspace {
+  --accent-soft: 44 26 44;
+}
+.workspace {
+  --accent-soft: 250 236 250;
+}
+
+/* Panels inside the workspace are flat planes — no glass, no gradient. */
+.workspace .panel, .dark .workspace .panel {
+  background: rgb(var(--workspace-surface));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid rgb(var(--workspace-border) / 0.9);
+  box-shadow: 0 1px 2px rgb(10 10 14 / 0.05);
+}
+.dark .workspace .panel { box-shadow: 0 1px 2px rgb(0 0 0 / 0.35); }
+.workspace .plate, .dark .workspace .plate {
+  background: rgb(var(--workspace-surface-elevated));
+  border: 1px solid rgb(var(--workspace-border) / 0.8);
+}
+.workspace .overlay, .dark .workspace .overlay {
+  background: rgb(var(--workspace-surface));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid rgb(var(--workspace-border));
+  box-shadow: var(--shadow-4);
+}
+.workspace .glass, .workspace .dock,
+.dark .workspace .glass, .dark .workspace .dock {
+  background: rgb(var(--workspace-surface) / 0.96);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgb(var(--workspace-border));
+  box-shadow: var(--shadow-3);
+}
+.workspace .border-line, .dark .workspace .border-line { border-color: rgb(var(--workspace-border) / 0.9); }
+.workspace .border-line-strong, .dark .workspace .border-line-strong { border-color: rgb(var(--workspace-border)); }
+.workspace .divide-line > :not([hidden]) ~ :not([hidden]),
+.dark .workspace .divide-line > :not([hidden]) ~ :not([hidden]) { border-color: rgb(var(--workspace-border) / 0.7); }
+
+/* Selected state stays purple — but as a quiet ring + faint wash, not a lit
+   gradient card. */
+.workspace .is-selected, .dark .workspace .is-selected {
+  border-color: rgb(var(--accent) / 0.6);
+  background: rgb(var(--accent) / 0.07);
+  box-shadow: 0 0 0 1px rgb(var(--accent) / 0.35);
+  color: rgb(var(--ink));
+}
+
+/* Interactive panels stop levitating inside the workspace. */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .workspace .panel-interactive:hover {
+    transform: none;
+    border-color: rgb(var(--accent) / 0.35);
+    box-shadow: 0 4px 16px -8px rgb(0 0 0 / 0.3);
+  }
+}
+
+/* Full-viewport calm ground behind a workspace page: paints over the app's
+   ambient radial wash (same fixed z-index -1 plane, later in tree order),
+   so the generator sits on a flat near-black / near-white stage. */
+.workspace-page::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: rgb(var(--workspace-bg));
 }

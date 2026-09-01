@@ -37,6 +37,11 @@ export type GenerateInput = {
    *  framing and environment but must never redefine the product itself —
    *  the instruction block below makes that contract explicit per call. */
   inspirationPaths?: string[];
+  /** Regeneration guidance: a copy of the image being corrected with the
+   *  customer's hand-drawn annotations flattened onto it. Attached as the
+   *  FINAL reference with a contract that the marks locate the requested
+   *  changes and must never be rendered in the output. */
+  markedImagePath?: string;
   /** Prompt-engine handoff: link the job to its prompt + session. */
   promptId?: string;
   promptSessionId?: string;
@@ -201,12 +206,17 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   // Reference images -> base64 (only when the adapter supports them)
   const refs: ReferenceImage[] = [];
   let inspirationCount = 0;
+  let productRefCount = 0;
+  let markedAttached = false;
   if (adapter.capabilities.supportsReferenceImages && model.supports_reference_images) {
     const maxRefs = model.max_reference_images || 6;
     // Product identity comes first: inspiration may take at most two slots,
-    // and only the slots the product references leave free.
+    // the marked guidance image one, and only the slots the product
+    // references leave free.
     const inspWanted = (input.inspirationPaths ?? []).slice(0, 5);
-    const productBudget = inspWanted.length > 0 ? Math.max(1, maxRefs - Math.min(2, inspWanted.length)) : maxRefs;
+    const wantMarked = !!input.markedImagePath;
+    const reserved = (inspWanted.length > 0 ? Math.min(2, inspWanted.length) : 0) + (wantMarked ? 1 : 0);
+    const productBudget = reserved > 0 ? Math.max(1, maxRefs - reserved) : maxRefs;
     const download = async (path: string) => {
       const { data: blob } = await supabase.storage.from("product-images").download(path);
       if (!blob) return null;
@@ -221,19 +231,33 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       const ref = await download(path);
       if (ref) refs.push(ref);
     }
+    productRefCount = refs.length;
     for (const path of inspWanted) {
-      if (refs.length >= maxRefs) break;
+      if (refs.length >= maxRefs - (wantMarked ? 1 : 0)) break;
       const ref = await download(path);
       if (ref) { refs.push(ref); inspirationCount++; }
+    }
+    // The marked guidance image rides LAST, so "the final attached image"
+    // in its contract below is unambiguous.
+    if (wantMarked && refs.length < maxRefs) {
+      const ref = await download(input.markedImagePath!);
+      if (ref) { refs.push(ref); markedAttached = true; }
     }
   }
 
   // Inspiration steers the scene, never the product: the contract rides in
   // the same protected block as the Product Lock, in the model's language.
   const inspirationContract = inspirationCount > 0
-    ? `\n\nINSPIRATION IMAGES: the final ${inspirationCount} attached image(s) are style and scene inspiration ONLY. Take mood, lighting, environment, framing and atmosphere from them. The PRODUCT itself must match ONLY the first ${refs.length - inspirationCount} product reference image(s) exactly — never copy products, shapes, colors, labels or branding from the inspiration images.`
+    ? (markedAttached
+      ? `\n\nINSPIRATION IMAGES: attached image(s) ${productRefCount + 1}–${productRefCount + inspirationCount} are style and scene inspiration ONLY. Take mood, lighting, environment, framing and atmosphere from them. The PRODUCT itself must match ONLY the first ${productRefCount} product reference image(s) exactly — never copy products, shapes, colors, labels or branding from the inspiration images.`
+      : `\n\nINSPIRATION IMAGES: the final ${inspirationCount} attached image(s) are style and scene inspiration ONLY. Take mood, lighting, environment, framing and atmosphere from them. The PRODUCT itself must match ONLY the first ${refs.length - inspirationCount} product reference image(s) exactly — never copy products, shapes, colors, labels or branding from the inspiration images.`)
     : "";
-  const fidelity = `${buildFidelityInstructions(productInstructions)}${productContext}${inspirationContract}`;
+  // The customer's drawn annotations LOCATE corrections; they are guidance,
+  // never content — the contract forbids rendering the marks themselves.
+  const markedContract = markedAttached
+    ? `\n\nMARKED GUIDANCE IMAGE: the FINAL attached image is a copy of the previously generated photo with the customer's hand-drawn annotations on it (strokes, boxes, circles, lines, arrows, highlighted regions). The annotations only indicate WHERE the requested corrections apply. The drawn marks themselves are NOT part of the product or the scene — never render them, their colors or their shapes in the output. Apply the customer's corrections in the marked regions and keep the product and the rest of the scene unchanged.`
+    : "";
+  const fidelity = `${buildFidelityInstructions(productInstructions)}${productContext}${inspirationContract}${markedContract}`;
 
   /**
    * PROVIDER LOOP — one credit reservation, many chances to deliver.

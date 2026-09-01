@@ -28,11 +28,24 @@ export async function POST(request: Request) {
   let generationId = "";
   let instruction = "";
   let modelId: string | undefined;
+  let markedImagePath: string | undefined;
   try {
-    const body = (await request.json()) as { generationId?: string; instruction?: string; modelId?: string };
+    const body = (await request.json()) as {
+      generationId?: string; instruction?: string; modelId?: string; markedImagePath?: string;
+    };
     generationId = typeof body.generationId === "string" ? body.generationId : "";
     instruction = typeof body.instruction === "string" ? body.instruction.trim().slice(0, 500) : "";
     if (typeof body.modelId === "string" && /^[0-9a-f-]{36}$/.test(body.modelId)) modelId = body.modelId;
+    // The flattened annotation image the modal just uploaded. Storage-path
+    // shape only, pinned to THIS workspace's prefix — nothing outside the
+    // member's own area can be referenced.
+    if (typeof body.markedImagePath === "string"
+      && body.markedImagePath.length <= 300
+      && body.markedImagePath.startsWith(`${workspace.id}/`)
+      && !body.markedImagePath.includes("..")
+      && /^[\w\-./]+$/.test(body.markedImagePath)) {
+      markedImagePath = body.markedImagePath;
+    }
   } catch { /* validated below */ }
   if (!/^[0-9a-f-]{36}$/.test(generationId)) {
     return NextResponse.json({ ok: false, error: "invalid_input" }, { status: 400 });
@@ -59,7 +72,7 @@ export async function POST(request: Request) {
   // always re-runs its own stored prompt, even if it carries a prompt link.
   if (job.prompt_id && job.prompt_origin !== "custom") {
     const result = await generateFromConcept(supabase, user.id, workspace.id, job.prompt_id, {
-      modelId, instruction: instruction || undefined,
+      modelId, instruction: instruction || undefined, markedImagePath,
     });
     const status = result.ok ? 200
       : result.error === "insufficient_credits" ? 402
@@ -112,6 +125,7 @@ export async function POST(request: Request) {
     productId: gen.product_id ?? undefined,
     referencePaths,
     referenceImageIds: [],
+    markedImagePath,
     parentJobId: job.id,
     promptOrigin: "custom",
   });

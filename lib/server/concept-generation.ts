@@ -157,7 +157,7 @@ export function variationInstruction(generationCount: number): string {
 
 export async function generateFromConcept(
   supabase: Client, userId: string, workspaceId: string, conceptId: string,
-  opts?: { modelId?: string; instruction?: string },
+  opts?: { modelId?: string; instruction?: string; markedImagePath?: string },
 ): Promise<ConceptGenerateOutput & { modelName?: string }> {
   // The concept row is readable by the member (title, refs, status) — the
   // GrovBase prompt within it is ciphertext until this exact point; a
@@ -271,6 +271,7 @@ export async function generateFromConcept(
     productId: session.product_id ?? concept.product_id ?? undefined,
     referencePaths,
     referenceImageIds: [],
+    markedImagePath: opts?.markedImagePath,
     promptId: concept.id,
     promptSessionId: session.id,
     hidePromptText: origin === "ecomstudio",

@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Package, Sparkles, PenLine, Images, History as HistoryIcon,
   Coins, Rocket, LifeBuoy, Settings, Shield, Users, Building2, Cpu, Plug, Wrench,
   FileText, ScrollText, SlidersHorizontal, Wand2, BarChart3, Layers, Globe,
-  FolderOpen, Lightbulb, MessageSquare,
+  FolderOpen, Lightbulb, MessageSquare, BrainCircuit,
 } from "lucide-react";
 
 /** Single source of truth for app navigation. Client drawer, desktop
@@ -74,6 +74,7 @@ export const ADMIN_NAV: readonly NavGroup[] = [
   { key: "ai", items: [
     { href: "/admin/providers", key: "providers", icon: Plug },
     { href: "/admin/models", key: "models", icon: Cpu },
+    { href: "/admin/engine", key: "engine", icon: BrainCircuit },
     { href: "/admin/concepts", key: "concepts", icon: PenLine },
     { href: "/admin/tools", key: "tools", icon: Wrench },
   ]},

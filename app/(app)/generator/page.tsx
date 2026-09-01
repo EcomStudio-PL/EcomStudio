@@ -9,7 +9,6 @@ import { signImageUrls } from "@/lib/services/images";
 import { listGalleryItems } from "@/lib/server/gallery";
 import { customModels, getUsableModels, toClientModel } from "@/lib/ai/router";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
-import { PageHeader } from "@/components/ui/page-header";
 import { GeneratorModeSwitch } from "@/components/generator/mode-switch";
 import { GeneratorWorkspace, type WorkspaceProduct } from "@/components/genv3/workspace";
 import type { GenModel } from "@/components/genv3/types";
@@ -73,8 +72,8 @@ export default async function GeneratorPage({ searchParams }: {
   }));
 
   return (
-    <div>
-      <PageHeader overline={t("mega.create")} title={t("genv3.customTitle")} sub={t("genv3.customSub")} />
+    // §3: no page header — mode toggle first, workspace tokens scoped here.
+    <div className="workspace workspace-page pt-1">
       <GeneratorModeSwitch
         active="custom"
         engineLabel={t("genv3.modeManaged")}

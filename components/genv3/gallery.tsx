@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Download, Heart, LayoutGrid, List, Loader2, Megaphone, MoreVertical,
-  RefreshCw, Search, SlidersHorizontal, Sparkles, Sun, Trash2,
+  RefreshCw, Search, Sparkles, Sun, Trash2,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
@@ -202,7 +202,20 @@ export function GenerationGallery({
               <List size={14} aria-hidden />
             </button>
           </div>
-          <div className={cn("relative", searchOpen ? "w-44 sm:w-56" : "w-9")}>
+          {/* Desktop: the search field is ALWAYS visible, same height as its
+              neighbours. Phones keep the tap-to-expand variant to save row
+              width. */}
+          <div className="relative hidden md:block md:w-48 lg:w-40 xl:w-64 2xl:w-72">
+            <Search size={14} aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
+            <input
+              value={filter.q}
+              onChange={(e) => applyFilter({ q: e.target.value })}
+              placeholder={t("genv3.searchPh")}
+              aria-label={t("genv3.searchLabel")}
+              className="h-9 w-full rounded-xl border border-line bg-sunken/60 pl-8 pr-2 text-[12.5px] font-medium outline-none transition-colors placeholder:text-faint focus:border-[rgb(var(--accent)/0.55)] focus:shadow-[0_0_0_3px_rgb(var(--accent)/0.12)]"
+            />
+          </div>
+          <div className={cn("relative md:hidden", searchOpen ? "w-44" : "w-9")}>
             <button type="button" aria-label={t("genv3.searchLabel")}
               onClick={() => setSearchOpen(true)}
               className={cn("absolute left-0 top-0 flex h-9 w-9 items-center justify-center rounded-xl text-faint transition-colors hover:text-ink", searchOpen && "pointer-events-none")}>
@@ -220,11 +233,13 @@ export function GenerationGallery({
               />
             )}
           </div>
+          {/* Favourites filter wears the same HEART the rest of GrovBase
+              uses — outline off, filled + accent on. */}
           <button type="button" aria-pressed={filter.fav} aria-label={t("genv3.filterFav")} title={t("genv3.filterFav")}
             onClick={() => applyFilter({ fav: !filter.fav })}
-            className={cn("flex h-9 w-9 items-center justify-center rounded-xl border transition-colors",
+            className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors",
               filter.fav ? "border-[rgb(var(--accent)/0.5)] bg-accent-soft/40 text-accent" : "border-line text-faint hover:text-ink")}>
-            <SlidersHorizontal size={14} aria-hidden />
+            <Heart size={14} aria-hidden fill={filter.fav ? "currentColor" : "none"} />
           </button>
           <select
             value={filter.order}
