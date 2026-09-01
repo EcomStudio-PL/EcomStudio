@@ -209,12 +209,16 @@ export function ProductPicker({ open, onClose, products, onSelect, selectedId }:
  * The two entry points that replace an ever-growing chip list, plus the
  * compact summary shown once a product is chosen.
  */
-export function ProductChoice({ product, onPick, onClear, newLabel }: {
+export function ProductChoice({ product, onPick, onClear, newLabel, subtle }: {
   product?: PickableProduct | null;
   onPick: () => void;
   /** Switch back to entering a brand-new product. */
   onClear: () => void;
   newLabel: string;
+  /** Work surfaces keep the brand colour for genuine state (selected, CTA,
+   *  focus): here the two modes read as a quiet pair of controls with the
+   *  accent carried by the icon alone. */
+  subtle?: boolean;
 }) {
   const { t } = useI18n();
   if (product) {
@@ -244,8 +248,10 @@ export function ProductChoice({ product, onPick, onClear, newLabel }: {
        labels lost their endings, and half a word is not a button. */
     <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2">
       <button type="button" onClick={onClear}
-        className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl bg-[rgb(var(--accent)/0.14)] px-2.5 text-[13px] font-semibold text-accent transition-colors hover:bg-[rgb(var(--accent)/0.2)]">
-        <Plus size={15} aria-hidden className="shrink-0" />
+        className={subtle
+          ? "plate flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl px-2.5 text-[13px] font-semibold text-ink transition-colors hover:border-[rgb(var(--accent)/0.35)]"
+          : "flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl bg-[rgb(var(--accent)/0.14)] px-2.5 text-[13px] font-semibold text-accent transition-colors hover:bg-[rgb(var(--accent)/0.2)]"}>
+        <Plus size={15} aria-hidden className={subtle ? "shrink-0 text-accent" : "shrink-0"} />
         <span className="whitespace-nowrap">{newLabel}</span>
       </button>
       <button type="button" onClick={onPick}

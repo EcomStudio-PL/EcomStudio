@@ -713,7 +713,11 @@ h2 { letter-spacing: -0.022em; line-height: 1.15; }
   --muted: var(--workspace-text-secondary);
   --line: var(--workspace-border);
   --hairline: var(--workspace-border);
-  --hairline-alpha: 0.9;
+  /* Components derive stronger hairlines as calc(--hairline-alpha * 1.2…2.5).
+     The base has to leave headroom for that: at 0.9 every multiple exceeded
+     1, CSS clamped them all to opaque, and the whole border hierarchy
+     collapsed into one weight. 0.4 keeps the top of the ramp at exactly 1. */
+  --hairline-alpha: 0.4;
   --accent: var(--workspace-accent);
   --accent-hover: var(--workspace-accent-hover);
   --glass: var(--workspace-surface);
@@ -740,7 +744,10 @@ h2 { letter-spacing: -0.022em; line-height: 1.15; }
   box-shadow: 0 1px 2px rgb(10 10 14 / 0.05);
 }
 .dark .workspace .panel { box-shadow: 0 1px 2px rgb(0 0 0 / 0.35); }
-.workspace .plate, .dark .workspace .plate {
+/* `:where()` keeps this at the specificity of a bare `.plate`, so it still
+   beats the base rule by order but never outranks a component's own
+   `hover:border-…` / focus utility — those affordances stay alive. */
+:where(.workspace) .plate {
   background: rgb(var(--workspace-surface-elevated));
   border: 1px solid rgb(var(--workspace-border) / 0.8);
 }
@@ -766,11 +773,13 @@ h2 { letter-spacing: -0.022em; line-height: 1.15; }
 
 /* Selected state stays purple — but as a quiet ring + faint wash, not a lit
    gradient card. */
+/* No `color` here on purpose: chips and the mobile ratio picker pair
+   `is-selected` with `text-accent` to colour their label, and a colour
+   declared at this specificity would silently win over that utility. */
 .workspace .is-selected, .dark .workspace .is-selected {
   border-color: rgb(var(--accent) / 0.6);
   background: rgb(var(--accent) / 0.07);
   box-shadow: 0 0 0 1px rgb(var(--accent) / 0.35);
-  color: rgb(var(--ink));
 }
 
 /* Interactive panels stop levitating inside the workspace. */
@@ -784,7 +793,11 @@ h2 { letter-spacing: -0.022em; line-height: 1.15; }
 
 /* Full-viewport calm ground behind a workspace page: paints over the app's
    ambient radial wash (same fixed z-index -1 plane, later in tree order),
-   so the generator sits on a flat near-black / near-white stage. */
+   so the generator sits on a flat near-black / near-white stage.
+   `body::after` (the film grain) is generated AFTER everything inside body,
+   so it would still sit on top of this plane — a work surface wants a clean
+   ground, so the grain is switched off on these pages. */
+body:has(.workspace-page)::after { display: none; }
 .workspace-page::before {
   content: "";
   position: fixed;

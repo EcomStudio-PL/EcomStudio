@@ -329,7 +329,9 @@ export function ImageDetails({ items, index, onIndex, onClose, onRegenerate, onF
                 {["1:1", "4:5", "9:16", "16:9"].map((r) => (
                   <button key={r} type="button"
                     onClick={() => { setExpandPick(false); void runTool("expand", { ratio: r }); }}
-                    className="rounded-lg border border-line px-2.5 py-1.5 text-[12px] font-bold tabular-nums transition-colors hover:border-[rgb(var(--accent)/0.5)] hover:text-accent">
+                    // Border comes from a utility rather than `border-line` so
+                    // the hover tint is not outranked by the workspace scope.
+                    className="rounded-lg border border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))] px-2.5 py-1.5 text-[12px] font-bold tabular-nums transition-colors hover:border-[rgb(var(--accent)/0.5)] hover:text-accent">
                     {r}
                   </button>
                 ))}

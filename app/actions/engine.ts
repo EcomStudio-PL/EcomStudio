@@ -164,7 +164,9 @@ export async function saveEngineRuleAction(input: {
     if (!name || !content) return { ok: false, error: "invalid" };
     const ruleType = ["style", "quality", "avoid"].includes(input.rule_type) ? input.rule_type : "style";
     const priority = Math.min(Math.max(Math.trunc(Number(input.priority) || 100), 1), 999);
-    const sealed = encryptSecret(content);
+    // The engine-facing framing is sealed WITH the rule, so the retrieval RPC
+    // hands the customer's session ciphertext only — not the rule taxonomy.
+    const sealed = encryptSecret(ruleType === "avoid" ? `Unikaj: ${content}` : content);
     const row = {
       name, rule_type: ruleType, content,
       content_encrypted: sealed.ciphertext, content_iv: sealed.iv, content_tag: sealed.authTag,

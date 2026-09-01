@@ -120,20 +120,31 @@ function KnowledgeTab({ sets }: { sets: KnowledgeSetView[] }) {
   ), [sets, q, status, category]);
 
   // While the import request runs, its set row reports each pipeline stage —
-  // poll it so the admin watches the progress live.
+  // poll it so the admin watches the progress live. The row is pinned to THIS
+  // admin and to rows created after this upload started, so a colleague
+  // importing at the same time never drives this progress indicator.
+  const startedAt = useRef<string | null>(null);
   useEffect(() => {
     if (!busy) { setLiveStatus(null); return; }
     const supabase = createClient();
-    const id = setInterval(async () => {
+    let stop = false;
+    const tick = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || stop) return;
       const { data } = await supabase.from("knowledge_sets")
-        .select("status, error").order("created_at", { ascending: false }).limit(1).maybeSingle();
-      if (data) setLiveStatus(data.status);
-    }, 2500);
-    return () => clearInterval(id);
+        .select("status")
+        .eq("created_by", user.id)
+        .gte("created_at", startedAt.current ?? new Date(0).toISOString())
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (data && !stop) setLiveStatus(data.status);
+    };
+    const id = setInterval(tick, 2500);
+    return () => { stop = true; clearInterval(id); };
   }, [busy]);
 
   async function doImport() {
     if (!file || busy) return;
+    startedAt.current = new Date(Date.now() - 5_000).toISOString();
     setBusy(true);
     try {
       const fd = new FormData();

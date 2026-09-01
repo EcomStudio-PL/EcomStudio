@@ -88,9 +88,11 @@ export function unzipSafe(buf: Buffer): UnzipResult {
     const ext = name.split(".").pop()?.toLowerCase() ?? "";
     if (!ALLOWED_EXT.has(ext)) { skipped.push(name); continue; }
 
+    // Skip BEFORE budgeting: an entry we will never extract must not fail the
+    // whole archive on its (attacker-controlled, unverified) declared size.
+    if (method !== 0 && method !== 8) { skipped.push(name); continue; }
     if (uncompSize > MAX_FILE_BYTES) throw new ZipError("zip_file_too_large");
     if (total + uncompSize > MAX_TOTAL_BYTES) throw new ZipError("zip_too_large");
-    if (method !== 0 && method !== 8) { skipped.push(name); continue; }
 
     // Local header: skip its own (possibly different) name/extra lengths.
     if (localOffset + 30 > buf.length || buf.readUInt32LE(localOffset) !== 0x04034b50) throw new ZipError("zip_invalid");

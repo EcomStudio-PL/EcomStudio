@@ -93,15 +93,17 @@ export async function retrieveKnowledgeHints(
       p_embedding: JSON.stringify(vector) as unknown as string,
       p_top_k: topK,
     });
+    // The relevance floor and the ordering live in the RPC (migration 0043):
+    // no score crosses the boundary, so a customer session cannot use this
+    // as a similarity oracle against the curated knowledge base.
     const rows = (data ?? []) as {
-      id: string; similarity: number;
+      id: string;
       hint_encrypted: string | null; hint_iv: string | null; hint_tag: string | null;
     }[];
     const hints: string[] = [];
     const ids: string[] = [];
     for (const r of rows) {
-      // Below this the "similar" example is noise, not experience.
-      if (r.similarity < 0.25 || !r.hint_encrypted || !r.hint_iv || !r.hint_tag) continue;
+      if (!r.hint_encrypted || !r.hint_iv || !r.hint_tag) continue;
       try {
         hints.push(decryptSecret(r.hint_encrypted, r.hint_iv, r.hint_tag));
         ids.push(r.id);
@@ -120,7 +122,7 @@ export async function getEngineRuleDirectives(supabase: Client): Promise<string[
     if (!encryptionAvailable()) return [];
     const { data } = await supabase.rpc("get_engine_rules");
     const rows = (data ?? []) as {
-      id: string; rule_type: string; priority: number;
+      id: string;
       content_encrypted: string | null; content_iv: string | null; content_tag: string | null;
     }[];
     const out: string[] = [];
@@ -129,9 +131,13 @@ export async function getEngineRuleDirectives(supabase: Client): Promise<string[
       if (!r.content_encrypted || !r.content_iv || !r.content_tag) continue;
       try {
         const text = decryptSecret(r.content_encrypted, r.content_iv, r.content_tag).slice(0, 400);
-        if (text.length > budget) break;
+        // A long high-priority rule must not starve the shorter ones behind
+        // it: skip what does not fit, keep filling the budget.
+        if (text.length > budget) continue;
         budget -= text.length;
-        out.push(r.rule_type === "avoid" ? `Unikaj: ${text}` : text);
+        // The "Unikaj:" framing is sealed into the ciphertext at save time,
+        // so the RPC never has to hand the rule taxonomy to the client.
+        out.push(text);
       } catch { /* older key — skip */ }
     }
     return out;

@@ -30,5 +30,21 @@ Zakres: Task I ("Precyzyjny upgrade UI paneli roboczych") + dokończenie Task H 
 ## 6. i18n
 - `genv3.*`: narzędzia rysowania, regenMark/Reset/Undo, dlTiff, editEnhance. `admin.engine.*`: ~60 kluczy. `common.saved/deleted`. Wszystko ×3 (PL/EN/DE).
 
+## 7. Przegląd adwersaryjny — 15 potwierdzonych defektów naprawionych
+Cztery niezależne przeglądy (canvas, backend znaczników, moduł AI Engine, restyle CSS); każde zgłoszenie weryfikowane przeciw kodowi.
+
+**Canvas (7):** stale `shapesRef` przy szybkim ruchu wskaźnika (gumka/przeciąganie gubiły zmiany) → wszystkie zapisy przez `emit()` synchronizujący ref; `loadBitmap` cache'ował PORAŻKI (wygasły signed URL blokował różdżkę i spłaszczanie do przeładowania strony) → cache tylko sukcesów; różdżka kończąca się po zmianie obrazu nakładała maskę z poprzedniego zdjęcia → strażnik `urlRef`; snapshot undo dla nieudanej różdżki → snapshot dopiero przy sukcesie; `pointercancel` zatwierdzał niedokończony kształt → osobny handler odrzucający; próg grotu strzałki w px zamiast proporcji (rozjazd podgląd↔spłaszczenie) → `0.012 * W`; każda ponowna próba regeneracji wgrywała nowy plik markup → reużycie po sygnaturze kształtów.
+
+**Backend (2):** model zapasowy o mniejszym `max_reference_images` obcinał końcowe referencje — czyli obraz z zaznaczeniami — podczas gdy prompt nadal twierdził, że jest załączony (realne dla domyślnego łańcucha gpt-image-2 → flux-pro-1.1). Referencje trzymane teraz w trzech rolach i dopasowywane PER KANDYDAT (`fitRefs`), a kontrakt budowany z tego, co faktycznie poleciało (`buildFidelity`); przy `max_reference_images = 1` znacznik ginął niedeterministycznie → ta sama zmiana usuwa problem uczciwie.
+
+**AI Engine (6):** nieobsłużony błąd `insert` kończył import statusem „ready" z zerem przykładów → `fail()`; błąd uploadu ZIP zapisywał martwą ścieżkę → `zip_path` tylko przy sukcesie; budżet rozmiaru sprawdzany przed whitelistą metod kompresji (jeden nieobsługiwany plik wywracał całe archiwum) → kolejność odwrócona; `break` zamiast `continue` w budżecie reguł gubił krótkie reguły za długą; poll postępu importu śledził najnowszy zestaw globalnie → przypięty do zalogowanego admina i czasu startu; brak polityki UPDATE na buckecie `knowledge` przy `upsert:true` → migracja 0043.
+
+**Restyle (4):** `--hairline-alpha: 0.9` × mnożniki 1.2–2.5 przekraczało 1 i CSS spłaszczał całą hierarchię obramowań do jednej wagi → 0.4; ziarno `body::after` malowało się NAD płaskim tłem workspace → wyłączone na tych stronach; `.workspace .is-selected { color }` nadpisywał `text-accent` na chipach i wyborze formatu → deklaracja usunięta; `.dark .workspace .plate` bił utility `hover:border-…` (utrata afordancji hover w dark) → `:where(.workspace) .plate`.
+
+**Migracja 0043** (zastosowana na PROD): `match_knowledge_examples` nie zwraca już `similarity` a próg 0.25 egzekwuje SQL (koniec z oracle podobieństwa dla dowolnego wektora), `get_engine_rules` nie zwraca `rule_type`/`priority` (framing „Unikaj:" zapieczętowany w szyfrogramie przy zapisie), polityka UPDATE dla bucketa `knowledge`.
+
 ## Weryfikacja
-- `npm run typecheck` ✅, `npm run build` ✅. Przegląd adwersaryjny (4 wymiary) — wyniki i poprawki w raporcie zadania.
+- `npm run typecheck` ✅ · `npm run build` ✅ (35 tras).
+- Responsywność: 320/390/430/768/1024/1366/1536/1920/2560 — **0 px** przewinięcia poziomego w każdym z nich, dark i light.
+- Narzędzia rysowania zweryfikowane funkcjonalnie na canvasie (liczba nieprzezroczystych pikseli): pusty 0 → pędzel 2 024 → ramka 7 456 → strzałka 9 808 → okrąg 13 129 → różdżka 117 545 (flood fill po realnych pikselach) → przeciąganie 119 392 → gumka 115 097 (jeden element) → cofnij 119 392 (dokładne przywrócenie) → reset 0; spłaszczanie zwraca prawdziwy `image/webp` (7 588 B).
+- Live E2E na PROD niewykonalne z tego środowiska: proxy wyjściowe blokuje host Supabase (CONNECT 403), więc logowanie testowego konta nie przechodzi lokalnie. Weryfikacja wizualna przeprowadzona na prawdziwych komponentach przez tymczasową trasę podglądu (usuniętą przed commitem).

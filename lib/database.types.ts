@@ -2828,8 +2828,6 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: {
           id: string
-          rule_type: string
-          priority: number
           content_encrypted: string | null
           content_iv: string | null
           content_tag: string | null
@@ -2839,7 +2837,6 @@ export type Database = {
         Args: { p_embedding: string; p_top_k?: number }
         Returns: {
           id: string
-          similarity: number
           hint_encrypted: string | null
           hint_iv: string | null
           hint_tag: string | null

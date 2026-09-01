@@ -36,7 +36,10 @@ function loadBitmap(url: string): Promise<ImageBitmap | null> {
     p = fetch(url)
       .then((r) => (r.ok ? r.blob() : Promise.reject(new Error("fetch"))))
       .then((b) => createImageBitmap(b))
-      .catch(() => null);
+      // Only SUCCESSES are worth caching: a signed URL that expired or a
+      // network blip must not poison the wand and the flatten step until a
+      // full reload — drop the entry so the next attempt really retries.
+      .catch(() => { bitmapCache.delete(url); return null; });
     bitmapCache.set(url, p);
     if (bitmapCache.size > 12) {
       const first = bitmapCache.keys().next().value;
@@ -94,7 +97,10 @@ export function renderShapes(ctx: CanvasRenderingContext2D, shapes: Shape[], W: 
         ctx.stroke();
         if (s.kind === "arrow") {
           const ang = Math.atan2(by - ay, bx - ax);
-          const head = Math.max(10, ctx.lineWidth * 2.6);
+          // Both the floor and the scale are relative to the image width, so
+          // the flattened copy shows the same arrow the customer drew on the
+          // (much smaller) preview.
+          const head = Math.max(0.012 * W, ctx.lineWidth * 2.6);
           for (const off of [Math.PI * 0.82, -Math.PI * 0.82]) {
             ctx.beginPath();
             ctx.moveTo(bx, by);
@@ -228,6 +234,22 @@ export async function flattenAnnotations(
   return await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.87));
 }
 
+/** Cheap identity for one drawing, so an upload can be reused across retries
+ *  instead of orphaning a new file in storage on every failed attempt. */
+export function shapeSignature(seed: string, shapes: Shape[]): string {
+  const parts = shapes.map((s) => {
+    if (s.kind === "stroke") {
+      const pts = s.pts.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`).join(";");
+      return `s|${s.color}|${s.size.toFixed(4)}|${pts}`;
+    }
+    if (s.kind === "magic") {
+      return `m|${s.color}|${s.mask.width}x${s.mask.height}|${s.dx.toFixed(3)},${s.dy.toFixed(3)}`;
+    }
+    return `${s.kind}|${s.color}|${s.size.toFixed(4)}|${s.a.x.toFixed(3)},${s.a.y.toFixed(3)}|${s.b.x.toFixed(3)},${s.b.y.toFixed(3)}`;
+  });
+  return `${seed}#${parts.join("~")}`;
+}
+
 // ── The interactive canvas ─────────────────────────────────────────────────
 export function AnnotationCanvas({ url, shapes, tool, color, sizePx, onGestureStart, onChange, className }: {
   url: string;
@@ -252,6 +274,21 @@ export function AnnotationCanvas({ url, shapes, tool, color, sizePx, onGestureSt
   >(null);
   const shapesRef = useRef(shapes);
   shapesRef.current = shapes;
+  const urlRef = useRef(url);
+  urlRef.current = url;
+
+  /**
+   * The ONLY way this component mutates the shape list. Pointer moves fire
+   * far faster than React commits, and every mutation is computed from
+   * `shapesRef.current` — so the ref has to advance with the write, not with
+   * the next render. Without this, a fast eraser sweep or drag computes two
+   * consecutive changes from the same stale base and the second silently
+   * reverts the first.
+   */
+  const emit = useCallback((next: Shape[]) => {
+    shapesRef.current = next;
+    onChange(next);
+  }, [onChange]);
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -291,7 +328,7 @@ export function AnnotationCanvas({ url, shapes, tool, color, sizePx, onGestureSt
     const list = shapesRef.current;
     for (let i = list.length - 1; i >= 0; i--) {
       if (hitShape(list[i], px, py, W, H)) {
-        onChange(list.filter((_, j) => j !== i));
+        emit(list.filter((_, j) => j !== i));
         return;
       }
     }
@@ -305,11 +342,19 @@ export function AnnotationCanvas({ url, shapes, tool, color, sizePx, onGestureSt
     const norm = sizePx / Math.max(1, W);
 
     if (tool === "magic") {
-      onGestureStart();
-      void loadBitmap(url).then((bmp) => {
-        if (!bmp) return;
-        const mask = magicMask(bmp, { x, y }, color);
-        if (mask) onChange([...shapesRef.current, { kind: "magic", mask, color, dx: 0, dy: 0 }]);
+      // The fetch can take seconds on a full-size image. If the customer
+      // moves to another image meanwhile, the mask computed from the OLD
+      // pixels must not land on the new canvas — and the undo snapshot is
+      // pushed only once a mask really exists, so a failed wand click never
+      // leaves a no-op entry on the stack.
+      const at = { x, y };
+      const forUrl = url;
+      void loadBitmap(forUrl).then((bmp) => {
+        if (!bmp || urlRef.current !== forUrl) return;
+        const mask = magicMask(bmp, at, color);
+        if (!mask || urlRef.current !== forUrl) return;
+        onGestureStart();
+        emit([...shapesRef.current, { kind: "magic", mask, color, dx: 0, dy: 0 }]);
       });
       return;
     }
@@ -347,7 +392,7 @@ export function AnnotationCanvas({ url, shapes, tool, color, sizePx, onGestureSt
     if (g.type === "drag") {
       const dx = x - g.lastX, dy = y - g.lastY;
       g.lastX = x; g.lastY = y;
-      onChange(shapesRef.current.map((s, i) => {
+      emit(shapesRef.current.map((s, i) => {
         if (i !== g.index) return s;
         if (s.kind === "stroke") return { ...s, pts: s.pts.map((p) => ({ x: p.x + dx, y: p.y + dy })) };
         if (s.kind === "magic") return { ...s, dx: s.dx + dx, dy: s.dy + dy };
@@ -372,11 +417,18 @@ export function AnnotationCanvas({ url, shapes, tool, color, sizePx, onGestureSt
           // A shape dragged out to (near) zero size is a misclick, not a mark.
           const degenerate = d.kind !== "stroke" && d.kind !== "magic"
             && Math.abs(d.a.x - d.b.x) < 0.004 && Math.abs(d.a.y - d.b.y) < 0.004;
-          if (!degenerate) onChange([...shapesRef.current, d]);
+          if (!degenerate) emit([...shapesRef.current, d]);
         }
         return null;
       });
     }
+  }
+
+  /** A browser-initiated cancel (app switch, palm rejection, notification
+   *  shade) is an ABORT, not a finished mark: the draft is discarded. */
+  function onPointerCancel() {
+    gesture.current = null;
+    setDraft(null);
   }
 
   const cursor = tool === "hand" ? "grab" : "crosshair";
@@ -387,7 +439,7 @@ export function AnnotationCanvas({ url, shapes, tool, color, sizePx, onGestureSt
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        onPointerCancel={onPointerCancel}
         className="absolute inset-0 h-full w-full"
         style={{ cursor, touchAction: "none" }}
         aria-hidden

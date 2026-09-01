@@ -203,16 +203,23 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     return { ok: false, error: usage.error };
   }
 
-  // Reference images -> base64 (only when the adapter supports them)
-  const refs: ReferenceImage[] = [];
-  let inspirationCount = 0;
-  let productRefCount = 0;
-  let markedAttached = false;
-  if (adapter.capabilities.supportsReferenceImages && model.supports_reference_images) {
+  /**
+   * REFERENCE IMAGES — downloaded once, fitted PER CANDIDATE.
+   *
+   * The three roles stay in separate lists because every candidate model has
+   * its own `max_reference_images`: a fallback with a smaller cap must trim
+   * spare product angles, never the customer's marked correction, and the
+   * contract text below is rebuilt from what that candidate actually gets.
+   * (A flat pre-sliced array made a smaller fallback drop the trailing marked
+   * image while the prompt still announced it — the model was told to apply
+   * annotations that were not attached.)
+   */
+  const productRefs: ReferenceImage[] = [];
+  const inspirationRefs: ReferenceImage[] = [];
+  let markedRef: ReferenceImage | null = null;
+  const refsSupported = adapter.capabilities.supportsReferenceImages && model.supports_reference_images;
+  if (refsSupported) {
     const maxRefs = model.max_reference_images || 6;
-    // Product identity comes first: inspiration may take at most two slots,
-    // the marked guidance image one, and only the slots the product
-    // references leave free.
     const inspWanted = (input.inspirationPaths ?? []).slice(0, 5);
     const wantMarked = !!input.markedImagePath;
     const reserved = (inspWanted.length > 0 ? Math.min(2, inspWanted.length) : 0) + (wantMarked ? 1 : 0);
@@ -229,35 +236,51 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     // provider instead of being silently dropped.
     for (const path of input.referencePaths.slice(0, productBudget)) {
       const ref = await download(path);
-      if (ref) refs.push(ref);
+      if (ref) productRefs.push(ref);
     }
-    productRefCount = refs.length;
-    for (const path of inspWanted) {
-      if (refs.length >= maxRefs - (wantMarked ? 1 : 0)) break;
+    for (const path of inspWanted.slice(0, 2)) {
       const ref = await download(path);
-      if (ref) { refs.push(ref); inspirationCount++; }
+      if (ref) inspirationRefs.push(ref);
     }
-    // The marked guidance image rides LAST, so "the final attached image"
-    // in its contract below is unambiguous.
-    if (wantMarked && refs.length < maxRefs) {
-      const ref = await download(input.markedImagePath!);
-      if (ref) { refs.push(ref); markedAttached = true; }
-    }
+    if (wantMarked) markedRef = await download(input.markedImagePath!);
   }
 
-  // Inspiration steers the scene, never the product: the contract rides in
-  // the same protected block as the Product Lock, in the model's language.
-  const inspirationContract = inspirationCount > 0
-    ? (markedAttached
-      ? `\n\nINSPIRATION IMAGES: attached image(s) ${productRefCount + 1}–${productRefCount + inspirationCount} are style and scene inspiration ONLY. Take mood, lighting, environment, framing and atmosphere from them. The PRODUCT itself must match ONLY the first ${productRefCount} product reference image(s) exactly — never copy products, shapes, colors, labels or branding from the inspiration images.`
-      : `\n\nINSPIRATION IMAGES: the final ${inspirationCount} attached image(s) are style and scene inspiration ONLY. Take mood, lighting, environment, framing and atmosphere from them. The PRODUCT itself must match ONLY the first ${refs.length - inspirationCount} product reference image(s) exactly — never copy products, shapes, colors, labels or branding from the inspiration images.`)
-    : "";
-  // The customer's drawn annotations LOCATE corrections; they are guidance,
-  // never content — the contract forbids rendering the marks themselves.
-  const markedContract = markedAttached
-    ? `\n\nMARKED GUIDANCE IMAGE: the FINAL attached image is a copy of the previously generated photo with the customer's hand-drawn annotations on it (strokes, boxes, circles, lines, arrows, highlighted regions). The annotations only indicate WHERE the requested corrections apply. The drawn marks themselves are NOT part of the product or the scene — never render them, their colors or their shapes in the output. Apply the customer's corrections in the marked regions and keep the product and the rest of the scene unchanged.`
-    : "";
-  const fidelity = `${buildFidelityInstructions(productInstructions)}${productContext}${inspirationContract}${markedContract}`;
+  /** Fit the three roles into ONE model's capacity: the product keeps at
+   *  least one slot, the marked correction outranks inspiration, and the
+   *  marked image is always LAST so "the final attached image" is true. */
+  const fitRefs = (capacity: number) => {
+    if (capacity <= 0) return { list: [] as ReferenceImage[], products: 0, inspiration: 0, marked: false };
+    const extras = (markedRef ? 1 : 0) + Math.min(2, inspirationRefs.length);
+    const reserve = Math.max(0, Math.min(capacity - 1, extras));
+    const products = productRefs.slice(0, Math.max(1, capacity - reserve));
+    let left = capacity - products.length;
+    const marked = markedRef && left > 0 ? markedRef : null;
+    if (marked) left -= 1;
+    const inspiration = inspirationRefs.slice(0, Math.max(0, Math.min(2, left)));
+    return {
+      list: [...products, ...inspiration, ...(marked ? [marked] : [])],
+      products: products.length, inspiration: inspiration.length, marked: !!marked,
+    };
+  };
+
+  /** The protected block that rides beside the Product Lock. It states only
+   *  what this exact request carries — never a role that was trimmed. */
+  const buildFidelity = (fit: ReturnType<typeof fitRefs>) => {
+    // Inspiration steers the scene, never the product.
+    const inspirationContract = fit.inspiration > 0
+      ? `\n\nINSPIRATION IMAGES: attached image(s) ${fit.products + 1}–${fit.products + fit.inspiration} are style and scene inspiration ONLY. Take mood, lighting, environment, framing and atmosphere from them. The PRODUCT itself must match ONLY the first ${fit.products} product reference image(s) exactly — never copy products, shapes, colors, labels or branding from the inspiration images.`
+      : "";
+    // The customer's drawn annotations LOCATE corrections; they are guidance,
+    // never content — the contract forbids rendering the marks themselves.
+    const markedContract = fit.marked
+      ? `\n\nMARKED GUIDANCE IMAGE: the FINAL attached image is a copy of the previously generated photo with the customer's hand-drawn annotations on it (strokes, boxes, circles, lines, arrows, highlighted regions). The annotations only indicate WHERE the requested corrections apply. The drawn marks themselves are NOT part of the product or the scene — never render them, their colors or their shapes in the output. Apply the customer's corrections in the marked regions and keep the product and the rest of the scene unchanged.`
+      : "";
+    return `${buildFidelityInstructions(productInstructions)}${productContext}${inspirationContract}${markedContract}`;
+  };
+
+  // How many references the PRIMARY model would carry — the reference-capable
+  // fallback guard below compares against this.
+  const primaryFit = refsSupported ? fitRefs(model.max_reference_images || 6) : fitRefs(0);
 
   /**
    * PROVIDER LOOP — one credit reservation, many chances to deliver.
@@ -297,7 +320,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     // A fallback that cannot carry the concept's references would break the
     // Product Lock — skip it rather than render a lookalike.
     const supportsRefs = cAdapter.capabilities.supportsReferenceImages && cModel.supports_reference_images;
-    if (refs.length > 0 && !supportsRefs && candidateId !== input.modelId) {
+    if (primaryFit.list.length > 0 && !supportsRefs && candidateId !== input.modelId) {
       attempts.push({ provider: cProviderSlug, model: cModel.model_identifier, attempt: 0, error: "references_unsupported" });
       continue;
     }
@@ -325,13 +348,16 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     const cResolution = (input.resolution && (cModel.supported_resolutions ?? []).includes(input.resolution)
       ? input.resolution
       : (cModel.supported_resolutions ?? ["1K"])[0]) as Resolution | undefined;
-    const cRefs = supportsRefs ? refs.slice(0, cModel.max_reference_images || 6) : [];
+    // Each candidate gets its own fit AND its own contract, so the prompt can
+    // never describe an attachment this model did not receive.
+    const cFit = supportsRefs ? fitRefs(cModel.max_reference_images || 6) : fitRefs(0);
+    const cFidelity = buildFidelity(cFit);
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_PROVIDER; attempt++) {
       try {
         result = await withProviderLimit(cProviderSlug, () => cAdapter.generate(cModel, {
           prompt: promptText, aspectRatio, resolution: cResolution,
-          quantity, referenceImages: cRefs, productLock: { fidelityInstructions: fidelity },
+          quantity, referenceImages: cFit.list, productLock: { fidelityInstructions: cFidelity },
         }, { apiKey: cApiKey, baseUrl: cBaseUrl }));
         served = { model: cModel, providerSlug: cProviderSlug };
         if (health.get(cProviderSlug) && health.get(cProviderSlug)!.state !== "healthy") {

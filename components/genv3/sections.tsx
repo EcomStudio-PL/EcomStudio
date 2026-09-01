@@ -51,6 +51,7 @@ export function ProductRefsSection({ refs, uploading, product, onPickProduct, on
       <SectionLabel hint={t("genv3.photosHint")}>{t("genv3.photos")}</SectionLabel>
       <div className="mb-2.5">
         <ProductChoice
+          subtle
           product={product}
           onPick={onPickProduct}
           onClear={onClearProduct}

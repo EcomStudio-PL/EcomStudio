@@ -64,8 +64,11 @@ export async function POST(request: Request) {
   try {
     const zipBytes = Buffer.from(await file.arrayBuffer());
     const zipPath = `sets/${setId}/source.zip`;
-    await supabase.storage.from("knowledge").upload(zipPath, zipBytes, { contentType: "application/zip", upsert: true });
-    await stage("validating", { zip_path: zipPath });
+    const { error: zipUploadError } = await supabase.storage.from("knowledge")
+      .upload(zipPath, zipBytes, { contentType: "application/zip", upsert: true });
+    // Record the path only if the object really landed — a stale zip_path
+    // would 404 later with nothing explaining why.
+    await stage("validating", zipUploadError ? {} : { zip_path: zipPath });
 
     let entries: ZipEntry[];
     let skipped: string[];
@@ -174,13 +177,16 @@ export async function POST(request: Request) {
       });
     }
     if (rows.length === 0) return await fail("zip_no_examples");
-    const { data: inserted } = await supabase.from("knowledge_examples")
+    const { data: inserted, error: insertError } = await supabase.from("knowledge_examples")
       .insert(rows as never).select("id, prompt_used, what_worked, correction");
+    // Without this the set would reach "ready" reporting examples it does not
+    // have, and the engine would silently retrieve nothing from it forever.
+    if (insertError || !inserted?.length) return await fail("import_failed", 500);
 
     // ── Embeddings (best-effort; READY either way) ──────────────────────
     await stage("indexing");
     let indexed = 0;
-    if (inserted?.length) {
+    {
       const texts = inserted.map((r) =>
         [s(meta.category, 120), s(meta.description, 800), r.prompt_used, r.what_worked, r.correction]
           .filter(Boolean).join("\n"));

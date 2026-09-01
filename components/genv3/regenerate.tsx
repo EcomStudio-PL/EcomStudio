@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   ArrowUpRight, Brush, ChevronLeft, ChevronRight, Circle as CircleIcon, Eraser, Hand,
@@ -9,7 +9,9 @@ import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { ModelBadge, ModelTile } from "@/components/genv3/model-select";
-import { AnnotationCanvas, flattenAnnotations, type DrawTool, type Shape } from "@/components/genv3/draw";
+import {
+  AnnotationCanvas, flattenAnnotations, shapeSignature, type DrawTool, type Shape,
+} from "@/components/genv3/draw";
 import { unitPrice, type GalleryItem, type GenModel } from "@/components/genv3/types";
 
 /**
@@ -47,9 +49,13 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
   const [undoStack, setUndoStack] = useState<Shape[][]>([]);
   const n = (v: number) => new Intl.NumberFormat(locale).format(v);
 
+  // One uploaded markup file per distinct drawing: a failed attempt (network,
+  // 402, 409) must not leave a new orphan in storage on every retry.
+  const uploaded = useRef<{ sig: string; path: string } | null>(null);
+
   // Switching to a different image drops the annotations — they were drawn
   // over other pixels.
-  useEffect(() => { setShapes([]); setUndoStack([]); }, [item.assetId]);
+  useEffect(() => { setShapes([]); setUndoStack([]); uploaded.current = null; }, [item.assetId]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onClose(); };
@@ -101,15 +107,21 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
       // nothing is generated (no silent mark-less regeneration).
       let markedImagePath: string | undefined;
       if (shapes.length > 0) {
-        const blob = await flattenAnnotations(item.url, shapes);
-        if (!blob) { toast.error(t("genv3.regenMarkFailed")); return; }
-        const ws = item.path.split("/")[0];
-        const ext = blob.type.includes("webp") ? "webp" : "jpg";
-        const path = `${ws}/markup/${crypto.randomUUID()}.${ext}`;
-        const { error } = await createClient().storage.from("product-images")
-          .upload(path, blob, { contentType: blob.type });
-        if (error) { toast.error(t("genv3.regenMarkFailed")); return; }
-        markedImagePath = path;
+        const sig = shapeSignature(item.assetId, shapes);
+        if (uploaded.current?.sig === sig) {
+          markedImagePath = uploaded.current.path;
+        } else {
+          const blob = await flattenAnnotations(item.url, shapes);
+          if (!blob) { toast.error(t("genv3.regenMarkFailed")); return; }
+          const ws = item.path.split("/")[0];
+          const ext = blob.type.includes("webp") ? "webp" : "jpg";
+          const path = `${ws}/markup/${crypto.randomUUID()}.${ext}`;
+          const { error } = await createClient().storage.from("product-images")
+            .upload(path, blob, { contentType: blob.type });
+          if (error) { toast.error(t("genv3.regenMarkFailed")); return; }
+          uploaded.current = { sig, path };
+          markedImagePath = path;
+        }
       }
 
       const res = await fetch("/api/generations/regenerate", {
