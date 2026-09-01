@@ -306,7 +306,10 @@ export async function runPromptSession(
     input.referencePaths.slice(0, MAX_REFS), productLabel, input.description ?? null,
     JSON.stringify({
       st: sessionType,
-      b: briefs.filter((b) => b.text || b.keepFraming),
+      // A row that only picked a REFERENCE now changes what gets rendered,
+      // so it belongs in the fingerprint too — otherwise re-generating after
+      // swapping just the reference would adopt the previous session.
+      b: briefs.filter((b) => b.text || b.keepFraming || b.refIndex !== null),
       n: shotsOrdered,
       ar: input.aspectRatio,
       rs: normalizeResolution(input.resolution),
@@ -522,11 +525,24 @@ export async function runPromptSession(
     // Merge into shot order: briefed slots keep their position; planner
     // scenes fill the rest in the order the planner ranked them.
     const plannerQueue = [...scenes];
-    scenes = briefs.map((b, i) =>
-      b.text.length >= 3
-        ? briefScene(b, i)
-        : plannerQueue.shift() ?? synthesizeScenes([], 1, sessionInfo.productName, images.length)[0]
-    ).filter(Boolean) as PlannedScene[];
+    scenes = briefs.map((b, i) => {
+      if (b.text.length >= 3) return briefScene(b, i);
+      const planned = plannerQueue.shift() ?? synthesizeScenes([], 1, sessionInfo.productName, images.length)[0];
+      // A ROW MAY CARRY ONLY A REFERENCE. "Use photo #2 for this shot, you
+      // invent the scene" is a legitimate choice, so the engine keeps its
+      // own scene but leads with the photo the customer picked — without
+      // this the chosen reference was silently dropped for such rows.
+      if (!planned || !b.refIndex || b.refIndex > images.length) return planned;
+      const refIdx = [...new Set([b.refIndex, ...(planned.reference_indices ?? [])])]
+        .filter((n) => n >= 1 && n <= images.length).slice(0, 3);
+      return {
+        ...planned,
+        reference_indices: refIdx.length > 0 ? refIdx : [b.refIndex],
+        scene_description: b.keepFraming
+          ? `${planned.scene_description} ${KEEP_FRAMING_DIRECTIVE}`
+          : planned.scene_description,
+      };
+    }).filter(Boolean) as PlannedScene[];
     await supabase.from("prompt_sessions").update({
       analysis_model: usedOutcome?.model ?? analysisModel,
       analysis_provider: usedOutcome?.provider ?? null,
