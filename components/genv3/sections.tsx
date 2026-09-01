@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   Check, HelpCircle, ImageOff, Loader2, Megaphone, Minus, Plus, Sparkles, Sun,
@@ -46,6 +47,7 @@ export function ProductRefsSection({ refs, uploading, max, onUpload, onRemove }:
       items={refs}
       max={max}
       uploading={uploading}
+      capturePaste
       onFiles={onUpload}
       onRemove={onRemove}
       label={
@@ -241,19 +243,50 @@ function ReferencePicker({ refs, value, onChange, index }: {
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
   const chosen = value && refs[value - 1] ? refs[value - 1] : null;
+
+  // The rows live inside the form's own scroll container, so an absolutely
+  // positioned panel would be clipped by it for the lower rows. The popover
+  // is portalled to the body and positioned from the trigger's rect, flipping
+  // above the trigger when it would run past the bottom of the viewport.
+  const place = useCallback(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const W = 224, H = 190;
+    const below = r.bottom + 6;
+    setPos({
+      top: below + H > window.innerHeight ? Math.max(8, r.top - H - 6) : below,
+      left: Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - W - 8)),
+    });
+  }, []);
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
-    };
+    place();
+    const inside = (target: Node | null) =>
+      (boxRef.current?.contains(target ?? null) ?? false) || (popRef.current?.contains(target ?? null) ?? false);
+    const onDown = (e: MouseEvent) => { if (!inside(e.target as Node)) setOpen(false); };
+    // Tabbing out must close it too, or the panel floats over the rows below
+    // while the customer is already typing somewhere else.
+    const onFocus = (e: FocusEvent) => { if (!inside(e.target as Node)) setOpen(false); };
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
     window.addEventListener("mousedown", onDown);
+    window.addEventListener("focusin", onFocus);
     window.addEventListener("keydown", onKey);
-    return () => { window.removeEventListener("mousedown", onDown); window.removeEventListener("keydown", onKey); };
-  }, [open]);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("focusin", onFocus);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, place]);
 
   return (
     <div ref={boxRef} className="relative shrink-0">
@@ -275,9 +308,10 @@ function ReferencePicker({ refs, value, onChange, index }: {
         )}
       </button>
 
-      {open && (
-        <div role="dialog" aria-label={t("genv3.pickReference")}
-          className="overlay animate-pop absolute left-0 top-[calc(100%+6px)] z-30 w-56 rounded-xl p-2">
+      {open && pos && createPortal(
+        <div ref={popRef} role="dialog" aria-label={t("genv3.pickReference")}
+          style={{ top: pos.top, left: pos.left }}
+          className="workspace overlay animate-pop fixed z-[70] w-56 rounded-xl p-2">
           <p className="mb-1.5 px-0.5 text-[11px] font-semibold text-muted">{t("genv3.pickReference")}</p>
           <div className="grid grid-cols-4 gap-1.5">
             {refs.map((r, i) => {
@@ -306,7 +340,8 @@ function ReferencePicker({ refs, value, onChange, index }: {
             <ImageOff size={12} aria-hidden />
             {t("genv3.noReference")}
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

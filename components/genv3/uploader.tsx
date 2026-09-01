@@ -24,7 +24,8 @@ const ACCEPTED = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]
  *      field is left alone.
  */
 export function PhotoUploader({
-  items, max, uploading, label, hint, counter = true, compact, onFiles, onRemove, columns = 4,
+  items, max, uploading, label, hint, counter = true, compact, capturePaste,
+  onFiles, onRemove, columns = 4,
 }: {
   items: UploadedRef[];
   max: number;
@@ -34,6 +35,12 @@ export function PhotoUploader({
   hint?: string;
   counter?: boolean;
   compact?: boolean;
+  /** Exactly ONE uploader per screen may claim the page-wide paste shortcut.
+   *  The custom generator mounts two (product photos + inspiration); without
+   *  this only-one rule a single Ctrl+V would land the same image in both
+   *  pools, uploading it twice and seeding inspiration the seller never
+   *  chose. Product photos are the sensible owner of a paste. */
+  capturePaste?: boolean;
   onFiles: (files: File[]) => void;
   onRemove: (index: number) => void;
   columns?: 4 | 5;
@@ -71,6 +78,7 @@ export function PhotoUploader({
   // Ctrl/Cmd+V anywhere on the page — except while typing, where a paste
   // belongs to the field the caret is in.
   useEffect(() => {
+    if (!capturePaste) return;
     const onPaste = (e: ClipboardEvent) => {
       if (full || uploading) return;
       const el = document.activeElement as HTMLElement | null;
@@ -88,7 +96,7 @@ export function PhotoUploader({
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
-  }, [full, uploading, onFiles]);
+  }, [capturePaste, full, uploading, onFiles]);
 
   return (
     <section

@@ -81,6 +81,9 @@ export function GeneratorWorkspace({
   const [stageLabel, setStageLabel] = useState("");
   const [balance, setBalance] = useState(credits);
   const adhocFolder = useRef(`adhoc-${Math.random().toString(36).slice(2, 10)}`);
+  /** Slots claimed by uploads that have not reached state yet, per pool. */
+  const reserved = useRef<{ refs: number; insp: number }>({ refs: 0, insp: 0 });
+  const inFlight = useRef(0);
   const inspFolder = useRef(`insp-${Math.random().toString(36).slice(2, 10)}`);
   const submitting = useRef(false);
 
@@ -119,23 +122,49 @@ export function GeneratorWorkspace({
     const setter = target === "insp" ? setInsp : setRefs;
     const cap = target === "insp" ? 5 : MAX_REFS;
     // Room is checked BEFORE anything uploads — an over-cap file must not
-    // land in storage only to be silently dropped from the state.
-    const existing = target === "insp" ? insp.length : refs.length;
+    // land in storage only to be silently dropped from the state. Slots taken
+    // by an upload that is still in flight count as occupied: a drop and a
+    // paste arriving together both read the same pre-commit array length, so
+    // without the reservation they would jointly exceed the cap and orphan
+    // the surplus in storage.
+    const existing = (target === "insp" ? insp.length : refs.length) + reserved.current[target];
     const room = Math.max(0, cap - existing);
-    const list = files;
-    if (list.length > room) toast.error(t("genv3.capReached", { max: cap }));
+    if (files.length > room) toast.error(t("genv3.capReached", { max: cap }));
     if (room === 0) return;
+    const batch = files.slice(0, room);
+    reserved.current[target] += batch.length;
+    // Counted, not a boolean: the first upload to finish must not report the
+    // workspace as idle while a second one is still running.
+    inFlight.current += 1;
     setUploading(true);
-    for (const file of list.slice(0, room)) {
-      if (!["image/jpeg", "image/png", "image/webp", "image/avif"].includes(file.type)) { toast.error(t("products.invalidType")); continue; }
-      if (file.size > 10 * 1024 * 1024) { toast.error(t("products.tooLarge")); continue; }
-      const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-      const path = `${workspaceId}/${folder}/${crypto.randomUUID()}.${ext}`;
-      const { error } = await supabase.storage.from("product-images").upload(path, file);
-      if (error) { toast.error(t("common.error")); continue; }
-      setter((prev) => prev.length >= cap ? prev : [...prev, { key: path, path, url: URL.createObjectURL(file) }]);
+    try {
+      for (const file of batch) {
+        if (!["image/jpeg", "image/png", "image/webp", "image/avif"].includes(file.type)) { toast.error(t("products.invalidType")); continue; }
+        if (file.size > 10 * 1024 * 1024) { toast.error(t("products.tooLarge")); continue; }
+        const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+        const path = `${workspaceId}/${folder}/${crypto.randomUUID()}.${ext}`;
+        const { error } = await supabase.storage.from("product-images").upload(path, file);
+        if (error) { toast.error(t("common.error")); continue; }
+        setter((prev) => prev.length >= cap ? prev : [...prev, { key: path, path, url: URL.createObjectURL(file) }]);
+      }
+    } finally {
+      reserved.current[target] -= batch.length;
+      inFlight.current -= 1;
+      if (inFlight.current === 0) setUploading(false);
     }
-    setUploading(false);
+  }
+
+  /** Remove one reference photo AND keep every shot row pointing at the photo
+   *  it actually chose: `refIndex` is positional, so dropping a photo from the
+   *  middle would otherwise silently re-aim later rows at their neighbour. */
+  function removeRef(index: number) {
+    setRefs((prev) => prev.filter((_, j) => j !== index));
+    const removed = index + 1;
+    setBriefs((prev) => prev.map((b) => {
+      if (!b?.refIndex) return b;
+      if (b.refIndex === removed) return { ...b, refIndex: null, keepFraming: false };
+      return b.refIndex > removed ? { ...b, refIndex: b.refIndex - 1 } : b;
+    }));
   }
 
   // ── Merging fresh results from the server (full-fidelity cards) ────────
@@ -323,7 +352,7 @@ export function GeneratorWorkspace({
             max={MAX_REFS}
             uploading={uploading}
             onUpload={(files) => upload(files, "refs")}
-            onRemove={(i) => setRefs((prev) => prev.filter((_, j) => j !== i))}
+            onRemove={removeRef}
           />
           <DescriptionSection description={description} onDescription={setDescription} />
           {managed ? (
