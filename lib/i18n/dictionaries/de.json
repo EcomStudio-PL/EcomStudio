@@ -2181,6 +2181,11 @@
     "noReference": "Ohne Referenz",
     "keepFramingNeedsRef": "Wähle zuerst ein Referenzfoto für diese Aufnahme.",
     "generateN": "{n} Bilder generieren",
-    "keepFramingShort": "Bildaus."
+    "keepFramingShort": "Bildaus.",
+    "dropTitle": "Produktfotos hier ablegen",
+    "dropSub": "JPG · PNG · WEBP · mehrere auf einmal",
+    "densityLabel": "Miniaturgröße",
+    "densitySmaller": "Kleinere Miniaturen",
+    "densityLarger": "Größere Miniaturen"
   }
 }

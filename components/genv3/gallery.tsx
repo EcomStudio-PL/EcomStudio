@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  Download, Heart, LayoutGrid, List, Loader2, Megaphone, MoreVertical,
-  RefreshCw, Search, Sparkles, Sun, Trash2,
+  Download, Heart, LayoutGrid, List, Loader2, Megaphone, Minus, MoreVertical,
+  Plus, RefreshCw, Search, Sparkles, Sun, Trash2,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
@@ -13,6 +13,13 @@ import { ImageDetails } from "@/components/genv3/image-details";
 import { RegenerateModal } from "@/components/genv3/regenerate";
 
 type Filter = { session: GallerySessionType | "all"; fav: boolean; q: string; order: "desc" | "asc" };
+
+/** Minimum card width per density step — the grid auto-fills from it, so on a
+ *  wide monitor the same step simply yields more columns. Step 0 is the
+ *  densest contact sheet, step 5 the largest preview. */
+const DENSITY_STEPS = [104, 128, 160, 200, 260, 340] as const;
+const DENSITY_DEFAULT = 2;
+const DENSITY_KEY = "grovbase.gallery.density";
 
 /**
  * TWOJE GENERACJE — the workspace gallery.
@@ -41,6 +48,19 @@ export function GenerationGallery({
   const { t } = useI18n();
   const [filter, setFilter] = useState<Filter>({ session: "all", fav: false, q: "", order: "desc" });
   const [view, setView] = useState<"grid" | "list">("grid");
+  // Presentation only — remembered per browser, never a round trip.
+  const [density, setDensity] = useState(DENSITY_DEFAULT);
+  useEffect(() => {
+    try {
+      const saved = Number(window.localStorage.getItem(DENSITY_KEY));
+      if (Number.isInteger(saved) && saved >= 0 && saved < DENSITY_STEPS.length) setDensity(saved);
+    } catch { /* private mode — the default is fine */ }
+  }, []);
+  const changeDensity = useCallback((next: number) => {
+    const step = Math.min(DENSITY_STEPS.length - 1, Math.max(0, next));
+    setDensity(step);
+    try { window.localStorage.setItem(DENSITY_KEY, String(step)); } catch { /* not essential */ }
+  }, []);
   const [items, setItems] = useState<GalleryItem[]>(initialItems);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
   const [loading, setLoading] = useState(false);
@@ -208,6 +228,23 @@ export function GenerationGallery({
               </button>
             );
           })}
+          {/* Phones get three tap targets instead of a slider — the row
+              already scrolls sideways, so nothing overflows. */}
+          {view === "grid" && (
+            <div className="ml-1 flex shrink-0 items-center rounded-xl border border-line p-0.5 md:hidden"
+              role="group" aria-label={t("genv3.densityLabel")}>
+              {[[0, "S"], [2, "M"], [4, "L"]].map(([step, short]) => (
+                <button key={String(short)} type="button"
+                  aria-pressed={density === step}
+                  aria-label={`${t("genv3.densityLabel")}: ${short}`}
+                  onClick={() => changeDensity(step as number)}
+                  className={cn("h-8 w-8 rounded-[9px] text-[11px] font-bold transition-colors",
+                    density === step ? "bg-raised text-ink" : "text-faint")}>
+                  {short}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="order-1 flex min-w-0 flex-1 items-center gap-1.5 lg:order-2 lg:flex-none">
           <div className="hidden items-center rounded-xl border border-line p-0.5 md:flex" role="group" aria-label={t("genv3.viewLabel")}>
@@ -222,6 +259,29 @@ export function GenerationGallery({
               <List size={14} aria-hidden />
             </button>
           </div>
+          {/* Thumbnail size — a workspace tool, not a feature panel. Only
+              meaningful for the grid, so it hides with the list view. */}
+          {view === "grid" && (
+            <div className="hidden h-9 items-center gap-1.5 rounded-xl border border-line px-2 md:flex">
+              <button type="button" aria-label={t("genv3.densitySmaller")} title={t("genv3.densitySmaller")}
+                disabled={density === 0} onClick={() => changeDensity(density - 1)}
+                className="text-faint transition-colors hover:text-ink disabled:opacity-35">
+                <Minus size={13} aria-hidden />
+              </button>
+              <input
+                type="range" min={0} max={DENSITY_STEPS.length - 1} step={1} value={density}
+                onChange={(e) => changeDensity(Number(e.target.value))}
+                aria-label={t("genv3.densityLabel")}
+                title={t("genv3.densityLabel")}
+                className="h-1 w-16 cursor-pointer accent-[rgb(var(--accent))] lg:w-14 xl:w-20"
+              />
+              <button type="button" aria-label={t("genv3.densityLarger")} title={t("genv3.densityLarger")}
+                disabled={density === DENSITY_STEPS.length - 1} onClick={() => changeDensity(density + 1)}
+                className="text-faint transition-colors hover:text-ink disabled:opacity-35">
+                <Plus size={13} aria-hidden />
+              </button>
+            </div>
+          )}
           {/* Desktop: the search field is ALWAYS visible, same height as its
               neighbours. Phones get it full-width on its own row. */}
           <div className="relative hidden md:block md:min-w-0 md:flex-1 lg:w-40 lg:flex-none xl:w-64 2xl:w-72">
@@ -274,7 +334,14 @@ export function GenerationGallery({
           </p>
         </div>
       ) : view === "grid" ? (
-        <div className="grid grid-cols-2 gap-3 [&>*]:min-w-0 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        // Density is a REAL layout change, not a transform: the tracks are
+        // auto-filled from a minimum card width, so the column count follows
+        // the slider AND the width the gallery column actually has. Nothing
+        // remounts, so scroll position and loaded images survive a change.
+        <div
+          className="grid gap-3 [&>*]:min-w-0"
+          style={{ gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${DENSITY_STEPS[density]}px), 1fr))` }}
+        >
           {Array.from({ length: pendingCount }, (_, i) => (
             <div key={`pending-${i}`} className="skeleton rounded-xl" style={{ aspectRatio: skeletonRatio }} />
           ))}

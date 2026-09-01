@@ -10,6 +10,8 @@ import {
   PromptSection, SessionTypeSection, SettingsSection, ShotBriefsSection, VariantChips,
 } from "@/components/genv3/sections";
 import { ModelSelect } from "@/components/genv3/model-select";
+import { DropOverlay, useFileDrop } from "@/components/genv3/uploader";
+import { cn } from "@/lib/utils";
 import {
   snapTo, unitPrice,
   type BriefState, type GalleryItem, type GenMode, type GenModel, type UploadedRef,
@@ -325,6 +327,22 @@ export function GeneratorWorkspace({
     }
   }
 
+  /**
+   * DROP ANYWHERE ON THE WORKSPACE. The pool a file joins is decided by what
+   * sits under the pointer: releasing over the inspiration block adds
+   * inspiration, everything else adds product photos — so the seller can aim
+   * at the panel instead of at the small tile.
+   */
+  const dragging = useFileDrop({
+    enabled: !busy,
+    onDrop: (files, event) => {
+      if (files.length === 0) { toast.error(t("products.invalidType")); return; }
+      const target = (event.target as Element | null)?.closest?.("[data-drop-target]");
+      const pool = target?.getAttribute("data-drop-target") === "insp" && !managed ? "insp" : "refs";
+      void upload(files, pool);
+    },
+  });
+
   // Photos are the only hard requirement now — no product, no name.
   const canGenerate = !!model && !busy && !uploading && refs.length > 0
     && missing === 0
@@ -341,11 +359,20 @@ export function GeneratorWorkspace({
   }
 
   return (
-    <div className="grid min-w-0 items-start gap-5 pb-[var(--gen-page-bottom)] [&>*]:min-w-0 lg:grid-cols-[clamp(420px,29vw,470px)_minmax(0,1fr)] lg:gap-6 lg:pb-10">
+    // DESKTOP: the workspace owns the viewport height and BOTH columns scroll
+    // inside themselves. The page itself no longer scrolls, so the action
+    // island at the bottom of the left column has nothing to drift with —
+    // sticky positioning could still be pushed around by an ancestor, a fixed
+    // bar would detach from the column and cover the gallery.
+    <div className={cn(
+      "relative grid min-w-0 items-start gap-5 pb-[var(--gen-page-bottom)] [&>*]:min-w-0",
+      "lg:h-[calc(100dvh-var(--header-h)-1.75rem)] lg:grid-cols-[clamp(420px,29vw,470px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0",
+    )}>
+      <DropOverlay show={dragging} title={t("genv3.dropTitle")} sub={t("genv3.dropSub")} />
       {/* ── LEFT: configuration ─────────────────────────────────────────── */}
       {/* The column owns the viewport height; only the FORM scrolls, so the
           action island below never leaves the screen. */}
-      <div className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-[calc(var(--header-h)+0.875rem)] lg:h-[calc(100dvh-var(--header-h)-1.75rem)]">
+      <div className="flex min-w-0 flex-col gap-3 lg:h-full lg:min-h-0">
         <div className="panel thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto rounded-2xl p-4 sm:p-5">
           <ProductRefsSection
             refs={refs}
@@ -420,19 +447,21 @@ export function GeneratorWorkspace({
         />
       </div>
 
-      {/* ── RIGHT: the living gallery ───────────────────────────────────── */}
-      <GenerationGallery
-        initialItems={initialItems}
-        initialCursor={initialCursor}
-        freshItems={freshItems}
-        onFresh={setFreshItems}
-        pendingCount={pendingCount}
-        pendingRatio={effRatio}
-        models={models}
-        balance={balance}
-        onBalance={setBalance}
-        onAbsorb={absorbLatest}
-      />
+      {/* ── RIGHT: the living gallery, scrolling in its own column ──────── */}
+      <div className="thin-scroll min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pb-4 lg:pr-1">
+        <GenerationGallery
+          initialItems={initialItems}
+          initialCursor={initialCursor}
+          freshItems={freshItems}
+          onFresh={setFreshItems}
+          pendingCount={pendingCount}
+          pendingRatio={effRatio}
+          models={models}
+          balance={balance}
+          onBalance={setBalance}
+          onAbsorb={absorbLatest}
+        />
+      </div>
 
       <MobileDock
         managed={managed}

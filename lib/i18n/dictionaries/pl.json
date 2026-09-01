@@ -2181,6 +2181,11 @@
     "noReference": "Bez referencji",
     "keepFramingNeedsRef": "Najpierw wybierz zdjęcie referencyjne dla tego ujęcia.",
     "generateN": "Generuj {n} obrazów",
-    "keepFramingShort": "Kadr"
+    "keepFramingShort": "Kadr",
+    "dropTitle": "Upuść zdjęcia produktu tutaj",
+    "dropSub": "JPG · PNG · WEBP · kilka naraz",
+    "densityLabel": "Wielkość miniatur",
+    "densitySmaller": "Mniejsze miniatury",
+    "densityLarger": "Większe miniatury"
   }
 }

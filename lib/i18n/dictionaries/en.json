@@ -2181,6 +2181,11 @@
     "noReference": "No reference",
     "keepFramingNeedsRef": "Pick a reference photo for this shot first.",
     "generateN": "Generate {n} images",
-    "keepFramingShort": "Framing"
+    "keepFramingShort": "Framing",
+    "dropTitle": "Drop your product photos here",
+    "dropSub": "JPG · PNG · WEBP · several at once",
+    "densityLabel": "Thumbnail size",
+    "densitySmaller": "Smaller thumbnails",
+    "densityLarger": "Larger thumbnails"
   }
 }

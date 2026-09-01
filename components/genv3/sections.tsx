@@ -48,6 +48,7 @@ export function ProductRefsSection({ refs, uploading, max, onUpload, onRemove }:
       max={max}
       uploading={uploading}
       capturePaste
+      dropTarget="refs"
       onFiles={onUpload}
       onRemove={onRemove}
       label={
@@ -442,6 +443,7 @@ export function InspirationSection({ items, uploading, disabled, onUpload, onRem
       max={5}
       columns={5}
       uploading={uploading}
+      dropTarget="insp"
       onFiles={onUpload}
       onRemove={onRemove}
       hint={t("genv3.inspSub")}
