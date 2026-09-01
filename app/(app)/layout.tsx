@@ -97,7 +97,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <DrawerProvider>
       {/* Horizontal-navigation shell per the UX spec: no permanent left
           sidebar — the full width belongs to the work. */}
-      <div className="flex min-h-dvh w-full min-w-0 flex-col">
+      {/* `app-shell` is a hook, not a style: a work-surface page (the
+          generator) turns this frame into a viewport-height box so the page
+          itself stops scrolling. Every other page keeps min-h-dvh and
+          scrolls normally. */}
+      <div className="app-shell flex min-h-dvh w-full min-w-0 flex-col">
         <MegaTopbar name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} notifications={notifs ?? []} unread={unread} />
         {/* Full-width work surface. The bottom padding is DERIVED from the
             chrome tokens, so the fixed navigation can never cover the last

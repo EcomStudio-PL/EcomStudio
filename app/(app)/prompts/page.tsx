@@ -59,7 +59,7 @@ export default async function PromptsPage({ searchParams }: {
     // §3: no page header — the workspace starts right under the navbar; the
     // mode toggle is the first element. `workspace` re-maps the surface
     // tokens onto the calm ramp, `workspace-page` paints the flat ground.
-    <div className="workspace workspace-page pt-1">
+    <div className="workspace workspace-page gen-shell pt-1">
       <GeneratorModeSwitch
         active="engine"
         engineLabel={t("genv3.modeManaged")}

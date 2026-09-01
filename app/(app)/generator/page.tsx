@@ -59,7 +59,9 @@ export default async function GeneratorPage({ searchParams }: {
 
   return (
     // §3: no page header — mode toggle first, workspace tokens scoped here.
-    <div className="workspace workspace-page pt-1">
+    // `gen-shell` binds the page to the viewport on desktop so the action
+    // island at the bottom of the left column stays put (globals.css).
+    <div className="workspace workspace-page gen-shell pt-1">
       <GeneratorModeSwitch
         active="custom"
         engineLabel={t("genv3.modeManaged")}

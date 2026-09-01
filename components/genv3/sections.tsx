@@ -479,12 +479,16 @@ export function CostSummary({
       : needsPrompt ? t("genv3.needPrompt")
         : null;
   /**
-   * THE ACTION ISLAND — pinned to the bottom of the left column so the cost
-   * and the CTA are reachable from any scroll position. Deliberately small:
-   * two figures, one button, one status line.
+   * THE ACTION ISLAND — the second physical part of the left column, a
+   * sibling of the scrolling body rather than anything inside it, so the
+   * cost and the CTA cannot scroll away. `shrink-0` is what guarantees the
+   * priority when the viewport gets short: the body shrinks, the island
+   * never does. `relative z-20` is defensive rather than load-bearing today —
+   * it fixes the paint order against the scrolling panel above regardless of
+   * what shadow or overlay either one grows later.
    */
   return (
-    <div className="panel shrink-0 rounded-2xl px-3.5 py-3">
+    <div className="panel relative z-20 shrink-0 rounded-2xl px-3.5 py-3">
       <div className="flex items-center gap-3">
         <div className="flex min-w-0 shrink-0 gap-4">
           <div className="min-w-0">

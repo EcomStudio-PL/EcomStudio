@@ -351,7 +351,10 @@ export function GeneratorWorkspace({
 
   if (models.length === 0) {
     return (
-      <div className="panel rounded-2xl p-9 text-center">
+      // Still the frame's growing child: without `gen-shell-body` the
+      // viewport-height shell would have nothing to fill it and no scroller,
+      // so longer copy would have nowhere to go.
+      <div className="gen-shell-body panel rounded-2xl p-9 text-center lg:overflow-y-auto">
         <p className="font-display text-lg font-semibold">{t("generator.noModelsTitle")}</p>
         <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted">{t("generator.noModelsBody")}</p>
       </div>
@@ -359,21 +362,43 @@ export function GeneratorWorkspace({
   }
 
   return (
-    // DESKTOP: the workspace owns the viewport height and BOTH columns scroll
-    // inside themselves. The page itself no longer scrolls, so the action
-    // island at the bottom of the left column has nothing to drift with —
-    // sticky positioning could still be pushed around by an ancestor, a fixed
-    // bar would detach from the column and cover the gallery.
+    // DESKTOP: `gen-shell-body` makes this the one growing child of the page
+    // shell (see `.gen-shell` in globals.css), so its height is whatever the
+    // viewport has left after the topbar and the page's own header band —
+    // measured by the layout, never computed from tokens that can disagree
+    // with the real chrome. Both columns then scroll inside themselves and
+    // the page does not scroll at all.
     <div className={cn(
-      "relative grid min-w-0 items-start gap-5 pb-[var(--gen-page-bottom)] [&>*]:min-w-0",
-      "lg:h-[calc(100dvh-var(--header-h)-1.75rem)] lg:grid-cols-[clamp(420px,29vw,470px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0",
+      "gen-shell-body relative grid min-w-0 items-start gap-5 pb-[var(--gen-page-bottom)] [&>*]:min-w-0",
+      "lg:grid-cols-[clamp(420px,29vw,470px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0",
     )}>
       <DropOverlay show={dragging} title={t("genv3.dropTitle")} sub={t("genv3.dropSub")} />
       {/* ── LEFT: configuration ─────────────────────────────────────────── */}
-      {/* The column owns the viewport height; only the FORM scrolls, so the
-          action island below never leaves the screen. */}
-      <div className="flex min-w-0 flex-col gap-3 lg:h-full lg:min-h-0">
-        <div className="panel thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto rounded-2xl p-4 sm:p-5">
+      {/* Two physical parts, per spec: a bounded scrolling body and a footer
+          that is a SIBLING of it, not a sticky element inside it. The
+          scrollbar therefore belongs to the body alone and stops at the
+          island's top edge. `overflow: hidden` on the column stops a tall
+          child from stretching it and taking the island down with it.
+          Below lg nothing changes: the column has no bounded height there, so
+          the same classes leave the panel at its natural size and the phone
+          keeps its normally-scrolling page.
+
+          `lg:overflow-y-auto` is the scroll of last resort, not the normal
+          path. The body above has `min-h-0 flex-1`, so it shrinks to whatever
+          is free and the column's content normally fits its height exactly —
+          no scrollbar ever appears here. It engages only on a viewport so
+          short that the island alone does not fit, and then it keeps the CTA
+          REACHABLE where `overflow: hidden` would have cut it off with no way
+          to get to it. */}
+      <div className="flex min-w-0 flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-y-auto">
+        {/* The scroll/flex classes stay UNSCOPED so the phone keeps exactly
+            the containment it had before (overflow-y:auto also makes the
+            horizontal axis a scroll container, which is what stops a wide chip
+            row from spilling past the panel). `lg:pb-6` is the "normal gap"
+            after the last field: the island is a sibling below, so nothing is
+            ever hidden underneath it, and the content still does not end flush
+            against the scroller's edge. */}
+        <div className="panel thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto rounded-2xl p-4 sm:p-5 lg:pb-6">
           <ProductRefsSection
             refs={refs}
             max={MAX_REFS}

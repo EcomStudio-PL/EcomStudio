@@ -65,7 +65,7 @@ export default async function WorkflowPage({ params }: {
   return (
     // Same calm workspace scope as /prompts — the compact category header
     // stays (it is navigation between presets, not a marketing header).
-    <div className="workspace workspace-page">
+    <div className="workspace workspace-page gen-shell">
       <CategoryHeader
         compact
         category={category}

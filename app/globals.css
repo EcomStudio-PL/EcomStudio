@@ -806,3 +806,87 @@ body:has(.workspace-page)::after { display: none; }
   pointer-events: none;
   background: rgb(var(--workspace-bg));
 }
+
+/* ── GENERATOR SHELL ──────────────────────────────────────────────────────
+   On desktop the generator is a FRAME, not a document: it fills the viewport
+   under the topbar and nothing scrolls except the two inner columns. That is
+   the only thing that actually keeps the action island ("Podsumowanie
+   kosztów" + "Generuj") nailed to the bottom of the left column.
+
+   Why this lives on the shell instead of on the workspace: the app frame adds
+   its own vertical padding to every page, and each generator route puts a
+   different band above the workspace — a mode switch on /generator and
+   /prompts, a category header plus preset chips on /k/[cat]/[wf]. A height
+   computed inside the workspace could not see any of that, so the document
+   came out ~120px taller than the viewport, the PAGE scrolled, and the whole
+   left column rode up with it. The island was never what moved, which is why
+   no amount of sticky/fixed on the island itself ever fixed it.
+
+   Chaining `height: 100%` from the frame down removes the arithmetic
+   entirely: no token has to match the topbar's real pixel height, and zoom
+   levels cannot drift it. The bands above take the height they need, the
+   workspace takes exactly what is left.
+
+   The whole frame is one @supports block on purpose. Half of it (zeroing the
+   app frame's page padding) is only correct BECAUSE the other half bounds the
+   shell; letting the flex/padding half apply where `:has()` does not work
+   would leave a taller document than before the change, not a fallback.
+
+   There is deliberately NO min-height gate. One was tried and it was worse
+   than the problem: any threshold high enough to matter (640px) also switched
+   the frame off at 1366×768 zoomed to 125% and 1536×864 at 150% — ordinary
+   working setups where the island must stay pinned. The short-window case is
+   handled where it belongs instead, by letting the left column itself scroll
+   as a last resort (see workspace.tsx); that only ever engages when the frame
+   is shorter than the island, and it can never clip the CTA. */
+@supports selector(:has(*)) {
+  @media (min-width: 1024px) {
+    body:has(.gen-shell) .app-shell {
+      height: 100dvh;
+      overflow: hidden;
+    }
+    /* `min-height: 0` is what lets main be SHORTER than its content so the
+       inner scrollers get a bounded box; the frame's own page padding would
+       stack on top of the viewport height and overflow again, so the shell
+       below takes over that job. */
+    body:has(.gen-shell) .app-shell > main {
+      min-height: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+    }
+    /* Every rule carries the `body:has(…)` prefix, so each is (0,2,1) and
+       outranks any single-class utility. A plain `.gen-shell` would tie with
+       `pt-1`/`lg:pt-*` on the same element and be decided by emission order,
+       which is not a thing a layout should depend on. */
+    body:has(.gen-shell) .gen-shell {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding-block: 1rem;
+    }
+    /* Bands above the workspace keep their natural height and are never
+       squeezed to make room. */
+    body:has(.gen-shell) .gen-shell > * { flex: 0 0 auto; }
+    /* …and the workspace takes the remainder. Without `min-height: 0` a flex
+       item refuses to shrink below its content, the columns would grow instead
+       of scrolling, and the island would be pushed off-screen again. */
+    body:has(.gen-shell) .gen-shell > .gen-shell-body {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+  }
+}
+
+/* Engines without `:has()` (the file already depends on it for the workspace
+   ground, so this is belt-and-braces rather than a real target) get none of
+   the frame above. Bound the workspace directly instead — the behaviour this
+   change replaced: approximate about the chrome above it, but a scrolling
+   page rather than an unbounded column. */
+@supports not selector(:has(*)) {
+  @media (min-width: 1024px) {
+    .gen-shell > .gen-shell-body {
+      height: calc(100dvh - var(--header-h) - 1.75rem);
+    }
+  }
+}
