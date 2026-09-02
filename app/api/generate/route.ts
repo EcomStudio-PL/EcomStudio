@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { runGeneration, type GenerateInput } from "@/lib/server/generation";
+import { QUALITIES, type Quality } from "@/lib/ai/types";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -31,6 +32,10 @@ export async function POST(request: Request) {
     negative: typeof body.negative === "string" ? body.negative : undefined,
     aspectRatio: body.aspectRatio,
     resolution: body.resolution,
+    // Whitelisted here, validated against the model's declared qualities
+    // inside runGeneration — never priced from the client's number.
+    quality: typeof body.quality === "string" && (QUALITIES as readonly string[]).includes(body.quality)
+      ? (body.quality as Quality) : undefined,
     quantity: Number(body.quantity) || 1,
     // The generator no longer creates or requires a product: only free-text
     // context travels, and `newProduct` is deliberately NOT read from the

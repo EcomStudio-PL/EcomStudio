@@ -1,4 +1,5 @@
 import "server-only";
+import { QUALITIES } from "@/lib/ai/types";
 import type { Client } from "@/lib/services/workspace";
 
 /**
@@ -26,6 +27,8 @@ export type GalleryItem = {
   height: number | null;
   ratio: string | null;
   resolution: string | null;
+  /** Render quality from the job's settings, when the model has the knob. */
+  quality: string | null;
   /** Customer-facing model display name. */
   model: string | null;
   /** Model id, so quotes (e.g. regeneration) price the REAL model. */
@@ -58,7 +61,7 @@ const SELECT_BASE = `
   products(name),
   generation_assets(id, storage_path, width, height, metadata),
   generation_jobs!inner(
-    aspect_ratio, resolution, prompt_origin, prompt_text, prompt_id, status, model_id,
+    aspect_ratio, resolution, prompt_origin, prompt_text, prompt_id, status, model_id, settings,
     ai_models(display_name, name),
     prompt_sessions(session_type),
     generated_prompts!generation_jobs_prompt_id_fkey(customer_description)
@@ -83,6 +86,7 @@ type Row = {
     prompt_id: string | null;
     status: string;
     model_id: string | null;
+    settings: { quality?: unknown } | null;
     ai_models: { display_name: string | null; name: string } | null;
     prompt_sessions: { session_type: string | null } | null;
     generated_prompts: { customer_description: string | null } | null;
@@ -168,6 +172,8 @@ export async function listGalleryItems(
         height: a.height,
         ratio: job?.aspect_ratio ?? null,
         resolution: job?.resolution ?? null,
+        quality: typeof job?.settings?.quality === "string" && (QUALITIES as readonly string[]).includes(job.settings.quality)
+          ? job.settings.quality : null,
         model,
         modelId: job?.model_id ?? null,
         product: r.products?.name ?? null,

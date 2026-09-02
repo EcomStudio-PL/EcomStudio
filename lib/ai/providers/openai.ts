@@ -3,15 +3,16 @@ import type { AiModelRecord, GenerationRequest, GenerationResult, ImageProviderA
 import { ProviderError, sanitizeUpstreamMessage } from "../types";
 
 const SIZE: Record<string, string> = { "1:1": "1024x1024", "4:5": "1024x1536", "9:16": "1024x1536", "16:9": "1536x1024" };
-const MAX_REFS = 6;
+// Fallback when the model row sets no cap of its own; the panel allows 10.
+const MAX_REFS = 10;
 
 /**
  * OpenAI Images API (gpt-image-1).
  * With reference images the request goes to /v1/images/edits as multipart —
  * that is what carries the actual product into the generation, so product
  * fidelity depends on it. Without references it falls back to
- * /v1/images/generations. Quality comes from the display-model config
- * (GPT Image 2 Medium and High share one endpoint and differ only here).
+ * /v1/images/generations. Quality is the request's validated choice
+ * ("Jakość"), else a per-row pin, else a guess from the output size.
  */
 export const openaiAdapter: ImageProviderAdapter = {
   slug: "openai",
@@ -21,7 +22,11 @@ export const openaiAdapter: ImageProviderAdapter = {
     const base = cred.baseUrl?.replace(/\/$/, "") || "https://api.openai.com";
     const prompt = `${req.prompt}\n\n${req.productLock.fidelityInstructions}`;
     const size = SIZE[req.aspectRatio] ?? "1024x1024";
-    const quality = ((model.metadata as { quality?: string } | null)?.quality)
+    // The customer's choice first (already validated against the model's
+    // declared qualities), then a pinned per-row quality, then the old
+    // size-based guess for rows that say nothing.
+    const quality = req.quality
+      ?? ((model.metadata as { quality?: string } | null)?.quality)
       ?? (req.resolution === "2K" || req.resolution === "4K" ? "high" : "medium");
     const refs = req.referenceImages.slice(0, model.max_reference_images || MAX_REFS);
 

@@ -3,8 +3,8 @@ import type { Client } from "@/lib/services/workspace";
 import { decryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { getAdapter } from "@/lib/ai/registry";
 import {
-  ProviderError, priceForResolution,
-  type AspectRatio, type ImageProviderAdapter, type Resolution, type ReferenceImage,
+  ProviderError, effectiveQuality, modelQualities, priceFor, priceForResolution,
+  type AspectRatio, type ImageProviderAdapter, type Quality, type Resolution, type ReferenceImage,
 } from "@/lib/ai/types";
 import { buildFidelityInstructions } from "@/lib/ai/product-lock";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
@@ -24,6 +24,9 @@ export type GenerateInput = {
   negative?: string;
   aspectRatio: AspectRatio;
   resolution?: Resolution;
+  /** Render quality ("Jakość"), honoured only when the model declares it in
+   *  metadata.qualities — anything else is dropped, never guessed. */
+  quality?: Quality;
   quantity: number;
   productId?: string;
   newProduct?: {
@@ -73,6 +76,10 @@ export type GenerateOutput =
   | { ok: false; error: string; missingCredits?: number };
 
 const RATIOS = new Set(["1:1", "3:4", "4:5", "16:9", "9:16"]);
+
+/** Product photos a job may carry — the same ceiling the panel enforces
+ *  ("Dodaj zdjęcia (max. 10)"). Providers still trim to their own limit. */
+const MAX_REFERENCE_PATHS = 10;
 
 /** Longest edge of the gallery thumbnail derivative. Originals stay the
  *  source of truth; the thumb only spares the grid from full-size loads. */
@@ -129,8 +136,19 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     ? input.aspectRatio
     : modelRatios[0] ?? "1:1") as AspectRatio;
 
-  // Wallet + server-side cost (per-resolution price from the model config)
-  const baseCost = priceForResolution(model, resolution ?? "1K") * quantity;
+  // Quality is a parameter of the model, so it is accepted only if THIS
+  // model declared it; a stray value from the client is dropped rather than
+  // forwarded to a provider that might reject the whole request.
+  // A model WITH the knob always renders at a definite quality: an explicit,
+  // validated choice, else "medium" (else its first declared tier). Without
+  // this a quality-capable model given no value would be CHARGED the base
+  // price while the adapter guessed "high" from the size — the two must
+  // never disagree.
+  const quality: Quality | undefined = effectiveQuality(model, input.quality);
+
+  // Wallet + server-side cost (per-resolution, per-quality price from the
+  // model config — the client's figure is never trusted)
+  const baseCost = priceFor(model, resolution ?? "1K", quality) * quantity;
   const cost = typeof input.costOverride === "number" && input.costOverride >= baseCost
     ? Math.trunc(input.costOverride) : baseCost;
   const { data: wallet } = await supabase
@@ -163,7 +181,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     productContext = buildProductContext(np.name, np.description ?? null, np.extraInfo ?? null);
     if (input.referencePaths.length > 0) {
       await supabase.from("product_images").insert(
-        input.referencePaths.slice(0, 8).map((path, i) => ({
+        input.referencePaths.slice(0, MAX_REFERENCE_PATHS).map((path, i) => ({
           product_id: created.id, storage_path: path, sort_order: i, is_primary: i === 0,
         }))
       );
@@ -180,6 +198,27 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   // Job (queued -> processing)
   const promptText = [input.prompt.trim(), input.negative?.trim() ? `AVOID: ${input.negative.trim()}` : ""]
     .filter(Boolean).join("\n");
+  /**
+   * ONE settings object for every write to the job row. The later updates
+   * (after a retry, after a fallback served) used to rebuild a smaller
+   * object and silently dropped `reference_paths` — so a shot that had
+   * merely survived one 429 could later be regenerated with no product
+   * photo attached. Spreading this object keeps the job's memory whole.
+   */
+  const jobSettings = {
+    resolution: resolution ?? null,
+    quality: quality ?? null,
+    negative: input.hidePromptText ? null : input.negative ?? null,
+    concept_id: input.conceptId ?? null,
+    parent_job_id: input.parentJobId ?? null,
+    inspiration_count: input.inspirationPaths?.length || undefined,
+    // THE JOB REMEMBERS ITS OWN REFERENCES. Generations no longer hang off
+    // a product row, so `product_images` can no longer be used to rebuild
+    // the reference set when this shot is regenerated later — without this
+    // the correction would be rendered with NO product photo attached and
+    // the Product Lock would be lost silently.
+    reference_paths: input.referencePaths.slice(0, MAX_REFERENCE_PATHS),
+  };
   const { data: job, error: jobError } = await supabase.from("generation_jobs").insert({
     workspace_id: workspaceId, product_id: productId, user_id: userId, model_id: model.id,
     prompt_text: input.hidePromptText ? null : promptText, aspect_ratio: aspectRatio, quantity,
@@ -190,20 +229,8 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     prompt_origin: input.promptOrigin ?? null,
     parent_job_id: input.parentJobId ?? null,
     status: "processing", started_at: new Date().toISOString(),
-    reference_image_ids: input.referenceImageIds.slice(0, 8),
-    settings: {
-      resolution: resolution ?? null,
-      negative: input.hidePromptText ? null : input.negative ?? null,
-      concept_id: input.conceptId ?? null,
-      parent_job_id: input.parentJobId ?? null,
-      inspiration_count: input.inspirationPaths?.length || undefined,
-      // THE JOB REMEMBERS ITS OWN REFERENCES. Generations no longer hang off
-      // a product row, so `product_images` can no longer be used to rebuild
-      // the reference set when this shot is regenerated later — without this
-      // the correction would be rendered with NO product photo attached and
-      // the Product Lock would be lost silently.
-      reference_paths: input.referencePaths.slice(0, 8),
-    } as never,
+    reference_image_ids: input.referenceImageIds.slice(0, MAX_REFERENCE_PATHS),
+    settings: jobSettings as never,
   }).select("id").single();
   if (jobError || !job) return { ok: false, error: "job_create_failed" };
 
@@ -212,7 +239,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     userId, workspaceId, walletId: wallet.id, serviceSlug: "image_generation",
     providerSlug: provider.slug, modelSlug: model.model_identifier,
     generationJobId: job.id, idempotencyKey: `job:${job.id}`,
-    metadata: { quantity, model: model.model_identifier, prompt_origin: input.promptOrigin ?? null },
+    metadata: { quantity, model: model.model_identifier, quality: quality ?? null, prompt_origin: input.promptOrigin ?? null },
     creditsCharged: cost,
   });
   if (!usage.ok) {
@@ -352,6 +379,14 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       continue;
     }
 
+    // Same contract for quality: the customer paid for a tier, so a
+    // stand-in engine must be able to render it — one without the knob
+    // would deliver whatever its default is at the paid-for price.
+    if (candidateId !== input.modelId && quality && !modelQualities(cModel).includes(quality)) {
+      attempts.push({ provider: cProviderSlug, model: cModel.model_identifier, attempt: 0, error: "quality_unsupported" });
+      continue;
+    }
+
     // Respect health cooldowns while an alternative remains.
     const isLastCandidate = candidateId === candidateIds[candidateIds.length - 1];
     if (providerBlocked(health, cProviderSlug) && !isLastCandidate) {
@@ -374,6 +409,8 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       try {
         result = await withProviderLimit(cProviderSlug, () => cAdapter.generate(cModel, {
           prompt: promptText, aspectRatio, resolution: cResolution,
+          // A fallback engine only receives the quality if IT declares it.
+          quality: quality && modelQualities(cModel).includes(quality) ? quality : undefined,
           quantity, referenceImages: cFit.list, productLock: { fidelityInstructions: cFidelity },
         }, { apiKey: cApiKey, baseUrl: cBaseUrl }));
         served = { model: cModel, providerSlug: cProviderSlug };
@@ -404,9 +441,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       status: "failed", error_message: safe, error_class: safe,
       latency_ms: Date.now() - startedAt, completed_at: new Date().toISOString(),
       settings: {
-        resolution: resolution ?? null,
-        concept_id: input.conceptId ?? null,
-        parent_job_id: input.parentJobId ?? null,
+        ...jobSettings,
         attempts,
       } as never,
     }).eq("id", job.id);
@@ -423,9 +458,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     await supabase.from("generation_jobs").update({
       model_id: served.model.id, provider_slug: served.providerSlug,
       settings: {
-        resolution: resolution ?? null,
-        concept_id: input.conceptId ?? null,
-        parent_job_id: input.parentJobId ?? null,
+        ...jobSettings,
         attempts,
       } as never,
     }).eq("id", job.id);

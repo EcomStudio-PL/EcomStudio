@@ -40,6 +40,7 @@ export default async function GeneratorPage({ searchParams }: {
     resolutions: m.resolutions, ratios: m.ratios,
     maxOutputs: m.maxQuantity, supportsRefs: m.supportsReferenceImages,
     surcharge: m.engineSurcharge,
+    qualities: m.qualities, qualityPricing: m.qualityPricing,
   }));
 
   // Prompt handoff: ?prompt=<generated_prompt uuid> prefills the customer's
@@ -68,7 +69,7 @@ export default async function GeneratorPage({ searchParams }: {
         customLabel={t("genv3.modeCustom")}
         engineCost={priceOptions[0]?.costEcom ?? null}
         customCost={priceOptions[0]?.costCustom ?? null}
-        perShotLabel={(n) => t("concepts.perShot", { n })}
+        perShotLabel={(n) => t("genv3.perPhoto", { n })}
       />
       <GeneratorWorkspace
         mode="custom"

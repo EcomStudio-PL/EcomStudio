@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { generateFromConcept } from "@/lib/server/concept-generation";
 import { runGeneration } from "@/lib/server/generation";
-import type { AspectRatio, Resolution } from "@/lib/ai/types";
+import { QUALITIES, type AspectRatio, type Quality, type Resolution } from "@/lib/ai/types";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -63,17 +63,23 @@ export async function POST(request: Request) {
       id: string; prompt_id: string | null; prompt_text: string | null;
       prompt_origin: string | null; aspect_ratio: string | null;
       resolution: string | null; model_id: string | null;
-      settings: { reference_paths?: unknown } | null;
+      settings: { reference_paths?: unknown; quality?: unknown } | null;
     } | null;
   } | null)?.generation_jobs;
   if (!gen || !job) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+
+  // A retake keeps the quality the original was rendered at — on BOTH
+  // branches. The server still re-validates it against whichever model
+  // actually serves, so a stale or foreign value can never be forwarded.
+  const jobQuality = (QUALITIES as readonly string[]).includes(String(job.settings?.quality ?? ""))
+    ? (job.settings!.quality as Quality) : undefined;
 
   // ENGINE CONCEPT — the hidden-prompt path handles pricing (surcharge),
   // references, variation and the customer's correction. A custom-origin job
   // always re-runs its own stored prompt, even if it carries a prompt link.
   if (job.prompt_id && job.prompt_origin !== "custom") {
     const result = await generateFromConcept(supabase, user.id, workspace.id, job.prompt_id, {
-      modelId, instruction: instruction || undefined, markedImagePath,
+      modelId, instruction: instruction || undefined, markedImagePath, quality: jobQuality,
     });
     const status = result.ok ? 200
       : result.error === "insufficient_credits" ? 402
@@ -106,7 +112,7 @@ export async function POST(request: Request) {
     ? (job.settings!.reference_paths as unknown[])
       .filter((p): p is string =>
         typeof p === "string" && p.startsWith(`${workspace.id}/`) && !p.includes(".."))
-      .slice(0, 8)
+      .slice(0, 10)
     : [];
   let referencePaths: string[] = recorded;
   if (referencePaths.length === 0 && gen.product_id) {
@@ -116,7 +122,7 @@ export async function POST(request: Request) {
       .eq("product_id", gen.product_id)
       .eq("products.workspace_id", workspace.id)
       .order("sort_order", { ascending: true })
-      .limit(8);
+      .limit(10);
     referencePaths = (imgs ?? []).map((i) => i.storage_path);
   }
   // Without a single product reference the retake would be rendered from the
@@ -138,6 +144,7 @@ export async function POST(request: Request) {
     prompt,
     aspectRatio: (job.aspect_ratio || "1:1") as AspectRatio,
     resolution: (job.resolution ?? undefined) as Resolution | undefined,
+    quality: jobQuality,
     quantity: 1,
     productId: gen.product_id ?? undefined,
     referencePaths,

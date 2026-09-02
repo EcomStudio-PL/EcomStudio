@@ -6,25 +6,26 @@ import { createClient } from "@/lib/supabase/client";
 import { GenerationGallery } from "@/components/genv3/gallery";
 import { MobileDock } from "@/components/genv3/mobile-dock";
 import {
-  CostSummary, DescriptionSection, InspirationSection, ProductRefsSection,
+  CostSummary, InspirationSection, ProductRefsSection,
   PromptSection, SessionTypeSection, SettingsSection, ShotBriefsSection, VariantChips,
 } from "@/components/genv3/sections";
 import { ModelSelect } from "@/components/genv3/model-select";
 import { DropOverlay, useFileDrop } from "@/components/genv3/uploader";
 import { cn } from "@/lib/utils";
 import {
-  snapTo, unitPrice,
+  snapQuality, snapTo, unitPrice,
   type BriefState, type GalleryItem, type GenMode, type GenModel, type UploadedRef,
 } from "@/components/genv3/types";
 import type { CategoryVariant } from "@/lib/categories";
+import type { SessionPreviewMap } from "@/components/genv3/sections";
 
 /** Reference photos the seller may drop in for one generation session. */
-const MAX_REFS = 8;
+const MAX_REFS = 10;
 
 /**
  * GENERATOR WORKSPACE — one screen, two flavours.
  *
- * LEFT: the whole configuration (photos, description, session type or
+ * LEFT: the whole configuration (photos, session type or
  * prompt, settings, model, shots/inspiration) scrolling inside itself, with
  * the cost + CTA island pinned to its bottom edge. RIGHT: the living gallery
  * of this workspace's generations. On phones the configuration stacks and
@@ -46,7 +47,7 @@ const MAX_REFS = 8;
 export function GeneratorWorkspace({
   mode, models, credits, workspaceId, engineAvailable = true,
   initialItems, initialCursor, initialStyle, initialRatio, initialShots,
-  variant, initialPrompt = "",
+  variant, initialPrompt = "", sessionPreviews,
 }: {
   mode: GenMode;
   models: GenModel[];
@@ -60,13 +61,14 @@ export function GeneratorWorkspace({
   initialShots?: number;
   variant?: CategoryVariant;
   initialPrompt?: string;
+  /** Admin-configured preview media for the two session tiles. */
+  sessionPreviews?: SessionPreviewMap;
 }) {
   const { t } = useI18n();
   const managed = mode === "managed";
   const firstModel = models[0];
 
   // ── Configuration state ────────────────────────────────────────────────
-  const [description, setDescription] = useState("");
   const [refs, setRefs] = useState<UploadedRef[]>([]);
   const [insp, setInsp] = useState<UploadedRef[]>([]);
   const [sessionType, setSessionType] = useState<"advertising" | "lifestyle">("advertising");
@@ -74,6 +76,9 @@ export function GeneratorWorkspace({
   const [modelId, setModelId] = useState(firstModel?.id ?? "");
   const [ratio, setRatio] = useState(initialRatio ?? firstModel?.ratios[0] ?? "1:1");
   const [resolution, setResolution] = useState(firstModel?.resolutions[0] ?? "1K");
+  // "Jakość" — only meaningful for a model that declares qualities; the
+  // effective value below is undefined for every other model.
+  const [quality, setQuality] = useState("medium");
   const [count, setCount] = useState(managed ? Math.min(Math.max(initialShots ?? 5, 1), 10) : 1);
   const [briefs, setBriefs] = useState<BriefState[]>([]);
   const [choices, setChoices] = useState<Record<string, string>>(() =>
@@ -98,10 +103,11 @@ export function GeneratorWorkspace({
   const model = useMemo(() => models.find((m) => m.id === modelId) ?? firstModel, [models, modelId, firstModel]);
   const effRatio = model ? snapTo(model.ratios, ratio) : ratio;
   const effResolution = model ? snapTo(model.resolutions, resolution) : resolution;
+  const effQuality = snapQuality(model, quality);
   const maxCount = managed ? 10 : Math.max(1, model?.maxOutputs ?? 1);
   const effCount = Math.min(Math.max(count, 1), maxCount);
 
-  const perShot = unitPrice(model, effResolution, mode);
+  const perShot = unitPrice(model, effResolution, mode, effQuality);
   const total = perShot * effCount;
   const missing = Math.max(0, total - balance);
 
@@ -198,7 +204,6 @@ export function GeneratorWorkspace({
       const prep = await fetch("/api/prompts/generate", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          description: description.trim() || undefined,
           style: composeVariantStyle() || undefined,
           aspectRatio: effRatio,
           resolution: effResolution,
@@ -248,7 +253,7 @@ export function GeneratorWorkspace({
           try {
             const res = await fetch("/api/concepts/generate", {
               method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ conceptId: queue[i], modelId: model?.id }),
+              body: JSON.stringify({ conceptId: queue[i], modelId: model?.id, quality: effQuality }),
             });
             const json = await res.json() as { ok: boolean; error?: string; credits?: number; images?: unknown[] };
             if (json.ok) {
@@ -301,9 +306,7 @@ export function GeneratorWorkspace({
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           modelId: model?.id, prompt: prompt.trim(),
-          aspectRatio: effRatio, resolution: effResolution, quantity: effCount,
-          // Free-text context only — the generator never creates a product.
-          productDescription: description.trim() || undefined,
+          aspectRatio: effRatio, resolution: effResolution, quality: effQuality, quantity: effCount,
           referencePaths: refs.map((r) => r.path).slice(0, MAX_REFS),
           referenceImageIds: [],
           inspirationPaths: insp.map((r) => r.path).slice(0, 5),
@@ -406,10 +409,9 @@ export function GeneratorWorkspace({
             onUpload={(files) => upload(files, "refs")}
             onRemove={removeRef}
           />
-          <DescriptionSection description={description} onDescription={setDescription} />
           {managed ? (
             <>
-              <SessionTypeSection value={sessionType} onChange={setSessionType} />
+              <SessionTypeSection value={sessionType} onChange={setSessionType} previews={sessionPreviews} />
               {variant && variant.controls.length > 0 && (
                 <VariantChips variant={variant} choices={choices}
                   onChoose={(k, v) => setChoices((p) => ({ ...p, [k]: v }))} />
@@ -423,15 +425,16 @@ export function GeneratorWorkspace({
             model={model}
             ratio={effRatio} onRatio={setRatio}
             resolution={effResolution} onResolution={setResolution}
+            quality={effQuality} onQuality={setQuality}
             count={effCount} maxCount={maxCount} onCount={setCount}
-            perShotAt={(res) => unitPrice(model, res, mode)}
+            perShotAt={(res, q) => unitPrice(model, res, mode, q ?? effQuality)}
           />
           <ModelSelect
             label={managed ? t("genv3.modelAi") : t("genv3.engineAi")}
             models={models}
             value={model?.id ?? ""}
             onChange={pickModel}
-            priceOf={(m) => unitPrice(m, snapTo(m.resolutions, effResolution), mode)}
+            priceOf={(m) => unitPrice(m, snapTo(m.resolutions, effResolution), mode, snapQuality(m, quality))}
           />
           {managed ? (
             <ShotBriefsSection
@@ -459,7 +462,6 @@ export function GeneratorWorkspace({
         <CostSummary
           perShot={perShot}
           total={total}
-          count={effCount}
           balance={balance}
           missing={missing}
           busy={busy}
@@ -495,12 +497,13 @@ export function GeneratorWorkspace({
         onModel={pickModel}
         ratio={effRatio} ratios={model?.ratios ?? []} onRatio={setRatio}
         resolution={effResolution} resolutions={model?.resolutions ?? []} onResolution={setResolution}
+        quality={effQuality} qualities={model?.qualities ?? []} onQuality={setQuality}
         count={effCount} maxCount={maxCount} onCount={setCount}
         perShot={perShot} total={total} balance={balance}
         busy={busy} busyLabel={stageLabel}
         canGenerate={canGenerate}
         onGenerate={generate}
-        priceOf={(m) => unitPrice(m, snapTo(m.resolutions, effResolution), mode)}
+        priceOf={(m) => unitPrice(m, snapTo(m.resolutions, effResolution), mode, snapQuality(m, quality))}
       />
     </div>
   );

@@ -339,7 +339,7 @@ export function GenerationGallery({
         // the slider AND the width the gallery column actually has. Nothing
         // remounts, so scroll position and loaded images survive a change.
         <div
-          className="grid gap-3 [&>*]:min-w-0"
+          className="grid gap-1 [&>*]:min-w-0"
           style={{ gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${DENSITY_STEPS[density]}px), 1fr))` }}
         >
           {Array.from({ length: pendingCount }, (_, i) => (

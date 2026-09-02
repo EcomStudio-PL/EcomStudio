@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ImagePlus, Loader2, Upload, X } from "lucide-react";
+import { Loader2, Upload, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import type { UploadedRef } from "@/components/genv3/types";
@@ -158,7 +158,10 @@ export function PhotoUploader({
   max: number;
   uploading: boolean;
   label: React.ReactNode;
-  /** Small helper under the grid — kept short; the counter lives in the header. */
+  /** Small helper under the grid — kept short; the counter lives in the
+   *  header. `compact` drops it entirely: the product-photo block wants
+   *  nothing under the tiles, and the ways to add a file (click, drop,
+   *  paste) all keep working without being spelled out. */
   hint?: string;
   counter?: boolean;
   compact?: boolean;
@@ -231,8 +234,8 @@ export function PhotoUploader({
           <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()}
             aria-label={t("genv3.addPhotos")}
             className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/60 text-faint transition-colors duration-200 hover:border-[rgb(var(--accent)/0.6)] hover:bg-accent-soft/30 hover:text-accent">
-            {uploading ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <ImagePlus size={16} aria-hidden />}
-            <span className="px-1 text-center text-[9.5px] font-semibold leading-tight">{t("genv3.addPhotos")}</span>
+            {uploading ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <Upload size={16} aria-hidden />}
+            <span className="px-1 text-center text-[10px] font-semibold leading-tight">{t("genv3.addPhotos")}</span>
           </button>
         )}
       </div>

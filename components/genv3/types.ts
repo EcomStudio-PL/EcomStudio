@@ -23,19 +23,37 @@ export type GenModel = {
   supportsRefs: boolean;
   /** Credits added per image when the GrovBase engine writes the prompt. */
   surcharge: number;
+  /** Render qualities this model lets the customer pick ("Jakość"). Empty
+   *  for every model without the knob — then no field is shown at all. */
+  qualities: string[];
+  /** quality → size → credits; absent quality falls back to `pricing`. */
+  qualityPricing: Record<string, Record<string, number>>;
 };
 
-/** Credits for ONE image at the given size — managed mode adds the engine
- *  surcharge, exactly like the server's originCost. */
-export function unitPrice(m: GenModel | undefined, resolution: string, mode: GenMode): number {
+/** Credits for ONE image at the given size (and quality, where the model has
+ *  one) — managed mode adds the engine surcharge, exactly like the server's
+ *  originCost. */
+export function unitPrice(m: GenModel | undefined, resolution: string, mode: GenMode, quality?: string): number {
   if (!m) return 0;
-  const base = m.pricing[resolution] ?? Object.values(m.pricing)[0] ?? 0;
+  const byQuality = quality ? m.qualityPricing?.[quality]?.[resolution] : undefined;
+  const base = byQuality ?? m.pricing[resolution] ?? Object.values(m.pricing)[0] ?? 0;
   return base + (mode === "managed" ? m.surcharge : 0);
 }
 
 /** Snap a value to the model's capability list (first entry when absent). */
 export function snapTo(list: string[], value: string): string {
   return list.includes(value) ? value : list[0] ?? value;
+}
+
+/** The quality a model would actually render at for a requested one:
+ *  the request if the model offers it, else "medium", else its first
+ *  declared quality — and undefined for a model with no quality knob. Used
+ *  for every price shown, so a tile never quotes a quality it cannot do. */
+export function snapQuality(m: Pick<GenModel, "qualities"> | undefined, value: string): string | undefined {
+  const list = m?.qualities ?? [];
+  if (list.length === 0) return undefined;
+  if (list.includes(value)) return value;
+  return list.includes("medium") ? "medium" : list[0];
 }
 
 export type UploadedRef = { key: string; path: string; url: string };
@@ -57,6 +75,9 @@ export type GalleryItem = {
   height: number | null;
   ratio: string | null;
   resolution: string | null;
+  /** Render quality the job was made at (from its settings), when the
+   *  model has the knob — a retake keeps it, so the quote must know it. */
+  quality: string | null;
   model: string | null;
   modelId: string | null;
   product: string | null;

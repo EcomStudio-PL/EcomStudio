@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { Check, Layers, Loader2, Maximize, Minus, PenLine, Plus, Ratio as RatioIcon, Sparkles } from "lucide-react";
+import { Check, Layers, Loader2, Maximize, Minus, PenLine, Plus, Ratio as RatioIcon, SlidersHorizontal, Sparkles } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { BottomSheet } from "@/components/mobile/sheet";
 import { Diamond } from "@/components/layout/credits-control";
@@ -9,7 +9,7 @@ import { ModelBadge, ModelTile } from "@/components/genv3/model-select";
 import type { GenModel } from "@/components/genv3/types";
 import { cn } from "@/lib/utils";
 
-type Sheet = null | "mode" | "model" | "ratio" | "res" | "count";
+type Sheet = null | "mode" | "model" | "ratio" | "res" | "quality" | "count";
 
 /** Ratio glyph: a rectangle in the true proportion. */
 function RatioGlyph({ ratio }: { ratio: string }) {
@@ -32,7 +32,7 @@ function RatioGlyph({ ratio }: { ratio: string }) {
  */
 export function MobileDock({
   managed, models, modelId, onModel, ratio, ratios, onRatio,
-  resolution, resolutions, onResolution, count, maxCount, onCount,
+  resolution, resolutions, onResolution, quality, qualities, onQuality, count, maxCount, onCount,
   perShot, total, balance, busy, busyLabel, canGenerate, onGenerate, priceOf,
 }: {
   managed: boolean;
@@ -41,6 +41,8 @@ export function MobileDock({
   onModel: (id: string) => void;
   ratio: string; ratios: string[]; onRatio: (v: string) => void;
   resolution: string; resolutions: string[]; onResolution: (v: string) => void;
+  /** Present only for a model that declares render qualities. */
+  quality?: string; qualities: string[]; onQuality: (v: string) => void;
   count: number; maxCount: number; onCount: (v: number) => void;
   perShot: number; total: number; balance: number;
   busy: boolean; busyLabel: string;
@@ -52,6 +54,8 @@ export function MobileDock({
   const [sheet, setSheet] = useState<Sheet>(null);
   const model = models.find((m) => m.id === modelId) ?? models[0];
   const n = (v: number) => new Intl.NumberFormat(locale).format(v);
+  const qualityLabel = (q: string) =>
+    q === "low" ? t("genv3.qualityLow") : q === "high" ? t("genv3.qualityHigh") : t("genv3.qualityMedium");
 
   return (
     <>
@@ -68,6 +72,10 @@ export function MobileDock({
               onClick={() => setSheet("ratio")} disabled={ratios.length <= 1} />
             <DockChip icon={Maximize} label={t("gtb.res")} value={resolution}
               onClick={() => setSheet("res")} disabled={resolutions.length <= 1} />
+            {qualities.length > 0 && quality && (
+              <DockChip icon={SlidersHorizontal} label={t("genv3.quality")} value={qualityLabel(quality)}
+                onClick={() => setSheet("quality")} disabled={qualities.length <= 1} />
+            )}
             <DockChip icon={Layers} label={managed ? t("genv3.countShots") : t("genv3.countImages")}
               value={String(count)} onClick={() => setSheet("count")} disabled={maxCount <= 1} />
           </div>
@@ -83,10 +91,19 @@ export function MobileDock({
             </span>
           </div>
           <button type="button" disabled={!canGenerate} onClick={onGenerate}
+            aria-label={busy && busyLabel ? busyLabel : `${t("genv3.generateCta")} · ${n(total)} ${t("genv3.credits")}`}
             className={cn("cta flex min-h-[3rem] w-full items-center justify-center gap-2 rounded-xl px-5 text-[14.5px] font-semibold",
               !canGenerate && "cursor-not-allowed opacity-55")}>
             {busy ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <Sparkles size={16} aria-hidden />}
-            <span>{busy && busyLabel ? busyLabel : t("genv3.generateCta")}</span>
+            {busy && busyLabel ? (
+              <span>{busyLabel}</span>
+            ) : (
+              <>
+                <span>{t("genv3.generateCta")}</span>
+                <span aria-hidden className="opacity-60">•</span>
+                <span className="tabular-nums">{n(total)}</span>
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -171,6 +188,19 @@ export function MobileDock({
               className={cn("min-h-[60px] rounded-xl border text-center transition-colors duration-200",
                 r === resolution ? "is-selected" : "border-line hover:bg-raised")}>
               <span className={cn("block text-[14px] font-bold", r === resolution ? "text-accent" : "text-ink")}>{r}</span>
+            </button>
+          ))}
+        </div>
+      </BottomSheet>
+
+      <BottomSheet open={sheet === "quality"} onClose={() => setSheet(null)} title={t("genv3.quality")}>
+        <div className="grid grid-cols-3 gap-1.5 pb-1">
+          {qualities.map((q) => (
+            <button key={q} type="button" aria-pressed={q === quality}
+              onClick={() => { onQuality(q); setSheet(null); }}
+              className={cn("min-h-[60px] rounded-xl border text-center transition-colors duration-200",
+                q === quality ? "is-selected" : "border-line hover:bg-raised")}>
+              <span className={cn("block text-[14px] font-bold", q === quality ? "text-accent" : "text-ink")}>{qualityLabel(q)}</span>
             </button>
           ))}
         </div>

@@ -42,71 +42,103 @@ export function ProductRefsSection({ refs, uploading, max, onUpload, onRemove }:
   onRemove: (index: number) => void;
 }) {
   const { t } = useI18n();
+  // Heading carries the limit, nothing else — no help glyph, and `compact`
+  // removes the "drag / paste / click" line under the tiles. All three ways
+  // in still work; they are just no longer narrated.
   return (
     <PhotoUploader
       items={refs}
       max={max}
       uploading={uploading}
       capturePaste
+      compact
       dropTarget="refs"
       onFiles={onUpload}
       onRemove={onRemove}
-      label={
-        <>
-          {t("genv3.photos")}
-          <span title={t("genv3.photosHint")} className="cursor-help text-faint" aria-label={t("genv3.photosHint")}>
-            <HelpCircle size={13} aria-hidden />
-          </span>
-        </>
-      }
+      label={t("genv3.photos", { n: max })}
     />
   );
 }
 
-/* ── Opis produktu ────────────────────────────────────────────────────── */
+/* ── Sesja (reklamowa / lifestyle) ────────────────────────────────────── */
 
-export function DescriptionSection({ description, onDescription }: {
-  description: string; onDescription: (v: string) => void;
+export type SessionKey = "advertising" | "lifestyle";
+export type SessionPreviewMap = Partial<Record<SessionKey, string | null>>;
+
+const VIDEO_SRC = /\.(mp4|webm|mov|m4v)(\?|#|$)/i;
+
+/**
+ * The slot at the top of a session tile. What plays here is admin
+ * configuration (app_settings.generator_ui, see lib/server/generator-ui.ts),
+ * so the tile is only ever a frame: a short muted clip, a still, or — when
+ * nothing is configured yet — a quiet placeholder with the mode's glyph.
+ * Deliberately no player chrome: it is a hint of what the mode produces,
+ * not a video the customer is meant to operate.
+ */
+function SessionPreview({ src, icon: Icon, active }: {
+  src?: string | null; icon: typeof Sun; active: boolean;
 }) {
-  const { t } = useI18n();
+  // A configured URL that fails to load (typo, removed file, a clip
+  // without a recognisable extension) degrades to the placeholder — never
+  // to a broken-image glyph on the customer's screen.
+  const [broken, setBroken] = useState(false);
+  useEffect(() => { setBroken(false); }, [src]);
+  const media = src && !broken ? src : null;
   return (
-    <section>
-      <SectionLabel optional hint={t("genv3.descHint")}>{t("genv3.desc")}</SectionLabel>
-      <Textarea rows={2} value={description} placeholder={t("genv3.descPh")}
-        aria-label={t("genv3.desc")}
-        onChange={(e) => onDescription(e.target.value)} />
-    </section>
+    <span
+      data-session-preview={media ? (VIDEO_SRC.test(media) ? "video" : "image") : "empty"}
+      className="relative block aspect-[16/10] w-full overflow-hidden bg-sunken/70"
+    >
+      {media ? (
+        VIDEO_SRC.test(media) ? (
+          <video
+            src={media} muted playsInline loop autoPlay preload="metadata" aria-hidden
+            onError={() => setBroken(true)}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={media} alt="" aria-hidden onError={() => setBroken(true)} className="h-full w-full object-cover" />
+        )
+      ) : (
+        <span className="absolute inset-0 flex items-center justify-center">
+          <Icon size={20} aria-hidden className={cn("transition-colors", active ? "text-accent/70" : "text-faint/70")} />
+        </span>
+      )}
+    </span>
   );
 }
 
-/* ── Typ sesji ────────────────────────────────────────────────────────── */
-
-export function SessionTypeSection({ value, onChange }: {
-  value: "advertising" | "lifestyle";
-  onChange: (v: "advertising" | "lifestyle") => void;
+export function SessionTypeSection({ value, onChange, previews }: {
+  value: SessionKey;
+  onChange: (v: SessionKey) => void;
+  previews?: SessionPreviewMap;
 }) {
   const { t } = useI18n();
   const options = [
     { key: "advertising" as const, icon: Megaphone, name: t("genv3.sessionAd"), sub: t("genv3.sessionAdSub") },
     { key: "lifestyle" as const, icon: Sun, name: t("genv3.sessionLife"), sub: t("genv3.sessionLifeSub") },
   ];
+  // No heading on purpose: the two tiles ARE the choice, and the preview at
+  // the top of each says what the mode does better than a label would.
   return (
     <section>
-      <SectionLabel hint={t("genv3.sessionHint")}>{t("genv3.session")}</SectionLabel>
       <div className="grid grid-cols-2 gap-2 [&>*]:min-w-0">
         {options.map((o) => {
           const on = value === o.key;
           return (
             <button key={o.key} type="button" aria-pressed={on} onClick={() => onChange(o.key)}
               className={cn(
-                "relative rounded-xl border p-3 text-left transition-colors duration-200",
+                "relative overflow-hidden rounded-xl border text-left transition-colors duration-200",
                 on ? "is-selected" : "border-line hover:bg-raised",
               )}>
-              <o.icon size={16} aria-hidden className={cn("mb-1.5", on ? "text-accent" : "text-faint")} />
-              <span className="block text-[13px] font-semibold leading-tight">{o.name}</span>
-              <span className="mt-1 block text-[11px] leading-snug text-muted">{o.sub}</span>
+              <SessionPreview src={previews?.[o.key]} icon={o.icon} active={on} />
+              <span className="block px-2.5 pb-2.5 pt-2">
+                <span className="block text-[13px] font-semibold leading-tight">{o.name}</span>
+                <span className="mt-1 block text-[11px] leading-snug text-muted">{o.sub}</span>
+              </span>
               {on && (
-                <span aria-hidden className="absolute right-2 top-2 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-accent p-0.5 text-white">
+                <span aria-hidden className="absolute right-2 top-2 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-accent p-0.5 text-white shadow-e2">
                   <Check size={11} strokeWidth={3} />
                 </span>
               )}
@@ -176,21 +208,35 @@ export function PromptSection({ value, onChange, max }: {
 
 /* ── Ustawienia generowania ───────────────────────────────────────────── */
 
-export function SettingsSection({ managed, model, ratio, onRatio, resolution, onResolution, count, maxCount, onCount, perShotAt }: {
+export function SettingsSection({
+  managed, model, ratio, onRatio, resolution, onResolution, quality, onQuality, count, maxCount, onCount, perShotAt,
+}: {
   managed: boolean;
   model: GenModel | undefined;
   ratio: string; onRatio: (v: string) => void;
   resolution: string; onResolution: (v: string) => void;
+  /** Effective quality for the current model, or undefined when the model
+   *  has no such knob — then the field is not rendered at all. */
+  quality?: string; onQuality: (v: string) => void;
   count: number; maxCount: number; onCount: (v: number) => void;
-  perShotAt: (resolution: string) => number;
+  perShotAt: (resolution: string, quality?: string) => number;
 }) {
   const { t } = useI18n();
   const ratios = model?.ratios ?? [];
   const resolutions = model?.resolutions ?? [];
+  const qualities = model?.qualities ?? [];
+  const hasQuality = qualities.length > 0 && !!quality;
+  const qualityLabel = (q: string) =>
+    q === "low" ? t("genv3.qualityLow") : q === "high" ? t("genv3.qualityHigh") : t("genv3.qualityMedium");
+  const current = perShotAt(resolution, quality);
+  const delta = (price: number) => (price !== current ? ` ${t("genv3.priceDelta", { n: price })}` : "");
   return (
     <section>
       <SectionLabel hint={t("genv3.settingsHint")}>{t("genv3.settings")}</SectionLabel>
-      <div className="grid grid-cols-3 gap-2 [&>*]:min-w-0">
+      {/* Format | Rozdzielczość | (Jakość) | Liczba ujęć. The quality cell
+          exists only for a model that declares the parameter — never a
+          disabled placeholder. */}
+      <div className={cn("grid gap-2 [&>*]:min-w-0", hasQuality ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")}>
         <div className="rounded-xl border border-line bg-sunken/50 p-2">
           <label htmlFor="gen-ratio" className="mb-0.5 block text-[10.5px] font-semibold text-faint">{t("genv3.format")}</label>
           <Select id="gen-ratio" value={ratio} onChange={(e) => onRatio(e.target.value)}
@@ -203,10 +249,21 @@ export function SettingsSection({ managed, model, ratio, onRatio, resolution, on
           <Select id="gen-res" value={resolution} onChange={(e) => onResolution(e.target.value)}
             className="!border-0 !bg-transparent !px-1 !py-1 text-[13px] font-semibold">
             {resolutions.map((r) => (
-              <option key={r} value={r}>{r}{perShotAt(r) !== perShotAt(resolution) ? ` · ${perShotAt(r)} kr.` : ""}</option>
+              <option key={r} value={r}>{r}{delta(perShotAt(r, quality))}</option>
             ))}
           </Select>
         </div>
+        {hasQuality && (
+          <div className="rounded-xl border border-line bg-sunken/50 p-2" data-quality-cell>
+            <label htmlFor="gen-quality" className="mb-0.5 block text-[10.5px] font-semibold text-faint">{t("genv3.quality")}</label>
+            <Select id="gen-quality" value={quality} onChange={(e) => onQuality(e.target.value)}
+              className="!border-0 !bg-transparent !px-1 !py-1 text-[13px] font-semibold">
+              {qualities.map((q) => (
+                <option key={q} value={q}>{qualityLabel(q)}{delta(perShotAt(resolution, q))}</option>
+              ))}
+            </Select>
+          </div>
+        )}
         <div className="rounded-xl border border-line bg-sunken/50 p-2">
           <span className="mb-0.5 block text-[10.5px] font-semibold text-faint">
             {managed ? t("genv3.countShots") : t("genv3.countImages")}
@@ -214,13 +271,13 @@ export function SettingsSection({ managed, model, ratio, onRatio, resolution, on
           <div className="flex items-center justify-between gap-1">
             <button type="button" aria-label={t("genv3.less")} disabled={count <= 1}
               onClick={() => onCount(Math.max(1, count - 1))}
-              className="flex h-7 w-7 items-center justify-center rounded-lg border border-line text-muted transition-colors hover:bg-raised disabled:opacity-40">
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-line text-muted transition-colors hover:bg-raised disabled:opacity-40">
               <Minus size={13} aria-hidden />
             </button>
             <span className="text-[14px] font-bold tabular-nums">{count}</span>
             <button type="button" aria-label={t("genv3.more")} disabled={count >= maxCount}
               onClick={() => onCount(Math.min(maxCount, count + 1))}
-              className="flex h-7 w-7 items-center justify-center rounded-lg border border-line text-muted transition-colors hover:bg-raised disabled:opacity-40">
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-line text-muted transition-colors hover:bg-raised disabled:opacity-40">
               <Plus size={13} aria-hidden />
             </button>
           </div>
@@ -366,6 +423,62 @@ export function ShotBriefsSection({ count, refs, briefs, onChange }: {
    */
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const openBoxRef = useRef<HTMLTextAreaElement>(null);
+  /**
+   * PROGRESSIVE ROWS. The panel opens with a single "Opisz ujęcie…" tile;
+   * "+ Dodaj następne" adds the next one, up to the shot count. Five empty
+   * tiles up front were noise for the majority who describe nothing — and
+   * the engine plans every undescribed shot itself anyway. The shot count
+   * still decides how many images are made; rows only ever describe shots
+   * that exist, so a lower count trims the visible rows with it.
+   */
+  const [rows, setRows] = useState(1);
+  const visible = Math.max(1, Math.min(rows, count));
+
+  /**
+   * COLLAPSE ON CLICK-OUTSIDE — but never in the middle of a click.
+   *
+   * The obvious implementation (collapse on the textarea's blur) fails in a
+   * way that is easy to miss: blur fires on MOUSEDOWN, the tile shrinks by
+   * a hundred pixels, the scroller clamps its scroll position, and by the
+   * time the click arrives the thing the customer pressed has moved from
+   * under the pointer — the click lands on nothing, and a tap on another
+   * tile's header simply does not open it. So a pointer interaction defers
+   * the decision to the CLICK, when layout is free to change; keyboard focus
+   * leaving the tile (no pointer down) still collapses immediately.
+   */
+  const openRef = useRef<number | null>(null);
+  openRef.current = openIndex;
+  const pointerDown = useRef(false);
+  // The flag is armed on pointerdown and disarmed a tick after pointerup —
+  // independently of which tile is open — so a press released outside the
+  // window, or one that never becomes a click, cannot leave it stuck and
+  // silently disable the keyboard path below.
+  useEffect(() => {
+    const down = () => { pointerDown.current = true; };
+    const up = () => { window.setTimeout(() => { pointerDown.current = false; }, 0); };
+    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("pointerup", up, true);
+    document.addEventListener("pointercancel", up, true);
+    return () => {
+      document.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("pointerup", up, true);
+      document.removeEventListener("pointercancel", up, true);
+    };
+  }, []);
+  useEffect(() => {
+    if (openIndex === null) return;
+    const onClick = (e: MouseEvent) => {
+      const cur = openRef.current;
+      if (cur === null) return;
+      const target = e.target as Element | null;
+      // Inside the open tile, inside another tile (its own header handles
+      // the switch), or inside the portalled reference picker: not "outside".
+      if (target?.closest?.("[data-brief-tile], [role='dialog']")) return;
+      setOpenIndex(null);
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, [openIndex]);
 
   // Focusing the freshly opened textarea also brings it into view, which is
   // what keeps it above the on-screen keyboard on a phone.
@@ -379,11 +492,11 @@ export function ShotBriefsSection({ count, refs, briefs, onChange }: {
 
   return (
     <section>
-      <SectionLabel optional hint={t("genv3.briefsHint")}>{t("genv3.briefs")}</SectionLabel>
+      <SectionLabel>{t("genv3.briefs")}</SectionLabel>
       <div className="space-y-1.5">
-        {/* One tile per ordered shot — and every tile starts empty. Photos are
+        {/* One tile per added shot — and every tile starts empty. Photos are
             a POOL: a shot only gets a reference when the customer picks one. */}
-        {Array.from({ length: count }, (_, i) => {
+        {Array.from({ length: visible }, (_, i) => {
           const b = briefs[i] ?? { text: "", keepFraming: false, refIndex: null };
           const text = b.text;
           const hasText = text.trim().length > 0;
@@ -391,7 +504,7 @@ export function ShotBriefsSection({ count, refs, briefs, onChange }: {
           const touched = hasText || hasRef;
           const open = openIndex === i;
           return (
-            <div key={i} className={cn(
+            <div key={i} data-brief-tile className={cn(
               "overflow-hidden rounded-xl border transition-colors duration-200",
               touched || open ? "border-[rgb(var(--accent)/0.35)] bg-accent-soft/20" : "border-line bg-sunken/40",
             )}>
@@ -444,6 +557,15 @@ export function ShotBriefsSection({ count, refs, briefs, onChange }: {
                     ref={openBoxRef}
                     value={text}
                     onChange={(e) => onChange(i, { text: e.target.value })}
+                    // Keyboard only (Tab/Shift+Tab out of the tile): a pointer
+                    // interaction is settled by the document click handler
+                    // above, AFTER the click has landed.
+                    onBlur={(e) => {
+                      if (pointerDown.current) return;
+                      const next = e.relatedTarget as Node | null;
+                      const tile = e.currentTarget.closest("[data-brief-tile]");
+                      if (next && !tile?.contains(next)) setOpenIndex((cur) => (cur === i ? null : cur));
+                    }}
                     placeholder={t("genv3.briefPh")}
                     maxLength={BRIEF_MAX}
                     rows={3}
@@ -472,6 +594,16 @@ export function ShotBriefsSection({ count, refs, briefs, onChange }: {
             </div>
           );
         })}
+        {visible < count && (
+          <button
+            type="button"
+            onClick={() => { const next = visible + 1; setRows(next); setOpenIndex(next - 1); }}
+            className="flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-line text-[12px] font-semibold text-muted transition-colors duration-200 hover:border-[rgb(var(--accent)/0.5)] hover:text-accent"
+          >
+            <Plus size={13} aria-hidden />
+            {t("genv3.briefAdd")}
+          </button>
+        )}
       </div>
     </section>
   );
@@ -521,10 +653,10 @@ export function InspirationSection({ items, uploading, disabled, onUpload, onRem
 /* ── Podsumowanie kosztów ─────────────────────────────────────────────── */
 
 export function CostSummary({
-  perShot, total, count, balance, missing, busy, busyLabel, canGenerate,
+  perShot, total, balance, missing, busy, busyLabel, canGenerate,
   engineUnavailable, needsPhotos, needsPrompt, onGenerate,
 }: {
-  perShot: number; total: number; count: number; balance: number; missing: number;
+  perShot: number; total: number; balance: number; missing: number;
   busy: boolean; busyLabel: string; canGenerate: boolean;
   engineUnavailable?: boolean;
   needsPhotos?: boolean; needsPrompt?: boolean;
@@ -545,42 +677,54 @@ export function CostSummary({
    * it fixes the paint order against the scrolling panel above regardless of
    * what shadow or overlay either one grows later.
    */
+  // Two rows, not one crowded line: the figures first (each centred in its
+  // own half, same type sizes as before), the status beneath them, and the
+  // full-width CTA at the very bottom. The button names the TOTAL — what the
+  // click actually costs — rather than a count of images.
   return (
-    <div className="panel relative z-20 shrink-0 rounded-2xl px-3.5 py-3">
-      <div className="flex items-center gap-3">
-        <div className="flex min-w-0 shrink-0 gap-4">
-          <div className="min-w-0">
-            <p className="text-[10px] font-medium leading-tight text-faint">{t("genv3.costPerShot")}</p>
-            <p className="metric text-[14px] leading-tight text-accent">
-              {n(perShot)} <span className="text-[10px] font-semibold text-muted">{t("genv3.credits")}</span>
-            </p>
-          </div>
-          <div className="min-w-0">
-            <p className="text-[10px] font-medium leading-tight text-faint">{t("genv3.costTotal")}</p>
-            <p className="metric text-[14px] leading-tight text-accent">
-              {n(total)} <span className="text-[10px] font-semibold text-muted">{t("genv3.credits")}</span>
-            </p>
-          </div>
+    <div className="panel relative z-20 shrink-0 rounded-2xl px-4 py-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="min-w-0 text-center">
+          <p className="text-[10px] font-medium leading-tight text-faint">{t("genv3.costPerShot")}</p>
+          <p className="metric mt-0.5 text-[14px] leading-tight text-accent">
+            {n(perShot)} <span className="text-[10px] font-semibold text-muted">{t("genv3.credits")}</span>
+          </p>
         </div>
-        <button type="button" disabled={!canGenerate} onClick={onGenerate}
-          className={cn(
-            "cta flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
-            !canGenerate && "cursor-not-allowed opacity-55",
-          )}>
-          {busy ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Sparkles size={14} aria-hidden />}
-          <span className="truncate">{busy && busyLabel ? busyLabel : t("genv3.generateN", { n: count })}</span>
-        </button>
+        <div className="min-w-0 text-center">
+          <p className="text-[10px] font-medium leading-tight text-faint">{t("genv3.costTotal")}</p>
+          <p className="metric mt-0.5 text-[14px] leading-tight text-accent">
+            {n(total)} <span className="text-[10px] font-semibold text-muted">{t("genv3.credits")}</span>
+          </p>
+        </div>
       </div>
       {missing > 0 ? (
-        <p className="mt-1.5 text-[11px] font-medium text-danger">
+        <p className="mt-2 text-center text-[11px] font-medium text-danger">
           {t("studio.missing", { n: missing })}{" · "}
           <Link href="/credits" className="font-semibold text-accent hover:opacity-75">{t("credits.topup")}</Link>
         </p>
       ) : note ? (
-        <p className="mt-1.5 text-[11px] text-muted">{note}</p>
+        <p className="mt-2 text-center text-[11px] text-muted">{note}</p>
       ) : (
-        <p className="mt-1.5 text-[10.5px] tabular-nums text-faint">{t("gtb.balance", { n: n(balance) })}</p>
+        <p className="mt-2 text-center text-[10.5px] tabular-nums text-faint">{t("gtb.balance", { n: n(balance) })}</p>
       )}
+      <button type="button" disabled={!canGenerate} onClick={onGenerate}
+        data-generate-cta
+        aria-label={busy && busyLabel ? busyLabel : `${t("genv3.generateCta")} · ${n(total)} ${t("genv3.credits")}`}
+        className={cn(
+          "cta mt-2.5 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
+          !canGenerate && "cursor-not-allowed opacity-55",
+        )}>
+        {busy ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Sparkles size={14} aria-hidden />}
+        {busy && busyLabel ? (
+          <span className="truncate">{busyLabel}</span>
+        ) : (
+          <>
+            <span>{t("genv3.generateCta")}</span>
+            <span aria-hidden className="opacity-60">•</span>
+            <span className="tabular-nums">{n(total)}</span>
+          </>
+        )}
+      </button>
     </div>
   );
 }

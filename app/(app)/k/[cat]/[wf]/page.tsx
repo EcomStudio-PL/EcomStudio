@@ -7,6 +7,7 @@ import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { listGalleryItems } from "@/lib/server/gallery";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
+import { getSessionPreviews } from "@/lib/server/generator-ui";
 import { GeneratorWorkspace } from "@/components/genv3/workspace";
 import type { GenModel } from "@/components/genv3/types";
 import { CategoryHeader } from "@/components/category/category-header";
@@ -37,12 +38,13 @@ export default async function WorkflowPage({ params }: {
   if (!user) redirect("/login");
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) redirect("/home");
-  const [{ data: plannerProviders }, { data: withKey }, wallet, modelOptions, gallery] = await Promise.all([
+  const [{ data: plannerProviders }, { data: withKey }, wallet, modelOptions, gallery, sessionPreviews] = await Promise.all([
     supabase.from("ai_providers").select("id").eq("active", true).in("slug", ["openai", "google"]),
     supabase.rpc("providers_with_credentials"),
     getWallet(supabase, workspace.id),
     conceptModelOptions(supabase),
     listGalleryItems(supabase, workspace.id, { limit: 24 }),
+    getSessionPreviews(supabase),
   ]);
   const keyed = new Set((withKey ?? []) as string[]);
   const engineAvailable = (plannerProviders ?? []).some((p) => keyed.has(p.id));
@@ -52,6 +54,7 @@ export default async function WorkflowPage({ params }: {
     description: m.description, pricing: m.pricing,
     resolutions: m.resolutions, ratios: m.ratios,
     maxOutputs: 1, supportsRefs: true, surcharge: m.ecomSurcharge,
+    qualities: m.qualities, qualityPricing: m.qualityPricing,
   }));
 
 
@@ -108,6 +111,7 @@ export default async function WorkflowPage({ params }: {
         initialRatio={workflow.ratio}
         initialShots={workflow.shots}
         variant={CATEGORY_VARIANT[category.key] ?? DEFAULT_VARIANT}
+        sessionPreviews={sessionPreviews}
       />
     </div>
   );

@@ -163,7 +163,7 @@ export function candidatePoolSize(shots: number): number {
 }
 
 const RATIOS = new Set(["1:1", "3:4", "4:5", "16:9", "9:16"]);
-const MAX_REFS = 8;
+const MAX_REFS = 10;
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 18 * 1024 * 1024;
 

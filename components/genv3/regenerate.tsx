@@ -12,7 +12,7 @@ import { ModelBadge, ModelTile } from "@/components/genv3/model-select";
 import {
   AnnotationCanvas, flattenAnnotations, shapeSignature, type DrawTool, type Shape,
 } from "@/components/genv3/draw";
-import { unitPrice, type GalleryItem, type GenModel } from "@/components/genv3/types";
+import { snapQuality, unitPrice, type GalleryItem, type GenModel } from "@/components/genv3/types";
 
 /**
  * REGENERUJ OBRAZ — corrections in the customer's words AND on the pixels.
@@ -76,7 +76,10 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
   const chosen = modelId ? models.find((m) => m.id === modelId) : sameModel;
   const mode = item.origin === "engine" ? "managed" : "custom";
   const priceAt = (m: GenModel | undefined) => m
-    ? unitPrice(m, item.resolution && m.resolutions.includes(item.resolution) ? item.resolution : m.resolutions[0] ?? "1K", mode)
+    // The retake renders at the ORIGINAL's quality (the server forwards it
+    // from the job), so the quote must be priced at that quality too — or
+    // the modal would promise the base price and the ledger would charge more.
+    ? unitPrice(m, item.resolution && m.resolutions.includes(item.resolution) ? item.resolution : m.resolutions[0] ?? "1K", mode, snapQuality(m, item.quality ?? "medium"))
     : 0;
   const cost = priceAt(chosen);
   const notEnough = !!chosen && cost > balance;

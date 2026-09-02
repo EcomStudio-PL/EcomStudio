@@ -18,6 +18,71 @@ export function priceForResolution(model: Pick<AiModelRecord, "pricing" | "credi
   return typeof p === "number" && p >= 0 ? p : model.credit_cost;
 }
 
+/**
+ * RENDER QUALITY — a parameter of ONE model, not three models.
+ *
+ * OpenAI's image endpoint takes `quality: low | medium | high` on the same
+ * model id. It used to be modelled as three display rows ("GPT Image 2
+ * Medium", "GPT Image 2 High"), which put a provider parameter in the model
+ * list. Now a model that accepts the parameter declares it in
+ * `metadata.qualities`, the UI shows a "Jakość" field for exactly those
+ * models, and `metadata.quality_pricing` (optional, per quality → per size)
+ * lets the price follow the real API cost. A row that PINS one quality via
+ * `metadata.quality` (the old split rows, kept for history and admin
+ * pinning) is deliberately not selectable — it has already decided.
+ */
+export const QUALITIES = ["low", "medium", "high"] as const;
+export type Quality = typeof QUALITIES[number];
+
+type QualityMeta = {
+  quality?: unknown;
+  qualities?: unknown;
+  quality_pricing?: unknown;
+};
+
+function metaOf(model: Pick<AiModelRecord, "metadata">): QualityMeta {
+  return (model.metadata && typeof model.metadata === "object" ? model.metadata : {}) as QualityMeta;
+}
+
+/** The qualities a customer may choose for this model, in display order.
+ *  Empty when the model does not take the parameter or has it pinned. */
+export function modelQualities(model: Pick<AiModelRecord, "metadata">): Quality[] {
+  const meta = metaOf(model);
+  if (typeof meta.quality === "string") return [];
+  if (!Array.isArray(meta.qualities)) return [];
+  return QUALITIES.filter((q) => (meta.qualities as unknown[]).includes(q));
+}
+
+/**
+ * The quality a model will actually render at for a request: the request
+ * if declared, else "medium", else the first declared tier — and undefined
+ * for a model without the knob. EVERY quote and EVERY charge goes through
+ * this one rule, so the two can never resolve differently.
+ */
+export function effectiveQuality(model: Pick<AiModelRecord, "metadata">, requested?: string | null): Quality | undefined {
+  const declared = modelQualities(model);
+  if (declared.length === 0) return undefined;
+  if (requested && (declared as string[]).includes(requested)) return requested as Quality;
+  return declared.includes("medium") ? "medium" : declared[0];
+}
+
+/** Credits for one image at a size AND quality. Falls back through the
+ *  per-size price to the base cost, so a model without quality pricing
+ *  charges the same whatever quality is sent. */
+export function priceFor(
+  model: Pick<AiModelRecord, "pricing" | "credit_cost" | "metadata">,
+  resolution: string,
+  quality?: Quality | null,
+): number {
+  if (quality) {
+    const table = metaOf(model).quality_pricing;
+    const row = table && typeof table === "object" ? (table as Record<string, unknown>)[quality] : undefined;
+    const p = row && typeof row === "object" ? (row as Record<string, unknown>)[resolution] : undefined;
+    if (typeof p === "number" && p >= 0) return p;
+  }
+  return priceForResolution(model, resolution);
+}
+
 export type ProviderCredential = { apiKey: string; baseUrl?: string | null };
 
 export type ReferenceImage = { base64: string; mime: string };
@@ -26,6 +91,9 @@ export interface GenerationRequest {
   prompt: string;
   aspectRatio: AspectRatio;
   resolution?: Resolution;
+  /** Only ever set to a value the model declared in `metadata.qualities`;
+   *  adapters that have no such knob ignore it. */
+  quality?: Quality;
   quantity: number;
   referenceImages: ReferenceImage[];
   productLock: {

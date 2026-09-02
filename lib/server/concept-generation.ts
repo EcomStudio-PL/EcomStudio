@@ -1,7 +1,7 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
 import { getUsableModels, type UsableModel } from "@/lib/ai/router";
-import { priceForResolution, type AspectRatio, type Resolution } from "@/lib/ai/types";
+import { effectiveQuality, modelQualities, priceFor, priceForResolution, type AspectRatio, type Quality, type Resolution } from "@/lib/ai/types";
 import { runGeneration } from "@/lib/server/generation";
 import { decryptConceptPayload } from "@/lib/server/prompt-engine";
 
@@ -72,7 +72,8 @@ export async function resolveConceptModel(supabase: Client): Promise<UsableModel
 /** Credits one concept image costs at the current default model. */
 export function conceptUnitCost(model: UsableModel): number {
   const res = (model.supported_resolutions?.[0] ?? "1K") as Resolution;
-  return priceForResolution(model, res);
+  // Quoted at the quality the model would actually default to.
+  return priceFor(model, res, effectiveQuality(model));
 }
 
 /** One image-model choice as the customer sees it: display identity plus BOTH
@@ -95,6 +96,10 @@ export type ConceptModelOption = {
   /** Credits added on top of the base price when GrovBase writes the
    *  prompt; zero for the customer's own prompt. */
   ecomSurcharge: number;
+  /** Render qualities the customer may pick; empty = no "Jakość" field. */
+  qualities: string[];
+  /** quality → size → base credits (before the engine surcharge). */
+  qualityPricing: Record<string, Record<string, number>>;
 };
 
 export async function conceptModelOptions(supabase: Client): Promise<ConceptModelOption[]> {
@@ -108,6 +113,13 @@ export async function conceptModelOptions(supabase: Client): Promise<ConceptMode
       const surcharge = (m as { ecom_surcharge_credits?: number }).ecom_surcharge_credits ?? 0;
       const pricing: Record<string, number> = {};
       for (const r of m.supported_resolutions ?? []) pricing[r] = priceForResolution(m, r);
+      const qualities = modelQualities(m);
+      const qualityPricing: Record<string, Record<string, number>> = {};
+      for (const q of qualities) {
+        const row: Record<string, number> = {};
+        for (const r of m.supported_resolutions ?? []) row[r] = priceFor(m, r, q);
+        qualityPricing[q] = row;
+      }
       return {
         id: m.id,
         name: m.display_name || m.name,
@@ -120,6 +132,8 @@ export async function conceptModelOptions(supabase: Client): Promise<ConceptMode
         resolutions: m.supported_resolutions ?? [],
         ratios: m.capabilities_ui.ratios,
         ecomSurcharge: Math.max(0, surcharge),
+        qualities,
+        qualityPricing,
       };
     });
 }
@@ -129,11 +143,11 @@ export async function conceptModelOptions(supabase: Client): Promise<ConceptMode
  *  generation path itself — the quote can never promise a cheaper render than
  *  the one that will actually run. */
 export function originCost(
-  model: UsableModel, origin: "ecomstudio" | "custom", resolution?: string | null,
+  model: UsableModel, origin: "ecomstudio" | "custom", resolution?: string | null, quality?: Quality | null,
 ): number {
   const supported = model.supported_resolutions ?? [];
   const res = resolution && supported.includes(resolution) ? resolution : supported[0] ?? "1K";
-  const base = priceForResolution(model, res);
+  const base = priceFor(model, res, effectiveQuality(model, quality));
   if (origin === "custom") return base;
   const surcharge = (model as { ecom_surcharge_credits?: number }).ecom_surcharge_credits ?? 0;
   return base + Math.max(0, surcharge);
@@ -157,7 +171,7 @@ export function variationInstruction(generationCount: number): string {
 
 export async function generateFromConcept(
   supabase: Client, userId: string, workspaceId: string, conceptId: string,
-  opts?: { modelId?: string; instruction?: string; markedImagePath?: string },
+  opts?: { modelId?: string; instruction?: string; markedImagePath?: string; quality?: Quality },
 ): Promise<ConceptGenerateOutput & { modelName?: string }> {
   // The concept row is readable by the member (title, refs, status) — the
   // GrovBase prompt within it is ciphertext until this exact point; a
@@ -251,22 +265,29 @@ export async function generateFromConcept(
     ? session.resolution
     : undefined) as Resolution | undefined;
 
-  // A fallback may only stand in if it renders the size that was paid for.
-  // Without this, a 4K session that fell back to a 1K-only engine would be
-  // charged the 4K price and delivered a 1K image.
+  // Quality is a knob of the chosen engine; it is only forwarded (and only
+  // priced) when that engine declares it.
+  const quality = effectiveQuality(model, opts?.quality);
+
+  // A fallback may only stand in if it renders the size — and the quality —
+  // that was paid for. Without this, a 4K session that fell back to a
+  // 1K-only engine would be charged the 4K price and delivered a 1K image,
+  // and a "high" shot could be served by an engine with no quality knob.
   const fallbackModelIds = explicit
     ? []
     : chain.slice(1)
       .filter((m) => !resolution || (m.supported_resolutions ?? []).includes(resolution))
+      .filter((m) => !quality || modelQualities(m).includes(quality))
       .map((m) => m.id);
 
-  const credits = originCost(model, origin, resolution);
+  const credits = originCost(model, origin, resolution, quality);
   const result = await runGeneration(supabase, userId, workspaceId, {
     modelId: model.id,
     fallbackModelIds,
     prompt,
     aspectRatio: (session.aspect_ratio || "16:9") as AspectRatio,
     resolution,
+    quality,
     quantity: 1,
     productId: session.product_id ?? concept.product_id ?? undefined,
     referencePaths,

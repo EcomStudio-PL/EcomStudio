@@ -6,6 +6,7 @@ import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { listGalleryItems } from "@/lib/server/gallery";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
+import { getSessionPreviews } from "@/lib/server/generator-ui";
 import { GeneratorModeSwitch } from "@/components/generator/mode-switch";
 import { GeneratorWorkspace } from "@/components/genv3/workspace";
 import type { GenModel } from "@/components/genv3/types";
@@ -30,12 +31,13 @@ export default async function PromptsPage({ searchParams }: {
 
   // Availability check goes through the definer RPC: ai_provider_credentials
   // is admin-only under RLS.
-  const [{ data: plannerProviders }, { data: withKey }, wallet, modelOptions, gallery] = await Promise.all([
+  const [{ data: plannerProviders }, { data: withKey }, wallet, modelOptions, gallery, sessionPreviews] = await Promise.all([
     supabase.from("ai_providers").select("id").eq("active", true).in("slug", ["openai", "google"]),
     supabase.rpc("providers_with_credentials"),
     getWallet(supabase, workspace.id),
     conceptModelOptions(supabase),
     listGalleryItems(supabase, workspace.id, { limit: 24 }),
+    getSessionPreviews(supabase),
   ]);
   const keyed = new Set((withKey ?? []) as string[]);
   const engineAvailable = (plannerProviders ?? []).some((p) => keyed.has(p.id));
@@ -45,6 +47,7 @@ export default async function PromptsPage({ searchParams }: {
     description: m.description, pricing: m.pricing,
     resolutions: m.resolutions, ratios: m.ratios,
     maxOutputs: 1, supportsRefs: true, surcharge: m.ecomSurcharge,
+    qualities: m.qualities, qualityPricing: m.qualityPricing,
   }));
 
 
@@ -66,7 +69,7 @@ export default async function PromptsPage({ searchParams }: {
         customLabel={t("genv3.modeCustom")}
         engineCost={modelOptions[0]?.costEcom ?? null}
         customCost={modelOptions[0]?.costCustom ?? null}
-        perShotLabel={(n) => t("concepts.perShot", { n })}
+        perShotLabel={(n) => t("genv3.perPhoto", { n })}
       />
       <GeneratorWorkspace
         mode="managed"
@@ -78,6 +81,7 @@ export default async function PromptsPage({ searchParams }: {
         initialCursor={gallery.nextCursor}
         initialStyle={initialStyle}
         variant={variant}
+        sessionPreviews={sessionPreviews}
       />
     </div>
   );

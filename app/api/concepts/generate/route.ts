@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { generateFromConcept } from "@/lib/server/concept-generation";
+import { QUALITIES, type Quality } from "@/lib/ai/types";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -26,17 +27,20 @@ export async function POST(request: Request) {
   let conceptId = "";
   let modelId: string | undefined;
   let instruction: string | undefined;
+  let quality: Quality | undefined;
   try {
-    const body = (await request.json()) as { conceptId?: string; modelId?: string; instruction?: string };
+    const body = (await request.json()) as { conceptId?: string; modelId?: string; instruction?: string; quality?: string };
     conceptId = typeof body.conceptId === "string" ? body.conceptId : "";
     if (typeof body.modelId === "string" && /^[0-9a-f-]{36}$/.test(body.modelId)) modelId = body.modelId;
     if (typeof body.instruction === "string" && body.instruction.trim()) instruction = body.instruction.slice(0, 600);
+    // Whitelisted; the server re-checks it against the chosen model anyway.
+    if (typeof body.quality === "string" && (QUALITIES as readonly string[]).includes(body.quality)) quality = body.quality as Quality;
   } catch { /* fall through to validation */ }
   if (!/^[0-9a-f-]{36}$/.test(conceptId)) {
     return NextResponse.json({ ok: false, error: "invalid_input" }, { status: 400 });
   }
 
-  const result = await generateFromConcept(supabase, user.id, workspace.id, conceptId, { modelId, instruction });
+  const result = await generateFromConcept(supabase, user.id, workspace.id, conceptId, { modelId, instruction, quality });
   const status = result.ok ? 200
     : result.error === "insufficient_credits" ? 402
       : result.error === "already_running" ? 409

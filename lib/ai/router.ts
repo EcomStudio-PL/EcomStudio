@@ -1,7 +1,7 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
 import { getAdapter } from "./registry";
-import { ALL_ASPECT_RATIOS, type AiModelRecord, type AspectRatio } from "./types";
+import { ALL_ASPECT_RATIOS, modelQualities, priceFor, type AiModelRecord, type AspectRatio } from "./types";
 
 export type UsableModel = AiModelRecord & {
   provider_slug: string;
@@ -33,6 +33,11 @@ export type ClientModel = {
   maxReferenceImages: number;
   /** Credits added per image when the GrovBase engine writes the prompt. */
   engineSurcharge: number;
+  /** Render qualities the customer may pick; empty = the model has no such
+   *  knob and the UI shows no field for it. */
+  qualities: string[];
+  /** quality → size → credits, only for qualities that change the price. */
+  qualityPricing: Record<string, Record<string, number>>;
 };
 
 /** Ratios a model may offer: platform list ∩ adapter capability ∩ the
@@ -111,6 +116,13 @@ export function toClientModel(m: UsableModel): ClientModel {
     const p = (m.pricing as Record<string, number> | null)?.[res];
     pricing[res] = typeof p === "number" && p >= 0 ? p : m.credit_cost;
   }
+  const qualities = modelQualities(m);
+  const qualityPricing: Record<string, Record<string, number>> = {};
+  for (const q of qualities) {
+    const row: Record<string, number> = {};
+    for (const res of m.capabilities_ui.resolutions) row[res] = priceFor(m, res, q);
+    qualityPricing[q] = row;
+  }
   return {
     id: m.id,
     displayName: m.display_name || m.name,
@@ -125,5 +137,7 @@ export function toClientModel(m: UsableModel): ClientModel {
     supportsNegativePrompt: m.supports_negative_prompt,
     maxReferenceImages: m.max_reference_images,
     engineSurcharge: Math.max(0, (m as { ecom_surcharge_credits?: number }).ecom_surcharge_credits ?? 0),
+    qualities,
+    qualityPricing,
   };
 }
