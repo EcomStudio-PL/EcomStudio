@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  Check, ChevronDown, ChevronLeft, ChevronRight, Copy, Download, Eraser, Expand,
+  Check, ChevronDown, ChevronLeft, ChevronRight, Columns2, Copy, Download, Eraser, Expand,
   Heart, Link2, Loader2, Maximize2, Minus, Plus, Save, Scaling, Sparkles, Trash2, Wand2, X,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
@@ -27,11 +27,13 @@ import { ratioName } from "@/components/genv3/ratio-options";
  * custom generations, the concept's seller-facing description for managed
  * ones. The hidden GrovBase prompt never reaches this component.
  */
-export function ImageDetails({ items, index, onIndex, onClose, onRegenerate, onFavorite, onDelete, onNote }: {
+export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = true, onRegenerate, onFavorite, onDelete, onNote }: {
   items: GalleryItem[];
   index: number;
   onIndex: (i: number) => void;
   onClose: () => void;
+  /** False where no engine can serve a retake — the button is then absent. */
+  canRegenerate?: boolean;
   onRegenerate: (item: GalleryItem) => void;
   onFavorite: (item: GalleryItem) => void;
   onDelete: (item: GalleryItem) => void;
@@ -46,10 +48,24 @@ export function ImageDetails({ items, index, onIndex, onClose, onRegenerate, onF
   const [dlOpen, setDlOpen] = useState(false);
   const [toolBusy, setToolBusy] = useState<string | null>(null);
   const [expandPick, setExpandPick] = useState(false);
+  // PRZED / PO. The "before" is the photo the job was made from, which the
+  // sources endpoint already signs — so comparing costs nothing extra.
+  const [compare, setCompare] = useState(false);
+  const [before, setBefore] = useState<string | null>(() => cachedSources(item.generationId)?.references[0] ?? null);
   const noteDirty = note.trim() !== (item.note ?? "").trim();
 
+  useEffect(() => {
+    let alive = true;
+    setBefore(cachedSources(item.generationId)?.references[0] ?? null);
+    if (item.referenceCount === 0) return;
+    void loadSources(item.generationId).then((data) => {
+      if (alive) setBefore(data?.references[0] ?? null);
+    });
+    return () => { alive = false; };
+  }, [item.generationId, item.referenceCount]);
+
   // Reset per-image state when navigating.
-  useEffect(() => { setZoom(100); setNote(item.note ?? ""); setDlOpen(false); setExpandPick(false); }, [item.assetId, item.note]);
+  useEffect(() => { setZoom(100); setNote(item.note ?? ""); setDlOpen(false); setExpandPick(false); setCompare(false); }, [item.assetId, item.note]);
 
   // ESC + arrows; body scroll lock.
   useEffect(() => {
@@ -72,6 +88,7 @@ export function ImageDetails({ items, index, onIndex, onClose, onRegenerate, onF
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
   }, [onClose, onIndex, index, items.length, fullscreen]);
 
+  const isTool = item.operation === "image_retouch";
   const dims = item.width && item.height ? `${item.width} × ${item.height}` : null;
   const created = useMemo(() => new Intl.DateTimeFormat(locale, { dateStyle: "long", timeStyle: "short" })
     .format(new Date(item.createdAt)), [item.createdAt, locale]);
@@ -212,12 +229,16 @@ export function ImageDetails({ items, index, onIndex, onClose, onRegenerate, onF
             )}
             {/* The layout box itself scales, so zoomed overflow starts at the
                 scroll origin and every edge stays reachable. */}
-            <div className="h-full max-h-[64dvh] w-full overflow-auto lg:max-h-none">
-              <div className="mx-auto" style={{ width: `${zoom}%`, height: `${zoom}%`, minWidth: "100%", minHeight: "100%" }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={item.url} alt={item.product ?? ""} className="h-full w-full object-contain" />
+            {compare && before ? (
+              <BeforeAfter before={before} after={item.url} beforeLabel={t("tools.before")} afterLabel={t("tools.after")} />
+            ) : (
+              <div className="h-full max-h-[64dvh] w-full overflow-auto lg:max-h-none">
+                <div className="mx-auto" style={{ width: `${zoom}%`, height: `${zoom}%`, minWidth: "100%", minHeight: "100%" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={item.url} alt={item.product ?? ""} className="h-full w-full object-contain" />
+                </div>
               </div>
-            </div>
+            )}
             <div className="absolute bottom-2.5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/55 px-1.5 py-1 backdrop-blur">
               <button type="button" aria-label={t("genv3.zoomOut")} disabled={zoom <= 50}
                 onClick={() => setZoom((z) => Math.max(50, z - 25))}
@@ -231,6 +252,16 @@ export function ImageDetails({ items, index, onIndex, onClose, onRegenerate, onF
                 <Plus size={13} aria-hidden />
               </button>
               <span aria-hidden className="mx-0.5 h-4 w-px bg-white/25" />
+              {before && (
+                <button type="button" aria-pressed={compare} data-compare-toggle
+                  aria-label={t("tools.compare")} title={t("tools.compare")}
+                  onClick={() => setCompare((v) => !v)}
+                  className={cn("flex h-7 items-center gap-1 rounded-full px-2 text-[11px] font-semibold transition-colors",
+                    compare ? "bg-white/25 text-white" : "text-white hover:bg-white/15")}>
+                  <Columns2 size={13} aria-hidden />
+                  <span className="hidden sm:inline">{t("tools.compare")}</span>
+                </button>
+              )}
               <button type="button" aria-label={t("genv3.fullscreen")} onClick={() => setFullscreen(true)}
                 className="flex h-7 w-7 items-center justify-center rounded-full text-white transition-colors hover:bg-white/15">
                 <Maximize2 size={13} aria-hidden />
@@ -303,10 +334,15 @@ export function ImageDetails({ items, index, onIndex, onClose, onRegenerate, onF
           <div data-details-settings>
             <p className="mb-2 text-[13px] font-semibold tracking-tight">{t("genv3.settings")}</p>
             <dl className="space-y-2 text-[12.5px]">
-              <MetaRow label={t("genv3.metaModel")} value={item.model ?? "—"} />
-              {item.origin && (
+              {/* A tool's engine is GrovBase's business: the customer bought
+                  "Retusz zdjęć", and the provider behind it stays in the
+                  cost log where the admin can see it. */}
+              {!isTool && <MetaRow label={t("genv3.metaModel")} value={item.model ?? "—"} />}
+              {(isTool || item.origin) && (
                 <MetaRow label={t("genv3.metaOrigin")}
-                  value={t(item.origin === "engine" ? "genv3.modeManaged" : "genv3.modeCustom")} />
+                  value={isTool
+                    ? t("retouch.title")
+                    : t(item.origin === "engine" ? "genv3.modeManaged" : "genv3.modeCustom")} />
               )}
               {item.sessionType && (
                 <MetaRow label={t("genv3.metaSession")}
@@ -422,10 +458,12 @@ export function ImageDetails({ items, index, onIndex, onClose, onRegenerate, onF
                 )}
               </div>
             </div>
-            <button type="button" onClick={() => onRegenerate(item)}
-              className="mt-2 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[rgb(var(--accent)/0.45)] bg-accent-soft/30 text-[12.5px] font-semibold text-accent transition-colors hover:bg-accent-soft/60">
-              {t("genv3.regen")}
-            </button>
+            {canRegenerate && (
+              <button type="button" onClick={() => onRegenerate(item)}
+                className="mt-2 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[rgb(var(--accent)/0.45)] bg-accent-soft/30 text-[12.5px] font-semibold text-accent transition-colors hover:bg-accent-soft/60">
+                {t("genv3.regen")}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -652,4 +690,64 @@ async function toPng(blob: Blob): Promise<Blob> {
   canvas.getContext("2d")!.drawImage(bmp, 0, 0);
   return await new Promise((resolve, reject) =>
     canvas.toBlob((b) => b ? resolve(b) : reject(new Error("png")), "image/png"));
+}
+
+/**
+ * PRZED / PO — one image over the other, split by a divider the customer
+ * drags. Pointer events, not mouse events, so a finger works exactly like a
+ * cursor; the divider is also a slider for the keyboard. The "before" is
+ * clipped rather than resized, so both halves stay in register at any width.
+ */
+function BeforeAfter({ before, after, beforeLabel, afterLabel }: {
+  before: string; after: string; beforeLabel: string; afterLabel: string;
+}) {
+  const [pct, setPct] = useState(50);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+
+  const setFromClientX = (clientX: number) => {
+    const box = boxRef.current?.getBoundingClientRect();
+    if (!box || box.width === 0) return;
+    setPct(Math.min(100, Math.max(0, ((clientX - box.left) / box.width) * 100)));
+  };
+
+  return (
+    <div
+      ref={boxRef}
+      data-before-after
+      className="relative h-full max-h-[64dvh] w-full touch-none select-none overflow-hidden lg:max-h-none"
+      onPointerDown={(e) => { dragging.current = true; e.currentTarget.setPointerCapture(e.pointerId); setFromClientX(e.clientX); }}
+      onPointerMove={(e) => { if (dragging.current) setFromClientX(e.clientX); }}
+      onPointerUp={(e) => { dragging.current = false; e.currentTarget.releasePointerCapture(e.pointerId); }}
+      onPointerCancel={() => { dragging.current = false; }}
+      onTouchStart={(e) => { const p = e.touches[0]; if (p) setFromClientX(p.clientX); }}
+      onTouchMove={(e) => { const p = e.touches[0]; if (p) setFromClientX(p.clientX); }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={after} alt="" className="h-full w-full object-contain" draggable={false} />
+      <div className="absolute inset-0" style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={before} alt="" className="h-full w-full object-contain" draggable={false} />
+      </div>
+      <span aria-hidden className="pointer-events-none absolute inset-y-0 w-0.5 bg-white/80 shadow-[0_0_10px_rgb(0_0_0/0.5)]"
+        style={{ left: `${pct}%` }} />
+      <span aria-hidden className="pointer-events-none absolute top-1/2 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white text-black shadow-e3"
+        style={{ left: `${pct}%` }}>
+        <Columns2 size={13} />
+      </span>
+      <span className="pointer-events-none absolute left-2.5 top-2.5 rounded-lg bg-black/60 px-2 py-1 text-[10.5px] font-bold uppercase tracking-wide text-white backdrop-blur">
+        {beforeLabel}
+      </span>
+      <span className="pointer-events-none absolute right-2.5 top-2.5 rounded-lg bg-black/60 px-2 py-1 text-[10.5px] font-bold uppercase tracking-wide text-white backdrop-blur">
+        {afterLabel}
+      </span>
+      {/* The same control for a keyboard: arrows move the split. */}
+      <input
+        type="range" min={0} max={100} value={Math.round(pct)}
+        onChange={(e) => setPct(Number(e.target.value))}
+        aria-label={`${beforeLabel} / ${afterLabel}`}
+        className="absolute bottom-2 left-1/2 w-1/2 -translate-x-1/2 cursor-pointer accent-[rgb(var(--accent))] opacity-0 focus-visible:opacity-100"
+      />
+    </div>
+  );
 }

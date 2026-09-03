@@ -5,6 +5,9 @@ import { listGalleryItems, type GallerySessionType } from "@/lib/server/gallery"
 
 export const dynamic = "force-dynamic";
 
+/** Operations a client may filter by — never a free-text column value. */
+const OPERATIONS = new Set(["image_retouch", "none"]);
+
 /** Paginated generation gallery for the signed-in member's workspace.
  *  Everything sensitive is projected away server-side — see lib/server/gallery. */
 export async function GET(request: Request) {
@@ -23,6 +26,8 @@ export async function GET(request: Request) {
     favorite: url.searchParams.get("fav") === "1",
     q: url.searchParams.get("q"),
     order: url.searchParams.get("order") === "asc" ? "asc" : "desc",
+    // Whitelisted: a tool asks for its own operation, the generator for none.
+    operation: OPERATIONS.has(url.searchParams.get("op") ?? "") ? url.searchParams.get("op") : null,
   });
   return NextResponse.json({ ok: true, ...page }, {
     headers: { "Cache-Control": "no-store" },

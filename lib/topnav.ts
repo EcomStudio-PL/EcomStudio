@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Crop, Gauge, Maximize2, PenLine, Scissors, Square, Stamp, Sun, SwatchBook,
-  Wand2, Sparkles,
+  Wand2, Sparkles, WandSparkles,
 } from "lucide-react";
 import { CATEGORIES, VIDEO_CREATE_WF, VIDEO_EDIT_WF, VIDEO_ICON, categoryHref, type CategoryAccent } from "./categories";
 
@@ -43,6 +43,7 @@ export const IMAGE_MODES: readonly MegaEntry[] = [
 
 /** EDYTUJ — the existing image toolbox, one entry per real tool. */
 export const IMAGE_EDIT: readonly MegaEntry[] = [
+  { key: "retouch", href: "/retusz", icon: WandSparkles },
   { key: "remove_bg", href: "/tools/remove_bg", icon: Scissors },
   { key: "white_bg", href: "/tools/white_bg", icon: Square },
   { key: "upscale", href: "/tools/upscale", icon: Maximize2 },

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
-  ArrowUpRight, Crop, Gauge, Maximize2, Scissors, Square, Stamp, Sun, Wand2,
+  ArrowUpRight, Crop, Gauge, Maximize2, Scissors, Square, Stamp, Sun, Wand2, WandSparkles,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
@@ -62,6 +62,22 @@ export default async function ToolsPage() {
   return (
     <div>
       <PageHeader overline={t("nav.groups.create")} title={t("tools.title")} sub={t("tools.sub")} />
+
+      {/* RETUSZ — an AI tool, not one of the local sharp utilities, so it
+          leads the page on its own rather than joining their catalogue. */}
+      <Link href="/retusz"
+        className="panel panel-interactive mb-7 flex items-start gap-4 rounded-2xl p-4">
+        <span aria-hidden className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+          <WandSparkles size={19} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1 text-sm font-semibold tracking-tight">
+            {t("tools.retouch.name")}
+            <ArrowUpRight size={14} className="shrink-0 text-faint" aria-hidden />
+          </span>
+          <span className="mt-1 block text-[12.5px] leading-relaxed text-muted">{t("tools.retouch.body")}</span>
+        </span>
+      </Link>
 
       <Section title={t("tools.freeGroup")} note={t("tools.freeNote")} items={free} t={t} />
       <Section title={t("tools.paidGroup")} note={t("tools.paidNote")} items={paid} t={t} className="mt-7" />

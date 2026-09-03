@@ -51,7 +51,7 @@ const DENSITY_KEY = "grovbase.gallery.density";
  */
 export function GenerationGallery({
   initialItems, initialCursor, freshItems, onFresh, pendingCount, pendingRatio,
-  models, balance, onBalance, onAbsorb,
+  models, balance, onBalance, onAbsorb, operation, emptyTitle, emptyBody,
 }: {
   initialItems: GalleryItem[];
   initialCursor: string | null;
@@ -63,6 +63,12 @@ export function GenerationGallery({
   balance: number;
   onBalance: (fn: (b: number) => number) => void;
   onAbsorb: (expect: number) => Promise<void>;
+  /** Feature whose results this gallery lists ("image_retouch"). Absent = the
+   *  workspace's generations, unfiltered. */
+  operation?: string;
+  /** Copy for the empty state, so a tool can say what IT is waiting for. */
+  emptyTitle?: string;
+  emptyBody?: string;
 }) {
   const { t } = useI18n();
   const [filter, setFilter] = useState<Filter>({ session: "all", fav: false, q: "", order: "desc" });
@@ -71,7 +77,12 @@ export function GenerationGallery({
   const [density, setDensity] = useState(DENSITY_DEFAULT);
   useEffect(() => {
     try {
-      const saved = Number(window.localStorage.getItem(DENSITY_KEY));
+      // `getItem` returns null when nothing was ever saved, and Number(null)
+      // is 0 — which silently started every new browser on the densest
+      // contact sheet instead of the default step.
+      const raw = window.localStorage.getItem(DENSITY_KEY);
+      if (raw === null) return;
+      const saved = Number(raw);
       if (Number.isInteger(saved) && saved >= 0 && saved < DENSITY_STEPS.length) setDensity(saved);
     } catch { /* private mode — the default is fine */ }
   }, []);
@@ -108,9 +119,10 @@ export function GenerationGallery({
     if (f.q.trim()) p.set("q", f.q.trim());
     if (f.order === "asc") p.set("order", "asc");
     if (cur) p.set("cursor", cur);
+    if (operation) p.set("op", operation);
     p.set("limit", "24");
     return `/api/generations?${p.toString()}`;
-  }, []);
+  }, [operation]);
 
   const refetch = useCallback(async (f: Filter) => {
     const seq = ++fetchSeq.current;
@@ -367,8 +379,18 @@ export function GenerationGallery({
     }
   }
 
-  function download(item: GalleryItem) {
-    window.open(item.url, "_blank", "noopener");
+  async function download(item: GalleryItem) {
+    // Fetch, then hand the browser a same-origin blob: a signed URL opened in
+    // a tab only DISPLAYS the image, which is not what "Pobierz" promises.
+    try {
+      const res = await fetch(item.url);
+      if (!res.ok) throw new Error("fetch_failed");
+      const blob = await res.blob();
+      saveBlob(blob, `grovbase-${item.assetId.slice(0, 8)}.${extOf(blob.type)}`);
+    } catch {
+      // Last resort: at least put the image in front of them.
+      window.open(item.url, "_blank", "noopener");
+    }
   }
 
   const chips: { key: Filter["session"]; label: string; icon?: typeof Megaphone }[] = [
@@ -390,7 +412,9 @@ export function GenerationGallery({
           being squeezed. */}
       <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="thin-scroll -mx-1 order-2 flex min-w-0 items-center gap-1.5 overflow-x-auto px-1 pb-0.5 lg:order-1">
-          {chips.map((c) => {
+          {/* Session chips belong to the generator: a retouch has no session
+              type, so a tool's gallery does not offer two dead filters. */}
+          {!operation && chips.map((c) => {
             const on = filter.session === c.key;
             return (
               <button key={c.key} type="button" aria-pressed={on}
@@ -566,9 +590,11 @@ export function GenerationGallery({
       {merged.length === 0 && pendingCount === 0 && !loading ? (
         <div className="panel rounded-2xl px-6 py-14 text-center">
           <Sparkles size={22} aria-hidden className="mx-auto mb-3 text-faint" />
-          <p className="font-display text-[15px] font-semibold">{isDefault ? t("genv3.emptyTitle") : t("genv3.emptyFiltered")}</p>
+          <p className="font-display text-[15px] font-semibold">
+            {isDefault ? emptyTitle ?? t("genv3.emptyTitle") : t("genv3.emptyFiltered")}
+          </p>
           <p className="mx-auto mt-1.5 max-w-sm text-[12.5px] leading-relaxed text-muted">
-            {isDefault ? t("genv3.emptyBody") : t("genv3.emptyFilteredBody")}
+            {isDefault ? emptyBody ?? t("genv3.emptyBody") : t("genv3.emptyFilteredBody")}
           </p>
         </div>
       ) : view === "grid" ? (
@@ -588,12 +614,13 @@ export function GenerationGallery({
               key={item.assetId}
               item={item}
               compact={density <= 1}
+              canRegenerate={models.length > 0}
               selecting={selecting}
               picked={picked.has(item.assetId)}
               onPick={() => togglePick(item.assetId)}
               onOpen={() => setDetailsId(item.assetId)}
               onRegenerate={() => setRegenItem(item)}
-              onDownload={() => download(item)}
+              onDownload={() => void download(item)}
               onFavorite={() => toggleFavorite(item)}
               onDelete={() => remove(item)}
             />
@@ -664,6 +691,7 @@ export function GenerationGallery({
           index={detailsIdx}
           onIndex={(i) => merged[i] && setDetailsId(merged[i].assetId)}
           onClose={() => setDetailsId(null)}
+          canRegenerate={models.length > 0}
           onRegenerate={(item) => { setDetailsId(null); setRegenItem(item); }}
           onFavorite={toggleFavorite}
           onDelete={remove}
@@ -694,9 +722,12 @@ export function GenerationGallery({
 /* ── One image card ───────────────────────────────────────────────────── */
 
 function GalleryCard({
-  item, compact, selecting, picked, onPick, onOpen, onRegenerate, onDownload, onFavorite, onDelete,
+  item, compact, canRegenerate, selecting, picked, onPick, onOpen, onRegenerate, onDownload, onFavorite, onDelete,
 }: {
   item: GalleryItem;
+  /** False where no engine can serve a retake (a tool's own gallery) — the
+   *  action is then absent rather than present and broken. */
+  canRegenerate: boolean;
   /** Contact-sheet densities: the card is barely bigger than the rail, so it
    *  carries only the two primary actions. */
   compact: boolean;
@@ -759,16 +790,26 @@ function GalleryCard({
           "card-rail absolute right-2 top-2 z-10 flex flex-col items-center rounded-xl border border-white/15 bg-black/45 backdrop-blur-md transition-opacity duration-200",
           compact ? "gap-0.5 p-0.5" : "gap-1 p-1",
         )}>
-          <CardAction icon={RefreshCw} label={t("genv3.regen")} onClick={onRegenerate} compact={compact} />
-          <CardAction icon={Heart} label={item.favorite ? t("library.unfavorite") : t("library.favorite")}
-            onClick={onFavorite} active={item.favorite} filled={item.favorite} compact={compact} />
-          {/* At the contact-sheet densities the thumbnail is barely taller
-              than the rail itself, so it stops at the two actions the spec
-              calls the minimum. Nothing is lost: download and delete live in
-              the image view a click away, and every density above this shows
-              them here. No "open" button anywhere — the image is the way in. */}
-          {!compact && <CardAction icon={Download} label={t("common.download")} onClick={onDownload} />}
-          {!compact && <CardAction icon={Trash2} label={t("common.delete")} onClick={onDelete} danger />}
+          {/* Built as a list, then TRIMMED: at the contact-sheet densities the
+              thumbnail is barely taller than the rail, so it keeps only its
+              first two actions — and "first two" has to be computed from what
+              this gallery actually offers, or a surface without a retake (a
+              tool's own results) would be left showing one lonely button.
+              Nothing is lost: everything lives in the image view a click
+              away. No "open" button anywhere — the image is the way in. */}
+          {[
+            ...(canRegenerate ? [{ key: "regen", icon: RefreshCw, label: t("genv3.regen"), onClick: onRegenerate }] : []),
+            {
+              key: "fav", icon: Heart, onClick: onFavorite,
+              label: item.favorite ? t("library.unfavorite") : t("library.favorite"),
+              active: item.favorite, filled: item.favorite,
+            },
+            { key: "dl", icon: Download, label: t("common.download"), onClick: onDownload },
+            { key: "del", icon: Trash2, label: t("common.delete"), onClick: onDelete, danger: true },
+          ].slice(0, compact ? 2 : undefined).map((a) => (
+            <CardAction key={a.key} icon={a.icon} label={a.label} onClick={a.onClick}
+              danger={a.danger} active={a.active} filled={a.filled} compact={compact} />
+          ))}
         </div>
       )}
     </div>

@@ -582,7 +582,8 @@
       "credits": "Kredyty",
       "security": "Bezpieczeństwo",
       "features": "Funkcje",
-      "generator_ui": "Panel generatora"
+      "generator_ui": "Panel generatora",
+      "retouch": "Retusz zdjęć"
     },
     "lastTest": "Ostatni test",
     "configure": "Konfiguruj API",
@@ -1503,6 +1504,11 @@
       "name": "Watermark",
       "body": "Nałóż logo w jednym z dziewięciu miejsc albo jako wzór.",
       "suffix": "znak"
+    },
+    "retouch": {
+      "name": "Retusz zdjęć",
+      "body": "Zamień zwykłe zdjęcie w premium packshot na białym tle.",
+      "suffix": "retusz"
     }
   },
   "concepts": {
@@ -2228,5 +2234,32 @@
     "favAdded": "Dodano {n} do ulubionych.",
     "deletedMany": "Usunięto {n} obrazów.",
     "deleteManyConfirm": "Usunąć zaznaczone zdjęcia ({n})? Tej operacji nie można cofnąć."
+  },
+  "retouch": {
+    "title": "Retusz zdjęć",
+    "sub": "Profesjonalny retusz produktowy na czystym białym tle.",
+    "photos": "Dodaj zdjęcia (max. {n})",
+    "formatOriginal": "Oryginalny",
+    "formatOriginalSub": "Zachowaj kadr zdjęcia",
+    "cardTitle": "Automatyczny retusz AI",
+    "cardBody": "AI poprawi oświetlenie, czystość, materiały i prezentację produktu, zachowując jego rzeczywisty wygląd i kadr.",
+    "cardHint": "Retusz usuwa niedoskonałości zdjęcia, poprawia światło i nadaje produktowi wygląd profesjonalnego packshotu premium na czystym białym tle.",
+    "costPer": "Koszt 1 zdjęcia",
+    "cta": "Retuszuj",
+    "needPhotos": "Dodaj przynajmniej jedno zdjęcie.",
+    "unavailable": "Silnik retuszu jest chwilowo niedostępny. Spróbuj ponownie później.",
+    "uploadFailed": "Nie udało się wgrać zdjęcia.",
+    "status_queued": "W kolejce…",
+    "status_processing": "Retusz AI…",
+    "status_completed": "Gotowe",
+    "status_failed": "Nie udało się",
+    "retry": "Spróbuj ponownie",
+    "done": "Wyretuszowano {n} zdjęć.",
+    "someFailed": "{n} zdjęć nie udało się wyretuszować — kredyty za nie zostały zwrócone.",
+    "allFailed": "Nie udało się wyretuszować zdjęć. Kredyty zostały zwrócone.",
+    "emptyTitle": "Nie masz jeszcze wyretuszowanych zdjęć",
+    "emptyBody": "Dodaj zdjęcia i kliknij „Retuszuj”, aby przygotować profesjonalne zdjęcia produktowe.",
+    "dropTitle": "Upuść zdjęcia do retuszu",
+    "dropSub": "JPG, PNG lub WEBP — do 10 zdjęć."
   }
 }

@@ -67,6 +67,10 @@ export type GenerateInput = {
   /** Set by routes serving customer model choices: a model the admin hid
    *  from the custom generator cannot be requested by id. */
   requireCustomVisible?: boolean;
+  /** Which product feature produced this job ("image_retouch"). Recorded on
+   *  the job so a tool can list its own results and the cost log can tell
+   *  one operation from another; absent for the plain generator. */
+  operation?: string;
 };
 
 export type GenerateOutput =
@@ -206,6 +210,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
    * photo attached. Spreading this object keeps the job's memory whole.
    */
   const jobSettings = {
+    operation: input.operation ?? undefined,
     resolution: resolution ?? null,
     quality: quality ?? null,
     negative: input.hidePromptText ? null : input.negative ?? null,

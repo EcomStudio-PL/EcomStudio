@@ -37,6 +37,9 @@ export type GalleryItem = {
    *  counts only; the thumbnails are signed on demand by the details view. */
   referenceCount: number;
   inspirationCount: number;
+  /** The feature that produced it ("image_retouch"), when it was not the
+   *  plain generator. */
+  operation: string | null;
   /** Customer-facing model display name. */
   model: string | null;
   /** Model id, so quotes (e.g. regeneration) price the REAL model. */
@@ -62,6 +65,10 @@ export type GalleryFilter = {
   q?: string | null;
   /** "desc" = newest first (default), "asc" = oldest first. */
   order?: "desc" | "asc";
+  /** Feature that produced the job ("image_retouch"). A tool passes its own
+   *  operation to list only its results; "none" excludes every tool job from
+   *  the plain generator's gallery. */
+  operation?: string | null;
 };
 
 const SELECT_BASE = `
@@ -96,7 +103,8 @@ type Row = {
     status: string;
     model_id: string | null;
     settings: {
-      quality?: unknown; reference_paths?: unknown; inspiration_paths?: unknown; inspiration_count?: unknown;
+      quality?: unknown; reference_paths?: unknown; inspiration_paths?: unknown;
+      inspiration_count?: unknown; operation?: unknown;
     } | null;
     quantity: number | null;
     credits_charged: number | null;
@@ -123,6 +131,13 @@ export async function listGalleryItems(
     .order("created_at", { ascending: asc })
     .limit(limit + 1);
   if (bySession) query = query.eq("generation_jobs.prompt_sessions.session_type", filter.sessionType!);
+  // Tool jobs and generator jobs live in one table; each surface asks for its
+  // own. "none" is the generator: everything that no feature claimed.
+  if (filter.operation && filter.operation !== "none") {
+    query = query.eq("generation_jobs.settings->>operation", filter.operation);
+  } else if (filter.operation === "none") {
+    query = query.is("generation_jobs.settings->>operation", null);
+  }
   if (filter.favorite) query = query.eq("favorite", true);
   if (filter.cursor) query = asc ? query.gt("created_at", filter.cursor) : query.lt("created_at", filter.cursor);
 
@@ -198,6 +213,7 @@ export async function listGalleryItems(
         credits: typeof job?.credits_charged === "number" ? job.credits_charged : null,
         referenceCount,
         inspirationCount,
+        operation: typeof job?.settings?.operation === "string" ? job.settings.operation : null,
         model,
         modelId: job?.model_id ?? null,
         product: r.products?.name ?? null,

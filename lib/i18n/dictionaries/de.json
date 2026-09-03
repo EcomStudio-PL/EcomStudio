@@ -582,7 +582,8 @@
       "credits": "Credits",
       "security": "Sicherheit",
       "features": "Funktionen",
-      "generator_ui": "Generator-Panel"
+      "generator_ui": "Generator-Panel",
+      "retouch": "Foto-Retusche"
     },
     "lastTest": "Letzter Test",
     "configure": "API konfigurieren",
@@ -1503,6 +1504,11 @@
       "name": "Wasserzeichen",
       "body": "Logo an einem von neun Ankern oder als Muster auflegen.",
       "suffix": "markiert"
+    },
+    "retouch": {
+      "name": "Foto-Retusche",
+      "body": "Mach aus einem normalen Foto einen Premium-Packshot auf Weiß.",
+      "suffix": "retusche"
     }
   },
   "concepts": {
@@ -2228,5 +2234,32 @@
     "favAdded": "{n} zu Favoriten hinzugefügt.",
     "deletedMany": "{n} Bilder gelöscht.",
     "deleteManyConfirm": "Ausgewählte Bilder ({n}) löschen? Das lässt sich nicht rückgängig machen."
+  },
+  "retouch": {
+    "title": "Foto-Retusche",
+    "sub": "Professionelle Produktretusche auf sauberem weißem Hintergrund.",
+    "photos": "Fotos hinzufügen (max. {n})",
+    "formatOriginal": "Original",
+    "formatOriginalSub": "Bildausschnitt beibehalten",
+    "cardTitle": "Automatische KI-Retusche",
+    "cardBody": "Die KI verbessert Licht, Sauberkeit, Materialien und Präsentation und behält das echte Aussehen und den Ausschnitt bei.",
+    "cardHint": "Die Retusche entfernt Mängel, korrigiert das Licht und gibt dem Produkt den Look eines Premium-Packshots auf reinweißem Hintergrund.",
+    "costPer": "Kosten pro Foto",
+    "cta": "Retuschieren",
+    "needPhotos": "Füge mindestens ein Foto hinzu.",
+    "unavailable": "Die Retusche-Engine ist derzeit nicht verfügbar. Bitte später erneut versuchen.",
+    "uploadFailed": "Das Foto konnte nicht hochgeladen werden.",
+    "status_queued": "In der Warteschlange…",
+    "status_processing": "KI-Retusche…",
+    "status_completed": "Fertig",
+    "status_failed": "Fehlgeschlagen",
+    "retry": "Erneut versuchen",
+    "done": "{n} Fotos retuschiert.",
+    "someFailed": "{n} Fotos konnten nicht retuschiert werden — die Credits wurden erstattet.",
+    "allFailed": "Die Fotos konnten nicht retuschiert werden. Die Credits wurden erstattet.",
+    "emptyTitle": "Noch keine retuschierten Fotos",
+    "emptyBody": "Füge Fotos hinzu und klicke auf „Retuschieren“, um professionelle Produktfotos zu erhalten.",
+    "dropTitle": "Fotos zum Retuschieren ablegen",
+    "dropSub": "JPG, PNG oder WEBP — bis zu 10 Fotos."
   }
 }

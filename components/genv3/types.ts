@@ -105,6 +105,8 @@ export type GalleryItem = {
   /** Reference / inspiration photo counts; thumbnails are signed lazily. */
   referenceCount: number;
   inspirationCount: number;
+  /** The feature that produced it ("image_retouch"), else null. */
+  operation: string | null;
   model: string | null;
   modelId: string | null;
   product: string | null;

@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { SettingsEditor } from "@/components/admin/inline-controls";
 import { FlagManager } from "@/components/admin/flag-manager";
 
-const SECTION_ORDER = ["general", "user_defaults", "generation", "generator_ui", "credits", "security", "features", "billing"];
+const SECTION_ORDER = ["general", "user_defaults", "generation", "generator_ui", "retouch", "credits", "security", "features", "billing"];
 
 export default async function AdminSystem() {
   const supabase = await createClient();

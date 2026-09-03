@@ -582,7 +582,8 @@
       "credits": "Credits",
       "security": "Security",
       "features": "Feature flags",
-      "generator_ui": "Generator panel"
+      "generator_ui": "Generator panel",
+      "retouch": "Photo retouch"
     },
     "lastTest": "Last test",
     "configure": "Configure API",
@@ -1503,6 +1504,11 @@
       "name": "Watermark",
       "body": "Place a logo on one of nine anchors or as a pattern.",
       "suffix": "marked"
+    },
+    "retouch": {
+      "name": "Photo retouch",
+      "body": "Turn an ordinary photo into a premium packshot on white.",
+      "suffix": "retouch"
     }
   },
   "concepts": {
@@ -2228,5 +2234,32 @@
     "favAdded": "Added {n} to favourites.",
     "deletedMany": "Deleted {n} images.",
     "deleteManyConfirm": "Delete the selected images ({n})? This cannot be undone."
+  },
+  "retouch": {
+    "title": "Photo retouch",
+    "sub": "Professional product retouch on a clean white background.",
+    "photos": "Add photos (max. {n})",
+    "formatOriginal": "Original",
+    "formatOriginalSub": "Keep the source framing",
+    "cardTitle": "Automatic AI retouch",
+    "cardBody": "The AI improves lighting, cleanliness, materials and presentation while keeping the product's real look and framing.",
+    "cardHint": "The retouch removes flaws, fixes the light and gives the product the look of a premium packshot on a clean white background.",
+    "costPer": "Cost per photo",
+    "cta": "Retouch",
+    "needPhotos": "Add at least one photo.",
+    "unavailable": "The retouch engine is unavailable right now. Please try again later.",
+    "uploadFailed": "The photo could not be uploaded.",
+    "status_queued": "Queued…",
+    "status_processing": "AI retouch…",
+    "status_completed": "Done",
+    "status_failed": "Failed",
+    "retry": "Try again",
+    "done": "Retouched {n} photos.",
+    "someFailed": "{n} photos could not be retouched — their credits were refunded.",
+    "allFailed": "The photos could not be retouched. Your credits were refunded.",
+    "emptyTitle": "No retouched photos yet",
+    "emptyBody": "Add photos and click “Retouch” to prepare professional product shots.",
+    "dropTitle": "Drop photos to retouch",
+    "dropSub": "JPG, PNG or WEBP — up to 10 photos."
   }
 }
