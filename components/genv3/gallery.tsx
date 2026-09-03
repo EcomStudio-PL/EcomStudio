@@ -2,17 +2,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  Download, Heart, LayoutGrid, List, Loader2, Megaphone, Minus, MoreVertical,
-  Plus, RefreshCw, Search, Sparkles, Sun, Trash2,
+  Check, Download, Heart, LayoutGrid, List, Loader2, Megaphone, Minus, MoreVertical,
+  Plus, RefreshCw, Search, Sparkles, SquareDashedMousePointer, Sun, Trash2, X,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { GalleryItem, GallerySessionType, GenModel } from "@/components/genv3/types";
-import { ImageDetails } from "@/components/genv3/image-details";
+import { ImageDetails, extOf, saveBlob } from "@/components/genv3/image-details";
 import { RegenerateModal } from "@/components/genv3/regenerate";
 
 type Filter = { session: GallerySessionType | "all"; fav: boolean; q: string; order: "desc" | "asc" };
+
+/** Most images one "Pobierz wybrane" may pack — the ZIP endpoint's own cap. */
+const SELECT_MAX = 60;
 
 /** Minimum card width per density step — the grid auto-fills from it, so on a
  *  wide monitor the same step simply yields more columns. Step 0 is the
@@ -67,6 +70,15 @@ export function GenerationGallery({
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [regenItem, setRegenItem] = useState<GalleryItem | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  // ── Multi-select ───────────────────────────────────────────────────────
+  // A MODE, as in the Library: enter it from the toolbar or by ticking any
+  // card, tap cards to toggle, leave with Anuluj or Escape. Keyed by asset
+  // id because that is what a card is. Several picks download as ONE ZIP
+  // through the Library's endpoint (it verifies every path against this
+  // workspace's own assets); a single pick saves the file itself.
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  const [zipping, setZipping] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const fetchSeq = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -160,6 +172,69 @@ export function GenerationGallery({
     return out;
   }, [items, freshItems, filter, cursor]);
 
+  // Only picks that are actually on screen count — a filter change may hide
+  // a picked card, and the download must never include what cannot be seen.
+  const chosen = useMemo(() => merged.filter((i) => picked.has(i.assetId)), [merged, picked]);
+
+  function togglePick(assetId: string) {
+    setSelecting(true);
+    const next = new Set(picked);
+    if (next.has(assetId)) {
+      next.delete(assetId);
+    } else {
+      if (next.size >= SELECT_MAX) { toast.error(t("genv3.selectMax", { n: SELECT_MAX })); return; }
+      next.add(assetId);
+    }
+    setPicked(next);
+  }
+  function selectAll() {
+    if (merged.length > SELECT_MAX) toast.error(t("genv3.selectMax", { n: SELECT_MAX }));
+    setPicked(new Set(merged.slice(0, SELECT_MAX).map((i) => i.assetId)));
+    setSelecting(true);
+  }
+  function exitSelection() {
+    setSelecting(false);
+    setPicked(new Set());
+  }
+
+  // Escape leaves selection mode — but only when no modal is on top, as
+  // those own the key while open.
+  useEffect(() => {
+    if (!selecting || detailsId || regenItem) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setSelecting(false); setPicked(new Set()); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selecting, detailsId, regenItem]);
+
+  async function downloadSelected() {
+    if (chosen.length === 0 || zipping) return;
+    setZipping(true);
+    try {
+      if (chosen.length === 1) {
+        const item = chosen[0];
+        const res = await fetch(item.url);
+        if (!res.ok) throw new Error("fetch_failed");
+        const blob = await res.blob();
+        saveBlob(blob, `grovbase-${item.assetId.slice(0, 8)}.${extOf(blob.type)}`);
+      } else {
+        const res = await fetch("/api/library/zip", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paths: chosen.map((i) => i.path) }),
+        });
+        if (!res.ok) throw new Error("zip_failed");
+        saveBlob(await res.blob(), `grovbase-${chosen.length}-${new Date().toISOString().slice(0, 10)}.zip`);
+      }
+      toast.success(t("genv3.downloadStarted"));
+      exitSelection();
+    } catch {
+      toast.error(t("common.error"));
+    } finally {
+      setZipping(false);
+    }
+  }
+
   // ── Card actions ───────────────────────────────────────────────────────
   async function toggleFavorite(item: GalleryItem) {
     const next = !item.favorite;
@@ -186,6 +261,9 @@ export function GenerationGallery({
       setItems(drop);
       onFresh(drop);
       setDetailsId(null);
+      // Every asset of that generation is gone — none may stay picked.
+      const gone = new Set(merged.filter((i) => i.generationId === item.generationId).map((i) => i.assetId));
+      setPicked((prev) => new Set([...prev].filter((id) => !gone.has(id))));
       toast.success(t("genv3.deleted"));
     } else {
       toast.error(t("common.error"));
@@ -306,6 +384,15 @@ export function GenerationGallery({
               className="h-9 w-full rounded-xl border border-line bg-sunken/60 pl-8 pr-2 text-[12.5px] font-medium outline-none transition-colors placeholder:text-faint focus:border-[rgb(var(--accent)/0.55)]"
             />
           </div>
+          {/* Selection mode — icon only, the bar below carries the words. */}
+          <button type="button" aria-pressed={selecting} data-select-toggle
+            aria-label={selecting ? t("genv3.selectOff") : t("genv3.selectOn")}
+            title={selecting ? t("genv3.selectOff") : t("genv3.selectOn")}
+            onClick={() => selecting ? exitSelection() : setSelecting(true)}
+            className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors",
+              selecting ? "border-[rgb(var(--accent)/0.5)] bg-accent-soft/40 text-accent" : "border-line text-faint hover:text-ink")}>
+            <SquareDashedMousePointer size={14} aria-hidden />
+          </button>
           {/* Favourites filter wears the same HEART the rest of GrovBase
               uses — outline off, filled + accent on. */}
           <button type="button" aria-pressed={filter.fav} aria-label={t("genv3.filterFav")} title={t("genv3.filterFav")}
@@ -324,6 +411,44 @@ export function GenerationGallery({
           </select>
         </div>
       </div>
+
+      {/* SELECTION BAR — count, select all / none, the download, and the way
+          out. On desktop it sticks to the top of the gallery's own scroller
+          so the action stays reachable deep in a long history. */}
+      {selecting && (
+        <div data-select-bar
+          className="mb-3 flex flex-wrap items-center gap-1.5 rounded-xl border border-[rgb(var(--accent)/0.35)] bg-[rgb(var(--surface))] px-2.5 py-2 shadow-e2 lg:sticky lg:top-0 lg:z-20">
+          {/* Phones: count + close on the first line, the two toggles on the
+              second, the download full-width beneath. From `sm` up it is one
+              line with the close at the far end. */}
+          <span className="order-1 px-1 text-[12.5px] font-semibold tabular-nums" data-selected-count>
+            {t("genv3.selectedCount", { n: chosen.length })}
+          </span>
+          <button type="button" onClick={exitSelection} aria-label={t("genv3.selectOff")} title={t("genv3.selectOff")}
+            className="order-2 ml-auto flex h-9 w-9 items-center justify-center rounded-xl text-faint transition-colors hover:bg-raised hover:text-ink sm:order-7 sm:ml-0">
+            <X size={15} aria-hidden />
+          </button>
+          {/* Forces the line break after the close button on phones. */}
+          <span aria-hidden className="order-3 h-0 basis-full sm:hidden" />
+          <span aria-hidden className="hidden h-4 w-px bg-line sm:order-2 sm:mx-0.5 sm:block" />
+          <button type="button" onClick={selectAll} disabled={merged.length === 0} data-select-all
+            className="order-4 h-8 rounded-lg px-2.5 text-[12px] font-semibold text-muted transition-colors hover:bg-raised hover:text-ink disabled:opacity-40 sm:order-3">
+            {t("genv3.selectAll")}
+          </button>
+          <button type="button" onClick={() => setPicked(new Set())} disabled={chosen.length === 0} data-select-none
+            className="order-5 h-8 rounded-lg px-2.5 text-[12px] font-semibold text-muted transition-colors hover:bg-raised hover:text-ink disabled:opacity-40 sm:order-4">
+            {t("genv3.selectNone")}
+          </button>
+          <span className="hidden sm:order-5 sm:block sm:flex-1" />
+          <button type="button" onClick={downloadSelected} disabled={chosen.length === 0 || zipping} data-download-selected
+            className={cn("cta order-6 flex h-9 w-full items-center justify-center gap-1.5 rounded-xl px-3.5 text-[12.5px] font-semibold sm:order-6 sm:w-auto",
+              (chosen.length === 0 || zipping) && "cursor-not-allowed opacity-50")}>
+            {zipping ? <Loader2 size={13} className="animate-spin" aria-hidden /> : <Download size={13} aria-hidden />}
+            <span>{zipping ? t("genv3.downloadPreparing") : t("genv3.downloadSelected")}</span>
+            {!zipping && chosen.length > 0 && <span className="tabular-nums opacity-80">({chosen.length})</span>}
+          </button>
+        </div>
+      )}
 
       {merged.length === 0 && pendingCount === 0 && !loading ? (
         <div className="panel rounded-2xl px-6 py-14 text-center">
@@ -345,11 +470,14 @@ export function GenerationGallery({
           {Array.from({ length: pendingCount }, (_, i) => (
             <div key={`pending-${i}`} className="skeleton rounded-xl" style={{ aspectRatio: skeletonRatio }} />
           ))}
-          {merged.map((item, idx) => (
+          {merged.map((item) => (
             <GalleryCard
               key={item.assetId}
               item={item}
               menuOpen={menuFor === item.assetId}
+              selecting={selecting}
+              picked={picked.has(item.assetId)}
+              onPick={() => togglePick(item.assetId)}
               onMenu={(open) => setMenuFor(open ? item.assetId : null)}
               onOpen={() => setDetailsId(item.assetId)}
               onRegenerate={() => setRegenItem(item)}
@@ -361,9 +489,19 @@ export function GenerationGallery({
         </div>
       ) : (
         <div className="space-y-2">
-          {merged.map((item, idx) => (
-            <button key={item.assetId} type="button" onClick={() => setDetailsId(item.assetId)}
-              className="flex w-full items-center gap-3 rounded-xl border border-line bg-surface/60 p-2 text-left transition-colors hover:bg-raised">
+          {merged.map((item) => (
+            <button key={item.assetId} type="button"
+              onClick={() => selecting ? togglePick(item.assetId) : setDetailsId(item.assetId)}
+              aria-pressed={selecting ? picked.has(item.assetId) : undefined}
+              data-gallery-row data-picked={picked.has(item.assetId) || undefined}
+              className={cn("flex w-full items-center gap-3 rounded-xl border bg-surface/60 p-2 text-left transition-colors hover:bg-raised",
+                picked.has(item.assetId) ? "border-[rgb(var(--accent)/0.6)] bg-accent-soft/20" : "border-line")}>
+              {selecting && (
+                <span aria-hidden className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full ring-2 transition-colors",
+                  picked.has(item.assetId) ? "bg-accent text-white ring-accent" : "ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*3))]")}>
+                  {picked.has(item.assetId) && <Check size={11} strokeWidth={3} />}
+                </span>
+              )}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={item.thumbUrl} alt="" loading="lazy" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
               <span className="min-w-0 flex-1">
@@ -428,9 +566,14 @@ export function GenerationGallery({
 
 /* ── One image card ───────────────────────────────────────────────────── */
 
-function GalleryCard({ item, menuOpen, onMenu, onOpen, onRegenerate, onDownload, onFavorite, onDelete }: {
+function GalleryCard({
+  item, menuOpen, selecting, picked, onPick, onMenu, onOpen, onRegenerate, onDownload, onFavorite, onDelete,
+}: {
   item: GalleryItem;
   menuOpen: boolean;
+  selecting: boolean;
+  picked: boolean;
+  onPick: () => void;
   onMenu: (open: boolean) => void;
   onOpen: () => void;
   onRegenerate: () => void;
@@ -451,21 +594,39 @@ function GalleryCard({ item, menuOpen, onMenu, onOpen, onRegenerate, onDownload,
     return () => window.removeEventListener("mousedown", onDown);
   }, [menuOpen, onMenu]);
   return (
-    <div className="group relative overflow-hidden rounded-xl bg-sunken ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]">
-      <button type="button" onClick={onOpen} aria-label={t("genv3.openImage")} className="block w-full">
+    <div data-gallery-card data-picked={picked || undefined}
+      className={cn("group relative overflow-hidden rounded-xl bg-sunken ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]",
+        picked && "ring-2 ring-accent")}>
+      {/* In selection mode the whole card is the tick target. */}
+      <button type="button" onClick={selecting ? onPick : onOpen}
+        aria-label={selecting ? t("genv3.selectCard") : t("genv3.openImage")}
+        aria-pressed={selecting ? picked : undefined}
+        className="block w-full">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={item.thumbUrl} alt={item.product ?? ""} loading="lazy" decoding="async"
-          className="aspect-square w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]" />
+          className={cn("aspect-square w-full object-cover transition-transform duration-300",
+            !selecting && "group-hover:scale-[1.02]", picked && "scale-[0.94] rounded-lg")} />
+      </button>
+      {/* THE TICK — on hover and focus outside selection mode, always while
+          selecting or picked. Ticking a card outside the mode enters it. */}
+      <button type="button" role="checkbox" aria-checked={picked} aria-label={t("genv3.selectCard")} data-pick
+        onClick={(e) => { e.stopPropagation(); onPick(); }}
+        className={cn(
+          "absolute left-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full ring-2 transition-all duration-150",
+          picked ? "bg-accent text-white ring-accent" : "bg-black/45 text-white/85 ring-white/60 backdrop-blur hover:bg-black/65",
+          selecting || picked ? "opacity-100" : "opacity-0 focus-visible:opacity-100 group-hover:opacity-100",
+        )}>
+        {picked && <Check size={13} strokeWidth={3} aria-hidden />}
       </button>
       {item.fresh && (
-        <span className="absolute left-2 top-2 rounded-md bg-accent px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-white shadow-e2">
+        <span className="absolute bottom-2 left-2 rounded-md bg-accent px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-white shadow-e2">
           {t("genv3.newBadge")}
         </span>
       )}
       {item.favorite && !item.fresh && (
-        <span className="absolute left-2 top-2 text-accent"><Heart size={14} fill="currentColor" aria-hidden /></span>
+        <span className="absolute bottom-2 left-2 text-accent"><Heart size={14} fill="currentColor" aria-hidden /></span>
       )}
-      <div className={cn(
+      {!selecting && <div className={cn(
         "absolute right-2 top-2 flex items-center gap-1.5 transition-opacity duration-200",
         menuOpen ? "opacity-100" : "opacity-0 focus-within:opacity-100 group-hover:opacity-100",
       )}>
@@ -491,7 +652,7 @@ function GalleryCard({ item, menuOpen, onMenu, onOpen, onRegenerate, onDownload,
             </div>
           )}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

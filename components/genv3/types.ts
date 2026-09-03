@@ -78,6 +78,13 @@ export type GalleryItem = {
   /** Render quality the job was made at (from its settings), when the
    *  model has the knob — a retake keeps it, so the quote must know it. */
   quality: string | null;
+  /** Images the job asked for and the credits it charged — the details
+   *  view's "how this was made" figures. Shared by every asset of a job. */
+  quantity: number | null;
+  credits: number | null;
+  /** Reference / inspiration photo counts; thumbnails are signed lazily. */
+  referenceCount: number;
+  inspirationCount: number;
   model: string | null;
   modelId: string | null;
   product: string | null;

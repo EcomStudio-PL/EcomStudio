@@ -29,6 +29,14 @@ export type GalleryItem = {
   resolution: string | null;
   /** Render quality from the job's settings, when the model has the knob. */
   quality: string | null;
+  /** Images the job asked for (all its assets share these figures). */
+  quantity: number | null;
+  /** Credits the job actually charged, after any partial refund. */
+  credits: number | null;
+  /** How many product references / inspiration photos the job carried —
+   *  counts only; the thumbnails are signed on demand by the details view. */
+  referenceCount: number;
+  inspirationCount: number;
   /** Customer-facing model display name. */
   model: string | null;
   /** Model id, so quotes (e.g. regeneration) price the REAL model. */
@@ -62,6 +70,7 @@ const SELECT_BASE = `
   generation_assets(id, storage_path, width, height, metadata),
   generation_jobs!inner(
     aspect_ratio, resolution, prompt_origin, prompt_text, prompt_id, status, model_id, settings,
+    quantity, credits_charged, reference_image_ids,
     ai_models(display_name, name),
     prompt_sessions(session_type),
     generated_prompts!generation_jobs_prompt_id_fkey(customer_description)
@@ -86,7 +95,12 @@ type Row = {
     prompt_id: string | null;
     status: string;
     model_id: string | null;
-    settings: { quality?: unknown } | null;
+    settings: {
+      quality?: unknown; reference_paths?: unknown; inspiration_paths?: unknown; inspiration_count?: unknown;
+    } | null;
+    quantity: number | null;
+    credits_charged: number | null;
+    reference_image_ids: string[] | null;
     ai_models: { display_name: string | null; name: string } | null;
     prompt_sessions: { session_type: string | null } | null;
     generated_prompts: { customer_description: string | null } | null;
@@ -159,6 +173,12 @@ export async function listGalleryItems(
     const prompt = job?.prompt_text?.trim()
       || job?.generated_prompts?.customer_description?.trim()
       || null;
+    const listLen = (v: unknown) => Array.isArray(v) ? v.length : 0;
+    // Paths first (every job since the catalogue was dropped), the legacy
+    // product-image ids as the fallback for older rows.
+    const referenceCount = listLen(job?.settings?.reference_paths) || listLen(job?.reference_image_ids);
+    const inspirationCount = listLen(job?.settings?.inspiration_paths)
+      || (typeof job?.settings?.inspiration_count === "number" ? job.settings.inspiration_count : 0);
     for (const a of r.generation_assets ?? []) {
       const url = signedMap.get(a.storage_path);
       if (!url) continue;
@@ -174,6 +194,10 @@ export async function listGalleryItems(
         resolution: job?.resolution ?? null,
         quality: typeof job?.settings?.quality === "string" && (QUALITIES as readonly string[]).includes(job.settings.quality)
           ? job.settings.quality : null,
+        quantity: typeof job?.quantity === "number" ? job.quantity : null,
+        credits: typeof job?.credits_charged === "number" ? job.credits_charged : null,
+        referenceCount,
+        inspirationCount,
         model,
         modelId: job?.model_id ?? null,
         product: r.products?.name ?? null,

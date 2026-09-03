@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
-  Check, ChevronDown, HelpCircle, ImageOff, Loader2, Megaphone, Minus, Plus, Sparkles, Sun,
+  Check, ChevronDown, HelpCircle, ImageOff, Loader2, Megaphone, Minus, PenLine, Plus, Sparkles, Sun, X,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Label, Select, Textarea } from "@/components/ui/input";
@@ -184,25 +184,127 @@ export function VariantChips({ variant, choices, onChoose }: {
 
 /* ── Twój prompt (custom) ─────────────────────────────────────────────── */
 
+/**
+ * TWÓJ PROMPT — a compact box in the panel, the real editor in a popup.
+ *
+ * A six-row textarea made the left column grow with the prompt and pushed
+ * everything below it around. The panel now shows a small trigger: the
+ * placeholder when empty, otherwise the prompt clamped to three lines with
+ * an ellipsis and its length. Writing happens in a modal with a large field
+ * that handles very long prompts, a counter, apply and cancel — so the
+ * column keeps one height no matter how much the customer writes.
+ */
 export function PromptSection({ value, onChange, max }: {
   value: string; onChange: (v: string) => void; max: number;
 }) {
   const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const filled = value.trim().length > 0;
   return (
     <section>
       <SectionLabel hint={t("genv3.promptHint")}>{t("genv3.prompt")}</SectionLabel>
-      <div className="relative">
-        <Textarea rows={6} value={value} placeholder={t("genv3.promptPh")}
-          aria-label={t("genv3.prompt")}
-          maxLength={max}
-          onChange={(e) => onChange(e.target.value)}
-          className="pb-7" />
-        <span className={cn("pointer-events-none absolute bottom-2 right-3 text-[11px] font-medium tabular-nums",
-          value.length > max * 0.9 ? "text-accent2" : "text-faint")}>
-          {value.length}/{max}
+      <button type="button" onClick={() => setOpen(true)}
+        data-prompt-trigger
+        aria-haspopup="dialog" aria-expanded={open}
+        aria-label={filled ? t("genv3.promptEdit") : t("genv3.promptOpen")}
+        className={cn(
+          "group/prompt block w-full rounded-xl border bg-sunken/50 px-3.5 py-2.5 text-left transition-colors duration-200",
+          "hover:border-[rgb(var(--accent)/0.45)] hover:bg-raised focus-visible:border-[rgb(var(--accent)/0.55)]",
+          filled ? "border-line" : "border-dashed border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))]",
+        )}>
+        {filled ? (
+          <p data-prompt-preview className="line-clamp-3 whitespace-pre-line break-words text-[12.5px] leading-snug text-ink">
+            {value.trim()}
+          </p>
+        ) : (
+          <p className="flex items-center gap-2 text-[12.5px] leading-relaxed text-faint">
+            <PenLine size={13} aria-hidden className="shrink-0" />
+            {t("genv3.promptOpen")}
+          </p>
+        )}
+        <span className="mt-1.5 flex items-center justify-between gap-2 text-[10.5px] font-medium">
+          <span className="flex items-center gap-1 text-faint transition-colors group-hover/prompt:text-accent">
+            {filled && <><PenLine size={10} aria-hidden />{t("genv3.promptEdit")}</>}
+          </span>
+          <span className={cn("tabular-nums", value.length > max * 0.9 ? "text-accent2" : "text-faint")}>
+            {value.length}/{max}
+          </span>
         </span>
-      </div>
+      </button>
+      {open && (
+        <PromptModal
+          initial={value}
+          max={max}
+          onClose={() => setOpen(false)}
+          onApply={(next) => { onChange(next); setOpen(false); }}
+        />
+      )}
     </section>
+  );
+}
+
+/** The popup editor. Draft state is local: cancel, Escape and the scrim
+ *  discard it; only Apply (or Ctrl/Cmd+Enter) writes it back. Full screen on
+ *  phones, a centred sheet from `sm` up, body scroll locked while open. */
+function PromptModal({ initial, max, onClose, onApply }: {
+  initial: string; max: number; onClose: () => void; onApply: (value: string) => void;
+}) {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState(initial);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+  }, [onClose]);
+  const nearCap = draft.length > max * 0.9;
+  return createPortal(
+    <div role="dialog" aria-modal="true" aria-label={t("genv3.prompt")} data-prompt-modal
+      className="fixed inset-0 z-[70] flex items-stretch justify-center sm:items-center sm:p-4">
+      <button type="button" aria-label={t("common.close")} onClick={onClose}
+        className="scrim absolute inset-0 cursor-default backdrop-blur-[6px]" />
+      <div className="overlay animate-pop relative flex h-full w-full min-w-0 flex-col rounded-none sm:h-auto sm:max-h-[92dvh] sm:max-w-2xl sm:rounded-2xl">
+        <div className="flex shrink-0 items-start justify-between gap-3 px-4 pt-4 sm:px-5 sm:pt-5">
+          <div className="min-w-0">
+            <h2 className="font-display text-[16px] font-semibold tracking-tight">{t("genv3.prompt")}</h2>
+            <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{t("genv3.promptHint")}</p>
+          </div>
+          <button type="button" aria-label={t("common.close")} onClick={onClose}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-raised hover:text-ink">
+            <X size={16} aria-hidden />
+          </button>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col px-4 py-3 sm:px-5">
+          <Textarea
+            autoFocus
+            value={draft}
+            maxLength={max}
+            placeholder={t("genv3.promptPh")}
+            aria-label={t("genv3.prompt")}
+            onChange={(e) => setDraft(e.target.value)}
+            onFocus={(e) => { const el = e.currentTarget; el.setSelectionRange(el.value.length, el.value.length); }}
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onApply(draft); } }}
+            className="min-h-[40dvh] flex-1 resize-none sm:min-h-[320px] sm:max-h-[60dvh]"
+          />
+          <div className="mt-2 flex items-center justify-between gap-3 text-[10.5px] font-medium text-faint">
+            <span className="hidden sm:inline">{t("genv3.promptShortcut")}</span>
+            <span data-prompt-counter className={cn("tabular-nums", nearCap && "text-accent2")}>{draft.length}/{max}</span>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-line px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-5">
+          <button type="button" onClick={onClose}
+            className="plate flex h-10 items-center rounded-xl px-4 text-[13px] font-semibold text-ink transition-colors hover:bg-raised">
+            {t("common.cancel")}
+          </button>
+          <button type="button" onClick={() => onApply(draft)} data-prompt-apply
+            className="cta flex h-10 items-center gap-1.5 rounded-xl px-4 text-[13px] font-semibold">
+            <Check size={14} aria-hidden />{t("genv3.promptApply")}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

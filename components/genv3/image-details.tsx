@@ -292,21 +292,40 @@ export function ImageDetails({ items, index, onIndex, onClose, onRegenerate, onF
             </div>
           </div>
 
-          <dl className="space-y-2 text-[12.5px]">
-            <MetaRow label={t("genv3.metaModel")} value={item.model ?? "—"} />
-            <MetaRow label={t("genv3.metaFormat")} value={item.ratio ? `${item.ratio}${dims ? ` (${dims})` : ""}` : dims ?? "—"} />
-            <MetaRow label={t("genv3.metaDate")} value={created} />
-            <MetaRow label={t("genv3.metaId")} value={
-              <button type="button" onClick={copyId} title={item.assetId}
-                className="inline-flex items-center gap-1.5 font-semibold text-ink transition-colors hover:text-accent">
-                img_{item.assetId.slice(0, 8)}<Copy size={11} aria-hidden className="text-faint" />
-              </button>
-            } />
-            {item.sessionType && (
-              <MetaRow label={t("genv3.metaSession")}
-                value={t(item.sessionType === "advertising" ? "genv3.sessionAd" : "genv3.sessionLife")} />
-            )}
-          </dl>
+          {/* UŻYTE ZDJĘCIA — what this image was made from */}
+          <SourcesSection item={item} />
+
+          {/* USTAWIENIA GENEROWANIA — every knob the job ran with */}
+          <div data-details-settings>
+            <p className="mb-2 text-[13px] font-semibold tracking-tight">{t("genv3.settings")}</p>
+            <dl className="space-y-2 text-[12.5px]">
+              <MetaRow label={t("genv3.metaModel")} value={item.model ?? "—"} />
+              {item.origin && (
+                <MetaRow label={t("genv3.metaOrigin")}
+                  value={t(item.origin === "engine" ? "genv3.modeManaged" : "genv3.modeCustom")} />
+              )}
+              {item.sessionType && (
+                <MetaRow label={t("genv3.metaSession")}
+                  value={t(item.sessionType === "advertising" ? "genv3.sessionAd" : "genv3.sessionLife")} />
+              )}
+              <MetaRow label={t("genv3.metaFormat")} value={item.ratio ? `${item.ratio}${dims ? ` (${dims})` : ""}` : dims ?? "—"} />
+              {item.resolution && <MetaRow label={t("genv3.resolution")} value={item.resolution} />}
+              {item.quality && (
+                <MetaRow label={t("genv3.quality")} value={qualityLabel(item.quality, t)} />
+              )}
+              {item.quantity != null && <MetaRow label={t("genv3.countImages")} value={String(item.quantity)} />}
+              {item.credits != null && (
+                <MetaRow label={t("genv3.metaCost")} value={t("genv3.creditsShort", { n: item.credits })} />
+              )}
+              <MetaRow label={t("genv3.metaDate")} value={created} />
+              <MetaRow label={t("genv3.metaId")} value={
+                <button type="button" onClick={copyId} title={item.assetId}
+                  className="inline-flex items-center gap-1.5 font-semibold text-ink transition-colors hover:text-accent">
+                  img_{item.assetId.slice(0, 8)}<Copy size={11} aria-hidden className="text-faint" />
+                </button>
+              } />
+            </dl>
+          </div>
 
           {/* EDYTUJ OBRAZ — real tools on this exact file */}
           <div>
@@ -414,6 +433,125 @@ export function ImageDetails({ items, index, onIndex, onClose, onRegenerate, onF
   );
 }
 
+function qualityLabel(q: string, t: (key: string) => string): string {
+  const key = q === "low" ? "genv3.qualityLow" : q === "high" ? "genv3.qualityHigh" : q === "medium" ? "genv3.qualityMedium" : null;
+  return key ? t(key) : q;
+}
+
+/* ── Użyte zdjęcia ────────────────────────────────────────────────────── */
+
+type Sources = { references: string[]; inspirations: string[]; marked: string | null };
+/** Signed once per generation per page load — paging back and forth through
+ *  the filmstrip must not re-sign the same photos. */
+const sourcesCache = new Map<string, Sources>();
+
+/**
+ * The product references, inspiration photos and marked-guidance copy this
+ * generation was rendered with. Thumbnails are signed ON DEMAND when the
+ * view opens (see /api/generations/sources) — the gallery page itself only
+ * carries the counts. A job without any source says so plainly.
+ */
+function SourcesSection({ item }: { item: GalleryItem }) {
+  const { t } = useI18n();
+  const expected = item.referenceCount + item.inspirationCount;
+  const [state, setState] = useState<{ status: "loading" | "ready" | "error"; data?: Sources }>(() => {
+    const cached = sourcesCache.get(item.generationId);
+    if (cached) return { status: "ready", data: cached };
+    // A job that carried no source photos has nothing to fetch — say so on
+    // the first paint instead of flashing a skeleton for one frame.
+    if (expected === 0) return { status: "ready", data: { references: [], inspirations: [], marked: null } };
+    return { status: "loading" };
+  });
+
+  useEffect(() => {
+    let alive = true;
+    const cached = sourcesCache.get(item.generationId);
+    if (cached) { setState({ status: "ready", data: cached }); return; }
+    if (expected === 0) {
+      setState({ status: "ready", data: { references: [], inspirations: [], marked: null } });
+      return;
+    }
+    setState({ status: "loading" });
+    fetch(`/api/generations/sources?generationId=${encodeURIComponent(item.generationId)}`, { cache: "no-store" })
+      .then((res) => res.json() as Promise<{ ok: boolean } & Partial<Sources>>)
+      .then((json) => {
+        if (!json.ok) { if (alive) setState({ status: "error" }); return; }
+        const data: Sources = {
+          references: json.references ?? [], inspirations: json.inspirations ?? [], marked: json.marked ?? null,
+        };
+        // Cache even when the viewer has already moved on — the answer is
+        // still right for that generation and paging back must not re-sign.
+        sourcesCache.set(item.generationId, data);
+        if (alive) setState({ status: "ready", data });
+      })
+      .catch(() => { if (alive) setState({ status: "error" }); });
+    return () => { alive = false; };
+  }, [item.generationId, expected]);
+
+  const data = state.data;
+  const empty = state.status === "ready" && data
+    && data.references.length === 0 && data.inspirations.length === 0 && !data.marked
+    && expected === 0;
+
+  return (
+    <div data-sources data-sources-status={state.status} data-sources-gen={item.generationId}>
+      <p className="mb-2 text-[13px] font-semibold tracking-tight">{t("genv3.sourcesTitle")}</p>
+      {state.status === "loading" && (
+        <div className="flex flex-wrap gap-1.5" aria-busy="true">
+          {Array.from({ length: Math.min(Math.max(expected, 1), 6) }, (_, i) => (
+            <span key={i} className="skeleton h-14 w-14 rounded-lg" />
+          ))}
+        </div>
+      )}
+      {state.status === "error" && (
+        <p className="text-[11.5px] leading-relaxed text-faint">{t("genv3.sourcesFailed")}</p>
+      )}
+      {state.status === "ready" && data && (empty ? (
+        <p className="text-[11.5px] leading-relaxed text-faint">{t("genv3.sourcesNone")}</p>
+      ) : (
+        <div className="space-y-2.5">
+          {(item.referenceCount > 0 || data.references.length > 0) && (
+            <SourceGroup label={t("genv3.sourcesRefs")} urls={data.references}
+              count={Math.max(item.referenceCount, data.references.length)} ariaLabel={(n) => t("genv3.sourceAria", { n })} />
+          )}
+          {(item.inspirationCount > 0 || data.inspirations.length > 0) && (
+            <SourceGroup label={t("genv3.sourcesInsp")} urls={data.inspirations}
+              count={Math.max(item.inspirationCount, data.inspirations.length)} ariaLabel={(n) => t("genv3.sourceAria", { n })} />
+          )}
+          {data.marked && (
+            <SourceGroup label={t("genv3.sourcesMarked")} urls={[data.marked]} count={1} ariaLabel={(n) => t("genv3.sourceAria", { n })} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SourceGroup({ label, urls, count, ariaLabel }: {
+  label: string; urls: string[]; count: number; ariaLabel: (n: number) => string;
+}) {
+  return (
+    <div data-source-group>
+      <p className="mb-1 text-[11px] font-semibold text-faint">
+        {label} <span className="tabular-nums">({count})</span>
+      </p>
+      {urls.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {urls.map((url, i) => (
+            <a key={url} href={url} target="_blank" rel="noopener noreferrer" aria-label={ariaLabel(i + 1)}
+              className="block h-14 w-14 overflow-hidden rounded-lg bg-sunken ring-1 ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))] transition-opacity hover:opacity-85">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" />
+            </a>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] text-faint">—</p>
+      )}
+    </div>
+  );
+}
+
 function MetaRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-baseline gap-2">
@@ -454,11 +592,14 @@ function DlItem({ label, sub, onClick }: { label: string; sub: string; onClick: 
   );
 }
 
-function extOf(mime: string): string {
+export function extOf(mime: string): string {
   return mime.includes("webp") ? "webp" : mime.includes("jpeg") ? "jpg" : mime.includes("png") ? "png" : "img";
 }
 
-function saveBlob(blob: Blob, filename: string) {
+/** Hand the browser a same-origin blob to save — the one way a click can
+ *  genuinely download rather than open a tab. Shared with the gallery's
+ *  "Pobierz wybrane". */
+export function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

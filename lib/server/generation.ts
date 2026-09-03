@@ -212,6 +212,12 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     concept_id: input.conceptId ?? null,
     parent_job_id: input.parentJobId ?? null,
     inspiration_count: input.inspirationPaths?.length || undefined,
+    // The details view shows "what this image was made from": the
+    // inspiration photos and the marked-guidance copy are recorded alongside
+    // the product references (paths only, signed on demand, never sent
+    // anywhere else). Nothing about the generation itself reads these back.
+    inspiration_paths: input.inspirationPaths?.length ? input.inspirationPaths.slice(0, 5) : undefined,
+    marked_path: input.markedImagePath ?? undefined,
     // THE JOB REMEMBERS ITS OWN REFERENCES. Generations no longer hang off
     // a product row, so `product_images` can no longer be used to rebuild
     // the reference set when this shot is regenerated later — without this

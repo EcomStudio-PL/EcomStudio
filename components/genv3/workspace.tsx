@@ -21,6 +21,9 @@ import type { SessionPreviewMap } from "@/components/genv3/sections";
 
 /** Reference photos the seller may drop in for one generation session. */
 const MAX_REFS = 10;
+/** Own-prompt length. The editor lives in a popup now, so a long prompt no
+ *  longer costs the panel any height — the cap only guards the request. */
+const PROMPT_MAX = 4000;
 
 /**
  * GENERATOR WORKSPACE — one screen, two flavours.
@@ -418,7 +421,20 @@ export function GeneratorWorkspace({
               )}
             </>
           ) : (
-            <PromptSection value={prompt} onChange={setPrompt} max={2000} />
+            // "Stwórz zdjęcie" order: photos → inspiration → prompt → settings
+            // → engine. Inspiration sits right under the product photos, so
+            // both uploads are together and the prompt follows what it will
+            // describe. The upload itself is unchanged — only the position.
+            <>
+              <InspirationSection
+                items={insp}
+                uploading={uploading}
+                disabled={!model?.supportsRefs}
+                onUpload={(files) => upload(files, "insp")}
+                onRemove={(i) => setInsp((prev) => prev.filter((_, j) => j !== i))}
+              />
+              <PromptSection value={prompt} onChange={setPrompt} max={PROMPT_MAX} />
+            </>
           )}
           <SettingsSection
             managed={managed}
@@ -436,7 +452,7 @@ export function GeneratorWorkspace({
             onChange={pickModel}
             priceOf={(m) => unitPrice(m, snapTo(m.resolutions, effResolution), mode, snapQuality(m, quality))}
           />
-          {managed ? (
+          {managed && (
             <ShotBriefsSection
               count={effCount}
               refs={refs}
@@ -447,14 +463,6 @@ export function GeneratorWorkspace({
                 next[i] = { ...base, ...patch };
                 return next;
               })}
-            />
-          ) : (
-            <InspirationSection
-              items={insp}
-              uploading={uploading}
-              disabled={!model?.supportsRefs}
-              onUpload={(files) => upload(files, "insp")}
-              onRemove={(i) => setInsp((prev) => prev.filter((_, j) => j !== i))}
             />
           )}
         </div>
