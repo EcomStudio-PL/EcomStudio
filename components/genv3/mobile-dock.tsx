@@ -156,9 +156,8 @@ export function MobileDock({
         </div>
       </BottomSheet>
 
-      {/* One row per format, because the NAME is the choice: a phone grid of
-          bare "9:16" tiles asks the customer to decode ratios, and there is
-          no room there for a name beside a glyph. */}
+      {/* One row per format: shape, ratio, nothing else — the same two things
+          the desktop dropdown shows, at thumb size. */}
       <BottomSheet open={sheet === "ratio"} onClose={() => setSheet(null)} title={t("gtb.ratio")}>
         <div className="grid gap-1.5 pb-1">
           {ratios.map((r) => {
@@ -171,11 +170,9 @@ export function MobileDock({
                 <span className={cn("flex w-6 shrink-0 items-center justify-center", on ? "text-accent" : "text-muted")}>
                   {ratioIcon(r)}
                 </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-semibold">{ratioName(t, r)}</span>
-                  {r === "auto" && <span className="mt-0.5 block text-[11px] text-faint">{t("genv3.fmtAutoSub")}</span>}
+                <span className="min-w-0 flex-1 truncate text-[13px] font-semibold tabular-nums">
+                  {ratioName(t, r)}
                 </span>
-                {r !== "auto" && <span className="shrink-0 text-[11.5px] font-semibold tabular-nums text-faint">{r}</span>}
                 {on && <Check size={13} strokeWidth={3} aria-hidden className="shrink-0 text-accent" />}
               </button>
             );

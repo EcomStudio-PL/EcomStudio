@@ -157,7 +157,10 @@ export function Dropdown<T extends string>({
             onMouseEnter={() => setActive(i)}
             onClick={() => { if (o.disabled) return; onChange(o.value); setOpen(false); triggerRef.current?.focus(); }}
             className={cn(
+              // 44px rows on the phone sheet — a thumb, not a mouse pointer,
+              // is picking here; the desktop panel keeps its compact rhythm.
               "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-150",
+              "min-h-[44px] sm:min-h-0",
               o.disabled ? "cursor-not-allowed opacity-40" : "hover:bg-raised",
               !o.disabled && i === active && "bg-raised",
               on && "bg-accent-soft/45",

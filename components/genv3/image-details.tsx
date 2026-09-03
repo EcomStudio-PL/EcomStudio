@@ -348,11 +348,11 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
                 <MetaRow label={t("genv3.metaSession")}
                   value={t(item.sessionType === "advertising" ? "genv3.sessionAd" : "genv3.sessionLife")} />
               )}
-              {/* The format the seller chose, in the words they chose it by
-                  — "auto" and "9:16" are catalogue values, not answers. */}
+              {/* The format the seller picked, written the way the picker
+                  writes it — the ratio, with the rendered pixels beside it. */}
               <MetaRow label={t("genv3.metaFormat")}
                 value={item.ratio
-                  ? `${ratioName(t, item.ratio)}${item.ratio === "auto" ? "" : ` · ${item.ratio}`}${dims ? ` (${dims})` : ""}`
+                  ? `${ratioName(t, item.ratio)}${dims ? ` (${dims})` : ""}`
                   : dims ?? "—"} />
               {item.resolution && <MetaRow label={t("genv3.resolution")} value={item.resolution} />}
               {item.quality && (

@@ -214,12 +214,28 @@ export function GenerationGallery({
       if (prev.size === 0) return prev;
       const visible = new Set(merged.map((i) => i.assetId));
       const kept = [...prev].filter((id) => visible.has(id));
-      return kept.length === prev.size ? prev : new Set(kept);
+      if (kept.length === prev.size) return prev;
+      // Filtering the last pick away also ends the mode — the same rule as
+      // un-ticking it by hand.
+      if (kept.length === 0) setSelecting(false);
+      return new Set(kept);
     });
   }, [merged]);
 
+  /**
+   * THE ONE WRITE PATH for the selection. Mode and picks were two states that
+   * could disagree: emptying the picks left the mode on, so every later click
+   * kept ticking cards instead of opening them and only a reload got out of
+   * it. Now nothing sets `selecting` on its own — the picks decide, with one
+   * deliberate exception: the toolbar toggle opens an EMPTY mode so a touch
+   * screen (which has no hover to reveal the ticks) can start ticking.
+   */
+  const setSelection = useCallback((next: Set<string>, keepEmptyMode = false) => {
+    setPicked(next);
+    setSelecting(next.size > 0 || keepEmptyMode);
+  }, []);
+
   function togglePick(assetId: string) {
-    setSelecting(true);
     const next = new Set(picked);
     if (next.has(assetId)) {
       next.delete(assetId);
@@ -227,16 +243,16 @@ export function GenerationGallery({
       if (next.size >= SELECT_MAX) { toast.error(t("genv3.selectMax", { n: SELECT_MAX })); return; }
       next.add(assetId);
     }
-    setPicked(next);
+    // Un-ticking the last image leaves the mode by itself — asking for a
+    // second click to "really" leave is what made this feel stuck.
+    setSelection(next);
   }
   function selectAll() {
     if (merged.length > SELECT_MAX) toast.error(t("genv3.selectMax", { n: SELECT_MAX }));
-    setPicked(new Set(merged.slice(0, SELECT_MAX).map((i) => i.assetId)));
-    setSelecting(true);
+    setSelection(new Set(merged.slice(0, SELECT_MAX).map((i) => i.assetId)));
   }
   function exitSelection() {
-    setSelecting(false);
-    setPicked(new Set());
+    setSelection(new Set());
   }
 
   /**
@@ -257,12 +273,11 @@ export function GenerationGallery({
       // Focus may sit on <body> while a dialog is open — the dialog still owns
       // the key, so nothing on the page below may act on it.
       if (document.querySelector("[role='dialog']")) return;
-      setSelecting(false);
-      setPicked(new Set());
+      setSelection(new Set());
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selecting, detailsId, regenItem]);
+  }, [selecting, detailsId, regenItem, setSelection]);
 
   /** Selected ASSETS belong to generations — favourite and delete work on
    *  the generation, so the same one is never acted on twice. */
@@ -311,8 +326,7 @@ export function GenerationGallery({
       setDetailsId(null);
     }
     setBulkBusy(null);
-    setPicked(new Set());
-    setSelecting(false);
+    setSelection(new Set());
     if (failed > 0) toast.error(t("common.error"));
     else toast.success(t("genv3.deletedMany", { n: gone.length }));
   }
@@ -510,7 +524,7 @@ export function GenerationGallery({
           <button type="button" aria-pressed={selecting} data-select-toggle
             aria-label={selecting ? t("genv3.selectOff") : t("genv3.selectOn")}
             title={selecting ? t("genv3.selectOff") : t("genv3.selectOn")}
-            onClick={() => selecting ? exitSelection() : setSelecting(true)}
+            onClick={() => selecting ? exitSelection() : setSelection(new Set(), true)}
             className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors",
               selecting ? "border-[rgb(var(--accent)/0.5)] bg-accent-soft/40 text-accent" : "border-line text-faint hover:text-ink")}>
             <SquareDashedMousePointer size={14} aria-hidden />
@@ -544,39 +558,45 @@ export function GenerationGallery({
       {chosen.length > 0 && (
         <div data-select-bar
           className="animate-fade sticky top-[calc(var(--header-h)+env(safe-area-inset-top)+0.25rem)] z-20 mb-3 flex flex-wrap items-center gap-1.5 rounded-xl border border-[rgb(var(--accent)/0.35)] bg-[rgb(var(--surface))] px-2.5 py-2 shadow-e2 lg:top-0">
+          {/* LEFT: what is selected and what to do with it — the count, the
+              two toggles, then favourite and delete as compact icons. They
+              belong beside the selection they act on, not next to the
+              download button at the far end of the bar. */}
           <span className="order-1 px-1 text-[12.5px] font-semibold tabular-nums" data-selected-count>
             {t("genv3.selectedCount", { n: chosen.length })}
           </span>
           <button type="button" onClick={exitSelection} aria-label={t("genv3.selectOff")} title={t("genv3.selectOff")}
-            className="order-2 ml-auto flex h-9 w-9 items-center justify-center rounded-xl text-faint transition-colors hover:bg-raised hover:text-ink sm:hidden">
+            className="order-2 ml-auto flex h-11 w-11 items-center justify-center rounded-xl text-faint transition-colors hover:bg-raised hover:text-ink sm:hidden">
             <X size={15} aria-hidden />
           </button>
-          {/* Phones break here: count and close on the first line, the
-              toggles and the actions on the second. */}
+          {/* Phones break here: count and close on the first line. */}
           <span aria-hidden className="order-3 h-0 basis-full sm:hidden" />
           <span aria-hidden className="hidden h-4 w-px bg-line sm:order-2 sm:mx-0.5 sm:block" />
           <button type="button" onClick={selectAll} disabled={merged.length === 0} data-select-all
-            className="order-4 h-8 rounded-lg px-2.5 text-[12px] font-semibold text-muted transition-colors hover:bg-raised hover:text-ink disabled:opacity-40 sm:order-3">
+            className="order-4 h-11 rounded-lg px-2.5 sm:h-8 text-[12px] font-semibold text-muted transition-colors hover:bg-raised hover:text-ink disabled:opacity-40 sm:order-3">
             {t("genv3.selectAll")}
           </button>
-          <button type="button" onClick={() => setPicked(new Set())} data-select-none
-            className="order-5 h-8 rounded-lg px-2.5 text-[12px] font-semibold text-muted transition-colors hover:bg-raised hover:text-ink sm:order-4">
+          <button type="button" onClick={exitSelection} data-select-none
+            className="order-5 h-11 rounded-lg px-2.5 sm:h-8 text-[12px] font-semibold text-muted transition-colors hover:bg-raised hover:text-ink sm:order-4">
             {t("genv3.selectNone")}
           </button>
-          <span className="order-6 hidden flex-1 sm:order-5 sm:block" />
-          {/* Icons with tooltips, not three long buttons: the row has to
-              survive a 375px screen without wrapping into a wall of text. */}
-          <span className="order-7 ml-auto flex items-center gap-1 sm:order-6 sm:ml-0">
+          <span aria-hidden className="hidden h-4 w-px bg-line sm:order-5 sm:mx-0.5 sm:block" />
+          <span className="order-6 flex items-center gap-1 sm:order-6">
             <BulkAction icon={Heart} label={t("genv3.favSelected")} busy={bulkBusy === "fav"}
               disabled={!!bulkBusy} onClick={favoriteSelected} testId="fav" />
             <BulkAction icon={Trash2} label={t("genv3.deleteSelected")} busy={bulkBusy === "del"}
               disabled={!!bulkBusy} onClick={deleteSelected} danger testId="delete" />
+          </span>
+          <span className="hidden flex-1 sm:order-7 sm:block" />
+          {/* RIGHT: the one action that leaves with something. On a phone it
+              takes the whole last line instead of hanging in the corner. */}
+          <span className="order-7 flex w-full items-center gap-1 sm:order-8 sm:ml-0 sm:w-auto">
             <button type="button" onClick={downloadSelected} disabled={zipping || !!bulkBusy} data-download-selected
               title={t("genv3.downloadSelected")} aria-label={`${t("genv3.downloadSelected")} (${chosen.length})`}
-              className={cn("cta flex h-9 items-center gap-1.5 rounded-xl px-3 text-[12.5px] font-semibold",
+              className={cn("cta flex h-11 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[12.5px] font-semibold sm:h-9 sm:w-auto",
                 (zipping || !!bulkBusy) && "cursor-not-allowed opacity-50")}>
               {zipping ? <Loader2 size={13} className="animate-spin" aria-hidden /> : <Download size={13} aria-hidden />}
-              <span className="hidden sm:inline">{zipping ? t("genv3.downloadPreparing") : t("genv3.downloadSelected")}</span>
+              <span>{zipping ? t("genv3.downloadPreparing") : t("genv3.downloadSelected")}</span>
               <span className="tabular-nums">{chosen.length}</span>
             </button>
             <button type="button" onClick={exitSelection} aria-label={t("genv3.selectOff")} title={t("genv3.selectOff")}
@@ -845,7 +865,7 @@ function BulkAction({ icon: Icon, label, onClick, busy, disabled, danger, testId
     <button type="button" onClick={onClick} disabled={disabled} title={label} aria-label={label}
       data-bulk-action={testId}
       className={cn(
-        "flex h-9 w-9 items-center justify-center rounded-xl border border-line transition-colors",
+        "flex h-11 w-11 items-center justify-center rounded-xl border border-line transition-colors sm:h-9 sm:w-9",
         danger ? "text-muted hover:border-[rgb(var(--danger)/0.5)] hover:bg-danger/10 hover:text-danger"
           : "text-muted hover:border-[rgb(var(--accent)/0.5)] hover:bg-accent-soft/40 hover:text-accent",
         disabled && "cursor-not-allowed opacity-50",

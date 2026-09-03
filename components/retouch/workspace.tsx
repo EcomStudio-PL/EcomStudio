@@ -203,6 +203,7 @@ export function RetouchWorkspace({
             uploading={uploading}
             capturePaste
             compact
+            zone
             onFiles={upload}
             onRemove={(i) => setPhotos((prev) => prev.filter((_, j) => j !== i))}
             label={t("retouch.photos", { n: MAX_PHOTOS })}
@@ -235,7 +236,7 @@ export function RetouchWorkspace({
                       icon: <Wand2 size={13} aria-hidden />,
                     },
                     ...ratios.map((r) => ({
-                      value: r, label: ratioName(t, r), meta: r, icon: ratioIcon(r),
+                      value: r, label: ratioName(t, r), icon: ratioIcon(r),
                     })),
                   ]}
                   onChange={setFormat}

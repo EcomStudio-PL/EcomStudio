@@ -43,7 +43,8 @@ export function ProductRefsSection({ refs, uploading, max, onUpload, onRemove }:
   const { t } = useI18n();
   // Heading carries the limit, nothing else — no help glyph, and `compact`
   // removes the "drag / paste / click" line under the tiles. All three ways
-  // in still work; they are just no longer narrated.
+  // in still work; they are just no longer narrated. `zone` makes the empty
+  // state one wide dropzone, the same one Retusz shows.
   return (
     <PhotoUploader
       items={refs}
@@ -51,6 +52,7 @@ export function ProductRefsSection({ refs, uploading, max, onUpload, onRemove }:
       uploading={uploading}
       capturePaste
       compact
+      zone
       dropTarget="refs"
       onFiles={onUpload}
       onRemove={onRemove}
@@ -203,6 +205,7 @@ export function PromptSection({ value, onChange, max }: {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const areaRef = useRef<HTMLTextAreaElement>(null);
+  const boxRef = useRef<HTMLElement>(null);
   const filled = value.trim().length > 0;
   const nearCap = value.length > max * 0.9;
 
@@ -216,8 +219,39 @@ export function PromptSection({ value, onChange, max }: {
     el.setSelectionRange(el.value.length, el.value.length);
   }, [open]);
 
+  // Clicking anywhere else, or Escape, collapses the editor. The listener is
+  // real containment (`node.contains`), not a timer: it runs on pointerdown so
+  // the decision is made before the click can move focus, and a pointer that
+  // STARTED inside — dragging the resize handle, selecting text and releasing
+  // outside — is still inside. The text lives in the parent's form state, so
+  // collapsing only stops showing it; nothing is ever lost.
+  useEffect(() => {
+    if (!open) return;
+    const inside = (target: EventTarget | null) => {
+      const node = target instanceof Node ? target : null;
+      if (!node) return false;
+      if (boxRef.current?.contains(node)) return true;
+      // Layers that belong to the editor but portal out of the section.
+      const el = node instanceof Element ? node : node.parentElement;
+      return !!el?.closest("[role='dialog'],[data-dropdown-panel],[data-dropdown-sheet],[data-info-hint-panel]");
+    };
+    const onPointerDown = (e: PointerEvent) => { if (!inside(e.target)) setOpen(false); };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      // A dropdown or dialog on top owns Escape first; it closes, we stay.
+      if (document.querySelector("[role='dialog'],[data-dropdown-panel],[data-dropdown-sheet]")) return;
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
   return (
-    <section data-prompt-section data-open={open || undefined}>
+    <section ref={boxRef} data-prompt-section data-open={open || undefined}>
       <SectionLabel hint={t("genv3.promptHint")}>{t("genv3.prompt")}</SectionLabel>
       {open ? (
         <div className="rounded-xl border border-[rgb(var(--accent)/0.45)] bg-sunken/50 p-2">
