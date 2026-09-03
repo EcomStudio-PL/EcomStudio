@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   ArrowUpRight, Brush, ChevronLeft, ChevronRight, Circle as CircleIcon, Eraser, Hand,
-  Loader2, Minus, PenLine, RefreshCw, Sparkles, Square, Wand2, X,
+  Loader2, Minus, PenLine, Sparkles, Square, Wand2, X,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
@@ -171,8 +171,12 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
       className="workspace fixed inset-0 z-[60] flex items-stretch justify-center sm:items-center sm:p-4">
       <button type="button" aria-label={t("common.close")} onClick={() => !busy && onClose()}
         className="scrim absolute inset-0 cursor-default backdrop-blur-[6px]" />
-      <div className="overlay animate-pop relative flex h-full w-full min-w-0 flex-col overflow-y-auto rounded-none p-4 sm:h-auto sm:max-h-[94dvh] sm:max-w-4xl sm:rounded-2xl sm:p-5">
-        <div className="mb-4 flex items-start justify-between gap-3">
+      {/* Room to work: the picture being corrected and the correction being
+          written both need to be readable at once, so the modal takes the
+          width it needs and scrolls its columns rather than the page. */}
+      <div data-regen-modal
+        className="overlay animate-pop relative flex h-full w-full min-w-0 flex-col overflow-y-auto rounded-none p-4 sm:h-auto sm:max-h-[90dvh] sm:w-[92vw] sm:max-w-[1250px] sm:rounded-2xl sm:p-5 lg:overflow-hidden">
+        <div className="mb-4 flex shrink-0 items-start justify-between gap-3">
           <div>
             <h2 className="font-display text-[17px] font-semibold tracking-tight">{t("genv3.regenTitle")}</h2>
             <p className="mt-0.5 text-[12.5px] text-muted">{t("genv3.regenSub")}</p>
@@ -183,14 +187,14 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
           </button>
         </div>
 
-        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+        <div className="grid min-w-0 gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:overflow-hidden">
           {/* ── Image + annotation canvas + filmstrip ─────────────────── */}
-          <div className="min-w-0">
-            <div className="flex justify-center overflow-hidden rounded-xl bg-sunken ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]">
+          <div className="min-w-0 lg:flex lg:min-h-0 lg:flex-col">
+            <div className="flex justify-center overflow-hidden rounded-xl bg-sunken ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))] lg:min-h-0 lg:flex-1 lg:items-center">
               <div className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={item.url} alt={item.product ?? ""} draggable={false}
-                  className="block max-h-[40dvh] w-auto max-w-full select-none lg:max-h-[46dvh]" />
+                  className="block max-h-[40dvh] w-auto max-w-full select-none lg:max-h-[58dvh]" />
                 <AnnotationCanvas
                   className="absolute inset-0"
                   url={item.url}
@@ -204,7 +208,7 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
               </div>
             </div>
             {siblings.length > 1 && (
-              <div className="mt-2.5 flex items-center gap-1.5">
+              <div className="mt-2.5 flex shrink-0 items-center gap-1.5">
                 <button type="button" aria-label={t("genv3.prev")}
                   onClick={() => {
                     const i = siblings.findIndex((s) => s.assetId === item.assetId);
@@ -240,9 +244,9 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
           </div>
 
           {/* ── Instruction + tools + model ───────────────────────────── */}
-          <div className="min-w-0 space-y-4">
+          <div className="thin-scroll min-w-0 space-y-5 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
             <div>
-              <p className="mb-1.5 text-[13px] font-semibold tracking-tight">1. {t("genv3.regenDescribe")}</p>
+              <p className="mb-1.5 text-[13.5px] font-semibold tracking-tight">1. {t("genv3.regenDescribe")}</p>
               <div className="relative">
                 <textarea
                   value={instruction}
@@ -263,7 +267,7 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
             {/* 2. Mark the changes — the REAL tools */}
             <div>
               <div className="mb-1.5 flex items-center justify-between gap-2">
-                <p className="text-[13px] font-semibold tracking-tight">
+                <p className="text-[13.5px] font-semibold tracking-tight">
                   2. {t("genv3.regenMark")}{" "}
                   <span className="font-normal text-faint">({t("genv3.optional")})</span>
                 </p>
@@ -330,33 +334,34 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
             </div>
 
             <div>
-              <p className="mb-1.5 text-[13px] font-semibold tracking-tight">3. {t("genv3.regenModel")}</p>
+              <p className="mb-1.5 text-[13.5px] font-semibold tracking-tight">3. {t("genv3.regenModel")}</p>
+              {/* ONE LIST, EVERY ENGINE BY NAME. The engine that made this
+                  image used to hide behind a nameless "the same model as
+                  before" row, so the customer could not see WHICH engine they
+                  were about to pay for; it is now simply the preselected row,
+                  marked as the previous one. Picking it back sends no model
+                  id at all — that is what keeps the server's own fallback
+                  chain, exactly as before. */}
               <div className="space-y-1.5">
-                {sameModel ? (
-                  <button type="button" aria-pressed={modelId === null} onClick={() => setModelId(null)}
-                    className={cn("flex w-full items-center gap-2.5 rounded-xl border p-2.5 text-left transition-colors duration-200",
-                      modelId === null ? "is-selected" : "border-line hover:bg-raised")}>
-                    <RefreshCw size={14} aria-hidden className="shrink-0 text-muted" />
-                    <span className="min-w-0 flex-1 text-[13px] font-semibold">{t("genv3.regenSameModel")}</span>
-                    <span className="shrink-0 text-[11.5px] font-bold tabular-nums text-accent">
-                      {t("genv3.perShotShort", { n: priceAt(sameModel) })}
-                    </span>
-                  </button>
-                ) : (
+                {!sameModel && (
                   <p className="rounded-xl bg-raised px-3 py-2.5 text-[11.5px] leading-relaxed text-muted">
                     {t("genv3.regenModelGone")}
                   </p>
                 )}
-                {switchable.filter((m) => m.id !== sameModel?.id || modelId !== null).slice(0, 6).map((m, idx) => {
-                  const on = modelId === m.id;
+                {switchable.slice(0, 6).map((m, idx) => {
+                  const previous = m.id === sameModel?.id;
+                  const on = modelId ? modelId === m.id : previous;
                   return (
-                    <button key={m.id} type="button" aria-pressed={on} onClick={() => setModelId(on ? null : m.id)}
+                    <button key={m.id} type="button" aria-pressed={on} data-regen-model={m.id}
+                      onClick={() => setModelId(previous ? null : m.id)}
                       className={cn("flex w-full items-center gap-2.5 rounded-xl border p-2 text-left transition-colors duration-200",
                         on ? "is-selected" : "border-line hover:bg-raised")}>
                       <ModelTile name={m.name} index={idx} size="sm" />
                       <span className="flex min-w-0 flex-1 items-center gap-1.5">
                         <span className="min-w-0 truncate text-[12.5px] font-semibold">{m.name}</span>
-                        <ModelBadge model={m} />
+                        {previous
+                          ? <span className="shrink-0 rounded-md bg-accent-soft/60 px-1.5 py-0.5 text-[10px] font-semibold text-accent">{t("genv3.regenPrevModel")}</span>
+                          : <ModelBadge model={m} />}
                       </span>
                       <span className="shrink-0 text-[11.5px] font-bold tabular-nums text-accent">
                         {t("genv3.perShotShort", { n: priceAt(m) })}
@@ -369,7 +374,7 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
           </div>
         </div>
 
-        <div className="mt-5 flex items-center justify-end gap-2 border-t border-line pt-4 pb-[max(0px,env(safe-area-inset-bottom))]">
+        <div className="mt-5 flex shrink-0 items-center justify-end gap-2 border-t border-line pt-4 pb-[max(0px,env(safe-area-inset-bottom))]">
           {notEnough && <p className="mr-auto text-[11.5px] font-medium text-danger">{t("studio.err.insufficient_credits")}</p>}
           <button type="button" disabled={busy} onClick={onClose}
             className="rounded-xl px-4 py-2.5 text-[13px] font-semibold text-muted transition-colors hover:bg-raised">

@@ -2208,7 +2208,7 @@
     "metaOrigin": "Tryb",
     "metaCost": "Koszt generacji",
     "creditsShort": "{n} kr.",
-    "sourcesTitle": "Użyte zdjęcia",
+    "sourcesTitle": "Zdjęcia referencyjne",
     "sourcesRefs": "Zdjęcia produktu",
     "sourcesInsp": "Inspiracje",
     "sourcesMarked": "Zaznaczone poprawki",
@@ -2224,7 +2224,14 @@
     "deletedMany": "Usunięto {n} obrazów.",
     "deleteManyConfirm": "Usunąć zaznaczone zdjęcia ({n})? Tej operacji nie można cofnąć.",
     "uploadImport": "Import",
-    "uploadCount": "{n} / {max} zdjęć"
+    "uploadCount": "{n} / {max} zdjęć",
+    "infoTitle": "Informacje",
+    "moreInfo": "Więcej informacji",
+    "metaPixels": "Wymiary",
+    "promptExpand": "Pokaż cały prompt",
+    "sourcesHint": "Zdjęcia, na których AI pracowało przy tej generacji: Twoje zdjęcia produktu oraz — jeśli dodałeś — zdjęcia inspiracji.",
+    "sourcesUnknown": "Brak zapisanych danych o zdjęciach referencyjnych dla tej generacji.",
+    "regenPrevModel": "Poprzedni"
   },
   "retouch": {
     "title": "Retusz zdjęć",

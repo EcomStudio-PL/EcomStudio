@@ -2208,7 +2208,7 @@
     "metaOrigin": "Mode",
     "metaCost": "Generation cost",
     "creditsShort": "{n} cr.",
-    "sourcesTitle": "Images used",
+    "sourcesTitle": "Reference photos",
     "sourcesRefs": "Product photos",
     "sourcesInsp": "Inspiration",
     "sourcesMarked": "Marked corrections",
@@ -2224,7 +2224,14 @@
     "deletedMany": "Deleted {n} images.",
     "deleteManyConfirm": "Delete the selected images ({n})? This cannot be undone.",
     "uploadImport": "Import",
-    "uploadCount": "{n} / {max} photos"
+    "uploadCount": "{n} / {max} photos",
+    "infoTitle": "Details",
+    "moreInfo": "More details",
+    "metaPixels": "Dimensions",
+    "promptExpand": "Show the full prompt",
+    "sourcesHint": "The photos the AI worked from for this generation: your product shots and, if you added any, the inspiration photos.",
+    "sourcesUnknown": "No reference-photo data was recorded for this generation.",
+    "regenPrevModel": "Previous"
   },
   "retouch": {
     "title": "Photo retouch",

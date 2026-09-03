@@ -55,15 +55,16 @@ export async function POST(request: Request) {
   // explicit eq is belt-and-braces on top of RLS.
   const { data: gen } = await supabase
     .from("generations")
-    .select("id, product_id, generation_jobs(id, prompt_id, prompt_text, prompt_origin, aspect_ratio, resolution, model_id, settings)")
+    .select("id, product_id, generation_jobs(id, prompt_id, prompt_session_id, prompt_text, prompt_origin, aspect_ratio, resolution, model_id, settings)")
     .eq("id", generationId).eq("workspace_id", workspace.id)
     .maybeSingle();
   const job = (gen as unknown as {
     generation_jobs: {
-      id: string; prompt_id: string | null; prompt_text: string | null;
+      id: string; prompt_id: string | null; prompt_session_id: string | null;
+      prompt_text: string | null;
       prompt_origin: string | null; aspect_ratio: string | null;
       resolution: string | null; model_id: string | null;
-      settings: { reference_paths?: unknown; quality?: unknown } | null;
+      settings: { reference_paths?: unknown; inspiration_paths?: unknown; quality?: unknown } | null;
     } | null;
   } | null)?.generation_jobs;
   if (!gen || !job) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
@@ -125,6 +126,26 @@ export async function POST(request: Request) {
       .limit(10);
     referencePaths = (imgs ?? []).map((i) => i.storage_path);
   }
+  // Older productless jobs still know their photos through the prompt session
+  // they were written from. Reading that relation back is what keeps a retake
+  // of last month's shot on the same product instead of refusing it.
+  if (referencePaths.length === 0 && job.prompt_session_id) {
+    const { data: session } = await supabase
+      .from("prompt_sessions").select("reference_paths")
+      .eq("id", job.prompt_session_id).eq("workspace_id", workspace.id)
+      .maybeSingle();
+    referencePaths = (session?.reference_paths ?? [])
+      .filter((p) => typeof p === "string" && p.startsWith(`${workspace.id}/`) && !p.includes(".."))
+      .slice(0, 10);
+  }
+  // The mood photos are part of what this shot looked like; a correction that
+  // silently dropped them would come back in a different scene.
+  const inspirationPaths = Array.isArray(job.settings?.inspiration_paths)
+    ? (job.settings!.inspiration_paths as unknown[])
+      .filter((p): p is string =>
+        typeof p === "string" && p.startsWith(`${workspace.id}/`) && !p.includes(".."))
+      .slice(0, 5)
+    : [];
   // Without a single product reference the retake would be rendered from the
   // prompt alone and the product would drift — refuse instead of charging for
   // an image that cannot honour the Product Lock.
@@ -149,6 +170,7 @@ export async function POST(request: Request) {
     productId: gen.product_id ?? undefined,
     referencePaths,
     referenceImageIds: [],
+    inspirationPaths,
     markedImagePath,
     parentJobId: job.id,
     promptOrigin: "custom",

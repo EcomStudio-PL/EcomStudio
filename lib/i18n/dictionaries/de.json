@@ -2208,7 +2208,7 @@
     "metaOrigin": "Modus",
     "metaCost": "Generierungskosten",
     "creditsShort": "{n} Cr.",
-    "sourcesTitle": "Verwendete Bilder",
+    "sourcesTitle": "Referenzfotos",
     "sourcesRefs": "Produktfotos",
     "sourcesInsp": "Inspiration",
     "sourcesMarked": "Markierte Korrekturen",
@@ -2224,7 +2224,14 @@
     "deletedMany": "{n} Bilder gelöscht.",
     "deleteManyConfirm": "Ausgewählte Bilder ({n}) löschen? Das lässt sich nicht rückgängig machen.",
     "uploadImport": "Import",
-    "uploadCount": "{n} / {max} Fotos"
+    "uploadCount": "{n} / {max} Fotos",
+    "infoTitle": "Informationen",
+    "moreInfo": "Mehr Informationen",
+    "metaPixels": "Abmessungen",
+    "promptExpand": "Ganzen Prompt anzeigen",
+    "sourcesHint": "Die Fotos, mit denen die KI diese Generierung erstellt hat: deine Produktfotos und, falls hinzugefügt, die Inspirationsfotos.",
+    "sourcesUnknown": "Für diese Generierung wurden keine Daten zu Referenzfotos gespeichert.",
+    "regenPrevModel": "Vorheriges"
   },
   "retouch": {
     "title": "Foto-Retusche",

@@ -8,6 +8,7 @@ import {
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
+import { InfoHint } from "@/components/ui/hint";
 import { cn } from "@/lib/utils";
 import type { GalleryItem } from "@/components/genv3/types";
 import { ratioName } from "@/components/genv3/ratio-options";
@@ -54,15 +55,18 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
   const [before, setBefore] = useState<string | null>(() => cachedSources(item.generationId)?.references[0] ?? null);
   const noteDirty = note.trim() !== (item.note ?? "").trim();
 
+  // The sources request is deduped and cached per generation, so asking here
+  // and in the reference strip costs one call between them — and asking
+  // unconditionally is what lets an older job's recovered references show up
+  // in "Przed / Po" as well.
   useEffect(() => {
     let alive = true;
     setBefore(cachedSources(item.generationId)?.references[0] ?? null);
-    if (item.referenceCount === 0) return;
     void loadSources(item.generationId).then((data) => {
       if (alive) setBefore(data?.references[0] ?? null);
     });
     return () => { alive = false; };
-  }, [item.generationId, item.referenceCount]);
+  }, [item.generationId]);
 
   // Reset per-image state when navigating.
   useEffect(() => { setZoom(100); setNote(item.note ?? ""); setDlOpen(false); setExpandPick(false); setCompare(false); }, [item.assetId, item.note]);
@@ -196,9 +200,13 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
       className="fixed inset-0 z-[60] flex items-stretch justify-center sm:items-center sm:p-4">
       <button type="button" aria-label={t("common.close")} onClick={onClose}
         className="scrim absolute inset-0 cursor-default backdrop-blur-[6px]" />
-      <div className="overlay animate-pop relative flex h-full w-full min-w-0 flex-col overflow-y-auto rounded-none sm:h-auto sm:max-h-[92dvh] sm:max-w-5xl sm:rounded-2xl lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:overflow-hidden">
+      {/* The work surface, not a dialog squeezed into a corner: the image is
+          the subject here, so the modal takes 90% of the viewport up to
+          1500px and gives the picture the larger half of it. */}
+      <div data-details-modal
+        className="overlay animate-pop relative flex h-full w-full min-w-0 flex-col overflow-y-auto rounded-none sm:h-auto sm:max-h-[90dvh] sm:w-[92vw] sm:max-w-[1500px] sm:rounded-2xl lg:grid lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] lg:overflow-hidden">
         {/* ── IMAGE SIDE ─────────────────────────────────────────────────── */}
-        <div className="flex min-w-0 flex-col bg-sunken/60 p-3 sm:p-4 lg:max-h-[92dvh]">
+        <div className="flex min-w-0 flex-col bg-sunken/60 p-3 sm:p-4 lg:max-h-[90dvh]">
           <div className="relative flex min-h-[46dvh] flex-1 items-center justify-center overflow-hidden rounded-xl bg-[rgb(var(--bg))] lg:min-h-0">
             {item.ratio && (
               <span className="absolute left-2.5 top-2.5 z-10 rounded-lg bg-black/55 px-2 py-1 text-[11px] font-bold text-white backdrop-blur">{item.ratio}</span>
@@ -300,76 +308,68 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
         </div>
 
         {/* ── INFO SIDE ──────────────────────────────────────────────────── */}
-        <div className="thin-scroll min-w-0 space-y-4 p-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-5 lg:max-h-[92dvh] lg:overflow-y-auto">
+        <div className="thin-scroll min-w-0 space-y-4 p-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-5 lg:max-h-[90dvh] lg:overflow-y-auto">
+          {/* ZDJĘCIA REFERENCYJNE lead the panel: "what was this made from"
+              is the first question a seller asks of their own image, and it
+              used to sit below a wall of settings. Keyed by generation — the
+              view stays mounted across prev/next, and a reused instance
+              painted the previous image's thumbnails under the new one. */}
           <div className="flex items-start justify-between gap-3">
-            <h2 className="font-display text-[16px] font-semibold tracking-tight">{t("genv3.detailsTitle")}</h2>
+            <SourcesSection key={item.generationId} item={item} />
             <button type="button" aria-label={t("common.close")} onClick={onClose}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-raised hover:text-ink">
+              className="-mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-raised hover:text-ink">
               <X size={16} aria-hidden />
             </button>
           </div>
 
-          <div>
-            <p className="mb-1 text-[11px] font-semibold text-faint">{t("genv3.promptLabel")}</p>
-            <div className="relative rounded-xl border border-line bg-sunken/50 p-3 pr-9">
-              <p className="max-h-32 overflow-y-auto text-[12.5px] leading-relaxed text-ink">
-                {item.prompt ?? <span className="text-faint">{t("genv3.noPrompt")}</span>}
-              </p>
-              {item.prompt && (
-                <button type="button" aria-label={t("genv3.copyPrompt")} onClick={copyPrompt}
-                  className="absolute right-2 top-2 rounded-lg p-1.5 text-faint transition-colors hover:bg-raised hover:text-ink">
-                  <Copy size={13} aria-hidden />
-                </button>
-              )}
-            </div>
-          </div>
+          <PromptBox text={item.prompt} onCopy={copyPrompt} />
 
-          {/* UŻYTE ZDJĘCIA — what this image was made from. Keyed by
-              generation: the view stays mounted across prev/next, and reusing
-              the instance painted the previous image's source thumbnails for
-              a frame under the new one. */}
-          <SourcesSection key={item.generationId} item={item} />
-
-          {/* USTAWIENIA GENEROWANIA — every knob the job ran with */}
+          {/* INFORMACJE — what the seller actually needs to read back. The
+              engine, the shape, the size, the day. Everything an operator
+              needs and a customer does not (the asset id, the quantity, the
+              quality knob) sits one click away under "Więcej informacji". */}
           <div data-details-settings>
-            <p className="mb-2 text-[13px] font-semibold tracking-tight">{t("genv3.settings")}</p>
+            <p className="mb-2 text-[13px] font-semibold tracking-tight">{t("genv3.infoTitle")}</p>
             <dl className="space-y-2 text-[12.5px]">
               {/* A tool's engine is GrovBase's business: the customer bought
                   "Retusz zdjęć", and the provider behind it stays in the
                   cost log where the admin can see it. */}
               {!isTool && <MetaRow label={t("genv3.metaModel")} value={item.model ?? "—"} />}
-              {(isTool || item.origin) && (
-                <MetaRow label={t("genv3.metaOrigin")}
-                  value={isTool
-                    ? t("retouch.title")
-                    : t(item.origin === "engine" ? "genv3.modeManaged" : "genv3.modeCustom")} />
-              )}
+              {/* "Tryb" only where it names a product the seller chose. */}
+              {isTool && <MetaRow label={t("genv3.metaOrigin")} value={t("retouch.title")} />}
               {item.sessionType && (
                 <MetaRow label={t("genv3.metaSession")}
                   value={t(item.sessionType === "advertising" ? "genv3.sessionAd" : "genv3.sessionLife")} />
               )}
-              {/* The format the seller picked, written the way the picker
-                  writes it — the ratio, with the rendered pixels beside it. */}
-              <MetaRow label={t("genv3.metaFormat")}
-                value={item.ratio
-                  ? `${ratioName(t, item.ratio)}${dims ? ` (${dims})` : ""}`
-                  : dims ?? "—"} />
+              <MetaRow label={t("genv3.metaFormat")} value={item.ratio ? ratioName(t, item.ratio) : dims ?? "—"} />
               {item.resolution && <MetaRow label={t("genv3.resolution")} value={item.resolution} />}
-              {item.quality && (
-                <MetaRow label={t("genv3.quality")} value={qualityLabel(item.quality, t)} />
-              )}
-              {item.quantity != null && <MetaRow label={t("genv3.countImages")} value={String(item.quantity)} />}
+              <MetaRow label={t("genv3.metaDate")} value={created} />
               {item.credits != null && (
                 <MetaRow label={t("genv3.metaCost")} value={t("genv3.creditsShort", { n: item.credits })} />
               )}
-              <MetaRow label={t("genv3.metaDate")} value={created} />
-              <MetaRow label={t("genv3.metaId")} value={
-                <button type="button" onClick={copyId} title={item.assetId}
-                  className="inline-flex items-center gap-1.5 font-semibold text-ink transition-colors hover:text-accent">
-                  img_{item.assetId.slice(0, 8)}<Copy size={11} aria-hidden className="text-faint" />
-                </button>
-              } />
             </dl>
+            <details className="group/more mt-2">
+              <summary data-details-more
+                className="flex cursor-pointer list-none items-center gap-1 text-[11.5px] font-semibold text-faint transition-colors hover:text-accent">
+                <ChevronDown size={12} aria-hidden className="transition-transform group-open/more:rotate-180" />
+                {t("genv3.moreInfo")}
+              </summary>
+              <dl className="mt-2 space-y-2 text-[12.5px]">
+                {!isTool && item.origin && (
+                  <MetaRow label={t("genv3.metaOrigin")}
+                    value={t(item.origin === "engine" ? "genv3.modeManaged" : "genv3.modeCustom")} />
+                )}
+                {dims && <MetaRow label={t("genv3.metaPixels")} value={dims} />}
+                {item.quality && <MetaRow label={t("genv3.quality")} value={qualityLabel(item.quality, t)} />}
+                {item.quantity != null && <MetaRow label={t("genv3.countImages")} value={String(item.quantity)} />}
+                <MetaRow label={t("genv3.metaId")} value={
+                  <button type="button" onClick={copyId} title={item.assetId}
+                    className="inline-flex items-center gap-1.5 font-semibold text-ink transition-colors hover:text-accent">
+                    img_{item.assetId.slice(0, 8)}<Copy size={11} aria-hidden className="text-faint" />
+                  </button>
+                } />
+              </dl>
+            </details>
           </div>
 
           {/* EDYTUJ OBRAZ — real tools on this exact file */}
@@ -435,7 +435,7 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
                 className="plate flex h-10 items-center gap-1.5 rounded-xl px-3 text-[12.5px] font-semibold text-ink transition-colors hover:bg-raised">
                 <Copy size={13} aria-hidden className="text-muted" />{t("genv3.copyImage")}
               </button>
-              <button type="button" onClick={copyUrl}
+              <button type="button" onClick={copyUrl} data-copy-url
                 className="plate flex h-10 items-center gap-1.5 rounded-xl px-3 text-[12.5px] font-semibold text-ink transition-colors hover:bg-raised">
                 <Link2 size={13} aria-hidden className="text-muted" />{t("genv3.copyUrl")}
               </button>
@@ -458,9 +458,11 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
                 )}
               </div>
             </div>
+            {/* The one thing this panel exists to lead to, at full width. */}
             {canRegenerate && (
-              <button type="button" onClick={() => onRegenerate(item)}
-                className="mt-2 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[rgb(var(--accent)/0.45)] bg-accent-soft/30 text-[12.5px] font-semibold text-accent transition-colors hover:bg-accent-soft/60">
+              <button type="button" onClick={() => onRegenerate(item)} data-regen-cta
+                className="cta mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl text-[13px] font-semibold">
+                <Sparkles size={14} aria-hidden />
                 {t("genv3.regen")}
               </button>
             )}
@@ -487,7 +489,12 @@ function qualityLabel(q: string, t: (key: string) => string): string {
 
 /* ── Użyte zdjęcia ────────────────────────────────────────────────────── */
 
-type Sources = { references: string[]; inspirations: string[]; marked: string | null };
+type Sources = {
+  references: string[]; inspirations: string[]; marked: string | null;
+  /** False when the job predates reference bookkeeping and nothing could be
+   *  recovered — "we did not record this" is not "there was nothing". */
+  known: boolean;
+};
 /**
  * Signed once per generation — paging back and forth through the filmstrip
  * must not re-sign the same photos. The entries EXPIRE well before the URLs
@@ -517,6 +524,7 @@ function loadSources(generationId: string): Promise<Sources | null> {
       if (!json.ok) return null;
       const data: Sources = {
         references: json.references ?? [], inspirations: json.inspirations ?? [], marked: json.marked ?? null,
+        known: json.known ?? false,
       };
       // Cached even when the viewer has already moved on — the answer is
       // still right for that generation, and paging back must not re-sign.
@@ -540,89 +548,152 @@ function SourcesSection({ item }: { item: GalleryItem }) {
   const expected = item.referenceCount + item.inspirationCount;
   const [state, setState] = useState<{ status: "loading" | "ready" | "error"; data?: Sources }>(() => {
     const cached = cachedSources(item.generationId);
-    if (cached) return { status: "ready", data: cached };
-    // A job that carried no source photos has nothing to fetch — say so on
-    // the first paint instead of flashing a skeleton for one frame.
-    if (expected === 0) return { status: "ready", data: { references: [], inspirations: [], marked: null } };
-    return { status: "loading" };
+    return cached ? { status: "ready", data: cached } : { status: "loading" };
   });
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
+  // The enlarged reference owns Escape while it is open — otherwise the key
+  // travels up to the details view and closes the whole thing, throwing the
+  // seller out of the image they were only inspecting a source photo of.
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      setLightbox(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [lightbox]);
+
+  // ALWAYS ASK THE SERVER. The gallery's counts come from the job's own
+  // settings, and a job made before those settings existed reports zero —
+  // which is exactly the row whose references have to be recovered through
+  // its prompt session. Short-circuiting on the count printed "no reference
+  // photos" over generations that plainly used them.
   useEffect(() => {
     let alive = true;
     const cached = cachedSources(item.generationId);
     if (cached) { setState({ status: "ready", data: cached }); return; }
-    if (expected === 0) {
-      setState({ status: "ready", data: { references: [], inspirations: [], marked: null } });
-      return;
-    }
     setState({ status: "loading" });
     void loadSources(item.generationId).then((data) => {
       if (!alive) return;
       setState(data ? { status: "ready", data } : { status: "error" });
     });
     return () => { alive = false; };
-  }, [item.generationId, expected]);
+  }, [item.generationId]);
 
   const data = state.data;
-  const empty = state.status === "ready" && data
-    && data.references.length === 0 && data.inspirations.length === 0 && !data.marked
-    && expected === 0;
+  const shots = data
+    ? [
+      ...data.references.map((url) => ({ url, kind: t("genv3.sourcesRefs") })),
+      ...data.inspirations.map((url) => ({ url, kind: t("genv3.sourcesInsp") })),
+      ...(data.marked ? [{ url: data.marked, kind: t("genv3.sourcesMarked") }] : []),
+    ]
+    : [];
+  const MAX_TILES = 4;
+  const shown = shots.slice(0, MAX_TILES);
+  const overflow = shots.length - shown.length;
 
   return (
-    <div data-sources data-sources-status={state.status} data-sources-gen={item.generationId}>
-      <p className="mb-2 text-[13px] font-semibold tracking-tight">{t("genv3.sourcesTitle")}</p>
+    <div data-sources data-sources-status={state.status} data-sources-gen={item.generationId} className="min-w-0 flex-1">
+      <p className="mb-2 flex items-center gap-1.5 text-[13px] font-semibold tracking-tight">
+        {t("genv3.sourcesTitle")}
+        <InfoHint text={t("genv3.sourcesHint")} />
+      </p>
       {state.status === "loading" && (
         <div className="flex flex-wrap gap-1.5" aria-busy="true">
-          {Array.from({ length: Math.min(Math.max(expected, 1), 6) }, (_, i) => (
-            <span key={i} className="skeleton h-14 w-14 rounded-lg" />
+          {Array.from({ length: Math.min(Math.max(expected, 1), MAX_TILES) }, (_, i) => (
+            <span key={i} className="skeleton h-16 w-16 rounded-xl" />
           ))}
         </div>
       )}
       {state.status === "error" && (
         <p className="text-[11.5px] leading-relaxed text-faint">{t("genv3.sourcesFailed")}</p>
       )}
-      {state.status === "ready" && data && (empty ? (
-        <p className="text-[11.5px] leading-relaxed text-faint">{t("genv3.sourcesNone")}</p>
+      {state.status === "ready" && data && (shots.length === 0 ? (
+        <p className="text-[11.5px] leading-relaxed text-faint">
+          {data.known ? t("genv3.sourcesNone") : t("genv3.sourcesUnknown")}
+        </p>
       ) : (
-        <div className="space-y-2.5">
-          {(item.referenceCount > 0 || data.references.length > 0) && (
-            <SourceGroup label={t("genv3.sourcesRefs")} urls={data.references}
-              count={Math.max(item.referenceCount, data.references.length)} ariaLabel={(n) => t("genv3.sourceAria", { n })} />
-          )}
-          {(item.inspirationCount > 0 || data.inspirations.length > 0) && (
-            <SourceGroup label={t("genv3.sourcesInsp")} urls={data.inspirations}
-              count={Math.max(item.inspirationCount, data.inspirations.length)} ariaLabel={(n) => t("genv3.sourceAria", { n })} />
-          )}
-          {data.marked && (
-            <SourceGroup label={t("genv3.sourcesMarked")} urls={[data.marked]} count={1} ariaLabel={(n) => t("genv3.sourceAria", { n })} />
+        <div className="flex flex-wrap items-center gap-1.5">
+          {shown.map((s, i) => (
+            <button key={s.url} type="button" title={s.kind} data-source-thumb
+              aria-label={`${s.kind} — ${t("genv3.sourceAria", { n: i + 1 })}`}
+              onClick={() => setLightbox(s.url)}
+              className="h-16 w-16 overflow-hidden rounded-xl bg-sunken ring-1 ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))] transition-all duration-150 hover:ring-[rgb(var(--accent)/0.6)]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={s.url} alt="" loading="lazy" className="h-full w-full object-cover" />
+            </button>
+          ))}
+          {overflow > 0 && (
+            <button type="button" data-source-more onClick={() => setLightbox(shots[MAX_TILES]!.url)}
+              aria-label={t("genv3.sourceAria", { n: MAX_TILES + 1 })}
+              className="flex h-16 w-16 items-center justify-center rounded-xl border border-dashed border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/50 text-[12.5px] font-bold tabular-nums text-muted transition-colors hover:border-[rgb(var(--accent)/0.5)] hover:text-accent">
+              +{overflow}
+            </button>
           )}
         </div>
       ))}
+
+      {/* One reference, big. A source photo opened in a new tab left the
+          seller's own image behind; here it comes back with a click. */}
+      {lightbox && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/90 p-4" role="dialog" aria-modal="true">
+          <button type="button" aria-label={t("common.close")} onClick={() => setLightbox(null)}
+            className="absolute inset-0 cursor-zoom-out" />
+          <div className="relative flex max-h-full max-w-4xl flex-col items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={lightbox} alt="" className="max-h-[80dvh] max-w-full rounded-xl object-contain" />
+            {shots.length > 1 && (
+              <div className="thin-scroll flex max-w-full gap-1.5 overflow-x-auto p-1">
+                {shots.map((s) => (
+                  <button key={s.url} type="button" onClick={() => setLightbox(s.url)} aria-label={s.kind}
+                    className={cn("h-12 w-12 shrink-0 overflow-hidden rounded-lg ring-2 transition-all",
+                      s.url === lightbox ? "ring-accent" : "opacity-70 ring-transparent hover:opacity-100")}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={s.url} alt="" className="h-full w-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function SourceGroup({ label, urls, count, ariaLabel }: {
-  label: string; urls: string[]; count: number; ariaLabel: (n: number) => string;
-}) {
+/**
+ * The prompt this exact image was rendered from. Long prompts are clipped to
+ * a readable box with an expander rather than turned into a scrolling wall —
+ * the panel below it still has to be reachable.
+ */
+function PromptBox({ text, onCopy }: { text: string | null; onCopy: () => void }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const long = (text?.length ?? 0) > 220;
   return (
-    <div data-source-group>
-      <p className="mb-1 text-[11px] font-semibold text-faint">
-        {label} <span className="tabular-nums">({count})</span>
-      </p>
-      {urls.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {urls.map((url, i) => (
-            <a key={url} href={url} target="_blank" rel="noopener noreferrer" aria-label={ariaLabel(i + 1)}
-              className="block h-14 w-14 overflow-hidden rounded-lg bg-sunken ring-1 ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))] transition-opacity hover:opacity-85">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" />
-            </a>
-          ))}
-        </div>
-      ) : (
-        <p className="text-[11px] text-faint">—</p>
-      )}
+    <div>
+      <p className="mb-1.5 text-[13px] font-semibold tracking-tight">{t("genv3.promptLabel")}</p>
+      <div className="relative rounded-xl border border-line bg-sunken/50 p-3 pr-9">
+        <p data-details-prompt className={cn("whitespace-pre-line text-[12.5px] leading-relaxed text-ink",
+          !open && long && "line-clamp-4")}>
+          {text ?? <span className="text-faint">{t("genv3.noPrompt")}</span>}
+        </p>
+        {long && (
+          <button type="button" data-prompt-expand onClick={() => setOpen((v) => !v)}
+            className="mt-1.5 text-[11.5px] font-semibold text-faint transition-colors hover:text-accent">
+            {open ? t("genv3.promptCollapse") : t("genv3.promptExpand")}
+          </button>
+        )}
+        {text && (
+          <button type="button" aria-label={t("genv3.copyPrompt")} onClick={onCopy}
+            className="absolute right-2 top-2 rounded-lg p-1.5 text-faint transition-colors hover:bg-raised hover:text-ink">
+            <Copy size={13} aria-hidden />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
