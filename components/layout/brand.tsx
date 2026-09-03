@@ -8,21 +8,26 @@ import { cn } from "@/lib/utils";
  * downscaled losslessly from the supplied files and never redrawn, recoloured
  * or typeset in CSS:
  *
- *   logo-on-dark.png   — full lockup, WHITE wordmark: for DARK surfaces
- *   logo-on-light.png  — full lockup, BLACK wordmark: for LIGHT surfaces
- *   icon.png           — the gradient symbol alone, transparent
+ *   logo-on-dark.png   — full lockup, ALL WHITE (symbol and wordmark)
+ *   logo-on-light.png  — full lockup, gradient symbol + BLACK wordmark
+ *   icon-on-dark.png   — the white symbol alone, transparent
+ *   icon-on-light.png  — the gradient symbol alone, transparent
  *   app-icon.png       — the square gradient app icon (favicon / PWA source)
  *
- * The two lockups are named after the BACKGROUND they sit on, not the colour
- * of their own letters — "logo-on-dark" is the one you put on a dark header.
+ * Assets are named after the BACKGROUND they sit on, not the colour of their
+ * own ink — "logo-on-dark" is the one you put on a dark header. On dark the
+ * brand goes monochrome white, which is the master the designer supplied for
+ * exactly that case; the gradient belongs to light surfaces and to the app
+ * icon, where it has its own background to sit on.
  *
- * Both are real assets, so the wordmark keeps the designer's own kerning and
- * the symbol keeps its own gradient: no invert(), no blend mode, no filter.
- * Which one shows is pure CSS (`dark:`), so the right variant is already
- * correct in the server render — the theme can flip live with no flash, no
- * hydration mismatch and no second source of theme state. Width and height
- * are fixed from the true aspect ratio, so the logo never shifts layout and
- * is never stretched.
+ * The two marks are cropped from their own lockups with the same box, so
+ * light and dark are optically identical in size. Every variant is a real
+ * file: no invert(), no blend mode, no filter, no recolouring. Which one
+ * shows is pure CSS (`dark:`), so the right variant is already correct in the
+ * server render — the theme can flip live with no flash, no hydration
+ * mismatch and no second source of theme state. Width and height are fixed
+ * from the true aspect ratio, so the logo never shifts layout and is never
+ * stretched.
  */
 
 /** Master geometry — used to derive width from a requested pixel height. */
@@ -31,12 +36,17 @@ const ICON = 337 / 256;
 
 /** The symbol alone — compact chrome, collapsed rails, small surfaces. */
 export function BrandMark({ size = 28 }: { size?: number }) {
+  const width = Math.round(size * ICON);
+  const box = { height: size, width };
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src="/brand/icon.png" alt="" aria-hidden
-      width={Math.round(size * ICON)} height={size}
-      className="h-auto w-auto shrink-0 select-none object-contain"
-      style={{ height: size, width: Math.round(size * ICON) }} />
+    <span className="inline-flex shrink-0 items-center" style={box} aria-hidden>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/brand/icon-on-light.png" alt="" width={width} height={size}
+        style={box} className="select-none object-contain dark:hidden" />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/brand/icon-on-dark.png" alt="" width={width} height={size}
+        style={box} className="hidden select-none object-contain dark:inline" />
+    </span>
   );
 }
 

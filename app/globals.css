@@ -903,3 +903,13 @@ body:has(.workspace-page)::after { display: none; }
   .group:hover .card-rail,
   .card-rail:focus-within { opacity: 1; }
 }
+
+/* ── AUTH FORMS ON A PHONE ────────────────────────────────────────────────
+   When the browser (or the customer's own tap) scrolls a field into view, it
+   stops as soon as the field's edge is visible — which on a keyboard-reduced
+   screen can leave the label, the caps-lock hint or the submit button just
+   under the fold. A scroll margin gives every auth control room around it,
+   so what lands on screen is the field IN ITS CONTEXT, not a lone edge. */
+.auth-body :where(input, textarea, select, button) {
+  scroll-margin-block: 6rem;
+}
