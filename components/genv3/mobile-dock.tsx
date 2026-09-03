@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Check, Layers, Loader2, Maximize, Minus, PenLine, Plus, Ratio as RatioIcon, SlidersHorizontal, Sparkles } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { BottomSheet } from "@/components/mobile/sheet";
+import { ratioIcon, ratioName } from "@/components/genv3/ratio-options";
 import { Diamond } from "@/components/layout/credits-control";
 import { ModelBadge, ModelTile } from "@/components/genv3/model-select";
 import type { GenModel } from "@/components/genv3/types";
@@ -11,17 +12,6 @@ import { cn } from "@/lib/utils";
 
 type Sheet = null | "mode" | "model" | "ratio" | "res" | "quality" | "count";
 
-/** Ratio glyph: a rectangle in the true proportion. */
-function RatioGlyph({ ratio }: { ratio: string }) {
-  const [w, h] = ratio.split(":").map(Number);
-  const scale = 13 / Math.max(w || 1, h || 1);
-  return (
-    <span aria-hidden className="inline-flex items-center justify-center" style={{ width: 15, height: 15 }}>
-      <span className="block rounded-[2px] border-[1.5px] border-current"
-        style={{ width: Math.max(5, Math.round((w || 1) * scale)), height: Math.max(5, Math.round((h || 1) * scale)) }} />
-    </span>
-  );
-}
 
 /**
  * MOBILE GENERATION DOCK — phones only (hidden from lg up, where the left
@@ -68,7 +58,7 @@ export function MobileDock({
               onClick={() => setSheet("mode")} wide />
             <DockChip icon={Layers} label={t("gtb.model")} value={model?.name ?? "—"}
               onClick={() => setSheet("model")} wide disabled={models.length <= 1} />
-            <DockChip icon={RatioIcon} label={t("gtb.ratio")} value={ratio}
+            <DockChip icon={RatioIcon} label={t("gtb.ratio")} value={ratioName(t, ratio)}
               onClick={() => setSheet("ratio")} disabled={ratios.length <= 1} />
             <DockChip icon={Maximize} label={t("gtb.res")} value={resolution}
               onClick={() => setSheet("res")} disabled={resolutions.length <= 1} />
@@ -166,17 +156,30 @@ export function MobileDock({
         </div>
       </BottomSheet>
 
+      {/* One row per format, because the NAME is the choice: a phone grid of
+          bare "9:16" tiles asks the customer to decode ratios, and there is
+          no room there for a name beside a glyph. */}
       <BottomSheet open={sheet === "ratio"} onClose={() => setSheet(null)} title={t("gtb.ratio")}>
-        <div className="grid grid-cols-4 gap-1.5 pb-1">
-          {ratios.map((r) => (
-            <button key={r} type="button" aria-pressed={r === ratio}
-              onClick={() => { onRatio(r); setSheet(null); }}
-              className={cn("flex min-h-[64px] flex-col items-center justify-center gap-1.5 rounded-xl border text-[12px] font-semibold transition-colors duration-200",
-                r === ratio ? "is-selected text-accent" : "border-line text-muted hover:bg-raised")}>
-              <RatioGlyph ratio={r} />
-              {r}
-            </button>
-          ))}
+        <div className="grid gap-1.5 pb-1">
+          {ratios.map((r) => {
+            const on = r === ratio;
+            return (
+              <button key={r} type="button" aria-pressed={on} data-ratio-row={r}
+                onClick={() => { onRatio(r); setSheet(null); }}
+                className={cn("flex min-h-[52px] items-center gap-3 rounded-xl border px-3 text-left transition-colors duration-200",
+                  on ? "is-selected" : "border-line hover:bg-raised")}>
+                <span className={cn("flex w-6 shrink-0 items-center justify-center", on ? "text-accent" : "text-muted")}>
+                  {ratioIcon(r)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-semibold">{ratioName(t, r)}</span>
+                  {r === "auto" && <span className="mt-0.5 block text-[11px] text-faint">{t("genv3.fmtAutoSub")}</span>}
+                </span>
+                {r !== "auto" && <span className="shrink-0 text-[11.5px] font-semibold tabular-nums text-faint">{r}</span>}
+                {on && <Check size={13} strokeWidth={3} aria-hidden className="shrink-0 text-accent" />}
+              </button>
+            );
+          })}
         </div>
       </BottomSheet>
 

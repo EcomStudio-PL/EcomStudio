@@ -2,7 +2,8 @@ import "server-only";
 import { createHash } from "crypto";
 import type { Client } from "@/lib/services/workspace";
 import { decryptSecret, encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
-import { ProviderError, type ReferenceImage } from "@/lib/ai/types";
+import {
+  ALL_ASPECT_RATIOS, ProviderError, type ReferenceImage } from "@/lib/ai/types";
 import { proposeScenes, synthesizeScenes, type PlannedScene } from "@/lib/ai/engine/scenes";
 import { composeFinalPrompt, validateFinalPrompt, PROMPT_TEMPLATE_VERSION } from "@/lib/ai/engine/template-prompt";
 import { VISION_MODEL, type VisionBackend, type VisionOutcome, type VisionProvider } from "@/lib/ai/engine/vision";
@@ -162,7 +163,7 @@ export function candidatePoolSize(shots: number): number {
   return Math.min(shots + 2, 12);
 }
 
-const RATIOS = new Set(["1:1", "3:4", "4:5", "16:9", "9:16"]);
+const RATIOS = new Set<string>(ALL_ASPECT_RATIOS);
 const MAX_REFS = 10;
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 18 * 1024 * 1024;

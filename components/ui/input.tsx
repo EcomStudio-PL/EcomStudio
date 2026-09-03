@@ -1,3 +1,5 @@
+"use client";
+import { forwardRef } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -21,9 +23,11 @@ export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={cn(base, props.className)} />;
 }
 
-export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={cn(base, "min-h-24 leading-relaxed thin-scroll", props.className)} />;
-}
+export const Textarea = forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(
+  function Textarea(props, ref) {
+    return <textarea ref={ref} {...props} className={cn(base, "min-h-24 leading-relaxed thin-scroll", props.className)} />;
+  },
+);
 
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (

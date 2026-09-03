@@ -1,11 +1,10 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Badge } from "@/components/ui/badge";
 import { modelBadgeLabel } from "@/lib/model-badge";
 import { badgeToneOf, type GenModel } from "@/components/genv3/types";
 import { cn } from "@/lib/utils";
+import { Dropdown } from "@/components/ui/dropdown";
 import { SectionLabel } from "@/components/genv3/sections";
 
 const TILES = [
@@ -37,9 +36,12 @@ export function ModelBadge({ model }: { model: Pick<GenModel, "badge" | "badgeTo
 }
 
 /**
- * MODEL SELECTOR — the reference's "Silnik AI" row: the chosen model as a
- * compact row (tile, name, badge, price, caret) that expands in place to the
- * full list with descriptions. Closes on pick, ESC and outside click.
+ * SILNIK AI — the same control as format, resolution and quality.
+ *
+ * It used to expand its own list in place, which meant a fourth kind of menu
+ * in one panel. It now goes through the shared dropdown: identical panel,
+ * spacing, hover, check and animation, with the model's tile as the icon,
+ * its badge as the note and its price as the meta column.
  */
 export function ModelSelect({ label, models, value, onChange, priceOf }: {
   label: string;
@@ -49,76 +51,46 @@ export function ModelSelect({ label, models, value, onChange, priceOf }: {
   priceOf: (m: GenModel) => number;
 }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
   const selected = models.find((m) => m.id === value) ?? models[0];
   const selectedIdx = Math.max(0, models.findIndex((m) => m.id === selected?.id));
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    const onDown = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("mousedown", onDown);
-    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("mousedown", onDown); };
-  }, [open]);
-
   if (!selected) return null;
 
-  return (
-    <section ref={rootRef}>
-      <SectionLabel hint={t("genv3.modelHint")}>{label}</SectionLabel>
-      <button type="button" onClick={() => setOpen(!open)}
-        aria-expanded={open} aria-haspopup="listbox"
-        className={cn(
-          "flex w-full items-center gap-2.5 rounded-xl border p-2.5 text-left transition-colors duration-200",
-          open ? "border-[rgb(var(--accent)/0.5)] bg-raised/70" : "border-line bg-sunken/40 hover:bg-raised/60",
-        )}>
-        <ModelTile name={selected.name} index={selectedIdx} size="sm" />
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5">
-            <span className="min-w-0 truncate text-[13.5px] font-semibold">{selected.name}</span>
-            <ModelBadge model={selected} />
-          </span>
-        </span>
-        <span className="shrink-0 text-[11.5px] font-bold tabular-nums text-accent">
-          {t("genv3.perShotShort", { n: priceOf(selected) })}
-        </span>
-        <ChevronDown size={14} aria-hidden className={cn("shrink-0 text-faint transition-transform duration-200", open && "rotate-180")} />
-      </button>
+  const options = models.map((m, idx) => ({
+    value: m.id,
+    label: m.name,
+    sub: m.description ?? undefined,
+    meta: t("genv3.perShotShort", { n: priceOf(m) }),
+    note: modelBadgeLabel(m.badge, t) ?? undefined,
+    icon: <ModelTile name={m.name} index={idx} size="sm" />,
+  }));
 
-      {open && (
-        <div role="listbox" aria-label={label} className="animate-fade mt-1.5 space-y-1.5">
-          {models.map((m, idx) => {
-            const on = m.id === selected.id;
-            return (
-              <button key={m.id} type="button" role="option" aria-selected={on}
-                onClick={() => { onChange(m.id); setOpen(false); }}
-                className={cn(
-                  "flex w-full items-start gap-2.5 rounded-xl border p-2.5 text-left transition-colors duration-200",
-                  on ? "is-selected" : "border-line hover:bg-raised",
-                )}>
-                <ModelTile name={m.name} index={idx} size="sm" />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5">
-                    <span className="min-w-0 truncate text-[13px] font-semibold">{m.name}</span>
-                    <ModelBadge model={m} />
-                    {on && <Check size={13} strokeWidth={3} aria-hidden className="ml-auto shrink-0 text-accent" />}
-                  </span>
-                  {m.description && (
-                    <span className="mt-0.5 line-clamp-2 block text-[11.5px] leading-snug text-muted">{m.description}</span>
-                  )}
+  return (
+    <section>
+      <SectionLabel hint={t("genv3.modelHint")}>{label}</SectionLabel>
+      <div className="rounded-xl border border-line bg-sunken/40 p-2 transition-colors hover:bg-raised/60">
+        <Dropdown
+          testId="model"
+          value={selected.id}
+          options={options}
+          onChange={onChange}
+          ariaLabel={label}
+          panelWidth={320}
+          renderValue={() => (
+            <span className="flex min-w-0 items-center gap-2.5">
+              <ModelTile name={selected.name} index={selectedIdx} size="sm" />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1.5">
+                  <span className="min-w-0 truncate text-[13.5px] font-semibold">{selected.name}</span>
+                  <ModelBadge model={selected} />
                 </span>
-                <span className="shrink-0 pt-0.5 text-[11.5px] font-bold tabular-nums text-accent">
-                  {t("genv3.perShotShort", { n: priceOf(m) })}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+              </span>
+              <span className="shrink-0 text-[11.5px] font-bold tabular-nums text-accent">
+                {t("genv3.perShotShort", { n: priceOf(selected) })}
+              </span>
+            </span>
+          )}
+        />
+      </div>
     </section>
   );
 }

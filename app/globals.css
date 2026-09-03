@@ -890,3 +890,16 @@ body:has(.workspace-page)::after { display: none; }
     }
   }
 }
+
+/* ── Card action rail ──────────────────────────────────────────────────
+   The gallery's per-image actions. Where a pointer can hover, the rail is
+   revealed by hovering the card (or focusing anything inside it) so the
+   grid stays clean. Where it cannot — every phone and tablet — the rail is
+   simply always there, because "hover to reveal" on a touch screen means
+   "unreachable". One rule, not a JS device sniff. */
+.card-rail { opacity: 1; }
+@media (hover: hover) and (pointer: fine) {
+  .card-rail { opacity: 0; }
+  .group:hover .card-rail,
+  .card-rail:focus-within { opacity: 1; }
+}

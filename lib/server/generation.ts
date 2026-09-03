@@ -3,7 +3,7 @@ import type { Client } from "@/lib/services/workspace";
 import { decryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { getAdapter } from "@/lib/ai/registry";
 import {
-  ProviderError, effectiveQuality, modelQualities, priceFor, priceForResolution,
+  ALL_ASPECT_RATIOS, ProviderError, effectiveQuality, modelQualities, priceFor, priceForResolution,
   type AspectRatio, type ImageProviderAdapter, type Quality, type Resolution, type ReferenceImage,
 } from "@/lib/ai/types";
 import { buildFidelityInstructions } from "@/lib/ai/product-lock";
@@ -75,7 +75,7 @@ export type GenerateOutput =
   | { ok: true; jobId: string; productId: string | null; images: { url: string; path: string }[]; credits: number }
   | { ok: false; error: string; missingCredits?: number };
 
-const RATIOS = new Set(["1:1", "3:4", "4:5", "16:9", "9:16"]);
+const RATIOS = new Set<string>(ALL_ASPECT_RATIOS);
 
 /** Product photos a job may carry — the same ceiling the panel enforces
  *  ("Dodaj zdjęcia (max. 10)"). Providers still trim to their own limit. */

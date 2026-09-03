@@ -57,9 +57,14 @@ async function classifyGoogleError(res: Response): Promise<ProviderError> {
  *  is handled by sequential calls so a partial failure can still refund. */
 export const googleAdapter: ImageProviderAdapter = {
   slug: "google",
-  // Gemini takes the ratio verbatim — 3:4 renders natively here, which is
-  // why only google-backed models may advertise it.
-  capabilities: { resolutions: [], maxQuantity: 4, supportsReferenceImages: true, ratios: ["1:1", "3:4", "4:5", "16:9", "9:16"] },
+  // Gemini takes the ratio verbatim, so everything it advertises is exact.
+  // It has no "auto", and the extra shapes stay off this list until they are
+  // verified against a live key rather than assumed from documentation.
+  capabilities: {
+    resolutions: [], maxQuantity: 4, supportsReferenceImages: true,
+    ratios: ["1:1", "3:4", "4:5", "16:9", "9:16"],
+    exactRatios: ["1:1", "3:4", "4:5", "16:9", "9:16"],
+  },
 
   async generate(model: AiModelRecord, req: GenerationRequest, cred: ProviderCredential): Promise<GenerationResult> {
     const base = cred.baseUrl?.replace(/\/$/, "") || "https://generativelanguage.googleapis.com";

@@ -93,6 +93,9 @@ export type ConceptModelOption = {
   resolutions: string[];
   /** Framings this engine actually accepts. */
   ratios: string[];
+  /** The subset it renders exactly; the rest are served at the nearest
+   *  shape and the picker marks them. */
+  exactRatios: string[];
   /** Credits added on top of the base price when GrovBase writes the
    *  prompt; zero for the customer's own prompt. */
   ecomSurcharge: number;
@@ -131,6 +134,7 @@ export async function conceptModelOptions(supabase: Client): Promise<ConceptMode
         pricing,
         resolutions: m.supported_resolutions ?? [],
         ratios: m.capabilities_ui.ratios,
+        exactRatios: m.capabilities_ui.ratios.filter((r) => m.capabilities_ui.exactRatios.includes(r)),
         ecomSurcharge: Math.max(0, surcharge),
         qualities,
         qualityPricing,

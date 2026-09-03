@@ -52,7 +52,7 @@ export default async function WorkflowPage({ params }: {
   const models: GenModel[] = modelOptions.map((m) => ({
     id: m.id, name: m.name, badge: m.badge, badgeTone: m.badgeTone,
     description: m.description, pricing: m.pricing,
-    resolutions: m.resolutions, ratios: m.ratios,
+    resolutions: m.resolutions, ratios: m.ratios, exactRatios: m.exactRatios,
     maxOutputs: 1, supportsRefs: true, surcharge: m.ecomSurcharge,
     qualities: m.qualities, qualityPricing: m.qualityPricing,
   }));

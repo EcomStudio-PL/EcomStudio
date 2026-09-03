@@ -13,7 +13,7 @@ import { ModelSelect } from "@/components/genv3/model-select";
 import { DropOverlay, useFileDrop } from "@/components/genv3/uploader";
 import { cn } from "@/lib/utils";
 import {
-  snapQuality, snapTo, unitPrice,
+  defaultRatio, snapQuality, snapRatio, snapTo, unitPrice,
   type BriefState, type GalleryItem, type GenMode, type GenModel, type UploadedRef,
 } from "@/components/genv3/types";
 import type { CategoryVariant } from "@/lib/categories";
@@ -21,8 +21,9 @@ import type { SessionPreviewMap } from "@/components/genv3/sections";
 
 /** Reference photos the seller may drop in for one generation session. */
 const MAX_REFS = 10;
-/** Own-prompt length. The editor lives in a popup now, so a long prompt no
- *  longer costs the panel any height — the cap only guards the request. */
+/** Own-prompt length. The field expands in place and then scrolls inside
+ *  itself, so a long prompt costs the panel no height — the cap only guards
+ *  the request. */
 const PROMPT_MAX = 4000;
 
 /**
@@ -77,7 +78,7 @@ export function GeneratorWorkspace({
   const [sessionType, setSessionType] = useState<"advertising" | "lifestyle">("advertising");
   const [prompt, setPrompt] = useState(initialPrompt);
   const [modelId, setModelId] = useState(firstModel?.id ?? "");
-  const [ratio, setRatio] = useState(initialRatio ?? firstModel?.ratios[0] ?? "1:1");
+  const [ratio, setRatio] = useState(initialRatio ?? defaultRatio(firstModel?.ratios ?? []));
   const [resolution, setResolution] = useState(firstModel?.resolutions[0] ?? "1K");
   // "Jakość" — only meaningful for a model that declares qualities; the
   // effective value below is undefined for every other model.
@@ -104,7 +105,7 @@ export function GeneratorWorkspace({
 
   // ── Capability snapping ────────────────────────────────────────────────
   const model = useMemo(() => models.find((m) => m.id === modelId) ?? firstModel, [models, modelId, firstModel]);
-  const effRatio = model ? snapTo(model.ratios, ratio) : ratio;
+  const effRatio = model ? snapRatio(model.ratios, ratio) : ratio;
   const effResolution = model ? snapTo(model.resolutions, resolution) : resolution;
   const effQuality = snapQuality(model, quality);
   const maxCount = managed ? 10 : Math.max(1, model?.maxOutputs ?? 1);
@@ -118,7 +119,7 @@ export function GeneratorWorkspace({
     setModelId(id);
     const m = models.find((x) => x.id === id);
     if (m) {
-      setRatio((r) => snapTo(m.ratios, r));
+      setRatio((r) => snapRatio(m.ratios, r));
       setResolution((r) => snapTo(m.resolutions, r));
       setCount((c) => Math.min(c, managed ? 10 : Math.max(1, m.maxOutputs)));
     }

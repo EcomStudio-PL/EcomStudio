@@ -6,7 +6,10 @@ import {
   Check, ChevronDown, HelpCircle, ImageOff, Loader2, Megaphone, Minus, PenLine, Plus, Sparkles, Sun, X,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
-import { Label, Select, Textarea } from "@/components/ui/input";
+import { Label, Textarea } from "@/components/ui/input";
+import { Dropdown } from "@/components/ui/dropdown";
+import { InfoHint } from "@/components/ui/hint";
+import { RatioValue, ratioOptions } from "@/components/genv3/ratio-options";
 import { Switch } from "@/components/ui/record";
 import { PhotoUploader } from "@/components/genv3/uploader";
 import { cn } from "@/lib/utils";
@@ -23,11 +26,7 @@ export function SectionLabel({ children, optional, hint }: {
     <p className="mb-2.5 flex items-center gap-1.5 text-[13.5px] font-semibold tracking-tight">
       {children}
       {optional && <span className="font-normal text-faint">({t("genv3.optional")})</span>}
-      {hint && (
-        <span title={hint} className="cursor-help text-faint" aria-label={hint}>
-          <HelpCircle size={13} aria-hidden />
-        </span>
-      )}
+      {hint && <InfoHint text={hint} />}
     </p>
   );
 }
@@ -185,140 +184,95 @@ export function VariantChips({ variant, choices, onChoose }: {
 /* ── Twój prompt (custom) ─────────────────────────────────────────────── */
 
 /**
- * TWÓJ PROMPT — a compact box in the panel, the real editor in a popup.
+ * TWÓJ PROMPT — one field, expanded in place.
  *
- * A six-row textarea made the left column grow with the prompt and pushed
- * everything below it around. The panel now shows a small trigger: the
- * placeholder when empty, otherwise the prompt clamped to three lines with
- * an ellipsis and its length. Writing happens in a modal with a large field
- * that handles very long prompts, a counter, apply and cancel — so the
- * column keeps one height no matter how much the customer writes.
+ * Collapsed it is a single line: the invitation when empty, otherwise the
+ * prompt itself clamped to two lines with its length. Clicking opens the
+ * textarea RIGHT HERE — no modal, no backdrop, no "apply" step, because a
+ * dialog to type one field is a detour and the panel is where the work is.
+ * Every keystroke goes straight into the form state, so collapsing can
+ * never lose anything; it only stops showing it.
+ *
+ * The field grows with the text up to a ceiling and then scrolls inside
+ * itself, so a four-thousand-character prompt still cannot push the engine
+ * picker or the cost island off the screen.
  */
 export function PromptSection({ value, onChange, max }: {
   value: string; onChange: (v: string) => void; max: number;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
+  const areaRef = useRef<HTMLTextAreaElement>(null);
   const filled = value.trim().length > 0;
-  return (
-    <section>
-      <SectionLabel hint={t("genv3.promptHint")}>{t("genv3.prompt")}</SectionLabel>
-      <button type="button" onClick={() => setOpen(true)}
-        data-prompt-trigger
-        aria-haspopup="dialog" aria-expanded={open}
-        aria-label={filled ? t("genv3.promptEdit") : t("genv3.promptOpen")}
-        className={cn(
-          "group/prompt block w-full rounded-xl border bg-sunken/50 px-3.5 py-2.5 text-left transition-colors duration-200",
-          "hover:border-[rgb(var(--accent)/0.45)] hover:bg-raised focus-visible:border-[rgb(var(--accent)/0.55)]",
-          filled ? "border-line" : "border-dashed border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))]",
-        )}>
-        {filled ? (
-          <p data-prompt-preview className="line-clamp-3 whitespace-pre-line break-words text-[12.5px] leading-snug text-ink">
-            {value.trim()}
-          </p>
-        ) : (
-          <p className="flex items-center gap-2 text-[12.5px] leading-relaxed text-faint">
-            <PenLine size={13} aria-hidden className="shrink-0" />
-            {t("genv3.promptOpen")}
-          </p>
-        )}
-        <span className="mt-1.5 flex items-center justify-between gap-2 text-[10.5px] font-medium">
-          <span className="flex items-center gap-1 text-faint transition-colors group-hover/prompt:text-accent">
-            {filled && <><PenLine size={10} aria-hidden />{t("genv3.promptEdit")}</>}
-          </span>
-          <span className={cn("tabular-nums", value.length > max * 0.9 ? "text-accent2" : "text-faint")}>
-            {value.length}/{max}
-          </span>
-        </span>
-      </button>
-      {open && (
-        <PromptModal
-          initial={value}
-          max={max}
-          onClose={() => setOpen(false)}
-          onApply={(next) => { onChange(next); setOpen(false); }}
-        />
-      )}
-    </section>
-  );
-}
+  const nearCap = value.length > max * 0.9;
 
-/** The popup editor. Draft state is local: cancel, Escape and the scrim
- *  discard it; only Apply (or Ctrl/Cmd+Enter) writes it back. Full screen on
- *  phones, a centred sheet from `sm` up, body scroll locked while open. */
-function PromptModal({ initial, max, onClose, onApply }: {
-  initial: string; max: number; onClose: () => void; onApply: (value: string) => void;
-}) {
-  const { t } = useI18n();
-  const [draft, setDraft] = useState(initial);
+  // Focus lands at the END of what is already written — expanding to edit a
+  // long prompt should not put the caret at the top of it.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      // Escape while the caret is in the field only LEAVES the field — the
-      // same protection the details view gives its note. Closing outright
-      // would throw away a long prompt on the reflex that dismisses a
-      // spellcheck popup, and the draft lives only here.
-      const el = e.target as HTMLElement | null;
-      if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) { el.blur(); return; }
-      e.stopPropagation();
-      onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
-  }, [onClose]);
-  const nearCap = draft.length > max * 0.9;
-  return createPortal(
-    // `workspace` travels WITH the portal: the token scope lives on the
-    // generator page, and a dialog mounted on document.body would otherwise
-    // fall back to the marketing glass ramp and look like another app. Same
-    // reason ReferencePicker and the regenerate modal carry it.
-    <div role="dialog" aria-modal="true" aria-label={t("genv3.prompt")} data-prompt-modal
-      className="workspace fixed inset-0 z-[70] flex items-stretch justify-center sm:items-center sm:p-4">
-      <button type="button" aria-label={t("common.close")} onClick={onClose}
-        className="scrim absolute inset-0 cursor-default backdrop-blur-[6px]" />
-      <div className="overlay animate-pop relative flex h-full w-full min-w-0 flex-col rounded-none sm:h-auto sm:max-h-[92dvh] sm:max-w-2xl sm:rounded-2xl">
-        <div className="flex shrink-0 items-start justify-between gap-3 px-4 pt-4 sm:px-5 sm:pt-5">
-          <div className="min-w-0">
-            <h2 className="font-display text-[16px] font-semibold tracking-tight">{t("genv3.prompt")}</h2>
-            <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{t("genv3.promptHint")}</p>
-          </div>
-          <button type="button" aria-label={t("common.close")} onClick={onClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-raised hover:text-ink">
-            <X size={16} aria-hidden />
-          </button>
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col px-4 py-3 sm:px-5">
+    if (!open) return;
+    const el = areaRef.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, [open]);
+
+  return (
+    <section data-prompt-section data-open={open || undefined}>
+      <SectionLabel hint={t("genv3.promptHint")}>{t("genv3.prompt")}</SectionLabel>
+      {open ? (
+        <div className="rounded-xl border border-[rgb(var(--accent)/0.45)] bg-sunken/50 p-2">
           <Textarea
-            autoFocus
-            value={draft}
+            ref={areaRef}
+            data-prompt-input
+            value={value}
             maxLength={max}
             placeholder={t("genv3.promptPh")}
             aria-label={t("genv3.prompt")}
-            onChange={(e) => setDraft(e.target.value)}
-            onFocus={(e) => { const el = e.currentTarget; el.setSelectionRange(el.value.length, el.value.length); }}
-            onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onApply(draft); } }}
-            className="min-h-[40dvh] flex-1 resize-none sm:min-h-[320px] sm:max-h-[60dvh]"
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setOpen(false); } }}
+            className="thin-scroll max-h-[38dvh] min-h-[7.5rem] resize-y border-0 bg-transparent px-1.5 py-1 focus:bg-transparent focus:ring-0 sm:max-h-64"
           />
-          <div className="mt-2 flex items-center justify-between gap-3 text-[10.5px] font-medium text-faint">
-            <span className="hidden sm:inline">{t("genv3.promptShortcut")}</span>
-            <span data-prompt-counter className={cn("tabular-nums", nearCap && "text-accent2")}>{draft.length}/{max}</span>
+          <div className="mt-1 flex items-center justify-between gap-2 px-1.5">
+            <button type="button" data-prompt-collapse onClick={() => setOpen(false)}
+              className="flex items-center gap-1 text-[10.5px] font-semibold text-faint transition-colors hover:text-accent">
+              <ChevronDown size={11} aria-hidden className="rotate-180" />
+              {t("genv3.promptCollapse")}
+            </button>
+            <span data-prompt-counter className={cn("text-[10.5px] font-medium tabular-nums", nearCap ? "text-accent2" : "text-faint")}>
+              {value.length}/{max}
+            </span>
           </div>
         </div>
-        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-line px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-5">
-          <button type="button" onClick={onClose}
-            className="plate flex h-10 items-center rounded-xl px-4 text-[13px] font-semibold text-ink transition-colors hover:bg-raised">
-            {t("common.cancel")}
-          </button>
-          <button type="button" onClick={() => onApply(draft)} data-prompt-apply
-            className="cta flex h-10 items-center gap-1.5 rounded-xl px-4 text-[13px] font-semibold">
-            <Check size={14} aria-hidden />{t("genv3.promptApply")}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
+      ) : (
+        <button type="button" onClick={() => setOpen(true)}
+          data-prompt-trigger aria-expanded={false}
+          aria-label={filled ? t("genv3.promptEdit") : t("genv3.promptOpen")}
+          className={cn(
+            "group/prompt block w-full rounded-xl border bg-sunken/50 px-3.5 py-2.5 text-left transition-colors duration-200",
+            "hover:border-[rgb(var(--accent)/0.45)] hover:bg-raised focus-visible:border-[rgb(var(--accent)/0.55)]",
+            filled ? "border-line" : "border-dashed border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))]",
+          )}>
+          {filled ? (
+            <p data-prompt-preview className="line-clamp-2 whitespace-pre-line break-words text-[12.5px] leading-snug text-ink">
+              {value.trim()}
+            </p>
+          ) : (
+            <p className="flex items-center gap-2 text-[12.5px] leading-relaxed text-faint">
+              <PenLine size={13} aria-hidden className="shrink-0" />
+              {t("genv3.promptOpen")}
+            </p>
+          )}
+          <span className="mt-1.5 flex items-center justify-between gap-2 text-[10.5px] font-medium">
+            <span className="flex items-center gap-1 text-faint transition-colors group-hover/prompt:text-accent">
+              {filled && <><PenLine size={10} aria-hidden />{t("genv3.promptEdit")}</>}
+            </span>
+            <span className={cn("tabular-nums", nearCap ? "text-accent2" : "text-faint")}>
+              {value.length}/{max}
+            </span>
+          </span>
+        </button>
+      )}
+    </section>
   );
 }
 
@@ -344,40 +298,58 @@ export function SettingsSection({
   const hasQuality = qualities.length > 0 && !!quality;
   const qualityLabel = (q: string) =>
     q === "low" ? t("genv3.qualityLow") : q === "high" ? t("genv3.qualityHigh") : t("genv3.qualityMedium");
-  const current = perShotAt(resolution, quality);
-  const delta = (price: number) => (price !== current ? ` ${t("genv3.priceDelta", { n: price })}` : "");
+  const exact = model?.exactRatios ?? ratios;
+  const approx = ratio !== "auto" && ratios.includes(ratio) && !exact.includes(ratio);
+  const priceMeta = (price: number) => t("genv3.creditsShort", { n: price });
   return (
     <section>
       <SectionLabel hint={t("genv3.settingsHint")}>{t("genv3.settings")}</SectionLabel>
-      {/* Format | Rozdzielczość | (Jakość) | Liczba ujęć. The quality cell
-          exists only for a model that declares the parameter — never a
-          disabled placeholder. */}
-      <div className={cn("grid gap-2 [&>*]:min-w-0", hasQuality ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")}>
+      {/* FORMAT gets its own full-width row: the names are what make the
+          choice legible ("Pionowy – Stories / Reels"), and they do not fit a
+          quarter of a 440px column. Everything else stays on one line. */}
+      <div className="cell mb-2 rounded-xl border border-line bg-sunken/50 p-2">
+        <Dropdown
+          testId="ratio"
+          label={t("genv3.format")}
+          value={ratio}
+          options={ratioOptions(t, ratios, exact)}
+          onChange={onRatio}
+          panelWidth={272}
+          renderValue={() => <RatioValue t={t} ratio={ratio} />}
+        />
+      </div>
+      {approx && (
+        // Said out loud only when it applies: this engine will render the
+        // nearest shape it really has, and a customer who picked 4:5 should
+        // hear that from us rather than from the result.
+        <p className="mb-2 text-[10.5px] leading-snug text-faint" data-ratio-approx>
+          {t("genv3.fmtApprox")}
+        </p>
+      )}
+      {/* Rozdzielczość | (Jakość) | Liczba ujęć. The quality cell exists only
+          for a model that declares the parameter — never a disabled
+          placeholder. */}
+      <div className={cn("grid gap-2 [&>*]:min-w-0", hasQuality ? "grid-cols-3" : "grid-cols-2")}>
         <div className="rounded-xl border border-line bg-sunken/50 p-2">
-          <label htmlFor="gen-ratio" className="mb-0.5 block text-[10.5px] font-semibold text-faint">{t("genv3.format")}</label>
-          <Select id="gen-ratio" value={ratio} onChange={(e) => onRatio(e.target.value)}
-            className="!border-0 !bg-transparent !px-1 !py-1 text-[13px] font-semibold">
-            {ratios.map((r) => <option key={r} value={r}>{r}</option>)}
-          </Select>
-        </div>
-        <div className="rounded-xl border border-line bg-sunken/50 p-2">
-          <label htmlFor="gen-res" className="mb-0.5 block text-[10.5px] font-semibold text-faint">{t("genv3.resolution")}</label>
-          <Select id="gen-res" value={resolution} onChange={(e) => onResolution(e.target.value)}
-            className="!border-0 !bg-transparent !px-1 !py-1 text-[13px] font-semibold">
-            {resolutions.map((r) => (
-              <option key={r} value={r}>{r}{delta(perShotAt(r, quality))}</option>
-            ))}
-          </Select>
+          <Dropdown
+            testId="resolution"
+            label={t("genv3.resolution")}
+            value={resolution}
+            options={resolutions.map((r) => ({ value: r, label: r, meta: priceMeta(perShotAt(r, quality)) }))}
+            onChange={onResolution}
+            panelWidth={200}
+          />
         </div>
         {hasQuality && (
           <div className="rounded-xl border border-line bg-sunken/50 p-2" data-quality-cell>
-            <label htmlFor="gen-quality" className="mb-0.5 block text-[10.5px] font-semibold text-faint">{t("genv3.quality")}</label>
-            <Select id="gen-quality" value={quality} onChange={(e) => onQuality(e.target.value)}
-              className="!border-0 !bg-transparent !px-1 !py-1 text-[13px] font-semibold">
-              {qualities.map((q) => (
-                <option key={q} value={q}>{qualityLabel(q)}{delta(perShotAt(resolution, q))}</option>
-              ))}
-            </Select>
+            <Dropdown
+              testId="quality"
+              label={t("genv3.quality")}
+              value={quality}
+              options={qualities.map((q) => ({ value: q, label: qualityLabel(q), meta: priceMeta(perShotAt(resolution, q)) }))}
+              onChange={onQuality}
+              panelWidth={220}
+            />
           </div>
         )}
         <div className="rounded-xl border border-line bg-sunken/50 p-2">
@@ -749,17 +721,18 @@ export function InspirationSection({ items, uploading, disabled, onUpload, onRem
       max={5}
       columns={5}
       uploading={uploading}
+      compact
       dropTarget="insp"
       onFiles={onUpload}
       onRemove={onRemove}
-      hint={t("genv3.inspSub")}
+      // No standing "upload surroundings, style or mood" line: what
+      // inspiration photos do belongs in the hint, one tap away, not
+      // permanently under the tiles.
       label={
         <>
           {t("genv3.insp")}
           <span className="font-normal text-faint">({t("genv3.optional")})</span>
-          <span title={t("genv3.inspHint")} className="cursor-help text-faint" aria-label={t("genv3.inspHint")}>
-            <HelpCircle size={13} aria-hidden />
-          </span>
+          <InfoHint text={t("genv3.inspHint")} />
         </>
       }
     />
@@ -799,14 +772,17 @@ export function CostSummary({
   // click actually costs — rather than a count of images.
   return (
     <div className="panel relative z-20 shrink-0 rounded-2xl px-4 py-3">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="min-w-0 text-center">
+      {/* Two figures, one hairline between them — a single container rather
+          than two floating numbers, so the island reads as the panel's
+          footer and the CTA below is unmistakably its action. */}
+      <div className="grid grid-cols-2 divide-x divide-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.4))]">
+        <div className="min-w-0 px-2 text-center">
           <p className="text-[10px] font-medium leading-tight text-faint">{t("genv3.costPerShot")}</p>
           <p className="metric mt-0.5 text-[14px] leading-tight text-accent">
             {n(perShot)} <span className="text-[10px] font-semibold text-muted">{t("genv3.credits")}</span>
           </p>
         </div>
-        <div className="min-w-0 text-center">
+        <div className="min-w-0 px-2 text-center">
           <p className="text-[10px] font-medium leading-tight text-faint">{t("genv3.costTotal")}</p>
           <p className="metric mt-0.5 text-[14px] leading-tight text-accent">
             {n(total)} <span className="text-[10px] font-semibold text-muted">{t("genv3.credits")}</span>

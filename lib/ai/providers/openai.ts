@@ -2,7 +2,27 @@ import "server-only";
 import type { AiModelRecord, GenerationRequest, GenerationResult, ImageProviderAdapter, ProviderCredential } from "../types";
 import { ProviderError, sanitizeUpstreamMessage } from "../types";
 
-const SIZE: Record<string, string> = { "1:1": "1024x1024", "4:5": "1024x1536", "9:16": "1024x1536", "16:9": "1536x1024" };
+/**
+ * OpenAI's image endpoint has exactly three shapes plus "auto": square,
+ * portrait 2:3 and landscape 3:2. Every other format the panel offers is
+ * mapped to the nearest of those — the honest nearest fit, not a promise —
+ * and `exactRatios` below tells the UI which ones are true to the request.
+ */
+const SIZE: Record<string, string> = {
+  auto: "auto",
+  "1:1": "1024x1024",
+  // Portrait family → 1024x1536 (2:3).
+  "2:3": "1024x1536",
+  "4:5": "1024x1536",
+  "3:4": "1024x1536",
+  "9:16": "1024x1536",
+  // Landscape family → 1536x1024 (3:2).
+  "3:2": "1536x1024",
+  "5:4": "1536x1024",
+  "4:3": "1536x1024",
+  "16:9": "1536x1024",
+  "21:9": "1536x1024",
+};
 // Fallback when the model row sets no cap of its own; the panel allows 10.
 const MAX_REFS = 10;
 
@@ -16,7 +36,13 @@ const MAX_REFS = 10;
  */
 export const openaiAdapter: ImageProviderAdapter = {
   slug: "openai",
-  capabilities: { resolutions: ["1K", "2K"], maxQuantity: 4, supportsReferenceImages: true, ratios: ["1:1", "4:5", "16:9", "9:16"] },
+  capabilities: {
+    resolutions: ["1K", "2K"], maxQuantity: 4, supportsReferenceImages: true,
+    ratios: ["auto", "1:1", "4:5", "5:4", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16", "21:9"],
+    // What the endpoint really renders: square, 2:3, 3:2 — and "auto", where
+    // the shape is the provider's own choice by definition.
+    exactRatios: ["auto", "1:1", "2:3", "3:2"],
+  },
 
   async generate(model: AiModelRecord, req: GenerationRequest, cred: ProviderCredential): Promise<GenerationResult> {
     const base = cred.baseUrl?.replace(/\/$/, "") || "https://api.openai.com";

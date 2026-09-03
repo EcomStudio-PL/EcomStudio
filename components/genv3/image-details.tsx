@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { GalleryItem } from "@/components/genv3/types";
+import { ratioName } from "@/components/genv3/ratio-options";
 
 /**
  * INFORMACJE O OBRAZIE — the premium image-details view.
@@ -311,7 +312,12 @@ export function ImageDetails({ items, index, onIndex, onClose, onRegenerate, onF
                 <MetaRow label={t("genv3.metaSession")}
                   value={t(item.sessionType === "advertising" ? "genv3.sessionAd" : "genv3.sessionLife")} />
               )}
-              <MetaRow label={t("genv3.metaFormat")} value={item.ratio ? `${item.ratio}${dims ? ` (${dims})` : ""}` : dims ?? "—"} />
+              {/* The format the seller chose, in the words they chose it by
+                  — "auto" and "9:16" are catalogue values, not answers. */}
+              <MetaRow label={t("genv3.metaFormat")}
+                value={item.ratio
+                  ? `${ratioName(t, item.ratio)}${item.ratio === "auto" ? "" : ` · ${item.ratio}`}${dims ? ` (${dims})` : ""}`
+                  : dims ?? "—"} />
               {item.resolution && <MetaRow label={t("genv3.resolution")} value={item.resolution} />}
               {item.quality && (
                 <MetaRow label={t("genv3.quality")} value={qualityLabel(item.quality, t)} />

@@ -11,6 +11,9 @@ export type UsableModel = AiModelRecord & {
     maxQuantity: number;
     supportsReferenceImages: boolean;
     ratios: string[];
+    /** Of those, the ones the provider renders exactly (see
+     *  ImageProviderAdapter.capabilities.exactRatios). */
+    exactRatios: string[];
   };
 };
 
@@ -25,8 +28,12 @@ export type ClientModel = {
   description: string | null;
   pricing: Record<string, number>;
   resolutions: string[];
-  /** Framings this model genuinely renders — the UI offers nothing else. */
+  /** Framings this model offers — the UI shows nothing else. */
   ratios: string[];
+  /** The subset rendered exactly; every other offered ratio is served at the
+   *  engine's nearest shape, and the picker says so rather than implying a
+   *  crop the customer will not get. */
+  exactRatios: string[];
   maxQuantity: number;
   supportsReferenceImages: boolean;
   supportsNegativePrompt: boolean;
@@ -90,6 +97,8 @@ export async function getUsableModels(supabase: Client): Promise<UsableModel[]> 
             typeof capOutputs === "number" && capOutputs > 0 ? capOutputs : adapter.capabilities.maxQuantity)),
           supportsReferenceImages: adapter.capabilities.supportsReferenceImages && m.supports_reference_images,
           ratios: effectiveRatios(m, adapter.capabilities.ratios),
+          // No declaration means the adapter renders everything it offers.
+          exactRatios: (adapter.capabilities.exactRatios ?? adapter.capabilities.ratios ?? ALL_ASPECT_RATIOS) as string[],
         },
       };
     });
@@ -132,6 +141,7 @@ export function toClientModel(m: UsableModel): ClientModel {
     pricing,
     resolutions: m.capabilities_ui.resolutions,
     ratios: m.capabilities_ui.ratios,
+    exactRatios: m.capabilities_ui.ratios.filter((r) => m.capabilities_ui.exactRatios.includes(r)),
     maxQuantity: m.capabilities_ui.maxQuantity,
     supportsReferenceImages: m.capabilities_ui.supportsReferenceImages,
     supportsNegativePrompt: m.supports_negative_prompt,

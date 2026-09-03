@@ -18,6 +18,9 @@ export type GenModel = {
   pricing: Record<string, number>;
   resolutions: string[];
   ratios: string[];
+  /** Ratios this engine renders exactly; anything offered outside this set
+   *  is served at its nearest shape and the picker says so. */
+  exactRatios: string[];
   /** Max images per run for this model (adapter ∧ admin cap). */
   maxOutputs: number;
   supportsRefs: boolean;
@@ -43,6 +46,23 @@ export function unitPrice(m: GenModel | undefined, resolution: string, mode: Gen
 /** Snap a value to the model's capability list (first entry when absent). */
 export function snapTo(list: string[], value: string): string {
   return list.includes(value) ? value : list[0] ?? value;
+}
+
+/**
+ * The format a panel opens on. "auto" now heads the catalogue, but a list's
+ * first entry is not automatically the right default: handing every seller
+ * an engine-chosen shape would quietly change what they have been getting.
+ * The square stays the default wherever it exists; Auto is a choice, not a
+ * fallback.
+ */
+export function defaultRatio(list: string[]): string {
+  return list.includes("1:1") ? "1:1" : list.find((r) => r !== "auto") ?? list[0] ?? "1:1";
+}
+
+/** Snap a ratio to what THIS model offers, preferring the sane default over
+ *  the list head when the current choice is unavailable. */
+export function snapRatio(list: string[], value: string): string {
+  return list.includes(value) ? value : defaultRatio(list);
 }
 
 /** The quality a model would actually render at for a requested one:

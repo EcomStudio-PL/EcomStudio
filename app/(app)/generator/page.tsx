@@ -41,7 +41,7 @@ export default async function GeneratorPage({ searchParams }: {
   const models: GenModel[] = customModels(usable).map(toClientModel).map((m) => ({
     id: m.id, name: m.displayName, badge: m.badge, badgeTone: m.badgeTone,
     description: m.description, pricing: m.pricing,
-    resolutions: m.resolutions, ratios: m.ratios,
+    resolutions: m.resolutions, ratios: m.ratios, exactRatios: m.exactRatios,
     maxOutputs: m.maxQuantity, supportsRefs: m.supportsReferenceImages,
     surcharge: m.engineSurcharge,
     qualities: m.qualities, qualityPricing: m.qualityPricing,

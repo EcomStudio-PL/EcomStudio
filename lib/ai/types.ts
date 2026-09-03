@@ -3,12 +3,37 @@ import type { Tables } from "@/lib/database.types";
 export type AiModelRecord = Tables<"ai_models">;
 export type AiProviderRecord = Tables<"ai_providers">;
 
-export type AspectRatio = "1:1" | "3:4" | "4:5" | "16:9" | "9:16";
+export type AspectRatio =
+  | "auto"
+  | "1:1" | "4:5" | "5:4" | "3:2" | "2:3" | "4:3" | "3:4" | "16:9" | "9:16" | "21:9";
 export type Resolution = "1K" | "2K" | "4K";
 
 /** Every format the platform knows, in display order. What a given model
- *  actually offers = this ∩ adapter capability ∩ ai_models.supported_aspect_ratios. */
-export const ALL_ASPECT_RATIOS: readonly AspectRatio[] = ["1:1", "3:4", "4:5", "16:9", "9:16"];
+ *  actually offers = this ∩ adapter capability ∩ ai_models.supported_aspect_ratios.
+ *  "auto" is a real choice, not a UI trick: it is offered only by engines
+ *  whose API genuinely picks the shape itself (OpenAI's `size: "auto"`). */
+export const ALL_ASPECT_RATIOS: readonly AspectRatio[] = [
+  "auto", "1:1", "4:5", "5:4", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16", "21:9",
+];
+
+/**
+ * The PROPORTION behind each format, so the picker can draw the shape the
+ * customer is choosing instead of asking them to decode "9:16". Shared by
+ * the panel, the phone dock and anything else that has to render a glyph.
+ * `auto` has no fixed shape — the engine decides — and gets its own mark.
+ */
+export const RATIO_SHAPE: Record<Exclude<AspectRatio, "auto">, { w: number; h: number }> = {
+  "1:1": { w: 1, h: 1 },
+  "4:5": { w: 4, h: 5 },
+  "5:4": { w: 5, h: 4 },
+  "3:2": { w: 3, h: 2 },
+  "2:3": { w: 2, h: 3 },
+  "4:3": { w: 4, h: 3 },
+  "3:4": { w: 3, h: 4 },
+  "16:9": { w: 16, h: 9 },
+  "9:16": { w: 9, h: 16 },
+  "21:9": { w: 21, h: 9 },
+};
 
 /** Per-resolution credit price from the admin-editable model config
  *  (ai_models.pricing). Falls back to the model's base credit_cost. */
@@ -122,9 +147,17 @@ export interface ImageProviderAdapter {
     resolutions: Resolution[];
     maxQuantity: number;
     supportsReferenceImages: boolean;
-    /** Framings this provider genuinely renders (not merely approximates).
-     *  Absent = the four classic ratios. */
+    /** Framings this provider accepts. Absent = the four classic ratios. */
     ratios?: AspectRatio[];
+    /**
+     * Of those, the ones the API renders EXACTLY. Anything offered but not
+     * listed here is served at the nearest shape the endpoint really has —
+     * OpenAI, for instance, only knows square, 2:3 and 3:2, so a 4:5 request
+     * comes back as 2:3. The UI marks those so the customer is told rather
+     * than quietly given a different crop. Absent = every offered ratio is
+     * exact.
+     */
+    exactRatios?: AspectRatio[];
   };
   generate(model: AiModelRecord, req: GenerationRequest, cred: ProviderCredential): Promise<GenerationResult>;
 }
