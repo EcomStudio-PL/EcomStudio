@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   description: "Professional e-commerce product content, faster.",
   applicationName: "GrovBase",
   appleWebApp: { capable: true, title: "GrovBase", statusBarStyle: "black-translucent" },
-  icons: { apple: "/icons/apple-touch-icon.png?v=4" },
+  icons: { apple: "/icons/apple-touch-icon.png?v=5" },
   formatDetection: { telephone: false },
 };
 export const viewport: Viewport = {

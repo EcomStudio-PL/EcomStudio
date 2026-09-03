@@ -4,59 +4,94 @@ import { cn } from "@/lib/utils";
 /**
  * GROVBASE LOGO — the single brand component for the whole product.
  *
- * All artwork comes from the official master assets in /public/brand
- * (generated losslessly from the supplied PNGs — never redrawn in CSS):
- *   mark.png        — the pink G symbol alone, transparent
- *   text-dark.png   — "GrovBase" wordmark text, WHITE, for dark surfaces
- *   text-light.png  — "GrovBase" wordmark text, BLACK, for light surfaces
- *   wordmark-*.png  — symbol + text combined, for standalone brand areas
+ * Every pixel comes from the official master artwork in /public/brand,
+ * downscaled losslessly from the supplied files and never redrawn, recoloured
+ * or typeset in CSS:
  *
- * Theme switching is pure CSS (`dark:` classes on the two text images), so
- * the correct variant is right on the server render with no flash and no
- * hydration dance. Sizes are fixed via width/height attributes so the logo
- * never causes layout shift and is never stretched.
+ *   logo-on-dark.png   — full lockup, WHITE wordmark: for DARK surfaces
+ *   logo-on-light.png  — full lockup, BLACK wordmark: for LIGHT surfaces
+ *   icon.png           — the gradient symbol alone, transparent
+ *   app-icon.png       — the square gradient app icon (favicon / PWA source)
+ *
+ * The two lockups are named after the BACKGROUND they sit on, not the colour
+ * of their own letters — "logo-on-dark" is the one you put on a dark header.
+ *
+ * Both are real assets, so the wordmark keeps the designer's own kerning and
+ * the symbol keeps its own gradient: no invert(), no blend mode, no filter.
+ * Which one shows is pure CSS (`dark:`), so the right variant is already
+ * correct in the server render — the theme can flip live with no flash, no
+ * hydration mismatch and no second source of theme state. Width and height
+ * are fixed from the true aspect ratio, so the logo never shifts layout and
+ * is never stretched.
  */
 
-/** The G symbol alone — compact chrome, collapsed rails, small surfaces. */
-export function BrandMark({ size = 26 }: { size?: number }) {
-  // Master is 253x256; near-square, rendered square-height with true ratio.
-  const w = Math.round(size * (253 / 256));
+/** Master geometry — used to derive width from a requested pixel height. */
+const LOCKUP = 922 / 200;
+const ICON = 337 / 256;
+
+/** The symbol alone — compact chrome, collapsed rails, small surfaces. */
+export function BrandMark({ size = 28 }: { size?: number }) {
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src="/brand/mark.png" alt="" aria-hidden width={w} height={size} className="shrink-0 select-none" />
-  );
-}
-
-/** Wordmark text at a given pixel height (master 685x120). */
-function BrandText({ height = 18, className }: { height?: number; className?: string }) {
-  const w = Math.round(height * (685 / 120));
-  return (
-    <span className={cn("inline-flex items-center", className)} aria-hidden>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/brand/text-light.png" alt="" width={w} height={height} className="select-none dark:hidden" />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/brand/text-dark.png" alt="" width={w} height={height} className="hidden select-none dark:inline" />
-    </span>
+    <img src="/brand/icon.png" alt="" aria-hidden
+      width={Math.round(size * ICON)} height={size}
+      className="h-auto w-auto shrink-0 select-none object-contain"
+      style={{ height: size, width: Math.round(size * ICON) }} />
   );
 }
 
 /**
- * BRAND — exactly one mark and (optionally) one wordmark.
+ * BRAND — the mark, or the full lockup, once.
  *
- * The wordmark is hidden with a class rather than by rendering a second
- * `Brand`, so no layout can ever end up showing the mark twice.
+ * `markOnly` swaps in the symbol; `wordmarkClassName` can hide the lockup at
+ * narrow widths (the mark then stands in), which is how the topbar keeps the
+ * brand legible on a phone without ever painting it twice.
  */
-export function Brand({ href = "/", markOnly = false, className, wordmarkClassName }: {
+export function Brand({ href = "/", markOnly = false, height = 30, className, wordmarkClassName }: {
   href?: string;
   markOnly?: boolean;
+  /** Rendered height of the lockup (or the mark) in px. */
+  height?: number;
   className?: string;
-  /** Responsive visibility for the wordmark, e.g. "hidden sm:inline-flex". */
+  /** Responsive visibility for the lockup, e.g. "hidden sm:inline-flex". */
   wordmarkClassName?: string;
 }) {
+  const width = Math.round(height * LOCKUP);
   return (
-    <Link href={href} aria-label="GrovBase" className={cn("inline-flex items-center gap-2", className)}>
-      <BrandMark />
-      {!markOnly && <BrandText className={wordmarkClassName} />}
+    <Link href={href} aria-label="GrovBase" className={cn("inline-flex items-center", className)}>
+      {markOnly ? (
+        <BrandMark size={height} />
+      ) : (
+        <span className={cn("inline-flex items-center", wordmarkClassName)} aria-hidden>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/logo-on-light.png" alt="" width={width} height={height}
+            style={{ height, width }}
+            className="select-none object-contain dark:hidden" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/logo-on-dark.png" alt="" width={width} height={height}
+            style={{ height, width }}
+            className="hidden select-none object-contain dark:inline" />
+        </span>
+      )}
+      {/* A lockup hidden by `wordmarkClassName` leaves the mark in its place,
+          so the brand is present at every width and duplicated at none. */}
+      {!markOnly && wordmarkClassName && (
+        <span className={cn("inline-flex items-center", flipVisibility(wordmarkClassName))}>
+          <BrandMark size={height} />
+        </span>
+      )}
     </Link>
   );
+}
+
+/** "hidden sm:inline-flex" → "sm:hidden": show the mark exactly where the
+ *  lockup is hidden, without every caller having to spell both out. */
+function flipVisibility(cls: string): string {
+  return cls
+    .split(/\s+/)
+    .map((c) => (c === "hidden" ? null : c.endsWith(":inline-flex") || c.endsWith(":inline") || c.endsWith(":flex")
+      ? `${c.split(":")[0]}:hidden`
+      : null))
+    .filter(Boolean)
+    .join(" ");
 }

@@ -104,7 +104,10 @@ export default async function LandingPage() {
       <BlockRenderer blocks={ctaBlocks} locale={locale} labels={labels} />
 
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line py-8 text-xs text-muted">
-        <span>© {new Date().getFullYear()} GrovBase</span>
+        <span className="flex items-center gap-2.5">
+          <Brand href="/" height={22} />
+          © {new Date().getFullYear()}
+        </span>
         <div className="flex gap-4">
           <a href="#showcase" className="hover:text-ink">{t("landing.navFeatures")}</a>
           <a href="#pricing" className="hover:text-ink">{t("landing.navPricing")}</a>
