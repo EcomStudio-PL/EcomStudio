@@ -292,8 +292,11 @@ export function ImageDetails({ items, index, onIndex, onClose, onRegenerate, onF
             </div>
           </div>
 
-          {/* UŻYTE ZDJĘCIA — what this image was made from */}
-          <SourcesSection item={item} />
+          {/* UŻYTE ZDJĘCIA — what this image was made from. Keyed by
+              generation: the view stays mounted across prev/next, and reusing
+              the instance painted the previous image's source thumbnails for
+              a frame under the new one. */}
+          <SourcesSection key={item.generationId} item={item} />
 
           {/* USTAWIENIA GENEROWANIA — every knob the job ran with */}
           <div data-details-settings>
@@ -441,9 +444,46 @@ function qualityLabel(q: string, t: (key: string) => string): string {
 /* ── Użyte zdjęcia ────────────────────────────────────────────────────── */
 
 type Sources = { references: string[]; inspirations: string[]; marked: string | null };
-/** Signed once per generation per page load — paging back and forth through
- *  the filmstrip must not re-sign the same photos. */
-const sourcesCache = new Map<string, Sources>();
+/**
+ * Signed once per generation — paging back and forth through the filmstrip
+ * must not re-sign the same photos. The entries EXPIRE well before the URLs
+ * they hold do (the endpoint signs for an hour): a tab left open for an
+ * afternoon would otherwise serve dead links from cache and show broken
+ * thumbnails with no way back except a reload.
+ */
+const SOURCES_TTL_MS = 45 * 60 * 1000;
+const sourcesCache = new Map<string, { data: Sources; at: number }>();
+/** Requests still on the wire, so arrowing away and straight back joins the
+ *  pending call instead of signing the same photos a second time. */
+const sourcesInFlight = new Map<string, Promise<Sources | null>>();
+
+function cachedSources(generationId: string): Sources | undefined {
+  const hit = sourcesCache.get(generationId);
+  if (!hit) return undefined;
+  if (Date.now() - hit.at > SOURCES_TTL_MS) { sourcesCache.delete(generationId); return undefined; }
+  return hit.data;
+}
+
+function loadSources(generationId: string): Promise<Sources | null> {
+  const pending = sourcesInFlight.get(generationId);
+  if (pending) return pending;
+  const request = fetch(`/api/generations/sources?generationId=${encodeURIComponent(generationId)}`, { cache: "no-store" })
+    .then((res) => res.json() as Promise<{ ok: boolean } & Partial<Sources>>)
+    .then((json) => {
+      if (!json.ok) return null;
+      const data: Sources = {
+        references: json.references ?? [], inspirations: json.inspirations ?? [], marked: json.marked ?? null,
+      };
+      // Cached even when the viewer has already moved on — the answer is
+      // still right for that generation, and paging back must not re-sign.
+      sourcesCache.set(generationId, { data, at: Date.now() });
+      return data;
+    })
+    .catch(() => null)
+    .finally(() => { sourcesInFlight.delete(generationId); });
+  sourcesInFlight.set(generationId, request);
+  return request;
+}
 
 /**
  * The product references, inspiration photos and marked-guidance copy this
@@ -455,7 +495,7 @@ function SourcesSection({ item }: { item: GalleryItem }) {
   const { t } = useI18n();
   const expected = item.referenceCount + item.inspirationCount;
   const [state, setState] = useState<{ status: "loading" | "ready" | "error"; data?: Sources }>(() => {
-    const cached = sourcesCache.get(item.generationId);
+    const cached = cachedSources(item.generationId);
     if (cached) return { status: "ready", data: cached };
     // A job that carried no source photos has nothing to fetch — say so on
     // the first paint instead of flashing a skeleton for one frame.
@@ -465,26 +505,17 @@ function SourcesSection({ item }: { item: GalleryItem }) {
 
   useEffect(() => {
     let alive = true;
-    const cached = sourcesCache.get(item.generationId);
+    const cached = cachedSources(item.generationId);
     if (cached) { setState({ status: "ready", data: cached }); return; }
     if (expected === 0) {
       setState({ status: "ready", data: { references: [], inspirations: [], marked: null } });
       return;
     }
     setState({ status: "loading" });
-    fetch(`/api/generations/sources?generationId=${encodeURIComponent(item.generationId)}`, { cache: "no-store" })
-      .then((res) => res.json() as Promise<{ ok: boolean } & Partial<Sources>>)
-      .then((json) => {
-        if (!json.ok) { if (alive) setState({ status: "error" }); return; }
-        const data: Sources = {
-          references: json.references ?? [], inspirations: json.inspirations ?? [], marked: json.marked ?? null,
-        };
-        // Cache even when the viewer has already moved on — the answer is
-        // still right for that generation and paging back must not re-sign.
-        sourcesCache.set(item.generationId, data);
-        if (alive) setState({ status: "ready", data });
-      })
-      .catch(() => { if (alive) setState({ status: "error" }); });
+    void loadSources(item.generationId).then((data) => {
+      if (!alive) return;
+      setState(data ? { status: "ready", data } : { status: "error" });
+    });
     return () => { alive = false; };
   }, [item.generationId, expected]);
 

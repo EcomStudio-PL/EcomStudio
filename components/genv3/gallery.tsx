@@ -176,6 +176,19 @@ export function GenerationGallery({
   // a picked card, and the download must never include what cannot be seen.
   const chosen = useMemo(() => merged.filter((i) => picked.has(i.assetId)), [merged, picked]);
 
+  // ...and a hidden pick is DROPPED rather than merely ignored. Keeping it
+  // made the cap disagree with the counter: sixty picks in "Wszystkie", then
+  // a filter showing twenty of them read "Wybrano: 20" while every further
+  // tick was refused as "maksymalnie 60".
+  useEffect(() => {
+    setPicked((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(merged.map((i) => i.assetId));
+      const kept = [...prev].filter((id) => visible.has(id));
+      return kept.length === prev.size ? prev : new Set(kept);
+    });
+  }, [merged]);
+
   function togglePick(assetId: string) {
     setSelecting(true);
     const next = new Set(picked);
@@ -197,12 +210,26 @@ export function GenerationGallery({
     setPicked(new Set());
   }
 
-  // Escape leaves selection mode — but only when no modal is on top, as
-  // those own the key while open.
+  /**
+   * Escape leaves selection mode — but ONLY when it is really meant for the
+   * gallery. Every dialog in the app listens for Escape on `window` too, and
+   * `stopPropagation` between two listeners on the SAME target does nothing:
+   * without this guard, cancelling the prompt popup (or a bottom sheet, or
+   * the reference picker) silently threw away every pick behind it. A field
+   * the customer is typing in owns the key as well.
+   */
   useEffect(() => {
     if (!selecting || detailsId || regenItem) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setSelecting(false); setPicked(new Set()); }
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const el = e.target as HTMLElement | null;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el?.isContentEditable) return;
+      if (el?.closest?.("[role='dialog']")) return;
+      // Focus may sit on <body> while a dialog is open — the dialog still owns
+      // the key, so nothing on the page below may act on it.
+      if (document.querySelector("[role='dialog']")) return;
+      setSelecting(false);
+      setPicked(new Set());
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -416,8 +443,14 @@ export function GenerationGallery({
           out. On desktop it sticks to the top of the gallery's own scroller
           so the action stays reachable deep in a long history. */}
       {selecting && (
+        // Sticky on EVERY size: on a phone the page itself scrolls, so a bar
+        // that only stuck from `lg` left the customer scrolling back up
+        // through pages of history to reach "Pobierz wybrane". Below `lg` it
+        // parks under the app header (which is sticky at z-40, so the offset
+        // has to clear it); on desktop it sticks to the top of the gallery's
+        // own scroller, where there is no header in the way.
         <div data-select-bar
-          className="mb-3 flex flex-wrap items-center gap-1.5 rounded-xl border border-[rgb(var(--accent)/0.35)] bg-[rgb(var(--surface))] px-2.5 py-2 shadow-e2 lg:sticky lg:top-0 lg:z-20">
+          className="sticky top-[calc(var(--header-h)+env(safe-area-inset-top)+0.25rem)] z-20 mb-3 flex flex-wrap items-center gap-1.5 rounded-xl border border-[rgb(var(--accent)/0.35)] bg-[rgb(var(--surface))] px-2.5 py-2 shadow-e2 lg:top-0">
           {/* Phones: count + close on the first line, the two toggles on the
               second, the download full-width beneath. From `sm` up it is one
               line with the close at the far end. */}
@@ -608,13 +641,19 @@ function GalleryCard({
             !selecting && "group-hover:scale-[1.02]", picked && "scale-[0.94] rounded-lg")} />
       </button>
       {/* THE TICK — on hover and focus outside selection mode, always while
-          selecting or picked. Ticking a card outside the mode enters it. */}
+          selecting or picked. Ticking a card outside the mode enters it.
+          `pointer-events-none` while invisible is not cosmetic: opacity keeps
+          a control clickable, and a phone has no hover to reveal it, so a tap
+          near the thumbnail's corner used to enter selection mode instead of
+          opening the image — a hit target nobody could see. */}
       <button type="button" role="checkbox" aria-checked={picked} aria-label={t("genv3.selectCard")} data-pick
         onClick={(e) => { e.stopPropagation(); onPick(); }}
         className={cn(
           "absolute left-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full ring-2 transition-all duration-150",
           picked ? "bg-accent text-white ring-accent" : "bg-black/45 text-white/85 ring-white/60 backdrop-blur hover:bg-black/65",
-          selecting || picked ? "opacity-100" : "opacity-0 focus-visible:opacity-100 group-hover:opacity-100",
+          selecting || picked
+            ? "opacity-100"
+            : "pointer-events-none opacity-0 focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100",
         )}>
         {picked && <Check size={13} strokeWidth={3} aria-hidden />}
       </button>

@@ -11,6 +11,10 @@ import { GeneratorModeSwitch } from "@/components/generator/mode-switch";
 import { GeneratorWorkspace } from "@/components/genv3/workspace";
 import type { GenModel } from "@/components/genv3/types";
 
+/** Must match the editor's own cap (components/genv3/workspace.tsx): a
+ *  handed-over prompt that the popup would accept must not arrive clipped. */
+const PROMPT_MAX = 4000;
+
 export const dynamic = "force-dynamic";
 
 /** WŁASNY PROMPT — the customer's own words drive the generation. Product
@@ -52,9 +56,9 @@ export default async function GeneratorPage({ searchParams }: {
     const { data: gp } = await supabase
       .from("generated_prompts").select("prompt_text, prompt_origin")
       .eq("id", promptParam).eq("workspace_id", workspace.id).maybeSingle();
-    if (gp?.prompt_text && gp.prompt_origin === "custom") initialPrompt = gp.prompt_text.slice(0, 2000);
+    if (gp?.prompt_text && gp.prompt_origin === "custom") initialPrompt = gp.prompt_text.slice(0, PROMPT_MAX);
   } else if (promptParam) {
-    initialPrompt = promptParam.slice(0, 2000);
+    initialPrompt = promptParam.slice(0, PROMPT_MAX);
   }
 
 

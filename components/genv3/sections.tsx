@@ -252,7 +252,17 @@ function PromptModal({ initial, max, onClose, onApply }: {
   const { t } = useI18n();
   const [draft, setDraft] = useState(initial);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Escape while the caret is in the field only LEAVES the field — the
+      // same protection the details view gives its note. Closing outright
+      // would throw away a long prompt on the reflex that dismisses a
+      // spellcheck popup, and the draft lives only here.
+      const el = e.target as HTMLElement | null;
+      if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) { el.blur(); return; }
+      e.stopPropagation();
+      onClose();
+    };
     window.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -260,8 +270,12 @@ function PromptModal({ initial, max, onClose, onApply }: {
   }, [onClose]);
   const nearCap = draft.length > max * 0.9;
   return createPortal(
+    // `workspace` travels WITH the portal: the token scope lives on the
+    // generator page, and a dialog mounted on document.body would otherwise
+    // fall back to the marketing glass ramp and look like another app. Same
+    // reason ReferencePicker and the regenerate modal carry it.
     <div role="dialog" aria-modal="true" aria-label={t("genv3.prompt")} data-prompt-modal
-      className="fixed inset-0 z-[70] flex items-stretch justify-center sm:items-center sm:p-4">
+      className="workspace fixed inset-0 z-[70] flex items-stretch justify-center sm:items-center sm:p-4">
       <button type="button" aria-label={t("common.close")} onClick={onClose}
         className="scrim absolute inset-0 cursor-default backdrop-blur-[6px]" />
       <div className="overlay animate-pop relative flex h-full w-full min-w-0 flex-col rounded-none sm:h-auto sm:max-h-[92dvh] sm:max-w-2xl sm:rounded-2xl">
