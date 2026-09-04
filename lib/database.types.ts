@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.15"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -668,6 +668,80 @@ export type Database = {
           },
         ]
       }
+      email_settings: {
+        Row: {
+          confirmation_body: string
+          confirmation_enabled: boolean
+          confirmation_subject: string
+          from_email: string
+          from_name: string
+          id: boolean
+          last_test_error_safe: string | null
+          last_test_status: string | null
+          last_tested_at: string | null
+          reply_to: string
+          smtp_encryption: string
+          smtp_host: string
+          smtp_port: number
+          smtp_secret_auth_tag: string | null
+          smtp_secret_ciphertext: string | null
+          smtp_secret_iv: string | null
+          smtp_user: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          confirmation_body?: string
+          confirmation_enabled?: boolean
+          confirmation_subject?: string
+          from_email?: string
+          from_name?: string
+          id?: boolean
+          last_test_error_safe?: string | null
+          last_test_status?: string | null
+          last_tested_at?: string | null
+          reply_to?: string
+          smtp_encryption?: string
+          smtp_host?: string
+          smtp_port?: number
+          smtp_secret_auth_tag?: string | null
+          smtp_secret_ciphertext?: string | null
+          smtp_secret_iv?: string | null
+          smtp_user?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          confirmation_body?: string
+          confirmation_enabled?: boolean
+          confirmation_subject?: string
+          from_email?: string
+          from_name?: string
+          id?: boolean
+          last_test_error_safe?: string | null
+          last_test_status?: string | null
+          last_tested_at?: string | null
+          reply_to?: string
+          smtp_encryption?: string
+          smtp_host?: string
+          smtp_port?: number
+          smtp_secret_auth_tag?: string | null
+          smtp_secret_ciphertext?: string | null
+          smtp_secret_iv?: string | null
+          smtp_user?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feature_flags: {
         Row: {
           created_at: string
@@ -747,7 +821,7 @@ export type Database = {
           negative_prompt?: string | null
           primary_reference?: number | null
           priority?: number
-          product_id: string | null
+          product_id?: string | null
           prompt_encrypted?: string | null
           prompt_iv?: string | null
           prompt_origin?: string
@@ -1205,6 +1279,133 @@ export type Database = {
         }
         Relationships: []
       }
+      knowledge_examples: {
+        Row: {
+          correction: string | null
+          created_at: string
+          embedding: string | null
+          enabled: boolean
+          generated_path: string | null
+          hint_encrypted: string | null
+          hint_iv: string | null
+          hint_tag: string | null
+          id: string
+          prompt_used: string | null
+          reference_path: string | null
+          result_rating: number | null
+          set_id: string
+          tags: string[]
+          what_failed: string | null
+          what_worked: string | null
+        }
+        Insert: {
+          correction?: string | null
+          created_at?: string
+          embedding?: string | null
+          enabled?: boolean
+          generated_path?: string | null
+          hint_encrypted?: string | null
+          hint_iv?: string | null
+          hint_tag?: string | null
+          id?: string
+          prompt_used?: string | null
+          reference_path?: string | null
+          result_rating?: number | null
+          set_id: string
+          tags?: string[]
+          what_failed?: string | null
+          what_worked?: string | null
+        }
+        Update: {
+          correction?: string | null
+          created_at?: string
+          embedding?: string | null
+          enabled?: boolean
+          generated_path?: string | null
+          hint_encrypted?: string | null
+          hint_iv?: string | null
+          hint_tag?: string | null
+          id?: string
+          prompt_used?: string | null
+          reference_path?: string | null
+          result_rating?: number | null
+          set_id?: string
+          tags?: string[]
+          what_failed?: string | null
+          what_worked?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_examples_set_id_fkey"
+            columns: ["set_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_sets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      knowledge_sets: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          doc_text: string | null
+          error: string | null
+          file_count: number
+          id: string
+          model: string | null
+          name: string
+          notes: string | null
+          product_category: string | null
+          product_description: string | null
+          status: string
+          updated_at: string
+          version: number
+          zip_path: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          doc_text?: string | null
+          error?: string | null
+          file_count?: number
+          id?: string
+          model?: string | null
+          name: string
+          notes?: string | null
+          product_category?: string | null
+          product_description?: string | null
+          status?: string
+          updated_at?: string
+          version?: number
+          zip_path?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          doc_text?: string | null
+          error?: string | null
+          file_count?: number
+          id?: string
+          model?: string | null
+          name?: string
+          notes?: string | null
+          product_category?: string | null
+          product_description?: string | null
+          status?: string
+          updated_at?: string
+          version?: number
+          zip_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_sets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       media_assets: {
         Row: {
           alt: string | null
@@ -1512,84 +1713,84 @@ export type Database = {
       }
       profiles: {
         Row: {
-          account_manager_id: string | null
           accepted_privacy_at: string | null
           accepted_terms_at: string | null
+          account_manager_id: string | null
           acquisition_source: string | null
           acquisition_source_other: string | null
+          avatar_url: string | null
+          blocked: boolean
           company_account: boolean
           company_city: string | null
           company_country: string | null
           company_name: string | null
           company_postal_code: string | null
           company_street: string | null
+          created_at: string
+          email: string
           first_name: string | null
+          full_name: string | null
+          id: string
           last_name: string | null
           marketing_consent: boolean
           marketing_consent_at: string | null
           phone: string | null
-          tax_id: string | null
-          avatar_url: string | null
-          blocked: boolean
-          created_at: string
-          email: string
-          full_name: string | null
-          id: string
           role: Database["public"]["Enums"]["user_role"]
+          tax_id: string | null
           updated_at: string
         }
         Insert: {
-          account_manager_id?: string | null
           accepted_privacy_at?: string | null
           accepted_terms_at?: string | null
+          account_manager_id?: string | null
           acquisition_source?: string | null
           acquisition_source_other?: string | null
+          avatar_url?: string | null
+          blocked?: boolean
           company_account?: boolean
           company_city?: string | null
           company_country?: string | null
           company_name?: string | null
           company_postal_code?: string | null
           company_street?: string | null
+          created_at?: string
+          email: string
           first_name?: string | null
+          full_name?: string | null
+          id: string
           last_name?: string | null
           marketing_consent?: boolean
           marketing_consent_at?: string | null
           phone?: string | null
-          tax_id?: string | null
-          avatar_url?: string | null
-          blocked?: boolean
-          created_at?: string
-          email: string
-          full_name?: string | null
-          id: string
           role?: Database["public"]["Enums"]["user_role"]
+          tax_id?: string | null
           updated_at?: string
         }
         Update: {
-          account_manager_id?: string | null
           accepted_privacy_at?: string | null
           accepted_terms_at?: string | null
+          account_manager_id?: string | null
           acquisition_source?: string | null
           acquisition_source_other?: string | null
+          avatar_url?: string | null
+          blocked?: boolean
           company_account?: boolean
           company_city?: string | null
           company_country?: string | null
           company_name?: string | null
           company_postal_code?: string | null
           company_street?: string | null
+          created_at?: string
+          email?: string
           first_name?: string | null
+          full_name?: string | null
+          id?: string
           last_name?: string | null
           marketing_consent?: boolean
           marketing_consent_at?: string | null
           phone?: string | null
-          tax_id?: string | null
-          avatar_url?: string | null
-          blocked?: boolean
-          created_at?: string
-          email?: string
-          full_name?: string | null
-          id?: string
           role?: Database["public"]["Enums"]["user_role"]
+          tax_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1629,125 +1830,6 @@ export type Database = {
           id?: string
           name?: string
           sort_order?: number
-        }
-        Relationships: []
-      }
-      knowledge_examples: {
-        Row: {
-          correction: string | null
-          created_at: string
-          embedding: string | null
-          enabled: boolean
-          generated_path: string | null
-          hint_encrypted: string | null
-          hint_iv: string | null
-          hint_tag: string | null
-          id: string
-          prompt_used: string | null
-          reference_path: string | null
-          result_rating: number | null
-          set_id: string
-          tags: string[]
-          what_failed: string | null
-          what_worked: string | null
-        }
-        Insert: {
-          correction?: string | null
-          created_at?: string
-          embedding?: string | null
-          enabled?: boolean
-          generated_path?: string | null
-          hint_encrypted?: string | null
-          hint_iv?: string | null
-          hint_tag?: string | null
-          id?: string
-          prompt_used?: string | null
-          reference_path?: string | null
-          result_rating?: number | null
-          set_id: string
-          tags?: string[]
-          what_failed?: string | null
-          what_worked?: string | null
-        }
-        Update: {
-          correction?: string | null
-          created_at?: string
-          embedding?: string | null
-          enabled?: boolean
-          generated_path?: string | null
-          hint_encrypted?: string | null
-          hint_iv?: string | null
-          hint_tag?: string | null
-          id?: string
-          prompt_used?: string | null
-          reference_path?: string | null
-          result_rating?: number | null
-          set_id?: string
-          tags?: string[]
-          what_failed?: string | null
-          what_worked?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "knowledge_examples_set_id_fkey"
-            columns: ["set_id"]
-            isOneToOne: false
-            referencedRelation: "knowledge_sets"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      knowledge_sets: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          doc_text: string | null
-          error: string | null
-          file_count: number
-          id: string
-          model: string | null
-          name: string
-          notes: string | null
-          product_category: string | null
-          product_description: string | null
-          status: string
-          updated_at: string
-          version: number
-          zip_path: string | null
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          doc_text?: string | null
-          error?: string | null
-          file_count?: number
-          id?: string
-          model?: string | null
-          name: string
-          notes?: string | null
-          product_category?: string | null
-          product_description?: string | null
-          status?: string
-          updated_at?: string
-          version?: number
-          zip_path?: string | null
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          doc_text?: string | null
-          error?: string | null
-          file_count?: number
-          id?: string
-          model?: string | null
-          name?: string
-          notes?: string | null
-          product_category?: string | null
-          product_description?: string | null
-          status?: string
-          updated_at?: string
-          version?: number
-          zip_path?: string | null
         }
         Relationships: []
       }
@@ -1797,7 +1879,15 @@ export type Database = {
           updated_at?: string
           version?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "prompt_engine_rules_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       prompt_engine_versions: {
         Row: {
@@ -1824,7 +1914,15 @@ export type Database = {
           id?: string
           version?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "prompt_engine_versions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       prompt_sessions: {
         Row: {
@@ -1834,6 +1932,7 @@ export type Database = {
           cache_hit: boolean
           created_at: string
           description: string | null
+          engine_version: number | null
           error: string | null
           error_stage: string | null
           extra_info: string | null
@@ -1842,6 +1941,7 @@ export type Database = {
           feature_manifest: Json
           id: string
           image_analysis: Json
+          knowledge_used: Json | null
           latency_ms: number | null
           mode: string
           product_id: string | null
@@ -1849,8 +1949,6 @@ export type Database = {
           product_name: string
           reference_hash: string | null
           reference_paths: string[]
-          engine_version: number | null
-          knowledge_used: Json | null
           resolution: string | null
           session_type: string | null
           shot_briefs: Json | null
@@ -1867,6 +1965,7 @@ export type Database = {
           cache_hit?: boolean
           created_at?: string
           description?: string | null
+          engine_version?: number | null
           error?: string | null
           error_stage?: string | null
           extra_info?: string | null
@@ -1875,6 +1974,7 @@ export type Database = {
           feature_manifest?: Json
           id?: string
           image_analysis?: Json
+          knowledge_used?: Json | null
           latency_ms?: number | null
           mode?: string
           product_id?: string | null
@@ -1882,8 +1982,6 @@ export type Database = {
           product_name: string
           reference_hash?: string | null
           reference_paths?: string[]
-          engine_version?: number | null
-          knowledge_used?: Json | null
           resolution?: string | null
           session_type?: string | null
           shot_briefs?: Json | null
@@ -1900,6 +1998,7 @@ export type Database = {
           cache_hit?: boolean
           created_at?: string
           description?: string | null
+          engine_version?: number | null
           error?: string | null
           error_stage?: string | null
           extra_info?: string | null
@@ -1908,6 +2007,7 @@ export type Database = {
           feature_manifest?: Json
           id?: string
           image_analysis?: Json
+          knowledge_used?: Json | null
           latency_ms?: number | null
           mode?: string
           product_id?: string | null
@@ -1915,8 +2015,6 @@ export type Database = {
           product_name?: string
           reference_hash?: string | null
           reference_paths?: string[]
-          engine_version?: number | null
-          knowledge_used?: Json | null
           resolution?: string | null
           session_type?: string | null
           shot_briefs?: Json | null
@@ -2018,6 +2116,39 @@ export type Database = {
           provider_slug?: string
           state?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      search_queries: {
+        Row: {
+          clicked: boolean
+          created_at: string
+          id: string
+          media_type: string
+          query: string
+          result_count: number
+          user_id: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          clicked?: boolean
+          created_at?: string
+          id?: string
+          media_type?: string
+          query: string
+          result_count?: number
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          clicked?: boolean
+          created_at?: string
+          id?: string
+          media_type?: string
+          query?: string
+          result_count?: number
+          user_id?: string | null
+          workspace_id?: string | null
         }
         Relationships: []
       }
@@ -2203,39 +2334,6 @@ export type Database = {
           price_cents?: number
           slug?: string
           sort_order?: number
-        }
-        Relationships: []
-      }
-      search_queries: {
-        Row: {
-          clicked: boolean
-          created_at: string
-          id: string
-          media_type: string
-          query: string
-          result_count: number
-          user_id: string | null
-          workspace_id: string | null
-        }
-        Insert: {
-          clicked?: boolean
-          created_at?: string
-          id?: string
-          media_type?: string
-          query: string
-          result_count?: number
-          user_id?: string | null
-          workspace_id?: string | null
-        }
-        Update: {
-          clicked?: boolean
-          created_at?: string
-          id?: string
-          media_type?: string
-          query?: string
-          result_count?: number
-          user_id?: string | null
-          workspace_id?: string | null
         }
         Relationships: []
       }
@@ -2642,6 +2740,42 @@ export type Database = {
           },
         ]
       }
+      waitlist_subscribers: {
+        Row: {
+          confirmed_at: string | null
+          created_at: string
+          email: string
+          id: string
+          locale: string
+          metadata: Json
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          confirmed_at?: string | null
+          created_at?: string
+          email: string
+          id?: string
+          locale?: string
+          metadata?: Json
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          confirmed_at?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          locale?: string
+          metadata?: Json
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       workspace_members: {
         Row: {
           created_at: string
@@ -2775,10 +2909,8 @@ export type Database = {
             }
             Returns: undefined
           }
-      generation_credits_total: {
-        Args: Record<PropertyKey, never>
-        Returns: number
-      }
+      delete_generation: { Args: { gen_id: string }; Returns: string[] }
+      email_transport: { Args: never; Returns: Json }
       fail_usage_event:
         | { Args: { p_error: string; p_event_id: string }; Returns: string }
         | {
@@ -2789,6 +2921,7 @@ export type Database = {
             }
             Returns: string
           }
+      generation_credits_total: { Args: never; Returns: number }
       get_active_provider_credential: {
         Args: { p_provider_id: string }
         Returns: {
@@ -2796,6 +2929,15 @@ export type Database = {
           base_url: string
           encrypted_value: string
           iv: string
+        }[]
+      }
+      get_engine_rules: {
+        Args: never
+        Returns: {
+          content_encrypted: string
+          content_iv: string
+          content_tag: string
+          id: string
         }[]
       }
       get_welcome_credits: { Args: never; Returns: number }
@@ -2819,42 +2961,29 @@ export type Database = {
         }
         Returns: undefined
       }
-      providers_with_credentials: { Args: never; Returns: string[] }
-      delete_generation: {
-        Args: { gen_id: string }
-        Returns: string[]
-      }
-      get_engine_rules: {
-        Args: Record<PropertyKey, never>
-        Returns: {
-          id: string
-          content_encrypted: string | null
-          content_iv: string | null
-          content_tag: string | null
-        }[]
-      }
       match_knowledge_examples: {
         Args: { p_embedding: string; p_top_k?: number }
         Returns: {
+          hint_encrypted: string
+          hint_iv: string
+          hint_tag: string
           id: string
-          hint_encrypted: string | null
-          hint_iv: string | null
-          hint_tag: string | null
         }[]
       }
+      providers_with_credentials: { Args: never; Returns: string[] }
+      refund_usage_event: { Args: { p_event_id: string }; Returns: string }
       refund_usage_partial: {
-        Args: { p_event_id: string; p_amount: number }
+        Args: { p_amount: number; p_event_id: string }
         Returns: string
-      }
-      set_generation_note: {
-        Args: { gen_id: string; note: string }
-        Returns: undefined
       }
       set_generation_favorite: {
         Args: { gen_id: string; value: boolean }
         Returns: boolean
       }
-      refund_usage_event: { Args: { p_event_id: string }; Returns: string }
+      set_generation_note: {
+        Args: { gen_id: string; note: string }
+        Returns: undefined
+      }
       set_provider_health: {
         Args: {
           p_cooldown_seconds?: number
@@ -2863,6 +2992,15 @@ export type Database = {
           p_state: string
         }
         Returns: undefined
+      }
+      waitlist_subscribe: {
+        Args: {
+          p_email: string
+          p_locale?: string
+          p_metadata?: Json
+          p_source?: string
+        }
+        Returns: Json
       }
     }
     Enums: {
@@ -2904,12 +3042,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2933,11 +3071,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2958,11 +3096,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2983,11 +3121,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3000,11 +3138,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

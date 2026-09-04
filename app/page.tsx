@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { unstable_cache } from "next/cache";
 import { createClient as createAnonClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
@@ -7,14 +8,82 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { Brand } from "@/components/layout/brand";
 import { BlockRenderer } from "@/components/cms/blocks";
+import { LaunchPage } from "@/components/launch/launch-page";
+import { getHomepageMode, getLaunchStore, resolveLaunchContent } from "@/lib/server/launch-page";
 import { DEFAULT_HOME_BLOCKS } from "@/lib/cms-defaults";
 import type { CmsBlock } from "@/lib/cms";
 import { formatCredits, formatPrice } from "@/lib/utils";
 
-export default async function LandingPage() {
+/**
+ * The title and description follow whichever front door is live: before the
+ * launch a share of "/" should promise the launch, not the product tour.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const supabase = await createClient();
+  if ((await getHomepageMode(supabase)) !== "waitlist") return {};
+  const { dict, locale } = await getDictionary();
+  const content = resolveLaunchContent(await getLaunchStore(supabase), locale, dict.launch);
+  return {
+    title: content["seo.title"],
+    description: content["seo.description"],
+    openGraph: {
+      title: content["seo.ogTitle"],
+      description: content["seo.ogDescription"],
+      type: "website",
+      ...(content["hero.image"] ? { images: [content["hero.image"]] } : {}),
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: content["seo.ogTitle"],
+      description: content["seo.ogDescription"],
+    },
+  };
+}
+
+export default async function LandingPage({ searchParams }: {
+  searchParams: Promise<{ preview?: string; draft?: string }>;
+}) {
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
   const supabase = await createClient();
+  const { preview, draft } = await searchParams;
+  const [{ data: { user: visitor } }, liveMode] = await Promise.all([
+    supabase.auth.getUser(),
+    getHomepageMode(supabase),
+  ]);
+
+  // "Podgląd" from the admin panel: an admin — and only an admin — can look at
+  // the other version, or at the unpublished draft, without switching what the
+  // public sees. For everyone else the query string does nothing at all.
+  let mode = liveMode;
+  let which: "published" | "draft" = "published";
+  if (preview === "full" || preview === "waitlist") {
+    const { data: profile } = visitor
+      ? await supabase.from("profiles").select("role").eq("id", visitor.id).maybeSingle()
+      : { data: null };
+    if (profile?.role === "admin") {
+      mode = preview;
+      if (draft === "1") which = "draft";
+    }
+  }
+
+  // One switch, one route. `waitlist` renders the pre-launch page in place —
+  // no redirect, no second copy of the app, and the full landing below is
+  // untouched and one setting away from coming back.
+  if (mode === "waitlist") {
+    const store = await getLaunchStore(supabase);
+    return (
+      <LaunchPage
+        content={resolveLaunchContent(store, locale, dict.launch, which)}
+        signedIn={Boolean(visitor)}
+        loginLabel={t("launch.login")}
+        privacyNote={t("launch.privacy")}
+        privacyLinkLabel={t("launch.privacyLink")}
+        privacyLabel={t("launch.privacyPage")}
+        termsLabel={t("launch.terms")}
+      />
+    );
+  }
   // The CMS snapshot and the plan table are identical for every visitor, so
   // anonymous landing hits are served from a 5-minute cache instead of two
   // DB round-trips. Only the auth check stays per-request. The cached client
