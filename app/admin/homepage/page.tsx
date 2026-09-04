@@ -1,24 +1,7 @@
-import { createClient } from "@/lib/supabase/server";
-import { getDictionary } from "@/lib/i18n/server";
-import { makeT } from "@/lib/i18n/t";
-import { PageHeader } from "@/components/ui/page-header";
-import { HomepageSwitch } from "@/components/admin/homepage-switch";
-import { getHomepageMode } from "@/lib/server/launch-page";
+import { redirect } from "next/navigation";
 
-export default async function AdminHomepage() {
-  const supabase = await createClient();
-  const { dict } = await getDictionary();
-  const t = makeT(dict);
-  const mode = await getHomepageMode(supabase);
-
-  return (
-    <div>
-      <PageHeader
-        overline={t("admin.navGroups.marketing")}
-        title={t("launchAdmin.homepageTitle")}
-        sub={t("launchAdmin.homepageSub")}
-      />
-      <HomepageSwitch mode={mode} />
-    </div>
-  );
+/** The homepage switch moved into Strony WWW → Ustawienia globalne. Kept as a
+ *  redirect so a bookmark or an old link still lands somewhere useful. */
+export default function AdminHomepageRedirect() {
+  redirect("/admin/www");
 }

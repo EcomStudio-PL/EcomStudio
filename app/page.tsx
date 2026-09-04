@@ -9,7 +9,10 @@ import { makeT } from "@/lib/i18n/t";
 import { Brand } from "@/components/layout/brand";
 import { BlockRenderer } from "@/components/cms/blocks";
 import { LaunchPage } from "@/components/launch/launch-page";
-import { getHomepageMode, getLaunchStore, resolveLaunchContent } from "@/lib/server/launch-page";
+import {
+  getHomepageMode, getLaunchStore, resolveLaunchContent, launchFieldsFromBlocks,
+} from "@/lib/server/launch-page";
+import { getPublicSite, getPublishedPage, getDraftBlocks } from "@/lib/server/public-site";
 import { DEFAULT_HOME_BLOCKS } from "@/lib/cms-defaults";
 import type { CmsBlock } from "@/lib/cms";
 import { formatCredits, formatPrice } from "@/lib/utils";
@@ -26,7 +29,12 @@ export async function generateMetadata(): Promise<Metadata> {
   const supabase = await createClient();
   if ((await getHomepageMode(supabase)) !== "waitlist") return canonical;
   const { dict, locale } = await getDictionary();
-  const content = resolveLaunchContent(await getLaunchStore(supabase), locale, dict.launch);
+  const [store, page] = await Promise.all([
+    getLaunchStore(supabase), getPublishedPage(supabase, "premiera"),
+  ]);
+  const content = resolveLaunchContent(
+    store, locale, dict.launch, "published", launchFieldsFromBlocks(page?.blocks, locale),
+  );
   return {
     ...canonical,
     title: content["seo.title"],
@@ -77,10 +85,21 @@ export default async function LandingPage({ searchParams }: {
   // no redirect, no second copy of the app, and the full landing below is
   // untouched and one setting away from coming back.
   if (mode === "waitlist") {
-    const store = await getLaunchStore(supabase);
+    // Published snapshot for a visitor; the admin's draft only when they
+    // explicitly asked for the draft preview.
+    const [store, site, published, draftBlocks] = await Promise.all([
+      getLaunchStore(supabase),
+      getPublicSite(supabase),
+      getPublishedPage(supabase, "premiera"),
+      which === "draft" ? getDraftBlocks(supabase, "premiera") : Promise.resolve([]),
+    ]);
+    const blocks = which === "draft" ? draftBlocks : published?.blocks;
     return (
       <LaunchPage
-        content={resolveLaunchContent(store, locale, dict.launch, which)}
+        social={site}
+        content={resolveLaunchContent(
+          store, locale, dict.launch, which, launchFieldsFromBlocks(blocks, locale),
+        )}
         signedIn={Boolean(visitor)}
         loginLabel={t("launch.login")}
         privacyNote={t("launch.privacy")}
@@ -105,7 +124,9 @@ export default async function LandingPage({ searchParams }: {
       return { page, plans };
     },
     ["landing-content"],
-    { revalidate: 300 },
+    // An explicit tag so publishing a page clears this immediately rather
+    // than up to five minutes later.
+    { revalidate: 300, tags: ["landing-content"] },
   );
   const [{ page, plans }, { data: { user } }] = await Promise.all([
     loadLandingContent(),

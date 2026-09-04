@@ -17,6 +17,8 @@ import type { Client } from "@/lib/services/workspace";
 export const LAUNCH_FIELDS = [
   "hero.badge", "hero.h1", "hero.sub", "hero.placeholder", "hero.cta", "hero.note",
   "hero.trust", "hero.image", "hero.consent",
+  "benefit.1", "benefit.2", "benefit.3",
+  "success.title", "success.body", "success.follow",
   "value.heading", "value.t1", "value.b1", "value.t2", "value.b2", "value.t3", "value.b3",
   "how.heading", "how.s1", "how.s2", "how.s3",
   "final.heading", "final.body", "final.cta",
@@ -89,6 +91,33 @@ export function launchDefault(defaults: LaunchDefaults, field: LaunchField): str
 }
 
 /**
+ * The launch page's section as stored in the CMS: one `launch` block whose
+ * `content.fields` holds the same field keys, localized.
+ *
+ * The page now lives in cms_pages like every other public page, so it gets the
+ * draft → preview → publish model for free. The old app_settings.launch_page
+ * rows are still read underneath as a second layer of overrides, so a site
+ * that was edited before this change keeps its copy without a data migration.
+ */
+export function launchFieldsFromBlocks(
+  blocks: { type: string; content?: unknown }[] | null | undefined,
+  locale: string,
+): { fields: Partial<Record<LaunchField, string>>; managed: boolean } {
+  const block = (blocks ?? []).find((b) => b.type === "launch");
+  const bag = ((block?.content ?? {}) as { fields?: Record<string, Record<string, string>> }).fields ?? {};
+  const out: Partial<Record<LaunchField, string>> = {};
+  for (const field of LAUNCH_FIELDS) {
+    const text = bag[field];
+    const value = text?.[locale] ?? text?.pl ?? text?.en ?? "";
+    if (typeof value === "string" && value.trim()) out[field] = value.trim();
+  }
+  // `managed` says the CMS owns this page now. Once it does, the legacy
+  // app_settings overrides must stop applying — otherwise clearing a field in
+  // the editor would resurrect the old value with no UI left to remove it.
+  return { fields: out, managed: Boolean(block) };
+}
+
+/**
  * The copy for one render: shipped defaults, with the admin's overrides on
  * top. `draft` is what the admin preview asks for; the live page always reads
  * what was published.
@@ -98,11 +127,15 @@ export function resolveLaunchContent(
   locale: string,
   defaults: LaunchDefaults,
   which: "published" | "draft" = "published",
+  /** What the CMS page holds — the highest-priority layer. */
+  fromCms: { fields: Partial<Record<LaunchField, string>>; managed: boolean } = { fields: {}, managed: false },
 ): Record<LaunchField, string> {
-  const overrides = store[which][locale] ?? store[which].pl ?? {};
+  // A CMS-managed page ignores the legacy store entirely: two override layers
+  // would mean an admin could not clear a field back to the shipped default.
+  const overrides = fromCms.managed ? {} : (store[which][locale] ?? store[which].pl ?? {});
   const out = {} as Record<LaunchField, string>;
   for (const field of LAUNCH_FIELDS) {
-    out[field] = overrides[field] ?? launchDefault(defaults, field);
+    out[field] = fromCms.fields[field] ?? overrides[field] ?? launchDefault(defaults, field);
   }
   return out;
 }

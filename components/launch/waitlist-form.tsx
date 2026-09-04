@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { ArrowRight, Check, Loader2 } from "lucide-react";
+import { FacebookIcon, InstagramIcon } from "@/components/launch/social-icons";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 
@@ -13,7 +14,10 @@ import { cn } from "@/lib/utils";
  * iOS does not zoom the page; the state after submitting replaces the form
  * rather than sitting under it, so the answer is never below the fold.
  */
-export function WaitlistForm({ placeholder, cta, source, consentLabel, className, id }: {
+export function WaitlistForm({
+  placeholder, cta, source, consentLabel, className, id,
+  successTitle, successBody, successFollow, social,
+}: {
   placeholder: string;
   cta: string;
   /** Which block this submission came from — kept on the row for the admin. */
@@ -23,6 +27,13 @@ export function WaitlistForm({ placeholder, cta, source, consentLabel, className
   consentLabel?: string;
   className?: string;
   id?: string;
+  /** Success-state copy, editable in the admin. */
+  successTitle?: string;
+  successBody?: string;
+  successFollow?: string;
+  /** Social profiles from the site settings. An empty URL means no button —
+   *  a dead social icon is worse than none. */
+  social?: { instagramUrl: string; facebookUrl: string };
 }) {
   const { t, locale } = useI18n();
   const [email, setEmail] = useState("");
@@ -51,23 +62,42 @@ export function WaitlistForm({ placeholder, cta, source, consentLabel, className
   }
 
   if (state === "created") {
+    const socials = [
+      { key: "instagram", url: social?.instagramUrl, Icon: InstagramIcon, label: "Instagram" },
+      { key: "facebook", url: social?.facebookUrl, Icon: FacebookIcon, label: "Facebook" },
+    ].filter((s) => Boolean(s.url));
     return (
       <div data-waitlist-success
-        className="flex items-start gap-3 rounded-2xl border border-[rgb(var(--accent)/0.35)] bg-accent-soft/25 px-4 py-3.5">
-        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-white">
-          <Check size={14} strokeWidth={3} aria-hidden />
+        className="rounded-2xl border border-[rgb(var(--accent)/0.35)] bg-accent-soft/25 px-5 py-5 sm:px-6 sm:py-6">
+        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-accent text-white shadow-[0_10px_30px_-10px_rgb(var(--accent)/0.9)]">
+          <Check size={22} strokeWidth={3} aria-hidden />
         </span>
-        <span className="min-w-0">
-          <span className="block text-[14px] font-semibold tracking-tight">{t("launch.ok")}</span>
-          <span className="mt-0.5 block text-[13px] text-muted">{t("launch.okBody")}</span>
-        </span>
+        <p className="mt-4 font-display text-[19px] font-semibold tracking-tight">{successTitle || t("launch.ok")}</p>
+        <p className="mt-1.5 text-[14px] leading-relaxed text-muted">{successBody || t("launch.okBody")}</p>
+        {socials.length > 0 && (
+          <>
+            <p className="mt-5 text-[13px] font-semibold">{successFollow || t("launch.success.follow")}</p>
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              {socials.map(({ key, url, Icon, label }) => (
+                // noreferrer as well as noopener: the launch page should not
+                // announce itself to a social network as the referrer.
+                <a key={key} href={url} target="_blank" rel="noopener noreferrer"
+                  data-waitlist-social={key}
+                  className="inline-flex h-11 items-center gap-2 rounded-xl border border-line bg-surface px-4 text-[13.5px] font-semibold transition-colors hover:border-[rgb(var(--accent)/0.45)] hover:bg-raised">
+                  <Icon size={16} />
+                  {label}
+                </a>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     );
   }
 
   return (
     <form onSubmit={submit} data-waitlist-form className={cn("w-full", className)} noValidate>
-      <div className="flex flex-col gap-2 sm:flex-row">
+      <div className="flex flex-col gap-2.5 sm:flex-row">
         <label htmlFor={id ?? `waitlist-${source}`} className="sr-only">{placeholder}</label>
         <input
           id={id ?? `waitlist-${source}`}
@@ -79,7 +109,14 @@ export function WaitlistForm({ placeholder, cta, source, consentLabel, className
           onChange={(e) => { setEmail(e.target.value); if (state !== "idle") setState("idle"); }}
           placeholder={placeholder}
           data-waitlist-email
-          className="h-12 w-full min-w-0 flex-1 rounded-xl border border-line bg-surface px-4 text-base text-ink outline-none transition-colors placeholder:text-faint focus:border-[rgb(var(--accent)/0.55)] focus:ring-4 focus:ring-[rgb(var(--accent)/0.14)] sm:text-[15px]"
+          // 56px on phones, 60 from sm: the single most important field on the
+          // page should read as the invitation it is, and 16px text keeps iOS
+          // from zooming the layout when it gains focus.
+          //
+          // `flex-1` is deliberately sm-only. The row stacks on phones, so
+          // there flex sizes the HEIGHT — and a flex-basis of 0 would beat the
+          // height class and collapse the field to its text.
+          className="h-14 w-full min-w-0 rounded-2xl border border-line bg-surface px-5 text-base text-ink outline-none transition-[border-color,box-shadow] placeholder:text-faint focus:border-[rgb(var(--accent)/0.6)] focus:ring-4 focus:ring-[rgb(var(--accent)/0.16)] sm:h-[60px] sm:flex-1 sm:text-[16px]"
         />
         {/* Honeypot: off-screen, never announced, never focusable. */}
         <input
@@ -88,7 +125,9 @@ export function WaitlistForm({ placeholder, cta, source, consentLabel, className
           className="pointer-events-none absolute h-0 w-0 opacity-0"
         />
         <button type="submit" disabled={state === "busy" || (needsConsent && !consent)} data-waitlist-submit
-          className={cn("cta flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl px-6 text-[15px] font-semibold",
+          className={cn(
+            "cta flex h-14 w-full shrink-0 items-center justify-center gap-2 rounded-2xl px-7 text-[15.5px] font-semibold",
+            "sm:h-[60px] sm:w-auto",
             state === "busy" && "cursor-wait opacity-70")}>
           {state === "busy"
             ? <><Loader2 size={16} className="animate-spin" aria-hidden />{t("launch.busy")}</>

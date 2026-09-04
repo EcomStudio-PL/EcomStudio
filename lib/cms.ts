@@ -24,8 +24,17 @@ export type CmsBlockContent = {
   mediaUrl?: string;
   media2Url?: string;
   posterUrl?: string;
+  /** Alternative text for mediaUrl — localized, because a screen reader
+   *  should hear the visitor's own language. */
+  alt?: LocaleText;
   alignment?: "left" | "right" | "center";
   items?: CmsItem[];
+  /**
+   * Open bag for section types whose fields are their own vocabulary rather
+   * than the shared title/subtitle/cta shape — today only the launch page,
+   * whose 30-odd labelled fields would otherwise each need a column here.
+   */
+  fields?: Record<string, LocaleText>;
 };
 
 export type CmsBlock = {
@@ -38,7 +47,23 @@ export type CmsBlock = {
 export const BLOCK_TYPES = [
   "hero", "showcase", "before_after", "video", "product_lock", "workflow",
   "use_cases", "features", "stats", "text_image", "cta", "faq", "pricing", "logo_cloud",
+  // Added with the unified page editor.
+  "text", "media", "benefits", "legal", "contact", "launch",
 ] as const;
+
+/**
+ * The section types an admin may actually add, in the order the picker shows
+ * them. Deliberately NOT the same list as BLOCK_TYPES: `pricing` has no
+ * renderer, and `launch` belongs to exactly one page and is created with it,
+ * so neither is offered as "add a section".
+ */
+export const SECTION_TYPES = [
+  "hero", "text", "media", "video", "benefits", "workflow", "features",
+  "showcase", "before_after", "product_lock", "use_cases", "stats",
+  "text_image", "cta", "faq", "legal", "contact", "logo_cloud",
+] as const;
+
+export type SectionType = (typeof SECTION_TYPES)[number];
 
 export function lt(text: LocaleText | undefined, locale: string): string {
   if (!text) return "";

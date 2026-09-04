@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Check } from "lucide-react";
 import type { CmsBlock, CmsBlockContent } from "@/lib/cms";
 import { lt, safeUrl, videoEmbedUrl } from "@/lib/cms";
 import { Reveal, BeforeAfter, LazyVideo } from "./widgets";
@@ -23,6 +24,13 @@ function Media({ url, alt }: { url?: string; alt: string }) {
   if (!safe) return null;
   // eslint-disable-next-line @next/next/no-img-element
   return <img src={safe} alt={alt} loading="lazy" className="h-full w-full rounded-2xl object-cover" />;
+}
+
+/** A blank line is the only formatting an admin can type into a plain
+ *  textarea, so it is what decides where one paragraph ends and the next
+ *  begins — otherwise long copy renders as a single unreadable blob. */
+function paragraphs(text: string): string[] {
+  return text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
 }
 
 function Block({ block, locale, labels }: {
@@ -60,7 +68,7 @@ function Block({ block, locale, labels }: {
               <LazyVideo embed={videoEmbedUrl(c.mediaUrl)} posterUrl={safeUrl(c.posterUrl)} label={labels.video} />
             ) : c.mediaUrl ? (
               <div className="aspect-video overflow-hidden rounded-2xl border border-line shadow-2xl">
-                <Media url={c.mediaUrl} alt={T("title")} />
+                <Media url={c.mediaUrl} alt={T("alt") || T("title")} />
               </div>
             ) : (
               <HeroMockup />
@@ -230,7 +238,7 @@ function Block({ block, locale, labels }: {
           </Reveal>
           <Reveal className={right ? "lg:order-2" : ""}>
             <div className="aspect-video overflow-hidden rounded-2xl border border-line">
-              <Media url={c.mediaUrl} alt={T("title")} />
+              <Media url={c.mediaUrl} alt={T("alt") || T("title")} />
             </div>
           </Reveal>
         </section>
@@ -277,6 +285,112 @@ function Block({ block, locale, labels }: {
                 {T("ctaLabel")}
               </Link>
             )}
+          </Reveal>
+        </section>
+      );
+
+    case "text":
+      return (
+        <section className="py-12">
+          <Reveal className="max-w-3xl">
+            {T("title") && <h2 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">{T("title")}</h2>}
+            {paragraphs(T("description")).map((p, i) => (
+              <p key={i} className={`text-sm leading-relaxed text-muted sm:text-base ${i === 0 ? "mt-4" : "mt-3"}`}>{p}</p>
+            ))}
+          </Reveal>
+        </section>
+      );
+
+    case "media": {
+      const video = c.mediaUrl ? videoEmbedUrl(c.mediaUrl) : null;
+      const image = video ? null : safeUrl(c.mediaUrl);
+      if (!video && !image) return null;
+      return (
+        <section className="py-12">
+          <Reveal>
+            <figure className="mx-auto max-w-4xl">
+              {video ? (
+                <LazyVideo embed={video} posterUrl={safeUrl(c.posterUrl)} label={labels.video} />
+              ) : (
+                <div className="aspect-video overflow-hidden rounded-2xl border border-line">
+                  <Media url={c.mediaUrl} alt={T("alt")} />
+                </div>
+              )}
+              {(T("title") || T("description")) && (
+                <figcaption className="mt-4 text-center">
+                  {T("title") && <p className="font-display text-base font-semibold">{T("title")}</p>}
+                  {T("description") && <p className="mt-1.5 text-sm text-muted">{T("description")}</p>}
+                </figcaption>
+              )}
+            </figure>
+          </Reveal>
+        </section>
+      );
+    }
+
+    case "benefits":
+      return (
+        <section className="py-12">
+          <Reveal>
+            <h2 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">{T("title")}</h2>
+            {T("description") && <p className="mt-2 max-w-xl text-sm text-muted">{T("description")}</p>}
+          </Reveal>
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            {items.map((it, i) => (
+              <Reveal key={i} delay={(i % 3) * 80}>
+                <div className="panel panel-interactive h-full rounded-2xl p-6">
+                  <span aria-hidden className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-soft text-accent">
+                    <Check size={18} />
+                  </span>
+                  <h3 className="mt-4 font-display text-sm font-semibold">{lt(it.title, locale)}</h3>
+                  {it.description && <p className="mt-1.5 text-sm text-muted">{lt(it.description, locale)}</p>}
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </section>
+      );
+
+    // Regulamin / Polityka prywatności: a plain reading column, deliberately
+    // without Reveal — legal text must never depend on an animation to appear.
+    case "legal":
+      return (
+        <section className="py-12">
+          <div className="max-w-2xl">
+            <h2 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">{T("title")}</h2>
+            {paragraphs(T("description")).map((p, i) => (
+              <p key={i} className="mt-4 text-sm leading-7 text-muted">{p}</p>
+            ))}
+          </div>
+        </section>
+      );
+
+    case "contact":
+      return (
+        <section className="py-12">
+          <Reveal>
+            <h2 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">{T("title")}</h2>
+            {T("description") && <p className="mt-2 max-w-xl text-sm text-muted">{T("description")}</p>}
+          </Reveal>
+          <Reveal className="mt-8">
+            <dl className="panel max-w-2xl divide-y divide-line rounded-2xl">
+              {items.map((it, i) => {
+                const href = safeUrl(it.url);
+                const value = lt(it.description, locale);
+                return (
+                  <div key={i} className="flex min-h-[44px] flex-col justify-center gap-0.5 px-5 py-3.5 sm:flex-row sm:items-center sm:gap-6">
+                    <dt className="text-sm text-muted sm:w-40 sm:shrink-0">{lt(it.title, locale)}</dt>
+                    <dd className="min-w-0 break-words text-sm font-medium">
+                      {href ? (
+                        <a href={href} rel="noreferrer" className="text-accent underline-offset-4 transition-colors hover:underline">
+                          {value || href}
+                        </a>
+                      ) : value}
+                    </dd>
+                  </div>
+                );
+              })}
+            </dl>
           </Reveal>
         </section>
       );

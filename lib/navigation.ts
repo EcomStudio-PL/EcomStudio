@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Package, Sparkles, PenLine, Images, History as HistoryIcon,
   Coins, Rocket, LifeBuoy, Settings, Shield, Users, Building2, Cpu, Plug, Wrench,
   FileText, ScrollText, SlidersHorizontal, Wand2, BarChart3, Layers, Globe,
-  FolderOpen, Lightbulb, MessageSquare, BrainCircuit, Home, Megaphone, ListChecks, Mail,
+  FolderOpen, Lightbulb, MessageSquare, BrainCircuit, ListChecks, Mail,
 } from "lucide-react";
 
 /** Single source of truth for app navigation. Client drawer, desktop
@@ -78,10 +78,10 @@ export const ADMIN_NAV: readonly NavGroup[] = [
     { href: "/admin/concepts", key: "concepts", icon: PenLine },
     { href: "/admin/tools", key: "tools", icon: Wrench },
   ]},
+  // One entry per job, not one per screen: every public page — the homepage,
+  // the launch page, the legal documents — is edited behind "Strony WWW".
   { key: "marketing", items: [
-    { href: "/admin/homepage", key: "homepage", icon: Home },
     { href: "/admin/www", key: "www", icon: Globe },
-    { href: "/admin/launch", key: "launch", icon: Megaphone },
     { href: "/admin/waitlist", key: "waitlist", icon: ListChecks },
     { href: "/admin/media", key: "media", icon: FolderOpen },
   ]},

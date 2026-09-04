@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Camera, Lock, ShoppingBag } from "lucide-react";
+import { Camera, Check, Lock, ShoppingBag } from "lucide-react";
 import { Brand } from "@/components/layout/brand";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { LocaleSwitcher } from "@/components/layout/locale-switcher";
@@ -18,7 +18,9 @@ import type { LaunchField } from "@/lib/server/launch-page";
  * separate marketing palette, so dark and light are both correct by
  * construction and the page cannot drift from the app it is announcing.
  */
-export function LaunchPage({ content, signedIn, loginLabel, privacyNote, privacyLinkLabel, privacyLabel, termsLabel }: {
+export function LaunchPage({
+  content, signedIn, loginLabel, privacyNote, privacyLinkLabel, privacyLabel, termsLabel, social,
+}: {
   content: Record<LaunchField, string>;
   signedIn: boolean;
   loginLabel: string;
@@ -27,8 +29,12 @@ export function LaunchPage({ content, signedIn, loginLabel, privacyNote, privacy
   privacyLinkLabel: string;
   privacyLabel: string;
   termsLabel: string;
+  /** Social profiles from the site settings; empty URLs render nothing. */
+  social: { instagramUrl: string; facebookUrl: string };
 }) {
   const c = content;
+  // What someone gets for leaving an address, said in three words each.
+  const perks = [c["benefit.1"], c["benefit.2"], c["benefit.3"]].filter(Boolean);
   const values = [
     { icon: Camera, title: c["value.t1"], body: c["value.b1"] },
     { icon: Lock, title: c["value.t2"], body: c["value.b2"] },
@@ -76,8 +82,24 @@ export function LaunchPage({ content, signedIn, loginLabel, privacyNote, privacy
 
             <div className="mt-8 max-w-xl">
               <WaitlistForm placeholder={c["hero.placeholder"]} cta={c["hero.cta"]} source="hero"
-                consentLabel={c["hero.consent"]} id="waitlist-hero" />
+                consentLabel={c["hero.consent"]} id="waitlist-hero"
+                successTitle={c["success.title"]} successBody={c["success.body"]}
+                successFollow={c["success.follow"]} social={social} />
               <p className="mt-2.5 text-[13px] text-muted">{c["hero.note"]}</p>
+
+              {perks.length > 0 && (
+                <ul data-launch-perks className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  {perks.map((perk) => (
+                    <li key={perk}
+                      className="flex items-center gap-2 rounded-xl border border-[rgb(var(--accent)/0.22)] bg-accent-soft/20 px-3 py-2 text-[13px] font-medium">
+                      <span aria-hidden className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/90 text-white">
+                        <Check size={12} strokeWidth={3} />
+                      </span>
+                      {perk}
+                    </li>
+                  ))}
+                </ul>
+              )}
               <p className="mt-4 flex items-center gap-2 text-[13px] font-medium text-ink">
                 <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />
                 {c["hero.trust"]}
@@ -149,7 +171,9 @@ export function LaunchPage({ content, signedIn, loginLabel, privacyNote, privacy
               <p className="mt-3 text-[15px] leading-relaxed text-muted">{c["final.body"]}</p>
               <div className="mt-7 max-w-xl">
                 <WaitlistForm placeholder={c["hero.placeholder"]} cta={c["final.cta"]} source="final"
-                  consentLabel={c["hero.consent"]} id="waitlist-final" />
+                  consentLabel={c["hero.consent"]} id="waitlist-final"
+                  successTitle={c["success.title"]} successBody={c["success.body"]}
+                  successFollow={c["success.follow"]} social={social} />
               </div>
             </div>
           </div>

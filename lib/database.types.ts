@@ -450,9 +450,11 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          kind: string
           published_at: string | null
           published_snapshot: Json | null
           slug: string
+          sort_order: number
           status: string
           title: string
           updated_at: string
@@ -460,9 +462,11 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          kind?: string
           published_at?: string | null
           published_snapshot?: Json | null
           slug: string
+          sort_order?: number
           status?: string
           title: string
           updated_at?: string
@@ -470,9 +474,11 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          kind?: string
           published_at?: string | null
           published_snapshot?: Json | null
           slug?: string
+          sort_order?: number
           status?: string
           title?: string
           updated_at?: string

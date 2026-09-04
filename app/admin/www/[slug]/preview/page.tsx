@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
@@ -13,8 +13,11 @@ export default async function CmsPreview({ params }: { params: Promise<{ slug: s
   const supabase = await createClient();
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
-  const { data: page } = await supabase.from("cms_pages").select("id, title").eq("slug", slug).maybeSingle();
+  const { data: page } = await supabase.from("cms_pages").select("id, title, kind").eq("slug", slug).maybeSingle();
   if (!page) notFound();
+  // The launch page is not a stack of blocks — previewing it means seeing the
+  // real page, so send the admin to the draft view of "/" itself.
+  if (page.kind === "launch") redirect("/?preview=waitlist&draft=1");
   const { data: blocks } = await supabase.from("cms_blocks")
     .select("type, sort_order, visible, content").eq("page_id", page.id).order("sort_order");
   return (
