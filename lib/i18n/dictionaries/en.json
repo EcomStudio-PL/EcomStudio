@@ -2232,7 +2232,8 @@
     "sourcesHint": "The photos the AI worked from for this generation: your product shots and, if you added any, the inspiration photos.",
     "sourcesUnknown": "No reference-photo data was recorded for this generation.",
     "regenPrevModel": "Previous",
-    "regenMarkTitle": "Mark an element"
+    "regenMarkTitle": "Mark an element",
+    "regenModelSub": "Pick the engine for this retake."
   },
   "retouch": {
     "title": "Photo retouch",

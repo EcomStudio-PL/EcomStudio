@@ -2232,7 +2232,8 @@
     "sourcesHint": "Zdjęcia, na których AI pracowało przy tej generacji: Twoje zdjęcia produktu oraz — jeśli dodałeś — zdjęcia inspiracji.",
     "sourcesUnknown": "Brak zapisanych danych o zdjęciach referencyjnych dla tej generacji.",
     "regenPrevModel": "Poprzedni",
-    "regenMarkTitle": "Zaznacz element"
+    "regenMarkTitle": "Zaznacz element",
+    "regenModelSub": "Wybierz model do regeneracji obrazu."
   },
   "retouch": {
     "title": "Retusz zdjęć",

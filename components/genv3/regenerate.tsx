@@ -175,7 +175,7 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
           correction being written are both full-size, side by side, and the
           columns scroll rather than the page. */}
       <div data-regen-modal
-        className="overlay animate-pop relative flex h-full w-full min-w-0 flex-col overflow-y-auto rounded-none p-4 sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-4rem)] sm:max-w-[1200px] sm:rounded-2xl sm:p-5 lg:overflow-hidden">
+        className="overlay animate-pop relative flex h-full w-full min-w-0 flex-col overflow-y-auto rounded-none p-4 sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:w-[calc(100vw-3rem)] sm:max-w-[1180px] sm:rounded-2xl sm:p-5 lg:overflow-hidden">
         {/* No title bar. The image says what is being edited and the first
             heading says what to do with it; a banner would only push both
             further down. The name stays for screen readers on the dialog. */}
@@ -191,7 +191,7 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
               <div className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={item.url} alt={item.product ?? ""} draggable={false}
-                  className="block max-h-[40dvh] w-auto max-w-full select-none lg:max-h-[64dvh]" />
+                  className="block max-h-[40dvh] w-auto max-w-full select-none lg:max-h-[58dvh] [@media(max-height:800px)]:lg:max-h-[50dvh]" />
                 <AnnotationCanvas
                   className="absolute inset-0"
                   url={item.url}
@@ -241,25 +241,25 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
           </div>
 
           {/* ── Instruction + tools + model ───────────────────────────── */}
-          <div className="thin-scroll min-w-0 space-y-5 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
+          <div className="thin-scroll min-w-0 space-y-3.5 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
             <div>
               <p className="mb-2 text-[14px] font-semibold tracking-tight">{t("genv3.regenDescribe")}</p>
               <div className="relative">
                 <textarea
                   value={instruction}
                   onChange={(e) => setInstruction(e.target.value)}
-                  rows={4}
+                  rows={3}
                   maxLength={500}
                   placeholder={t("genv3.regenPh")}
                   aria-label={t("genv3.regenDescribe")}
                   data-regen-instruction
-                  className="w-full resize-y rounded-xl border border-line bg-sunken/50 p-3.5 pb-7 text-[13px] leading-relaxed text-ink outline-none transition-colors placeholder:text-faint focus:border-[rgb(var(--accent)/0.5)]"
+                  className="w-full resize-y rounded-xl border border-line bg-sunken/50 p-3 pb-7 text-[13px] leading-relaxed text-ink outline-none transition-colors placeholder:text-faint focus:border-[rgb(var(--accent)/0.5)]"
                 />
                 <span className="pointer-events-none absolute bottom-2.5 right-3 text-[11px] font-medium tabular-nums text-faint">
                   {instruction.length}/500
                 </span>
               </div>
-              <p className="mt-1 text-[10.5px] leading-relaxed text-faint">{t("genv3.regenEmptyHint")}</p>
+              <p className="mt-1 text-[10.5px] leading-snug text-faint">{t("genv3.regenEmptyHint")}</p>
             </div>
 
             {/* 2. Mark the changes — the REAL tools */}
@@ -284,7 +284,7 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
                     <button key={tl.key} type="button" aria-pressed={on} onClick={() => setTool(tl.key)}
                       data-regen-tool={tl.key}
                       className={cn(
-                        "flex min-h-[58px] flex-col items-center justify-center gap-1.5 rounded-xl border px-1 py-2 transition-colors duration-150",
+                        "flex min-h-[52px] flex-col items-center justify-center gap-1 rounded-xl border px-1 py-1.5 transition-colors duration-150",
                         on ? "is-selected" : "border-line text-muted hover:bg-raised",
                       )}>
                       <tl.icon size={17} aria-hidden className={on ? "text-accent" : "text-faint"} />
@@ -293,19 +293,19 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
                   );
                 })}
               </div>
-              <div className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-3">
+              <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2.5">
                 <span className="flex items-center gap-1.5" role="radiogroup" aria-label={t("genv3.toolColorAria")}>
                   {COLORS.map((c) => (
                     <button key={c} type="button" role="radio" aria-checked={color === c} aria-label={c}
                       onClick={() => setColor(c)}
                       className={cn(
-                        "h-7 w-7 rounded-full border border-black/20 transition-transform",
+                        "h-6 w-6 rounded-full border border-black/20 transition-transform",
                         color === c && "scale-110 ring-2 ring-accent ring-offset-2 ring-offset-[rgb(var(--surface))]",
                       )}
                       style={{ backgroundColor: c }} />
                   ))}
                   <label className={cn(
-                    "relative h-7 w-7 cursor-pointer overflow-hidden rounded-full border border-black/20",
+                    "relative h-6 w-6 cursor-pointer overflow-hidden rounded-full border border-black/20",
                     !COLORS.includes(color) && "scale-110 ring-2 ring-accent ring-offset-2 ring-offset-[rgb(var(--surface))]",
                   )}
                     style={{ background: "conic-gradient(#ef4444,#eab308,#22c55e,#3b82f6,#a855f7,#ef4444)" }}
@@ -323,14 +323,15 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
                   <span className="w-9 shrink-0 text-right tabular-nums text-faint">{sizePx}px</span>
                 </label>
               </div>
-              <div className="mt-2.5 flex items-start gap-2.5 rounded-xl border border-line bg-sunken/40 px-3 py-2.5">
+              <div className="mt-2 flex items-start gap-2.5 rounded-xl border border-line bg-sunken/40 px-3 py-2">
                 <PenLine size={14} aria-hidden className="mt-0.5 shrink-0 text-accent" />
                 <p className="text-[11.5px] leading-relaxed text-muted">{t("genv3.regenToolsNote")}</p>
               </div>
             </div>
 
-            <div>
-              <p className="mb-2 text-[14px] font-semibold tracking-tight">{t("genv3.regenModel")}</p>
+            <div data-regen-models>
+              <p className="text-[14px] font-semibold tracking-tight">{t("genv3.regenModel")}</p>
+              <p className="mb-2 mt-0.5 text-[11.5px] text-faint">{t("genv3.regenModelSub")}</p>
               {/* ONE LIST, EVERY ENGINE BY NAME. The engine that made this
                   image used to hide behind a nameless "the same model as
                   before" row, so the customer could not see WHICH engine they
@@ -338,7 +339,7 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
                   marked as the previous one. Picking it back sends no model
                   id at all — that is what keeps the server's own fallback
                   chain, exactly as before. */}
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 {!sameModel && (
                   <p className="rounded-xl bg-raised px-3 py-2.5 text-[11.5px] leading-relaxed text-muted">
                     {t("genv3.regenModelGone")}
@@ -350,7 +351,7 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
                   return (
                     <button key={m.id} type="button" aria-pressed={on} data-regen-model={m.id}
                       onClick={() => setModelId(previous ? null : m.id)}
-                      className={cn("flex w-full items-center gap-2.5 rounded-xl border p-2 text-left transition-colors duration-200",
+                      className={cn("flex w-full items-center gap-2.5 rounded-xl border px-2 py-1 text-left transition-colors duration-200",
                         on ? "is-selected" : "border-line hover:bg-raised")}>
                       <ModelTile name={m.name} index={idx} size="sm" />
                       <span className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -374,7 +375,7 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
             pinned to the bottom of it — above the home indicator, never over
             the content it belongs to. */}
         <div data-regen-footer
-          className="sticky bottom-0 z-10 mt-5 flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-line bg-[rgb(var(--surface))] pt-4 pb-[max(0px,env(safe-area-inset-bottom))] lg:static lg:bg-transparent">
+          className="sticky bottom-0 z-10 mt-3.5 flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-line bg-[rgb(var(--surface))] pt-3 pb-[max(0px,env(safe-area-inset-bottom))] lg:static lg:bg-transparent">
           {notEnough && <p className="mr-auto text-[11.5px] font-medium text-danger">{t("studio.err.insufficient_credits")}</p>}
           <button type="button" disabled={busy} onClick={onClose}
             className="plate h-11 rounded-xl px-5 text-[13px] font-semibold text-muted transition-colors hover:bg-raised">
