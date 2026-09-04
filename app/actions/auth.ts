@@ -4,16 +4,19 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/server/rate-limit";
 import { getLocale } from "@/lib/i18n/server";
+import { absoluteUrl } from "@/lib/site";
 import { ACQUISITION_SOURCES, EMAIL_RE, isPoland, passwordIssue, validNip } from "@/lib/auth-validation";
 
 type Result = { ok: boolean; error?: string; info?: string; email?: string };
 
-async function siteUrl() {
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? "https";
-  return `${proto}://${host}`;
-}
+/**
+ * Every emailed auth link points at the configured site, not at the host the
+ * request arrived on. A confirmation mail outlives the request that triggered
+ * it, so it has to name the canonical address — and an attacker-supplied
+ * Host / X-Forwarded-Host header must never be able to steer where a real
+ * user's confirmation or password-reset link takes them.
+ */
+const authLink = (path: string) => absoluteUrl(path);
 
 async function callerIp() {
   const fwd = (await headers()).get("x-forwarded-for");
@@ -114,7 +117,7 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
     email,
     password,
     options: {
-      emailRedirectTo: `${await siteUrl()}/auth/callback`,
+      emailRedirectTo: authLink("/auth/callback"),
       // Everything the profile needs rides the auth metadata: the signup
       // trigger copies it into public.profiles server-side, so it works
       // identically whether or not e-mail confirmation gates the session.
@@ -178,7 +181,7 @@ export async function resendConfirmation(_prev: Result | null, formData: FormDat
   await supabase.auth.resend({
     type: "signup",
     email,
-    options: { emailRedirectTo: `${await siteUrl()}/auth/callback` },
+    options: { emailRedirectTo: authLink("/auth/callback") },
   });
   // Deliberately ignore the outcome: success and "already confirmed" and
   // "no such account" must be indistinguishable to the caller.
@@ -196,7 +199,7 @@ export async function requestPasswordReset(_prev: Result | null, formData: FormD
   const email = String(formData.get("email") ?? "").trim();
   if (email) {
     await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${await siteUrl()}/auth/callback?next=/reset-password`,
+      redirectTo: authLink("/auth/callback?next=/reset-password"),
     });
   }
   // ALWAYS the same generic answer — errors included. Anything else is an

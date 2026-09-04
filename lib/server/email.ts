@@ -7,7 +7,7 @@ import "server-only";
  */
 export async function sendEmail(input: { to: string; subject: string; text: string }): Promise<{ sent: boolean }> {
   const key = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM ?? "GrovBase <noreply@ecomstudio.app>";
+  const from = process.env.EMAIL_FROM ?? "GrovBase <noreply@grovbase.com>";
   if (!key) return { sent: false };
   try {
     const res = await fetch("https://api.resend.com/emails", {

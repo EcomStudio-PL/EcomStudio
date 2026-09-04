@@ -7,7 +7,7 @@ Last updated: 2026-08-31
 | Production version | v1.2 (Generator V3) |
 | Production commit | `5d54d28` (deployment dpl_5pQhrPcrvyorMVWLrpFYiYrA66MC) |
 | Rollback reference | branch `rollback/prod-2026-08-28` → `42425ed` |
-| Production URL | https://ecomstudio-prod.vercel.app |
+| Production URL | https://grovbase.com |
 | Vercel project | ecomstudio-prod (legacy name, kept — internal id) |
 | Supabase PROD | project ref `orjkxijqpecnbzhxhfct` |
 | Supabase DEV | project ref `ezyhwkcrrysanbcbkzsq` |

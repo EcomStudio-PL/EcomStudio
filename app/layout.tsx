@@ -5,15 +5,26 @@ import { ThemeProvider } from "next-themes";
 import { Toaster } from "sonner";
 import { I18nProvider } from "@/lib/i18n/provider";
 import { getDictionary } from "@/lib/i18n/server";
+import { SITE_ORIGIN } from "@/lib/site";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  // Every relative URL in metadata — canonical tags, OG images, the sitemap
+  // reference — is resolved against this, so the app describes itself with
+  // one host instead of whichever one served the request.
+  metadataBase: SITE_ORIGIN,
   title: { default: "GrovBase", template: "%s · GrovBase" },
   description: "Professional e-commerce product content, faster.",
   applicationName: "GrovBase",
   appleWebApp: { capable: true, title: "GrovBase", statusBarStyle: "black-translucent" },
   icons: { apple: "/icons/apple-touch-icon.png?v=5" },
   formatDetection: { telephone: false },
+  openGraph: {
+    siteName: "GrovBase",
+    type: "website",
+    url: "/",
+  },
+  twitter: { card: "summary_large_image" },
 };
 export const viewport: Viewport = {
   width: "device-width",

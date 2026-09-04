@@ -19,17 +19,23 @@ import { formatCredits, formatPrice } from "@/lib/utils";
  * launch a share of "/" should promise the launch, not the product tour.
  */
 export async function generateMetadata(): Promise<Metadata> {
+  // The homepage is the one page that must always name itself canonically:
+  // it is reachable through the apex, through www, and through the old Vercel
+  // hostname, and all three should credit https://grovbase.com/.
+  const canonical: Metadata = { alternates: { canonical: "/" } };
   const supabase = await createClient();
-  if ((await getHomepageMode(supabase)) !== "waitlist") return {};
+  if ((await getHomepageMode(supabase)) !== "waitlist") return canonical;
   const { dict, locale } = await getDictionary();
   const content = resolveLaunchContent(await getLaunchStore(supabase), locale, dict.launch);
   return {
+    ...canonical,
     title: content["seo.title"],
     description: content["seo.description"],
     openGraph: {
       title: content["seo.ogTitle"],
       description: content["seo.ogDescription"],
       type: "website",
+      url: "/",
       ...(content["hero.image"] ? { images: [content["hero.image"]] } : {}),
     },
     twitter: {

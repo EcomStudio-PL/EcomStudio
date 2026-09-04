@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { sendEmail } from "@/lib/server/email";
+import { absoluteUrl } from "@/lib/site";
 
 type Result = { ok: boolean; error?: string; threadId?: string };
 
@@ -71,7 +72,7 @@ export async function staffReplyAction(threadId: string, body: string): Promise<
       await sendEmail({
         to: thread.profiles.email,
         subject: `GrovBase — odpowiedź: ${thread.subject}`,
-        text: `${body.trim().slice(0, 2000)}\n\n— Zespół GrovBase\nhttps://ecomstudio-prod.vercel.app/support?thread=${threadId}`,
+        text: `${body.trim().slice(0, 2000)}\n\n— Zespół GrovBase\n${absoluteUrl(`/support?thread=${threadId}`)}`,
       });
     }
     revalidatePath(`/admin/support/${threadId}`);
