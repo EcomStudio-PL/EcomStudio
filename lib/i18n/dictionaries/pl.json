@@ -2231,7 +2231,8 @@
     "promptExpand": "Pokaż cały prompt",
     "sourcesHint": "Zdjęcia, na których AI pracowało przy tej generacji: Twoje zdjęcia produktu oraz — jeśli dodałeś — zdjęcia inspiracji.",
     "sourcesUnknown": "Brak zapisanych danych o zdjęciach referencyjnych dla tej generacji.",
-    "regenPrevModel": "Poprzedni"
+    "regenPrevModel": "Poprzedni",
+    "regenMarkTitle": "Zaznacz element"
   },
   "retouch": {
     "title": "Retusz zdjęć",

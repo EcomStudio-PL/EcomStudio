@@ -199,14 +199,14 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
     <div role="dialog" aria-modal="true" aria-label={t("genv3.detailsTitle")}
       className="fixed inset-0 z-[60] flex items-stretch justify-center sm:items-center sm:p-4">
       <button type="button" aria-label={t("common.close")} onClick={onClose}
-        className="scrim absolute inset-0 cursor-default backdrop-blur-[6px]" />
-      {/* The work surface, not a dialog squeezed into a corner: the image is
-          the subject here, so the modal takes 90% of the viewport up to
-          1500px and gives the picture the larger half of it. */}
+        className="scrim absolute inset-0 cursor-default backdrop-blur-[10px]" />
+      {/* The work surface, not a dialog squeezed into a corner: the picture is
+          the subject, so it takes the larger column and the modal takes the
+          viewport minus a 32px frame, capped at 1280. */}
       <div data-details-modal
-        className="overlay animate-pop relative flex h-full w-full min-w-0 flex-col overflow-y-auto rounded-none sm:h-auto sm:max-h-[90dvh] sm:w-[92vw] sm:max-w-[1500px] sm:rounded-2xl lg:grid lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] lg:overflow-hidden">
+        className="overlay animate-pop relative flex h-full w-full min-w-0 flex-col overflow-y-auto rounded-none sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-4rem)] sm:max-w-[1280px] sm:rounded-2xl lg:grid lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] lg:overflow-hidden">
         {/* ── IMAGE SIDE ─────────────────────────────────────────────────── */}
-        <div className="flex min-w-0 flex-col bg-sunken/60 p-3 sm:p-4 lg:max-h-[90dvh]">
+        <div className="flex min-w-0 flex-col bg-sunken/60 p-3 sm:p-4 lg:max-h-[calc(100dvh-4rem)]">
           <div className="relative flex min-h-[46dvh] flex-1 items-center justify-center overflow-hidden rounded-xl bg-[rgb(var(--bg))] lg:min-h-0">
             {item.ratio && (
               <span className="absolute left-2.5 top-2.5 z-10 rounded-lg bg-black/55 px-2 py-1 text-[11px] font-bold text-white backdrop-blur">{item.ratio}</span>
@@ -308,7 +308,7 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
         </div>
 
         {/* ── INFO SIDE ──────────────────────────────────────────────────── */}
-        <div className="thin-scroll min-w-0 space-y-4 p-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-5 lg:max-h-[90dvh] lg:overflow-y-auto">
+        <div className="thin-scroll min-w-0 space-y-5 p-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-5 lg:max-h-[calc(100dvh-4rem)] lg:overflow-y-auto">
           {/* ZDJĘCIA REFERENCYJNE lead the panel: "what was this made from"
               is the first question a seller asks of their own image, and it
               used to sit below a wall of settings. Keyed by generation — the
@@ -344,9 +344,6 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
               <MetaRow label={t("genv3.metaFormat")} value={item.ratio ? ratioName(t, item.ratio) : dims ?? "—"} />
               {item.resolution && <MetaRow label={t("genv3.resolution")} value={item.resolution} />}
               <MetaRow label={t("genv3.metaDate")} value={created} />
-              {item.credits != null && (
-                <MetaRow label={t("genv3.metaCost")} value={t("genv3.creditsShort", { n: item.credits })} />
-              )}
             </dl>
             <details className="group/more mt-2">
               <summary data-details-more
@@ -362,6 +359,9 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
                 {dims && <MetaRow label={t("genv3.metaPixels")} value={dims} />}
                 {item.quality && <MetaRow label={t("genv3.quality")} value={qualityLabel(item.quality, t)} />}
                 {item.quantity != null && <MetaRow label={t("genv3.countImages")} value={String(item.quantity)} />}
+                {item.credits != null && (
+                  <MetaRow label={t("genv3.metaCost")} value={t("genv3.creditsShort", { n: item.credits })} />
+                )}
                 <MetaRow label={t("genv3.metaId")} value={
                   <button type="button" onClick={copyId} title={item.assetId}
                     className="inline-flex items-center gap-1.5 font-semibold text-ink transition-colors hover:text-accent">
@@ -404,69 +404,72 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
             <p className="mt-1.5 text-[10.5px] leading-relaxed text-faint">{t("genv3.editNote")}</p>
           </div>
 
-          {/* NOTATKA */}
-          <div>
-            <p className="mb-2 text-[13px] font-semibold tracking-tight">{t("genv3.noteTitle")}</p>
-            <div className="relative">
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                rows={2}
-                maxLength={2000}
-                placeholder={t("genv3.notePh")}
-                aria-label={t("genv3.noteTitle")}
-                className="w-full resize-y rounded-xl border border-line bg-sunken/50 p-3 pr-10 text-[12.5px] leading-relaxed text-ink outline-none transition-colors placeholder:text-faint focus:border-[rgb(var(--accent)/0.5)]"
-              />
-              <button type="button" aria-label={t("genv3.noteSave")} disabled={!noteDirty || savingNote}
-                onClick={saveNote}
-                className={cn("absolute bottom-2.5 right-2 rounded-lg p-1.5 transition-colors",
-                  noteDirty ? "text-accent hover:bg-accent-soft/50" : "text-faint")}>
-                {savingNote ? <Loader2 size={14} className="animate-spin" aria-hidden />
-                  : noteDirty ? <Save size={14} aria-hidden /> : <Check size={14} aria-hidden />}
-              </button>
+          {/* NOTATKA + AKCJE share one row: both are small, and stacking them
+              pushed the CTA below the fold on a laptop. */}
+          <div className="grid gap-4 sm:grid-cols-2 sm:gap-3">
+            <div className="min-w-0">
+              <p className="mb-2 text-[13px] font-semibold tracking-tight">{t("genv3.noteTitle")}</p>
+              <div className="relative">
+                <textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  rows={2}
+                  maxLength={2000}
+                  placeholder={t("genv3.notePh")}
+                  aria-label={t("genv3.noteTitle")}
+                  className="w-full resize-y rounded-xl border border-line bg-sunken/50 p-3 pr-10 text-[12.5px] leading-relaxed text-ink outline-none transition-colors placeholder:text-faint focus:border-[rgb(var(--accent)/0.5)]"
+                />
+                <button type="button" aria-label={t("genv3.noteSave")} disabled={!noteDirty || savingNote}
+                  onClick={saveNote}
+                  className={cn("absolute bottom-2.5 right-2 rounded-lg p-1.5 transition-colors",
+                    noteDirty ? "text-accent hover:bg-accent-soft/50" : "text-faint")}>
+                  {savingNote ? <Loader2 size={14} className="animate-spin" aria-hidden />
+                    : noteDirty ? <Save size={14} aria-hidden /> : <Check size={14} aria-hidden />}
+                </button>
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <p className="mb-2 text-[13px] font-semibold tracking-tight">{t("genv3.actionsTitle")}</p>
+              <div className="flex flex-wrap items-start gap-1.5">
+                <button type="button" onClick={copyImage} title={t("genv3.copyImage")}
+                  className="plate flex h-10 items-center gap-1.5 rounded-xl px-2.5 text-[12px] font-semibold text-ink transition-colors hover:bg-raised">
+                  <Copy size={13} aria-hidden className="text-muted" />{t("genv3.copyImage")}
+                </button>
+                <button type="button" onClick={copyUrl} data-copy-url title={t("genv3.copyUrl")}
+                  className="plate flex h-10 items-center gap-1.5 rounded-xl px-2.5 text-[12px] font-semibold text-ink transition-colors hover:bg-raised">
+                  <Link2 size={13} aria-hidden className="text-muted" />{t("genv3.copyUrl")}
+                </button>
+                <div className="relative">
+                  <button type="button" aria-expanded={dlOpen} onClick={() => setDlOpen(!dlOpen)}
+                    disabled={toolBusy === "download"} data-download-btn
+                    className="cta flex h-10 items-center gap-1.5 rounded-xl px-3 text-[12px] font-semibold">
+                    {toolBusy === "download" ? <Loader2 size={13} className="animate-spin" aria-hidden /> : <Download size={13} aria-hidden />}
+                    {t("common.download")}
+                    <ChevronDown size={12} aria-hidden className={cn("transition-transform", dlOpen && "rotate-180")} />
+                  </button>
+                  {dlOpen && (
+                    <div className="panel absolute bottom-11 right-0 z-20 w-52 rounded-xl p-1 shadow-e3">
+                      <DlItem label="JPG" sub={t("genv3.dlJpg")} onClick={() => downloadAs("jpeg")} />
+                      <DlItem label="PNG" sub={t("genv3.dlPng")} onClick={() => downloadAs("png")} />
+                      <DlItem label="WEBP" sub={t("genv3.dlWebp")} onClick={() => downloadAs("webp")} />
+                      <DlItem label="TIFF" sub={t("genv3.dlTiff")} onClick={() => downloadAs("tiff")} />
+                      <DlItem label={t("genv3.dlOriginal")} sub={t("genv3.dlOriginalSub")} onClick={() => downloadAs("original")} />
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* AKCJE */}
-          <div>
-            <p className="mb-2 text-[13px] font-semibold tracking-tight">{t("genv3.actionsTitle")}</p>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={copyImage}
-                className="plate flex h-10 items-center gap-1.5 rounded-xl px-3 text-[12.5px] font-semibold text-ink transition-colors hover:bg-raised">
-                <Copy size={13} aria-hidden className="text-muted" />{t("genv3.copyImage")}
-              </button>
-              <button type="button" onClick={copyUrl} data-copy-url
-                className="plate flex h-10 items-center gap-1.5 rounded-xl px-3 text-[12.5px] font-semibold text-ink transition-colors hover:bg-raised">
-                <Link2 size={13} aria-hidden className="text-muted" />{t("genv3.copyUrl")}
-              </button>
-              <div className="relative">
-                <button type="button" aria-expanded={dlOpen} onClick={() => setDlOpen(!dlOpen)}
-                  disabled={toolBusy === "download"}
-                  className="cta flex h-10 items-center gap-1.5 rounded-xl px-3.5 text-[12.5px] font-semibold">
-                  {toolBusy === "download" ? <Loader2 size={13} className="animate-spin" aria-hidden /> : <Download size={13} aria-hidden />}
-                  {t("common.download")}
-                  <ChevronDown size={12} aria-hidden className={cn("transition-transform", dlOpen && "rotate-180")} />
-                </button>
-                {dlOpen && (
-                  <div className="panel absolute bottom-11 right-0 z-20 w-52 rounded-xl p-1 shadow-e3">
-                    <DlItem label="JPG" sub={t("genv3.dlJpg")} onClick={() => downloadAs("jpeg")} />
-                    <DlItem label="PNG" sub={t("genv3.dlPng")} onClick={() => downloadAs("png")} />
-                    <DlItem label="WEBP" sub={t("genv3.dlWebp")} onClick={() => downloadAs("webp")} />
-                    <DlItem label="TIFF" sub={t("genv3.dlTiff")} onClick={() => downloadAs("tiff")} />
-                    <DlItem label={t("genv3.dlOriginal")} sub={t("genv3.dlOriginalSub")} onClick={() => downloadAs("original")} />
-                  </div>
-                )}
-              </div>
-            </div>
-            {/* The one thing this panel exists to lead to, at full width. */}
-            {canRegenerate && (
-              <button type="button" onClick={() => onRegenerate(item)} data-regen-cta
-                className="cta mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl text-[13px] font-semibold">
-                <Sparkles size={14} aria-hidden />
-                {t("genv3.regen")}
-              </button>
-            )}
-          </div>
+          {/* The one thing this panel exists to lead to, at full width. */}
+          {canRegenerate && (
+            <button type="button" onClick={() => onRegenerate(item)} data-regen-cta
+              className="cta flex h-12 w-full items-center justify-center gap-2 rounded-xl text-[13.5px] font-semibold">
+              <Sparkles size={15} aria-hidden />
+              {t("genv3.regen")}
+            </button>
+          )}
         </div>
       </div>
 
@@ -591,7 +594,9 @@ function SourcesSection({ item }: { item: GalleryItem }) {
       ...(data.marked ? [{ url: data.marked, kind: t("genv3.sourcesMarked") }] : []),
     ]
     : [];
-  const MAX_TILES = 4;
+  // One row of four cells. Five or more sources give up the fourth tile to
+  // the "+N" counter, so the row never wraps into a ragged second line.
+  const MAX_TILES = shots.length > 4 ? 3 : 4;
   const shown = shots.slice(0, MAX_TILES);
   const overflow = shots.length - shown.length;
 
@@ -602,9 +607,9 @@ function SourcesSection({ item }: { item: GalleryItem }) {
         <InfoHint text={t("genv3.sourcesHint")} />
       </p>
       {state.status === "loading" && (
-        <div className="flex flex-wrap gap-1.5" aria-busy="true">
+        <div className="grid grid-cols-4 gap-2" aria-busy="true">
           {Array.from({ length: Math.min(Math.max(expected, 1), MAX_TILES) }, (_, i) => (
-            <span key={i} className="skeleton h-16 w-16 rounded-xl" />
+            <span key={i} className="skeleton aspect-[4/3] rounded-xl" />
           ))}
         </div>
       )}
@@ -616,12 +621,14 @@ function SourcesSection({ item }: { item: GalleryItem }) {
           {data.known ? t("genv3.sourcesNone") : t("genv3.sourcesUnknown")}
         </p>
       ) : (
-        <div className="flex flex-wrap items-center gap-1.5">
+        // Four across the panel: big enough to recognise the actual photo,
+        // which is the entire point of the section.
+        <div className="grid grid-cols-4 gap-2">
           {shown.map((s, i) => (
             <button key={s.url} type="button" title={s.kind} data-source-thumb
               aria-label={`${s.kind} — ${t("genv3.sourceAria", { n: i + 1 })}`}
               onClick={() => setLightbox(s.url)}
-              className="h-16 w-16 overflow-hidden rounded-xl bg-sunken ring-1 ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))] transition-all duration-150 hover:ring-[rgb(var(--accent)/0.6)]">
+              className="aspect-[4/3] overflow-hidden rounded-xl bg-sunken ring-1 ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))] transition-all duration-150 hover:ring-[rgb(var(--accent)/0.6)]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={s.url} alt="" loading="lazy" className="h-full w-full object-cover" />
             </button>
@@ -629,7 +636,7 @@ function SourcesSection({ item }: { item: GalleryItem }) {
           {overflow > 0 && (
             <button type="button" data-source-more onClick={() => setLightbox(shots[MAX_TILES]!.url)}
               aria-label={t("genv3.sourceAria", { n: MAX_TILES + 1 })}
-              className="flex h-16 w-16 items-center justify-center rounded-xl border border-dashed border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/50 text-[12.5px] font-bold tabular-nums text-muted transition-colors hover:border-[rgb(var(--accent)/0.5)] hover:text-accent">
+              className="flex aspect-[4/3] items-center justify-center rounded-xl border border-dashed border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/50 text-[13px] font-bold tabular-nums text-muted transition-colors hover:border-[rgb(var(--accent)/0.5)] hover:text-accent">
               +{overflow}
             </button>
           )}

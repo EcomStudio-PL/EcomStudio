@@ -2231,7 +2231,8 @@
     "promptExpand": "Ganzen Prompt anzeigen",
     "sourcesHint": "Die Fotos, mit denen die KI diese Generierung erstellt hat: deine Produktfotos und, falls hinzugefügt, die Inspirationsfotos.",
     "sourcesUnknown": "Für diese Generierung wurden keine Daten zu Referenzfotos gespeichert.",
-    "regenPrevModel": "Vorheriges"
+    "regenPrevModel": "Vorheriges",
+    "regenMarkTitle": "Element markieren"
   },
   "retouch": {
     "title": "Foto-Retusche",

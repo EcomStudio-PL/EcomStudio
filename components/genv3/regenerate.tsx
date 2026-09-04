@@ -170,31 +170,28 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
     <div role="dialog" aria-modal="true" aria-label={t("genv3.regenTitle")}
       className="workspace fixed inset-0 z-[60] flex items-stretch justify-center sm:items-center sm:p-4">
       <button type="button" aria-label={t("common.close")} onClick={() => !busy && onClose()}
-        className="scrim absolute inset-0 cursor-default backdrop-blur-[6px]" />
-      {/* Room to work: the picture being corrected and the correction being
-          written both need to be readable at once, so the modal takes the
-          width it needs and scrolls its columns rather than the page. */}
+        className="scrim absolute inset-0 cursor-default backdrop-blur-[10px]" />
+      {/* An editor, not a dialog: the picture being corrected and the
+          correction being written are both full-size, side by side, and the
+          columns scroll rather than the page. */}
       <div data-regen-modal
-        className="overlay animate-pop relative flex h-full w-full min-w-0 flex-col overflow-y-auto rounded-none p-4 sm:h-auto sm:max-h-[90dvh] sm:w-[92vw] sm:max-w-[1250px] sm:rounded-2xl sm:p-5 lg:overflow-hidden">
-        <div className="mb-4 flex shrink-0 items-start justify-between gap-3">
-          <div>
-            <h2 className="font-display text-[17px] font-semibold tracking-tight">{t("genv3.regenTitle")}</h2>
-            <p className="mt-0.5 text-[12.5px] text-muted">{t("genv3.regenSub")}</p>
-          </div>
-          <button type="button" aria-label={t("common.close")} onClick={() => !busy && onClose()}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-raised hover:text-ink">
-            <X size={16} aria-hidden />
-          </button>
-        </div>
+        className="overlay animate-pop relative flex h-full w-full min-w-0 flex-col overflow-y-auto rounded-none p-4 sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-4rem)] sm:max-w-[1200px] sm:rounded-2xl sm:p-5 lg:overflow-hidden">
+        {/* No title bar. The image says what is being edited and the first
+            heading says what to do with it; a banner would only push both
+            further down. The name stays for screen readers on the dialog. */}
+        <button type="button" aria-label={t("common.close")} onClick={() => !busy && onClose()}
+          className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full text-muted transition-colors hover:bg-raised hover:text-ink">
+          <X size={17} aria-hidden />
+        </button>
 
-        <div className="grid min-w-0 gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:overflow-hidden">
+        <div className="grid min-w-0 gap-5 lg:min-h-0 lg:flex-1 lg:grid-cols-2 lg:gap-6 lg:overflow-hidden">
           {/* ── Image + annotation canvas + filmstrip ─────────────────── */}
           <div className="min-w-0 lg:flex lg:min-h-0 lg:flex-col">
             <div className="flex justify-center overflow-hidden rounded-xl bg-sunken ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))] lg:min-h-0 lg:flex-1 lg:items-center">
               <div className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={item.url} alt={item.product ?? ""} draggable={false}
-                  className="block max-h-[40dvh] w-auto max-w-full select-none lg:max-h-[58dvh]" />
+                  className="block max-h-[40dvh] w-auto max-w-full select-none lg:max-h-[64dvh]" />
                 <AnnotationCanvas
                   className="absolute inset-0"
                   url={item.url}
@@ -246,16 +243,17 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
           {/* ── Instruction + tools + model ───────────────────────────── */}
           <div className="thin-scroll min-w-0 space-y-5 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
             <div>
-              <p className="mb-1.5 text-[13.5px] font-semibold tracking-tight">1. {t("genv3.regenDescribe")}</p>
+              <p className="mb-2 text-[14px] font-semibold tracking-tight">{t("genv3.regenDescribe")}</p>
               <div className="relative">
                 <textarea
                   value={instruction}
                   onChange={(e) => setInstruction(e.target.value)}
-                  rows={3}
+                  rows={4}
                   maxLength={500}
                   placeholder={t("genv3.regenPh")}
                   aria-label={t("genv3.regenDescribe")}
-                  className="w-full resize-y rounded-xl border border-line bg-sunken/50 p-3 pb-6 text-[12.5px] leading-relaxed text-ink outline-none transition-colors placeholder:text-faint focus:border-[rgb(var(--accent)/0.5)]"
+                  data-regen-instruction
+                  className="w-full resize-y rounded-xl border border-line bg-sunken/50 p-3.5 pb-7 text-[13px] leading-relaxed text-ink outline-none transition-colors placeholder:text-faint focus:border-[rgb(var(--accent)/0.5)]"
                 />
                 <span className="pointer-events-none absolute bottom-2.5 right-3 text-[11px] font-medium tabular-nums text-faint">
                   {instruction.length}/500
@@ -267,10 +265,7 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
             {/* 2. Mark the changes — the REAL tools */}
             <div>
               <div className="mb-1.5 flex items-center justify-between gap-2">
-                <p className="text-[13.5px] font-semibold tracking-tight">
-                  2. {t("genv3.regenMark")}{" "}
-                  <span className="font-normal text-faint">({t("genv3.optional")})</span>
-                </p>
+                <p className="text-[14px] font-semibold tracking-tight">{t("genv3.regenMarkTitle")}</p>
                 <span className="flex shrink-0 gap-1">
                   <button type="button" onClick={undo} disabled={undoStack.length === 0}
                     className="rounded-lg border border-line px-2 py-1 text-[11px] font-semibold text-muted transition-colors hover:bg-raised disabled:opacity-40">
@@ -282,34 +277,35 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
                   </button>
                 </span>
               </div>
-              <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-8">
+              <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-8" data-regen-tools>
                 {tools.map((tl) => {
                   const on = tool === tl.key;
                   return (
                     <button key={tl.key} type="button" aria-pressed={on} onClick={() => setTool(tl.key)}
+                      data-regen-tool={tl.key}
                       className={cn(
-                        "flex flex-col items-center gap-1 rounded-lg border px-1 py-2 transition-colors duration-150",
+                        "flex min-h-[58px] flex-col items-center justify-center gap-1.5 rounded-xl border px-1 py-2 transition-colors duration-150",
                         on ? "is-selected" : "border-line text-muted hover:bg-raised",
                       )}>
-                      <tl.icon size={15} aria-hidden className={on ? "text-accent" : "text-faint"} />
-                      <span className="text-[9.5px] font-semibold leading-none">{tl.label}</span>
+                      <tl.icon size={17} aria-hidden className={on ? "text-accent" : "text-faint"} />
+                      <span className="text-[10.5px] font-semibold leading-none">{tl.label}</span>
                     </button>
                   );
                 })}
               </div>
-              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+              <div className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-3">
                 <span className="flex items-center gap-1.5" role="radiogroup" aria-label={t("genv3.toolColorAria")}>
                   {COLORS.map((c) => (
                     <button key={c} type="button" role="radio" aria-checked={color === c} aria-label={c}
                       onClick={() => setColor(c)}
                       className={cn(
-                        "h-6 w-6 rounded-full border border-black/20 transition-transform",
+                        "h-7 w-7 rounded-full border border-black/20 transition-transform",
                         color === c && "scale-110 ring-2 ring-accent ring-offset-2 ring-offset-[rgb(var(--surface))]",
                       )}
                       style={{ backgroundColor: c }} />
                   ))}
                   <label className={cn(
-                    "relative h-6 w-6 cursor-pointer overflow-hidden rounded-full border border-black/20",
+                    "relative h-7 w-7 cursor-pointer overflow-hidden rounded-full border border-black/20",
                     !COLORS.includes(color) && "scale-110 ring-2 ring-accent ring-offset-2 ring-offset-[rgb(var(--surface))]",
                   )}
                     style={{ background: "conic-gradient(#ef4444,#eab308,#22c55e,#3b82f6,#a855f7,#ef4444)" }}
@@ -319,7 +315,7 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
                       className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
                   </label>
                 </span>
-                <label className="flex min-w-0 flex-1 items-center gap-2 text-[11px] font-semibold text-muted">
+                <label className="flex min-w-0 flex-1 items-center gap-2.5 text-[11.5px] font-semibold text-muted">
                   <span className="shrink-0">{t("genv3.toolSize")}</span>
                   <input type="range" min={2} max={40} step={1} value={sizePx}
                     onChange={(e) => setSizePx(Number(e.target.value))}
@@ -329,12 +325,12 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
               </div>
               <div className="mt-2.5 flex items-start gap-2.5 rounded-xl border border-line bg-sunken/40 px-3 py-2.5">
                 <PenLine size={14} aria-hidden className="mt-0.5 shrink-0 text-accent" />
-                <p className="text-[11px] leading-relaxed text-muted">{t("genv3.regenToolsNote")}</p>
+                <p className="text-[11.5px] leading-relaxed text-muted">{t("genv3.regenToolsNote")}</p>
               </div>
             </div>
 
             <div>
-              <p className="mb-1.5 text-[13.5px] font-semibold tracking-tight">3. {t("genv3.regenModel")}</p>
+              <p className="mb-2 text-[14px] font-semibold tracking-tight">{t("genv3.regenModel")}</p>
               {/* ONE LIST, EVERY ENGINE BY NAME. The engine that made this
                   image used to hide behind a nameless "the same model as
                   before" row, so the customer could not see WHICH engine they
@@ -374,13 +370,17 @@ export function RegenerateModal({ item, siblings, models, balance, onPick, onClo
           </div>
         </div>
 
-        <div className="mt-5 flex shrink-0 items-center justify-end gap-2 border-t border-line pt-4 pb-[max(0px,env(safe-area-inset-bottom))]">
+        {/* On a phone the modal is one scrolling column, so the decision stays
+            pinned to the bottom of it — above the home indicator, never over
+            the content it belongs to. */}
+        <div data-regen-footer
+          className="sticky bottom-0 z-10 mt-5 flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-line bg-[rgb(var(--surface))] pt-4 pb-[max(0px,env(safe-area-inset-bottom))] lg:static lg:bg-transparent">
           {notEnough && <p className="mr-auto text-[11.5px] font-medium text-danger">{t("studio.err.insufficient_credits")}</p>}
           <button type="button" disabled={busy} onClick={onClose}
-            className="rounded-xl px-4 py-2.5 text-[13px] font-semibold text-muted transition-colors hover:bg-raised">
+            className="plate h-11 rounded-xl px-5 text-[13px] font-semibold text-muted transition-colors hover:bg-raised">
             {t("common.cancel")}
           </button>
-          <button type="button" disabled={busy || notEnough || !chosen} onClick={run}
+          <button type="button" disabled={busy || notEnough || !chosen} onClick={run} data-regen-run
             className={cn("cta flex h-11 items-center gap-2 rounded-xl px-5 text-[13.5px] font-semibold",
               (busy || notEnough || !chosen) && "cursor-not-allowed opacity-55")}>
             {busy ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Sparkles size={15} aria-hidden />}
