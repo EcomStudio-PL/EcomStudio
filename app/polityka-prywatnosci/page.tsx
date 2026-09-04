@@ -1,9 +1,16 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Brand } from "@/components/layout/brand";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 
 export const dynamic = "force-dynamic";
+
+/** A public, indexed page: it names itself, not the homepage. */
+export const metadata: Metadata = {
+  alternates: { canonical: "/polityka-prywatnosci" },
+  openGraph: { url: "/polityka-prywatnosci" },
+};
 
 /** Placeholder until the owner-approved legal text lands: it says HONESTLY
  *  that the document is being finalized — no invented legal language. */

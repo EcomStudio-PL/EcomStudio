@@ -19,10 +19,12 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: "GrovBase", statusBarStyle: "black-translucent" },
   icons: { apple: "/icons/apple-touch-icon.png?v=5" },
   formatDetection: { telephone: false },
+  // Deliberately no `url` here: it would be inherited by every route and each
+  // page would announce itself as the homepage. Pages that are actually
+  // public set their own canonical and og:url.
   openGraph: {
     siteName: "GrovBase",
     type: "website",
-    url: "/",
   },
   twitter: { card: "summary_large_image" },
 };
