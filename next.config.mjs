@@ -10,17 +10,20 @@
  *  - script/style: 'unsafe-inline' is required by Next's bootstrap script
  *                 and next-themes' theme snippet; external script hosts stay
  *                 blocked, which is the attack CSP is here to stop.
+ *  - challenges.cloudflare.com: Turnstile on /register — its api.js
+ *                 (script-src), the challenge iframe it opens (frame-src)
+ *                 and the widget's own verification calls (connect-src).
  * Realtime websockets are not used (no .channel() anywhere), so no wss:.
  */
 const csp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "media-src 'self' blob: https:",
   "font-src 'self' data:",
-  "connect-src 'self' https://*.supabase.co",
-  "frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com",
+  "connect-src 'self' https://*.supabase.co https://challenges.cloudflare.com",
+  "frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://challenges.cloudflare.com",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",

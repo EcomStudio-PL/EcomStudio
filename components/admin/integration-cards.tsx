@@ -2,21 +2,24 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Mail, Pencil, PlugZap, Send } from "lucide-react";
+import { Mail, Pencil, PlugZap, Send, ShieldCheck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
-import { testImapAction, testSmtpAction, testTelegramAction } from "@/app/actions/integrations";
-import type { IntegrationStatus, IntegrationView, MailConfig, TelegramConfig } from "@/lib/server/integrations";
+import { testCaptchaAction, testImapAction, testSmtpAction, testTelegramAction } from "@/app/actions/integrations";
+import type {
+  CaptchaConfig, IntegrationStatus, IntegrationView, MailConfig, TelegramConfig,
+} from "@/lib/server/integrations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
+import { CaptchaIntegrationForm } from "@/components/admin/captcha-integration-form";
 import { MailIntegrationForm } from "@/components/admin/mail-integration-form";
 import { TelegramIntegrationForm } from "@/components/admin/telegram-integration-form";
 
 /**
- * INTEGRACJE — the two tiles that say, at a glance, whether GrovBase can read
- * its mailbox and reach its Telegram channel, with the full form one click
- * behind each of them.
+ * INTEGRACJE — the three tiles that say, at a glance, whether GrovBase can
+ * read its mailbox, reach its Telegram channel and verify its signup captcha,
+ * with the full form one click behind each of them.
  *
  * Only one form is open at a time and it expands BELOW the tiles rather than
  * inside one: a mail form squeezed into half a grid column is unusable on a
@@ -46,15 +49,20 @@ const ERROR_KEYS: Record<string, string> = {
   // that sentence points straight at the field the admin has to correct.
   invalid_chat_id: "comm.err.chatNotFound",
   invalid_token: "comm.err.telegram",
+  // A rejected captcha secret and an unreachable Cloudflare are different
+  // fixes: retype the key vs. simply try again.
+  captcha_secret: "comm.err.captchaSecret",
+  timeout: "comm.err.timeout",
 };
 
 /** Which channel failed, so an unrecognised code still names the right thing. */
-export type ErrorChannel = "imap" | "smtp" | "telegram" | "generic";
+export type ErrorChannel = "imap" | "smtp" | "telegram" | "captcha" | "generic";
 
 const CHANNEL_FALLBACK: Record<ErrorChannel, string> = {
   imap: "comm.err.imap",
   smtp: "comm.err.smtp",
   telegram: "comm.err.telegram",
+  captcha: "comm.err.generic",
   generic: "comm.err.generic",
 };
 
@@ -81,11 +89,12 @@ const STATUS_TONE: Record<IntegrationStatus, "green" | "neutral" | "red"> = {
   error: "red",
 };
 
-type OpenPanel = "mail" | "telegram" | null;
+type OpenPanel = "mail" | "telegram" | "captcha" | null;
 
-export function IntegrationCards({ mail, telegram, encryptionReady }: {
+export function IntegrationCards({ mail, telegram, captcha, encryptionReady }: {
   mail: IntegrationView<MailConfig>;
   telegram: IntegrationView<TelegramConfig>;
+  captcha: IntegrationView<CaptchaConfig>;
   encryptionReady: boolean;
 }) {
   const { t } = useI18n();
@@ -119,6 +128,15 @@ export function IntegrationCards({ mail, telegram, encryptionReady }: {
     router.refresh();
   }
 
+  async function testCaptcha() {
+    setBusy("captcha");
+    const res = await testCaptchaAction();
+    setBusy(null);
+    if (res.ok) toast.success(t("comm.captchaOk"));
+    else toast.error(t(integrationErrorKey(res.error, "captcha")));
+    router.refresh();
+  }
+
   return (
     <div className="space-y-5" data-integrations>
       {!encryptionReady && (
@@ -127,7 +145,7 @@ export function IntegrationCards({ mail, telegram, encryptionReady }: {
         </p>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         <IntegrationTile
           view={mail} icon={Mail} title={t("comm.mail")} sub={t("comm.mailTileSub")}
           channel="imap" panelId="integration-panel-mail" expanded={open === "mail"}
@@ -142,6 +160,13 @@ export function IntegrationCards({ mail, telegram, encryptionReady }: {
           onEdit={() => setOpen((prev) => (prev === "telegram" ? null : "telegram"))}
           onTest={testTelegram}
         />
+        <IntegrationTile
+          view={captcha} icon={ShieldCheck} title={t("comm.captchaTile")} sub={t("comm.captchaTileSub")}
+          channel="captcha" panelId="integration-panel-captcha" expanded={open === "captcha"}
+          busy={busy === "captcha"} disabled={busy !== null}
+          onEdit={() => setOpen((prev) => (prev === "captcha" ? null : "captcha"))}
+          onTest={testCaptcha}
+        />
       </div>
 
       {open === "mail" && (
@@ -152,6 +177,11 @@ export function IntegrationCards({ mail, telegram, encryptionReady }: {
       {open === "telegram" && (
         <div id="integration-panel-telegram">
           <TelegramIntegrationForm view={telegram} encryptionReady={encryptionReady} />
+        </div>
+      )}
+      {open === "captcha" && (
+        <div id="integration-panel-captcha">
+          <CaptchaIntegrationForm view={captcha} encryptionReady={encryptionReady} />
         </div>
       )}
     </div>

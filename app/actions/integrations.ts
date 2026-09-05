@@ -6,10 +6,11 @@ import { encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { verifySmtp, deliver, type SmtpConfig } from "@/lib/server/mailer";
 import { verifyImap } from "@/lib/server/imap";
 import { getTelegramChats, sendTelegramMessage, tgEscape, type TelegramError } from "@/lib/server/telegram";
+import { verifyTurnstile } from "@/lib/server/captcha";
 import { NOTIFICATION_EVENTS } from "@/lib/server/notify";
 import {
   ensureDispatchHash, readIntegration, readIntegrationSecrets, setIntegrationStatus, writeIntegration,
-  type MailConfig, type TelegramConfig,
+  type CaptchaConfig, type MailConfig, type TelegramConfig,
 } from "@/lib/server/integrations";
 
 /**
@@ -32,7 +33,8 @@ import {
  *
  * Error codes: forbidden · invalid_email · invalid_host · invalid_port ·
  * invalid_encryption · invalid_chat_id · invalid_token · encryption_unavailable ·
- * not_configured · auth · tls · network · chat_not_found · send_failed · generic
+ * not_configured · auth · tls · network · chat_not_found · send_failed ·
+ * captcha_secret · timeout · generic
  */
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -489,6 +491,92 @@ export async function detectTelegramChatsAction(): Promise<
     // so it is success, and the UI explains how to make a chat appear.
     if (!result.ok) return { ok: false, error: telegramCode(result.error) };
     return { ok: true, chats: result.chats };
+  } catch (e) {
+    return { ok: false, error: reason(e) };
+  }
+}
+
+// ---------- CAPTCHA ----------
+
+/** The captcha's two consumers: the admin tile, and the registration page,
+ *  which renders the site key server-side and so goes stale on every save. */
+const INTEGRATIONS_PATH = "/admin/settings/integrations";
+const REGISTER_PATH = "/register";
+
+export type CaptchaIntegrationInput = {
+  siteKey: string;
+  /** Empty means "keep the stored secret key", exactly like the mail passwords. */
+  secretKey?: string;
+};
+
+export async function saveCaptchaIntegrationAction(input: CaptchaIntegrationInput): Promise<Result> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    const siteKey = input.siteKey.trim().slice(0, 100);
+    const typedSecret = (input.secretKey ?? "").trim();
+
+    const before = await readIntegration<CaptchaConfig>(supabase, "captcha");
+    // Armed only when both halves exist — the key typed now or the ciphertext
+    // already stored. A half-configured captcha stays off and registration
+    // keeps working without it; captcha_site_key() in 0054 makes the same
+    // choice on the SQL side, so the two can never disagree.
+    const enabled = siteKey.length > 0 && (typedSecret.length > 0 || before.hasSecret.secret_key === true);
+
+    const written = await writeIntegration<CaptchaConfig>(supabase, "captcha", {
+      config: { provider: "turnstile", site_key: siteKey },
+      enabled,
+      secrets: typedSecret ? { secret_key: typedSecret } : {},
+    });
+    if (!written.ok) {
+      return { ok: false, error: written.error === "encryption_unavailable" ? "encryption_unavailable" : "generic" };
+    }
+
+    await ensureDispatchHash(supabase);
+    await logAudit(supabase, {
+      actorId: adminId, action: "integration.captcha_saved", entityType: "integration_settings", entityId: "captcha",
+      after: {
+        enabled,
+        site_key_changed: before.config.site_key !== siteKey,
+        secret_key_replaced: Boolean(typedSecret),
+      },
+    });
+    revalidatePath(REGISTER_PATH);
+    revalidatePath(INTEGRATIONS_PATH);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: reason(e) };
+  }
+}
+
+/**
+ * Cloudflare has no harmless "is my secret right?" endpoint, so the test
+ * presents a deliberately bogus token. Cloudflare rejecting the TOKEN
+ * (invalid-input-response / timeout-or-duplicate) means the secret itself was
+ * accepted — connected. Rejecting the SECRET is the one real failure, and a
+ * network fault is reported as exactly that, not as a bad key.
+ */
+export async function testCaptchaAction(): Promise<TestResult> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    const { config, secrets } = await readIntegrationSecrets<CaptchaConfig>(supabase, "captcha");
+    const secret = secrets.secret_key ?? "";
+    if (!secret || !config.site_key.trim()) {
+      await setIntegrationStatus(supabase, "captcha", "not_configured", null);
+      return { ok: false, error: "not_configured" };
+    }
+    const probe = await verifyTurnstile(secret, "grovbase-key-check");
+    // bad_token IS the pass verdict here — see above. A true success cannot
+    // happen for a bogus token, but if Cloudflare ever answered one, the
+    // secret would have been accepted all the more.
+    const connected = probe.ok || probe.error === "bad_token";
+    const code = connected ? null : probe.error === "network" ? "timeout" : "captcha_secret";
+    await setIntegrationStatus(supabase, "captcha", connected ? "connected" : "error", code);
+    await logAudit(supabase, {
+      actorId: adminId, action: "integration.tested", entityType: "integration_settings", entityId: "captcha",
+      after: { ok: connected, code },
+    });
+    revalidatePath(INTEGRATIONS_PATH);
+    return connected ? { ok: true } : { ok: false, error: code ?? "generic" };
   } catch (e) {
     return { ok: false, error: reason(e) };
   }

@@ -208,7 +208,18 @@
     "err_network": "Could not reach the server. Please try again.",
     "err_no_session": "The password-reset session expired. Request a new link.",
     "err_same_password": "The new password must differ from the old one.",
-    "err_rate_limited": "Too many attempts. Please wait a moment and try again."
+    "err_rate_limited": "Too many attempts. Please wait a moment and try again.",
+    "verifiedTitle": "Email address confirmed",
+    "verifiedBody": "Your GrovBase account is now active.",
+    "verifiedLogin": "Sign in",
+    "verifiedApp": "Go to the app",
+    "linkInvalidTitle": "This activation link is invalid or has expired.",
+    "linkInvalidBody": "We'll send a new link to your email address.",
+    "resendNew": "Send a new link",
+    "errActivationSend": "We couldn't send the activation email. Please try again.",
+    "errCaptcha": "Please confirm you're not a robot.",
+    "errCaptchaFailed": "CAPTCHA verification failed. Please try again.",
+    "errIpLimit": "The maximum number of accounts has already been created from this network. Contact us if this is a mistake."
   },
   "dashboard": {
     "welcome": "Hi, {name}! 👋",
@@ -2692,6 +2703,19 @@
     "tgDisabled": "Telegram is not connected — notifications will not be delivered.",
     "saved": "Saved.",
     "mailboxTitle": "GrovBase mailbox",
-    "attachmentsHint": "Up to 4 MB per message."
+    "attachmentsHint": "Up to 4 MB per message.",
+    "captchaTile": "CAPTCHA — Turnstile",
+    "captchaTileSub": "Protects registration against bots.",
+    "siteKey": "Site Key",
+    "secretKey": "Secret Key",
+    "testCaptcha": "Test key",
+    "captchaOk": "The Turnstile key is valid.",
+    "captchaHelpTitle": "How to enable CAPTCHA",
+    "captchaHelp1": "Create a free Cloudflare account and open the Turnstile section.",
+    "captchaHelp2": "Add a widget for the grovbase.com domain (Managed mode).",
+    "captchaHelp3": "Copy the Site Key and Secret Key and paste them here.",
+    "captchaHelp4": "Save — the “I'm not a robot” check will appear on the registration page.",
+    "captchaDisabledHint": "Without keys, registration works without CAPTCHA.",
+    "err.captchaSecret": "The Secret Key is invalid."
   }
 }

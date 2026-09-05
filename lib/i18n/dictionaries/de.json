@@ -208,7 +208,18 @@
     "err_network": "Verbindung zum Server fehlgeschlagen. Bitte erneut versuchen.",
     "err_no_session": "Die Sitzung ist abgelaufen. Fordere einen neuen Link an.",
     "err_same_password": "Das neue Passwort muss sich vom alten unterscheiden.",
-    "err_rate_limited": "Zu viele Versuche. Bitte warte einen Moment und versuche es erneut."
+    "err_rate_limited": "Zu viele Versuche. Bitte warte einen Moment und versuche es erneut.",
+    "verifiedTitle": "E-Mail-Adresse bestätigt",
+    "verifiedBody": "Dein GrovBase-Konto ist jetzt aktiv.",
+    "verifiedLogin": "Anmelden",
+    "verifiedApp": "Zur App",
+    "linkInvalidTitle": "Der Aktivierungslink ist ungültig oder abgelaufen.",
+    "linkInvalidBody": "Wir senden dir einen neuen Link an deine E-Mail-Adresse.",
+    "resendNew": "Neuen Link senden",
+    "errActivationSend": "Die Aktivierungs-E-Mail konnte nicht gesendet werden. Bitte versuche es erneut.",
+    "errCaptcha": "Bitte bestätige, dass du kein Roboter bist.",
+    "errCaptchaFailed": "Die CAPTCHA-Prüfung ist fehlgeschlagen. Bitte versuche es erneut.",
+    "errIpLimit": "Aus diesem Netzwerk wurde bereits die maximale Anzahl an Konten erstellt. Schreib uns, falls das ein Irrtum ist."
   },
   "dashboard": {
     "welcome": "Hallo, {name}! 👋",
@@ -2692,6 +2703,19 @@
     "tgDisabled": "Telegram ist nicht verbunden — es werden keine Benachrichtigungen zugestellt.",
     "saved": "Gespeichert.",
     "mailboxTitle": "GrovBase-Postfach",
-    "attachmentsHint": "Maximal 4 MB pro Nachricht."
+    "attachmentsHint": "Maximal 4 MB pro Nachricht.",
+    "captchaTile": "CAPTCHA — Turnstile",
+    "captchaTileSub": "Schützt die Registrierung vor Bots.",
+    "siteKey": "Site Key",
+    "secretKey": "Secret Key",
+    "testCaptcha": "Schlüssel testen",
+    "captchaOk": "Der Turnstile-Schlüssel ist gültig.",
+    "captchaHelpTitle": "So aktivierst du CAPTCHA",
+    "captchaHelp1": "Erstelle ein kostenloses Cloudflare-Konto und öffne den Bereich Turnstile.",
+    "captchaHelp2": "Füge ein Widget für die Domain grovbase.com hinzu (Modus „Managed“).",
+    "captchaHelp3": "Kopiere den Site Key und den Secret Key und füge beide hier ein.",
+    "captchaHelp4": "Speichern — das Feld „Ich bin kein Roboter“ erscheint auf der Registrierungsseite.",
+    "captchaDisabledHint": "Ohne Schlüssel funktioniert die Registrierung ohne CAPTCHA.",
+    "err.captchaSecret": "Der Secret Key ist ungültig."
   }
 }

@@ -2429,6 +2429,30 @@ export type Database = {
           },
         ]
       }
+      signup_events: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          ip_hash: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          ip_hash: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          ip_hash?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       subscription_plans: {
         Row: {
           active: boolean
@@ -3031,6 +3055,7 @@ export type Database = {
         Returns: string
       }
       bootstrap_current_user: { Args: never; Returns: undefined }
+      captcha_site_key: { Args: never; Returns: string }
       charge_usage_credits: {
         Args: {
           p_amount: number
@@ -3179,6 +3204,19 @@ export type Database = {
           p_note?: string
           p_slug: string
           p_state: string
+        }
+        Returns: undefined
+      }
+      signup_ip_allowed: {
+        Args: { p_ip_hash: string; p_token: string }
+        Returns: boolean
+      }
+      signup_ip_record: {
+        Args: {
+          p_email?: string
+          p_ip_hash: string
+          p_token: string
+          p_user_id?: string
         }
         Returns: undefined
       }

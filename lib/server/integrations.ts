@@ -19,7 +19,7 @@ import { decryptWith, encryptWith } from "@/lib/server/crypto";
  * must never take a page or a signup down with it.
  */
 
-export type IntegrationType = "mail" | "telegram";
+export type IntegrationType = "mail" | "telegram" | "captcha";
 export type IntegrationStatus = "not_configured" | "connected" | "error";
 
 export type MailConfig = {
@@ -40,6 +40,11 @@ export type MailConfig = {
 };
 
 export type TelegramConfig = { chat_id: string; channel_name: string };
+
+/** The signup captcha (0054). The site key is public by nature — it is
+ *  rendered into the registration page — so it lives in `config`; only the
+ *  secret key goes through the `secrets` envelope. */
+export type CaptchaConfig = { provider: "turnstile"; site_key: string };
 
 /**
  * Prefill only — every one of these stays editable in the admin panel. They
@@ -68,6 +73,10 @@ export const TELEGRAM_DEFAULTS: TelegramConfig = {
   channel_name: "GrovBase — Powiadomienia",
 };
 
+/** Matches the seed in 0054_signup_protection.sql the same way the two above
+ *  match 0052: an unsaved row and a default-saved row read back identically. */
+export const CAPTCHA_DEFAULTS: CaptchaConfig = { provider: "turnstile", site_key: "" };
+
 export type IntegrationView<C> = {
   type: IntegrationType;
   enabled: boolean;
@@ -84,6 +93,7 @@ export type IntegrationView<C> = {
 const SECRET_NAMES: Record<IntegrationType, readonly string[]> = {
   mail: ["imap_password", "smtp_password"],
   telegram: ["bot_token"],
+  captcha: ["secret_key"],
 };
 
 /** One stored secret: ciphertext / iv / auth tag, all base64. */
@@ -118,7 +128,9 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function defaultsFor(type: IntegrationType): Record<string, unknown> {
-  return type === "mail" ? { ...MAIL_DEFAULTS } : { ...TELEGRAM_DEFAULTS };
+  if (type === "mail") return { ...MAIL_DEFAULTS };
+  if (type === "captcha") return { ...CAPTCHA_DEFAULTS };
+  return { ...TELEGRAM_DEFAULTS };
 }
 
 function asStatus(value: unknown): IntegrationStatus {

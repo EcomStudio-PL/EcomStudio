@@ -208,7 +208,18 @@
     "err_network": "Nie udało się połączyć z serwerem. Spróbuj ponownie.",
     "err_no_session": "Sesja zmiany hasła wygasła. Poproś o nowy link.",
     "err_same_password": "Nowe hasło musi różnić się od poprzedniego.",
-    "err_rate_limited": "Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie."
+    "err_rate_limited": "Zbyt wiele prób. Odczekaj chwilę i spróbuj ponownie.",
+    "verifiedTitle": "Adres e-mail potwierdzony",
+    "verifiedBody": "Twoje konto GrovBase jest już aktywne.",
+    "verifiedLogin": "Zaloguj się",
+    "verifiedApp": "Przejdź do aplikacji",
+    "linkInvalidTitle": "Link aktywacyjny jest nieprawidłowy lub wygasł.",
+    "linkInvalidBody": "Wyślemy nowy link na Twój adres e-mail.",
+    "resendNew": "Wyślij nowy link",
+    "errActivationSend": "Nie udało się wysłać wiadomości aktywacyjnej. Spróbuj ponownie.",
+    "errCaptcha": "Potwierdź, że nie jesteś robotem.",
+    "errCaptchaFailed": "Weryfikacja CAPTCHA nie powiodła się. Spróbuj ponownie.",
+    "errIpLimit": "Z tej sieci utworzono już maksymalną liczbę kont. Napisz do nas, jeśli to pomyłka."
   },
   "dashboard": {
     "welcome": "Cześć, {name}! 👋",
@@ -2692,6 +2703,19 @@
     "tgDisabled": "Telegram nie jest połączony — powiadomienia nie będą wysyłane.",
     "saved": "Zapisano.",
     "mailboxTitle": "Skrzynka GrovBase",
-    "attachmentsHint": "Maksymalnie 4 MB na wiadomość."
+    "attachmentsHint": "Maksymalnie 4 MB na wiadomość.",
+    "captchaTile": "CAPTCHA — Turnstile",
+    "captchaTileSub": "Ochrona rejestracji przed botami.",
+    "siteKey": "Site Key",
+    "secretKey": "Secret Key",
+    "testCaptcha": "Testuj klucz",
+    "captchaOk": "Klucz Turnstile jest poprawny.",
+    "captchaHelpTitle": "Jak włączyć CAPTCHA",
+    "captchaHelp1": "Załóż darmowe konto Cloudflare i otwórz sekcję Turnstile.",
+    "captchaHelp2": "Dodaj widget dla domeny grovbase.com (tryb Managed).",
+    "captchaHelp3": "Skopiuj Site Key oraz Secret Key i wklej je tutaj.",
+    "captchaHelp4": "Zapisz — pole „Nie jestem robotem” pojawi się na stronie rejestracji.",
+    "captchaDisabledHint": "Bez kluczy rejestracja działa bez CAPTCHA.",
+    "err.captchaSecret": "Secret Key jest nieprawidłowy."
   }
 }

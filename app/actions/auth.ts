@@ -5,6 +5,9 @@ import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/server/rate-limit";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
+import { verifyTurnstile } from "@/lib/server/captcha";
+import { readIntegrationSecrets, safeError } from "@/lib/server/integrations";
+import { recordSignup, signupAllowed, signupIpHash } from "@/lib/server/signup-guard";
 import { getLocale } from "@/lib/i18n/server";
 import { absoluteUrl } from "@/lib/site";
 import { ACQUISITION_SOURCES, EMAIL_RE, isPoland, passwordIssue, validNip } from "@/lib/auth-validation";
@@ -114,6 +117,41 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
     return { ok: false, errors: { form: "registration_disabled" }, values };
   }
 
+  // ── Abuse guards (0054): captcha, then the per-IP cap ──────────────────
+  // Both sit after the cheap checks and BEFORE auth.signUp, so a script has
+  // to spend a Turnstile solve before it can even reach GoTrue.
+  const ip = await callerIp();
+
+  // Captcha runs only when fully configured — public site key typed AND the
+  // secret envelope saved — which is exactly the condition under which the
+  // register page rendered a widget. Half-configured or absent means no
+  // widget was shown, so demanding a token here would brick every signup.
+  const captcha = await readIntegrationSecrets<{ site_key?: string }>(supabase, "captcha");
+  const captchaSecret = captcha.secrets.secret_key ?? "";
+  if ((captcha.config.site_key ?? "").trim() !== "" && captchaSecret !== "") {
+    const captchaToken = String(formData.get("cf-turnstile-response") ?? "").trim();
+    if (!captchaToken) return { ok: false, errors: { form: "captcha" }, values };
+    const verdict = await verifyTurnstile(captchaSecret, captchaToken, ip === "unknown" ? undefined : ip);
+    if (!verdict.ok) {
+      // bad_token is the user's problem (expired widget, replay) and solving
+      // again fixes it. bad_secret / network are OURS — the user sees the
+      // same retry message, but a scrubbed log line tells the operator the
+      // secret is wrong or Cloudflare was unreachable.
+      if (verdict.error === "bad_secret" || verdict.error === "network") {
+        console.error("signup.captcha", safeError(verdict.error));
+      }
+      return { ok: false, errors: { form: "captcha_failed" }, values };
+    }
+  }
+
+  // Per-IP cap. Only the keyed hash ever leaves this function; a null hash
+  // (no key, unknown IP) or any RPC failure fails open, because the guard is
+  // a speed bump for mass registration, never a lock on real customers.
+  const ipHash = signupIpHash(ip);
+  if (ipHash && !(await signupAllowed(supabase, ipHash))) {
+    return { ok: false, errors: { form: "ip_limit" }, values };
+  }
+
   const locale = await getLocale();
   const { data, error } = await supabase.auth.signUp({
     email,
@@ -163,6 +201,13 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
     if (error.status === 429 || error.code === "over_email_send_rate_limit") {
       return { ok: false, errors: { form: "rate_limited" }, values };
     }
+    // A dead SMTP is GoTrue's own 500 — "Error sending confirmation email",
+    // code unexpected_failure. The account may well exist by then, so calling
+    // it "server unreachable" would be a lie twice over; the dedicated code
+    // lets the UI point at the resend button instead.
+    if (/send.*(confirmation|email)|email.*send/i.test(error.message)) {
+      return { ok: false, errors: { form: "activation_send" }, values };
+    }
     return { ok: false, errors: { form: "network" }, values };
   }
 
@@ -190,6 +235,12 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
       footer: `Data: ${new Date().toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Warsaw" })}`,
       dedupeKey: buildDedupeKey("user.registered", email.toLowerCase()),
     }));
+    // The per-IP cap counts registrations that actually happened, recorded
+    // the same way the ping goes out: in after(), so the new customer never
+    // waits on bookkeeping, and the SQL no-ops silently on a bad token.
+    if (ipHash) {
+      after(() => recordSignup(supabase, ipHash, email));
+    }
   }
 
   // Auto-confirm environments hand back a session right away.
