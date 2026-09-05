@@ -13,9 +13,10 @@ import {
   type Creds, type ExpandPlan,
 } from "@/lib/images/providers";
 import {
-  compress, dropShadow, flattenToColor, inspect, resizeConvert, watermark,
+  composeEditor, compress, dropShadow, flattenToColor, inspect, resizeConvert, watermark,
   MAX_INPUT_BYTES, type OutputFormat,
 } from "@/lib/images/local";
+import { clampEditorState } from "@/lib/images/editor-state";
 
 /**
  * IMAGE TOOLS SERVICE — the single place a tool run happens.
@@ -196,6 +197,15 @@ export function parseSettings<K extends ToolSlug>(tool: K, raw: unknown): ToolSe
   const r = (raw ?? {}) as Record<string, unknown>;
   const d = DEFAULT_SETTINGS;
   switch (tool) {
+    case "editor":
+      // The whole state goes through clampEditorState — the same function the
+      // browser uses — so the panel and the bake can never disagree about what
+      // a value means, and a hand-rolled request cannot smuggle one past it.
+      return {
+        state: clampEditorState(r.state),
+        format: pick(r.format, ["jpeg", "png", "webp", "tiff"] as const, d.editor.format),
+        quality: clamp(r.quality, 40, 100, d.editor.quality),
+      } as ToolSettings[K];
     case "upscale":
       return { factor: (clamp(r.factor, 2, 4, 2) >= 4 ? 4 : 2) as UpscaleFactor } as ToolSettings[K];
     case "remove_bg":
@@ -375,10 +385,20 @@ async function runLocal(
   };
 }
 
-const KNOWN_LOCAL_ERRORS = new Set(["needs_transparency", "unreadable_image", "missing_logo", "bad_ratio"]);
+const KNOWN_LOCAL_ERRORS = new Set([
+  "needs_transparency", "unreadable_image", "missing_logo", "bad_ratio",
+  // The editor's background modes it cannot do honestly — see composeEditor.
+  "background_unavailable", "image_too_large",
+]);
 
 async function processLocally(slug: ToolSlug, input: RunInput, before: Facts): Promise<Buffer> {
   switch (slug) {
+    case "editor": {
+      const s = parseSettings("editor", input.settings);
+      return composeEditor(input.file, s.state, {
+        format: s.format as OutputFormat, quality: s.quality,
+      });
+    }
     case "white_bg": {
       const s = parseSettings("white_bg", input.settings);
       if (!before.hasAlpha) throw new Error("needs_transparency");

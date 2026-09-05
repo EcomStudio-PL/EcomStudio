@@ -1,7 +1,10 @@
+import { EDITOR_DEFAULTS, type EditorState } from "./editor-state";
+
 /**
  * IMAGE TOOLS — the catalogue.
  *
- * Eight micro-tools for product photos, split by what they actually cost us:
+ * One editor and eight micro-tools for product photos, split by what they
+ * actually cost us:
  *
  *   LOCAL  — pure pixel work done by sharp in our own runtime. No provider,
  *            no per-image fee, therefore ZERO credits for the seller.
@@ -15,7 +18,7 @@
  */
 
 export const TOOL_SLUGS = [
-  "upscale", "remove_bg", "white_bg", "expand",
+  "editor", "upscale", "remove_bg", "white_bg", "expand",
   "shadow", "format", "compress", "watermark",
 ] as const;
 export type ToolSlug = (typeof TOOL_SLUGS)[number];
@@ -35,6 +38,10 @@ export type ToolDefinition = {
 };
 
 export const TOOLS: ToolDefinition[] = [
+  // The editor is the whole toolbox in one pass — crop, background, shadow,
+  // colour and transform baked by our own sharp pipeline, so it is free for
+  // exactly the same reason the other local tools are.
+  { slug: "editor",    kind: "local", service: "tool_editor",    keepsAlpha: true,  sortOrder: 0 },
   { slug: "upscale",   kind: "paid",  capability: "upscale",    service: "tool_upscale",       keepsAlpha: false, sortOrder: 1 },
   { slug: "remove_bg", kind: "paid",  capability: "background", service: "tool_remove_bg",     keepsAlpha: true,  sortOrder: 2 },
   { slug: "white_bg",  kind: "local", service: "tool_white_bg",   keepsAlpha: false, sortOrder: 3 },
@@ -89,6 +96,8 @@ export type UpscaleFactor = (typeof UPSCALE_FACTORS)[number];
 
 /** Every tool's settings object, discriminated by the tool slug. */
 export type ToolSettings = {
+  /** The editor sends its whole state; the panel owns the shape, not this file. */
+  editor: { state: EditorState; format: OutputFormatOption; quality: number };
   upscale: { factor: UpscaleFactor };
   remove_bg: { format: "png" | "webp" };
   white_bg: { color: string; padding: number; format: OutputFormatOption; quality: number };
@@ -104,6 +113,7 @@ export type ToolSettings = {
 };
 
 export const DEFAULT_SETTINGS: { [K in ToolSlug]: ToolSettings[K] } = {
+  editor: { state: EDITOR_DEFAULTS, format: "jpeg", quality: 92 },
   upscale: { factor: 2 },
   remove_bg: { format: "png" },
   white_bg: { color: "#FFFFFF", padding: 0, format: "jpeg", quality: 92 },

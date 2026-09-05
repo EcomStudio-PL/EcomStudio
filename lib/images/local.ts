@@ -1,5 +1,6 @@
 import "server-only";
 import sharp, { type Sharp, type OverlayOptions } from "sharp";
+import type { EditorRatio, EditorState, ShadowPreset } from "./editor-state";
 
 /**
  * LOCAL IMAGE PROCESSOR — everything GrovBase can do without paying a
@@ -250,6 +251,8 @@ export async function dropShadow(input: Buffer, opts: {
   blur?: number;
   offsetX?: number;
   offsetY?: number;
+  /** The shadow's own colour. Black unless a scene calls for something warmer. */
+  color?: string;
   background?: string;
   format?: OutputFormat;
   quality?: number;
@@ -280,9 +283,9 @@ export async function dropShadow(input: Buffer, opts: {
     : silhouette;
   const shadowH = style === "contact" ? Math.max(8, Math.round(height * 0.16)) : height;
 
-  // Tint it black at the requested opacity, then blur.
+  // Tint it — black unless asked otherwise — at the requested opacity, then blur.
   const shadowLayer = await sharp({
-    create: { width, height: shadowH, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 1 } },
+    create: { width, height: shadowH, channels: 4, background: opts.color ?? { r: 0, g: 0, b: 0, alpha: 1 } },
   })
     .composite([{ input: squashed, blend: "dest-in" }])
     .ensureAlpha()
@@ -357,11 +360,273 @@ export async function expandCanvas(input: Buffer, ratio: string): Promise<{
   return { canvas, mask, width, height };
 }
 
+/* ── the editor bake ───────────────────────────────────────────────────── */
+
+const TRANSPARENT = { r: 0, g: 0, b: 0, alpha: 0 };
+
+/** Which of dropShadow's three silhouette geometries each preset asks for.
+ *  "strong" and "wall" are the same silhouette as "soft" — what separates them
+ *  is opacity, blur and offset, which is genuinely all a cast shadow is. */
+const PRESET_STYLE: Record<Exclude<ShadowPreset, "none">, ShadowStyle> = {
+  soft: "soft",
+  strong: "soft",
+  floating: "floating",
+  wall: "soft",
+};
+
+/** null = "whatever the photo already is". */
+const RATIO_VALUE: Record<EditorRatio, number | null> = {
+  original: null,
+  custom: null,
+  "1:1": 1,
+  "4:5": 4 / 5,
+  "3:4": 3 / 4,
+  "16:9": 16 / 9,
+  "9:16": 9 / 16,
+};
+
+/**
+ * COMPOSE — a whole editor state baked in one go.
+ *
+ * The order below is the entire correctness story, and it is not the order the
+ * panel lists the controls in:
+ *
+ *   transform → background → shadow → adjust → fit the target box → encode
+ *
+ * The shadow is cut from the product's OWN alpha, so it has to be cast before
+ * anything flattens that alpha away — which is why the background colour is
+ * handed to dropShadow instead of being painted first. Adjustments and the
+ * resize share one sharp chain: libvips resolves a chain in its own fixed order
+ * (resize → extend → modulate → sharpen → linear), which puts the unsharp mask
+ * AFTER the downscale, the only order in which sharpening survives at all.
+ *
+ * Every intermediate handoff is PNG: lossless, so a five-step edit does not
+ * accumulate five generations of JPEG artefacts on the product.
+ */
+export async function composeEditor(input: Buffer, state: EditorState, opts: {
+  format: OutputFormat;
+  quality: number;
+}): Promise<Buffer> {
+  if (input.length > MAX_INPUT_BYTES) throw new Error("image_too_large");
+  // There is no text-to-background generator here and no way to fetch a plate
+  // from inside the pipeline, so this mode is REFUSED rather than quietly
+  // ignored. A control that does nothing is worse than one that says no.
+  if (state.background.mode === "image") throw new Error("background_unavailable");
+
+  const meta = await sharp(input).metadata();
+  if (!meta.width || !meta.height) throw new Error("unreadable_image");
+
+  // Normalise once, and only when it is actually needed: EXIF orientation has
+  // to be resolved before any crop maths, and a one-band photo would break the
+  // per-channel gains further down.
+  const needsNormalising = (meta.channels ?? 3) < 3 || (meta.orientation ?? 1) > 1;
+  let buffer = needsNormalising
+    ? await sharp(input, { failOn: "none" }).rotate().toColourspace("srgb").png().toBuffer()
+    : input;
+
+  buffer = await applyTransform(buffer, state.transform);
+
+  // JPEG has no alpha, and "paint the background" means the same thing.
+  const opaque = opts.format === "jpeg" || state.background.mode === "color";
+  const fill = state.background.mode === "color" ? state.background.color : "#FFFFFF";
+
+  if (state.shadow.preset !== "none") {
+    const facts = await sharp(buffer).metadata();
+    // The cutout's alpha IS the shadow. Without one there is no silhouette to
+    // cast, and inventing one would be a lie about the product's shape.
+    if (!facts.hasAlpha) throw new Error("needs_transparency");
+    buffer = await dropShadow(buffer, {
+      style: PRESET_STYLE[state.shadow.preset],
+      opacity: state.shadow.opacity / 100,
+      blur: state.shadow.blur,
+      offsetX: state.shadow.offsetX,
+      offsetY: state.shadow.offsetY,
+      color: state.shadow.color,
+      // Flattened here, not later: the shadow belongs ON the backdrop, not
+      // over a transparent hole punched through it.
+      background: opaque ? fill : undefined,
+      format: "png",
+      quality: 100,
+    });
+  }
+
+  const framed = await sharp(buffer).metadata();
+  const frame = { width: framed.width ?? 0, height: framed.height ?? 0 };
+  if (!frame.width || !frame.height) throw new Error("unreadable_image");
+
+  const box = targetBox(frame, state.format);
+  // Fit INSIDE the box and pad out to it: the canvas grows, the product is
+  // never cropped to reach a ratio, and it is never enlarged to reach a size —
+  // adding detail that was not photographed is the paid upscaler's job.
+  const ratio = Math.min(box.width / frame.width, box.height / frame.height, 1);
+  const inner = {
+    width: Math.max(1, Math.round(frame.width * ratio)),
+    height: Math.max(1, Math.round(frame.height * ratio)),
+  };
+  const padLeft = Math.floor((box.width - inner.width) / 2);
+  const padTop = Math.floor((box.height - inner.height) / 2);
+
+  let pipeline = sharp(buffer, { failOn: "none" });
+  if (opaque) pipeline = pipeline.flatten({ background: fill });
+  if (inner.width !== frame.width || inner.height !== frame.height) {
+    pipeline = pipeline.resize({ width: inner.width, height: inner.height, fit: "fill" });
+  }
+  if (inner.width !== box.width || inner.height !== box.height) {
+    pipeline = pipeline.extend({
+      top: padTop,
+      bottom: box.height - inner.height - padTop,
+      left: padLeft,
+      right: box.width - inner.width - padLeft,
+      background: opaque ? fill : TRANSPARENT,
+    });
+  }
+  return encode(applyAdjust(pipeline, state.adjust), opts.format, opts.quality).toBuffer();
+}
+
+/**
+ * TRANSFORM — mirror, free rotation, then zoom and pan inside the frame.
+ *
+ * Two passes at most, and only when something actually moved: the frame that
+ * the zoom pans within is the one the rotation produced, so its size cannot be
+ * known until the rotation has run.
+ */
+async function applyTransform(input: Buffer, t: EditorState["transform"]): Promise<Buffer> {
+  const framing = t.rotate !== 0 || t.flipH || t.flipV;
+  const panning = t.scale !== 100 || t.offsetX !== 0 || t.offsetY !== 0;
+  if (!framing && !panning) return input;
+
+  let buffer = input;
+  if (framing) {
+    let pipeline = sharp(input, { failOn: "none" });
+    // sharp names these after the axis the pixels travel along: flop is the
+    // left/right mirror, flip the top/bottom one.
+    if (t.flipH) pipeline = pipeline.flop();
+    if (t.flipV) pipeline = pipeline.flip();
+    // A free angle grows the canvas; the corners it opens up stay transparent
+    // so the background step decides what fills them.
+    if (t.rotate !== 0) pipeline = pipeline.rotate(t.rotate, { background: TRANSPARENT });
+    buffer = await pipeline.png().toBuffer();
+  }
+  if (!panning) return buffer;
+
+  const meta = await sharp(buffer).metadata();
+  const frameW = meta.width ?? 0;
+  const frameH = meta.height ?? 0;
+  if (!frameW || !frameH) throw new Error("unreadable_image");
+
+  // Where the zoomed image lands inside the frame it started from. Offsets are
+  // a share of the frame, so the same pan reads identically on an 800px and a
+  // 4000px photo.
+  const scaledW = clampSide((frameW * t.scale) / 100);
+  const scaledH = clampSide((frameH * t.scale) / 100);
+  const left = Math.round((frameW - scaledW) / 2 + (frameW * t.offsetX) / 100);
+  const top = Math.round((frameH - scaledH) / 2 + (frameH * t.offsetY) / 100);
+
+  const vx0 = Math.max(0, left);
+  const vy0 = Math.max(0, top);
+  const vx1 = Math.min(frameW, left + scaledW);
+  const vy1 = Math.min(frameH, top + scaledH);
+  if (vx1 <= vx0 || vy1 <= vy0) {
+    // Panned entirely out of frame. An empty canvas is the honest answer, not
+    // a silently ignored offset.
+    return sharp({ create: { width: frameW, height: frameH, channels: 4, background: TRANSPARENT } })
+      .png().toBuffer();
+  }
+
+  // Crop the SOURCE to the slice that stays visible, scale that slice, then pad
+  // back out to the frame. sharp resolves a pre-resize extract, the resize and
+  // the extend in exactly that order, so this is one pass — and it never asks
+  // for the negative composite offset that a zoomed-in frame would otherwise
+  // need, which sharp does not accept.
+  const visibleW = vx1 - vx0;
+  const visibleH = vy1 - vy0;
+  const sx = Math.max(0, Math.min(frameW - 1, Math.round(((vx0 - left) * frameW) / scaledW)));
+  const sy = Math.max(0, Math.min(frameH - 1, Math.round(((vy0 - top) * frameH) / scaledH)));
+  const sw = Math.max(1, Math.min(frameW - sx, Math.round((visibleW * frameW) / scaledW)));
+  const sh = Math.max(1, Math.min(frameH - sy, Math.round((visibleH * frameH) / scaledH)));
+
+  return sharp(buffer, { failOn: "none" })
+    .extract({ left: sx, top: sy, width: sw, height: sh })
+    .resize({ width: visibleW, height: visibleH, fit: "fill" })
+    .extend({
+      left: vx0,
+      right: frameW - vx0 - visibleW,
+      top: vy0,
+      bottom: frameH - vy0 - visibleH,
+      background: TRANSPARENT,
+    })
+    .png()
+    .toBuffer();
+}
+
+/**
+ * The export box. A ratio with no size grows the short side (the expand
+ * planner's rule: only ever add canvas); a size with no ratio keeps the photo's
+ * own proportions; lockRatio means the height follows the width, so the number
+ * the seller typed is the one that survives.
+ */
+function targetBox(frame: { width: number; height: number }, f: EditorState["format"]): {
+  width: number; height: number;
+} {
+  const asked = RATIO_VALUE[f.ratio];
+  const aspect = asked ?? frame.width / frame.height;
+  let width = f.width;
+  let height = f.height;
+
+  if (width !== null && (height === null || f.lockRatio)) height = Math.round(width / aspect);
+  else if (width === null && height !== null) width = Math.round(height * aspect);
+  else if (width === null && height === null) {
+    if (asked === null) return { width: frame.width, height: frame.height };
+    const current = frame.width / frame.height;
+    width = current < asked ? Math.round(frame.height * asked) : frame.width;
+    height = current < asked ? frame.height : Math.round(frame.width / asked);
+  }
+  return { width: clampSide(width ?? frame.width), height: clampSide(height ?? frame.height) };
+}
+
+/**
+ * ADJUST — only what sharp can genuinely do, in one chain.
+ *
+ * brightness and saturation are modulate()'s own multipliers in LCh; contrast
+ * and temperature are both the linear pass a * in + b, so they are folded into
+ * ONE linear() call — sharp keeps only the last one set on a pipeline, and two
+ * calls would silently drop the first. Temperature is a red/blue channel gain,
+ * which is what a warm or cool white balance physically is; sharpness is a real
+ * unsharp mask upwards and a real gaussian blur downwards.
+ */
+function applyAdjust(pipeline: Sharp, a: EditorState["adjust"]): Sharp {
+  let out = pipeline;
+  if (a.brightness !== 0 || a.saturation !== 0) {
+    out = out.modulate({
+      brightness: Math.max(0.05, 1 + a.brightness / 100),
+      saturation: Math.max(0, 1 + a.saturation / 100),
+    });
+  }
+  if (a.sharpness > 0) out = out.sharpen({ sigma: 0.5 + (a.sharpness / 100) * 2.5 });
+  else if (a.sharpness < 0) out = out.blur(0.3 + (-a.sharpness / 100) * 2.7);
+
+  if (a.contrast !== 0 || a.temperature !== 0) {
+    const gain = 1 + a.contrast / 100;          // 0 flattens to grey, 2 is hard
+    const pivot = 128 * (1 - gain);             // mid grey stays where it is
+    const warm = (a.temperature / 100) * 0.15;  // ±15% across the red/blue pair
+    // Three multipliers on a four-band image is not a mistake: sharp lifts the
+    // alpha channel out and puts it back, so a cutout keeps its transparency.
+    out = out.linear([gain * (1 + warm), gain, gain * (1 - warm)], [pivot, pivot, pivot]);
+  }
+  return out;
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
 }
 
 function clampDimension(value?: number | null): number | null {
   if (!value || !Number.isFinite(value)) return null;
+  return Math.min(MAX_DIMENSION, Math.max(1, Math.round(value)));
+}
+
+/** Same ceiling as clampDimension, for sides that always have a value. */
+function clampSide(value: number): number {
+  if (!Number.isFinite(value)) return 1;
   return Math.min(MAX_DIMENSION, Math.max(1, Math.round(value)));
 }

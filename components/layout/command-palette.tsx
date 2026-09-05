@@ -5,7 +5,7 @@ import { Images, Loader2, Package, PenLine, Search, Sparkles, User, Video, Wrenc
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { CLIENT_NAV, ADMIN_NAV } from "@/lib/navigation";
-import { IMAGE_CREATE, IMAGE_EDIT } from "@/lib/topnav";
+import { IMAGE_CREATE, IMAGE_EDIT, IMAGE_EDIT_MORE, editLabelKey } from "@/lib/topnav";
 import { VIDEO_CREATE_WF } from "@/lib/categories";
 import { cn } from "@/lib/utils";
 import type { SearchHit } from "@/app/api/search/route";
@@ -134,9 +134,11 @@ export function CommandPalette({ isAdmin, wide = false, iconOnly = false }: {
       key: "gen:custom", label: t("mega.custom"), sub: null, href: "/generator",
       icon: PenLine, section: "generators", facets: ["image"],
     });
-    for (const e of IMAGE_EDIT) {
+    // The menu carries five destinations, but search has no room limit: every
+    // tool stays findable by its own name, wherever it now lives.
+    for (const e of [...IMAGE_EDIT, ...IMAGE_EDIT_MORE]) {
       rows.push({
-        key: `tool:${e.key}`, label: t(`tools.${e.key}.name`), sub: null,
+        key: `tool:${e.key}`, label: t(editLabelKey(e)), sub: null,
         href: e.href, icon: e.icon, section: "tools", facets: ["tools"],
       });
     }

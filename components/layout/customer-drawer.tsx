@@ -4,11 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   ArrowUpRight, ChevronDown, Home, Images, LifeBuoy, Lightbulb, LogOut, Package,
-  Plus, Settings, Shield, Wrench,
+  Plus, Settings, Shield,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { CATEGORIES, VIDEO_ICON as VideoIcon } from "@/lib/categories";
-import { IMAGE_EDIT, IMAGE_MODES } from "@/lib/topnav";
+import { IMAGE_EDIT, IMAGE_MODES, editLabelKey } from "@/lib/topnav";
 import { NavLink } from "./nav-link";
 import { Drawer, IslandClose, NavGroupLabel } from "./drawer";
 import { LocaleSwitcher } from "./locale-switcher";
@@ -122,10 +122,11 @@ export function CustomerDrawer({ name, email, credits, plan, isAdmin }: {
       </Section>
 
       <Section title={t("mega.edit")}>
+        {/* The hub is the last of these five entries, so it is not appended a
+            second time underneath them. */}
         {IMAGE_EDIT.filter((e) => !e.soon).map((e) => (
-          <NavLink key={e.key} href={e.href} label={t(`tools.${e.key}.name`)} icon={e.icon} onNavigate={closeNav} />
+          <NavLink key={e.key} href={e.href} label={t(editLabelKey(e))} icon={e.icon} onNavigate={closeNav} />
         ))}
-        <NavLink href="/tools" label={t("mega.allTools")} icon={Wrench} onNavigate={closeNav} />
       </Section>
 
       <Section title={t("topnav.video")}>

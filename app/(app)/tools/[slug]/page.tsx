@@ -15,8 +15,28 @@ import { ToolWorkbench } from "@/components/tools/workbench";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * WHERE THE CONSOLIDATED TOOLS WENT.
+ *
+ * Four of the one-dial pages are now sections of the editor or of the resize
+ * screen. Their URLs are in bookmarks, in mails and in the browser history of
+ * every seller who used them, so they are not deleted — they are forwarded,
+ * server-side, onto the same operation one level up. What is left below is the
+ * three tools that are still a batch of their own: upscale, expand, watermark.
+ */
+const MOVED: Record<string, string> = {
+  remove_bg: "/tools/editor?tool=remove-background",
+  white_bg: "/tools/editor?tool=white-background",
+  shadow: "/tools/editor?tool=shadow",
+  format: "/tools/resize",
+};
+
 export default async function ToolPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  // Forward before any query runs: a redirect needs no session and no wallet.
+  const moved = MOVED[slug];
+  if (moved) redirect(moved);
+
   const tool = toolBySlug(slug);
   if (!tool) notFound();
 
@@ -45,7 +65,7 @@ export default async function ToolPage({ params }: { params: Promise<{ slug: str
     <div>
       <Link href="/tools"
         className="mb-2 inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-ink">
-        <ArrowLeft size={14} aria-hidden /> {t("tools.title")}
+        <ArrowLeft size={14} aria-hidden /> {t("nav.allTools")}
       </Link>
       <PageHeader
         overline={entry.credits === 0 ? t("tools.free") : t("tools.creditsTotal", { n: entry.credits })}

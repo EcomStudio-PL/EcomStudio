@@ -11,8 +11,12 @@
  */
 import sharp from "sharp";
 import {
-  compress, dropShadow, flattenToColor, inspect, resizeConvert, watermark,
+  composeEditor, compress, dropShadow, flattenToColor, inspect, resizeConvert, watermark,
 } from "../lib/images/local";
+import {
+  applyPatch, clampEditorState, describePatch, isPristine, pushHistory,
+  EDITOR_DEFAULTS, type EditorState, type HistoryEntry,
+} from "../lib/images/editor-state";
 import { billingFrom, creditsForCost, quote } from "../lib/images/pricing";
 import { planExpand } from "../lib/server/image-tools";
 
@@ -140,6 +144,164 @@ async function main() {
   const clamped = planExpand({ width: 6000, height: 4000 }, "9:16");
   check("clamps the canvas to provider limits", !!clamped && Math.max(clamped.target.width, clamped.target.height) <= 2400,
     `${clamped?.target.width}×${clamped?.target.height}`);
+
+  console.log("\nH. EDITOR STATE — the panel and the server share one contract");
+  const base = clampEditorState({});
+  check("an empty object falls back to the defaults", isPristine(base) && base.transform.scale === 100);
+  check("anything that is not an object is not an editor state",
+    isPristine(clampEditorState(null)) && isPristine(clampEditorState("nonsense"))
+    && isPristine(clampEditorState([1, 2, 3])) && isPristine(clampEditorState(42)));
+
+  // Everything a hand-rolled request could send: the wrong type, the wrong
+  // spelling, a value a thousand times past the slider, and NaN.
+  const hostile = clampEditorState({
+    background: { mode: "dropTable", color: "red" },
+    shadow: { preset: 42, opacity: NaN, blur: 1e9, offsetX: "-999999", offsetY: Infinity, color: "#GGGGGG" },
+    format: { ratio: "7:3", width: 99999, height: -5, lockRatio: "yes" },
+    adjust: { brightness: 5000, contrast: -5000, saturation: "x", temperature: null, sharpness: NaN },
+    transform: { rotate: 720, flipH: 1, flipV: "true", scale: 1e6, offsetX: -1e6, offsetY: {} },
+  });
+  check("a bad enum falls back instead of reaching sharp",
+    hostile.background.mode === "keep" && hostile.shadow.preset === "none" && hostile.format.ratio === "original");
+  check("a colour that is not a colour falls back",
+    hostile.background.color === "#FFFFFF" && hostile.shadow.color === "#000000");
+  check("NaN and Infinity never survive",
+    hostile.shadow.opacity === 30 && hostile.shadow.offsetY === 18
+    && hostile.adjust.temperature === 0 && hostile.adjust.sharpness === 0 && hostile.adjust.saturation === 0);
+  check("huge numbers are clamped to the slider, not rejected",
+    hostile.shadow.blur === 200 && hostile.shadow.offsetX === -300
+    && hostile.format.width === 8000 && hostile.format.height === 16
+    && hostile.adjust.brightness === 100 && hostile.adjust.contrast === -100
+    && hostile.transform.rotate === 180 && hostile.transform.scale === 400 && hostile.transform.offsetX === -100);
+  check("a non-boolean is not a truthy boolean",
+    hostile.transform.flipH === false && hostile.transform.flipV === false && hostile.format.lockRatio === true);
+  check("a background URL that is not https is dropped",
+    clampEditorState({ background: { imageUrl: "javascript:alert(1)" } }).background.imageUrl === undefined);
+
+  const patched = applyPatch(base, "adjust", { brightness: 250 });
+  check("applyPatch clamps an out-of-range dial", patched.adjust.brightness === 100);
+  check("applyPatch never touches the state it was handed",
+    base.adjust.brightness === 0 && base.adjust !== patched.adjust && base !== patched);
+  const preset = applyPatch(base, "shadow", { preset: "strong" });
+  check("a shadow preset brings its own numbers", preset.shadow.opacity === 55 && preset.shadow.blur === 12);
+  const tuned = applyPatch(preset, "shadow", { preset: "wall", opacity: 12 });
+  check("a value set in the same patch beats the preset", tuned.shadow.opacity === 12 && tuned.shadow.offsetX === 34);
+
+  check("the untouched state is pristine", isPristine(EDITOR_DEFAULTS));
+  check("one moved dial is not", !isPristine(applyPatch(base, "transform", { rotate: 2 })));
+  // Switching a shadow back off restores the original photo whatever the
+  // sliders were left at, so pristine has to mean "renders the same", not
+  // "every field equals the default".
+  const shadowOff = applyPatch(preset, "shadow", { preset: "none" });
+  check("a shadow switched back off is pristine again", isPristine(shadowOff) && shadowOff.shadow.opacity === 55);
+
+  let history: HistoryEntry[] = pushHistory([], EDITOR_DEFAULTS, "editor.h.opened");
+  const original = history[0];
+  let walked: EditorState = EDITOR_DEFAULTS;
+  for (let step = 1; step <= 80; step++) {
+    walked = applyPatch(walked, "adjust", { brightness: step });
+    history = pushHistory(history, walked, describePatch("adjust", { brightness: step }, walked), 50);
+  }
+  check("history is capped", history.length === 50, `80 steps → ${history.length} entries`);
+  check("the original is never the entry that falls off", history[0] === original);
+  check("a step that changes nothing is not a step",
+    pushHistory(history, history[history.length - 1].state, "editor.h.noChange", 50).length === history.length);
+  const stepBytes = JSON.stringify(history[0].state).length;
+  check("a step is parameters, never a bitmap", stepBytes < 1024, `${stepBytes} bytes per step`);
+
+  const labels = [
+    describePatch("background", { mode: "transparent" }, base),
+    describePatch("shadow", { preset: "floating" }, base),
+    describePatch("format", { ratio: "1:1" }, base),
+    describePatch("adjust", { contrast: 10 }, base),
+    describePatch("adjust", { brightness: 4, contrast: 4 }, base),
+    describePatch("transform", { flipH: true }, base),
+    describePatch("transform", { scale: 100 }, base),
+  ];
+  check("every step is named with an i18n key, never a sentence",
+    labels.every((key) => /^editor\.h\.[A-Za-z]+$/.test(key)) && labels[6] === "editor.h.noChange");
+
+  console.log("\nI. EDITOR BAKE — one pass over real pixels");
+  const jpeg = { format: "jpeg", quality: 92 } as const;
+  const baked = await composeEditor(photo, EDITOR_DEFAULTS, jpeg);
+  const bakedFacts = await inspect(baked);
+  check("a pristine state re-encodes without moving the frame",
+    bakedFacts.width === 1400 && bakedFacts.height === 900);
+
+  const state = (patch: Partial<EditorState>): EditorState => ({ ...EDITOR_DEFAULTS, ...patch });
+  const square = await inspect(await composeEditor(photo,
+    state({ format: { ratio: "1:1", width: null, height: null, lockRatio: true } }), jpeg));
+  check("a ratio only ever adds canvas", square.width === 1400 && square.height === 1400,
+    `1400×900 → ${square.width}×${square.height}`);
+  const boxed = await inspect(await composeEditor(photo,
+    state({ format: { ratio: "1:1", width: 2000, height: null, lockRatio: true } }), jpeg));
+  check("an explicit box is exact, and pads rather than inventing detail",
+    boxed.width === 2000 && boxed.height === 2000, `${boxed.width}×${boxed.height}`);
+
+  const turned = await inspect(await composeEditor(photo, state({
+    transform: { ...EDITOR_DEFAULTS.transform, rotate: 15 },
+  }), { format: "png", quality: 92 }));
+  check("a free rotation grows the canvas instead of clipping the corners",
+    turned.width > 1400 && turned.height > 900, `${turned.width}×${turned.height}`);
+  const zoomed = await composeEditor(photo, state({
+    transform: { ...EDITOR_DEFAULTS.transform, scale: 160, offsetX: 12 },
+  }), jpeg);
+  const zoomedFacts = await inspect(zoomed);
+  check("zoom and pan stay inside the frame they started with",
+    zoomedFacts.width === 1400 && zoomedFacts.height === 900 && !zoomed.equals(baked));
+  const mirrored = await composeEditor(photo, state({
+    transform: { ...EDITOR_DEFAULTS.transform, flipH: true },
+  }), jpeg);
+  check("mirroring really mirrors", !mirrored.equals(baked) && (await inspect(mirrored)).width === 1400);
+
+  const mean = async (buffer: Buffer) => {
+    const { channels } = await sharp(buffer).stats();
+    return channels.slice(0, 3).reduce((sum, c) => sum + c.mean, 0) / 3;
+  };
+  const rgb = async (buffer: Buffer) => (await sharp(buffer).stats()).channels.map((c) => c.mean);
+  const spread = async (buffer: Buffer) => {
+    const { channels } = await sharp(buffer).stats();
+    return channels.slice(0, 3).reduce((sum, c) => sum + c.stdev, 0) / 3;
+  };
+  const withAdjust = (patch: Partial<EditorState["adjust"]>) =>
+    composeEditor(photo, state({ adjust: { ...EDITOR_DEFAULTS.adjust, ...patch } }), jpeg);
+
+  const [neutral, brighter, darker] = [await mean(baked), await mean(await withAdjust({ brightness: 40 })), await mean(await withAdjust({ brightness: -40 }))];
+  check("brightness moves the whole image both ways", brighter > neutral && darker < neutral,
+    `${darker.toFixed(1)} < ${neutral.toFixed(1)} < ${brighter.toFixed(1)}`);
+  const [flat, punchy] = [await spread(await withAdjust({ contrast: -60 })), await spread(await withAdjust({ contrast: 60 }))];
+  check("contrast really spreads the histogram", punchy > (await spread(baked)) && flat < (await spread(baked)),
+    `σ ${flat.toFixed(1)} → ${punchy.toFixed(1)}`);
+  const [warmR, , warmB] = await rgb(await withAdjust({ temperature: 80 }));
+  const [coolR, , coolB] = await rgb(await withAdjust({ temperature: -80 }));
+  check("temperature is a genuine red/blue balance shift", warmR > coolR && warmB < coolB,
+    `warm R${warmR.toFixed(0)}/B${warmB.toFixed(0)} · cool R${coolR.toFixed(0)}/B${coolB.toFixed(0)}`);
+  const [greyR, greyG, greyB] = await rgb(await withAdjust({ saturation: -100 }));
+  check("saturation at zero is actually grey", Math.abs(greyR - greyG) < 2 && Math.abs(greyG - greyB) < 2,
+    `${greyR.toFixed(0)}/${greyG.toFixed(0)}/${greyB.toFixed(0)}`);
+  check("sharpness works in both directions",
+    !(await withAdjust({ sharpness: 80 })).equals(await withAdjust({ sharpness: -80 })));
+
+  const grounded = await inspect(await composeEditor(cutout, state({
+    background: { mode: "color", color: "#FFFFFF" },
+    shadow: { preset: "soft", opacity: 35, blur: 24, offsetX: 0, offsetY: 18, color: "#000000" },
+  }), jpeg));
+  check("the shadow gets room and lands on the backdrop, not through it",
+    grounded.width > 800 && !grounded.hasAlpha, `${grounded.width}×${grounded.height}`);
+  const transparent = await inspect(await composeEditor(cutout, EDITOR_DEFAULTS, { format: "png", quality: 92 }));
+  check("a cutout keeps its transparency", transparent.hasAlpha);
+  const filled = await inspect(await composeEditor(cutout,
+    state({ background: { mode: "color", color: "#F5F5F7" } }), jpeg));
+  check("a colour background flattens it", !filled.hasAlpha);
+
+  let refusedShadow = false;
+  try { await composeEditor(photo, state({ shadow: { ...EDITOR_DEFAULTS.shadow, preset: "soft" } }), jpeg); }
+  catch (e) { refusedShadow = (e as Error).message === "needs_transparency"; }
+  check("refuses to invent a silhouette for an opaque photo", refusedShadow);
+  let refusedBackground = false;
+  try { await composeEditor(photo, state({ background: { mode: "image", color: "#FFFFFF" } }), jpeg); }
+  catch (e) { refusedBackground = (e as Error).message === "background_unavailable"; }
+  check("says no to a background it has no way to generate", refusedBackground);
 
   console.log(failures === 0 ? "\nAll image tool tests passed.\n" : `\n${failures} test(s) failed.\n`);
   process.exit(failures === 0 ? 0 : 1);

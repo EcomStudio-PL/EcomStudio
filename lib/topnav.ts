@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  Crop, Gauge, Maximize2, PenLine, Scissors, Square, Stamp, Sun, SwatchBook,
-  Wand2, Sparkles, WandSparkles,
+  Crop, Gauge, Maximize2, PenLine, Scaling, Scissors, SlidersHorizontal, Square, Stamp,
+  Sun, Sparkles, WandSparkles, Wrench,
 } from "lucide-react";
 import { CATEGORIES, VIDEO_CREATE_WF, VIDEO_EDIT_WF, VIDEO_ICON, categoryHref, type CategoryAccent } from "./categories";
 
@@ -21,6 +21,12 @@ export type MegaEntry = {
   icon: LucideIcon;
   /** Per-category accent, used for the icon tile inside menus and tiles. */
   accent?: CategoryAccent;
+  /**
+   * Full i18n key for the label. Only destinations that are NOT a row of the
+   * tool catalogue need it — the editor, the resize screen and the hub are
+   * places, not tools, so they have no `tools.<slug>.name` to be named by.
+   */
+  labelKey?: string;
   /** No backend yet — rendered with a "Wkrótce" badge, not clickable. */
   soon?: boolean;
 };
@@ -41,19 +47,42 @@ export const IMAGE_MODES: readonly MegaEntry[] = [
   { key: "custom", href: "/generator", icon: PenLine },
 ] as const;
 
-/** EDYTUJ — the existing image toolbox, one entry per real tool. */
+/**
+ * EDYTUJ — five destinations, not one row per dial.
+ *
+ * The menu used to list ten entries because every operation had a page of its
+ * own. Background, white background, shadow and format are now sections of the
+ * editor or of the resize screen, so listing them here would be a table of
+ * contents for pages that no longer exist. What stays is the four places a
+ * photo can actually be taken to, plus the hub for everything else.
+ */
 export const IMAGE_EDIT: readonly MegaEntry[] = [
   { key: "retouch", href: "/retusz", icon: WandSparkles },
-  { key: "remove_bg", href: "/tools/remove_bg", icon: Scissors },
-  { key: "white_bg", href: "/tools/white_bg", icon: Square },
-  { key: "upscale", href: "/tools/upscale", icon: Maximize2 },
-  { key: "format", href: "/tools/format", icon: Crop },
-  { key: "shadow", href: "/tools/shadow", icon: Sun },
-  { key: "expand", href: "/tools/expand", icon: Wand2 },
+  { key: "editor", href: "/tools/editor", icon: SlidersHorizontal, labelKey: "nav.editor" },
+  { key: "resize", href: "/tools/resize", icon: Scaling, labelKey: "nav.resize" },
   { key: "compress", href: "/tools/compress", icon: Gauge },
-  { key: "watermark", href: "/tools/watermark", icon: Stamp },
-  { key: "recolor", href: "/tools", icon: SwatchBook, soon: true },
+  { key: "allTools", href: "/tools", icon: Wrench, labelKey: "nav.allTools" },
 ] as const;
+
+/**
+ * The tools the menu no longer carries. They are still real pages — three keep
+ * their own batch queue, three moved into the editor — so search must still
+ * find them by name even though only the hub lists them.
+ */
+export const IMAGE_EDIT_MORE: readonly MegaEntry[] = [
+  { key: "upscale", href: "/tools/upscale", icon: Maximize2 },
+  { key: "expand", href: "/tools/expand", icon: Crop },
+  { key: "watermark", href: "/tools/watermark", icon: Stamp },
+  { key: "remove_bg", href: "/tools/editor?tool=remove-background", icon: Scissors },
+  { key: "white_bg", href: "/tools/editor?tool=white-background", icon: Square },
+  { key: "shadow", href: "/tools/editor?tool=shadow", icon: Sun },
+] as const;
+
+/** Where an EDYTUJ entry takes its label from: its own key when it is a
+ *  destination, the tool catalogue when it is one of the tools. */
+export function editLabelKey(entry: MegaEntry): string {
+  return entry.labelKey ?? `tools.${entry.key}.name`;
+}
 
 /** VIDEO — the mirror structure. No video backend exists yet, so every entry
  *  routes to the video workspace, which states plainly that generation is not

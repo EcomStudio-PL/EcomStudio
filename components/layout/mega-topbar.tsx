@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { ChevronDown, Images, Menu } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import {
-  IMAGE_CREATE, IMAGE_EDIT, IMAGE_MODES, VIDEO_CREATE, VIDEO_EDIT, type MegaEntry,
+  IMAGE_CREATE, IMAGE_EDIT, IMAGE_MODES, VIDEO_CREATE, VIDEO_EDIT, editLabelKey, type MegaEntry,
 } from "@/lib/topnav";
 import { cn } from "@/lib/utils";
 import { Brand } from "./brand";
@@ -155,7 +155,9 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, notifi
  *  (the toolbox), plus a footer of secondary destinations. */
 function MegaPanel({ which, t }: { which: "image" | "video"; t: (k: string, v?: Record<string, string | number>) => string }) {
   const create = which === "image" ? IMAGE_CREATE : VIDEO_CREATE;
-  const edit = which === "image" ? IMAGE_EDIT.slice(0, 6) : VIDEO_EDIT;
+  // The image list is five entries now, and the last of them IS the hub, so
+  // nothing is trimmed and no separate "all tools" link is needed underneath.
+  const edit = which === "image" ? IMAGE_EDIT : VIDEO_EDIT;
   const label = (e: MegaEntry) =>
     which === "image" ? t(`cats.${e.key}`) : t(`video.wf.${e.key}.name`);
   const sub = (e: MegaEntry) =>
@@ -192,14 +194,10 @@ function MegaPanel({ which, t }: { which: "image" | "video"; t: (k: string, v?: 
           <div className="grid gap-0.5">
             {edit.map((e) => (
               <MegaLink key={e.key} entry={e}
-                label={which === "image" ? t(`tools.${e.key}.name`) : t(`video.wf.${e.key}.name`)}
+                label={which === "image" ? t(editLabelKey(e)) : t(`video.wf.${e.key}.name`)}
                 soonLabel={t("common.soon")} compact />
             ))}
-            {which === "image" ? (
-              <Link href="/tools" className="mt-1.5 inline-flex items-center gap-1 px-2.5 text-[12.5px] font-semibold text-accent transition-opacity duration-200 hover:opacity-75">
-                {t("mega.allTools")} →
-              </Link>
-            ) : (
+            {which === "video" && (
               <p className="mt-3 text-[12px] leading-relaxed text-faint">{t("mega.videoSoon")}</p>
             )}
           </div>
