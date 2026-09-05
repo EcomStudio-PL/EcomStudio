@@ -1,4 +1,5 @@
 import "server-only";
+import { after } from "next/server";
 import type { Client } from "@/lib/services/workspace";
 import { decryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { getAdapter } from "@/lib/ai/registry";
@@ -7,6 +8,7 @@ import {
   type AspectRatio, type ImageProviderAdapter, type Quality, type Resolution, type ReferenceImage,
 } from "@/lib/ai/types";
 import { buildFidelityInstructions } from "@/lib/ai/product-lock";
+import { buildDedupeKey, notify } from "@/lib/server/notify";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
 import {
   MAX_ATTEMPTS_PER_PROVIDER, getProviderHealth, providerBlocked,
@@ -460,6 +462,31 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       user_id: userId, type: "generation_failed", title: "generation_failed",
       body: safe, href: "/history",
     });
+    // Every candidate refused this call, so the fault is upstream, not in what
+    // the customer typed — the kind of thing the operator has to hear about
+    // while it is still happening. The dedupe key carries the provider, the
+    // model and the current hour, so a provider that is down all afternoon
+    // costs ONE message an hour instead of one per failed request. Only the
+    // safe error class travels: no prompt, no key, no upstream body. The send
+    // goes through `after` like the other notify call sites: the customer is
+    // already waiting on a request that failed, and a slow Telegram round trip
+    // must not be added to it — while a bare floating promise would risk the
+    // invocation freezing before the message leaves.
+    after(() => notify(supabase, {
+      type: "system.error",
+      title: "BŁĄD GENEROWANIA",
+      icon: "⚠️",
+      rows: [
+        ["Dostawca", provider.slug],
+        ["Model", model.model_identifier],
+        ["Błąd", safe],
+      ],
+      footer: `Nieudane próby: ${attempts.length}`,
+      dedupeKey: buildDedupeKey(
+        "system.error", "generation", provider.slug, model.model_identifier,
+        new Date().toISOString().slice(0, 13),
+      ),
+    }));
     return { ok: false, error: safe };
   }
 

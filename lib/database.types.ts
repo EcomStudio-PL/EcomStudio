@@ -1285,6 +1285,50 @@ export type Database = {
         }
         Relationships: []
       }
+      integration_settings: {
+        Row: {
+          config: Json
+          enabled: boolean
+          last_error_safe: string | null
+          last_tested_at: string | null
+          secrets: Json
+          status: string
+          type: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          config?: Json
+          enabled?: boolean
+          last_error_safe?: string | null
+          last_tested_at?: string | null
+          secrets?: Json
+          status?: string
+          type: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          config?: Json
+          enabled?: boolean
+          last_error_safe?: string | null
+          last_tested_at?: string | null
+          secrets?: Json
+          status?: string
+          type?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       knowledge_examples: {
         Row: {
           correction: string | null
@@ -1412,6 +1456,39 @@ export type Database = {
           },
         ]
       }
+      mail_sync_state: {
+        Row: {
+          folder: string
+          id: string
+          last_checked_at: string | null
+          last_error_safe: string | null
+          last_success_at: string | null
+          last_uid: number
+          uid_validity: number | null
+          updated_at: string
+        }
+        Insert: {
+          folder: string
+          id?: string
+          last_checked_at?: string | null
+          last_error_safe?: string | null
+          last_success_at?: string | null
+          last_uid?: number
+          uid_validity?: number | null
+          updated_at?: string
+        }
+        Update: {
+          folder?: string
+          id?: string
+          last_checked_at?: string | null
+          last_error_safe?: string | null
+          last_success_at?: string | null
+          last_uid?: number
+          uid_validity?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       media_assets: {
         Row: {
           alt: string | null
@@ -1461,6 +1538,69 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      notification_outbox: {
+        Row: {
+          attempts: number
+          claimed_at: string | null
+          created_at: string
+          dedupe_key: string | null
+          event_type: string
+          id: string
+          last_error_safe: string | null
+          payload: Json
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          attempts?: number
+          claimed_at?: string | null
+          created_at?: string
+          dedupe_key?: string | null
+          event_type: string
+          id?: string
+          last_error_safe?: string | null
+          payload?: Json
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          attempts?: number
+          claimed_at?: string | null
+          created_at?: string
+          dedupe_key?: string | null
+          event_type?: string
+          id?: string
+          last_error_safe?: string | null
+          payload?: Json
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
+      notification_preferences: {
+        Row: {
+          category: string
+          event_type: string
+          sort_order: number
+          telegram_enabled: boolean
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          event_type: string
+          sort_order?: number
+          telegram_enabled?: boolean
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          event_type?: string
+          sort_order?: number
+          telegram_enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: []
       }
       notifications: {
         Row: {
@@ -2917,6 +3057,15 @@ export type Database = {
           }
       delete_generation: { Args: { gen_id: string }; Returns: string[] }
       email_transport: { Args: never; Returns: Json }
+      enqueue_notification: {
+        Args: {
+          p_dedupe?: string
+          p_event: string
+          p_payload?: Json
+          p_token?: string
+        }
+        Returns: undefined
+      }
       fail_usage_event:
         | { Args: { p_error: string; p_event_id: string }; Returns: string }
         | {
@@ -2967,6 +3116,17 @@ export type Database = {
         }
         Returns: undefined
       }
+      mail_sync_commit: {
+        Args: {
+          p_error?: string
+          p_folder: string
+          p_last_uid?: number
+          p_token: string
+          p_uid_validity?: number
+        }
+        Returns: undefined
+      }
+      mail_sync_context: { Args: { p_token: string }; Returns: Json }
       match_knowledge_examples: {
         Args: { p_embedding: string; p_top_k?: number }
         Returns: {
@@ -2975,6 +3135,29 @@ export type Database = {
           hint_tag: string
           id: string
         }[]
+      }
+      notification_dispatch_claim: {
+        Args: { p_limit?: number; p_token: string }
+        Returns: {
+          attempts: number
+          bot_token_ciphertext: Json
+          created_at: string
+          dedupe_key: string
+          event_type: string
+          id: string
+          payload: Json
+          telegram_config: Json
+          telegram_enabled: boolean
+        }[]
+      }
+      notification_dispatch_finish: {
+        Args: {
+          p_error?: string
+          p_id: string
+          p_status: string
+          p_token: string
+        }
+        Returns: undefined
       }
       providers_with_credentials: { Args: never; Returns: string[] }
       refund_usage_event: { Args: { p_event_id: string }; Returns: string }

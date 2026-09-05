@@ -42,7 +42,17 @@ const nextConfig = {
     remotePatterns: [{ protocol: 'https', hostname: '*.supabase.co' }],
   },
   // sharp ships prebuilt native binaries; bundling it breaks the .node loads.
-  serverExternalPackages: ['sharp'],
+  // imapflow and mailparser reach for their encodings and TLS pieces through
+  // dynamic requires the bundler cannot follow, so they stay external too —
+  // bundled, they fail at runtime on the first IMAP connection.
+  serverExternalPackages: ['sharp', 'imapflow', 'mailparser'],
+  experimental: {
+    // Replying with an attachment posts the file through a server action, and
+    // the 1MB default rejects anything past a screenshot. 4.5mb is where Vercel
+    // itself stops a serverless request body, so accepting more here would only
+    // trade the action's own "attachment too large" for an opaque platform 413.
+    serverActions: { bodySizeLimit: '4.5mb' },
+  },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

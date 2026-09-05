@@ -1,8 +1,10 @@
 "use server";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/server/rate-limit";
+import { buildDedupeKey, notify } from "@/lib/server/notify";
 import { getLocale } from "@/lib/i18n/server";
 import { absoluteUrl } from "@/lib/site";
 import { ACQUISITION_SOURCES, EMAIL_RE, isPoland, passwordIssue, validNip } from "@/lib/auth-validation";
@@ -162,6 +164,32 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
       return { ok: false, errors: { form: "rate_limited" }, values };
     }
     return { ok: false, errors: { form: "network" }, values };
+  }
+
+  // A real registration is worth a Telegram ping — but never at the new
+  // customer's expense: `after` runs the enqueue and the send once the
+  // response is already on its way, so a slow bot cannot hold up the redirect
+  // or the confirm-your-inbox screen, and notify() swallows its own failures.
+  // With confirmations on, GoTrue answers a repeat signup for a known address
+  // with a success-shaped response (deliberately — see above), and the only
+  // thing that distinguishes it is an EMPTY identities array. Test that
+  // structurally, never for truthiness: a response that omits identities
+  // altogether is a real registration and must still be announced. The e-mail
+  // dedupe key below stays as the backstop for genuine double-submits, since
+  // it only remembers signups that were actually enqueued. Nothing from the
+  // password or the session goes near the payload.
+  if (data.user?.identities?.length !== 0) {
+    after(() => notify(supabase, {
+      type: "user.registered",
+      title: "NOWA REJESTRACJA",
+      icon: "🎉",
+      rows: [
+        ["E-mail", email],
+        ["Język", locale.toUpperCase()],
+      ],
+      footer: `Data: ${new Date().toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Warsaw" })}`,
+      dedupeKey: buildDedupeKey("user.registered", email.toLowerCase()),
+    }));
   }
 
   // Auto-confirm environments hand back a session right away.

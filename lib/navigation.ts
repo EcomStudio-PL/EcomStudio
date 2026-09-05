@@ -4,6 +4,7 @@ import {
   Coins, Rocket, LifeBuoy, Settings, Shield, Users, Building2, Cpu, Plug, Wrench,
   FileText, ScrollText, SlidersHorizontal, Wand2, BarChart3, Layers, Globe,
   FolderOpen, Lightbulb, MessageSquare, BrainCircuit, ListChecks, Mail,
+  Bell, Plug2,
 } from "lucide-react";
 
 /** Single source of truth for app navigation. Client drawer, desktop
@@ -66,6 +67,12 @@ export const ADMIN_NAV: readonly NavGroup[] = [
     { href: "/admin/templates", key: "templates", icon: FileText },
     { href: "/admin/inspirations", key: "inspirations", icon: Lightbulb },
   ]},
+  // Communication sits between content and money: the inbox and the Telegram
+  // alerts are day-to-day operator work, not a settings screen.
+  { key: "comm", items: [
+    { href: "/admin/mail", key: "mail", icon: Mail },
+    { href: "/admin/notifications", key: "notifications", icon: Bell },
+  ]},
   { key: "finance", items: [
     { href: "/admin/credits", key: "credits", icon: Coins },
     { href: "/admin/plans", key: "plans", icon: Rocket },
@@ -88,6 +95,7 @@ export const ADMIN_NAV: readonly NavGroup[] = [
   { key: "system", items: [
     { href: "/admin/logs", key: "logs", icon: ScrollText },
     { href: "/admin/email", key: "email", icon: Mail },
+    { href: "/admin/settings/integrations", key: "integrations", icon: Plug2 },
     { href: "/admin/system", key: "system", icon: SlidersHorizontal },
   ]},
 ] as const;

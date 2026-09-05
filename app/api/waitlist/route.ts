@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit, clientIp } from "@/lib/server/rate-limit";
 import { deliver, type SmtpConfig } from "@/lib/server/mailer";
+import { buildDedupeKey, notify } from "@/lib/server/notify";
 
 export const dynamic = "force-dynamic";
 
@@ -93,6 +94,21 @@ export async function POST(request: Request) {
       smtp,
     ).catch(() => null);
   }
+
+  // Only a genuinely NEW row gets announced: the honeypot answered at the top
+  // and "exists" returned above, so a bot and a customer re-typing their
+  // address never reach this line. The e-mail doubles as the dedupe key, which
+  // keeps the ping unique even if the row is ever deleted and re-added.
+  after(() => notify(supabase, {
+    type: "waitlist.signup",
+    title: "NOWY ZAPIS NA LISTĘ",
+    icon: "📝",
+    rows: [
+      ["E-mail", email],
+      ["Źródło", source],
+    ],
+    dedupeKey: buildDedupeKey("waitlist.signup", email),
+  }));
 
   return NextResponse.json({ ok: true, status: "created" });
 }
