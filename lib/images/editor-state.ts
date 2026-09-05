@@ -60,6 +60,39 @@ export type EditorState = {
 export type EditorSection = keyof EditorState;
 
 /**
+ * Deep links from the menus and the hub: which section opens, pre-selected.
+ *
+ * These live HERE, next to the state they select, and deliberately not in the
+ * editor component: that component is a client module, and a named export of a
+ * client module is a client reference — the server page that reads `?tool=`
+ * cannot call it. Parsing the query string is server work, so the parser is
+ * shared code.
+ */
+export const EDITOR_ENTRIES = [
+  "background", "remove-background", "white-background",
+  "shadow", "format", "adjust", "transform",
+] as const;
+export type EditorEntry = (typeof EDITOR_ENTRIES)[number];
+
+/** An unknown, missing or repeated `?tool=` is not an error: it opens the default editor. */
+export function parseEntry(value: unknown): EditorEntry | null {
+  const asked = Array.isArray(value) ? value[0] : value;
+  if (typeof asked !== "string") return null;
+  return (EDITOR_ENTRIES as readonly string[]).includes(asked) ? (asked as EditorEntry) : null;
+}
+
+/** Which section each entry opens. */
+export const ENTRY_SECTION: Record<EditorEntry, EditorSection> = {
+  background: "background",
+  "remove-background": "background",
+  "white-background": "background",
+  shadow: "shadow",
+  format: "format",
+  adjust: "adjust",
+  transform: "transform",
+};
+
+/**
  * The bounds the panel draws its sliders from and the server re-applies. One
  * table, so a control can never offer a value the pipeline would refuse.
  */

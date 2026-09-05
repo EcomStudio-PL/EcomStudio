@@ -36,7 +36,11 @@ export default async function ResizePage() {
     toolCatalogue(supabase),
     getWallet(supabase, workspace.id),
   ]);
-  const entry = catalogue.find((c) => c.slug === "format")!;
+  // A lookup that "cannot fail" is exactly how the editor page crashed. If the
+  // catalogue ever comes back without this row, the screen says the tool is
+  // unavailable — it does not throw the customer into the error boundary.
+  const entry = catalogue.find((c) => c.slug === "format")
+    ?? { slug: "format" as const, kind: "local" as const, available: false, credits: 0, providerLabel: null, reason: "maintenance" as const };
 
   return (
     <div>

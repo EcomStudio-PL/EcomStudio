@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "i18n:check": "node scripts/i18n-check.mjs",
     "test:tools": "esbuild scripts/tool-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/tool-tests.cjs --log-level=silent && node .next/tool-tests.cjs",
+    "test:batch": "esbuild scripts/batch-probe.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/batch-probe.cjs --log-level=silent && node .next/batch-probe.cjs",
     "test:comm": "esbuild scripts/comm-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/comm-tests.cjs --log-level=silent && node .next/comm-tests.cjs",
     "test:concepts": "esbuild scripts/concept-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/concept-tests.cjs --log-level=silent && node .next/concept-tests.cjs"
   },

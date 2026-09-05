@@ -8,7 +8,8 @@ import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { toolCatalogue } from "@/lib/server/image-tools";
 import { PageHeader } from "@/components/ui/page-header";
-import { ImageEditor, parseEntry } from "@/components/editor/image-editor";
+import { parseEntry } from "@/lib/images/editor-state";
+import { ImageEditor } from "@/components/editor/image-editor";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +79,7 @@ export default async function ImageEditorPage({ searchParams }: {
       </div>
 
       <ImageEditor
-        entry={parseEntry(first(params.tool))}
+        entry={parseEntry(params.tool)}
         initialImage={initialImage}
         available={editor?.available ?? true}
         reason={editor?.reason ?? "maintenance"}

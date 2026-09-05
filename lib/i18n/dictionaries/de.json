@@ -64,6 +64,7 @@
     "error": "Etwas ist schiefgelaufen. Bitte erneut versuchen.",
     "errorTitle": "Etwas ist schiefgelaufen",
     "errorBody": "Dieser Bereich konnte nicht geladen werden. Bitte erneut versuchen — deine Arbeit und Credits sind sicher.",
+    "errorRef": "Fehlercode: {code}",
     "retry": "Erneut versuchen",
     "goHome": "Zurück zur Startseite",
     "signOut": "Abmelden",

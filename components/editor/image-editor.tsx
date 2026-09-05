@@ -16,8 +16,8 @@ import {
   SECTIONS, SectionBody, SectionShell, type CutoutState, type PatchFn,
 } from "@/components/editor/panels";
 import {
-  EDITOR_DEFAULTS, applyPatch, pushHistory,
-  type EditorSection, type EditorState, type HistoryEntry,
+  EDITOR_DEFAULTS, ENTRY_SECTION, applyPatch, pushHistory,
+  type EditorEntry, type EditorSection, type EditorState, type HistoryEntry,
 } from "@/lib/images/editor-state";
 import { DEFAULT_SETTINGS, MAX_UPLOAD_BYTES } from "@/lib/images/tools";
 import { outputName } from "@/lib/images/zip";
@@ -40,29 +40,6 @@ import { cn, formatBytes } from "@/lib/utils";
  *      charged through the same ledger. Its price is on the button before it
  *      is pressed.
  */
-
-/** Deep links from the menus and the hub: which section opens, pre-selected. */
-export const EDITOR_ENTRIES = [
-  "background", "remove-background", "white-background",
-  "shadow", "format", "adjust", "transform",
-] as const;
-export type EditorEntry = (typeof EDITOR_ENTRIES)[number];
-
-export function parseEntry(value: unknown): EditorEntry | null {
-  return (EDITOR_ENTRIES as readonly string[]).includes(String(value))
-    ? (value as EditorEntry)
-    : null;
-}
-
-const ENTRY_SECTION: Record<EditorEntry, EditorSection> = {
-  background: "background",
-  "remove-background": "background",
-  "white-background": "background",
-  shadow: "shadow",
-  format: "format",
-  adjust: "adjust",
-  transform: "transform",
-};
 
 /**
  * A step is named after the SECTION it changed — the six step names the
@@ -191,9 +168,19 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "z") return;
+      // Typing a size or a HEX code keeps the browser's own undo — but ONLY
+      // where the browser actually has one. A slider has no native undo, and
+      // it still holds focus the instant after it was dragged, which is
+      // precisely when Ctrl+Z gets pressed; suppressing the shortcut for every
+      // focused control made it dead exactly where it was needed most.
       const target = event.target as HTMLElement | null;
-      // Typing a size or a HEX code keeps the browser's own undo.
-      if (target && (target.isContentEditable || /^(input|textarea|select)$/i.test(target.tagName))) return;
+      const typing = !!target && (
+        target.isContentEditable
+        || /^(textarea|select)$/i.test(target.tagName)
+        || (target.tagName === "INPUT"
+          && !/^(range|checkbox|radio|button|submit|color|file)$/i.test((target as HTMLInputElement).type))
+      );
+      if (typing) return;
       event.preventDefault();
       if (event.shiftKey) redo();
       else undo();

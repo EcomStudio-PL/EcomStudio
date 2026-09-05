@@ -16,9 +16,21 @@ import { useI18n } from "@/lib/i18n/provider";
 export default function AppError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   const { t } = useI18n();
   useEffect(() => {
-    // Server-side causes are already in the platform logs; this catches the
-    // client-side ones. The message only — never tokens or payloads.
-    console.error("app-error", error.digest ?? error.message);
+    // Both halves of the diagnosis, and never more than that.
+    //
+    // A crash thrown while a SERVER component rendered reaches the browser
+    // stripped: React replaces the message with a `digest`, and the real stack
+    // stays in the platform log. So the console gets the digest AND the route,
+    // which is what turns "someone saw an error" into a single findable line;
+    // the message and name are only ever populated for client-side throws,
+    // where they are the actual diagnosis. No stack, no payloads, no tokens —
+    // and nothing here is ever rendered except the digest, which is a hash.
+    console.error("app-error", {
+      digest: error.digest ?? null,
+      name: error.name,
+      message: error.digest ? null : error.message,
+      path: typeof window === "undefined" ? null : window.location.pathname + window.location.search,
+    });
   }, [error]);
 
   return (
@@ -29,6 +41,12 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
         </span>
         <h1 className="mt-4 font-display text-lg font-semibold tracking-tight">{t("common.errorTitle")}</h1>
         <p className="mt-2 text-[13px] leading-relaxed text-muted">{t("common.errorBody")}</p>
+        {/* The digest is a hash Next also writes next to the full stack in the
+            server log — safe to show, and it is what support quotes to find the
+            crash. The stack itself never leaves the server. */}
+        {error.digest ? (
+          <p className="mt-2 font-mono text-[11px] text-faint">{t("common.errorRef", { code: error.digest })}</p>
+        ) : null}
         <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
           <button type="button" onClick={reset}
             className="cta inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold">

@@ -31,8 +31,24 @@ export function createZip(entries: ZipEntry[]): Blob {
   const central: Uint8Array[] = [];
   let offset = 0;
 
+  // Two photos picked from different folders can share a filename, and a ZIP
+  // is happy to hold the same name twice — the unzipper then keeps whichever
+  // it saw last and the seller quietly loses a file. The second one gets a
+  // counter instead.
+  const taken = new Set<string>();
+  const unique = (wanted: string) => {
+    if (!taken.has(wanted)) { taken.add(wanted); return wanted; }
+    const dot = wanted.lastIndexOf(".");
+    const base = dot > 0 ? wanted.slice(0, dot) : wanted;
+    const ext = dot > 0 ? wanted.slice(dot) : "";
+    for (let n = 2; ; n++) {
+      const candidate = `${base}-${n}${ext}`;
+      if (!taken.has(candidate)) { taken.add(candidate); return candidate; }
+    }
+  };
+
   for (const entry of entries) {
-    const name = encoder.encode(entry.name);
+    const name = encoder.encode(unique(entry.name));
     const crc = crc32(entry.data);
     const size = entry.data.length;
 

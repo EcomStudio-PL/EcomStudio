@@ -64,6 +64,7 @@
     "error": "Something went wrong. Try again.",
     "errorTitle": "Something went wrong",
     "errorBody": "This section failed to load. Try again — your work and credits are safe.",
+    "errorRef": "Error code: {code}",
     "retry": "Try again",
     "goHome": "Back to home",
     "signOut": "Sign out",

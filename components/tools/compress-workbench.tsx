@@ -378,8 +378,10 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
 
           <div className="min-w-0 space-y-1.5">
             <Label>{t("tools.opt.format")}</Label>
+            {/* Full size, not "sm": four chips at 29px are under the comfortable
+                tap height on a phone, and this row sits directly under the
+                strength row, which is full size. */}
             <Segmented
-              size="sm"
               value={format}
               onChange={pickFormat}
               label={t("tools.opt.format")}

@@ -53,7 +53,11 @@ export default async function ToolPage({ params }: { params: Promise<{ slug: str
     getWallet(supabase, workspace.id),
     listProducts(supabase, workspace.id, 200),
   ]);
-  const entry = catalogue.find((c) => c.slug === tool.slug)!;
+  // The catalogue is built from the same static list `toolBySlug` just matched,
+  // so this row exists — but a non-null assertion is what turns "should not
+  // happen" into a blank error screen, so the miss degrades instead.
+  const entry = catalogue.find((c) => c.slug === tool.slug)
+    ?? { slug: tool.slug, kind: tool.kind, available: false, credits: 0, providerLabel: null, reason: "maintenance" as const };
 
   // Thumbnails for the "attach to product" picker, signed in one round trip.
   const thumbPaths = products

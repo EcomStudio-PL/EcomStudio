@@ -41,7 +41,10 @@ export default async function CompressPage() {
     toolCatalogue(supabase),
     getWallet(supabase, workspace.id),
   ]);
-  const entry = catalogue.find((c) => c.slug === "compress")!;
+  // Same guard as the resize screen: a missing catalogue row degrades to an
+  // honest "unavailable", never to a crash.
+  const entry = catalogue.find((c) => c.slug === "compress")
+    ?? { slug: "compress" as const, kind: "local" as const, available: false, credits: 0, providerLabel: null, reason: "maintenance" as const };
 
   return (
     <div>
