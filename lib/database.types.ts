@@ -1542,6 +1542,7 @@ export type Database = {
       notification_outbox: {
         Row: {
           attempts: number
+          channel: string
           claimed_at: string | null
           created_at: string
           dedupe_key: string | null
@@ -1554,6 +1555,7 @@ export type Database = {
         }
         Insert: {
           attempts?: number
+          channel?: string
           claimed_at?: string | null
           created_at?: string
           dedupe_key?: string | null
@@ -1566,6 +1568,7 @@ export type Database = {
         }
         Update: {
           attempts?: number
+          channel?: string
           claimed_at?: string | null
           created_at?: string
           dedupe_key?: string | null
@@ -1580,6 +1583,7 @@ export type Database = {
       }
       notification_preferences: {
         Row: {
+          admin_email_enabled: boolean
           category: string
           event_type: string
           sort_order: number
@@ -1587,6 +1591,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          admin_email_enabled?: boolean
           category: string
           event_type: string
           sort_order?: number
@@ -1594,6 +1599,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          admin_email_enabled?: boolean
           category?: string
           event_type?: string
           sort_order?: number
@@ -2915,9 +2921,12 @@ export type Database = {
           confirmed_at: string | null
           created_at: string
           email: string
+          first_name: string | null
           id: string
+          last_name: string | null
           locale: string
           metadata: Json
+          phone: string | null
           source: string
           status: string
           updated_at: string
@@ -2926,9 +2935,12 @@ export type Database = {
           confirmed_at?: string | null
           created_at?: string
           email: string
+          first_name?: string | null
           id?: string
+          last_name?: string | null
           locale?: string
           metadata?: Json
+          phone?: string | null
           source?: string
           status?: string
           updated_at?: string
@@ -2937,9 +2949,12 @@ export type Database = {
           confirmed_at?: string | null
           created_at?: string
           email?: string
+          first_name?: string | null
           id?: string
+          last_name?: string | null
           locale?: string
           metadata?: Json
+          phone?: string | null
           source?: string
           status?: string
           updated_at?: string
@@ -3164,13 +3179,17 @@ export type Database = {
       notification_dispatch_claim: {
         Args: { p_limit?: number; p_token: string }
         Returns: {
+          admin_email_to: string
           attempts: number
           bot_token_ciphertext: Json
+          channel: string
           created_at: string
           dedupe_key: string
           event_type: string
           id: string
+          mail_config: Json
           payload: Json
+          smtp_password_ciphertext: Json
           telegram_config: Json
           telegram_enabled: boolean
         }[]

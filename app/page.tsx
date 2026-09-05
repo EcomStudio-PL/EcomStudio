@@ -13,6 +13,7 @@ import {
   getHomepageMode, getLaunchStore, resolveLaunchContent, launchFieldsFromBlocks,
 } from "@/lib/server/launch-page";
 import { getPublicSite, getPublishedPage, getDraftBlocks } from "@/lib/server/public-site";
+import { getRegistrationConfig } from "@/lib/server/registration-config";
 import { DEFAULT_HOME_BLOCKS } from "@/lib/cms-defaults";
 import type { CmsBlock } from "@/lib/cms";
 import { formatCredits, formatPrice } from "@/lib/utils";
@@ -87,11 +88,14 @@ export default async function LandingPage({ searchParams }: {
   if (mode === "waitlist") {
     // Published snapshot for a visitor; the admin's draft only when they
     // explicitly asked for the draft preview.
-    const [store, site, published, draftBlocks] = await Promise.all([
+    const [store, site, published, draftBlocks, registration] = await Promise.all([
       getLaunchStore(supabase),
       getPublicSite(supabase),
       getPublishedPage(supabase, "premiera"),
       which === "draft" ? getDraftBlocks(supabase, "premiera") : Promise.resolve([]),
+      // Which optional fields the signup form asks for. Read here rather than
+      // in the form so both copies of it get the same answer in one round trip.
+      getRegistrationConfig(supabase),
     ]);
     const blocks = which === "draft" ? draftBlocks : published?.blocks;
     return (
@@ -101,6 +105,7 @@ export default async function LandingPage({ searchParams }: {
           store, locale, dict.launch, which, launchFieldsFromBlocks(blocks, locale),
         )}
         signedIn={Boolean(visitor)}
+        waitlistFields={registration.waitlist}
         loginLabel={t("launch.login")}
         privacyNote={t("launch.privacy")}
         privacyLinkLabel={t("launch.privacyLink")}

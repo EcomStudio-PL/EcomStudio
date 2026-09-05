@@ -5,6 +5,7 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { LocaleSwitcher } from "@/components/layout/locale-switcher";
 import { WaitlistForm } from "@/components/launch/waitlist-form";
 import type { LaunchField } from "@/lib/server/launch-page";
+import type { WaitlistFieldConfig } from "@/lib/server/registration-config";
 
 /**
  * PREMIERA GROVBASE — the pre-launch front door.
@@ -20,6 +21,7 @@ import type { LaunchField } from "@/lib/server/launch-page";
  */
 export function LaunchPage({
   content, signedIn, loginLabel, privacyNote, privacyLinkLabel, privacyLabel, termsLabel, social,
+  waitlistFields,
 }: {
   content: Record<LaunchField, string>;
   signedIn: boolean;
@@ -31,6 +33,10 @@ export function LaunchPage({
   termsLabel: string;
   /** Social profiles from the site settings; empty URLs render nothing. */
   social: { instagramUrl: string; facebookUrl: string };
+  /** Which name/phone fields the signup form asks for, from
+   *  /admin/settings/registration. Both copies of the form get the same
+   *  answer — one page cannot ask two different questions. */
+  waitlistFields: WaitlistFieldConfig;
 }) {
   const c = content;
   // What someone gets for leaving an address, said in three words each.
@@ -82,7 +88,7 @@ export function LaunchPage({
 
             <div className="mt-8 max-w-xl">
               <WaitlistForm placeholder={c["hero.placeholder"]} cta={c["hero.cta"]} source="hero"
-                consentLabel={c["hero.consent"]} id="waitlist-hero"
+                consentLabel={c["hero.consent"]} id="waitlist-hero" fields={waitlistFields}
                 successTitle={c["success.title"]} successBody={c["success.body"]}
                 successFollow={c["success.follow"]} social={social} />
               <p className="mt-2.5 text-[13px] text-muted">{c["hero.note"]}</p>
@@ -171,7 +177,7 @@ export function LaunchPage({
               <p className="mt-3 text-[15px] leading-relaxed text-muted">{c["final.body"]}</p>
               <div className="mt-7 max-w-xl">
                 <WaitlistForm placeholder={c["hero.placeholder"]} cta={c["final.cta"]} source="final"
-                  consentLabel={c["hero.consent"]} id="waitlist-final"
+                  consentLabel={c["hero.consent"]} id="waitlist-final" fields={waitlistFields}
                   successTitle={c["success.title"]} successBody={c["success.body"]}
                   successFollow={c["success.follow"]} social={social} />
               </div>

@@ -1,7 +1,10 @@
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { SUPABASE_URL } from "@/lib/supabase/config";
+import { REGISTRATION_SETTINGS_KEY } from "@/lib/server/registration-config";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +28,11 @@ export default async function AdminSystem() {
       .select("last_test_status, last_tested_at, ai_providers(name)"),
   ]);
   const sections = (data ?? [])
+    // The registration row has a real editor of its own, one card below. Here
+    // it would arrive as seven raw text inputs holding the words "hidden" /
+    // "optional" / "required" — the same setting, spelled worse, and typo-able
+    // into a value the forms would silently ignore.
+    .filter((s) => s.key !== REGISTRATION_SETTINGS_KEY)
     .sort((a, b) => SECTION_ORDER.indexOf(a.key) - SECTION_ORDER.indexOf(b.key))
     .map((s) => ({ key: s.key, value: (s.value ?? {}) as Record<string, unknown> }));
   const isDev = SUPABASE_URL.includes("ezyhwkcrrysanbcbkzsq");
@@ -74,6 +82,20 @@ export default async function AdminSystem() {
       <Card className="mb-5">
         <CardHeader title={t("flags.title")} sub={t("flags.sub")} />
         <div className="p-5"><FlagManager flags={flags ?? []} /></div>
+      </Card>
+
+      {/* Where the registration row went. A whole tile rather than a link in a
+          corner: the signup fields are the first thing an operator changes
+          here, and the generic editor above no longer offers them. */}
+      <Card className="mb-5">
+        <Link href="/admin/settings/registration" data-registration-link
+          className="flex items-center gap-4 rounded-2xl p-5 transition-colors hover:bg-raised">
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold">{t("reg.title")}</span>
+            <span className="mt-1 block text-[13px] leading-relaxed text-muted">{t("reg.sub")}</span>
+          </span>
+          <ChevronRight size={16} aria-hidden className="shrink-0 text-faint" />
+        </Link>
       </Card>
 
       <SettingsEditor sections={sections} />

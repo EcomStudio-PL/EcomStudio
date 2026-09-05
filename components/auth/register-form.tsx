@@ -12,6 +12,7 @@ import { PasswordRules } from "@/components/auth/password-rules";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
 import { Turnstile, type TurnstileHandle } from "@/components/auth/turnstile";
 import { cn } from "@/lib/utils";
+import type { FieldMode, RegistrationConfig } from "@/lib/server/registration-config";
 
 /** Form-level error code → i18n key. Anything unmapped (network, rate_limited)
  *  reads as the generic connection failure, exactly as before. */
@@ -35,8 +36,16 @@ const FORM_ERROR_KEYS: Record<string, string> = {
  *
  * The Turnstile widget appears only when the admin configured captcha —
  * `captchaSiteKey` comes from the server component wrapping this form.
+ *
+ * Four of the fields are the admin's decision rather than this file's:
+ * `fields` says, per field, whether it is hidden, optional or required. E-mail
+ * and password are not in that list and never will be — an account needs an
+ * address to confirm and a password to sign in with.
  */
-export function RegisterForm({ captchaSiteKey }: { captchaSiteKey: string }) {
+export function RegisterForm({ captchaSiteKey, fields }: {
+  captchaSiteKey: string;
+  fields: RegistrationConfig;
+}) {
   const { t } = useI18n();
   const [state, action, pending] = useActionState(signUp, null);
   const [source, setSource] = useState("");
@@ -108,6 +117,23 @@ export function RegisterForm({ captchaSiteKey }: { captchaSiteKey: string }) {
   const nipInvalid = company && nip.length > 0 && (isPoland(country) ? !validNip(nip) : nip.replace(/[\s-]/g, "").length < 5);
   const pwMismatch = confirm.length > 0 && password !== confirm;
 
+  /**
+   * One field's mode, in the three shapes the markup needs it: whether it is
+   * drawn at all, whether the label carries the required marker and blocks
+   * submit, and the "optional" hint that replaces the marker when it does not.
+   * Read through this helper everywhere, so a mode can never mean one thing to
+   * the label and another to the input.
+   */
+  const ask = (mode: FieldMode) => ({
+    show: mode !== "hidden",
+    required: mode === "required",
+    hint: mode === "optional" ? t("auth.optional") : undefined,
+  });
+  const firstName = ask(fields.firstName);
+  const lastName = ask(fields.lastName);
+  const phone = ask(fields.phone);
+  const acquisition = ask(fields.acquisition);
+
   return (
     <Card className="relative mx-auto w-full max-w-xl overflow-hidden p-6 sm:p-8">
       <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-24"
@@ -118,55 +144,71 @@ export function RegisterForm({ captchaSiteKey }: { captchaSiteKey: string }) {
       <div className="relative mt-6"><OAuthButtons /></div>
 
       <form action={action} className="relative mt-4 space-y-4" noValidate>
-        {/* Identity */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="first_name">{t("auth.firstName")} *</Label>
-            <Input id="first_name" name="first_name" required autoComplete="given-name" defaultValue={v.first_name}
-              aria-invalid={!!errors.first_name || undefined} />
-            {err("first_name")}
+        {/* Identity. A hidden field is not rendered, so it never reaches the
+            server as an empty value — and the two-column grid collapses to one
+            when only one of the pair is asked for, rather than leaving a gap. */}
+        {(firstName.show || lastName.show) && (
+          <div className={cn("grid gap-4", firstName.show && lastName.show && "sm:grid-cols-2")}>
+            {firstName.show && (
+              <div>
+                <Label htmlFor="first_name" hint={firstName.hint}>{t("auth.firstName")}{firstName.required ? " *" : ""}</Label>
+                <Input id="first_name" name="first_name" required={firstName.required} autoComplete="given-name"
+                  defaultValue={v.first_name} aria-invalid={!!errors.first_name || undefined} />
+                {err("first_name")}
+              </div>
+            )}
+            {lastName.show && (
+              <div>
+                <Label htmlFor="last_name" hint={lastName.hint}>{t("auth.lastName")}{lastName.required ? " *" : ""}</Label>
+                <Input id="last_name" name="last_name" required={lastName.required} autoComplete="family-name"
+                  defaultValue={v.last_name} aria-invalid={!!errors.last_name || undefined} />
+                {err("last_name")}
+              </div>
+            )}
           </div>
-          <div>
-            <Label htmlFor="last_name">{t("auth.lastName")} *</Label>
-            <Input id="last_name" name="last_name" required autoComplete="family-name" defaultValue={v.last_name}
-              aria-invalid={!!errors.last_name || undefined} />
-            {err("last_name")}
-          </div>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
+        )}
+        <div className={cn("grid gap-4", phone.show && "sm:grid-cols-2")}>
           <div>
             <Label htmlFor="email">{t("auth.email")} *</Label>
             <Input id="email" name="email" type="email" required autoComplete="email" defaultValue={v.email}
               inputMode="email" aria-invalid={!!errors.email || undefined} />
             {err("email")}
           </div>
-          <div>
-            <Label htmlFor="phone">{t("auth.phone")} *</Label>
-            <Input id="phone" name="phone" type="tel" required autoComplete="tel" defaultValue={v.phone}
-              inputMode="tel" placeholder="+48 600 000 000" aria-invalid={!!errors.phone || undefined} />
-            {err("phone")}
-          </div>
+          {phone.show && (
+            <div>
+              <Label htmlFor="phone" hint={phone.hint}>{t("auth.phone")}{phone.required ? " *" : ""}</Label>
+              <Input id="phone" name="phone" type="tel" required={phone.required} autoComplete="tel" defaultValue={v.phone}
+                inputMode="tel" placeholder="+48 600 000 000" aria-invalid={!!errors.phone || undefined} />
+              {err("phone")}
+            </div>
+          )}
         </div>
 
-        {/* Acquisition */}
-        <div>
-          <Label htmlFor="acquisition_source">{t("auth.acqLabel")} *</Label>
-          <Select id="acquisition_source" name="acquisition_source" required value={source}
-            onChange={(e) => setSource(e.target.value)} aria-invalid={!!errors.acquisition_source || undefined}>
-            <option value="" disabled>{t("auth.acqPlaceholder")}</option>
-            {ACQUISITION_SOURCES.map((s) => (
-              <option key={s} value={s}>{t(`auth.acq_${s}`)}</option>
-            ))}
-          </Select>
-          {err("acquisition_source")}
-        </div>
-        {source === "other" && (
-          <div className="animate-fade">
-            <Label htmlFor="acquisition_source_other">{t("auth.acqOtherLabel")} *</Label>
-            <Input id="acquisition_source_other" name="acquisition_source_other" required defaultValue={v.acquisition_source_other}
-              aria-invalid={!!errors.acquisition_source_other || undefined} />
-            {err("acquisition_source_other")}
-          </div>
+        {/* Acquisition. The "Inne" follow-up is a follow-up to a choice, not a
+            field of its own: once someone picks it, saying what is required
+            whether or not the question itself was. */}
+        {acquisition.show && (
+          <>
+            <div>
+              <Label htmlFor="acquisition_source" hint={acquisition.hint}>{t("auth.acqLabel")}{acquisition.required ? " *" : ""}</Label>
+              <Select id="acquisition_source" name="acquisition_source" required={acquisition.required} value={source}
+                onChange={(e) => setSource(e.target.value)} aria-invalid={!!errors.acquisition_source || undefined}>
+                <option value="" disabled>{t("auth.acqPlaceholder")}</option>
+                {ACQUISITION_SOURCES.map((s) => (
+                  <option key={s} value={s}>{t(`auth.acq_${s}`)}</option>
+                ))}
+              </Select>
+              {err("acquisition_source")}
+            </div>
+            {source === "other" && (
+              <div className="animate-fade">
+                <Label htmlFor="acquisition_source_other">{t("auth.acqOtherLabel")} *</Label>
+                <Input id="acquisition_source_other" name="acquisition_source_other" required defaultValue={v.acquisition_source_other}
+                  aria-invalid={!!errors.acquisition_source_other || undefined} />
+                {err("acquisition_source_other")}
+              </div>
+            )}
+          </>
         )}
 
         {/* Passwords */}

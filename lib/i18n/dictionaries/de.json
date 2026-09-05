@@ -219,7 +219,8 @@
     "errActivationSend": "Die Aktivierungs-E-Mail konnte nicht gesendet werden. Bitte versuche es erneut.",
     "errCaptcha": "Bitte bestätige, dass du kein Roboter bist.",
     "errCaptchaFailed": "Die CAPTCHA-Prüfung ist fehlgeschlagen. Bitte versuche es erneut.",
-    "errIpLimit": "Aus diesem Netzwerk wurde bereits die maximale Anzahl an Konten erstellt. Schreib uns, falls das ein Irrtum ist."
+    "errIpLimit": "Aus diesem Netzwerk wurde bereits die maximale Anzahl an Konten erstellt. Schreib uns, falls das ein Irrtum ist.",
+    "optional": "optional"
   },
   "dashboard": {
     "welcome": "Hallo, {name}! 👋",
@@ -2449,7 +2450,11 @@
     "steps": "So funktioniert es",
     "contact": "Kontakt",
     "terms": "AGB",
-    "privacyPage": "Datenschutzerklärung"
+    "privacyPage": "Datenschutzerklärung",
+    "firstName": "Vorname",
+    "lastName": "Nachname",
+    "phone": "Telefon",
+    "privacyNote": "Mit der Eintragung stimmst du zu, dass wir dich zum Start kontaktieren. Wir speichern außerdem deine IP-Adresse und die Herkunftsquelle, um das Formular vor Missbrauch zu schützen."
   },
   "launchAdmin": {
     "homepageTitle": "Startseite",
@@ -2716,6 +2721,45 @@
     "captchaHelp3": "Kopiere den Site Key und den Secret Key und füge beide hier ein.",
     "captchaHelp4": "Speichern — das Feld „Ich bin kein Roboter“ erscheint auf der Registrierungsseite.",
     "captchaDisabledHint": "Ohne Schlüssel funktioniert die Registrierung ohne CAPTCHA.",
-    "err.captchaSecret": "Der Secret Key ist ungültig."
+    "err.captchaSecret": "Der Secret Key ist ungültig.",
+    "chTelegram": "Telegram",
+    "chAdminEmail": "Admin-E-Mail",
+    "chActive": "Aktiv",
+    "chOff": "Aus",
+    "adminNotifyTo": "E-Mail-Adresse für Administrator-Benachrichtigungen",
+    "adminNotifyToHint": "An diese Adresse gehen Benachrichtigungen über Registrierungen und Eintragungen in die Warteliste.",
+    "testAdminEmail": "Test-Benachrichtigung an den Administrator senden",
+    "testRegistration": "Test: neue Registrierung",
+    "testWaitlist": "Test: neue Eintragung in die Warteliste",
+    "testQueued": "Die Test-Benachrichtigung wurde gesendet.",
+    "testNoChannel": "Für dieses Ereignis ist kein Kanal aktiviert.",
+    "err.adminEmailMissing": "Lege zuerst die E-Mail-Adresse für Administrator-Benachrichtigungen fest.",
+    "err.mailNotConfigured": "Das Postfach ist noch nicht konfiguriert.",
+    "log": "Versandverlauf",
+    "logSub": "Die letzten Benachrichtigungen und ihr Status.",
+    "logEmpty": "Es wurden noch keine Benachrichtigungen gesendet.",
+    "logEvent": "Ereignis",
+    "logChannel": "Kanal",
+    "logStatus": "Status",
+    "logTime": "Zeit",
+    "st.sent": "Gesendet",
+    "st.failed": "Fehlgeschlagen",
+    "st.pending": "In der Warteschlange",
+    "st.skipped": "Übersprungen"
+  },
+  "reg": {
+    "title": "Registrierung und Sicherheit",
+    "sub": "Entscheide, wonach wir bei der Kontoerstellung und beim Eintrag in die Warteliste fragen.",
+    "signupFields": "Registrierungsfelder",
+    "waitlistFields": "Wartelisten-Felder",
+    "fFirstName": "Vorname",
+    "fLastName": "Nachname",
+    "fPhone": "Telefon",
+    "fAcquisition": "Woher kennst du GrovBase?",
+    "mHidden": "Ausgeblendet",
+    "mOptional": "Optional",
+    "mRequired": "Erforderlich",
+    "emailAlways": "E-Mail und Passwort sind immer erforderlich.",
+    "saved": "Gespeichert."
   }
 }

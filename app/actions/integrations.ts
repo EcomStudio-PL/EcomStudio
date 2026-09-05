@@ -1,16 +1,21 @@
 "use server";
+import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/services/audit";
 import { encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { verifySmtp, deliver, type SmtpConfig } from "@/lib/server/mailer";
 import { verifyImap } from "@/lib/server/imap";
+import { formatWarsaw } from "@/lib/server/event-context";
 import { getTelegramChats, sendTelegramMessage, tgEscape, type TelegramError } from "@/lib/server/telegram";
 import { verifyTurnstile } from "@/lib/server/captcha";
-import { NOTIFICATION_EVENTS } from "@/lib/server/notify";
 import {
-  ensureDispatchHash, readIntegration, readIntegrationSecrets, setIntegrationStatus, writeIntegration,
-  type CaptchaConfig, type MailConfig, type TelegramConfig,
+  buildDedupeKey, drainNotifications, notify, NOTIFICATION_EVENTS,
+  type NotificationChannel, type NotificationEvent, type NotifyInput,
+} from "@/lib/server/notify";
+import {
+  adminEmailReadiness, ensureDispatchHash, readIntegration, readIntegrationSecrets, setIntegrationStatus,
+  writeIntegration, type CaptchaConfig, type MailConfig, type TelegramConfig,
 } from "@/lib/server/integrations";
 
 /**
@@ -34,7 +39,8 @@ import {
  * Error codes: forbidden · invalid_email · invalid_host · invalid_port ·
  * invalid_encryption · invalid_chat_id · invalid_token · encryption_unavailable ·
  * not_configured · auth · tls · network · chat_not_found · send_failed ·
- * captcha_secret · timeout · generic
+ * captcha_secret · timeout · no_channel · telegram_not_configured ·
+ * admin_email_not_configured · smtp_not_configured · generic
  */
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -45,6 +51,9 @@ type TestResult = { ok: boolean; error?: string };
 /** The screen these actions belong to; mirroring additionally touches the older
  *  e-mail screen, which reads the row we write there. */
 const ADMIN_PATH = "/admin/communications";
+/** The switchboard and its delivery log: a saved switch and a fired test both
+ *  change what that page renders. */
+const NOTIFICATIONS_PATH = "/admin/notifications";
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -115,6 +124,9 @@ function normaliseMail(input: MailConfig): MailConfig {
     smtp_same_as_imap: input.smtp_same_as_imap === true,
     mirror_to_email_settings: input.mirror_to_email_settings === true,
     sent_folder: input.sent_folder.trim().slice(0, 200),
+    // Lower-cased like every other address here, so "Contact@" and "contact@"
+    // cannot read as two different recipients in the audit trail.
+    admin_notify_to: input.admin_notify_to.trim().toLowerCase().slice(0, 254),
   };
 }
 
@@ -134,6 +146,11 @@ export async function saveMailIntegrationAction(input: MailIntegrationInput): Pr
     const config = normaliseMail(input.config);
 
     if (!EMAIL.test(config.email)) return { ok: false, error: "invalid_email" };
+    // Empty is a legitimate choice — it means "no admin notifications by
+    // e-mail" — but a typo must not be stored as one: an address the dispatcher
+    // cannot deliver to would leave every row pending with nothing to show for
+    // it. Both fields are addresses, so both answer with the same code.
+    if (config.admin_notify_to && !EMAIL.test(config.admin_notify_to)) return { ok: false, error: "invalid_email" };
     if (!config.imap_host || !config.smtp_host) return { ok: false, error: "invalid_host" };
     if (!validPort(config.imap_port) || !validPort(config.smtp_port)) return { ok: false, error: "invalid_port" };
     if (!SMTP_ENCRYPTIONS.includes(config.smtp_encryption)) return { ok: false, error: "invalid_encryption" };
@@ -193,6 +210,9 @@ export async function saveMailIntegrationAction(input: MailIntegrationInput): Pr
       },
     });
     revalidatePath(ADMIN_PATH);
+    // The switchboard renders whether the e-mail channel can deliver at all,
+    // and that answer is this row: a saved recipient has to clear the banner.
+    revalidatePath(NOTIFICATIONS_PATH);
     if (config.mirror_to_email_settings) revalidatePath("/admin/email");
     return { ok: true };
   } catch (e) {
@@ -586,38 +606,55 @@ export async function testCaptchaAction(): Promise<TestResult> {
 
 const KNOWN_EVENTS: readonly string[] = NOTIFICATION_EVENTS.map((event) => event.type);
 
+/** One event's two switches. An ABSENT flag is "not part of this patch" and is
+ *  left exactly as the database has it — which is what keeps flipping the
+ *  e-mail switch from quietly rewriting the Telegram one the operator set
+ *  months ago (and the other way round). */
+export type NotificationChannelPatch = { telegram?: boolean; adminEmail?: boolean };
+
 /**
- * Save the whole switchboard in one call.
+ * Save the switchboard.
  *
- * Two statements, not ten: the enabled events in one UPDATE and everything else
- * in another, so a screen with all ten switches costs the same as a screen with
- * one. Unknown keys are dropped rather than rejected — the seed owns the list of
- * events, and a stale tab must not be able to invent rows.
+ * Four statements at most, not twenty: the events are bucketed by (channel,
+ * value) and each bucket becomes one UPDATE touching ONE column, so a screen
+ * with ten events and two channels costs the same as a screen with one switch —
+ * and no statement ever writes a column the caller did not ask about. Unknown
+ * keys are dropped rather than rejected: the seed owns the list of events, and
+ * a stale tab must not be able to invent rows.
  */
-export async function saveNotificationPreferencesAction(prefs: Record<string, boolean>): Promise<Result> {
+export async function saveNotificationPreferencesAction(
+  prefs: Record<string, NotificationChannelPatch>,
+): Promise<Result> {
   try {
     const { supabase, adminId } = await requireAdmin();
-    const enabled: string[] = [];
-    const disabled: string[] = [];
+    const buckets = {
+      telegram_on: [] as string[],
+      telegram_off: [] as string[],
+      admin_email_on: [] as string[],
+      admin_email_off: [] as string[],
+    };
     for (const event of KNOWN_EVENTS) {
-      const value = prefs[event];
-      if (value === undefined) continue;
-      (value === true ? enabled : disabled).push(event);
+      const patch = prefs[event];
+      if (!patch) continue;
+      if (patch.telegram !== undefined) buckets[patch.telegram ? "telegram_on" : "telegram_off"].push(event);
+      if (patch.adminEmail !== undefined) buckets[patch.adminEmail ? "admin_email_on" : "admin_email_off"].push(event);
     }
-    if (enabled.length === 0 && disabled.length === 0) return { ok: false, error: "invalid" };
+    // Written out rather than built from a column name, so each statement's
+    // payload is a plain typed object the compiler checks against the table.
+    const updates = [
+      { events: buckets.telegram_on, patch: { telegram_enabled: true } },
+      { events: buckets.telegram_off, patch: { telegram_enabled: false } },
+      { events: buckets.admin_email_on, patch: { admin_email_enabled: true } },
+      { events: buckets.admin_email_off, patch: { admin_email_enabled: false } },
+    ];
+    if (updates.every((update) => update.events.length === 0)) return { ok: false, error: "invalid" };
 
-    if (enabled.length > 0) {
+    for (const { events, patch } of updates) {
+      if (events.length === 0) continue;
       const { error } = await supabase
         .from("notification_preferences")
-        .update({ telegram_enabled: true })
-        .in("event_type", enabled);
-      if (error) return { ok: false, error: "generic" };
-    }
-    if (disabled.length > 0) {
-      const { error } = await supabase
-        .from("notification_preferences")
-        .update({ telegram_enabled: false })
-        .in("event_type", disabled);
+        .update(patch)
+        .in("event_type", events);
       if (error) return { ok: false, error: "generic" };
     }
 
@@ -626,10 +663,219 @@ export async function saveNotificationPreferencesAction(prefs: Record<string, bo
     await ensureDispatchHash(supabase);
     await logAudit(supabase, {
       actorId: adminId, action: "notifications.prefs_saved", entityType: "notification_preferences",
-      after: { enabled, disabled: disabled.length },
+      // The non-empty buckets already read as "which events, switched which way,
+      // on which channel" — exactly what an audit entry has to answer later.
+      // The empty ones are dropped: a flipped switch should not log three lists
+      // of nothing.
+      after: Object.fromEntries(Object.entries(buckets).filter(([, events]) => events.length > 0)),
     });
     revalidatePath(ADMIN_PATH);
+    revalidatePath(NOTIFICATIONS_PATH);
     return { ok: true };
+  } catch (e) {
+    return { ok: false, error: reason(e) };
+  }
+}
+
+// ---------- NOTIFICATION PIPELINE TESTS ----------
+
+/** What one channel did with the test event. `status` is the outbox's own
+ *  vocabulary, so a row nothing has drained yet reports "pending" instead of a
+ *  success the admin will never find in an inbox. */
+export type NotificationChannelOutcome = {
+  channel: NotificationChannel;
+  status: "sent" | "failed" | "pending" | "skipped";
+  /** A stable code from the vocabulary at the top of this file, never a
+   *  server's own words. Absent when `status` says everything there is. */
+  error?: string;
+};
+
+export type NotificationTestResult =
+  | { ok: true; outcomes: NotificationChannelOutcome[] }
+  | { ok: false; error: string };
+
+const OUTBOX_STATUSES: readonly NotificationChannelOutcome["status"][] = ["sent", "failed", "pending", "skipped"];
+
+/** last_error_safe holds two different things: a stable code the dispatcher
+ *  wrote, and an already-scrubbed sentence a mail server said. Only a code can
+ *  become a translated toast; a sentence belongs in the delivery log, where the
+ *  admin reads it deliberately. */
+const ERROR_CODE = /^[a-z][a-z0-9_]{2,40}$/;
+
+/**
+ * Why a channel would leave its row sitting in the queue.
+ *
+ * The claim function refuses to hand out a row whose channel is not configured
+ * yet — deliberately, so a half-finished setup does not burn the row's attempts
+ * — and the visible result is a notification that never moves. Asking the same
+ * two questions here is what turns that silence into a sentence the admin can
+ * act on.
+ */
+async function channelBlockers(
+  supabase: Awaited<ReturnType<typeof requireAdmin>>["supabase"],
+): Promise<Partial<Record<NotificationChannel, string>>> {
+  const [mail, telegram] = await Promise.all([
+    readIntegration<MailConfig>(supabase, "mail"),
+    readIntegration<TelegramConfig>(supabase, "telegram"),
+  ]);
+  const blockers: Partial<Record<NotificationChannel, string>> = {};
+  const readiness = adminEmailReadiness(mail.config, mail.hasSecret.smtp_password === true);
+  if (readiness === "no_recipient") blockers.admin_email = "admin_email_not_configured";
+  else if (readiness === "not_configured") blockers.admin_email = "smtp_not_configured";
+  if (!telegram.config.chat_id.trim() || telegram.hasSecret.bot_token !== true) {
+    blockers.telegram = "telegram_not_configured";
+  }
+  return blockers;
+}
+
+/**
+ * Fire ONE real event through the Notification Service and report what each
+ * channel actually did with it.
+ *
+ * A test that only opened an SMTP session would prove the least interesting
+ * half. The queue, the per-event switches, the claim's preconditions and the
+ * dispatcher are where notifications go missing, so this enqueues the event
+ * exactly the way a registration does, drains it, and then reads the outbox
+ * rows back BY THEIR DEDUPE KEY — the only honest answer to "did it go out?".
+ *
+ * That key carries a fresh uuid, so a test can be repeated, can never collide
+ * with a real event's key, and can never burn one: a real registration for the
+ * same address still enqueues afterwards.
+ */
+async function runPipelineTest(
+  supabase: Awaited<ReturnType<typeof requireAdmin>>["supabase"],
+  adminId: string,
+  event: NotificationEvent,
+  message: Omit<NotifyInput, "type" | "dedupeKey">,
+): Promise<NotificationTestResult> {
+  const { data: pref } = await supabase
+    .from("notification_preferences")
+    .select("telegram_enabled, admin_email_enabled")
+    .eq("event_type", event)
+    .maybeSingle();
+  // enqueue_notification writes one row per ENABLED channel and answers
+  // nothing at all, so with both switches off there is no row to report on and
+  // "sent" would be a lie. Say which it is instead.
+  if (pref?.telegram_enabled !== true && pref?.admin_email_enabled !== true) {
+    return { ok: false, error: "no_channel" };
+  }
+
+  // Read before the send: a blocker is a reason a row is still pending
+  // afterwards, and asking now costs one round trip either way.
+  const blockers = await channelBlockers(supabase);
+  // The definer functions refuse every call until sha256(token) is published,
+  // and an admin who has never saved an integration may not have armed it yet.
+  await ensureDispatchHash(supabase);
+
+  const dedupeKey = buildDedupeKey(event, "test", randomUUID());
+  await notify(supabase, { ...message, type: event, dedupeKey });
+  // notify() drains a handful of rows and takes them oldest first, so on a
+  // queue with a backlog it may not have reached ours. One full drain follows
+  // before anything is reported.
+  await drainNotifications(supabase);
+
+  const { data: rows, error } = await supabase
+    .from("notification_outbox")
+    .select("channel, status, last_error_safe")
+    .eq("dedupe_key", dedupeKey);
+  if (error) return { ok: false, error: "generic" };
+
+  const outcomes: NotificationChannelOutcome[] = (rows ?? []).map((row) => {
+    const channel: NotificationChannel = row.channel === "admin_email" ? "admin_email" : "telegram";
+    const found = OUTBOX_STATUSES.find((candidate) => candidate === row.status);
+    const status = found ?? "pending";
+    const stored = row.last_error_safe?.trim() ?? "";
+    return {
+      channel,
+      status,
+      error: status === "sent"
+        ? undefined
+        : ERROR_CODE.test(stored) ? stored : status === "pending" ? blockers[channel] : undefined,
+    };
+  });
+
+  await logAudit(supabase, {
+    actorId: adminId, action: "notifications.test_fired", entityType: "notification_outbox", entityId: event,
+    after: { event, outcomes: outcomes.map((o) => ({ channel: o.channel, status: o.status, code: o.error ?? null })) },
+  });
+  revalidatePath(NOTIFICATIONS_PATH);
+
+  // A switched-on channel that produced no row at all means the queue itself
+  // refused the event (an unpublished dispatch hash, a full backlog). Reporting
+  // that as success would be the phantom this whole function exists to avoid.
+  if (outcomes.length === 0) return { ok: false, error: "generic" };
+  return { ok: true, outcomes };
+}
+
+/**
+ * "Wyślij testowe powiadomienie administratora" in the Poczta card.
+ *
+ * It rides on system.error rather than inventing an event: that is the wired
+ * event which means "GrovBase itself has something to tell the operator", and
+ * a mail test must not fabricate a registration that never happened. The title
+ * says TEST, so nothing that arrives can be mistaken for a real incident.
+ */
+export async function sendAdminTestNotificationAction(): Promise<NotificationTestResult> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    return await runPipelineTest(supabase, adminId, "system.error", {
+      title: "TEST POWIADOMIEŃ ADMINISTRATORA",
+      icon: "🧪",
+      rows: [
+        ["🧭 Źródło", "Panel administracyjny GrovBase"],
+        ["🕒 Data", formatWarsaw(new Date())],
+      ],
+      quote: "Jeśli widzisz tę wiadomość, powiadomienia administratora działają.",
+      footer: "GrovBase Admin",
+    });
+  } catch (e) {
+    return { ok: false, error: reason(e) };
+  }
+}
+
+/**
+ * The two event tests on the switchboard.
+ *
+ * Synthetic all the way down: the payload looks like the real one — same rows,
+ * same order, so the card the admin receives is the card a real signup produces
+ * — but nothing is written outside the outbox. No auth user, no profile, no
+ * waitlist row, and an address in the reserved example.com domain that can
+ * never belong to a customer.
+ */
+export async function testRegistrationEventAction(): Promise<NotificationTestResult> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    return await runPipelineTest(supabase, adminId, "user.registered", {
+      title: "NOWA REJESTRACJA (TEST)",
+      icon: "🎉",
+      rows: [
+        ["👤 Użytkownik", "Jan Testowy"],
+        ["📧 E-mail", "test@example.com"],
+        ["📱 Telefon", "+48 600 000 000"],
+        ["🕒 Data", formatWarsaw(new Date())],
+        ["🌍 Źródło", "Test z panelu administracyjnego"],
+      ],
+      footer: "GrovBase Admin",
+    });
+  } catch (e) {
+    return { ok: false, error: reason(e) };
+  }
+}
+
+export async function testWaitlistEventAction(): Promise<NotificationTestResult> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    return await runPipelineTest(supabase, adminId, "waitlist.signup", {
+      title: "NOWY ZAPIS NA LISTĘ (TEST)",
+      icon: "📝",
+      rows: [
+        ["👤 Użytkownik", "Jan Testowy"],
+        ["📧 E-mail", "test@example.com"],
+        ["🕒 Data", formatWarsaw(new Date())],
+        ["🌍 Źródło", "Test z panelu administracyjnego"],
+      ],
+      footer: "GrovBase Waitlist",
+    });
   } catch (e) {
     return { ok: false, error: reason(e) };
   }

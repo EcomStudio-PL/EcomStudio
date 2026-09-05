@@ -219,7 +219,8 @@
     "errActivationSend": "Nie udało się wysłać wiadomości aktywacyjnej. Spróbuj ponownie.",
     "errCaptcha": "Potwierdź, że nie jesteś robotem.",
     "errCaptchaFailed": "Weryfikacja CAPTCHA nie powiodła się. Spróbuj ponownie.",
-    "errIpLimit": "Z tej sieci utworzono już maksymalną liczbę kont. Napisz do nas, jeśli to pomyłka."
+    "errIpLimit": "Z tej sieci utworzono już maksymalną liczbę kont. Napisz do nas, jeśli to pomyłka.",
+    "optional": "opcjonalne"
   },
   "dashboard": {
     "welcome": "Cześć, {name}! 👋",
@@ -2449,7 +2450,11 @@
     "steps": "Jak to działa",
     "contact": "Kontakt",
     "terms": "Regulamin",
-    "privacyPage": "Polityka prywatności"
+    "privacyPage": "Polityka prywatności",
+    "firstName": "Imię",
+    "lastName": "Nazwisko",
+    "phone": "Telefon",
+    "privacyNote": "Zapisując się, zgadzasz się na kontakt w sprawie premiery. Zapisujemy też adres IP i źródło wejścia, aby chronić formularz przed nadużyciami."
   },
   "launchAdmin": {
     "homepageTitle": "Strona główna",
@@ -2716,6 +2721,45 @@
     "captchaHelp3": "Skopiuj Site Key oraz Secret Key i wklej je tutaj.",
     "captchaHelp4": "Zapisz — pole „Nie jestem robotem” pojawi się na stronie rejestracji.",
     "captchaDisabledHint": "Bez kluczy rejestracja działa bez CAPTCHA.",
-    "err.captchaSecret": "Secret Key jest nieprawidłowy."
+    "err.captchaSecret": "Secret Key jest nieprawidłowy.",
+    "chTelegram": "Telegram",
+    "chAdminEmail": "E-mail admina",
+    "chActive": "Aktywne",
+    "chOff": "Wyłączone",
+    "adminNotifyTo": "Adres e-mail powiadomień administratora",
+    "adminNotifyToHint": "Na ten adres trafiają powiadomienia o rejestracjach i zapisach na listę.",
+    "testAdminEmail": "Wyślij testowe powiadomienie administratora",
+    "testRegistration": "Test: nowa rejestracja",
+    "testWaitlist": "Test: nowy zapis na listę",
+    "testQueued": "Powiadomienie testowe zostało wysłane.",
+    "testNoChannel": "Żaden kanał nie jest włączony dla tego zdarzenia.",
+    "err.adminEmailMissing": "Najpierw ustaw adres e-mail powiadomień administratora.",
+    "err.mailNotConfigured": "Skrzynka nie jest jeszcze skonfigurowana.",
+    "log": "Historia wysyłek",
+    "logSub": "Ostatnie powiadomienia i ich status.",
+    "logEmpty": "Nie wysłano jeszcze żadnych powiadomień.",
+    "logEvent": "Zdarzenie",
+    "logChannel": "Kanał",
+    "logStatus": "Status",
+    "logTime": "Czas",
+    "st.sent": "Wysłane",
+    "st.failed": "Błąd",
+    "st.pending": "W kolejce",
+    "st.skipped": "Pominięte"
+  },
+  "reg": {
+    "title": "Rejestracja i bezpieczeństwo",
+    "sub": "Zdecyduj, o co pytamy przy zakładaniu konta i przy zapisie na listę.",
+    "signupFields": "Pola rejestracji",
+    "waitlistFields": "Pola listy oczekujących",
+    "fFirstName": "Imię",
+    "fLastName": "Nazwisko",
+    "fPhone": "Telefon",
+    "fAcquisition": "Skąd dowiedziałeś się o GrovBase?",
+    "mHidden": "Ukryte",
+    "mOptional": "Opcjonalne",
+    "mRequired": "Wymagane",
+    "emailAlways": "E-mail i hasło są zawsze wymagane.",
+    "saved": "Zapisano."
   }
 }

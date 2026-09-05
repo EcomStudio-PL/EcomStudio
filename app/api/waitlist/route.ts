@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { rateLimit, clientIp } from "@/lib/server/rate-limit";
 import { deliver, type SmtpConfig } from "@/lib/server/mailer";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
+import { collectEventContext, contextRows, formatWarsaw } from "@/lib/server/event-context";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,13 @@ export const dynamic = "force-dynamic";
 
 const EMAIL = /^[^@\s]+@[^@\s.]+\.[^@\s]{2,}$/;
 
+/** Optional free-text field off the body: trimmed and capped to the same width
+ *  `waitlist_subscribe` stores it at, so nothing is silently truncated later
+ *  and an oversized value can never bloat the metadata jsonb. */
+function optionalText(value: unknown, max: number): string {
+  return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
 export async function POST(request: Request) {
   const ip = clientIp(request);
   // A person signs up once. Ten attempts an hour from one address is generous
@@ -36,9 +44,16 @@ export async function POST(request: Request) {
   let source = "landing";
   let trap = "";
   let consent: boolean | undefined;
+  // Optional by design: the admin decides per field whether the landing form
+  // asks for a name or a phone at all, so an absent value is normal input and
+  // never an error.
+  let firstName = "";
+  let lastName = "";
+  let phone = "";
   try {
     const body = (await request.json()) as {
       email?: unknown; locale?: unknown; source?: unknown; company?: unknown; consent?: unknown;
+      first_name?: unknown; last_name?: unknown; phone?: unknown;
     };
     // Only recorded when the page actually asked for it, so a row never claims
     // an agreement the visitor was never shown.
@@ -46,6 +61,9 @@ export async function POST(request: Request) {
     email = typeof body.email === "string" ? body.email.trim().toLowerCase().slice(0, 254) : "";
     locale = typeof body.locale === "string" && /^[a-z]{2}$/.test(body.locale) ? body.locale : "pl";
     source = typeof body.source === "string" ? body.source.slice(0, 40) : "landing";
+    firstName = optionalText(body.first_name, 80);
+    lastName = optionalText(body.last_name, 80);
+    phone = optionalText(body.phone, 32);
     // Honeypot: a field no human sees and every naive bot fills in. Answering
     // "ok" keeps the bot from learning it was caught.
     trap = typeof body.company === "string" ? body.company.trim() : "";
@@ -64,6 +82,11 @@ export async function POST(request: Request) {
     p_metadata: {
       ua: (request.headers.get("user-agent") ?? "").slice(0, 200),
       ...(consent === undefined ? {} : { consent, consent_at: new Date().toISOString() }),
+      // The function copies these three into real columns; a key that is not
+      // there stays null rather than becoming an empty string on the row.
+      ...(firstName === "" ? {} : { first_name: firstName }),
+      ...(lastName === "" ? {} : { last_name: lastName }),
+      ...(phone === "" ? {} : { phone }),
     } as never,
   });
   if (error) {
@@ -99,14 +122,29 @@ export async function POST(request: Request) {
   // and "exists" returned above, so a bot and a customer re-typing their
   // address never reach this line. The e-mail doubles as the dedupe key, which
   // keeps the ping unique even if the row is ever deleted and re-added.
+  //
+  // Read on the request, not inside after(): headers and cookies are
+  // request-scoped state. The locale the visitor is reading the page in beats
+  // Accept-Language, because it is the one we will write to them in.
+  const context = await collectEventContext();
+  // Empty rows are dropped rather than rendered as a dangling label, so the
+  // fields the admin left off the form simply are not in the message.
+  const rows: [string, string][] = [
+    ["👤 Użytkownik", `${firstName} ${lastName}`.trim()],
+    ["📧 E-mail", email],
+    ["📱 Telefon", phone],
+    ["🕒 Data", formatWarsaw(new Date())],
+    // Which block of the landing page the visitor used, then what the server
+    // saw of the visit: campaign, entry point, address, device.
+    ["🌍 Źródło", source],
+    ...contextRows({ ...context, language: locale.toUpperCase() }),
+  ];
   after(() => notify(supabase, {
     type: "waitlist.signup",
     title: "NOWY ZAPIS NA LISTĘ",
     icon: "📝",
-    rows: [
-      ["E-mail", email],
-      ["Źródło", source],
-    ],
+    rows: rows.filter(([, value]) => value !== ""),
+    footer: "GrovBase Waitlist",
     dedupeKey: buildDedupeKey("waitlist.signup", email),
   }));
 

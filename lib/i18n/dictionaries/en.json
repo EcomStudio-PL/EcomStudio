@@ -219,7 +219,8 @@
     "errActivationSend": "We couldn't send the activation email. Please try again.",
     "errCaptcha": "Please confirm you're not a robot.",
     "errCaptchaFailed": "CAPTCHA verification failed. Please try again.",
-    "errIpLimit": "The maximum number of accounts has already been created from this network. Contact us if this is a mistake."
+    "errIpLimit": "The maximum number of accounts has already been created from this network. Contact us if this is a mistake.",
+    "optional": "optional"
   },
   "dashboard": {
     "welcome": "Hi, {name}! 👋",
@@ -2449,7 +2450,11 @@
     "steps": "How it works",
     "contact": "Contact",
     "terms": "Terms",
-    "privacyPage": "Privacy Policy"
+    "privacyPage": "Privacy Policy",
+    "firstName": "First name",
+    "lastName": "Last name",
+    "phone": "Phone",
+    "privacyNote": "By joining you agree to be contacted about the launch. We also store your IP address and referral source to protect the form from abuse."
   },
   "launchAdmin": {
     "homepageTitle": "Homepage",
@@ -2716,6 +2721,45 @@
     "captchaHelp3": "Copy the Site Key and Secret Key and paste them here.",
     "captchaHelp4": "Save — the “I'm not a robot” check will appear on the registration page.",
     "captchaDisabledHint": "Without keys, registration works without CAPTCHA.",
-    "err.captchaSecret": "The Secret Key is invalid."
+    "err.captchaSecret": "The Secret Key is invalid.",
+    "chTelegram": "Telegram",
+    "chAdminEmail": "Admin email",
+    "chActive": "Active",
+    "chOff": "Off",
+    "adminNotifyTo": "Admin notification email address",
+    "adminNotifyToHint": "Notifications about registrations and waitlist signups are sent to this address.",
+    "testAdminEmail": "Send a test admin notification",
+    "testRegistration": "Test: new registration",
+    "testWaitlist": "Test: new waitlist signup",
+    "testQueued": "The test notification has been sent.",
+    "testNoChannel": "No channel is enabled for this event.",
+    "err.adminEmailMissing": "Set the admin notification email address first.",
+    "err.mailNotConfigured": "The mailbox has not been configured yet.",
+    "log": "Delivery history",
+    "logSub": "Recent notifications and their status.",
+    "logEmpty": "No notifications have been sent yet.",
+    "logEvent": "Event",
+    "logChannel": "Channel",
+    "logStatus": "Status",
+    "logTime": "Time",
+    "st.sent": "Sent",
+    "st.failed": "Failed",
+    "st.pending": "Queued",
+    "st.skipped": "Skipped"
+  },
+  "reg": {
+    "title": "Registration and security",
+    "sub": "Decide what we ask for when someone creates an account or joins the waitlist.",
+    "signupFields": "Registration fields",
+    "waitlistFields": "Waitlist fields",
+    "fFirstName": "First name",
+    "fLastName": "Last name",
+    "fPhone": "Phone",
+    "fAcquisition": "How did you hear about GrovBase?",
+    "mHidden": "Hidden",
+    "mOptional": "Optional",
+    "mRequired": "Required",
+    "emailAlways": "Email and password are always required.",
+    "saved": "Saved."
   }
 }

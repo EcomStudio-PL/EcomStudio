@@ -1,11 +1,13 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
-import { decryptWith } from "@/lib/server/crypto";
+import { sendAdminNotification } from "@/lib/server/admin-email";
+import { decryptWith, encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { dispatchToken, safeError } from "@/lib/server/integrations";
+import type { SmtpConfig } from "@/lib/server/mailer";
 import { sendTelegramMessage, tgEscape } from "@/lib/server/telegram";
 
 /**
- * NOTIFICATIONS — from "something happened" to a Telegram message.
+ * NOTIFICATIONS — from "something happened" to a Telegram message or an e-mail.
  *
  * The hard part is privilege. A waitlist signup runs as anon and a generation
  * failure runs as an ordinary user; neither may read the bot token, yet both
@@ -18,6 +20,12 @@ import { sendTelegramMessage, tgEscape } from "@/lib/server/telegram";
  * The second rule is that a notification may never break the thing it reports
  * on. Every export below swallows its failures: a message that cannot go out
  * stays pending in the outbox for the cron, and the signup still succeeds.
+ *
+ * Since 0055 an event can have TWO destinations. `notify` still says one thing
+ * once — the queue decides how many rows that becomes, one per channel the
+ * admin enabled — and the claimed row now names its own channel, which is the
+ * only thing `dispatchOne` branches on. Telegram's path below is untouched by
+ * that split, down to its skip reasons.
  */
 
 export type NotificationEvent =
@@ -90,6 +98,7 @@ const IMMEDIATE_BATCH = 5;
 /** Per-field caps, applied before escaping so an HTML entity can never be cut
  *  in half — a truncated "&amp;" makes Telegram reject the whole message. */
 const TITLE_MAX = 200;
+const LABEL_MAX = 80;
 const VALUE_MAX = 300;
 const QUOTE_MAX = 250;
 
@@ -132,35 +141,51 @@ function clean(text: string, max: number): string {
   return truncate(collapse(text), max);
 }
 
+/** The card's top and bottom edge. Sixteen box-drawing characters is the widest
+ *  rule that still fits one line on a narrow phone without wrapping. */
+const RULE = "━".repeat(16);
+
 /**
  * The message body, Polish, HTML parse mode:
  *
- *   <b>✉️ NOWY E-MAIL</b>
+ *   🎉 <b>NOWA REJESTRACJA</b>
+ *   ━━━━━━━━━━━━━━━━
  *
- *   Od: Jan Kowalski
- *   Temat: Pytanie o zamówienie
+ *   👤 <b>Użytkownik</b>
+ *   Jan Kowalski
  *
- *   <i>„Dzień dobry, chciałbym zapytać…"</i>
+ *   📧 <b>E-mail</b>
+ *   jan@example.com
  *
- *   Otrzymano: 12:43
+ *   ━━━━━━━━━━━━━━━━
+ *   GrovBase Admin
  *
- * Every interpolated value is escaped; rows with an empty value are dropped
- * rather than rendered as a dangling label.
+ * A label above its value, not "Label: value": Telegram wraps a long line
+ * mid-address on a phone, and a value on its own line stays readable and stays
+ * tappable. The caller owns the per-row emoji — it is the front of the label —
+ * so this formatter never has to know which event it is rendering.
+ *
+ * Every interpolated value is escaped, and a row whose value is empty is
+ * dropped whole rather than printed as a dangling label with nothing under it.
  */
 export function formatTelegram(input: NotificationMessage): string {
   const icon = input.icon ? `${tgEscape(collapse(input.icon))} ` : "";
-  const blocks = [`<b>${icon}${tgEscape(clean(input.title, TITLE_MAX))}</b>`];
+  const blocks = [`${icon}<b>${tgEscape(clean(input.title, TITLE_MAX))}</b>\n${RULE}`];
 
-  const rows = (input.rows ?? [])
-    .map(([label, value]) => [collapse(label), clean(value, VALUE_MAX)] as const)
-    .filter(([, value]) => value !== "");
-  if (rows.length) blocks.push(rows.map(([label, value]) => `${tgEscape(label)}: ${tgEscape(value)}`).join("\n"));
+  for (const [rawLabel, rawValue] of input.rows ?? []) {
+    const value = clean(rawValue, VALUE_MAX);
+    if (!value) continue;
+    const label = clean(rawLabel, LABEL_MAX);
+    blocks.push(label ? `<b>${tgEscape(label)}</b>\n${tgEscape(value)}` : tgEscape(value));
+  }
 
   const quote = clean(input.quote ?? "", QUOTE_MAX);
   if (quote) blocks.push(`<i>„${tgEscape(quote)}"</i>`);
 
+  // The closing rule is part of the card, so it is printed even when the caller
+  // sent no footer — a message that stops mid-air reads like a truncated one.
   const footer = clean(input.footer ?? "", VALUE_MAX);
-  if (footer) blocks.push(tgEscape(footer));
+  blocks.push(footer ? `${RULE}\n${tgEscape(footer)}` : RULE);
 
   return blocks.join("\n\n");
 }
@@ -211,13 +236,38 @@ export async function notify(supabase: Client, input: NotifyInput): Promise<void
 
 type SecretBlob = { c: string; i: string; t: string };
 
+/** The two destinations notification_outbox.channel allows (0055). An unknown
+ *  value reads as Telegram, which is the column's own default. */
+export type NotificationChannel = "telegram" | "admin_email";
+
+/** What the e-mail channel needs off the mail integration's `config`, already
+ *  translated into the vocabulary nodemailer speaks. */
+type MailDispatchConfig = {
+  host: string;
+  port: number;
+  user: string;
+  encryption: SmtpConfig["encryption"];
+  fromName: string;
+  fromEmail: string;
+};
+
 type ClaimedRow = {
   id: string;
+  eventType: string;
+  createdAt: string;
+  channel: NotificationChannel;
   message: NotificationMessage;
   chatId: string;
+  /** The BOT TOKEN envelope. The mail password has its own field below — one
+   *  claimed row now carries two unrelated secrets, and mixing them up would
+   *  mean handing a mail server a Telegram token. */
   blob: SecretBlob | null;
-  /** The integration's own on/off switch, as the claim function returns it. */
+  /** The Telegram integration's own on/off switch, as the claim returns it.
+   *  It says nothing about the e-mail channel and must never gate it. */
   enabled: boolean;
+  adminEmailTo: string;
+  mail: MailDispatchConfig;
+  smtpBlob: SecretBlob | null;
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -235,6 +285,42 @@ function readBlob(value: unknown): SecretBlob | null {
     : null;
 }
 
+/**
+ * The mailbox integration speaks IMAP's vocabulary ("starttls" / "ssl" /
+ * "none"); nodemailer speaks the older one. The same translation
+ * app/actions/integrations.ts makes for the SMTP tester, repeated here because
+ * that one lives in a "use server" module a library must not import: "none"
+ * becomes "auto", which is what nodemailer does when nothing was configured —
+ * upgrade the connection only if the server offers it.
+ */
+function smtpEncryption(value: unknown): SmtpConfig["encryption"] {
+  const raw = asString(value);
+  if (raw === "ssl") return "ssl";
+  if (raw === "starttls") return "tls";
+  return "auto";
+}
+
+/** The mail row's `config`, read defensively: the claim hands back whatever
+ *  jsonb the admin panel saved, and a half-filled row must yield a config the
+ *  dispatcher can reject cleanly rather than a crash mid-batch. */
+function readMail(value: unknown): MailDispatchConfig {
+  const config = asRecord(value);
+  const port = Math.trunc(Number(config.smtp_port));
+  const user = asString(config.smtp_user).trim();
+  return {
+    host: asString(config.smtp_host).trim(),
+    // The submission port is the one every provider offers; a missing or
+    // nonsense value is a misconfigured row, not a reason to skip the mail.
+    port: Number.isInteger(port) && port >= 1 && port <= 65535 ? port : 587,
+    user,
+    encryption: smtpEncryption(config.smtp_encryption),
+    fromName: asString(config.from_name).trim() || "GrovBase",
+    // In this deployment the SMTP user IS the mailbox address, so it is the
+    // honest fallback when the sender address was never filled in.
+    fromEmail: asString(config.email).trim() || user,
+  };
+}
+
 function readRows(value: unknown): [string, string][] {
   if (!Array.isArray(value)) return [];
   const out: [string, string][] = [];
@@ -247,16 +333,22 @@ function readRows(value: unknown): [string, string][] {
 }
 
 /**
- * One row as the claim function hands it back: the outbox entry plus the
- * Telegram config and the bot-token ciphertext it takes to send it.
+ * One row as the claim function hands it back: the outbox entry, the channel it
+ * is going out on, and the credentials for that channel.
  *
  * The names that matter are the ones `notification_dispatch_claim` declares in
- * its RETURNS TABLE — telegram_enabled, telegram_config, bot_token_ciphertext
- * (0052_communications.sql) — because PostgREST keys the JSON by those. The
- * flat and nested variants stay as fallbacks so a later migration may move the
- * values around, but they are fallbacks, not the contract. Anything unreadable
- * yields a row with no credentials, which the dispatcher records as "skipped"
- * instead of crashing the batch.
+ * its RETURNS TABLE — channel, telegram_enabled, telegram_config,
+ * bot_token_ciphertext, mail_config, smtp_password_ciphertext, admin_email_to
+ * (0055_admin_email_channel.sql) — because PostgREST keys the JSON by those. A
+ * name that does not match reads as an empty value here, the dispatcher closes
+ * the row as "skipped", and NOTHING anywhere reports an error: that is the bug
+ * this module already had once, and the reason the fixture in
+ * scripts/comm-tests.ts is copied column for column from the migration.
+ *
+ * The flat and nested variants stay as fallbacks so a later migration may move
+ * the values around, but they are fallbacks, not the contract. Anything
+ * unreadable yields a row with no credentials, which is skipped rather than
+ * crashing the batch.
  *
  * Exported for scripts/comm-tests.ts: the parameter is `unknown`, so a column
  * rename typechecks fine and only an assertion on a real claim shape catches it.
@@ -267,6 +359,7 @@ export function readClaim(raw: unknown): ClaimedRow | null {
   if (!id) return null;
   const payload = asRecord(row.payload);
   const config = asRecord(row.telegram_config ?? row.config);
+  const mailConfig = asRecord(row.mail_config);
   const secrets = asRecord(row.secrets);
   const flat = readBlob({
     c: row.bot_token_c ?? row.token_c,
@@ -275,6 +368,12 @@ export function readClaim(raw: unknown): ClaimedRow | null {
   });
   return {
     id,
+    eventType: asString(row.event_type),
+    createdAt: asString(row.created_at),
+    // Only the value 0055 added switches destination; anything else — a row
+    // enqueued before the column existed, a claim shape without it — is the
+    // Telegram message this queue has always carried.
+    channel: asString(row.channel) === "admin_email" ? "admin_email" : "telegram",
     message: {
       title: asString(payload.title) || asString(row.event_type),
       icon: asString(payload.icon) || undefined,
@@ -287,18 +386,29 @@ export function readClaim(raw: unknown): ClaimedRow | null {
     // Only an explicit false disables delivery: a shape without the column at
     // all (an older claim function) must keep sending, not go silent.
     enabled: row.telegram_enabled !== false,
+    // The RPC already trims this and nulls it when blank; the mail config is
+    // where the address lives, so it is also where the fallback reads from.
+    adminEmailTo: (asString(row.admin_email_to) || asString(mailConfig.admin_notify_to)).trim(),
+    mail: readMail(mailConfig),
+    smtpBlob: readBlob(row.smtp_password_ciphertext) ?? readBlob(row.smtp_password) ?? readBlob(secrets.smtp_password),
   };
 }
 
 /**
- * Send one claimed row. The distinction that matters is "skipped" vs "failed":
- * a missing chat id or a key that no longer opens the ciphertext cannot be
- * fixed by trying again, so those rows are closed instead of being retried by
- * every cron run for the rest of time.
+ * Send one claimed row down the channel it names. The distinction that matters
+ * in both branches is "skipped" vs "failed": a missing chat id, a missing
+ * recipient or a key that no longer opens the ciphertext cannot be fixed by
+ * trying again, so those rows are closed instead of being retried by every cron
+ * run for the rest of time — while a mail server that refused this minute is
+ * exactly what the 0053 attempts budget exists for.
  *
  * Exported for scripts/comm-tests.ts alongside `readClaim`.
  */
 export async function dispatchOne(row: ClaimedRow, keyHex: string | null): Promise<{ status: DispatchStatus; error: string | null }> {
+  return row.channel === "admin_email" ? dispatchAdminEmail(row, keyHex) : dispatchTelegram(row, keyHex);
+}
+
+async function dispatchTelegram(row: ClaimedRow, keyHex: string | null): Promise<{ status: DispatchStatus; error: string | null }> {
   // The integration switched off is the admin's decision, not a delivery
   // attempt: checked before the credentials so a leftover token in a disabled
   // row can never post. Same skip reason — from the outbox's point of view
@@ -314,6 +424,80 @@ export async function dispatchOne(row: ClaimedRow, keyHex: string | null): Promi
   }
   const res = await sendTelegramMessage(botToken, row.chatId, formatTelegram(row.message));
   return res.ok ? { status: "sent", error: null } : { status: "failed", error: res.error ?? "generic" };
+}
+
+/**
+ * The e-mail branch. `row.enabled` is deliberately NOT consulted: it is the
+ * Telegram integration's switch, and gating mail on it would silence every
+ * notification on a deployment that never set a bot up. The per-event
+ * admin_email_enabled flag already made this decision — it is why the row
+ * exists — and the claim's own precondition already refused to hand out an
+ * e-mail row until the mailbox was configured.
+ */
+async function dispatchAdminEmail(row: ClaimedRow, keyHex: string | null): Promise<{ status: DispatchStatus; error: string | null }> {
+  if (!row.adminEmailTo) return { status: "skipped", error: "admin_email_not_configured" };
+  if (!row.mail.host || !row.mail.user || !row.smtpBlob) return { status: "skipped", error: "smtp_not_configured" };
+  if (!keyHex) return { status: "skipped", error: "encryption_unavailable" };
+
+  let password: string;
+  try {
+    password = decryptWith(keyHex, row.smtpBlob.c, row.smtpBlob.i, row.smtpBlob.t);
+  } catch {
+    return { status: "skipped", error: "decrypt_failed" };
+  }
+
+  // smtpTransport() takes the ciphertext shape email_settings stores and opens
+  // it with APP_ENCRYPTION_KEY, while the claim's envelope was sealed with the
+  // integrations key — which may be a different one. So the plaintext is
+  // re-sealed for the length of one send rather than duplicating the transport
+  // builder and its timeouts here. Without the app key there is nothing to
+  // re-seal it with, and retrying will not produce one.
+  if (!encryptionAvailable()) return { status: "skipped", error: "encryption_unavailable" };
+  const sealed = encryptSecret(password);
+  const smtp: SmtpConfig = {
+    host: row.mail.host,
+    port: row.mail.port,
+    user: row.mail.user,
+    encryption: row.mail.encryption,
+    ciphertext: sealed.ciphertext,
+    iv: sealed.iv,
+    auth_tag: sealed.authTag,
+  };
+
+  const result = await sendAdminNotification(
+    smtp,
+    { from_name: row.mail.fromName, from_email: row.mail.fromEmail, reply_to: row.mail.fromEmail },
+    row.adminEmailTo,
+    {
+      eventType: row.eventType,
+      // The queue row's own timestamp, never the payload's footer: a footer is
+      // a signature on one event ("GrovBase Admin") and a date on another,
+      // while created_at is always the moment the event was recorded. The card
+      // signs itself, so nothing is lost by leaving the footer to Telegram.
+      occurredAt: stampPL(row.createdAt),
+      title: row.message.title,
+      icon: row.message.icon,
+      // A quote is a mail preview or an error text — content, not decoration,
+      // so it becomes a row of its own instead of being dropped in this channel.
+      rows: [...(row.message.rows ?? []), ...(row.message.quote ? [["💬 Treść", row.message.quote] as [string, string]] : [])],
+    },
+  );
+  if (result.ok) return { status: "sent", error: null };
+  // The two answers sendAdminNotification gives for "there is nothing to send
+  // with" close the row; anything else is the mail server talking, and that is
+  // worth another attempt. safeError is not optional here: an SMTP failure
+  // quotes the session, and the session carries the password.
+  if (result.error === "no_recipient") return { status: "skipped", error: "admin_email_not_configured" };
+  if (result.error === "not_configured") return { status: "skipped", error: "smtp_not_configured" };
+  return { status: "failed", error: safeError(result.error ?? "generic") };
+}
+
+/** Warsaw time, short, the way the callers' own footers are written — an
+ *  operator reading the mail should not have to convert from UTC. */
+function stampPL(iso: string): string {
+  const parsed = new Date(iso);
+  const when = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  return `Data: ${when.toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Warsaw" })}`;
 }
 
 /**

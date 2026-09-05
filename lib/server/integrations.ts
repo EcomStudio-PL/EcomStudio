@@ -37,6 +37,11 @@ export type MailConfig = {
   smtp_same_as_imap: boolean;
   mirror_to_email_settings: boolean;
   sent_folder: string;
+  /** Where admin notifications go (0055). An address, never a credential — it
+   *  lives beside the SMTP host that carries it because this row is admin-only
+   *  under RLS, while app_settings is world-readable. Empty means "nobody",
+   *  and the dispatcher then skips the e-mail channel rather than guessing. */
+  admin_notify_to: string;
 };
 
 export type TelegramConfig = { chat_id: string; channel_name: string };
@@ -66,6 +71,7 @@ export const MAIL_DEFAULTS: MailConfig = {
   smtp_same_as_imap: true,
   mirror_to_email_settings: false,
   sent_folder: "",
+  admin_notify_to: "contact@grovbase.com",
 };
 
 export const TELEGRAM_DEFAULTS: TelegramConfig = {
@@ -76,6 +82,23 @@ export const TELEGRAM_DEFAULTS: TelegramConfig = {
 /** Matches the seed in 0054_signup_protection.sql the same way the two above
  *  match 0052: an unsaved row and a default-saved row read back identically. */
 export const CAPTCHA_DEFAULTS: CaptchaConfig = { provider: "turnstile", site_key: "" };
+
+/**
+ * Can the admin-e-mail channel actually deliver, and if not, which half is
+ * missing?
+ *
+ * The tests are the ones 0055's claim function already makes in SQL before it
+ * hands out an admin_email row. Repeating them here is what lets the panel say
+ * WHY a switch will not fire — a notification that sits in the queue for ever
+ * is the failure this module has to make visible, not reproduce.
+ */
+export type AdminEmailReadiness = "ready" | "no_recipient" | "not_configured";
+
+export function adminEmailReadiness(config: MailConfig, hasSmtpPassword: boolean): AdminEmailReadiness {
+  if (!config.smtp_host.trim() || !config.smtp_user.trim() || !hasSmtpPassword) return "not_configured";
+  if (!config.admin_notify_to.trim()) return "no_recipient";
+  return "ready";
+}
 
 export type IntegrationView<C> = {
   type: IntegrationType;

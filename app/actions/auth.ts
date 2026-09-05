@@ -7,7 +7,9 @@ import { rateLimit } from "@/lib/server/rate-limit";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
 import { verifyTurnstile } from "@/lib/server/captcha";
 import { readIntegrationSecrets, safeError } from "@/lib/server/integrations";
+import { collectEventContext, contextRows, formatWarsaw } from "@/lib/server/event-context";
 import { recordSignup, signupAllowed, signupIpHash } from "@/lib/server/signup-guard";
+import { getRegistrationConfig } from "@/lib/server/registration-config";
 import { getLocale } from "@/lib/i18n/server";
 import { absoluteUrl } from "@/lib/site";
 import { ACQUISITION_SOURCES, EMAIL_RE, isPoland, passwordIssue, validNip } from "@/lib/auth-validation";
@@ -70,15 +72,31 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
   const source = f("acquisition_source");
   const country = f("company_country") || "Polska";
 
+  // The admin decides which of the four soft fields the form asks for, so the
+  // server has to ask the same question the form did. Reading it here (before
+  // validation) is what stops a field switched to "hidden" from failing a
+  // required check the customer has no input to satisfy.
+  const supabase = await createClient();
+  const { signup: fields } = await getRegistrationConfig(supabase);
+
   // Server-side validation mirrors the client; the client is convenience,
-  // this is the boundary.
+  // this is the boundary. A hidden field is not validated at all; an optional
+  // one is checked only when the customer actually filled it in.
   const errors: SignUpErrors = {};
-  if (!f("first_name")) errors.first_name = "required";
-  if (!f("last_name")) errors.last_name = "required";
+  if (fields.firstName === "required" && !f("first_name")) errors.first_name = "required";
+  if (fields.lastName === "required" && !f("last_name")) errors.last_name = "required";
   if (!EMAIL_RE.test(email)) errors.email = "email";
-  if (f("phone").replace(/\D/g, "").length < 7) errors.phone = "phone";
-  if (!(ACQUISITION_SOURCES as readonly string[]).includes(source)) errors.acquisition_source = "required";
-  if (source === "other" && !f("acquisition_source_other")) errors.acquisition_source_other = "required";
+  if (fields.phone !== "hidden" && (fields.phone === "required" || f("phone") !== "")) {
+    if (f("phone").replace(/\D/g, "").length < 7) errors.phone = "phone";
+  }
+  if (fields.acquisition !== "hidden") {
+    const known = (ACQUISITION_SOURCES as readonly string[]).includes(source);
+    if (fields.acquisition === "required" && !known) errors.acquisition_source = "required";
+    // Answering "Inne" is what makes the follow-up mandatory — never the
+    // field's own mode, which only governs whether we asked at all.
+    else if (source !== "" && !known) errors.acquisition_source = "required";
+    else if (source === "other" && !f("acquisition_source_other")) errors.acquisition_source_other = "required";
+  }
   const pwIssue = passwordIssue(password);
   if (pwIssue) errors.password = pwIssue;
   if (password !== confirm) errors.password_confirm = "mismatch";
@@ -109,7 +127,6 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
     return { ok: false, errors: { form: "network" }, values };
   }
 
-  const supabase = await createClient();
   const { data: security } = await supabase
     .from("app_settings").select("value").eq("key", "security").maybeSingle();
   const sec = (security?.value ?? {}) as { registration_enabled?: boolean };
@@ -224,15 +241,31 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
   // it only remembers signups that were actually enqueued. Nothing from the
   // password or the session goes near the payload.
   if (data.user?.identities?.length !== 0) {
+    // Read on the request, not inside after(): headers and cookies are
+    // request-scoped state, and parsing them costs microseconds — it is the
+    // enqueue and the Telegram round trip that must not touch the hot path.
+    // The interface locale beats Accept-Language here because we know it: it is
+    // what every e-mail to this address will be written in.
+    const context = await collectEventContext();
+    // Empty rows are dropped rather than rendered as a dangling label, so a
+    // field the customer left blank simply is not in the message.
+    const rows: [string, string][] = [
+      ["👤 Użytkownik", `${f("first_name")} ${f("last_name")}`.trim()],
+      ["📧 E-mail", email],
+      ["📱 Telefon", f("phone")],
+      ["🕒 Data", formatWarsaw(new Date())],
+      // What the customer SAID, with "inne" replaced by what they typed —
+      // "other" on its own tells the operator nothing.
+      ["🌍 Źródło", source === "other" ? f("acquisition_source_other") : source],
+      // What the server SAW: campaign, entry point, address, device.
+      ...contextRows({ ...context, language: locale.toUpperCase() }),
+    ];
     after(() => notify(supabase, {
       type: "user.registered",
       title: "NOWA REJESTRACJA",
       icon: "🎉",
-      rows: [
-        ["E-mail", email],
-        ["Język", locale.toUpperCase()],
-      ],
-      footer: `Data: ${new Date().toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Warsaw" })}`,
+      rows: rows.filter(([, value]) => value !== ""),
+      footer: "GrovBase Admin",
       dedupeKey: buildDedupeKey("user.registered", email.toLowerCase()),
     }));
     // The per-IP cap counts registrations that actually happened, recorded
@@ -249,7 +282,11 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
 }
 
 /** "Wyślij e-mail ponownie" on the check-your-inbox screen. One send per
- *  minute per address+IP; the answer is identical either way. */
+ *  minute per address+IP; the answer is identical either way.
+ *
+ *  It deliberately announces NOTHING: the registration was already reported
+ *  when the account was created, and a customer who resends the confirmation
+ *  three times must not look like three new customers. */
 export async function resendConfirmation(_prev: Result | null, formData: FormData): Promise<Result> {
   const email = String(formData.get("email") ?? "").trim();
   if (!email) return { ok: true, info: "sent" };

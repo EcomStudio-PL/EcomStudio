@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Inbox, Mail, SendHorizonal } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import {
-  saveMailIntegrationAction, sendTestEmailAction, testImapAction, testSmtpAction,
+  saveMailIntegrationAction, sendAdminTestNotificationAction, sendTestEmailAction, testImapAction, testSmtpAction,
 } from "@/app/actions/integrations";
 import type { IntegrationView, MailConfig } from "@/lib/server/integrations";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
 import { SecretInput } from "@/components/ui/modal";
 import { integrationErrorKey } from "@/components/admin/integration-cards";
+import { reportNotificationTest } from "@/components/admin/notification-prefs";
 
 /**
  * POCZTA — the mailbox behind the whole communications module: one IMAP
@@ -23,9 +24,15 @@ import { integrationErrorKey } from "@/components/admin/integration-cards";
  * placeholder says so. And every test SAVES FIRST — the server actions read the
  * stored row, so testing what is merely on screen would report on the previous
  * settings and tell the admin nothing.
+ *
+ * Two tests, and they prove different things. "Wyślij testowy e-mail" opens an
+ * SMTP session from this very form; "Wyślij testowe powiadomienie
+ * administratora" hands a real event to the Notification Service and reports
+ * what each channel did with it — which is the half that fails in practice,
+ * long after the handshake works.
  */
 
-type Busy = "imap" | "smtp" | "send" | null;
+type Busy = "imap" | "smtp" | "send" | "notify" | null;
 
 export function MailIntegrationForm({ view, encryptionReady }: {
   view: IntegrationView<MailConfig>;
@@ -87,7 +94,7 @@ export function MailIntegrationForm({ view, encryptionReady }: {
     });
   }
 
-  async function runTest(channel: Exclude<Busy, null>) {
+  async function runTest(channel: Exclude<Busy, "notify" | null>) {
     if (channel === "send" && !testTo.trim()) {
       toast.error(t("comm.recipientRequired"));
       return;
@@ -108,6 +115,23 @@ export function MailIntegrationForm({ view, encryptionReady }: {
     } else {
       toast.error(t(integrationErrorKey(res.error, channel === "imap" ? "imap" : "smtp")));
     }
+    router.refresh();
+  }
+
+  /**
+   * The pipeline test. It saves first for the same reason every other test
+   * here does — the action reads the STORED row, so a recipient typed a second
+   * ago has to be in the database before the event is fired at it.
+   */
+  async function runNotificationTest() {
+    setBusy("notify");
+    if (!(await persist())) {
+      setBusy(null);
+      return;
+    }
+    const res = await sendAdminTestNotificationAction();
+    setBusy(null);
+    reportNotificationTest(res, t);
     router.refresh();
   }
 
@@ -224,10 +248,21 @@ export function MailIntegrationForm({ view, encryptionReady }: {
             {t("comm.mirrorSystem")}
           </label>
           <p className="text-[12px] leading-relaxed text-faint">{t("comm.mirrorSystemHint")}</p>
-          <div className="max-w-sm">
-            <Label htmlFor="mail-test-to">{t("comm.sendTestTo")}</Label>
-            <Input id="mail-test-to" type="email" autoComplete="off" value={testTo}
-              onChange={(e) => setTestTo(e.target.value)} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            {/* An address, not a secret — which is exactly why it lives on the
+                mail row and not in world-readable app_settings. Empty is a
+                choice: it turns the admin e-mail channel off at the source. */}
+            <div>
+              <Label htmlFor="mail-notify-to">{t("comm.adminNotifyTo")}</Label>
+              <Input id="mail-notify-to" type="email" autoComplete="off" value={v.admin_notify_to}
+                onChange={(e) => patch("admin_notify_to", e.target.value)} />
+              <p className="mt-1.5 text-[12px] leading-relaxed text-faint">{t("comm.adminNotifyToHint")}</p>
+            </div>
+            <div>
+              <Label htmlFor="mail-test-to">{t("comm.sendTestTo")}</Label>
+              <Input id="mail-test-to" type="email" autoComplete="off" value={testTo}
+                onChange={(e) => setTestTo(e.target.value)} />
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="secondary" disabled={working} onClick={() => runTest("imap")}>
@@ -238,6 +273,9 @@ export function MailIntegrationForm({ view, encryptionReady }: {
             </Button>
             <Button size="sm" variant="secondary" disabled={working} onClick={() => runTest("send")}>
               {busy === "send" ? "…" : t("comm.sendTest")}
+            </Button>
+            <Button size="sm" variant="secondary" disabled={working} onClick={() => void runNotificationTest()}>
+              {busy === "notify" ? "…" : t("comm.testAdminEmail")}
             </Button>
             <span className="hidden flex-1 sm:block" />
             <Button size="sm" disabled={working} onClick={save} data-mail-save>
