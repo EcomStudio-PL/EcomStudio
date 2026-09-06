@@ -80,7 +80,8 @@
     "noData": "Keine Daten",
     "show": "Anzeigen",
     "hide": "Verbergen",
-    "soon": "Bald"
+    "soon": "Bald",
+    "forbidden": "Nicht erlaubt."
   },
   "landing": {
     "headline": "Professionelle Produktvisuals mit KI. Schneller als ein Fotostudio.",
@@ -460,7 +461,8 @@
       "email": "E-Mail",
       "mail": "Postfach",
       "notifications": "Benachrichtigungen",
-      "integrations": "Integrationen"
+      "integrations": "Integrationen",
+      "loginSecurity": "Anmeldesicherheit"
     },
     "engine": {
       "title": "AI Engine — Wissensbasis",
@@ -2903,5 +2905,45 @@
     "mRequired": "Erforderlich",
     "emailAlways": "E-Mail und Passwort sind immer erforderlich.",
     "saved": "Gespeichert."
+  },
+  "security": {
+    "title": "Bestätige, dass du es bist",
+    "preparing": "Sicherheitscode wird vorbereitet…",
+    "sentTo": "Zur Sicherheit haben wir einen 6-stelligen Code an {email} gesendet.",
+    "codeLabel": "Sicherheitscode",
+    "confirm": "Bestätigen",
+    "resend": "Code erneut senden",
+    "resendIn": "Erneut senden in {n}s",
+    "resent": "Ein neuer Code ist unterwegs.",
+    "wrongCode": "Falscher Code. Verbleibende Versuche: {n}.",
+    "locked": "Zu viele Versuche. Fordere einen neuen Code an.",
+    "expired": "Der Code ist abgelaufen. Fordere einen neuen an.",
+    "mailUnavailable": "Wir können gerade keinen Code senden. Bitte später erneut versuchen."
+  },
+  "loginSec": {
+    "whenTitle": "Wann ein Code nötig ist",
+    "whenSub": "Zusätzliche Prüfung nach korrektem Passwort, Google oder Apple.",
+    "verifyDevice": "Neues Gerät prüfen",
+    "verifyDeviceHint": "Eine Anmeldung von einem unbekannten Gerät braucht einen per E-Mail gesendeten Code.",
+    "verifyIp": "Neue IP prüfen",
+    "verifyIpHint": "Vorsicht — Mobilfunknetze wechseln oft die IP, was häufiger nach einem Code fragen kann.",
+    "tuneTitle": "Code-Parameter",
+    "tuneSub": "Änderungen gelten sofort, ohne Deploy.",
+    "reverifyDays": "Erneut prüfen nach (Tagen)",
+    "reverifyHint": "0 = periodische erneute Prüfung deaktivieren.",
+    "codeTtl": "Code gültig (Minuten)",
+    "codeTtlHint": "Der Code läuft nach dieser Zeit ab.",
+    "maxAttempts": "Max. Versuche",
+    "maxAttemptsHint": "Nach Überschreitung ist ein neuer Code nötig.",
+    "resend": "Erneut-Senden-Sperre (s)",
+    "resendHint": "Mindestzeit, bevor ein Code erneut gesendet werden kann.",
+    "saved": "Sicherheitseinstellungen gespeichert.",
+    "devicesTitle": "Vertrauenswürdige Geräte",
+    "devicesSub": "Geräte, die die Prüfung bestanden haben. Vertrauen entziehen, damit die nächste Anmeldung wieder einen Code verlangt.",
+    "devicesEmpty": "Noch keine vertrauenswürdigen Geräte.",
+    "lastActive": "Zuletzt aktiv",
+    "revoke": "Entziehen",
+    "revoked": "Gerätevertrauen entzogen.",
+    "thisDevice": "Dieses Gerät"
   }
 }

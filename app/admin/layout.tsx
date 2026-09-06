@@ -6,11 +6,16 @@ import { makeT } from "@/lib/i18n/t";
 import { AdminShell } from "@/components/layout/admin-mobile";
 import { AdminSidebar } from "@/components/layout/admin-sidebar";
 import { adminBusinessStats } from "@/lib/services/admin";
+import { enforceLoginSecurity } from "@/lib/server/login-security";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+  // The step-up gate runs here too: an admin on a new device confirms a code
+  // before the admin surface — with its customer data — will render.
+  const gate = await enforceLoginSecurity(supabase);
+  if (gate) redirect(gate);
   const profile = await getProfile(supabase, user.id);
   if (profile?.role !== "admin") redirect("/dashboard");
   const [{ dict }, stats] = await Promise.all([getDictionary(), adminBusinessStats(supabase)]);

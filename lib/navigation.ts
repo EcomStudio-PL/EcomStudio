@@ -96,6 +96,7 @@ export const ADMIN_NAV: readonly NavGroup[] = [
     { href: "/admin/logs", key: "logs", icon: ScrollText },
     { href: "/admin/email", key: "email", icon: Mail },
     { href: "/admin/settings/integrations", key: "integrations", icon: Plug2 },
+    { href: "/admin/settings/security", key: "loginSecurity", icon: Shield },
     { href: "/admin/system", key: "system", icon: SlidersHorizontal },
   ]},
 ] as const;

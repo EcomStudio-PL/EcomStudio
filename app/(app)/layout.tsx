@@ -4,6 +4,7 @@ import {
   getCurrentWorkspace, getCurrentWorkspaceFresh, getProfile, getProfileFresh,
 } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
+import { enforceLoginSecurity } from "@/lib/server/login-security";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { MegaTopbar } from "@/components/layout/mega-topbar";
@@ -15,6 +16,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+  // App-level login security: an unrecognised device (or new IP, or one stale
+  // past the admin's window) must confirm an emailed code before any protected
+  // page renders. This is the real gate — typing /dashboard cannot skip it.
+  const gate = await enforceLoginSecurity(supabase);
+  if (gate) redirect(gate);
   let [profile, workspace] = await Promise.all([
     getProfile(supabase, user.id),
     getCurrentWorkspace(supabase, user.id),

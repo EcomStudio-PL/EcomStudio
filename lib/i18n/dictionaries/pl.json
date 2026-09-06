@@ -80,7 +80,8 @@
     "noData": "Brak danych",
     "show": "Pokaż",
     "hide": "Ukryj",
-    "soon": "Wkrótce"
+    "soon": "Wkrótce",
+    "forbidden": "Brak uprawnień."
   },
   "landing": {
     "headline": "Profesjonalne materiały produktowe z AI. Szybciej niż klasyczne studio.",
@@ -460,7 +461,8 @@
       "email": "E-mail",
       "mail": "Poczta",
       "notifications": "Powiadomienia",
-      "integrations": "Integracje"
+      "integrations": "Integracje",
+      "loginSecurity": "Bezpieczeństwo logowania"
     },
     "engine": {
       "title": "AI Engine — Baza wiedzy",
@@ -2903,5 +2905,45 @@
     "mRequired": "Wymagane",
     "emailAlways": "E-mail i hasło są zawsze wymagane.",
     "saved": "Zapisano."
+  },
+  "security": {
+    "title": "Potwierdź, że to Ty",
+    "preparing": "Przygotowujemy kod bezpieczeństwa…",
+    "sentTo": "Ze względów bezpieczeństwa wysłaliśmy 6-cyfrowy kod na {email}.",
+    "codeLabel": "Kod bezpieczeństwa",
+    "confirm": "Potwierdź",
+    "resend": "Wyślij kod ponownie",
+    "resendIn": "Wyślij ponownie za {n} s",
+    "resent": "Wysłaliśmy nowy kod.",
+    "wrongCode": "Nieprawidłowy kod. Pozostało prób: {n}.",
+    "locked": "Za dużo prób. Poproś o nowy kod.",
+    "expired": "Kod wygasł. Poproś o nowy.",
+    "mailUnavailable": "Nie możemy teraz wysłać kodu. Spróbuj ponownie później."
+  },
+  "loginSec": {
+    "whenTitle": "Kiedy wymagać kodu",
+    "whenSub": "Dodatkowa weryfikacja po poprawnym haśle, Google lub Apple.",
+    "verifyDevice": "Weryfikuj nowe urządzenie",
+    "verifyDeviceHint": "Logowanie z nierozpoznanego urządzenia wymaga kodu z e-maila.",
+    "verifyIp": "Weryfikuj nowe IP",
+    "verifyIpHint": "Ostrożnie — sieci mobilne często zmieniają IP, co może częściej pytać o kod.",
+    "tuneTitle": "Parametry kodu",
+    "tuneSub": "Ustawienia obowiązują od razu, bez wdrożenia.",
+    "reverifyDays": "Ponowna weryfikacja po (dni)",
+    "reverifyHint": "0 = wyłącz okresową ponowną weryfikację.",
+    "codeTtl": "Kod ważny (minuty)",
+    "codeTtlHint": "Po tym czasie kod wygasa.",
+    "maxAttempts": "Maks. liczba prób",
+    "maxAttemptsHint": "Po przekroczeniu wymagany jest nowy kod.",
+    "resend": "Odstęp między wysyłkami (s)",
+    "resendHint": "Minimalny czas do ponownego wysłania kodu.",
+    "saved": "Zapisano ustawienia bezpieczeństwa.",
+    "devicesTitle": "Zaufane urządzenia",
+    "devicesSub": "Urządzenia, które przeszły weryfikację. Cofnij zaufanie, aby następne logowanie znów wymagało kodu.",
+    "devicesEmpty": "Brak zaufanych urządzeń.",
+    "lastActive": "Ostatnio aktywne",
+    "revoke": "Usuń zaufanie",
+    "revoked": "Cofnięto zaufanie urządzenia.",
+    "thisDevice": "To urządzenie"
   }
 }

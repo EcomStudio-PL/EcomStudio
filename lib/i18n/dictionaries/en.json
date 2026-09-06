@@ -80,7 +80,8 @@
     "noData": "No data",
     "show": "Show",
     "hide": "Hide",
-    "soon": "Soon"
+    "soon": "Soon",
+    "forbidden": "Not allowed."
   },
   "landing": {
     "headline": "Professional product visuals with AI. Faster than a photo studio.",
@@ -460,7 +461,8 @@
       "email": "Email",
       "mail": "Mail",
       "notifications": "Notifications",
-      "integrations": "Integrations"
+      "integrations": "Integrations",
+      "loginSecurity": "Login security"
     },
     "engine": {
       "title": "AI Engine — Knowledge base",
@@ -2903,5 +2905,45 @@
     "mRequired": "Required",
     "emailAlways": "Email and password are always required.",
     "saved": "Saved."
+  },
+  "security": {
+    "title": "Confirm it's you",
+    "preparing": "Preparing your security code…",
+    "sentTo": "For your security we sent a 6-digit code to {email}.",
+    "codeLabel": "Security code",
+    "confirm": "Confirm",
+    "resend": "Resend code",
+    "resendIn": "Resend in {n}s",
+    "resent": "A new code is on its way.",
+    "wrongCode": "Wrong code. Attempts left: {n}.",
+    "locked": "Too many attempts. Request a new code.",
+    "expired": "The code expired. Request a new one.",
+    "mailUnavailable": "We can't send a code right now. Please try again later."
+  },
+  "loginSec": {
+    "whenTitle": "When to require a code",
+    "whenSub": "Extra verification after a correct password, Google or Apple.",
+    "verifyDevice": "Verify new device",
+    "verifyDeviceHint": "A sign-in from an unrecognised device needs an emailed code.",
+    "verifyIp": "Verify new IP",
+    "verifyIpHint": "Careful — mobile networks change IP often, which can prompt for a code more frequently.",
+    "tuneTitle": "Code parameters",
+    "tuneSub": "Changes apply immediately, no deploy.",
+    "reverifyDays": "Re-verify after (days)",
+    "reverifyHint": "0 = disable periodic re-verification.",
+    "codeTtl": "Code valid (minutes)",
+    "codeTtlHint": "The code expires after this time.",
+    "maxAttempts": "Max attempts",
+    "maxAttemptsHint": "A new code is required once exceeded.",
+    "resend": "Resend cooldown (s)",
+    "resendHint": "Minimum time before a code can be resent.",
+    "saved": "Security settings saved.",
+    "devicesTitle": "Trusted devices",
+    "devicesSub": "Devices that passed verification. Revoke trust to require a code again next time.",
+    "devicesEmpty": "No trusted devices yet.",
+    "lastActive": "Last active",
+    "revoke": "Revoke",
+    "revoked": "Device trust revoked.",
+    "thisDevice": "This device"
   }
 }

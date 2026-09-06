@@ -95,6 +95,39 @@ export async function deliver(
   return { sent: viaResend.sent, via: viaResend.sent ? "resend" : "none" };
 }
 
+/**
+ * Deliver one HTML message through the admin's OWN SMTP, or fail honestly.
+ *
+ * Unlike `deliver`, this never falls back to Resend: a transactional GrovBase
+ * mail (a login security code, a branded confirmation) must go out as the
+ * mailbox the operator configured or not at all — a code that arrives from a
+ * different identity than the one the customer trusts is worse than a resend.
+ */
+export async function deliverHtml(
+  input: { to: string; subject: string; text: string; html: string },
+  identity: MailIdentity,
+  smtp: SmtpConfig | null,
+): Promise<{ sent: boolean; error?: string }> {
+  const transport = smtpTransport(smtp);
+  const from = fromHeader(identity);
+  if (!transport || !from) return { sent: false, error: "not_configured" };
+  try {
+    await transport.sendMail({
+      from,
+      to: input.to,
+      subject: input.subject,
+      text: input.text,
+      html: input.html,
+      replyTo: identity.reply_to.trim() || undefined,
+    });
+    return { sent: true };
+  } catch (e) {
+    return { sent: false, error: safeError(e) };
+  } finally {
+    transport.close();
+  }
+}
+
 /** Prove the SMTP settings work, without sending anything to anyone. */
 export async function verifySmtp(smtp: SmtpConfig | null): Promise<{ ok: boolean; error?: string }> {
   const transport = smtpTransport(smtp);

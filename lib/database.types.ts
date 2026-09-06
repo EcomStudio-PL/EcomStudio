@@ -305,6 +305,66 @@ export type Database = {
         }
         Relationships: []
       }
+      user_trusted_devices: {
+        Row: {
+          id: string
+          user_id: string
+          device_hash: string
+          device_label: string
+          last_ip_hash: string | null
+          first_verified_at: string
+          last_verified_at: string
+          last_seen_at: string
+          created_at: string
+          revoked_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          device_hash: string
+          device_label?: string
+          last_ip_hash?: string | null
+          first_verified_at?: string
+          last_verified_at?: string
+          last_seen_at?: string
+          created_at?: string
+          revoked_at?: string | null
+        }
+        Update: {
+          device_label?: string
+          last_ip_hash?: string | null
+          last_verified_at?: string
+          last_seen_at?: string
+          revoked_at?: string | null
+        }
+        Relationships: []
+      }
+      security_login_events: {
+        Row: {
+          id: string
+          user_id: string
+          event_type: string
+          device_id: string | null
+          ip_hash: string | null
+          device_summary: string
+          success: boolean | null
+          reason: string | null
+          occurred_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          event_type: string
+          device_id?: string | null
+          ip_hash?: string | null
+          device_summary?: string
+          success?: boolean | null
+          reason?: string | null
+          occurred_at?: string
+        }
+        Update: { [_ in never]: never }
+        Relationships: []
+      }
       audit_logs: {
         Row: {
           action: string
@@ -3167,6 +3227,47 @@ export type Database = {
         Returns: undefined
       }
       mail_sync_context: { Args: { p_token: string }; Returns: Json }
+      login_security_token_ok: { Args: { p_token: string }; Returns: boolean }
+      login_security_check: {
+        Args: {
+          p_device_hash: string
+          p_ip_hash: string
+          p_verify_device: boolean
+          p_verify_ip: boolean
+          p_reverify_days: number
+        }
+        Returns: Json
+      }
+      login_challenge_open: {
+        Args: {
+          p_token: string
+          p_user: string
+          p_device_hash: string
+          p_code_hash: string
+          p_ip_hash: string
+          p_device_label: string
+          p_reason: string
+          p_ttl_minutes: number
+          p_max_attempts: number
+        }
+        Returns: string
+      }
+      login_challenge_verify: {
+        Args: {
+          p_token: string
+          p_user: string
+          p_device_hash: string
+          p_code_hash: string
+          p_ip_hash: string
+          p_device_label: string
+        }
+        Returns: Json
+      }
+      login_challenge_peek: {
+        Args: { p_token: string; p_user: string; p_device_hash: string }
+        Returns: Json
+      }
+      trusted_device_revoke: { Args: { p_device_id: string }; Returns: boolean }
       match_knowledge_examples: {
         Args: { p_embedding: string; p_top_k?: number }
         Returns: {
