@@ -6,6 +6,7 @@ import { PERSIST_COOKIE } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
 import { collectEventContext, contextRows, eventDataFrom, formatWarsaw } from "@/lib/server/event-context";
+import { loginAllowedFor, neutraliseAccount, signupAllowedNow } from "@/lib/server/platform-access";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +71,49 @@ export async function GET(request: Request) {
   // rather than on the first authenticated page. See lib/supabase/skew-retry.ts.
   if (data.user) {
     await supabase.from("profiles").select("id").eq("id", data.user.id).maybeSingle();
+  }
+
+  /**
+   * THE DOOR, for the social path.
+   *
+   * Two different refusals, and they are not the same refusal:
+   *
+   *  - A BRAND-NEW social account arriving while registration is closed.
+   *    Supabase has already created the auth user by the time we get here —
+   *    the provider round trip is what creates it — and deleting it would
+   *    need a service-role key this application deliberately does not carry.
+   *    So the account is neutralised instead: the profile is marked blocked,
+   *    which every protected surface already refuses, and the session ends.
+   *    Nothing usable is left behind.
+   *
+   *  - An EXISTING customer signing in while public login is closed. Their
+   *    account is untouched; only the session ends. Admins pass, because the
+   *    panel that reopens the door must stay reachable.
+   *
+   * A password-reset return (next=/reset-password) is neither: it is an
+   * existing customer proving they own the address, so it is left alone.
+   */
+  if (data.user && !next.startsWith("/reset-password")) {
+    // The EXCHANGED client, not a fresh cookie-reading one: the response
+    // cookies have not been written yet, so a new server client here would be
+    // anonymous — it could not read the caller's role (locking an admin out of
+    // the social path) and could not write the profile below.
+    const fresh = isFreshSignup(data.user);
+    if (fresh && !(await signupAllowedNow(supabase))) {
+      await neutraliseAccount(supabase, data.user.id);
+      await supabase.auth.signOut();
+      const denied = new URL("/", origin);
+      denied.searchParams.set("auth", "register");
+      denied.searchParams.set("blocked", "signup");
+      return applyCookies(NextResponse.redirect(denied));
+    }
+    if (!fresh && !(await loginAllowedFor(supabase, data.user.id))) {
+      await supabase.auth.signOut();
+      const denied = new URL("/", origin);
+      denied.searchParams.set("auth", "login");
+      denied.searchParams.set("blocked", "login");
+      return applyCookies(NextResponse.redirect(denied));
+    }
   }
 
   // Announce a brand-new social signup, once, off the hot path. Recovery links

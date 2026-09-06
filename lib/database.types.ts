@@ -3367,6 +3367,7 @@ export type Database = {
         Returns: string
       }
       claim_welcome_bonus: { Args: { p_answers: Json }; Returns: Json }
+      close_out_denied_signup: { Args: Record<PropertyKey, never>; Returns: boolean }
       complete_usage_event:
         | {
             Args: { p_event_id: string; p_result_count: number }
@@ -3560,6 +3561,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      platform_signup_open: { Args: never; Returns: boolean }
       providers_with_credentials: { Args: never; Returns: string[] }
       refund_usage_event: { Args: { p_event_id: string }; Returns: string }
       refund_usage_partial: {

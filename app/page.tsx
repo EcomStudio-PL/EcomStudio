@@ -15,6 +15,7 @@ import {
 } from "@/lib/server/launch-page";
 import { getPublicSite, getPublishedPage, getDraftBlocks } from "@/lib/server/public-site";
 import { getRegistrationConfig } from "@/lib/server/registration-config";
+import { getPlatformAccess } from "@/lib/server/platform-access";
 import { DEFAULT_HOME_BLOCKS } from "@/lib/cms-defaults";
 import type { CmsBlock } from "@/lib/cms";
 import { formatCredits, formatPrice } from "@/lib/utils";
@@ -63,9 +64,12 @@ export default async function LandingPage({ searchParams }: {
   const t = makeT(dict);
   const supabase = await createClient();
   const { preview, draft } = await searchParams;
-  const [{ data: { user: visitor } }, liveMode] = await Promise.all([
+  const [{ data: { user: visitor } }, liveMode, access] = await Promise.all([
     supabase.auth.getUser(),
     getHomepageMode(supabase),
+    // One read, shared by both front doors below (React cache dedupes it with
+    // the dialog's own lookup). Presentation only — the server routes enforce.
+    getPlatformAccess(supabase),
   ]);
 
   // "Podgląd" from the admin panel: an admin — and only an admin — can look at
@@ -106,6 +110,7 @@ export default async function LandingPage({ searchParams }: {
           store, locale, dict.launch, which, launchFieldsFromBlocks(blocks, locale),
         )}
         signedIn={Boolean(visitor)}
+        showAuthEntry={access.showAuthEntry}
         waitlistFields={registration.waitlist}
         loginLabel={t("launch.login")}
         privacyNote={t("launch.privacy")}
@@ -164,7 +169,7 @@ export default async function LandingPage({ searchParams }: {
             <Link href="/dashboard" className="brand-gradient whitespace-nowrap rounded-xl px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90">
               {t("landing.openApp")}
             </Link>
-          ) : (
+          ) : !access.showAuthEntry ? null : (
             <>
               {/* The dialog opens over this page — no navigation, no empty
                   sign-in screen. See components/auth/auth-modal.tsx. */}
@@ -197,9 +202,11 @@ export default async function LandingPage({ searchParams }: {
                 {p.price_cents === 0 ? "0 zł" : formatPrice(p.price_cents, p.currency)}
               </p>
               <p className="mt-1 text-xs text-muted">{t("plan.creditsMo", { n: formatCredits(p.monthly_credits) })}</p>
-              <AuthLink mode="register" className="mt-4 rounded-xl border border-line px-4 py-2 text-center text-sm font-semibold transition-colors hover:bg-raised">
-                {t("landing.cta")}
-              </AuthLink>
+              {access.showAuthEntry && (
+                <AuthLink mode="register" className="mt-4 rounded-xl border border-line px-4 py-2 text-center text-sm font-semibold transition-colors hover:bg-raised">
+                  {t("landing.cta")}
+                </AuthLink>
+              )}
             </div>
           ))}
         </div>
@@ -215,7 +222,9 @@ export default async function LandingPage({ searchParams }: {
         <div className="flex gap-4">
           <a href="#showcase" className="hover:text-ink">{t("landing.navFeatures")}</a>
           <a href="#pricing" className="hover:text-ink">{t("landing.navPricing")}</a>
-          <AuthLink mode="login" className="hover:text-ink">{t("landing.ctaLogin")}</AuthLink>
+          {access.showAuthEntry && (
+            <AuthLink mode="login" className="hover:text-ink">{t("landing.ctaLogin")}</AuthLink>
+          )}
         </div>
       </footer>
     </main>

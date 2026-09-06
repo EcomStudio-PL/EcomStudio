@@ -22,11 +22,15 @@ import type { WaitlistFieldConfig } from "@/lib/server/registration-config";
  */
 export function LaunchPage({
   content, signedIn, loginLabel, privacyNote, privacyLinkLabel, privacyLabel, termsLabel, social,
-  waitlistFields,
+  waitlistFields, showAuthEntry,
 }: {
   content: Record<LaunchField, string>;
   signedIn: boolean;
   loginLabel: string;
+  /** "POKAŻ PRZYCISKI" from the access panel. Presentation only: hiding the
+   *  entry point is not what closes the door — the routes do that. Someone
+   *  already signed in always keeps their way back into the app. */
+  showAuthEntry: boolean;
   /** The lead-in of the consent line; the link text follows it. */
   privacyNote: string;
   privacyLinkLabel: string;
@@ -75,12 +79,12 @@ export function LaunchPage({
                 className="whitespace-nowrap rounded-xl border border-line px-3.5 py-2 text-[13.5px] font-semibold text-ink transition-colors hover:bg-raised">
                 {loginLabel}
               </Link>
-            ) : (
+            ) : showAuthEntry ? (
               <AuthLink mode="login" data-launch-login
                 className="whitespace-nowrap rounded-xl border border-line px-3.5 py-2 text-[13.5px] font-semibold text-ink transition-colors hover:bg-raised">
                 {loginLabel}
               </AuthLink>
-            )}
+            ) : null}
           </div>
         </header>
 

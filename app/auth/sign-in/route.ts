@@ -3,6 +3,7 @@ import type { AuthError } from "@supabase/supabase-js";
 import { createAuthRouteClient } from "@/lib/supabase/auth-route";
 import { authCookieOptions, PERSIST_COOKIE, SUPABASE_CONFIG_FROM_ENV } from "@/lib/supabase/config";
 import { rateLimit, clientIp } from "@/lib/server/rate-limit";
+import { loginAllowedFor } from "@/lib/server/platform-access";
 
 export const dynamic = "force-dynamic";
 
@@ -125,6 +126,29 @@ export async function POST(request: Request) {
   // the dashboard. Failure is not fatal: the app retries its own reads.
   if (data.user) {
     await supabase.from("profiles").select("id").eq("id", data.user.id).maybeSingle();
+  }
+
+  /**
+   * THE DOOR, checked after identity is proved.
+   *
+   * Public sign-in can be closed for the launch, but an ADMIN must always be
+   * able to reach the panel that reopens it — so the role is read from the
+   * profiles row (the one the database trigger guards), which requires having
+   * authenticated first. That ordering is the point: there is no query
+   * parameter, header or URL secret that grants this, only a real account
+   * with a real admin role.
+   *
+   * A customer who is turned away here has their session ended immediately,
+   * so a closed door never leaves a usable cookie behind.
+   */
+  if (data.user && !(await loginAllowedFor(supabase, data.user.id))) {
+    await supabase.auth.signOut();
+    const denied = new URL("/", origin);
+    denied.searchParams.set("auth", "login");
+    denied.searchParams.set("blocked", "login");
+    const response = NextResponse.redirect(denied, { status: 303 });
+    applyCookies(response);
+    return response;
   }
 
   const res = applyCookies(redirectTo(next));

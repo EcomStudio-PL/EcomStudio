@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createAuthRouteClient } from "@/lib/supabase/auth-route";
 import { PERSIST_COOKIE } from "@/lib/supabase/config";
+import { loginAllowedFor } from "@/lib/server/platform-access";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,30 @@ export async function GET(request: Request) {
   // rather than on the first authenticated page. See lib/supabase/skew-retry.ts.
   if (data.user) {
     await supabase.from("profiles").select("id").eq("id", data.user.id).maybeSingle();
+  }
+
+  /**
+   * THE DOOR, for the confirmation path.
+   *
+   * A confirmation link also writes a session, so with public sign-in closed
+   * it would otherwise be a way in. The verification itself STANDS — the
+   * address really is confirmed, and GoTrue has already recorded that — only
+   * the session is ended, and /auth/verified already knows how to say
+   * "verified" to somebody who is not signed in and point them at sign-in,
+   * where the friendly notice is waiting.
+   *
+   * Nothing is lost by this: the welcome-bonus offer is stamped from
+   * email_confirmed_at on the first authenticated app render, so its 72 hours
+   * start from the verification either way.
+   *
+   * Recovery is exempt — that session exists to change a password, which is
+   * not signing in.
+   */
+  if (type !== "recovery" && data.user && !(await loginAllowedFor(supabase, data.user.id))) {
+    await supabase.auth.signOut();
+    const verified = NextResponse.redirect(`${origin}/auth/verified`);
+    verified.headers.set("Cache-Control", "no-store");
+    return applyCookies(verified);
   }
 
   // Recovery tokens exist to change a password: the session just written is

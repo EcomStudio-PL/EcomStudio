@@ -9,6 +9,8 @@ import { LoginForm } from "@/components/auth/login-form";
 import { ForgotForm } from "@/components/auth/forgot-form";
 import { RegisterForm } from "@/components/auth/register-form";
 import { registrationFormConfig, type RegistrationFormConfig } from "@/app/actions/registration-config";
+import { accessViewAction, type AccessView } from "@/app/actions/platform-access";
+import { AccessNotice } from "@/components/auth/access-notice";
 import { useAuthDialog } from "@/components/auth/auth-dialog-context";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +38,17 @@ export function AuthModal() {
   const opener = useRef<HTMLElement | null>(null);
   const [registration, setRegistration] = useState<RegistrationFormConfig | null>(null);
   const [loadingConfig, setLoadingConfig] = useState(false);
+  const [access, setAccess] = useState<AccessView | null>(null);
+
+  // Whether the platform is open is asked ONCE, when the dialog first opens —
+  // not on every button (§32). It only decides what to DRAW: the server
+  // re-checks the real answer on every sign-in and sign-up attempt, so a
+  // stale "open" here cannot let anyone through.
+  useEffect(() => {
+    if (!mode || access) return;
+    const mobile = window.matchMedia("(max-width: 640px)").matches;
+    void accessViewAction(mobile).then(setAccess);
+  }, [mode, access]);
 
   // The registration form needs two server-known things: the PUBLIC captcha
   // site key and which optional fields the admin asks for. Fetched the first
@@ -150,6 +163,30 @@ export function AuthModal() {
   // e-mail/phone sit side by side instead of stacking into a long column.
   const wide = mode === "register";
 
+  /**
+   * Is this mode shut? Undecided (`access === null`) is treated as OPEN so the
+   * form paints immediately — the instant-open behaviour must not regress into
+   * "wait for a settings fetch". If the answer comes back closed a moment
+   * later the notice replaces the form, and the server would have refused the
+   * submission anyway.
+   */
+  const blocked = mode === "login" ? (access?.loginBlocked ?? null)
+    : mode === "register" ? (access?.signupBlocked ?? null)
+      : null;
+
+  /** The waiting list is the EXISTING flow: the launch page's own form when we
+   *  are on it, otherwise the launch page itself. No second waitlist. */
+  const goToWaitlist = () => {
+    close();
+    const form = document.querySelector("[data-waitlist-form]");
+    if (form) {
+      form.scrollIntoView({ behavior: "smooth", block: "center" });
+      form.querySelector("input")?.focus?.();
+      return;
+    }
+    window.location.href = "/";
+  };
+
   return (
     <div
       ref={rootRef}
@@ -212,24 +249,44 @@ export function AuthModal() {
             </button>
           </div>
 
-          <ModeBody mode={mode}>
-            {mode === "login" && (
-              <LoginForm next={next} error={error} email={email} onSwitch={switchTo} />
-            )}
-            {mode === "forgot" && (
-              <ForgotForm onBack={() => switchTo("login")} />
-            )}
-            {mode === "register" && (
-              registration
-                ? <RegisterForm
-                    bare
-                    next={next}
-                    captchaSiteKey={registration.captchaSiteKey}
-                    onSwitch={switchTo}
-                  />
-                : <div className="flex h-56 items-center justify-center text-muted">
-                    <Loader2 className="animate-spin" aria-hidden />
-                  </div>
+          <ModeBody mode={`${mode}:${blocked ?? ""}`}>
+            {/* A closed door gets an invitation, not an error. The form is not
+                rendered at all — there is nothing to submit. */}
+            {blocked ? (
+              <AccessNotice
+                reason={blocked}
+                copy={access!.copy}
+                waitlistEnabled={access!.waitlistEnabled}
+                onWaitlist={goToWaitlist}
+                onSwitchToLogin={
+                  // Only offered when signup is the thing that is shut and
+                  // existing customers can still get in.
+                  mode === "register" && !access!.loginBlocked
+                    ? () => switchTo("login")
+                    : undefined
+                }
+              />
+            ) : (
+              <>
+                {mode === "login" && (
+                  <LoginForm next={next} error={error} email={email} onSwitch={switchTo} />
+                )}
+                {mode === "forgot" && (
+                  <ForgotForm onBack={() => switchTo("login")} />
+                )}
+                {mode === "register" && (
+                  registration
+                    ? <RegisterForm
+                        bare
+                        next={next}
+                        captchaSiteKey={registration.captchaSiteKey}
+                        onSwitch={switchTo}
+                      />
+                    : <div className="flex h-56 items-center justify-center text-muted">
+                        <Loader2 className="animate-spin" aria-hidden />
+                      </div>
+                )}
+              </>
             )}
           </ModeBody>
         </div>

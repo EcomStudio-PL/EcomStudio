@@ -3,6 +3,7 @@ import { AuthLink } from "@/components/auth/auth-link";
 import { Brand } from "@/components/layout/brand";
 import { BlockRenderer } from "@/components/cms/blocks";
 import { getPublishedPage } from "@/lib/server/public-site";
+import { getPlatformAccess } from "@/lib/server/platform-access";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
@@ -19,9 +20,10 @@ import { makeT } from "@/lib/i18n/t";
  */
 export async function LegalPage({ slug, titleKey }: { slug: string; titleKey: string }) {
   const supabase = await createClient();
-  const [{ dict, locale }, page] = await Promise.all([
+  const [{ dict, locale }, page, access] = await Promise.all([
     getDictionary(),
     getPublishedPage(supabase, slug),
+    getPlatformAccess(supabase),
   ]);
   const t = makeT(dict);
   const hasContent = Boolean(page && page.blocks.some((b) => b.visible));
@@ -50,7 +52,11 @@ export async function LegalPage({ slug, titleKey }: { slug: string; titleKey: st
           </p>
         </>
       )}
-      <AuthLink mode="register" className="mt-8 text-sm font-medium text-accent">← {t("legal.back")}</AuthLink>
+      {access.showAuthEntry ? (
+        <AuthLink mode="register" className="mt-8 text-sm font-medium text-accent">← {t("legal.back")}</AuthLink>
+      ) : (
+        <Link href="/" className="mt-8 text-sm font-medium text-accent">← {t("legal.back")}</Link>
+      )}
     </main>
   );
 }

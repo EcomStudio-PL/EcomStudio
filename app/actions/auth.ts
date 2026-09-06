@@ -9,6 +9,7 @@ import { verifyTurnstile } from "@/lib/server/captcha";
 import { readIntegrationSecrets, safeError } from "@/lib/server/integrations";
 import { collectEventContext, contextRows, eventDataFrom, formatWarsaw } from "@/lib/server/event-context";
 import { recordSignup, signupAllowed, signupIpHash } from "@/lib/server/signup-guard";
+import { signupAllowedNow } from "@/lib/server/platform-access";
 import { getLocale } from "@/lib/i18n/server";
 import { absoluteUrl } from "@/lib/site";
 import {
@@ -115,10 +116,10 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
     return { ok: false, errors: { form: "network" }, values };
   }
 
-  const { data: security } = await supabase
-    .from("app_settings").select("value").eq("key", "security").maybeSingle();
-  const sec = (security?.value ?? {}) as { registration_enabled?: boolean };
-  if (sec.registration_enabled === false) {
+  // THE DOOR. Registration can be closed outright or scheduled to open later,
+  // and this is where that is enforced — not in the button that was hidden.
+  // A direct POST to this action while signup is shut creates nothing.
+  if (!(await signupAllowedNow(supabase))) {
     return { ok: false, errors: { form: "registration_disabled" }, values };
   }
 

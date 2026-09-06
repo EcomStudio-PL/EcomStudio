@@ -8,6 +8,7 @@ import { makeT } from "@/lib/i18n/t";
 import { Brand } from "@/components/layout/brand";
 import { BlockRenderer } from "@/components/cms/blocks";
 import { getPublishedPage } from "@/lib/server/public-site";
+import { getPlatformAccess } from "@/lib/server/platform-access";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +48,10 @@ export default async function CmsPage({ params }: Params) {
   if (RESERVED.has(slug)) notFound();
 
   const supabase = await createClient();
-  const page = await getPublishedPage(supabase, slug);
+  const [page, access] = await Promise.all([
+    getPublishedPage(supabase, slug),
+    getPlatformAccess(supabase),
+  ]);
   // A `launch` page answers "/" through the homepage switch, not its own slug.
   const visible = page?.blocks.filter((b) => b.visible) ?? [];
   // Nothing to show is a 404, not an empty shell with a header and a footer.
@@ -60,9 +64,11 @@ export default async function CmsPage({ params }: Params) {
     <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-5 sm:px-8">
       <header className="flex items-center justify-between gap-3 py-5 pt-[calc(1.25rem+env(safe-area-inset-top))]">
         <Brand href="/" />
-        <AuthLink mode="login" className="rounded-xl border border-line px-3.5 py-2 text-[13.5px] font-semibold transition-colors hover:bg-raised">
-          {t("landing.ctaLogin")}
-        </AuthLink>
+        {access.showAuthEntry && (
+          <AuthLink mode="login" className="rounded-xl border border-line px-3.5 py-2 text-[13.5px] font-semibold transition-colors hover:bg-raised">
+            {t("landing.ctaLogin")}
+          </AuthLink>
+        )}
       </header>
 
       <BlockRenderer
