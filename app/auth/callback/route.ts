@@ -87,7 +87,11 @@ export async function GET(request: Request) {
       ["🕒 Data", formatWarsaw(new Date())],
       ...contextRows(context),
     ] as [string, string][]).filter(([, v]) => v !== "");
-    const tplData = eventDataFrom(context, { name: fullName, email, source: provider });
+    const tplData = eventDataFrom(context, {
+      name: fullName, email, source: provider,
+      // Drives the card's "Otwórz klienta" button; never rendered as a row.
+      user_id: data.user.id,
+    });
     after(async () => {
       const client = await createClient();
       await notify(client, {

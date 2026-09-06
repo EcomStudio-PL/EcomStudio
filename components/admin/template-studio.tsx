@@ -443,7 +443,7 @@ function TemplateEditor({ entry, onBack }: { entry: TemplateListEntry; onBack: (
             ) : preview?.ok && preview.channel === "email" ? (
               <iframe title="preview" sandbox="" srcDoc={preview.html} className="h-[560px] w-full bg-white" />
             ) : preview?.ok && preview.channel === "telegram" ? (
-              <iframe title="preview" sandbox="" srcDoc={telegramPreviewDoc(preview.text)} className="h-[420px] w-full" />
+              <iframe title="preview" sandbox="" srcDoc={telegramPreviewDoc(preview.text, preview.buttons)} className="h-[420px] w-full" />
             ) : (
               <div className="flex h-[300px] items-center justify-center text-muted"><Loader2 className="animate-spin" aria-hidden /></div>
             )}
@@ -480,15 +480,27 @@ function TemplateEditor({ entry, onBack }: { entry: TemplateListEntry; onBack: (
 /** The Telegram bubble, rendered inside a SANDBOXED iframe: the text is our
  *  own server renderer's output (values escaped there), and the sandbox keeps
  *  even that at arm's length from the admin session. */
-function telegramPreviewDoc(text: string): string {
+function telegramPreviewDoc(text: string, buttons: string[] = []): string {
+  // Buttons are LABELS ONLY, and escaped: the preview shows what the inline
+  // keyboard will look like without putting a live URL inside the admin page.
+  const esc = (s: string) => s.replace(/[&<>"]/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
+  const keys = buttons.length
+    ? `<div class="keys">${buttons.map((b) => `<div class="key">${esc(b)}</div>`).join("")}</div>`
+    : "";
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     body{margin:0;padding:20px;background:#0e1621;font-family:-apple-system,Segoe UI,Roboto,sans-serif;}
     .bubble{max-width:340px;background:#182533;border-radius:12px 12px 12px 4px;padding:10px 14px;color:#f1f1f4;
       font-size:13.5px;line-height:1.45;white-space:pre-wrap;word-break:break-word;}
     .bubble b{font-weight:700}.bubble i{font-style:italic}
     .bubble code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;color:#71baf2}
-    .meta{margin-top:6px;text-align:right;font-size:11px;color:#7d8b99}
-  </style></head><body><div class="bubble">${text}</div><div class="meta">GrovBase Bot · 04:46</div></body></html>`;
+    .bubble blockquote{margin:6px 0;padding-left:8px;border-left:2px solid #4a9eda;color:#c9d6e2}
+    .bubble pre{margin:6px 0;white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#c9d6e2}
+    .keys{max-width:340px;margin-top:2px}
+    .key{background:#182533;border-top:1px solid #22303d;border-radius:0 0 8px 8px;padding:9px 12px;
+      text-align:center;color:#71baf2;font-size:13px;font-weight:600}
+    .meta{margin-top:6px;text-align:right;font-size:11px;color:#7d8b99;max-width:340px}
+  </style></head><body><div class="bubble">${text}</div>${keys}<div class="meta">GrovBase Bot · 04:46</div></body></html>`;
 }
 
 /* ── little form primitives ─────────────────────────────────────────────────*/

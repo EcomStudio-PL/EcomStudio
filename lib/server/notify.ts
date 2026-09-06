@@ -8,7 +8,8 @@ import {
 import { decryptWith, encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { dispatchToken, safeError } from "@/lib/server/integrations";
 import type { SmtpConfig } from "@/lib/server/mailer";
-import { sendTelegramMessage, tgEscape } from "@/lib/server/telegram";
+import { richEntitiesEnabled, sendTelegramMessage, type TelegramKeyboard } from "@/lib/server/telegram";
+import { renderNotification } from "@/lib/server/telegram-notification";
 
 /**
  * NOTIFICATIONS — from "something happened" to a Telegram message or an e-mail.
@@ -83,6 +84,8 @@ export type NotificationMessage = {
   rows?: [string, string][];
   /** A short excerpt (a mail preview, an error message) shown in italics. */
   quote?: string;
+  /** Long technical text — folded into an expandable block, never a wall. */
+  details?: string;
   footer?: string;
   /**
    * The same facts as `rows`, but KEYED ("name", "email", "ip"…) so an admin
@@ -106,12 +109,9 @@ const MAX_BATCH = 20;
  *  couple of stragglers without stretching the request it rides on. */
 const IMMEDIATE_BATCH = 5;
 
-/** Per-field caps, applied before escaping so an HTML entity can never be cut
- *  in half — a truncated "&amp;" makes Telegram reject the whole message. */
+/** The payload cap. Everything past this is the renderer's business: it owns
+ *  the per-field budgets, the row cap and Telegram's 4096-character ceiling. */
 const TITLE_MAX = 200;
-const LABEL_MAX = 80;
-const VALUE_MAX = 300;
-const QUOTE_MAX = 250;
 
 /**
  * The key the claimed ciphertext was written with. This repeats the resolution
@@ -140,94 +140,43 @@ function collapse(text: string): string {
 
 /** Cut to `max`, never leaving half of a surrogate pair behind — a lone half
  *  renders as the replacement character in every Telegram client. */
-function truncate(text: string, max: number): string {
-  if (text.length <= max) return text;
-  let cut = text.slice(0, max);
-  const last = cut.charCodeAt(cut.length - 1);
-  if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1);
-  return `${cut.trimEnd()}…`;
-}
-
-function clean(text: string, max: number): string {
-  return truncate(collapse(text), max);
-}
-
-/** The card's top and bottom edge. Sixteen box-drawing characters is the widest
- *  rule that still fits one line on a narrow phone without wrapping. */
-const RULE = "━".repeat(16);
-
 /**
- * The message body, Polish, HTML parse mode:
+ * A queued message → the card Telegram receives.
  *
- *   🎉 <b>NOWA REJESTRACJA</b>
- *   ━━━━━━━━━━━━━━━━
+ * There is no formatting logic left in this file: the shape of every GrovBase
+ * admin notification — icon, headline, subtitle, locale flag, the row table,
+ * the meta line, the buttons — belongs to ONE renderer
+ * (lib/server/telegram-notification.ts), so a payment and a registration
+ * cannot drift into looking like two different products.
  *
- *   👤 <b>Użytkownik</b>
- *   Jan Kowalski
- *
- *   📧 <b>E-mail</b>
- *   jan@example.com
- *
- *   ━━━━━━━━━━━━━━━━
- *   GrovBase Admin
- *
- * A label above its value, not "Label: value": Telegram wraps a long line
- * mid-address on a phone, and a value on its own line stays readable and stays
- * tappable. The caller owns the per-row emoji — it is the front of the label —
- * so this formatter never has to know which event it is rendering.
- *
- * Every interpolated value is escaped, and a row whose value is empty is
- * dropped whole rather than printed as a dangling label with nothing under it.
+ * `plain` is the same card without the optional rich entity. The transport
+ * sends it only if Telegram rejects the first body as unparseable, which is
+ * how an older Bot API costs a message its folded details instead of costing
+ * the operator the alert.
  */
+export function renderTelegramCard(
+  message: NotificationMessage,
+  opts: { event?: string; actionContext?: Record<string, string> } = {},
+): { text: string; plain: string; keyboard?: TelegramKeyboard } {
+  const input = {
+    event: opts.event ?? message.type,
+    icon: message.icon,
+    title: collapse(message.title).slice(0, TITLE_MAX),
+    data: message.data,
+    rows: message.rows,
+    quote: message.quote,
+    details: message.details,
+    footer: message.footer,
+    actionContext: opts.actionContext,
+  };
+  const rich = renderNotification(input, { expandable: richEntitiesEnabled() });
+  const plain = renderNotification(input, { expandable: false });
+  return { text: rich.text, plain: plain.text, keyboard: rich.keyboard };
+}
+
+/** Text only — what the previews and the suites assert against. */
 export function formatTelegram(input: NotificationMessage): string {
-  const icon = input.icon ? `${tgEscape(collapse(input.icon))} ` : "";
-  const lines = [`${icon}<b>${tgEscape(clean(input.title, TITLE_MAX))}</b>`, RULE];
-
-  for (const [rawLabel, rawValue] of input.rows ?? []) {
-    const value = compactValue(clean(rawValue, VALUE_MAX));
-    if (!value) continue;
-    const label = clean(rawLabel, LABEL_MAX);
-    // The emoji at the front of the label IS the label in the compact format:
-    // "👤 Użytkownik" + "Jan" becomes one scannable "👤 | Jan" line. A label
-    // with no emoji keeps its text, still on one line.
-    const emoji = leadingEmoji(label);
-    const caption = emoji ? "" : label;
-    // Technical values (IP, entry path) go monospace so they align and copy
-    // cleanly; the emoji says which is which without a word of prose.
-    const mono = emoji === "📍" || emoji === "🔗";
-    const shown = mono ? `<code>${tgEscape(value)}</code>` : tgEscape(value);
-    if (emoji) lines.push(`${tgEscape(emoji)} | ${shown}`);
-    else if (caption) lines.push(`<b>${tgEscape(caption)}:</b> ${shown}`);
-    else lines.push(shown);
-  }
-
-  const quote = clean(input.quote ?? "", QUOTE_MAX);
-  if (quote) lines.push(`💬 | <i>„${tgEscape(quote)}"</i>`);
-
-  // The closing rule is part of the card, so it is printed even when the caller
-  // sent no footer — a message that stops mid-air reads like a truncated one.
-  lines.push(RULE);
-  const footer = clean(input.footer ?? "", VALUE_MAX);
-  if (footer) lines.push(tgEscape(footer));
-
-  return lines.join("\n");
-}
-
-/** The leading emoji of a label like "👤 Użytkownik" — the whole first token
- *  when it contains no letters or digits, so composed emoji survive intact. */
-function leadingEmoji(label: string): string {
-  const first = label.split(/\s+/)[0] ?? "";
-  if (!first || /[\p{L}\p{N}]/u.test(first)) return "";
-  return first;
-}
-
-/** One line stays one line: long referrers and URLs are shortened visually
- *  (protocol stripped, tail cut) instead of wrapping into a wall of text. */
-function compactValue(value: string): string {
-  const flat = value.replace(/\s+/g, " ").trim();
-  const bare = flat.replace(/^https?:\/\//i, "");
-  const max = 64;
-  return bare.length <= max ? bare : `${bare.slice(0, max - 1)}…`;
+  return renderTelegramCard(input).text;
 }
 
 /**
@@ -476,12 +425,18 @@ async function dispatchTelegram(row: ClaimedRow, keyHex: string | null): Promise
   } catch {
     return { status: "skipped", error: "decrypt_failed" };
   }
-  // A published admin template wins when the event carried keyed data; the
-  // built-in compact formatter is the default and the fallback.
-  const text = row.template?.channel === "telegram" && row.message.data
-    ? renderTemplateTelegram(row.template.telegram, row.message.data).text
-    : formatTelegram(row.message);
-  const res = await sendTelegramMessage(botToken, row.chatId, text);
+  // A published admin template decides the WORDS; the shared renderer always
+  // decides the SHAPE — so a customised template is still recognisably the
+  // same product, and still gets the same buttons and the same meta line.
+  const card = row.template?.channel === "telegram" && row.message.data
+    ? renderTemplateTelegram(row.template.telegram, row.message.data, {
+        event: row.eventType, actionContext: row.message.data,
+      })
+    : renderTelegramCard(row.message, { event: row.eventType });
+  const res = await sendTelegramMessage(botToken, row.chatId, card.text, {
+    keyboard: card.keyboard,
+    plainHtml: card.plain,
+  });
   return res.ok ? { status: "sent", error: null } : { status: "failed", error: res.error ?? "generic" };
 }
 

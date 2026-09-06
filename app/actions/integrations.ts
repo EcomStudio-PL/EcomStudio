@@ -834,6 +834,23 @@ export async function sendAdminTestNotificationAction(): Promise<NotificationTes
 }
 
 /**
+ * The keyed half of a test payload. Synthetic through and through — the
+ * address is in the reserved example.com domain and nothing is written outside
+ * the outbox — but shaped exactly like a real event's data, so the card the
+ * admin receives is rendered by the same path production uses.
+ */
+function testData(extra: Record<string, string>): Record<string, string> {
+  const [date = "", time = ""] = formatWarsaw(new Date()).split(" • ");
+  return {
+    ...extra,
+    source: "Test z panelu administracyjnego",
+    language: "PL",
+    ...(date ? { date } : {}),
+    ...(time ? { time } : {}),
+  };
+}
+
+/**
  * The two event tests on the switchboard.
  *
  * Synthetic all the way down: the payload looks like the real one — same rows,
@@ -855,6 +872,9 @@ export async function testRegistrationEventAction(): Promise<NotificationTestRes
         ["🕒 Data", formatWarsaw(new Date())],
         ["🌍 Źródło", "Test z panelu administracyjnego"],
       ],
+      // The keyed twin, so the test card goes down the SAME rendering path a
+      // real registration does — including the locale flag and the meta line.
+      data: testData({ name: "Jan Testowy", email: "test@example.com", phone: "+48 600 000 000" }),
       footer: "GrovBase Admin",
     });
   } catch (e) {
@@ -874,6 +894,7 @@ export async function testWaitlistEventAction(): Promise<NotificationTestResult>
         ["🕒 Data", formatWarsaw(new Date())],
         ["🌍 Źródło", "Test z panelu administracyjnego"],
       ],
+      data: testData({ name: "Jan Testowy", email: "test@example.com" }),
       footer: "GrovBase Waitlist",
     });
   } catch (e) {

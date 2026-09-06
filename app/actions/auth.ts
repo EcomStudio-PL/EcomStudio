@@ -262,20 +262,25 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
     ];
     // The keyed twin of `rows`: what a published admin template binds its
     // {{placeholders}} to. The registration form's own answer wins over the
-    // UTM tag for {{source}}, same as the row above.
-    const data = eventDataFrom(context, {
+    // UTM tag for {{source}}, same as the row above. Named `tplData` and not
+    // `data`: the signUp result above owns that name in this scope, and
+    // shadowing it here would read as a temporal-dead-zone crash, not a rename.
+    const tplData = eventDataFrom(context, {
       name: `${f("first_name")} ${f("last_name")}`.trim(),
       email,
       phone: f("phone"),
       source: source === "other" ? f("acquisition_source_other") : source,
       language: locale.toUpperCase(),
+      // Not a field anyone reads in the message — it is what turns the
+      // Telegram card's button into "Otwórz klienta" for THIS customer.
+      ...(data.user?.id ? { user_id: data.user.id } : {}),
     });
     after(() => notify(supabase, {
       type: "user.registered",
       title: "NOWA REJESTRACJA",
       icon: "🎉",
       rows: rows.filter(([, value]) => value !== ""),
-      data,
+      data: tplData,
       footer: "GrovBase Admin",
       dedupeKey: buildDedupeKey("user.registered", email.toLowerCase()),
     }));

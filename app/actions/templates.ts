@@ -116,7 +116,7 @@ export async function resetTemplateAction(key: string): Promise<Result> {
 
 export type TemplatePreview =
   | { ok: true; channel: "email"; subject: string; html: string; text: string; unknown: string[] }
-  | { ok: true; channel: "telegram"; text: string; unknown: string[] }
+  | { ok: true; channel: "telegram"; text: string; unknown: string[]; buttons: string[] }
   | { ok: false; error: string };
 
 /** Render the given DRAFT with sample data, server-side. Nothing is stored,
@@ -131,8 +131,11 @@ export async function previewTemplateAction(key: string, def: TemplateDef): Prom
     for (const [k, v] of Object.entries(SAMPLE_DATA)) if (known.has(k)) data[k] = v;
 
     if (def.channel === "telegram") {
-      const { text, unknown } = renderTemplateTelegram(def.telegram, data);
-      return { ok: true, channel: "telegram", text, unknown };
+      // Rendered exactly as production will render it — same builder, same
+      // event, so the inline buttons in the preview are the real ones.
+      const { text, unknown, keyboard } = renderTemplateTelegram(def.telegram, data, { event: entry.event });
+      const buttons = (keyboard?.inline_keyboard ?? []).flat().map((b) => b.text);
+      return { ok: true, channel: "telegram", text, unknown, buttons };
     }
     const rendered = renderTemplateEmail(def.email, data, {
       badge: entry.event.toUpperCase(),

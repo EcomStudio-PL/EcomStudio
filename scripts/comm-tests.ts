@@ -179,15 +179,21 @@ async function main() {
     rows: [["👤 Użytkownik", "Jan Kowalski"], ["📧 E-mail", "jan@example.com"], ["📱 Telefon", ""]],
     footer: "GrovBase Admin",
   });
-  check("the header is the icon, the bold title and a rule",
-    card.startsWith("🎉 <b>NOWA REJESTRACJA</b>\n━"), card.split("\n")[0]);
-  check("a row is ONE compact line — emoji, pipe, value", card.includes("👤 | Jan Kowalski") && card.includes("📧 | jan@example.com"), card);
-  check("no blank lines inside the card — compact by contract", !card.includes("\n\n"), card);
+  // The card is drawn by the shared design system (telegram-notification.ts):
+  // an icon-led headline, a voice line, one line per field with the icon in
+  // the label column, and blocks separated by a single blank line. The old
+  // box-drawing rule is gone on purpose — it wrapped into rubble on a phone.
+  check("the header is the icon and the bold title, with no drawn rule",
+    card.startsWith("🎉 <b>NOWA REJESTRACJA</b>") && !/[━│┌└]/.test(card), card.split("\n")[0]);
+  check("a row is ONE line — icon, gutter, value",
+    card.includes("👤  <b>Jan Kowalski</b>") && card.includes("📧  jan@example.com"), card);
+  check("blocks are separated by exactly one blank line, never more",
+    card.includes("\n\n") && !card.includes("\n\n\n"), JSON.stringify(card));
   // The bug this catches: an empty phone rendering as a label with "undefined"
   // — or nothing — under it, which is what the admin actually sees on Telegram.
   check("an empty value drops the whole row, emoji and all", !card.includes("Telefon") && !card.includes("📱"), card);
-  check("the footer sits under the closing rule", /━\nGrovBase Admin$/.test(card), card.slice(-40));
-  check("a card with no footer still closes with the rule", formatTelegram({ title: "X" }).endsWith("━"));
+  check("the footer closes the card in italics", /<i>GrovBase Admin<\/i>$/.test(card), card.slice(-40));
+  check("a card with no footer simply ends", !formatTelegram({ title: "X" }).endsWith("\n"));
 
   const hostile = formatTelegram({
     title: "Zapytanie <ważne> & pilne",

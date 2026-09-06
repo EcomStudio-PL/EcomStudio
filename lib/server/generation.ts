@@ -481,6 +481,15 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         ["Model", model.model_identifier],
         ["Błąd", safe],
       ],
+      // The same three facts, keyed, so the shared renderer gives them the
+      // registry's icons and order instead of a generic bullet. Still only the
+      // safe error class — no prompt, no key, no upstream body.
+      data: {
+        provider: provider.slug,
+        model: model.model_identifier,
+        error: safe,
+        status: `${attempts.length} nieudanych prób`,
+      },
       footer: `Nieudane próby: ${attempts.length}`,
       dedupeKey: buildDedupeKey(
         "system.error", "generation", provider.slug, model.model_identifier,

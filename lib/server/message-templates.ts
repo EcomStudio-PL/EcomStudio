@@ -2,6 +2,8 @@ import "server-only";
 import type { Client } from "@/lib/services/workspace";
 import { renderEmailTemplate, escapeHtml, type EmailField } from "@/lib/server/email-template";
 import { safeError } from "@/lib/server/integrations";
+import { renderNotification } from "@/lib/server/telegram-notification";
+import type { TelegramKeyboard } from "@/lib/server/telegram";
 
 /**
  * ONE TEMPLATE SYSTEM for everything GrovBase says out loud.
@@ -240,33 +242,34 @@ export const SAMPLE_DATA: Record<string, string> = {
 
 /* ── channel renderers ──────────────────────────────────────────────────────*/
 
-const TG_RULE = "━━━━━━━━━━━━━━━━";
 const TG_LINE_MAX = 160;
-
-function tgEscapeText(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
 
 /** Long URLs and referrers read better short: protocol stripped, middle cut. */
 export function shortenValue(value: string, max = 46): string {
-  let v = value.trim().replace(/^https?:\/\//i, "");
+  const v = value.trim().replace(/^https?:\/\//i, "");
   if (v.length <= max) return v;
   return `${v.slice(0, max - 1)}…`;
 }
 
 /**
- * Render a Telegram template: title line, rule, one compact line per field,
- * rule, footer. `<code>` wraps the technical lines (📍 IP, 🔗 entry) so they
- * align and copy cleanly; everything else stays plain and readable. A line
- * whose placeholders all rendered empty is dropped whole.
+ * Render a PUBLISHED Telegram template through the shared design system.
+ *
+ * The template owns the words — its icon, its headline, which fields appear
+ * and in what order (one "icon | {{placeholder}}" per line, the syntax the
+ * editor has always stored). The LAYOUT is not its business: the same renderer
+ * that draws the built-in cards draws this one, so a customised registration
+ * ping still carries the GrovBase header, meta line and buttons.
+ *
+ * A line whose placeholders all rendered empty is dropped whole, so a missing
+ * phone number never prints as a naked icon.
  */
-export function renderTemplateTelegram(def: TelegramTemplateDef, data: Record<string, string>): {
-  text: string; unknown: string[];
-} {
+export function renderTemplateTelegram(
+  def: TelegramTemplateDef,
+  data: Record<string, string>,
+  opts: { event?: string; actionContext?: Record<string, string>; expandable?: boolean } = {},
+): { text: string; plain: string; keyboard?: TelegramKeyboard; unknown: string[] } {
   const unknownAll: string[] = [];
-  const icon = def.icon.trim();
-  const title = `${icon ? `${tgEscapeText(icon)} ` : ""}<b>${tgEscapeText(def.title.trim() || "GrovBase")}</b>`;
-  const lines: string[] = [title, TG_RULE];
+  const rows: [string, string][] = [];
 
   for (const rawLine of def.body.split("\n")) {
     const line = rawLine.trim();
@@ -276,22 +279,32 @@ export function renderTemplateTelegram(def: TelegramTemplateDef, data: Record<st
     for (const u of unknown) if (!unknownAll.includes(u)) unknownAll.push(u);
     // Every placeholder on the line rendered empty → the line carries nothing.
     if (mentioned.length > 0 && mentioned.every((p) => !(data[p] ?? "").trim())) continue;
-    const cleaned = text.replace(/\s+/g, " ").replace(/\s*•\s*$/, "").replace(/\|\s*$/, "|").trim();
-    if (!cleaned || /^\S+ \|$/.test(cleaned)) continue;
-    const value = shortenValue(cleaned.slice(0, TG_LINE_MAX), TG_LINE_MAX);
-    const mono = /^📍|^🔗/.test(cleaned);
-    if (mono) {
-      const m = /^(\S+)\s*\|\s*(.*)$/.exec(value);
-      lines.push(m ? `${tgEscapeText(m[1]!)} | <code>${tgEscapeText(m[2]!)}</code>` : tgEscapeText(value));
-    } else {
-      lines.push(tgEscapeText(value));
-    }
+    const cleaned = text.replace(/\s+/g, " ").replace(/\s*•\s*$/, "").trim();
+    if (!cleaned) continue;
+    // "icon | value" is the authoring syntax; the renderer takes the two halves
+    // as a label/value pair and decides how they are drawn.
+    const split = /^(\S+)\s*\|\s*(.*)$/.exec(cleaned.slice(0, TG_LINE_MAX));
+    const label = split ? split[1]! : "";
+    const value = (split ? split[2]! : cleaned).trim();
+    if (!value) continue;
+    rows.push([label, value]);
   }
 
-  lines.push(TG_RULE);
-  const footer = def.footer.trim();
-  if (footer) lines.push(tgEscapeText(shortenValue(footer, 80)));
-  return { text: lines.join("\n"), unknown: unknownAll };
+  const build = (expandable: boolean) => renderNotification({
+    event: opts.event,
+    icon: def.icon.trim(),
+    title: def.title.trim() || "GrovBase",
+    // The template's own footer is a signature, not a subtitle: the event's
+    // voice line still comes from the one registry.
+    rows,
+    locale: data.language,
+    footer: def.footer.trim() ? shortenValue(def.footer.trim(), 80) : "",
+    actionContext: { ...opts.actionContext, ...data },
+  }, { expandable });
+
+  const rich = build(opts.expandable ?? true);
+  const plain = build(false);
+  return { text: rich.text, plain: plain.text, keyboard: rich.keyboard, unknown: unknownAll };
 }
 
 /**

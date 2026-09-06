@@ -544,6 +544,9 @@ async function announce(supabase: Client, item: MailListItem, folder: string, ui
     data: {
       ...(item.from.name ? { name: item.from.name } : {}),
       ...(item.from.address ? { email: item.from.address } : {}),
+      // The subject is the fact an operator scans for; keyed so the shared
+      // renderer gives it its own icon instead of a generic bullet.
+      ...(item.subject ? { subject: item.subject } : {}),
       ...(date ? { date } : {}),
       ...(hour ? { time: hour } : {}),
     },

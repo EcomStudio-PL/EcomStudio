@@ -12,6 +12,10 @@ import "server-only";
 
 export type TelegramError = "not_configured" | "auth" | "chat_not_found" | "network" | "generic";
 
+/** An inline keyboard — the only rich UI the Bot API actually offers. Buttons
+ *  carry a URL and nothing else: no callback data means no webhook to answer. */
+export type TelegramKeyboard = { inline_keyboard: { text: string; url: string }[][] };
+
 const API_ROOT = "https://api.telegram.org";
 /** Telegram is fast when it answers at all; a serverless request must not hang
  *  waiting for one that does not. */
@@ -40,17 +44,29 @@ function classify(status: number, description?: string): TelegramError {
   return "generic";
 }
 
+/**
+ * Did Telegram refuse to PARSE the message rather than refuse to send it?
+ * That is the one failure a different rendering can fix — an entity this Bot
+ * API version does not know (an expandable blockquote on an older server, say).
+ * Only the boolean escapes this file; the description itself never does.
+ */
+function isParseFailure(description?: string): boolean {
+  const d = (description ?? "").toLowerCase();
+  return d.includes("can't parse entities") || d.includes("unsupported start tag")
+    || d.includes("unmatched end tag") || d.includes("can't parse message text");
+}
+
 async function call(
   token: string,
   path: string,
   init?: RequestInit,
-): Promise<{ ok: true; body: TelegramBody } | { ok: false; error: TelegramError }> {
+): Promise<{ ok: true; body: TelegramBody } | { ok: false; error: TelegramError; parseFailure?: boolean }> {
   try {
     const res = await fetch(`${API_ROOT}/bot${token}/${path}`, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
     const body = (await res.json().catch(() => null)) as TelegramBody | null;
     // Telegram answers 200 with ok:false for some errors, so both checks matter.
     if (res.ok && body?.ok === true) return { ok: true, body };
-    return { ok: false, error: classify(res.status, body?.description) };
+    return { ok: false, error: classify(res.status, body?.description), parseFailure: isParseFailure(body?.description) };
   } catch {
     // Timeout, DNS, TLS — one answer for the caller: it did not reach Telegram.
     // The thrown error is dropped unread because its message quotes the URL,
@@ -59,30 +75,78 @@ async function call(
   }
 }
 
-/** Send one already-formatted HTML message. `html` must be escaped by the
- *  caller (see tgEscape / formatTelegram in notify.ts). */
+/* ── entity capability, learned from the wire ───────────────────────────────
+ * The Bot API publishes no version endpoint, so the only honest way to find
+ * out whether this bot's server understands an expandable blockquote is to
+ * send one and watch. A single refusal switches the richer entity off for the
+ * rest of the process; the plainer rendering is already built and waiting, so
+ * the message still arrives. This is a capability probe, not a retry loop:
+ * exactly one second attempt, and only when the first failed on PARSING. */
+let expandableEntities = true;
+
+/** Should the renderer use the richer entity on the next message? */
+export function richEntitiesEnabled(): boolean {
+  return expandableEntities;
+}
+
+/** Test seam — the suites assert both branches of the renderer. */
+export function setRichEntitiesEnabled(value: boolean): void {
+  expandableEntities = value;
+}
+
+/**
+ * Send one already-rendered HTML message — THE transport, used by every
+ * notification. `html` must be escaped by the caller (the renderer in
+ * telegram-notification.ts does it).
+ *
+ * `keyboard` attaches inline buttons; `plainHtml` is the same card rendered
+ * without the optional rich entity, used once if Telegram rejects the first
+ * body as unparseable. Nothing else is ever retried here — the outbox owns
+ * delivery retries, and repeating a send that failed for any other reason is
+ * how one event becomes five messages.
+ */
 export async function sendTelegramMessage(
   token: string,
   chatId: string,
   html: string,
-): Promise<{ ok: boolean; error?: TelegramError }> {
+  opts: { keyboard?: TelegramKeyboard; plainHtml?: string } = {},
+): Promise<{ ok: boolean; error?: TelegramError; degraded?: boolean }> {
   const t = token.trim();
   const chat = chatId.trim();
   if (!t || !chat) return { ok: false, error: "not_configured" };
-  const res = await call(t, "sendMessage", {
+
+  const post = (text: string) => call(t, "sendMessage", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       chat_id: chat,
-      text: html,
+      text,
       parse_mode: "HTML",
       // A notification is a summary. Previews would double its height and make
       // Telegram fetch links on our behalf, which is not what a link in a
       // stranger's e-mail deserves.
       disable_web_page_preview: true,
+      ...(opts.keyboard ? { reply_markup: opts.keyboard } : {}),
     }),
   });
+
+  const res = await post(html);
   if (res.ok) return { ok: true };
+
+  // The one recoverable failure: this Bot API could not parse an entity we
+  // used. Remember it, fall back to the plainer card, and let the message
+  // through — a fancier quote block is never worth a lost alert.
+  if (res.parseFailure && opts.plainHtml && opts.plainHtml !== html) {
+    expandableEntities = false;
+    const retry = await post(opts.plainHtml);
+    if (retry.ok) {
+      console.warn("telegram.send: rich entity unsupported, sent plain rendering");
+      return { ok: true, degraded: true };
+    }
+    console.error("telegram.send", retry.error);
+    return { ok: false, error: retry.error };
+  }
+
   console.error("telegram.send", res.error);
   return { ok: false, error: res.error };
 }

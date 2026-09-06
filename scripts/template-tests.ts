@@ -46,12 +46,19 @@ console.log("\nB. TELEGRAM RENDERER — compact lines, dropped empties, escaped 
   const def = defaultTemplate("user.registered:telegram")!;
   if (def.channel !== "telegram") throw new Error("wrong channel");
   const { text } = renderTemplateTelegram(def.telegram, SAMPLE_DATA);
-  check("title line is bold with the icon", text.startsWith("🎉 <b>NOWA REJESTRACJA</b>"), text.split("\n")[0]);
-  check("one field is one line", text.includes("👤 | Jan Kowalski") && text.includes("📧 | jan@example.com"));
-  check("no blank lines anywhere", !text.includes("\n\n"));
-  check("technical lines are monospace", text.includes("📍 | <code>203.0.113.7</code>"), text);
-  check("rule top and bottom only", (text.match(/━{16}/g) ?? []).length === 2);
-  const lines = text.split("\n");
+  // A published template supplies the WORDS; the shared design system supplies
+  // the shape — so this asserts the same layout the built-in cards use.
+  check("title line is bold with the icon and the locale flag",
+    text.startsWith("🎉 <b>NOWA REJESTRACJA</b> · 🇵🇱 PL"), text.split("\n")[0]);
+  // The icon decides the weight, in a template exactly as in a built-in card:
+  // 👤 is the primary row, so it is bold on both paths.
+  check("one field is one line, with the registry's weight",
+    text.includes("👤  <b>Jan Kowalski</b>") && text.includes("📧  jan@example.com"), text);
+  check("blocks are separated by a single blank line", !text.includes("\n\n\n"), JSON.stringify(text));
+  check("technical values are monospace on the meta line",
+    text.includes("📍 <code>203.0.113.7</code>"), text);
+  check("no box-drawing rules anywhere", !/[━│┌└]/.test(text), text);
+  const lines = text.split("\n").filter((l) => l.trim() !== "");
   check("stays inside the 8–12 short line budget", lines.length >= 5 && lines.length <= 13, String(lines.length));
 }
 {
