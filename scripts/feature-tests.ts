@@ -6,9 +6,11 @@
  * network, no database).
  */
 import {
-  FEATURE_KEYS, allActive, featureForHref, featureForToolSlug, menuBadge, menuVisible,
-  type AvailabilityMap, type FeatureState,
+  FEATURE_GROUPS, FEATURE_KEYS, FEATURE_REGISTRY, allDefaults, defaultStatusFor,
+  featureForHref, featureForToolSlug, groupHasVisible, menuBadge, menuVisible,
+  type AvailabilityMap, type FeatureKey, type FeatureState,
 } from "@/lib/features";
+import { authModalUrl, parseAuthMode, safeReturnTo } from "@/lib/auth-routes";
 import { effectiveState, type FeatureRow } from "@/lib/server/feature-availability";
 import { LOGIN_SECURITY_DEFAULTS, renderSecurityCodeEmail, toStoredSettings } from "@/lib/server/login-security";
 import {
@@ -21,65 +23,174 @@ function check(name: string, cond: boolean, extra?: unknown) {
   if (!cond) failures += 1;
 }
 
-console.log("\nA. REGISTRY (C11) — the untouchable modules have no key at all");
+console.log("\nA. REGISTRY — every real module is covered, the untouchable ones are not");
 {
-  const forbidden = ["login", "logout", "auth", "security", "settings", "credits", "billing", "plan", "support", "confirm"];
-  check("no auth/security/settings/billing key exists",
+  // The audit list from the navigation itself: if the drawer, the mega-menu or
+  // the bottom dock can reach it, the switchboard has to own it.
+  const mustHave = [
+    "home", "library", "history",
+    "image_moda", "image_ecommerce", "image_social", "image_mailing", "image_inne", "image_matching",
+    "prompts", "generator",
+    "retouch", "editor", "resize", "compress", "tools", "tool_upscale", "tool_expand", "tool_watermark",
+    "video", "products", "inspirations", "credits", "support",
+  ];
+  check(`all ${mustHave.length} real user-facing modules have a key`,
+    mustHave.every((k) => (FEATURE_KEYS as readonly string[]).includes(k)),
+    mustHave.filter((k) => !(FEATURE_KEYS as readonly string[]).includes(k)).join(","));
+  check("the registry has no key the audit list does not name",
+    FEATURE_KEYS.every((k) => mustHave.includes(k)),
+    FEATURE_KEYS.filter((k) => !mustHave.includes(k)).join(","));
+  // C11: what a customer needs to get in, get out, stay safe or exercise a
+  // right must have no key at all — a key that does not exist cannot be
+  // switched off by accident.
+  const forbidden = ["login", "logout", "auth", "security", "settings", "billing", "plan", "confirm", "privacy", "account"];
+  check("no auth/security/settings/billing/plan key exists",
     forbidden.every((f) => !(FEATURE_KEYS as readonly string[]).includes(f)),
     FEATURE_KEYS.join(","));
-  check("the registry carries the real modules",
-    ["generator", "prompts", "video", "retouch", "editor", "resize", "compress", "tools", "products", "library", "inspirations"]
-      .every((k) => (FEATURE_KEYS as readonly string[]).includes(k)));
+  check("every descriptor declares a group the menu knows",
+    FEATURE_REGISTRY.every((f) => (FEATURE_GROUPS as readonly string[]).includes(f.group)));
+  check("every key appears exactly once", new Set(FEATURE_KEYS).size === FEATURE_KEYS.length);
+  check("every registry path is absolute", FEATURE_REGISTRY.every((f) => f.path.startsWith("/")));
+  // §45: a page added tomorrow must not go dark because nobody inserted a row.
+  const soon = FEATURE_KEYS.filter((k) => defaultStatusFor(k) !== "ACTIVE");
+  check("a new feature defaults to ACTIVE — only the backendless ones do not",
+    soon.length === 2 && soon.includes("image_matching") && soon.includes("video"), soon.join(","));
 }
 
 console.log("\nB. HREF → FEATURE — prefixes, query stripping, no bypass surface");
 {
   const cases: [string, string | null][] = [
-    ["/generator", "generator"],
-    ["/k/moda", "generator"],
+    ["/home", "home"],
+    ["/dashboard", "home"],
+    ["/library?tab=history", "library"],
+    ["/history", "history"],
+    ["/k/moda", "image_moda"],
+    ["/k/moda/lookbook", "image_moda"],
+    ["/k/ecommerce", "image_ecommerce"],
+    ["/k/social", "image_social"],
+    ["/k/mailing", "image_mailing"],
+    ["/k/inne", "image_inne"],
+    ["/k/matching", "image_matching"],
     ["/prompts/abc", "prompts"],
-    ["/wideo", "video"],
+    ["/generator", "generator"],
     ["/retusz", "retouch"],
     ["/tools/editor", "editor"],
     ["/tools/editor?tool=shadow", "editor"],
     ["/tools/resize", "resize"],
     ["/tools/compress", "compress"],
-    ["/tools/upscale", "tools"],
+    ["/tools/upscale", "tool_upscale"],
+    ["/tools/expand", "tool_expand"],
+    ["/tools/watermark", "tool_watermark"],
     ["/tools", "tools"],
+    ["/wideo", "video"],
     ["/products/123", "products"],
-    ["/library?tab=history", "library"],
-    ["/history", "library"],
     ["/inspirations", "inspirations"],
+    ["/credits", "credits"],
+    ["/support", "support"],
+    // Deliberately NOT features — no key, so no switch.
     ["/settings", null],
+    ["/settings/privacy", null],
+    ["/plan", null],
     ["/login", null],
-    ["/credits", null],
     ["/auth/security-check", null],
-    ["/home", null],
   ];
   for (const [href, expected] of cases) {
     check(`${href} → ${expected ?? "not a feature"}`, featureForHref(href) === expected, String(featureForHref(href)));
   }
   check("a ?admin=true query never changes the mapping",
     featureForHref("/generator?admin=true") === "generator" && featureForHref("/settings?admin=true") === null);
+  check("a #hash never changes the mapping", featureForHref("/tools/resize#a") === "resize");
+  check("a longer prefix wins over a shorter one",
+    featureForHref("/tools/editor") === "editor" && featureForHref("/toolsxyz") === null);
+  check("every registry path resolves back to its own key",
+    FEATURE_REGISTRY.every((f) => featureForHref(f.path) === f.key),
+    FEATURE_REGISTRY.filter((f) => featureForHref(f.path) !== f.key).map((f) => f.key).join(","));
   check("tool slugs map to their own features",
     featureForToolSlug("editor") === "editor" && featureForToolSlug("format") === "resize"
-    && featureForToolSlug("compress") === "compress" && featureForToolSlug("upscale") === "tools");
+    && featureForToolSlug("compress") === "compress" && featureForToolSlug("upscale") === "tool_upscale"
+    && featureForToolSlug("expand") === "tool_expand" && featureForToolSlug("watermark") === "tool_watermark"
+    && featureForToolSlug("shadow") === "editor" && featureForToolSlug("nonsense") === "tools");
 }
 
 console.log("\nC. MENU RULES — hidden for customers, badged for admins");
 {
-  const disabledState: FeatureState = { status: "DISABLED", hiddenFromMenu: false, customTitle: null, customMessage: null, reopensAt: null };
-  const soonState: FeatureState = { status: "COMING_SOON", hiddenFromMenu: false, customTitle: null, customMessage: null, reopensAt: null };
-  const hiddenActive: FeatureState = { status: "COMING_SOON", hiddenFromMenu: true, customTitle: null, customMessage: null, reopensAt: null };
-  const map: AvailabilityMap = { ...allActive(), generator: disabledState, prompts: soonState, library: hiddenActive };
+  const state = (over: Partial<FeatureState>): FeatureState => ({ ...allDefaults().library, ...over });
+  const map: AvailabilityMap = {
+    ...allDefaults(),
+    generator: state({ status: "DISABLED" }),
+    prompts: state({ status: "COMING_SOON" }),
+    retouch: state({ status: "MAINTENANCE" }),
+    library: state({ status: "ACTIVE", hiddenFromMenu: true }),
+  };
   check("DISABLED vanishes for a customer", menuVisible(map, "/generator", false) === false);
   check("…but stays visible for an admin", menuVisible(map, "/generator", true) === true);
   check("…with the 'disabled' badge", menuBadge(map, "/generator") === "disabled");
   check("COMING_SOON stays listed with the 'soon' badge",
     menuVisible(map, "/prompts", false) === true && menuBadge(map, "/prompts") === "soon");
-  check("hidden_from_menu hides for customers, not for admins",
-    menuVisible(map, "/library", false) === false && menuVisible(map, "/library", true) === true);
+  check("MAINTENANCE stays listed with its own badge",
+    menuVisible(map, "/retusz", false) === true && menuBadge(map, "/retusz") === "maintenance");
+  check("hidden_from_menu is INDEPENDENT of status — active but hidden",
+    map.library.status === "ACTIVE" && menuVisible(map, "/library", false) === false
+    && menuVisible(map, "/library", true) === true);
   check("a non-feature href is always visible", menuVisible(map, "/settings", false) === true);
+  check("the registry default badges /k/matching and /wideo without hardcoding",
+    menuBadge(allDefaults(), "/k/matching") === "soon" && menuBadge(allDefaults(), "/wideo") === "soon");
+
+  // §35: an empty category heading is worse than no heading.
+  const cats = ["/k/moda", "/k/ecommerce", "/k/social", "/k/mailing", "/k/inne", "/k/matching"];
+  const allImagesOff: AvailabilityMap = { ...allDefaults() };
+  for (const k of ["image_moda", "image_ecommerce", "image_social", "image_mailing", "image_inne", "image_matching"] as FeatureKey[]) {
+    allImagesOff[k] = state({ status: "DISABLED" });
+  }
+  check("OBRAZ keeps its heading while one category survives",
+    groupHasVisible({ ...allImagesOff, image_moda: allDefaults().image_moda }, cats, false) === true);
+  check("OBRAZ drops its heading when every category is off",
+    groupHasVisible(allImagesOff, cats, false) === false);
+  check("…and the admin still sees the group", groupHasVisible(allImagesOff, cats, true) === true);
+}
+
+console.log("\nC2. STATUS MATRIX — the four states, customer vs admin");
+{
+  const state = (s: FeatureState["status"], hidden = false): FeatureState => ({
+    status: s, hiddenFromMenu: hidden, customTitle: null, customMessage: null, reopensAt: null,
+  });
+  const rows: [FeatureState["status"], boolean, boolean, string | null][] = [
+    // status, visible to customer, visible to admin, badge
+    ["ACTIVE", true, true, null],
+    ["COMING_SOON", true, true, "soon"],
+    ["MAINTENANCE", true, true, "maintenance"],
+    ["DISABLED", false, true, "disabled"],
+  ];
+  for (const [status, cust, adm, badge] of rows) {
+    const map: AvailabilityMap = { ...allDefaults(), resize: state(status) };
+    check(`${status}: customer=${cust}, admin=${adm}, badge=${badge ?? "none"}`,
+      menuVisible(map, "/tools/resize", false) === cust
+      && menuVisible(map, "/tools/resize", true) === adm
+      && menuBadge(map, "/tools/resize") === badge);
+  }
+  const hidden: AvailabilityMap = { ...allDefaults(), resize: state("ACTIVE", true) };
+  check("ACTIVE + hidden: gone from the menu, still reachable by URL (no gate)",
+    menuVisible(hidden, "/tools/resize", false) === false && menuBadge(hidden, "/tools/resize") === null);
+}
+
+console.log("\nC3. AUTH MODAL ROUTING — one URL contract, open-redirect proof");
+{
+  check("only the three real modes parse",
+    parseAuthMode("login") === "login" && parseAuthMode("register") === "register"
+    && parseAuthMode("forgot") === "forgot");
+  check("anything else is not a mode",
+    parseAuthMode("admin") === null && parseAuthMode("") === null && parseAuthMode(null) === null);
+  check("the dialog opens over the landing page",
+    authModalUrl("login") === "/?auth=login" && authModalUrl("register") === "/?auth=register");
+  check("an internal returnTo rides along",
+    authModalUrl("login", { next: "/generator" }) === "/?auth=login&next=%2Fgenerator");
+  const attacks = ["https://evil.example", "//evil.example", "http://evil", "\\\\evil", "javascript:alert(1)"];
+  check("no absolute / protocol-relative / scheme returnTo survives",
+    attacks.every((a) => safeReturnTo(a) === "" && !authModalUrl("login", { next: a }).includes("evil")),
+    attacks.filter((a) => safeReturnTo(a) !== "").join(","));
+  check("an error code rides along but nothing else does",
+    authModalUrl("login", { error: "bad_credentials", role: "admin" })
+      === "/?auth=login&error=bad_credentials");
 }
 
 console.log("\nD. TIME WINDOW — the restriction is bounded, reopen is honest");
@@ -136,6 +247,95 @@ console.log("\nF. AUTH SYNC — fingerprint covers the payload, never the secret
   check("changing ONLY the password does not change the fingerprint", a === b);
   check("changing the payload does", a !== c);
   check("no fingerprint ever contains the secret", !a.includes("secret") && a.length === 64);
+}
+
+console.log("\nG. §51/§52 MATRIX — the exact scenario the brief asks for, per module");
+{
+  // Rows straight out of §51. Each is run through the SAME code path the app
+  // uses: a stored DB row → effectiveState → menu rules → gate decision.
+  const now = new Date("2026-09-06T12:00:00Z");
+  const row = (key: string, status: string, hidden = false, extra: Partial<FeatureRow> = {}): FeatureRow => ({
+    feature_key: key, status, hidden_from_menu: hidden,
+    starts_at: null, ends_at: null, auto_reenable: true,
+    custom_title: null, custom_message: null, updated_at: now.toISOString(), updated_by: null, ...extra,
+  });
+  const scenario: [FeatureKey, string, string, boolean][] = [
+    // key, status, href, hidden_from_menu
+    ["image_moda", "COMING_SOON", "/k/moda", false],
+    ["image_ecommerce", "ACTIVE", "/k/ecommerce", false],
+    ["image_social", "ACTIVE", "/k/social", false],
+    ["image_mailing", "DISABLED", "/k/mailing", true],
+    ["image_inne", "ACTIVE", "/k/inne", false],
+    ["image_matching", "COMING_SOON", "/k/matching", false],
+    ["prompts", "ACTIVE", "/prompts", false],
+    ["generator", "MAINTENANCE", "/generator", false],
+    ["retouch", "COMING_SOON", "/retusz", false],
+    ["editor", "DISABLED", "/tools/editor", false],
+    ["resize", "ACTIVE", "/tools/resize", false],
+    ["compress", "ACTIVE", "/tools/compress", false],
+    ["video", "COMING_SOON", "/wideo", false],
+    ["products", "ACTIVE", "/products", false],
+    ["inspirations", "ACTIVE", "/inspirations", false],
+  ];
+  const map: AvailabilityMap = { ...allDefaults() };
+  for (const [key, status, , hidden] of scenario) {
+    map[key] = effectiveState(row(key, status, hidden), now);
+  }
+  const expectedBadge: Record<string, string | null> = {
+    ACTIVE: null, COMING_SOON: "soon", MAINTENANCE: "maintenance", DISABLED: "disabled",
+  };
+  for (const [key, status, href, hidden] of scenario) {
+    const custVisible = status !== "DISABLED" && !hidden;
+    const ok = map[key].status === status
+      && menuVisible(map, href, false) === custVisible
+      && menuVisible(map, href, true) === true            // §31 admin bypass
+      && menuBadge(map, href) === expectedBadge[status];
+    check(`${key} = ${status}${hidden ? " + hidden" : ""} → menu ${custVisible ? "visible" : "hidden"}, badge ${expectedBadge[status] ?? "none"}, admin sees it`,
+      ok, `${map[key].status}/${menuVisible(map, href, false)}/${menuBadge(map, href)}`);
+  }
+  // §42: with Wideo taken down but still listed, the heading stays; hide it
+  // from the menu too and the whole VIDEO section must disappear.
+  check("VIDEO heading survives a COMING_SOON video",
+    groupHasVisible(map, ["/wideo"], false) === true);
+  const videoHidden: AvailabilityMap = { ...map, video: effectiveState(row("video", "COMING_SOON", true), now) };
+  check("VIDEO heading disappears once video is hidden from the menu",
+    groupHasVisible(videoHidden, ["/wideo"], false) === false
+    && groupHasVisible(videoHidden, ["/wideo"], true) === true);
+
+  // §53 bulk: the EDYTUJ category set to COMING_SOON, then restored.
+  const editKeys: FeatureKey[] = ["retouch", "editor", "resize", "compress", "tools",
+    "tool_upscale", "tool_expand", "tool_watermark"];
+  const bulkSoon: AvailabilityMap = { ...allDefaults() };
+  for (const k of editKeys) bulkSoon[k] = effectiveState(row(k, "COMING_SOON"), now);
+  check("bulk: every EDYTUJ child carries the soon badge",
+    editKeys.every((k) => bulkSoon[k].status === "COMING_SOON"));
+  const bulkBack: AvailabilityMap = { ...allDefaults() };
+  for (const k of editKeys) bulkBack[k] = effectiveState(row(k, "ACTIVE"), now);
+  check("bulk: restoring ACTIVE clears every badge",
+    editKeys.every((k) => bulkBack[k].status === "ACTIVE" && menuBadge(bulkBack, featureDescriptorPath(k)) === null));
+
+  // §33/§35: a maintenance window entered from the Warsaw clock, stored UTC.
+  const windowed = effectiveState(
+    row("generator", "MAINTENANCE", false, { starts_at: "2026-09-06T18:00:00Z", ends_at: "2026-09-07T00:00:00Z" }),
+    now,
+  );
+  check("before starts_at the module still works (§35)", windowed.status === "ACTIVE");
+  const inside = effectiveState(
+    row("generator", "MAINTENANCE", false, { starts_at: "2026-09-06T06:00:00Z", ends_at: "2026-09-07T00:00:00Z" }),
+    now,
+  );
+  check("inside the window it is restricted and promises the real return date",
+    inside.status === "MAINTENANCE" && inside.reopensAt === "2026-09-07T00:00:00.000Z", inside.reopensAt);
+  const after = effectiveState(
+    row("generator", "MAINTENANCE", false, { starts_at: "2026-09-05T06:00:00Z", ends_at: "2026-09-06T06:00:00Z" }),
+    now,
+  );
+  check("after ends_at it reopens by itself (§34)", after.status === "ACTIVE");
+}
+
+/** The canonical route of a key — used by the bulk assertion above. */
+function featureDescriptorPath(key: FeatureKey): string {
+  return FEATURE_REGISTRY.find((f) => f.key === key)?.path ?? "/";
 }
 
 console.log(failures === 0 ? "\nAll feature tests passed.\n" : `\n${failures} feature test(s) FAILED.\n`);

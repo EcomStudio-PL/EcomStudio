@@ -9,7 +9,10 @@ import {
 import { useI18n } from "@/lib/i18n/provider";
 import { CATEGORIES, VIDEO_ICON as VideoIcon } from "@/lib/categories";
 import { IMAGE_EDIT, IMAGE_MODES, editLabelKey } from "@/lib/topnav";
-import { allActive, menuBadge, menuVisible, type AvailabilityMap, type MenuBadge } from "@/lib/features";
+import {
+  allDefaults, groupHasVisible, menuBadge, menuVisible,
+  type AvailabilityMap, type MenuBadge,
+} from "@/lib/features";
 import { NavLink } from "./nav-link";
 import { Drawer, IslandClose, NavGroupLabel } from "./drawer";
 import { LocaleSwitcher } from "./locale-switcher";
@@ -28,14 +31,19 @@ import { cn } from "@/lib/utils";
  * GŁÓWNE, OBRAZ, GENEROWANIE, EDYTUJ, KONTO — because a flat list of twenty
  * links is not navigation, it is an index.
  */
-export function CustomerDrawer({ name, email, credits, plan, isAdmin, availability }: {
+export function CustomerDrawer({ name, email, credits, plan, isAdmin, navAdmin, availability }: {
   name: string; email?: string; credits: number; plan: string; isAdmin: boolean;
+  /** What the MENU should treat as admin — `isAdmin` unless this admin asked
+   *  to preview the app as a customer. The admin LINK still follows the real
+   *  role, so the preview is never a trap. */
+  navAdmin?: boolean;
   availability?: AvailabilityMap;
 }) {
   const { t, locale } = useI18n();
   const { open, setOpen } = useDrawer();
-  const avail = availability ?? allActive();
-  const show = (href: string) => menuVisible(avail, href, isAdmin);
+  const avail = availability ?? allDefaults();
+  const seesRestricted = navAdmin ?? isAdmin;
+  const show = (href: string) => menuVisible(avail, href, seesRestricted);
   const badge = (href: string) => badgeLabel(menuBadge(avail, href), t);
   const who = firstName(name, email) || name;
   const initial = (who || "?").trim().charAt(0).toUpperCase();
@@ -110,25 +118,29 @@ export function CustomerDrawer({ name, email, credits, plan, isAdmin, availabili
         </form>
       }
     >
+      {/* Every group below is drawn from the availability map: entries the
+          customer may not see are filtered out, and a group left with nothing
+          in it drops its heading too — an empty "WIDEO" is worse than none. */}
       <Section title={t("nav.groups.main")} defaultOpen>
-        <NavLink href="/home" label={t("topnav.home")} icon={Home} onNavigate={closeNav} />
+        <NavLink href="/home" label={t("topnav.home")} icon={Home} onNavigate={closeNav}
+          badge={badge("/home")} />
         {show("/library") && (
           <NavLink href="/library" label={t("topnav.library")} icon={Images} onNavigate={closeNav}
             badge={badge("/library")} />
         )}
       </Section>
 
-      {/* OBRAZ — the six category workspaces, each in its own colour. All of
-          them front the generator, so its availability governs the group. */}
-      {show("/generator") && (
+      {/* OBRAZ — the six category workspaces, each its own switchable module
+          in its own colour. */}
+      {groupHasVisible(avail, CATEGORIES.map((c) => `/k/${c.slug}`), seesRestricted) && (
         <Section title={t("topnav.image")} defaultOpen>
-          {CATEGORIES.map((c) => (
-            <CategoryRow key={c.key} c={c} t={t} onNavigate={closeNav} dynBadge={badge("/generator")} />
+          {CATEGORIES.filter((c) => show(`/k/${c.slug}`)).map((c) => (
+            <CategoryRow key={c.key} c={c} t={t} onNavigate={closeNav} dynBadge={badge(`/k/${c.slug}`)} />
           ))}
         </Section>
       )}
 
-      {(show("/prompts") || show("/generator")) && (
+      {groupHasVisible(avail, IMAGE_MODES.map((e) => e.href), seesRestricted) && (
         <Section title={t("nav.groups.create")}>
           {IMAGE_MODES.filter((e) => show(e.href)).map((e) => (
             <NavLink key={e.key} href={e.href} label={t(`mega.${e.key}`)} icon={e.icon} onNavigate={closeNav}
@@ -137,7 +149,7 @@ export function CustomerDrawer({ name, email, credits, plan, isAdmin, availabili
         </Section>
       )}
 
-      {IMAGE_EDIT.some((e) => !e.soon && show(e.href)) && (
+      {groupHasVisible(avail, IMAGE_EDIT.filter((e) => !e.soon).map((e) => e.href), seesRestricted) && (
         <Section title={t("mega.edit")}>
           {/* The hub is the last of these five entries, so it is not appended a
               second time underneath them. */}
@@ -219,9 +231,9 @@ function CategoryRow({ c, t, onNavigate, dynBadge }: {
         <c.icon size={15} />
       </span>
       <span className="min-w-0 flex-1 truncate">{t(`cats.${c.key}`)}</span>
-      {(c.soon || dynBadge) && (
+      {(dynBadge || c.soon) && (
         <span className="shrink-0 rounded-full bg-raised px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-faint">
-          {c.soon ? t("common.soon") : dynBadge}
+          {dynBadge ?? t("common.soon")}
         </span>
       )}
     </Link>

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase/config";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
+import { AuthLink } from "@/components/auth/auth-link";
 import { Brand } from "@/components/layout/brand";
 import { BlockRenderer } from "@/components/cms/blocks";
 import { LaunchPage } from "@/components/launch/launch-page";
@@ -165,12 +166,14 @@ export default async function LandingPage({ searchParams }: {
             </Link>
           ) : (
             <>
-              <Link href="/login" className="whitespace-nowrap rounded-xl px-2.5 py-2 text-sm font-medium text-muted transition-colors hover:text-ink">
+              {/* The dialog opens over this page — no navigation, no empty
+                  sign-in screen. See components/auth/auth-modal.tsx. */}
+              <AuthLink mode="login" className="whitespace-nowrap rounded-xl px-2.5 py-2 text-sm font-medium text-muted transition-colors hover:text-ink">
                 {t("landing.ctaLogin")}
-              </Link>
-              <Link href="/register" className="brand-gradient whitespace-nowrap rounded-xl px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90">
+              </AuthLink>
+              <AuthLink mode="register" className="brand-gradient whitespace-nowrap rounded-xl px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90">
                 {t("landing.cta")}
-              </Link>
+              </AuthLink>
             </>
           )}
         </div>
@@ -194,9 +197,9 @@ export default async function LandingPage({ searchParams }: {
                 {p.price_cents === 0 ? "0 zł" : formatPrice(p.price_cents, p.currency)}
               </p>
               <p className="mt-1 text-xs text-muted">{t("plan.creditsMo", { n: formatCredits(p.monthly_credits) })}</p>
-              <Link href="/register" className="mt-4 rounded-xl border border-line px-4 py-2 text-center text-sm font-semibold transition-colors hover:bg-raised">
+              <AuthLink mode="register" className="mt-4 rounded-xl border border-line px-4 py-2 text-center text-sm font-semibold transition-colors hover:bg-raised">
                 {t("landing.cta")}
-              </Link>
+              </AuthLink>
             </div>
           ))}
         </div>
@@ -212,7 +215,7 @@ export default async function LandingPage({ searchParams }: {
         <div className="flex gap-4">
           <a href="#showcase" className="hover:text-ink">{t("landing.navFeatures")}</a>
           <a href="#pricing" className="hover:text-ink">{t("landing.navPricing")}</a>
-          <Link href="/login" className="hover:text-ink">{t("landing.ctaLogin")}</Link>
+          <AuthLink mode="login" className="hover:text-ink">{t("landing.ctaLogin")}</AuthLink>
         </div>
       </footer>
     </main>

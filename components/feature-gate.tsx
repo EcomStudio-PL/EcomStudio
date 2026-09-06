@@ -1,32 +1,46 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import { Hourglass, Wrench, ShieldAlert, ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { getAvailabilityMap, isAdminUser } from "@/lib/server/feature-availability";
-import { ACTIVE_STATE, type FeatureKey, type FeatureState } from "@/lib/features";
+import {
+  CLIENT_PREVIEW_COOKIE, getAvailabilityMap, isAdminUser, viewerIsAdmin,
+} from "@/lib/server/feature-availability";
+import { defaultStateFor, type FeatureKey, type FeatureState } from "@/lib/features";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 
 /**
- * FEATURE GATE — the route-level enforcement of feature availability (C10:
- * a direct URL is exactly as protected as the menu).
+ * FEATURE GATE — the route-level enforcement of feature availability.
  *
- * A server component wrapper: pages render their content as children and the
- * gate decides what actually reaches the browser.
+ * A direct URL is exactly as protected as the menu entry: hiding something
+ * from the drawer is a presentation choice, this is the boundary. A server
+ * component wrapper, so nothing about a disabled module is ever shipped to
+ * the browser to be re-enabled with devtools.
+ *
  *   ACTIVE       → children
- *   COMING_SOON  → the "wkrótce" screen (customers)
- *   MAINTENANCE  → the "prace techniczne" screen (customers)
- *   DISABLED     → notFound() — the module does not exist for customers
+ *   COMING_SOON  → the "wkrótce" screen
+ *   MAINTENANCE  → the "prace techniczne" screen, with the planned return
+ *   DISABLED     → notFound(): the module does not exist for customers
  *   admin        → children + a preview strip; the role comes from the
- *                  profiles row (C9), never from a query param.
+ *                  profiles row, never from a query parameter.
  */
+
 export async function FeatureGate({ feature, children }: {
   feature: FeatureKey;
   children: React.ReactNode;
 }) {
   const supabase = await createClient();
-  const [map, admin] = await Promise.all([getAvailabilityMap(supabase), isAdminUser(supabase)]);
-  const state = map[feature] ?? ACTIVE_STATE;
+  const [map, realAdmin, admin, jar] = await Promise.all([
+    getAvailabilityMap(supabase),
+    isAdminUser(supabase),
+    // The real role minus a deliberate "look as a customer" — the same helper
+    // the menu uses, so the drawer and the page always agree.
+    viewerIsAdmin(supabase),
+    cookies(),
+  ]);
+  const previewing = realAdmin && jar.get(CLIENT_PREVIEW_COOKIE)?.value === "1";
+  const state = map[feature] ?? defaultStateFor(feature);
 
   if (state.status === "ACTIVE") return <>{children}</>;
   if (admin) {
@@ -38,11 +52,15 @@ export async function FeatureGate({ feature, children }: {
     );
   }
   if (state.status === "DISABLED") notFound();
-  return <FeatureBlockedScreen state={state} />;
+  return <FeatureBlockedScreen state={state} feature={feature} previewing={previewing} />;
 }
 
 /** The customer-facing screen for COMING_SOON and MAINTENANCE. */
-async function FeatureBlockedScreen({ state }: { state: FeatureState }) {
+async function FeatureBlockedScreen({ state, feature, previewing }: {
+  state: FeatureState;
+  feature: FeatureKey;
+  previewing: boolean;
+}) {
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
   const coming = state.status === "COMING_SOON";
@@ -50,7 +68,9 @@ async function FeatureBlockedScreen({ state }: { state: FeatureState }) {
   const title = state.customTitle ?? t(coming ? "features.comingTitle" : "features.maintenanceTitle");
   const message = state.customMessage ?? t(coming ? "features.comingBody" : "features.maintenanceBody");
   const reopens = state.reopensAt
-    ? new Date(state.reopensAt).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" })
+    ? new Date(state.reopensAt).toLocaleString(locale, {
+        dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Warsaw",
+      })
     : null;
 
   return (
@@ -68,14 +88,21 @@ async function FeatureBlockedScreen({ state }: { state: FeatureState }) {
         <p className="relative mt-2 text-sm leading-relaxed text-muted">{message}</p>
         {reopens && (
           <p className="relative mt-3 text-[13px] font-semibold text-ink">
-            {t("features.reopens", { date: reopens })}
+            {t(coming ? "features.reopens" : "features.backAt", { date: reopens })}
           </p>
         )}
-        <Link href="/home"
-          className="cta relative mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold">
-          <ArrowLeft size={15} aria-hidden />
-          {t("features.backHome")}
-        </Link>
+        {/* No "back to dashboard" when the dashboard IS what is switched off —
+            a button that leads to this same screen is worse than none. */}
+        {feature !== "home" && (
+          <Link href="/home"
+            className="cta relative mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold">
+            <ArrowLeft size={15} aria-hidden />
+            {t("features.backHome")}
+          </Link>
+        )}
+        {previewing && (
+          <p className="relative mt-5 text-[12px] font-medium text-warning">{t("features.previewNote")}</p>
+        )}
       </div>
     </div>
   );

@@ -1,10 +1,12 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/services/audit";
+import { CLIENT_PREVIEW_COOKIE } from "@/lib/server/feature-availability";
 import {
-  FEATURE_REGISTRY, FEATURE_STATUSES, isFeatureKey,
-  type FeatureKey, type FeatureStatus,
+  FEATURE_REGISTRY, FEATURE_STATUSES, defaultStatusFor, isFeatureKey,
+  type FeatureGroup, type FeatureKey, type FeatureStatus,
 } from "@/lib/features";
 
 /**
@@ -120,11 +122,87 @@ export async function batchFeatureStatusAction(keys: FeatureKey[], status: Featu
   }
 }
 
+/**
+ * Batch menu visibility — "ukryj w menu" / "pokaż w menu" for a selection.
+ * Deliberately independent of the status (§28): a live module can be hidden
+ * while it is being piloted, and a restricted one can stay listed so the
+ * customer sees the WKRÓTCE badge instead of silently losing the entry.
+ */
+export async function batchMenuVisibilityAction(keys: FeatureKey[], hidden: boolean): Promise<Result> {
+  try {
+    const unique = [...new Set(keys)];
+    if (unique.length === 0 || unique.some((k) => !isFeatureKey(k))) return { ok: false, error: "invalid" };
+
+    const { supabase, adminId } = await requireAdmin();
+    const now = new Date().toISOString();
+    // Read first: a menu-only change must not reset a status the admin set.
+    const { data: existing } = await supabase.from("feature_availability")
+      .select("feature_key, status").in("feature_key", unique);
+    const statusByKey = new Map((existing ?? []).map((r) => [r.feature_key as string, r.status as FeatureStatus]));
+    const rows = unique.map((key) => ({
+      feature_key: key,
+      status: statusByKey.get(key) ?? defaultStatusFor(key),
+      hidden_from_menu: hidden,
+      updated_at: now,
+      updated_by: adminId,
+    }));
+    const { error } = await supabase.from("feature_availability")
+      .upsert(rows, { onConflict: "feature_key" });
+    if (error) return { ok: false, error: "generic" };
+
+    await logAudit(supabase, {
+      actorId: adminId, action: "feature_availability.menu",
+      entityType: "feature_availability", entityId: unique.join(","),
+      after: { hidden, count: unique.length },
+    });
+    revalidatePath(PAGE);
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "forbidden" };
+  }
+}
+
+/**
+ * "Podgląd jako klient" — an admin asks to be shown exactly what a customer
+ * sees. The cookie only ever REMOVES privilege (lib/server/feature-availability
+ * checks the real role first), so it is a view preference, not a security
+ * boundary, and it never needs a signature.
+ */
+export async function setClientPreviewAction(on: boolean): Promise<Result> {
+  try {
+    await requireAdmin();
+    const jar = await cookies();
+    if (on) {
+      jar.set(CLIENT_PREVIEW_COOKIE, "1", {
+        httpOnly: true, sameSite: "lax", path: "/",
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 60 * 60 * 8,
+      });
+    } else {
+      jar.delete(CLIENT_PREVIEW_COOKIE);
+    }
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "forbidden" };
+  }
+}
+
+/** Is this admin currently previewing the app as a customer? */
+export async function clientPreviewStateAction(): Promise<boolean> {
+  try {
+    await requireAdmin();
+    return (await cookies()).get(CLIENT_PREVIEW_COOKIE)?.value === "1";
+  } catch {
+    return false;
+  }
+}
+
 export type FeatureAdminRow = {
   key: FeatureKey;
   nameKey: string;
   path: string;
-  group: "create" | "edit" | "workspace";
+  group: FeatureGroup;
   status: FeatureStatus;
   hiddenFromMenu: boolean;
   startsAt: string | null;
@@ -148,7 +226,9 @@ export async function listFeatureAvailabilityAction(): Promise<FeatureAdminRow[]
         nameKey: entry.nameKey,
         path: entry.path,
         group: entry.group,
-        status: (row?.status as FeatureStatus | undefined) ?? "ACTIVE",
+        // No row means the registry default — which is ACTIVE for everything
+        // except the modules that honestly have no backend yet.
+        status: (row?.status as FeatureStatus | undefined) ?? defaultStatusFor(entry.key),
         hiddenFromMenu: row?.hidden_from_menu === true,
         startsAt: row?.starts_at ?? null,
         endsAt: row?.ends_at ?? null,

@@ -6,6 +6,7 @@ import { Toaster } from "sonner";
 import { I18nProvider } from "@/lib/i18n/provider";
 import { getDictionary } from "@/lib/i18n/server";
 import { SITE_ORIGIN } from "@/lib/site";
+import { AuthModalMount } from "@/components/auth/auth-modal-mount";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -46,6 +47,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <I18nProvider locale={locale} dict={dict}>
             {children}
+            {/* One dialog for the whole site: `?auth=` opens sign-in, sign-up
+                or password recovery OVER the page the visitor is reading,
+                whichever page that is. */}
+            <AuthModalMount />
             <Toaster position="top-center" richColors />
           </I18nProvider>
         </ThemeProvider>

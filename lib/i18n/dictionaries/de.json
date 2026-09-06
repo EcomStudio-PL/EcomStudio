@@ -225,7 +225,12 @@
     "errCaptcha": "Bitte bestätige, dass du kein Roboter bist.",
     "errCaptchaFailed": "Die CAPTCHA-Prüfung ist fehlgeschlagen. Bitte versuche es erneut.",
     "errIpLimit": "Aus diesem Netzwerk wurde bereits die maximale Anzahl an Konten erstellt. Schreib uns, falls das ein Irrtum ist.",
-    "optional": "optional"
+    "optional": "optional",
+    "paneTitle": "Produktfotos, die verkaufen — in Minuten.",
+    "benefit1": "Studioqualität aus deinen gewöhnlichen Produktfotos",
+    "benefit2": "Product Lock schützt Form, Farben und Details",
+    "benefit3": "25 Willkommens-Credits zum Start — ohne Karte",
+    "paneFooter": "Schließe dich Verkäufern an, die nicht mehr auf ein Fotoshooting warten."
   },
   "dashboard": {
     "welcome": "Hallo, {name}! 👋",
@@ -2937,15 +2942,21 @@
     "badgeMaintenance": "Wartung",
     "badgeDisabled": "Deaktiviert",
     "adminPreview": "Admin-Vorschau — Status für Kunden: {status}.",
-    "manage": "Verwalten"
+    "manage": "Verwalten",
+    "backAt": "Geplante Rückkehr: {date}",
+    "previewNote": "Das ist der Kundenbildschirm — die Kundenansicht ist aktiv."
   },
   "featAdm": {
     "title": "Funktionsverfügbarkeit",
     "sub": "Status jedes Moduls für Kunden: aktiv, bald, Wartung oder deaktiviert. Änderungen gelten sofort, ohne Deployment. Login, E-Mail-Bestätigung und Sicherheitsverifizierung lassen sich nicht abschalten.",
     "groups": {
       "create": "Generierung",
-      "edit": "Bearbeitung & Werkzeuge",
-      "workspace": "Assets & Arbeitsbereich"
+      "edit": "Bearbeitung und Werkzeuge",
+      "workspace": "Assets & Arbeitsbereich",
+      "main": "Allgemein",
+      "image": "Bild — Kategorien",
+      "video": "Video",
+      "account": "Konto und Ressourcen"
     },
     "status": {
       "ACTIVE": "Aktiv",
@@ -2971,7 +2982,39 @@
     "apply": "Anwenden",
     "batchConfirmTitle": "Sammeländerung anwenden?",
     "batchConfirmBody": "Module ({n}) erhalten den Status „{status}“. Geplante Zeitfenster dieser Module werden gelöscht.",
-    "batchDone": "Sammeländerung angewendet."
+    "batchDone": "Sammeländerung angewendet.",
+    "search": "Suchen",
+    "searchPlaceholder": "Name, Pfad oder Schlüssel…",
+    "filterGroup": "Kategorie",
+    "filterStatus": "Status",
+    "anyStatus": "Beliebiger Status",
+    "selectAllVisible": "Sichtbare auswählen",
+    "showing": "Sichtbar: {n} von {total}",
+    "clearFilters": "Filter zurücksetzen",
+    "noMatches": "Kein Modul passt zu diesen Filtern.",
+    "selectGroup": "Kategorie {group} auswählen",
+    "selectedN": "Ausgewählt: {n}",
+    "bulkSet": {
+      "ACTIVE": "Aktiv setzen",
+      "COMING_SOON": "Demnächst setzen",
+      "MAINTENANCE": "Wartung",
+      "DISABLED": "Deaktivieren"
+    },
+    "bulkHide": "Im Menü ausblenden",
+    "bulkShow": "Im Menü anzeigen",
+    "batchConfirmMenu": "{n} Modul(e): „{action}“. Der Status bleibt unverändert.",
+    "hiddenChip": "im Menü ausgeblendet",
+    "scheduledChip": "Zeitfenster",
+    "neverChanged": "Standardeinstellungen — hier wurde noch nichts geändert.",
+    "customTitlePlaceholder": "Standard: „Demnächst“ / „Vorübergehend nicht verfügbar“",
+    "customMessagePlaceholder": "Standard: die übliche GrovBase-Nachricht",
+    "customHint": "Leer lassen für den Standardtext. Kundinnen und Kunden sehen nie einen leeren Bildschirm.",
+    "previewHint": "Sie sehen als Administrator jedes Modul.",
+    "previewActive": "Kundenansicht ist aktiv — eingeschränkte Module sind auch für Sie gesperrt.",
+    "previewStart": "Als Kunde ansehen",
+    "previewStop": "Zurück zur Adminansicht",
+    "previewOn": "Kundenansicht aktiviert.",
+    "previewOff": "Zurück zur Adminansicht."
   },
   "loginSec": {
     "whenTitle": "Wann ein Code nötig ist",

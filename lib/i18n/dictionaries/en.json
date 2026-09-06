@@ -225,7 +225,12 @@
     "errCaptcha": "Please confirm you're not a robot.",
     "errCaptchaFailed": "CAPTCHA verification failed. Please try again.",
     "errIpLimit": "The maximum number of accounts has already been created from this network. Contact us if this is a mistake.",
-    "optional": "optional"
+    "optional": "optional",
+    "paneTitle": "Product photos that sell — in minutes.",
+    "benefit1": "Studio-grade shots from your ordinary product photos",
+    "benefit2": "Product Lock guards shape, colours and details",
+    "benefit3": "25 welcome credits to start — no card required",
+    "paneFooter": "Join the sellers who stopped waiting for a photo shoot."
   },
   "dashboard": {
     "welcome": "Hi, {name}! 👋",
@@ -2937,15 +2942,21 @@
     "badgeMaintenance": "Maintenance",
     "badgeDisabled": "Disabled",
     "adminPreview": "Admin preview — status for customers: {status}.",
-    "manage": "Manage"
+    "manage": "Manage",
+    "backAt": "Planned return: {date}",
+    "previewNote": "This is the customer screen — you have customer preview enabled."
   },
   "featAdm": {
     "title": "Feature availability",
     "sub": "Each module's status for customers: active, coming soon, maintenance or disabled. Changes apply immediately, no redeploy. Login, e-mail confirmation and the security verification cannot be switched off.",
     "groups": {
       "create": "Generation",
-      "edit": "Editing & tools",
-      "workspace": "Assets & workspace"
+      "edit": "Editing and tools",
+      "workspace": "Assets & workspace",
+      "main": "Main",
+      "image": "Image — categories",
+      "video": "Video",
+      "account": "Account and resources"
     },
     "status": {
       "ACTIVE": "Active",
@@ -2971,7 +2982,39 @@
     "apply": "Apply",
     "batchConfirmTitle": "Apply the batch change?",
     "batchConfirmBody": "Modules ({n}) will get the status \"{status}\". Their scheduled time windows will be cleared.",
-    "batchDone": "Batch change applied."
+    "batchDone": "Batch change applied.",
+    "search": "Search",
+    "searchPlaceholder": "Name, route or key…",
+    "filterGroup": "Category",
+    "filterStatus": "Status",
+    "anyStatus": "Any status",
+    "selectAllVisible": "Select visible",
+    "showing": "Showing {n} of {total}",
+    "clearFilters": "Clear filters",
+    "noMatches": "No module matches these filters.",
+    "selectGroup": "Select the {group} category",
+    "selectedN": "Selected: {n}",
+    "bulkSet": {
+      "ACTIVE": "Set active",
+      "COMING_SOON": "Set coming soon",
+      "MAINTENANCE": "Maintenance",
+      "DISABLED": "Disable"
+    },
+    "bulkHide": "Hide from menu",
+    "bulkShow": "Show in menu",
+    "batchConfirmMenu": "{n} module(s): “{action}”. The status stays unchanged.",
+    "hiddenChip": "hidden from menu",
+    "scheduledChip": "time window",
+    "neverChanged": "Defaults — nothing has been changed here yet.",
+    "customTitlePlaceholder": "Default: “Coming soon” / “Temporarily unavailable”",
+    "customMessagePlaceholder": "Default: the standard GrovBase message",
+    "customHint": "Leave empty for the default copy. A customer never sees a blank screen.",
+    "previewHint": "You see every module as an administrator.",
+    "previewActive": "Customer preview is on — restricted modules are blocked for you too.",
+    "previewStart": "Preview as a customer",
+    "previewStop": "Back to the admin view",
+    "previewOn": "Customer preview enabled.",
+    "previewOff": "Back to the admin view."
   },
   "loginSec": {
     "whenTitle": "When to require a code",

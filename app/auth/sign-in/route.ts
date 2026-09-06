@@ -68,7 +68,9 @@ export async function POST(request: Request) {
 
   const keep = nextRaw ? `&next=${encodeURIComponent(next)}` : "";
   const fail = (code: SignInFailure, mail?: string) => redirectTo(
-    `/login?error=${code}${mail ? `&email=${encodeURIComponent(mail)}` : ""}${keep}`,
+    // Straight back into the dialog, so a wrong password re-opens the same
+    // panel over the landing page rather than bouncing through /login.
+    `/?auth=login&error=${code}${mail ? `&email=${encodeURIComponent(mail)}` : ""}${keep}`,
   );
 
   if (!email || !password) return fail("invalid");

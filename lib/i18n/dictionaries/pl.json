@@ -225,7 +225,12 @@
     "errCaptcha": "Potwierdź, że nie jesteś robotem.",
     "errCaptchaFailed": "Weryfikacja CAPTCHA nie powiodła się. Spróbuj ponownie.",
     "errIpLimit": "Z tej sieci utworzono już maksymalną liczbę kont. Napisz do nas, jeśli to pomyłka.",
-    "optional": "opcjonalne"
+    "optional": "opcjonalne",
+    "paneTitle": "Zdjęcia produktowe, które sprzedają — w kilka minut.",
+    "benefit1": "Studyjne ujęcia z Twoich zwykłych zdjęć produktu",
+    "benefit2": "Product Lock pilnuje kształtu, kolorów i detali",
+    "benefit3": "25 kredytów powitalnych na start — bez karty",
+    "paneFooter": "Dołącz do sprzedawców, którzy przestali czekać na sesję zdjęciową."
   },
   "dashboard": {
     "welcome": "Cześć, {name}! 👋",
@@ -2937,7 +2942,9 @@
     "badgeMaintenance": "Prace techniczne",
     "badgeDisabled": "Wyłączony",
     "adminPreview": "Podgląd administratora — status dla klientów: {status}.",
-    "manage": "Zarządzaj"
+    "manage": "Zarządzaj",
+    "backAt": "Planowany powrót: {date}",
+    "previewNote": "To ekran klienta — masz włączony podgląd jako klient."
   },
   "featAdm": {
     "title": "Dostępność funkcji",
@@ -2945,7 +2952,11 @@
     "groups": {
       "create": "Generowanie",
       "edit": "Edycja i narzędzia",
-      "workspace": "Zasoby i przestrzeń robocza"
+      "workspace": "Zasoby i przestrzeń robocza",
+      "main": "Główne",
+      "image": "Obraz — kategorie",
+      "video": "Wideo",
+      "account": "Konto i zasoby"
     },
     "status": {
       "ACTIVE": "Aktywny",
@@ -2971,7 +2982,39 @@
     "apply": "Zastosuj",
     "batchConfirmTitle": "Zastosować zmianę zbiorczą?",
     "batchConfirmBody": "Moduły ({n}) otrzymają status „{status}”. Zaplanowane okna czasowe tych modułów zostaną wyczyszczone.",
-    "batchDone": "Zastosowano zmianę zbiorczą."
+    "batchDone": "Zastosowano zmianę zbiorczą.",
+    "search": "Szukaj",
+    "searchPlaceholder": "Nazwa, adres lub klucz…",
+    "filterGroup": "Kategoria",
+    "filterStatus": "Status",
+    "anyStatus": "Dowolny status",
+    "selectAllVisible": "Zaznacz widoczne",
+    "showing": "Widoczne: {n} z {total}",
+    "clearFilters": "Wyczyść filtry",
+    "noMatches": "Żaden moduł nie pasuje do filtrów.",
+    "selectGroup": "Zaznacz kategorię {group}",
+    "selectedN": "Zaznaczono: {n}",
+    "bulkSet": {
+      "ACTIVE": "Ustaw aktywne",
+      "COMING_SOON": "Ustaw Wkrótce",
+      "MAINTENANCE": "Prace techniczne",
+      "DISABLED": "Wyłącz"
+    },
+    "bulkHide": "Ukryj w menu",
+    "bulkShow": "Pokaż w menu",
+    "batchConfirmMenu": "Moduły ({n}): „{action}”. Status pozostaje bez zmian.",
+    "hiddenChip": "ukryty w menu",
+    "scheduledChip": "okno czasowe",
+    "neverChanged": "Ustawienia domyślne — nic tu jeszcze nie zmieniano.",
+    "customTitlePlaceholder": "Domyślnie: „Już wkrótce” / „Chwilowo niedostępne”",
+    "customMessagePlaceholder": "Domyślnie: standardowy komunikat GrovBase",
+    "customHint": "Puste pola = domyślna treść. Klient nigdy nie zobaczy pustego ekranu.",
+    "previewHint": "Widzisz wszystkie moduły jako administrator.",
+    "previewActive": "Podgląd jako klient jest włączony — moduły z ograniczeniami są dla Ciebie zablokowane.",
+    "previewStart": "Podgląd jako klient",
+    "previewStop": "Wróć do widoku administratora",
+    "previewOn": "Podgląd jako klient włączony.",
+    "previewOff": "Wróciłeś do widoku administratora."
   },
   "loginSec": {
     "whenTitle": "Kiedy wymagać kodu",

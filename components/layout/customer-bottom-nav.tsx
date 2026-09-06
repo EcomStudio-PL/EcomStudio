@@ -5,7 +5,7 @@ import { Home, Images, Package, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { useDrawer } from "./shell-context";
-import { allActive, menuBadge, menuVisible, type AvailabilityMap } from "@/lib/features";
+import { allDefaults, menuBadge, menuVisible, type AvailabilityMap } from "@/lib/features";
 import { cn } from "@/lib/utils";
 
 type Slot = { key: string; href: string; icon: LucideIcon; exact?: boolean };
@@ -37,7 +37,7 @@ export function CustomerBottomNav({ name, availability, isAdmin = false }: {
   const pathname = usePathname();
   const { setOpen } = useDrawer();
   const initial = (name || "?").trim().charAt(0).toUpperCase();
-  const avail = availability ?? allActive();
+  const avail = availability ?? allDefaults();
   // A DISABLED module leaves the dock (its URL 404s anyway); a restricted one
   // keeps its slot with a small warning dot — the page itself explains.
   const slots = SLOTS.filter((s) => menuVisible(avail, s.href, isAdmin));

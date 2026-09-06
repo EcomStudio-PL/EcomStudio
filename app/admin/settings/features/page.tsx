@@ -2,7 +2,7 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { PageHeader } from "@/components/ui/page-header";
 import { FeatureAvailabilityPanel } from "@/components/admin/feature-availability-panel";
-import { listFeatureAvailabilityAction } from "@/app/actions/features";
+import { clientPreviewStateAction, listFeatureAvailabilityAction } from "@/app/actions/features";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,10 @@ export const dynamic = "force-dynamic";
 export default async function AdminFeatureAvailability() {
   const { dict } = await getDictionary();
   const t = makeT(dict);
-  const rows = await listFeatureAvailabilityAction();
+  const [rows, previewing] = await Promise.all([
+    listFeatureAvailabilityAction(),
+    clientPreviewStateAction(),
+  ]);
 
   return (
     <div>
@@ -25,7 +28,7 @@ export default async function AdminFeatureAvailability() {
         sub={t("featAdm.sub")}
       />
       {rows
-        ? <FeatureAvailabilityPanel rows={rows} />
+        ? <FeatureAvailabilityPanel rows={rows} previewing={previewing} />
         : <p className="text-sm text-muted">{t("common.error")}</p>}
     </div>
   );

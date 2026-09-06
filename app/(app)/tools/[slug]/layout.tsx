@@ -1,8 +1,17 @@
 import { FeatureGate } from "@/components/feature-gate";
+import { featureForToolSlug } from "@/lib/features";
 
-/** Availability gate for this module (Task 11 C). The (app) layout above
- *  already authenticated the user; this decides whether the module renders,
- *  shows its coming-soon/maintenance screen, or 404s when disabled. */
-export default function Layout({ children }: { children: React.ReactNode }) {
-  return <FeatureGate feature="tools">{children}</FeatureGate>;
+/**
+ * The batch tools that still have a screen of their own (upscale, expand,
+ * watermark) are switchable individually; anything else this dynamic route
+ * serves belongs to the tools hub. The key comes from the slug through the
+ * same helper the run API uses, so a page and its endpoint can never disagree
+ * about which module they belong to.
+ */
+export default async function ToolSlugLayout({ children, params }: {
+  children: React.ReactNode;
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  return <FeatureGate feature={featureForToolSlug(slug)}>{children}</FeatureGate>;
 }

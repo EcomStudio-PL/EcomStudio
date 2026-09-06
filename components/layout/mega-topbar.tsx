@@ -7,7 +7,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import {
   IMAGE_CREATE, IMAGE_EDIT, IMAGE_MODES, VIDEO_CREATE, VIDEO_EDIT, editLabelKey, type MegaEntry,
 } from "@/lib/topnav";
-import { allActive, menuBadge, menuVisible, type AvailabilityMap, type MenuBadge } from "@/lib/features";
+import { allDefaults, menuBadge, menuVisible, type AvailabilityMap, type MenuBadge } from "@/lib/features";
 import { cn } from "@/lib/utils";
 import { Brand } from "./brand";
 import { ThemeToggle } from "./theme-toggle";
@@ -30,8 +30,12 @@ import { NotificationsBell, type NotificationItem } from "./notifications-bell";
  * belongs to the hover target, not empty page. Opening is instant on hover
  * and on click; closing waits 200 ms so the pointer can travel.
  */
-export function MegaTopbar({ name, email, credits, plan, isAdmin = false, notifications = [], unread = 0, availability }: {
+export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdmin, notifications = [], unread = 0, availability }: {
   name: string; email?: string; credits: number; plan: string; isAdmin?: boolean;
+  /** What the MENU should treat as admin. Same as `isAdmin` normally, but an
+   *  admin previewing the app as a customer gets `false` here while keeping
+   *  the admin affordances (the admin link, the wide palette) intact. */
+  navAdmin?: boolean;
   notifications?: NotificationItem[]; unread?: number;
   /** Feature availability from the server layout — filters and badges the
    *  menus. Absent (other shells) means everything active. */
@@ -40,7 +44,8 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, notifi
   const { t } = useI18n();
   const { setOpen: setDrawerOpen } = useDrawer();
   const pathname = usePathname();
-  const avail = availability ?? allActive();
+  const avail = availability ?? allDefaults();
+  const seesRestricted = navAdmin ?? isAdmin;
   const [menu, setMenu] = useState<"image" | "video" | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const barRef = useRef<HTMLElement>(null);
@@ -109,7 +114,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, notifi
                   plus `pt-2` keeps the bridge hoverable. */}
               {menu === which && (
                 <div className="absolute left-0 top-full z-50 pt-2">
-                  <MegaPanel which={which} t={t} avail={avail} isAdmin={isAdmin} />
+                  <MegaPanel which={which} t={t} avail={avail} isAdmin={seesRestricted} />
                 </div>
               )}
             </div>
@@ -124,7 +129,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, notifi
             fact about the account rather than permanent chrome. */}
         <CreditsControl credits={credits} />
 
-        {menuVisible(avail, "/library", isAdmin) && (
+        {menuVisible(avail, "/library", seesRestricted) && (
           <Link href="/library"
             className={cn(
               "hidden h-9 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition-colors duration-200 lg:inline-flex",
@@ -298,13 +303,9 @@ function MegaLink({ entry, label, sub, soonLabel, compact, dynBadge }: {
       <span className="min-w-0 flex-1">
         <span className={cn("flex items-center gap-1.5 truncate font-semibold", compact ? "text-[13px]" : "text-sm")}>
           {label}
-          {entry.soon ? (
+          {(dynBadge || entry.soon) && (
             <span className="rounded-full bg-raised px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-faint">
-              {soonLabel}
-            </span>
-          ) : dynBadge && (
-            <span className="rounded-full bg-raised px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-faint">
-              {dynBadge}
+              {dynBadge ?? soonLabel}
             </span>
           )}
         </span>
@@ -312,12 +313,16 @@ function MegaLink({ entry, label, sub, soonLabel, compact, dynBadge }: {
       </span>
     </>
   );
+  // A restriction the admin set is not a dead end: the entry stays a link and
+  // the destination explains itself. Only a module with no backend AND no
+  // registry opinion is drawn as an inert row.
+  const inert = entry.soon && !dynBadge;
   const cls = cn(
     "group flex items-center gap-2.5 rounded-xl px-2.5 transition-colors duration-200",
     compact ? "py-1.5" : "py-2",
-    entry.soon ? "cursor-default opacity-60" : "hover:bg-[rgb(var(--ink)/0.06)]",
+    inert ? "cursor-default opacity-60" : "hover:bg-[rgb(var(--ink)/0.06)]",
   );
-  return entry.soon
+  return inert
     ? <div className={cls} aria-disabled>{body}</div>
     : <Link role="menuitem" href={entry.href} className={cls}>{body}</Link>;
 }

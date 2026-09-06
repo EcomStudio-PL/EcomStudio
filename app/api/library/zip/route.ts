@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { featureBlockedForApi } from "@/lib/server/feature-availability";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { buildZip } from "@/lib/server/zip";
 
@@ -18,6 +19,10 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  const blockedFeature = await featureBlockedForApi(supabase, "library");
+  if (blockedFeature) {
+    return NextResponse.json({ ok: false, error: "feature_unavailable", feature_status: blockedFeature }, { status: 503 });
+  }
 
   let body: { paths?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ ok: false, error: "invalid_input" }, { status: 400 }); }

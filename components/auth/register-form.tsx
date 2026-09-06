@@ -42,9 +42,18 @@ const FORM_ERROR_KEYS: Record<string, string> = {
  * and password are not in that list and never will be — an account needs an
  * address to confirm and a password to sign in with.
  */
-export function RegisterForm({ captchaSiteKey, fields }: {
+export function RegisterForm({ captchaSiteKey, fields, bare = false, next = "", onSwitch }: {
   captchaSiteKey: string;
   fields: RegistrationConfig;
+  /** Inside the auth dialog the surface, the heading and the padding belong
+   *  to the dialog — the form renders as a bare body. Nothing about the
+   *  SUBMISSION changes: same action, same captcha, same consents, same
+   *  anti-multiaccount and IP checks. */
+  bare?: boolean;
+  /** Carried into OAuth so a returnTo survives the provider round trip. */
+  next?: string;
+  /** Move to another mode without leaving the dialog. */
+  onSwitch?: (mode: "login") => void;
 }) {
   const { t } = useI18n();
   const [state, action, pending] = useActionState(signUp, null);
@@ -84,7 +93,7 @@ export function RegisterForm({ captchaSiteKey, fields }: {
   /* ── Post-signup: the check-your-inbox screen ── */
   if (state?.ok && state.info === "confirm_email") {
     return (
-      <Card className="mx-auto w-full max-w-md p-6 text-center sm:p-8">
+      <Shell bare={bare} className="mx-auto w-full max-w-md p-6 text-center sm:p-8" bareClassName="text-center">
         <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[rgb(var(--accent)/0.14)] text-accent">
           <MailCheck size={26} aria-hidden />
         </span>
@@ -108,9 +117,11 @@ export function RegisterForm({ captchaSiteKey, fields }: {
           )}
         </form>
         <p className="mt-5 text-sm text-muted">
-          <Link href="/login" className="font-medium text-accent">{t("auth.backToLogin")}</Link>
+          {onSwitch
+            ? <button type="button" onClick={() => onSwitch("login")} className="font-medium text-accent">{t("auth.backToLogin")}</button>
+            : <Link href="/login" className="font-medium text-accent">{t("auth.backToLogin")}</Link>}
         </p>
-      </Card>
+      </Shell>
     );
   }
 
@@ -135,13 +146,17 @@ export function RegisterForm({ captchaSiteKey, fields }: {
   const acquisition = ask(fields.acquisition);
 
   return (
-    <Card className="relative mx-auto w-full max-w-xl overflow-hidden p-6 sm:p-8">
-      <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-24"
-        style={{ background: "radial-gradient(20rem 7rem at 18% -30%, rgb(var(--accent) / 0.14), transparent 70%)" }} />
-      <h1 className="relative font-display text-xl font-semibold tracking-tight">{t("auth.registerTitle")}</h1>
-      <p className="relative mt-1 text-sm text-muted">{t("auth.registerSub")}</p>
+    <Shell bare={bare} className="relative mx-auto w-full max-w-xl overflow-hidden p-6 sm:p-8">
+      {!bare && (
+        <>
+          <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-24"
+            style={{ background: "radial-gradient(20rem 7rem at 18% -30%, rgb(var(--accent) / 0.14), transparent 70%)" }} />
+          <h1 className="relative font-display text-xl font-semibold tracking-tight">{t("auth.registerTitle")}</h1>
+          <p className="relative mt-1 text-sm text-muted">{t("auth.registerSub")}</p>
+        </>
+      )}
 
-      <div className="relative mt-6"><OAuthButtons /></div>
+      <div className={bare ? "" : "relative mt-6"}><OAuthButtons next={next} /></div>
 
       <form action={action} className="relative mt-4 space-y-4" noValidate>
         {/* Identity. A hidden field is not rendered, so it never reaches the
@@ -337,10 +352,24 @@ export function RegisterForm({ captchaSiteKey, fields }: {
         </button>
       </form>
 
-      <p className="relative mt-5 text-sm text-muted">
+      <p className={`mt-5 text-sm text-muted ${bare ? "text-center" : "relative"}`}>
         {t("auth.haveAccount")}{" "}
-        <Link href="/login" className="font-medium text-accent">{t("auth.signIn")}</Link>
+        {onSwitch
+          ? <button type="button" onClick={() => onSwitch("login")} className="font-medium text-accent">{t("auth.signIn")}</button>
+          : <Link href="/login" className="font-medium text-accent">{t("auth.signIn")}</Link>}
       </p>
-    </Card>
+    </Shell>
   );
+}
+
+/** The card the standalone page needs and the dialog must not draw twice. */
+function Shell({ bare, className, bareClassName, children }: {
+  bare: boolean;
+  className: string;
+  bareClassName?: string;
+  children: React.ReactNode;
+}) {
+  return bare
+    ? <div className={bareClassName}>{children}</div>
+    : <Card className={className}>{children}</Card>;
 }

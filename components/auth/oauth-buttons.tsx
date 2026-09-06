@@ -42,7 +42,12 @@ const PROVIDERS: { id: "google" | "apple"; labelKey: string; icon: React.ReactNo
   },
 ];
 
-export function OAuthButtons() {
+export function OAuthButtons({ next }: {
+  /** Where to land after the provider round trip. Carried to /auth/callback,
+   *  which validates it — an absolute or protocol-relative value is refused
+   *  there, so this can never become an open redirect. */
+  next?: string;
+} = {}) {
   const { t } = useI18n();
   const [busy, setBusy] = useState<string | null>(null);
   const active = PROVIDERS.filter((p) => ENABLED.includes(p.id));
@@ -51,9 +56,12 @@ export function OAuthButtons() {
   async function start(provider: "google" | "apple") {
     setBusy(provider);
     const supabase = createClient();
+    const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "";
+    const callback = `${window.location.origin}/auth/callback${
+      safeNext ? `?next=${encodeURIComponent(safeNext)}` : ""}`;
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      options: { redirectTo: callback },
     });
     // On success the browser navigates away; only a failure returns here.
     if (error) setBusy(null);

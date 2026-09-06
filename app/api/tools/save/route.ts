@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { featureBlockedForApi } from "@/lib/server/feature-availability";
+import { featureForToolSlug } from "@/lib/features";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { toolBySlug, MAX_UPLOAD_BYTES } from "@/lib/images/tools";
 
@@ -35,6 +37,12 @@ export async function POST(request: Request) {
 
   const tool = toolBySlug(String(form.get("tool") ?? ""));
   if (!tool) return NextResponse.json({ ok: false, error: "unknown_tool" }, { status: 400 });
+  // Saving is part of the same module as running: a tool taken down must not
+  // keep accepting writes from a tab that was already open.
+  const blockedFeature = await featureBlockedForApi(supabase, featureForToolSlug(tool.slug));
+  if (blockedFeature) {
+    return NextResponse.json({ ok: false, error: "feature_unavailable", feature_status: blockedFeature }, { status: 503 });
+  }
   const productId = typeof form.get("productId") === "string" ? String(form.get("productId")) : "";
 
   const mime = file.type || "image/png";

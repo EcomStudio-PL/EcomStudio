@@ -51,7 +51,7 @@ export async function GET(request: Request) {
   // arrive without a code but with error params.
   if (!code) {
     const failed = searchParams.get("error") || searchParams.get("error_code");
-    return NextResponse.redirect(`${origin}/login${failed ? "?error=link" : ""}`);
+    return NextResponse.redirect(`${origin}/?auth=login${failed ? "&error=link" : ""}`);
   }
 
   // A session-only user clicking an emailed link must stay session-only:
@@ -63,7 +63,7 @@ export async function GET(request: Request) {
   if (error) {
     // Invalid / expired / already-used code — one honest message, no raw
     // provider text, nothing to enumerate.
-    return NextResponse.redirect(`${origin}/login?error=link`);
+    return NextResponse.redirect(`${origin}/?auth=login&error=link`);
   }
 
   // Same warm-up as the password route: spend the clock-skew window here

@@ -4,5 +4,5 @@ import { FeatureGate } from "@/components/feature-gate";
  *  authenticated the visitor; this decides whether the module renders, shows
  *  its coming-soon / maintenance screen, or 404s when it is disabled. */
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return <FeatureGate feature="history">{children}</FeatureGate>;
+  return <FeatureGate feature="home">{children}</FeatureGate>;
 }

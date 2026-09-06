@@ -1,8 +1,9 @@
 import "server-only";
 import { cache } from "react";
+import { cookies } from "next/headers";
 import type { Client } from "@/lib/services/workspace";
 import {
-  ACTIVE_STATE, allActive, isFeatureKey,
+  ACTIVE_STATE, allDefaults, defaultStateFor, isFeatureKey,
   type AvailabilityMap, type FeatureKey, type FeatureState, type FeatureStatus,
 } from "@/lib/features";
 
@@ -39,7 +40,9 @@ export function effectiveState(row: FeatureRow | undefined, now: Date): FeatureS
   if (!row) return ACTIVE_STATE;
   const status = row.status as FeatureStatus;
   if (status !== "COMING_SOON" && status !== "MAINTENANCE" && status !== "DISABLED") {
-    return ACTIVE_STATE;
+    // ACTIVE still carries the admin's menu choice: "visible" and "status" are
+    // independent settings (§28), so a feature can be live and still hidden.
+    return row.hidden_from_menu ? { ...ACTIVE_STATE, hiddenFromMenu: true } : ACTIVE_STATE;
   }
   const starts = row.starts_at ? new Date(row.starts_at) : null;
   const ends = row.ends_at ? new Date(row.ends_at) : null;
@@ -60,16 +63,22 @@ export function effectiveState(row: FeatureRow | undefined, now: Date): FeatureS
  *  that share a render), overlaid on the registry. */
 export const getAvailabilityMap = cache(async (supabase: Client): Promise<AvailabilityMap> => {
   try {
+    // ONE query for the whole menu — never one per entry. React's cache()
+    // dedupes the layout, the page and any API guard sharing a render.
     const { data, error } = await supabase.from("feature_availability").select("*");
-    if (error) return allActive();
+    if (error) return allDefaults();
     const now = new Date();
-    const map = allActive();
+    const map = allDefaults();
     for (const row of (data ?? []) as FeatureRow[]) {
+      // A stored row wins over the registry default; an unknown key (a feature
+      // that was removed from the code) is ignored rather than crashing.
       if (isFeatureKey(row.feature_key)) map[row.feature_key] = effectiveState(row, now);
     }
     return map;
   } catch {
-    return allActive();
+    // A configuration outage must never read as "the product is gone": fall
+    // back to what the registry declares, and show the customer no error.
+    return allDefaults();
   }
 });
 
@@ -86,6 +95,26 @@ export const isAdminUser = cache(async (supabase: Client): Promise<boolean> => {
   }
 });
 
+/** The cookie the admin panel sets for "look at this as a customer". */
+export const CLIENT_PREVIEW_COOKIE = "grovbase_client_preview";
+
+/**
+ * Does THIS VIEWER get admin treatment right now — the real role, minus a
+ * deliberate client-preview. Used by the menu and the gate together, so the
+ * drawer and the page can never disagree about what the customer sees.
+ *
+ * The cookie can only ever take privilege away, which is why it needs no
+ * signature: turning it on shows an admin less, never more.
+ */
+export const viewerIsAdmin = cache(async (supabase: Client): Promise<boolean> => {
+  if (!(await isAdminUser(supabase))) return false;
+  try {
+    return (await cookies()).get(CLIENT_PREVIEW_COOKIE)?.value !== "1";
+  } catch {
+    return true;
+  }
+});
+
 /**
  * API-side guard. Returns null when the caller may proceed (feature ACTIVE,
  * or a real admin testing a restricted module), otherwise the blocking
@@ -96,7 +125,7 @@ export async function featureBlockedForApi(
   key: FeatureKey,
 ): Promise<Exclude<FeatureStatus, "ACTIVE"> | null> {
   const map = await getAvailabilityMap(supabase);
-  const status = (map[key] ?? ACTIVE_STATE).status;
+  const status = (map[key] ?? defaultStateFor(key)).status;
   if (status === "ACTIVE") return null;
   if (await isAdminUser(supabase)) return null;
   return status;

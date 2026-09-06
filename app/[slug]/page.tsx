@@ -1,3 +1,4 @@
+import { AuthLink } from "@/components/auth/auth-link";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -59,9 +60,9 @@ export default async function CmsPage({ params }: Params) {
     <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-5 sm:px-8">
       <header className="flex items-center justify-between gap-3 py-5 pt-[calc(1.25rem+env(safe-area-inset-top))]">
         <Brand href="/" />
-        <Link href="/login" className="rounded-xl border border-line px-3.5 py-2 text-[13.5px] font-semibold transition-colors hover:bg-raised">
+        <AuthLink mode="login" className="rounded-xl border border-line px-3.5 py-2 text-[13.5px] font-semibold transition-colors hover:bg-raised">
           {t("landing.ctaLogin")}
-        </Link>
+        </AuthLink>
       </header>
 
       <BlockRenderer
