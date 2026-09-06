@@ -7,8 +7,8 @@ import {
   listPlaceholders, parseStoredDef, renderTemplateEmail, renderTemplateTelegram, storedFromDef,
   type TemplateDef,
 } from "@/lib/server/message-templates";
-import { AUTH_EMAIL_TEMPLATES } from "@/lib/server/auth-email-templates";
-import { readAuthSyncView, runAuthSync, type AuthSyncView } from "@/lib/server/supabase-management";
+import { hookUrl, pushHookConfig, readHookStatus, type HookStatus } from "@/lib/server/auth-hook-config";
+import { readIntegrationSecrets, type MailConfig } from "@/lib/server/integrations";
 import type { Json } from "@/lib/database.types";
 
 /**
@@ -148,18 +148,6 @@ export async function previewTemplateAction(key: string, def: TemplateDef): Prom
   }
 }
 
-/** The auth templates (GoTrue-rendered): full HTML for preview and for the
- *  copy-to-Supabase button. Admin-only like everything here. */
-export async function authTemplateHtmlAction(key: string): Promise<{ ok: true; subject: string; html: string } | { ok: false }> {
-  try {
-    await requireAdmin();
-    const tpl = AUTH_EMAIL_TEMPLATES[key];
-    return tpl ? { ok: true, subject: tpl.subject, html: tpl.html } : { ok: false };
-  } catch {
-    return { ok: false };
-  }
-}
-
 export type TemplateListEntry = {
   key: string;
   event: string;
@@ -210,44 +198,70 @@ export async function listTemplatesAction(): Promise<TemplateListEntry[] | null>
   }
 }
 
-/* ── Supabase Auth sync (A11) ────────────────────────────────────────────────
- * The AUTH templates are rendered by GoTrue, so "publish" for them means
- * pushing the repo templates + Site URL + SMTP into the Supabase control
- * plane. That happens through the Management API with a server-only token —
- * see lib/server/supabase-management.ts. The UI never claims more than the
- * verified truth: statuses come from readAuthSyncView, and runAuthSync only
- * stores "synced" after reading the config back. */
+/* ── AUTH E-MAIL DELIVERY ────────────────────────────────────────────────────
+ * The old model asked an admin to copy HTML into the Supabase dashboard and
+ * showed a "requires sync" badge until they did. That model is gone: with the
+ * Send Email Hook, GoTrue posts the token to GrovBase and GrovBase writes and
+ * sends the message from the SAME published template as everything else. What
+ * is left to report is the state of the pipe — templates, mailbox, hook — and
+ * it is reported only as far as it can actually be verified. */
 
-export async function authSyncStatusAction(): Promise<AuthSyncView | null> {
+export type AuthDeliveryView = {
+  hook: HookStatus;
+  /** The mailbox is complete enough to send (host, user, sealed password). */
+  smtpReady: boolean;
+  /** Where the endpoint lives, for the panel to show and for a person to
+   *  paste into Supabase if they are configuring it by hand. */
+  endpointUrl: string;
+};
+
+export async function authDeliveryStatusAction(): Promise<AuthDeliveryView | null> {
   try {
     const { supabase } = await requireAdmin();
-    return await readAuthSyncView(supabase);
+    const [hook, mail] = await Promise.all([
+      readHookStatus(supabase),
+      readIntegrationSecrets<MailConfig>(supabase, "mail"),
+    ]);
+    const password = mail.secrets.smtp_password
+      ?? (mail.config.smtp_same_as_imap ? mail.secrets.imap_password : undefined);
+    return {
+      hook,
+      smtpReady: Boolean(mail.config.smtp_host.trim() && mail.config.smtp_user.trim() && password),
+      endpointUrl: hookUrl(),
+    };
   } catch {
     return null;
   }
 }
 
-export type AuthSyncActionResult =
-  | { ok: true; smtpIncluded: boolean; view: AuthSyncView }
-  | { ok: false; reason: "forbidden" | "no_token" | "api"; error?: string; view: AuthSyncView | null };
+export type ConfigureHookResult =
+  | { ok: true; view: AuthDeliveryView | null }
+  | { ok: false; reason: "forbidden" | "no_token" | "no_key" | "api" | "verify"; error?: string; view: AuthDeliveryView | null };
 
-export async function syncSupabaseAuthAction(): Promise<AuthSyncActionResult> {
+/**
+ * Configure the hook in Supabase, secret and all, without anybody copying
+ * anything. The secret is generated and sealed server-side; the only thing
+ * that ever leaves this process is one TLS PATCH to the Management API, and
+ * the audit row records that it happened — never the value.
+ */
+export async function configureAuthHookAction(): Promise<ConfigureHookResult> {
   let ctx: Awaited<ReturnType<typeof requireAdmin>>;
   try {
     ctx = await requireAdmin();
   } catch {
     return { ok: false, reason: "forbidden", view: null };
   }
-  const result = await runAuthSync(ctx.supabase);
+  const result = await pushHookConfig(ctx.supabase);
   await logAudit(ctx.supabase, {
-    actorId: ctx.adminId, action: "supabase_auth.sync",
-    entityType: "app_settings", entityId: "supabase_auth_sync",
-    after: { ok: result.ok, state: result.view.state, ...(result.ok ? { smtp: result.smtpIncluded } : {}) },
+    actorId: ctx.adminId, action: "auth_email_hook.configure",
+    entityType: "app_settings", entityId: "auth_email_hook",
+    after: { ok: result.ok, supabase: result.status.supabase, ...(result.ok ? {} : { reason: result.reason }) },
   });
   revalidatePath(PAGE);
+  const view = await authDeliveryStatusAction();
   return result.ok
-    ? { ok: true, smtpIncluded: result.smtpIncluded, view: result.view }
-    : { ok: false, reason: result.reason, error: result.error, view: result.view };
+    ? { ok: true, view }
+    : { ok: false, reason: result.reason, error: result.error, view };
 }
 
 /** The editor warns about placeholders the event will never fill. */

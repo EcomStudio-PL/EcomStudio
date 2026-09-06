@@ -227,17 +227,45 @@ export function AuthModal() {
           "relative flex min-h-0 w-full flex-col",
           wide ? "lg:w-[560px] lg:shrink-0" : "lg:w-[460px] lg:shrink-0",
         )}>
-          <div className="flex items-start justify-between gap-3 px-4 pb-1.5 pt-5 sm:px-6 sm:pt-6">
+          <div className={cn(
+            "flex items-start justify-between gap-3 px-4 sm:px-6",
+            wide ? "pb-1 pt-4 sm:pt-5" : "pb-1.5 pt-5 sm:pt-6",
+          )}>
             <div className="min-w-0">
               {/* The mark, on mobile too — the dialog has to say whose it is
-                  even when the page behind it is blurred out. */}
-              <span className="brand-gradient mb-2.5 flex h-9 w-9 items-center justify-center rounded-xl lg:hidden">
-                <Image src="/brand/icon-on-dark.png" alt="" width={20} height={20} className="h-5 w-5" />
-              </span>
-              <h2 id="auth-modal-title" className="font-display text-[19px] font-semibold leading-tight tracking-tight sm:text-xl">
-                {copy[mode].title}
-              </h2>
-              <p className="mt-1 text-[13px] leading-snug text-muted sm:text-sm">{copy[mode].sub}</p>
+                  even when the page behind it is blurred out. Registration is
+                  the tallest thing this dialog ever shows, so there it sits
+                  BESIDE the title instead of above it: same brand, one row
+                  instead of two, and the form keeps the 46px. */}
+              {wide ? (
+                <span className="flex items-center gap-2.5 lg:block">
+                  <span className="brand-gradient flex h-9 w-9 shrink-0 items-center justify-center rounded-xl lg:hidden">
+                    <Image src="/brand/icon-on-dark.png" alt="" width={20} height={20} className="h-5 w-5" />
+                  </span>
+                  <h2 id="auth-modal-title" className="font-display text-[19px] font-semibold leading-tight tracking-tight sm:text-xl">
+                    {copy[mode].title}
+                  </h2>
+                </span>
+              ) : (
+                <>
+                  <span className="brand-gradient mb-2.5 flex h-9 w-9 items-center justify-center rounded-xl lg:hidden">
+                    <Image src="/brand/icon-on-dark.png" alt="" width={20} height={20} className="h-5 w-5" />
+                  </span>
+                  <h2 id="auth-modal-title" className="font-display text-[19px] font-semibold leading-tight tracking-tight sm:text-xl">
+                    {copy[mode].title}
+                  </h2>
+                </>
+              )}
+              {/* Registration is the one mode that runs out of viewport on a
+                  narrow phone, and its subtitle only restates the title. It
+                  steps aside below 420px so the FORM keeps the room; every
+                  other mode, and every wider screen, still reads it. */}
+              <p className={cn(
+                "text-[13px] leading-snug text-muted sm:text-sm",
+                wide ? "mt-1.5 max-[419px]:hidden" : "mt-1",
+              )}>
+                {copy[mode].sub}
+              </p>
             </div>
             <button
               type="button"

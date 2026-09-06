@@ -13,11 +13,11 @@ import { Input, Label } from "@/components/ui/input";
 import { Switch } from "@/components/ui/record";
 import type { TemplateDef } from "@/lib/server/message-templates";
 import {
-  authTemplateHtmlAction, previewTemplateAction, publishTemplateAction,
-  resetTemplateAction, saveTemplateDraftAction, syncSupabaseAuthAction,
+  previewTemplateAction, publishTemplateAction,
+  resetTemplateAction, saveTemplateDraftAction, configureAuthHookAction,
   type TemplateListEntry, type TemplatePreview,
 } from "@/app/actions/templates";
-import type { AuthSyncView } from "@/lib/server/supabase-management";
+import type { AuthDeliveryView } from "@/app/actions/templates";
 
 /**
  * SZABLONY WIADOMOŚCI — the admin's template studio.
@@ -50,13 +50,13 @@ function startDef(entry: TemplateListEntry): TemplateDef {
     : { channel: "telegram", telegram: { ...EMPTY_TG } };
 }
 
-export function TemplateStudio({ entries, authSync }: {
+export function TemplateStudio({ entries, delivery }: {
   entries: TemplateListEntry[];
-  authSync: AuthSyncView | null;
+  delivery: AuthDeliveryView | null;
 }) {
   const { t } = useI18n();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [sync, setSync] = useState<AuthSyncView | null>(authSync);
+  const [pipe, setPipe] = useState<AuthDeliveryView | null>(delivery);
   const selected = entries.find((e) => e.key === selectedKey) ?? null;
 
   const groups = useMemo(() => {
@@ -75,13 +75,13 @@ export function TemplateStudio({ entries, authSync }: {
 
   return (
     <div className="space-y-6">
-      <AuthSyncPanel sync={sync} onSync={setSync} />
+      <AuthDeliveryPanel view={pipe} onChange={setPipe} />
       {groups.map((group) => (
         <section key={group.key}>
           <h2 className="mb-2.5 text-[12px] font-semibold uppercase tracking-wide text-faint">{t(group.key)}</h2>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {group.items.map((entry) => (
-              <TemplateTile key={entry.key} entry={entry} sync={sync} onEdit={() => setSelectedKey(entry.key)} />
+              <TemplateTile key={entry.key} entry={entry} onEdit={() => setSelectedKey(entry.key)} />
             ))}
           </div>
         </section>
@@ -90,102 +90,134 @@ export function TemplateStudio({ entries, authSync }: {
   );
 }
 
-/* ── Supabase Auth sync panel (A11) ─────────────────────────────────────────
- * Four states, never a claim beyond the verified truth:
- *   ● synced   — last sync verified AND nothing changed since
- *   ● pending  — token present, changes not pushed yet
- *   ● error    — last attempt failed (message shown)
- *   ● manual   — no SUPABASE_MANAGEMENT_TOKEN, so only the dashboard works */
-function AuthSyncPanel({ sync, onSync }: {
-  sync: AuthSyncView | null;
-  onSync: (v: AuthSyncView) => void;
+/* ── AUTH E-MAIL DELIVERY ────────────────────────────────────────────────────
+ * Three lines, and not one of them says something we have not verified.
+ *
+ *   GrovBase templates — always on: the published rows below ARE the source.
+ *   GrovBase SMTP      — read from the mailbox integration, not assumed.
+ *   Send Email Hook    — read back from Supabase when a management token lets
+ *                        us ask. Without one we say "endpoint ready, awaiting
+ *                        activation" rather than showing a green light we
+ *                        cannot stand behind.
+ */
+function AuthDeliveryPanel({ view, onChange }: {
+  view: AuthDeliveryView | null;
+  onChange: (v: AuthDeliveryView) => void;
 }) {
   const { t } = useI18n();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
-  if (!sync) return null;
+  if (!view) return null;
 
-  const DOT: Record<AuthSyncView["state"], string> = {
-    synced: "bg-success",
-    pending: "bg-warning",
-    error: "bg-danger",
-    manual: "bg-warning",
-  };
-  const LABEL: Record<AuthSyncView["state"], string> = {
-    synced: t("tpl.sync.stateSynced"),
-    pending: t("tpl.sync.statePending"),
-    error: t("tpl.sync.stateError"),
-    manual: t("tpl.sync.stateManual"),
-  };
+  const hookState = view.hook.supabase;
+  const hookTone = hookState === "ready" ? "ok"
+    : hookState === "mismatch" ? "bad"
+      : "wait";
+  const hookLabel = hookState === "ready" ? t("tpl.pipe.hookReady")
+    : hookState === "mismatch" ? t("tpl.pipe.hookMismatch")
+      : hookState === "off" ? t("tpl.pipe.hookOff")
+        : view.hook.endpoint === "ready" ? t("tpl.pipe.hookUnknownReady")
+          : t("tpl.pipe.hookAwaiting");
 
   const run = async () => {
     setBusy(true);
-    const res = await syncSupabaseAuthAction();
+    const res = await configureAuthHookAction();
     setBusy(false);
-    if (res.view) onSync(res.view);
+    if (res.view) onChange(res.view);
     if (res.ok) {
-      toast.success(res.smtpIncluded ? t("tpl.sync.okSmtpToast") : t("tpl.sync.okToast"));
+      toast.success(t("tpl.pipe.okToast"));
       router.refresh();
-    } else if (res.reason === "no_token") {
-      toast.error(t("tpl.sync.noTokenToast"));
-    } else {
-      toast.error(t("tpl.sync.failToast"));
+      return;
     }
+    toast.error(
+      res.reason === "no_token" ? t("tpl.pipe.noTokenToast")
+        : res.reason === "no_key" ? t("tpl.pipe.noKeyToast")
+          : t("tpl.pipe.failToast"),
+    );
   };
 
   return (
     <Card className="p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="flex items-center gap-2 text-sm font-semibold text-ink">
-            <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${DOT[sync.state]}`} />
-            {t("tpl.sync.title")} — {LABEL[sync.state]}
-          </p>
-          <p className="mt-1 text-[12px] leading-relaxed text-muted">
-            {t("tpl.sync.last")}: {sync.lastSyncAt
-              ? new Date(sync.lastSyncAt).toLocaleString("pl-PL")
-              : t("tpl.sync.never")}
-            {" · "}
-            {sync.smtpReady ? t("tpl.sync.smtpReady") : t("tpl.sync.smtpMissing")}
-          </p>
+          <p className="text-sm font-semibold text-ink">{t("tpl.pipe.title")}</p>
+          <div className="mt-2.5 space-y-1.5">
+            <PipeLine tone="ok" label={t("tpl.pipe.templates")} value={t("tpl.pipe.templatesOn")} />
+            <PipeLine tone={view.smtpReady ? "ok" : "bad"} label={t("tpl.pipe.smtp")}
+              value={view.smtpReady ? t("tpl.pipe.smtpOn") : t("tpl.pipe.smtpOff")} />
+            <PipeLine tone={hookTone} label={t("tpl.pipe.hook")} value={hookLabel} />
+          </div>
         </div>
-        <Button onClick={() => void run()} disabled={busy || !sync.tokenPresent}>
-          {busy
-            ? <Loader2 size={14} className="mr-2 animate-spin" aria-hidden />
-            : <RefreshCw size={14} aria-hidden className="mr-2" />}
-          {t("tpl.sync.button")}
-        </Button>
+        {view.hook.canAutomate && (
+          <Button onClick={() => void run()} disabled={busy}>
+            {busy
+              ? <Loader2 size={14} className="mr-2 animate-spin" aria-hidden />
+              : <RefreshCw size={14} aria-hidden className="mr-2" />}
+            {hookState === "ready" ? t("tpl.pipe.reconfigure") : t("tpl.pipe.configure")}
+          </Button>
+        )}
       </div>
 
-      {sync.state === "error" && sync.error && (
+      <p className="mt-3 text-[12px] leading-relaxed text-muted">{t("tpl.pipe.explainer")}</p>
+
+      {view.hook.error && (
         <p className="mt-3 rounded-xl bg-[rgb(var(--danger)/0.1)] px-3 py-2.5 font-mono text-[12px] leading-relaxed text-danger">
-          {sync.error}
+          {view.hook.error}
         </p>
       )}
-      {sync.state === "manual" && (
+
+      {/* No management token: the ONE thing left for a person to do, spelled
+          out exactly, with the URL to paste. */}
+      {!view.hook.canAutomate && (
         <div className="mt-3 rounded-xl bg-[rgb(var(--warning)/0.1)] px-3.5 py-3 text-[12.5px] leading-relaxed text-warning">
-          <p className="font-semibold">{t("tpl.sync.manualTitle")}</p>
+          <p className="font-semibold">{t("tpl.pipe.manualTitle")}</p>
           <ol className="mt-1.5 list-decimal space-y-1 pl-4">
-            <li>{t("tpl.sync.manual1")}</li>
-            <li>{t("tpl.sync.manual2")}</li>
-            <li>{t("tpl.sync.manual3")}</li>
+            <li>{t("tpl.pipe.manual1")}</li>
+            <li>{t("tpl.pipe.manual2")}</li>
+            <li>{t("tpl.pipe.manual3")}</li>
           </ol>
-          <p className="mt-2">{t("tpl.sync.manualAlt")}</p>
         </div>
       )}
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className="text-[11.5px] font-semibold uppercase tracking-wide text-faint">
+          {t("tpl.pipe.endpoint")}
+        </span>
+        <code className="min-w-0 flex-1 truncate rounded-lg bg-raised px-2.5 py-1.5 font-mono text-[11.5px] text-muted">
+          {view.endpointUrl}
+        </code>
+        <Button size="sm" variant="ghost"
+          onClick={() => { void navigator.clipboard.writeText(view.endpointUrl); toast.success(t("tpl.copied")); }}>
+          <ClipboardCopy size={13} aria-hidden className="mr-1.5" />
+          {t("common.copy")}
+        </Button>
+      </div>
     </Card>
   );
 }
 
-function TemplateTile({ entry, sync, onEdit }: {
+function PipeLine({ tone, label, value }: {
+  tone: "ok" | "wait" | "bad";
+  label: string;
+  value: string;
+}) {
+  const dot = tone === "ok" ? "bg-success" : tone === "wait" ? "bg-warning" : "bg-danger";
+  return (
+    <p className="flex items-center gap-2 text-[12.5px] text-muted">
+      <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
+      <span className="font-medium text-ink">{label}</span>
+      <span>{value}</span>
+    </p>
+  );
+}
+
+function TemplateTile({ entry, onEdit }: {
   entry: TemplateListEntry;
-  sync: AuthSyncView | null;
   onEdit: () => void;
 }) {
   const { t } = useI18n();
   const Icon = entry.channel === "telegram" ? MessageCircle : Mail;
-  const authSynced = entry.kind === "auth" && sync?.state === "synced";
   return (
     <Card className="flex flex-col p-4">
       <div className="flex items-start gap-3">
@@ -196,16 +228,12 @@ function TemplateTile({ entry, sync, onEdit }: {
           <p className="truncate text-sm font-semibold text-ink">{t(entry.nameKey)}</p>
           <p className="mt-0.5 text-[12px] text-muted">
             {entry.channel === "telegram" ? "Telegram" : "E-mail"}
-            {entry.kind === "auth" ? ` · ${t("tpl.viaSupabase")}` : ""}
+            {entry.kind === "auth" ? ` · ${t("tpl.viaHook")}` : ""}
           </p>
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        {entry.kind === "auth" ? (
-          authSynced
-            ? <Badge tone="green">{t("tpl.authSynced")}</Badge>
-            : <Badge tone="amber">{t("tpl.needsSync")}</Badge>
-        ) : entry.publishedVersion > 0 ? (
+        {entry.publishedVersion > 0 ? (
           <Badge tone="green">{t("tpl.published")} v{entry.publishedVersion}</Badge>
         ) : (
           <Badge tone="neutral">{t("tpl.defaultActive")}</Badge>
@@ -238,25 +266,16 @@ function TemplateEditor({ entry, onBack }: { entry: TemplateListEntry; onBack: (
   const [showPreview, setShowPreview] = useState(true);
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
-  const [authHtml, setAuthHtml] = useState<{ subject: string; html: string } | null>(null);
   const focused = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
 
-  const isAuth = entry.kind === "auth";
-
-  // AUTH templates: fetch the GoTrue HTML once for preview + copy.
+  // Every template previews the same way now — including the auth ones, which
+  // GrovBase renders itself since the Send Email Hook took over.
   useEffect(() => {
-    if (!isAuth) return;
-    void authTemplateHtmlAction(entry.key).then((res) => { if (res.ok) setAuthHtml(res); });
-  }, [entry.key, isAuth]);
-
-  // Debounced server-side preview for APP templates.
-  useEffect(() => {
-    if (isAuth) return;
     const id = setTimeout(() => {
       void previewTemplateAction(entry.key, def).then(setPreview);
     }, 450);
     return () => clearTimeout(id);
-  }, [def, entry.key, isAuth]);
+  }, [def, entry.key]);
 
   const patch = useCallback((update: Partial<EmailDraft> & Partial<TgDraft>) => {
     setDef((prev) => prev.channel === "email"
@@ -310,12 +329,6 @@ function TemplateEditor({ entry, onBack }: { entry: TemplateListEntry; onBack: (
     } else toast.error(t("common.error"));
   };
 
-  const copyAuthHtml = async () => {
-    if (!authHtml) return;
-    await navigator.clipboard.writeText(authHtml.html);
-    toast.success(t("tpl.htmlCopied"));
-  };
-
   const track = (el: HTMLInputElement | HTMLTextAreaElement | null) => { if (el) focused.current = el; };
 
   return (
@@ -339,9 +352,8 @@ function TemplateEditor({ entry, onBack }: { entry: TemplateListEntry; onBack: (
         </div>
       </div>
 
-      {isAuth && (
-        <p className="mb-4 flex items-start gap-2 rounded-xl bg-[rgb(var(--warning)/0.1)] px-3.5 py-3 text-[13px] leading-relaxed text-warning">
-          <TriangleAlert size={15} aria-hidden className="mt-0.5 shrink-0" />
+      {entry.kind === "auth" && (
+        <p className="mb-4 rounded-xl bg-[rgb(var(--accent)/0.08)] px-3.5 py-3 text-[13px] leading-relaxed text-muted">
           {t("tpl.authNote")}
         </p>
       )}
@@ -349,19 +361,7 @@ function TemplateEditor({ entry, onBack }: { entry: TemplateListEntry; onBack: (
       <div className="grid gap-4 lg:grid-cols-2">
         {/* LEFT — settings */}
         <Card className="p-5">
-          {isAuth ? (
-            <div className="space-y-4">
-              <div>
-                <Label>{t("tpl.subject")}</Label>
-                <Input value={authHtml?.subject ?? "…"} readOnly className="mt-1.5" />
-              </div>
-              <Button onClick={() => void copyAuthHtml()} disabled={!authHtml}>
-                <ClipboardCopy size={14} aria-hidden className="mr-2" />
-                {t("tpl.copyHtml")}
-              </Button>
-              <p className="text-[12px] leading-relaxed text-faint">{t("tpl.authWhere")}</p>
-            </div>
-          ) : def.channel === "email" ? (
+          {def.channel === "email" ? (
             <div className="space-y-3.5">
               <Field label={t("tpl.subject")} value={def.email.subject} field="subject" onChange={patch} track={track} />
               <Field label={t("tpl.heading")} value={def.email.heading} field="heading" onChange={patch} track={track} />
@@ -388,7 +388,7 @@ function TemplateEditor({ entry, onBack }: { entry: TemplateListEntry; onBack: (
             </div>
           )}
 
-          {!isAuth && entry.placeholders.length > 0 && (
+          {entry.placeholders.length > 0 && (
             <div className="mt-4 border-t border-line pt-3.5">
               <p className="mb-2 text-[12px] font-semibold text-muted">{t("tpl.placeholders")}</p>
               <div className="flex flex-wrap gap-1.5">
@@ -409,7 +409,7 @@ function TemplateEditor({ entry, onBack }: { entry: TemplateListEntry; onBack: (
             </div>
           )}
 
-          {!isAuth && (
+          {(
             <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-line pt-4">
               <Button variant="secondary" onClick={() => void save()} disabled={busy !== null || !dirty}>
                 {busy === "save" ? <Loader2 size={14} className="mr-2 animate-spin" aria-hidden /> : null}
@@ -436,11 +436,7 @@ function TemplateEditor({ entry, onBack }: { entry: TemplateListEntry; onBack: (
                 <p className="max-w-[60%] truncate text-[12px] text-faint">{preview.subject}</p>
               )}
             </div>
-            {isAuth ? (
-              authHtml
-                ? <iframe title="preview" sandbox="" srcDoc={authHtml.html} className="h-[560px] w-full bg-white" />
-                : <div className="flex h-[300px] items-center justify-center text-muted"><Loader2 className="animate-spin" aria-hidden /></div>
-            ) : preview?.ok && preview.channel === "email" ? (
+            {preview?.ok && preview.channel === "email" ? (
               <iframe title="preview" sandbox="" srcDoc={preview.html} className="h-[560px] w-full bg-white" />
             ) : preview?.ok && preview.channel === "telegram" ? (
               <iframe title="preview" sandbox="" srcDoc={telegramPreviewDoc(preview.text, preview.buttons)} className="h-[420px] w-full" />

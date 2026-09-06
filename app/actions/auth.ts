@@ -12,9 +12,7 @@ import { recordSignup, signupAllowed, signupIpHash } from "@/lib/server/signup-g
 import { signupAllowedNow } from "@/lib/server/platform-access";
 import { getLocale } from "@/lib/i18n/server";
 import { absoluteUrl } from "@/lib/site";
-import {
-  EMAIL_RE, fullNameIssue, isPoland, passwordIssue, splitFullName, validNip,
-} from "@/lib/auth-validation";
+import { EMAIL_RE, fullNameIssue, passwordIssue, splitFullName } from "@/lib/auth-validation";
 
 type Result = { ok: boolean; error?: string; info?: string; email?: string };
 
@@ -35,18 +33,14 @@ async function callerIp() {
 /* ── Validation shared with the client (server is authoritative) ───────── */
 
 export type SignUpErrors = Partial<Record<
-  | "full_name" | "email" | "password" | "password_confirm" | "terms"
-  | "company_name" | "tax_id" | "company_street" | "company_postal_code"
-  | "company_city" | "company_country" | "form",
+  "full_name" | "email" | "password" | "password_confirm" | "terms" | "form",
   string
 >>;
 
 /* ── Registration ──────────────────────────────────────────────────────── */
 
-export type SignUpValues = Partial<Record<
-  | "full_name" | "email"
-  | "company_name" | "tax_id" | "company_street" | "company_postal_code"
-  | "company_city" | "company_country", string>> & { marketing_consent?: boolean };
+export type SignUpValues = Partial<Record<"full_name" | "email", string>>
+  & { marketing_consent?: boolean };
 
 export type SignUpState = {
   ok: boolean; errors?: SignUpErrors; info?: string; email?: string;
@@ -60,17 +54,11 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
   // Length caps mirror the DB trigger: the profile row is capped there, but
   // an uncapped value would still land in auth.users.raw_user_meta_data and
   // ride inside every JWT — a 200KB "name" would brick its own session.
-  const CAP: Record<string, number> = {
-    full_name: 160,
-    company_name: 200, tax_id: 20, company_street: 200,
-    company_postal_code: 12, company_city: 120, company_country: 80, email: 320,
-  };
+  const CAP: Record<string, number> = { full_name: 160, email: 320 };
   const f = (k: string) => String(formData.get(k) ?? "").trim().slice(0, CAP[k] ?? 200);
   const email = f("email");
   const password = String(formData.get("password") ?? "");
   const confirm = String(formData.get("password_confirm") ?? "");
-  const company = formData.get("company_account") != null;
-  const country = f("company_country") || "Polska";
   // ONE name box, two columns behind it. The profile keeps first_name and
   // last_name (the CRM, the mail templates and the admin list read them);
   // signup just stopped asking the question twice.
@@ -91,22 +79,15 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
   if (pwIssue) errors.password = pwIssue;
   if (password !== confirm) errors.password_confirm = "mismatch";
   if (formData.get("accept_terms") == null) errors.terms = "required";
-  if (company) {
-    if (!f("company_name")) errors.company_name = "required";
-    if (!f("company_street")) errors.company_street = "required";
-    if (!f("company_postal_code")) errors.company_postal_code = "required";
-    if (!f("company_city")) errors.company_city = "required";
-    if (!country) errors.company_country = "required";
-    // Checksum-validated NIP for Poland; other countries get a sanity check.
-    if (isPoland(country) ? !validNip(f("tax_id")) : f("tax_id").replace(/[\s-]/g, "").length < 5) {
-      errors.tax_id = "nip";
-    }
-  }
+  // Nothing else is validated because nothing else is ASKED. Company name, tax
+  // id and address are collected in Ustawienia → Dane firmy and at checkout,
+  // where an invoice is genuinely being issued; the columns behind them are
+  // untouched. A stray `company_account` field posted by an old cached page
+  // is therefore ignored rather than turned into a required-field error the
+  // form has no box for — which is exactly how a hidden required field bricks
+  // a signup.
   const values: SignUpValues = {
     full_name: fullName, email,
-    company_name: f("company_name"), tax_id: f("tax_id"),
-    company_street: f("company_street"), company_postal_code: f("company_postal_code"),
-    company_city: f("company_city"), company_country: country,
     marketing_consent: formData.get("marketing_consent") != null,
   };
   if (Object.keys(errors).length > 0) return { ok: false, errors, values };
@@ -173,13 +154,6 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
         full_name: fullName,
         first_name: firstName,
         last_name: lastName,
-        company_account: company,
-        company_name: company ? f("company_name") : "",
-        tax_id: company ? f("tax_id") : "",
-        company_street: company ? f("company_street") : "",
-        company_postal_code: company ? f("company_postal_code") : "",
-        company_city: company ? f("company_city") : "",
-        company_country: company ? country : "",
         marketing_consent: formData.get("marketing_consent") != null,
         accepted_terms: true,
       },

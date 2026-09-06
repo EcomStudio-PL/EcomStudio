@@ -84,7 +84,8 @@ function entry(
 /** Every editable message, grouped the way the panel lists them. */
 export const TEMPLATE_CATALOG: readonly CatalogEntry[] = [
   // Rejestracja
-  entry("auth.confirm_signup", "email", "auth", "tpl.confirmSignup", "tpl.gRegistration", true, ["first_name"]),
+  entry("auth.confirm_signup", "email", "auth", "tpl.confirmSignup", "tpl.gRegistration", true, ["first_name", "email"]),
+  entry("auth.invite", "email", "auth", "tpl.invite", "tpl.gRegistration", true, ["first_name", "email"]),
   entry("user.registered", "telegram", "app", "tpl.userRegistered", "tpl.gRegistration", true, CONTEXT_PLACEHOLDERS),
   entry("user.registered", "email", "app", "tpl.userRegistered", "tpl.gRegistration", true, CONTEXT_PLACEHOLDERS),
   // The onboarding survey — fired when a new account claims its welcome bonus,
@@ -95,7 +96,10 @@ export const TEMPLATE_CATALOG: readonly CatalogEntry[] = [
   // Logowanie
   entry("login.security_code", "email", "app", "tpl.securityCode", "tpl.gLogin", true, ["code", "device", "date", "time"]),
   entry("login.new_device", "email", "app", "tpl.newDevice", "tpl.gLogin", false, ["device", "date", "time", "ip"]),
-  entry("auth.reset_password", "email", "auth", "tpl.resetPassword", "tpl.gLogin", true, []),
+  entry("auth.reset_password", "email", "auth", "tpl.resetPassword", "tpl.gLogin", true, ["first_name", "email"]),
+  entry("auth.magic_link", "email", "auth", "tpl.magicLink", "tpl.gLogin", true, ["first_name", "email"]),
+  entry("auth.email_change", "email", "auth", "tpl.emailChange", "tpl.gLogin", true, ["first_name", "email"]),
+  entry("auth.reauthentication", "email", "auth", "tpl.reauth", "tpl.gLogin", true, ["first_name", "email", "code"]),
   // Marketing
   entry("waitlist.signup", "telegram", "app", "tpl.waitlist", "tpl.gMarketing", true, CONTEXT_PLACEHOLDERS),
   entry("waitlist.signup", "email", "app", "tpl.waitlist", "tpl.gMarketing", true, CONTEXT_PLACEHOLDERS),
@@ -172,7 +176,40 @@ function emailDefault(subject: string, heading: string, body: string, footer = "
   };
 }
 
+/** The auth mails GrovBase now writes itself (Send Email Hook). The CTA URL
+ *  is deliberately absent: the link is computed from the token in the hook
+ *  payload and cannot be typed here — see lib/server/auth-mail.ts. */
+function authDefault(subject: string, heading: string, body: string, cta: string): TemplateDef {
+  return { channel: "email", email: {
+    subject, heading, body,
+    ctaLabel: cta, ctaUrl: "",
+    footer: "Jeżeli to nie Ty prosiłeś o tę wiadomość, po prostu ją zignoruj.",
+    showLogo: true, showFields: false, showCta: cta !== "",
+  } };
+}
+
 const DEFAULTS: Record<string, TemplateDef> = {
+  "auth.confirm_signup:email": authDefault(
+    "Potwierdź swój adres e-mail — GrovBase", "Potwierdź swój adres e-mail",
+    "Kliknij przycisk poniżej, aby aktywować konto GrovBase.", "Potwierdź adres e-mail"),
+  "auth.reset_password:email": authDefault(
+    "Reset hasła — GrovBase", "Ustaw nowe hasło",
+    "Otrzymaliśmy prośbę o zmianę hasła do Twojego konta GrovBase. Link jest ważny przez godzinę.",
+    "Ustaw nowe hasło"),
+  "auth.magic_link:email": authDefault(
+    "Twój link logowania — GrovBase", "Zaloguj się do GrovBase",
+    "Kliknij przycisk poniżej, aby zalogować się bez hasła. Link jest jednorazowy.", "Zaloguj się"),
+  "auth.invite:email": authDefault(
+    "Zaproszenie do GrovBase", "Zaproszenie do GrovBase",
+    "Zostałeś zaproszony do GrovBase. Kliknij przycisk poniżej, aby założyć konto.",
+    "Przyjmij zaproszenie"),
+  "auth.email_change:email": authDefault(
+    "Potwierdź zmianę adresu e-mail — GrovBase", "Potwierdź zmianę adresu e-mail",
+    "Otrzymaliśmy prośbę o zmianę adresu e-mail przypisanego do Twojego konta GrovBase.",
+    "Potwierdź zmianę"),
+  "auth.reauthentication:email": authDefault(
+    "Kod potwierdzenia — GrovBase", "Potwierdź, że to Ty",
+    "Aby dokończyć tę operację, podaj poniższy kod w GrovBase: {{code}}", ""),
   "user.registered:telegram": { channel: "telegram", telegram: tgDefault("🎉", "NOWA REJESTRACJA", CONTEXT_LINES) },
   "user.registered:email": { channel: "email", email: emailDefault(
     "Nowa rejestracja — {{name}}", "Nowa rejestracja",

@@ -1027,10 +1027,21 @@ body:has(.workspace-page)::after { display: none; }
 .auth-modal-body :where(.grid) > div > :first-child > label { white-space: nowrap; }
 @media (max-width: 419px) {
   .auth-modal-body :where(.grid) > div > :first-child > span { display: none; }
+  /* One more notch of rhythm on the narrowest phones lives on the form
+     itself (max-[419px]: utilities) rather than here — a :where() rule loses
+     the cascade to Tailwind's own space-y-*, which is why it belongs in the
+     component. */
 }
 .auth-modal-body :where(form) > :where(div, label) + :where(div, label) { margin-top: 0; }
 .auth-modal-body :where(.space-y-4) > * + * { margin-top: 0.75rem; }
 .auth-modal-body :where(.grid) { gap: 0.75rem; }
+/* The label sits closer to its own field here than it does on a full page.
+   Six pixels × four fields is 24px, which is most of what registration needs
+   to clear a 360px phone without a scrollbar — and a label that hugs its
+   input reads as belonging to it, which is what a label is for. */
+.auth-modal-body :where(form) label:not([class*="flex"]) { line-height: 1.25; }
+.auth-modal-body :where(form) > * > .mb-1\.5,
+.auth-modal-body :where(form) > * > * > .mb-1\.5 { margin-bottom: 0.25rem; }
 /* Bring a focused field into view inside the SCROLLER (the dialog is fixed,
    so the page behind it cannot scroll to help). */
 .auth-modal-body :where(input, select, button) { scroll-margin-block: 1.25rem; }

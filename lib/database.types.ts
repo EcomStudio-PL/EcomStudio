@@ -3367,6 +3367,29 @@ export type Database = {
         Returns: string
       }
       claim_welcome_bonus: { Args: { p_answers: Json }; Returns: Json }
+      auth_email_claim: {
+        Args: {
+          p_action: string
+          p_locale: string
+          p_recipient: string
+          p_template_key: string
+          p_template_source: string
+          p_template_version: number | null
+          p_token: string
+          p_webhook_id: string
+        }
+        Returns: string | null
+      }
+      auth_email_finish: {
+        Args: {
+          p_failure: string | null
+          p_id: string
+          p_status: string
+          p_token: string
+          p_transport: string
+        }
+        Returns: boolean
+      }
       close_out_denied_signup: { Args: Record<PropertyKey, never>; Returns: boolean }
       complete_usage_event:
         | {

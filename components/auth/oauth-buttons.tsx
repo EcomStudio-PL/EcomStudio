@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/provider";
 
 /**
@@ -42,11 +43,16 @@ const PROVIDERS: { id: "google" | "apple"; labelKey: string; icon: React.ReactNo
   },
 ];
 
-export function OAuthButtons({ next }: {
+export function OAuthButtons({ next, compact = false }: {
   /** Where to land after the provider round trip. Carried to /auth/callback,
    *  which validates it — an absolute or protocol-relative value is refused
    *  there, so this can never become an open redirect. */
   next?: string;
+  /** Side by side, with the provider's name alone on the button. Inside the
+   *  dialog this is 52px the registration form does not have to spend, which
+   *  is most of the difference between fitting a 360px phone and scrolling.
+   *  The touch target keeps its full 44px height. */
+  compact?: boolean;
 } = {}) {
   const { t } = useI18n();
   const [busy, setBusy] = useState<string | null>(null);
@@ -68,20 +74,26 @@ export function OAuthButtons({ next }: {
   }
 
   return (
-    <div className="space-y-2">
-      {active.map((p) => (
-        <button
-          key={p.id}
-          type="button"
-          disabled={busy !== null}
-          onClick={() => start(p.id)}
-          className="plate flex h-11 w-full items-center justify-center gap-2.5 rounded-xl text-sm font-semibold text-ink transition-colors duration-200 hover:border-[rgb(var(--accent)/0.4)] hover:bg-raised disabled:opacity-60"
-        >
-          {busy === p.id ? <Loader2 size={16} className="animate-spin" aria-hidden /> : p.icon}
-          {t(p.labelKey)}
-        </button>
-      ))}
-      <div className="flex items-center gap-3 pt-1" aria-hidden>
+    <div className={compact ? "space-y-2.5" : "space-y-2"}>
+      <div className={compact ? "grid grid-cols-2 gap-2" : "space-y-2"}>
+        {active.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            disabled={busy !== null}
+            onClick={() => start(p.id)}
+            // The full sentence is the accessible name either way, so a
+            // compact button still announces "Kontynuuj z Google".
+            aria-label={compact ? t(p.labelKey) : undefined}
+            className="plate flex h-11 w-full items-center justify-center gap-2.5 rounded-xl text-sm font-semibold text-ink transition-colors duration-200 hover:border-[rgb(var(--accent)/0.4)] hover:bg-raised disabled:opacity-60"
+          >
+            {busy === p.id ? <Loader2 size={16} className="animate-spin" aria-hidden /> : p.icon}
+            {/* A brand name is not translated prose. */}
+            {compact ? (p.id === "google" ? "Google" : "Apple") : t(p.labelKey)}
+          </button>
+        ))}
+      </div>
+      <div className={cn("flex items-center gap-3", compact ? "" : "pt-1")} aria-hidden>
         <span className="h-px flex-1 bg-line" />
         <span className="text-[11px] font-semibold uppercase tracking-wide text-faint">{t("auth.orDivider")}</span>
         <span className="h-px flex-1 bg-line" />

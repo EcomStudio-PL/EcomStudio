@@ -107,8 +107,20 @@ console.log("\nD. CATALOG HONESTY — hooks, defaults, stored-row parsing");
   check("every wired APP template has a built-in default",
     wired.every((e) => defaultTemplate(e.key) !== null),
     wired.filter((e) => !defaultTemplate(e.key)).map((e) => e.key).join(","));
-  check("auth templates are kind=auth and never publishable defaults",
-    TEMPLATE_CATALOG.filter((e) => e.kind === "auth").every((e) => defaultTemplate(e.key) === null));
+  // This used to assert the OPPOSITE — that auth templates had no defaults
+  // here, because GoTrue rendered them from its own store. The Send Email
+  // Hook moved that job to GrovBase, so every auth template now needs
+  // publishable GrovBase copy exactly like an app template does; a missing
+  // one would mean an auth mail with no words.
+  const authEntries = TEMPLATE_CATALOG.filter((e) => e.kind === "auth");
+  check("every auth template has built-in GrovBase copy to fall back to",
+    authEntries.length > 0 && authEntries.every((e) => defaultTemplate(e.key) !== null),
+    authEntries.filter((e) => !defaultTemplate(e.key)).map((e) => e.key).join(","));
+  check("no auth default hardcodes a link — the token decides it",
+    authEntries.every((e) => {
+      const def = defaultTemplate(e.key);
+      return !def || def.channel !== "email" || def.email.ctaUrl === "";
+    }));
 }
 {
   const roundtrip = parseStoredDef("telegram", { icon: "🎉", title: "X", body: "👤 | {{name}}", footer: "F" });
@@ -117,7 +129,7 @@ console.log("\nD. CATALOG HONESTY — hooks, defaults, stored-row parsing");
     parseStoredDef("email", 42) === null && parseStoredDef("email", null) === null && parseStoredDef("email", []) === null);
 }
 
-console.log("\nE. AUTH TEMPLATES — embedded copy must match the repo files (dashboard paste source)");
+console.log("\nE. AUTH TEMPLATES — the rich HTML GrovBase renders itself, still matching the repo files");
 {
   for (const [key, file] of [
     ["auth.confirm_signup", "supabase/templates/confirm-signup.html"],

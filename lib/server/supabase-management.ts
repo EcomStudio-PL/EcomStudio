@@ -119,7 +119,7 @@ export function desiredFingerprint(desired: DesiredAuthConfig): string {
 
 /* ── Management API calls ───────────────────────────────────────────────────*/
 
-async function api(
+export async function api(
   token: string,
   method: "GET" | "PATCH",
   body?: Record<string, unknown>,

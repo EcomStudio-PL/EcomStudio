@@ -8,3 +8,7 @@ node_modules
 .env.production
 .env.development
 *.tsbuildinfo
+# Throwaway browser-QA scripts. They need to sit inside the project so
+# `import { chromium } from "playwright"` resolves, and they are not part of
+# the product.
+.qa/

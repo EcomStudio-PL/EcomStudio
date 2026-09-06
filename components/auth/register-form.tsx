@@ -2,9 +2,9 @@
 import Link from "next/link";
 import { AuthLink } from "@/components/auth/auth-link";
 import { useActionState, useEffect, useRef, useState } from "react";
-import { Building2, Loader2, MailCheck } from "lucide-react";
+import { Loader2, MailCheck } from "lucide-react";
 import { signUp, resendConfirmation, type SignUpErrors } from "@/app/actions/auth";
-import { isPoland, passwordIssue, validNip } from "@/lib/auth-validation";
+import { passwordIssue } from "@/lib/auth-validation";
 import { useI18n } from "@/lib/i18n/provider";
 import { Input, Label } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -25,17 +25,18 @@ const FORM_ERROR_KEYS: Record<string, string> = {
 };
 
 /**
- * REGISTRATION — four fields.
+ * REGISTRATION — four fields, and that is the entire form.
  *
- * Name, e-mail, password, confirm. The phone number and "how did you hear
- * about us" used to live here; they cost signups and bought nothing at that
- * moment, so the second one moved into the onboarding survey, where the
- * customer answers it for credits instead of for nothing. Nothing about the
- * SUBMISSION got simpler: same server action, same captcha, same consents,
- * same per-IP cap and anti-multiaccount checks.
+ * Name, e-mail, password, confirm. Everything else that used to live here has
+ * gone somewhere it is worth more: the phone number and "how did you hear
+ * about us" to the onboarding survey (answered for credits, not for friction),
+ * and the company details — name, tax id, address — to Ustawienia → Dane firmy
+ * and to checkout, where an invoice is actually being issued. Registration is
+ * not the place to ask a stranger for their VAT number.
  *
- * The company block still expands on demand — a business account genuinely
- * needs an address and a tax id, and it is opt-in.
+ * Nothing about the SUBMISSION got simpler: same server action, same captcha,
+ * same consents, same per-IP cap and anti-multiaccount checks. The billing and
+ * company columns are untouched — they are simply filled in later.
  *
  * Validation is shared with the server action (lib/auth-validation): the
  * client gives instant feedback, the server has the final word, and the two
@@ -55,9 +56,6 @@ export function RegisterForm({ captchaSiteKey, bare = false, next = "", onSwitch
 }) {
   const { t } = useI18n();
   const [state, action, pending] = useActionState(signUp, null);
-  const [company, setCompany] = useState(false);
-  const [country, setCountry] = useState("Polska");
-  const [nip, setNip] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [terms, setTerms] = useState(false);
@@ -122,7 +120,6 @@ export function RegisterForm({ captchaSiteKey, bare = false, next = "", onSwitch
     );
   }
 
-  const nipInvalid = company && nip.length > 0 && (isPoland(country) ? !validNip(nip) : nip.replace(/[\s-]/g, "").length < 5);
   const pwMismatch = confirm.length > 0 && password !== confirm;
 
   return (
@@ -136,119 +133,58 @@ export function RegisterForm({ captchaSiteKey, bare = false, next = "", onSwitch
         </>
       )}
 
-      <div className={bare ? "" : "relative mt-6"}><OAuthButtons next={next} /></div>
+      <div className={bare ? "" : "relative mt-6"}><OAuthButtons next={next} compact={bare} /></div>
 
-      <form action={action} className="relative mt-4 space-y-4" noValidate>
-        {/* Identity. A hidden field is not rendered, so it never reaches the
-            server as an empty value — and the two-column grid collapses to one
-            when only one of the pair is asked for, rather than leaving a gap. */}
+      <form action={action} className={cn("relative", bare ? "mt-3 space-y-2.5 max-[419px]:space-y-2" : "mt-4 space-y-4")} noValidate>
         {/* FOUR FIELDS, and that is the whole form. Name, e-mail and the two
             password boxes — nothing between a visitor and an account that we
-            can ask for later, when asking is worth credits to them rather
-            than friction before they have anything. */}
-        <div>
-          <Label htmlFor="full_name">{t("auth.fullName")} *</Label>
-          <Input id="full_name" name="full_name" required autoComplete="name"
-            placeholder={t("auth.fullNamePlaceholder")}
-            defaultValue={v.full_name} aria-invalid={!!errors.full_name || undefined} />
-          {err("full_name")}
-        </div>
-        <div>
-          <Label htmlFor="email">{t("auth.email")} *</Label>
-          <Input id="email" name="email" type="email" required autoComplete="email" defaultValue={v.email}
-            inputMode="email" aria-invalid={!!errors.email || undefined} />
-          {err("email")}
-        </div>
-
-        {/* Passwords. The brief describes ONE full-width password row; this
-            form has always had a confirmation field too, and stacking both
-            full-width is exactly the vertical sprawl the hotfix is removing —
-            so the pair shares a row on the same breakpoint as the others. */}
-        <div className="grid gap-4 min-[380px]:grid-cols-2">
+            can ask for later, when asking is worth credits to them (the
+            onboarding survey) or an invoice to them (checkout). */}
+        {/* Name and e-mail share a row once there is room for two comfortable
+            columns. Below that they stack — a 140px box is not somewhere to
+            type an address. The passwords never pair (see below). */}
+        <div className="grid gap-2.5 min-[420px]:grid-cols-2 min-[420px]:gap-3">
           <div>
-            <Label htmlFor="password">{t("auth.password")} *</Label>
-            <PasswordField id="password" name="password" autoComplete="new-password"
-              value={password} onChange={setPassword} minLength={8}
-              invalid={!!errors.password || (password.length > 0 && passwordIssue(password) !== null)} />
-            <PasswordRules password={password} />
-            {err("password")}
+            <Label htmlFor="full_name">{t("auth.fullName")} *</Label>
+            <Input id="full_name" name="full_name" required autoComplete="name"
+              placeholder={t("auth.fullNamePlaceholder")}
+              defaultValue={v.full_name} aria-invalid={!!errors.full_name || undefined} />
+            {err("full_name")}
           </div>
           <div>
-            <Label htmlFor="password_confirm">{t("auth.passwordConfirm")} *</Label>
-            <PasswordField id="password_confirm" name="password_confirm" autoComplete="new-password"
-              value={confirm} onChange={setConfirm} minLength={8}
-              invalid={pwMismatch || !!errors.password_confirm} />
-            {(pwMismatch || errors.password_confirm) && (
-              <p role="alert" className="mt-1.5 text-[12px] font-medium text-danger">{t("auth.err_mismatch")}</p>
-            )}
+            <Label htmlFor="email">{t("auth.email")} *</Label>
+            <Input id="email" name="email" type="email" required autoComplete="email" defaultValue={v.email}
+              inputMode="email" aria-invalid={!!errors.email || undefined} />
+            {err("email")}
           </div>
         </div>
 
-        {/* Company account */}
-        <label className={cn(
-          "flex cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-3 transition-colors duration-200",
-          company ? "border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.06)]" : "border-line hover:bg-raised/50",
-        )}>
-          <input type="checkbox" name="company_account" checked={company}
-            onChange={(e) => setCompany(e.target.checked)}
-            className="h-4 w-4 rounded border-line accent-[rgb(var(--accent))]" />
-          <Building2 size={16} aria-hidden className={company ? "text-accent" : "text-faint"} />
-          <span className="text-[13.5px] font-semibold">{t("auth.companyToggle")}</span>
-        </label>
-
-        {company && (
-          <div className="animate-fade space-y-4 rounded-xl border border-[rgb(var(--accent)/0.25)] bg-[rgb(var(--accent)/0.03)] p-4">
-            <div className="grid gap-4 min-[380px]:grid-cols-2">
-              <div>
-                <Label htmlFor="company_name">{t("auth.companyName")} *</Label>
-                <Input id="company_name" name="company_name" required autoComplete="organization" defaultValue={v.company_name}
-                  aria-invalid={!!errors.company_name || undefined} />
-                {err("company_name")}
-              </div>
-              <div>
-                <Label htmlFor="tax_id">{t("auth.nip")} *</Label>
-                <Input id="tax_id" name="tax_id" required inputMode="numeric" placeholder="0000000000"
-                  value={nip} onChange={(e) => setNip(e.target.value)}
-                  aria-invalid={nipInvalid || !!errors.tax_id || undefined}
-                  className={cn(nipInvalid && "border-[rgb(var(--danger)/0.6)]")} />
-                {(nipInvalid || errors.tax_id) && (
-                  <p role="alert" className="mt-1.5 text-[12px] font-medium text-danger">{t("auth.err_nip")}</p>
-                )}
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="company_street">{t("auth.street")} *</Label>
-              <Input id="company_street" name="company_street" required autoComplete="street-address" defaultValue={v.company_street}
-                aria-invalid={!!errors.company_street || undefined} />
-              {err("company_street")}
-            </div>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div>
-                <Label htmlFor="company_postal_code">{t("auth.postal")} *</Label>
-                <Input id="company_postal_code" name="company_postal_code" required defaultValue={v.company_postal_code}
-                  autoComplete="postal-code" placeholder="00-000"
-                  aria-invalid={!!errors.company_postal_code || undefined} />
-                {err("company_postal_code")}
-              </div>
-              <div>
-                <Label htmlFor="company_city">{t("auth.city")} *</Label>
-                <Input id="company_city" name="company_city" required autoComplete="address-level2" defaultValue={v.company_city}
-                  aria-invalid={!!errors.company_city || undefined} />
-                {err("company_city")}
-              </div>
-              <div>
-                <Label htmlFor="company_country">{t("auth.countryLabel")} *</Label>
-                <Input id="company_country" name="company_country" required autoComplete="country-name"
-                  value={country} onChange={(e) => setCountry(e.target.value)}
-                  aria-invalid={!!errors.company_country || undefined} />
-                {err("company_country")}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Passwords, one under the other and full width. They shared a row
+            once, which fitted more on screen and served the user worse: a
+            password manager's overlay and a genuinely long passphrase both
+            need the whole width, and a half-width box is where people mistype
+            the confirmation. The height that costs is bought back from the
+            spacing and from the rules, laid out in one line below. */}
+        <div>
+          <Label htmlFor="password">{t("auth.password")} *</Label>
+          <PasswordField id="password" name="password" autoComplete="new-password"
+            value={password} onChange={setPassword} minLength={8}
+            invalid={!!errors.password || (password.length > 0 && passwordIssue(password) !== null)} />
+          <PasswordRules password={password} inline={bare} />
+          {err("password")}
+        </div>
+        <div>
+          <Label htmlFor="password_confirm">{t("auth.passwordConfirm")} *</Label>
+          <PasswordField id="password_confirm" name="password_confirm" autoComplete="new-password"
+            value={confirm} onChange={setConfirm} minLength={8}
+            invalid={pwMismatch || !!errors.password_confirm} />
+          {(pwMismatch || errors.password_confirm) && (
+            <p role="alert" className="mt-1.5 text-[12px] font-medium text-danger">{t("auth.err_mismatch")}</p>
+          )}
+        </div>
 
         {/* Consents */}
-        <div className="space-y-3 border-t border-line pt-4">
+        <div className={cn("space-y-3 border-t border-line", bare ? "pt-3" : "pt-4")}>
           <label className="flex cursor-pointer items-start gap-3 text-[13px] leading-relaxed text-muted">
             <input type="checkbox" name="accept_terms" checked={terms}
               onChange={(e) => setTerms(e.target.checked)}
@@ -289,10 +225,10 @@ export function RegisterForm({ captchaSiteKey, bare = false, next = "", onSwitch
         </button>
       </form>
 
-      <p className={`mt-5 text-sm text-muted ${bare ? "text-center" : "relative"}`}>
+      <p className={cn("text-sm text-muted", bare ? "mt-3.5 text-center" : "relative mt-5")}>
         {t("auth.haveAccount")}{" "}
         {onSwitch
-          ? <button type="button" onClick={() => onSwitch("login")} className="font-medium text-accent">{t("auth.signIn")}</button>
+          ? <button type="button" onClick={() => onSwitch("login")} className="-my-2 py-2 font-medium text-accent">{t("auth.signIn")}</button>
           : <AuthLink mode="login" className="font-medium text-accent">{t("auth.signIn")}</AuthLink>}
       </p>
     </Shell>

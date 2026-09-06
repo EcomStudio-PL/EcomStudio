@@ -1,0 +1,140 @@
+import "server-only";
+import { randomBytes } from "crypto";
+import type { Client } from "@/lib/services/workspace";
+import {
+  decryptSecret, encryptSecret, encryptionAvailable,
+} from "@/lib/server/crypto";
+import { safeError } from "@/lib/server/integrations";
+
+/**
+ * THE SEND EMAIL HOOK SECRET — where it lives, and why not in a chat window.
+ *
+ * Supabase signs every hook delivery with a shared secret. Two ways to have
+ * one, and this file supports both so the operator does not have to care:
+ *
+ *  1. GENERATED HERE (preferred). The panel presses a button, this file makes
+ *     32 random bytes, seals them with APP_ENCRYPTION_KEY into app_settings,
+ *     and the Management API push writes the same value into Supabase. The
+ *     secret never appears on a screen, in a chat message, in a log line or
+ *     in an environment variable — nobody has to copy it anywhere, which is
+ *     the only way a copied secret cannot be mislaid.
+ *
+ *  2. AN ENVIRONMENT VARIABLE. If the operator would rather generate it in
+ *     the Supabase dashboard and paste it into Vercel themselves, they set
+ *     SUPABASE_SEND_EMAIL_HOOK_SECRET and this file simply reads it. Server
+ *     only — never NEXT_PUBLIC_, never logged, never returned to a client.
+ *
+ * When both exist the environment wins, because an env var is an explicit act
+ * by a person and a stored value could be left over from an earlier attempt.
+ *
+ * Standard Webhooks format: `v1,whsec_<base64>`. Several may be configured at
+ * once, separated by `|`, which is how a rotation happens without downtime.
+ */
+
+const SETTINGS_KEY = "auth_email_hook";
+
+export function envSecret(): string | null {
+  const raw = process.env.SUPABASE_SEND_EMAIL_HOOK_SECRET?.trim();
+  return raw ? raw : null;
+}
+
+type StoredHook = {
+  /** AES-256-GCM envelope of the secret string, app key. */
+  ciphertext?: string;
+  iv?: string;
+  auth_tag?: string;
+  /** When it was generated, for the panel. Never the value. */
+  created_at?: string;
+  /** Whether the Management API push confirmed Supabase has it. */
+  pushed_at?: string;
+  hook_uri?: string;
+};
+
+async function readStored(supabase: Client): Promise<StoredHook> {
+  try {
+    const { data } = await supabase
+      .from("app_settings").select("value").eq("key", SETTINGS_KEY).maybeSingle();
+    const v = data?.value;
+    return v && typeof v === "object" && !Array.isArray(v) ? (v as StoredHook) : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeStored(supabase: Client, value: StoredHook): Promise<boolean> {
+  const { error } = await supabase.from("app_settings").upsert(
+    { key: SETTINGS_KEY, value: value as never, updated_at: new Date().toISOString() },
+    { onConflict: "key" },
+  );
+  if (error) console.error("authHook.store", safeError(error));
+  return !error;
+}
+
+/** A fresh secret in the format Supabase expects. */
+export function generateSecret(): string {
+  return `v1,whsec_${randomBytes(32).toString("base64")}`;
+}
+
+/**
+ * The secret the ENDPOINT verifies against — env first, then the sealed
+ * store. Returns "" when the hook has not been configured yet, which the
+ * endpoint reports as "not configured" rather than pretending to verify.
+ */
+export async function activeSecret(supabase: Client): Promise<string> {
+  const fromEnv = envSecret();
+  if (fromEnv) return fromEnv;
+  const stored = await readStored(supabase);
+  if (!stored.ciphertext || !stored.iv || !stored.auth_tag) return "";
+  if (!encryptionAvailable()) return "";
+  try {
+    return decryptSecret(stored.ciphertext, stored.iv, stored.auth_tag);
+  } catch {
+    return "";
+  }
+}
+
+/** Store a newly generated secret. The plaintext is returned to the CALLER —
+ *  the server-side push — and to nobody else. */
+export async function storeSecret(supabase: Client, secret: string): Promise<boolean> {
+  if (!encryptionAvailable()) return false;
+  const sealed = encryptSecret(secret);
+  const previous = await readStored(supabase);
+  return writeStored(supabase, {
+    ...previous,
+    ciphertext: sealed.ciphertext,
+    iv: sealed.iv,
+    auth_tag: sealed.authTag,
+    created_at: new Date().toISOString(),
+    pushed_at: undefined,
+  });
+}
+
+/** Record that Supabase confirmed it holds this secret for this URL. */
+export async function markPushed(supabase: Client, uri: string): Promise<void> {
+  const previous = await readStored(supabase);
+  await writeStored(supabase, { ...previous, pushed_at: new Date().toISOString(), hook_uri: uri });
+}
+
+export type HookSecretState = {
+  /** Where the endpoint would get its secret from right now. */
+  source: "env" | "stored" | "none";
+  generatedAt: string | null;
+  pushedAt: string | null;
+  hookUri: string | null;
+  /** Can a secret be generated and sealed at all (APP_ENCRYPTION_KEY set)? */
+  canGenerate: boolean;
+};
+
+/** Everything the admin panel may know about the secret — and nothing of its
+ *  value. */
+export async function hookSecretState(supabase: Client): Promise<HookSecretState> {
+  const stored = await readStored(supabase);
+  const hasStored = Boolean(stored.ciphertext && stored.iv && stored.auth_tag && encryptionAvailable());
+  return {
+    source: envSecret() ? "env" : hasStored ? "stored" : "none",
+    generatedAt: stored.created_at ?? null,
+    pushedAt: stored.pushed_at ?? null,
+    hookUri: stored.hook_uri ?? null,
+    canGenerate: encryptionAvailable(),
+  };
+}
