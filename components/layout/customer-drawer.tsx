@@ -9,6 +9,7 @@ import {
 import { useI18n } from "@/lib/i18n/provider";
 import { CATEGORIES, VIDEO_ICON as VideoIcon } from "@/lib/categories";
 import { IMAGE_EDIT, IMAGE_MODES, editLabelKey } from "@/lib/topnav";
+import { allActive, menuBadge, menuVisible, type AvailabilityMap, type MenuBadge } from "@/lib/features";
 import { NavLink } from "./nav-link";
 import { Drawer, IslandClose, NavGroupLabel } from "./drawer";
 import { LocaleSwitcher } from "./locale-switcher";
@@ -27,11 +28,15 @@ import { cn } from "@/lib/utils";
  * GŁÓWNE, OBRAZ, GENEROWANIE, EDYTUJ, KONTO — because a flat list of twenty
  * links is not navigation, it is an index.
  */
-export function CustomerDrawer({ name, email, credits, plan, isAdmin }: {
+export function CustomerDrawer({ name, email, credits, plan, isAdmin, availability }: {
   name: string; email?: string; credits: number; plan: string; isAdmin: boolean;
+  availability?: AvailabilityMap;
 }) {
   const { t, locale } = useI18n();
   const { open, setOpen } = useDrawer();
+  const avail = availability ?? allActive();
+  const show = (href: string) => menuVisible(avail, href, isAdmin);
+  const badge = (href: string) => badgeLabel(menuBadge(avail, href), t);
   const who = firstName(name, email) || name;
   const initial = (who || "?").trim().charAt(0).toUpperCase();
   const tone = planTone(plan);
@@ -107,36 +112,58 @@ export function CustomerDrawer({ name, email, credits, plan, isAdmin }: {
     >
       <Section title={t("nav.groups.main")} defaultOpen>
         <NavLink href="/home" label={t("topnav.home")} icon={Home} onNavigate={closeNav} />
-        <NavLink href="/library" label={t("topnav.library")} icon={Images} onNavigate={closeNav} />
+        {show("/library") && (
+          <NavLink href="/library" label={t("topnav.library")} icon={Images} onNavigate={closeNav}
+            badge={badge("/library")} />
+        )}
       </Section>
 
-      {/* OBRAZ — the six category workspaces, each in its own colour. */}
-      <Section title={t("topnav.image")} defaultOpen>
-        {CATEGORIES.map((c) => <CategoryRow key={c.key} c={c} t={t} onNavigate={closeNav} />)}
-      </Section>
+      {/* OBRAZ — the six category workspaces, each in its own colour. All of
+          them front the generator, so its availability governs the group. */}
+      {show("/generator") && (
+        <Section title={t("topnav.image")} defaultOpen>
+          {CATEGORIES.map((c) => (
+            <CategoryRow key={c.key} c={c} t={t} onNavigate={closeNav} dynBadge={badge("/generator")} />
+          ))}
+        </Section>
+      )}
 
-      <Section title={t("nav.groups.create")}>
-        {IMAGE_MODES.map((e) => (
-          <NavLink key={e.key} href={e.href} label={t(`mega.${e.key}`)} icon={e.icon} onNavigate={closeNav} />
-        ))}
-      </Section>
+      {(show("/prompts") || show("/generator")) && (
+        <Section title={t("nav.groups.create")}>
+          {IMAGE_MODES.filter((e) => show(e.href)).map((e) => (
+            <NavLink key={e.key} href={e.href} label={t(`mega.${e.key}`)} icon={e.icon} onNavigate={closeNav}
+              badge={badge(e.href)} />
+          ))}
+        </Section>
+      )}
 
-      <Section title={t("mega.edit")}>
-        {/* The hub is the last of these five entries, so it is not appended a
-            second time underneath them. */}
-        {IMAGE_EDIT.filter((e) => !e.soon).map((e) => (
-          <NavLink key={e.key} href={e.href} label={t(editLabelKey(e))} icon={e.icon} onNavigate={closeNav} />
-        ))}
-      </Section>
+      {IMAGE_EDIT.some((e) => !e.soon && show(e.href)) && (
+        <Section title={t("mega.edit")}>
+          {/* The hub is the last of these five entries, so it is not appended a
+              second time underneath them. */}
+          {IMAGE_EDIT.filter((e) => !e.soon && show(e.href)).map((e) => (
+            <NavLink key={e.key} href={e.href} label={t(editLabelKey(e))} icon={e.icon} onNavigate={closeNav}
+              badge={badge(e.href)} />
+          ))}
+        </Section>
+      )}
 
-      <Section title={t("topnav.video")}>
-        <SoonRow href="/wideo" label={t("video.title")} onNavigate={closeNav}
-          icon={<VideoIcon size={15} />} soonLabel={t("common.soon")} rgb="var(--violet)" />
-      </Section>
+      {show("/wideo") && (
+        <Section title={t("topnav.video")}>
+          <SoonRow href="/wideo" label={t("video.title")} onNavigate={closeNav}
+            icon={<VideoIcon size={15} />} soonLabel={badge("/wideo") ?? t("common.soon")} rgb="var(--violet)" />
+        </Section>
+      )}
 
       <Section title={t("nav.groups.account")} defaultOpen>
-        <NavLink href="/products" label={t("nav.products")} icon={Package} onNavigate={closeNav} />
-        <NavLink href="/inspirations" label={t("nav.inspirations")} icon={Lightbulb} onNavigate={closeNav} />
+        {show("/products") && (
+          <NavLink href="/products" label={t("nav.products")} icon={Package} onNavigate={closeNav}
+            badge={badge("/products")} />
+        )}
+        {show("/inspirations") && (
+          <NavLink href="/inspirations" label={t("nav.inspirations")} icon={Lightbulb} onNavigate={closeNav}
+            badge={badge("/inspirations")} />
+        )}
         <NavLink href="/settings" label={t("nav.settings")} icon={Settings} onNavigate={closeNav} />
         <NavLink href="/support" label={t("nav.help")} icon={LifeBuoy} onNavigate={closeNav} />
         {isAdmin && (
@@ -153,12 +180,22 @@ export function CustomerDrawer({ name, email, credits, plan, isAdmin }: {
   );
 }
 
+/** The i18n label for a feature-availability badge, null when active. */
+function badgeLabel(kind: MenuBadge, t: (k: string) => string): string | null {
+  if (kind === "soon") return t("features.badgeSoon");
+  if (kind === "maintenance") return t("features.badgeMaintenance");
+  if (kind === "disabled") return t("features.badgeDisabled");
+  return null;
+}
+
 /** A category row in the category's own colour, with an honest badge when
- *  the engine does not support it yet. */
-function CategoryRow({ c, t, onNavigate }: {
+ *  the engine does not support it yet — or when the generator module itself
+ *  is restricted (dynBadge). */
+function CategoryRow({ c, t, onNavigate, dynBadge }: {
   c: (typeof CATEGORIES)[number];
   t: (k: string) => string;
   onNavigate: () => void;
+  dynBadge?: string | null;
 }) {
   const pathname = usePathname();
   const active = pathname.startsWith(`/k/${c.slug}`);
@@ -182,9 +219,9 @@ function CategoryRow({ c, t, onNavigate }: {
         <c.icon size={15} />
       </span>
       <span className="min-w-0 flex-1 truncate">{t(`cats.${c.key}`)}</span>
-      {c.soon && (
+      {(c.soon || dynBadge) && (
         <span className="shrink-0 rounded-full bg-raised px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-faint">
-          {t("common.soon")}
+          {c.soon ? t("common.soon") : dynBadge}
         </span>
       )}
     </Link>

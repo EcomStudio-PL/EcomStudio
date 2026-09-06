@@ -4,7 +4,7 @@ import {
   Coins, Rocket, LifeBuoy, Settings, Shield, Users, Building2, Cpu, Plug, Wrench,
   FileText, ScrollText, SlidersHorizontal, Wand2, BarChart3, Layers, Globe,
   FolderOpen, Lightbulb, MessageSquare, BrainCircuit, ListChecks, Mail,
-  Bell, Plug2,
+  Bell, Plug2, ToggleLeft,
 } from "lucide-react";
 
 /** Single source of truth for app navigation. Client drawer, desktop
@@ -98,6 +98,7 @@ export const ADMIN_NAV: readonly NavGroup[] = [
     { href: "/admin/email/templates", key: "templatesMsg", icon: FileText },
     { href: "/admin/settings/integrations", key: "integrations", icon: Plug2 },
     { href: "/admin/settings/security", key: "loginSecurity", icon: Shield },
+    { href: "/admin/settings/features", key: "features", icon: ToggleLeft },
     { href: "/admin/system", key: "system", icon: SlidersHorizontal },
   ]},
 ] as const;

@@ -2,7 +2,7 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { PageHeader } from "@/components/ui/page-header";
 import { TemplateStudio } from "@/components/admin/template-studio";
-import { listTemplatesAction } from "@/app/actions/templates";
+import { authSyncStatusAction, listTemplatesAction } from "@/app/actions/templates";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminMessageTemplates() {
   const { dict } = await getDictionary();
   const t = makeT(dict);
-  const entries = await listTemplatesAction();
+  const [entries, authSync] = await Promise.all([listTemplatesAction(), authSyncStatusAction()]);
 
   return (
     <div>
@@ -24,7 +24,7 @@ export default async function AdminMessageTemplates() {
         sub={t("tpl.sub")}
       />
       {entries
-        ? <TemplateStudio entries={entries} />
+        ? <TemplateStudio entries={entries} authSync={authSync} />
         : <p className="text-sm text-muted">{t("common.error")}</p>}
     </div>
   );

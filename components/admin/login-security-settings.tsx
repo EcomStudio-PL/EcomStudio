@@ -18,11 +18,11 @@ import type { LoginSecuritySettings } from "@/lib/server/login-security";
  * log records the values in the clear. A refused save puts the previous values
  * back; nothing is applied until the server accepts it.
  */
-type NumField = "reverifyDays" | "codeTtlMinutes" | "maxAttempts" | "resendSeconds";
+type NumField = "reverifyDays" | "codeTtlSeconds" | "maxAttempts" | "resendSeconds";
 
 const NUM_ROWS: readonly { field: NumField; labelKey: string; hintKey: string; min: number; max: number }[] = [
   { field: "reverifyDays", labelKey: "loginSec.reverifyDays", hintKey: "loginSec.reverifyHint", min: 0, max: 365 },
-  { field: "codeTtlMinutes", labelKey: "loginSec.codeTtl", hintKey: "loginSec.codeTtlHint", min: 1, max: 60 },
+  { field: "codeTtlSeconds", labelKey: "loginSec.codeTtl", hintKey: "loginSec.codeTtlHint", min: 30, max: 3600 },
   { field: "maxAttempts", labelKey: "loginSec.maxAttempts", hintKey: "loginSec.maxAttemptsHint", min: 1, max: 10 },
   { field: "resendSeconds", labelKey: "loginSec.resend", hintKey: "loginSec.resendHint", min: 15, max: 600 },
 ];
@@ -39,9 +39,15 @@ export function LoginSecuritySettingsForm({ settings }: { settings: LoginSecurit
     setDirty(true);
   };
 
-  const setNum = (field: NumField, raw: string, min: number, max: number) => {
+  // While typing only the ceiling applies — a floor of e.g. 30 would make it
+  // impossible to type "120" digit by digit. The floor snaps on blur, and the
+  // server clamps again on save, so no out-of-range value can ever be stored.
+  const setNum = (field: NumField, raw: string, max: number) => {
     const n = Number(raw.replace(/\D/g, ""));
-    set(field, Math.min(max, Math.max(min, Number.isFinite(n) ? n : min)));
+    set(field, Math.min(max, Number.isFinite(n) ? n : 0));
+  };
+  const snapMin = (field: NumField, min: number) => {
+    if (value[field] < min) set(field, min);
   };
 
   const save = () => start(async () => {
@@ -90,7 +96,8 @@ export function LoginSecuritySettingsForm({ settings }: { settings: LoginSecurit
                 {t(row.labelKey)}
               </label>
               <input id={`ls-${row.field}`} inputMode="numeric" value={String(value[row.field])}
-                onChange={(e) => setNum(row.field, e.target.value, row.min, row.max)}
+                onChange={(e) => setNum(row.field, e.target.value, row.max)}
+                onBlur={() => snapMin(row.field, row.min)}
                 className="mt-1.5 h-11 w-full rounded-xl border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-[rgb(var(--accent)/0.6)]" />
               <p className="mt-1 text-[12px] leading-relaxed text-faint">{t(row.hintKey)}</p>
             </div>

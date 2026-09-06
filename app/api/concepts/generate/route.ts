@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { featureBlockedForApi } from "@/lib/server/feature-availability";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { generateFromConcept } from "@/lib/server/concept-generation";
 import { QUALITIES, type Quality } from "@/lib/ai/types";
@@ -21,6 +22,10 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false, error: "unauthenticated" }, { status: 401 });
+  const blockedFeature = await featureBlockedForApi(supabase, "generator");
+  if (blockedFeature) {
+    return NextResponse.json({ ok: false, error: "feature_unavailable", feature_status: blockedFeature }, { status: 503 });
+  }
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) return NextResponse.json({ ok: false, error: "no_workspace" }, { status: 400 });
 

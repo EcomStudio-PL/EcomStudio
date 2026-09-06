@@ -7,6 +7,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import {
   IMAGE_CREATE, IMAGE_EDIT, IMAGE_MODES, VIDEO_CREATE, VIDEO_EDIT, editLabelKey, type MegaEntry,
 } from "@/lib/topnav";
+import { allActive, menuBadge, menuVisible, type AvailabilityMap, type MenuBadge } from "@/lib/features";
 import { cn } from "@/lib/utils";
 import { Brand } from "./brand";
 import { ThemeToggle } from "./theme-toggle";
@@ -29,13 +30,17 @@ import { NotificationsBell, type NotificationItem } from "./notifications-bell";
  * belongs to the hover target, not empty page. Opening is instant on hover
  * and on click; closing waits 200 ms so the pointer can travel.
  */
-export function MegaTopbar({ name, email, credits, plan, isAdmin = false, notifications = [], unread = 0 }: {
+export function MegaTopbar({ name, email, credits, plan, isAdmin = false, notifications = [], unread = 0, availability }: {
   name: string; email?: string; credits: number; plan: string; isAdmin?: boolean;
   notifications?: NotificationItem[]; unread?: number;
+  /** Feature availability from the server layout — filters and badges the
+   *  menus. Absent (other shells) means everything active. */
+  availability?: AvailabilityMap;
 }) {
   const { t } = useI18n();
   const { setOpen: setDrawerOpen } = useDrawer();
   const pathname = usePathname();
+  const avail = availability ?? allActive();
   const [menu, setMenu] = useState<"image" | "video" | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const barRef = useRef<HTMLElement>(null);
@@ -104,7 +109,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, notifi
                   plus `pt-2` keeps the bridge hoverable. */}
               {menu === which && (
                 <div className="absolute left-0 top-full z-50 pt-2">
-                  <MegaPanel which={which} t={t} />
+                  <MegaPanel which={which} t={t} avail={avail} isAdmin={isAdmin} />
                 </div>
               )}
             </div>
@@ -119,14 +124,17 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, notifi
             fact about the account rather than permanent chrome. */}
         <CreditsControl credits={credits} />
 
-        <Link href="/library"
-          className={cn(
-            "hidden h-9 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition-colors duration-200 lg:inline-flex",
-            pathname.startsWith("/library") ? "bg-[rgb(var(--accent)/0.14)] text-ink" : "text-muted hover:bg-raised hover:text-ink",
-          )}>
-          <Images size={15} aria-hidden />
-          {t("topnav.library")}
-        </Link>
+        {menuVisible(avail, "/library", isAdmin) && (
+          <Link href="/library"
+            className={cn(
+              "hidden h-9 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition-colors duration-200 lg:inline-flex",
+              pathname.startsWith("/library") ? "bg-[rgb(var(--accent)/0.14)] text-ink" : "text-muted hover:bg-raised hover:text-ink",
+            )}>
+            <Images size={15} aria-hidden />
+            {t("topnav.library")}
+            <DynBadge kind={menuBadge(avail, "/library")} t={t} />
+          </Link>
+        )}
 
         {/* Mobile search icon — the palette opens as a full overlay. */}
         <div className="lg:hidden"><CommandPalette isAdmin={isAdmin} iconOnly /></div>
@@ -153,11 +161,21 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, notifi
 
 /** The panel body: TWÓRZ (categories, each in its own accent) and EDYTUJ
  *  (the toolbox), plus a footer of secondary destinations. */
-function MegaPanel({ which, t }: { which: "image" | "video"; t: (k: string, v?: Record<string, string | number>) => string }) {
-  const create = which === "image" ? IMAGE_CREATE : VIDEO_CREATE;
+function MegaPanel({ which, t, avail, isAdmin }: {
+  which: "image" | "video";
+  t: (k: string, v?: Record<string, string | number>) => string;
+  avail: AvailabilityMap;
+  isAdmin: boolean;
+}) {
+  // Availability first: a DISABLED (or menu-hidden) module simply is not
+  // listed for customers; admins keep every entry, badged.
+  const create = (which === "image" ? IMAGE_CREATE : VIDEO_CREATE)
+    .filter((e) => menuVisible(avail, e.href, isAdmin));
   // The image list is five entries now, and the last of them IS the hub, so
   // nothing is trimmed and no separate "all tools" link is needed underneath.
-  const edit = which === "image" ? IMAGE_EDIT : VIDEO_EDIT;
+  const edit = (which === "image" ? IMAGE_EDIT : VIDEO_EDIT)
+    .filter((e) => menuVisible(avail, e.href, isAdmin));
+  const modes = IMAGE_MODES.filter((e) => menuVisible(avail, e.href, isAdmin));
   const label = (e: MegaEntry) =>
     which === "image" ? t(`cats.${e.key}`) : t(`video.wf.${e.key}.name`);
   const sub = (e: MegaEntry) =>
@@ -170,12 +188,13 @@ function MegaPanel({ which, t }: { which: "image" | "video"; t: (k: string, v?: 
           <p className="overline mb-2.5">{t("mega.create")}</p>
           <div className="grid grid-cols-2 gap-1">
             {create.map((e) => (
-              <MegaLink key={e.key} entry={e} label={label(e)} sub={sub(e)} soonLabel={t("common.soon")} />
+              <MegaLink key={e.key} entry={e} label={label(e)} sub={sub(e)} soonLabel={t("common.soon")}
+                dynBadge={dynBadgeLabel(menuBadge(avail, e.href), t)} />
             ))}
           </div>
-          {which === "image" && (
+          {which === "image" && modes.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-1.5 border-t border-line pt-3.5">
-              {IMAGE_MODES.map((e) => (
+              {modes.map((e) => (
                 <Link key={e.key} href={e.href}
                   className={cn(
                     "inline-flex h-9 items-center gap-2 rounded-xl px-3.5 text-[13px] font-semibold transition-colors duration-200",
@@ -183,6 +202,7 @@ function MegaPanel({ which, t }: { which: "image" | "video"; t: (k: string, v?: 
                   )}>
                   <e.icon size={14} aria-hidden />
                   {t(`mega.${e.key}`)}
+                  <DynBadge kind={menuBadge(avail, e.href)} t={t} onCta={e.key === "engine"} />
                 </Link>
               ))}
             </div>
@@ -195,7 +215,8 @@ function MegaPanel({ which, t }: { which: "image" | "video"; t: (k: string, v?: 
             {edit.map((e) => (
               <MegaLink key={e.key} entry={e}
                 label={which === "image" ? t(editLabelKey(e)) : t(`video.wf.${e.key}.name`)}
-                soonLabel={t("common.soon")} compact />
+                soonLabel={t("common.soon")} compact
+                dynBadge={dynBadgeLabel(menuBadge(avail, e.href), t)} />
             ))}
             {which === "video" && (
               <p className="mt-3 text-[12px] leading-relaxed text-faint">{t("mega.videoSoon")}</p>
@@ -205,22 +226,52 @@ function MegaPanel({ which, t }: { which: "image" | "video"; t: (k: string, v?: 
       </div>
 
       <div className="mt-4 flex items-center justify-between border-t border-line pt-3">
-        <Link href={which === "image" ? "/inspirations" : "/wideo"}
-          className="text-[12.5px] font-semibold text-muted transition-colors duration-200 hover:text-ink">
-          {which === "image" ? t("nav.inspirations") : t("video.title")} →
-        </Link>
-        <Link href="/products" className="text-[12.5px] font-semibold text-muted transition-colors duration-200 hover:text-ink">
-          {t("nav.products")} →
-        </Link>
+        {menuVisible(avail, which === "image" ? "/inspirations" : "/wideo", isAdmin) ? (
+          <Link href={which === "image" ? "/inspirations" : "/wideo"}
+            className="text-[12.5px] font-semibold text-muted transition-colors duration-200 hover:text-ink">
+            {which === "image" ? t("nav.inspirations") : t("video.title")} →
+          </Link>
+        ) : <span />}
+        {menuVisible(avail, "/products", isAdmin) && (
+          <Link href="/products" className="text-[12.5px] font-semibold text-muted transition-colors duration-200 hover:text-ink">
+            {t("nav.products")} →
+          </Link>
+        )}
       </div>
     </div>
   );
 }
 
+/** The i18n label for a dynamic availability badge, or null when active. */
+function dynBadgeLabel(kind: MenuBadge, t: (k: string) => string): string | null {
+  if (kind === "soon") return t("features.badgeSoon");
+  if (kind === "maintenance") return t("features.badgeMaintenance");
+  if (kind === "disabled") return t("features.badgeDisabled");
+  return null;
+}
+
+/** The pill for a feature-availability state on a standalone link. Unlike the
+ *  static `soon` treatment the link STAYS clickable — the page explains. */
+function DynBadge({ kind, t, onCta }: { kind: MenuBadge; t: (k: string) => string; onCta?: boolean }) {
+  const label = dynBadgeLabel(kind, t);
+  if (!label) return null;
+  return (
+    <span className={cn(
+      "rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide",
+      onCta ? "bg-white/20 text-white" : "bg-raised text-faint",
+    )}>
+      {label}
+    </span>
+  );
+}
+
 /** One mega-menu entry: icon tile in the entry's own accent, label, and a
- *  one-liner. Disabled with a "Wkrótce" badge when there is no backend. */
-function MegaLink({ entry, label, sub, soonLabel, compact }: {
+ *  one-liner. Disabled with a "Wkrótce" badge when there is no backend; a
+ *  feature-availability badge (dynBadge) keeps the link alive — the target
+ *  page renders the coming-soon / maintenance screen itself. */
+function MegaLink({ entry, label, sub, soonLabel, compact, dynBadge }: {
   entry: MegaEntry; label: string; sub?: string; soonLabel: string; compact?: boolean;
+  dynBadge?: string | null;
 }) {
   const Icon = entry.icon;
   const accented = Boolean(entry.accent) && !entry.soon;
@@ -247,9 +298,13 @@ function MegaLink({ entry, label, sub, soonLabel, compact }: {
       <span className="min-w-0 flex-1">
         <span className={cn("flex items-center gap-1.5 truncate font-semibold", compact ? "text-[13px]" : "text-sm")}>
           {label}
-          {entry.soon && (
+          {entry.soon ? (
             <span className="rounded-full bg-raised px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-faint">
               {soonLabel}
+            </span>
+          ) : dynBadge && (
+            <span className="rounded-full bg-raised px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-faint">
+              {dynBadge}
             </span>
           )}
         </span>

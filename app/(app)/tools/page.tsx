@@ -12,6 +12,7 @@ import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { toolCatalogue, type ToolAvailability } from "@/lib/server/image-tools";
 import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
+import { FeatureGate } from "@/components/feature-gate";
 import type { ToolSlug } from "@/lib/images/tools";
 import { cn } from "@/lib/utils";
 
@@ -139,7 +140,11 @@ export default async function ToolsPage() {
   const sectionState = (paid: ToolSlug | null): ToolAvailability | null =>
     editor && !editor.available ? editor : paid ? row(paid) : editor;
 
+  // The hub gates on its OWN key (not via a segment layout) so switching the
+  // hub off never takes the editor / resize / compress screens down with it —
+  // those live under their own keys and their own layouts.
   return (
+    <FeatureGate feature="tools">
     <div>
       <PageHeader overline={t("mega.edit")} title={t("hub.title")} sub={t("hub.sub")} />
 
@@ -172,6 +177,7 @@ export default async function ToolsPage() {
         </div>
       </section>
     </div>
+    </FeatureGate>
   );
 }
 

@@ -100,16 +100,16 @@ export type LoginSecuritySettings = {
   verifyNewDevice: boolean;
   verifyNewIp: boolean;
   reverifyDays: number;
-  codeTtlMinutes: number;
+  codeTtlSeconds: number;
   maxAttempts: number;
   resendSeconds: number;
 };
 
 export const LOGIN_SECURITY_DEFAULTS: LoginSecuritySettings = {
   verifyNewDevice: true,
-  verifyNewIp: false,
-  reverifyDays: 14,
-  codeTtlMinutes: 10,
+  verifyNewIp: true,
+  reverifyDays: 7,
+  codeTtlSeconds: 120,
   maxAttempts: 5,
   resendSeconds: 60,
 };
@@ -133,11 +133,19 @@ export async function getLoginSecuritySettings(supabase: Client): Promise<LoginS
       .from("app_settings").select("value").eq("key", LOGIN_SECURITY_KEY).maybeSingle();
     const v = (data?.value && typeof data.value === "object" && !Array.isArray(data.value)
       ? data.value : {}) as Record<string, unknown>;
+    // Legacy shape: a row written before 0059 still carries minutes. Honour
+    // it (×60) until the migration rewrites the row, so nothing ever falls
+    // back to a default the admin did not choose.
+    const ttlSeconds = v.code_ttl_seconds !== undefined
+      ? asInt(v.code_ttl_seconds, LOGIN_SECURITY_DEFAULTS.codeTtlSeconds, 30, 3600)
+      : v.code_ttl_minutes !== undefined
+        ? asInt(Number(v.code_ttl_minutes) * 60, LOGIN_SECURITY_DEFAULTS.codeTtlSeconds, 30, 3600)
+        : LOGIN_SECURITY_DEFAULTS.codeTtlSeconds;
     return {
       verifyNewDevice: asFlag(v.verify_new_device, LOGIN_SECURITY_DEFAULTS.verifyNewDevice),
       verifyNewIp: asFlag(v.verify_new_ip, LOGIN_SECURITY_DEFAULTS.verifyNewIp),
       reverifyDays: asInt(v.reverify_days, LOGIN_SECURITY_DEFAULTS.reverifyDays, 0, 365),
-      codeTtlMinutes: asInt(v.code_ttl_minutes, LOGIN_SECURITY_DEFAULTS.codeTtlMinutes, 1, 60),
+      codeTtlSeconds: ttlSeconds,
       maxAttempts: asInt(v.max_attempts, LOGIN_SECURITY_DEFAULTS.maxAttempts, 1, 10),
       resendSeconds: asInt(v.resend_seconds, LOGIN_SECURITY_DEFAULTS.resendSeconds, 15, 600),
     };
@@ -153,7 +161,7 @@ export function toStoredSettings(s: LoginSecuritySettings): Record<string, strin
     verify_new_device: s.verifyNewDevice ? "1" : "0",
     verify_new_ip: s.verifyNewIp ? "1" : "0",
     reverify_days: String(Math.min(365, Math.max(0, Math.trunc(s.reverifyDays)))),
-    code_ttl_minutes: String(Math.min(60, Math.max(1, Math.trunc(s.codeTtlMinutes)))),
+    code_ttl_seconds: String(Math.min(3600, Math.max(30, Math.trunc(s.codeTtlSeconds)))),
     max_attempts: String(Math.min(10, Math.max(1, Math.trunc(s.maxAttempts)))),
     resend_seconds: String(Math.min(600, Math.max(15, Math.trunc(s.resendSeconds)))),
   };
@@ -231,10 +239,15 @@ export function renderSecurityCodeEmail(input: {
   code: string;
   deviceLabel: string;
   when: Date;
+  /** Real TTL of the code — the mail must not promise more time than the DB gives. */
+  ttlSeconds?: number;
 }): { subject: string; html: string; text: string } {
   const subject = "Kod bezpieczeństwa logowania — GrovBase";
   const when = formatWarsaw(input.when);
   const spaced = input.code.slice(0, 3) + " " + input.code.slice(3);
+  const ttl = Math.max(30, Math.trunc(input.ttlSeconds ?? 120));
+  const ttlText = ttl % 60 === 0 ? `${ttl / 60} min` : `${ttl} s`;
+  const expiresLine = `Kod wygasa za ${ttlText}.`;
   const esc = (s: string) => s.replace(/[&<>"]/g, (c) => (
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
 
@@ -247,7 +260,7 @@ export function renderSecurityCodeEmail(input: {
     "",
     `Kod: ${spaced}`,
     "",
-    "Kod wygasa za kilka minut.",
+    expiresLine,
     "Jeżeli to nie Ty, nie udostępniaj kodu i zmień hasło.",
     "",
     "grovbase.com",
@@ -277,7 +290,7 @@ export function renderSecurityCodeEmail(input: {
 </div>
 </td></tr>
 <tr><td align="center" style="padding:12px 32px 0;">
-<p style="margin:0;font:400 13px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#9a8ea8;">Kod wygasa za kilka minut.</p>
+<p style="margin:0;font:400 13px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#9a8ea8;">${esc(expiresLine)}</p>
 </td></tr>
 <tr><td style="padding:20px 32px 28px;">
 <p style="margin:0;font:400 12px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#7d7188;">Jeżeli to nie Ty próbowałeś się zalogować, nie udostępniaj tego kodu nikomu i jak najszybciej zmień hasło.</p>
@@ -302,6 +315,7 @@ export async function sendSecurityCode(
   to: string,
   code: string,
   label: string,
+  ttlSeconds?: number,
 ): Promise<{ sent: boolean; error?: string }> {
   const { config, secrets } = await readIntegrationSecrets<MailConfig>(supabase, "mail");
   const password = secrets.smtp_password ?? (config.smtp_same_as_imap ? secrets.imap_password : undefined);
@@ -330,7 +344,7 @@ export async function sendSecurityCode(
   // admin explicitly publishes a custom version.
   const custom = await securityCodeTemplate(supabase, code, label);
   const { subject, html, text } = custom
-    ?? renderSecurityCodeEmail({ code, deviceLabel: label, when: new Date() });
+    ?? renderSecurityCodeEmail({ code, deviceLabel: label, when: new Date(), ttlSeconds });
   return deliverHtml({ to, subject, text, html }, identity, smtp);
 }
 
@@ -411,7 +425,15 @@ export async function openOrReuseChallenge(
     settings: LoginSecuritySettings;
     force?: boolean;
   },
-): Promise<{ status: "sent" | "reused" | "cooldown" | "not_configured" | "error"; waitSeconds?: number }> {
+): Promise<{
+  status: "sent" | "reused" | "cooldown" | "not_configured" | "error";
+  waitSeconds?: number;
+  /** Seconds until the LIVE challenge expires — derived from the DB row's
+   *  expires_at (via peek) for a reused code, from the TTL just written for a
+   *  fresh one. This is what the countdown on the page runs on, so a reload
+   *  never resets the timer. */
+  expiresInSeconds?: number;
+}> {
   await ensureLoginSecurityHash(supabase);
   const token = loginSecurityToken();
   if (!token) return { status: "error" };
@@ -419,12 +441,14 @@ export async function openOrReuseChallenge(
   const { data: peek } = await supabase.rpc("login_challenge_peek", {
     p_token: token, p_user: opts.userId, p_device_hash: opts.deviceHash,
   });
-  const live = peek && typeof peek === "object" ? peek as { age_seconds?: number } : null;
+  const live = peek && typeof peek === "object"
+    ? peek as { age_seconds?: number; expires_in_seconds?: number } : null;
   if (live) {
     const age = typeof live.age_seconds === "number" ? live.age_seconds : 0;
+    const left = typeof live.expires_in_seconds === "number" ? live.expires_in_seconds : 0;
     const wait = opts.settings.resendSeconds - age;
-    if (!opts.force) return { status: "reused" };
-    if (wait > 0) return { status: "cooldown", waitSeconds: wait };
+    if (!opts.force) return { status: "reused", expiresInSeconds: left };
+    if (wait > 0) return { status: "cooldown", waitSeconds: wait, expiresInSeconds: left };
   }
 
   const code = generateCode();
@@ -436,16 +460,16 @@ export async function openOrReuseChallenge(
     p_ip_hash: opts.ipHash,
     p_device_label: opts.label,
     p_reason: opts.reason,
-    p_ttl_minutes: opts.settings.codeTtlMinutes,
+    p_ttl_seconds: opts.settings.codeTtlSeconds,
     p_max_attempts: opts.settings.maxAttempts,
   });
   if (error || !id) {
     console.error("loginSecurity.open", safeError(error));
     return { status: "error" };
   }
-  const sent = await sendSecurityCode(supabase, opts.email, code, opts.label);
+  const sent = await sendSecurityCode(supabase, opts.email, code, opts.label, opts.settings.codeTtlSeconds);
   if (!sent.sent) return { status: sent.error === "not_configured" ? "not_configured" : "error" };
-  return { status: "sent" };
+  return { status: "sent", expiresInSeconds: opts.settings.codeTtlSeconds };
 }
 
 /** Verify a submitted code. Thin wrapper over the DB verdict; on success the

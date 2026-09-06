@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  BadgeCheck, ClipboardCopy, Loader2, Mail, MessageCircle, PencilLine, RotateCcw, Send, TriangleAlert,
+  BadgeCheck, ClipboardCopy, Loader2, Mail, MessageCircle, PencilLine, RefreshCw, RotateCcw, Send, TriangleAlert,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Card } from "@/components/ui/card";
@@ -14,8 +14,10 @@ import { Switch } from "@/components/ui/record";
 import type { TemplateDef } from "@/lib/server/message-templates";
 import {
   authTemplateHtmlAction, previewTemplateAction, publishTemplateAction,
-  resetTemplateAction, saveTemplateDraftAction, type TemplateListEntry, type TemplatePreview,
+  resetTemplateAction, saveTemplateDraftAction, syncSupabaseAuthAction,
+  type TemplateListEntry, type TemplatePreview,
 } from "@/app/actions/templates";
+import type { AuthSyncView } from "@/lib/server/supabase-management";
 
 /**
  * SZABLONY WIADOMOŚCI — the admin's template studio.
@@ -48,9 +50,13 @@ function startDef(entry: TemplateListEntry): TemplateDef {
     : { channel: "telegram", telegram: { ...EMPTY_TG } };
 }
 
-export function TemplateStudio({ entries }: { entries: TemplateListEntry[] }) {
+export function TemplateStudio({ entries, authSync }: {
+  entries: TemplateListEntry[];
+  authSync: AuthSyncView | null;
+}) {
   const { t } = useI18n();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [sync, setSync] = useState<AuthSyncView | null>(authSync);
   const selected = entries.find((e) => e.key === selectedKey) ?? null;
 
   const groups = useMemo(() => {
@@ -69,12 +75,13 @@ export function TemplateStudio({ entries }: { entries: TemplateListEntry[] }) {
 
   return (
     <div className="space-y-6">
+      <AuthSyncPanel sync={sync} onSync={setSync} />
       {groups.map((group) => (
         <section key={group.key}>
           <h2 className="mb-2.5 text-[12px] font-semibold uppercase tracking-wide text-faint">{t(group.key)}</h2>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {group.items.map((entry) => (
-              <TemplateTile key={entry.key} entry={entry} onEdit={() => setSelectedKey(entry.key)} />
+              <TemplateTile key={entry.key} entry={entry} sync={sync} onEdit={() => setSelectedKey(entry.key)} />
             ))}
           </div>
         </section>
@@ -83,9 +90,102 @@ export function TemplateStudio({ entries }: { entries: TemplateListEntry[] }) {
   );
 }
 
-function TemplateTile({ entry, onEdit }: { entry: TemplateListEntry; onEdit: () => void }) {
+/* ── Supabase Auth sync panel (A11) ─────────────────────────────────────────
+ * Four states, never a claim beyond the verified truth:
+ *   ● synced   — last sync verified AND nothing changed since
+ *   ● pending  — token present, changes not pushed yet
+ *   ● error    — last attempt failed (message shown)
+ *   ● manual   — no SUPABASE_MANAGEMENT_TOKEN, so only the dashboard works */
+function AuthSyncPanel({ sync, onSync }: {
+  sync: AuthSyncView | null;
+  onSync: (v: AuthSyncView) => void;
+}) {
+  const { t } = useI18n();
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  if (!sync) return null;
+
+  const DOT: Record<AuthSyncView["state"], string> = {
+    synced: "bg-success",
+    pending: "bg-warning",
+    error: "bg-danger",
+    manual: "bg-warning",
+  };
+  const LABEL: Record<AuthSyncView["state"], string> = {
+    synced: t("tpl.sync.stateSynced"),
+    pending: t("tpl.sync.statePending"),
+    error: t("tpl.sync.stateError"),
+    manual: t("tpl.sync.stateManual"),
+  };
+
+  const run = async () => {
+    setBusy(true);
+    const res = await syncSupabaseAuthAction();
+    setBusy(false);
+    if (res.view) onSync(res.view);
+    if (res.ok) {
+      toast.success(res.smtpIncluded ? t("tpl.sync.okSmtpToast") : t("tpl.sync.okToast"));
+      router.refresh();
+    } else if (res.reason === "no_token") {
+      toast.error(t("tpl.sync.noTokenToast"));
+    } else {
+      toast.error(t("tpl.sync.failToast"));
+    }
+  };
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 text-sm font-semibold text-ink">
+            <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${DOT[sync.state]}`} />
+            {t("tpl.sync.title")} — {LABEL[sync.state]}
+          </p>
+          <p className="mt-1 text-[12px] leading-relaxed text-muted">
+            {t("tpl.sync.last")}: {sync.lastSyncAt
+              ? new Date(sync.lastSyncAt).toLocaleString("pl-PL")
+              : t("tpl.sync.never")}
+            {" · "}
+            {sync.smtpReady ? t("tpl.sync.smtpReady") : t("tpl.sync.smtpMissing")}
+          </p>
+        </div>
+        <Button onClick={() => void run()} disabled={busy || !sync.tokenPresent}>
+          {busy
+            ? <Loader2 size={14} className="mr-2 animate-spin" aria-hidden />
+            : <RefreshCw size={14} aria-hidden className="mr-2" />}
+          {t("tpl.sync.button")}
+        </Button>
+      </div>
+
+      {sync.state === "error" && sync.error && (
+        <p className="mt-3 rounded-xl bg-[rgb(var(--danger)/0.1)] px-3 py-2.5 font-mono text-[12px] leading-relaxed text-danger">
+          {sync.error}
+        </p>
+      )}
+      {sync.state === "manual" && (
+        <div className="mt-3 rounded-xl bg-[rgb(var(--warning)/0.1)] px-3.5 py-3 text-[12.5px] leading-relaxed text-warning">
+          <p className="font-semibold">{t("tpl.sync.manualTitle")}</p>
+          <ol className="mt-1.5 list-decimal space-y-1 pl-4">
+            <li>{t("tpl.sync.manual1")}</li>
+            <li>{t("tpl.sync.manual2")}</li>
+            <li>{t("tpl.sync.manual3")}</li>
+          </ol>
+          <p className="mt-2">{t("tpl.sync.manualAlt")}</p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function TemplateTile({ entry, sync, onEdit }: {
+  entry: TemplateListEntry;
+  sync: AuthSyncView | null;
+  onEdit: () => void;
+}) {
   const { t } = useI18n();
   const Icon = entry.channel === "telegram" ? MessageCircle : Mail;
+  const authSynced = entry.kind === "auth" && sync?.state === "synced";
   return (
     <Card className="flex flex-col p-4">
       <div className="flex items-start gap-3">
@@ -102,7 +202,9 @@ function TemplateTile({ entry, onEdit }: { entry: TemplateListEntry; onEdit: () 
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
         {entry.kind === "auth" ? (
-          <Badge tone="amber">{t("tpl.needsSync")}</Badge>
+          authSynced
+            ? <Badge tone="green">{t("tpl.authSynced")}</Badge>
+            : <Badge tone="amber">{t("tpl.needsSync")}</Badge>
         ) : entry.publishedVersion > 0 ? (
           <Badge tone="green">{t("tpl.published")} v{entry.publishedVersion}</Badge>
         ) : (

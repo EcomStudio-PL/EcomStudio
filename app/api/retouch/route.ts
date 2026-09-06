@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { featureBlockedForApi } from "@/lib/server/feature-availability";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { runRetouch } from "@/lib/server/retouch";
 
@@ -20,6 +21,10 @@ export async function POST(request: Request) {
   // The user comes from the session, never from the body.
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false, error: "unauthenticated" }, { status: 401 });
+  const blockedFeature = await featureBlockedForApi(supabase, "retouch");
+  if (blockedFeature) {
+    return NextResponse.json({ ok: false, error: "feature_unavailable", feature_status: blockedFeature }, { status: 503 });
+  }
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) return NextResponse.json({ ok: false, error: "no_workspace" }, { status: 400 });
 

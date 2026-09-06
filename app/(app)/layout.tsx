@@ -5,6 +5,7 @@ import {
 } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { enforceLoginSecurity } from "@/lib/server/login-security";
+import { getAvailabilityMap } from "@/lib/server/feature-availability";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { MegaTopbar } from "@/components/layout/mega-topbar";
@@ -88,12 +89,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </main>
     );
   }
-  const [wallet, { data: sub }, { data: notifs }] = await Promise.all([
+  const [wallet, { data: sub }, { data: notifs }, availability] = await Promise.all([
     getWallet(supabase, workspace.id),
     supabase.from("subscriptions").select("subscription_plans(name)")
       .eq("workspace_id", workspace.id).eq("status", "active").maybeSingle(),
     supabase.from("notifications").select("id, type, title, body, href, read_at, created_at")
       .eq("user_id", user.id).order("created_at", { ascending: false }).limit(10),
+    getAvailabilityMap(supabase),
   ]);
   const unread = (notifs ?? []).filter((n) => !n.read_at).length;
   const planName = sub?.subscription_plans?.name ?? "Free";
@@ -108,7 +110,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           itself stops scrolling. Every other page keeps min-h-dvh and
           scrolls normally. */}
       <div className="app-shell flex min-h-dvh w-full min-w-0 flex-col">
-        <MegaTopbar name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} notifications={notifs ?? []} unread={unread} />
+        <MegaTopbar name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} notifications={notifs ?? []} unread={unread} availability={availability} />
         {/* Full-width work surface. The bottom padding is DERIVED from the
             chrome tokens, so the fixed navigation can never cover the last
             element on the page — the defect that showed up on every phone
@@ -116,8 +118,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <main className="mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-[var(--page-x)] pt-4 pb-[var(--page-bottom)] sm:px-6 sm:pt-5 lg:px-8 lg:pb-14 lg:pt-6 xl:px-10">
           {children}
         </main>
-        <CustomerBottomNav name={displayName} />
-        <CustomerDrawer name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} />
+        <CustomerBottomNav name={displayName} availability={availability} isAdmin={isAdmin} />
+        <CustomerDrawer name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} availability={availability} />
       </div>
     </DrawerProvider>
   );

@@ -20,7 +20,15 @@ import {
  */
 
 export type ChallengeState =
-  | { ok: true; masked: string; resendSeconds: number; status: "sent" | "reused" | "not_configured" | "error" }
+  | {
+      ok: true;
+      masked: string;
+      resendSeconds: number;
+      /** Server-derived lifetime of the LIVE code (from the DB expires_at) —
+       *  the page countdown runs on this, so a refresh never resets it. */
+      expiresInSeconds: number;
+      status: "sent" | "reused" | "not_configured" | "error";
+    }
   | { ok: false; reason: "no_session" | "already_trusted" };
 
 /** Called on mount. Ensures the device cookie, decides whether a code is truly
@@ -49,7 +57,13 @@ export async function ensureChallengeAction(): Promise<ChallengeState> {
     settings,
   });
   const status = result.status === "cooldown" ? "reused" : result.status;
-  return { ok: true, masked: maskEmail(user.email), resendSeconds: settings.resendSeconds, status };
+  return {
+    ok: true,
+    masked: maskEmail(user.email),
+    resendSeconds: settings.resendSeconds,
+    expiresInSeconds: Math.max(0, result.expiresInSeconds ?? 0),
+    status,
+  };
 }
 
 export type VerifyState = { ok: true } | { ok: false; reason: string; attemptsLeft?: number };
@@ -69,7 +83,12 @@ export async function verifyCodeAction(code: string): Promise<VerifyState> {
 }
 
 export type ResendState =
-  | { ok: true; status: "sent" | "cooldown" | "not_configured" | "error"; waitSeconds?: number };
+  | {
+      ok: true;
+      status: "sent" | "cooldown" | "not_configured" | "error";
+      waitSeconds?: number;
+      expiresInSeconds?: number;
+    };
 
 export async function resendCodeAction(): Promise<ResendState> {
   const supabase = await createClient();
@@ -83,7 +102,12 @@ export async function resendCodeAction(): Promise<ResendState> {
     userId: user.id, email: user.email, deviceHash, ipHash, label,
     reason: "new_device", settings, force: true,
   });
-  return { ok: true, status: result.status === "reused" ? "sent" : result.status, waitSeconds: result.waitSeconds };
+  return {
+    ok: true,
+    status: result.status === "reused" ? "sent" : result.status,
+    waitSeconds: result.waitSeconds,
+    expiresInSeconds: result.expiresInSeconds,
+  };
 }
 
 /** Re-check clearance after a successful verify, so the page only navigates on

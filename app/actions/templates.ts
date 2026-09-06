@@ -8,6 +8,7 @@ import {
   type TemplateDef,
 } from "@/lib/server/message-templates";
 import { AUTH_EMAIL_TEMPLATES } from "@/lib/server/auth-email-templates";
+import { readAuthSyncView, runAuthSync, type AuthSyncView } from "@/lib/server/supabase-management";
 import type { Json } from "@/lib/database.types";
 
 /**
@@ -204,6 +205,46 @@ export async function listTemplatesAction(): Promise<TemplateListEntry[] | null>
   } catch {
     return null;
   }
+}
+
+/* ── Supabase Auth sync (A11) ────────────────────────────────────────────────
+ * The AUTH templates are rendered by GoTrue, so "publish" for them means
+ * pushing the repo templates + Site URL + SMTP into the Supabase control
+ * plane. That happens through the Management API with a server-only token —
+ * see lib/server/supabase-management.ts. The UI never claims more than the
+ * verified truth: statuses come from readAuthSyncView, and runAuthSync only
+ * stores "synced" after reading the config back. */
+
+export async function authSyncStatusAction(): Promise<AuthSyncView | null> {
+  try {
+    const { supabase } = await requireAdmin();
+    return await readAuthSyncView(supabase);
+  } catch {
+    return null;
+  }
+}
+
+export type AuthSyncActionResult =
+  | { ok: true; smtpIncluded: boolean; view: AuthSyncView }
+  | { ok: false; reason: "forbidden" | "no_token" | "api"; error?: string; view: AuthSyncView | null };
+
+export async function syncSupabaseAuthAction(): Promise<AuthSyncActionResult> {
+  let ctx: Awaited<ReturnType<typeof requireAdmin>>;
+  try {
+    ctx = await requireAdmin();
+  } catch {
+    return { ok: false, reason: "forbidden", view: null };
+  }
+  const result = await runAuthSync(ctx.supabase);
+  await logAudit(ctx.supabase, {
+    actorId: ctx.adminId, action: "supabase_auth.sync",
+    entityType: "app_settings", entityId: "supabase_auth_sync",
+    after: { ok: result.ok, state: result.view.state, ...(result.ok ? { smtp: result.smtpIncluded } : {}) },
+  });
+  revalidatePath(PAGE);
+  return result.ok
+    ? { ok: true, smtpIncluded: result.smtpIncluded, view: result.view }
+    : { ok: false, reason: result.reason, error: result.error, view: result.view };
 }
 
 /** The editor warns about placeholders the event will never fill. */

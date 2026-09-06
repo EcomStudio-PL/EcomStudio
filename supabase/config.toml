@@ -1,0 +1,69 @@
+# ============================================================================
+# GrovBase — Supabase config-as-code (auth mail surface).
+#
+# WHY THIS FILE EXISTS
+# The confirm-signup / reset-password mails were leaving the project on the
+# built-in Supabase mailer with the default template and a localhost Site URL,
+# because Authentication settings live in the Supabase control plane — they are
+# NOT part of the database and no repository file changes them by itself.
+# This file makes that configuration reviewable and pushable:
+#
+#   supabase link --project-ref orjkxijqpecnbzhxhfct
+#   supabase config push --dry-run     # ALWAYS review the diff first
+#   supabase config push
+#
+# You need a Supabase personal access token (`supabase login`, or the
+# SUPABASE_ACCESS_TOKEN env var) and the SMTP password in the environment —
+# neither is stored in this repository, on purpose.
+#
+# PREFER THE IN-APP SYNC when you only need the mail surface:
+# /admin/email/templates → "Synchronizuj z Supabase" PATCHes exactly the
+# fields below through the Management API (partial update, nothing else is
+# touched). `config push` is broader — it may propose resetting auth settings
+# this file does not declare (e.g. OAuth providers configured only in the
+# dashboard), which is why the --dry-run review above is not optional.
+# ============================================================================
+
+project_id = "orjkxijqpecnbzhxhfct"
+
+[auth]
+# Every mail link and OAuth redirect is built from this origin. localhost here
+# is what put localhost into the confirmation mails.
+site_url = "https://grovbase.com"
+additional_redirect_urls = [
+  "https://grovbase.com/auth/callback",
+  "https://grovbase.com/auth/confirm",
+  "https://grovbase.com/auth/verified",
+  "https://grovbase.com/reset-password",
+  "https://grovbase.com/**",
+]
+
+[auth.email]
+enable_signup = true
+# Registration must confirm the address before the first sign-in.
+enable_confirmations = true
+double_confirm_changes = true
+
+# The branded templates live in this repo; GoTrue substitutes {{ .TokenHash }} /
+# {{ .Data.first_name }} at send time. The same files are embedded in
+# lib/server/auth-email-templates.ts for the admin preview and the in-app sync.
+[auth.email.template.confirmation]
+subject = "Potwierdź swój adres e-mail — GrovBase"
+content_path = "./supabase/templates/confirm-signup.html"
+
+[auth.email.template.recovery]
+subject = "Zresetuj hasło — GrovBase"
+content_path = "./supabase/templates/reset-password.html"
+
+# GrovBase SMTP (hostido) — the same account the app's mailbox and the login
+# security codes use. The password is NEVER in the repo: export
+# SUPABASE_AUTH_SMTP_PASS before `config push`, or use the in-app sync, which
+# reads the admin-entered mailbox secret server-side.
+[auth.email.smtp]
+enabled = true
+host = "host483417.hostido.net.pl"
+port = 587
+user = "contact@grovbase.com"
+pass = "env(SUPABASE_AUTH_SMTP_PASS)"
+admin_email = "contact@grovbase.com"
+sender_name = "GrovBase"

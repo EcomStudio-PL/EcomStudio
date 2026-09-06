@@ -8,12 +8,14 @@ import { cn } from "@/lib/utils";
  *  otherwise every child route would light them up too. */
 const EXACT = new Set(["/dashboard", "/admin"]);
 
-export function NavLink({ href, label, icon: Icon, onNavigate, compact = false, dense = false }: {
+export function NavLink({ href, label, icon: Icon, onNavigate, compact = false, dense = false, badge }: {
   href: string; label: string; icon: LucideIcon; onNavigate?: () => void;
   /** Icon-only rendering for the collapsed desktop rail (label → tooltip). */
   compact?: boolean;
   /** Tighter rows for the desktop rail; the touch drawer keeps 44px. */
   dense?: boolean;
+  /** Availability pill ("Wkrótce" / "Prace techniczne") — the link stays live. */
+  badge?: string | null;
 }) {
   const pathname = usePathname();
   const active = pathname === href || (!EXACT.has(href) && pathname.startsWith(href));
@@ -55,6 +57,11 @@ export function NavLink({ href, label, icon: Icon, onNavigate, compact = false, 
         <Icon size={compact ? 17 : dense ? 15 : 16} strokeWidth={active ? 2.3 : 2} />
       </span>
       {!compact && <span className="truncate">{label}</span>}
+      {!compact && badge && (
+        <span className="ml-auto shrink-0 rounded-full bg-raised px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-faint">
+          {badge}
+        </span>
+      )}
       {/* Collapsed rail: the label becomes a tooltip on hover. */}
       {compact && <span aria-hidden className="rail-tip">{label}</span>}
     </Link>

@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { featureBlockedForApi } from "@/lib/server/feature-availability";
+import { featureForToolSlug } from "@/lib/features";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { runTool } from "@/lib/server/image-tools";
 import { toolBySlug, MAX_UPLOAD_BYTES, ACCEPTED_MIME } from "@/lib/images/tools";
@@ -31,6 +33,14 @@ export async function POST(request: Request) {
   const slug = String(form.get("tool") ?? "");
   const tool = toolBySlug(slug);
   if (!tool) return NextResponse.json({ ok: false, error: "unknown_tool" }, { status: 400 });
+
+  // Feature availability (Task 11 C): the run is refused when the module that
+  // owns this tool is switched off for customers — the page gate already says
+  // why, this is the belt for direct calls.
+  const blockedFeature = await featureBlockedForApi(supabase, featureForToolSlug(tool.slug));
+  if (blockedFeature) {
+    return NextResponse.json({ ok: false, error: "feature_unavailable", feature_status: blockedFeature }, { status: 503 });
+  }
 
   const file = form.get("file");
   if (!(file instanceof File)) return NextResponse.json({ ok: false, error: "missing_file" }, { status: 400 });

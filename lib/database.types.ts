@@ -305,6 +305,44 @@ export type Database = {
         }
         Relationships: []
       }
+      feature_availability: {
+        Row: {
+          feature_key: string
+          status: string
+          hidden_from_menu: boolean
+          starts_at: string | null
+          ends_at: string | null
+          auto_reenable: boolean
+          custom_title: string | null
+          custom_message: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          feature_key: string
+          status?: string
+          hidden_from_menu?: boolean
+          starts_at?: string | null
+          ends_at?: string | null
+          auto_reenable?: boolean
+          custom_title?: string | null
+          custom_message?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          status?: string
+          hidden_from_menu?: boolean
+          starts_at?: string | null
+          ends_at?: string | null
+          auto_reenable?: boolean
+          custom_title?: string | null
+          custom_message?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       message_templates: {
         Row: {
           key: string
@@ -3284,7 +3322,7 @@ export type Database = {
           p_ip_hash: string
           p_device_label: string
           p_reason: string
-          p_ttl_minutes: number
+          p_ttl_seconds: number
           p_max_attempts: number
         }
         Returns: string

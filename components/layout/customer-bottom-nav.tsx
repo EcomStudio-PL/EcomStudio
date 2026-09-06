@@ -5,6 +5,7 @@ import { Home, Images, Package, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { useDrawer } from "./shell-context";
+import { allActive, menuBadge, menuVisible, type AvailabilityMap } from "@/lib/features";
 import { cn } from "@/lib/utils";
 
 type Slot = { key: string; href: string; icon: LucideIcon; exact?: boolean };
@@ -27,11 +28,19 @@ const SLOTS: readonly Slot[] = [
  * Four destinations plus the account, which opens the drawer rather than a
  * fifth page.
  */
-export function CustomerBottomNav({ name }: { name: string }) {
+export function CustomerBottomNav({ name, availability, isAdmin = false }: {
+  name: string;
+  availability?: AvailabilityMap;
+  isAdmin?: boolean;
+}) {
   const { t } = useI18n();
   const pathname = usePathname();
   const { setOpen } = useDrawer();
   const initial = (name || "?").trim().charAt(0).toUpperCase();
+  const avail = availability ?? allActive();
+  // A DISABLED module leaves the dock (its URL 404s anyway); a restricted one
+  // keeps its slot with a small warning dot — the page itself explains.
+  const slots = SLOTS.filter((s) => menuVisible(avail, s.href, isAdmin));
 
   const isActive = (s: Slot) => {
     if (s.exact) return pathname === s.href;
@@ -51,9 +60,10 @@ export function CustomerBottomNav({ name }: { name: string }) {
         className="dock mx-[var(--page-x)] flex items-stretch rounded-2xl px-1"
         style={{ height: "var(--bottom-nav-h)", marginBottom: "var(--bottom-nav-gap)" }}
       >
-        {SLOTS.map((s) => {
+        {slots.map((s) => {
           const active = isActive(s);
           const Icon = s.icon;
+          const restricted = menuBadge(avail, s.href) !== null;
           return (
             <Link
               key={s.key}
@@ -63,12 +73,15 @@ export function CustomerBottomNav({ name }: { name: string }) {
               className={cn(slotClass, active ? "text-accent" : "text-faint")}
             >
               <span aria-hidden className={cn(
-                "flex h-7 w-11 items-center justify-center rounded-lg transition-all duration-200",
+                "relative flex h-7 w-11 items-center justify-center rounded-lg transition-all duration-200",
                 active
                   ? "bg-[rgb(var(--accent)/0.15)] shadow-[inset_0_0_0_1px_rgb(var(--accent)/0.32)]"
                   : "group-active:bg-[rgb(var(--faint)/0.12)]",
               )}>
                 <Icon size={18} strokeWidth={active ? 2.4 : 1.9} />
+                {restricted && (
+                  <span className="absolute right-1 top-0.5 h-1.5 w-1.5 rounded-full bg-warning" />
+                )}
               </span>
               {/* The label never truncates: five short words at 10px fit the
                   narrowest phone we support. */}
