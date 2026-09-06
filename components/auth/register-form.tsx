@@ -162,8 +162,11 @@ export function RegisterForm({ captchaSiteKey, fields, bare = false, next = "", 
         {/* Identity. A hidden field is not rendered, so it never reaches the
             server as an empty value — and the two-column grid collapses to one
             when only one of the pair is asked for, rather than leaving a gap. */}
+        {/* Two per row from 380px up. Below that — the smallest phones still
+            in use — a pair of 140px boxes stops being a form and starts being
+            a puzzle, so it falls back to one column. */}
         {(firstName.show || lastName.show) && (
-          <div className={cn("grid gap-4", firstName.show && lastName.show && "sm:grid-cols-2")}>
+          <div className={cn("grid gap-4", firstName.show && lastName.show && "min-[380px]:grid-cols-2")}>
             {firstName.show && (
               <div>
                 <Label htmlFor="first_name" hint={firstName.hint}>{t("auth.firstName")}{firstName.required ? " *" : ""}</Label>
@@ -182,7 +185,7 @@ export function RegisterForm({ captchaSiteKey, fields, bare = false, next = "", 
             )}
           </div>
         )}
-        <div className={cn("grid gap-4", phone.show && "sm:grid-cols-2")}>
+        <div className={cn("grid gap-4", phone.show && "min-[380px]:grid-cols-2")}>
           <div>
             <Label htmlFor="email">{t("auth.email")} *</Label>
             <Input id="email" name="email" type="email" required autoComplete="email" defaultValue={v.email}
@@ -226,8 +229,11 @@ export function RegisterForm({ captchaSiteKey, fields, bare = false, next = "", 
           </>
         )}
 
-        {/* Passwords */}
-        <div className="grid gap-4 sm:grid-cols-2">
+        {/* Passwords. The brief describes ONE full-width password row; this
+            form has always had a confirmation field too, and stacking both
+            full-width is exactly the vertical sprawl the hotfix is removing —
+            so the pair shares a row on the same breakpoint as the others. */}
+        <div className="grid gap-4 min-[380px]:grid-cols-2">
           <div>
             <Label htmlFor="password">{t("auth.password")} *</Label>
             <PasswordField id="password" name="password" autoComplete="new-password"
@@ -261,7 +267,7 @@ export function RegisterForm({ captchaSiteKey, fields, bare = false, next = "", 
 
         {company && (
           <div className="animate-fade space-y-4 rounded-xl border border-[rgb(var(--accent)/0.25)] bg-[rgb(var(--accent)/0.03)] p-4">
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 min-[380px]:grid-cols-2">
               <div>
                 <Label htmlFor="company_name">{t("auth.companyName")} *</Label>
                 <Input id="company_name" name="company_name" required autoComplete="organization" defaultValue={v.company_name}

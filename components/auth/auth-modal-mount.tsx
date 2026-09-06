@@ -1,5 +1,5 @@
 "use client";
-import { Suspense } from "react";
+import { AuthDialogProvider } from "@/components/auth/auth-dialog-context";
 import { AuthModal } from "@/components/auth/auth-modal";
 
 /**
@@ -7,14 +7,16 @@ import { AuthModal } from "@/components/auth/auth-modal";
  * ANY public page — the landing page, a legal document, a CMS page — instead
  * of navigating to a screen of its own.
  *
- * The Suspense boundary is not decoration: useSearchParams opts a subtree into
- * client rendering, and without it every page in the app would be forced out
- * of static generation.
+ * The provider wraps the whole tree because the links that OPEN the dialog
+ * live inside the page, not next to the dialog. There is no Suspense boundary
+ * any more: nothing on this path reads useSearchParams(), which is exactly why
+ * a click no longer waits for a server render.
  */
-export function AuthModalMount() {
+export function AuthModalMount({ children }: { children: React.ReactNode }) {
   return (
-    <Suspense fallback={null}>
+    <AuthDialogProvider>
+      {children}
       <AuthModal />
-    </Suspense>
+    </AuthDialogProvider>
   );
 }

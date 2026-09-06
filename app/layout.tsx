@@ -46,11 +46,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="font-sans">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <I18nProvider locale={locale} dict={dict}>
-            {children}
             {/* One dialog for the whole site: `?auth=` opens sign-in, sign-up
                 or password recovery OVER the page the visitor is reading,
-                whichever page that is. */}
-            <AuthModalMount />
+                whichever page that is. It WRAPS the page because the links
+                that open it live inside the page — and opening has to be a
+                state change, not a navigation. */}
+            <AuthModalMount>{children}</AuthModalMount>
             <Toaster position="top-center" richColors />
           </I18nProvider>
         </ThemeProvider>

@@ -1,24 +1,24 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
+} from "react";
 import Image from "next/image";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Check, Loader2, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { LoginForm } from "@/components/auth/login-form";
 import { ForgotForm } from "@/components/auth/forgot-form";
 import { RegisterForm } from "@/components/auth/register-form";
 import { registrationFormConfig, type RegistrationFormConfig } from "@/app/actions/registration-config";
-import { parseAuthMode, safeReturnTo, type AuthMode } from "@/lib/auth-routes";
+import { useAuthDialog } from "@/components/auth/auth-dialog-context";
+import { cn } from "@/lib/utils";
 
 /**
  * THE AUTH DIALOG — one modal for signing in, signing up and recovering a
  * password, opened over whatever page the visitor is already reading.
  *
- * State lives in the URL (`?auth=login|register|forgot`), not in a pile of
- * booleans. That is what makes the browser's Back button behave: opening and
- * switching mode PUSH history entries, so Back walks register → login →
- * closed, and a link to /?auth=register is shareable. `next` rides along as
- * the returnTo and is validated everywhere it is consumed.
+ * Opening is a state change (see auth-dialog-context.tsx), never a navigation:
+ * the panel paints in the same tick as the click, and the URL follows. The
+ * page underneath keeps its scroll position and is never re-rendered.
  *
  * What this is NOT: a second auth implementation. Sign-in is still the native
  * POST to /auth/sign-in, registration is still the same server action with the
@@ -26,67 +26,24 @@ import { parseAuthMode, safeReturnTo, type AuthMode } from "@/lib/auth-routes";
  * still Supabase's own redirect. Only the surface changed.
  */
 
-
 export function AuthModal() {
-  const params = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
+  const { mode, next, error, email, close, switchTo } = useAuthDialog();
   const { t } = useI18n();
 
-  const urlMode = parseAuthMode(params.get("auth"));
-  const next = safeReturnTo(params.get("next"));
-  const error = params.get("error") ?? undefined;
-  const email = params.get("email") ?? undefined;
-
-  /**
-   * The URL is the source of truth, but the dialog does not WAIT for it.
-   *
-   * Closing used to be a router.replace and nothing else — which means an RSC
-   * round trip for the page underneath before the panel disappears. On a slow
-   * connection (or a hung request) Escape did nothing visible for seconds.
-   * So: local state mirrors the URL, closing clears it immediately, and the
-   * URL is tidied up behind it.
-   */
-  const urlKey = `${pathname}?${params.toString()}`;
-  const [mode, setMode] = useState<AuthMode | null>(urlMode);
-  useEffect(() => { setMode(urlMode); }, [urlMode, urlKey]);
-
   const panelRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   /** Where focus came from, so it can go back there on close (a11y). */
   const opener = useRef<HTMLElement | null>(null);
   const [registration, setRegistration] = useState<RegistrationFormConfig | null>(null);
   const [loadingConfig, setLoadingConfig] = useState(false);
 
-  /** Query string for a given mode, keeping the returnTo and dropping the
-   *  one-shot error/email of a previous attempt. */
-  const href = useCallback((to: AuthMode) => {
-    const q = new URLSearchParams();
-    q.set("auth", to);
-    if (next) q.set("next", next);
-    return `${pathname}?${q.toString()}`;
-  }, [next, pathname]);
-
-  const close = useCallback(() => {
-    // Panel first, URL second — see the note on `mode` above.
-    setMode(null);
-    const q = new URLSearchParams(params.toString());
-    for (const key of ["auth", "error", "email"]) q.delete(key);
-    const rest = q.toString();
-    // replace, not back(): Back may not lead anywhere (a fresh tab opened on
-    // /?auth=login), and closing must never navigate off the site.
-    router.replace(rest ? `${pathname}?${rest}` : pathname, { scroll: false });
-  }, [params, pathname, router]);
-
-  const switchTo = useCallback((to: AuthMode) => {
-    router.push(href(to), { scroll: false });
-  }, [href, router]);
-
   // The registration form needs two server-known things: the PUBLIC captcha
-  // site key and which optional fields the admin asks for. Fetched once, the
-  // first time the register mode is opened — never on page load, so a visitor
-  // who never signs up pays nothing for it.
+  // site key and which optional fields the admin asks for. Fetched the first
+  // time the dialog opens in ANY mode — so switching login → register is
+  // instant — and never on page load, so a visitor who never signs up pays
+  // nothing for it.
   useEffect(() => {
-    if (mode !== "register" || registration || loadingConfig) return;
+    if (!mode || registration || loadingConfig) return;
     setLoadingConfig(true);
     void registrationFormConfig().then((config) => {
       setRegistration(config);
@@ -94,20 +51,62 @@ export function AuthModal() {
     });
   }, [mode, registration, loadingConfig]);
 
-  // Remember the opener, lock the body, restore both on close.
+  // Remember the opener, lock the body, restore both on close. The lock uses
+  // position-independent overflow so the page underneath never jumps or loses
+  // its scroll offset.
   useEffect(() => {
     if (!mode) return;
     opener.current = document.activeElement as HTMLElement | null;
+    const html = document.documentElement;
     const { overflow, paddingRight } = document.body.style;
+    const htmlOverflow = html.style.overflow;
     // Compensating for the scrollbar keeps the page underneath from jumping
     // sideways the moment the dialog opens.
-    const gap = window.innerWidth - document.documentElement.clientWidth;
+    const gap = window.innerWidth - html.clientWidth;
+    // BOTH elements: on this layout the document element is the scrolling box,
+    // so hiding overflow on <body> alone left the page behind the dialog fully
+    // scrollable — which is what let a touch drag move the page instead of the
+    // form on a small screen.
+    html.style.overflow = "hidden";
     document.body.style.overflow = "hidden";
     if (gap > 0) document.body.style.paddingRight = `${gap}px`;
     return () => {
+      html.style.overflow = htmlOverflow;
       document.body.style.overflow = overflow;
       document.body.style.paddingRight = paddingRight;
       opener.current?.focus?.();
+    };
+  }, [mode]);
+
+  /**
+   * CENTRE IT IN WHAT IS ACTUALLY VISIBLE.
+   *
+   * `100dvh` accounts for Safari's collapsing toolbar but NOT for the software
+   * keyboard: with the keyboard up, the layout viewport is unchanged and only
+   * the VISUAL viewport shrinks, so a "centred" card is centred behind the
+   * keyboard. The dialog is fixed, so the page cannot scroll to rescue it
+   * either — which is why the card looked like it sat at the bottom of the
+   * screen. Sizing the overlay to visualViewport fixes both: no keyboard, the
+   * card is centred on screen; keyboard up, the box shrinks, the card rides
+   * above it and the form scrolls inside itself.
+   */
+  useEffect(() => {
+    if (!mode) return;
+    const vv = window.visualViewport;
+    const root = rootRef.current;
+    if (!vv || !root) return;
+    const sync = () => {
+      root.style.height = `${vv.height}px`;
+      root.style.transform = `translateY(${vv.offsetTop}px)`;
+    };
+    sync();
+    vv.addEventListener("resize", sync);
+    vv.addEventListener("scroll", sync);
+    return () => {
+      vv.removeEventListener("resize", sync);
+      vv.removeEventListener("scroll", sync);
+      root.style.height = "";
+      root.style.transform = "";
     };
   }, [mode]);
 
@@ -147,9 +146,14 @@ export function AuthModal() {
 
   if (!mode) return null;
 
+  // Registration earns the extra width — it is what lets first/last name and
+  // e-mail/phone sit side by side instead of stacking into a long column.
+  const wide = mode === "register";
+
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center sm:p-6"
+      ref={rootRef}
+      className="auth-modal-root fixed inset-x-0 top-0 z-[100] flex h-[100dvh] items-center justify-center p-2.5 sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-modal-title"
@@ -160,34 +164,43 @@ export function AuthModal() {
         type="button"
         aria-label={t("common.close")}
         onClick={close}
-        className="absolute inset-0 cursor-default bg-[rgb(var(--bg)/0.72)] backdrop-blur-[8px] animate-fade"
+        className="auth-backdrop absolute inset-0 cursor-default bg-[rgb(var(--bg)/0.72)] backdrop-blur-[8px]"
       />
 
       <div
         ref={panelRef}
         tabIndex={-1}
-        className="panel animate-pop relative flex w-full max-w-[1040px] flex-col overflow-hidden rounded-t-3xl outline-none sm:rounded-3xl lg:flex-row"
+        className={cn(
+          "auth-panel panel relative flex w-full flex-col overflow-hidden rounded-3xl outline-none lg:flex-row",
+          wide ? "max-w-[880px]" : "max-w-[560px] lg:max-w-[900px]",
+        )}
         style={{
-          // dvh, not vh: on a phone the browser chrome and the keyboard both
-          // change the visible height, and 100vh would push the submit button
-          // under the fold exactly when it is needed.
-          maxHeight: "min(92dvh, 780px)",
+          // Relative to the OVERLAY, which is sized to the visual viewport —
+          // so the cap follows Safari's toolbar and the keyboard instead of
+          // guessing at them the way 100vh does.
+          maxHeight: "min(100%, 800px)",
         }}
       >
-        <BrandPane />
+        {/* The orbiting light. Decorative and CSS-only — see .auth-panel. */}
+        <span aria-hidden className="auth-orbit" />
 
-        <div className="flex min-h-0 w-full flex-col lg:w-[520px] lg:shrink-0">
-          <div className="flex items-start justify-between gap-3 px-5 pb-2 pt-5 sm:px-7 sm:pt-6">
+        <BrandPane wide={wide} />
+
+        <div className={cn(
+          "relative flex min-h-0 w-full flex-col",
+          wide ? "lg:w-[560px] lg:shrink-0" : "lg:w-[460px] lg:shrink-0",
+        )}>
+          <div className="flex items-start justify-between gap-3 px-4 pb-1.5 pt-5 sm:px-6 sm:pt-6">
             <div className="min-w-0">
               {/* The mark, on mobile too — the dialog has to say whose it is
                   even when the page behind it is blurred out. */}
-              <span className="brand-gradient mb-3 flex h-10 w-10 items-center justify-center rounded-xl lg:hidden">
-                <Image src="/brand/icon-on-dark.png" alt="" width={22} height={22} className="h-[22px] w-[22px]" />
+              <span className="brand-gradient mb-2.5 flex h-9 w-9 items-center justify-center rounded-xl lg:hidden">
+                <Image src="/brand/icon-on-dark.png" alt="" width={20} height={20} className="h-5 w-5" />
               </span>
-              <h2 id="auth-modal-title" className="font-display text-xl font-semibold tracking-tight">
+              <h2 id="auth-modal-title" className="font-display text-[19px] font-semibold leading-tight tracking-tight sm:text-xl">
                 {copy[mode].title}
               </h2>
-              <p className="mt-1 text-sm leading-relaxed text-muted">{copy[mode].sub}</p>
+              <p className="mt-1 text-[13px] leading-snug text-muted sm:text-sm">{copy[mode].sub}</p>
             </div>
             <button
               type="button"
@@ -199,35 +212,84 @@ export function AuthModal() {
             </button>
           </div>
 
-          {/* The scroller: registration is a long form, and on a phone the
-              dialog must scroll INSIDE itself rather than growing past the
-              viewport. The bottom padding clears the home indicator. */}
-          <div
-            className="auth-modal-body min-h-0 flex-1 overflow-y-auto px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2 sm:px-7"
-          >
-            <div key={mode} className="animate-fade">
-              {mode === "login" && (
-                <LoginForm next={next} error={error} email={email} onSwitch={switchTo} />
-              )}
-              {mode === "forgot" && (
-                <ForgotForm onBack={() => switchTo("login")} />
-              )}
-              {mode === "register" && (
-                registration
-                  ? <RegisterForm
-                      bare
-                      next={next}
-                      captchaSiteKey={registration.captchaSiteKey}
-                      fields={registration.fields}
-                      onSwitch={switchTo}
-                    />
-                  : <div className="flex h-40 items-center justify-center text-muted">
-                      <Loader2 className="animate-spin" aria-hidden />
-                    </div>
-              )}
-            </div>
-          </div>
+          <ModeBody mode={mode}>
+            {mode === "login" && (
+              <LoginForm next={next} error={error} email={email} onSwitch={switchTo} />
+            )}
+            {mode === "forgot" && (
+              <ForgotForm onBack={() => switchTo("login")} />
+            )}
+            {mode === "register" && (
+              registration
+                ? <RegisterForm
+                    bare
+                    next={next}
+                    captchaSiteKey={registration.captchaSiteKey}
+                    fields={registration.fields}
+                    onSwitch={switchTo}
+                  />
+                : <div className="flex h-56 items-center justify-center text-muted">
+                    <Loader2 className="animate-spin" aria-hidden />
+                  </div>
+            )}
+          </ModeBody>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The scroller, with an animated height.
+ *
+ * Login is short and registration is long, and jumping between the two looked
+ * like a reload. So the box measures its content and transitions to the new
+ * height, capped by the panel — past the cap it simply scrolls, which is what
+ * a long registration form does on a phone. The measurement is a
+ * ResizeObserver, not a rAF loop: it fires when the content actually changes
+ * size and at no other time.
+ */
+function ModeBody({ mode, children }: { mode: string; children: React.ReactNode }) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number | null>(null);
+  const [ready, setReady] = useState(false);
+
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const el = contentRef.current;
+    const box = boxRef.current;
+    if (!el || !box) return;
+    // border-box: the height we set INCLUDES the scroller's own padding, so
+    // the content's height alone would leave the box permanently short by
+    // that much — and a login form that fits would still show a scrollbar.
+    const measure = () => {
+      const cs = getComputedStyle(box);
+      const padding = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+      setHeight(el.offsetHeight + padding);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    // Transition only AFTER the first measurement, so opening the dialog does
+    // not animate from zero height.
+    const id = window.setTimeout(() => setReady(true), 60);
+    return () => { ro.disconnect(); window.clearTimeout(id); };
+  }, []);
+
+  return (
+    <div
+      ref={boxRef}
+      className={cn(
+        "auth-modal-body min-h-0 overflow-y-auto overflow-x-hidden px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-1.5 sm:px-6",
+        ready && "auth-modal-body-animated",
+      )}
+      style={height === null ? undefined : { height }}
+    >
+      <div ref={contentRef}>
+        {/* Keyed on the mode: React swaps the subtree and the crossfade makes
+            the swap read as one card changing, not a page reloading. */}
+        <div key={mode} className="auth-mode-enter pb-1">{children}</div>
       </div>
     </div>
   );
@@ -238,12 +300,15 @@ export function AuthModal() {
  * else's product shot. Desktop only — on a phone the form is the whole point
  * and this would push it below the fold.
  */
-function BrandPane() {
+function BrandPane({ wide }: { wide: boolean }) {
   const { t } = useI18n();
   const benefits = ["auth.benefit1", "auth.benefit2", "auth.benefit3"];
   return (
     <div
-      className="relative hidden shrink-0 flex-col justify-between overflow-hidden p-8 lg:flex lg:w-[440px]"
+      className={cn(
+        "relative hidden shrink-0 flex-col justify-between overflow-hidden p-7 lg:flex",
+        wide ? "lg:w-[320px]" : "lg:w-[440px]",
+      )}
       style={{
         background:
           "radial-gradient(28rem 20rem at 12% 8%, rgb(var(--accent) / 0.22), transparent 68%)," +
@@ -259,12 +324,15 @@ function BrandPane() {
       </div>
 
       <div className="relative">
-        <p className="font-display text-[26px] font-semibold leading-[1.2] tracking-tight">
+        <p className={cn(
+          "font-display font-semibold leading-[1.2] tracking-tight",
+          wide ? "text-[21px]" : "text-[26px]",
+        )}>
           {t("auth.paneTitle")}
         </p>
-        <ul className="mt-5 space-y-2.5">
+        <ul className="mt-4 space-y-2.5">
           {benefits.map((key) => (
-            <li key={key} className="flex items-start gap-2.5 text-[13.5px] leading-relaxed text-muted">
+            <li key={key} className="flex items-start gap-2.5 text-[13px] leading-relaxed text-muted">
               <span aria-hidden className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-[rgb(var(--accent)/0.18)] text-accent">
                 <Check size={11} strokeWidth={3} />
               </span>

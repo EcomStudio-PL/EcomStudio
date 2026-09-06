@@ -1,15 +1,17 @@
 "use client";
-import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import type { AuthMode } from "@/lib/auth-routes";
+import { useOptionalAuthDialog } from "@/components/auth/auth-dialog-context";
 
 /**
- * "Zaloguj się" / "Załóż konto" — an ordinary link that happens to open the
- * dialog, because the dialog's state IS the URL.
+ * "Zaloguj się" / "Załóż konto".
  *
- * A real <Link> and not a button: it keeps middle-click, "open in new tab" and
- * the status bar honest, it works before hydration, and Next's client router
- * turns the click into a push without reloading the page underneath.
+ * A real anchor, so middle-click, "open in new tab" and the status bar stay
+ * honest and the link works before hydration. But a PLAIN left click never
+ * navigates: it opens the dialog from React state in the same tick, and the
+ * address bar catches up via history.pushState. Going through Next's <Link>
+ * is what used to make the dialog wait for an RSC round trip — see
+ * auth-dialog-context.tsx.
  */
 export function AuthLink({ mode, className, children, next }: {
   mode: AuthMode;
@@ -19,14 +21,29 @@ export function AuthLink({ mode, className, children, next }: {
   next?: string;
 }) {
   const pathname = usePathname();
-  const params = useSearchParams();
+  const dialog = useOptionalAuthDialog();
+
+  // The href is the no-JS / new-tab fallback, and what a hover preview shows.
   const q = new URLSearchParams();
   q.set("auth", mode);
-  const carried = next ?? params.get("next") ?? "";
-  if (carried.startsWith("/") && !carried.startsWith("//")) q.set("next", carried);
+  if (next && next.startsWith("/") && !next.startsWith("//")) q.set("next", next);
+  const href = `${pathname}?${q.toString()}`;
+
   return (
-    <Link href={`${pathname}?${q.toString()}`} scroll={false} className={className}>
+    <a
+      href={href}
+      className={className}
+      onClick={(e) => {
+        // Leave every modified click to the browser: new tab, new window,
+        // download, and anything a parent already handled.
+        if (e.defaultPrevented || e.button !== 0) return;
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        if (!dialog) return;
+        e.preventDefault();
+        dialog.open(mode, next);
+      }}
+    >
       {children}
-    </Link>
+    </a>
   );
 }

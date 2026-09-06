@@ -913,3 +913,147 @@ body:has(.workspace-page)::after { display: none; }
 .auth-body :where(input, textarea, select, button) {
   scroll-margin-block: 6rem;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   AUTH DIALOG — entrance, mode change, compaction, and the light that
+   travels the card's edge.
+
+   All of it is CSS: no canvas, no rAF loop, no React state driving frames.
+   The only JavaScript in the dialog's motion is one ResizeObserver that
+   measures the form when its content actually changes size.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* The orbit angle is a REGISTERED property, because a plain custom property
+   cannot be animated. Browsers without @property (Safari < 16.4) keep the
+   initial angle: the ring renders as a still gradient edge rather than as
+   nothing at all. */
+@property --auth-orbit-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.auth-backdrop { animation: ecs-fade-in 200ms ease-out; }
+
+/* Entrance: barely there, but enough that the card arrives rather than
+   appears. 220ms on a decelerating curve. */
+.auth-panel { animation: auth-panel-in 220ms cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes auth-panel-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.972); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* THE ORBIT — one masked ring carrying a conic gradient that is transparent
+   for most of the turn and brightens over a short arc. What moves is that
+   arc, not the whole border: no pulsing edge, no disco. */
+.auth-orbit,
+.auth-orbit::before {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  /* The arc is deliberately NARROW. A conic gradient maps angle, not
+     perimeter length: on a 900x550 card the top edge alone spans ~116° of the
+     cone, so a wide arc lights a whole side at once and reads as a glowing
+     frame. ~30° is what makes it a fragment of light travelling the edge.
+     The stops fade to transparent MAGENTA, not to `transparent` — that
+     keyword is rgba(0,0,0,0) and interpolating through it leaves a muddy
+     dark fringe on either side of the arc. */
+  background: conic-gradient(
+    from var(--auth-orbit-angle),
+    rgb(249 80 225 / 0) 0deg 330deg,
+    rgb(214 40 207 / 0.18) 342deg,
+    rgb(249 80 225 / 0.70) 352deg,
+    rgb(214 40 207 / 0.16) 358deg,
+    rgb(249 80 225 / 0) 360deg
+  );
+  /* Keep only the outermost band: the padding IS the border width. */
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: auth-orbit 6s linear infinite;
+}
+.auth-orbit { z-index: 2; padding: 1px; }
+/* The glow is a second, wider, dimmer ring — not a filter on the bright one,
+   so nothing re-rasterises a shadow every frame. */
+.auth-orbit::before {
+  content: "";
+  inset: -1px;
+  padding: 2px;
+  opacity: 0.28;
+  filter: blur(4px);
+}
+@keyframes auth-orbit { to { --auth-orbit-angle: 360deg; } }
+
+/* Light mode: the same light, quieter. At full strength a magenta arc on a
+   white card reads as neon, which is the opposite of the intent. */
+:root:not(.dark) .auth-orbit { opacity: 0.7; }
+:root:not(.dark) .auth-orbit::before { opacity: 0.22; }
+
+/* Login is short, registration is long. Animating the height is what stops
+   the switch from looking like a page reload. */
+.auth-modal-body-animated { transition: height 260ms cubic-bezier(0.16, 1, 0.3, 1); }
+.auth-mode-enter { animation: auth-mode-in 200ms ease-out; }
+@keyframes auth-mode-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* A subtle scrollbar for the one case that still needs to scroll. */
+.auth-modal-body { scrollbar-width: thin; scrollbar-color: rgb(var(--faint) / 0.35) transparent; }
+.auth-modal-body::-webkit-scrollbar { width: 6px; }
+.auth-modal-body::-webkit-scrollbar-thumb { background: rgb(var(--faint) / 0.3); border-radius: 9999px; }
+.auth-modal-body::-webkit-scrollbar-track { background: transparent; }
+
+/* COMPACTION, scoped to the dialog so the standalone auth pages and every
+   other form in the product keep their own rhythm. The font size is left
+   alone on purpose: below 16px iOS Safari zooms the page on focus. Height
+   lands at ~46px — still above the 44px touch target. */
+.auth-modal-body :where(input:not([type="checkbox"]), select) {
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+  /* The compaction stops here: 44px is the touch target, and a desktop with
+     a touch screen is still a touch screen. */
+  min-height: 44px;
+}
+/* Paired fields must start at the same height. They stopped doing so because
+   a label like "Numer telefonu" plus its "opcjonalne" hint no longer fits on
+   one line in a 162px column, so the label wrapped and pushed its input down.
+   Fixing the CAUSE — the label stays on one line, and the hint (which only
+   ever repeats what the missing "*" already says) steps aside on the
+   narrowest phones — keeps every field top-aligned without the side effects
+   of bottom-aligning a cell that also carries the password rules. */
+.auth-modal-body :where(.grid) > div > :first-child > label { white-space: nowrap; }
+@media (max-width: 419px) {
+  .auth-modal-body :where(.grid) > div > :first-child > span { display: none; }
+}
+.auth-modal-body :where(form) > :where(div, label) + :where(div, label) { margin-top: 0; }
+.auth-modal-body :where(.space-y-4) > * + * { margin-top: 0.75rem; }
+.auth-modal-body :where(.grid) { gap: 0.75rem; }
+/* Bring a focused field into view inside the SCROLLER (the dialog is fixed,
+   so the page behind it cannot scroll to help). */
+.auth-modal-body :where(input, select, button) { scroll-margin-block: 1.25rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  /* No travelling light, no entrance, no height animation — a still, quiet
+     border and an instant card. */
+  .auth-orbit { animation: none !important; opacity: 0.45; }
+  .auth-orbit::before { display: none; }
+  .auth-panel, .auth-backdrop, .auth-mode-enter { animation: none !important; }
+  .auth-modal-body-animated { transition: none !important; }
+}
+
+/* Scrolling the form must never chain into the page behind it — the classic
+   iOS "I scrolled the card and the site moved" problem. */
+.auth-modal-root, .auth-modal-body { overscroll-behavior: contain; }
+
+/* The card sits on an already-blurred backdrop, so its own backdrop-filter
+   buys no visible depth and costs a second full-surface blur pass. */
+.auth-panel { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgb(var(--surface)); }
+.dark .auth-panel {
+  background:
+    linear-gradient(180deg, rgb(196 150 255 / 0.055), transparent 46%),
+    linear-gradient(160deg, rgb(var(--accent) / 0.035), transparent 40%),
+    rgb(var(--surface));
+}
