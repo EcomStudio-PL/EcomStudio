@@ -129,7 +129,7 @@ export function RegisterForm({ captchaSiteKey, bare = false, next = "", onSwitch
           <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-24"
             style={{ background: "radial-gradient(20rem 7rem at 18% -30%, rgb(var(--accent) / 0.14), transparent 70%)" }} />
           <h1 className="relative font-display text-xl font-semibold tracking-tight">{t("auth.registerTitle")}</h1>
-          <p className="relative mt-1 text-sm text-muted">{t("auth.registerSub")}</p>
+          <p className="relative mt-1 text-sm text-muted">{t("auth.registerSubNoCredits")}</p>
         </>
       )}
 

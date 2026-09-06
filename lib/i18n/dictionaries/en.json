@@ -81,7 +81,8 @@
     "show": "Show",
     "hide": "Hide",
     "soon": "Soon",
-    "forbidden": "Not allowed."
+    "forbidden": "Not allowed.",
+    "copy": "Copy"
   },
   "landing": {
     "headline": "Professional product visuals with AI. Faster than a photo studio.",
@@ -128,7 +129,7 @@
   "auth": {
     "loginTitle": "Sign in to GrovBase",
     "registerTitle": "Create your account",
-    "registerSub": "Create an account and claim 150 starter credits.",
+    "registerSub": "Create an account and get {n} credits to start.",
     "email": "Email address",
     "password": "Password",
     "fullName": "Full name",
@@ -229,10 +230,12 @@
     "paneTitle": "Product photos that sell — in minutes.",
     "benefit1": "Studio-grade shots from your ordinary product photos",
     "benefit2": "Product Lock guards shape, colours and details",
-    "benefit3": "25 welcome credits to start — no card required",
+    "benefit3": "{n} welcome credits to start — no card needed",
     "paneFooter": "Join the sellers who stopped waiting for a photo shoot.",
     "fullNamePlaceholder": "Alex Smith",
-    "err_name_short": "Enter your full name."
+    "err_name_short": "Enter your full name.",
+    "registerSubNoCredits": "Create an account — it takes under a minute.",
+    "benefit3NoCredits": "No payment card needed to open an account"
   },
   "dashboard": {
     "welcome": "Hi, {name}! 👋",

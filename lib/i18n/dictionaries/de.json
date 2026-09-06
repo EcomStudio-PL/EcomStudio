@@ -81,7 +81,8 @@
     "show": "Anzeigen",
     "hide": "Verbergen",
     "soon": "Bald",
-    "forbidden": "Nicht erlaubt."
+    "forbidden": "Nicht erlaubt.",
+    "copy": "Kopieren"
   },
   "landing": {
     "headline": "Professionelle Produktvisuals mit KI. Schneller als ein Fotostudio.",
@@ -128,7 +129,7 @@
   "auth": {
     "loginTitle": "Bei GrovBase anmelden",
     "registerTitle": "Konto erstellen",
-    "registerSub": "Konto erstellen und 150 Startguthaben sichern.",
+    "registerSub": "Konto anlegen und {n} Credits zum Start erhalten.",
     "email": "E-Mail-Adresse",
     "password": "Passwort",
     "fullName": "Vor- und Nachname",
@@ -229,10 +230,12 @@
     "paneTitle": "Produktfotos, die verkaufen — in Minuten.",
     "benefit1": "Studioqualität aus deinen gewöhnlichen Produktfotos",
     "benefit2": "Product Lock schützt Form, Farben und Details",
-    "benefit3": "25 Willkommens-Credits zum Start — ohne Karte",
+    "benefit3": "{n} Willkommens-Credits zum Start — ohne Karte",
     "paneFooter": "Schließe dich Verkäufern an, die nicht mehr auf ein Fotoshooting warten.",
     "fullNamePlaceholder": "Max Mustermann",
-    "err_name_short": "Bitte geben Sie Ihren Namen ein."
+    "err_name_short": "Bitte geben Sie Ihren Namen ein.",
+    "registerSubNoCredits": "Konto anlegen — in unter einer Minute.",
+    "benefit3NoCredits": "Kein Zahlungsmittel nötig, um ein Konto zu öffnen"
   },
   "dashboard": {
     "welcome": "Hallo, {name}! 👋",

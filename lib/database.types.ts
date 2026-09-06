@@ -3367,6 +3367,10 @@ export type Database = {
         Returns: string
       }
       claim_welcome_bonus: { Args: { p_answers: Json }; Returns: Json }
+      integration_dispatch_read: {
+        Args: { p_token: string; p_type: string }
+        Returns: Json
+      }
       auth_email_claim: {
         Args: {
           p_action: string

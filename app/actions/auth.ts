@@ -160,6 +160,17 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
     },
   });
   if (error) {
+    // The customer never sees Supabase's text, but the OPERATOR has to. Until
+    // this line existed, a failing confirmation e-mail reached the browser as
+    // "Nie udało się połączyć z serwerem" and left nothing behind to diagnose
+    // it with — the reason the production signup outage had to be reconstructed
+    // from auth_email_log instead of simply read. Code, status and a scrubbed
+    // message only: never the password, never the token, never a secret.
+    console.error("signup.gotrue", JSON.stringify({
+      code: error.code ?? null,
+      status: error.status ?? null,
+      message: safeError(error),
+    }));
     // Never surface raw Supabase text. Weak-password style errors map to the
     // password field; everything else is a generic retry message. An already
     // registered address is NOT revealed: with confirmations on, Supabase
@@ -178,11 +189,25 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
     if (error.status === 429 || error.code === "over_email_send_rate_limit") {
       return { ok: false, errors: { form: "rate_limited" }, values };
     }
-    // A dead SMTP is GoTrue's own 500 — "Error sending confirmation email",
+    // A dead mailer is GoTrue's own 500 — "Error sending confirmation email",
     // code unexpected_failure. The account may well exist by then, so calling
     // it "server unreachable" would be a lie twice over; the dedicated code
     // lets the UI point at the resend button instead.
-    if (/send.*(confirmation|email)|email.*send/i.test(error.message)) {
+    //
+    // The message test alone was not enough, and that gap is exactly what the
+    // customer hit: when the Send Email Hook itself answers non-2xx, GoTrue
+    // reports the HOOK failing ("failed to send email", "hook", or nothing
+    // recognisable at all) rather than its own SMTP wording, and the request
+    // fell through to the generic "server unreachable". Any 500 out of signup
+    // is ours, not the network's — the request plainly reached Supabase to be
+    // answered — so it is reported as what it is: the activation mail did not
+    // go out. `network` is now reserved for a request that genuinely never
+    // completed (status 0/undefined, fetch failure).
+    if (
+      /send.*(confirmation|email)|email.*send|hook/i.test(error.message)
+      || error.code === "unexpected_failure"
+      || error.status === 500
+    ) {
       return { ok: false, errors: { form: "activation_send" }, values };
     }
     return { ok: false, errors: { form: "network" }, values };

@@ -173,6 +173,15 @@ function readBag(value: unknown): SecretBag {
   return out;
 }
 
+type IntegrationRow = {
+  enabled: boolean | null;
+  config: unknown;
+  secrets: unknown;
+  status: string | null;
+  last_tested_at?: string | null;
+  last_error_safe?: string | null;
+};
+
 async function readRow(supabase: Client, type: IntegrationType) {
   const { data, error } = await supabase
     .from("integration_settings")
@@ -182,7 +191,62 @@ async function readRow(supabase: Client, type: IntegrationType) {
   // A refusal here is not the same as "not configured", and silence would make
   // the two indistinguishable while debugging. The message is scrubbed anyway.
   if (error) console.error("integrations.read", type, safeError(error));
-  return data ?? null;
+  return (data as IntegrationRow | null) ?? null;
+}
+
+/**
+ * THE SAME ROW, FOR CODE THAT HAS NO SESSION.
+ *
+ * integration_settings is admin-only. That is correct — it holds the SMTP and
+ * Turnstile credentials — but it made two legitimate callers read NOTHING and
+ * quietly behave as if the integration were unconfigured:
+ *
+ *   · the Send Email Hook, an unauthenticated POST from Supabase, which then
+ *     could not send the confirmation e-mail and so failed every signup;
+ *   · public signup, which could not read the Turnstile secret and therefore
+ *     never actually verified the captcha.
+ *
+ * So a miss falls through to the token-gated SECURITY DEFINER read (0064) —
+ * the same door the notification dispatcher and the template lookup use. It
+ * returns the config and the secret ENVELOPES; the key that opens them lives
+ * in this process and never in the database.
+ */
+async function readRowForDispatch(
+  supabase: Client,
+  type: IntegrationType,
+): Promise<IntegrationRow | null> {
+  const token = dispatchToken();
+  if (!token) return null;
+  try {
+    const { data, error } = await supabase.rpc("integration_dispatch_read", {
+      p_token: token, p_type: type,
+    });
+    if (error || !data || typeof data !== "object") {
+      if (error) console.error("integrations.dispatchRead", type, safeError(error));
+      return null;
+    }
+    const row = data as Record<string, unknown>;
+    return {
+      enabled: row.enabled === true,
+      config: row.config,
+      secrets: row.secrets,
+      status: typeof row.status === "string" ? row.status : null,
+    };
+  } catch (e) {
+    console.error("integrations.dispatchRead", type, safeError(e));
+    return null;
+  }
+}
+
+/** The direct read when RLS allows it, the token-gated one when it does not.
+ *  "Row missing" and "row hidden by RLS" are indistinguishable through
+ *  PostgREST, so the fallback runs for both — and simply returns null again
+ *  when the integration genuinely does not exist. */
+async function readRowAnyContext(
+  supabase: Client,
+  type: IntegrationType,
+): Promise<IntegrationRow | null> {
+  return (await readRow(supabase, type)) ?? (await readRowForDispatch(supabase, type));
 }
 
 /** The admin-panel view. It carries no plaintext, by construction. */
@@ -212,7 +276,9 @@ export async function readIntegrationSecrets<C>(
   supabase: Client,
   type: IntegrationType,
 ): Promise<{ enabled: boolean; config: C; secrets: Record<string, string> }> {
-  const row = await readRow(supabase, type);
+  // Any context: an admin session reads the row directly, the Send Email Hook
+  // and public signup go through the token-gated door. See readRowAnyContext.
+  const row = await readRowAnyContext(supabase, type);
   const config = { ...defaultsFor(type), ...asRecord(row?.config) } as C;
   const enabled = row?.enabled === true;
   const bag = readBag(row?.secrets);

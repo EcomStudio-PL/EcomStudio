@@ -81,7 +81,8 @@
     "show": "Pokaż",
     "hide": "Ukryj",
     "soon": "Wkrótce",
-    "forbidden": "Brak uprawnień."
+    "forbidden": "Brak uprawnień.",
+    "copy": "Kopiuj"
   },
   "landing": {
     "headline": "Profesjonalne materiały produktowe z AI. Szybciej niż klasyczne studio.",
@@ -128,7 +129,7 @@
   "auth": {
     "loginTitle": "Zaloguj się do GrovBase",
     "registerTitle": "Utwórz konto",
-    "registerSub": "Załóż konto i odbierz 150 kredytów na start.",
+    "registerSub": "Załóż konto i odbierz {n} kredytów na start.",
     "email": "Adres e-mail",
     "password": "Hasło",
     "fullName": "Imię i nazwisko",
@@ -229,10 +230,12 @@
     "paneTitle": "Zdjęcia produktowe, które sprzedają — w kilka minut.",
     "benefit1": "Studyjne ujęcia z Twoich zwykłych zdjęć produktu",
     "benefit2": "Product Lock pilnuje kształtu, kolorów i detali",
-    "benefit3": "25 kredytów powitalnych na start — bez karty",
+    "benefit3": "{n} kredytów powitalnych na start — bez karty",
     "paneFooter": "Dołącz do sprzedawców, którzy przestali czekać na sesję zdjęciową.",
     "fullNamePlaceholder": "Jan Kowalski",
-    "err_name_short": "Podaj imię i nazwisko."
+    "err_name_short": "Podaj imię i nazwisko.",
+    "registerSubNoCredits": "Załóż konto — zajmie mniej niż minutę.",
+    "benefit3NoCredits": "Konto zakładasz bez karty płatniczej"
   },
   "dashboard": {
     "welcome": "Cześć, {name}! 👋",

@@ -151,11 +151,23 @@ export function AuthModal() {
     if (mode) panelRef.current?.focus();
   }, [mode]);
 
+  // ONE number for the signup grant, from the same DB function that actually
+  // grants it. The subtitle used to say 150 while the benefits list said 25 —
+  // two hardcoded figures for two different things (150 is the claimable
+  // 72-hour bonus, 25 is what the wallet receives on signup). Both now render
+  // this value, and when it cannot be read they say nothing about credits at
+  // all rather than guessing.
+  const signupCredits = registration?.signupCredits ?? 0;
   const copy = useMemo(() => ({
     login: { title: t("auth.loginTitle"), sub: t("auth.loginSub") },
-    register: { title: t("auth.registerTitle"), sub: t("auth.registerSub") },
+    register: {
+      title: t("auth.registerTitle"),
+      sub: signupCredits > 0
+        ? t("auth.registerSub", { n: signupCredits })
+        : t("auth.registerSubNoCredits"),
+    },
     forgot: { title: t("auth.resetTitle"), sub: t("auth.resetSub") },
-  }), [t]);
+  }), [t, signupCredits]);
 
   if (!mode) return null;
 
@@ -221,7 +233,7 @@ export function AuthModal() {
         {/* The orbiting light. Decorative and CSS-only — see .auth-panel. */}
         <span aria-hidden className="auth-orbit" />
 
-        <BrandPane wide={wide} />
+        <BrandPane wide={wide} signupCredits={signupCredits} />
 
         <div className={cn(
           "relative flex min-h-0 w-full flex-col",
@@ -384,9 +396,14 @@ function ModeBody({ mode, children }: { mode: string; children: React.ReactNode 
  * else's product shot. Desktop only — on a phone the form is the whole point
  * and this would push it below the fold.
  */
-function BrandPane({ wide }: { wide: boolean }) {
+function BrandPane({ wide, signupCredits }: { wide: boolean; signupCredits: number }) {
   const { t } = useI18n();
-  const benefits = ["auth.benefit1", "auth.benefit2", "auth.benefit3"];
+  const benefits: string[] = [
+    t("auth.benefit1"),
+    t("auth.benefit2"),
+    // The same one number as the subtitle above — see signupCredits there.
+    signupCredits > 0 ? t("auth.benefit3", { n: signupCredits }) : t("auth.benefit3NoCredits"),
+  ];
   return (
     <div
       className={cn(
@@ -415,12 +432,12 @@ function BrandPane({ wide }: { wide: boolean }) {
           {t("auth.paneTitle")}
         </p>
         <ul className="mt-4 space-y-2.5">
-          {benefits.map((key) => (
-            <li key={key} className="flex items-start gap-2.5 text-[13px] leading-relaxed text-muted">
+          {benefits.map((line) => (
+            <li key={line} className="flex items-start gap-2.5 text-[13px] leading-relaxed text-muted">
               <span aria-hidden className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-[rgb(var(--accent)/0.18)] text-accent">
                 <Check size={11} strokeWidth={3} />
               </span>
-              {t(key)}
+              {line}
             </li>
           ))}
         </ul>
