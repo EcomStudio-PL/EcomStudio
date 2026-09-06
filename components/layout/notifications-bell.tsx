@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Bell } from "lucide-react";
+import { Bell, Gift } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { markNotificationsReadAction } from "@/app/actions/notifications";
 import { cn } from "@/lib/utils";
@@ -61,18 +61,45 @@ export function NotificationsBell({ items, unread }: { items: NotificationItem[]
             <p className="px-3 py-6 text-center text-sm text-muted">{t("notif.empty")}</p>
           ) : (
             <ul className="max-h-80 overflow-y-auto">
-              {items.map((n) => (
-                <li key={n.id}>
-                  <Link href={n.href ?? "#"} onClick={() => setOpen(false)}
-                    className={cn("block rounded-xl px-3 py-2.5 transition-colors hover:bg-raised", !n.read_at && "bg-accent-soft/40")}>
-                    <p className="text-sm font-medium">{label(n)}</p>
-                    {n.body && <p className="truncate text-xs text-muted">{n.body}</p>}
-                    <p className="mt-0.5 text-[10px] text-faint">
-                      {new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(new Date(n.created_at))}
-                    </p>
-                  </Link>
-                </li>
-              ))}
+              {items.map((n) => {
+                // A gift is not a system message and must not read as one: the
+                // bonus row keeps the brand gradient, a gift mark and a badge,
+                // so it is the one entry the eye finds first. Everything else
+                // in the list is deliberately left plain.
+                const bonus = n.type === "bonus";
+                return (
+                  <li key={n.id}>
+                    <Link
+                      href={n.href ?? "#"}
+                      onClick={() => setOpen(false)}
+                      className={cn(
+                        "block rounded-xl px-3 py-2.5 transition-colors",
+                        bonus
+                          ? "border border-[rgb(var(--accent)/0.35)] bg-[linear-gradient(135deg,rgb(var(--accent)/0.14),rgb(var(--violet)/0.08))] hover:border-[rgb(var(--accent)/0.55)]"
+                          : cn("hover:bg-raised", !n.read_at && "bg-accent-soft/40"),
+                      )}
+                    >
+                      <p className="flex items-center gap-2 text-sm font-medium">
+                        {bonus && (
+                          <span aria-hidden className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[rgb(var(--accent)/0.2)] text-accent">
+                            <Gift size={13} />
+                          </span>
+                        )}
+                        <span className="min-w-0 flex-1 truncate">{label(n)}</span>
+                        {bonus && (
+                          <span className="shrink-0 rounded-full bg-[rgb(var(--accent)/0.2)] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-accent">
+                            {t("bonus.badge")}
+                          </span>
+                        )}
+                      </p>
+                      {n.body && <p className={cn("text-xs text-muted", !bonus && "truncate")}>{n.body}</p>}
+                      <p className="mt-0.5 text-[10px] text-faint">
+                        {new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(new Date(n.created_at))}
+                      </p>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

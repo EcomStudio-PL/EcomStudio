@@ -6,6 +6,11 @@ import {
 import { getWallet } from "@/lib/services/credits";
 import { enforceLoginSecurity } from "@/lib/server/login-security";
 import { getAvailabilityMap, viewerIsAdmin } from "@/lib/server/feature-availability";
+import {
+  copyFor, ensureBonusNotification, ensureOffer, getBonusConfig, getCampaignStart, toView,
+} from "@/lib/server/welcome-bonus";
+import { renderPlaceholders } from "@/lib/welcome-bonus";
+import { WelcomeBonusMount } from "@/components/onboarding/welcome-bonus-mount";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { MegaTopbar } from "@/components/layout/mega-topbar";
@@ -13,7 +18,10 @@ import { CustomerDrawer } from "@/components/layout/customer-drawer";
 import { CustomerBottomNav } from "@/components/layout/customer-bottom-nav";
 import { DrawerProvider } from "@/components/layout/shell-context";
 
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({ children, searchParams }: {
+  children: React.ReactNode;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -89,6 +97,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </main>
     );
   }
+  const { dict: appDict } = await getDictionary();
+  const t0 = makeT(appDict);
   const [wallet, { data: sub }, { data: notifs }, availability, navAdmin] = await Promise.all([
     getWallet(supabase, workspace.id),
     supabase.from("subscriptions").select("subscription_plans(name)")
@@ -101,6 +111,37 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     viewerIsAdmin(supabase),
   ]);
   const unread = (notifs ?? []).filter((n) => !n.read_at).length;
+
+  /**
+   * WELCOME BONUS. A verified account created after the campaign started gets
+   * an offer the first time it lands here; the 72-hour window runs from the
+   * VERIFICATION timestamp and is stamped once, server-side, so nothing the
+   * browser does can extend or reset it.
+   *
+   * Everything below degrades to "no offer" rather than throwing: a promotion
+   * is never worth taking the application down for.
+   */
+  const bonusConfig = await getBonusConfig(supabase);
+  const bonusOffer = bonusConfig.active
+    ? await ensureOffer(
+        supabase,
+        { id: user.id, email_confirmed_at: user.email_confirmed_at, created_at: user.created_at },
+        bonusConfig,
+        await getCampaignStart(supabase),
+      )
+    : null;
+  const bonusView = bonusOffer ? toView(bonusOffer) : null;
+  const bonusCopy = copyFor(bonusConfig, false);
+  if (bonusView?.status === "ELIGIBLE") {
+    const values = { credits: bonusView.amount, hours: Math.ceil(bonusView.secondsLeft / 3600) };
+    await ensureBonusNotification(
+      supabase,
+      user.id,
+      renderPlaceholders(bonusCopy.notificationTitle || t0("bonus.notifTitle", values), values),
+      renderPlaceholders(bonusCopy.notificationBody || t0("bonus.notifBody", values), values),
+    );
+  }
+  const askedForBonus = ((await searchParams)?.bonus ?? "") === "1";
   const planName = sub?.subscription_plans?.name ?? "Free";
   const isAdmin = profile.role === "admin";
   const displayName = profile.full_name ?? profile.email;
@@ -123,6 +164,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </main>
         <CustomerBottomNav name={displayName} availability={availability} isAdmin={navAdmin} />
         <CustomerDrawer name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} navAdmin={navAdmin} availability={availability} />
+        {bonusView?.status === "ELIGIBLE" && (
+          <WelcomeBonusMount
+            offer={bonusView}
+            questions={bonusConfig.questions}
+            copy={bonusCopy}
+            badge={bonusConfig.badge}
+            icon={bonusConfig.icon}
+            firstName={profile.full_name?.split(" ")[0] ?? ""}
+            requested={askedForBonus}
+          />
+        )}
       </div>
     </DrawerProvider>
   );

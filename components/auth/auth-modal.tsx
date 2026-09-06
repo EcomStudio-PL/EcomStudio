@@ -225,7 +225,6 @@ export function AuthModal() {
                     bare
                     next={next}
                     captchaSiteKey={registration.captchaSiteKey}
-                    fields={registration.fields}
                     onSwitch={switchTo}
                   />
                 : <div className="flex h-56 items-center justify-center text-muted">

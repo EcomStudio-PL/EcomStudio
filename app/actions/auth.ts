@@ -9,10 +9,11 @@ import { verifyTurnstile } from "@/lib/server/captcha";
 import { readIntegrationSecrets, safeError } from "@/lib/server/integrations";
 import { collectEventContext, contextRows, eventDataFrom, formatWarsaw } from "@/lib/server/event-context";
 import { recordSignup, signupAllowed, signupIpHash } from "@/lib/server/signup-guard";
-import { getRegistrationConfig } from "@/lib/server/registration-config";
 import { getLocale } from "@/lib/i18n/server";
 import { absoluteUrl } from "@/lib/site";
-import { ACQUISITION_SOURCES, EMAIL_RE, isPoland, passwordIssue, validNip } from "@/lib/auth-validation";
+import {
+  EMAIL_RE, fullNameIssue, isPoland, passwordIssue, splitFullName, validNip,
+} from "@/lib/auth-validation";
 
 type Result = { ok: boolean; error?: string; info?: string; email?: string };
 
@@ -33,8 +34,7 @@ async function callerIp() {
 /* ── Validation shared with the client (server is authoritative) ───────── */
 
 export type SignUpErrors = Partial<Record<
-  | "first_name" | "last_name" | "email" | "phone" | "acquisition_source"
-  | "acquisition_source_other" | "password" | "password_confirm" | "terms"
+  | "full_name" | "email" | "password" | "password_confirm" | "terms"
   | "company_name" | "tax_id" | "company_street" | "company_postal_code"
   | "company_city" | "company_country" | "form",
   string
@@ -43,7 +43,7 @@ export type SignUpErrors = Partial<Record<
 /* ── Registration ──────────────────────────────────────────────────────── */
 
 export type SignUpValues = Partial<Record<
-  | "first_name" | "last_name" | "email" | "phone" | "acquisition_source_other"
+  | "full_name" | "email"
   | "company_name" | "tax_id" | "company_street" | "company_postal_code"
   | "company_city" | "company_country", string>> & { marketing_consent?: boolean };
 
@@ -60,7 +60,7 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
   // an uncapped value would still land in auth.users.raw_user_meta_data and
   // ride inside every JWT — a 200KB "name" would brick its own session.
   const CAP: Record<string, number> = {
-    first_name: 80, last_name: 80, phone: 32, acquisition_source_other: 200,
+    full_name: 160,
     company_name: 200, tax_id: 20, company_street: 200,
     company_postal_code: 12, company_city: 120, company_country: 80, email: 320,
   };
@@ -69,34 +69,23 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
   const password = String(formData.get("password") ?? "");
   const confirm = String(formData.get("password_confirm") ?? "");
   const company = formData.get("company_account") != null;
-  const source = f("acquisition_source");
   const country = f("company_country") || "Polska";
+  // ONE name box, two columns behind it. The profile keeps first_name and
+  // last_name (the CRM, the mail templates and the admin list read them);
+  // signup just stopped asking the question twice.
+  const fullName = f("full_name");
+  const { firstName, lastName } = splitFullName(fullName);
 
-  // The admin decides which of the four soft fields the form asks for, so the
-  // server has to ask the same question the form did. Reading it here (before
-  // validation) is what stops a field switched to "hidden" from failing a
-  // required check the customer has no input to satisfy.
   const supabase = await createClient();
-  const { signup: fields } = await getRegistrationConfig(supabase);
 
-  // Server-side validation mirrors the client; the client is convenience,
-  // this is the boundary. A hidden field is not validated at all; an optional
-  // one is checked only when the customer actually filled it in.
+  // Signup asks four things and validates four things. The phone number and
+  // the "how did you hear about us" question moved OUT of registration: the
+  // second is now the first onboarding survey question, where it is worth
+  // credits to the customer rather than friction before the account exists.
   const errors: SignUpErrors = {};
-  if (fields.firstName === "required" && !f("first_name")) errors.first_name = "required";
-  if (fields.lastName === "required" && !f("last_name")) errors.last_name = "required";
+  const nameIssue = fullNameIssue(fullName);
+  if (nameIssue) errors.full_name = nameIssue;
   if (!EMAIL_RE.test(email)) errors.email = "email";
-  if (fields.phone !== "hidden" && (fields.phone === "required" || f("phone") !== "")) {
-    if (f("phone").replace(/\D/g, "").length < 7) errors.phone = "phone";
-  }
-  if (fields.acquisition !== "hidden") {
-    const known = (ACQUISITION_SOURCES as readonly string[]).includes(source);
-    if (fields.acquisition === "required" && !known) errors.acquisition_source = "required";
-    // Answering "Inne" is what makes the follow-up mandatory — never the
-    // field's own mode, which only governs whether we asked at all.
-    else if (source !== "" && !known) errors.acquisition_source = "required";
-    else if (source === "other" && !f("acquisition_source_other")) errors.acquisition_source_other = "required";
-  }
   const pwIssue = passwordIssue(password);
   if (pwIssue) errors.password = pwIssue;
   if (password !== confirm) errors.password_confirm = "mismatch";
@@ -113,8 +102,7 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
     }
   }
   const values: SignUpValues = {
-    first_name: f("first_name"), last_name: f("last_name"), email,
-    phone: f("phone"), acquisition_source_other: f("acquisition_source_other"),
+    full_name: fullName, email,
     company_name: f("company_name"), tax_id: f("tax_id"),
     company_street: f("company_street"), company_postal_code: f("company_postal_code"),
     company_city: f("company_city"), company_country: country,
@@ -181,12 +169,9 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
       // Consent TIMESTAMPS are stamped by the trigger (now()), not here.
       data: {
         locale,
-        full_name: `${f("first_name")} ${f("last_name")}`.trim(),
-        first_name: f("first_name"),
-        last_name: f("last_name"),
-        phone: f("phone"),
-        acquisition_source: source,
-        acquisition_source_other: source === "other" ? f("acquisition_source_other") : "",
+        full_name: fullName,
+        first_name: firstName,
+        last_name: lastName,
         company_account: company,
         company_name: company ? f("company_name") : "",
         tax_id: company ? f("tax_id") : "",
@@ -249,14 +234,14 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
     const context = await collectEventContext();
     // Empty rows are dropped rather than rendered as a dangling label, so a
     // field the customer left blank simply is not in the message.
+    // Only what signup actually collects. The phone number and the acquisition
+    // answer are no longer asked here (the second is the first onboarding
+    // survey question now), so they are not in the card — an operator reading
+    // "Telefon: undefined" would be worse than not showing the row at all.
     const rows: [string, string][] = [
-      ["👤 Użytkownik", `${f("first_name")} ${f("last_name")}`.trim()],
+      ["👤 Użytkownik", fullName],
       ["📧 E-mail", email],
-      ["📱 Telefon", f("phone")],
       ["🕒 Data", formatWarsaw(new Date())],
-      // What the customer SAID, with "inne" replaced by what they typed —
-      // "other" on its own tells the operator nothing.
-      ["🌍 Źródło", source === "other" ? f("acquisition_source_other") : source],
       // What the server SAW: campaign, entry point, address, device.
       ...contextRows({ ...context, language: locale.toUpperCase() }),
     ];
@@ -266,10 +251,11 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
     // `data`: the signUp result above owns that name in this scope, and
     // shadowing it here would read as a temporal-dead-zone crash, not a rename.
     const tplData = eventDataFrom(context, {
-      name: `${f("first_name")} ${f("last_name")}`.trim(),
+      name: fullName,
       email,
-      phone: f("phone"),
-      source: source === "other" ? f("acquisition_source_other") : source,
+      // No phone and no self-reported source at signup any more. The UTM
+      // source that collectEventContext() found still rides along inside
+      // `context` — that one we genuinely have.
       language: locale.toUpperCase(),
       // Not a field anyone reads in the message — it is what turns the
       // Telegram card's button into "Otwórz klienta" for THIS customer.

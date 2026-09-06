@@ -40,3 +40,34 @@ export function isPoland(country: string): boolean {
 }
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/**
+ * ONE NAME FIELD, TWO COLUMNS.
+ *
+ * Signup asks for "Imię i nazwisko" because two boxes for what everyone
+ * types as one string is friction with nothing behind it. The profile still
+ * has first_name and last_name (the CRM, the mail templates and the admin
+ * list all read them), so the string is split here — in one place, so the
+ * client preview and the server action can never disagree.
+ *
+ * The rule is: the FIRST token is the given name, everything after it is the
+ * surname. That keeps "Anna Maria Nowak-Kowalska" and "van der Berg" intact
+ * instead of throwing away the parts a naive split(" ")[1] would lose. A
+ * single word is a given name with no surname — better than inventing one.
+ */
+export function splitFullName(value: string): { firstName: string; lastName: string } {
+  const parts = value.trim().replace(/\s+/g, " ").split(" ").filter(Boolean);
+  if (parts.length === 0) return { firstName: "", lastName: "" };
+  if (parts.length === 1) return { firstName: parts[0]!, lastName: "" };
+  return { firstName: parts[0]!, lastName: parts.slice(1).join(" ") };
+}
+
+/** Is this usable as a person's name? Deliberately permissive — the point is
+ *  to catch an empty box and a single letter, not to police what names look
+ *  like in a language we did not think of. */
+export function fullNameIssue(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return "required";
+  if (trimmed.replace(/\s/g, "").length < 2) return "name_short";
+  return null;
+}

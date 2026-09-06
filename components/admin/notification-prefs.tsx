@@ -64,6 +64,7 @@ export type NotificationLogRow = {
 const EVENT_LABELS: Record<NotificationEvent, string> = {
   "mail.received": "comm.ev.mailReceived",
   "user.registered": "comm.ev.userRegistered",
+  "welcome.survey_completed": "comm.ev.welcomeSurvey",
   "waitlist.signup": "comm.ev.waitlistSignup",
   "payment.received": "comm.ev.paymentReceived",
   "credits.purchased": "comm.ev.creditsPurchased",

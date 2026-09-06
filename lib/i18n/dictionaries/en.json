@@ -128,7 +128,7 @@
   "auth": {
     "loginTitle": "Sign in to GrovBase",
     "registerTitle": "Create your account",
-    "registerSub": "25 welcome credits to start. No card required.",
+    "registerSub": "Create an account and claim 150 starter credits.",
     "email": "Email address",
     "password": "Password",
     "fullName": "Full name",
@@ -230,7 +230,9 @@
     "benefit1": "Studio-grade shots from your ordinary product photos",
     "benefit2": "Product Lock guards shape, colours and details",
     "benefit3": "25 welcome credits to start — no card required",
-    "paneFooter": "Join the sellers who stopped waiting for a photo shoot."
+    "paneFooter": "Join the sellers who stopped waiting for a photo shoot.",
+    "fullNamePlaceholder": "Alex Smith",
+    "err_name_short": "Enter your full name."
   },
   "dashboard": {
     "welcome": "Hi, {name}! 👋",
@@ -469,7 +471,8 @@
       "notifications": "Notifications",
       "integrations": "Integrations",
       "loginSecurity": "Login security",
-      "features": "Feature availability"
+      "features": "Feature availability",
+      "onboarding": "Registration and bonus"
     },
     "engine": {
       "title": "AI Engine — Knowledge base",
@@ -1254,7 +1257,8 @@
     "generation_failed": "Generation failed — credits refunded",
     "credits_granted": "You received credits",
     "credits_removed": "Credit adjustment",
-    "support_reply": "Reply from support team"
+    "support_reply": "Reply from support team",
+    "bonus": "Welcome bonus"
   },
   "chat": {
     "sub": "Message us — we reply in-app and by email.",
@@ -2896,7 +2900,10 @@
     "st.sent": "Sent",
     "st.failed": "Failed",
     "st.pending": "Queued",
-    "st.skipped": "Skipped"
+    "st.skipped": "Skipped",
+    "ev": {
+      "welcomeSurvey": "Bonus claimed (survey)"
+    }
   },
   "reg": {
     "title": "Registration and security",
@@ -3124,6 +3131,128 @@
     "resetConfirmTitle": "Restore the default template?",
     "resetConfirmBody": "The draft and the published version are removed and production falls back to the built-in copy. Version history stays.",
     "publishConfirmTitle": "Publish this template?",
-    "publishConfirmBody": "From the next message on, production uses exactly this version."
+    "publishConfirmBody": "From the next message on, production uses exactly this version.",
+    "welcomeSurvey": "Welcome bonus claimed"
+  },
+  "bonus": {
+    "badge": "BONUS",
+    "notifTitle": "Claim {{credits}} free credits",
+    "notifBody": "Answer a few quick questions and collect your welcome bonus.",
+    "modalTitle": "Claim {{credits}} free credits",
+    "modalSub": "Answer a few short questions and collect your starter bonus.",
+    "cta": "Claim my {{credits}} credits",
+    "successTitle": "{{credits}} credits are in your account",
+    "successBody": "You can start creating.",
+    "startCreating": "Start creating",
+    "newBalance": "New balance:",
+    "expiresIn": "Offer expires in:",
+    "underMinute": "It takes less than a minute.",
+    "optional": "optional",
+    "errMissing": "Answer the required question to claim the bonus.",
+    "errExpired": "This offer has expired.",
+    "leftNone": "Offer expired",
+    "leftDays": "{n} days left",
+    "leftHours": "{h}h {m}min left",
+    "leftMinutes": "{m} min left",
+    "q": {
+      "acquisition_source": "How did you hear about GrovBase?",
+      "sales_channels": "Where do you sell?",
+      "product_categories": "What do you sell?",
+      "primary_use_cases": "What will you use GrovBase for?"
+    },
+    "opt": {
+      "acquisition_source": {
+        "google": "Google",
+        "youtube": "YouTube",
+        "tiktok_instagram": "TikTok / Instagram",
+        "facebook": "Facebook",
+        "referral": "From friends",
+        "other": "Other"
+      },
+      "sales_channels": {
+        "allegro": "Allegro",
+        "amazon": "Amazon",
+        "shopify": "Shopify",
+        "woocommerce": "WooCommerce",
+        "etsy": "Etsy",
+        "own_store": "My own store",
+        "not_selling_yet": "Not selling yet",
+        "other": "Other"
+      },
+      "product_categories": {
+        "fashion": "Fashion",
+        "home": "Home & interiors",
+        "electronics": "Electronics",
+        "beauty": "Beauty",
+        "food": "Food",
+        "sport": "Sport",
+        "kids": "Kids",
+        "automotive": "Automotive",
+        "other": "Other"
+      },
+      "primary_use_cases": {
+        "product_photos": "Product photos",
+        "social": "Social media",
+        "marketplace": "Marketplace",
+        "ads": "Ads",
+        "video": "Video",
+        "editing": "Photo editing"
+      }
+    }
+  },
+  "onb": {
+    "title": "Registration and welcome bonus",
+    "sub": "What the welcome offer is worth, how long it runs, what it says and what the onboarding survey asks. Changes apply immediately, with no deploy.",
+    "offerTitle": "The offer",
+    "active": "Bonus active",
+    "amount": "Credits",
+    "hours": "Time to claim (hours)",
+    "badge": "Badge",
+    "icon": "Bonus icon",
+    "iconHint": "Empty = the system gift icon.",
+    "newCampaign": "Start a new campaign",
+    "newCampaignHint": "Offers already made keep their amount and deadline. New accounts get the new terms.",
+    "copyTitle": "Copy",
+    "desktop": "Desktop",
+    "mobile": "Mobile",
+    "sameOnMobile": "Use the same copy on mobile",
+    "notifTitle": "Notification title",
+    "notifBody": "Notification body",
+    "modalTitle": "Modal title",
+    "modalSub": "Modal subtitle",
+    "cta": "Call to action",
+    "successTitle": "Title after claiming",
+    "successBody": "Body after claiming",
+    "placeholders": "Available variables:",
+    "questionsTitle": "Survey questions",
+    "questionsHint": "At least one enabled question must be required — the bonus is paid for the survey.",
+    "questionLabel": "Question text",
+    "questionType": "Type",
+    "required": "Required",
+    "enabled": "Enabled",
+    "options": "Options",
+    "optionsCount": "options",
+    "addOption": "Add option",
+    "removeQuestion": "Remove question",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "type": {
+      "SINGLE_SELECT": "Single choice",
+      "MULTI_SELECT": "Multiple choice"
+    },
+    "previewNotification": "Preview — notification",
+    "previewModal": "Preview — bonus modal",
+    "previewSuccess": "Preview — after claiming",
+    "statIssued": "Offers issued",
+    "statClaimed": "Claimed",
+    "statExpired": "Expired",
+    "statConversion": "Conversion",
+    "statAverage": "Average time to claim: {h} h",
+    "saved": "Bonus settings saved.",
+    "unsaved": "Unsaved changes",
+    "errNoRequired": "At least one enabled question must be required.",
+    "errNoQuestions": "The survey needs at least one question with options.",
+    "errAmount": "Invalid credit amount.",
+    "errHours": "Invalid number of hours."
   }
 }

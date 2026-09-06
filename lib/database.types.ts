@@ -305,137 +305,6 @@ export type Database = {
         }
         Relationships: []
       }
-      feature_availability: {
-        Row: {
-          feature_key: string
-          status: string
-          hidden_from_menu: boolean
-          starts_at: string | null
-          ends_at: string | null
-          auto_reenable: boolean
-          custom_title: string | null
-          custom_message: string | null
-          updated_at: string
-          updated_by: string | null
-        }
-        Insert: {
-          feature_key: string
-          status?: string
-          hidden_from_menu?: boolean
-          starts_at?: string | null
-          ends_at?: string | null
-          auto_reenable?: boolean
-          custom_title?: string | null
-          custom_message?: string | null
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Update: {
-          status?: string
-          hidden_from_menu?: boolean
-          starts_at?: string | null
-          ends_at?: string | null
-          auto_reenable?: boolean
-          custom_title?: string | null
-          custom_message?: string | null
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Relationships: []
-      }
-      message_templates: {
-        Row: {
-          key: string
-          event_type: string
-          channel: string
-          draft: Json | null
-          published: Json | null
-          published_version: number
-          published_at: string | null
-          updated_at: string
-          updated_by: string | null
-        }
-        Insert: {
-          key: string
-          event_type: string
-          channel: string
-          draft?: Json | null
-          published?: Json | null
-          published_version?: number
-          published_at?: string | null
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Update: {
-          draft?: Json | null
-          published?: Json | null
-          published_version?: number
-          published_at?: string | null
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Relationships: []
-      }
-      user_trusted_devices: {
-        Row: {
-          id: string
-          user_id: string
-          device_hash: string
-          device_label: string
-          last_ip_hash: string | null
-          first_verified_at: string
-          last_verified_at: string
-          last_seen_at: string
-          created_at: string
-          revoked_at: string | null
-        }
-        Insert: {
-          id?: string
-          user_id: string
-          device_hash: string
-          device_label?: string
-          last_ip_hash?: string | null
-          first_verified_at?: string
-          last_verified_at?: string
-          last_seen_at?: string
-          created_at?: string
-          revoked_at?: string | null
-        }
-        Update: {
-          device_label?: string
-          last_ip_hash?: string | null
-          last_verified_at?: string
-          last_seen_at?: string
-          revoked_at?: string | null
-        }
-        Relationships: []
-      }
-      security_login_events: {
-        Row: {
-          id: string
-          user_id: string
-          event_type: string
-          device_id: string | null
-          ip_hash: string | null
-          device_summary: string
-          success: boolean | null
-          reason: string | null
-          occurred_at: string
-        }
-        Insert: {
-          id?: string
-          user_id: string
-          event_type: string
-          device_id?: string | null
-          ip_hash?: string | null
-          device_summary?: string
-          success?: boolean | null
-          reason?: string | null
-          occurred_at?: string
-        }
-        Update: { [_ in never]: never }
-        Relationships: []
-      }
       audit_logs: {
         Row: {
           action: string
@@ -878,6 +747,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      feature_availability: {
+        Row: {
+          auto_reenable: boolean
+          custom_message: string | null
+          custom_title: string | null
+          ends_at: string | null
+          feature_key: string
+          hidden_from_menu: boolean
+          starts_at: string | null
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          auto_reenable?: boolean
+          custom_message?: string | null
+          custom_title?: string | null
+          ends_at?: string | null
+          feature_key: string
+          hidden_from_menu?: boolean
+          starts_at?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          auto_reenable?: boolean
+          custom_message?: string | null
+          custom_title?: string | null
+          ends_at?: string | null
+          feature_key?: string
+          hidden_from_menu?: boolean
+          starts_at?: string | null
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
       }
       feature_flags: {
         Row: {
@@ -1587,6 +1495,51 @@ export type Database = {
           },
         ]
       }
+      login_security_challenges: {
+        Row: {
+          attempts: number
+          code_hash: string
+          created_at: string
+          device_hash: string
+          device_label: string
+          expires_at: string
+          id: string
+          ip_hash: string | null
+          max_attempts: number
+          reason: string
+          used_at: string | null
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          code_hash: string
+          created_at?: string
+          device_hash: string
+          device_label?: string
+          expires_at: string
+          id?: string
+          ip_hash?: string | null
+          max_attempts?: number
+          reason?: string
+          used_at?: string | null
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          code_hash?: string
+          created_at?: string
+          device_hash?: string
+          device_label?: string
+          expires_at?: string
+          id?: string
+          ip_hash?: string | null
+          max_attempts?: number
+          reason?: string
+          used_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       mail_sync_state: {
         Row: {
           folder: string
@@ -1669,6 +1622,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      message_templates: {
+        Row: {
+          channel: string
+          draft: Json | null
+          event_type: string
+          key: string
+          published: Json | null
+          published_at: string | null
+          published_version: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          channel: string
+          draft?: Json | null
+          event_type: string
+          key: string
+          published?: Json | null
+          published_at?: string | null
+          published_version?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          channel?: string
+          draft?: Json | null
+          event_type?: string
+          key?: string
+          published?: Json | null
+          published_at?: string | null
+          published_version?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
       }
       notification_outbox: {
         Row: {
@@ -1776,6 +1765,41 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_survey_responses: {
+        Row: {
+          answer: string[]
+          created_at: string
+          id: string
+          offer_id: string | null
+          question_key: string
+          user_id: string
+        }
+        Insert: {
+          answer?: string[]
+          created_at?: string
+          id?: string
+          offer_id?: string | null
+          question_key: string
+          user_id: string
+        }
+        Update: {
+          answer?: string[]
+          created_at?: string
+          id?: string
+          offer_id?: string | null
+          question_key?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_survey_responses_offer_id_fkey"
+            columns: ["offer_id"]
+            isOneToOne: false
+            referencedRelation: "welcome_bonus_offers"
             referencedColumns: ["id"]
           },
         ]
@@ -2435,6 +2459,50 @@ export type Database = {
         }
         Relationships: []
       }
+      security_login_events: {
+        Row: {
+          device_id: string | null
+          device_summary: string
+          event_type: string
+          id: string
+          ip_hash: string | null
+          occurred_at: string
+          reason: string | null
+          success: boolean | null
+          user_id: string
+        }
+        Insert: {
+          device_id?: string | null
+          device_summary?: string
+          event_type: string
+          id?: string
+          ip_hash?: string | null
+          occurred_at?: string
+          reason?: string | null
+          success?: boolean | null
+          user_id: string
+        }
+        Update: {
+          device_id?: string | null
+          device_summary?: string
+          event_type?: string
+          id?: string
+          ip_hash?: string | null
+          occurred_at?: string
+          reason?: string | null
+          success?: boolean | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "security_login_events_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "user_trusted_devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       service_catalog: {
         Row: {
           api_cost_usd_micros: number
@@ -3047,6 +3115,45 @@ export type Database = {
           },
         ]
       }
+      user_trusted_devices: {
+        Row: {
+          created_at: string
+          device_hash: string
+          device_label: string
+          first_verified_at: string
+          id: string
+          last_ip_hash: string | null
+          last_seen_at: string
+          last_verified_at: string
+          revoked_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          device_hash: string
+          device_label?: string
+          first_verified_at?: string
+          id?: string
+          last_ip_hash?: string | null
+          last_seen_at?: string
+          last_verified_at?: string
+          revoked_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          device_hash?: string
+          device_label?: string
+          first_verified_at?: string
+          id?: string
+          last_ip_hash?: string | null
+          last_seen_at?: string
+          last_verified_at?: string
+          revoked_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       waitlist_subscribers: {
         Row: {
           confirmed_at: string | null
@@ -3091,6 +3198,53 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      welcome_bonus_offers: {
+        Row: {
+          campaign_version: number
+          claimed_at: string | null
+          created_at: string
+          credit_transaction_id: string | null
+          eligible_at: string
+          expires_at: string
+          id: string
+          reward_amount: number
+          status: Database["public"]["Enums"]["welcome_bonus_status"]
+          user_id: string
+        }
+        Insert: {
+          campaign_version?: number
+          claimed_at?: string | null
+          created_at?: string
+          credit_transaction_id?: string | null
+          eligible_at?: string
+          expires_at: string
+          id?: string
+          reward_amount: number
+          status?: Database["public"]["Enums"]["welcome_bonus_status"]
+          user_id: string
+        }
+        Update: {
+          campaign_version?: number
+          claimed_at?: string | null
+          created_at?: string
+          credit_transaction_id?: string | null
+          eligible_at?: string
+          expires_at?: string
+          id?: string
+          reward_amount?: number
+          status?: Database["public"]["Enums"]["welcome_bonus_status"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "welcome_bonus_offers_credit_transaction_id_fkey"
+            columns: ["credit_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "credit_transactions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       workspace_members: {
         Row: {
@@ -3212,6 +3366,7 @@ export type Database = {
         }
         Returns: string
       }
+      claim_welcome_bonus: { Args: { p_answers: Json }; Returns: Json }
       complete_usage_event:
         | {
             Args: { p_event_id: string; p_result_count: number }
@@ -3236,6 +3391,33 @@ export type Database = {
           p_token?: string
         }
         Returns: undefined
+      }
+      ensure_welcome_bonus_offer: {
+        Args: {
+          p_amount: number
+          p_campaign_version?: number
+          p_eligible_at?: string
+          p_hours: number
+          p_user_id: string
+        }
+        Returns: {
+          campaign_version: number
+          claimed_at: string | null
+          created_at: string
+          credit_transaction_id: string | null
+          eligible_at: string
+          expires_at: string
+          id: string
+          reward_amount: number
+          status: Database["public"]["Enums"]["welcome_bonus_status"]
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "welcome_bonus_offers"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       fail_usage_event:
         | { Args: { p_error: string; p_event_id: string }; Returns: string }
@@ -3287,6 +3469,46 @@ export type Database = {
         }
         Returns: undefined
       }
+      login_challenge_open: {
+        Args: {
+          p_code_hash: string
+          p_device_hash: string
+          p_device_label: string
+          p_ip_hash: string
+          p_max_attempts: number
+          p_reason: string
+          p_token: string
+          p_ttl_seconds: number
+          p_user: string
+        }
+        Returns: string
+      }
+      login_challenge_peek: {
+        Args: { p_device_hash: string; p_token: string; p_user: string }
+        Returns: Json
+      }
+      login_challenge_verify: {
+        Args: {
+          p_code_hash: string
+          p_device_hash: string
+          p_device_label: string
+          p_ip_hash: string
+          p_token: string
+          p_user: string
+        }
+        Returns: Json
+      }
+      login_security_check: {
+        Args: {
+          p_device_hash: string
+          p_ip_hash: string
+          p_reverify_days: number
+          p_verify_device: boolean
+          p_verify_ip: boolean
+        }
+        Returns: Json
+      }
+      login_security_token_ok: { Args: { p_token: string }; Returns: boolean }
       mail_sync_commit: {
         Args: {
           p_error?: string
@@ -3298,51 +3520,6 @@ export type Database = {
         Returns: undefined
       }
       mail_sync_context: { Args: { p_token: string }; Returns: Json }
-      message_template_lookup: {
-        Args: { p_token: string; p_event: string; p_channel: string }
-        Returns: Json
-      }
-      login_security_token_ok: { Args: { p_token: string }; Returns: boolean }
-      login_security_check: {
-        Args: {
-          p_device_hash: string
-          p_ip_hash: string
-          p_verify_device: boolean
-          p_verify_ip: boolean
-          p_reverify_days: number
-        }
-        Returns: Json
-      }
-      login_challenge_open: {
-        Args: {
-          p_token: string
-          p_user: string
-          p_device_hash: string
-          p_code_hash: string
-          p_ip_hash: string
-          p_device_label: string
-          p_reason: string
-          p_ttl_seconds: number
-          p_max_attempts: number
-        }
-        Returns: string
-      }
-      login_challenge_verify: {
-        Args: {
-          p_token: string
-          p_user: string
-          p_device_hash: string
-          p_code_hash: string
-          p_ip_hash: string
-          p_device_label: string
-        }
-        Returns: Json
-      }
-      login_challenge_peek: {
-        Args: { p_token: string; p_user: string; p_device_hash: string }
-        Returns: Json
-      }
-      trusted_device_revoke: { Args: { p_device_id: string }; Returns: boolean }
       match_knowledge_examples: {
         Args: { p_embedding: string; p_top_k?: number }
         Returns: {
@@ -3351,6 +3528,10 @@ export type Database = {
           hint_tag: string
           id: string
         }[]
+      }
+      message_template_lookup: {
+        Args: { p_channel: string; p_event: string; p_token: string }
+        Returns: Json
       }
       notification_dispatch_claim: {
         Args: { p_limit?: number; p_token: string }
@@ -3415,6 +3596,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      trusted_device_revoke: { Args: { p_device_id: string }; Returns: boolean }
       waitlist_subscribe: {
         Args: {
           p_email: string
@@ -3448,6 +3630,7 @@ export type Database = {
       prompt_status: "draft" | "ready" | "used" | "archived"
       quality_status: "pending" | "passed" | "warning" | "failed" | "skipped"
       user_role: "user" | "admin" | "manager"
+      welcome_bonus_status: "ELIGIBLE" | "CLAIMED" | "EXPIRED"
       workspace_role: "owner" | "admin" | "editor" | "viewer" | "operator"
     }
     CompositeTypes: {
@@ -3594,6 +3777,7 @@ export const Constants = {
       prompt_status: ["draft", "ready", "used", "archived"],
       quality_status: ["pending", "passed", "warning", "failed", "skipped"],
       user_role: ["user", "admin", "manager"],
+      welcome_bonus_status: ["ELIGIBLE", "CLAIMED", "EXPIRED"],
       workspace_role: ["owner", "admin", "editor", "viewer", "operator"],
     },
   },

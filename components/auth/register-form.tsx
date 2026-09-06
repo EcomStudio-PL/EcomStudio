@@ -3,16 +3,15 @@ import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { Building2, Loader2, MailCheck } from "lucide-react";
 import { signUp, resendConfirmation, type SignUpErrors } from "@/app/actions/auth";
-import { ACQUISITION_SOURCES, isPoland, passwordIssue, validNip } from "@/lib/auth-validation";
+import { isPoland, passwordIssue, validNip } from "@/lib/auth-validation";
 import { useI18n } from "@/lib/i18n/provider";
-import { Input, Label, Select } from "@/components/ui/input";
+import { Input, Label } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { PasswordField } from "@/components/auth/password-field";
 import { PasswordRules } from "@/components/auth/password-rules";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
 import { Turnstile, type TurnstileHandle } from "@/components/auth/turnstile";
 import { cn } from "@/lib/utils";
-import type { FieldMode, RegistrationConfig } from "@/lib/server/registration-config";
 
 /** Form-level error code → i18n key. Anything unmapped (network, rate_limited)
  *  reads as the generic connection failure, exactly as before. */
@@ -25,26 +24,24 @@ const FORM_ERROR_KEYS: Record<string, string> = {
 };
 
 /**
- * REGISTRATION — one card, progressively disclosed.
+ * REGISTRATION — four fields.
  *
- * The company block and the "Inne" follow-up exist only while their switch
- * is on, so a private account sees seven fields, not thirteen. Validation is
- * shared with the server action (lib/auth-validation) — the client gives
- * instant feedback, the server has the final word, and the two can't drift.
- * Server actions keep the DOM (and everything typed) intact on a validation
- * error, which matters on a form this long.
+ * Name, e-mail, password, confirm. The phone number and "how did you hear
+ * about us" used to live here; they cost signups and bought nothing at that
+ * moment, so the second one moved into the onboarding survey, where the
+ * customer answers it for credits instead of for nothing. Nothing about the
+ * SUBMISSION got simpler: same server action, same captcha, same consents,
+ * same per-IP cap and anti-multiaccount checks.
  *
- * The Turnstile widget appears only when the admin configured captcha —
- * `captchaSiteKey` comes from the server component wrapping this form.
+ * The company block still expands on demand — a business account genuinely
+ * needs an address and a tax id, and it is opt-in.
  *
- * Four of the fields are the admin's decision rather than this file's:
- * `fields` says, per field, whether it is hidden, optional or required. E-mail
- * and password are not in that list and never will be — an account needs an
- * address to confirm and a password to sign in with.
+ * Validation is shared with the server action (lib/auth-validation): the
+ * client gives instant feedback, the server has the final word, and the two
+ * cannot drift.
  */
-export function RegisterForm({ captchaSiteKey, fields, bare = false, next = "", onSwitch }: {
+export function RegisterForm({ captchaSiteKey, bare = false, next = "", onSwitch }: {
   captchaSiteKey: string;
-  fields: RegistrationConfig;
   /** Inside the auth dialog the surface, the heading and the padding belong
    *  to the dialog — the form renders as a bare body. Nothing about the
    *  SUBMISSION changes: same action, same captcha, same consents, same
@@ -57,7 +54,6 @@ export function RegisterForm({ captchaSiteKey, fields, bare = false, next = "", 
 }) {
   const { t } = useI18n();
   const [state, action, pending] = useActionState(signUp, null);
-  const [source, setSource] = useState("");
   const [company, setCompany] = useState(false);
   const [country, setCountry] = useState("Polska");
   const [nip, setNip] = useState("");
@@ -128,23 +124,6 @@ export function RegisterForm({ captchaSiteKey, fields, bare = false, next = "", 
   const nipInvalid = company && nip.length > 0 && (isPoland(country) ? !validNip(nip) : nip.replace(/[\s-]/g, "").length < 5);
   const pwMismatch = confirm.length > 0 && password !== confirm;
 
-  /**
-   * One field's mode, in the three shapes the markup needs it: whether it is
-   * drawn at all, whether the label carries the required marker and blocks
-   * submit, and the "optional" hint that replaces the marker when it does not.
-   * Read through this helper everywhere, so a mode can never mean one thing to
-   * the label and another to the input.
-   */
-  const ask = (mode: FieldMode) => ({
-    show: mode !== "hidden",
-    required: mode === "required",
-    hint: mode === "optional" ? t("auth.optional") : undefined,
-  });
-  const firstName = ask(fields.firstName);
-  const lastName = ask(fields.lastName);
-  const phone = ask(fields.phone);
-  const acquisition = ask(fields.acquisition);
-
   return (
     <Shell bare={bare} className="relative mx-auto w-full max-w-xl overflow-hidden p-6 sm:p-8">
       {!bare && (
@@ -162,72 +141,23 @@ export function RegisterForm({ captchaSiteKey, fields, bare = false, next = "", 
         {/* Identity. A hidden field is not rendered, so it never reaches the
             server as an empty value — and the two-column grid collapses to one
             when only one of the pair is asked for, rather than leaving a gap. */}
-        {/* Two per row from 380px up. Below that — the smallest phones still
-            in use — a pair of 140px boxes stops being a form and starts being
-            a puzzle, so it falls back to one column. */}
-        {(firstName.show || lastName.show) && (
-          <div className={cn("grid gap-4", firstName.show && lastName.show && "min-[380px]:grid-cols-2")}>
-            {firstName.show && (
-              <div>
-                <Label htmlFor="first_name" hint={firstName.hint}>{t("auth.firstName")}{firstName.required ? " *" : ""}</Label>
-                <Input id="first_name" name="first_name" required={firstName.required} autoComplete="given-name"
-                  defaultValue={v.first_name} aria-invalid={!!errors.first_name || undefined} />
-                {err("first_name")}
-              </div>
-            )}
-            {lastName.show && (
-              <div>
-                <Label htmlFor="last_name" hint={lastName.hint}>{t("auth.lastName")}{lastName.required ? " *" : ""}</Label>
-                <Input id="last_name" name="last_name" required={lastName.required} autoComplete="family-name"
-                  defaultValue={v.last_name} aria-invalid={!!errors.last_name || undefined} />
-                {err("last_name")}
-              </div>
-            )}
-          </div>
-        )}
-        <div className={cn("grid gap-4", phone.show && "min-[380px]:grid-cols-2")}>
-          <div>
-            <Label htmlFor="email">{t("auth.email")} *</Label>
-            <Input id="email" name="email" type="email" required autoComplete="email" defaultValue={v.email}
-              inputMode="email" aria-invalid={!!errors.email || undefined} />
-            {err("email")}
-          </div>
-          {phone.show && (
-            <div>
-              <Label htmlFor="phone" hint={phone.hint}>{t("auth.phone")}{phone.required ? " *" : ""}</Label>
-              <Input id="phone" name="phone" type="tel" required={phone.required} autoComplete="tel" defaultValue={v.phone}
-                inputMode="tel" placeholder="+48 600 000 000" aria-invalid={!!errors.phone || undefined} />
-              {err("phone")}
-            </div>
-          )}
+        {/* FOUR FIELDS, and that is the whole form. Name, e-mail and the two
+            password boxes — nothing between a visitor and an account that we
+            can ask for later, when asking is worth credits to them rather
+            than friction before they have anything. */}
+        <div>
+          <Label htmlFor="full_name">{t("auth.fullName")} *</Label>
+          <Input id="full_name" name="full_name" required autoComplete="name"
+            placeholder={t("auth.fullNamePlaceholder")}
+            defaultValue={v.full_name} aria-invalid={!!errors.full_name || undefined} />
+          {err("full_name")}
         </div>
-
-        {/* Acquisition. The "Inne" follow-up is a follow-up to a choice, not a
-            field of its own: once someone picks it, saying what is required
-            whether or not the question itself was. */}
-        {acquisition.show && (
-          <>
-            <div>
-              <Label htmlFor="acquisition_source" hint={acquisition.hint}>{t("auth.acqLabel")}{acquisition.required ? " *" : ""}</Label>
-              <Select id="acquisition_source" name="acquisition_source" required={acquisition.required} value={source}
-                onChange={(e) => setSource(e.target.value)} aria-invalid={!!errors.acquisition_source || undefined}>
-                <option value="" disabled>{t("auth.acqPlaceholder")}</option>
-                {ACQUISITION_SOURCES.map((s) => (
-                  <option key={s} value={s}>{t(`auth.acq_${s}`)}</option>
-                ))}
-              </Select>
-              {err("acquisition_source")}
-            </div>
-            {source === "other" && (
-              <div className="animate-fade">
-                <Label htmlFor="acquisition_source_other">{t("auth.acqOtherLabel")} *</Label>
-                <Input id="acquisition_source_other" name="acquisition_source_other" required defaultValue={v.acquisition_source_other}
-                  aria-invalid={!!errors.acquisition_source_other || undefined} />
-                {err("acquisition_source_other")}
-              </div>
-            )}
-          </>
-        )}
+        <div>
+          <Label htmlFor="email">{t("auth.email")} *</Label>
+          <Input id="email" name="email" type="email" required autoComplete="email" defaultValue={v.email}
+            inputMode="email" aria-invalid={!!errors.email || undefined} />
+          {err("email")}
+        </div>
 
         {/* Passwords. The brief describes ONE full-width password row; this
             form has always had a confirmation field too, and stacking both

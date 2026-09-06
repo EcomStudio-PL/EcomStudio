@@ -36,6 +36,9 @@ import { renderNotification } from "@/lib/server/telegram-notification";
 export type NotificationEvent =
   | "mail.received"
   | "user.registered"
+  // Fired when a new account claims its welcome bonus — the moment we learn
+  // where the customer came from and what they sell.
+  | "welcome.survey_completed"
   | "waitlist.signup"
   | "payment.received"
   | "credits.purchased"
@@ -65,6 +68,7 @@ export const NOTIFICATION_EVENTS: readonly {
 }[] = [
   { type: "mail.received", category: "mail", sortOrder: 10, wired: true },
   { type: "user.registered", category: "users", sortOrder: 20, wired: true },
+  { type: "welcome.survey_completed", category: "users", sortOrder: 25, wired: true },
   { type: "waitlist.signup", category: "users", sortOrder: 30, wired: true },
   { type: "payment.received", category: "sales", sortOrder: 40, wired: false },
   { type: "credits.purchased", category: "sales", sortOrder: 50, wired: false },

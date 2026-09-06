@@ -87,6 +87,11 @@ export const TEMPLATE_CATALOG: readonly CatalogEntry[] = [
   entry("auth.confirm_signup", "email", "auth", "tpl.confirmSignup", "tpl.gRegistration", true, ["first_name"]),
   entry("user.registered", "telegram", "app", "tpl.userRegistered", "tpl.gRegistration", true, CONTEXT_PLACEHOLDERS),
   entry("user.registered", "email", "app", "tpl.userRegistered", "tpl.gRegistration", true, CONTEXT_PLACEHOLDERS),
+  // The onboarding survey — fired when a new account claims its welcome bonus,
+  // which is the moment we learn where the customer came from and what they
+  // sell. Same editor, same placeholders plus the two numbers this event owns.
+  entry("welcome.survey_completed", "telegram", "app", "tpl.welcomeSurvey", "tpl.gRegistration", true,
+    [...CONTEXT_PLACEHOLDERS, "credits", "balance"]),
   // Logowanie
   entry("login.security_code", "email", "app", "tpl.securityCode", "tpl.gLogin", true, ["code", "device", "date", "time"]),
   entry("login.new_device", "email", "app", "tpl.newDevice", "tpl.gLogin", false, ["device", "date", "time", "ip"]),
@@ -172,6 +177,14 @@ const DEFAULTS: Record<string, TemplateDef> = {
   "user.registered:email": { channel: "email", email: emailDefault(
     "Nowa rejestracja — {{name}}", "Nowa rejestracja",
     "Nowe konto w GrovBase. Szczegóły poniżej.") },
+  "welcome.survey_completed:telegram": { channel: "telegram", telegram: tgDefault("🎁", "BONUS ODEBRANY", [
+    "👤 | {{name}}",
+    "📧 | {{email}}",
+    "🌍 | {{source}}",
+    "💎 | +{{credits}}",
+    "👛 | {{balance}}",
+    "🕒 | {{date}} • {{time}}",
+  ]) },
   "waitlist.signup:telegram": { channel: "telegram", telegram: tgDefault("📝", "NOWY ZAPIS NA LISTĘ", CONTEXT_LINES) },
   "waitlist.signup:email": { channel: "email", email: emailDefault(
     "Nowy zapis na listę — {{email}}", "Nowy zapis na listę oczekujących",

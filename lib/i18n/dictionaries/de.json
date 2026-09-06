@@ -128,10 +128,10 @@
   "auth": {
     "loginTitle": "Bei GrovBase anmelden",
     "registerTitle": "Konto erstellen",
-    "registerSub": "25 Willkommens-Credits zum Start. Keine Karte nötig.",
+    "registerSub": "Konto erstellen und 150 Startguthaben sichern.",
     "email": "E-Mail-Adresse",
     "password": "Passwort",
-    "fullName": "Vollständiger Name",
+    "fullName": "Vor- und Nachname",
     "signIn": "Anmelden",
     "signUp": "Konto erstellen",
     "noAccount": "Noch kein Konto?",
@@ -230,7 +230,9 @@
     "benefit1": "Studioqualität aus deinen gewöhnlichen Produktfotos",
     "benefit2": "Product Lock schützt Form, Farben und Details",
     "benefit3": "25 Willkommens-Credits zum Start — ohne Karte",
-    "paneFooter": "Schließe dich Verkäufern an, die nicht mehr auf ein Fotoshooting warten."
+    "paneFooter": "Schließe dich Verkäufern an, die nicht mehr auf ein Fotoshooting warten.",
+    "fullNamePlaceholder": "Max Mustermann",
+    "err_name_short": "Bitte geben Sie Ihren Namen ein."
   },
   "dashboard": {
     "welcome": "Hallo, {name}! 👋",
@@ -469,7 +471,8 @@
       "notifications": "Benachrichtigungen",
       "integrations": "Integrationen",
       "loginSecurity": "Anmeldesicherheit",
-      "features": "Funktionsverfügbarkeit"
+      "features": "Funktionsverfügbarkeit",
+      "onboarding": "Registrierung und Bonus"
     },
     "engine": {
       "title": "AI Engine — Wissensbasis",
@@ -1254,7 +1257,8 @@
     "generation_failed": "Generierung fehlgeschlagen — Credits erstattet",
     "credits_granted": "Du hast Credits erhalten",
     "credits_removed": "Credit-Korrektur",
-    "support_reply": "Antwort vom Support-Team"
+    "support_reply": "Antwort vom Support-Team",
+    "bonus": "Willkommensbonus"
   },
   "chat": {
     "sub": "Schreib uns — wir antworten in der App und per E-Mail.",
@@ -2896,7 +2900,10 @@
     "st.sent": "Gesendet",
     "st.failed": "Fehlgeschlagen",
     "st.pending": "In der Warteschlange",
-    "st.skipped": "Übersprungen"
+    "st.skipped": "Übersprungen",
+    "ev": {
+      "welcomeSurvey": "Bonus eingelöst (Umfrage)"
+    }
   },
   "reg": {
     "title": "Registrierung und Sicherheit",
@@ -3124,6 +3131,128 @@
     "resetConfirmTitle": "Standardvorlage wiederherstellen?",
     "resetConfirmBody": "Entwurf und veröffentlichte Version werden entfernt; die Produktion fällt auf den eingebauten Text zurück. Die Versionshistorie bleibt.",
     "publishConfirmTitle": "Vorlage veröffentlichen?",
-    "publishConfirmBody": "Ab der nächsten Nachricht nutzt die Produktion genau diese Version."
+    "publishConfirmBody": "Ab der nächsten Nachricht nutzt die Produktion genau diese Version.",
+    "welcomeSurvey": "Willkommensbonus eingelöst"
+  },
+  "bonus": {
+    "badge": "BONUS",
+    "notifTitle": "Sichern Sie sich {{credits}} Gratis-Credits",
+    "notifBody": "Beantworten Sie ein paar kurze Fragen und erhalten Sie Ihren Willkommensbonus.",
+    "modalTitle": "Sichern Sie sich {{credits}} Gratis-Credits",
+    "modalSub": "Beantworten Sie ein paar kurze Fragen und erhalten Sie Ihren Startbonus.",
+    "cta": "{{credits}} Credits einlösen",
+    "successTitle": "{{credits}} Credits sind auf Ihrem Konto",
+    "successBody": "Sie können jetzt loslegen.",
+    "startCreating": "Loslegen",
+    "newBalance": "Neues Guthaben:",
+    "expiresIn": "Angebot läuft ab in:",
+    "underMinute": "Das dauert weniger als eine Minute.",
+    "optional": "optional",
+    "errMissing": "Beantworten Sie die Pflichtfrage, um den Bonus zu erhalten.",
+    "errExpired": "Dieses Angebot ist abgelaufen.",
+    "leftNone": "Angebot abgelaufen",
+    "leftDays": "Noch {n} Tage",
+    "leftHours": "Noch {h} Std. {m} Min.",
+    "leftMinutes": "Noch {m} Min.",
+    "q": {
+      "acquisition_source": "Wie haben Sie von GrovBase erfahren?",
+      "sales_channels": "Wo verkaufen Sie?",
+      "product_categories": "Was verkaufen Sie?",
+      "primary_use_cases": "Wofür möchten Sie GrovBase nutzen?"
+    },
+    "opt": {
+      "acquisition_source": {
+        "google": "Google",
+        "youtube": "YouTube",
+        "tiktok_instagram": "TikTok / Instagram",
+        "facebook": "Facebook",
+        "referral": "Von Bekannten",
+        "other": "Sonstiges"
+      },
+      "sales_channels": {
+        "allegro": "Allegro",
+        "amazon": "Amazon",
+        "shopify": "Shopify",
+        "woocommerce": "WooCommerce",
+        "etsy": "Etsy",
+        "own_store": "Eigener Shop",
+        "not_selling_yet": "Verkaufe noch nicht",
+        "other": "Sonstiges"
+      },
+      "product_categories": {
+        "fashion": "Mode",
+        "home": "Haus & Wohnen",
+        "electronics": "Elektronik",
+        "beauty": "Beauty",
+        "food": "Lebensmittel",
+        "sport": "Sport",
+        "kids": "Kinder",
+        "automotive": "Auto & Motorrad",
+        "other": "Sonstiges"
+      },
+      "primary_use_cases": {
+        "product_photos": "Produktfotos",
+        "social": "Social Media",
+        "marketplace": "Marktplatz",
+        "ads": "Werbung",
+        "video": "Video",
+        "editing": "Bildbearbeitung"
+      }
+    }
+  },
+  "onb": {
+    "title": "Registrierung und Willkommensbonus",
+    "sub": "Was der Willkommensbonus wert ist, wie lange er läuft, was er sagt und was die Onboarding-Umfrage fragt. Änderungen wirken sofort, ohne Deployment.",
+    "offerTitle": "Das Angebot",
+    "active": "Bonus aktiv",
+    "amount": "Anzahl Credits",
+    "hours": "Zeit zum Einlösen (Stunden)",
+    "badge": "Badge",
+    "icon": "Bonus-Symbol",
+    "iconHint": "Leer = System-Geschenksymbol.",
+    "newCampaign": "Neue Kampagne starten",
+    "newCampaignHint": "Bereits erteilte Angebote behalten Betrag und Frist. Neue Konten erhalten die neuen Konditionen.",
+    "copyTitle": "Texte",
+    "desktop": "Desktop",
+    "mobile": "Mobil",
+    "sameOnMobile": "Gleicher Text auf Mobilgeräten",
+    "notifTitle": "Titel der Benachrichtigung",
+    "notifBody": "Text der Benachrichtigung",
+    "modalTitle": "Titel des Fensters",
+    "modalSub": "Untertitel des Fensters",
+    "cta": "Schaltfläche",
+    "successTitle": "Titel nach dem Einlösen",
+    "successBody": "Text nach dem Einlösen",
+    "placeholders": "Verfügbare Variablen:",
+    "questionsTitle": "Fragen der Umfrage",
+    "questionsHint": "Mindestens eine aktive Frage muss Pflicht sein — der Bonus wird für die Umfrage gewährt.",
+    "questionLabel": "Fragetext",
+    "questionType": "Typ",
+    "required": "Pflicht",
+    "enabled": "Aktiv",
+    "options": "Optionen",
+    "optionsCount": "Optionen",
+    "addOption": "Option hinzufügen",
+    "removeQuestion": "Frage entfernen",
+    "moveUp": "Nach oben",
+    "moveDown": "Nach unten",
+    "type": {
+      "SINGLE_SELECT": "Einfachauswahl",
+      "MULTI_SELECT": "Mehrfachauswahl"
+    },
+    "previewNotification": "Vorschau — Benachrichtigung",
+    "previewModal": "Vorschau — Bonusfenster",
+    "previewSuccess": "Vorschau — nach dem Einlösen",
+    "statIssued": "Ausgegebene Angebote",
+    "statClaimed": "Eingelöst",
+    "statExpired": "Abgelaufen",
+    "statConversion": "Konversion",
+    "statAverage": "Durchschnittliche Zeit bis zum Einlösen: {h} Std.",
+    "saved": "Bonus-Einstellungen gespeichert.",
+    "unsaved": "Nicht gespeicherte Änderungen",
+    "errNoRequired": "Mindestens eine aktive Frage muss Pflicht sein.",
+    "errNoQuestions": "Die Umfrage braucht mindestens eine Frage mit Optionen.",
+    "errAmount": "Ungültige Credit-Anzahl.",
+    "errHours": "Ungültige Stundenzahl."
   }
 }

@@ -128,7 +128,7 @@
   "auth": {
     "loginTitle": "Zaloguj się do GrovBase",
     "registerTitle": "Utwórz konto",
-    "registerSub": "25 kredytów powitalnych na start. Bez karty.",
+    "registerSub": "Załóż konto i odbierz 150 kredytów na start.",
     "email": "Adres e-mail",
     "password": "Hasło",
     "fullName": "Imię i nazwisko",
@@ -205,7 +205,7 @@
     "err_required": "To pole jest wymagane.",
     "err_email": "Podaj prawidłowy adres e-mail.",
     "err_phone": "Podaj prawidłowy numer telefonu.",
-    "err_mismatch": "Hasła nie są takie same.",
+    "err_mismatch": "Hasła nie są identyczne.",
     "err_nip": "Podaj prawidłowy NIP.",
     "err_pw_length": "Hasło musi mieć minimum 8 znaków.",
     "err_pw_case": "Hasło musi zawierać wielką i małą literę.",
@@ -230,7 +230,9 @@
     "benefit1": "Studyjne ujęcia z Twoich zwykłych zdjęć produktu",
     "benefit2": "Product Lock pilnuje kształtu, kolorów i detali",
     "benefit3": "25 kredytów powitalnych na start — bez karty",
-    "paneFooter": "Dołącz do sprzedawców, którzy przestali czekać na sesję zdjęciową."
+    "paneFooter": "Dołącz do sprzedawców, którzy przestali czekać na sesję zdjęciową.",
+    "fullNamePlaceholder": "Jan Kowalski",
+    "err_name_short": "Podaj imię i nazwisko."
   },
   "dashboard": {
     "welcome": "Cześć, {name}! 👋",
@@ -469,7 +471,8 @@
       "notifications": "Powiadomienia",
       "integrations": "Integracje",
       "loginSecurity": "Bezpieczeństwo logowania",
-      "features": "Dostępność funkcji"
+      "features": "Dostępność funkcji",
+      "onboarding": "Rejestracja i bonus"
     },
     "engine": {
       "title": "AI Engine — Baza wiedzy",
@@ -1254,7 +1257,8 @@
     "generation_failed": "Generacja nieudana — kredyty zwrócone",
     "credits_granted": "Otrzymałeś kredyty",
     "credits_removed": "Korekta kredytów",
-    "support_reply": "Odpowiedź od zespołu wsparcia"
+    "support_reply": "Odpowiedź od zespołu wsparcia",
+    "bonus": "Bonus powitalny"
   },
   "chat": {
     "sub": "Napisz do nas — odpowiadamy w aplikacji i mailowo.",
@@ -2896,7 +2900,10 @@
     "st.sent": "Wysłane",
     "st.failed": "Błąd",
     "st.pending": "W kolejce",
-    "st.skipped": "Pominięte"
+    "st.skipped": "Pominięte",
+    "ev": {
+      "welcomeSurvey": "Bonus odebrany (ankieta)"
+    }
   },
   "reg": {
     "title": "Rejestracja i bezpieczeństwo",
@@ -3124,6 +3131,128 @@
     "resetConfirmTitle": "Przywrócić domyślny szablon?",
     "resetConfirmBody": "Szkic i opublikowana wersja zostaną usunięte, a produkcja wróci do wbudowanej treści. Historia wersji zostaje.",
     "publishConfirmTitle": "Opublikować szablon?",
-    "publishConfirmBody": "Od następnej wiadomości produkcja użyje dokładnie tej wersji."
+    "publishConfirmBody": "Od następnej wiadomości produkcja użyje dokładnie tej wersji.",
+    "welcomeSurvey": "Bonus powitalny odebrany"
+  },
+  "bonus": {
+    "badge": "BONUS",
+    "notifTitle": "Odbierz {{credits}} kredytów za darmo",
+    "notifBody": "Uzupełnij krótką ankietę i odbierz bonus powitalny.",
+    "modalTitle": "Odbierz {{credits}} darmowych kredytów",
+    "modalSub": "Odpowiedz na kilka krótkich pytań i odbierz bonus na start.",
+    "cta": "Odbieram {{credits}} kredytów",
+    "successTitle": "{{credits}} kredytów jest już na Twoim koncie",
+    "successBody": "Możesz zacząć tworzyć.",
+    "startCreating": "Zacznij tworzyć",
+    "newBalance": "Nowe saldo:",
+    "expiresIn": "Oferta wygasa za:",
+    "underMinute": "Zajmie Ci to mniej niż minutę.",
+    "optional": "opcjonalne",
+    "errMissing": "Odpowiedz na wymagane pytanie, aby odebrać bonus.",
+    "errExpired": "Ta oferta już wygasła.",
+    "leftNone": "Oferta wygasła",
+    "leftDays": "Zostały {n} dni",
+    "leftHours": "Zostało {h}h {m}min",
+    "leftMinutes": "Zostało {m} min",
+    "q": {
+      "acquisition_source": "Skąd dowiedziałeś się o GrovBase?",
+      "sales_channels": "Gdzie sprzedajesz?",
+      "product_categories": "Co sprzedajesz?",
+      "primary_use_cases": "Do czego chcesz używać GrovBase?"
+    },
+    "opt": {
+      "acquisition_source": {
+        "google": "Google",
+        "youtube": "YouTube",
+        "tiktok_instagram": "TikTok / Instagram",
+        "facebook": "Facebook",
+        "referral": "Od znajomych",
+        "other": "Inne"
+      },
+      "sales_channels": {
+        "allegro": "Allegro",
+        "amazon": "Amazon",
+        "shopify": "Shopify",
+        "woocommerce": "WooCommerce",
+        "etsy": "Etsy",
+        "own_store": "Własny sklep",
+        "not_selling_yet": "Jeszcze nie sprzedaję",
+        "other": "Inne"
+      },
+      "product_categories": {
+        "fashion": "Moda",
+        "home": "Dom i wnętrza",
+        "electronics": "Elektronika",
+        "beauty": "Uroda",
+        "food": "Jedzenie",
+        "sport": "Sport",
+        "kids": "Dzieci",
+        "automotive": "Motoryzacja",
+        "other": "Inne"
+      },
+      "primary_use_cases": {
+        "product_photos": "Zdjęcia produktowe",
+        "social": "Social media",
+        "marketplace": "Marketplace",
+        "ads": "Reklamy",
+        "video": "Wideo",
+        "editing": "Edycja zdjęć"
+      }
+    }
+  },
+  "onb": {
+    "title": "Rejestracja i bonus powitalny",
+    "sub": "Ile jest wart bonus, jak długo trwa, co mówi i o co pyta ankieta onboardingowa. Zmiany działają od razu, bez wdrożenia.",
+    "offerTitle": "Oferta",
+    "active": "Bonus aktywny",
+    "amount": "Liczba kredytów",
+    "hours": "Czas na odbiór (godziny)",
+    "badge": "Badge",
+    "icon": "Ikona bonusu",
+    "iconHint": "Puste = systemowa ikona prezentu.",
+    "newCampaign": "Rozpocznij nową kampanię",
+    "newCampaignHint": "Oferty już wydane zachowują swoją kwotę i termin. Nowe konta dostaną nowe warunki.",
+    "copyTitle": "Treści",
+    "desktop": "Desktop",
+    "mobile": "Mobile",
+    "sameOnMobile": "Użyj tej samej treści na mobile",
+    "notifTitle": "Tytuł powiadomienia",
+    "notifBody": "Opis powiadomienia",
+    "modalTitle": "Tytuł okna",
+    "modalSub": "Podtytuł okna",
+    "cta": "Przycisk",
+    "successTitle": "Tytuł po odebraniu",
+    "successBody": "Opis po odebraniu",
+    "placeholders": "Dostępne zmienne:",
+    "questionsTitle": "Pytania ankiety",
+    "questionsHint": "Przynajmniej jedno włączone pytanie musi być wymagane — bonus przyznajemy za ankietę.",
+    "questionLabel": "Treść pytania",
+    "questionType": "Typ",
+    "required": "Wymagane",
+    "enabled": "Włączone",
+    "options": "Opcje",
+    "optionsCount": "opcji",
+    "addOption": "Dodaj opcję",
+    "removeQuestion": "Usuń pytanie",
+    "moveUp": "W górę",
+    "moveDown": "W dół",
+    "type": {
+      "SINGLE_SELECT": "Jedna odpowiedź",
+      "MULTI_SELECT": "Wiele odpowiedzi"
+    },
+    "previewNotification": "Podgląd — powiadomienie",
+    "previewModal": "Podgląd — okno bonusu",
+    "previewSuccess": "Podgląd — po odebraniu",
+    "statIssued": "Wydane oferty",
+    "statClaimed": "Odebrane",
+    "statExpired": "Wygasłe",
+    "statConversion": "Konwersja",
+    "statAverage": "Średni czas do odebrania: {h} h",
+    "saved": "Zapisano ustawienia bonusu.",
+    "unsaved": "Niezapisane zmiany",
+    "errNoRequired": "Przynajmniej jedno włączone pytanie musi być wymagane.",
+    "errNoQuestions": "Ankieta musi mieć przynajmniej jedno pytanie z opcjami.",
+    "errAmount": "Nieprawidłowa liczba kredytów.",
+    "errHours": "Nieprawidłowa liczba godzin."
   }
 }
