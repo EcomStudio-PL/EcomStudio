@@ -7,7 +7,7 @@ import { rateLimit } from "@/lib/server/rate-limit";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
 import { verifyTurnstile } from "@/lib/server/captcha";
 import { readIntegrationSecrets, safeError } from "@/lib/server/integrations";
-import { collectEventContext, contextRows, formatWarsaw } from "@/lib/server/event-context";
+import { collectEventContext, contextRows, eventDataFrom, formatWarsaw } from "@/lib/server/event-context";
 import { recordSignup, signupAllowed, signupIpHash } from "@/lib/server/signup-guard";
 import { getRegistrationConfig } from "@/lib/server/registration-config";
 import { getLocale } from "@/lib/i18n/server";
@@ -260,11 +260,22 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
       // What the server SAW: campaign, entry point, address, device.
       ...contextRows({ ...context, language: locale.toUpperCase() }),
     ];
+    // The keyed twin of `rows`: what a published admin template binds its
+    // {{placeholders}} to. The registration form's own answer wins over the
+    // UTM tag for {{source}}, same as the row above.
+    const data = eventDataFrom(context, {
+      name: `${f("first_name")} ${f("last_name")}`.trim(),
+      email,
+      phone: f("phone"),
+      source: source === "other" ? f("acquisition_source_other") : source,
+      language: locale.toUpperCase(),
+    });
     after(() => notify(supabase, {
       type: "user.registered",
       title: "NOWA REJESTRACJA",
       icon: "🎉",
       rows: rows.filter(([, value]) => value !== ""),
+      data,
       footer: "GrovBase Admin",
       dedupeKey: buildDedupeKey("user.registered", email.toLowerCase()),
     }));

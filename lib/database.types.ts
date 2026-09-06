@@ -305,6 +305,39 @@ export type Database = {
         }
         Relationships: []
       }
+      message_templates: {
+        Row: {
+          key: string
+          event_type: string
+          channel: string
+          draft: Json | null
+          published: Json | null
+          published_version: number
+          published_at: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          key: string
+          event_type: string
+          channel: string
+          draft?: Json | null
+          published?: Json | null
+          published_version?: number
+          published_at?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          draft?: Json | null
+          published?: Json | null
+          published_version?: number
+          published_at?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       user_trusted_devices: {
         Row: {
           id: string
@@ -3227,6 +3260,10 @@ export type Database = {
         Returns: undefined
       }
       mail_sync_context: { Args: { p_token: string }; Returns: Json }
+      message_template_lookup: {
+        Args: { p_token: string; p_event: string; p_channel: string }
+        Returns: Json
+      }
       login_security_token_ok: { Args: { p_token: string }; Returns: boolean }
       login_security_check: {
         Args: {

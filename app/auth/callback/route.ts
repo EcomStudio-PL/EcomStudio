@@ -5,7 +5,7 @@ import { createAuthRouteClient } from "@/lib/supabase/auth-route";
 import { PERSIST_COOKIE } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
-import { collectEventContext, contextRows, formatWarsaw } from "@/lib/server/event-context";
+import { collectEventContext, contextRows, eventDataFrom, formatWarsaw } from "@/lib/server/event-context";
 
 export const dynamic = "force-dynamic";
 
@@ -87,6 +87,7 @@ export async function GET(request: Request) {
       ["🕒 Data", formatWarsaw(new Date())],
       ...contextRows(context),
     ] as [string, string][]).filter(([, v]) => v !== "");
+    const tplData = eventDataFrom(context, { name: fullName, email, source: provider });
     after(async () => {
       const client = await createClient();
       await notify(client, {
@@ -94,6 +95,7 @@ export async function GET(request: Request) {
         title: "NOWA REJESTRACJA",
         icon: "🎉",
         rows,
+        data: tplData,
         footer: "GrovBase Admin",
         dedupeKey: buildDedupeKey("user.registered", email.toLowerCase()),
       });

@@ -532,6 +532,7 @@ function senderLabel(item: MailListItem): string {
  */
 async function announce(supabase: Client, item: MailListItem, folder: string, uidValidity: number): Promise<void> {
   const time = receivedAt(item.date);
+  const [date = "", hour = ""] = (time ?? "").split(" • ");
   await notify(supabase, {
     type: "mail.received",
     title: "NOWY E-MAIL",
@@ -540,6 +541,12 @@ async function announce(supabase: Client, item: MailListItem, folder: string, ui
       ["Od", senderLabel(item)],
       ["Temat", item.subject || "(bez tematu)"],
     ],
+    data: {
+      ...(item.from.name ? { name: item.from.name } : {}),
+      ...(item.from.address ? { email: item.from.address } : {}),
+      ...(date ? { date } : {}),
+      ...(hour ? { time: hour } : {}),
+    },
     quote: item.preview.slice(0, NOTIFY_PREVIEW_CHARS),
     footer: time ? `Otrzymano: ${time}` : "",
     dedupeKey: buildDedupeKey("mail.received", folder, uidValidity, item.uid),

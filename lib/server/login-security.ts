@@ -3,9 +3,10 @@ import { cookies, headers } from "next/headers";
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "crypto";
 import type { Client } from "@/lib/services/workspace";
 import { describeUserAgent, formatWarsaw } from "@/lib/server/event-context";
-import { readIntegrationSecrets, safeError, type MailConfig } from "@/lib/server/integrations";
+import { dispatchToken, readIntegrationSecrets, safeError, type MailConfig } from "@/lib/server/integrations";
 import { deliverHtml, type MailIdentity, type SmtpConfig } from "@/lib/server/mailer";
 import { encryptionAvailable, encryptSecret } from "@/lib/server/crypto";
+import { fieldsFromData, lookupPublishedTemplate, renderTemplateEmail } from "@/lib/server/message-templates";
 
 /**
  * APP-LEVEL LOGIN SECURITY — the second factor that sits on top of Supabase
@@ -324,8 +325,34 @@ export async function sendSecurityCode(
     from_email: config.email,
     reply_to: config.email,
   };
-  const { subject, html, text } = renderSecurityCodeEmail({ code, deviceLabel: label, when: new Date() });
+  // A published admin template for this mail wins; the built-in dark card is
+  // the default and the fallback, so the working flow never changes until the
+  // admin explicitly publishes a custom version.
+  const custom = await securityCodeTemplate(supabase, code, label);
+  const { subject, html, text } = custom
+    ?? renderSecurityCodeEmail({ code, deviceLabel: label, when: new Date() });
   return deliverHtml({ to, subject, text, html }, identity, smtp);
+}
+
+async function securityCodeTemplate(
+  supabase: Client,
+  code: string,
+  label: string,
+): Promise<{ subject: string; html: string; text: string } | null> {
+  const token = dispatchToken();
+  if (!token) return null;
+  const def = await lookupPublishedTemplate(supabase, token, "login.security_code", "email");
+  if (!def || def.channel !== "email") return null;
+  const stamp = formatWarsaw(new Date());
+  const [date = "", time = ""] = stamp.split(" • ");
+  const spaced = `${code.slice(0, 3)} ${code.slice(3)}`;
+  const data = { code: spaced, device: label, date, time };
+  const rendered = renderTemplateEmail(def.email, data, {
+    badge: "BEZPIECZEŃSTWO",
+    fields: fieldsFromData(data),
+    timestamp: stamp,
+  });
+  return { subject: rendered.subject, html: rendered.html, text: rendered.text };
 }
 
 /* ── the risk decision + challenge lifecycle ─────────────────────────────────

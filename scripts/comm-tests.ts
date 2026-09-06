@@ -172,7 +172,7 @@ async function main() {
   check("an unconfigured row yields no credentials", bare?.chatId === "" && bare?.blob === null);
   check("a row without the channel column is still a telegram row", readClaim({ ...CLAIMED_ROW, channel: undefined })?.channel === "telegram");
 
-  console.log("\nE. TELEGRAM CARD — a label above its value, and nothing raw");
+  console.log("\nE. TELEGRAM CARD — compact one-line fields, and nothing raw");
   const card = formatTelegram({
     title: "NOWA REJESTRACJA",
     icon: "🎉",
@@ -181,11 +181,11 @@ async function main() {
   });
   check("the header is the icon, the bold title and a rule",
     card.startsWith("🎉 <b>NOWA REJESTRACJA</b>\n━"), card.split("\n")[0]);
-  check("a row is its bold label above the value", card.includes("<b>📧 E-mail</b>\njan@example.com"));
-  check("rows are separated by a blank line", card.includes("Jan Kowalski\n\n<b>📧 E-mail</b>"));
+  check("a row is ONE compact line — emoji, pipe, value", card.includes("👤 | Jan Kowalski") && card.includes("📧 | jan@example.com"), card);
+  check("no blank lines inside the card — compact by contract", !card.includes("\n\n"), card);
   // The bug this catches: an empty phone rendering as a label with "undefined"
   // — or nothing — under it, which is what the admin actually sees on Telegram.
-  check("an empty value drops the whole row, label and all", !card.includes("Telefon"), card);
+  check("an empty value drops the whole row, emoji and all", !card.includes("Telefon") && !card.includes("📱"), card);
   check("the footer sits under the closing rule", /━\nGrovBase Admin$/.test(card), card.slice(-40));
   check("a card with no footer still closes with the rule", formatTelegram({ title: "X" }).endsWith("━"));
 
@@ -252,9 +252,14 @@ async function main() {
 
   check("an empty row never reaches the card", !mail.html.includes("Telefon") && !mail.text.includes("Telefon"));
   check("a hostile name cannot inject markup",
-    mail.html.includes("&lt;img") && !mail.html.includes("<img") && !mail.html.includes('onerror="alert(1)"'));
+    mail.html.includes("&lt;img") && !mail.html.includes('onerror="alert(1)"')
+    // The ONLY real <img> allowed is the brand logo from our own origin.
+    && (mail.html.match(/<img/g) ?? []).every(() => true)
+    && /<img src="https:\/\/grovbase\.com\/brand\//.test(mail.html)
+    && (mail.html.match(/<img/g) ?? []).length === 1);
   check("the plain-text alternative is always emitted",
-    mail.text.includes("NOWA REJESTRACJA") && mail.text.includes("👤 Użytkownik:") && mail.text.endsWith("GrovBase · grovbase.com"));
+    mail.text.includes("NOWA REJESTRACJA") && mail.text.includes("Użytkownik:")
+    && mail.text.endsWith("grovbase.com · © GrovBase"), mail.text.slice(-60));
   check("the timestamp is printed as given", mail.html.includes("Data: 15.01.2026, 12:43"));
   check("the CTA is an absolute URL built with absoluteUrl()",
     mail.html.includes(`href="${absoluteUrl("/admin/users")}"`) && mail.text.includes(absoluteUrl("/admin/users")));
@@ -264,9 +269,14 @@ async function main() {
     !renderAdminNotification({ eventType: "x", occurredAt: "", title: "T", rows: [], ctaHref: "javascript:alert(1)" }).html.includes("javascript:"));
   // No <script>, no stylesheet, no image — an admin's own notification has
   // nothing to load from anywhere and nothing to measure.
-  check("the card carries no script, no stylesheet and no image", !/<script|<link|<img/i.test(mail.html));
+  // No <script>, no stylesheet; the one image is our own logo (the shared card
+  // shows it by design since the light layout), and nothing else loads.
+  check("the card carries no script, no stylesheet and no foreign image",
+    !/<script|<link/i.test(mail.html)
+    && (mail.html.match(/<img\b/gi) ?? []).length === 1
+    && mail.html.includes('src="https://grovbase.com/brand/'));
   check("the brand gradient keeps a solid bgcolor for Outlook",
-    mail.html.includes('bgcolor="#D628CF"') && mail.html.includes("linear-gradient(135deg,#D628CF 0%,#F950E1 100%)"));
+    mail.html.includes('bgcolor="#D628CF"') && /linear-gradient\((?:90deg|135deg),#D628CF,#F950E1\)/.test(mail.html), mail.html.match(/linear[^)]*\)/)?.[0]);
 
   console.log(failures === 0 ? "\nAll communications tests passed.\n" : `\n${failures} test(s) failed.\n`);
   process.exit(failures === 0 ? 0 : 1);

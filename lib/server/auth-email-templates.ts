@@ -1,4 +1,22 @@
-<!-- Temat: Potwierdź swój adres e-mail — GrovBase -->
+import "server-only";
+
+/**
+ * THE TWO SUPABASE AUTH TEMPLATES, embedded as the single runtime source.
+ *
+ * GoTrue renders these — not this app — so "publishing" them from the panel
+ * would be a lie. What the editor CAN do honestly is show them, let the admin
+ * copy the exact HTML, and say "requires sync with Supabase". The files under
+ * supabase/templates/ hold the same content for the dashboard paste and for
+ * version control; scripts/template-tests.ts asserts the two never drift.
+ *
+ * The {{ .TokenHash }} / {{ .Data.first_name }} markers are GoTrue Go-template
+ * variables and must reach the dashboard verbatim.
+ */
+
+export const AUTH_EMAIL_TEMPLATES: Record<string, { subject: string; html: string }> = {
+  "auth.confirm_signup": {
+    subject: "Potwierdź swój adres e-mail — GrovBase",
+    html: `<!-- Temat: Potwierdź swój adres e-mail — GrovBase -->
 <!--
   GrovBase — szablon e-maila potwierdzajacego rejestracje (wariant JASNY, premium).
   Wklej do: Supabase Dashboard -> Authentication -> Emails -> Templates -> Confirm signup.
@@ -164,3 +182,155 @@
   </table>
 </body>
 </html>
+`,
+  },
+  "auth.reset_password": {
+    subject: "Zresetuj hasło — GrovBase",
+    html: `<!-- Temat: Zresetuj hasło — GrovBase -->
+<!--
+  GrovBase — szablon e-maila resetu hasla (wariant JASNY, premium).
+  Wklej do: Supabase Dashboard -> Authentication -> Emails -> Templates -> Reset password.
+
+  Zmienne szablonu: {{ .TokenHash }} (link) oraz {{ .Data.first_name }} (imie z
+  metadanych rejestracji; formularz GrovBase zawsze je przekazuje, a gdy pole
+  jest ukryte w konfiguracji, warunek {{ if }} po prostu opuszcza imie).
+
+  Origin grovbase.com jest celowo zapisany NA SZTYWNO: bledny Site URL w
+  dashboardzie nigdy nie skieruje tego linku na localhost.
+
+  Zasady zgodnosci: tabele + inline CSS + bgcolor na kazdym elemencie,
+  zadnych flexow/gridow, zadnych zewnetrznych styli, zero JS, zero pixela
+  sledzacego. Dziala w Gmail / Apple Mail / Outlook, responsywny przez
+  max-width + width:100%.
+-->
+<!DOCTYPE html>
+<html lang="pl" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>Zresetuj hasło</title>
+</head>
+<body style="margin:0; padding:0; background-color:#F4EFF9;" bgcolor="#F4EFF9">
+
+  <!-- Preheader: widoczny tylko na liscie wiadomosci -->
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F4EFF9;">
+    Ustaw nowe hasło do swojego konta GrovBase.&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F4EFF9" style="background-color:#F4EFF9;">
+    <tr>
+      <td align="center" bgcolor="#F4EFF9" style="background-color:#F4EFF9; padding:40px 16px;">
+
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:560px;">
+
+          <!-- Naglowek: logo + wordmark -->
+          <tr>
+            <td align="center" style="padding:0 0 26px 0;">
+              <img src="https://grovbase.com/brand/icon-on-light.png" width="42" height="32" alt="GrovBase" style="display:block; margin:0 auto 10px auto; width:42px; height:32px; border:0; outline:none;">
+              <span style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:26px; line-height:32px; font-weight:800; letter-spacing:-0.5px; color:#1A1127;">Grov<span style="color:#D628CF;">Base</span></span>
+            </td>
+          </tr>
+
+          <!-- Pasek gradientu na szczycie karty -->
+          <tr>
+            <td style="border-radius:14px 14px 0 0; overflow:hidden;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td height="5" bgcolor="#D628CF" style="background-color:#D628CF; background-image:linear-gradient(90deg, #D628CF 0%, #F950E1 100%); height:5px; line-height:5px; font-size:5px; border-radius:14px 14px 0 0;">&nbsp;</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Karta -->
+          <tr>
+            <td bgcolor="#FFFFFF" style="background-color:#FFFFFF; border:1px solid #EBE2F3; border-top:0; border-radius:0 0 14px 14px; padding:42px 44px 36px 44px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+                <!-- Powitanie: imie tylko gdy rejestracja je przekazala -->
+                <tr>
+                  <td align="center" style="padding:0 0 8px 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:15px; line-height:22px; color:#6F6382;">
+                    {{ if .Data.first_name }}Cześć {{ .Data.first_name }},{{ else }}Cześć,{{ end }}
+                  </td>
+                </tr>
+
+                <tr>
+                  <td align="center" style="padding:0 0 14px 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:24px; line-height:32px; font-weight:800; letter-spacing:-0.4px; color:#1A1127;">
+                    Zresetuj hasło
+                  </td>
+                </tr>
+
+                <tr>
+                  <td align="center" style="padding:0 8px 28px 8px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:15px; line-height:24px; color:#4A4058;">
+                    Otrzymaliśmy prośbę o zresetowanie hasła do Twojego konta GrovBase.<br>
+                    Kliknij przycisk poniżej, aby ustawić nowe hasło.
+                  </td>
+                </tr>
+
+                <!-- CTA (bgcolor = fallback dla Outlooka, gradient dla reszty) -->
+                <tr>
+                  <td align="center" style="padding:0 0 26px 0;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td align="center" bgcolor="#D628CF" style="background-color:#D628CF; background-image:linear-gradient(135deg, #D628CF 0%, #F950E1 100%); border-radius:10px;">
+                          <a href="https://grovbase.com/auth/confirm?token_hash={{ .TokenHash }}&type=recovery" target="_blank" style="display:inline-block; padding:16px 40px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:14px; line-height:18px; font-weight:700; letter-spacing:0.6px; color:#FFFFFF; text-decoration:none; border-radius:10px;">USTAW NOWE HASŁO</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- Awaryjny link tekstowy -->
+                <tr>
+                  <td align="center" style="padding:24px 8px 0 8px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:19px; color:#8A7E99;">
+                    Jeśli przycisk nie działa, skopiuj i wklej ten adres do przeglądarki:<br>
+                    <a href="https://grovbase.com/auth/confirm?token_hash={{ .TokenHash }}&type=recovery" target="_blank" style="color:#D628CF; text-decoration:underline; word-break:break-all;">https://grovbase.com/auth/confirm?token_hash={{ .TokenHash }}&type=recovery</a>
+                  </td>
+                </tr>
+
+                <!-- Wlosowa linia -->
+                <tr>
+                  <td style="padding:24px 0 20px 0;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td height="1" bgcolor="#EFE8F6" style="background-color:#EFE8F6; height:1px; line-height:1px; font-size:1px;">&nbsp;</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td align="center" style="padding:0 8px 6px 8px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12.5px; line-height:19px; color:#6F6382;">
+                    Link jest ważny przez 1 godzinę.
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding:0 8px 0 8px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:19px; color:#8A7E99;">
+                    Jeżeli to nie Ty prosiłeś o zmianę hasła, zignoruj tę wiadomość — Twoje hasło pozostanie bez zmian.
+                  </td>
+                </tr>
+
+              </table>
+            </td>
+          </tr>
+
+          <!-- Stopka poza karta -->
+          <tr>
+            <td align="center" style="padding:26px 0 0 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:19px; color:#8A7E99;">
+              <a href="https://grovbase.com" target="_blank" style="color:#6F6382; text-decoration:none; font-weight:600;">grovbase.com</a>
+              <br>© GrovBase
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`,
+  },
+};

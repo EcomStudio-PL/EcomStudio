@@ -1,5 +1,6 @@
 import "server-only";
 import { smtpTransport, type MailIdentity, type SmtpConfig } from "@/lib/server/mailer";
+import { renderEmailTemplate, type EmailField } from "@/lib/server/email-template";
 import { safeError } from "@/lib/server/integrations";
 import { absoluteUrl } from "@/lib/site";
 
@@ -169,76 +170,26 @@ function ctaHtml(cta: { label: string; href: string }): string {
 export function renderAdminNotification(payload: AdminEventPayload): { subject: string; html: string; text: string } {
   const subject = clean(subjectFor(payload), TITLE_MAX);
   const title = clean(payload.title, TITLE_MAX);
-  const icon = collapse(payload.icon ?? "");
-  const heading = [icon, title].filter((part) => part !== "").join(" ");
   const when = clean(payload.occurredAt, LABEL_MAX);
-  const rows = usableRows(payload.rows ?? []);
   const cta = ctaFor(payload);
 
-  const body = [
-    `              <tr>
-                <td style="padding:0 0 6px 0;font-family:${FONT};font-size:21px;font-weight:700;line-height:1.3;letter-spacing:-0.01em;color:${TEXT};">${esc(heading)}</td>
-              </tr>`,
-    when
-      ? `              <tr>
-                <td style="padding:0 0 4px 0;font-family:${FONT};font-size:12px;font-weight:400;line-height:1.5;color:${FAINT};">${esc(when)}</td>
-              </tr>`
-      : "",
-    `              <tr>
-                <td style="padding:20px 0;"><div style="height:1px;font-size:0;line-height:1px;background-color:${EDGE};">&nbsp;</div></td>
-              </tr>`,
-    ...rows.map(([label, value]) => rowHtml(label, value)),
-    cta ? ctaHtml(cta) : "",
-  ]
-    .filter((part) => part !== "")
-    .join("\n");
+  // The rows arrive with the Telegram emoji at the front of each label
+  // ("👤 Użytkownik") — an e-mail table wants the words, so the emoji is
+  // stripped and only a label that still says something survives.
+  const fields: EmailField[] = usableRows(payload.rows ?? []).map(([label, value]) => {
+    const words = label.replace(/^[^\p{L}\p{N}]+/u, "").trim() || label;
+    const mono = /ip|e-mail|email|telefon|url|wejście/i.test(words);
+    return { label: words, value, mono };
+  });
 
-  const html = `<!doctype html>
-<html lang="pl">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="x-apple-disable-message-reformatting">
-<!-- Declared dark so Apple Mail and Outlook stop "helpfully" inverting a card
-     that is already dark and leaving light text on a light ground. -->
-<meta name="color-scheme" content="dark light">
-<meta name="supported-color-schemes" content="dark light">
-<title>${esc(subject)}</title>
-</head>
-<body style="margin:0;padding:0;background-color:${CANVAS};">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background-color:${CANVAS};">
-  <tr>
-    <td align="center" style="padding:32px 16px;">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px;">
-        <tr>
-          <td style="padding:0 4px 16px 4px;font-family:${FONT};font-size:20px;font-weight:700;line-height:1;letter-spacing:-0.02em;color:${TEXT};">Grov<span style="color:${ACCENT_LIGHT};">Base</span></td>
-        </tr>
-        <tr>
-          <td style="background-color:${CARD};border:1px solid ${EDGE};border-radius:16px;padding:28px 28px 24px 28px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;">
-${body}
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:18px 4px 0 4px;font-family:${FONT};font-size:12px;font-weight:400;line-height:1.5;color:${FAINT};">GrovBase · grovbase.com</td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>
-</body>
-</html>`;
-
-  const text = [
-    when ? `${heading}\n${when}` : heading,
-    rows.map(([label, value]) => (label ? `${label}: ${value}` : value)).join("\n"),
-    cta ? `${cta.label}: ${cta.href}` : "",
-    "GrovBase · grovbase.com",
-  ]
-    .filter((block) => block !== "")
-    .join("\n\n");
-
+  const { html, text } = renderEmailTemplate({
+    badge: clean(payload.eventType, LABEL_MAX).toUpperCase(),
+    title: [collapse(payload.icon ?? ""), title].filter(Boolean).join(" "),
+    fields,
+    cta: cta ? { label: cta.label, url: cta.href } : undefined,
+    footer: "GrovBase Admin",
+    timestamp: when,
+  });
   return { subject, html, text };
 }
 
@@ -268,6 +219,7 @@ export async function sendAdminNotification(
   identity: MailIdentity,
   to: string,
   payload: AdminEventPayload,
+  rendered?: { subject: string; html: string; text: string },
 ): Promise<{ ok: boolean; error?: string }> {
   const recipient = collapse(to);
   if (!recipient) return { ok: false, error: "no_recipient" };
@@ -276,7 +228,9 @@ export async function sendAdminNotification(
   const transport = smtpTransport(smtp);
   if (!transport) return { ok: false, error: "not_configured" };
 
-  const { subject, html, text } = renderAdminNotification(payload);
+  // A pre-rendered message (a published admin template) wins over the default
+  // card; both come through the same escaping and the same layout module.
+  const { subject, html, text } = rendered ?? renderAdminNotification(payload);
   try {
     await transport.sendMail({
       from,

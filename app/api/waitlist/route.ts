@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { rateLimit, clientIp } from "@/lib/server/rate-limit";
 import { deliver, type SmtpConfig } from "@/lib/server/mailer";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
-import { collectEventContext, contextRows, formatWarsaw } from "@/lib/server/event-context";
+import { collectEventContext, contextRows, eventDataFrom, formatWarsaw } from "@/lib/server/event-context";
 
 export const dynamic = "force-dynamic";
 
@@ -139,11 +139,19 @@ export async function POST(request: Request) {
     ["🌍 Źródło", source],
     ...contextRows({ ...context, language: locale.toUpperCase() }),
   ];
+  const tplData = eventDataFrom(context, {
+    name: `${firstName} ${lastName}`.trim(),
+    email,
+    phone,
+    source,
+    language: locale.toUpperCase(),
+  });
   after(() => notify(supabase, {
     type: "waitlist.signup",
     title: "NOWY ZAPIS NA LISTĘ",
     icon: "📝",
     rows: rows.filter(([, value]) => value !== ""),
+    data: tplData,
     footer: "GrovBase Waitlist",
     dedupeKey: buildDedupeKey("waitlist.signup", email),
   }));

@@ -175,6 +175,37 @@ export async function collectEventContext(): Promise<EventContext> {
  * from the ones a caller adds itself (👤 📧 📱 🕒 🌍), so no message can end up
  * with the same label twice.
  */
+/**
+ * The same request facts as KEYED placeholder data — what a published message
+ * template binds {{ip}}, {{device}}, {{landing}}… to. Empty values are simply
+ * absent, which is what lets the template renderer drop their lines whole.
+ * `extra` carries the event's own fields (name, email, phone, amount…) and
+ * wins on any collision.
+ */
+export function eventDataFrom(ctx: EventContext, extra: Record<string, string | undefined>): Record<string, string> {
+  const stamp = formatWarsaw(new Date());
+  const [date = "", time = ""] = stamp.split(" • ");
+  const device = [ctx.device, ctx.os, ctx.browser]
+    .filter((part, i, all): part is string => Boolean(part)
+      && all.findIndex((p) => p?.toLowerCase() === part!.toLowerCase()) === i)
+    .join(" · ");
+  const landing = [ctx.referrer, ctx.landingPath].filter(Boolean).join(" → ");
+  const out: Record<string, string> = {};
+  const put = (key: string, value: string | undefined) => {
+    const v = (value ?? "").trim();
+    if (v) out[key] = v;
+  };
+  put("date", date);
+  put("time", time);
+  put("ip", ctx.ip !== "unknown" ? ctx.ip : "");
+  put("device", device);
+  put("language", ctx.language?.toUpperCase());
+  put("landing", landing);
+  put("source", ctx.utmSource);
+  for (const [key, value] of Object.entries(extra)) put(key, value);
+  return out;
+}
+
 export function contextRows(ctx: EventContext): [string, string][] {
   const rows: [string, string][] = [];
 

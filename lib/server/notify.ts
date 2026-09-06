@@ -1,6 +1,10 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
 import { sendAdminNotification } from "@/lib/server/admin-email";
+import {
+  fieldsFromData, lookupPublishedTemplate, renderTemplateEmail, renderTemplateTelegram,
+  type TemplateDef,
+} from "@/lib/server/message-templates";
 import { decryptWith, encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { dispatchToken, safeError } from "@/lib/server/integrations";
 import type { SmtpConfig } from "@/lib/server/mailer";
@@ -80,6 +84,13 @@ export type NotificationMessage = {
   /** A short excerpt (a mail preview, an error message) shown in italics. */
   quote?: string;
   footer?: string;
+  /**
+   * The same facts as `rows`, but KEYED ("name", "email", "ip"…) so an admin
+   * template's {{placeholders}} have something to bind to. Optional and
+   * additive: an event that carries no data renders exactly as before, and a
+   * published template is only consulted when data is present.
+   */
+  data?: Record<string, string>;
 };
 
 export type NotifyInput = NotificationMessage & { type: NotificationEvent; dedupeKey?: string };
@@ -170,24 +181,53 @@ const RULE = "━".repeat(16);
  */
 export function formatTelegram(input: NotificationMessage): string {
   const icon = input.icon ? `${tgEscape(collapse(input.icon))} ` : "";
-  const blocks = [`${icon}<b>${tgEscape(clean(input.title, TITLE_MAX))}</b>\n${RULE}`];
+  const lines = [`${icon}<b>${tgEscape(clean(input.title, TITLE_MAX))}</b>`, RULE];
 
   for (const [rawLabel, rawValue] of input.rows ?? []) {
-    const value = clean(rawValue, VALUE_MAX);
+    const value = compactValue(clean(rawValue, VALUE_MAX));
     if (!value) continue;
     const label = clean(rawLabel, LABEL_MAX);
-    blocks.push(label ? `<b>${tgEscape(label)}</b>\n${tgEscape(value)}` : tgEscape(value));
+    // The emoji at the front of the label IS the label in the compact format:
+    // "👤 Użytkownik" + "Jan" becomes one scannable "👤 | Jan" line. A label
+    // with no emoji keeps its text, still on one line.
+    const emoji = leadingEmoji(label);
+    const caption = emoji ? "" : label;
+    // Technical values (IP, entry path) go monospace so they align and copy
+    // cleanly; the emoji says which is which without a word of prose.
+    const mono = emoji === "📍" || emoji === "🔗";
+    const shown = mono ? `<code>${tgEscape(value)}</code>` : tgEscape(value);
+    if (emoji) lines.push(`${tgEscape(emoji)} | ${shown}`);
+    else if (caption) lines.push(`<b>${tgEscape(caption)}:</b> ${shown}`);
+    else lines.push(shown);
   }
 
   const quote = clean(input.quote ?? "", QUOTE_MAX);
-  if (quote) blocks.push(`<i>„${tgEscape(quote)}"</i>`);
+  if (quote) lines.push(`💬 | <i>„${tgEscape(quote)}"</i>`);
 
   // The closing rule is part of the card, so it is printed even when the caller
   // sent no footer — a message that stops mid-air reads like a truncated one.
+  lines.push(RULE);
   const footer = clean(input.footer ?? "", VALUE_MAX);
-  blocks.push(footer ? `${RULE}\n${tgEscape(footer)}` : RULE);
+  if (footer) lines.push(tgEscape(footer));
 
-  return blocks.join("\n\n");
+  return lines.join("\n");
+}
+
+/** The leading emoji of a label like "👤 Użytkownik" — the whole first token
+ *  when it contains no letters or digits, so composed emoji survive intact. */
+function leadingEmoji(label: string): string {
+  const first = label.split(/\s+/)[0] ?? "";
+  if (!first || /[\p{L}\p{N}]/u.test(first)) return "";
+  return first;
+}
+
+/** One line stays one line: long referrers and URLs are shortened visually
+ *  (protocol stripped, tail cut) instead of wrapping into a wall of text. */
+function compactValue(value: string): string {
+  const flat = value.replace(/\s+/g, " ").trim();
+  const bare = flat.replace(/^https?:\/\//i, "");
+  const max = 64;
+  return bare.length <= max ? bare : `${bare.slice(0, max - 1)}…`;
 }
 
 /**
@@ -217,6 +257,7 @@ export async function notify(supabase: Client, input: NotifyInput): Promise<void
         rows: input.rows ?? [],
         quote: input.quote ?? null,
         footer: input.footer ?? null,
+        data: input.data ?? null,
       },
       p_dedupe: input.dedupeKey,
       p_token: token,
@@ -268,6 +309,9 @@ type ClaimedRow = {
   adminEmailTo: string;
   mail: MailDispatchConfig;
   smtpBlob: SecretBlob | null;
+  /** The admin's PUBLISHED template for this (event, channel), attached by the
+   *  drain when one exists. Absent → the built-in rendering, exactly as before. */
+  template?: TemplateDef | null;
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -276,6 +320,15 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+/** The keyed placeholder data, if the enqueue carried any. Only string values
+ *  survive — a template binds text, never objects. */
+function readData(value: unknown): Record<string, string> | undefined {
+  const row = asRecord(value);
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(row)) if (typeof v === "string" && v !== "") out[k] = v;
+  return Object.keys(out).length ? out : undefined;
 }
 
 function readBlob(value: unknown): SecretBlob | null {
@@ -380,6 +433,7 @@ export function readClaim(raw: unknown): ClaimedRow | null {
       rows: readRows(payload.rows),
       quote: asString(payload.quote) || undefined,
       footer: asString(payload.footer) || undefined,
+      data: readData(payload.data),
     },
     chatId: (asString(row.chat_id) || asString(config.chat_id)).trim(),
     blob: flat ?? readBlob(row.bot_token_ciphertext) ?? readBlob(row.bot_token) ?? readBlob(secrets.bot_token),
@@ -422,7 +476,12 @@ async function dispatchTelegram(row: ClaimedRow, keyHex: string | null): Promise
   } catch {
     return { status: "skipped", error: "decrypt_failed" };
   }
-  const res = await sendTelegramMessage(botToken, row.chatId, formatTelegram(row.message));
+  // A published admin template wins when the event carried keyed data; the
+  // built-in compact formatter is the default and the fallback.
+  const text = row.template?.channel === "telegram" && row.message.data
+    ? renderTemplateTelegram(row.template.telegram, row.message.data).text
+    : formatTelegram(row.message);
+  const res = await sendTelegramMessage(botToken, row.chatId, text);
   return res.ok ? { status: "sent", error: null } : { status: "failed", error: res.error ?? "generic" };
 }
 
@@ -464,6 +523,17 @@ async function dispatchAdminEmail(row: ClaimedRow, keyHex: string | null): Promi
     auth_tag: sealed.authTag,
   };
 
+  // A published e-mail template wins the same way: rendered here (through the
+  // shared card layout) and handed to the sender pre-built, so the default
+  // renderer stays the single fallback.
+  const rendered = row.template?.channel === "email" && row.message.data
+    ? renderTemplateEmail(row.template.email, row.message.data, {
+        badge: row.eventType.toUpperCase(),
+        fields: fieldsFromData(row.message.data),
+        timestamp: stampPL(row.createdAt),
+      })
+    : undefined;
+
   const result = await sendAdminNotification(
     smtp,
     { from_name: row.mail.fromName, from_email: row.mail.fromEmail, reply_to: row.mail.fromEmail },
@@ -481,6 +551,7 @@ async function dispatchAdminEmail(row: ClaimedRow, keyHex: string | null): Promi
       // so it becomes a row of its own instead of being dropped in this channel.
       rows: [...(row.message.rows ?? []), ...(row.message.quote ? [["💬 Treść", row.message.quote] as [string, string]] : [])],
     },
+    rendered,
   );
   if (result.ok) return { status: "sent", error: null };
   // The two answers sendAdminNotification gives for "there is nothing to send
@@ -526,9 +597,20 @@ export async function drainNotifications(supabase: Client, limit = MAX_BATCH): P
     }
     if (!Array.isArray(data)) return { sent, failed };
     const keyHex = integrationsKeyHex();
+    // One template lookup per distinct (event, channel) per batch — a published
+    // admin template overrides the built-in copy, a missing one costs nothing.
+    const templates = new Map<string, TemplateDef | null>();
     for (const raw of data) {
       const row = readClaim(raw);
       if (!row) continue;
+      if (row.message.data) {
+        const channel = row.channel === "admin_email" ? "email" as const : "telegram" as const;
+        const tKey = `${row.eventType}:${channel}`;
+        if (!templates.has(tKey)) {
+          templates.set(tKey, await lookupPublishedTemplate(supabase, token, row.eventType, channel));
+        }
+        row.template = templates.get(tKey) ?? null;
+      }
       // One bad row must not cost the rest of the batch its delivery.
       try {
         const outcome = await dispatchOne(row, keyHex);
