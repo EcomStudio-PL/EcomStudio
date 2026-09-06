@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { AuthLink } from "@/components/auth/auth-link";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { Building2, Loader2, MailCheck } from "lucide-react";
 import { signUp, resendConfirmation, type SignUpErrors } from "@/app/actions/auth";
@@ -115,7 +116,7 @@ export function RegisterForm({ captchaSiteKey, bare = false, next = "", onSwitch
         <p className="mt-5 text-sm text-muted">
           {onSwitch
             ? <button type="button" onClick={() => onSwitch("login")} className="font-medium text-accent">{t("auth.backToLogin")}</button>
-            : <Link href="/login" className="font-medium text-accent">{t("auth.backToLogin")}</Link>}
+            : <AuthLink mode="login" className="font-medium text-accent">{t("auth.backToLogin")}</AuthLink>}
         </p>
       </Shell>
     );
@@ -292,7 +293,7 @@ export function RegisterForm({ captchaSiteKey, bare = false, next = "", onSwitch
         {t("auth.haveAccount")}{" "}
         {onSwitch
           ? <button type="button" onClick={() => onSwitch("login")} className="font-medium text-accent">{t("auth.signIn")}</button>
-          : <Link href="/login" className="font-medium text-accent">{t("auth.signIn")}</Link>}
+          : <AuthLink mode="login" className="font-medium text-accent">{t("auth.signIn")}</AuthLink>}
       </p>
     </Shell>
   );

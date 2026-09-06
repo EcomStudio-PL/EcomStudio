@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AuthLink } from "@/components/auth/auth-link";
 import { Brand } from "@/components/layout/brand";
 import { BlockRenderer } from "@/components/cms/blocks";
 import { getPublishedPage } from "@/lib/server/public-site";
@@ -49,7 +50,7 @@ export async function LegalPage({ slug, titleKey }: { slug: string; titleKey: st
           </p>
         </>
       )}
-      <Link href="/register" className="mt-8 text-sm font-medium text-accent">← {t("legal.back")}</Link>
+      <AuthLink mode="register" className="mt-8 text-sm font-medium text-accent">← {t("legal.back")}</AuthLink>
     </main>
   );
 }

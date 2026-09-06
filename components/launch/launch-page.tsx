@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AuthLink } from "@/components/auth/auth-link";
 import { Camera, Check, Lock, ShoppingBag } from "lucide-react";
 import { Brand } from "@/components/layout/brand";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
@@ -64,10 +65,22 @@ export function LaunchPage({
           <div className="flex items-center gap-1.5">
             <LocaleSwitcher />
             <ThemeToggle />
-            <Link href={signedIn ? "/dashboard" : "/login"} data-launch-login
-              className="whitespace-nowrap rounded-xl border border-line px-3.5 py-2 text-[13.5px] font-semibold text-ink transition-colors hover:bg-raised">
-              {loginLabel}
-            </Link>
+            {/* The dialog opens over this page. It used to be a plain link to
+                /login, which navigates and server-redirects to /?auth=login —
+                and the provider, living in the root layout, never saw the URL
+                change. That is the bug where pressing "Zaloguj się" did
+                nothing at all. */}
+            {signedIn ? (
+              <Link href="/dashboard" data-launch-login
+                className="whitespace-nowrap rounded-xl border border-line px-3.5 py-2 text-[13.5px] font-semibold text-ink transition-colors hover:bg-raised">
+                {loginLabel}
+              </Link>
+            ) : (
+              <AuthLink mode="login" data-launch-login
+                className="whitespace-nowrap rounded-xl border border-line px-3.5 py-2 text-[13.5px] font-semibold text-ink transition-colors hover:bg-raised">
+                {loginLabel}
+              </AuthLink>
+            )}
           </div>
         </header>
 

@@ -13,13 +13,13 @@ import { useOptionalAuthDialog } from "@/components/auth/auth-dialog-context";
  * is what used to make the dialog wait for an RSC round trip — see
  * auth-dialog-context.tsx.
  */
-export function AuthLink({ mode, className, children, next }: {
+export function AuthLink({ mode, className, children, next, ...rest }: {
   mode: AuthMode;
   className?: string;
   children: React.ReactNode;
   /** Explicit returnTo; otherwise the one already in the URL is carried on. */
   next?: string;
-}) {
+} & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, "href" | "onClick" | "className" | "children">) {
   const pathname = usePathname();
   const dialog = useOptionalAuthDialog();
 
@@ -31,6 +31,7 @@ export function AuthLink({ mode, className, children, next }: {
 
   return (
     <a
+      {...rest}
       href={href}
       className={className}
       onClick={(e) => {

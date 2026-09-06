@@ -1,7 +1,8 @@
 "use client";
 import {
-  createContext, useCallback, useContext, useEffect, useMemo, useState,
+  Suspense, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from "react";
+import { useSearchParams } from "next/navigation";
 import { parseAuthMode, safeReturnTo, type AuthMode } from "@/lib/auth-routes";
 
 /**
@@ -86,6 +87,35 @@ export function AuthDialogProvider({ children }: { children: React.ReactNode }) 
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
+  /**
+   * URLs that change for reasons OTHER than a click here.
+   *
+   * This is the half that was missing, and it is what made the launch page's
+   * "Zaloguj się" do nothing: that link navigates to /login, which
+   * server-redirects to /?auth=login. The address changes, but the provider
+   * lives in the root layout — it is not remounted, and a client navigation
+   * fires no popstate — so state-as-truth never learned the URL had asked for
+   * a dialog. The customer saw the address bar update and nothing else.
+   *
+   * The watcher below closes that gap without reopening the one it replaced:
+   * clicks still set state synchronously and never wait for a router commit,
+   * and this only confirms afterwards or catches a URL nobody clicked (a deep
+   * link, a redirect, a middleware bounce).
+   */
+  const adopt = useCallback((fromUrl: AuthDialogState) => {
+    setState((prev) => {
+      if (fromUrl.mode === prev.mode && fromUrl.next === prev.next
+        && fromUrl.error === prev.error && fromUrl.email === prev.email) return prev;
+      // A URL asking for a mode always wins. A URL with no mode only closes
+      // the dialog if we are not mid-click — `open()` pushes the mode into the
+      // address in the same tick, so a stale empty read cannot slam it shut.
+      if (!fromUrl.mode && prev.mode) {
+        return readLocation().mode ? prev : { ...prev, mode: null };
+      }
+      return fromUrl;
+    });
+  }, []);
+
   const open = useCallback((mode: AuthMode, next?: string) => {
     const resolved: AuthDialogState = {
       mode,
@@ -121,7 +151,32 @@ export function AuthDialogProvider({ children }: { children: React.ReactNode }) 
     [state, open, switchTo, close],
   );
 
-  return <AuthDialogContext.Provider value={api}>{children}</AuthDialogContext.Provider>;
+  return (
+    <AuthDialogContext.Provider value={api}>
+      {/* Suspense-wrapped because useSearchParams() opts its subtree into
+          client rendering: without the boundary it would drag every page out
+          of static generation. Rendering null while it settles costs nothing —
+          the dialog itself lives below. */}
+      <Suspense fallback={null}><AuthUrlWatcher onUrl={adopt} /></Suspense>
+      {children}
+    </AuthDialogContext.Provider>
+  );
+}
+
+/** Reads the address through Next's router, so it updates on every client
+ *  navigation as well as on a fresh load. Renders nothing. */
+function AuthUrlWatcher({ onUrl }: { onUrl: (state: AuthDialogState) => void }) {
+  const params = useSearchParams();
+  const mode = parseAuthMode(params.get("auth"));
+  const next = safeReturnTo(params.get("next"));
+  const error = params.get("error") ?? undefined;
+  const email = params.get("email") ?? undefined;
+  // The callback is stable, but keeping it in a ref means a future caller
+  // passing an inline function cannot turn this into a render loop.
+  const cb = useRef(onUrl);
+  cb.current = onUrl;
+  useEffect(() => { cb.current({ mode, next, error, email }); }, [mode, next, error, email]);
+  return null;
 }
 
 export function useAuthDialog(): AuthDialogApi {

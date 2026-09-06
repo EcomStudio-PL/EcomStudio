@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AuthLink } from "@/components/auth/auth-link";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
@@ -36,7 +37,7 @@ export default async function VerifiedPage({ searchParams }: {
         <p className="relative mt-2 text-sm leading-relaxed text-muted">{t("auth.linkInvalidBody")}</p>
         <div className="relative mt-6"><ResendLink /></div>
         <p className="relative mt-5 text-sm text-muted">
-          <Link href="/login" className="font-medium text-accent">{t("auth.backToLogin")}</Link>
+          <AuthLink mode="login" className="font-medium text-accent">{t("auth.backToLogin")}</AuthLink>
         </p>
       </Card>
     );

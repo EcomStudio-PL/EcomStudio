@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { AuthLink } from "@/components/auth/auth-link";
 import { useActionState, useState } from "react";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { updatePassword } from "@/app/actions/auth";
@@ -24,10 +25,10 @@ export function ResetPasswordForm() {
           <CheckCircle2 size={26} aria-hidden />
         </span>
         <h1 className="mt-4 font-display text-xl font-semibold">{t("auth.passwordChanged")}</h1>
-        <Link href="/login"
+        <AuthLink mode="login"
           className="cta mt-6 inline-flex h-11 items-center justify-center rounded-xl px-6 text-sm font-semibold">
           {t("auth.goToLogin")}
-        </Link>
+        </AuthLink>
       </Card>
     );
   }
