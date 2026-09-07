@@ -9,6 +9,8 @@
  */
 import { readFileSync } from "node:fs";
 import { AI_TOOL_KEYS, ENGINE_MODES, isAiToolKey, toolTabs } from "@/lib/services/ai-tools";
+import { costOf, summarise, groupBy, periodStart, monthStart, type UsageEventRow } from "@/lib/services/ai-economics";
+import { DEFAULT_BILLING } from "@/lib/images/pricing";
 import { FEATURE_KEYS } from "@/lib/features";
 
 let failures = 0;
@@ -116,6 +118,85 @@ console.log("G. the seed describes the code, not a guess");
     identifier.length > 0 && seed.includes(identifier), identifier);
   check("every engine mode in the code is allowed by the constraint",
     ENGINE_MODES.every((m) => seed.includes(`'${m}'`)));
+}
+
+console.log("H. an API cost is measured, estimated or unknown — never invented");
+{
+  const base = {
+    id: "1", created_at: "2026-09-07T10:00:00Z", status: "succeeded",
+    service_slug: "image_generation", provider_slug: "openai", model_slug: "gpt-image-2",
+    user_id: null,
+  };
+  const measured = costOf({ ...base, credits_charged: 4, actual_api_cost_usd_micros: 42000, api_cost_usd_micros_snapshot: 40000 } as UsageEventRow);
+  check("a figure from the provider wins", measured.basis === "measured" && measured.usdMicros === 42000);
+
+  const estimated = costOf({ ...base, credits_charged: 4, actual_api_cost_usd_micros: null, api_cost_usd_micros_snapshot: 40000 } as UsageEventRow);
+  check("without one, the catalogue snapshot is used and labelled",
+    estimated.basis === "estimated" && estimated.usdMicros === 40000);
+
+  const unknown = costOf({ ...base, credits_charged: 4, actual_api_cost_usd_micros: null, api_cost_usd_micros_snapshot: 0 } as UsageEventRow);
+  check("a paid call with neither is unknown, not zero",
+    unknown.basis === "unknown" && unknown.usdMicros === 0);
+
+  const free = costOf({ ...base, credits_charged: 0, actual_api_cost_usd_micros: null, api_cost_usd_micros_snapshot: 0 } as UsageEventRow);
+  check("a free local tool is not flagged unknown", free.basis === "measured");
+
+  const refunded = summarise([
+    { ...base, credits_charged: 4, actual_api_cost_usd_micros: 42000, api_cost_usd_micros_snapshot: 0 },
+    { ...base, id: "2", status: "refunded", credits_charged: 4, actual_api_cost_usd_micros: 42000, api_cost_usd_micros_snapshot: 0 },
+  ] as UsageEventRow[], DEFAULT_BILLING);
+  check("a refund gives the credits back but keeps the provider cost",
+    refunded.credits === 4 && refunded.costUsdMicros === 84000);
+  check("failures are counted", refunded.failed === 1);
+  check("the basis counts are reported", refunded.measured === 2 && refunded.unknown === 0);
+
+  const noRevenue = summarise([{ ...base, credits_charged: 0, actual_api_cost_usd_micros: 1000, api_cost_usd_micros_snapshot: 0 }] as UsageEventRow[], DEFAULT_BILLING);
+  check("no revenue means no margin, not 0%", noRevenue.marginPercent === null);
+
+  const grouped = groupBy([
+    { ...base, credits_charged: 1, actual_api_cost_usd_micros: 1000, api_cost_usd_micros_snapshot: 0 },
+    { ...base, id: "2", model_slug: "nano", credits_charged: 1, actual_api_cost_usd_micros: 9000, api_cost_usd_micros_snapshot: 0 },
+  ] as UsageEventRow[], (e) => e.model_slug, DEFAULT_BILLING);
+  check("grouping puts the most expensive first", grouped[0].key === "nano");
+
+  const now = new Date("2026-09-07T15:00:00Z");
+  check("'today' means midnight, not 24 hours ago",
+    periodStart("today", now).getHours() === 0 && periodStart("today", now).getDate() === now.getDate());
+  check("a budget month starts on the 1st", monthStart(now).getDate() === 1);
+}
+
+console.log("I. the budget is ours, and the panel says so");
+{
+  const budgets = read("lib/server/provider-budgets.ts");
+  const actions = read("app/actions/ai-budgets.ts");
+  const pl = JSON.parse(read("lib/i18n/dictionaries/pl.json"));
+
+  // Behaviour, not prose: the module never calls a provider at all, so it
+  // cannot be reading — or inventing — an account balance.
+  check("no provider is contacted for a balance",
+    !budgets.includes("fetch(") && !budgets.includes("http"));
+  check("the copy tells the operator it is our budget",
+    /nie jest saldo u dostawcy/i.test(pl.aicc["providers.monthNote"])
+    && /nie odczytuje salda/i.test(pl.aicc["alerts.note"]));
+  check("alerts ride the existing notification transport",
+    budgets.includes("notify(") && budgets.includes('type: "system.error"'));
+  check("no second Telegram client",
+    !budgets.includes("api.telegram") && !/from "@\/lib\/server\/telegram/.test(budgets));
+  check("one alert per provider, level and month",
+    budgets.includes("buildDedupeKey") && budgets.includes("month.toISOString().slice(0, 7)"));
+  check("a new month re-arms the alert", budgets.includes("stale"));
+  check("thresholds must be in order", actions.includes("thresholds_out_of_order"));
+  check("the check runs from the schedule and the button",
+    read("app/api/cron/mail/route.ts").includes("runBudgetCheckAction"));
+}
+
+console.log("J. one menu entry highlights at a time");
+{
+  const navLink = read("components/layout/nav-link.tsx");
+  check("the longest matching href wins", navLink.includes("ALL_HREFS.some")
+    && navLink.includes("other.startsWith(`${href}/`)"));
+  check("both AI destinations are in the menu",
+    read("lib/navigation.ts").includes('"/admin/ai/modele"'));
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);

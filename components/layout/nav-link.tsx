@@ -2,11 +2,25 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
+import { ADMIN_NAV, CLIENT_NAV } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
 /** Section roots ("/dashboard", "/admin") only highlight on exact match,
  *  otherwise every child route would light them up too. */
 const EXACT = new Set(["/dashboard", "/admin"]);
+
+/**
+ * Every destination the menus offer, so the LONGEST match wins.
+ *
+ * Without this, "/admin/ai" lights up while the operator is on
+ * "/admin/ai/modele" — two entries highlighted at once, and no way to tell
+ * which screen you are actually on. A prefix only counts when no more specific
+ * menu entry also matches.
+ */
+const ALL_HREFS: string[] = [...ADMIN_NAV, ...CLIENT_NAV].flatMap((g) => g.items.map((i) => i.href));
+
+const covers = (pathname: string, href: string) =>
+  pathname === href || pathname.startsWith(`${href}/`);
 
 export function NavLink({ href, label, icon: Icon, onNavigate, compact = false, dense = false, badge }: {
   href: string; label: string; icon: LucideIcon; onNavigate?: () => void;
@@ -18,7 +32,12 @@ export function NavLink({ href, label, icon: Icon, onNavigate, compact = false, 
   badge?: string | null;
 }) {
   const pathname = usePathname();
-  const active = pathname === href || (!EXACT.has(href) && pathname.startsWith(href));
+  const active = pathname === href || (
+    !EXACT.has(href)
+    && covers(pathname, href)
+    // A deeper menu entry owning this path wins the highlight.
+    && !ALL_HREFS.some((other) => other !== href && other.startsWith(`${href}/`) && covers(pathname, other))
+  );
   return (
     <Link
       href={href}

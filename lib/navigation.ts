@@ -87,6 +87,7 @@ export const ADMIN_NAV: readonly NavGroup[] = [
     // screens it replaces; they stay reachable until their functionality has
     // been verified in the new home (see docs/ai-control-center.md).
     { href: "/admin/ai", key: "aiTools", icon: Sparkles },
+    { href: "/admin/ai/modele", key: "aiModels", icon: Cpu },
     { href: "/admin/generations", key: "generations", icon: Wand2 },
     { href: "/admin/models", key: "models", icon: Cpu },
     { href: "/admin/providers", key: "providers", icon: Plug },

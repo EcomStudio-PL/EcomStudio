@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { syncNowAction } from "@/app/actions/mail";
+import { runBudgetCheckAction } from "@/app/actions/ai-budgets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,7 +51,20 @@ export async function GET() {
     // answering 500 would turn a normal "not set up yet" into a paging alert.
     return NextResponse.json({ ok: false, reason: result.error }, { status: 200 });
   }
+  /*
+    The same run also checks the provider budgets.
+    A monthly spending limit needs a daily glance, not a schedule of its own —
+    and one more cron entry is a deployment change for a job that already has
+    somewhere to live. It runs AFTER the mailbox so a budget read can never
+    delay or fail the message sync, and its own failure is reported rather
+    than thrown: the mail result is the reason this endpoint exists.
+  */
+  const budgets = await runBudgetCheckAction().catch(() => ({ ok: false as const }));
+
   // Counts only. Nothing about the mailbox, the sender, or the credentials ever
   // belongs in a response a scheduler logs.
-  return NextResponse.json({ ok: true, found: result.found, sent: result.sent, failed: result.failed });
+  return NextResponse.json({
+    ok: true, found: result.found, sent: result.sent, failed: result.failed,
+    budgets: budgets.ok ? { checked: budgets.checked, alerted: budgets.alerted } : { ok: false },
+  });
 }
