@@ -905,7 +905,18 @@
     "lowCredits": "Niedriger Credit-Saldo",
     "recentSignups": "Neueste Registrierungen",
     "honest": "Echte Daten — keine Demo-Zahlen",
-    "wallets": "Credits im Umlauf"
+    "wallets": "Credits im Umlauf",
+    "tab.business": "Geschäft",
+    "tab.usage": "Nutzung",
+    "tab.clients": "Kunden",
+    "tab.providers": "KI-Anbieter",
+    "from": "Von",
+    "to": "Bis",
+    "custom": "Eigener Zeitraum",
+    "showing": "Zeitraum: {range}",
+    "capped": "die ersten {n} Ereignisse dieses Zeitraums",
+    "succeeded": "Erfolgreich",
+    "payingCustomers": "Zahlende Kunden"
   },
   "audit": {
     "title": "Audit-Log",
@@ -917,7 +928,10 @@
     "title": "Systemstatus",
     "connected": "Verbunden",
     "error": "Fehler",
-    "failed24": "Fehlgeschlagen 24h"
+    "failed24": "Fehlgeschlagen 24h",
+    "verifiedOnly": "Nur verifizierte Status — grün heißt, es wurde tatsächlich geprüft.",
+    "unverified": "Nicht geprüft",
+    "neverChecked": "Nie getestet"
   },
   "flags": {
     "title": "Feature-Flags",

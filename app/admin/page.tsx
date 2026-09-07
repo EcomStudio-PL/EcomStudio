@@ -7,6 +7,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Stat } from "@/components/ui/stat";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { readSystemHealth } from "@/lib/services/admin-health";
+import { HealthGrid } from "@/components/admin/health-grid";
 import { formatDate } from "@/lib/utils";
 
 const plnFmt = new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN", maximumFractionDigits: 0 });
@@ -60,12 +62,12 @@ export default async function AdminDashboard() {
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
   const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
-  const [counts, biz, failed, activeModels, providers, jobs30, latestUsers, latestTx] = await Promise.all([
+  const [counts, biz, failed, activeModels, health, jobs30, latestUsers, latestTx] = await Promise.all([
     adminCounts(supabase),
     adminBusinessStats(supabase),
     supabase.from("generation_jobs").select("id", { count: "exact", head: true }).eq("status", "failed"),
     supabase.from("ai_models").select("id", { count: "exact", head: true }).eq("active", true),
-    supabase.from("ai_providers").select("name, slug, active"),
+    readSystemHealth(supabase),
     supabase.from("generation_jobs").select("created_at").gte("created_at", since30),
     supabase.from("profiles").select("email, full_name, created_at").order("created_at", { ascending: false }).limit(5),
     supabase.from("credit_transactions").select("id, type, amount, description, created_at").order("created_at", { ascending: false }).limit(5),
@@ -89,19 +91,32 @@ export default async function AdminDashboard() {
       </div>
 
       {/* SECONDARY — operational state, deliberately quieter than the KPIs. */}
-      <div className="panel mt-3 grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl px-4 py-3.5 sm:grid-cols-4 sm:px-5">
+      <div className="panel mt-3 grid grid-cols-3 gap-x-4 gap-y-3 rounded-2xl px-4 py-3.5 sm:px-5">
         <MiniFact label={t("admin.statCreditsUsed")} value={counts.creditsUsed} />
         <MiniFact label={t("admin.statFailed")} value={failed.count ?? 0} tone={(failed.count ?? 0) > 0 ? "danger" : undefined} />
         <MiniFact label={t("admin.statActiveModels")} value={activeModels.count ?? 0} />
-        <div className="min-w-0">
-          <p className="overline text-[9px]">{t("admin.nav.providers")}</p>
-          <div className="mt-1 flex flex-wrap gap-1">
-            {(providers.data ?? []).map((p) => (
-              <Badge key={p.slug} tone={p.active ? "success" : "neutral"}>{p.name}</Badge>
-            ))}
-          </div>
-        </div>
       </div>
+
+      {/*
+        SYSTEM HEALTH — verified only.
+        The providers row that used to sit here rendered `active` (a checkbox an
+        admin ticked) as if it were a connection status. What is shown now is
+        what was actually tested, when, and grey wherever nothing ever was.
+      */}
+      <Card className="mt-4">
+        <CardHeader title={t("health.title")} sub={t("health.verifiedOnly")} />
+        <div className="p-5 pt-0">
+          <HealthGrid
+            checks={health}
+            labels={{
+              ok: t("health.connected"),
+              fail: t("health.error"),
+              unknown: t("health.unverified"),
+              never: t("health.neverChecked"),
+            }}
+          />
+        </div>
+      </Card>
 
       <div className="mt-4 grid gap-4 [&>*]:min-w-0 lg:grid-cols-2">
         <Card className="p-5">

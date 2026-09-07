@@ -10,6 +10,8 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SettingsEditor } from "@/components/admin/inline-controls";
 import { FlagManager } from "@/components/admin/flag-manager";
+import { readSystemHealth } from "@/lib/services/admin-health";
+import { HealthGrid } from "@/components/admin/health-grid";
 
 const SECTION_ORDER = ["general", "user_defaults", "generation", "generator_ui", "retouch", "credits", "security", "features", "billing"];
 
@@ -18,14 +20,12 @@ export default async function AdminSystem() {
   const { dict } = await getDictionary();
   const t = makeT(dict);
   const d24 = new Date(Date.now() - 86400000).toISOString();
-  const [{ data }, { data: flags }, dbCheck, failed24, { data: creds }] = await Promise.all([
+  const [{ data }, { data: flags }, health, failed24] = await Promise.all([
     supabase.from("app_settings").select("key, value"),
     supabase.from("feature_flags").select("*").order("flag"),
-    supabase.from("profiles").select("id", { count: "exact", head: true }),
+    readSystemHealth(supabase),
     supabase.from("usage_events").select("id", { count: "exact", head: true })
       .in("status", ["failed", "refunded"]).gte("created_at", d24),
-    supabase.from("ai_provider_credentials")
-      .select("last_test_status, last_tested_at, ai_providers(name)"),
   ]);
   const sections = (data ?? [])
     // The registration row has a real editor of its own, one card below. Here
@@ -36,47 +36,42 @@ export default async function AdminSystem() {
     .sort((a, b) => SECTION_ORDER.indexOf(a.key) - SECTION_ORDER.indexOf(b.key))
     .map((s) => ({ key: s.key, value: (s.value ?? {}) as Record<string, unknown> }));
   const isDev = SUPABASE_URL.includes("ezyhwkcrrysanbcbkzsq");
-  const dbOk = dbCheck.error == null;
 
   return (
     <div>
-      <PageHeader title={t("admin.nav.system")} sub={t("admin.systemSub")} />
+      <PageHeader overline={t("admin.navGroups.system")} title={t("admin.nav.advanced")} sub={t("admin.systemSub")} />
 
       <Card className="mb-5">
-        <CardHeader title={t("health.title")} />
-        <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="flex items-center justify-between rounded-xl bg-raised px-3.5 py-2.5 text-sm">
-            <span className="text-muted">Supabase</span>
-            <Badge tone={dbOk ? "success" : "danger"}>{dbOk ? t("health.connected") : t("health.error")}</Badge>
-          </div>
-          <div className="flex items-center justify-between rounded-xl bg-raised px-3.5 py-2.5 text-sm">
-            <span className="text-muted">Vercel</span>
-            <Badge tone="success">{t("health.connected")}</Badge>
-          </div>
-          <div className="flex items-center justify-between rounded-xl bg-raised px-3.5 py-2.5 text-sm">
-            <span className="text-muted">{t("health.failed24")}</span>
-            <Badge tone={(failed24.count ?? 0) > 0 ? "accent" : "success"}>{failed24.count ?? 0}</Badge>
-          </div>
-          <div className="flex items-center justify-between rounded-xl bg-raised px-3.5 py-2.5 text-sm">
-            <span className="text-muted">{t("admin.sysEnv")}</span>
-            <span className="flex items-center gap-2">
-              <code className="text-xs">{SUPABASE_URL.replace("https://", "").split(".")[0]}</code>
-              <Badge tone={isDev ? "info" : "success"}>{isDev ? "DEV" : "PROD"}</Badge>
-            </span>
-          </div>
-        </div>
-        {(creds ?? []).length > 0 && (
-          <div className="border-t border-line px-5 py-3">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-faint">{t("admin.nav.providers")}</p>
-            <div className="flex flex-wrap gap-2">
-              {(creds ?? []).map((c, i) => (
-                <Badge key={i} tone={c.last_test_status === "connected" ? "success" : c.last_test_status ? "accent" : "neutral"}>
-                  {c.ai_providers?.name}: {c.last_test_status ?? "—"}
-                </Badge>
-              ))}
+        <CardHeader title={t("health.title")} sub={t("health.verifiedOnly")} />
+        <div className="p-5 pt-0">
+          {/* Every row here comes from readSystemHealth(), which refuses to
+              colour anything it has not actually checked. The row this card
+              used to carry — "Vercel · Połączono" in green, with no request
+              behind it — is gone; the runtime now reports the environment it
+              is genuinely running in, or nothing. */}
+          <HealthGrid
+            checks={health}
+            labels={{
+              ok: t("health.connected"),
+              fail: t("health.error"),
+              unknown: t("health.unverified"),
+              never: t("health.neverChecked"),
+            }}
+          />
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="flex items-center justify-between rounded-xl bg-raised px-3.5 py-2.5 text-sm">
+              <span className="text-muted">{t("health.failed24")}</span>
+              <Badge tone={(failed24.count ?? 0) > 0 ? "danger" : "success"}>{failed24.count ?? 0}</Badge>
+            </div>
+            <div className="flex items-center justify-between rounded-xl bg-raised px-3.5 py-2.5 text-sm">
+              <span className="text-muted">{t("admin.sysEnv")}</span>
+              <span className="flex items-center gap-2">
+                <code className="text-xs">{SUPABASE_URL.replace("https://", "").split(".")[0]}</code>
+                <Badge tone={isDev ? "info" : "success"}>{isDev ? "DEV" : "PROD"}</Badge>
+              </span>
             </div>
           </div>
-        )}
+        </div>
       </Card>
 
       <Card className="mb-5">

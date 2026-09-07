@@ -905,7 +905,18 @@
     "lowCredits": "Low credit balance",
     "recentSignups": "Recent signups",
     "honest": "Real data — zero demo numbers",
-    "wallets": "Credits in circulation"
+    "wallets": "Credits in circulation",
+    "tab.business": "Business",
+    "tab.usage": "Usage",
+    "tab.clients": "Clients",
+    "tab.providers": "AI providers",
+    "from": "From",
+    "to": "To",
+    "custom": "Custom range",
+    "showing": "Range: {range}",
+    "capped": "showing the first {n} events in this range",
+    "succeeded": "Succeeded",
+    "payingCustomers": "Paying customers"
   },
   "audit": {
     "title": "Audit log",
@@ -917,7 +928,10 @@
     "title": "System health",
     "connected": "Connected",
     "error": "Error",
-    "failed24": "Failed 24h"
+    "failed24": "Failed 24h",
+    "verifiedOnly": "Verified statuses only — green means something was actually checked.",
+    "unverified": "Not checked",
+    "neverChecked": "Never tested"
   },
   "flags": {
     "title": "Feature flags",

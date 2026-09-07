@@ -905,7 +905,18 @@
     "lowCredits": "Niskie saldo kredytów",
     "recentSignups": "Ostatnie rejestracje",
     "honest": "Dane rzeczywiste — zero wartości demo",
-    "wallets": "Kredyty w obiegu"
+    "wallets": "Kredyty w obiegu",
+    "tab.business": "Biznes",
+    "tab.usage": "Użycie",
+    "tab.clients": "Klienci",
+    "tab.providers": "Dostawcy AI",
+    "from": "Od",
+    "to": "Do",
+    "custom": "Własny zakres",
+    "showing": "Zakres: {range}",
+    "capped": "pokazano pierwsze {n} zdarzeń z tego zakresu",
+    "succeeded": "Udane",
+    "payingCustomers": "Klienci płacący"
   },
   "audit": {
     "title": "Audit log",
@@ -917,7 +928,10 @@
     "title": "Stan systemu",
     "connected": "Połączono",
     "error": "Błąd",
-    "failed24": "Nieudane 24h"
+    "failed24": "Nieudane 24h",
+    "verifiedOnly": "Tylko zweryfikowane statusy — na zielono wyłącznie to, co faktycznie sprawdziliśmy.",
+    "unverified": "Nie sprawdzono",
+    "neverChecked": "Nigdy nie testowano"
   },
   "flags": {
     "title": "Feature flags",
