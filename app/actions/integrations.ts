@@ -48,12 +48,19 @@ type Result = { ok: true } | { ok: false; error: string };
  *  admin screens can share their button logic. */
 type TestResult = { ok: boolean; error?: string };
 
-/** The screen these actions belong to; mirroring additionally touches the older
- *  e-mail screen, which reads the row we write there. */
-const ADMIN_PATH = "/admin/communications";
+/**
+ * The screens these actions belong to.
+ *
+ * These were pointing at "/admin/communications" — a path that has never
+ * existed, so every revalidate here was a no-op and a saved integration only
+ * appeared after a hard reload. They now name the real routes in the
+ * communication module.
+ */
+const CHANNELS_PATH = "/admin/communication/kanaly";
+const ADMIN_PATH = CHANNELS_PATH;
 /** The switchboard and its delivery log: a saved switch and a fired test both
  *  change what that page renders. */
-const NOTIFICATIONS_PATH = "/admin/notifications";
+const NOTIFICATIONS_PATH = "/admin/communication/powiadomienia";
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -122,7 +129,11 @@ function normaliseMail(input: MailConfig): MailConfig {
     smtp_encryption: input.smtp_encryption,
     smtp_user: input.smtp_user.trim().slice(0, 255),
     smtp_same_as_imap: input.smtp_same_as_imap === true,
-    mirror_to_email_settings: input.mirror_to_email_settings === true,
+    // Always true now: this card is the only place an SMTP transport is
+    // typed, so it always writes through to email_settings. The field stays on
+    // the row because old records carry it and because the mirror's audit
+    // entry is more legible when the intent is stored beside the result.
+    mirror_to_email_settings: true,
     sent_folder: input.sent_folder.trim().slice(0, 200),
     // Lower-cased like every other address here, so "Contact@" and "contact@"
     // cannot read as two different recipients in the audit trail.
@@ -190,11 +201,10 @@ export async function saveMailIntegrationAction(input: MailIntegrationInput): Pr
     // working when the admin decides this mailbox is also the sender, and is
     // read back from the row we just wrote so it carries the merged secret
     // rather than whatever happened to be in the form.
-    let mirrored = false;
-    if (config.mirror_to_email_settings) {
-      const stored = await readIntegrationSecrets<MailConfig>(supabase, "mail");
-      mirrored = await mirrorToEmailSettings(supabase, adminId, config, stored.secrets.smtp_password ?? "");
-    }
+    const stored = await readIntegrationSecrets<MailConfig>(supabase, "mail");
+    const mirrored = await mirrorToEmailSettings(
+      supabase, adminId, config, stored.secrets.smtp_password ?? "",
+    );
 
     // Arm the dispatcher: the SECURITY DEFINER functions refuse everything
     // until sha256(token) is published, and a save is the natural moment.
@@ -213,7 +223,7 @@ export async function saveMailIntegrationAction(input: MailIntegrationInput): Pr
     // The switchboard renders whether the e-mail channel can deliver at all,
     // and that answer is this row: a saved recipient has to clear the banner.
     revalidatePath(NOTIFICATIONS_PATH);
-    if (config.mirror_to_email_settings) revalidatePath("/admin/email");
+    revalidatePath(CHANNELS_PATH);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: reason(e) };
@@ -520,7 +530,7 @@ export async function detectTelegramChatsAction(): Promise<
 
 /** The captcha's two consumers: the admin tile, and the registration page,
  *  which renders the site key server-side and so goes stale on every save. */
-const INTEGRATIONS_PATH = "/admin/settings/integrations";
+const INTEGRATIONS_PATH = "/admin/communication/kanaly";
 const REGISTER_PATH = "/register";
 
 export type CaptchaIntegrationInput = {

@@ -31,7 +31,7 @@ export function Profitability({ data, locale }: { data: ProfitabilityData; local
       style: "currency", currency: "USD", maximumFractionDigits: 2,
     }).format(micros / 1_000_000);
 
-  const marginTone = s.marginPercent >= 60 ? "green" : s.marginPercent >= 30 ? "amber" : "red";
+  const marginTone = s.marginPercent >= 60 ? "good" : s.marginPercent >= 30 ? "warm" : "bad";
 
   return (
     <Card>
@@ -120,7 +120,7 @@ export function Profitability({ data, locale }: { data: ProfitabilityData; local
             <ul className="space-y-1.5">
               {data.anomalies.slice(0, 6).map((a, i) => (
                 <li key={i} className="flex items-start gap-2 rounded-xl bg-raised px-3 py-2 text-xs">
-                  <Badge tone={a.kind === "cost_without_result" ? "red" : "amber"}>{t(`econ.a.${a.kind}`)}</Badge>
+                  <Badge tone={a.kind === "cost_without_result" ? "danger" : "accent"}>{t(`econ.a.${a.kind}`)}</Badge>
                   <span className="min-w-0 flex-1 text-muted">{a.detail}</span>
                 </li>
               ))}
@@ -139,7 +139,7 @@ function Tile({ label, value, sub, tone }: {
     <div className="rounded-xl bg-raised px-3.5 py-3">
       <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{label}</p>
       <p className={cn("font-display text-lg font-semibold",
-        tone === "good" && "text-accent", tone === "bad" && "text-red-500", tone === "warm" && "text-accent2")}>
+        tone === "good" && "text-accent", tone === "bad" && "text-danger", tone === "warm" && "text-accent2")}>
         {value}
       </p>
       {sub && <p className="text-[11px] text-faint">≈ {sub}</p>}

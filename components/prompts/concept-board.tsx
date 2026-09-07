@@ -309,7 +309,7 @@ export function ConceptBoard({ concepts, models, balance, engineReady, initialMo
                 )}>
                 <span className="flex items-center gap-2 text-sm font-semibold">
                   {m.name}
-                  {m.badge && <Badge tone="amber">{modelBadgeLabel(m.badge, t)}</Badge>}
+                  {m.badge && <Badge tone="accent">{modelBadgeLabel(m.badge, t)}</Badge>}
                 </span>
                 <span className="text-xs tabular-nums text-muted">{t("concepts.perShot", { n: per })}</span>
               </button>
@@ -472,7 +472,7 @@ function ConceptCard({ c, state, url, error, models, chosenId, cost, generatedWi
         <div className="flex items-start justify-between gap-2">
           <h3 className="min-w-0 text-sm font-semibold tracking-tight">{c.title}</h3>
           {c.sceneType && (
-            <Badge tone="amber" className="shrink-0">{t(`scene.${c.sceneType}`) || c.sceneType}</Badge>
+            <Badge tone="accent" className="shrink-0">{t(`scene.${c.sceneType}`) || c.sceneType}</Badge>
           )}
         </div>
         {c.description && (
@@ -590,7 +590,7 @@ function MenuItem({ icon: Icon, label, onClick }: {
 /** Small ready-state banner on the session page. */
 export function SessionStatusBadge({ status }: { status: string }) {
   const { t } = useI18n();
-  if (status === "ready") return <Badge tone="green"><Check size={11} className="mr-1 inline" />{t("psess.ready")}</Badge>;
-  if (status === "failed") return <Badge tone="red">{t("psess.failed")}</Badge>;
-  return <Badge tone="amber">{t("psess.processing")}</Badge>;
+  if (status === "ready") return <Badge tone="success"><Check size={11} className="mr-1 inline" />{t("psess.ready")}</Badge>;
+  if (status === "failed") return <Badge tone="danger">{t("psess.failed")}</Badge>;
+  return <Badge tone="accent">{t("psess.processing")}</Badge>;
 }

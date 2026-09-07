@@ -62,7 +62,7 @@ export default async function AdminConceptsPage() {
                     {t("admin.concepts.generated")}: {c.generated}/{c.total}
                   </span>
                 )}
-                <Badge tone={s.status === "ready" ? "green" : s.status === "failed" ? "red" : "amber"}>
+                <Badge tone={s.status === "ready" ? "success" : s.status === "failed" ? "danger" : "accent"}>
                   {s.status}
                 </Badge>
                 <ArrowRight size={14} className="shrink-0 text-faint" aria-hidden />

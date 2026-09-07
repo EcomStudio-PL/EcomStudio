@@ -241,13 +241,15 @@ export function MailIntegrationForm({ view, encryptionReady }: {
         </section>
 
         <section className="space-y-4 border-t border-line pt-5">
-          <label className="flex items-start gap-3 text-[13.5px] font-medium">
-            <input type="checkbox" checked={v.mirror_to_email_settings}
-              onChange={(e) => patch("mirror_to_email_settings", e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 accent-[rgb(var(--accent))]" />
-            {t("comm.mirrorSystem")}
-          </label>
-          <p className="text-[12px] leading-relaxed text-faint">{t("comm.mirrorSystemHint")}</p>
+          {/* THE MIRROR IS NOT A CHOICE ANY MORE.
+              It used to be a checkbox, which meant an admin could leave this
+              mailbox and the waitlist mailer pointing at two different servers
+              and have no screen that said so. This card is now the only place
+              a transport is typed, so it always writes through — see
+              mirrorToEmailSettings() in app/actions/integrations.ts, which
+              copies the transport half only and never touches the sender
+              identity or the confirmation copy. */}
+          <p className="text-[12px] leading-relaxed text-faint">{t("comm.mirrorAlways")}</p>
           <div className="grid gap-4 sm:grid-cols-2">
             {/* An address, not a secret — which is exactly why it lives on the
                 mail row and not in world-readable app_settings. Empty is a

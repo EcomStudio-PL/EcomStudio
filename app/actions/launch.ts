@@ -229,7 +229,7 @@ export async function saveEmailSettingsAction(input: EmailSettingsInput): Promis
       actorId: adminId, action: "email_settings.saved", entityType: "email_settings", entityId: "1",
       after: { host: row.smtp_host, port, encryption: input.encryption, password_changed: Boolean(typed) },
     });
-    revalidatePath("/admin/email");
+    revalidatePath("/admin/communication/kanaly");
     return { ok: true };
   } catch { return { ok: false, error: "generic" }; }
 }
@@ -261,7 +261,7 @@ export async function testEmailConnectionAction(): Promise<{ ok: boolean; error?
       actorId: adminId, action: "email_settings.tested", entityType: "email_settings", entityId: "1",
       after: { ok: result.ok },
     });
-    revalidatePath("/admin/email");
+    revalidatePath("/admin/communication/kanaly");
     return result;
   } catch { return { ok: false, error: "generic" }; }
 }

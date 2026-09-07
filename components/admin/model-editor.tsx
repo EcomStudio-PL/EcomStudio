@@ -32,7 +32,7 @@ const RATIO_CHOICES = ["1:1", "3:4", "4:5", "16:9", "9:16"] as const;
 /** Curated badges shown to customers; the DB column stays free text so a
  *  custom label typed by the admin is stored verbatim. */
 const BADGE_KEYS = ["recommended", "high_quality", "best_value", "fast", "new", "premium", "experimental"] as const;
-const TONE_KEYS = ["neutral", "green", "amber", "blue", "info", "indigo", "success"] as const;
+const TONE_KEYS = ["neutral", "success", "accent", "info", "danger"] as const;
 
 export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
   m: ModelView; usdToPln: number; plnPerCredit: number; locale: string;
@@ -141,9 +141,9 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
           </p>
         </div>
         {m.active
-          ? <Badge tone="green">{t("admin.active")}</Badge>
+          ? <Badge tone="success">{t("admin.active")}</Badge>
           : (
-            <Badge tone={m.unavailableReason ? "red" : "amber"}>
+            <Badge tone={m.unavailableReason ? "danger" : "accent"}>
               {m.unavailableReason
                 ? t(`admin.unavailable.${m.unavailableReason}`, {}) || t("admin.inactive")
                 : t("admin.inactive")}

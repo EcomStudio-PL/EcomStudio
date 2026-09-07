@@ -91,7 +91,7 @@ export function ImageManager({ productId, workspaceId, images }: {
                   {idx + 1}
                 </span>
                 {img.is_primary && (
-                  <Badge tone="green" className="absolute right-2 top-2">{t("products.primary")}</Badge>
+                  <Badge tone="success" className="absolute right-2 top-2">{t("products.primary")}</Badge>
                 )}
               </div>
               <div className="flex items-center justify-between gap-1 px-2 py-1.5">

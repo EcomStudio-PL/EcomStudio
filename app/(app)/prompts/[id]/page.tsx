@@ -120,7 +120,7 @@ export default async function ConceptSessionPage({ params, searchParams }: {
 
       {session.status === "failed" && (
         <Card className="mb-4 p-5">
-          <p className="text-sm text-red-500">{t(`studio.err.${session.error}`, {}) || t("common.error")}</p>
+          <p className="text-sm text-danger">{t(`studio.err.${session.error}`, {}) || t("common.error")}</p>
         </Card>
       )}
 

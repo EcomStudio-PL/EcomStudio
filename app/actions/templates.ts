@@ -34,7 +34,7 @@ async function requireAdmin() {
   return { supabase, adminId: user.id };
 }
 
-const PAGE = "/admin/email/templates";
+const PAGE = "/admin/communication/szablony";
 
 export async function saveTemplateDraftAction(key: string, def: TemplateDef): Promise<Result> {
   try {

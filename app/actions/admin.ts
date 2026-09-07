@@ -124,10 +124,19 @@ export async function updateModelFullAction(modelId: string, patch: {
       }
       patch.ecom_surcharge_credits = Math.trunc(patch.ecom_surcharge_credits);
     }
+    // Badge tones are named after their meaning now (success / accent / danger
+    // / info / neutral). A form that still submits one of the old colour names
+    // is normalised rather than rejected — an admin editing a model's price
+    // must not be stopped by a tone somebody chose last month.
     if (patch.badge_tone != null && patch.badge_tone !== "") {
-      if (!["neutral", "green", "amber", "blue", "info", "indigo", "success"].includes(patch.badge_tone)) {
+      const LEGACY: Record<string, string> = {
+        green: "success", amber: "accent", red: "danger", blue: "info", indigo: "info",
+      };
+      const normalised = LEGACY[patch.badge_tone] ?? patch.badge_tone;
+      if (!["neutral", "success", "accent", "danger", "info"].includes(normalised)) {
         return { ok: false, error: "invalid" };
       }
+      patch.badge_tone = normalised;
     }
     if (patch.supported_aspect_ratios) {
       patch.supported_aspect_ratios = patch.supported_aspect_ratios

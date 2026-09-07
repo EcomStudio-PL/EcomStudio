@@ -545,7 +545,7 @@ function WeightRow({ item, untouched }: { item: Item; untouched: string }) {
       </span>
       {same
         ? <Badge tone="neutral" className="px-1.5 py-0">{untouched}</Badge>
-        : <Badge tone={grew ? "amber" : "green"} className="px-1.5 py-0">{signedPercent(percent)}</Badge>}
+        : <Badge tone={grew ? "accent" : "success"} className="px-1.5 py-0">{signedPercent(percent)}</Badge>}
     </p>
   );
 }

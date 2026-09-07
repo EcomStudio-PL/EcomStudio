@@ -62,7 +62,7 @@ export default async function AdminWww() {
                   </p>
                   <code className="text-[11.5px] text-faint">{publicPath}</code>
                 </div>
-                <Badge tone={p.status === "published" ? "green" : "amber"}>
+                <Badge tone={p.status === "published" ? "success" : "accent"}>
                   {p.status === "published" ? t("cms.published") : t("cms.draft")}
                 </Badge>
                 {p.published_at && (

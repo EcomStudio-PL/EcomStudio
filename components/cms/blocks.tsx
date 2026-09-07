@@ -405,8 +405,10 @@ function HeroMockup() {
   return (
     <div aria-hidden className="panel select-none rounded-2xl p-4 shadow-2xl">
       <div className="flex items-center gap-1.5 pb-3">
-        <span className="h-2.5 w-2.5 rounded-full bg-red-400/70" />
-        <span className="h-2.5 w-2.5 rounded-full bg-amber-400/70" />
+        {/* Window dots, not status lights: tinted from the palette so the last
+            stray amber in the product does not live in a decoration. */}
+        <span className="h-2.5 w-2.5 rounded-full bg-faint/50" />
+        <span className="h-2.5 w-2.5 rounded-full bg-faint/35" />
         <span className="h-2.5 w-2.5 rounded-full bg-accent/70" />
       </div>
       <div className="flex gap-3">

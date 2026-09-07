@@ -122,21 +122,34 @@ export type GalleryItem = {
 
 /** Badge tone → Badge component tone. Admin can override per model; the
  *  defaults keep the vocabulary consistent app-wide. */
-const BADGE_DEFAULT_TONE: Record<string, string> = {
-  recommended: "green",
-  high_quality: "amber",
-  best_value: "blue",
+export type BadgeTone = "neutral" | "success" | "accent" | "danger" | "info";
+
+const BADGE_DEFAULT_TONE: Record<string, BadgeTone> = {
+  recommended: "success",
+  high_quality: "accent",
+  best_value: "info",
   fast: "info",
-  new: "indigo",
-  premium: "indigo",
+  new: "info",
+  premium: "info",
   experimental: "neutral",
 };
-const KNOWN_TONES = new Set(["neutral", "green", "amber", "red", "blue", "info", "indigo", "success"]);
 
-export function badgeToneOf(badge: string | null, override: string | null):
-  "neutral" | "green" | "amber" | "red" | "blue" | "info" | "indigo" | "success" {
-  const tone = (override && KNOWN_TONES.has(override) ? override : null)
-    ?? (badge ? BADGE_DEFAULT_TONE[badge] : null)
-    ?? "neutral";
-  return tone as ReturnType<typeof badgeToneOf>;
+/**
+ * Tones already saved against a model row still say "green" and "amber": the
+ * admin picked them before the badge vocabulary was renamed after its meaning,
+ * and a stored string is data we do not get to rewrite from a component. They
+ * are translated on read so nobody's model quietly loses its badge.
+ */
+const LEGACY_TONES: Record<string, BadgeTone> = {
+  green: "success", amber: "accent", red: "danger",
+  blue: "info", indigo: "info",
+};
+
+const KNOWN_TONES = new Set<string>(["neutral", "success", "accent", "danger", "info"]);
+
+export function badgeToneOf(badge: string | null, override: string | null): BadgeTone {
+  const chosen = override
+    ? (KNOWN_TONES.has(override) ? (override as BadgeTone) : LEGACY_TONES[override] ?? null)
+    : null;
+  return chosen ?? (badge ? BADGE_DEFAULT_TONE[badge] : null) ?? "neutral";
 }

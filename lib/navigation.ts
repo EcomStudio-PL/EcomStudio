@@ -4,7 +4,7 @@ import {
   Coins, Rocket, LifeBuoy, Settings, Shield, Users, Building2, Cpu, Plug, Wrench,
   FileText, ScrollText, SlidersHorizontal, Wand2, BarChart3, Layers, Globe,
   FolderOpen, Lightbulb, MessageSquare, BrainCircuit, ListChecks, Mail,
-  Bell, Plug2, ToggleLeft, Gift, DoorOpen,
+  ToggleLeft, Gift, DoorOpen, ClipboardList,
 } from "lucide-react";
 
 /** Single source of truth for app navigation. Client drawer, desktop
@@ -51,38 +51,44 @@ export const CLIENT_BOTTOM: readonly NavItem[] = [
   { href: "/library", key: "library", icon: Images },
 ] as const;
 
+/**
+ * ADMIN MENU — six groups, named after the job rather than the table.
+ *
+ * The previous menu had eight groups and thirty entries, four of which
+ * ("Poczta", "Powiadomienia", "E-mail", "Szablony wiadomości", "Integracje")
+ * were one job split across two of them, and two of which — Workspaces and
+ * Produkty — were read-only lists of rows an operator never acts on from here.
+ * The tables stay; the menu entries do not, and both routes redirect.
+ *
+ * Everything raw or rarely touched sits at the bottom of SYSTEM behind
+ * "Zaawansowane", so the daily surface is short enough to read at a glance.
+ */
 export const ADMIN_NAV: readonly NavGroup[] = [
   { key: "overview", items: [
     { href: "/admin", key: "dashboard", icon: LayoutDashboard },
     { href: "/admin/analytics", key: "analytics", icon: BarChart3 },
   ]},
-  { key: "people", items: [
+  // Who the customers are and everything said to them, in one group: the CRM,
+  // the one communication module, and the support desk.
+  { key: "clients", items: [
     { href: "/admin/users", key: "users", icon: Users },
-    { href: "/admin/workspaces", key: "workspaces", icon: Building2 },
+    { href: "/admin/communication", key: "comm", icon: Mail },
     { href: "/admin/support", key: "support", icon: MessageSquare },
-  ]},
-  { key: "content", items: [
-    { href: "/admin/products", key: "products", icon: Package },
-    { href: "/admin/generations", key: "generations", icon: Wand2 },
-    { href: "/admin/templates", key: "templates", icon: FileText },
-    { href: "/admin/inspirations", key: "inspirations", icon: Lightbulb },
-  ]},
-  // Communication sits between content and money: the inbox and the Telegram
-  // alerts are day-to-day operator work, not a settings screen.
-  { key: "comm", items: [
-    { href: "/admin/mail", key: "mail", icon: Mail },
-    { href: "/admin/notifications", key: "notifications", icon: Bell },
   ]},
   { key: "finance", items: [
     { href: "/admin/credits", key: "credits", icon: Coins },
     { href: "/admin/plans", key: "plans", icon: Rocket },
     { href: "/admin/services", key: "services", icon: Layers },
   ]},
+  // What the product generates and everything that decides how: the output
+  // first, then the machinery behind it.
   { key: "ai", items: [
-    { href: "/admin/providers", key: "providers", icon: Plug },
+    { href: "/admin/generations", key: "generations", icon: Wand2 },
     { href: "/admin/models", key: "models", icon: Cpu },
+    { href: "/admin/providers", key: "providers", icon: Plug },
     { href: "/admin/engine", key: "engine", icon: BrainCircuit },
     { href: "/admin/concepts", key: "concepts", icon: PenLine },
+    { href: "/admin/templates", key: "templates", icon: FileText },
     { href: "/admin/tools", key: "tools", icon: Wrench },
   ]},
   // One entry per job, not one per screen: every public page — the homepage,
@@ -90,18 +96,19 @@ export const ADMIN_NAV: readonly NavGroup[] = [
   { key: "marketing", items: [
     { href: "/admin/www", key: "www", icon: Globe },
     { href: "/admin/waitlist", key: "waitlist", icon: ListChecks },
+    { href: "/admin/inspirations", key: "inspirations", icon: Lightbulb },
     { href: "/admin/media", key: "media", icon: FolderOpen },
   ]},
   { key: "system", items: [
-    { href: "/admin/logs", key: "logs", icon: ScrollText },
-    { href: "/admin/email", key: "email", icon: Mail },
-    { href: "/admin/email/templates", key: "templatesMsg", icon: FileText },
-    { href: "/admin/settings/integrations", key: "integrations", icon: Plug2 },
-    { href: "/admin/settings/security", key: "loginSecurity", icon: Shield },
-    { href: "/admin/settings/features", key: "features", icon: ToggleLeft },
-    { href: "/admin/settings/onboarding", key: "onboarding", icon: Gift },
     { href: "/admin/settings/access", key: "access", icon: DoorOpen },
-    { href: "/admin/system", key: "system", icon: SlidersHorizontal },
+    { href: "/admin/settings/features", key: "features", icon: ToggleLeft },
+    { href: "/admin/settings/security", key: "loginSecurity", icon: Shield },
+    { href: "/admin/settings/onboarding", key: "onboarding", icon: Gift },
+    // Reachable at last: this page has existed and worked since 0055, and no
+    // menu anywhere linked to it.
+    { href: "/admin/settings/registration", key: "registration", icon: ClipboardList },
+    { href: "/admin/logs", key: "logs", icon: ScrollText },
+    { href: "/admin/system", key: "advanced", icon: SlidersHorizontal },
   ]},
 ] as const;
 

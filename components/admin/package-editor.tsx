@@ -43,8 +43,8 @@ export function PackageManager({ packages }: { packages: Pkg[] }) {
               className="panel panel-interactive w-full rounded-2xl p-4 text-left">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold">{p.name}</p>
-                {!p.active && <Badge tone="amber">{t("admin.inactive")}</Badge>}
-                {p.active && p.featured && <Badge tone="green">★</Badge>}
+                {!p.active && <Badge tone="accent">{t("admin.inactive")}</Badge>}
+                {p.active && p.featured && <Badge tone="success">★</Badge>}
               </div>
               <p className="mt-2 font-display text-xl font-semibold text-accent">
                 {p.credits}{p.bonus_credits > 0 && <span className="text-sm"> +{p.bonus_credits}</span>}

@@ -88,7 +88,7 @@ export function PromptBlocksManager({ blocks }: { blocks: PromptBlock[] }) {
                     key={b.id}
                     title={b.name}
                     meta={b.content}
-                    state={<Badge tone={b.active ? "green" : "amber"} dot>{b.active ? t("admin.active") : t("admin.inactive")}</Badge>}
+                    state={<Badge tone={b.active ? "success" : "accent"} dot>{b.active ? t("admin.active") : t("admin.inactive")}</Badge>}
                     actions={
                       <>
                         <RowAction icon={Pencil} label={t("common.edit")} onClick={() => setEditing(b)} />

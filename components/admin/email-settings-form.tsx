@@ -36,9 +36,23 @@ export type EmailSettingsView = {
   last_test_error_safe: string | null;
 };
 
-export function EmailSettingsForm({ initial, encryptionReady }: {
+export function EmailSettingsForm({ initial, encryptionReady, transportOwnedByMailbox = false }: {
   initial: EmailSettingsView;
   encryptionReady: boolean;
+  /**
+   * ONE EDITABLE SMTP CONFIGURATION, NOT TWO.
+   *
+   * The mailbox integration card owns host, port, encryption, user and
+   * password, and mirrors them here so the waitlist mailer keeps working. When
+   * that is true, this form shows the transport read-only and points at the
+   * card that owns it — the alternative, two forms writing two tables with the
+   * same five fields, is how they drifted apart in the first place.
+   *
+   * The values are still submitted unchanged on save: the server action's
+   * contract is one row, and echoing back what we were given writes the same
+   * bytes the mirror already put there.
+   */
+  transportOwnedByMailbox?: boolean;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -130,47 +144,67 @@ export function EmailSettingsForm({ initial, encryptionReady }: {
         <CardHeader
           title={t("launchAdmin.smtpSection")}
           action={v.last_test_status ? (
-            <Badge tone={v.last_test_status === "ok" ? "green" : "red"}>
+            <Badge tone={v.last_test_status === "ok" ? "success" : "danger"}>
               {v.last_test_status === "ok" ? t("launchAdmin.testOk") : t("launchAdmin.testFail")}
             </Badge>
           ) : undefined}
         />
         <div className="grid gap-4 p-5 pt-0 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <Label htmlFor="smtp-host">{t("launchAdmin.smtpHost")}</Label>
-            <Input id="smtp-host" autoComplete="off" placeholder="smtp.example.com"
-              value={v.smtp_host} onChange={(e) => patch("smtp_host", e.target.value)} />
-          </div>
-          <div>
-            <Label htmlFor="smtp-port">{t("launchAdmin.smtpPort")}</Label>
-            <Input id="smtp-port" type="number" inputMode="numeric" min={1} max={65535}
-              value={v.smtp_port} onChange={(e) => patch("smtp_port", Number(e.target.value))} />
-          </div>
-          <div>
-            <Label htmlFor="smtp-enc">{t("launchAdmin.encryption")}</Label>
-            <Select id="smtp-enc" value={v.smtp_encryption}
-              onChange={(e) => patch("smtp_encryption", e.target.value as EmailSettingsView["smtp_encryption"])}>
-              <option value="auto">{t("launchAdmin.encAuto")}</option>
-              <option value="tls">{t("launchAdmin.encTls")}</option>
-              <option value="ssl">{t("launchAdmin.encSsl")}</option>
-            </Select>
-          </div>
-          <div>
-            <Label htmlFor="smtp-user">{t("launchAdmin.smtpUser")}</Label>
-            <Input id="smtp-user" autoComplete="off" value={v.smtp_user}
-              onChange={(e) => patch("smtp_user", e.target.value)} />
-          </div>
-          <div>
-            <Label htmlFor="smtp-pass" hint={v.has_password ? t("launchAdmin.passKept") : undefined}>
-              {t("launchAdmin.smtpPass")}
-            </Label>
-            <SecretInput id="smtp-pass" value={password} onChange={setPassword}
-              placeholder={v.has_password ? "••••••••" : ""} />
-          </div>
-          <p className="flex items-start gap-2 text-[12px] leading-relaxed text-faint sm:col-span-2">
-            <Lock size={13} className="mt-0.5 shrink-0" aria-hidden />
-            {t("launchAdmin.securityNote")}
-          </p>
+          {transportOwnedByMailbox ? (
+            <>
+              <dl className="grid gap-3 rounded-xl bg-raised px-4 py-3 sm:col-span-2 sm:grid-cols-2">
+                <Fact label={t("launchAdmin.smtpHost")} value={v.smtp_host} />
+                <Fact label={t("launchAdmin.smtpPort")} value={String(v.smtp_port)} />
+                <Fact label={t("launchAdmin.smtpUser")} value={v.smtp_user} />
+                <Fact
+                  label={t("launchAdmin.smtpPass")}
+                  value={v.has_password ? "••••••••" : "—"}
+                />
+              </dl>
+              <p className="flex items-start gap-2 text-[12px] leading-relaxed text-faint sm:col-span-2">
+                <Lock size={13} className="mt-0.5 shrink-0" aria-hidden />
+                {t("comm.transportOwned")}
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="sm:col-span-2">
+                <Label htmlFor="smtp-host">{t("launchAdmin.smtpHost")}</Label>
+                <Input id="smtp-host" autoComplete="off" placeholder="smtp.example.com"
+                  value={v.smtp_host} onChange={(e) => patch("smtp_host", e.target.value)} />
+              </div>
+              <div>
+                <Label htmlFor="smtp-port">{t("launchAdmin.smtpPort")}</Label>
+                <Input id="smtp-port" type="number" inputMode="numeric" min={1} max={65535}
+                  value={v.smtp_port} onChange={(e) => patch("smtp_port", Number(e.target.value))} />
+              </div>
+              <div>
+                <Label htmlFor="smtp-enc">{t("launchAdmin.encryption")}</Label>
+                <Select id="smtp-enc" value={v.smtp_encryption}
+                  onChange={(e) => patch("smtp_encryption", e.target.value as EmailSettingsView["smtp_encryption"])}>
+                  <option value="auto">{t("launchAdmin.encAuto")}</option>
+                  <option value="tls">{t("launchAdmin.encTls")}</option>
+                  <option value="ssl">{t("launchAdmin.encSsl")}</option>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="smtp-user">{t("launchAdmin.smtpUser")}</Label>
+                <Input id="smtp-user" autoComplete="off" value={v.smtp_user}
+                  onChange={(e) => patch("smtp_user", e.target.value)} />
+              </div>
+              <div>
+                <Label htmlFor="smtp-pass" hint={v.has_password ? t("launchAdmin.passKept") : undefined}>
+                  {t("launchAdmin.smtpPass")}
+                </Label>
+                <SecretInput id="smtp-pass" value={password} onChange={setPassword}
+                  placeholder={v.has_password ? "••••••••" : ""} />
+              </div>
+              <p className="flex items-start gap-2 text-[12px] leading-relaxed text-faint sm:col-span-2">
+                <Lock size={13} className="mt-0.5 shrink-0" aria-hidden />
+                {t("launchAdmin.securityNote")}
+              </p>
+            </>
+          )}
           <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
             <Button variant="secondary" disabled={testing || pending} onClick={test} data-email-test>
               <PlugZap size={15} aria-hidden />
@@ -211,6 +245,18 @@ export function EmailSettingsForm({ initial, encryptionReady }: {
       <div className="flex justify-end">
         <Button disabled={pending} onClick={save} data-email-save>{t("common.save")}</Button>
       </div>
+    </div>
+  );
+}
+
+/** A stored value the operator can read but not edit here, because something
+ *  else owns it. Rendered as a definition pair so screen readers announce the
+ *  label with the value rather than two loose lines. */
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted">{label}</dt>
+      <dd className="truncate text-[13.5px] font-medium text-ink">{value || "—"}</dd>
     </div>
   );
 }

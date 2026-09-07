@@ -23,10 +23,10 @@ export type ProviderView = {
   } | null;
 };
 
-const TEST_TONE: Record<string, "green" | "red" | "amber" | "neutral"> = {
-  connected: "green", auth_failed: "red", quota: "red", rate_limited: "amber",
-  model_unavailable: "red", unavailable: "amber", timeout: "amber",
-  invalid: "red", unsupported: "neutral",
+const TEST_TONE: Record<string, "success" | "danger" | "accent" | "neutral"> = {
+  connected: "success", auth_failed: "danger", quota: "danger", rate_limited: "accent",
+  model_unavailable: "danger", unavailable: "accent", timeout: "accent",
+  invalid: "danger", unsupported: "neutral",
 };
 
 export function ProviderCard({ p, encryptionReady, locale }: {
@@ -64,7 +64,7 @@ export function ProviderCard({ p, encryptionReady, locale }: {
             <code className="text-xs text-faint">{p.slug}</code>
           </div>
         </div>
-        <Badge tone={p.active ? "green" : "amber"}>{p.active ? t("admin.active") : t("admin.inactive")}</Badge>
+        <Badge tone={p.active ? "success" : "accent"}>{p.active ? t("admin.active") : t("admin.inactive")}</Badge>
       </div>
 
       <dl className="mt-4 space-y-2 text-sm">
@@ -74,7 +74,7 @@ export function ProviderCard({ p, encryptionReady, locale }: {
             {p.credential ? (
               <code className="text-xs">•••••••••••• {p.credential.lastFour.toUpperCase()}</code>
             ) : (
-              <Badge tone="red">{t("admin.notConfigured")}</Badge>
+              <Badge tone="danger">{t("admin.notConfigured")}</Badge>
             )}
           </dd>
         </div>
@@ -95,7 +95,7 @@ export function ProviderCard({ p, encryptionReady, locale }: {
           <dt className="text-muted">{t("admin.imageTest")}</dt>
           <dd className="flex items-center gap-2">
             {p.credential?.lastImageTestStatus ? (
-              <Badge tone={p.credential.lastImageTestStatus === "image_ok" ? "green" : "red"}>
+              <Badge tone={p.credential.lastImageTestStatus === "image_ok" ? "success" : "danger"}>
                 {p.credential.lastImageTestStatus === "image_ok" ? t("admin.imageTestOk") : t("admin.imageTestFailed")}
               </Badge>
             ) : (
@@ -110,12 +110,12 @@ export function ProviderCard({ p, encryptionReady, locale }: {
         </div>
       </dl>
       {p.credential?.lastImageTestError && (
-        <p className="mt-2 truncate text-xs text-red-500" title={p.credential.lastImageTestError}>
+        <p className="mt-2 truncate text-xs text-danger" title={p.credential.lastImageTestError}>
           {p.credential.lastImageTestError}
         </p>
       )}
       {p.credential?.lastTestError && (
-        <p className="mt-2 truncate text-xs text-red-500" title={p.credential.lastTestError}>{p.credential.lastTestError}</p>
+        <p className="mt-2 truncate text-xs text-danger" title={p.credential.lastTestError}>{p.credential.lastTestError}</p>
       )}
 
       <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
@@ -152,7 +152,7 @@ export function ProviderCard({ p, encryptionReady, locale }: {
 
       <Modal open={configOpen} onClose={() => setConfigOpen(false)} title={`${p.name} — ${t("admin.configure")}`}>
         {!encryptionReady && (
-          <p className="mb-4 rounded-xl bg-amber-100 px-4 py-3 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-400">
+          <p className="mb-4 rounded-xl bg-[rgb(var(--warning)/0.12)] px-4 py-3 text-xs text-warning">
             {t("admin.encryptionMissing")}
           </p>
         )}

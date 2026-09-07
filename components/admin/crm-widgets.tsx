@@ -93,7 +93,7 @@ export function CrmNotes({ userId, notes }: {
             <div className="mt-2 flex items-center gap-2 text-xs text-muted">
               {n.author && <span>{n.author}</span>}
               <span>{new Date(n.created_at).toLocaleDateString("pl-PL")}</span>
-              {n.reminder_date && <Badge tone="amber">⏰ {n.reminder_date}</Badge>}
+              {n.reminder_date && <Badge tone="accent">⏰ {n.reminder_date}</Badge>}
               <span className="ml-auto flex gap-1">
                 <button type="button" disabled={pending} title={t("crm.pin")}
                   className="rounded-md p-1.5 text-muted hover:bg-raised hover:text-ink"
@@ -101,7 +101,7 @@ export function CrmNotes({ userId, notes }: {
                   <Pin size={13} className={n.pinned ? "text-accent" : ""} />
                 </button>
                 <button type="button" disabled={pending} title={t("common.delete")}
-                  className="rounded-md p-1.5 text-muted hover:bg-raised hover:text-red-500"
+                  className="rounded-md p-1.5 text-muted hover:bg-raised hover:text-danger"
                   onClick={() => run(deleteCrmNoteAction(n.id, userId))}>
                   <Trash2 size={13} />
                 </button>

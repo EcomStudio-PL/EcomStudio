@@ -262,12 +262,12 @@ function TemplateTile({ entry, onEdit }: {
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
         {entry.publishedVersion > 0 ? (
-          <Badge tone="green">{t("tpl.published")} v{entry.publishedVersion}</Badge>
+          <Badge tone="success">{t("tpl.published")} v{entry.publishedVersion}</Badge>
         ) : (
           <Badge tone="neutral">{t("tpl.defaultActive")}</Badge>
         )}
         {entry.hasDraft && <Badge tone="neutral">{t("tpl.draft")}</Badge>}
-        {!entry.hooked && <Badge tone="amber">{t("tpl.noHook")}</Badge>}
+        {!entry.hooked && <Badge tone="accent">{t("tpl.noHook")}</Badge>}
       </div>
       <div className="mt-3 flex items-center justify-between gap-2">
         <p className="truncate text-[11px] text-faint">

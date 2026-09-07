@@ -97,12 +97,12 @@ export function MediaManager({ assets }: { assets: MediaRow[] }) {
               <div className="p-2.5">
                 <p className="truncate text-xs font-medium">{a.title ?? a.storage_path ?? a.external_url}</p>
                 <div className="mt-1 flex items-center gap-1.5">
-                  <Badge tone={a.kind === "video" ? "indigo" : "neutral"}>{a.kind}</Badge>
+                  <Badge tone={a.kind === "video" ? "info" : "neutral"}>{a.kind}</Badge>
                   {a.size_bytes != null && <span className="text-[10px] text-faint">{(a.size_bytes / 1024 / 1024).toFixed(1)} MB</span>}
                   <span className="ml-auto flex gap-0.5">
                     <button type="button" title={t("media.copyUrl")} className="rounded-md p-1.5 text-muted hover:bg-raised hover:text-ink"
                       onClick={() => copy(a.publicUrl ?? a.external_url ?? "")}><Copy size={13} /></button>
-                    <button type="button" title={t("common.delete")} className="rounded-md p-1.5 text-muted hover:bg-raised hover:text-red-500"
+                    <button type="button" title={t("common.delete")} className="rounded-md p-1.5 text-muted hover:bg-raised hover:text-danger"
                       onClick={() => setDeleting(a)}><Trash2 size={13} /></button>
                   </span>
                 </div>

@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-const JOB_TONE = { queued: "neutral", processing: "blue", completed: "green", failed: "red", cancelled: "neutral" } as const;
+const JOB_TONE = { queued: "neutral", processing: "info", completed: "success", failed: "danger", cancelled: "neutral" } as const;
 
 /**
  * BIBLIOTEKA — the one destination for everything the account produced

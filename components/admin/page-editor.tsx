@@ -85,7 +85,7 @@ export function PageEditor({ pageId, slug, kind, status, publishedAt, blocks }: 
     <div data-page-editor>
       {/* ── Status + the three things you do to a page ─────────────────── */}
       <div className="panel mb-4 flex flex-wrap items-center gap-2 rounded-2xl px-4 py-3">
-        <Badge tone={published ? "green" : "amber"}>
+        <Badge tone={published ? "success" : "accent"}>
           {published ? t("cms.published") : t("cms.draft")}
         </Badge>
         {publishedAt && (

@@ -260,7 +260,7 @@ export default async function AdminAnalytics({ searchParams }: {
               pln(m.revenue),
               pln(profitCents),
               `${marginPct.toFixed(1)}%`,
-              <Badge key="f" tone={m.failed > 0 ? "amber" : "green"}>{m.gens > 0 ? ((m.failed / m.gens) * 100).toFixed(1) : "0.0"}%</Badge>,
+              <Badge key="f" tone={m.failed > 0 ? "accent" : "success"}>{m.gens > 0 ? ((m.failed / m.gens) * 100).toFixed(1) : "0.0"}%</Badge>,
             ];
           })}
         />
@@ -301,7 +301,7 @@ export default async function AdminAnalytics({ searchParams }: {
               : lowestMargin.map((r) => (
                 <li key={r.id} className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm">
                   <span className="truncate">{r.name}</span>
-                  <Badge tone={(r.margin ?? 0) < 30 ? "red" : "amber"}>{r.margin}%</Badge>
+                  <Badge tone={(r.margin ?? 0) < 30 ? "danger" : "accent"}>{r.margin}%</Badge>
                 </li>
               ))}
           </ul>
@@ -333,7 +333,7 @@ export default async function AdminAnalytics({ searchParams }: {
               {(lowWallets.data ?? []).map((w, i) => (
                 <li key={i} className="flex items-center justify-between px-5 py-2.5 text-sm">
                   <span className="truncate">{w.workspaces?.name ?? "—"}</span>
-                  <Badge tone="amber">{w.balance}</Badge>
+                  <Badge tone="accent">{w.balance}</Badge>
                 </li>
               ))}
             </ul>

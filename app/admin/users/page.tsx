@@ -68,8 +68,8 @@ export default async function AdminUsers({ searchParams }: {
               <p className="truncate text-xs text-muted">{u.email}</p>
             </div>,
             <span key="r" className="flex gap-1">
-              <Badge tone={u.role === "admin" ? "indigo" : "neutral"}>{u.role}</Badge>
-              {u.blocked && <Badge tone="red">✕</Badge>}
+              <Badge tone={u.role === "admin" ? "info" : "neutral"}>{u.role}</Badge>
+              {u.blocked && <Badge tone="danger">✕</Badge>}
             </span>,
             (ws ? planByWs.get(ws.id) : null) ?? "Free",
             ws?.credit_wallets?.balance ?? "—",

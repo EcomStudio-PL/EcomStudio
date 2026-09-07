@@ -73,15 +73,15 @@ export function InspirationManager({ items }: { items: InspirationRow[] }) {
                 className="panel panel-interactive w-full rounded-2xl p-4 text-left">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <p className="min-w-0 flex-1 truncate text-sm font-semibold">{r.title}</p>
-                  <Badge tone={r.status === "published" ? "green" : "amber"}>
+                  <Badge tone={r.status === "published" ? "success" : "accent"}>
                     {r.status === "published" ? t("cms.published") : t("cms.draft")}
                   </Badge>
                 </div>
                 <p className="mt-1 truncate text-xs text-muted">{r.prompt}</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  <Badge tone="amber">{r.category}</Badge>
-                  {r.featured && <Badge tone="blue">★</Badge>}
-                  {r.premium && <Badge tone="amber">PREMIUM</Badge>}
+                  <Badge tone="accent">{r.category}</Badge>
+                  {r.featured && <Badge tone="info">★</Badge>}
+                  {r.premium && <Badge tone="accent">PREMIUM</Badge>}
                   {r.locale && <Badge tone="neutral">{r.locale.toUpperCase()}</Badge>}
                 </div>
               </button>

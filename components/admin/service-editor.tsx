@@ -69,15 +69,15 @@ export function ServiceManager({ services, plnPerCredit, usdToPln }: {
                   <p className="text-sm font-semibold">{s.name}</p>
                   <code className="rounded bg-raised px-1.5 py-0.5 text-[10px] text-faint">{s.slug}</code>
                   <Badge tone="neutral">{s.service_type}</Badge>
-                  {!s.enabled && <Badge tone="amber">{t("admin.inactive")}</Badge>}
-                  {s.maintenance_mode && <Badge tone="red">{t("svc.maintenance")}</Badge>}
-                  {s.featured && <Badge tone="amber">★</Badge>}
+                  {!s.enabled && <Badge tone="accent">{t("admin.inactive")}</Badge>}
+                  {s.maintenance_mode && <Badge tone="danger">{t("svc.maintenance")}</Badge>}
+                  {s.featured && <Badge tone="accent">★</Badge>}
                   <span className="ml-auto text-right text-xs text-muted">
                     <span className="font-display text-sm font-semibold text-accent">{s.credits_cost}</span> {t("nav.credits").toLowerCase()}
                     {" · "}≈{e.userPln.toFixed(2)} PLN
                     {" · "}{t("admin.internalCost")}: {e.costPln.toFixed(2)} PLN
                     {" · "}
-                    <span className={e.pct >= s.min_margin_percent ? "text-accent" : "text-red-500"}>
+                    <span className={e.pct >= s.min_margin_percent ? "text-accent" : "text-danger"}>
                       {t("admin.margin")}: {e.pct.toFixed(0)}%
                     </span>
                   </span>

@@ -49,7 +49,7 @@ export default async function SupportPage({ searchParams }: {
                       active?.id === th.id ? "ring-1 ring-accent" : "hover:bg-raised")}>
                     <div className="flex items-center justify-between gap-2">
                       <p className="truncate text-sm font-medium">{th.subject}</p>
-                      <Badge tone={th.status === "open" ? "green" : "neutral"}>{t(`chat.st.${th.status}`)}</Badge>
+                      <Badge tone={th.status === "open" ? "success" : "neutral"}>{t(`chat.st.${th.status}`)}</Badge>
                     </div>
                     <p className="text-xs text-muted">{formatDate(th.last_message_at, locale)}</p>
                   </Link>

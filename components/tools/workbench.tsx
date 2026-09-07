@@ -324,7 +324,7 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <p className="overline">{t("tools.result")}</p>
               {savings && savings.percent > 0 && (
-                <Badge tone="green">
+                <Badge tone="success">
                   {t("tools.saved", { percent: savings.percent, before: formatBytes(savings.before), after: formatBytes(savings.after) })}
                 </Badge>
               )}

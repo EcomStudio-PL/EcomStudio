@@ -62,9 +62,9 @@ export default async function AdminConceptSessionPage({ params }: { params: Prom
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-lg brand-gradient text-[11px] font-bold text-white">{i + 1}</span>
                 <h3 className="text-sm font-semibold">{p.customer_title || p.concept_name}</h3>
-                {p.scene_type && <Badge tone="amber">{p.scene_type}</Badge>}
+                {p.scene_type && <Badge tone="accent">{p.scene_type}</Badge>}
                 <Badge>{p.lock_strength}</Badge>
-                {payload?.meta.tv != null && <Badge tone="green">tpl v{payload.meta.tv}</Badge>}
+                {payload?.meta.tv != null && <Badge tone="success">tpl v{payload.meta.tv}</Badge>}
                 {payload?.meta.cat && <Badge>{payload.meta.cat}</Badge>}
                 {payload?.meta.goal && <Badge>{payload.meta.goal}</Badge>}
                 <span className="ml-auto text-xs tabular-nums text-faint">

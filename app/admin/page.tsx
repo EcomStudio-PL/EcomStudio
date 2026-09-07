@@ -97,7 +97,7 @@ export default async function AdminDashboard() {
           <p className="overline text-[9px]">{t("admin.nav.providers")}</p>
           <div className="mt-1 flex flex-wrap gap-1">
             {(providers.data ?? []).map((p) => (
-              <Badge key={p.slug} tone={p.active ? "green" : "neutral"}>{p.name}</Badge>
+              <Badge key={p.slug} tone={p.active ? "success" : "neutral"}>{p.name}</Badge>
             ))}
           </div>
         </div>
@@ -143,7 +143,7 @@ export default async function AdminDashboard() {
                     <p className="truncate text-sm font-medium">{t(`credits.tt.${tx.type}`)}</p>
                     <p className="truncate text-xs text-muted">{tx.description ?? formatDate(tx.created_at, locale)}</p>
                   </div>
-                  <Badge tone={tx.amount >= 0 ? "green" : "red"}>{tx.amount >= 0 ? "+" : ""}{tx.amount}</Badge>
+                  <Badge tone={tx.amount >= 0 ? "success" : "danger"}>{tx.amount >= 0 ? "+" : ""}{tx.amount}</Badge>
                 </li>
               ))}
             </ul>

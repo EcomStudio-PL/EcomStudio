@@ -60,7 +60,7 @@ export default async function AdminToolsPage() {
       <Panel className="mb-5 rounded-2xl p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <p className="overline">{t("admin.tools.providers")}</p>
-          <Badge tone={connected > 0 ? "green" : "amber"} dot>
+          <Badge tone={connected > 0 ? "success" : "accent"} dot>
             {t("admin.tools.connectedCount", { n: connected, total: providers.length })}
           </Badge>
         </div>
@@ -76,7 +76,7 @@ export default async function AdminToolsPage() {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="truncate text-[13px] font-semibold">{p.label}</p>
-                  <Badge tone={p.status === "connected" ? "green" : "neutral"}>
+                  <Badge tone={p.status === "connected" ? "success" : "neutral"}>
                     {t(`admin.tools.status.${p.status}`)}
                   </Badge>
                 </div>
@@ -132,7 +132,7 @@ export default async function AdminToolsPage() {
             r.kind === "local" ? "0,000 zł" : `${r.costPln.toFixed(3)} zł`,
             r.credits === 0 ? t("tools.free") : `${r.credits} kr · ${r.revenue.toFixed(2)} zł`,
             r.margin === null ? "—" : (
-              <Badge key="m" tone={r.margin >= billing.minMarginPercent ? "green" : "red"}>
+              <Badge key="m" tone={r.margin >= billing.minMarginPercent ? "success" : "danger"}>
                 {Math.round(r.margin)}%
               </Badge>
             ),

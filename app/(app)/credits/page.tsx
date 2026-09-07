@@ -104,7 +104,7 @@ export default async function CreditsPage() {
                     {tx.description ?? ""} · {formatDate(tx.created_at, locale)}
                   </p>
                 </div>
-                <Badge tone={tx.amount >= 0 ? "green" : "red"}>
+                <Badge tone={tx.amount >= 0 ? "success" : "danger"}>
                   {tx.amount >= 0 ? "+" : ""}{tx.amount}
                 </Badge>
               </li>

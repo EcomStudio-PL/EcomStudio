@@ -199,7 +199,7 @@ export function localeFlag(locale: string | undefined): string {
 const ACTIONS: Record<string, { label: string; path: (ctx: Record<string, string>) => string }> = {
   "user.registered": { label: "Otwórz klienta", path: (c) => (c.user_id ? `/admin/users/${c.user_id}` : "/admin/users") },
   "waitlist.signup": { label: "Otwórz listę", path: () => "/admin/waitlist" },
-  "mail.received": { label: "Otwórz skrzynkę", path: () => "/admin/mail" },
+  "mail.received": { label: "Otwórz skrzynkę", path: () => "/admin/communication" },
   "system.error": { label: "Otwórz log", path: () => "/admin/logs" },
 };
 

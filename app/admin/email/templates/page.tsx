@@ -1,31 +1,12 @@
-import { getDictionary } from "@/lib/i18n/server";
-import { makeT } from "@/lib/i18n/t";
-import { PageHeader } from "@/components/ui/page-header";
-import { TemplateStudio } from "@/components/admin/template-studio";
-import { authDeliveryStatusAction, listTemplatesAction } from "@/app/actions/templates";
-
-export const dynamic = "force-dynamic";
+import { redirect } from "next/navigation";
 
 /**
- * SZABLONY WIADOMOŚCI — the admin's studio for everything GrovBase sends.
- * The admin layout above already gates on role; the actions re-check it on
- * every write, so this page only loads the catalog × stored rows and renders.
+ * Szablony wiadomości moved into /admin/communication/szablony.
+ *
+ * The screen is gone, the route is not: a bookmark, a Telegram deep link or a
+ * link in an old e-mail must land somewhere useful rather than on a 404. This
+ * file exists purely so those keep working.
  */
-export default async function AdminMessageTemplates() {
-  const { dict } = await getDictionary();
-  const t = makeT(dict);
-  const [entries, delivery] = await Promise.all([listTemplatesAction(), authDeliveryStatusAction()]);
-
-  return (
-    <div>
-      <PageHeader
-        overline={t("admin.navGroups.system")}
-        title={t("tpl.title")}
-        sub={t("tpl.sub")}
-      />
-      {entries
-        ? <TemplateStudio entries={entries} delivery={delivery} />
-        : <p className="text-sm text-muted">{t("common.error")}</p>}
-    </div>
-  );
+export default function Moved() {
+  redirect("/admin/communication/szablony");
 }

@@ -33,12 +33,21 @@
   --violet: 147 51 234;
   --purple: 124 58 237;
   --pink: 219 39 176;
-  --accent2: 190 96 6;
-  --accent2-soft: 250 239 222;
+  /* SECONDARY ACCENT — brand magenta, #D628CF.
+     This slot used to hold an amber (#BE6006) inherited from the first admin
+     panel, and it is why "draft", "inactive", "featured" and half the admin
+     status chips read as a different product from the rest of GrovBase. There
+     is no yellow in this design system any more: attention is carried by the
+     brand, failure by --danger, success by --success. */
+  --accent2: 214 40 207;
+  --accent2-soft: 250 228 249;
   --indigo: 124 58 237;
   --info: 37 99 235;
   --success: 15 122 68;
-  --warning: 176 82 8;
+  /* Attention, not failure. Same brand magenta as --accent2 — kept as its own
+     token so a status that means "look at this" stays greppable and can be
+     retuned without touching decorative accents. */
+  --warning: 214 40 207;
   --danger: 194 38 52;
 
   --glass: 252 250 255;
@@ -139,12 +148,14 @@
   --violet: 168 85 247;
   --purple: 139 92 246;
   --pink: 244 114 208;
-  --accent2: 255 168 92;
-  --accent2-soft: 66 44 30;
+  /* Brand magenta on dark, #F950E1 — see the light block for why the amber
+     that used to sit here is gone. */
+  --accent2: 249 80 225;
+  --accent2-soft: 64 22 60;
   --indigo: 139 92 246;
   --info: 96 165 250;
   --success: 74 222 128;
-  --warning: 251 191 36;
+  --warning: 249 80 225;
   --danger: 248 113 113;
 
   --glass: 21 13 30;
@@ -461,7 +472,9 @@ body::after {
 
 /* ACCOUNT ISLAND — the one deliberately elevated surface in the drawer:
    a magenta-lit plane with a soft glow, a fine border and a large radius.
-   Admin swaps the light for amber, which is its functional colour. */
+   Admin lights it with the secondary brand magenta instead, so the panel
+   reads as a different room in the same building rather than a different
+   product — which is exactly what the amber it used to use did. */
 .island {
   background:
     radial-gradient(20rem 10rem at 78% -20%, rgb(var(--accent) / 0.34), transparent 68%),

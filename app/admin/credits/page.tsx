@@ -54,7 +54,7 @@ export default async function AdminCredits() {
           empty={t("admin.noData")}
           rows={(txs ?? []).map((tx) => [
             t(`credits.tt.${tx.type}`),
-            <Badge key="a" tone={tx.amount >= 0 ? "green" : "red"}>{tx.amount >= 0 ? "+" : ""}{tx.amount}</Badge>,
+            <Badge key="a" tone={tx.amount >= 0 ? "success" : "danger"}>{tx.amount >= 0 ? "+" : ""}{tx.amount}</Badge>,
             tx.description ?? "—",
             formatDate(tx.created_at, locale),
           ])}

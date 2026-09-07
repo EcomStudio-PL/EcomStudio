@@ -94,12 +94,12 @@ const STATUS_LABELS: Record<string, string> = {
   skipped: "comm.st.skipped",
 };
 
-const STATUS_TONES: Record<string, "green" | "red" | "amber" | "neutral"> = {
-  sent: "green",
-  failed: "red",
+const STATUS_TONES: Record<string, "success" | "danger" | "accent" | "neutral"> = {
+  sent: "success",
+  failed: "danger",
   // Skipped is closed, not queued: the row will never be retried, which is a
   // different thing to know than "still waiting".
-  skipped: "amber",
+  skipped: "accent",
   pending: "neutral",
 };
 
@@ -291,7 +291,7 @@ function Banner({ children }: { children: React.ReactNode }) {
 
 function IntegrationsLink({ label }: { label: string }) {
   return (
-    <Link href="/admin/settings/integrations" className="font-semibold underline underline-offset-2 hover:opacity-80">
+    <Link href="/admin/communication/kanaly" className="font-semibold underline underline-offset-2 hover:opacity-80">
       {label}
     </Link>
   );

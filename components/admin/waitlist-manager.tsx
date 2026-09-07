@@ -102,7 +102,7 @@ export function WaitlistManager({ rows, page, pages, total }: {
   }
 
   const statusTone = (s: string) =>
-    s === "confirmed" ? "green" : s === "unsubscribed" ? "neutral" : "amber";
+    s === "confirmed" ? "success" : s === "unsubscribed" ? "neutral" : "accent";
   const statusLabel = (s: string) =>
     s === "confirmed" ? t("launchAdmin.statusConfirmed")
       : s === "unsubscribed" ? t("launchAdmin.statusUnsubscribed")

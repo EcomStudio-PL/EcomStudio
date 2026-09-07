@@ -47,21 +47,21 @@ export default async function AdminSystem() {
         <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-4">
           <div className="flex items-center justify-between rounded-xl bg-raised px-3.5 py-2.5 text-sm">
             <span className="text-muted">Supabase</span>
-            <Badge tone={dbOk ? "green" : "red"}>{dbOk ? t("health.connected") : t("health.error")}</Badge>
+            <Badge tone={dbOk ? "success" : "danger"}>{dbOk ? t("health.connected") : t("health.error")}</Badge>
           </div>
           <div className="flex items-center justify-between rounded-xl bg-raised px-3.5 py-2.5 text-sm">
             <span className="text-muted">Vercel</span>
-            <Badge tone="green">{t("health.connected")}</Badge>
+            <Badge tone="success">{t("health.connected")}</Badge>
           </div>
           <div className="flex items-center justify-between rounded-xl bg-raised px-3.5 py-2.5 text-sm">
             <span className="text-muted">{t("health.failed24")}</span>
-            <Badge tone={(failed24.count ?? 0) > 0 ? "amber" : "green"}>{failed24.count ?? 0}</Badge>
+            <Badge tone={(failed24.count ?? 0) > 0 ? "accent" : "success"}>{failed24.count ?? 0}</Badge>
           </div>
           <div className="flex items-center justify-between rounded-xl bg-raised px-3.5 py-2.5 text-sm">
             <span className="text-muted">{t("admin.sysEnv")}</span>
             <span className="flex items-center gap-2">
               <code className="text-xs">{SUPABASE_URL.replace("https://", "").split(".")[0]}</code>
-              <Badge tone={isDev ? "blue" : "green"}>{isDev ? "DEV" : "PROD"}</Badge>
+              <Badge tone={isDev ? "info" : "success"}>{isDev ? "DEV" : "PROD"}</Badge>
             </span>
           </div>
         </div>
@@ -70,7 +70,7 @@ export default async function AdminSystem() {
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-faint">{t("admin.nav.providers")}</p>
             <div className="flex flex-wrap gap-2">
               {(creds ?? []).map((c, i) => (
-                <Badge key={i} tone={c.last_test_status === "connected" ? "green" : c.last_test_status ? "amber" : "neutral"}>
+                <Badge key={i} tone={c.last_test_status === "connected" ? "success" : c.last_test_status ? "accent" : "neutral"}>
                   {c.ai_providers?.name}: {c.last_test_status ?? "—"}
                 </Badge>
               ))}

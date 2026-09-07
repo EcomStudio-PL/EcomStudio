@@ -76,7 +76,7 @@ export function MyTemplates({ templates }: { templates: Tpl[] }) {
                     <p className="truncate text-sm font-medium">{tpl.name}</p>
                     <p className="truncate text-xs text-muted">{tpl.shot_type} · {tpl.format}</p>
                   </div>
-                  {!tpl.active && <Badge tone="amber">{t("admin.inactive")}</Badge>}
+                  {!tpl.active && <Badge tone="accent">{t("admin.inactive")}</Badge>}
                   <Button size="sm" variant="ghost" onClick={() => setEditing(tpl)}>{t("common.edit")}</Button>
                   <Button size="sm" variant="ghost" disabled={pending}
                     onClick={() => {

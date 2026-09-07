@@ -30,7 +30,7 @@ export default async function AdminSupport() {
                   <p className="truncate text-sm font-semibold">{th.subject}</p>
                   <p className="truncate text-xs text-muted">{th.profiles?.full_name ?? th.profiles?.email}</p>
                 </div>
-                <Badge tone={th.status === "open" ? "green" : "neutral"}>{t(`chat.st.${th.status}`)}</Badge>
+                <Badge tone={th.status === "open" ? "success" : "neutral"}>{t(`chat.st.${th.status}`)}</Badge>
                 <span className="text-xs text-muted">{formatDate(th.last_message_at, locale)}</span>
               </Link>
             </li>

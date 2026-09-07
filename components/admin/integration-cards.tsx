@@ -83,10 +83,10 @@ export function integrationErrorKey(code: string | undefined, channel: ErrorChan
   return CHANNEL_FALLBACK[channel];
 }
 
-const STATUS_TONE: Record<IntegrationStatus, "green" | "neutral" | "red"> = {
-  connected: "green",
+const STATUS_TONE: Record<IntegrationStatus, "success" | "neutral" | "danger"> = {
+  connected: "success",
   not_configured: "neutral",
-  error: "red",
+  error: "danger",
 };
 
 type OpenPanel = "mail" | "telegram" | "captcha" | null;

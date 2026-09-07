@@ -181,8 +181,8 @@ export function CsvImport({ open, onClose }: { open: boolean; onClose: () => voi
                           <td className="px-3 py-2 text-muted">{r.sku || "—"}</td>
                           <td className="px-3 py-2">
                             {issue
-                              ? <Badge tone={issue.level === "error" ? "red" : "amber"}>{t(`import.issue.${issue.reason}`)}</Badge>
-                              : <Badge tone="green" dot>{t("import.ok")}</Badge>}
+                              ? <Badge tone={issue.level === "error" ? "danger" : "accent"}>{t(`import.issue.${issue.reason}`)}</Badge>
+                              : <Badge tone="success" dot>{t("import.ok")}</Badge>}
                           </td>
                         </tr>
                       );

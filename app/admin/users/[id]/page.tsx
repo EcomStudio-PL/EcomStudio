@@ -120,8 +120,8 @@ export default async function CrmProfile({ params }: { params: Promise<{ id: str
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="truncate font-display text-xl font-semibold">{profile.full_name ?? profile.email}</h1>
-                <Badge tone={profile.role === "admin" ? "indigo" : "neutral"}>{t(rp.labelKey)}</Badge>
-                {profile.blocked && <Badge tone="red">{t("crm.blocked")}</Badge>}
+                <Badge tone={profile.role === "admin" ? "info" : "neutral"}>{t(rp.labelKey)}</Badge>
+                {profile.blocked && <Badge tone="danger">{t("crm.blocked")}</Badge>}
               </div>
               <p className="truncate text-sm text-muted">{profile.email}</p>
               <p className="mt-0.5 text-xs text-faint">
@@ -179,7 +179,7 @@ export default async function CrmProfile({ params }: { params: Promise<{ id: str
                       {s.lastAt ? ` · ${formatDate(s.lastAt, locale)}` : ""}
                     </p>
                   </div>
-                  <Badge tone={s.failed > 0 ? "amber" : "green"}>{s.total}</Badge>
+                  <Badge tone={s.failed > 0 ? "accent" : "success"}>{s.total}</Badge>
                 </li>
               ))}
             </ul>
@@ -200,7 +200,7 @@ export default async function CrmProfile({ params }: { params: Promise<{ id: str
               {timeline.map((e, i) => (
                 <li key={i} className="flex items-center justify-between gap-3 px-5 py-2.5">
                   <span className="flex min-w-0 items-center gap-2">
-                    <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${e.tone === "green" ? "bg-accent" : e.tone === "red" ? "bg-red-500" : "bg-faint"}`} />
+                    <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${e.tone === "green" ? "bg-success" : e.tone === "red" ? "bg-danger" : "bg-faint"}`} />
                     <code className="truncate text-xs">{e.label}</code>
                   </span>
                   <span className="shrink-0 text-xs text-muted">{formatDate(e.at, locale)}</span>
@@ -238,7 +238,7 @@ export default async function CrmProfile({ params }: { params: Promise<{ id: str
                     <p className="truncate text-xs text-muted">{tx.description ?? formatDate(tx.created_at, locale)}</p>
                   </div>
                   <span className="flex shrink-0 items-center gap-2">
-                    <Badge tone={tx.amount >= 0 ? "green" : "red"}>{tx.amount >= 0 ? "+" : ""}{tx.amount}</Badge>
+                    <Badge tone={tx.amount >= 0 ? "success" : "danger"}>{tx.amount >= 0 ? "+" : ""}{tx.amount}</Badge>
                     {tx.balance_after != null && <span className="text-xs text-faint">→ {tx.balance_after}</span>}
                   </span>
                 </li>

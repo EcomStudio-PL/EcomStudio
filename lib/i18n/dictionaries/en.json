@@ -479,7 +479,10 @@
       "loginSecurity": "Login security",
       "features": "Feature availability",
       "onboarding": "Registration and bonus",
-      "access": "Platform access"
+      "access": "Platform access",
+      "comm": "Communication",
+      "registration": "Registration fields",
+      "advanced": "Advanced"
     },
     "engine": {
       "title": "AI Engine — Knowledge base",
@@ -688,9 +691,10 @@
       "content": "Content",
       "comm": "Communication",
       "finance": "Finance",
-      "ai": "AI",
+      "ai": "AI & generation",
       "system": "System",
-      "marketing": "Marketing"
+      "marketing": "Marketing & website",
+      "clients": "Clients & communication"
     },
     "newPlan": "New plan",
     "annualPrice": "Annual price",
@@ -2927,7 +2931,15 @@
     },
     "captchaProtect": "Registration protection",
     "captchaProtectSub": "Require Turnstile at signup. Switching it off takes effect on the server, not just by hiding the widget.",
-    "captchaOffWarning": "Anti-bot protection is off. Registration accepts submissions without verification — switch it back on when you are done diagnosing."
+    "captchaOffWarning": "Anti-bot protection is off. Registration accepts submissions without verification — switch it back on when you are done diagnosing.",
+    "moduleTitle": "Communication",
+    "moduleSub": "The inbox, the notifications, what the messages say and the channels they leave through — in one place.",
+    "tab.inbox": "Inbox",
+    "tab.notifications": "Notifications",
+    "tab.templates": "Templates",
+    "tab.channels": "Channels",
+    "transportOwned": "The outgoing server is set on the Mail card above — the one place an SMTP host, port and password are typed.",
+    "mirrorAlways": "The server settings on this card are used by system mail as well (waitlist confirmations). The sender name and the confirmation copy are left untouched."
   },
   "reg": {
     "title": "Registration and security",

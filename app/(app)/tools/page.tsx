@@ -200,9 +200,9 @@ function SectionHead({ title, sub, badge }: { title: string; sub: string; badge?
 /** The price when the tool can be opened, the reason when it cannot. */
 function StateBadge({ state, t }: { state: ToolAvailability | null; t: T }) {
   if (!state) return null;
-  if (!state.available) return <Badge tone="amber">{t(`tools.state.${state.reason}`)}</Badge>;
+  if (!state.available) return <Badge tone="accent">{t(`tools.state.${state.reason}`)}</Badge>;
   return state.credits === 0
-    ? <Badge tone="green">{t("tools.free")}</Badge>
+    ? <Badge tone="success">{t("tools.free")}</Badge>
     : <Badge tone="neutral">{t("tools.creditsTotal", { n: state.credits })}</Badge>;
 }
 
@@ -248,7 +248,7 @@ function EditorTile({ card, state, t }: { card: EditorCard; state: ToolAvailabil
       </span>
       <span className="min-w-0 flex-1 truncate text-[13px] font-semibold tracking-tight">{card.title}</span>
       {!open && state
-        ? <Badge tone="amber">{t(`tools.state.${state.reason}`)}</Badge>
+        ? <Badge tone="accent">{t(`tools.state.${state.reason}`)}</Badge>
         : state && state.credits > 0
           ? <Badge tone="neutral">{t("tools.creditsTotal", { n: state.credits })}</Badge>
           : open && <ArrowUpRight size={14} className="shrink-0 text-faint" aria-hidden />}

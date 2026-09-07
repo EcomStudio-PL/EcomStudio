@@ -89,7 +89,7 @@ export default async function ProductsPage({ searchParams }: {
                   )}
                   <div aria-hidden className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/55 to-transparent opacity-90" />
                   <div className="absolute inset-x-3 bottom-2.5 flex items-end justify-between gap-2">
-                    <Badge tone={p.status === "ready" ? "green" : "neutral"} dot
+                    <Badge tone={p.status === "ready" ? "success" : "neutral"} dot
                       className="backdrop-blur-md">
                       {t(`products.status.${p.status}`)}
                     </Badge>
