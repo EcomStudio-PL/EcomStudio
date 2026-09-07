@@ -3505,6 +3505,43 @@ export type Database = {
             }
             Returns: string
           }
+      admin_soft_delete_user: { Args: { p_user_id: string; p_confirm_email: string }; Returns: Json }
+      admin_user_facts: {
+        Args: { p_ids: string[] }
+        Returns: { id: string; email_confirmed_at: string | null; last_sign_in_at: string | null }[]
+      }
+      admin_customer_rows: {
+        Args: {
+          p_search?: string | null
+          p_role?: string | null
+          p_status?: string | null
+          p_verified?: string | null
+          p_plan?: string | null
+          p_since?: string | null
+          p_sort?: string | null
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: {
+          id: string
+          email: string
+          full_name: string | null
+          role: string
+          blocked: boolean
+          created_at: string
+          verified: boolean
+          last_sign_in_at: string | null
+          workspace_id: string | null
+          workspace_name: string | null
+          plan: string
+          credits: number
+          spent_cents: number
+          generations: number
+          last_active: string | null
+          total_count: number
+        }[]
+      }
+      admin_customer_plans: { Args: never; Returns: { plan: string }[] }
       credit_wallets_total: { Args: never; Returns: number }
       generation_credits_total: { Args: never; Returns: number }
       welcome_bonus_stats: {

@@ -29,6 +29,12 @@ export type EmailTemplateInput = {
   title: string;
   /** Paragraph under the title. Optional. */
   intro?: string;
+  /**
+   * Further paragraphs, for a written message rather than an event report.
+   * Each is escaped and rendered as its own block — a blank line typed by an
+   * operator has to survive as a paragraph, and `intro` alone collapses it.
+   */
+  paragraphs?: string[];
   /** The compact field table. Empty values are dropped, never rendered blank. */
   fields?: EmailField[];
   cta?: { label: string; url: string };
@@ -57,6 +63,7 @@ const MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
 export function renderEmailTemplate(input: EmailTemplateInput): { html: string; text: string } {
   const fields = (input.fields ?? []).filter((f) => f.value.trim() !== "");
+  const paragraphs = (input.paragraphs ?? []).map((p) => p.trim()).filter(Boolean);
   const cta = input.cta && safeUrl(input.cta.url)
     ? { label: input.cta.label, url: safeUrl(input.cta.url)! }
     : null;
@@ -98,8 +105,9 @@ export function renderEmailTemplate(input: EmailTemplateInput): { html: string; 
 
   <tr><td bgcolor="#FFFFFF" style="background-color:#FFFFFF; border:1px solid #EBE2F3; border-top:0; border-radius:0 0 12px 12px; padding:30px 30px 28px 30px;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-      <tr><td style="padding:0 0 ${input.intro ? "8" : "16"}px 0; font-family:${FONT}; font-size:19px; line-height:26px; font-weight:800; letter-spacing:-0.3px; color:#1A1127;">${escapeHtml(input.title)}</td></tr>
+      <tr><td style="padding:0 0 ${input.intro || paragraphs.length ? "8" : "16"}px 0; font-family:${FONT}; font-size:19px; line-height:26px; font-weight:800; letter-spacing:-0.3px; color:#1A1127;">${escapeHtml(input.title)}</td></tr>
       ${input.intro ? `<tr><td style="padding:0 0 18px 0; font-family:${FONT}; font-size:14px; line-height:22px; color:#4A4058;">${escapeHtml(input.intro)}</td></tr>` : ""}
+      ${paragraphs.map((p) => `<tr><td style="padding:0 0 14px 0; font-family:${FONT}; font-size:14px; line-height:22px; color:#4A4058;">${escapeHtml(p).replace(/\n/g, "<br>")}</td></tr>`).join("")}
       ${fields.length ? `<tr><td>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FBF8FD" style="background-color:#FBF8FD; border:1px solid #F0E9F7; border-radius:10px;">${fieldRows}
         </table>
@@ -126,6 +134,7 @@ export function renderEmailTemplate(input: EmailTemplateInput): { html: string; 
     input.badge ? `[${input.badge}]` : "",
     input.title,
     input.intro ?? "",
+    ...paragraphs.flatMap((p) => [p, ""]),
     "",
     ...fields.map((f) => `${f.label}: ${f.value}`),
     cta ? `\n${cta.label}: ${cta.url}` : "",

@@ -143,7 +143,12 @@ check("three states, not two", /"ok" \| "fail" \| "unknown"/.test(health));
 check("unknown when never tested", /return "unknown"/.test(health));
 const systemPage = read("app/admin/system/page.tsx");
 check("no hardcoded Vercel green", !/Vercel<\/span>\s*\n?\s*<Badge tone="success"/.test(systemPage));
-check("dashboard shows verified health", read("app/admin/page.tsx").includes("readSystemHealth"));
+// The health grid used to sit on the dashboard. It now lives on the System
+// screen — moved, not deleted: the diagnostics are still one click away, and
+// the dashboard is free to be about the business.
+check("system screen shows verified health", systemPage.includes("HealthGrid"));
+check("dashboard no longer carries the integration grid",
+  !read("app/admin/page.tsx").includes("readSystemHealth"));
 
 console.log("J. analytics asks four questions over one range");
 const analytics = read("app/admin/analytics/page.tsx");

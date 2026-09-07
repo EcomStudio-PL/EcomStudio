@@ -1,95 +1,142 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { PageHeader } from "@/components/ui/page-header";
-import Link from "next/link";
-import { FileBarChart } from "lucide-react";
-import { AdminTable } from "@/components/ui/admin-table";
-import { Badge } from "@/components/ui/badge";
-import { UserActions } from "@/components/admin/user-actions";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { formatDate } from "@/lib/utils";
+import { CustomerTable } from "@/components/admin/customer-table";
+import {
+  CUSTOMER_SORTS, REGISTERED_WINDOWS, readCustomerPlans, readCustomers,
+  type CustomerSort,
+} from "@/lib/services/admin-crm";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-const pln = (cents: number) =>
-  new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN", maximumFractionDigits: 0 }).format(cents / 100);
-const SETTLED = new Set(["succeeded", "paid", "completed"]);
+/**
+ * ADMIN → KLIENCI.
+ *
+ * The same CRM as before, doing its job properly: search over name and
+ * e-mail, filters that map to states the database can actually answer for,
+ * sorting that sorts every customer rather than the page that happened to be
+ * fetched, and paging with a real total.
+ */
 
-export default async function AdminUsers({ searchParams }: {
-  searchParams: Promise<{ q?: string; role?: string }>;
-}) {
-  const { q, role } = await searchParams;
+const PER_PAGE = 50;
+
+type Search = {
+  q?: string; role?: string; status?: string; verified?: string;
+  plan?: string; registered?: string; sort?: string; page?: string;
+};
+
+export default async function AdminUsers({ searchParams }: { searchParams: Promise<Search> }) {
+  const sp = await searchParams;
   const supabase = await createClient();
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
   const { data: { user: me } } = await supabase.auth.getUser();
-  let query = supabase.from("profiles").select("*").order("created_at", { ascending: false }).limit(200);
-  if (q) query = query.or(`email.ilike.%${q}%,full_name.ilike.%${q}%`);
-  if (role === "admin" || role === "user" || role === "manager") query = query.eq("role", role);
-  const [{ data }, { data: memberships }, { data: payments }, { data: usage }, { data: subs }] = await Promise.all([
-    query,
-    supabase.from("workspace_members").select("user_id, workspaces(id, name, credit_wallets(balance))"),
-    supabase.from("payments").select("workspace_id, amount_cents, status").limit(20000),
-    supabase.from("usage_events").select("user_id, created_at").order("created_at", { ascending: false }).limit(20000),
-    supabase.from("subscriptions").select("workspace_id, status, subscription_plans(name)").eq("status", "active"),
+
+  const page = Math.max(Number(sp.page) || 1, 1);
+  const sort = (CUSTOMER_SORTS as readonly string[]).includes(sp.sort ?? "")
+    ? (sp.sort as CustomerSort) : "newest";
+
+  const [plans, result] = await Promise.all([
+    readCustomerPlans(supabase),
+    readCustomers(supabase, {
+      search: sp.q, role: sp.role, status: sp.status, verified: sp.verified,
+      plan: sp.plan, registered: Number(sp.registered) || undefined,
+      sort, page, perPage: PER_PAGE,
+    }),
   ]);
-  const wsByUser = new Map((memberships ?? []).map((m) => [m.user_id, m.workspaces]));
-  const revByWs = new Map<string, number>();
-  for (const p of payments ?? []) {
-    if (SETTLED.has(p.status)) revByWs.set(p.workspace_id, (revByWs.get(p.workspace_id) ?? 0) + p.amount_cents);
-  }
-  const planByWs = new Map((subs ?? []).map((s) => [s.workspace_id, s.subscription_plans?.name]));
-  const gensByUser = new Map<string, { n: number; last: string }>();
-  for (const u of usage ?? []) {
-    if (!u.user_id) continue;
-    const cur = gensByUser.get(u.user_id);
-    if (cur) cur.n += 1;
-    else gensByUser.set(u.user_id, { n: 1, last: u.created_at });
-  }
+
+  const pages = Math.max(Math.ceil(result.total / PER_PAGE), 1);
+  const linkTo = (next: number) => {
+    const params = new URLSearchParams(
+      Object.entries(sp).filter(([, v]) => v).map(([k, v]) => [k, String(v)]),
+    );
+    if (next > 1) params.set("page", String(next)); else params.delete("page");
+    return `/admin/users${params.size ? `?${params}` : ""}`;
+  };
 
   return (
     <div>
-      <PageHeader title={t("admin.nav.users")} />
-      <FilterBar filters={[{
-        param: "role",
-        labelKey: "admin.role",
-        options: [{ value: "admin", label: "admin" }, { value: "manager", label: "manager" }, { value: "user", label: "user" }],
-      }]} />
-      <AdminTable
-        headers={[t("admin.user"), t("admin.role"), t("plan.title"), t("nav.credits"), t("crm.spentTotal"), t("analytics.generations"), t("crm.lastActive"), t("common.actions")]}
-        empty={t("admin.noData")}
-        rows={(data ?? []).map((u) => {
-          const ws = wsByUser.get(u.id);
-          const gens = gensByUser.get(u.id);
-          return [
-            <div key="n" className="min-w-0">
-              <a href={`/admin/users/${u.id}`} className="font-medium text-accent hover:opacity-75">
-                {u.full_name ?? u.email}
-              </a>
-              <p className="truncate text-xs text-muted">{u.email}</p>
-            </div>,
-            <span key="r" className="flex gap-1">
-              <Badge tone={u.role === "admin" ? "info" : "neutral"}>{u.role}</Badge>
-              {u.blocked && <Badge tone="danger">✕</Badge>}
-            </span>,
-            (ws ? planByWs.get(ws.id) : null) ?? "Free",
-            ws?.credit_wallets?.balance ?? "—",
-            ws ? pln(revByWs.get(ws.id) ?? 0) : "—",
-            gens?.n ?? 0,
-            gens?.last ? formatDate(gens.last, locale) : formatDate(u.created_at, locale),
-            // The report was only reachable by knowing the name was a link;
-            // it is now an explicit, labelled action next to the rest.
-            <span key="a" className="flex flex-wrap items-center gap-1.5">
-              <Link href={`/admin/users/${u.id}`}
-                className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-accent2-soft px-2.5 text-[13px] font-semibold text-accent2 transition-colors hover:brightness-110">
-                <FileBarChart size={14} aria-hidden />
-                {t("admin.report")}
-              </Link>
-              <UserActions userId={u.id} role={u.role} isSelf={u.id === me?.id}
-                balance={ws?.credit_wallets?.balance ?? null} />
-            </span>,
-          ];
-        })}
+      <PageHeader title={t("admin.nav.users")} sub={t("crm.total", { n: result.total })} />
+
+      <FilterBar
+        filters={[
+          {
+            param: "status", labelKey: "crm.filterStatus",
+            options: [
+              { value: "active", label: t("crm.active") },
+              { value: "blocked", label: t("crm.blocked") },
+            ],
+          },
+          {
+            param: "verified", labelKey: "crm.filterVerified",
+            options: [
+              { value: "yes", label: t("crm.verified") },
+              { value: "no", label: t("crm.unverified") },
+            ],
+          },
+          // Only the plans that exist right now; a filter for a plan nobody is
+          // on would always return nothing.
+          ...(plans.length
+            ? [{
+                param: "plan", labelKey: "crm.filterPlan",
+                options: [
+                  { value: "free", label: t("crm.planFree") },
+                  ...plans.map((p) => ({ value: p, label: p })),
+                ],
+              }]
+            : []),
+          {
+            param: "registered", labelKey: "crm.filterRegistered",
+            options: REGISTERED_WINDOWS.map((d) => ({ value: String(d), label: t("crm.lastDays", { n: d }) })),
+          },
+          {
+            param: "role", labelKey: "admin.role",
+            options: [
+              { value: "admin", label: "admin" },
+              { value: "manager", label: "manager" },
+              { value: "user", label: "user" },
+            ],
+          },
+          {
+            param: "sort", labelKey: "crm.sortNewest",
+            options: [
+              { value: "oldest", label: t("crm.sortOldest") },
+              { value: "name", label: t("crm.sortName") },
+              { value: "spent", label: t("crm.sortSpent") },
+              { value: "credits", label: t("crm.sortCredits") },
+              { value: "active", label: t("crm.sortActive") },
+            ],
+          },
+        ]}
       />
+
+      <CustomerTable rows={result.rows} adminId={me?.id ?? null} locale={locale} />
+
+      {pages > 1 && (
+        <nav className="mt-4 flex items-center justify-center gap-2" aria-label={t("crm.pagination")}>
+          <PageLink href={linkTo(page - 1)} disabled={page <= 1} label={t("common.back")}>
+            <ChevronLeft size={16} aria-hidden />
+          </PageLink>
+          <span className="text-sm text-muted">{t("crm.pageOf", { page, pages })}</span>
+          <PageLink href={linkTo(page + 1)} disabled={page >= pages} label={t("common.viewAll")}>
+            <ChevronRight size={16} aria-hidden />
+          </PageLink>
+        </nav>
+      )}
     </div>
   );
+}
+
+function PageLink({ href, disabled, label, children }: {
+  href: string; disabled: boolean; label: string; children: React.ReactNode;
+}) {
+  const className = cn(
+    "grid size-9 place-items-center rounded-lg border border-line transition-colors",
+    disabled ? "pointer-events-none opacity-40" : "hover:border-accent hover:text-accent",
+  );
+  if (disabled) return <span aria-disabled className={className}>{children}</span>;
+  return <Link href={href} aria-label={label} className={className}>{children}</Link>;
 }
