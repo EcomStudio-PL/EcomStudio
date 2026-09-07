@@ -47,6 +47,31 @@ const CATEGORY: Record<AiToolKey, ToolCategory> = {
   tool_upscale: "editing", tool_expand: "editing", video: "video",
 };
 
+/** Which tools actually run through the ai_models path (`runGeneration`).
+ *  The paid micro-tools reach a provider by capability instead, so offering
+ *  them a model picker would be a control that decides nothing. */
+const MODEL_DRIVEN: readonly AiToolKey[] = ["prompts", "generator", "retouch", "video"];
+
+export const TOOL_TABS = ["basics", "engine", "models", "knowledge", "economics", "history"] as const;
+export type ToolTab = (typeof TOOL_TABS)[number];
+
+/**
+ * The tabs this particular tool deserves. A compression tool has no engine to
+ * configure and no model to choose; showing it seven tabs of empty panels
+ * would be worse than showing it two.
+ */
+export function toolTabs(row: { key: AiToolKey; engineMode: EngineMode; serviceSlug: string | null }): ToolTab[] {
+  const tabs: ToolTab[] = ["basics"];
+  const modelDriven = MODEL_DRIVEN.includes(row.key);
+  // The engine tab is always offered on a model-driven tool: it is how a tool
+  // that has no engine yet is given one.
+  if (modelDriven || row.engineMode !== "off") tabs.push("engine");
+  if (modelDriven) tabs.push("models");
+  if (row.engineMode !== "off") tabs.push("knowledge");
+  if (row.serviceSlug) tabs.push("economics", "history");
+  return tabs;
+}
+
 export type ToolModel = {
   id: string;
   name: string;

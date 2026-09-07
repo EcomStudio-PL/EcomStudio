@@ -3683,6 +3683,21 @@ export type Database = {
         }[]
       }
       admin_customer_plans: { Args: never; Returns: { plan: string }[] }
+      ai_save_tool_prompt: {
+        Args: {
+          p_tool_key: string
+          p_body_encrypted: string
+          p_iv: string
+          p_tag: string
+          p_summary?: string | null
+          p_reason?: string | null
+          p_source?: string
+          p_publish?: boolean
+        }
+        Returns: Json
+      }
+      ai_publish_tool_prompt: { Args: { p_id: string; p_reason?: string | null }; Returns: Json }
+      ai_restore_tool_prompt: { Args: { p_id: string; p_reason?: string | null }; Returns: Json }
       ai_tool_runtime: {
         Args: { p_tool_key: string; p_token: string | null }
         Returns: {

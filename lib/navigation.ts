@@ -83,6 +83,10 @@ export const ADMIN_NAV: readonly NavGroup[] = [
   // What the product generates and everything that decides how: the output
   // first, then the machinery behind it.
   { key: "ai", items: [
+    // The consolidated control centre. The six entries below it are the
+    // screens it replaces; they stay reachable until their functionality has
+    // been verified in the new home (see docs/ai-control-center.md).
+    { href: "/admin/ai", key: "aiTools", icon: Sparkles },
     { href: "/admin/generations", key: "generations", icon: Wand2 },
     { href: "/admin/models", key: "models", icon: Cpu },
     { href: "/admin/providers", key: "providers", icon: Plug },
