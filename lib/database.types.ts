@@ -120,6 +120,147 @@ export type Database = {
           },
         ]
       }
+      ai_tools: {
+        Row: {
+          tool_key: string
+          service_slug: string | null
+          engine_mode: string
+          allow_model_choice: boolean
+          fallback_enabled: boolean
+          timeout_ms: number
+          max_attempts: number
+          notes: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          tool_key: string
+          service_slug?: string | null
+          engine_mode?: string
+          allow_model_choice?: boolean
+          fallback_enabled?: boolean
+          timeout_ms?: number
+          max_attempts?: number
+          notes?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          tool_key?: string
+          service_slug?: string | null
+          engine_mode?: string
+          allow_model_choice?: boolean
+          fallback_enabled?: boolean
+          timeout_ms?: number
+          max_attempts?: number
+          notes?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      ai_tool_models: {
+        Row: { tool_key: string; model_id: string; role: string; sort_order: number }
+        Insert: { tool_key: string; model_id: string; role: string; sort_order?: number }
+        Update: { tool_key?: string; model_id?: string; role?: string; sort_order?: number }
+        Relationships: []
+      }
+      ai_tool_prompts: {
+        Row: {
+          id: string
+          tool_key: string
+          version: number
+          status: string
+          body_encrypted: string
+          body_iv: string
+          body_tag: string
+          summary: string | null
+          reason: string | null
+          source: string
+          created_by: string | null
+          created_at: string
+          published_at: string | null
+        }
+        Insert: {
+          id?: string
+          tool_key: string
+          version: number
+          status?: string
+          body_encrypted: string
+          body_iv: string
+          body_tag: string
+          summary?: string | null
+          reason?: string | null
+          source?: string
+          created_by?: string | null
+          created_at?: string
+          published_at?: string | null
+        }
+        Update: {
+          id?: string
+          tool_key?: string
+          version?: number
+          status?: string
+          body_encrypted?: string
+          body_iv?: string
+          body_tag?: string
+          summary?: string | null
+          reason?: string | null
+          source?: string
+          created_by?: string | null
+          created_at?: string
+          published_at?: string | null
+        }
+        Relationships: []
+      }
+      ai_tool_knowledge: {
+        Row: { tool_key: string; set_id: string; enabled: boolean; created_at: string }
+        Insert: { tool_key: string; set_id: string; enabled?: boolean; created_at?: string }
+        Update: { tool_key?: string; set_id?: string; enabled?: boolean; created_at?: string }
+        Relationships: []
+      }
+      ai_provider_budgets: {
+        Row: {
+          provider_id: string
+          monthly_budget_usd_micros: number | null
+          warn_percent: number
+          critical_percent: number
+          max_request_usd_micros: number | null
+          failure_rate_percent: number | null
+          alerts_enabled: boolean
+          last_alert_level: string | null
+          last_alert_at: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          provider_id: string
+          monthly_budget_usd_micros?: number | null
+          warn_percent?: number
+          critical_percent?: number
+          max_request_usd_micros?: number | null
+          failure_rate_percent?: number | null
+          alerts_enabled?: boolean
+          last_alert_level?: string | null
+          last_alert_at?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          provider_id?: string
+          monthly_budget_usd_micros?: number | null
+          warn_percent?: number
+          critical_percent?: number
+          max_request_usd_micros?: number | null
+          failure_rate_percent?: number | null
+          alerts_enabled?: boolean
+          last_alert_level?: string | null
+          last_alert_at?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       ai_models: {
         Row: {
           active: boolean
@@ -3542,6 +3683,24 @@ export type Database = {
         }[]
       }
       admin_customer_plans: { Args: never; Returns: { plan: string }[] }
+      ai_tool_runtime: {
+        Args: { p_tool_key: string; p_token: string | null }
+        Returns: {
+          tool_key: string
+          engine_mode: string
+          service_slug: string | null
+          allow_model_choice: boolean
+          fallback_enabled: boolean
+          timeout_ms: number
+          max_attempts: number
+          primary_model_id: string | null
+          fallback_model_id: string | null
+          prompt_encrypted: string | null
+          prompt_iv: string | null
+          prompt_tag: string | null
+          prompt_version: number | null
+        }[]
+      }
       credit_wallets_total: { Args: never; Returns: number }
       generation_credits_total: { Args: never; Returns: number }
       welcome_bonus_stats: {
