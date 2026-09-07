@@ -19,6 +19,8 @@ import {
   type EditorEntry, type EditorSection, type EditorState, type HistoryEntry,
 } from "@/lib/images/editor-state";
 import { DEFAULT_SETTINGS, MAX_UPLOAD_BYTES } from "@/lib/images/tools";
+import { acceptFiles, type IntakeLimits } from "@/lib/images/file-intake";
+import { FileDropOverlay, useImageDrop } from "@/components/ui/file-drop";
 import { outputName } from "@/lib/images/zip";
 import { cn, formatBytes } from "@/lib/utils";
 
@@ -72,7 +74,17 @@ const STEP_LABEL: Record<EditorSection, string> = {
 };
 
 /** The three the copy promises. A subset of the API's own allowlist. */
-const ACCEPTED = ["image/png", "image/jpeg", "image/webp"];
+/**
+ * WHAT THIS TOOL TAKES — declared once, used by the picker, the drop and the
+ * validator alike. It reads narrower than the batch tools on purpose: the
+ * editor composes through sharp and AVIF is not in that path.
+ */
+const EDITOR_LIMITS: IntakeLimits = {
+  mime: ["image/png", "image/jpeg", "image/webp"],
+  ext: null,
+  maxBytes: MAX_UPLOAD_BYTES,
+  maxFiles: 1,
+};
 
 /** Codes we have a sentence for; anything else becomes the generic failure
  *  rather than a raw key on screen. Mirrors the workbench's vocabulary. */
@@ -126,7 +138,6 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
    *  sheet. On phones `sheet === "history"` still does the work. */
   const [historyOpen, setHistoryOpen] = useState(false);
   const [resetKey, setResetKey] = useState(0);
-  const [dragging, setDragging] = useState(false);
 
   // Mirrors for the async paths: a fetch that resolves two seconds later must
   // read the state as it is NOW, not as it was when the closure was made.
@@ -244,15 +255,40 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
     return next;
   }, [entry, t]);
 
+  /**
+   * THE ONE DOOR. The picker, a drop anywhere over the editor and any future
+   * paste all arrive here, so a file the dialog accepts can never be a file
+   * the drop refuses.
+   */
   const pick = useCallback((files: FileList | File[] | null) => {
-    const file = Array.from(files ?? [])[0];
-    if (!file) return;
-    if (!ACCEPTED.includes(file.type) || file.size > MAX_UPLOAD_BYTES) {
-      toast.error(t("tools.rejected", { n: 1 }));
+    const { accepted, badType, tooLarge } = acceptFiles(files, EDITOR_LIMITS, 1);
+    const file = accepted[0];
+    if (!file) {
+      if (badType + tooLarge > 0) toast.error(t("tools.rejected", { n: badType + tooLarge }));
       return;
     }
     void adopt(file, false);
   }, [adopt, t]);
+
+  /**
+   * THE WHOLE EDITOR IS THE DROP TARGET.
+   *
+   * A photo released anywhere over this page loads into the canvas that is
+   * already mounted — no navigation, no second editor, no aiming at the dashed
+   * rectangle. It goes through `pick`, so a drop and a click are the same
+   * intake, and `useImageDrop` only fires for drags that genuinely carry files
+   * — moving the image inside the canvas or dragging a slider leaves it alone.
+   */
+  const dragging = useImageDrop({
+    limits: EDITOR_LIMITS,
+    room: 1,
+    // A drop mid-export would overwrite the image being written out.
+    enabled: !loading && busy === null,
+    onIntake: ({ accepted, badType, tooLarge }) => {
+      if (accepted[0]) { pick(accepted); return; }
+      if (badType + tooLarge > 0) toast.error(t("tools.rejected", { n: badType + tooLarge }));
+    },
+  });
 
   /* ── the one paid step ───────────────────────────────────────────────── */
 
@@ -455,7 +491,7 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
   };
 
   const picker = (
-    <input ref={fileInput} type="file" accept={ACCEPTED.join(",")} className="hidden"
+    <input ref={fileInput} type="file" accept={EDITOR_LIMITS.mime.join(",")} className="hidden"
       onChange={(event) => { pick(event.target.files); event.target.value = ""; }} />
   );
 
@@ -463,9 +499,6 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
     <button
       type="button"
       onClick={() => fileInput.current?.click()}
-      onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={(event) => { event.preventDefault(); setDragging(false); pick(event.dataTransfer.files); }}
       className={cn(
         "flex min-h-[18rem] w-full flex-1 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed px-5 py-10 text-center transition-colors",
         dragging
@@ -516,6 +549,16 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
       "lg:grid-cols-[clamp(292px,22vw,340px)_minmax(0,1fr)] lg:items-stretch lg:gap-5 lg:overflow-hidden lg:pb-0",
     )}>
       {picker}
+
+      {/* Covers the viewport, not just this grid: on this route the editor IS
+          the page, so a photo released over the toolbar or the sidebar is as
+          valid as one released over the canvas. */}
+      <FileDropOverlay
+        show={dragging}
+        fullscreen
+        title={t("editor.drop")}
+        sub={`${t("editor.formats")} · ${formatBytes(MAX_UPLOAD_BYTES)}`}
+      />
 
       {/* ── LEFT: the five sections (desktop only; phones use the sheets) ──
           They render whether or not a photo is loaded. A `fieldset[disabled]`

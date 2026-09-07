@@ -18,6 +18,8 @@ import {
 import { CostSummary, GroupLabel, RadioRows } from "@/components/tools/panel-parts";
 import { createZip, outputName } from "@/lib/images/zip";
 import { cn, formatBytes } from "@/lib/utils";
+import { acceptFiles, type IntakeLimits } from "@/lib/images/file-intake";
+import { FileDropOverlay, useFileDrop } from "@/components/ui/file-drop";
 
 /**
  * RESIZE — the batch screen.
@@ -74,6 +76,15 @@ const PRESETS = [
  *  The route validates both again — this only saves the seller the upload. */
 const ACCEPTED_EXT = ["jpg", "jpeg", "png", "webp", "avif"];
 
+/** What this tool takes — one object, used by the picker, the drop and
+ *  the validator, so the three can never disagree. */
+const RESIZE_LIMITS: IntakeLimits = {
+  mime: ACCEPTED_MIME,
+  ext: ACCEPTED_EXT,
+  maxBytes: MAX_UPLOAD_BYTES,
+  maxFiles: MAX_FILES,
+};
+
 type ItemStatus = "queued" | "running" | "done" | "error";
 
 type Item = {
@@ -107,7 +118,6 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
   const [customHeight, setCustomHeight] = useState("");
   const [lockRatio, setLockRatio] = useState(true);
   const [running, setRunning] = useState(false);
-  const [dragging, setDragging] = useState(false);
   const cancelled = useRef(false);
 
   /**
@@ -181,30 +191,35 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
   }, [track]);
 
   const addFiles = useCallback((files: FileList | File[]) => {
-    const accepted: Item[] = [];
-    let rejected = 0;
-    for (const file of Array.from(files)) {
-      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-      const ok = ACCEPTED_MIME.includes(file.type) && ACCEPTED_EXT.includes(ext)
-        && file.size > 0 && file.size <= MAX_UPLOAD_BYTES;
-      if (!ok) { rejected++; continue; }
-      accepted.push({
-        id: `${file.name}-${file.size}-${accepted.length}-${Math.random().toString(36).slice(2, 8)}`,
-        file, status: "queued",
-      });
-    }
-    if (rejected > 0) toast.error(t("tools.rejected", { n: rejected }));
-    if (accepted.length === 0) return;
-
+    // ONE GATE. The picker and a drop anywhere on the page both land here, so
+    // a file the dialog accepts is exactly a file the drop accepts.
     const room = Math.max(0, MAX_FILES - live.current.size);
-    const taken = accepted.slice(0, room);
-    if (taken.length < accepted.length) toast.error(t("tools.batchFull", { n: MAX_FILES }));
-    if (taken.length === 0) return;
+    const sorted = acceptFiles(files, RESIZE_LIMITS, room);
+    const rejected = sorted.badType + sorted.tooLarge;
+    if (rejected > 0) toast.error(t("tools.rejected", { n: rejected }));
+    if (sorted.overflow > 0) toast.error(t("tools.batchFull", { n: MAX_FILES }));
+    if (sorted.accepted.length === 0) return;
+
+    const taken: Item[] = sorted.accepted.map((file, i) => ({
+      id: `${file.name}-${file.size}-${i}-${Math.random().toString(36).slice(2, 8)}`,
+      file, status: "queued",
+    }));
 
     for (const item of taken) live.current.add(item.id);
     setItems((prev) => [...prev, ...taken]);
     void thumbnails(taken);
   }, [t, thumbnails]);
+
+  /**
+   * THE WHOLE PAGE IS THE DROP TARGET.
+   *
+   * Photos released anywhere over this tool go straight to `addFiles`, which
+   * is the same function the file dialog calls — so the validation, the batch
+   * ceiling and the error toasts are identical either way. The hook only fires
+   * for drags that genuinely carry files, so reordering a thumbnail or
+   * dragging a slider never raises the overlay.
+   */
+  const dragging = useFileDrop({ onFiles: (files) => { if (files) addFiles(files); } });
 
   function removeItem(id: string) {
     release(id);
@@ -318,6 +333,14 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
     // The action bar floats above the app dock on phones, so the gallery keeps
     // its own room underneath; on desktop the bar returns to the flow.
     <div className="grid gap-4 pb-36 [&>*]:min-w-0 lg:grid-cols-[21rem_minmax(0,1fr)] lg:gap-5 lg:pb-0">
+      {/* The tool's whole page is the target — the dashed tile below is a
+          convenience, not the only way in. */}
+      <FileDropOverlay
+        show={dragging}
+        fullscreen
+        title={t("tools.dropManyTitle")}
+        sub={t("tools.dropHint", { n: MAX_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })}
+      />
       {/* SETTINGS — first in the DOM, so a phone gets the dials before the
           gallery and a desktop gets a rail that stays put while it scrolls. */}
       <div className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
@@ -330,9 +353,6 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files) addFiles(e.dataTransfer.files); }}
             className={cn(
               "flex w-full flex-col items-center gap-1.5 rounded-xl border border-dashed px-4 py-6 transition-colors",
               dragging

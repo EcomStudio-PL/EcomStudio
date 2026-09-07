@@ -1700,7 +1700,9 @@
     },
     "costPerImage": "Per photo",
     "costTotal": "Total",
-    "addPhotos": "Add photos (max. {n})"
+    "addPhotos": "Add photos (max. {n})",
+    "dropManyTitle": "Drop your photos here",
+    "dropCompressTitle": "Drop photos to compress"
   },
   "editor": {
     "title": "Image editing",

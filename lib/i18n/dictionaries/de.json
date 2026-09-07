@@ -1700,7 +1700,9 @@
     },
     "costPerImage": "Pro Foto",
     "costTotal": "Gesamt",
-    "addPhotos": "Fotos hinzufügen (max. {n})"
+    "addPhotos": "Fotos hinzufügen (max. {n})",
+    "dropManyTitle": "Fotos hier ablegen",
+    "dropCompressTitle": "Fotos zum Komprimieren ablegen"
   },
   "editor": {
     "title": "Bildbearbeitung",

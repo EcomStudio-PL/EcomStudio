@@ -1700,7 +1700,9 @@
     },
     "costPerImage": "Koszt 1 zdjęcia",
     "costTotal": "Łączny koszt",
-    "addPhotos": "Dodaj zdjęcia (maks. {n})"
+    "addPhotos": "Dodaj zdjęcia (maks. {n})",
+    "dropManyTitle": "Upuść zdjęcia tutaj",
+    "dropCompressTitle": "Upuść zdjęcia do kompresji"
   },
   "editor": {
     "title": "Edycja obrazu",

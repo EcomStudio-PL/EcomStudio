@@ -19,6 +19,17 @@ import {
 } from "@/lib/images/tools";
 import { createZip, outputName } from "@/lib/images/zip";
 import { cn, formatBytes } from "@/lib/utils";
+import { acceptFiles, type IntakeLimits } from "@/lib/images/file-intake";
+import { FileDropOverlay, useFileDrop } from "@/components/ui/file-drop";
+
+/** What the batch tools take — one object, used by the picker, the drop and
+ *  the validator, so the three can never disagree. */
+const BATCH_LIMITS: IntakeLimits = {
+  mime: ACCEPTED_MIME,
+  ext: null,
+  maxBytes: MAX_UPLOAD_BYTES,
+  maxFiles: MAX_BATCH_FILES,
+};
 
 type ItemStatus = "queued" | "running" | "done" | "error";
 
@@ -64,7 +75,6 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
   const [settings, setSettings] = useState<Record<string, unknown>>({ ...DEFAULT_SETTINGS[tool] });
   const [logo, setLogo] = useState<{ file: File; url: string } | null>(null);
   const [running, setRunning] = useState(false);
-  const [dragging, setDragging] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [product, setProduct] = useState<PickableProduct | null>(null);
   const cancelled = useRef(false);
@@ -90,16 +100,15 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
   const notEnough = totalCredits > balance;
 
   const addFiles = useCallback((files: FileList | File[]) => {
-    const incoming = Array.from(files);
-    const accepted: Item[] = [];
-    let rejected = 0;
-    for (const file of incoming) {
-      if (!ACCEPTED_MIME.includes(file.type) || file.size > MAX_UPLOAD_BYTES) { rejected++; continue; }
-      accepted.push({
-        id: `${file.name}-${file.size}-${accepted.length}-${Math.random().toString(36).slice(2, 8)}`,
-        file, sourceUrl: trackUrl(file), status: "queued",
-      });
-    }
+    // ONE GATE. The picker and a drop anywhere on the page both land here, so
+    // a file the dialog accepts is exactly a file the drop accepts. The batch
+    // ceiling is applied by the setItems below, which knows the live length.
+    const sorted = acceptFiles(files, BATCH_LIMITS, BATCH_LIMITS.maxFiles);
+    const rejected = sorted.badType + sorted.tooLarge;
+    const accepted: Item[] = sorted.accepted.map((file, i) => ({
+      id: `${file.name}-${file.size}-${i}-${Math.random().toString(36).slice(2, 8)}`,
+      file, sourceUrl: trackUrl(file), status: "queued" as const,
+    }));
     if (rejected > 0) toast.error(t("tools.rejected", { n: rejected }));
     setItems((prev) => {
       const room = MAX_BATCH_FILES - prev.length;
@@ -108,6 +117,17 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
       return [...prev, ...accepted.slice(0, room)];
     });
   }, [t, trackUrl]);
+
+  /**
+   * THE WHOLE PAGE IS THE DROP TARGET.
+   *
+   * Photos released anywhere over this tool go straight to `addFiles`, which
+   * is the same function the file dialog calls — so the validation, the batch
+   * ceiling and the error toasts are identical either way. The hook only fires
+   * for drags that genuinely carry files, so reordering a thumbnail or
+   * dragging a slider never raises the overlay.
+   */
+  const dragging = useFileDrop({ onFiles: (files) => { if (files) addFiles(files); } });
 
   async function runOne(item: Item): Promise<Partial<Item>> {
     const form = new FormData();
@@ -235,6 +255,14 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
 
   return (
     <div className="grid gap-4 [&>*]:min-w-0 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      {/* The tool's whole page is the target — the dashed tile below is a
+          convenience, not the only way in. */}
+      <FileDropOverlay
+        show={dragging}
+        fullscreen
+        title={t("tools.dropManyTitle")}
+        sub={t("tools.dropHint", { n: MAX_BATCH_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })}
+      />
       <div className="min-w-0 space-y-4">
         {/* UPLOAD */}
         <input ref={inputRef} type="file" multiple accept={ACCEPTED_MIME.join(",")} className="hidden"
@@ -242,9 +270,6 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(e) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files) addFiles(e.dataTransfer.files); }}
           className={cn(
             "flex w-full flex-col items-center gap-1.5 rounded-2xl border border-dashed px-4 py-8 transition-colors",
             dragging

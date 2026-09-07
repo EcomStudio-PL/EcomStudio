@@ -4,10 +4,24 @@ import { ImagePlus, Loader2, Upload, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import type { UploadedRef } from "@/components/genv3/types";
+import {
+  acceptFiles, filesFromClipboard as clipboardFiles, type IntakeLimits,
+} from "@/lib/images/file-intake";
+import { FileDropOverlay, useFileDrop as useSharedFileDrop } from "@/components/ui/file-drop";
 
 export const UPLOAD_ACCEPT = "image/jpeg,image/png,image/webp,image/avif";
-const ACCEPTED = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+/**
+ * What the generator takes. Ten megabytes rather than the fifteen the batch
+ * tools allow, because every one of these is uploaded to storage and then sent
+ * to a provider — the ceiling is the provider's, not sharp's.
+ */
+const GENERATOR_LIMITS: IntakeLimits = {
+  mime: ["image/jpeg", "image/png", "image/webp", "image/avif"],
+  ext: null,
+  maxBytes: 10 * 1024 * 1024,
+  maxFiles: 24,
+};
 
 export type NormalizedFiles = {
   files: File[];
@@ -18,131 +32,49 @@ export type NormalizedFiles = {
 };
 
 /**
- * THE ONE ENTRY POINT for every image the seller adds — the file picker, a
- * drag & drop from Finder/Explorer and a clipboard paste all hand their
- * File objects to this function, so validation can never drift between the
- * three routes.
+ * THE ONE ENTRY POINT for every image the seller adds to the generator — the
+ * file picker, a drag from Finder/Explorer and a clipboard paste all pass
+ * through here.
+ *
+ * The rules themselves now live in lib/images/file-intake.ts, shared with the
+ * editor and the batch tools; this function is the generator's limits applied
+ * to that gate, kept under its old name and shape so nothing that calls it had
+ * to change.
  */
 export function normalizeFiles(list: FileList | File[] | null | undefined): NormalizedFiles {
-  const out: NormalizedFiles = { files: [], badType: 0, tooLarge: 0 };
-  for (const file of Array.from(list ?? [])) {
-    // A directory dragged in arrives as a zero-typed, zero-sized entry.
-    if (!ACCEPTED.has(file.type)) { out.badType++; continue; }
-    if (file.size === 0 || file.size > MAX_FILE_BYTES) { out.tooLarge++; continue; }
-    out.files.push(file);
-  }
-  return out;
+  const { accepted, badType, tooLarge } = acceptFiles(list, GENERATOR_LIMITS, GENERATOR_LIMITS.maxFiles);
+  return { files: accepted, badType, tooLarge };
 }
 
 /** Files pulled off a paste event, same validation as every other route. */
 export function filesFromClipboard(e: ClipboardEvent): File[] {
-  const picked: File[] = [];
-  for (const item of Array.from(e.clipboardData?.items ?? [])) {
-    if (item.kind !== "file") continue;
-    const file = item.getAsFile();
-    if (file) picked.push(file);
-  }
-  return normalizeFiles(picked).files;
+  return normalizeFiles(clipboardFiles(e)).files;
 }
 
-const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types?.includes("Files");
-
 /**
- * WORKSPACE-WIDE FILE DROP.
+ * WORKSPACE-WIDE FILE DROP — the generator's adapter over the shared hook.
  *
- * The old dropzone only accepted a drop that landed inside the small photos
- * block; a drop anywhere else on the panel was swallowed by the navigation
- * guard and then went nowhere — which is exactly what "przeciągam i nic się
- * nie dodaje" looked like. The listeners live on the window now, so the
- * whole generator is a drop target, and `drop` is prevented unconditionally
- * for file drags so the browser can never navigate to the dropped image.
- *
- * `dragenter`/`dragleave` are counted rather than toggled: they fire again
- * for every child element the pointer crosses, and toggling made the overlay
- * flicker.
+ * This behaviour started here and is now `useFileDrop` in
+ * components/ui/file-drop.tsx, used by every image tool in GrovBase. The
+ * wrapper survives because the generator and Retusz want validated `File[]`,
+ * while the batch tools want the raw list so they can report their own batch
+ * ceiling.
  */
 export function useFileDrop({ onDrop, enabled = true }: {
   onDrop: (files: File[], event: DragEvent) => void;
   enabled?: boolean;
 }): boolean {
-  const [dragging, setDragging] = useState(false);
-  const depth = useRef(0);
   const handler = useRef(onDrop);
   handler.current = onDrop;
-
-  useEffect(() => {
-    const reset = () => { depth.current = 0; setDragging(false); };
-    const onEnter = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
-      // Some engines only allow the drop when dragenter is prevented too.
-      e.preventDefault();
-      depth.current += 1;
-      if (enabled) setDragging(true);
-    };
-    const onOver = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
-      // WITHOUT THIS THERE IS NO DROP AT ALL: the default dragover action
-      // refuses the drag, and the browser then treats the release as a
-      // navigation to the file.
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = enabled ? "copy" : "none";
-    };
-    const onLeave = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
-      depth.current = Math.max(0, depth.current - 1);
-      if (depth.current === 0) setDragging(false);
-    };
-    const onDropEvent = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      reset();
-      if (!enabled) return;
-      const { files } = normalizeFiles(e.dataTransfer?.files);
-      handler.current(files, e);
-    };
-    window.addEventListener("dragenter", onEnter);
-    window.addEventListener("dragover", onOver);
-    window.addEventListener("dragleave", onLeave);
-    window.addEventListener("drop", onDropEvent);
-    window.addEventListener("dragend", reset);
-    window.addEventListener("blur", reset);
-    return () => {
-      window.removeEventListener("dragenter", onEnter);
-      window.removeEventListener("dragover", onOver);
-      window.removeEventListener("dragleave", onLeave);
-      window.removeEventListener("drop", onDropEvent);
-      window.removeEventListener("dragend", reset);
-      window.removeEventListener("blur", reset);
-    };
-  }, [enabled]);
-
-  return dragging;
+  return useSharedFileDrop({
+    enabled,
+    onFiles: (list, event) => handler.current(normalizeFiles(list).files, event),
+  });
 }
 
-/** The large, quiet target that appears over the workspace while files are
- *  being dragged — the seller aims at the panel, not at a 90px tile. */
-export function DropOverlay({ show, title, sub }: { show: boolean; title: string; sub: string }) {
-  return (
-    <div
-      aria-hidden={!show}
-      className={cn(
-        "pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-2xl transition-opacity duration-150",
-        show ? "opacity-100" : "opacity-0",
-      )}
-      style={{ visibility: show ? "visible" : "hidden" }}
-    >
-      <div className="absolute inset-0 rounded-2xl bg-[rgb(var(--sunken)/0.82)] backdrop-blur-[3px]" />
-      <div className="relative flex flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-[rgb(var(--accent)/0.55)] bg-[rgb(var(--surface))] px-8 py-7 text-center shadow-[0_20px_60px_-30px_rgb(0_0_0/0.5)]">
-        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[rgb(var(--accent)/0.12)] text-accent">
-          <Upload size={20} aria-hidden />
-        </span>
-        <p className="text-[14px] font-semibold tracking-tight">{title}</p>
-        <p className="text-[11.5px] text-muted">{sub}</p>
-      </div>
-    </div>
-  );
-}
+/** The generator's drop card. Panel-scoped rather than fullscreen: the
+ *  workspace is one column of a wider page here. */
+export const DropOverlay = FileDropOverlay;
 
 /**
  * The photos block itself: thumbnails, the add tile and the counter. Drops
