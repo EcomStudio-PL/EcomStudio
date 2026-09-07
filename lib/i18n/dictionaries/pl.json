@@ -237,7 +237,8 @@
     "fullNamePlaceholder": "Jan Kowalski",
     "err_name_short": "Podaj imię i nazwisko.",
     "registerSubNoCredits": "Załóż konto — zajmie mniej niż minutę.",
-    "benefit3NoCredits": "Konto zakładasz bez karty płatniczej"
+    "benefit3NoCredits": "Konto zakładasz bez karty płatniczej",
+    "emailDidYouMean": "Czy chodziło o"
   },
   "dashboard": {
     "welcome": "Cześć, {name}! 👋",

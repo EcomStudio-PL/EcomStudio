@@ -14,6 +14,7 @@
  */
 import { readFileSync } from "node:fs";
 import { mapSignUpError } from "@/lib/auth-error-map";
+import { suggestEmail } from "@/lib/email-typos";
 import pl from "@/lib/i18n/dictionaries/pl.json";
 import en from "@/lib/i18n/dictionaries/en.json";
 import de from "@/lib/i18n/dictionaries/de.json";
@@ -189,6 +190,28 @@ console.log("\nG. THE HOOK ANSWERS INSIDE SUPABASE'S 5-SECOND BUDGET");
   check("an unverified request is still refused", critical.includes("status: 401"));
   check("the acknowledgement is timed, so a regression is visible",
     route.includes("ackMs"));
+}
+
+console.log("\nH. THE DOMAIN TYPO THAT SENT A REAL CONFIRMATION NOWHERE");
+{
+  // vislipoland@gmail.con on production: validly formed, accepted, rendered,
+  // handed to SMTP — and delivered to a domain that does not exist.
+  check("gmail.con is corrected", suggestEmail("vislipoland@gmail.con") === "vislipoland@gmail.com");
+  check("gmial.com is corrected", suggestEmail("a@gmial.com") === "a@gmail.com");
+  check("gmail.co is corrected", suggestEmail("a@gmail.co") === "a@gmail.com");
+  check("wp.p is corrected", suggestEmail("a@wp.p") === "a@wp.pl");
+  check("onet.pl typo is corrected", suggestEmail("a@onet.ol") === "a@onet.pl");
+
+  // And it must stay quiet everywhere else — a suggestion that fires on a
+  // correct address is worse than none.
+  check("a correct gmail is left alone", suggestEmail("a@gmail.com") === null);
+  check("a correct wp.pl is left alone", suggestEmail("a@wp.pl") === null);
+  check("a real company domain is left alone", suggestEmail("kontakt@grovbase.com") === null);
+  check("an unrelated domain is left alone", suggestEmail("a@sklep-rowerowy.pl") === null);
+  check("an incomplete address says nothing", suggestEmail("a@") === null);
+  check("no address at all says nothing", suggestEmail("nonsense") === null);
+  check("the local part is preserved exactly",
+    suggestEmail("Jan.Kowalski+sklep@gmail.con") === "Jan.Kowalski+sklep@gmail.com");
 }
 
 console.log(failures === 0 ? "\nAll signup tests passed.\n" : `\n${failures} signup test(s) FAILED.\n`);

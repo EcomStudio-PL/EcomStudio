@@ -237,7 +237,8 @@
     "fullNamePlaceholder": "Max Mustermann",
     "err_name_short": "Bitte geben Sie Ihren Namen ein.",
     "registerSubNoCredits": "Konto anlegen — in unter einer Minute.",
-    "benefit3NoCredits": "Kein Zahlungsmittel nötig, um ein Konto zu öffnen"
+    "benefit3NoCredits": "Kein Zahlungsmittel nötig, um ein Konto zu öffnen",
+    "emailDidYouMean": "Meintest du"
   },
   "dashboard": {
     "welcome": "Hallo, {name}! 👋",

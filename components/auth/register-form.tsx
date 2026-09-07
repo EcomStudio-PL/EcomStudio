@@ -5,6 +5,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { Loader2, MailCheck } from "lucide-react";
 import { signUp, resendConfirmation, type SignUpErrors } from "@/app/actions/auth";
 import { passwordIssue } from "@/lib/auth-validation";
+import { suggestEmail } from "@/lib/email-typos";
 import { useI18n } from "@/lib/i18n/provider";
 import { Input, Label } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -70,6 +71,9 @@ export function RegisterForm({ captchaSiteKey, bare = false, next = "", onSwitch
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [terms, setTerms] = useState(false);
+  /** Echoed so the domain hint can watch what is being typed. The field stays
+   *  uncontrolled for its defaultValue echo — this only mirrors it. */
+  const [email, setEmail] = useState(state?.values?.email ?? "");
   const [resendState, resendAction, resendPending] = useActionState(resendConfirmation, null);
   const captchaRef = useRef<TurnstileHandle>(null);
 
@@ -132,6 +136,7 @@ export function RegisterForm({ captchaSiteKey, bare = false, next = "", onSwitch
   }
 
   const pwMismatch = confirm.length > 0 && password !== confirm;
+  const emailFix = suggestEmail(email);
 
   return (
     <Shell bare={bare} className="relative mx-auto w-full max-w-xl overflow-hidden p-6 sm:p-8">
@@ -165,8 +170,25 @@ export function RegisterForm({ captchaSiteKey, bare = false, next = "", onSwitch
           <div>
             <Label htmlFor="email">{t("auth.email")} *</Label>
             <Input id="email" name="email" type="email" required autoComplete="email" defaultValue={v.email}
-              inputMode="email" aria-invalid={!!errors.email || undefined} />
+              inputMode="email" aria-invalid={!!errors.email || undefined}
+              onChange={(e) => setEmail(e.target.value)} />
             {err("email")}
+            {/* A validly formed address at a domain that does not exist is the
+                one mistake nothing downstream can catch: the mail is accepted,
+                sent, and simply never arrives. Offered, never enforced. */}
+            {!errors.email && emailFix && (
+              <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
+                {t("auth.emailDidYouMean")}{" "}
+                <button type="button" className="font-semibold text-accent underline-offset-2 hover:underline"
+                  onClick={() => {
+                    const field = document.getElementById("email") as HTMLInputElement | null;
+                    if (field) field.value = emailFix;
+                    setEmail(emailFix);
+                  }}>
+                  {emailFix}
+                </button>
+              </p>
+            )}
           </div>
         </div>
 

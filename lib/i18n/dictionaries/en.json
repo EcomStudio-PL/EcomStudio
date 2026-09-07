@@ -237,7 +237,8 @@
     "fullNamePlaceholder": "Alex Smith",
     "err_name_short": "Enter your full name.",
     "registerSubNoCredits": "Create an account — it takes under a minute.",
-    "benefit3NoCredits": "No payment card needed to open an account"
+    "benefit3NoCredits": "No payment card needed to open an account",
+    "emailDidYouMean": "Did you mean"
   },
   "dashboard": {
     "welcome": "Hi, {name}! 👋",
