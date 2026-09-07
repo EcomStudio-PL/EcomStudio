@@ -3199,6 +3199,8 @@
       "acquisition_source": {
         "google": "Google",
         "youtube": "YouTube",
+        "tiktok": "TikTok",
+        "instagram": "Instagram",
         "tiktok_instagram": "TikTok / Instagram",
         "facebook": "Facebook",
         "referral": "From friends",
@@ -3233,6 +3235,19 @@
         "video": "Video",
         "editing": "Photo editing"
       }
+    },
+    "errMissingDetail": "Fill in the “Other” field to claim your bonus.",
+    "otherLabel": {
+      "acquisition_source": "Other — tell us where:",
+      "sales_channels": "Other — where do you sell:",
+      "product_categories": "Other — what do you sell:",
+      "primary_use_cases": "Other — what for:"
+    },
+    "otherPlaceholder": {
+      "acquisition_source": "e.g. a podcast, a newsletter, a colleague",
+      "sales_channels": "e.g. eBay, Facebook Marketplace, a physical shop",
+      "product_categories": "e.g. pet accessories, handmade goods",
+      "primary_use_cases": "e.g. PDF catalogues, client presentations"
     }
   },
   "onb": {

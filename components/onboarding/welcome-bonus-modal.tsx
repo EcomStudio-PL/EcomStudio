@@ -6,7 +6,7 @@ import { Check, Gift, Loader2, Sparkles, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { claimWelcomeBonusAction, welcomeBonusStateAction } from "@/app/actions/welcome-bonus";
 import {
-  formatCountdown, renderPlaceholders,
+  OTHER_VALUE, formatCountdown, renderPlaceholders,
   type BonusCopy, type OfferView, type SurveyQuestion,
 } from "@/lib/welcome-bonus";
 import { cn } from "@/lib/utils";
@@ -44,7 +44,12 @@ export function WelcomeBonusModal(props: BonusModalProps) {
   const [open, setOpen] = useState(props.autoOpen);
   const [offer, setOffer] = useState(props.offer);
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
+  /** "Inne — wpisz skąd", per question. Kept beside the answers rather than
+   *  inside them so the option column stays groupable for analytics. */
+  const [details, setDetails] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  /** An empty box only turns red after a submit attempt — not while typing. */
+  const [submitted, setSubmitted] = useState(false);
   const [claimed, setClaimed] = useState<{ amount: number; balance: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -115,24 +120,40 @@ export function WelcomeBonusModal(props: BonusModalProps) {
     setError(null);
     setAnswers((prev) => {
       const current = prev[q.key] ?? [];
-      if (q.type === "SINGLE_SELECT") {
-        return { ...prev, [q.key]: current[0] === value ? [] : [value] };
+      const next = q.type === "SINGLE_SELECT"
+        ? (current[0] === value ? [] : [value])
+        : (current.includes(value) ? current.filter((v) => v !== value) : [...current, value]);
+      // Picking something else instead of "Inne" drops the sentence that was
+      // only ever about "Inne" — keeping it would file a description under an
+      // answer it does not describe.
+      if (!next.includes(OTHER_VALUE)) {
+        setDetails((d) => (d[q.key] === undefined ? d : { ...d, [q.key]: "" }));
       }
-      return {
-        ...prev,
-        [q.key]: current.includes(value) ? current.filter((v) => v !== value) : [...current, value],
-      };
+      return { ...prev, [q.key]: next };
     });
   };
 
-  const missingRequired = visible.find((q) => q.required && (answers[q.key] ?? []).length === 0);
+  const picked = (q: SurveyQuestion) => answers[q.key] ?? [];
+  const needsDetail = (q: SurveyQuestion) => picked(q).includes(OTHER_VALUE);
+
+  // Two ways to be incomplete: a required question with no answer at all, and
+  // ANY question answered "Inne" with an empty box. The second applies to
+  // optional questions too — the question stays optional, the choice does not.
+  const missingRequired = visible.find((q) => q.required && picked(q).length === 0);
+  const missingDetail = visible.find((q) => needsDetail(q) && (details[q.key] ?? "").trim() === "");
 
   const submit = async () => {
     if (busy) return;                       // the client half of "claim once"
+    setSubmitted(true);
     if (missingRequired) { setError(t("bonus.errMissing")); return; }
+    if (missingDetail) {
+      setError(t("bonus.errMissingDetail"));
+      document.getElementById(`bonus-other-${missingDetail.key}`)?.focus();
+      return;
+    }
     setBusy(true);
     setError(null);
-    const res = await claimWelcomeBonusAction(answers);
+    const res = await claimWelcomeBonusAction(answers, details);
     setBusy(false);
     if (res.ok) {
       setClaimed({ amount: res.amount, balance: res.balance });
@@ -152,8 +173,17 @@ export function WelcomeBonusModal(props: BonusModalProps) {
     hours: Math.ceil(offer.secondsLeft / 3600),
     first_name: props.firstName,
   };
+  // ONE placeholder engine, and it is renderPlaceholders.
+  //
+  // `t()` interpolates {key}; this copy is written in {{key}}, because that is
+  // the syntax the admin editor documents and validates. Running BOTH over the
+  // same string meant t() ate the inner braces of "{{credits}}" and left the
+  // outer pair behind — which is why production rendered a literal "{150}" in
+  // the title and on the button. The fallback is fetched RAW and rendered
+  // exactly like an admin's own text, by the one function that knows the
+  // whitelist.
   const text = (custom: string, fallbackKey: string) =>
-    renderPlaceholders(custom.trim() !== "" ? custom : t(fallbackKey, values), values);
+    renderPlaceholders(custom.trim() !== "" ? custom : t(fallbackKey), values);
 
   return (
     <div
@@ -232,6 +262,34 @@ export function WelcomeBonusModal(props: BonusModalProps) {
                       );
                     })}
                   </div>
+
+                  {/* THE SENTENCE THAT MAKES "INNE" WORTH ASKING.
+                      It belongs to THIS question and appears directly under
+                      it — not in a shared box at the bottom where nobody can
+                      tell which answer it describes. */}
+                  {needsDetail(q) && (
+                    <div className="bonus-other mt-2.5">
+                      <label htmlFor={`bonus-other-${q.key}`}
+                        className="mb-1 block text-[12px] font-medium text-muted">
+                        {t(`bonus.otherLabel.${q.key}`)}
+                      </label>
+                      <input
+                        id={`bonus-other-${q.key}`}
+                        type="text"
+                        autoFocus
+                        maxLength={120}
+                        value={details[q.key] ?? ""}
+                        onChange={(e) => {
+                          setError(null);
+                          setDetails((d) => ({ ...d, [q.key]: e.target.value }));
+                        }}
+                        placeholder={t(`bonus.otherPlaceholder.${q.key}`)}
+                        aria-required
+                        aria-invalid={submitted && (details[q.key] ?? "").trim() === "" ? true : undefined}
+                        className="h-11 w-full rounded-xl border border-line bg-surface px-3.5 text-[14px] text-ink outline-none transition-colors placeholder:text-faint focus:border-[rgb(var(--accent)/0.6)] aria-[invalid=true]:border-danger"
+                      />
+                    </div>
+                  )}
                 </fieldset>
               ))}
 
@@ -270,9 +328,9 @@ function ClaimedState({ amount, balance, copy, icon, onDone, values }: {
   onDone: () => void; values: Record<string, string | number>;
 }) {
   const { t, locale } = useI18n();
+  // Same single engine as the modal above — see the comment there.
   const text = (custom: string, fallbackKey: string) =>
-    renderPlaceholders(custom.trim() !== "" ? custom : t(fallbackKey, { ...values, credits: amount }),
-      { ...values, credits: amount });
+    renderPlaceholders(custom.trim() !== "" ? custom : t(fallbackKey), { ...values, credits: amount });
   return (
     <div className="relative px-6 py-10 text-center sm:px-10">
       <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-32"

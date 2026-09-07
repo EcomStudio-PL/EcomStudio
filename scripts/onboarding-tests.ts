@@ -7,11 +7,16 @@
  * real database, because a mock of a row lock proves nothing about a row lock.
  */
 import { fullNameIssue, splitFullName } from "@/lib/auth-validation";
+import { readFileSync } from "node:fs";
 import {
-  BONUS_PLACEHOLDERS, DEFAULT_QUESTIONS, formatCountdown, remainingParts,
-  remainingPhrase, renderPlaceholders, validateAnswers,
+  BONUS_PLACEHOLDERS, DEFAULT_QUESTIONS, LEGACY_COMBINED_SOURCE, OTHER_VALUE,
+  formatCountdown, otherDetailKey, remainingParts, remainingPhrase,
+  renderPlaceholders, splitLegacyOptions, validateAnswers,
   type SurveyQuestion,
 } from "@/lib/welcome-bonus";
+import pl from "@/lib/i18n/dictionaries/pl.json";
+import en from "@/lib/i18n/dictionaries/en.json";
+import de from "@/lib/i18n/dictionaries/de.json";
 import { copyFor, toView, type OfferRow } from "@/lib/server/welcome-bonus";
 import { BONUS_DEFAULTS, EMPTY_COPY } from "@/lib/welcome-bonus";
 
@@ -180,6 +185,125 @@ console.log("\nG. DEFAULTS — the campaign the brief describes");
   // §34 as a data invariant: a bonus paid for a survey needs a survey.
   check("the default survey can actually be claimed (a required question exists)",
     DEFAULT_QUESTIONS.some((q) => q.enabled && q.required));
+}
+
+
+
+console.log("\nZ1. THE {150} THAT REACHED PRODUCTION");
+{
+  // Two placeholder engines ran over the same string: t() interpolates {key},
+  // the copy is written in {{key}}, so t() ate the inner braces and left the
+  // outer pair — "Odbierz {150} darmowych kredytów" on the real modal.
+  //
+  // The rule that prevents it coming back: the DEFAULT copy is fetched raw and
+  // rendered by renderPlaceholders alone. Nothing may pass values to t() for
+  // these keys.
+  const modal = readFileSync("components/onboarding/welcome-bonus-modal.tsx", "utf8");
+  check("the fallback copy is read without t()-interpolation",
+    !/t\(fallbackKey,\s*[{v]/.test(modal),
+    "t(fallbackKey, values) double-renders {{credits}} into {150}");
+  check("renderPlaceholders is the engine that runs",
+    (modal.match(/renderPlaceholders\(/g) ?? []).length >= 2);
+
+  // And the engine itself still resolves the token it is given.
+  const rendered = renderPlaceholders("Odbierz {{credits}} darmowych kredytów", { credits: 150 });
+  check("{{credits}} resolves to a bare number", rendered === "Odbierz 150 darmowych kredytów", rendered);
+  check("no braces survive", !/[{}]/.test(rendered), rendered);
+  for (const [loc, d] of [["pl", pl], ["en", en], ["de", de]] as const) {
+    const b = (d as unknown as { bonus: Record<string, string> }).bonus;
+    for (const key of ["modalTitle", "cta", "successTitle"]) {
+      const out = renderPlaceholders(b[key], { credits: 150, hours: 72, first_name: "Jan" });
+      check(`${loc}.bonus.${key} renders clean`, !/[{}]/.test(out), out);
+    }
+  }
+}
+
+console.log("\nZ2. TIKTOK AND INSTAGRAM ARE TWO ANSWERS");
+{
+  const source = DEFAULT_QUESTIONS.find((q) => q.key === "acquisition_source")!;
+  const values = source.options.map((o) => o.value);
+  check("tiktok is its own option", values.includes("tiktok"));
+  check("instagram is its own option", values.includes("instagram"));
+  check("the combined chip is gone from the defaults", !values.includes(LEGACY_COMBINED_SOURCE));
+
+  // A campaign saved before the split is unpacked on read …
+  const legacy = splitLegacyOptions([
+    { value: "google" }, { value: LEGACY_COMBINED_SOURCE }, { value: "other" },
+  ]);
+  check("a stored combined option becomes two",
+    legacy.map((o) => o.value).join(",") === "google,tiktok,instagram,other",
+    legacy.map((o) => o.value).join(","));
+  check("splitting twice does not duplicate",
+    splitLegacyOptions(legacy).filter((o) => o.value === "tiktok").length === 1);
+  check("an already-split list is untouched",
+    splitLegacyOptions([{ value: "tiktok" }, { value: "instagram" }]).length === 2);
+
+  // … and ANSWERS already recorded against the old value keep their label, so
+  // last month's analytics still read as words rather than as a raw key.
+  for (const [loc, d] of [["pl", pl], ["en", en], ["de", de]] as const) {
+    const opt = (d as unknown as { bonus: { opt: Record<string, Record<string, string>> } })
+      .bonus.opt.acquisition_source;
+    check(`${loc}: tiktok has a label`, typeof opt.tiktok === "string" && opt.tiktok !== "");
+    check(`${loc}: instagram has a label`, typeof opt.instagram === "string" && opt.instagram !== "");
+    check(`${loc}: the legacy answer still has a label`,
+      typeof opt[LEGACY_COMBINED_SOURCE] === "string" && opt[LEGACY_COMBINED_SOURCE] !== "");
+  }
+}
+
+console.log("\nZ3. \"INNE\" MUST SAY WHAT");
+{
+  const questions: SurveyQuestion[] = [
+    { key: "acquisition_source", type: "SINGLE_SELECT", required: true, enabled: true,
+      options: [{ value: "google" }, { value: OTHER_VALUE }] },
+    { key: "sales_channels", type: "MULTI_SELECT", required: false, enabled: true,
+      options: [{ value: "allegro" }, { value: OTHER_VALUE }] },
+  ];
+
+  // Required question answered "Inne", box empty → refused, and named.
+  const empty = validateAnswers(questions, { acquisition_source: [OTHER_VALUE] }, {});
+  check("an empty detail is refused", empty.ok === false);
+  check("the refusal names the field",
+    empty.ok === false && empty.missing === otherDetailKey("acquisition_source"),
+    empty.ok === false ? empty.missing : "");
+  check("whitespace is not an answer",
+    validateAnswers(questions, { acquisition_source: [OTHER_VALUE] }, { acquisition_source: "   " }).ok === false);
+
+  // Filled in → stored under its OWN key, so the option column stays groupable.
+  const filled = validateAnswers(questions, { acquisition_source: [OTHER_VALUE] },
+    { acquisition_source: "podcast o e-commerce" });
+  check("a filled detail passes", filled.ok === true);
+  check("the option column keeps only the option",
+    filled.ok === true && filled.clean.acquisition_source.join() === OTHER_VALUE);
+  check("the sentence lands in its own row",
+    filled.ok === true && filled.clean.acquisition_source_other?.[0] === "podcast o e-commerce");
+
+  // An OPTIONAL question stays optional …
+  check("an optional question may still be skipped entirely",
+    validateAnswers(questions, { acquisition_source: ["google"] }, {}).ok === true);
+  // … but once it is answered "Inne", the box is required there too.
+  check("an optional question answered Inne still needs the detail",
+    validateAnswers(questions,
+      { acquisition_source: ["google"], sales_channels: [OTHER_VALUE] }, {}).ok === false);
+
+  // A detail for a question that was NOT answered "Inne" is not smuggled in.
+  const stray = validateAnswers(questions, { acquisition_source: ["google"] },
+    { acquisition_source: "ignore me" });
+  check("a stray detail is dropped",
+    stray.ok === true && stray.clean.acquisition_source_other === undefined);
+
+  // Long text is cut to what the column accepts rather than failing the claim.
+  const long = validateAnswers(questions, { acquisition_source: [OTHER_VALUE] },
+    { acquisition_source: "x".repeat(400) });
+  check("a very long sentence is trimmed, not rejected",
+    long.ok === true && long.clean.acquisition_source_other[0].length === 120);
+
+  for (const [loc, d] of [["pl", pl], ["en", en], ["de", de]] as const) {
+    const b = (d as unknown as { bonus: { otherLabel: Record<string, string>; errMissingDetail: string } }).bonus;
+    check(`${loc}: every question has an "Inne" prompt`,
+      DEFAULT_QUESTIONS.every((q) => typeof b.otherLabel[q.key] === "string" && b.otherLabel[q.key] !== ""));
+    check(`${loc}: the missing-detail error has words`,
+      typeof b.errMissingDetail === "string" && b.errMissingDetail !== "");
+  }
 }
 
 console.log(failures === 0 ? "\nAll onboarding tests passed.\n" : `\n${failures} onboarding test(s) FAILED.\n`);

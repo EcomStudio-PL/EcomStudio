@@ -3199,6 +3199,8 @@
       "acquisition_source": {
         "google": "Google",
         "youtube": "YouTube",
+        "tiktok": "TikTok",
+        "instagram": "Instagram",
         "tiktok_instagram": "TikTok / Instagram",
         "facebook": "Facebook",
         "referral": "Od znajomych",
@@ -3233,6 +3235,19 @@
         "video": "Wideo",
         "editing": "Edycja zdjęć"
       }
+    },
+    "errMissingDetail": "Uzupełnij pole „Inne”, aby odebrać bonus.",
+    "otherLabel": {
+      "acquisition_source": "Inne — wpisz skąd:",
+      "sales_channels": "Inne — wpisz gdzie sprzedajesz:",
+      "product_categories": "Inne — wpisz co sprzedajesz:",
+      "primary_use_cases": "Inne — wpisz do czego:"
+    },
+    "otherPlaceholder": {
+      "acquisition_source": "np. podcast, newsletter, znajomy z branży",
+      "sales_channels": "np. OLX, Facebook Marketplace, sklep stacjonarny",
+      "product_categories": "np. akcesoria dla zwierząt, rękodzieło",
+      "primary_use_cases": "np. katalog PDF, prezentacje dla klientów"
     }
   },
   "onb": {

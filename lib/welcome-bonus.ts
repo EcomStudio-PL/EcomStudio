@@ -20,6 +20,45 @@ export type SurveyOption = {
   label?: string;
 };
 
+/**
+ * THE ANSWER THAT NEEDS A SENTENCE.
+ *
+ * Picking "Inne" and stopping there records that we do not know where a
+ * customer came from — which is worth nothing to anybody. Whenever a question
+ * offers this value, choosing it opens a text field, and that field is
+ * required for as long as the choice stands.
+ *
+ * The text is stored under its own question key (`<question>_other`), so it
+ * lands in its own row and never contaminates the option column that the
+ * analytics group by.
+ */
+export const OTHER_VALUE = "other";
+export const otherDetailKey = (questionKey: string) => `${questionKey}_${OTHER_VALUE}`;
+
+/**
+ * "TikTok / Instagram" was one chip, and the answers it collected cannot say
+ * which of two very different channels a customer meant. It is two chips now.
+ *
+ * A campaign an admin saved BEFORE the split still carries the combined
+ * option, so it is unpacked on read: one stored option becomes the two the
+ * customer sees. Answers already recorded against the old value are left
+ * exactly as they are — this rewrites a question, never a reply, so last
+ * month's analytics still add up.
+ */
+export const LEGACY_COMBINED_SOURCE = "tiktok_instagram";
+
+export function splitLegacyOptions(options: SurveyOption[]): SurveyOption[] {
+  const out: SurveyOption[] = [];
+  for (const option of options) {
+    if (option.value !== LEGACY_COMBINED_SOURCE) { out.push(option); continue; }
+    // A hand-written label cannot be split down the middle, so the two new
+    // chips fall back to their own translations rather than inheriting it.
+    if (!out.some((o) => o.value === "tiktok")) out.push({ value: "tiktok" });
+    if (!out.some((o) => o.value === "instagram")) out.push({ value: "instagram" });
+  }
+  return out;
+}
+
 export type SurveyQuestion = {
   key: string;
   type: QuestionType;
@@ -43,8 +82,9 @@ export const DEFAULT_QUESTIONS: readonly SurveyQuestion[] = [
     required: true,
     enabled: true,
     options: [
-      { value: "google" }, { value: "youtube" }, { value: "tiktok_instagram" },
-      { value: "facebook" }, { value: "referral" }, { value: "other" },
+      { value: "google" }, { value: "youtube" }, { value: "tiktok" },
+      { value: "instagram" }, { value: "facebook" }, { value: "referral" },
+      { value: "other" },
     ],
   },
   {
@@ -210,6 +250,8 @@ export function remainingPhrase(seconds: number): { key: string; values: Record<
 export function validateAnswers(
   questions: readonly SurveyQuestion[],
   answers: Record<string, string[]>,
+  /** Free text for the questions where "Inne" was chosen, keyed by question. */
+  details: Record<string, string> = {},
 ): { ok: true; clean: Record<string, string[]> } | { ok: false; missing: string } {
   const clean: Record<string, string[]> = {};
   for (const q of questions) {
@@ -221,6 +263,19 @@ export function validateAnswers(
     const limited = q.type === "SINGLE_SELECT" ? picked.slice(0, 1) : picked.slice(0, 12);
     if (q.required && limited.length === 0) return { ok: false, missing: q.key };
     if (limited.length > 0) clean[q.key] = limited;
+
+    // THE DETAIL IS REQUIRED BY THE CHOICE, NOT BY THE QUESTION.
+    //
+    // An optional question stays optional — skipping it entirely is still
+    // fine. But once "Inne" is the answer, an empty box would record that we
+    // asked and learned nothing, so it is enforced here as well as in the
+    // form. The client cannot skip this by not sending the field.
+    if (limited.includes(OTHER_VALUE)) {
+      const text = (details[q.key] ?? "").trim();
+      if (text === "") return { ok: false, missing: otherDetailKey(q.key) };
+      // Its own key, its own row: the option column stays clean for grouping.
+      clean[otherDetailKey(q.key)] = [text.slice(0, 120)];
+    }
   }
   return { ok: true, clean };
 }

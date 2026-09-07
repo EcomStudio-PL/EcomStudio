@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import type { Client } from "@/lib/services/workspace";
 import {
-  BONUS_DEFAULTS, DEFAULT_QUESTIONS, EMPTY_COPY,
+  BONUS_DEFAULTS, DEFAULT_QUESTIONS, EMPTY_COPY, splitLegacyOptions,
   type BonusConfig, type BonusCopy, type OfferView, type SurveyQuestion,
 } from "@/lib/welcome-bonus";
 
@@ -73,7 +73,9 @@ function coerceQuestions(value: unknown): SurveyQuestion[] {
       key: q.key.slice(0, 60),
       type,
       label: typeof q.label === "string" ? q.label.slice(0, 200) : undefined,
-      options,
+      // A campaign saved before the TikTok/Instagram split still stores the
+      // combined chip; it is unpacked here so the customer sees two.
+      options: splitLegacyOptions(options),
       required: q.required === true,
       enabled: q.enabled !== false,
     });

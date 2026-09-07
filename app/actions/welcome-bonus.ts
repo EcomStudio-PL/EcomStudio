@@ -30,6 +30,9 @@ export type ClaimResult =
 
 export async function claimWelcomeBonusAction(
   answers: Record<string, string[]>,
+  /** The "Inne — wpisz…" text, per question. Validated server-side: a chosen
+   *  "Inne" with an empty box is refused here, not only in the form. */
+  details: Record<string, string> = {},
 ): Promise<ClaimResult> {
   try {
     const supabase = await createClient();
@@ -40,7 +43,7 @@ export async function claimWelcomeBonusAction(
     // have answered. An answer to a question that is switched off, or an
     // option that is not on the list, simply does not survive this.
     const config = await getBonusConfig(supabase);
-    const checked = validateAnswers(config.questions, answers);
+    const checked = validateAnswers(config.questions, answers, details);
     if (!checked.ok) return { ok: false, error: "missing_answer", missing: checked.missing };
 
     const { data, error } = await supabase.rpc("claim_welcome_bonus", {

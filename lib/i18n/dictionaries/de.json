@@ -3199,6 +3199,8 @@
       "acquisition_source": {
         "google": "Google",
         "youtube": "YouTube",
+        "tiktok": "TikTok",
+        "instagram": "Instagram",
         "tiktok_instagram": "TikTok / Instagram",
         "facebook": "Facebook",
         "referral": "Von Bekannten",
@@ -3233,6 +3235,19 @@
         "video": "Video",
         "editing": "Bildbearbeitung"
       }
+    },
+    "errMissingDetail": "Bitte das Feld „Sonstiges“ ausfüllen, um den Bonus zu erhalten.",
+    "otherLabel": {
+      "acquisition_source": "Sonstiges — woher genau:",
+      "sales_channels": "Sonstiges — wo verkaufst du:",
+      "product_categories": "Sonstiges — was verkaufst du:",
+      "primary_use_cases": "Sonstiges — wofür:"
+    },
+    "otherPlaceholder": {
+      "acquisition_source": "z. B. Podcast, Newsletter, Bekannte",
+      "sales_channels": "z. B. eBay, Facebook Marketplace, Ladengeschäft",
+      "product_categories": "z. B. Tierzubehör, Handgemachtes",
+      "primary_use_cases": "z. B. PDF-Kataloge, Kundenpräsentationen"
     }
   },
   "onb": {
