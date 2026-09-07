@@ -225,6 +225,7 @@
     "errActivationSend": "Nie udało się wysłać wiadomości aktywacyjnej. Spróbuj ponownie.",
     "errCaptcha": "Potwierdź, że nie jesteś robotem.",
     "errCaptchaFailed": "Weryfikacja CAPTCHA nie powiodła się. Spróbuj ponownie.",
+    "errCaptchaUnavailable": "Weryfikacja zabezpieczeń jest chwilowo niedostępna. Odśwież stronę i spróbuj ponownie.",
     "errIpLimit": "Z tej sieci utworzono już maksymalną liczbę kont. Napisz do nas, jeśli to pomyłka.",
     "optional": "opcjonalne",
     "paneTitle": "Zdjęcia produktowe, które sprzedają — w kilka minut.",

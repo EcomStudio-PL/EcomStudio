@@ -225,6 +225,7 @@
     "errActivationSend": "We couldn't send the activation email. Please try again.",
     "errCaptcha": "Please confirm you're not a robot.",
     "errCaptchaFailed": "CAPTCHA verification failed. Please try again.",
+    "errCaptchaUnavailable": "The security check is temporarily unavailable. Reload the page and try again.",
     "errIpLimit": "The maximum number of accounts has already been created from this network. Contact us if this is a mistake.",
     "optional": "optional",
     "paneTitle": "Product photos that sell — in minutes.",

@@ -20,6 +20,7 @@ const FORM_ERROR_KEYS: Record<string, string> = {
   registration_disabled: "auth.registrationDisabled",
   captcha: "auth.errCaptcha",
   captcha_failed: "auth.errCaptchaFailed",
+  captcha_unavailable: "auth.errCaptchaUnavailable",
   ip_limit: "auth.errIpLimit",
   activation_send: "auth.errActivationSend",
 };
@@ -214,7 +215,13 @@ export function RegisterForm({ captchaSiteKey, bare = false, next = "", onSwitch
 
         {errors.form && (
           <p role="alert" className="rounded-xl bg-[rgb(var(--danger)/0.10)] px-3.5 py-2.5 text-[13px] font-medium text-danger">
-            {t(FORM_ERROR_KEYS[errors.form] ?? "auth.err_network")}
+            {/* "Confirm you are not a robot" is unanswerable when no widget is
+                on screen — which happens if the config read failed here but
+                succeeded on the server. Say the truth instead: the check is
+                unavailable, reload. */}
+            {t(errors.form === "captcha" && !captchaSiteKey
+              ? "auth.errCaptchaUnavailable"
+              : FORM_ERROR_KEYS[errors.form] ?? "auth.err_network")}
           </p>
         )}
 

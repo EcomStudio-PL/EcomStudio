@@ -13,6 +13,7 @@ import { signupAllowedNow } from "@/lib/server/platform-access";
 import { getLocale } from "@/lib/i18n/server";
 import { absoluteUrl } from "@/lib/site";
 import { EMAIL_RE, fullNameIssue, passwordIssue, splitFullName } from "@/lib/auth-validation";
+import { mapSignUpError } from "@/lib/auth-error-map";
 
 type Result = { ok: boolean; error?: string; info?: string; email?: string };
 
@@ -109,15 +110,40 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
   // to spend a Turnstile solve before it can even reach GoTrue.
   const ip = await callerIp();
 
-  // Captcha runs only when fully configured — public site key typed AND the
-  // secret envelope saved — which is exactly the condition under which the
-  // register page rendered a widget. Half-configured or absent means no
-  // widget was shown, so demanding a token here would brick every signup.
-  const captcha = await readIntegrationSecrets<{ site_key?: string }>(supabase, "captcha");
-  const captchaSecret = captcha.secrets.secret_key ?? "";
-  if ((captcha.config.site_key ?? "").trim() !== "" && captchaSecret !== "") {
+  // WHETHER a captcha is required is decided by ONE authority, the same one
+  // the browser asked: captcha_site_key(), which answers with the site key
+  // only when a site key is saved AND a secret envelope exists. If the widget
+  // was rendered, a token is demanded — no exceptions.
+  //
+  // This used to be inferred from the decrypted secret instead, which quietly
+  // made the whole check optional: any context that could not read or open the
+  // secret skipped verification entirely and the signup went through with the
+  // widget solved for nothing. Public signup is exactly such a context, so in
+  // production the captcha was decoration. It is not any more:
+  //
+  //   widget shown + no token          → rejected (solve it)
+  //   widget shown + Cloudflare says no → rejected (solve it again)
+  //   widget shown + we cannot verify   → REJECTED, and logged as ours
+  //
+  // The last line is the important one. Failing open there is what "visual
+  // protection" means, and a signup we cannot vouch for is not one to accept.
+  const { data: siteKeyData } = await supabase.rpc("captcha_site_key");
+  const captchaRequired = String(siteKeyData ?? "").trim() !== "";
+  if (captchaRequired) {
+    const captcha = await readIntegrationSecrets<{ site_key?: string }>(supabase, "captcha");
+    const captchaSecret = captcha.secrets.secret_key ?? "";
     const captchaToken = String(formData.get("cf-turnstile-response") ?? "").trim();
     if (!captchaToken) return { ok: false, errors: { form: "captcha" }, values };
+    if (!captchaSecret) {
+      // The envelope is there (captcha_site_key() saw it) but this process
+      // could not open it: a rotated APP_ENCRYPTION_KEY, or a read that came
+      // back empty. Operator-visible, customer-honest, and not a way in.
+      console.error("signup.captcha", "secret_unreadable");
+      return { ok: false, errors: { form: "captcha_unavailable" }, values };
+    }
+    // ONE verification per token. Turnstile tokens are single-use, so a second
+    // siteverify call on the same token would come back timeout-or-duplicate
+    // and fail a legitimate human — there is no retry loop here by design.
     const verdict = await verifyTurnstile(captchaSecret, captchaToken, ip === "unknown" ? undefined : ip);
     if (!verdict.ok) {
       // bad_token is the user's problem (expired widget, replay) and solving
@@ -171,46 +197,15 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
       status: error.status ?? null,
       message: safeError(error),
     }));
-    // Never surface raw Supabase text. Weak-password style errors map to the
-    // password field; everything else is a generic retry message. An already
-    // registered address is NOT revealed: with confirmations on, Supabase
-    // returns a success-shaped response for it, and we show the same
-    // "check your inbox" screen either way.
-    if (/password/i.test(error.message)) return { ok: false, errors: { password: "pw_length" }, values };
-    // GoTrue validates deliverability beyond our format regex (it rejects
-    // reserved TLDs like .test and known-bad domains) — that belongs on the
-    // email field, not on a generic "server unreachable" banner.
-    if (error.code === "email_address_invalid" || /email.+invalid/i.test(error.message)) {
-      return { ok: false, errors: { email: "email" }, values };
+    // Never surface raw Supabase text. The whole translation table lives in
+    // lib/auth-error-map so it can be tested exhaustively without a running
+    // signup — that is where the reasoning for each case is written down. An
+    // already registered address is NOT revealed by any branch of it.
+    const mapped = mapSignUpError(error);
+    if ("field" in mapped) {
+      return { ok: false, errors: { [mapped.field]: mapped.code }, values };
     }
-    // Confirmation e-mails are quota-limited (Supabase built-in mailer:
-    // ~2/hour until custom SMTP is configured). "Try again shortly" is the
-    // truth here, not "server unreachable".
-    if (error.status === 429 || error.code === "over_email_send_rate_limit") {
-      return { ok: false, errors: { form: "rate_limited" }, values };
-    }
-    // A dead mailer is GoTrue's own 500 — "Error sending confirmation email",
-    // code unexpected_failure. The account may well exist by then, so calling
-    // it "server unreachable" would be a lie twice over; the dedicated code
-    // lets the UI point at the resend button instead.
-    //
-    // The message test alone was not enough, and that gap is exactly what the
-    // customer hit: when the Send Email Hook itself answers non-2xx, GoTrue
-    // reports the HOOK failing ("failed to send email", "hook", or nothing
-    // recognisable at all) rather than its own SMTP wording, and the request
-    // fell through to the generic "server unreachable". Any 500 out of signup
-    // is ours, not the network's — the request plainly reached Supabase to be
-    // answered — so it is reported as what it is: the activation mail did not
-    // go out. `network` is now reserved for a request that genuinely never
-    // completed (status 0/undefined, fetch failure).
-    if (
-      /send.*(confirmation|email)|email.*send|hook/i.test(error.message)
-      || error.code === "unexpected_failure"
-      || error.status === 500
-    ) {
-      return { ok: false, errors: { form: "activation_send" }, values };
-    }
-    return { ok: false, errors: { form: "network" }, values };
+    return { ok: false, errors: { form: mapped.form }, values };
   }
 
   // A real registration is worth a Telegram ping — but never at the new

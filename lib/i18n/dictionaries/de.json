@@ -225,6 +225,7 @@
     "errActivationSend": "Die Aktivierungs-E-Mail konnte nicht gesendet werden. Bitte versuche es erneut.",
     "errCaptcha": "Bitte bestätige, dass du kein Roboter bist.",
     "errCaptchaFailed": "Die CAPTCHA-Prüfung ist fehlgeschlagen. Bitte versuche es erneut.",
+    "errCaptchaUnavailable": "Die Sicherheitsprüfung ist vorübergehend nicht verfügbar. Lade die Seite neu und versuche es erneut.",
     "errIpLimit": "Aus diesem Netzwerk wurde bereits die maximale Anzahl an Konten erstellt. Schreib uns, falls das ein Irrtum ist.",
     "optional": "optional",
     "paneTitle": "Produktfotos, die verkaufen — in Minuten.",
