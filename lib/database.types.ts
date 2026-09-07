@@ -3505,7 +3505,18 @@ export type Database = {
             }
             Returns: string
           }
+      credit_wallets_total: { Args: never; Returns: number }
       generation_credits_total: { Args: never; Returns: number }
+      welcome_bonus_stats: {
+        Args: never
+        Returns: {
+          issued: number
+          claimed: number
+          expired: number
+          pending: number
+          avg_hours_to_claim: number | null
+        }[]
+      }
       get_active_provider_credential: {
         Args: { p_provider_id: string }
         Returns: {

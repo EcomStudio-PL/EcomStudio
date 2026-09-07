@@ -147,27 +147,22 @@ export type OnboardingStats = {
 export async function onboardingStatsAction(): Promise<OnboardingStats | null> {
   try {
     const { supabase } = await requireAdmin();
-    const { data } = await supabase
-      .from("welcome_bonus_offers")
-      .select("status, eligible_at, claimed_at, expires_at");
-    const rows = data ?? [];
-    const now = Date.now();
-    let claimed = 0, expired = 0, pending = 0, hoursSum = 0;
-    for (const r of rows) {
-      if (r.claimed_at) {
-        claimed += 1;
-        hoursSum += (new Date(r.claimed_at).getTime() - new Date(r.eligible_at).getTime()) / 3_600_000;
-      } else if (new Date(r.expires_at).getTime() <= now) {
-        expired += 1;
-      } else {
-        pending += 1;
-      }
-    }
-    const issued = rows.length;
+    // Counted in SQL (0066, SECURITY INVOKER — RLS still applies). This used
+    // to read one row per registered customer, four columns each, to produce
+    // four counters and an average.
+    const { data } = await supabase.rpc("welcome_bonus_stats");
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return null;
+    const issued = Number(row.issued ?? 0);
+    const claimed = Number(row.claimed ?? 0);
+    const avg = row.avg_hours_to_claim;
     return {
-      issued, claimed, expired, pending,
+      issued,
+      claimed,
+      expired: Number(row.expired ?? 0),
+      pending: Number(row.pending ?? 0),
       conversion: issued === 0 ? 0 : Math.round((claimed / issued) * 1000) / 10,
-      averageHoursToClaim: claimed === 0 ? null : Math.round((hoursSum / claimed) * 10) / 10,
+      averageHoursToClaim: avg == null ? null : Math.round(Number(avg) * 10) / 10,
     };
   } catch {
     return null;

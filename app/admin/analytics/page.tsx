@@ -406,25 +406,30 @@ async function ClientsTab({ w, newAccounts, pay, t, locale, supabase }: {
   for (const p of pay) revByWs.set(p.workspace_id, (revByWs.get(p.workspace_id) ?? 0) + p.amount_cents);
   const top = [...revByWs.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
 
-  const [topNames, lowWallets, signups, wallets] = await Promise.all([
+  const [topNames, lowWallets, lowCount, signups, outstandingRow] = await Promise.all([
     top.length
       ? supabase.from("workspaces").select("id, name").in("id", top.map(([id]) => id))
       : Promise.resolve({ data: [] as { id: string; name: string }[] }),
     supabase.from("credit_wallets").select("balance, workspaces(name)").lt("balance", 10).limit(10),
+    // The KPI counts them all; the list below shows ten. Reading the list's
+    // length as the count would have reported "10" for any number above ten.
+    supabase.from("credit_wallets").select("workspace_id", { count: "exact", head: true }).lt("balance", 10),
     supabase.from("profiles").select("id, email, full_name, created_at")
       .gte("created_at", w.from).lte("created_at", w.to)
       .order("created_at", { ascending: false }).limit(8),
-    supabase.from("credit_wallets").select("balance"),
+    // Summed in SQL (0066, SECURITY INVOKER — RLS still applies). This used to
+    // pull one row per workspace into the page to add them up.
+    supabase.rpc("credit_wallets_total"),
   ]);
   const names = new Map((topNames.data ?? []).map((row) => [row.id, row.name]));
-  const outstanding = (wallets.data ?? []).reduce((s, row) => s + row.balance, 0);
+  const outstanding = Number(outstandingRow.data ?? 0);
 
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Stat label={t("analytics.newAccounts")} value={newAccounts} />
         <Stat label={t("analytics.payingCustomers")} value={revByWs.size} tone="accent2" />
-        <Stat label={t("analytics.lowCredits")} value={(lowWallets.data ?? []).length} />
+        <Stat label={t("analytics.lowCredits")} value={lowCount.count ?? 0} />
         <Stat label={t("analytics.wallets")} value={formatCredits(outstanding)} />
       </div>
 
