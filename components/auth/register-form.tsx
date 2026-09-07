@@ -14,8 +14,16 @@ import { OAuthButtons } from "@/components/auth/oauth-buttons";
 import { Turnstile, type TurnstileHandle } from "@/components/auth/turnstile";
 import { cn } from "@/lib/utils";
 
-/** Form-level error code → i18n key. Anything unmapped (network, rate_limited)
- *  reads as the generic connection failure, exactly as before. */
+/**
+ * Form-level error code → i18n key.
+ *
+ * `rate_limited` was missing from this table, and the fallback swallowed it:
+ * the server correctly identified Supabase's "email rate limit exceeded" (429)
+ * and the form then told the customer the SERVER WAS UNREACHABLE. It is the
+ * one message that sends someone to check their wi-fi over a problem that
+ * fixes itself in an hour. Every code the action can produce is listed here
+ * now, and the fallback is a last resort rather than a routine outcome.
+ */
 const FORM_ERROR_KEYS: Record<string, string> = {
   registration_disabled: "auth.registrationDisabled",
   captcha: "auth.errCaptcha",
@@ -23,6 +31,8 @@ const FORM_ERROR_KEYS: Record<string, string> = {
   captcha_unavailable: "auth.errCaptchaUnavailable",
   ip_limit: "auth.errIpLimit",
   activation_send: "auth.errActivationSend",
+  rate_limited: "auth.errRateLimited",
+  network: "auth.err_network",
 };
 
 /**

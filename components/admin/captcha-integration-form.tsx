@@ -2,7 +2,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ShieldCheck } from "lucide-react";
+import { ShieldAlert, ShieldCheck } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { saveCaptchaIntegrationAction, testCaptchaAction } from "@/app/actions/integrations";
 import type { CaptchaConfig, IntegrationView } from "@/lib/server/integrations";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
 import { SecretInput } from "@/components/ui/modal";
+import { Switch } from "@/components/ui/record";
 import { integrationErrorKey } from "@/components/admin/integration-cards";
 
 /**
@@ -36,6 +37,9 @@ export function CaptchaIntegrationForm({ view, encryptionReady }: {
   const [secretKey, setSecretKey] = useState("");
   /** Whether a ciphertext exists — never the key itself. */
   const [storedSecret, setStoredSecret] = useState(view.hasSecret.secret_key === true);
+  /** The admin's switch. `enabled` on the row IS the server-side authority —
+   *  captcha_site_key() reads it, so this is not a CSS-level pretence. */
+  const [protectSignup, setProtectSignup] = useState(view.enabled);
 
   const working = pending || busy !== null;
 
@@ -43,6 +47,7 @@ export function CaptchaIntegrationForm({ view, encryptionReady }: {
     const res = await saveCaptchaIntegrationAction({
       siteKey,
       secretKey: secretKey || undefined,
+      protectSignup,
     });
     if (!res.ok) {
       toast.error(t(integrationErrorKey(res.error, "captcha")));
@@ -95,6 +100,26 @@ export function CaptchaIntegrationForm({ view, encryptionReady }: {
           </fieldset>
         </div>
         <p className="text-[12px] leading-relaxed text-faint">{t("comm.captchaDisabledHint")}</p>
+
+        {/* THE SWITCH. Not a widget-hider: `enabled` is what captcha_site_key()
+            reads, so OFF means the site key is never published, the widget is
+            never rendered, and the server never asks for a token. One
+            authority, both sides. */}
+        <div className="space-y-2 border-t border-line pt-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold text-ink">{t("comm.captchaProtect")}</p>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{t("comm.captchaProtectSub")}</p>
+            </div>
+            <Switch checked={protectSignup} onChange={setProtectSignup} label={t("comm.captchaProtect")} />
+          </div>
+          {!protectSignup && (
+            <p className="flex items-start gap-2 rounded-xl bg-[rgb(var(--warning)/0.12)] px-3 py-2.5 text-[12px] font-medium leading-relaxed text-warning">
+              <ShieldAlert size={14} aria-hidden className="mt-0.5 shrink-0" />
+              {t("comm.captchaOffWarning")}
+            </p>
+          )}
+        </div>
 
         <section className="space-y-2 border-t border-line pt-5">
           <p className="overline">{t("comm.captchaHelpTitle")}</p>

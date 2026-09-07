@@ -12,6 +12,7 @@
  * verified against the real database instead, because a mock of a SECURITY
  * DEFINER function proves nothing about a SECURITY DEFINER function.
  */
+import { readFileSync } from "node:fs";
 import { mapSignUpError } from "@/lib/auth-error-map";
 import pl from "@/lib/i18n/dictionaries/pl.json";
 import en from "@/lib/i18n/dictionaries/en.json";
@@ -128,6 +129,66 @@ console.log("\nE. THE CREDITS NUMBER IS CONFIGURED, NEVER WRITTEN IN THE COPY");
       const a = d as unknown as { auth: Record<string, string> };
       return a.auth.registerSub.includes("{n}") && a.auth.benefit3.includes("{n}");
     }));
+}
+
+console.log("\nF. EVERY CODE THE ACTION CAN EMIT HAS A SENTENCE");
+{
+  // THE TEST THAT WOULD HAVE CAUGHT IT. `rate_limited` was produced by the
+  // server and missing from the form's table, so Supabase's "email rate limit
+  // exceeded" reached the customer as "could not reach the server". A table
+  // with a fallback hides exactly this, so the two sides are compared here
+  // rather than trusted.
+  const action = readFileSync("app/actions/auth.ts", "utf8");
+  const mapper = readFileSync("lib/auth-error-map.ts", "utf8");
+  const form = readFileSync("components/auth/register-form.tsx", "utf8");
+
+  const emitted = new Set<string>();
+  for (const src of [action, mapper]) {
+    for (const m of src.matchAll(/form:\s*"([a-z_]+)"/g)) emitted.add(m[1]);
+    for (const m of src.matchAll(/\{\s*form:\s*"([a-z_]+)"\s*\}/g)) emitted.add(m[1]);
+  }
+  // The mapper's union type is the other half of the contract.
+  for (const m of mapper.matchAll(/form:\s*"([a-z_|"\s]+)"/g)) {
+    for (const code of m[1].split(/"\s*\|\s*"/)) emitted.add(code.replace(/"/g, "").trim());
+  }
+  const mapped = new Set<string>();
+  const table = form.slice(form.indexOf("FORM_ERROR_KEYS"), form.indexOf("};", form.indexOf("FORM_ERROR_KEYS")));
+  for (const m of table.matchAll(/^\s*([a-z_]+):/gm)) mapped.add(m[1]);
+
+  check(`the action emits at least six distinct codes (found ${emitted.size})`, emitted.size >= 6,
+    [...emitted].join(", "));
+  for (const code of [...emitted].sort()) {
+    check(`"${code}" has its own message in the form`, mapped.has(code),
+      `not in FORM_ERROR_KEYS — would silently read as "server unreachable"`);
+  }
+  check("rate_limited specifically is mapped", mapped.has("rate_limited"));
+  check("rate_limited does not point at the network sentence",
+    !/rate_limited:\s*"auth\.err_network"/.test(table));
+}
+
+console.log("\nG. THE HOOK ANSWERS INSIDE SUPABASE'S 5-SECOND BUDGET");
+{
+  // Supabase allows an auth hook 5s for the WHOLE invocation. Sending mail
+  // inside that window is what rolled back every signup on production, so the
+  // shape of this route is now a rule, not a preference.
+  const route = readFileSync("app/api/hooks/supabase/send-email/route.ts", "utf8");
+  const afterAt = route.indexOf("after(async");
+  const respondAt = route.lastIndexOf("return NextResponse.json({}, { status: 200 })");
+
+  check("the route defers work with after()", afterAt > 0);
+  check("the 200 is returned after the deferral is registered", respondAt > afterAt);
+  const deferred = route.slice(afterAt, respondAt);
+  check("sendAuthMail is inside the deferred block", deferred.includes("sendAuthMail("));
+  check("the template render is inside the deferred block", deferred.includes("renderAuthMail("));
+  check("the dedupe claim is inside the deferred block", deferred.includes("auth_email_claim"));
+
+  const critical = route.slice(0, afterAt);
+  check("nothing before the response sends mail", !critical.includes("sendAuthMail("));
+  check("the signature is still verified BEFORE anything else",
+    critical.indexOf("verifyWebhook(") < critical.indexOf("parsePayload("));
+  check("an unverified request is still refused", critical.includes("status: 401"));
+  check("the acknowledgement is timed, so a regression is visible",
+    route.includes("ackMs"));
 }
 
 console.log(failures === 0 ? "\nAll signup tests passed.\n" : `\n${failures} signup test(s) FAILED.\n`);

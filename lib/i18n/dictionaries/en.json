@@ -223,6 +223,7 @@
     "linkInvalidBody": "We'll send a new link to your email address.",
     "resendNew": "Send a new link",
     "errActivationSend": "We couldn't send the activation email. Please try again.",
+    "errRateLimited": "We have already sent a lot of mail for this account. Wait a few minutes and try again.",
     "errCaptcha": "Please confirm you're not a robot.",
     "errCaptchaFailed": "CAPTCHA verification failed. Please try again.",
     "errCaptchaUnavailable": "The security check is temporarily unavailable. Reload the page and try again.",
@@ -2922,7 +2923,10 @@
     "st.skipped": "Skipped",
     "ev": {
       "welcomeSurvey": "Bonus claimed (survey)"
-    }
+    },
+    "captchaProtect": "Registration protection",
+    "captchaProtectSub": "Require Turnstile at signup. Switching it off takes effect on the server, not just by hiding the widget.",
+    "captchaOffWarning": "Anti-bot protection is off. Registration accepts submissions without verification — switch it back on when you are done diagnosing."
   },
   "reg": {
     "title": "Registration and security",
@@ -3158,7 +3162,10 @@
       "last": "Last delivery",
       "lastNone": "No attempt recorded yet.",
       "lastOk": "OK · {action} · {when}",
-      "lastFailed": "Failed · {action} · {when} · {reason}"
+      "lastFailed": "Failed · {action} · {when} · {reason}",
+      "quota": "E-mail quota",
+      "quotaOk": "{n} / hour",
+      "quotaLow": "Only {n} / hour — press Configure to raise it"
     }
   },
   "bonus": {

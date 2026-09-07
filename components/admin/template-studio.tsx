@@ -147,6 +147,18 @@ function AuthDeliveryPanel({ view, onChange }: {
             <PipeLine tone={view.smtpReady ? "ok" : "bad"} label={t("tpl.pipe.smtp")}
               value={view.smtpReady ? t("tpl.pipe.smtpOn") : t("tpl.pipe.smtpOff")} />
             <PipeLine tone={hookTone} label={t("tpl.pipe.hook")} value={hookLabel} />
+            {/* The number that capped production at two registrations an hour
+                while every other line stayed green. Shown, not assumed — and
+                flagged when it is too low to run a business on. */}
+            {view.hook.emailRateLimit !== null && (
+              <PipeLine
+                tone={view.hook.emailRateLimit < 10 ? "bad" : "ok"}
+                label={t("tpl.pipe.quota")}
+                value={view.hook.emailRateLimit < 10
+                  ? t("tpl.pipe.quotaLow", { n: view.hook.emailRateLimit })
+                  : t("tpl.pipe.quotaOk", { n: view.hook.emailRateLimit })}
+              />
+            )}
             {/* Configuration above, OUTCOME here. Every line above was green
                 through the outage that failed every registration; this is the
                 one that would have said otherwise. */}

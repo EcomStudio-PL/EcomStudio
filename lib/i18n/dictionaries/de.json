@@ -223,6 +223,7 @@
     "linkInvalidBody": "Wir senden dir einen neuen Link an deine E-Mail-Adresse.",
     "resendNew": "Neuen Link senden",
     "errActivationSend": "Die Aktivierungs-E-Mail konnte nicht gesendet werden. Bitte versuche es erneut.",
+    "errRateLimited": "Für dieses Konto wurden bereits viele Nachrichten versendet. Warte ein paar Minuten und versuche es erneut.",
     "errCaptcha": "Bitte bestätige, dass du kein Roboter bist.",
     "errCaptchaFailed": "Die CAPTCHA-Prüfung ist fehlgeschlagen. Bitte versuche es erneut.",
     "errCaptchaUnavailable": "Die Sicherheitsprüfung ist vorübergehend nicht verfügbar. Lade die Seite neu und versuche es erneut.",
@@ -2922,7 +2923,10 @@
     "st.skipped": "Übersprungen",
     "ev": {
       "welcomeSurvey": "Bonus eingelöst (Umfrage)"
-    }
+    },
+    "captchaProtect": "Registrierungsschutz",
+    "captchaProtectSub": "Turnstile bei der Anmeldung verlangen. Das Abschalten wirkt serverseitig, nicht nur durch Ausblenden des Widgets.",
+    "captchaOffWarning": "Der Bot-Schutz ist aus. Die Registrierung nimmt Anmeldungen ohne Prüfung an — schalte ihn nach der Diagnose wieder ein."
   },
   "reg": {
     "title": "Registrierung und Sicherheit",
@@ -3158,7 +3162,10 @@
       "last": "Letzter Versand",
       "lastNone": "Noch kein Versuch aufgezeichnet.",
       "lastOk": "OK · {action} · {when}",
-      "lastFailed": "Fehlgeschlagen · {action} · {when} · {reason}"
+      "lastFailed": "Fehlgeschlagen · {action} · {when} · {reason}",
+      "quota": "E-Mail-Limit",
+      "quotaOk": "{n} / Stunde",
+      "quotaLow": "Nur {n} / Stunde — auf Konfigurieren klicken, um es zu erhöhen"
     }
   },
   "bonus": {

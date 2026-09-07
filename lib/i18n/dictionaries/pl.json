@@ -223,6 +223,7 @@
     "linkInvalidBody": "Wyślemy nowy link na Twój adres e-mail.",
     "resendNew": "Wyślij nowy link",
     "errActivationSend": "Nie udało się wysłać wiadomości aktywacyjnej. Spróbuj ponownie.",
+    "errRateLimited": "Wysłaliśmy już sporo wiadomości z tego konta. Odczekaj kilka minut i spróbuj ponownie.",
     "errCaptcha": "Potwierdź, że nie jesteś robotem.",
     "errCaptchaFailed": "Weryfikacja CAPTCHA nie powiodła się. Spróbuj ponownie.",
     "errCaptchaUnavailable": "Weryfikacja zabezpieczeń jest chwilowo niedostępna. Odśwież stronę i spróbuj ponownie.",
@@ -2922,7 +2923,10 @@
     "st.skipped": "Pominięte",
     "ev": {
       "welcomeSurvey": "Bonus odebrany (ankieta)"
-    }
+    },
+    "captchaProtect": "Ochrona rejestracji",
+    "captchaProtectSub": "Wymagaj Turnstile przy zakładaniu konta. Wyłączenie działa po stronie serwera, nie tylko ukrywa widget.",
+    "captchaOffWarning": "Ochrona anty-bot jest wyłączona. Rejestracja przyjmuje zgłoszenia bez weryfikacji — włącz ją z powrotem, gdy skończysz diagnostykę."
   },
   "reg": {
     "title": "Rejestracja i bezpieczeństwo",
@@ -3158,7 +3162,10 @@
       "last": "Ostatnia wysyłka",
       "lastNone": "Brak zapisanej próby.",
       "lastOk": "OK · {action} · {when}",
-      "lastFailed": "Nieudana · {action} · {when} · {reason}"
+      "lastFailed": "Nieudana · {action} · {when} · {reason}",
+      "quota": "Limit e-maili",
+      "quotaOk": "{n} / godzinę",
+      "quotaLow": "Tylko {n} / godzinę — kliknij Skonfiguruj, aby podnieść"
     }
   },
   "bonus": {

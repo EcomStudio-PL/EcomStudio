@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { activeSecret } from "@/lib/server/auth-hook-secret";
 import { verifyWebhook } from "@/lib/server/webhook-signature";
@@ -30,12 +31,43 @@ export const runtime = "nodejs";
  * part of an error message.
  *
  * WHAT THIS ANSWERS. 2xx means "handled, do not retry". A signature failure
- * is 401 — Supabase should not retry a request it signed wrongly. A transient
- * failure on our side (SMTP down) is 500, so the delivery IS retried, and the
- * dedupe row lets that retry through precisely because the first attempt
- * failed.
+ * is 401 — Supabase should not retry a request it signed wrongly.
+ *
+ * ── THE 5-SECOND BUDGET, AND WHY THE MAIL IS SENT AFTER THE RESPONSE ──────
+ *
+ * Supabase gives an auth hook a HARD BUDGET OF 5 SECONDS for the entire
+ * invocation, retries included. This endpoint used to spend that budget doing
+ * the actual work: a client, a secret read, a dedupe claim, a template lookup,
+ * a full external SMTP session (DNS + TCP + TLS + AUTH + DATA) and a status
+ * write — six sequential trips, five of them off-box — and only then answered.
+ *
+ * On production it lost that race, and the way it lost was silent and awful:
+ * GoTrue gave up at five seconds, treated the mail as unsent and ROLLED THE
+ * WHOLE SIGNUP BACK, while this function carried on, delivered the message and
+ * returned 200 to a caller that had already left. The logs showed a 200 and a
+ * `sent` row; auth.users showed nothing; the customer got "we could not send
+ * the activation e-mail" — and, being a real attempt as far as GoTrue was
+ * concerned, it still burned one of their two e-mails per hour.
+ *
+ * So the contract is now split at the only place it can honestly be split:
+ *
+ *   INSIDE the budget — verify the signature and parse. That is what Supabase
+ *   is actually waiting to hear: "this delivery is mine, it is genuine, I have
+ *   it." CPU and at most one round trip for the secret.
+ *
+ *   AFTER the response — claim, render, send, record. Delivery is OUR problem,
+ *   and holding a signup hostage to an SMTP handshake is what caused the
+ *   outage. `after()` keeps the function alive on Vercel until this finishes.
+ *
+ * The cost of the split is that Supabase no longer retries a failed send. That
+ * is a fair trade and an honest one: the account now exists, the customer sees
+ * the check-your-inbox screen with a working "send again" button, auth_email_log
+ * records exactly what happened, and the admin panel's delivery line shows it.
+ * The alternative — which is what shipped before — is destroying the account
+ * because a mail server was slow.
  */
 export async function POST(request: Request) {
+  const started = Date.now();
   const raw = await request.text();
 
   const supabase = await createClient();
@@ -73,65 +105,82 @@ export async function POST(request: Request) {
     return NextResponse.json({ skipped: "unknown action" }, { status: 200 });
   }
 
-  // The log/dedupe functions are token-gated the same way the notification
-  // dispatcher is; publish the hash if this deployment has not yet.
-  await ensureDispatchHash(supabase);
-  const token = dispatchToken();
-
   const meta = payload.user.user_metadata ?? {};
   const firstName = String(meta.first_name ?? "").trim()
     || String(meta.full_name ?? "").trim().split(/\s+/)[0]
     || "";
   const locale = String(meta.locale ?? "").trim().toLowerCase() || "pl";
-
   const mails = planMails(payload);
-  let anyFailed = false;
+  const webhookId = verdict.id;
 
-  for (const mail of mails) {
-    const rendered = await renderAuthMail(supabase, mail, firstName);
+  // ── EVERYTHING BELOW RUNS AFTER THE RESPONSE ──────────────────────────────
+  // Not one line of it is something Supabase is waiting to learn, and every
+  // line of it can outlast a five-second budget.
+  after(async () => {
+    const sendStarted = Date.now();
+    // A separate client: the request-scoped one is finished with by now.
+    const worker = await createClient();
+    // The log/dedupe functions are token-gated the same way the notification
+    // dispatcher is; publish the hash if this deployment has not yet.
+    await ensureDispatchHash(worker);
+    const token = dispatchToken();
 
-    // DEDUPE. One row per (delivery, recipient): the first attempt claims it,
-    // a retry of a delivery that already SENT is a no-op, and a retry of one
-    // that failed is allowed through.
-    let logId: string | null = null;
-    if (token) {
-      const { data, error } = await supabase.rpc("auth_email_claim", {
-        p_token: token,
-        p_webhook_id: verdict.id,
-        p_recipient: mail.to,
-        p_action: mail.action,
-        p_template_key: mail.templateKey,
-        p_template_source: rendered.source,
-        p_template_version: rendered.templateVersion,
-        p_locale: locale,
-      });
-      if (error) console.error("authHook.claim", safeError(error));
-      logId = (data as string | null) ?? null;
-      if (!error && logId === null) {
-        // Already delivered. Nothing to do, and nothing went wrong.
-        continue;
+    for (const mail of mails) {
+      try {
+        const rendered = await renderAuthMail(worker, mail, firstName);
+
+        // DEDUPE. One row per (delivery, recipient): the first attempt claims
+        // it, a retry of a delivery that already SENT is a no-op, and a retry
+        // of one that failed is allowed through.
+        let logId: string | null = null;
+        if (token) {
+          const { data, error } = await worker.rpc("auth_email_claim", {
+            p_token: token,
+            p_webhook_id: webhookId,
+            p_recipient: mail.to,
+            p_action: mail.action,
+            p_template_key: mail.templateKey,
+            p_template_source: rendered.source,
+            p_template_version: rendered.templateVersion,
+            p_locale: locale,
+          });
+          if (error) console.error("authHook.claim", safeError(error));
+          logId = (data as string | null) ?? null;
+          if (!error && logId === null) continue; // already delivered
+        }
+
+        const result = await sendAuthMail(worker, mail.to, rendered);
+        if (token && logId) {
+          await worker.rpc("auth_email_finish", {
+            p_token: token,
+            p_id: logId,
+            p_status: result.sent ? "sent" : "failed",
+            p_transport: result.transport,
+            p_failure: result.error ?? null,
+          });
+        }
+        // The timing is the point of this line: it is what proves the split
+        // was needed, and what will show if delivery ever creeps up again.
+        console.log("authHook.delivery", JSON.stringify({
+          action: mail.action,
+          sent: result.sent,
+          transport: result.transport,
+          sendMs: Date.now() - sendStarted,
+          error: result.sent ? null : (result.error ?? "unknown"),
+        }));
+      } catch (e) {
+        // A throw here must never take the lambda down — the response is long
+        // gone and the customer already has their account.
+        console.error("authHook.deliveryCrashed", safeError(e));
       }
     }
+  });
 
-    const result = await sendAuthMail(supabase, mail.to, rendered);
-    if (!result.sent) anyFailed = true;
-    if (token && logId) {
-      await supabase.rpc("auth_email_finish", {
-        p_token: token,
-        p_id: logId,
-        p_status: result.sent ? "sent" : "failed",
-        p_transport: result.transport,
-        p_failure: result.error ?? null,
-      });
-    }
-    if (!result.sent) {
-      // The address and the reason, never the token.
-      console.error(`authHook.sendFailed (${mail.action}) ${result.error ?? "unknown"}`);
-    }
-  }
-
-  // A failed send earns a 500 so Supabase retries it; everything else is done.
-  if (anyFailed) return NextResponse.json({ error: "delivery failed" }, { status: 500 });
+  // ANSWERED IMMEDIATELY: signature verified, delivery accepted. `ackMs` is
+  // the number that has to stay well under Supabase's 5000.
+  console.log("authHook.ack", JSON.stringify({
+    action, mails: mails.length, ackMs: Date.now() - started,
+  }));
   return NextResponse.json({}, { status: 200 });
 }
 

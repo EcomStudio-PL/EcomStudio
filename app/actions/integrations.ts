@@ -527,6 +527,12 @@ export type CaptchaIntegrationInput = {
   siteKey: string;
   /** Empty means "keep the stored secret key", exactly like the mail passwords. */
   secretKey?: string;
+  /**
+   * "Ochrona rejestracji" — the admin's own switch, and the only reason a
+   * fully configured captcha would ever be off. Absent means ON, so every
+   * existing caller keeps arming it exactly as before.
+   */
+  protectSignup?: boolean;
 };
 
 export async function saveCaptchaIntegrationAction(input: CaptchaIntegrationInput): Promise<Result> {
@@ -536,11 +542,21 @@ export async function saveCaptchaIntegrationAction(input: CaptchaIntegrationInpu
     const typedSecret = (input.secretKey ?? "").trim();
 
     const before = await readIntegration<CaptchaConfig>(supabase, "captcha");
-    // Armed only when both halves exist — the key typed now or the ciphertext
-    // already stored. A half-configured captcha stays off and registration
-    // keeps working without it; captcha_site_key() in 0054 makes the same
-    // choice on the SQL side, so the two can never disagree.
-    const enabled = siteKey.length > 0 && (typedSecret.length > 0 || before.hasSecret.secret_key === true);
+    // TWO conditions, and both are necessary.
+    //
+    // CONFIGURED: both halves exist — the key typed now or the ciphertext
+    // already stored. A half-configured captcha cannot be armed at all,
+    // because the server would demand a token it has no way to verify.
+    //
+    // CHOSEN: the admin's switch. Turning protection off is a deliberate,
+    // reversible act with a warning attached, not something that happens by
+    // accident — and it is what makes the isolation test possible without
+    // deleting anybody's keys.
+    //
+    // captcha_site_key() (0065) reads this same `enabled` column, so the
+    // widget the visitor sees and the check the server runs cannot disagree.
+    const configured = siteKey.length > 0 && (typedSecret.length > 0 || before.hasSecret.secret_key === true);
+    const enabled = configured && (input.protectSignup ?? true);
 
     const written = await writeIntegration<CaptchaConfig>(supabase, "captcha", {
       config: { provider: "turnstile", site_key: siteKey },

@@ -33,6 +33,16 @@ import { absoluteUrl } from "@/lib/site";
 
 export const HOOK_PATH = "/api/hooks/supabase/send-email";
 
+/**
+ * Auth e-mails GrovBase's own mailbox may send per hour.
+ *
+ * Not a guess and not a maximum: it is a deliberate ceiling that is far above
+ * ordinary traffic and far below anything that would get a shared mailbox
+ * flagged as a spam source. Supabase's own default is 2 — meant for its demo
+ * mailer, catastrophic for ours.
+ */
+export const EMAIL_RATE_LIMIT_PER_HOUR = 200;
+
 export function hookUrl(): string {
   return absoluteUrl(HOOK_PATH);
 }
@@ -52,6 +62,13 @@ export type HookStatus = {
   secret: HookSecretState;
   /** Can this deployment configure Supabase by itself? */
   canAutomate: boolean;
+  /**
+   * Auth e-mails Supabase will let through per hour, read back from the
+   * project config. This is the number that quietly capped production at two
+   * registrations an hour, so the panel shows it rather than assuming it.
+   * Null when we have no management token to ask with.
+   */
+  emailRateLimit: number | null;
   /** Populated only when a read or a push failed. */
   error: string | null;
 };
@@ -64,7 +81,7 @@ export async function readHookStatus(supabase: Client): Promise<HookStatus> {
   const token = managementToken();
   const base: HookStatus = {
     supabase: "unknown", configuredUri: null, endpoint, secret,
-    canAutomate: token !== null, error: null,
+    canAutomate: token !== null, emailRateLimit: null, error: null,
   };
   if (!token) return base;
 
@@ -73,11 +90,14 @@ export async function readHookStatus(supabase: Client): Promise<HookStatus> {
 
   const enabled = current.data.hook_send_email_enabled === true;
   const uri = str(current.data.hook_send_email_uri);
-  if (!enabled) return { ...base, supabase: "off", configuredUri: uri || null };
+  const quota = Number(current.data.rate_limit_email_sent);
+  const emailRateLimit = Number.isFinite(quota) ? quota : null;
+  if (!enabled) return { ...base, supabase: "off", configuredUri: uri || null, emailRateLimit };
   return {
     ...base,
     supabase: uri === hookUrl() ? "ready" : "mismatch",
     configuredUri: uri || null,
+    emailRateLimit,
   };
 }
 
@@ -121,6 +141,18 @@ export async function pushHookConfig(supabase: Client): Promise<HookPushResult> 
     hook_send_email_enabled: true,
     hook_send_email_uri: uri,
     hook_send_email_secrets: secret,
+    // THE QUOTA, RAISED IN THE SAME BREATH AS THE HOOK.
+    //
+    // Supabase defaults `rate_limit_email_sent` to 2 PER HOUR, a number set
+    // for its own shared demo mailer. GrovBase does not use that mailer — this
+    // very PATCH is what tells Supabase to hand every message to our own SMTP
+    // instead — so the cap protects nothing and merely rations our own mailbox
+    // to two customers an hour. On production it did exactly that: the third
+    // registration of the hour came back 429, and every one after it.
+    //
+    // Enabling the hook and leaving the demo-mailer quota in place is a
+    // half-configuration, so the two are set together and can never drift.
+    rate_limit_email_sent: EMAIL_RATE_LIMIT_PER_HOUR,
   });
   if (!patched.ok) {
     return { ok: false, reason: "api", error: patched.error, status: await readHookStatus(supabase) };
