@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 /**
  * IMAGE TOOLS — deterministic tests.
  *
@@ -304,6 +305,41 @@ async function main() {
   check("says no to a background it has no way to generate", refusedBackground);
 
   console.log(failures === 0 ? "\nAll image tool tests passed.\n" : `\n${failures} test(s) failed.\n`);
+  console.log("\nZ. THE EDITOR IS ONE SHELL, NOT TWO SCREENS");
+  {
+    // Before this, choosing a photo unmounted a page that was nothing but a
+    // dropzone and mounted the editor in its place — which is why the layout
+    // jumped, and why arriving from "Usuń tło" showed no sign the editor had
+    // loaded. The rule is now structural: exactly ONE returned tree for the
+    // loaded and empty states, differing only in canvas content and in what
+    // is disabled.
+    const src = readFileSync("components/editor/image-editor.tsx", "utf8");
+
+    // The unavailable-service card is a legitimate separate return; a second
+    // early return for "no photo yet" is not.
+    const earlyReturns = [...src.matchAll(/^\s*if \(![a-zA-Z]+\) \{\n\s*return \(/gm)];
+    check("only the service-unavailable branch returns early",
+      earlyReturns.length <= 1, `${earlyReturns.length} early returns`);
+    check("there is no separate no-photo screen", !/if \(!working\) \{/.test(src));
+
+    // The shell renders on a `ready` flag rather than by branching the tree.
+    check("availability is a flag, not a fork", /const ready = working !== null;/.test(src));
+    check("the canvas slot swaps CONTENT, not layout",
+      /ready\s*\?\s*<EditorCanvas[\s\S]{0,220}:\s*dropzone/.test(src));
+
+    // Every control that needs a photo is disabled rather than absent.
+    for (const control of ["editor.undo", "editor.redo", "editor.history", "editor.center",
+      "editor.t.flipH", "editor.rotate90", "editor.zoomIn", "editor.download"]) {
+      const at = src.indexOf(control);
+      check(`${control} is present in both states`, at > 0);
+    }
+    check("the panels are made inert with a fieldset, not removed",
+      (src.match(/<fieldset disabled=\{!ready\}/g) ?? []).length >= 2);
+    check("export needs a photo", /disabled=\{!ready \|\| busy !== null\}/.test(src));
+    check("the dropzone lives inside the canvas frame, once",
+      (src.match(/const dropzone = \(/g) ?? []).length === 1);
+  }
+
   process.exit(failures === 0 ? 0 : 1);
 }
 

@@ -488,42 +488,25 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
     </button>
   );
 
-  // BEFORE a photo is chosen the screen used to be one enormous dashed
-  // rectangle and nothing else — a seller arriving from "Usuń tło" had no way
-  // to see that the thing they clicked was even here. The workspace now keeps
-  // its shape: the five sections stand on the left, listed and inert, and the
-  // dropzone occupies the canvas. Same upload, same handlers; what changed is
-  // that the editor looks like the editor before it is fed.
-  if (!working) {
-    return (
-      <div className={cn(
-        "gen-shell-body relative grid min-w-0 items-start gap-4 [&>*]:min-w-0",
-        "lg:grid-cols-[clamp(292px,22vw,340px)_minmax(0,1fr)] lg:items-stretch lg:gap-5 lg:overflow-hidden",
-      )}>
-        {picker}
-        <div className="hidden min-w-0 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
-          <Panel className="thin-scroll min-h-0 flex-1 overflow-y-auto px-4 opacity-60">
-            {SECTIONS.map((section, index) => (
-              <div key={section} className="flex items-center gap-2.5 border-b border-line py-3 last:border-b-0">
-                <span aria-hidden className="step-chip step-chip-sm">{index + 1}</span>
-                <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold tracking-tight">
-                  {t(`editor.s.${section}`)}
-                </span>
-              </div>
-            ))}
-            <p className="py-3 text-[11.5px] leading-relaxed text-faint">{t("editor.emptyHint")}</p>
-          </Panel>
-        </div>
-        <div className="flex min-w-0 flex-col lg:h-full lg:min-h-0">{dropzone}</div>
-      </div>
-    );
-  }
-
-  const canUndo = timeline.cursor > 0;
-  const canRedo = timeline.cursor < timeline.entries.length - 1;
+  // ONE SHELL, WITH OR WITHOUT A PHOTO.
+  //
+  // There used to be two screens here: a page that was nothing but a dashed
+  // rectangle, and — only after a file was chosen — the editor. Choosing a
+  // photo therefore unmounted one layout and mounted another, which is why the
+  // whole page jumped, and why arriving from "Usuń tło" showed no sign that
+  // the thing you clicked had loaded at all.
+  //
+  // Now the shell is the same tree in both states. The sections, the toolbar,
+  // the canvas frame and the export row are laid out identically before and
+  // after upload; what changes is the CANVAS CONTENT (dropzone → image) and
+  // what is AVAILABLE. Controls that need a photo are visible and disabled
+  // rather than absent, so nothing moves when one arrives.
+  const ready = working !== null;
+  const canUndo = ready && timeline.cursor > 0;
+  const canRedo = ready && timeline.cursor < timeline.entries.length - 1;
   const exporting = busy === "export";
   /** Is THIS edit the one sitting in the library? Any change makes it false. */
-  const storedNow = saved?.key === bakeKey(working, state);
+  const storedNow = ready && saved?.key === bakeKey(working, state);
 
   return (
     <div className={cn(
@@ -534,13 +517,24 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
     )}>
       {picker}
 
-      {/* ── LEFT: the five sections (desktop only; phones use the sheets) ── */}
+      {/* ── LEFT: the five sections (desktop only; phones use the sheets) ──
+          They render whether or not a photo is loaded. A `fieldset[disabled]`
+          is what makes them inert before one arrives — every control inside is
+          disabled by the platform itself, so nothing needs a flag threaded
+          through it and nothing can be missed. */}
       <div className="hidden min-w-0 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
         <Panel className="thin-scroll min-h-0 flex-1 overflow-y-auto px-4">
+          {!ready && (
+            <p className="border-b border-line py-3 text-[11.5px] leading-relaxed text-faint">
+              {t("editor.emptyHint")}
+            </p>
+          )}
           {SECTIONS.map((section, index) => (
             <SectionShell key={section} index={index + 1} section={section}
               open={open === section} onToggle={() => setOpen(open === section ? null : section)}>
-              <SectionBody section={section} {...panelProps} />
+              <fieldset disabled={!ready} className={cn("min-w-0", !ready && "opacity-45")}>
+                <SectionBody section={section} {...panelProps} />
+              </fieldset>
             </SectionShell>
           ))}
         </Panel>
@@ -554,7 +548,7 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
         <div className="flex flex-wrap items-center gap-1.5">
           <StripButton icon={Undo2} label={t("editor.undo")} onClick={undo} disabled={!canUndo} />
           <StripButton icon={Redo2} label={t("editor.redo")} onClick={redo} disabled={!canRedo} />
-          <StripButton icon={History} label={t("editor.history")} active={historyOpen || sheet === "history"}
+          <StripButton icon={History} label={t("editor.history")} active={historyOpen || sheet === "history"} disabled={!ready}
             onClick={() => {
               // One button, two homes: a panel where there is room for one and
               // a sheet where there is not. Deciding at click time rather than
@@ -576,23 +570,23 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
             what keeps a 360px phone free of a sideways scroll. */}
         <div className="panel flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl px-2.5 py-2">
           <Cluster label={t("editor.g.crop")}>
-            <ClusterButton icon={AlignHorizontalSpaceAround} label={t("editor.center")} showLabel
+            <ClusterButton icon={AlignHorizontalSpaceAround} label={t("editor.center")} showLabel disabled={!ready}
               onClick={() => { applyEdit("transform", { offsetX: 0 }, true); setResetKey((k) => k + 1); }} />
-            <ClusterButton icon={AlignVerticalSpaceAround} label={t("editor.middle")} showLabel
+            <ClusterButton icon={AlignVerticalSpaceAround} label={t("editor.middle")} showLabel disabled={!ready}
               onClick={() => { applyEdit("transform", { offsetY: 0 }, true); setResetKey((k) => k + 1); }} />
-            <ClusterButton icon={Maximize} label={t("editor.fit")}
+            <ClusterButton icon={Maximize} label={t("editor.fit")} disabled={!ready}
               onClick={() => { setZoom(100); setResetKey((k) => k + 1); }} />
           </Cluster>
 
           <Divider />
 
           <Cluster label={t("editor.t.position")}>
-            <ClusterButton icon={FlipHorizontal} label={t("editor.t.flipH")} active={state.transform.flipH}
+            <ClusterButton icon={FlipHorizontal} label={t("editor.t.flipH")} active={state.transform.flipH} disabled={!ready}
               onClick={() => applyEdit("transform", { flipH: !state.transform.flipH }, true)} />
-            <ClusterButton icon={FlipVertical} label={t("editor.t.flipV")} active={state.transform.flipV}
+            <ClusterButton icon={FlipVertical} label={t("editor.t.flipV")} active={state.transform.flipV} disabled={!ready}
               onClick={() => applyEdit("transform", { flipV: !state.transform.flipV }, true)} />
             {/* A quarter turn, kept inside the ±180° the pipeline accepts. */}
-            <ClusterButton icon={RotateCw} label={t("editor.rotate90")}
+            <ClusterButton icon={RotateCw} label={t("editor.rotate90")} disabled={!ready}
               onClick={() => applyEdit("transform", { rotate: quarterTurn(state.transform.rotate) }, true)} />
           </Cluster>
 
@@ -603,19 +597,24 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
               left the two clusters marooned at the far end. */}
           <div className="flex min-w-[9rem] max-w-[20rem] flex-1 items-center gap-1.5 self-end">
             <ClusterButton icon={Minus} label={t("editor.zoomOut")}
-              onClick={() => setZoom((z) => Math.max(25, z - 25))} disabled={zoom <= 25} />
+              onClick={() => setZoom((z) => Math.max(25, z - 25))} disabled={!ready || zoom <= 25} />
             <input type="range" min={25} max={400} step={5} value={zoom} aria-label={t("editor.zoom")}
+              disabled={!ready}
               onChange={(event) => setZoom(Number(event.target.value))}
-              className="min-w-[3rem] flex-1 accent-[rgb(var(--accent))]" />
+              className="min-w-[3rem] flex-1 accent-[rgb(var(--accent))] disabled:opacity-40" />
             <ClusterButton icon={Plus} label={t("editor.zoomIn")}
-              onClick={() => setZoom((z) => Math.min(400, z + 25))} disabled={zoom >= 400} />
+              onClick={() => setZoom((z) => Math.min(400, z + 25))} disabled={!ready || zoom >= 400} />
             <span className="w-[3rem] shrink-0 text-right text-[11.5px] font-semibold tabular-nums text-muted">{zoom}%</span>
           </div>
         </div>
 
+        {/* The canvas frame is the same box either way — the uploader is its
+            CONTENT before a photo, not a replacement for the editor. */}
         <div className="flex h-[min(56vh,28rem)] flex-col lg:h-auto lg:min-h-0 lg:flex-1">
-          <EditorCanvas image={working.image} state={state} hasAlpha={working.hasAlpha}
-            zoom={zoom} resetKey={resetKey} busy={busy !== null} />
+          {ready
+            ? <EditorCanvas image={working.image} state={state} hasAlpha={working.hasAlpha}
+                zoom={zoom} resetKey={resetKey} busy={busy !== null} />
+            : dropzone}
         </div>
 
         <div className="space-y-2">
@@ -623,15 +622,15 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
               desktop they sit centred under the canvas, where the reference
               puts them — the export is the end of the pass, not a left rail. */}
           <div className="hidden justify-center gap-2 lg:flex">
-            <Button variant="ghost" onClick={() => void copyUrl()} disabled={busy !== null}>
+            <Button variant="ghost" onClick={() => void copyUrl()} disabled={!ready || busy !== null}>
               <Link2 size={15} aria-hidden />
               {t("editor.copyUrl")}
             </Button>
-            <Button variant="secondary" onClick={() => void saveToLibrary()} disabled={busy !== null || storedNow}>
+            <Button variant="secondary" onClick={() => void saveToLibrary()} disabled={!ready || busy !== null || storedNow}>
               <Save size={15} aria-hidden />
               {storedNow ? t("tools.allSaved") : t("editor.saveLibrary")}
             </Button>
-            <Button onClick={() => void download()} disabled={busy !== null}>
+            <Button onClick={() => void download()} disabled={!ready || busy !== null}>
               {exporting ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Download size={15} aria-hidden />}
               {t("editor.download")}
             </Button>
@@ -646,8 +645,10 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
         <div className="dock mx-auto w-full max-w-[var(--content-max)] rounded-2xl p-2 shadow-e4">
           <div className="thin-scroll -mx-1 mb-1.5 flex items-stretch gap-1.5 overflow-x-auto px-1 pb-1">
             {SECTIONS.map((section, index) => (
-              <button key={section} type="button" onClick={() => setSheet(section)}
-                className="flex shrink-0 items-center gap-1.5 rounded-xl border border-line px-2.5 py-1.5 text-left transition-colors hover:bg-raised">
+              // Present from the first frame, so the phone shows an editor
+              // rather than an uploader — inert until there is a photo.
+              <button key={section} type="button" onClick={() => setSheet(section)} disabled={!ready}
+                className="flex shrink-0 items-center gap-1.5 rounded-xl border border-line px-2.5 py-1.5 text-left transition-colors hover:bg-raised disabled:opacity-45">
                 <span aria-hidden className="flex h-5 w-5 items-center justify-center rounded-md bg-accent-soft text-[10px] font-bold tabular-nums text-accent">
                   {index + 1}
                 </span>
@@ -656,18 +657,18 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
             ))}
           </div>
           <div className="flex items-stretch gap-1.5">
-            <button type="button" onClick={() => void download()} disabled={busy !== null}
+            <button type="button" onClick={() => void download()} disabled={!ready || busy !== null}
               className={cn("cta flex min-h-[2.75rem] flex-1 items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
-                busy !== null && "cursor-not-allowed opacity-55")}>
+                (!ready || busy !== null) && "cursor-not-allowed opacity-55")}>
               {exporting ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Download size={15} aria-hidden />}
               {t("editor.download")}
             </button>
-            <button type="button" onClick={() => void saveToLibrary()} disabled={busy !== null || storedNow}
+            <button type="button" onClick={() => void saveToLibrary()} disabled={!ready || busy !== null || storedNow}
               aria-label={t("editor.saveLibrary")}
               className="plate flex min-h-[2.75rem] w-11 items-center justify-center rounded-xl text-ink disabled:opacity-50">
               <Save size={16} aria-hidden />
             </button>
-            <button type="button" onClick={() => void copyUrl()} disabled={busy !== null}
+            <button type="button" onClick={() => void copyUrl()} disabled={!ready || busy !== null}
               aria-label={t("editor.copyUrl")}
               className="plate flex min-h-[2.75rem] w-11 items-center justify-center rounded-xl text-ink disabled:opacity-50">
               <Link2 size={16} aria-hidden />
@@ -682,9 +683,9 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
         title={sheet && sheet !== "history" ? t(`editor.s.${sheet}`) : ""}
       >
         {sheet && sheet !== "history" && (
-          <div className="space-y-4 px-1 pb-2">
+          <fieldset disabled={!ready} className={cn("space-y-4 px-1 pb-2", !ready && "opacity-45")}>
             <SectionBody section={sheet} {...panelProps} />
-          </div>
+          </fieldset>
         )}
       </BottomSheet>
 
