@@ -7,7 +7,6 @@ import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { toolCatalogue } from "@/lib/server/image-tools";
-import { PageHeader } from "@/components/ui/page-header";
 import { CompressWorkbench } from "@/components/tools/compress-workbench";
 
 export const dynamic = "force-dynamic";
@@ -48,15 +47,21 @@ export default async function CompressPage() {
 
   return (
     <div>
-      <Link href="/tools"
-        className="mb-2 inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-ink">
-        <ArrowLeft size={14} aria-hidden /> {t("tools.title")}
-      </Link>
-      <PageHeader
-        overline={entry.credits === 0 ? t("tools.free") : t("tools.creditsTotal", { n: entry.credits })}
-        title={t("compress.title")}
-        sub={t("compress.sub")}
-      />
+      {/* One compact line instead of an overline, a display headline and a
+          subtitle: the panel and the gallery are what the seller came for, and
+          the price still leads — it is the first thing on the row. */}
+      <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <Link href="/tools"
+          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-ink">
+          <ArrowLeft size={14} aria-hidden /> {t("tools.title")}
+        </Link>
+        <span aria-hidden className="h-3.5 w-px bg-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))]" />
+        <h1 className="font-display text-[19px] font-semibold tracking-tight">{t("compress.title")}</h1>
+        <span className="text-[12px] font-semibold text-muted">
+          {entry.credits === 0 ? t("tools.free") : t("tools.creditsTotal", { n: entry.credits })}
+        </span>
+        <p className="min-w-0 basis-full text-[13px] leading-relaxed text-muted sm:basis-auto">{t("compress.sub")}</p>
+      </div>
       <CompressWorkbench
         available={entry.available}
         credits={entry.credits}

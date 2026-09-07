@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle, ArrowRight, CheckCircle2, Download, FileArchive, ImagePlus,
-  Loader2, Maximize2, RotateCcw, Trash2, X,
+  Link2, Loader2, Maximize2, RotateCcw, Trash2, Unlink, X,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Button } from "@/components/ui/button";
@@ -11,11 +11,11 @@ import { Panel } from "@/components/ui/surface";
 import { ActionBar } from "@/components/ui/action-bar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label } from "@/components/ui/input";
-import { Segmented } from "@/components/ui/segmented";
 import {
   ACCEPTED_MIME, DEFAULT_SETTINGS, MAX_UPLOAD_BYTES,
   type OutputFormatOption, type ToolSettings, type ToolSlug,
 } from "@/lib/images/tools";
+import { CostSummary, GroupLabel, RadioRows } from "@/components/tools/panel-parts";
 import { createZip, outputName } from "@/lib/images/zip";
 import { cn, formatBytes } from "@/lib/utils";
 
@@ -323,42 +323,51 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
       <div className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
         <input ref={inputRef} type="file" multiple accept={ACCEPTED_MIME.join(",")} className="hidden"
           onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(e) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files) addFiles(e.dataTransfer.files); }}
-          className={cn(
-            "flex w-full flex-col items-center gap-1.5 rounded-2xl border border-dashed px-4 py-7 transition-colors",
-            dragging
-              ? "border-[rgb(var(--accent)/0.7)] bg-accent-soft/40 text-accent"
-              : "border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/50 text-faint hover:border-[rgb(var(--accent)/0.55)] hover:text-accent"
-          )}
-        >
-          <ImagePlus size={24} aria-hidden />
-          <span className="text-sm font-semibold">{t("tools.drop")}</span>
-          <span className="text-[11px]">{t("tools.dropHint", { n: MAX_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })}</span>
-          <span className="mt-1 text-[11px] font-semibold tabular-nums text-muted">
-            {items.length} / {MAX_FILES} {t("common.photos")}
-          </span>
-        </button>
+        {/* The import box wears its own heading, so the cap is a stated rule
+            rather than something discovered on the 201st file. */}
+        <Panel className="rounded-2xl p-3.5">
+          <GroupLabel>{t("tools.addPhotos", { n: MAX_FILES })}</GroupLabel>
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files) addFiles(e.dataTransfer.files); }}
+            className={cn(
+              "flex w-full flex-col items-center gap-1.5 rounded-xl border border-dashed px-4 py-6 transition-colors",
+              dragging
+                ? "border-[rgb(var(--accent)/0.7)] bg-accent-soft/40 text-accent"
+                : "border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/50 text-faint hover:border-[rgb(var(--accent)/0.55)] hover:text-accent"
+            )}
+          >
+            <ImagePlus size={22} aria-hidden />
+            <span className="text-[13px] font-semibold">{t("tools.drop")}</span>
+            <span className="text-center text-[11px]">{t("tools.dropHint", { n: MAX_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })}</span>
+            <span className="mt-0.5 text-[11px] font-semibold tabular-nums text-muted">
+              {items.length} / {MAX_FILES} {t("common.photos")}
+            </span>
+          </button>
+        </Panel>
 
         <Panel className="space-y-4 rounded-2xl p-4">
-          <div className="min-w-0 space-y-1.5">
+          <div className="min-w-0">
             {/* The cap is stated on the label, not discovered after a run. */}
-            <Label hint={`≤ ${MAX_SIDE} px`}>{t("resize.resolution")}</Label>
-            <Segmented
-              value={custom ? "" : presetKey}
+            <GroupLabel hint={`≤ ${MAX_SIDE} px`}>{t("resize.resolution")}</GroupLabel>
+            {/* Rows, not chips. 8K is a real 8192px and sharp stops at 8000,
+                so it is listed and switched off WITH ITS REASON — a chip had
+                room for the word "unavailable" and nothing else. */}
+            <RadioRows
+              name="resize-resolution"
+              value={custom ? null : presetKey}
               onChange={setPresetKey}
-              label={t("resize.resolution")}
-              options={PRESETS.map((p) => ({
+              disabled={custom}
+              rows={PRESETS.map((p) => ({
                 value: p.key,
                 label: p.label,
                 // Every preset is a ceiling, never a promise to enlarge — the
                 // "≤" is the whole story and reads in all three languages.
-                meta: p.side > MAX_SIDE ? t("common.unavailable") : `≤ ${p.side} px`,
-                disabled: custom || p.side > MAX_SIDE,
+                meta: `≤ ${p.side} px`,
+                disabledReason: p.side > MAX_SIDE ? t("resize.overMax", { n: MAX_SIDE }) : undefined,
               }))}
             />
           </div>
@@ -366,46 +375,39 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
           <CheckRow checked={custom} onChange={setCustom} label={t("resize.custom")} />
 
           {custom && (
-            <>
-              <div className="grid grid-cols-2 gap-3 [&>*]:min-w-0">
-                <div className="min-w-0 space-y-1.5">
-                  {/* The accepted range on the label, so an out-of-range entry
-                      is a visible rule rather than a button that went grey. */}
-                  <Label htmlFor="resize-w" hint={`${MIN_SIDE}–${MAX_SIDE}`}>{t("editor.f.width")}</Label>
-                  <Input id="resize-w" type="number" inputMode="numeric" min={MIN_SIDE} max={MAX_SIDE}
-                    value={customWidth}
-                    onChange={(e) => setCustomWidth(e.target.value)}
-                    onBlur={() => setCustomWidth(clampInput(customWidth))} />
-                </div>
-                <div className="min-w-0 space-y-1.5">
-                  <Label htmlFor="resize-h" hint={`${MIN_SIDE}–${MAX_SIDE}`}>{t("editor.f.height")}</Label>
-                  <Input id="resize-h" type="number" inputMode="numeric" min={MIN_SIDE} max={MAX_SIDE}
-                    value={lockRatio ? "" : customHeight}
-                    disabled={lockRatio}
-                    placeholder={t("tools.opt.auto")}
-                    onChange={(e) => setCustomHeight(e.target.value)}
-                    onBlur={() => setCustomHeight(clampInput(customHeight))} />
-                </div>
+            <div className="flex items-end gap-2">
+              <div className="min-w-0 flex-1 space-y-1.5">
+                {/* The accepted range on the label, so an out-of-range entry
+                    is a visible rule rather than a button that went grey. */}
+                <Label htmlFor="resize-w" hint={`${MIN_SIDE}–${MAX_SIDE}`}>{t("editor.f.width")}</Label>
+                <Input id="resize-w" type="number" inputMode="numeric" min={MIN_SIDE} max={MAX_SIDE}
+                  value={customWidth}
+                  onChange={(e) => setCustomWidth(e.target.value)}
+                  onBlur={() => setCustomWidth(clampInput(customWidth))} />
               </div>
-              <CheckRow checked={lockRatio} onChange={setLockRatio} label={t("editor.f.lock")} />
-            </>
+              {/* The ratio lock lives BETWEEN the two fields, where the thing
+                  it links is visible. It was a checkbox on its own line. */}
+              <button type="button" onClick={() => setLockRatio((locked) => !locked)}
+                aria-pressed={lockRatio} title={t("editor.f.lock")} aria-label={t("editor.f.lock")}
+                className={cn("mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors",
+                  lockRatio ? "is-selected text-accent" : "border-line text-faint hover:bg-raised hover:text-ink")}>
+                {lockRatio ? <Link2 size={15} aria-hidden /> : <Unlink size={15} aria-hidden />}
+              </button>
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <Label htmlFor="resize-h" hint={`${MIN_SIDE}–${MAX_SIDE}`}>{t("editor.f.height")}</Label>
+                <Input id="resize-h" type="number" inputMode="numeric" min={MIN_SIDE} max={MAX_SIDE}
+                  value={lockRatio ? "" : customHeight}
+                  disabled={lockRatio}
+                  placeholder={t("tools.opt.auto")}
+                  onChange={(e) => setCustomHeight(e.target.value)}
+                  onBlur={() => setCustomHeight(clampInput(customHeight))} />
+              </div>
+            </div>
           )}
         </Panel>
 
         <ActionBar
-          summary={
-            <>
-              <span className="min-w-0 truncate text-muted">
-                {pending.length > 0 ? t("tools.pendingCount", { n: pending.length }) : t("tools.noQueue")}
-              </span>
-              <span className={cn("shrink-0 font-semibold tabular-nums", notEnough ? "text-danger" : "text-ink")}>
-                {credits === 0 ? t("tools.free") : t("tools.creditsTotal", { n: totalCredits })}
-              </span>
-            </>
-          }
-          note={credits > 0
-            ? <span className="text-faint tabular-nums">{t("tools.creditsTotal", { n: credits })} × {pending.length}</span>
-            : undefined}
+          summary={<CostSummary perImage={credits} count={pending.length} enough={!notEnough} />}
         >
           <Button className="w-full" size="lg" onClick={() => run()}
             disabled={running || pending.length === 0 || notEnough || !hasTarget}>

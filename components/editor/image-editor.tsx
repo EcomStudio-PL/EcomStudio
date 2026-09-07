@@ -1,27 +1,44 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import {
-  AlertTriangle, AlignCenter, Download, History, ImagePlus, Link2, Loader2,
-  Maximize, Redo2, Save, Undo2,
+  AlertTriangle, AlignHorizontalSpaceAround, AlignVerticalSpaceAround, Download,
+  FlipHorizontal, FlipVertical, History, ImagePlus, Link2, Loader2, Maximize, Minus,
+  Plus, Redo2, RotateCw, Save, Undo2,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/surface";
 import { BottomSheet } from "@/components/mobile/sheet";
-import { EditorCanvas } from "@/components/editor/canvas";
 import { HistoryList } from "@/components/editor/history";
+import type { CutoutState, PatchFn } from "@/components/editor/panels";
 import {
-  SECTIONS, SectionBody, SectionShell, type CutoutState, type PatchFn,
-} from "@/components/editor/panels";
-import {
-  EDITOR_DEFAULTS, ENTRY_SECTION, applyPatch, pushHistory,
+  EDITOR_DEFAULTS, ENTRY_SECTION, SECTIONS, applyPatch, pushHistory,
   type EditorEntry, type EditorSection, type EditorState, type HistoryEntry,
 } from "@/lib/images/editor-state";
 import { DEFAULT_SETTINGS, MAX_UPLOAD_BYTES } from "@/lib/images/tools";
 import { outputName } from "@/lib/images/zip";
 import { cn, formatBytes } from "@/lib/utils";
+
+/**
+ * The canvas and the five control panels are the two heaviest things on this
+ * screen and NEITHER is on it until a photo is. Splitting them out takes that
+ * weight off the first load of a page whose entire content, until a file is
+ * chosen, is a dropzone and a list of five words.
+ *
+ * They are then fetched the moment the editor mounts (see the effect below),
+ * so the download overlaps with the seller finding their file rather than
+ * happening after they choose it. The split costs nothing at the moment it
+ * would be felt.
+ */
+const EditorCanvas = dynamic(
+  () => import("@/components/editor/canvas").then((m) => m.EditorCanvas),
+  { ssr: false },
+);
+const SectionShell = dynamic(() => import("@/components/editor/panels").then((m) => m.SectionShell));
+const SectionBody = dynamic(() => import("@/components/editor/panels").then((m) => m.SectionBody));
 
 /**
  * IMAGE EDITOR — the toolbox as one screen.
@@ -105,6 +122,9 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
   const [open, setOpen] = useState<EditorSection | null>(entry ? ENTRY_SECTION[entry] : "background");
   const [sheet, setSheet] = useState<Sheet>(null);
   const [zoom, setZoom] = useState(100);
+  /** Desktop only: the change list opens under the toolbar rather than in a
+   *  sheet. On phones `sheet === "history"` still does the work. */
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [resetKey, setResetKey] = useState(0);
   const [dragging, setDragging] = useState(false);
 
@@ -125,6 +145,13 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
    */
   const urls = useRef<string[]>([]);
   useEffect(() => () => { urls.current.forEach(URL.revokeObjectURL); urls.current = []; }, []);
+
+  // Warm the split chunks while the seller is still in their file picker, so
+  // the code split above never becomes a pause they can see.
+  useEffect(() => {
+    void import("@/components/editor/canvas");
+    void import("@/components/editor/panels");
+  }, []);
 
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { balanceRef.current = balance; }, [balance]);
@@ -432,36 +459,62 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
       onChange={(event) => { pick(event.target.files); event.target.value = ""; }} />
   );
 
+  const dropzone = (
+    <button
+      type="button"
+      onClick={() => fileInput.current?.click()}
+      onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(event) => { event.preventDefault(); setDragging(false); pick(event.dataTransfer.files); }}
+      className={cn(
+        "flex min-h-[18rem] w-full flex-1 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed px-5 py-10 text-center transition-colors",
+        dragging
+          ? "border-[rgb(var(--accent)/0.7)] bg-accent-soft/40 text-accent"
+          : "border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/40 text-faint hover:border-[rgb(var(--accent)/0.55)] hover:text-accent",
+      )}
+    >
+      {loading ? <Loader2 size={26} className="animate-spin" aria-hidden /> : <ImagePlus size={26} aria-hidden />}
+      <span className="font-display text-[15px] font-semibold text-ink">
+        {loading ? t("editor.working") : t("editor.drop")}
+      </span>
+      <span className="text-[12px] text-muted">
+        {t("editor.formats")} · {formatBytes(MAX_UPLOAD_BYTES)}
+      </span>
+      {!loading && (
+        <span aria-hidden className="cta mt-3 rounded-xl px-4 py-2.5 text-[13px] font-semibold">
+          {t("editor.pick")}
+        </span>
+      )}
+    </button>
+  );
+
+  // BEFORE a photo is chosen the screen used to be one enormous dashed
+  // rectangle and nothing else — a seller arriving from "Usuń tło" had no way
+  // to see that the thing they clicked was even here. The workspace now keeps
+  // its shape: the five sections stand on the left, listed and inert, and the
+  // dropzone occupies the canvas. Same upload, same handlers; what changed is
+  // that the editor looks like the editor before it is fed.
   if (!working) {
     return (
-      <div className="gen-shell-body flex min-w-0 flex-col">
+      <div className={cn(
+        "gen-shell-body relative grid min-w-0 items-start gap-4 [&>*]:min-w-0",
+        "lg:grid-cols-[clamp(292px,22vw,340px)_minmax(0,1fr)] lg:items-stretch lg:gap-5 lg:overflow-hidden",
+      )}>
         {picker}
-        <button
-          type="button"
-          onClick={() => fileInput.current?.click()}
-          onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(event) => { event.preventDefault(); setDragging(false); pick(event.dataTransfer.files); }}
-          className={cn(
-            "flex min-h-[20rem] w-full flex-1 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed px-5 py-10 text-center transition-colors",
-            dragging
-              ? "border-[rgb(var(--accent)/0.7)] bg-accent-soft/40 text-accent"
-              : "border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/40 text-faint hover:border-[rgb(var(--accent)/0.55)] hover:text-accent",
-          )}
-        >
-          {loading ? <Loader2 size={26} className="animate-spin" aria-hidden /> : <ImagePlus size={26} aria-hidden />}
-          <span className="font-display text-[15px] font-semibold text-ink">
-            {loading ? t("editor.working") : t("editor.drop")}
-          </span>
-          <span className="text-[12px] text-muted">
-            {t("editor.formats")} · {formatBytes(MAX_UPLOAD_BYTES)}
-          </span>
-          {!loading && (
-            <span aria-hidden className="cta mt-3 rounded-xl px-4 py-2.5 text-[13px] font-semibold">
-              {t("editor.pick")}
-            </span>
-          )}
-        </button>
+        <div className="hidden min-w-0 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
+          <Panel className="thin-scroll min-h-0 flex-1 overflow-y-auto px-4 opacity-60">
+            {SECTIONS.map((section, index) => (
+              <div key={section} className="flex items-center gap-2.5 border-b border-line py-3 last:border-b-0">
+                <span aria-hidden className="step-chip step-chip-sm">{index + 1}</span>
+                <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold tracking-tight">
+                  {t(`editor.s.${section}`)}
+                </span>
+              </div>
+            ))}
+            <p className="py-3 text-[11.5px] leading-relaxed text-faint">{t("editor.emptyHint")}</p>
+          </Panel>
+        </div>
+        <div className="flex min-w-0 flex-col lg:h-full lg:min-h-0">{dropzone}</div>
       </div>
     );
   }
@@ -495,22 +548,69 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
 
       {/* ── RIGHT: toolbar, canvas, exports ─────────────────────────────── */}
       <div className="flex min-w-0 flex-col gap-3 lg:h-full lg:min-h-0">
-        {/* Wrapping is what keeps a 360px phone free of a sideways scroll: the
-            zoom group drops to its own line instead of pushing the strip wide. */}
-        <div className="panel flex flex-wrap items-center gap-x-1.5 gap-y-1 rounded-2xl px-2 py-1.5 sm:gap-x-2 sm:px-2.5">
-          <ToolButton icon={AlignCenter} label={t("editor.center")} onClick={() => setResetKey((k) => k + 1)} />
-          <ToolButton icon={Maximize} label={t("editor.fit")}
-            onClick={() => { setZoom(100); setResetKey((k) => k + 1); }} />
-          <span aria-hidden className="hidden h-5 w-px bg-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))] sm:block" />
-          <div className="flex min-w-[8rem] flex-1 items-center gap-2">
+        {/* ROW 1 — the timeline, spelled out. Undo, redo and the history list
+            were three unlabelled 36px icons in a strip of nine; they are the
+            three controls a customer reaches for by name, so they get names. */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <StripButton icon={Undo2} label={t("editor.undo")} onClick={undo} disabled={!canUndo} />
+          <StripButton icon={Redo2} label={t("editor.redo")} onClick={redo} disabled={!canRedo} />
+          <StripButton icon={History} label={t("editor.history")} active={historyOpen || sheet === "history"}
+            onClick={() => {
+              // One button, two homes: a panel where there is room for one and
+              // a sheet where there is not. Deciding at click time rather than
+              // mounting both keeps the sheet's body-scroll lock off desktop.
+              if (window.matchMedia("(min-width: 1024px)").matches) setHistoryOpen((open) => !open);
+              else setSheet((current) => (current === "history" ? null : "history"));
+            }} />
+        </div>
+
+        {/* The history list opens IN PLACE on desktop and as a sheet on a
+            phone — a bottom sheet on a 1440px screen was the wrong object. */}
+        {historyOpen && (
+          <Panel className="hidden max-h-56 overflow-y-auto rounded-2xl p-2 lg:block">
+            <HistoryList entries={timeline.entries} cursor={timeline.cursor} onRestore={goTo} />
+          </Panel>
+        )}
+
+        {/* ROW 2 — the workspace strip: framing, position, zoom. Wrapping is
+            what keeps a 360px phone free of a sideways scroll. */}
+        <div className="panel flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl px-2.5 py-2">
+          <Cluster label={t("editor.g.crop")}>
+            <ClusterButton icon={AlignHorizontalSpaceAround} label={t("editor.center")} showLabel
+              onClick={() => { applyEdit("transform", { offsetX: 0 }, true); setResetKey((k) => k + 1); }} />
+            <ClusterButton icon={AlignVerticalSpaceAround} label={t("editor.middle")} showLabel
+              onClick={() => { applyEdit("transform", { offsetY: 0 }, true); setResetKey((k) => k + 1); }} />
+            <ClusterButton icon={Maximize} label={t("editor.fit")}
+              onClick={() => { setZoom(100); setResetKey((k) => k + 1); }} />
+          </Cluster>
+
+          <Divider />
+
+          <Cluster label={t("editor.t.position")}>
+            <ClusterButton icon={FlipHorizontal} label={t("editor.t.flipH")} active={state.transform.flipH}
+              onClick={() => applyEdit("transform", { flipH: !state.transform.flipH }, true)} />
+            <ClusterButton icon={FlipVertical} label={t("editor.t.flipV")} active={state.transform.flipV}
+              onClick={() => applyEdit("transform", { flipV: !state.transform.flipV }, true)} />
+            {/* A quarter turn, kept inside the ±180° the pipeline accepts. */}
+            <ClusterButton icon={RotateCw} label={t("editor.rotate90")}
+              onClick={() => applyEdit("transform", { rotate: quarterTurn(state.transform.rotate) }, true)} />
+          </Cluster>
+
+          <Divider />
+
+          {/* Capped, not greedy: given `flex-1` on a 1440px toolbar the track
+              stretched to about 600px, which made a 5% nudge a pixel wide and
+              left the two clusters marooned at the far end. */}
+          <div className="flex min-w-[9rem] max-w-[20rem] flex-1 items-center gap-1.5 self-end">
+            <ClusterButton icon={Minus} label={t("editor.zoomOut")}
+              onClick={() => setZoom((z) => Math.max(25, z - 25))} disabled={zoom <= 25} />
             <input type="range" min={25} max={400} step={5} value={zoom} aria-label={t("editor.zoom")}
               onChange={(event) => setZoom(Number(event.target.value))}
-              className="min-w-[3.5rem] max-w-[13rem] flex-1 accent-[rgb(var(--accent))]" />
-            <span className="shrink-0 text-[11.5px] font-semibold tabular-nums text-muted">{zoom}%</span>
+              className="min-w-[3rem] flex-1 accent-[rgb(var(--accent))]" />
+            <ClusterButton icon={Plus} label={t("editor.zoomIn")}
+              onClick={() => setZoom((z) => Math.min(400, z + 25))} disabled={zoom >= 400} />
+            <span className="w-[3rem] shrink-0 text-right text-[11.5px] font-semibold tabular-nums text-muted">{zoom}%</span>
           </div>
-          <ToolButton icon={Undo2} label={t("editor.undo")} onClick={undo} disabled={!canUndo} />
-          <ToolButton icon={Redo2} label={t("editor.redo")} onClick={redo} disabled={!canRedo} />
-          <ToolButton icon={History} label={t("editor.history")} onClick={() => setSheet("history")} />
         </div>
 
         <div className="flex h-[min(56vh,28rem)] flex-col lg:h-auto lg:min-h-0 lg:flex-1">
@@ -519,22 +619,24 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
         </div>
 
         <div className="space-y-2">
-          {/* Below lg these three live in the dock, within thumb reach. */}
-          <div className="hidden gap-2 lg:flex">
-            <Button onClick={() => void download()} disabled={busy !== null}>
-              {exporting ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Download size={15} aria-hidden />}
-              {t("editor.download")}
+          {/* Below lg these three live in the dock, within thumb reach. On a
+              desktop they sit centred under the canvas, where the reference
+              puts them — the export is the end of the pass, not a left rail. */}
+          <div className="hidden justify-center gap-2 lg:flex">
+            <Button variant="ghost" onClick={() => void copyUrl()} disabled={busy !== null}>
+              <Link2 size={15} aria-hidden />
+              {t("editor.copyUrl")}
             </Button>
             <Button variant="secondary" onClick={() => void saveToLibrary()} disabled={busy !== null || storedNow}>
               <Save size={15} aria-hidden />
               {storedNow ? t("tools.allSaved") : t("editor.saveLibrary")}
             </Button>
-            <Button variant="ghost" onClick={() => void copyUrl()} disabled={busy !== null}>
-              <Link2 size={15} aria-hidden />
-              {t("editor.copyUrl")}
+            <Button onClick={() => void download()} disabled={busy !== null}>
+              {exporting ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Download size={15} aria-hidden />}
+              {t("editor.download")}
             </Button>
           </div>
-          <p className="text-[11.5px] leading-relaxed text-faint">{t("editor.previewNote")}</p>
+          <p className="text-center text-[11.5px] leading-relaxed text-faint lg:text-center">{t("editor.previewNote")}</p>
         </div>
       </div>
 
@@ -596,15 +698,67 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 
-function ToolButton({ icon: Icon, label, onClick, disabled }: {
-  icon: typeof Undo2; label: string; onClick: () => void; disabled?: boolean;
+/** Row 1: a named control. Icon AND word, because these three are the ones a
+ *  customer looks for by name rather than by glyph. */
+function StripButton({ icon: Icon, label, onClick, disabled, active }: {
+  icon: typeof Undo2; label: string; onClick: () => void; disabled?: boolean; active?: boolean;
+}) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={active}
+      className={cn(
+        "plate flex min-h-[2.25rem] items-center gap-1.5 rounded-xl px-2.5 text-[12.5px] font-semibold transition-colors",
+        active ? "text-accent" : "text-ink hover:bg-raised",
+        "disabled:pointer-events-none disabled:opacity-40",
+      )}>
+      <Icon size={14} aria-hidden className="shrink-0" />
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+/** Row 2: a captioned group of icon buttons — "Kadrowanie", "Pozycja". The
+ *  caption is what turns six anonymous glyphs into two decisions. */
+function Cluster({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <p className="mb-0.5 truncate text-[10px] font-semibold uppercase tracking-[0.08em] text-faint">{label}</p>
+      <div className="flex items-center gap-1">{children}</div>
+    </div>
+  );
+}
+
+function ClusterButton({ icon: Icon, label, onClick, disabled, active, showLabel }: {
+  icon: typeof Undo2;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  /** Framing reads better with words; flip and rotate are universal glyphs. */
+  showLabel?: boolean;
 }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled} aria-label={label} title={label}
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-ink disabled:pointer-events-none disabled:opacity-35">
-      <Icon size={16} aria-hidden />
+      aria-pressed={active}
+      className={cn(
+        "flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border transition-colors",
+        showLabel ? "px-2.5" : "w-8",
+        active ? "is-selected text-accent" : "border-line text-muted hover:bg-raised hover:text-ink",
+        "disabled:pointer-events-none disabled:opacity-35",
+      )}>
+      <Icon size={15} aria-hidden />
+      {showLabel && <span className="hidden text-[12px] font-semibold sm:inline">{label}</span>}
     </button>
   );
+}
+
+function Divider() {
+  return <span aria-hidden className="hidden h-8 w-px self-end bg-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))] sm:block" />;
+}
+
+/** The next quarter turn, folded back into the ±180° the bake accepts. */
+function quarterTurn(rotate: number): number {
+  const next = Math.round(rotate / 90) * 90 + 90;
+  return next > 180 ? next - 360 : next;
 }
 
 /** The entry link may pre-select a look; the untouched photo stays step zero. */

@@ -7,7 +7,6 @@ import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { toolCatalogue } from "@/lib/server/image-tools";
-import { PageHeader } from "@/components/ui/page-header";
 import { parseEntry } from "@/lib/images/editor-state";
 import { ImageEditor } from "@/components/editor/image-editor";
 
@@ -70,12 +69,17 @@ export default async function ImageEditorPage({ searchParams }: {
     // `gen-shell` binds the page to the viewport on desktop, so the canvas and
     // the settings column each scroll inside themselves and the page does not.
     <div className="workspace workspace-page gen-shell pt-1">
-      <div>
+      {/* The canvas is the point of this screen, and a display headline plus a
+          subtitle was costing it about 90px of height on every viewport. Back
+          link and name share one line now; what the editor does is visible in
+          the five sections beside it, not in a sentence above it. */}
+      <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <Link href="/tools"
-          className="mb-2 inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-ink">
+          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-ink">
           <ArrowLeft size={14} aria-hidden /> {t("nav.allTools")}
         </Link>
-        <PageHeader className="mb-4 sm:mb-5" title={t("editor.title")} sub={t("editor.sub")} />
+        <span aria-hidden className="h-3.5 w-px bg-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))]" />
+        <h1 className="font-display text-[17px] font-semibold tracking-tight">{t("editor.title")}</h1>
       </div>
 
       <ImageEditor

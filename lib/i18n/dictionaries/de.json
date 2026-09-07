@@ -1611,7 +1611,8 @@
       "ratioHint": "Der Rahmen wird nach außen gemalt — nichts wird beschnitten.",
       "shadowHint": "Braucht ein Foto mit transparentem Hintergrund.",
       "fitHint": "„Einpassen“ beschneidet nie, „Füllen“ schneidet auf den Rahmen zu.",
-      "levelHint": "Auto senkt die Qualität nur so lange, wie die Datei wirklich kleiner wird."
+      "levelHint": "Auto senkt die Qualität nur so lange, wie die Datei wirklich kleiner wird.",
+      "keepHint": "Behält das Ausgangsformat"
     },
     "err": {
       "insufficient_credits": "Zu wenig Credits.",
@@ -1664,7 +1665,7 @@
     },
     "compress": {
       "name": "Kompression",
-      "body": "Dateigröße senken, ohne sichtbaren Qualitätsverlust.",
+      "body": "Dateigröße senken — du entscheidest, wie viel Qualität du eintauschst.",
       "suffix": "komprimiert"
     },
     "watermark": {
@@ -1676,7 +1677,10 @@
       "name": "Foto-Retusche",
       "body": "Mach aus einem normalen Foto einen Premium-Packshot auf Weiß.",
       "suffix": "retusche"
-    }
+    },
+    "costPerImage": "Pro Foto",
+    "costTotal": "Gesamt",
+    "addPhotos": "Fotos hinzufügen (max. {n})"
   },
   "editor": {
     "title": "Bildbearbeitung",
@@ -1786,6 +1790,14 @@
       "scaled": "Skalierung geändert",
       "moved": "Foto verschoben",
       "transformed": "Mehrere Änderungen am Ausschnitt"
+    },
+    "middle": "Vertikal zentrieren",
+    "rotate90": "Um 90° drehen",
+    "zoomIn": "Vergrößern",
+    "zoomOut": "Verkleinern",
+    "emptyHint": "Lade ein Foto hoch, um die Abschnitte freizuschalten.",
+    "g": {
+      "crop": "Ausschnitt"
     }
   },
   "resize": {
@@ -1794,11 +1806,12 @@
     "resolution": "Auflösung",
     "custom": "Eigene Größe (px)",
     "newSize": "Neue Größe",
-    "run": "Größe ändern"
+    "run": "Größe ändern",
+    "overMax": "Nicht verfügbar — unser Encoder endet bei {n} px"
   },
   "compress": {
     "title": "Kompression",
-    "sub": "Verringere die Dateigröße deiner Fotos ohne Qualitätsverlust.",
+    "sub": "Bilder leichter machen. Die Kompressionsstärke bestimmt, wie viel Qualität du für Größe eintauschst.",
     "strength": "Kompressionsstärke",
     "low": "Niedrig",
     "mid": "Mittel",
@@ -1808,7 +1821,8 @@
     "sizeAfter": "Nachher",
     "saved": "Gespart",
     "summary": "Zusammenfassung der Kompression",
-    "reduction": "Reduktion"
+    "reduction": "Reduktion",
+    "lossyNote": "Kompression ist verlustbehaftet: je stärker, desto kleiner die Datei und desto weniger Details. Das echte Ergebnis pro Foto steht unten."
   },
   "hub": {
     "title": "Alle Werkzeuge",

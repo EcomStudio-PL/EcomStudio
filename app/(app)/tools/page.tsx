@@ -10,7 +10,6 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { toolCatalogue, type ToolAvailability } from "@/lib/server/image-tools";
-import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import { FeatureGate } from "@/components/feature-gate";
 import type { ToolSlug } from "@/lib/images/tools";
@@ -125,6 +124,12 @@ export default async function ToolsPage() {
       tone: "bg-sunken text-muted", title: t("tools.shadow.name"), paid: null,
     },
     {
+      // The editor's third section had no shortcut, which made the hub read as
+      // if the editor did four things. It does five.
+      key: "format", href: "/tools/editor?tool=format", icon: Scaling,
+      tone: "bg-sunken text-muted", title: t("editor.s.format"), paid: null,
+    },
+    {
       key: "adjust", href: "/tools/editor?tool=adjust", icon: Contrast,
       tone: "bg-accent-soft text-accent", title: t("editor.s.adjust"), paid: null,
     },
@@ -146,31 +151,30 @@ export default async function ToolsPage() {
   return (
     <FeatureGate feature="tools">
     <div>
-      <PageHeader overline={t("mega.edit")} title={t("hub.title")} sub={t("hub.sub")} />
+      {/* The hub used to open with a display headline, an overline and a line
+          of prose — roughly a third of a laptop screen spent telling a seller
+          the name of the page they just clicked. What they came for is the
+          grid, so the title is now one compact line and the grid starts in the
+          fold. Nothing was removed but the height. */}
+      <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h1 className="font-display text-[19px] font-semibold tracking-tight sm:text-[21px]">{t("hub.title")}</h1>
+        <p className="text-[13px] leading-relaxed text-muted">{t("hub.sub")}</p>
+      </div>
 
       <section>
-        <div className="mb-3">
-          <h2 className="font-display text-[15px] font-semibold tracking-tight">{t("nav.tools")}</h2>
-          <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{t("tools.sub")}</p>
-        </div>
-        <div className="stagger grid gap-3 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3">
+        <SectionHead title={t("nav.tools")} sub={t("tools.sub")} />
+        <div className="stagger grid gap-2.5 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {tools.map((card) => (
             <ToolTile key={card.key} card={card} state={card.slug ? row(card.slug) : null} t={t} />
           ))}
         </div>
       </section>
 
-      <section className="mt-7">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="font-display text-[15px] font-semibold tracking-tight">{t("nav.editor")}</h2>
-            <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{t("editor.sub")}</p>
-          </div>
-          {/* One badge for the whole editor — the rows below only speak up
-              when their own step costs credits or cannot run. */}
-          <StateBadge state={editor} t={t} />
-        </div>
-        <div className="stagger grid gap-2 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="mt-6">
+        {/* One badge for the whole editor — the rows below only speak up
+            when their own step costs credits or cannot run. */}
+        <SectionHead title={t("nav.editor")} sub={t("editor.sub")} badge={<StateBadge state={editor} t={t} />} />
+        <div className="stagger grid gap-2 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {sections.map((card) => (
             <EditorTile key={card.key} card={card} state={sectionState(card.paid)} t={t} />
           ))}
@@ -178,6 +182,18 @@ export default async function ToolsPage() {
       </section>
     </div>
     </FeatureGate>
+  );
+}
+
+/** A group heading that costs one line, not three: the name and its purpose
+ *  share the baseline, and the badge sits at the far end. */
+function SectionHead({ title, sub, badge }: { title: string; sub: string; badge?: React.ReactNode }) {
+  return (
+    <div className="mb-2.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+      <h2 className="font-display text-[14px] font-semibold tracking-tight">{title}</h2>
+      <p className="min-w-0 flex-1 truncate text-[12.5px] text-muted">{sub}</p>
+      {badge && <span className="shrink-0 self-center">{badge}</span>}
+    </div>
   );
 }
 
@@ -193,28 +209,30 @@ function StateBadge({ state, t }: { state: ToolAvailability | null; t: T }) {
 function ToolTile({ card, state, t }: { card: ToolCard; state: ToolAvailability | null; t: T }) {
   const Icon = card.icon;
   const open = state?.available ?? true;
+  // Compact: the icon sits BESIDE the name rather than above it, which buys
+  // back a whole row per card, and the price rides the same line as the
+  // title. Four of these fit where three of the old ones did, and the
+  // description still gets its own line — the card is denser, not thinner.
   const body = (
     <>
-      <div className="flex items-start justify-between gap-3">
-        <span aria-hidden className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl", card.tone)}>
-          <Icon size={19} />
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span aria-hidden className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", card.tone)}>
+          <Icon size={17} />
         </span>
+        <h3 className="flex min-w-0 flex-1 items-center gap-1 text-[13.5px] font-semibold tracking-tight">
+          <span className="truncate">{card.title}</span>
+          {open && <ArrowUpRight size={13} className="shrink-0 text-faint" aria-hidden />}
+        </h3>
         <StateBadge state={state} t={t} />
       </div>
-      <div className="mt-3 min-w-0">
-        <h3 className="flex items-center gap-1 text-sm font-semibold tracking-tight">
-          <span className="truncate">{card.title}</span>
-          {open && <ArrowUpRight size={14} className="shrink-0 text-faint" aria-hidden />}
-        </h3>
-        <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{card.body}</p>
-      </div>
+      <p className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-muted">{card.body}</p>
     </>
   );
 
   return open ? (
-    <Link href={card.href} className="panel panel-interactive flex flex-col rounded-2xl p-4">{body}</Link>
+    <Link href={card.href} className="panel panel-interactive flex flex-col rounded-2xl p-3.5">{body}</Link>
   ) : (
-    <div className="panel flex flex-col rounded-2xl p-4 opacity-65">{body}</div>
+    <div className="panel flex flex-col rounded-2xl p-3.5 opacity-65">{body}</div>
   );
 }
 

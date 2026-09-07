@@ -81,6 +81,16 @@ export function parseEntry(value: unknown): EditorEntry | null {
   return (EDITOR_ENTRIES as readonly string[]).includes(asked) ? (asked as EditorEntry) : null;
 }
 
+/**
+ * PANEL ORDER — the numbering the customer sees, 1 → 5.
+ *
+ * It lives here rather than beside the panels because the editor's EMPTY state
+ * lists the five sections before any of them can be drawn, and importing that
+ * list used to drag the whole controls module — sliders, colour picker, badge —
+ * into the first load of a screen showing nothing but a dropzone.
+ */
+export const SECTIONS: readonly EditorSection[] = ["background", "shadow", "format", "adjust", "transform"];
+
 /** Which section each entry opens. */
 export const ENTRY_SECTION: Record<EditorEntry, EditorSection> = {
   background: "background",

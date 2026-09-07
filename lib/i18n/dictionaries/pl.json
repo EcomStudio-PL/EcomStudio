@@ -1611,7 +1611,8 @@
       "ratioHint": "Kadr jest dorysowywany na zewnątrz — nic nie zostaje przycięte.",
       "shadowHint": "Wymaga zdjęcia z przezroczystym tłem.",
       "fitHint": "„Zmieść” nie kadruje, „Wypełnij” przycina do ramki.",
-      "levelHint": "Auto schodzi z jakością tylko tak długo, aż plik realnie schudnie."
+      "levelHint": "Auto schodzi z jakością tylko tak długo, aż plik realnie schudnie.",
+      "keepHint": "Zostaje format źródłowy"
     },
     "err": {
       "insufficient_credits": "Za mało kredytów.",
@@ -1664,7 +1665,7 @@
     },
     "compress": {
       "name": "Kompresja",
-      "body": "Zmniejsz wagę pliku bez widocznej straty jakości.",
+      "body": "Zmniejsz wagę pliku — Ty ustalasz, ile jakości oddajesz.",
       "suffix": "lekkie"
     },
     "watermark": {
@@ -1676,7 +1677,10 @@
       "name": "Retusz zdjęć",
       "body": "Zamień zwykłe zdjęcie w premium packshot na białym tle.",
       "suffix": "retusz"
-    }
+    },
+    "costPerImage": "Koszt 1 zdjęcia",
+    "costTotal": "Łączny koszt",
+    "addPhotos": "Dodaj zdjęcia (maks. {n})"
   },
   "editor": {
     "title": "Edycja obrazu",
@@ -1786,6 +1790,14 @@
       "scaled": "Zmieniono skalę",
       "moved": "Przesunięto zdjęcie",
       "transformed": "Zmieniono kilka ustawień kadru"
+    },
+    "middle": "Wyśrodkuj w pionie",
+    "rotate90": "Obróć o 90°",
+    "zoomIn": "Powiększ",
+    "zoomOut": "Pomniejsz",
+    "emptyHint": "Wgraj zdjęcie, żeby odblokować sekcje.",
+    "g": {
+      "crop": "Kadrowanie"
     }
   },
   "resize": {
@@ -1794,11 +1806,12 @@
     "resolution": "Rozdzielczość",
     "custom": "Własny rozmiar (px)",
     "newSize": "Nowy rozmiar",
-    "run": "Zmień rozmiar"
+    "run": "Zmień rozmiar",
+    "overMax": "Niedostępne — nasz serwer koduje maks. {n} px"
   },
   "compress": {
     "title": "Kompresja",
-    "sub": "Zmniejsz wagę zdjęć bez utraty jakości.",
+    "sub": "Zmniejsz wagę zdjęć. Siła kompresji decyduje, ile jakości oddajesz za rozmiar.",
     "strength": "Siła kompresji",
     "low": "Niska",
     "mid": "Średnia",
@@ -1808,7 +1821,8 @@
     "sizeAfter": "Po",
     "saved": "Oszczędzono",
     "summary": "Podsumowanie kompresji",
-    "reduction": "Redukcja"
+    "reduction": "Redukcja",
+    "lossyNote": "Kompresja jest stratna: im mocniejsza, tym mniejszy plik i mniej szczegółów. Realny wynik dla każdego zdjęcia widzisz niżej."
   },
   "hub": {
     "title": "Wszystkie narzędzia",

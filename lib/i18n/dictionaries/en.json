@@ -1611,7 +1611,8 @@
       "ratioHint": "The frame is painted outwards — nothing is ever cropped.",
       "shadowHint": "Needs a photo with a transparent background.",
       "fitHint": "“Fit” never crops, “Fill” crops to the frame.",
-      "levelHint": "Auto lowers quality only while the file actually gets smaller."
+      "levelHint": "Auto lowers quality only while the file actually gets smaller.",
+      "keepHint": "Keeps the source format"
     },
     "err": {
       "insufficient_credits": "Not enough credits.",
@@ -1664,7 +1665,7 @@
     },
     "compress": {
       "name": "Compression",
-      "body": "Cut the file size with no visible loss of quality.",
+      "body": "Cut the file size — you decide how much quality you trade.",
       "suffix": "compressed"
     },
     "watermark": {
@@ -1676,7 +1677,10 @@
       "name": "Photo retouch",
       "body": "Turn an ordinary photo into a premium packshot on white.",
       "suffix": "retouch"
-    }
+    },
+    "costPerImage": "Per photo",
+    "costTotal": "Total",
+    "addPhotos": "Add photos (max. {n})"
   },
   "editor": {
     "title": "Image editing",
@@ -1786,6 +1790,14 @@
       "scaled": "Scale changed",
       "moved": "Photo moved",
       "transformed": "Several framing changes"
+    },
+    "middle": "Centre vertically",
+    "rotate90": "Rotate 90°",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "emptyHint": "Add a photo to unlock the sections.",
+    "g": {
+      "crop": "Framing"
     }
   },
   "resize": {
@@ -1794,11 +1806,12 @@
     "resolution": "Resolution",
     "custom": "Custom size (px)",
     "newSize": "New size",
-    "run": "Resize"
+    "run": "Resize",
+    "overMax": "Unavailable — our encoder stops at {n} px"
   },
   "compress": {
     "title": "Compression",
-    "sub": "Cut the file size of your photos with no loss of quality.",
+    "sub": "Make photos lighter. The compression strength decides how much quality you trade for size.",
     "strength": "Compression strength",
     "low": "Low",
     "mid": "Medium",
@@ -1808,7 +1821,8 @@
     "sizeAfter": "After",
     "saved": "Saved",
     "summary": "Compression summary",
-    "reduction": "Reduction"
+    "reduction": "Reduction",
+    "lossyNote": "Compression is lossy: the stronger it is, the smaller the file and the fewer the details. The real result per photo is listed below."
   },
   "hub": {
     "title": "All tools",

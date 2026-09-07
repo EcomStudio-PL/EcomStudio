@@ -72,6 +72,62 @@ async function resolveCreds(supabase: Client, provider: ProviderBase): Promise<{
   return creds ? { creds, source: "vault" } : null;
 }
 
+/**
+ * EVERY VAULT-BACKED PROVIDER, IN ONE ROUND TRIP.
+ *
+ * `pickProvider` walks its list in preference order and stops at the first key
+ * it finds — which means that when the earlier providers are NOT configured
+ * (the normal case: one key, five candidates) it pays for a full serial chain
+ * of `resolveCreds` calls, each one a query and possibly an RPC, one waiting on
+ * the last. Ten of those in sequence is the cost of opening any tools page on a
+ * cold lambda, and it buys nothing: the answer for every provider is
+ * independent of the answer for every other.
+ *
+ * So they are all resolved here, in one `ai_providers` read plus a parallel
+ * fan-out of credential RPCs, and dropped into the same cache `resolveCreds`
+ * already consults. The walk that follows then costs zero queries and still
+ * picks in exactly the same order. Nothing about WHICH provider wins changes —
+ * only how long finding it takes.
+ *
+ * Providers whose key is in the environment are skipped: those never touch the
+ * database at all.
+ */
+async function primeVault(supabase: Client): Promise<void> {
+  if (!encryptionAvailable()) return;
+  const now = Date.now();
+  const wanted = [...new Set(
+    ALL_TOOL_PROVIDERS
+      .filter((provider) => !envKey(provider) && provider.vaultSlug)
+      .map((provider) => provider.vaultSlug as string),
+  )].filter((slug) => {
+    const cached = vaultCache.get(slug);
+    return !(cached && now - cached.at < VAULT_TTL);
+  });
+  if (wanted.length === 0) return;
+
+  const { data: rows } = await supabase
+    .from("ai_providers").select("id, slug").in("slug", wanted).eq("active", true);
+  const idBySlug = new Map((rows ?? []).map((row) => [row.slug, row.id]));
+
+  await Promise.all(wanted.map(async (slug) => {
+    const id = idBySlug.get(slug);
+    let creds: Creds | null = null;
+    if (id) {
+      // Same SECURITY DEFINER call resolveCreds makes — the credentials table
+      // stays admin-only and the ciphertext is useless without the key.
+      const { data: credRows } = await supabase.rpc("get_active_provider_credential", { p_provider_id: id });
+      const cred = credRows?.[0];
+      if (cred) {
+        try { creds = { apiKey: decryptSecret(cred.encrypted_value, cred.iv, cred.auth_tag), baseUrl: cred.base_url }; }
+        catch { creds = null; }
+      }
+    }
+    // A MISS is cached too, exactly as before: "no key for this provider" is
+    // an answer worth remembering for a minute.
+    vaultCache.set(slug, { creds, at: Date.now() });
+  }));
+}
+
 /** First provider in the preference list (cheapest first) that has a key. */
 async function pickProvider<T extends ProviderBase>(supabase: Client, list: T[]): Promise<{ provider: T; creds: Creds; source: KeySource } | null> {
   for (const provider of list) {
@@ -109,7 +165,9 @@ async function loadContext(supabase: Client) {
 
 /** What the Tools page renders: real availability and the real price. */
 export async function toolCatalogue(supabase: Client): Promise<ToolAvailability[]> {
-  const { services, billing } = await loadContext(supabase);
+  // The catalogue read and the whole credential sweep, side by side: two
+  // round trips of waiting instead of a serial walk through ten providers.
+  const [{ services, billing }] = await Promise.all([loadContext(supabase), primeVault(supabase)]);
   const [background, upscale, expand] = await Promise.all([
     pickProvider(supabase, BACKGROUND_PROVIDERS),
     pickProvider(supabase, UPSCALE_PROVIDERS),

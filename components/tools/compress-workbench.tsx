@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle, ArrowDown, ArrowRight, CheckCircle2, Download, FileArchive, FileImage,
-  Gauge, ImagePlus, Loader2, RotateCcw, Trash2, X,
+  FileType, Gauge, ImagePlus, Loader2, RotateCcw, Trash2, X,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Button } from "@/components/ui/button";
@@ -12,12 +12,12 @@ import { Badge } from "@/components/ui/badge";
 import { Stat } from "@/components/ui/stat";
 import { ActionBar } from "@/components/ui/action-bar";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Label } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import {
   ACCEPTED_MIME, DEFAULT_SETTINGS, MAX_UPLOAD_BYTES,
   type CompressionLevel, type ToolSettings, type ToolSlug,
 } from "@/lib/images/tools";
+import { CostSummary, GroupLabel, RadioRows } from "@/components/tools/panel-parts";
 import { createZip, outputName } from "@/lib/images/zip";
 import { cn, formatBytes } from "@/lib/utils";
 
@@ -342,69 +342,70 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
       <div className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
         <input ref={inputRef} type="file" multiple accept={ACCEPTED_MIME.join(",")} className="hidden"
           onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(e) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files) addFiles(e.dataTransfer.files); }}
-          className={cn(
-            "flex w-full flex-col items-center gap-1.5 rounded-2xl border border-dashed px-4 py-7 transition-colors",
-            dragging
-              ? "border-[rgb(var(--accent)/0.7)] bg-accent-soft/40 text-accent"
-              : "border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/50 text-faint hover:border-[rgb(var(--accent)/0.55)] hover:text-accent"
-          )}
-        >
-          <ImagePlus size={24} aria-hidden />
-          <span className="text-sm font-semibold">{t("tools.drop")}</span>
-          <span className="text-[11px]">{t("tools.dropHint", { n: MAX_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })}</span>
-          <span className="mt-1 text-[11px] font-semibold tabular-nums text-muted">
-            {items.length} / {MAX_FILES} {t("common.photos")}
-          </span>
-        </button>
+        <Panel className="rounded-2xl p-3.5">
+          <GroupLabel>{t("tools.addPhotos", { n: MAX_FILES })}</GroupLabel>
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files) addFiles(e.dataTransfer.files); }}
+            className={cn(
+              "flex w-full flex-col items-center gap-1.5 rounded-xl border border-dashed px-4 py-6 transition-colors",
+              dragging
+                ? "border-[rgb(var(--accent)/0.7)] bg-accent-soft/40 text-accent"
+                : "border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/50 text-faint hover:border-[rgb(var(--accent)/0.55)] hover:text-accent"
+            )}
+          >
+            <ImagePlus size={22} aria-hidden />
+            <span className="text-[13px] font-semibold">{t("tools.drop")}</span>
+            <span className="text-center text-[11px]">{t("tools.dropHint", { n: MAX_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })}</span>
+            <span className="mt-0.5 text-[11px] font-semibold tabular-nums text-muted">
+              {items.length} / {MAX_FILES} {t("common.photos")}
+            </span>
+          </button>
+        </Panel>
 
         <Panel className="space-y-4 rounded-2xl p-4">
-          <div className="min-w-0 space-y-1.5">
+          <div className="min-w-0">
             {/* The encoder quality the chosen strength really uses, on the
                 label — so "Mocna" is a number, not a promise. */}
-            <Label hint={`${t("tools.opt.quality")} ${level.quality}`}>{t("compress.strength")}</Label>
+            <GroupLabel hint={`${t("tools.opt.quality")} ${level.quality}`}>{t("compress.strength")}</GroupLabel>
             <Segmented
               value={levelKey}
               onChange={setLevelKey}
               label={t("compress.strength")}
               options={LEVELS.map((l) => ({ value: l.key, label: t(`compress.${l.key}`) }))}
             />
+            {/* Lossy is lossy. Saying so once, next to the dial that decides
+                how lossy, is worth more than a promise the encoder cannot keep
+                — and the per-photo numbers below report what it actually did. */}
+            <p className="mt-1.5 text-[11px] leading-relaxed text-faint">{t("compress.lossyNote")}</p>
           </div>
 
-          <div className="min-w-0 space-y-1.5">
-            <Label>{t("tools.opt.format")}</Label>
-            {/* Full size, not "sm": four chips at 29px are under the comfortable
-                tap height on a phone, and this row sits directly under the
-                strength row, which is full size. */}
-            <Segmented
+          <div className="min-w-0">
+            <GroupLabel>{t("tools.opt.format")}</GroupLabel>
+            {/* Rows, not chips: four options in a 21rem rail turned
+                "Bez zmiany formatu" into "Bez z…", which is a control that
+                has stopped saying what it does. Only formats this pipeline
+                genuinely encodes are listed — no SVG, no GIF, no TIFF. */}
+            <RadioRows
+              name="compress-format"
               value={format}
               onChange={pickFormat}
-              label={t("tools.opt.format")}
-              options={FORMATS.map((f) => ({ value: f.value, label: f.label ?? t("tools.opt.keep") }))}
+              rows={FORMATS.map((f) => ({
+                value: f.value,
+                label: f.label ?? t("tools.opt.keep"),
+                icon: FileType,
+                meta: f.value === "keep" ? t("tools.opt.keepHint") : undefined,
+              }))}
             />
-            <p className="text-[11px] leading-relaxed text-faint">{t("tools.opt.alphaHint")}</p>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-faint">{t("tools.opt.alphaHint")}</p>
           </div>
         </Panel>
 
         <ActionBar
-          summary={
-            <>
-              <span className="min-w-0 truncate text-muted">
-                {pending.length > 0 ? t("tools.pendingCount", { n: pending.length }) : t("tools.noQueue")}
-              </span>
-              <span className={cn("shrink-0 font-semibold tabular-nums", notEnough ? "text-danger" : "text-ink")}>
-                {credits === 0 ? t("tools.free") : t("tools.creditsTotal", { n: totalCredits })}
-              </span>
-            </>
-          }
-          note={credits > 0
-            ? <span className="text-faint tabular-nums">{t("tools.creditsTotal", { n: credits })} × {pending.length}</span>
-            : undefined}
+          summary={<CostSummary perImage={credits} count={pending.length} enough={!notEnough} />}
         >
           <Button className="w-full" size="lg" onClick={() => run()}
             disabled={running || pending.length === 0 || notEnough}>

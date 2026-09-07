@@ -53,8 +53,10 @@ export type PanelProps = {
   hasAlpha: boolean;
 };
 
-/** Panel order — the numbering the customer sees, 1 → 5. */
-export const SECTIONS: readonly EditorSection[] = ["background", "shadow", "format", "adjust", "transform"];
+// SECTIONS moved to lib/images/editor-state (a pure module) so the editor's
+// empty state can list the five names without pulling this file's controls
+// into its bundle. Re-exported here because this is where callers look.
+export { SECTIONS } from "@/lib/images/editor-state";
 
 /**
  * Swatches: the transparency checkerboard first, then the studio neutrals a
