@@ -3154,7 +3154,11 @@
       "manualTitle": "Ein manueller Schritt bleibt",
       "manual1": "Supabase → Authentication → Auth Hooks → Send Email Hook (HTTPS): den Endpunkt unten einfügen und ein Geheimnis erzeugen.",
       "manual2": "Vercel → Settings → Environment Variables → SUPABASE_SEND_EMAIL_HOOK_SECRET (Production): dieses Geheimnis einfügen.",
-      "manual3": "Redeploy, dann den Hook in Supabase speichern."
+      "manual3": "Redeploy, dann den Hook in Supabase speichern.",
+      "last": "Letzter Versand",
+      "lastNone": "Noch kein Versuch aufgezeichnet.",
+      "lastOk": "OK · {action} · {when}",
+      "lastFailed": "Fehlgeschlagen · {action} · {when} · {reason}"
     }
   },
   "bonus": {

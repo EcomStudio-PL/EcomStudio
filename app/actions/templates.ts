@@ -213,21 +213,53 @@ export type AuthDeliveryView = {
   /** Where the endpoint lives, for the panel to show and for a person to
    *  paste into Supabase if they are configuring it by hand. */
   endpointUrl: string;
+  /**
+   * THE ONLY LINE ON THE PANEL THAT IS AN OBSERVATION.
+   *
+   * The three above describe a configuration: templates exist, a mailbox is
+   * filled in, a hook is registered. All three were green through the outage
+   * that made every registration fail, because all three were true — and the
+   * mail still did not go out. This is the last row of auth_email_log, so the
+   * panel can say what actually HAPPENED the last time GoTrue asked GrovBase
+   * to send something, rather than only what is set up.
+   *
+   * Null means no attempt has been recorded yet, which is its own honest
+   * answer and is shown as one.
+   */
+  lastDelivery: {
+    at: string;
+    action: string;
+    ok: boolean;
+    /** Scrubbed reason code from the log — never a provider message. */
+    reason: string | null;
+  } | null;
 };
 
 export async function authDeliveryStatusAction(): Promise<AuthDeliveryView | null> {
   try {
     const { supabase } = await requireAdmin();
-    const [hook, mail] = await Promise.all([
+    const [hook, mail, log] = await Promise.all([
       readHookStatus(supabase),
       readIntegrationSecrets<MailConfig>(supabase, "mail"),
+      supabase.from("auth_email_log")
+        .select("created_at, action, status, failure_reason")
+        .order("created_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
     const password = mail.secrets.smtp_password
       ?? (mail.config.smtp_same_as_imap ? mail.secrets.imap_password : undefined);
+    const last = log.data;
     return {
       hook,
       smtpReady: Boolean(mail.config.smtp_host.trim() && mail.config.smtp_user.trim() && password),
       endpointUrl: hookUrl(),
+      lastDelivery: last
+        ? {
+          at: last.created_at,
+          action: last.action,
+          ok: last.status === "sent",
+          reason: last.failure_reason ?? null,
+        }
+        : null,
     };
   } catch {
     return null;

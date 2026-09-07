@@ -104,7 +104,7 @@ function AuthDeliveryPanel({ view, onChange }: {
   view: AuthDeliveryView | null;
   onChange: (v: AuthDeliveryView) => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
@@ -147,6 +147,22 @@ function AuthDeliveryPanel({ view, onChange }: {
             <PipeLine tone={view.smtpReady ? "ok" : "bad"} label={t("tpl.pipe.smtp")}
               value={view.smtpReady ? t("tpl.pipe.smtpOn") : t("tpl.pipe.smtpOff")} />
             <PipeLine tone={hookTone} label={t("tpl.pipe.hook")} value={hookLabel} />
+            {/* Configuration above, OUTCOME here. Every line above was green
+                through the outage that failed every registration; this is the
+                one that would have said otherwise. */}
+            <PipeLine
+              tone={view.lastDelivery ? (view.lastDelivery.ok ? "ok" : "bad") : "wait"}
+              label={t("tpl.pipe.last")}
+              value={view.lastDelivery
+                ? t(view.lastDelivery.ok ? "tpl.pipe.lastOk" : "tpl.pipe.lastFailed", {
+                  action: view.lastDelivery.action,
+                  when: new Date(view.lastDelivery.at).toLocaleString(locale, {
+                    dateStyle: "short", timeStyle: "short", timeZone: "Europe/Warsaw",
+                  }),
+                  reason: view.lastDelivery.reason ?? "—",
+                })
+                : t("tpl.pipe.lastNone")}
+            />
           </div>
         </div>
         {view.hook.canAutomate && (

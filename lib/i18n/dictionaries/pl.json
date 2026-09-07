@@ -3154,7 +3154,11 @@
       "manualTitle": "Pozostał jeden krok ręczny",
       "manual1": "Supabase → Authentication → Auth Hooks → Send Email Hook (HTTPS), wklej adres endpointu poniżej i wygeneruj sekret.",
       "manual2": "Vercel → Settings → Environment Variables → SUPABASE_SEND_EMAIL_HOOK_SECRET (Production), wklej ten sekret.",
-      "manual3": "Redeploy, a następnie zapisz hook w Supabase."
+      "manual3": "Redeploy, a następnie zapisz hook w Supabase.",
+      "last": "Ostatnia wysyłka",
+      "lastNone": "Brak zapisanej próby.",
+      "lastOk": "OK · {action} · {when}",
+      "lastFailed": "Nieudana · {action} · {when} · {reason}"
     }
   },
   "bonus": {

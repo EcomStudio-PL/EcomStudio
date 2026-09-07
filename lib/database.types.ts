@@ -14,6 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      auth_email_log: {
+        Row: {
+          action: string
+          created_at: string
+          failure_reason: string | null
+          id: string
+          locale: string | null
+          recipient: string
+          sent_at: string | null
+          status: string
+          template_key: string
+          template_source: string
+          template_version: number | null
+          transport: string | null
+          webhook_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          failure_reason?: string | null
+          id?: string
+          locale?: string | null
+          recipient: string
+          sent_at?: string | null
+          status?: string
+          template_key: string
+          template_source: string
+          template_version?: number | null
+          transport?: string | null
+          webhook_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          failure_reason?: string | null
+          id?: string
+          locale?: string | null
+          recipient?: string
+          sent_at?: string | null
+          status?: string
+          template_key?: string
+          template_source?: string
+          template_version?: number | null
+          transport?: string | null
+          webhook_id?: string
+        }
+        Relationships: []
+      }
       activity_logs: {
         Row: {
           action: string
