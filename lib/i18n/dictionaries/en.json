@@ -3082,8 +3082,8 @@
     "codeLabel": "Security code",
     "confirm": "Confirm",
     "resend": "Resend code",
-    "resendIn": "Resend in {n}s",
-    "resent": "A new code is on its way.",
+    "resendIn": "Resend code in {time}",
+    "resent": "The code has been sent.",
     "wrongCode": "Wrong code. Attempts left: {n}.",
     "locked": "Too many attempts. Request a new code.",
     "expired": "The code expired. Request a new one.",
@@ -3091,7 +3091,9 @@
     "expiredNow": "The code expired.",
     "expiredHint": "Send a new code to continue.",
     "newCode": "Send a new code",
-    "mailUnavailable": "We can't send a code right now. Please try again later."
+    "mailUnavailable": "We can't send a code right now. Please try again later.",
+    "sending": "Sending the code…",
+    "resendFailed": "We could not send the code. Please try again."
   },
   "features": {
     "comingTitle": "Coming soon",

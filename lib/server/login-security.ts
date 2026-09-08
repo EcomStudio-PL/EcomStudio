@@ -447,7 +447,10 @@ export async function openOrReuseChallenge(
     const age = typeof live.age_seconds === "number" ? live.age_seconds : 0;
     const left = typeof live.expires_in_seconds === "number" ? live.expires_in_seconds : 0;
     const wait = opts.settings.resendSeconds - age;
-    if (!opts.force) return { status: "reused", expiresInSeconds: left };
+    // `waitSeconds` travels with the REUSED code too: the page reopens onto a
+    // code that was already sent, and the resend button has to show what is
+    // actually left of the server's window instead of restarting a full one.
+    if (!opts.force) return { status: "reused", waitSeconds: Math.max(0, wait), expiresInSeconds: left };
     if (wait > 0) return { status: "cooldown", waitSeconds: wait, expiresInSeconds: left };
   }
 

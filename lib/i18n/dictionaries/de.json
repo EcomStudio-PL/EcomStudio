@@ -3082,8 +3082,8 @@
     "codeLabel": "Sicherheitscode",
     "confirm": "Bestätigen",
     "resend": "Code erneut senden",
-    "resendIn": "Erneut senden in {n}s",
-    "resent": "Ein neuer Code ist unterwegs.",
+    "resendIn": "Code erneut senden in {time}",
+    "resent": "Der Code wurde gesendet.",
     "wrongCode": "Falscher Code. Verbleibende Versuche: {n}.",
     "locked": "Zu viele Versuche. Fordere einen neuen Code an.",
     "expired": "Der Code ist abgelaufen. Fordere einen neuen an.",
@@ -3091,7 +3091,9 @@
     "expiredNow": "Der Code ist abgelaufen.",
     "expiredHint": "Sende einen neuen Code, um fortzufahren.",
     "newCode": "Neuen Code senden",
-    "mailUnavailable": "Wir können gerade keinen Code senden. Bitte später erneut versuchen."
+    "mailUnavailable": "Wir können gerade keinen Code senden. Bitte später erneut versuchen.",
+    "sending": "Code wird gesendet…",
+    "resendFailed": "Der Code konnte nicht gesendet werden. Bitte erneut versuchen."
   },
   "features": {
     "comingTitle": "Bald verfügbar",

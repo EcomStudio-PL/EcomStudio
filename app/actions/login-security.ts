@@ -24,6 +24,10 @@ export type ChallengeState =
       ok: true;
       masked: string;
       resendSeconds: number;
+      /** Seconds the caller must still wait before a resend would be accepted.
+       *  Equal to `resendSeconds` for a code just sent, and to whatever is left
+       *  of that window when the page reopens onto a code sent earlier. */
+      resendWaitSeconds: number;
       /** Server-derived lifetime of the LIVE code (from the DB expires_at) —
        *  the page countdown runs on this, so a refresh never resets it. */
       expiresInSeconds: number;
@@ -61,6 +65,10 @@ export async function ensureChallengeAction(): Promise<ChallengeState> {
     ok: true,
     masked: maskEmail(user.email),
     resendSeconds: settings.resendSeconds,
+    resendWaitSeconds: Math.max(0, Math.min(
+      settings.resendSeconds,
+      result.waitSeconds ?? settings.resendSeconds,
+    )),
     expiresInSeconds: Math.max(0, result.expiresInSeconds ?? 0),
     status,
   };

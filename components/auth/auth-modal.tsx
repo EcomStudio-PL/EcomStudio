@@ -34,6 +34,8 @@ export function AuthModal() {
 
   const panelRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  /** The visual-viewport-sized box the card is centred in. Never the veil. */
+  const stageRef = useRef<HTMLDivElement>(null);
   /** Where focus came from, so it can go back there on close (a11y). */
   const opener = useRef<HTMLElement | null>(null);
   const [registration, setRegistration] = useState<RegistrationFormConfig | null>(null);
@@ -92,25 +94,38 @@ export function AuthModal() {
   }, [mode]);
 
   /**
-   * CENTRE IT IN WHAT IS ACTUALLY VISIBLE.
+   * CENTRE THE CARD IN WHAT IS ACTUALLY VISIBLE — and ONLY the card.
    *
-   * `100dvh` accounts for Safari's collapsing toolbar but NOT for the software
-   * keyboard: with the keyboard up, the layout viewport is unchanged and only
+   * `100dvh` accounts for Safari's collapsing toolbar but not for the software
+   * keyboard: with the keyboard up the layout viewport is unchanged and only
    * the VISUAL viewport shrinks, so a "centred" card is centred behind the
-   * keyboard. The dialog is fixed, so the page cannot scroll to rescue it
-   * either — which is why the card looked like it sat at the bottom of the
-   * screen. Sizing the overlay to visualViewport fixes both: no keyboard, the
-   * card is centred on screen; keyboard up, the box shrinks, the card rides
-   * above it and the form scrolls inside itself.
+   * keyboard. Sizing a box to `visualViewport` fixes that.
+   *
+   * But it must be a box that does NOT hold the backdrop. This effect used to
+   * resize and translate the whole overlay, and that is the bug this stage was
+   * asked to fix:
+   *
+   *   · The veil is `inset-0` of whatever contains it. Shrunk to the visual
+   *     viewport and pushed down by `offsetTop`, it stopped covering the strip
+   *     the browser had scrolled past — so the moment a field took focus, the
+   *     page underneath appeared above the dialog.
+   *   · `backdrop-filter` inside a transformed ancestor is unreliable in
+   *     WebKit: the blur is composited against the transformed layer and can
+   *     drop out entirely. That is the vanishing blur.
+   *
+   * So there are two layers now. The ROOT is `fixed inset-0`, never
+   * transformed, and owns the veil — it covers the layout viewport for the
+   * whole flow, keyboard or no keyboard. The STAGE inside it is what tracks
+   * `visualViewport`, and all it does is centre the panel.
    */
   useEffect(() => {
     if (!mode) return;
     const vv = window.visualViewport;
-    const root = rootRef.current;
-    if (!vv || !root) return;
+    const stage = stageRef.current;
+    if (!vv || !stage) return;
     const sync = () => {
-      root.style.height = `${vv.height}px`;
-      root.style.transform = `translateY(${vv.offsetTop}px)`;
+      stage.style.height = `${vv.height}px`;
+      stage.style.transform = `translateY(${vv.offsetTop}px)`;
     };
     sync();
     vv.addEventListener("resize", sync);
@@ -118,8 +133,8 @@ export function AuthModal() {
     return () => {
       vv.removeEventListener("resize", sync);
       vv.removeEventListener("scroll", sync);
-      root.style.height = "";
-      root.style.transform = "";
+      stage.style.height = "";
+      stage.style.transform = "";
     };
   }, [mode]);
 
@@ -202,13 +217,16 @@ export function AuthModal() {
   return (
     <div
       ref={rootRef}
-      className="auth-modal-root fixed inset-x-0 top-0 z-[100] flex h-[100dvh] items-center justify-center p-2.5 sm:p-6"
+      className="auth-modal-root fixed inset-0 z-[100] overscroll-contain"
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-modal-title"
     >
       {/* BACKDROP — the page stays readable underneath: a light dim plus a
-          restrained blur, not a blackout. Clicking it closes. */}
+          restrained blur, not a blackout. Clicking it closes.
+
+          It lives on the untransformed root and covers the LAYOUT viewport, so
+          it is still there when the keyboard shrinks the visual one. */}
       <button
         type="button"
         aria-label={t("common.close")}
@@ -216,119 +234,127 @@ export function AuthModal() {
         className="auth-backdrop absolute inset-0 cursor-default bg-[rgb(var(--bg)/0.72)] backdrop-blur-[8px]"
       />
 
+      {/* STAGE — the visible box the card is centred in. Transparent and
+          click-through: a tap on empty space lands on the veil behind it and
+          closes the dialog, exactly as before. */}
       <div
-        ref={panelRef}
-        tabIndex={-1}
-        className={cn(
-          "auth-panel panel relative flex w-full flex-col overflow-hidden rounded-3xl outline-none lg:flex-row",
-          wide ? "max-w-[880px]" : "max-w-[560px] lg:max-w-[900px]",
-        )}
-        style={{
-          // Relative to the OVERLAY, which is sized to the visual viewport —
-          // so the cap follows Safari's toolbar and the keyboard instead of
-          // guessing at them the way 100vh does.
-          maxHeight: "min(100%, 800px)",
-        }}
+        ref={stageRef}
+        className="pointer-events-none absolute inset-x-0 top-0 flex h-[100dvh] items-center justify-center p-2.5 sm:p-6"
       >
-        {/* The orbiting light. Decorative and CSS-only — see .auth-panel. */}
-        <span aria-hidden className="auth-orbit" />
+        <div
+          ref={panelRef}
+          tabIndex={-1}
+          className={cn(
+            "auth-panel panel pointer-events-auto relative flex w-full flex-col overflow-hidden rounded-3xl outline-none lg:flex-row",
+            wide ? "max-w-[880px]" : "max-w-[560px] lg:max-w-[900px]",
+          )}
+          style={{
+            // Relative to the STAGE, which is sized to the visual viewport —
+            // so the cap follows Safari's toolbar and the keyboard instead of
+            // guessing at them the way 100vh does.
+            maxHeight: "min(100%, 800px)",
+          }}
+        >
+          {/* The orbiting light. Decorative and CSS-only — see .auth-panel. */}
+          <span aria-hidden className="auth-orbit" />
 
-        <BrandPane wide={wide} signupCredits={signupCredits} />
+          <BrandPane wide={wide} signupCredits={signupCredits} />
 
-        <div className={cn(
-          "relative flex min-h-0 w-full flex-col",
-          wide ? "lg:w-[560px] lg:shrink-0" : "lg:w-[460px] lg:shrink-0",
-        )}>
           <div className={cn(
-            "flex items-start justify-between gap-3 px-4 sm:px-6",
-            wide ? "pb-1 pt-4 sm:pt-5" : "pb-1.5 pt-5 sm:pt-6",
+            "relative flex min-h-0 w-full flex-col",
+            wide ? "lg:w-[560px] lg:shrink-0" : "lg:w-[460px] lg:shrink-0",
           )}>
-            <div className="min-w-0">
-              {/* The mark, on mobile too — the dialog has to say whose it is
-                  even when the page behind it is blurred out. Registration is
-                  the tallest thing this dialog ever shows, so there it sits
-                  BESIDE the title instead of above it: same brand, one row
-                  instead of two, and the form keeps the 46px. */}
-              {wide ? (
-                <span className="flex items-center gap-2.5 lg:block">
-                  <span className="brand-gradient flex h-9 w-9 shrink-0 items-center justify-center rounded-xl lg:hidden">
-                    <Image src="/brand/icon-on-dark.png" alt="" width={20} height={20} className="h-5 w-5" />
+            <div className={cn(
+              "flex items-start justify-between gap-3 px-4 sm:px-6",
+              wide ? "pb-1 pt-4 sm:pt-5" : "pb-1.5 pt-5 sm:pt-6",
+            )}>
+              <div className="min-w-0">
+                {/* The mark, on mobile too — the dialog has to say whose it is
+                    even when the page behind it is blurred out. Registration is
+                    the tallest thing this dialog ever shows, so there it sits
+                    BESIDE the title instead of above it: same brand, one row
+                    instead of two, and the form keeps the 46px. */}
+                {wide ? (
+                  <span className="flex items-center gap-2.5 lg:block">
+                    <span className="brand-gradient flex h-9 w-9 shrink-0 items-center justify-center rounded-xl lg:hidden">
+                      <Image src="/brand/icon-on-dark.png" alt="" width={20} height={20} className="h-5 w-5" />
+                    </span>
+                    <h2 id="auth-modal-title" className="font-display text-[19px] font-semibold leading-tight tracking-tight sm:text-xl">
+                      {copy[mode].title}
+                    </h2>
                   </span>
-                  <h2 id="auth-modal-title" className="font-display text-[19px] font-semibold leading-tight tracking-tight sm:text-xl">
-                    {copy[mode].title}
-                  </h2>
-                </span>
+                ) : (
+                  <>
+                    <span className="brand-gradient mb-2.5 flex h-9 w-9 items-center justify-center rounded-xl lg:hidden">
+                      <Image src="/brand/icon-on-dark.png" alt="" width={20} height={20} className="h-5 w-5" />
+                    </span>
+                    <h2 id="auth-modal-title" className="font-display text-[19px] font-semibold leading-tight tracking-tight sm:text-xl">
+                      {copy[mode].title}
+                    </h2>
+                  </>
+                )}
+                {/* Registration is the one mode that runs out of viewport on a
+                    narrow phone, and its subtitle only restates the title. It
+                    steps aside below 420px so the FORM keeps the room; every
+                    other mode, and every wider screen, still reads it. */}
+                <p className={cn(
+                  "text-[13px] leading-snug text-muted sm:text-sm",
+                  wide ? "mt-1.5 max-[419px]:hidden" : "mt-1",
+                )}>
+                  {copy[mode].sub}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={close}
+                aria-label={t("common.close")}
+                className="-mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted transition-colors hover:bg-raised hover:text-ink"
+              >
+                <X size={18} aria-hidden />
+              </button>
+            </div>
+
+            <ModeBody mode={`${mode}:${blocked ?? ""}`}>
+              {/* A closed door gets an invitation, not an error. The form is not
+                  rendered at all — there is nothing to submit. */}
+              {blocked ? (
+                <AccessNotice
+                  reason={blocked}
+                  copy={access!.copy}
+                  waitlistEnabled={access!.waitlistEnabled}
+                  onWaitlist={goToWaitlist}
+                  onSwitchToLogin={
+                    // Only offered when signup is the thing that is shut and
+                    // existing customers can still get in.
+                    mode === "register" && !access!.loginBlocked
+                      ? () => switchTo("login")
+                      : undefined
+                  }
+                />
               ) : (
                 <>
-                  <span className="brand-gradient mb-2.5 flex h-9 w-9 items-center justify-center rounded-xl lg:hidden">
-                    <Image src="/brand/icon-on-dark.png" alt="" width={20} height={20} className="h-5 w-5" />
-                  </span>
-                  <h2 id="auth-modal-title" className="font-display text-[19px] font-semibold leading-tight tracking-tight sm:text-xl">
-                    {copy[mode].title}
-                  </h2>
+                  {mode === "login" && (
+                    <LoginForm next={next} error={error} email={email} onSwitch={switchTo} />
+                  )}
+                  {mode === "forgot" && (
+                    <ForgotForm onBack={() => switchTo("login")} />
+                  )}
+                  {mode === "register" && (
+                    registration
+                      ? <RegisterForm
+                          bare
+                          next={next}
+                          captchaSiteKey={registration.captchaSiteKey}
+                          onSwitch={switchTo}
+                        />
+                      : <div className="flex h-56 items-center justify-center text-muted">
+                          <Loader2 className="animate-spin" aria-hidden />
+                        </div>
+                  )}
                 </>
               )}
-              {/* Registration is the one mode that runs out of viewport on a
-                  narrow phone, and its subtitle only restates the title. It
-                  steps aside below 420px so the FORM keeps the room; every
-                  other mode, and every wider screen, still reads it. */}
-              <p className={cn(
-                "text-[13px] leading-snug text-muted sm:text-sm",
-                wide ? "mt-1.5 max-[419px]:hidden" : "mt-1",
-              )}>
-                {copy[mode].sub}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={close}
-              aria-label={t("common.close")}
-              className="-mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted transition-colors hover:bg-raised hover:text-ink"
-            >
-              <X size={18} aria-hidden />
-            </button>
+            </ModeBody>
           </div>
-
-          <ModeBody mode={`${mode}:${blocked ?? ""}`}>
-            {/* A closed door gets an invitation, not an error. The form is not
-                rendered at all — there is nothing to submit. */}
-            {blocked ? (
-              <AccessNotice
-                reason={blocked}
-                copy={access!.copy}
-                waitlistEnabled={access!.waitlistEnabled}
-                onWaitlist={goToWaitlist}
-                onSwitchToLogin={
-                  // Only offered when signup is the thing that is shut and
-                  // existing customers can still get in.
-                  mode === "register" && !access!.loginBlocked
-                    ? () => switchTo("login")
-                    : undefined
-                }
-              />
-            ) : (
-              <>
-                {mode === "login" && (
-                  <LoginForm next={next} error={error} email={email} onSwitch={switchTo} />
-                )}
-                {mode === "forgot" && (
-                  <ForgotForm onBack={() => switchTo("login")} />
-                )}
-                {mode === "register" && (
-                  registration
-                    ? <RegisterForm
-                        bare
-                        next={next}
-                        captchaSiteKey={registration.captchaSiteKey}
-                        onSwitch={switchTo}
-                      />
-                    : <div className="flex h-56 items-center justify-center text-muted">
-                        <Loader2 className="animate-spin" aria-hidden />
-                      </div>
-                )}
-              </>
-            )}
-          </ModeBody>
         </div>
       </div>
     </div>

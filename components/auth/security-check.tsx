@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ShieldCheck, Loader2, MailCheck, AlertTriangle, Timer } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Card } from "@/components/ui/card";
+import { createGate } from "@/lib/single-flight";
+import { mmss, resendView } from "@/lib/auth/resend";
 import {
   ensureChallengeAction, resendCodeAction, verifyCodeAction, clearanceReadyAction,
 } from "@/app/actions/login-security";
@@ -32,11 +34,17 @@ export function SecurityCheck({ next }: { next: string }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
+  const [sending, setSending] = useState(false);
   const [resendWindow, setResendWindow] = useState(60);
   const [deadline, setDeadline] = useState<number | null>(null);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [notConfigured, setNotConfigured] = useState(false);
   const started = useRef(false);
+  // In-flight latches. `disabled` on a button is one render away from a tap;
+  // a gate closes in the same tick, which is what makes "five taps = one mail"
+  // true rather than merely likely.
+  const sendGate = useRef(createGate()).current;
+  const verifyGate = useRef(createGate()).current;
 
   // Ensure a challenge exists exactly once per mount.
   useEffect(() => {
@@ -50,7 +58,9 @@ export function SecurityCheck({ next }: { next: string }) {
       }
       setMasked(res.masked);
       setResendWindow(res.resendSeconds);
-      setCooldown(res.resendSeconds);
+      // What the SERVER would still refuse, not a fresh window invented here:
+      // reopening the page onto a code sent 40 s ago waits 20 s, not 60.
+      setCooldown(res.resendWaitSeconds);
       setDeadline(res.expiresInSeconds > 0 ? Date.now() + res.expiresInSeconds * 1000 : null);
       if (res.status === "not_configured") setNotConfigured(true);
     });
@@ -73,27 +83,30 @@ export function SecurityCheck({ next }: { next: string }) {
   }, [deadline]);
 
   const expired = deadline !== null && remaining === 0;
-  const mmss = (s: number) =>
-    `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
   const submit = useCallback(async (code: string) => {
+    // The sixth digit and a tap on "Potwierdź" can land in the same frame, and
+    // each wrong verify burns one of the user's attempts. One at a time.
+    await verifyGate.run(async () => {
     setBusy(true);
     setError(null);
-    const res = await verifyCodeAction(code);
-    if (res.ok) {
+    const res = await verifyCodeAction(code).catch(() => null);
+    if (res?.ok) {
       // Only navigate when the gate would really pass now.
       const ready = await clearanceReadyAction();
       window.location.assign(ready ? next : "/login");
       return;
     }
     setBusy(false);
+    if (!res) { setDigits(""); setError(t("common.error")); return; }
     setDigits("");
     if (res.reason === "locked") setError(t("security.locked"));
     else if (res.reason === "expired") { setDeadline(Date.now()); setError(t("security.expired")); }
     else if (typeof res.attemptsLeft === "number") {
       setError(t("security.wrongCode", { n: res.attemptsLeft }));
     } else setError(t("security.wrongCode", { n: 0 }));
-  }, [next, t]);
+    });
+  }, [next, t, verifyGate]);
 
   const onInput = (value: string) => {
     if (expired) return;
@@ -103,26 +116,43 @@ export function SecurityCheck({ next }: { next: string }) {
     if (clean.length === 6 && !busy) void submit(clean);
   };
 
+  /**
+   * SEND ONE CODE PER TAP.
+   *
+   * The button used to fire the action on every click while it waited: on a
+   * phone, where a tap that shows no feedback invites another tap, that is one
+   * e-mail per tap. Now the first call takes a synchronous latch, the button
+   * goes into "Wysyłam kod…" in the same tick, and every further tap returns
+   * immediately. Only a send the SERVER confirms starts the cooldown; a failure
+   * hands the button straight back so the user is not stranded.
+   */
   const resend = useCallback(async () => {
-    setError(null);
-    const res = await resendCodeAction();
-    if (res.status === "sent") {
-      setNotice(t("security.resent"));
-      setDigits("");
-      setCooldown((c) => (c > 0 ? c : resendWindow));
-      if (typeof res.expiresInSeconds === "number" && res.expiresInSeconds > 0) {
-        setDeadline(Date.now() + res.expiresInSeconds * 1000);
-      }
-    } else if (res.status === "cooldown") {
-      setCooldown(res.waitSeconds ?? resendWindow);
-    } else if (res.status === "not_configured") {
-      setNotConfigured(true);
-    } else setError(t("common.error"));
-  }, [resendWindow, t]);
+    await sendGate.run(async () => {
+      setSending(true);
+      setError(null);
+      setNotice(null);
+      const res = await resendCodeAction().catch(() => null);
+      if (!res) { setError(t("security.resendFailed")); return; }
+      if (res.status === "sent") {
+        setNotice(t("security.resent"));
+        setDigits("");
+        setCooldown(resendWindow);
+        if (typeof res.expiresInSeconds === "number" && res.expiresInSeconds > 0) {
+          setDeadline(Date.now() + res.expiresInSeconds * 1000);
+        }
+      } else if (res.status === "cooldown") {
+        // The server refused because a code is still fresh — show ITS clock.
+        setCooldown(res.waitSeconds && res.waitSeconds > 0 ? res.waitSeconds : resendWindow);
+      } else if (res.status === "not_configured") {
+        setNotConfigured(true);
+      } else setError(t("security.resendFailed"));
+      setSending(false);
+    });
+  }, [resendWindow, sendGate, t]);
 
-  // An expired code can ONLY be replaced — the resend button ignores the
-  // cooldown then, exactly as the spec asks ("[Wyślij nowy kod]" active).
-  const resendDisabled = expired ? false : cooldown > 0;
+  // An expired code can ALWAYS be replaced; otherwise the button waits out the
+  // server's own window. See lib/auth/resend.ts for the whole rule.
+  const view = resendView({ sending, expired, cooldown });
 
   return (
     <Card className="relative mx-auto w-full max-w-md overflow-hidden p-6 text-center sm:p-8">
@@ -180,12 +210,12 @@ export function SecurityCheck({ next }: { next: string }) {
             {busy ? t("common.loading") : t("security.confirm")}
           </button>
 
-          <button type="button" onClick={() => void resend()} disabled={resendDisabled}
-            className={`relative mt-4 text-[13px] font-medium transition-colors disabled:opacity-50 ${
-              expired ? "text-accent hover:brightness-110" : "text-muted hover:text-ink"}`}>
-            {expired
-              ? t("security.newCode")
-              : cooldown > 0 ? t("security.resendIn", { n: cooldown }) : t("security.resend")}
+          <button type="button" onClick={() => void resend()} disabled={view.disabled}
+            aria-busy={view.loading}
+            className={`relative mt-4 inline-flex items-center justify-center gap-1.5 text-[13px] font-medium transition-colors disabled:opacity-50 ${
+              expired && !view.loading ? "text-accent hover:brightness-110" : "text-muted hover:text-ink"}`}>
+            {view.loading && <Loader2 size={14} className="animate-spin" aria-hidden />}
+            {t(view.labelKey, view.time ? { time: view.time } : undefined)}
           </button>
         </>
       )}

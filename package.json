@@ -23,6 +23,7 @@
     "test:signup": "esbuild scripts/signup-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/signup-tests.cjs --log-level=silent && node .next/signup-tests.cjs",
     "test:authmail": "esbuild scripts/auth-mail-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/auth-mail-tests.cjs --log-level=silent && NEXT_PUBLIC_SITE_URL=https://grovbase.com node .next/auth-mail-tests.cjs",
     "test:admincrm": "esbuild scripts/admin-crm-tests.ts --bundle --platform=node --format=esm --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/admin-crm-tests.mjs --log-level=silent && node .next/admin-crm-tests.mjs",
+    "test:resend": "esbuild scripts/auth-resend-tests.ts --bundle --platform=node --format=esm --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/auth-resend-tests.mjs --log-level=silent && node .next/auth-resend-tests.mjs",
     "test:aicc": "esbuild scripts/ai-control-tests.ts --bundle --platform=node --format=esm --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/ai-control-tests.mjs --log-level=silent && node .next/ai-control-tests.mjs"
   },
   "dependencies": {
