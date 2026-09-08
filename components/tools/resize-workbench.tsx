@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  AlertTriangle, ArrowRight, CheckCircle2, Download, FileArchive, ImagePlus,
-  Link2, Loader2, Maximize2, RotateCcw, Trash2, Unlink, X,
+  AlertTriangle, ArrowRight, Download, FileArchive, ImagePlus,
+  Link2, Loader2, Maximize2, RotateCcw, Trash2, Unlink,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,10 @@ import {
   type OutputFormatOption, type ToolSettings, type ToolSlug,
 } from "@/lib/images/tools";
 import { CostSummary, GroupLabel, RadioRows } from "@/components/tools/panel-parts";
+import {
+  BatchGalleryToolbar, BatchGrid, DEFAULT_BATCH_FILTER, DEFAULT_ZOOM,
+  applyBatchFilter, type BatchFilter, type BatchItem,
+} from "@/components/tools/batch-gallery";
 import { createZip, outputName } from "@/lib/images/zip";
 import { cn, formatBytes } from "@/lib/utils";
 import { acceptFiles, type IntakeLimits } from "@/lib/images/file-intake";
@@ -120,6 +124,22 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
   const [running, setRunning] = useState(false);
   const cancelled = useRef(false);
 
+  /* The workspace's own state: how the queue is shown, not what is done to it.
+     Favourites and the selection live here because they belong to this batch —
+     both disappear with the tab, which is exactly their lifetime. */
+  const [view, setView] = useState<"grid" | "list">("grid");
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  const [filter, setFilter] = useState<BatchFilter>(DEFAULT_BATCH_FILTER);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [favourites, setFavourites] = useState<Set<string>>(new Set());
+
+  const toggleIn = (set: Set<string>, id: string) => {
+    const next = new Set(set);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  };
+
   /**
    * Object URLs, one per queued photo, released the moment that photo leaves
    * the queue and again when the screen goes away. `live` is the same set of
@@ -147,6 +167,24 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
     urls.current.clear();
     live.current.clear();
   }, []);
+
+  const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+
+  /** The queue as the shared gallery sees it: a name, a state, a preview. */
+  const cards: BatchItem[] = useMemo(() => items.map((i) => ({
+    id: i.id, name: i.file.name, thumbUrl: i.thumbUrl, status: i.status,
+    bytes: i.file.size, canDownload: i.status === "done",
+    errorText: i.status === "error" ? t(`tools.err.${errorKey(i.error)}`) : undefined,
+  })), [items, t]);
+
+  const visible = useMemo(
+    () => applyBatchFilter(cards, filter, favourites, selected),
+    [cards, filter, favourites, selected],
+  );
+  const selectedDone = useMemo(
+    () => items.filter((i) => selected.has(i.id) && i.status === "done"),
+    [items, selected],
+  );
 
   const done = items.filter((i) => i.status === "done");
   const failed = items.filter((i) => i.status === "error");
@@ -300,10 +338,12 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
 
-  async function downloadAll() {
-    if (done.length === 0) return;
-    if (done.length === 1) { download(done[0], 0); return; }
-    const entries = await Promise.all(done.map(async (item, index) => ({
+  /** One file goes straight down; several become a ZIP. Used by "pobierz
+   *  wszystkie" and by the selection bar, so the two cannot behave differently. */
+  async function downloadMany(chosen: Item[]) {
+    if (chosen.length === 0) return;
+    if (chosen.length === 1) { download(chosen[0], 0); return; }
+    const entries = await Promise.all(chosen.map(async (item, index) => ({
       name: outputName(item.file.name, t(`tools.${TOOL}.suffix`), item.resultBlob!.type, index),
       data: new Uint8Array(await item.resultBlob!.arrayBuffer()),
     })));
@@ -314,6 +354,8 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
+
+  const downloadAll = () => downloadMany(done);
 
   if (!available) {
     return (
@@ -348,7 +390,11 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
           onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
         {/* The import box wears its own heading, so the cap is a stated rule
             rather than something discovered on the 201st file. */}
-        <Panel className="rounded-2xl p-3.5">
+        {/* ONE CARD: what goes in, and how big it comes out. The import tile
+            and the resolution rows were two panels with a gap between them,
+            which read as two unrelated decisions — they are one. */}
+        <Panel className="space-y-4 rounded-2xl p-4">
+          <div className="min-w-0">
           <GroupLabel>{t("tools.addPhotos", { n: MAX_FILES })}</GroupLabel>
           <button
             type="button"
@@ -367,9 +413,8 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
               {items.length} / {MAX_FILES} {t("common.photos")}
             </span>
           </button>
-        </Panel>
+          </div>
 
-        <Panel className="space-y-4 rounded-2xl p-4">
           <div className="min-w-0">
             {/* The cap is stated on the label, not discovered after a run. */}
             <GroupLabel hint={`≤ ${MAX_SIDE} px`}>{t("resize.resolution")}</GroupLabel>
@@ -437,12 +482,28 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
         </ActionBar>
       </div>
 
-      {/* GALLERY */}
+      {/* THE WORKSPACE — the gallery and its toolbar, the same pair the
+          compression screen uses. */}
       {items.length === 0 ? (
         <EmptyState icon={ImagePlus} title={t("tools.noQueue")}
           body={t("tools.dropHint", { n: MAX_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })} />
       ) : (
         <Panel className="min-w-0 rounded-2xl p-3 sm:p-4">
+          <BatchGalleryToolbar
+            items={cards} view={view} onView={setView} zoom={zoom} onZoom={setZoom}
+            filter={filter} onFilter={setFilter}
+            selecting={selecting}
+            onSelecting={(on) => {
+              setSelecting(on);
+              // Leaving selection mode drops both the picks and the filter
+              // that depends on them — a hidden "tylko zaznaczone" over an
+              // empty selection is an empty gallery nobody asked for.
+              if (!on) { setSelected(new Set()); setFilter((f) => ({ ...f, selectedOnly: false })); }
+            }}
+          />
+
+          {/* The batch's own actions, on the row under the toolbar: what is
+              queued, what failed, and what can be taken away. */}
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
               <p className="overline">{t("tools.queue", { n: items.length })}</p>
@@ -476,6 +537,38 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
             </div>
           </div>
 
+          {/* SELECTION BAR — mounted by the selection, so an empty strip never
+              sits above the grid. */}
+          {selecting && (
+            <div className="mb-3 flex flex-wrap items-center gap-1.5 rounded-xl border border-[rgb(var(--accent)/0.35)] bg-accent-soft/25 px-2.5 py-2 text-[12.5px]">
+              <span className="font-semibold tabular-nums text-accent">
+                {t("batch.selected", { n: selected.size })}
+              </span>
+              <Button variant="ghost" size="sm"
+                onClick={() => setSelected(new Set(visible.map((i) => i.id)))}>
+                {t("batch.selectAll")}
+              </Button>
+              <Button variant="ghost" size="sm" disabled={selected.size === 0}
+                onClick={() => setSelected(new Set())}>
+                {t("batch.clearSelection")}
+              </Button>
+              <span className="flex-1" />
+              <Button variant="secondary" size="sm"
+                disabled={selectedDone.length === 0}
+                onClick={() => downloadMany(selectedDone)}>
+                <Download size={14} aria-hidden /> {t("batch.downloadSelected")}
+              </Button>
+              <Button variant="ghost" size="sm" disabled={selected.size === 0 || running}
+                onClick={() => {
+                  for (const id of selected) release(id);
+                  setItems((prev) => prev.filter((i) => !selected.has(i.id)));
+                  setSelected(new Set());
+                }}>
+                <Trash2 size={14} aria-hidden /> {t("batch.removeSelected")}
+              </Button>
+            </div>
+          )}
+
           {running && (
             <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-sunken">
               <div className="brand-gradient h-full rounded-full transition-[width] duration-200"
@@ -483,45 +576,23 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
             </div>
           )}
 
-          <ul className="grid gap-2 [&>*]:min-w-0 sm:grid-cols-2 2xl:grid-cols-3">
-            {items.map((item, index) => (
-              // content-visibility lets the browser skip laying out the rows
-              // that are off screen — two hundred cards, a handful rendered.
-              <li key={item.id} className="plate flex items-center gap-3 rounded-xl p-2"
-                style={{ contentVisibility: "auto", containIntrinsicSize: "auto 4rem" }}>
-                <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-checker">
-                  {item.thumbUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={item.thumbUrl} alt="" loading="lazy" decoding="async"
-                      className="h-full w-full object-cover" />
-                  ) : (
-                    <span aria-hidden className="block h-full w-full animate-pulse bg-sunken" />
-                  )}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-semibold">{item.file.name}</p>
-                  {item.status === "error" ? (
-                    <p className="truncate text-[11px] text-danger">{t(`tools.err.${errorKey(item.error)}`)}</p>
-                  ) : (
-                    <SizeRow item={item} target={target} hasTarget={hasTarget} original={t("tools.preset.original")} />
-                  )}
-                </div>
-                <StatusMark status={item.status} />
-                {item.status === "done" && (
-                  <button type="button" onClick={() => download(item, index)} aria-label={t("common.download")}
-                    className="shrink-0 rounded-lg p-1.5 text-muted transition-colors hover:bg-sunken hover:text-ink">
-                    <Download size={15} aria-hidden />
-                  </button>
-                )}
-                {!running && item.status !== "running" && (
-                  <button type="button" aria-label={t("common.remove")} onClick={() => removeItem(item.id)}
-                    className="shrink-0 rounded-lg p-1.5 text-faint transition-colors hover:bg-sunken hover:text-danger">
-                    <X size={15} aria-hidden />
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
+          <BatchGrid
+            items={visible} view={view} zoom={zoom} running={running}
+            selecting={selecting} selected={selected} favourites={favourites}
+            meta={(id) => {
+              const item = byId.get(id);
+              if (!item) return null;
+              return <SizeRow item={item} target={target} hasTarget={hasTarget}
+                original={t("tools.preset.original")} />;
+            }}
+            onDownload={(id) => {
+              const item = byId.get(id);
+              if (item) download(item, items.indexOf(item));
+            }}
+            onRemove={removeItem}
+            onToggleFavourite={(id) => setFavourites((prev) => toggleIn(prev, id))}
+            onToggleSelected={(id) => setSelected((prev) => toggleIn(prev, id))}
+          />
         </Panel>
       )}
     </div>
@@ -575,13 +646,6 @@ function CheckRow({ checked, onChange, label }: {
       {label}
     </label>
   );
-}
-
-function StatusMark({ status }: { status: ItemStatus }) {
-  if (status === "running") return <Loader2 size={16} className="shrink-0 animate-spin text-accent" aria-hidden />;
-  if (status === "done") return <CheckCircle2 size={16} className="shrink-0 text-success" aria-hidden />;
-  if (status === "error") return <AlertTriangle size={16} className="shrink-0 text-danger" aria-hidden />;
-  return <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-[rgb(var(--hairline)/0.5)]" />;
 }
 
 /* ── maths ─────────────────────────────────────────────────────────────── */

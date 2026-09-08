@@ -77,13 +77,17 @@ export function RadioRows<V extends string>({ name, value, rows, onChange, disab
 /* ── the cost line ──────────────────────────────────────────────────────── */
 
 /**
- * What one photo costs and what the queue costs, side by side. Two numbers
- * beat one, because "0 kredytów" on an empty queue is the only reading of the
- * total that is true, and it tells a seller nothing about the price they are
- * about to pay per photo.
+ * What one photo costs and what the queue costs, side by side.
  *
- * Free tools say so once, in place of both numbers — a column of zeroes is
- * not a price list.
+ * ALWAYS both figures, including when the tool is free. The free version used
+ * to collapse into one line saying "Za darmo", which answered a question
+ * nobody had asked — a seller looking at this card wants to know the price per
+ * photo and the price of what is queued, and "0 kredytów / 0 kredytów" is a
+ * true and useful answer to both. The word "za darmo" stays as the per-photo
+ * value, where it explains the zero.
+ *
+ * The count is the number of photos WAITING, so the total is the cost of
+ * pressing the button now — not of everything that has ever been in the queue.
  */
 export function CostSummary({ perImage, count, enough }: {
   perImage: number;
@@ -91,19 +95,13 @@ export function CostSummary({ perImage, count, enough }: {
   enough: boolean;
 }) {
   const { t } = useI18n();
-  if (perImage === 0) {
-    return (
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="min-w-0 truncate text-[12.5px] text-muted">
-          {count > 0 ? t("tools.pendingCount", { n: count }) : t("tools.noQueue")}
-        </span>
-        <span className="shrink-0 text-[13px] font-semibold text-success">{t("tools.free")}</span>
-      </div>
-    );
-  }
   return (
     <div className="flex items-stretch gap-3">
-      <Figure label={t("tools.costPerImage")} value={t("tools.creditsTotal", { n: perImage })} />
+      <Figure
+        label={t("tools.costPerImage")}
+        value={perImage === 0 ? t("tools.free") : t("tools.creditsTotal", { n: perImage })}
+        tone={perImage === 0 ? "free" : undefined}
+      />
       <span aria-hidden className="w-px shrink-0 bg-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))]" />
       <Figure label={t("tools.costTotal")} value={t("tools.creditsTotal", { n: perImage * count })}
         tone={enough ? undefined : "danger"} />
@@ -111,11 +109,14 @@ export function CostSummary({ perImage, count, enough }: {
   );
 }
 
-function Figure({ label, value, tone }: { label: string; value: string; tone?: "danger" }) {
+function Figure({ label, value, tone }: {
+  label: string; value: string; tone?: "danger" | "free";
+}) {
   return (
     <div className="min-w-0 flex-1">
       <p className="truncate text-[10px] font-semibold uppercase tracking-[0.08em] text-faint">{label}</p>
-      <p className={cn("truncate text-[15px] font-semibold tabular-nums", tone === "danger" ? "text-danger" : "text-ink")}>
+      <p className={cn("truncate text-[15px] font-semibold tabular-nums",
+        tone === "danger" ? "text-danger" : tone === "free" ? "text-success" : "text-ink")}>
         {value}
       </p>
     </div>
