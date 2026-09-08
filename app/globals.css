@@ -44,10 +44,17 @@
   --indigo: 124 58 237;
   --info: 37 99 235;
   --success: 15 122 68;
-  /* Attention, not failure. Same brand magenta as --accent2 — kept as its own
-     token so a status that means "look at this" stays greppable and can be
-     retuned without touching decorative accents. */
-  --warning: 214 40 207;
+  /*
+    Attention, not failure — and no longer the brand colour.
+
+    Warning used to be the same magenta as --accent2, which made "budget at
+    78%" and "featured category" the same colour: an operator could not tell a
+    decorative accent from something asking to be looked at. This is orange
+    (orange-700 on light, orange-400 on dark) — deliberately NOT the amber
+    yellow this design system removed, which was unreadable on both surfaces
+    and belonged to the old UI.
+  */
+  --warning: 194 65 12;
   --danger: 194 38 52;
 
   --glass: 252 250 255;
@@ -155,7 +162,7 @@
   --indigo: 139 92 246;
   --info: 96 165 250;
   --success: 74 222 128;
-  --warning: 249 80 225;
+  --warning: 251 146 60;
   --danger: 248 113 113;
 
   --glass: 21 13 30;

@@ -89,7 +89,7 @@ function BudgetCard({ row }: { row: BudgetView }) {
     });
   }
 
-  const tone = row.level === "critical" ? "danger" : row.level === "warn" ? "accent" : "success";
+  const tone = row.level === "critical" ? "danger" : row.level === "warn" ? "warning" : "success";
 
   return (
     <div className="panel rounded-2xl p-4 sm:p-5">
@@ -111,7 +111,7 @@ function BudgetCard({ row }: { row: BudgetView }) {
       {row.percent !== null && (
         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-raised" aria-hidden>
           <div className={cn("h-full rounded-full transition-[width]",
-            row.level === "critical" ? "bg-danger" : row.level === "warn" ? "bg-accent2" : "bg-success")}
+            row.level === "critical" ? "bg-danger" : row.level === "warn" ? "bg-warning" : "bg-success")}
             style={{ width: `${Math.min(row.percent, 100)}%` }} />
         </div>
       )}

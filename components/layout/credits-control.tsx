@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 /**
  * CREDITS — ONE control, not three chips: a diamond, the balance and a "+"
  * that buys more, sharing a single pill, a single border and a single hover
- * state. The tone follows the balance (green → amber → red) so an empty
+ * state. The tone follows the balance (green → orange → red) so an empty
  * wallet is visible before the user hits a wall.
  */
 export function CreditsControl({ credits, compact = false }: { credits: number; compact?: boolean }) {

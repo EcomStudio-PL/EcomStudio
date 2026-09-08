@@ -132,7 +132,7 @@ async function ProvidersTab({ supabase, t, locale }: Ctx & { locale: string }) {
                   {s.percent === null ? (
                     <Badge tone="neutral">{t("aicc.alerts.noBudget")}</Badge>
                   ) : (
-                    <Badge tone={s.level === "critical" ? "danger" : s.level === "warn" ? "accent" : "success"} dot>
+                    <Badge tone={s.level === "critical" ? "danger" : s.level === "warn" ? "warning" : "success"} dot>
                       {Math.round(s.percent)}%
                     </Badge>
                   )}

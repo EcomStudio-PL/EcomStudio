@@ -83,7 +83,9 @@
     "soon": "Wkrótce",
     "forbidden": "Brak uprawnień.",
     "copy": "Kopiuj",
-    "seeMore": "Zobacz więcej"
+    "seeMore": "Zobacz więcej",
+    "pageOf": "Strona {a} z {b}",
+    "next": "Dalej"
   },
   "landing": {
     "headline": "Profesjonalne materiały produktowe z AI. Szybciej niż klasyczne studio.",

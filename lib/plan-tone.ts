@@ -1,7 +1,7 @@
 /**
  * PLAN IDENTITY — one colour per tier, used everywhere a plan is named.
  *
- * Blue for Free, green for Starter, amber for Pro, magenta-violet for Agency.
+ * Blue for Free, green for Starter, orange for Pro, magenta-violet for Agency.
  * The badge is small and flat on purpose: a plan is a fact about the account,
  * not a decoration, so it gets a tint and a ring rather than a gradient.
  *

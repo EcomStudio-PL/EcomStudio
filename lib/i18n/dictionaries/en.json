@@ -83,7 +83,9 @@
     "soon": "Soon",
     "forbidden": "Not allowed.",
     "copy": "Copy",
-    "seeMore": "See more"
+    "seeMore": "See more",
+    "pageOf": "Page {a} of {b}",
+    "next": "Next"
   },
   "landing": {
     "headline": "Professional product visuals with AI. Faster than a photo studio.",

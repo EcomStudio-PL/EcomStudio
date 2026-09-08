@@ -12,18 +12,22 @@ import { cn } from "@/lib/utils";
  * nothing and pulled the admin panel visually away from the rest of GrovBase.
  *
  *   success — it is on, live, published, healthy   → real green
+ *   warning — heading somewhere bad but not there yet: a budget at 78%,
+ *             maintenance, a key about to expire       → orange
  *   accent  — secondary state worth noticing: draft, inactive, featured,
  *             a category, a percentage                → brand magenta
  *   danger  — it failed, it is blocked                → red
  *   info    — a neutral fact in a coloured slot       → indigo
  *   neutral — no signal at all                        → grey
  *
- * There is deliberately no amber and no yellow: attention is the brand colour
- * in this system, and anything genuinely wrong is `danger`.
+ * `warning` is orange and NOT the amber yellow this system removed. It is also
+ * no longer the brand magenta: when "look at this" and "featured" render in
+ * the same colour, neither of them means anything.
  */
 const tones = {
   neutral: "bg-raised text-muted ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.4))]",
   success: "bg-[rgb(var(--success)/0.14)] text-success ring-[rgb(var(--success)/0.30)]",
+  warning: "bg-[rgb(var(--warning)/0.14)] text-warning ring-[rgb(var(--warning)/0.32)]",
   accent: "bg-accent2-soft text-accent2 ring-[rgb(var(--accent2)/0.30)]",
   danger: "bg-[rgb(var(--danger)/0.14)] text-danger ring-[rgb(var(--danger)/0.30)]",
   info: "bg-[rgb(var(--indigo)/0.14)] text-indigo ring-[rgb(var(--indigo)/0.32)]",

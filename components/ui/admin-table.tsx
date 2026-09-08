@@ -6,7 +6,8 @@ import { cn } from "@/lib/utils";
  * DATA TABLE — the same rows in the shape each screen size can actually read.
  *
  * Phones get stacked records: the first cell becomes the record's title and
- * the rest become labelled lines, so nothing forces the page sideways. From
+ * the rest become a two-column grid of labelled fields, so nothing forces the
+ * page sideways and a screen still holds several records. From
  * `lg` up it is a real table inside its OWN scroll container — if a wide
  * admin table has to scroll, only the table scrolls, never the application.
  * A fading edge marks that there is more to the right.
@@ -40,20 +41,24 @@ export function AdminTable({ headers, rows, empty, primary = 0 }: {
 
   return (
     <>
-      {/* PHONE / TABLET — one record per card, secondary fields labelled. */}
-      <ul className="space-y-2.5 lg:hidden">
+      {/* PHONE / TABLET — one record per card. The secondary fields sit in TWO
+          columns, label above value: a seven-column table used to become seven
+          full-width rows, so eight records were a minute of scrolling. Paired
+          up they halve the card, and a short label over a short value reads
+          faster than a label and a value pushed to opposite edges. */}
+      <ul className="space-y-2 lg:hidden">
         {rows.map((cells, i) => (
-          <li key={i} className="panel rounded-2xl p-4">
+          <li key={i} className="panel rounded-2xl p-3.5">
             <div className="min-w-0 text-sm font-semibold">{cells[primary]}</div>
-            <dl className="mt-3 space-y-2">
+            <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-2">
               {cells.map((cell, j) => {
                 if (j === primary || cell === null || cell === undefined || cell === "") return null;
                 return (
-                  <div key={j} className="flex items-start justify-between gap-3">
-                    <dt className="shrink-0 text-[11px] font-medium uppercase tracking-[0.08em] text-faint">
+                  <div key={j} className="min-w-0">
+                    <dt className="truncate text-[10px] font-medium uppercase tracking-[0.08em] text-faint">
                       {headers[j]}
                     </dt>
-                    <dd className="min-w-0 flex-1 text-right text-[13px] text-ink [&_*]:justify-end">{cell}</dd>
+                    <dd className="mt-0.5 min-w-0 text-[13px] leading-snug text-ink">{cell}</dd>
                   </div>
                 );
               })}

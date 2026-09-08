@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Search, Settings2 } from "lucide-react";
+import { ChevronRight, History, Search, Settings2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import type { ToolRow, ToolCategory, EngineMode } from "@/lib/services/ai-tools";
 import type { FeatureStatus } from "@/lib/features";
@@ -19,11 +19,17 @@ import { cn } from "@/lib/utils";
  * narrow ten rows would be slower than reading them.
  */
 
-const STATUS_TONE: Record<FeatureStatus, "success" | "accent" | "danger" | "neutral"> = {
+/**
+ * Four statuses, four meanings, four colours — and the colour IS the meaning:
+ * green runs, orange needs attention, purple is planned-but-not-yet, grey is
+ * switched off on purpose. A module an operator turned off is not an error, so
+ * it does not get the red that a real failure needs to keep for itself.
+ */
+const STATUS_TONE: Record<FeatureStatus, "success" | "warning" | "accent" | "neutral"> = {
   ACTIVE: "success",
   COMING_SOON: "accent",
-  MAINTENANCE: "accent",
-  DISABLED: "danger",
+  MAINTENANCE: "warning",
+  DISABLED: "neutral",
 };
 
 const ENGINE_TONE: Record<EngineMode, "neutral" | "info" | "accent"> = {
@@ -90,12 +96,18 @@ export function ToolRegistry({ rows, locale }: { rows: ToolRow[]; locale: string
                 <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                   <Badge tone={ENGINE_TONE[r.engineMode]}>{t(`aicc.engine.${r.engineMode}`)}</Badge>
                   {r.promptVersion !== null && <Badge tone="neutral">v{r.promptVersion}</Badge>}
+                  {r.serviceMaintenance && <Badge tone="warning">{t("aicc.tools.serviceMaintenance")}</Badge>}
                   <span className="text-xs text-faint">{creditsLabel(r, t)}</span>
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">
-                  <span className="truncate text-xs text-faint">
+                  {/* The clock replaces "Ostatnie uruchomienie:" — the label
+                      was longer than the value it introduced and truncated it
+                      away on a 390px card. */}
+                  <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-faint"
+                    title={t("aicc.col.lastRun")}>
+                    <History size={12} aria-hidden className="shrink-0" />
                     {r.lastRunAt
-                      ? <>{t("aicc.tools.lastRun")}: <RelativeTime at={r.lastRunAt} locale={locale} t={t} /></>
+                      ? <RelativeTime at={r.lastRunAt} locale={locale} t={t} />
                       : t("aicc.tools.neverRun")}
                   </span>
                   <Link href={`/admin/ai/${r.key}`}
@@ -145,7 +157,7 @@ export function ToolRegistry({ rows, locale }: { rows: ToolRow[]; locale: string
                       <td className="px-4 py-2.5">
                         <span className="flex flex-wrap gap-1">
                           <Badge tone={STATUS_TONE[r.status]} dot>{t(`featAdm.status.${r.status}`)}</Badge>
-                          {r.serviceMaintenance && <Badge tone="accent">{t("aicc.tools.serviceMaintenance")}</Badge>}
+                          {r.serviceMaintenance && <Badge tone="warning">{t("aicc.tools.serviceMaintenance")}</Badge>}
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-4 py-2.5 text-muted">

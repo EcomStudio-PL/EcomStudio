@@ -199,5 +199,53 @@ console.log("J. one menu entry highlights at a time");
     read("lib/navigation.ts").includes('"/admin/ai/modele"'));
 }
 
+console.log("K. four status colours, and each one means what it says");
+{
+  const css = read("app/globals.css");
+  const badge = read("components/ui/badge.tsx");
+  const registry = read("components/admin/tool-registry.tsx");
+  const features = read("components/admin/feature-availability-panel.tsx");
+  const budgets = read("components/admin/provider-budget.tsx");
+
+  // The token itself: orange means red > green > blue in the triplet, which is
+  // true of orange and false of both the magenta it used to be and of yellow
+  // (where red and green are close together).
+  const triplets = [...css.matchAll(/--warning:\s*(\d+)\s+(\d+)\s+(\d+)/g)]
+    .map((m) => [Number(m[1]), Number(m[2]), Number(m[3])]);
+  check("both themes define a warning colour", triplets.length === 2);
+  check("warning is orange, not magenta",
+    triplets.every(([r, g, b]) => r > g && g > b), JSON.stringify(triplets));
+  check("warning is not yellow", triplets.every(([r, g]) => r - g > 60), JSON.stringify(triplets));
+
+  check("the badge has a tone for it", badge.includes("warning:") && badge.includes("var(--warning)"));
+  check("maintenance is the warning, everywhere it is shown",
+    /MAINTENANCE: "warning"/.test(registry) && /MAINTENANCE: "bg-warning"/.test(features));
+  check("a planned module is not a warning",
+    /COMING_SOON: "accent"/.test(registry) && /COMING_SOON: "bg-accent2"/.test(features));
+  check("a module switched off on purpose is not an error",
+    /DISABLED: "neutral"/.test(registry) && /DISABLED: "bg-muted"/.test(features));
+  check("a budget over its warn threshold reads as a warning",
+    budgets.includes('"warn" ? "warning"') && budgets.includes('"warn" ? "bg-warning"'));
+}
+
+console.log("L. the admin panel fits the screen it is on");
+{
+  const table = read("components/ui/admin-table.tsx");
+  const layout = read("app/admin/layout.tsx");
+  const generations = read("app/admin/generations/page.tsx");
+
+  check("a phone card pairs its fields into two columns",
+    table.includes("grid grid-cols-2"));
+  check("every admin page reserves the dock plus margin",
+    layout.includes("pb-[calc(var(--dock-h)+2rem+env(safe-area-inset-bottom))]"));
+  check("the generation log is paginated, not loaded whole",
+    generations.includes(".range(from, from + PAGE_SIZE - 1)")
+    && generations.includes('{ count: "exact" }'));
+  check("it reads the columns it shows, not every column",
+    !generations.includes('select("*'));
+  check("a failed job is red and a queued one is not",
+    /failed: "danger"/.test(generations) && /queued: "neutral"/.test(generations));
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);

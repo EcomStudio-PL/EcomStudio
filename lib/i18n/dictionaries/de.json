@@ -83,7 +83,9 @@
     "soon": "Bald",
     "forbidden": "Nicht erlaubt.",
     "copy": "Kopieren",
-    "seeMore": "Mehr anzeigen"
+    "seeMore": "Mehr anzeigen",
+    "pageOf": "Seite {a} von {b}",
+    "next": "Weiter"
   },
   "landing": {
     "headline": "Professionelle Produktvisuals mit KI. Schneller als ein Fotostudio.",

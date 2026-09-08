@@ -32,7 +32,7 @@ import { integrationErrorKey } from "@/components/admin/integration-cards";
  *
  * A switch is only half the truth, though: an event can be switched on for a
  * channel that cannot deliver anything. The two banners say so, the channel's
- * own status line turns amber, and the delivery log at the bottom is where the
+ * own status line turns orange, and the delivery log at the bottom is where the
  * admin sees what actually left the building.
  */
 
@@ -300,7 +300,7 @@ function IntegrationsLink({ label }: { label: string }) {
 /**
  * One destination for one event: what it is called, whether it is on, and
  * whether it could deliver if it fired right now. A switch that is on but
- * cannot deliver reads amber rather than accent — the banner above explains it
+ * cannot deliver reads orange rather than accent — the banner above explains it
  * once, and this keeps the promise honest row by row.
  */
 function ChannelSwitch({ name, event, checked, saving, deliverable, warning, onChange }: {
