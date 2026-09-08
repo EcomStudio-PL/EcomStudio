@@ -2216,6 +2216,11 @@ export type Database = {
           acquisition_source_other: string | null
           avatar_url: string | null
           blocked: boolean
+          blocked_at: string | null
+          blocked_by: string | null
+          blocked_note: string | null
+          blocked_reason: string | null
+          blocked_until: string | null
           company_account: boolean
           company_city: string | null
           company_country: string | null
@@ -2243,6 +2248,11 @@ export type Database = {
           acquisition_source_other?: string | null
           avatar_url?: string | null
           blocked?: boolean
+          blocked_at?: string | null
+          blocked_by?: string | null
+          blocked_note?: string | null
+          blocked_reason?: string | null
+          blocked_until?: string | null
           company_account?: boolean
           company_city?: string | null
           company_country?: string | null
@@ -2270,6 +2280,11 @@ export type Database = {
           acquisition_source_other?: string | null
           avatar_url?: string | null
           blocked?: boolean
+          blocked_at?: string | null
+          blocked_by?: string | null
+          blocked_note?: string | null
+          blocked_reason?: string | null
+          blocked_until?: string | null
           company_account?: boolean
           company_city?: string | null
           company_country?: string | null
@@ -3651,6 +3666,27 @@ export type Database = {
         Args: { p_ids: string[] }
         Returns: { id: string; email_confirmed_at: string | null; last_sign_in_at: string | null }[]
       }
+      account_blocked: {
+        Args: { p_user: string }
+        Returns: boolean
+      }
+      admin_block_user: {
+        Args: {
+          p_user: string
+          p_until?: string | null
+          p_reason?: string | null
+          p_note?: string | null
+        }
+        Returns: string | null
+      }
+      admin_unblock_user: {
+        Args: { p_user: string }
+        Returns: undefined
+      }
+      admin_expire_account_blocks: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
       admin_customer_rows: {
         Args: {
           p_search?: string | null
@@ -3669,6 +3705,7 @@ export type Database = {
           full_name: string | null
           role: string
           blocked: boolean
+          blocked_until: string | null
           created_at: string
           verified: boolean
           last_sign_in_at: string | null

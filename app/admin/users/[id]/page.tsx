@@ -14,7 +14,8 @@ import { UserActions } from "@/components/admin/user-actions";
 import { ManagerSelect, CrmNotes } from "@/components/admin/crm-widgets";
 import { CustomerActions } from "@/components/admin/customer-actions";
 import { RelativeTime } from "@/components/ui/relative-time";
-import { formatCredits, formatDate } from "@/lib/utils";
+import { formatCredits, formatDate, formatInstantShort } from "@/lib/utils";
+import { blockStateOf } from "@/lib/server/account-block";
 
 const pln = (cents: number) =>
   new Intl.NumberFormat("pl-PL", { style: "currency", currency: "PLN" }).format(cents / 100);
@@ -70,6 +71,9 @@ export default async function CrmProfile({ params }: { params: Promise<{ id: str
   const { data: facts } = await supabase.rpc("admin_user_facts", { p_ids: [id] });
   const auth = (facts ?? [])[0] ?? null;
   const verified = auth?.email_confirmed_at != null;
+  // The same rule the gate uses, so this page cannot show "blocked" for a
+  // pause that expired an hour ago.
+  const block = blockStateOf(profile);
 
   // Contribution economics: settled payments minus the REAL provider cost
   // recorded on each usage event.
@@ -130,7 +134,11 @@ export default async function CrmProfile({ params }: { params: Promise<{ id: str
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="truncate font-display text-xl font-semibold">{profile.full_name ?? profile.email}</h1>
                 <Badge tone={profile.role === "admin" ? "info" : "neutral"}>{t(rp.labelKey)}</Badge>
-                {profile.blocked && <Badge tone="danger">{t("crm.blocked")}</Badge>}
+                {block.blocked && (block.until
+                  ? <Badge tone="warning" dot>
+                      {t("crm.blockedUntil", { when: formatInstantShort(block.until, locale) })}
+                    </Badge>
+                  : <Badge tone="danger">{t("crm.blocked")}</Badge>)}
                 <Badge tone={verified ? "success" : "neutral"}>
                   {verified ? t("crm.verified") : t("crm.unverified")}
                 </Badge>
@@ -151,8 +159,8 @@ export default async function CrmProfile({ params }: { params: Promise<{ id: str
             {/* The same ⋯ menu as the list — suspend lives in it, so the
                 stand-alone block button would have been a second door to the
                 same room. */}
-            <CustomerActions userId={profile.id} email={profile.email} blocked={profile.blocked}
-              verified={verified} isSelf={profile.id === me?.id} />
+            <CustomerActions userId={profile.id} email={profile.email} blocked={block.blocked}
+              blockedUntil={block.until} verified={verified} isSelf={profile.id === me?.id} />
             <ManagerSelect userId={profile.id} current={profile.account_manager_id}
               managers={(managersRes.data ?? []).map((m) => ({ id: m.id, label: m.full_name ?? m.email }))} />
           </div>

@@ -12,6 +12,8 @@ import {
 import { renderPlaceholders } from "@/lib/welcome-bonus";
 import { WelcomeBonusMount } from "@/components/onboarding/welcome-bonus-mount";
 import { getDictionary } from "@/lib/i18n/server";
+import { blockStateOf } from "@/lib/server/account-block";
+import { formatInstant } from "@/lib/utils";
 import { makeT } from "@/lib/i18n/t";
 import { MegaTopbar } from "@/components/layout/mega-topbar";
 import { CustomerDrawer } from "@/components/layout/customer-drawer";
@@ -54,15 +56,24 @@ export default async function AppLayout({ children, searchParams }: {
       ]);
     }
   }
-  if (profile?.blocked) {
-    const { dict } = await getDictionary();
+  // A block is `blocked` AND still in force: one that ended at 15:30 stops
+  // applying at 15:30, whether or not the tidy-up sweep has run.
+  const block = blockStateOf({ blocked: profile?.blocked ?? false, blocked_until: profile?.blocked_until });
+  if (block.blocked) {
+    const { dict, locale } = await getDictionary();
     const t = makeT(dict);
     return (
       <main className="flex min-h-dvh items-center justify-center px-4">
         <div className="max-w-md rounded-2xl border border-line bg-surface p-8 text-center shadow-sm">
           <p className="text-3xl">🔒</p>
           <h1 className="mt-3 font-display text-lg font-semibold">{t("auth2.blockedTitle")}</h1>
-          <p className="mt-2 text-sm text-muted">{t("auth2.blockedBody")}</p>
+          {/* A pause with an end time says the end time. "Contact support" is
+              the honest answer only when there is nothing better to say. */}
+          <p className="mt-2 text-sm text-muted">
+            {block.until
+              ? t("auth2.blockedUntil", { when: formatInstant(block.until, locale) })
+              : t("auth2.blockedBody")}
+          </p>
           <form method="post" action="/auth/sign-out" className="mt-6">
             <button className="rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-semibold hover:bg-raised">
               {t("common.signOut")}

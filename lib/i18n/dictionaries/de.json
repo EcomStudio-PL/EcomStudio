@@ -947,7 +947,29 @@
     "errSendFailed": "Die Nachricht konnte nicht gesendet werden.",
     "errConfirmMismatch": "Die eingegebene Adresse stimmt nicht mit dem Konto überein.",
     "errSelf": "Das können Sie nicht mit dem eigenen Konto tun.",
-    "errNotFound": "Konto nicht gefunden."
+    "errNotFound": "Konto nicht gefunden.",
+    "blockTemporarily": "Vorübergehend sperren",
+    "unblockNow": "Jetzt entsperren",
+    "blockKeepsData": "Das Konto bleibt. Credits, Dateien, Verlauf und Daten bleiben unberührt — nur der Zugang pausiert und kommt von selbst zurück.",
+    "blockDuration": "Sperrdauer",
+    "blockFor.1h": "1 Stunde",
+    "blockFor.24h": "24 Stunden",
+    "blockFor.3d": "3 Tage",
+    "blockFor.7d": "7 Tage",
+    "blockFor.custom": "Eigenes Datum",
+    "blockUntilLabel": "Gesperrt bis",
+    "blockReason": "Grund",
+    "blockReasonHint": "z. B. Regelverstoß / manuelle Prüfung",
+    "blockNote": "Interne Notiz",
+    "blockNoteHint": "Nur für das Team sichtbar. Der Kunde sieht sie nie.",
+    "blockPreview": "Das Konto ist bis {when} gesperrt.",
+    "blockPreviewIndefinite": "Das Konto wird unbefristet gesperrt, bis es manuell entsperrt wird.",
+    "blockedUntil": "Gesperrt bis {when}",
+    "unblockBodyUntil": "Die Sperre endet {when}. Jetzt entsperren?",
+    "statusTemp": "Vorübergehend gesperrt",
+    "errCannotBlockSelf": "Sie können Ihr eigenes Konto nicht sperren.",
+    "errUntilPast": "Dieses Datum liegt in der Vergangenheit.",
+    "errUntilTooFar": "Eine vorübergehende Sperre kann höchstens ein Jahr dauern."
   },
   "svc": {
     "title": "Service-Katalog",
@@ -1248,7 +1270,8 @@
   },
   "auth2": {
     "blockedTitle": "Konto gesperrt",
-    "blockedBody": "Dein Konto wurde gesperrt. Kontaktiere den Support, falls das ein Irrtum ist."
+    "blockedBody": "Dein Konto wurde gesperrt. Kontaktiere den Support, falls das ein Irrtum ist.",
+    "blockedUntil": "Ihr Konto ist bis {when} vorübergehend gesperrt. Danach kehrt der Zugang automatisch zurück."
   },
   "studio": {
     "sub": "Produktkontext hinzufügen, Prompt schreiben und generieren — ohne vorher ein Produkt zu speichern.",

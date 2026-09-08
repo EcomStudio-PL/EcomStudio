@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { accountBlockedResponse } from "@/lib/server/account-block";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,10 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false, error: "unauthenticated" }, { status: 401 });
+  // Blocked accounts keep their data — including the ability to lose it by
+  // accident. Deletion is access, so it pauses too.
+  const paused = await accountBlockedResponse(supabase, user.id);
+  if (paused) return paused;
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) return NextResponse.json({ ok: false, error: "no_workspace" }, { status: 400 });
 

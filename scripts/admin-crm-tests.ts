@@ -11,6 +11,7 @@ import { relativeParts, relativeKey, relativeTime } from "@/lib/relative-time";
 import { readCustomers, CUSTOMER_SORTS } from "@/lib/services/admin-crm";
 import { renderEmailTemplate } from "@/lib/server/email-template";
 import { readFileSync } from "node:fs";
+import { BLOCK_PRESETS, blockUntilIso, blockInForce } from "@/lib/account-block";
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -158,6 +159,91 @@ console.log("F. the dashboard is a business screen (§13, §21)");
     && !/amountCents:\s*\d/.test(page)
     && page.includes("data.recentPayments.map"));
   check("quick actions stay compact", (page.match(/<QuickAction /g) ?? []).length <= 5);
+}
+
+console.log("G. a temporary block is a pause, enforced where it counts");
+{
+  const sql = read("supabase/migrations/0072_temporary_account_block.sql");
+  const guard = read("lib/server/account-block.ts");
+  const actions = read("app/actions/admin-crm.ts");
+  const layout = read("app/(app)/layout.tsx");
+
+  // The maths, at the boundary and past it.
+  const now = new Date("2026-09-08T12:00:00Z");
+  check("a preset is measured from now",
+    blockUntilIso("24h", "", now) === new Date("2026-09-09T12:00:00Z").toISOString());
+  check("every offered duration computes", BLOCK_PRESETS.every((p) => blockUntilIso(p.key, "", now)));
+  check("a custom date in the past is refused", blockUntilIso("custom", "2026-09-01T10:00", now) === null);
+  check("an empty custom date is refused", blockUntilIso("custom", "", now) === null);
+  check("an unparseable custom date is refused", blockUntilIso("custom", "not a date", now) === null);
+
+  check("a block with no end date is in force",
+    blockInForce(true, null, now) === true);
+  check("a block that has not expired is in force",
+    blockInForce(true, "2026-09-08T15:30:00Z", now) === true);
+  check("an EXPIRED block is not in force, sweep or no sweep",
+    blockInForce(true, "2026-09-08T11:59:00Z", now) === false);
+  check("an unblocked account is never in force",
+    blockInForce(false, null, now) === false);
+
+  // The database says the same thing, so a direct API call cannot disagree
+  // with the screen.
+  check("the SQL gate reads the expiry, not just the flag",
+    sql.includes("p.blocked and (p.blocked_until is null or p.blocked_until > now())"));
+  check("blocking is admin-only, in the database",
+    /create or replace function public\.admin_block_user[\s\S]*?is_admin\(v_actor\)/.test(sql));
+  check("an admin cannot block themselves out of the panel",
+    sql.includes("cannot_block_self"));
+  check("a past date and a decade-long 'temporary' block are both refused",
+    sql.includes("until_in_the_past") && sql.includes("until_too_far"));
+  check("unblocking keeps the internal note",
+    /admin_unblock_user[\s\S]*?blocked_reason = null/.test(sql)
+    && !/admin_unblock_user[\s\S]*?blocked_note = null/.test(sql));
+
+  // Nothing is destroyed. A pause is not a deletion.
+  check("no block path deletes anything",
+    !/delete from/i.test(sql));
+  // Behaviour, not prose: the only table any of these functions writes to is
+  // `profiles`. A wallet, a generation or a file cannot be touched by code
+  // that never names them in a write.
+  const writes = [...sql.matchAll(/(?:update|insert into|delete from)\s+(?:public\.)?(\w+)/gi)]
+    .map((m) => m[1].toLowerCase());
+  check("the only table a block writes is profiles",
+    writes.length > 0 && writes.every((table) => table === "profiles"),
+    [...new Set(writes)].join(", "));
+
+  // Server-side enforcement, not a hidden button.
+  check("the guard is server-only", guard.startsWith('import "server-only"'));
+  check("a paused account is refused by the API, not just the page",
+    guard.includes("account_blocked") && guard.includes("status: 403"));
+  const guarded = [
+    "app/api/generate/route.ts", "app/api/retouch/route.ts", "app/api/tools/run/route.ts",
+    "app/api/tools/save/route.ts", "app/api/concepts/generate/route.ts",
+    "app/api/prompts/generate/route.ts", "app/api/prompts/custom/route.ts",
+    "app/api/prompts/regenerate/route.ts", "app/api/prompts/card/route.ts",
+    "app/api/generations/regenerate/route.ts", "app/api/generations/delete/route.ts",
+    "app/api/library/zip/route.ts",
+  ];
+  check("every money- or data-writing route asks",
+    guarded.every((f) => read(f).includes("accountBlockedResponse(supabase, user.id)")),
+    guarded.filter((f) => !read(f).includes("accountBlockedResponse(supabase, user.id)")).join(", "));
+  check("the customer's own write actions ask too",
+    read("app/actions/products.ts").includes("assertNotBlocked")
+    && read("app/actions/prompts.ts").includes("assertNotBlocked"));
+  // …and support does NOT, deliberately: a paused customer must be able to ask why.
+  check("the support desk stays open to a blocked customer",
+    !read("app/actions/support.ts").includes("assertNotBlocked"));
+
+  check("the shell shows the end time rather than a dead end",
+    layout.includes("auth2.blockedUntil") && layout.includes("blockStateOf"));
+  check("both admin writes are audited with who, whom and until",
+    actions.includes('action: "user.blocked"') && actions.includes("expires_at")
+    && actions.includes('action: "user.unblocked"'));
+  check("the expiry sweep rides the existing cron",
+    read("app/api/cron/mail/route.ts").includes("expireBlocksAction"));
+  check("the CRM can filter for exactly the paused accounts",
+    read("lib/services/admin-crm.ts").includes('"temp"')
+    && sql.includes("p_status = 'temp'"));
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);

@@ -947,7 +947,29 @@
     "errSendFailed": "Nie udało się wysłać wiadomości.",
     "errConfirmMismatch": "Wpisany adres nie zgadza się z adresem konta.",
     "errSelf": "Nie możesz wykonać tej operacji na własnym koncie.",
-    "errNotFound": "Nie znaleziono konta."
+    "errNotFound": "Nie znaleziono konta.",
+    "blockTemporarily": "Zablokuj tymczasowo",
+    "unblockNow": "Odblokuj teraz",
+    "blockKeepsData": "Konto zostaje. Kredyty, pliki, historia i dane użytkownika pozostają nietknięte — blokujemy wyłącznie dostęp, a po upływie czasu wraca sam.",
+    "blockDuration": "Czas blokady",
+    "blockFor.1h": "1 godzina",
+    "blockFor.24h": "24 godziny",
+    "blockFor.3d": "3 dni",
+    "blockFor.7d": "7 dni",
+    "blockFor.custom": "Własna data",
+    "blockUntilLabel": "Zablokowany do",
+    "blockReason": "Powód",
+    "blockReasonHint": "np. naruszenie zasad / ręczna kontrola",
+    "blockNote": "Notatka wewnętrzna",
+    "blockNoteHint": "Widoczna tylko dla zespołu. Klient jej nie zobaczy.",
+    "blockPreview": "Konto będzie zablokowane do {when}.",
+    "blockPreviewIndefinite": "Konto będzie zablokowane bezterminowo, do ręcznego odblokowania.",
+    "blockedUntil": "Zablokowany do {when}",
+    "unblockBodyUntil": "Blokada wygasa {when}. Odblokować teraz?",
+    "statusTemp": "Tymczasowo zablokowani",
+    "errCannotBlockSelf": "Nie możesz zablokować własnego konta.",
+    "errUntilPast": "Wybrana data jest w przeszłości.",
+    "errUntilTooFar": "Blokada tymczasowa może trwać maksymalnie rok."
   },
   "svc": {
     "title": "Katalog usług",
@@ -1248,7 +1270,8 @@
   },
   "auth2": {
     "blockedTitle": "Konto zablokowane",
-    "blockedBody": "Twoje konto zostało zablokowane. Skontaktuj się z pomocą, jeśli uważasz, że to pomyłka."
+    "blockedBody": "Twoje konto zostało zablokowane. Skontaktuj się z pomocą, jeśli uważasz, że to pomyłka.",
+    "blockedUntil": "Twoje konto jest tymczasowo zablokowane do {when}. Po tym czasie dostęp wróci automatycznie."
   },
   "studio": {
     "sub": "Dodaj kontekst produktu, napisz prompt i generuj — bez wcześniejszego zapisywania produktu.",

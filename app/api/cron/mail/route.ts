@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { syncNowAction } from "@/app/actions/mail";
 import { runBudgetCheckAction } from "@/app/actions/ai-budgets";
+import { expireBlocksAction } from "@/app/actions/admin-crm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,10 +62,19 @@ export async function GET() {
   */
   const budgets = await runBudgetCheckAction().catch(() => ({ ok: false as const }));
 
+  /*
+    …and clears expired account blocks. Housekeeping, not enforcement: a block
+    that ended at 15:30 stopped applying at 15:30 whether or not this ran. All
+    this does is stop the CRM showing a stale "blocked until" on a customer who
+    is already working again.
+  */
+  const blocks = await expireBlocksAction().catch(() => ({ ok: false as const }));
+
   // Counts only. Nothing about the mailbox, the sender, or the credentials ever
   // belongs in a response a scheduler logs.
   return NextResponse.json({
     ok: true, found: result.found, sent: result.sent, failed: result.failed,
     budgets: budgets.ok ? { checked: budgets.checked, alerted: budgets.alerted } : { ok: false },
+    blocksLifted: blocks.ok ? blocks.lifted : null,
   });
 }

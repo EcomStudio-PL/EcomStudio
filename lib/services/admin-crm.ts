@@ -7,7 +7,9 @@ type Client = SupabaseClient<Database>;
  * THE CUSTOMER LIST.
  *
  * Every filter here maps to a state the database can actually answer for:
- * `blocked` is a column, verification is `auth.users.email_confirmed_at`, the
+ * `blocked` is a column (with an optional expiry, so an expired block reads as
+ * active without waiting for a sweep), verification is
+ * `auth.users.email_confirmed_at`, the
  * plan is an active subscription, and registration is `created_at`. There is
  * deliberately no "engagement" or "risk" filter — inventing a status the data
  * cannot support is how an admin panel starts lying.
@@ -20,7 +22,9 @@ type Client = SupabaseClient<Database>;
 export const CUSTOMER_SORTS = ["newest", "oldest", "name", "spent", "credits", "active"] as const;
 export type CustomerSort = (typeof CUSTOMER_SORTS)[number];
 
-export const CUSTOMER_STATUSES = ["active", "blocked"] as const;
+/** `temp` is the subset of `blocked` that has an end date — the operator's
+ *  real question is "who is paused right now", not "who has the flag set". */
+export const CUSTOMER_STATUSES = ["active", "blocked", "temp"] as const;
 export const VERIFIED_VALUES = ["yes", "no"] as const;
 /** Registration windows, in days. */
 export const REGISTERED_WINDOWS = [7, 30, 90] as const;
@@ -44,6 +48,8 @@ export type CustomerRow = {
   name: string | null;
   role: string;
   blocked: boolean;
+  /** When a temporary block lifts itself. null = indefinite, or not blocked. */
+  blockedUntil: string | null;
   createdAt: string;
   verified: boolean;
   lastSignInAt: string | null;
@@ -98,6 +104,7 @@ export async function readCustomers(supabase: Client, filters: CustomerFilters):
       name: r.full_name,
       role: r.role,
       blocked: r.blocked,
+      blockedUntil: r.blocked_until,
       createdAt: r.created_at,
       verified: r.verified,
       lastSignInAt: r.last_sign_in_at,

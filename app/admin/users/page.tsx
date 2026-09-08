@@ -68,6 +68,9 @@ export default async function AdminUsers({ searchParams }: { searchParams: Promi
             options: [
               { value: "active", label: t("crm.active") },
               { value: "blocked", label: t("crm.blocked") },
+              // The subset an operator actually chases: paused accounts that
+              // will come back on their own, so somebody can look before they do.
+              { value: "temp", label: t("crm.statusTemp") },
             ],
           },
           {

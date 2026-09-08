@@ -1,6 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { assertNotBlocked } from "@/lib/server/account-block";
 import { getProduct } from "@/lib/services/products";
 import { createPromptsFromTemplates } from "@/lib/services/prompts";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
@@ -11,6 +12,7 @@ async function workspaceCtx() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("unauthenticated");
+  await assertNotBlocked(supabase, user.id);
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) throw new Error("no_workspace");
   return { supabase, workspace };

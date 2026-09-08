@@ -160,6 +160,91 @@ export async function deleteCustomerAction(userId: string, confirmEmail: string)
 }
 
 /**
+ * TEMPORARY BLOCK — a pause, not a deletion.
+ *
+ * `until` is an ISO instant, or null for an indefinite block. Nothing about
+ * the customer's credits, files, history or profile is touched: the account
+ * stops being usable and starts being usable again by itself.
+ *
+ * The write goes through admin_block_user() (0072) rather than a plain update
+ * so the rules — admin only, never yourself, never a date in the past, never
+ * more than a year — live in the database and hold for any caller.
+ */
+export async function blockUserAction(input: {
+  userId: string;
+  /** ISO instant, or null for indefinite. */
+  until: string | null;
+  reason?: string | null;
+  note?: string | null;
+}): Promise<Result & { until?: string | null }> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    if (!input.userId) return { ok: false, error: "invalid" };
+    if (input.until && Number.isNaN(new Date(input.until).getTime())) {
+      return { ok: false, error: "invalid_until" };
+    }
+
+    const { error } = await supabase.rpc("admin_block_user", {
+      p_user: input.userId,
+      p_until: input.until,
+      p_reason: input.reason?.slice(0, 200) ?? null,
+      p_note: input.note?.slice(0, 1000) ?? null,
+    });
+    if (error) {
+      const known = ["cannot_block_self", "until_in_the_past", "until_too_far", "user_not_found"];
+      const code = known.find((k) => error.message.includes(k));
+      return { ok: false, error: code ?? "generic" };
+    }
+
+    // The audit row carries what §CRM asked for: who, whom, when it started,
+    // when it ends and why. The internal note is not copied here — it lives on
+    // the profile, and duplicating free text into an append-only log is how
+    // the same sentence ends up in two places saying different things.
+    await logAudit(supabase, {
+      actorId: adminId, action: "user.blocked", entityType: "profile", entityId: input.userId,
+      after: { expires_at: input.until, reason: input.reason ?? null },
+    });
+    revalidatePath("/admin/users");
+    revalidatePath(`/admin/users/${input.userId}`);
+    return { ok: true, until: input.until };
+  } catch { return { ok: false, error: "generic" }; }
+}
+
+/**
+ * The tidy-up sweep, run from the daily cron.
+ *
+ * NOT the mechanism: an expired block already stops being enforced the moment
+ * it expires, because every gate reads `blocked_until` rather than trusting
+ * the flag. This only clears the flag afterwards so the CRM does not keep
+ * showing a customer as blocked until a date that has passed.
+ */
+export async function expireBlocksAction(): Promise<Result & { lifted?: number }> {
+  try {
+    const { supabase } = await requireAdmin();
+    const { data, error } = await supabase.rpc("admin_expire_account_blocks");
+    if (error) return { ok: false, error: "generic" };
+    return { ok: true, lifted: Number(data ?? 0) };
+  } catch { return { ok: false, error: "generic" }; }
+}
+
+/** Lift a block early. The internal note survives — why an account was paused
+ *  is worth keeping after it is running again. */
+export async function unblockUserAction(userId: string): Promise<Result> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    if (!userId) return { ok: false, error: "invalid" };
+    const { error } = await supabase.rpc("admin_unblock_user", { p_user: userId });
+    if (error) return { ok: false, error: "generic" };
+    await logAudit(supabase, {
+      actorId: adminId, action: "user.unblocked", entityType: "profile", entityId: userId,
+    });
+    revalidatePath("/admin/users");
+    revalidatePath(`/admin/users/${userId}`);
+    return { ok: true };
+  } catch { return { ok: false, error: "generic" }; }
+}
+
+/**
  * Bulk suspend / reactivate — the only bulk operations offered.
  *
  * Both are reversible with the opposite button, which is the whole reason
@@ -174,7 +259,17 @@ export async function bulkSetBlockedAction(userIds: string[], blocked: boolean):
     if (ids.length === 0) return { ok: false, error: "empty" };
     if (ids.length > 100) return { ok: false, error: "too_many" };
 
-    const { error } = await supabase.from("profiles").update({ blocked }).in("id", ids);
+    // A bulk block is indefinite by design — a deadline is a per-customer
+    // decision, and typing one date for twenty accounts is not that. Both
+    // directions clear the temporal fields so no row is left saying it is
+    // blocked until a date that no longer applies.
+    const { error } = await supabase.from("profiles").update({
+      blocked,
+      blocked_until: null,
+      blocked_reason: null,
+      blocked_at: blocked ? new Date().toISOString() : null,
+      blocked_by: blocked ? adminId : null,
+    }).in("id", ids);
     if (error) return { ok: false, error: "generic" };
 
     await logAudit(supabase, {

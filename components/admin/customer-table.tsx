@@ -9,6 +9,7 @@ import type { CustomerRow } from "@/lib/services/admin-crm";
 import { bulkSetBlockedAction } from "@/app/actions/admin-crm";
 import { CustomerActions } from "@/components/admin/customer-actions";
 import { Badge } from "@/components/ui/badge";
+import { formatInstantShort } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { cn } from "@/lib/utils";
@@ -78,10 +79,10 @@ export function CustomerTable({ rows, adminId, locale }: {
                 </Link>
                 <p className="truncate text-xs text-muted">{r.email}</p>
                 <div className="mt-1.5 flex flex-wrap gap-1">
-                  <StatusBadges row={r} t={t} />
+                  <StatusBadges row={r} t={t} locale={locale} />
                 </div>
               </div>
-              <CustomerActions userId={r.id} email={r.email} blocked={r.blocked}
+              <CustomerActions userId={r.id} email={r.email} blocked={r.blocked} blockedUntil={r.blockedUntil}
                 verified={r.verified} isSelf={r.id === adminId} />
             </div>
             <dl className="mt-3 grid grid-cols-2 gap-y-2 text-[13px]">
@@ -129,7 +130,7 @@ export function CustomerTable({ rows, adminId, locale }: {
                     </Link>
                     <p className="truncate text-xs text-muted">{r.email}</p>
                   </td>
-                  <td className="px-4 py-2.5"><span className="flex flex-wrap gap-1"><StatusBadges row={r} t={t} /></span></td>
+                  <td className="px-4 py-2.5"><span className="flex flex-wrap gap-1"><StatusBadges row={r} t={t} locale={locale} /></span></td>
                   <td className="whitespace-nowrap px-4 py-2.5">{r.plan === "free" ? t("crm.planFree") : r.plan}</td>
                   <td className="px-4 py-2.5 tabular-nums">{r.credits}</td>
                   <td className="whitespace-nowrap px-4 py-2.5 tabular-nums">{pln(r.spentCents)}</td>
@@ -147,7 +148,7 @@ export function CustomerTable({ rows, adminId, locale }: {
                         className="grid size-9 place-items-center rounded-lg bg-accent2-soft text-accent2 transition-[filter] hover:brightness-110">
                         <FileBarChart size={15} aria-hidden />
                       </Link>
-                      <CustomerActions userId={r.id} email={r.email} blocked={r.blocked}
+                      <CustomerActions userId={r.id} email={r.email} blocked={r.blocked} blockedUntil={r.blockedUntil}
                         verified={r.verified} isSelf={r.id === adminId} />
                     </span>
                   </td>
@@ -177,10 +178,20 @@ export function CustomerTable({ rows, adminId, locale }: {
   );
 }
 
-function StatusBadges({ row, t }: { row: CustomerRow; t: (key: string) => string }) {
+function StatusBadges({ row, t, locale }: {
+  row: CustomerRow; t: (key: string, values?: Record<string, string | number>) => string; locale: string;
+}) {
   return (
     <>
-      {row.blocked && <Badge tone="danger">{t("crm.blocked")}</Badge>}
+      {/* A pause with an end date says when it ends: "Zablokowany do 10.09,
+          15:30" is actionable where a bare "Zablokowany" starts a support
+          conversation. Orange, because it lifts itself; red stays for the
+          indefinite block, which will not. */}
+      {row.blocked && (row.blockedUntil
+        ? <Badge tone="warning" dot>
+            {t("crm.blockedUntil", { when: formatInstantShort(row.blockedUntil, locale) })}
+          </Badge>
+        : <Badge tone="danger">{t("crm.blocked")}</Badge>)}
       {!row.verified && <Badge tone="neutral">{t("crm.unverified")}</Badge>}
       {row.role !== "user" && <Badge tone="info">{row.role}</Badge>}
       {!row.blocked && row.verified && row.role === "user" && <Badge tone="success">{t("crm.active")}</Badge>}

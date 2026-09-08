@@ -947,7 +947,29 @@
     "errSendFailed": "The message could not be sent.",
     "errConfirmMismatch": "The address typed does not match the account.",
     "errSelf": "You cannot do this to your own account.",
-    "errNotFound": "Account not found."
+    "errNotFound": "Account not found.",
+    "blockTemporarily": "Block temporarily",
+    "unblockNow": "Unblock now",
+    "blockKeepsData": "The account stays. Credits, files, history and personal data are untouched — only access is paused, and it comes back by itself.",
+    "blockDuration": "Block for",
+    "blockFor.1h": "1 hour",
+    "blockFor.24h": "24 hours",
+    "blockFor.3d": "3 days",
+    "blockFor.7d": "7 days",
+    "blockFor.custom": "Custom date",
+    "blockUntilLabel": "Blocked until",
+    "blockReason": "Reason",
+    "blockReasonHint": "e.g. policy violation / manual review",
+    "blockNote": "Internal note",
+    "blockNoteHint": "Visible to the team only. The customer never sees it.",
+    "blockPreview": "The account will be blocked until {when}.",
+    "blockPreviewIndefinite": "The account will be blocked indefinitely, until unblocked by hand.",
+    "blockedUntil": "Blocked until {when}",
+    "unblockBodyUntil": "The block expires {when}. Unblock now?",
+    "statusTemp": "Temporarily blocked",
+    "errCannotBlockSelf": "You cannot block your own account.",
+    "errUntilPast": "That date is in the past.",
+    "errUntilTooFar": "A temporary block can last at most a year."
   },
   "svc": {
     "title": "Service catalog",
@@ -1248,7 +1270,8 @@
   },
   "auth2": {
     "blockedTitle": "Account blocked",
-    "blockedBody": "Your account has been blocked. Contact support if you believe this is a mistake."
+    "blockedBody": "Your account has been blocked. Contact support if you believe this is a mistake.",
+    "blockedUntil": "Your account is temporarily blocked until {when}. Access returns automatically after that."
   },
   "studio": {
     "sub": "Add product context, write a prompt and generate — no saved product required.",

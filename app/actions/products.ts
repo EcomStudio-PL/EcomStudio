@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { assertNotBlocked } from "@/lib/server/account-block";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import * as products from "@/lib/services/products";
 import * as images from "@/lib/services/images";
@@ -19,6 +20,9 @@ async function ctx() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("unauthenticated");
+  // One gate for every write in this file: a paused account can still read
+  // its catalogue, and cannot change it.
+  await assertNotBlocked(supabase, user.id);
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) throw new Error("no_workspace");
   return { supabase, user, workspace };

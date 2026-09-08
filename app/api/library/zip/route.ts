@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { accountBlockedResponse } from "@/lib/server/account-block";
 import { featureBlockedForApi } from "@/lib/server/feature-availability";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { buildZip } from "@/lib/server/zip";
@@ -17,6 +18,10 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  // A temporarily blocked account keeps its data and loses its access — and
+  // access means this route too, not just the screen that links to it.
+  const paused = await accountBlockedResponse(supabase, user.id);
+  if (paused) return paused;
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const blockedFeature = await featureBlockedForApi(supabase, "library");

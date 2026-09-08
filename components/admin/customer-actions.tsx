@@ -6,13 +6,14 @@ import { toast } from "sonner";
 import { KeyRound, MailCheck, MoreHorizontal, Send, ShieldOff, ShieldCheck, Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import {
-  bulkSetBlockedAction, deleteCustomerAction, resendVerificationAction,
-  sendCustomerMessageAction, sendPasswordResetAction,
+  blockUserAction, deleteCustomerAction, resendVerificationAction,
+  sendCustomerMessageAction, sendPasswordResetAction, unblockUserAction,
 } from "@/app/actions/admin-crm";
+import { BLOCK_PRESETS, blockUntilIso } from "@/lib/account-block";
 import { Modal, ConfirmModal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
+import { cn, formatInstant } from "@/lib/utils";
 
 /**
  * THE ⋯ MENU on a customer row.
@@ -38,16 +39,23 @@ type MenuItem = {
   hidden?: boolean;
 };
 
-export function CustomerActions({ userId, email, blocked, verified, isSelf }: {
+export function CustomerActions({ userId, email, blocked, blockedUntil, verified, isSelf }: {
   userId: string; email: string; blocked: boolean; verified: boolean; isSelf: boolean;
+  /** ISO instant a temporary block lifts at, when there is one. */
+  blockedUntil?: string | null;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
   const [dialog, setDialog] = useState<null | "message" | "reset" | "resend" | "block" | "delete">(null);
   const [message, setMessage] = useState({ subject: "", body: "" });
   const [confirmEmail, setConfirmEmail] = useState("");
+  // The block form: a preset duration, or a date and time typed by hand.
+  const [block, setBlock] = useState<{
+    preset: (typeof BLOCK_PRESETS)[number]["key"] | "custom";
+    customAt: string; reason: string; note: string;
+  }>({ preset: "24h", customAt: "", reason: "", note: "" });
   const wrap = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -115,6 +123,9 @@ export function CustomerActions({ userId, email, blocked, verified, isSelf }: {
         confirmation_mismatch: t("crm.errConfirmMismatch"),
         self: t("crm.errSelf"),
         not_found: t("crm.errNotFound"),
+        cannot_block_self: t("crm.errCannotBlockSelf"),
+        until_in_the_past: t("crm.errUntilPast"),
+        until_too_far: t("crm.errUntilTooFar"),
       };
       toast.error(messages[res.error ?? ""] ?? t("common.error"));
     });
@@ -128,7 +139,7 @@ export function CustomerActions({ userId, email, blocked, verified, isSelf }: {
     { key: "resend", label: t("crm.resendVerification"), icon: MailCheck, hidden: verified, onSelect: () => setDialog("resend") },
     {
       key: "block",
-      label: blocked ? t("crm.unblock") : t("crm.block"),
+      label: blocked ? t("crm.unblockNow") : t("crm.blockTemporarily"),
       icon: blocked ? ShieldCheck : ShieldOff,
       hidden: isSelf,
       onSelect: () => setDialog("block"),
@@ -207,15 +218,103 @@ export function CustomerActions({ userId, email, blocked, verified, isSelf }: {
         confirmLabel={t("crm.sendLink")}
         onConfirm={() => run(() => resendVerificationAction(userId), t("crm.verificationSent"))} />
 
-      <ConfirmModal open={dialog === "block"} onClose={() => setDialog(null)} pending={pending}
-        danger={!blocked}
-        title={blocked ? t("crm.unblock") : t("crm.block")}
-        body={blocked ? t("crm.unblockBody") : t("crm.blockBody")}
-        confirmLabel={blocked ? t("crm.unblock") : t("crm.block")}
-        onConfirm={() => run(
-          () => bulkSetBlockedAction([userId], !blocked),
-          blocked ? t("crm.unblocked") : t("crm.blockedDone"),
-        )} />
+      {/* ODBLOKUJ — one decision, one confirmation. */}
+      <ConfirmModal open={dialog === "block" && blocked} onClose={() => setDialog(null)} pending={pending}
+        title={t("crm.unblockNow")}
+        body={blockedUntil
+          ? t("crm.unblockBodyUntil", { when: formatInstant(blockedUntil, locale) })
+          : t("crm.unblockBody")}
+        confirmLabel={t("crm.unblockNow")}
+        onConfirm={() => run(() => unblockUserAction(userId), t("crm.unblocked"))} />
+
+      {/* ZABLOKUJ TYMCZASOWO — a pause with an end, not a deletion.
+          The account keeps its credits, its files and its history; what it
+          loses is access, and it gets that back by itself. */}
+      <Modal open={dialog === "block" && !blocked} onClose={() => setDialog(null)} title={t("crm.blockTemporarily")}>
+        <div className="space-y-4">
+          <p className="rounded-xl bg-raised px-4 py-2.5 text-[13px] leading-relaxed text-muted">
+            {t("crm.blockKeepsData")}
+          </p>
+
+          <div>
+            <Label htmlFor={`bd-${userId}`}>{t("crm.blockDuration")}</Label>
+            <div id={`bd-${userId}`} className="mt-1.5 flex flex-wrap gap-1.5">
+              {BLOCK_PRESETS.map((preset) => (
+                <button key={preset.key} type="button"
+                  aria-pressed={block.preset === preset.key}
+                  onClick={() => setBlock({ ...block, preset: preset.key })}
+                  className={cn(
+                    "inline-flex min-h-[36px] items-center rounded-lg px-3 text-[13px] font-semibold transition-colors",
+                    block.preset === preset.key
+                      ? "bg-accent2-soft text-accent2 ring-1 ring-[rgb(var(--accent2)/0.35)]"
+                      : "bg-raised text-muted hover:text-ink",
+                  )}>
+                  {t(`crm.blockFor.${preset.key}`)}
+                </button>
+              ))}
+              <button type="button"
+                aria-pressed={block.preset === "custom"}
+                onClick={() => setBlock({ ...block, preset: "custom" })}
+                className={cn(
+                  "inline-flex min-h-[36px] items-center rounded-lg px-3 text-[13px] font-semibold transition-colors",
+                  block.preset === "custom"
+                    ? "bg-accent2-soft text-accent2 ring-1 ring-[rgb(var(--accent2)/0.35)]"
+                    : "bg-raised text-muted hover:text-ink",
+                )}>
+                {t("crm.blockFor.custom")}
+              </button>
+            </div>
+          </div>
+
+          {block.preset === "custom" && (
+            <div>
+              <Label htmlFor={`bc-${userId}`}>{t("crm.blockUntilLabel")}</Label>
+              {/* datetime-local is read in the operator's own zone, which is
+                  the zone they are thinking in; the server stores UTC. */}
+              <Input id={`bc-${userId}`} type="datetime-local" value={block.customAt}
+                onChange={(e) => setBlock({ ...block, customAt: e.target.value })} />
+            </div>
+          )}
+
+          <div>
+            <Label htmlFor={`br-${userId}`}>{t("crm.blockReason")}</Label>
+            <Input id={`br-${userId}`} value={block.reason} maxLength={200}
+              placeholder={t("crm.blockReasonHint")}
+              onChange={(e) => setBlock({ ...block, reason: e.target.value })} />
+          </div>
+
+          <div>
+            <Label htmlFor={`bn-${userId}`}>{t("crm.blockNote")}</Label>
+            <Textarea id={`bn-${userId}`} rows={3} value={block.note} maxLength={1000}
+              onChange={(e) => setBlock({ ...block, note: e.target.value })} />
+            <p className="mt-1 text-xs text-faint">{t("crm.blockNoteHint")}</p>
+          </div>
+
+          {/* What the operator is about to do, in words, before they do it. */}
+          <p className="text-[13px] text-muted">
+            {blockUntilIso(block.preset, block.customAt)
+              ? t("crm.blockPreview", { when: formatInstant(blockUntilIso(block.preset, block.customAt)!, locale) })
+              : t("crm.blockPreviewIndefinite")}
+          </p>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setDialog(null)}>{t("common.cancel")}</Button>
+            <Button variant="danger"
+              disabled={pending || (block.preset === "custom" && !blockUntilIso("custom", block.customAt))}
+              onClick={() => run(
+                () => blockUserAction({
+                  userId,
+                  until: blockUntilIso(block.preset, block.customAt),
+                  reason: block.reason.trim() || null,
+                  note: block.note.trim() || null,
+                }),
+                t("crm.blockedDone"),
+              )}>
+              {pending ? t("common.saving") : t("crm.blockTemporarily")}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* USUŃ KONTO — typed confirmation, and the server checks it again. */}
       <Modal open={dialog === "delete"} onClose={() => setDialog(null)} title={t("crm.deleteAccount")}>
