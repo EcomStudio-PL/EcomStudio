@@ -314,6 +314,75 @@ body::after {
   box-shadow: var(--shadow-4);
 }
 
+/* ── THE LIGHT SNAKE ─────────────────────────────────────────────────────
+   A thread of brand light running once around a card while the pointer is on
+   it. Used on the mega-menu entries, where a plain background tint could not
+   say "this one" clearly enough on a dark panel full of dark tiles.
+
+   How, and why this way:
+   · One pseudo-element, one `background-position` animation. No JS, no
+     per-frame React, and nothing that can move a neighbour: the element is
+     absolutely positioned and only its BACKGROUND scrolls, so there is no
+     layout or paint outside its own box.
+   · The thread is a conic gradient that is transparent for most of its turn,
+     masked to the 1px border ring — the mask is what makes it a border rather
+     than a glowing card.
+   · Premium, not gaming: ONE thread, one lap every 2.4s, in the two brand
+     magentas with a violet in the middle. No rainbow, no strobe.
+   · Hover only, and only where a pointer exists. A phone gets the plain
+     active state — see the focus rule below, which is the keyboard's version
+     of the same signal. */
+.snake {
+  position: relative;
+  isolation: isolate;
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .snake::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    background: conic-gradient(
+      from var(--snake-angle, 0deg),
+      transparent 0deg,
+      transparent 250deg,
+      rgb(var(--accent) / 0.9) 300deg,
+      rgb(var(--violet) / 0.9) 330deg,
+      rgb(var(--accent-glow)) 355deg,
+      transparent 360deg
+    );
+    /* Border-only: paint the ring, punch out the middle. */
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+  .snake:hover::after,
+  .snake:focus-visible::after {
+    opacity: 1;
+    animation: snake-run 2.4s linear infinite;
+  }
+}
+@property --snake-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes snake-run {
+  to { --snake-angle: 360deg; }
+}
+/* Touch and reduced motion get the same message without the movement. */
+@media (hover: none), (prefers-reduced-motion: reduce) {
+  .snake:active,
+  .snake:focus-visible {
+    box-shadow: 0 0 0 1px rgb(var(--accent) / 0.55);
+  }
+}
+
 /* Brand gradient — primary CTAs, credit pill, active indicators only. */
 .brand-gradient {
   background-image: linear-gradient(135deg,

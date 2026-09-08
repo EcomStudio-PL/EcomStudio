@@ -34,7 +34,8 @@
     "expand": "Rozwiń panel",
     "editor": "Edycja obrazu",
     "resize": "Zmiana rozmiaru",
-    "allTools": "Wszystkie narzędzia"
+    "allTools": "Wszystkie narzędzia",
+    "plans": "Plany"
   },
   "common": {
     "save": "Zapisz",
@@ -442,7 +443,9 @@
       "system": "Systemowy"
     },
     "saved": "Ustawienia zapisane.",
-    "workspace": "Workspace"
+    "workspace": "Workspace",
+    "theme.dark": "Ciemny motyw",
+    "theme.light": "Jasny motyw"
   },
   "admin": {
     "title": "Panel administratora",
@@ -1989,7 +1992,8 @@
     "unit": "kredytów",
     "low": "Kredyty się kończą",
     "buy": "Dokup kredyty",
-    "upgrade": "Ulepsz plan"
+    "upgrade": "Ulepsz plan",
+    "topUpShort": "Doładuj"
   },
   "topnav": {
     "home": "Strona główna",
@@ -2007,7 +2011,8 @@
     "engine": "Gotowy generator",
     "custom": "Własny prompt",
     "allTools": "Wszystkie narzędzia",
-    "videoSoon": "Generowanie wideo jest w przygotowaniu — architektura już na nie czeka."
+    "videoSoon": "Generowanie wideo jest w przygotowaniu — architektura już na nie czeka.",
+    "customSub": "Opisz obraz własnymi słowami"
   },
   "cats": {
     "moda": "Moda",

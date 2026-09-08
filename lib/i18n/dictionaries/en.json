@@ -34,7 +34,8 @@
     "expand": "Expand panel",
     "editor": "Image editing",
     "resize": "Resize",
-    "allTools": "All tools"
+    "allTools": "All tools",
+    "plans": "Plans"
   },
   "common": {
     "save": "Save",
@@ -442,7 +443,9 @@
       "system": "System"
     },
     "saved": "Settings saved.",
-    "workspace": "Workspace"
+    "workspace": "Workspace",
+    "theme.dark": "Dark theme",
+    "theme.light": "Light theme"
   },
   "admin": {
     "title": "Admin panel",
@@ -1989,7 +1992,8 @@
     "unit": "credits",
     "low": "Credits running low",
     "buy": "Buy credits",
-    "upgrade": "Upgrade plan"
+    "upgrade": "Upgrade plan",
+    "topUpShort": "Top up"
   },
   "topnav": {
     "home": "Home",
@@ -2007,7 +2011,8 @@
     "engine": "Ready generator",
     "custom": "Own prompt",
     "allTools": "All tools",
-    "videoSoon": "Video generation is in the works — the architecture is already waiting for it."
+    "videoSoon": "Video generation is in the works — the architecture is already waiting for it.",
+    "customSub": "Describe the image in your own words"
   },
   "cats": {
     "moda": "Fashion",

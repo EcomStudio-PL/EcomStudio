@@ -34,7 +34,8 @@
     "expand": "Panel ausklappen",
     "editor": "Bildbearbeitung",
     "resize": "Größe ändern",
-    "allTools": "Alle Werkzeuge"
+    "allTools": "Alle Werkzeuge",
+    "plans": "Tarife"
   },
   "common": {
     "save": "Speichern",
@@ -442,7 +443,9 @@
       "system": "System"
     },
     "saved": "Einstellungen gespeichert.",
-    "workspace": "Workspace"
+    "workspace": "Workspace",
+    "theme.dark": "Dunkles Design",
+    "theme.light": "Helles Design"
   },
   "admin": {
     "title": "Admin-Bereich",
@@ -1989,7 +1992,8 @@
     "unit": "Credits",
     "low": "Credits werden knapp",
     "buy": "Credits kaufen",
-    "upgrade": "Plan upgraden"
+    "upgrade": "Plan upgraden",
+    "topUpShort": "Aufladen"
   },
   "topnav": {
     "home": "Startseite",
@@ -2007,7 +2011,8 @@
     "engine": "Fertiger Generator",
     "custom": "Eigener Prompt",
     "allTools": "Alle Werkzeuge",
-    "videoSoon": "Video-Generierung ist in Arbeit — die Architektur wartet schon darauf."
+    "videoSoon": "Video-Generierung ist in Arbeit — die Architektur wartet schon darauf.",
+    "customSub": "Beschreiben Sie das Bild in eigenen Worten"
   },
   "cats": {
     "moda": "Mode",

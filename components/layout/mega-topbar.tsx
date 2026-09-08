@@ -11,7 +11,6 @@ import { allDefaults, menuBadge, menuVisible, type AvailabilityMap, type MenuBad
 import { cn } from "@/lib/utils";
 import { Brand } from "./brand";
 import { ThemeToggle } from "./theme-toggle";
-import { LocaleSwitcher } from "./locale-switcher";
 import { CommandPalette } from "./command-palette";
 import { CreditsControl } from "./credits-control";
 import { AccountMenu } from "./account-menu";
@@ -20,9 +19,12 @@ import { NotificationsBell, type NotificationItem } from "./notifications-bell";
 
 /**
  * MEGA TOPBAR — the customer app's ONLY chrome. Left to right:
- * logo · Obraz ▾ · Wideo ▾ · search … credits · Biblioteka · language ·
- * theme · bell · avatar ▾. The plan tier is deliberately absent — it lives
- * in the account popover.
+ * logo · Obraz ▾ · Wideo ▾ · search … Plany · credits · Biblioteka ·
+ * theme · bell · avatar ▾.
+ *
+ * The plan TIER is still absent from the bar — "Plany" is a destination, not
+ * a badge saying which one you are on; that fact lives in the account popover
+ * next to the wallet it explains.
  *
  * The mega panel is positioned inside the SAME relative wrapper as its
  * trigger, so it opens flush under the button with no dead pixels for the
@@ -124,9 +126,21 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
 
         <div className="min-w-0 flex-1" />
 
-        {/* RIGHT: credits · library · locale · theme · bell · avatar. The
-            plan is NOT here — it lives in the account popover, where it is a
-            fact about the account rather than permanent chrome. */}
+        {/* RIGHT: plans · credits · library · theme · bell · avatar.
+            "Plany" sits immediately LEFT of the wallet, where the answer to
+            "I am running out of credits" is one glance away from the number
+            that prompted it. The language switch left this bar for the account
+            popover — three flags of permanent chrome for a choice made once. */}
+        {menuVisible(avail, "/plan", seesRestricted) && (
+          <Link href="/plan"
+            className={cn(
+              "hidden h-9 items-center rounded-xl px-3 text-sm font-semibold transition-colors duration-200 lg:inline-flex",
+              pathname.startsWith("/plan") ? "bg-[rgb(var(--accent)/0.14)] text-ink" : "text-muted hover:bg-raised hover:text-ink",
+            )}>
+            {t("nav.plans")}
+          </Link>
+        )}
+
         <CreditsControl credits={credits} />
 
         {menuVisible(avail, "/library", seesRestricted) && (
@@ -144,17 +158,15 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
         {/* Mobile search icon — the palette opens as a full overlay. */}
         <div className="lg:hidden"><CommandPalette isAdmin={isAdmin} iconOnly /></div>
 
-        <div className="hidden sm:block"><LocaleSwitcher /></div>
         <div className="hidden sm:block"><ThemeToggle /></div>
         <NotificationsBell items={notifications} unread={unread} />
 
-        {/* Wide desktops get name + caret as the trigger; laptops keep the
-            bare avatar so the bar never overflows. */}
-        <div className="hidden lg:block 2xl:hidden">
+        {/* ONE avatar treatment at every width: the picture and a caret. The
+            name was on the bar only past 2xl, so the trigger changed shape
+            between laptop and monitor — and the name is the first line inside
+            the popover anyway. */}
+        <div className="hidden lg:block">
           <AccountMenu name={name} email={email} credits={credits} plan={plan} isAdmin={isAdmin} />
-        </div>
-        <div className="hidden 2xl:block">
-          <AccountMenu name={name} email={email} credits={credits} plan={plan} isAdmin={isAdmin} showName />
         </div>
         {/* No avatar button on phones: the hamburger on the left and the
             account slot in the bottom navigation already open the same
@@ -181,16 +193,21 @@ function MegaPanel({ which, t, avail, isAdmin }: {
   const edit = (which === "image" ? IMAGE_EDIT : VIDEO_EDIT)
     .filter((e) => menuVisible(avail, e.href, isAdmin));
   const modes = IMAGE_MODES.filter((e) => menuVisible(avail, e.href, isAdmin));
+  // An entry that is not a category names itself; the categories keep taking
+  // their label and one-liner from the category dictionary.
   const label = (e: MegaEntry) =>
-    which === "image" ? t(`cats.${e.key}`) : t(`video.wf.${e.key}.name`);
+    e.labelKey ? t(e.labelKey) : which === "image" ? t(`cats.${e.key}`) : t(`video.wf.${e.key}.name`);
   const sub = (e: MegaEntry) =>
-    which === "image" ? t(`cats.${e.key}Sub`) : t(`video.wf.${e.key}.sub`);
+    e.subKey ? t(e.subKey) : which === "image" ? t(`cats.${e.key}Sub`) : t(`video.wf.${e.key}.sub`);
 
   return (
     <div role="menu" className="overlay animate-pop w-[min(56rem,calc(100vw-3rem))] rounded-2xl p-5 shadow-e4">
       <div className="grid gap-6 md:grid-cols-[1.4fr_1fr]">
         <section>
-          <p className="overline mb-2.5">{t("mega.create")}</p>
+          {/* No "TWÓRZ" heading. The column IS the creating half of the panel,
+              the tiles say what they make, and a word above them was one more
+              line between the pointer and the thing it came for. "EDYTUJ"
+              stays: it is what separates the two halves. */}
           <div className="grid grid-cols-2 gap-1">
             {create.map((e) => (
               <MegaLink key={e.key} entry={e} label={label(e)} sub={sub(e)} soonLabel={t("common.soon")}
@@ -203,10 +220,10 @@ function MegaPanel({ which, t, avail, isAdmin }: {
                 <Link key={e.key} href={e.href}
                   className={cn(
                     "inline-flex h-9 items-center gap-2 rounded-xl px-3.5 text-[13px] font-semibold transition-colors duration-200",
-                    e.key === "engine" ? "cta" : "plate text-ink hover:border-[rgb(var(--accent)/0.4)]",
+                    e.key === "engine" ? "cta" : "snake plate text-ink hover:border-[rgb(var(--accent)/0.4)]",
                   )}>
                   <e.icon size={14} aria-hidden />
-                  {t(`mega.${e.key}`)}
+                  {e.labelKey ? t(e.labelKey) : t(`mega.${e.key}`)}
                   <DynBadge kind={menuBadge(avail, e.href)} t={t} onCta={e.key === "engine"} />
                 </Link>
               ))}
@@ -320,7 +337,10 @@ function MegaLink({ entry, label, sub, soonLabel, compact, dynBadge }: {
   const cls = cn(
     "group flex items-center gap-2.5 rounded-xl px-2.5 transition-colors duration-200",
     compact ? "py-1.5" : "py-2",
-    inert ? "cursor-default opacity-60" : "hover:bg-[rgb(var(--ink)/0.06)]",
+    // The light thread runs the border of a live entry only. An inert row is
+    // not a destination, so lighting it up would be an invitation to click
+    // something that does nothing.
+    inert ? "cursor-default opacity-60" : "snake hover:bg-[rgb(var(--ink)/0.06)]",
   );
   return inert
     ? <div className={cls} aria-disabled>{body}</div>

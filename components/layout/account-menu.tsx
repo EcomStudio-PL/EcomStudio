@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowUpRight, ChevronDown, CreditCard, LifeBuoy, LogOut, Plus, Settings, Shield, User } from "lucide-react";
@@ -8,7 +8,10 @@ import { useI18n } from "@/lib/i18n/provider";
 import { creditLevel, CREDIT_METER_CLASS, CREDIT_REFERENCE } from "@/lib/credit-level";
 import { firstName, greetingKey, planTone, PLAN_BADGE } from "@/lib/plan-tone";
 import { cn } from "@/lib/utils";
+import { setLocaleAction } from "@/app/actions/settings";
+import { LOCALES } from "@/lib/i18n/config";
 import { Diamond } from "./credits-control";
+import { Flag } from "./flag";
 
 /**
  * ACCOUNT POPOVER — a 340px panel anchored under the avatar, not a modal.
@@ -39,6 +42,7 @@ export function AccountMenu({ name, email, credits, plan, isAdmin, showName }: {
   // local hour, and a greeting rendered from server time would be wrong for
   // half the audience.
   const [hour, setHour] = useState<number | null>(null);
+  const [switching, startSwitch] = useTransition();
   useEffect(() => { setHour(new Date().getHours()); }, []);
 
   useEffect(() => { setOpen(false); }, [pathname]);
@@ -136,6 +140,32 @@ export function AccountMenu({ name, email, credits, plan, isAdmin, showName }: {
                 <ArrowUpRight size={14} aria-hidden />
                 {isFree ? t("account.upgrade") : t("nav.managePlan")}
               </Link>
+            </div>
+          </div>
+
+          {/* LANGUAGE — three flags, one tap, no nested popover.
+              This used to be its own control on the top bar: permanent chrome
+              for a choice made roughly once, in a bar that had to fit a
+              wallet, a library and a plan link beside it. It belongs with the
+              other account preferences, and it is still one click away. */}
+          <div className="mx-3 mt-3 flex items-center gap-2">
+            <span className="overline shrink-0 text-[9.5px]">{t("account.language")}</span>
+            <div role="group" aria-label={t("settings.language")}
+              className="ml-auto inline-flex items-center gap-0.5 rounded-full bg-[rgb(var(--ink)/0.05)] p-0.5">
+              {LOCALES.map((code) => (
+                <button key={code} type="button" disabled={switching}
+                  aria-pressed={code === locale}
+                  aria-label={code.toUpperCase()}
+                  title={code.toUpperCase()}
+                  onClick={() => startSwitch(async () => { await setLocaleAction(code); })}
+                  className={cn(
+                    "flex h-7 items-center gap-1.5 rounded-full px-2 text-[11px] font-bold uppercase transition-colors duration-200",
+                    code === locale ? "bg-surface text-ink shadow-e1" : "text-faint hover:text-ink",
+                  )}>
+                  <Flag code={code} size={14} />
+                  {code}
+                </button>
+              ))}
             </div>
           </div>
 

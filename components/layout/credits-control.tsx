@@ -40,15 +40,19 @@ export function CreditsControl({ credits, compact = false }: { credits: number; 
         <Diamond />
         <span className="tabular-nums">{new Intl.NumberFormat(locale).format(credits)}</span>
       </Link>
+      {/* "Doładuj" in words, not just a plus. The + alone made buying credits
+          a guess; on a narrow bar the word hides and the icon carries it, so
+          nothing is lost and nothing overflows. */}
       <Link
         href="/credits"
         aria-label={t("creditsPanel.buy")}
         title={t("creditsPanel.buy")}
         className={cn(
-          "flex items-center justify-center border-l border-current/25 transition-colors duration-200 hover:bg-current/15",
-          compact ? "w-7" : "w-8",
+          "flex items-center justify-center gap-1 border-l border-current/25 font-semibold transition-colors duration-200 hover:bg-current/15",
+          compact ? "w-7" : "px-2.5 text-[12.5px] xl:px-3",
         )}
       >
+        {!compact && <span className="hidden xl:inline">{t("creditsPanel.topUpShort")}</span>}
         <Plus size={13} aria-hidden strokeWidth={2.8} />
       </Link>
     </div>

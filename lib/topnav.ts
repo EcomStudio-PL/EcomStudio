@@ -27,41 +27,62 @@ export type MegaEntry = {
    * places, not tools, so they have no `tools.<slug>.name` to be named by.
    */
   labelKey?: string;
+  /** Full i18n key for the one-liner under the label, when the entry is not a
+   *  category (categories take theirs from `cats.<key>Sub`). */
+  subKey?: string;
   /** No backend yet — rendered with a "Wkrótce" badge, not clickable. */
   soon?: boolean;
 };
 
-/** TWÓRZ — image generation categories, each its own workspace. */
-export const IMAGE_CREATE: readonly MegaEntry[] = CATEGORIES.map((c) => ({
-  key: c.key,
-  href: categoryHref(c),
-  icon: c.icon,
-  accent: c.accent,
-  soon: c.soon,
-}));
+/**
+ * TWÓRZ — the generator itself, then the six category workspaces.
+ *
+ * "Własny prompt" leads this column rather than sitting in the row of buttons
+ * underneath, where it used to compete with the tools hub for the same slot.
+ * It belongs here on the merits: it CREATES an image, which is what this
+ * column is for, and a seller who knows exactly what they want should not have
+ * to read past six categories to find the blank prompt.
+ */
+export const IMAGE_CREATE: readonly MegaEntry[] = [
+  { key: "custom", href: "/generator", icon: PenLine, labelKey: "mega.custom", subKey: "mega.customSub" },
+  ...CATEGORIES.map((c) => ({
+    key: c.key,
+    href: categoryHref(c),
+    icon: c.icon,
+    accent: c.accent,
+    soon: c.soon,
+  })),
+];
 
-/** The two working modes of the one Generator (AI Studio is not a separate
- *  application — it is the advanced mode of the Generator). */
+/**
+ * The two buttons under the create column: the guided generator, and the way
+ * out to everything else.
+ *
+ * "Wszystkie narzędzia" is HERE and nowhere else. It used to be the last row
+ * of the EDYTUJ list as well, so the same destination appeared twice in one
+ * panel — once as a peer of Kompresja, once as a footer. A hub is not a peer
+ * of the tools it lists.
+ */
 export const IMAGE_MODES: readonly MegaEntry[] = [
   { key: "engine", href: "/prompts", icon: Sparkles },
-  { key: "custom", href: "/generator", icon: PenLine },
+  { key: "allTools", href: "/tools", icon: Wrench, labelKey: "nav.allTools" },
 ] as const;
 
 /**
- * EDYTUJ — five destinations, not one row per dial.
+ * EDYTUJ — four destinations, not one row per dial.
  *
  * The menu used to list ten entries because every operation had a page of its
  * own. Background, white background, shadow and format are now sections of the
  * editor or of the resize screen, so listing them here would be a table of
  * contents for pages that no longer exist. What stays is the four places a
- * photo can actually be taken to, plus the hub for everything else.
+ * photo can actually be taken to; the hub for everything else is the button
+ * under the create column, once.
  */
 export const IMAGE_EDIT: readonly MegaEntry[] = [
   { key: "retouch", href: "/retusz", icon: WandSparkles },
   { key: "editor", href: "/tools/editor", icon: SlidersHorizontal, labelKey: "nav.editor" },
   { key: "resize", href: "/tools/resize", icon: Scaling, labelKey: "nav.resize" },
   { key: "compress", href: "/tools/compress", icon: Gauge },
-  { key: "allTools", href: "/tools", icon: Wrench, labelKey: "nav.allTools" },
 ] as const;
 
 /**
