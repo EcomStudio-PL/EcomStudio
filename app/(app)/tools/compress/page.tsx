@@ -1,9 +1,5 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { getDictionary } from "@/lib/i18n/server";
-import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { toolCatalogue } from "@/lib/server/image-tools";
@@ -29,8 +25,6 @@ export const dynamic = "force-dynamic";
  */
 export default async function CompressPage() {
   const supabase = await createClient();
-  const { dict } = await getDictionary();
-  const t = makeT(dict);
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
   const workspace = await getCurrentWorkspace(supabase, user.id);
@@ -47,21 +41,9 @@ export default async function CompressPage() {
 
   return (
     <div>
-      {/* One compact line instead of an overline, a display headline and a
-          subtitle: the panel and the gallery are what the seller came for, and
-          the price still leads — it is the first thing on the row. */}
-      <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <Link href="/tools"
-          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted transition-colors hover:text-ink">
-          <ArrowLeft size={14} aria-hidden /> {t("tools.title")}
-        </Link>
-        <span aria-hidden className="h-3.5 w-px bg-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))]" />
-        <h1 className="font-display text-[19px] font-semibold tracking-tight">{t("compress.title")}</h1>
-        <span className="text-[12px] font-semibold text-muted">
-          {entry.credits === 0 ? t("tools.free") : t("tools.creditsTotal", { n: entry.credits })}
-        </span>
-        <p className="min-w-0 basis-full text-[13px] leading-relaxed text-muted sm:basis-auto">{t("compress.sub")}</p>
-      </div>
+      {/* No title bar — the same reason the resize screen lost its: the row
+          repeated the menu, the panel and the button. The price lives on the
+          cost card, next to the decision it belongs to. */}
       <CompressWorkbench
         available={entry.available}
         credits={entry.credits}

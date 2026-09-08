@@ -25,6 +25,9 @@ export type RadioRow<V extends string> = {
   /** The detail under the name: a pixel ceiling, a quality number. */
   meta?: string;
   icon?: LucideIcon;
+  /** Tint for the icon only — a format row says "PNG" in its own colour
+   *  without the whole row changing hue. */
+  iconClass?: string;
   /** Present ONLY when the option cannot be chosen — and then it says why,
    *  in words, instead of greying out and leaving the seller guessing. */
   disabledReason?: string;
@@ -54,7 +57,8 @@ export function RadioRows<V extends string>({ name, value, rows, onChange, disab
             <input type="radio" name={name} value={row.value} checked={active} disabled={off}
               onChange={() => onChange(row.value)}
               className="h-4 w-4 shrink-0 accent-[rgb(var(--accent))]" />
-            {Icon && <Icon size={15} aria-hidden className={cn("shrink-0", active ? "text-accent" : "text-faint")} />}
+            {Icon && <Icon size={15} aria-hidden
+              className={cn("shrink-0", row.iconClass ?? (active ? "text-accent" : "text-faint"))} />}
             <span className="min-w-0 flex-1">
               <span className={cn("block truncate text-[13px] font-semibold", active && "text-accent")}>
                 {row.label}
@@ -114,7 +118,9 @@ function Figure({ label, value, tone }: {
 }) {
   return (
     <div className="min-w-0 flex-1">
-      <p className="truncate text-[10px] font-semibold uppercase tracking-[0.08em] text-faint">{label}</p>
+      {/* The label WRAPS. "Koszt 1 zdjęcia" truncated to "Koszt 1 zdję…" in a
+          21rem rail, which is a heading that has stopped naming its number. */}
+      <p className="text-[10px] font-semibold uppercase leading-tight tracking-[0.08em] text-faint">{label}</p>
       <p className={cn("truncate text-[15px] font-semibold tabular-nums",
         tone === "danger" ? "text-danger" : tone === "free" ? "text-success" : "text-ink")}>
         {value}

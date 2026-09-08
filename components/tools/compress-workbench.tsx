@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  AlertTriangle, ArrowDown, ArrowRight, CheckCircle2, Download, FileArchive, FileImage,
-  FileType, Gauge, ImagePlus, Loader2, RotateCcw, Trash2, X,
+  AlertTriangle, ArrowDown, ArrowRight, Download, FileArchive, FileImage,
+  FileType, Gauge, ImagePlus, Info, Loader2, RotateCcw, Trash2,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Button } from "@/components/ui/button";
@@ -18,8 +18,13 @@ import {
   type CompressionLevel, type ToolSettings, type ToolSlug,
 } from "@/lib/images/tools";
 import { CostSummary, GroupLabel, RadioRows } from "@/components/tools/panel-parts";
+import {
+  BatchGalleryToolbar, BatchGrid, DEFAULT_BATCH_FILTER, DEFAULT_ZOOM,
+  applyBatchFilter, type BatchFilter, type BatchItem,
+} from "@/components/tools/batch-gallery";
 import { createZip, outputName } from "@/lib/images/zip";
 import { cn, formatBytes } from "@/lib/utils";
+import { batchTotals, reduction, signedPercent, signedBytes as withSign } from "@/lib/images/weight";
 import { acceptFiles, type IntakeLimits } from "@/lib/images/file-intake";
 import { FileDropOverlay, useFileDrop } from "@/components/ui/file-drop";
 
@@ -84,6 +89,15 @@ const LEVELS: { key: string; level: CompressionLevel; quality: number }[] = [
  * because there is no encoder for them here at all: SVG is vector text, not
  * pixels, and nothing in this pipeline writes an animated GIF.
  */
+/** One tint per format, for the little file icon on its row. Deliberately the
+ *  tokens this design system already has rather than four new colours. */
+const FORMAT_TINT: Record<string, string> = {
+  keep: "text-faint",
+  jpeg: "text-warning",
+  png: "text-info",
+  webp: "text-success",
+};
+
 const FORMATS: { value: ToolSettings["compress"]["format"]; label?: string }[] = [
   // "Keep" is the only one whose label is a phrase, so it is the only one that
   // comes from the dictionary — the other three are format names and read the
@@ -137,6 +151,22 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
   const [running, setRunning] = useState(false);
   const cancelled = useRef(false);
 
+  /* The same workspace state the resize screen keeps, for the same reason:
+     it describes how this batch is being looked at, and it lives as long as
+     the batch does. */
+  const [view, setView] = useState<"grid" | "list">("grid");
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  const [filter, setFilter] = useState<BatchFilter>(DEFAULT_BATCH_FILTER);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [favourites, setFavourites] = useState<Set<string>>(new Set());
+
+  const toggleIn = (set: Set<string>, id: string) => {
+    const next = new Set(set);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  };
+
   /**
    * Object URLs, one per queued photo, released the moment that photo leaves
    * the queue and again when the screen goes away. `live` is the same set of
@@ -165,6 +195,24 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
     live.current.clear();
   }, []);
 
+  const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+
+  /** The queue as the shared gallery sees it. */
+  const cards: BatchItem[] = useMemo(() => items.map((i) => ({
+    id: i.id, name: i.file.name, thumbUrl: i.thumbUrl, status: i.status,
+    bytes: i.file.size, canDownload: i.status === "done",
+    errorText: i.status === "error" ? t(`tools.err.${errorKey(i.error)}`) : undefined,
+  })), [items, t]);
+
+  const visible = useMemo(
+    () => applyBatchFilter(cards, filter, favourites, selected),
+    [cards, filter, favourites, selected],
+  );
+  const selectedDone = useMemo(
+    () => items.filter((i) => selected.has(i.id) && i.status === "done"),
+    [items, selected],
+  );
+
   const done = items.filter((i) => i.status === "done");
   const failed = items.filter((i) => i.status === "error");
   const pending = items.filter((i) => i.status === "queued");
@@ -178,11 +226,10 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
    * seller picked, straight from `File.size`, so the number on screen is the
    * one their disk shows; "after" is what the server encoded and sent back.
    */
-  const totals = useMemo(() => {
-    const before = done.reduce((sum, i) => sum + i.file.size, 0);
-    const after = done.reduce((sum, i) => sum + (i.after?.bytes ?? i.file.size), 0);
-    return { before, after, delta: before - after, percent: reduction(before, after) };
-  }, [done]);
+  const totals = useMemo(
+    () => batchTotals(done.map((i) => ({ before: i.file.size, after: i.after?.bytes ?? null }))),
+    [done],
+  );
 
   /* ── queue ───────────────────────────────────────────────────────────── */
 
@@ -319,10 +366,12 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
 
-  async function downloadAll() {
-    if (done.length === 0) return;
-    if (done.length === 1) { download(done[0], 0); return; }
-    const entries = await Promise.all(done.map(async (item, index) => ({
+  /** One file goes straight down; several become a ZIP. Shared by "pobierz
+   *  wszystkie" and the selection bar. */
+  async function downloadMany(chosen: Item[]) {
+    if (chosen.length === 0) return;
+    if (chosen.length === 1) { download(chosen[0], 0); return; }
+    const entries = await Promise.all(chosen.map(async (item, index) => ({
       name: outputName(item.file.name, t(`tools.${TOOL}.suffix`), item.resultBlob!.type, index),
       data: new Uint8Array(await item.resultBlob!.arrayBuffer()),
     })));
@@ -333,6 +382,8 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
+
+  const downloadAll = () => downloadMany(done);
 
   if (!available) {
     return (
@@ -365,7 +416,9 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
       <div className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
         <input ref={inputRef} type="file" multiple accept={ACCEPTED_MIME.join(",")} className="hidden"
           onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
-        <Panel className="rounded-2xl p-3.5">
+        {/* ONE CARD: what goes in, and how hard it is squeezed. */}
+        <Panel className="space-y-4 rounded-2xl p-4">
+          <div className="min-w-0">
           <GroupLabel>{t("tools.addPhotos", { n: MAX_FILES })}</GroupLabel>
           <button
             type="button"
@@ -384,23 +437,31 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
               {items.length} / {MAX_FILES} {t("common.photos")}
             </span>
           </button>
-        </Panel>
+          </div>
 
-        <Panel className="space-y-4 rounded-2xl p-4">
           <div className="min-w-0">
             {/* The encoder quality the chosen strength really uses, on the
                 label — so "Mocna" is a number, not a promise. */}
-            <GroupLabel hint={`${t("tools.opt.quality")} ${level.quality}`}>{t("compress.strength")}</GroupLabel>
+            <GroupLabel hint={`${t("tools.opt.quality")} ${level.quality}`}>
+              <span className="inline-flex items-center gap-1.5">
+                {t("compress.strength")}
+                <Info size={13} aria-hidden className="text-faint" tabIndex={0}
+                  role="img" aria-label={t("compress.lossyNote")}>
+                  <title>{t("compress.lossyNote")}</title>
+                </Info>
+              </span>
+            </GroupLabel>
             <Segmented
               value={levelKey}
               onChange={setLevelKey}
               label={t("compress.strength")}
               options={LEVELS.map((l) => ({ value: l.key, label: t(`compress.${l.key}`) }))}
             />
-            {/* Lossy is lossy. Saying so once, next to the dial that decides
-                how lossy, is worth more than a promise the encoder cannot keep
-                — and the per-photo numbers below report what it actually did. */}
-            <p className="mt-1.5 text-[11px] leading-relaxed text-faint">{t("compress.lossyNote")}</p>
+            {/* Lossy is lossy — but the sentence saying so was three lines of
+                grey text under a three-button control, which is a wall where a
+                footnote belongs. It is on the info icon now, and the real
+                answer is on the cards: every photo reports what it actually
+                lost. */}
           </div>
 
           <div className="min-w-0">
@@ -417,6 +478,10 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
                 value: f.value,
                 label: f.label ?? t("tools.opt.keep"),
                 icon: FileType,
+                // A different tint per format, on the ICON only — enough to
+                // tell four near-identical rows apart at a glance without
+                // repainting the card behind them.
+                iconClass: FORMAT_TINT[f.value],
                 meta: f.value === "keep" ? t("tools.opt.keepHint") : undefined,
               }))}
             />
@@ -435,13 +500,24 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
         </ActionBar>
       </div>
 
-      {/* GALLERY */}
+      {/* THE WORKSPACE — the gallery and its toolbar, the same pair the
+          resize screen uses. */}
       {items.length === 0 ? (
         <EmptyState icon={ImagePlus} title={t("tools.noQueue")}
           body={t("tools.dropHint", { n: MAX_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })} />
       ) : (
         <div className="min-w-0 space-y-4">
           <Panel className="min-w-0 rounded-2xl p-3 sm:p-4">
+            <BatchGalleryToolbar
+              items={cards} view={view} onView={setView} zoom={zoom} onZoom={setZoom}
+              filter={filter} onFilter={setFilter}
+              selecting={selecting}
+              onSelecting={(on) => {
+                setSelecting(on);
+                if (!on) { setSelected(new Set()); setFilter((f) => ({ ...f, selectedOnly: false })); }
+              }}
+            />
+
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <p className="overline">{t("tools.queue", { n: items.length })}</p>
               <div className="flex flex-wrap items-center gap-2">
@@ -468,6 +544,35 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
               </div>
             </div>
 
+            {selecting && (
+              <div className="mb-3 flex flex-wrap items-center gap-1.5 rounded-xl border border-[rgb(var(--accent)/0.35)] bg-accent-soft/25 px-2.5 py-2 text-[12.5px]">
+                <span className="font-semibold tabular-nums text-accent">
+                  {t("batch.selected", { n: selected.size })}
+                </span>
+                <Button variant="ghost" size="sm"
+                  onClick={() => setSelected(new Set(visible.map((i) => i.id)))}>
+                  {t("batch.selectAll")}
+                </Button>
+                <Button variant="ghost" size="sm" disabled={selected.size === 0}
+                  onClick={() => setSelected(new Set())}>
+                  {t("batch.clearSelection")}
+                </Button>
+                <span className="flex-1" />
+                <Button variant="secondary" size="sm" disabled={selectedDone.length === 0}
+                  onClick={() => downloadMany(selectedDone)}>
+                  <Download size={14} aria-hidden /> {t("batch.downloadSelected")}
+                </Button>
+                <Button variant="ghost" size="sm" disabled={selected.size === 0 || running}
+                  onClick={() => {
+                    for (const id of selected) release(id);
+                    setItems((prev) => prev.filter((i) => !selected.has(i.id)));
+                    setSelected(new Set());
+                  }}>
+                  <Trash2 size={14} aria-hidden /> {t("batch.removeSelected")}
+                </Button>
+              </div>
+            )}
+
             {running && (
               <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-sunken">
                 <div className="brand-gradient h-full rounded-full transition-[width] duration-200"
@@ -475,43 +580,22 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
               </div>
             )}
 
-            <ul className="grid gap-2 [&>*]:min-w-0 sm:grid-cols-2 2xl:grid-cols-3">
-              {items.map((item, index) => (
-                // content-visibility lets the browser skip laying out the rows
-                // that are off screen — two hundred cards, a handful rendered.
-                <li key={item.id} className="plate flex items-center gap-3 rounded-xl p-2"
-                  style={{ contentVisibility: "auto", containIntrinsicSize: "auto 4rem" }}>
-                  <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-checker">
-                    {item.thumbUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={item.thumbUrl} alt="" loading="lazy" decoding="async"
-                        className="h-full w-full object-cover" />
-                    ) : (
-                      <span aria-hidden className="block h-full w-full animate-pulse bg-sunken" />
-                    )}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-semibold">{item.file.name}</p>
-                    {item.status === "error"
-                      ? <p className="truncate text-[11px] text-danger">{t(`tools.err.${errorKey(item.error)}`)}</p>
-                      : <WeightRow item={item} untouched={t("editor.original")} />}
-                  </div>
-                  <StatusMark status={item.status} />
-                  {item.status === "done" && (
-                    <button type="button" onClick={() => download(item, index)} aria-label={t("common.download")}
-                      className="shrink-0 rounded-lg p-1.5 text-muted transition-colors hover:bg-sunken hover:text-ink">
-                      <Download size={15} aria-hidden />
-                    </button>
-                  )}
-                  {!running && item.status !== "running" && (
-                    <button type="button" aria-label={t("common.remove")} onClick={() => removeItem(item.id)}
-                      className="shrink-0 rounded-lg p-1.5 text-faint transition-colors hover:bg-sunken hover:text-danger">
-                      <X size={15} aria-hidden />
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
+            <BatchGrid
+              items={visible} view={view} zoom={zoom} running={running}
+              selecting={selecting} selected={selected} favourites={favourites}
+              meta={(id) => {
+                const item = byId.get(id);
+                if (!item) return null;
+                return <WeightRow item={item} untouched={t("editor.original")} />;
+              }}
+              onDownload={(id) => {
+                const item = byId.get(id);
+                if (item) download(item, items.indexOf(item));
+              }}
+              onRemove={removeItem}
+              onToggleFavourite={(id) => setFavourites((prev) => toggleIn(prev, id))}
+              onToggleSelected={(id) => setSelected((prev) => toggleIn(prev, id))}
+            />
           </Panel>
 
           {/* THE POINT OF THE SCREEN — what the batch weighed, and what it
@@ -523,7 +607,7 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
               <div className="grid grid-cols-2 gap-2 [&>*]:min-w-0 xl:grid-cols-4">
                 <Stat label={t("compress.sizeBefore")} value={formatBytes(totals.before)} icon={FileImage} />
                 <Stat label={t("compress.sizeAfter")} value={formatBytes(totals.after)} icon={FileArchive} tone="accent" />
-                <Stat label={t("compress.saved")} value={signedBytes(totals.delta)} icon={ArrowDown}
+                <Stat label={t("compress.saved")} value={withSign(totals.delta, formatBytes)} icon={ArrowDown}
                   tone={totals.delta > 0 ? "success" : totals.delta < 0 ? "accent2" : "default"} />
                 <Stat label={t("compress.reduction")} value={signedPercent(totals.percent)} icon={Gauge}
                   tone={totals.percent > 0 ? "success" : totals.percent < 0 ? "accent2" : "default"}
@@ -568,32 +652,6 @@ function WeightRow({ item, untouched }: { item: Item; untouched: string }) {
         : <Badge tone={grew ? "accent" : "success"} className="px-1.5 py-0">{signedPercent(percent)}</Badge>}
     </p>
   );
-}
-
-function StatusMark({ status }: { status: ItemStatus }) {
-  if (status === "running") return <Loader2 size={16} className="shrink-0 animate-spin text-accent" aria-hidden />;
-  if (status === "done") return <CheckCircle2 size={16} className="shrink-0 text-success" aria-hidden />;
-  if (status === "error") return <AlertTriangle size={16} className="shrink-0 text-danger" aria-hidden />;
-  return <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-[rgb(var(--hairline)/0.5)]" />;
-}
-
-/* ── numbers ───────────────────────────────────────────────────────────── */
-
-/** The share of the file that went away, as a whole percent. Negative when a
- *  file grew — a lie in the seller's favour is still a lie. */
-function reduction(before: number, after: number): number {
-  if (before <= 0) return 0;
-  return Math.round(((before - after) / before) * 100);
-}
-
-/** `formatBytes` speaks only in magnitudes, so the sign is carried outside it:
- *  a batch that grew must say so rather than print a negative byte count. */
-function signedBytes(delta: number): string {
-  return delta < 0 ? `−${formatBytes(-delta)}` : formatBytes(delta);
-}
-
-function signedPercent(percent: number): string {
-  return percent < 0 ? `−${-percent}%` : `${percent}%`;
 }
 
 /**

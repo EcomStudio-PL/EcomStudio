@@ -14,6 +14,7 @@ import sharp from "sharp";
 import {
   composeEditor, compress, dropShadow, flattenToColor, inspect, resizeConvert, watermark,
 } from "../lib/images/local";
+import { batchTotals, reduction, signedBytes, signedPercent } from "../lib/images/weight";
 import {
   applyPatch, clampEditorState, describePatch, isPristine, pushHistory,
   EDITOR_DEFAULTS, type EditorState, type HistoryEntry,
@@ -75,6 +76,39 @@ async function main() {
   check("never returns a bigger file than it was given", guarded.output.length <= tiny.length);
   const asWebp = await compress(noisy, { level: "balanced", format: "webp" });
   check("can change format while compressing", (await inspect(asWebp.output)).format === "webp");
+
+  // The screen's whole promise: the numbers it prints are the bytes that
+  // actually came back. Measured on real output, not on a prediction.
+  {
+    const weights = [] as { before: number; after: number | null }[];
+    for (const level of ["light", "balanced", "strong"] as const) {
+      const { output } = await compress(noisy, { level });
+      weights.push({ before: noisy.length, after: output.length });
+      const percent = reduction(noisy.length, output.length);
+      check(`${level}: the reported saving matches the real bytes`,
+        percent === Math.round(((noisy.length - output.length) / noisy.length) * 100),
+        `${percent}%`);
+      check(`${level}: a real saving is reported as positive`, percent > 0);
+    }
+    const totals = batchTotals(weights);
+    check("the batch total is the sum of the real files",
+      totals.before === noisy.length * 3
+      && totals.after === weights.reduce((sum, w) => sum + (w.after ?? 0), 0));
+    check("the batch percentage agrees with its own bytes",
+      totals.percent === reduction(totals.before, totals.after));
+    check("photos still queued are not counted",
+      batchTotals([...weights, { before: 999_999, after: null }]).count === 3);
+
+    // A file that did NOT shrink must say so — the guard above returns the
+    // original, and a screen that rounded that to a green 0% would be lying.
+    const same = batchTotals([{ before: 1000, after: 1000 }]);
+    check("an unchanged file reports 0%, not a saving", same.percent === 0 && same.delta === 0);
+    const grew = batchTotals([{ before: 1000, after: 1200 }]);
+    check("a file that grew reports a negative saving", grew.percent === -20 && grew.delta === -200);
+    check("a growth is printed with a sign, not as a negative byte count",
+      signedPercent(grew.percent) === "−20%"
+      && signedBytes(grew.delta, (b) => `${b} B`) === "−200 B");
+  }
 
   console.log("\nC. WATERMARK");
   const positions = [
