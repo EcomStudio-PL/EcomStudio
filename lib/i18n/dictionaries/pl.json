@@ -3655,6 +3655,7 @@
     "toolName.tool_expand": "Rozszerz kadr",
     "toolName.tool_watermark": "Znak wodny",
     "toolName.video": "Wideo",
-    "alerts.settings": "Ustawienia alertów"
+    "alerts.settings": "Ustawienia alertów",
+    "templates.sub": "Szablony ujęć i bloki promptów, z których planer składa opisy."
   }
 }

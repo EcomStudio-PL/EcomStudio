@@ -3655,6 +3655,7 @@
     "toolName.tool_expand": "Expand",
     "toolName.tool_watermark": "Watermark",
     "toolName.video": "Video",
-    "alerts.settings": "Alert settings"
+    "alerts.settings": "Alert settings",
+    "templates.sub": "Shot templates and the prompt blocks the planner composes from."
   }
 }

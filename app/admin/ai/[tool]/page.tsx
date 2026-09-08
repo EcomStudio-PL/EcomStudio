@@ -9,6 +9,7 @@ import {
   isAiToolKey, readPromptHistory, readToolRegistry, toolTabs, type ToolTab,
 } from "@/lib/services/ai-tools";
 import { billingFrom } from "@/lib/images/pricing";
+import { STATUS_TONE } from "@/lib/status-tone";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -86,7 +87,7 @@ export default async function ToolWorkspace({ params, searchParams }: {
         sub={row.path ? row.path : undefined}
         action={
           <span className="flex flex-wrap items-center gap-1.5">
-            <Badge tone={row.status === "ACTIVE" ? "success" : row.status === "DISABLED" ? "danger" : "accent"} dot>
+            <Badge tone={STATUS_TONE[row.status]} dot>
               {t(`featAdm.status.${row.status}`)}
             </Badge>
             <Badge tone={row.engineMode === "off" ? "neutral" : "accent"}>
@@ -366,6 +367,8 @@ async function HistoryTab({ supabase, t, row, locale }: Ctx & { locale: string }
     .limit(50);
 
   return (
+    <div className="space-y-5">
+    {row.key === "prompts" && <ShotSessions supabase={supabase} t={t} locale={locale} />}
     <Card>
       <CardHeader title={t("aicc.history.title")} sub={t("aicc.history.sub")} />
       {(events ?? []).length === 0 ? (
@@ -393,6 +396,72 @@ async function HistoryTab({ supabase, t, row, locale }: Ctx & { locale: string }
               </span>
             </li>
           ))}
+        </ul>
+      )}
+    </Card>
+    </div>
+  );
+}
+
+/**
+ * SESJE UJĘĆ — what "Silnik ujęć" used to be a menu entry for.
+ *
+ * A usage event says a call was billed; a session says what the customer was
+ * actually trying to photograph and how many of its concepts were generated.
+ * Only GrovShot plans concepts, so only GrovShot shows this.
+ */
+async function ShotSessions({ supabase, t, locale }: Omit<Ctx, "row"> & { locale: string }) {
+  const { data: sessions } = await supabase
+    .from("prompt_sessions")
+    .select("id, product_name, status, aspect_ratio, created_at, workspaces(name)")
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  const ids = (sessions ?? []).map((s) => s.id);
+  const counts = new Map<string, { total: number; generated: number }>();
+  if (ids.length > 0) {
+    const { data: prompts } = await supabase
+      .from("generated_prompts").select("session_id, generation_count").in("session_id", ids);
+    for (const p of prompts ?? []) {
+      if (!p.session_id) continue;
+      const c = counts.get(p.session_id) ?? { total: 0, generated: 0 };
+      c.total += 1;
+      if ((p.generation_count ?? 0) > 0) c.generated += 1;
+      counts.set(p.session_id, c);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader title={t("admin.concepts.title")} sub={t("admin.concepts.sub")} />
+      {(sessions ?? []).length === 0 ? (
+        <p className="px-5 py-10 text-center text-sm text-muted">{t("admin.concepts.empty")}</p>
+      ) : (
+        <ul className="divide-y divide-line">
+          {(sessions ?? []).map((s) => {
+            const c = counts.get(s.id);
+            return (
+              <li key={s.id}>
+                <Link href={`/admin/ai/sesje/${s.id}`}
+                  className="flex items-center gap-3 px-5 py-2.5 transition-colors hover:bg-raised/50">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-semibold">{s.product_name}</span>
+                    <span className="block truncate text-xs text-faint">
+                      {(s.workspaces as { name?: string } | null)?.name ?? "—"} ·{" "}
+                      {formatDate(s.created_at, locale)} · {s.aspect_ratio}
+                    </span>
+                  </span>
+                  {c && (
+                    <span className="shrink-0 text-xs tabular-nums text-muted">
+                      {t("admin.concepts.generated")}: {c.generated}/{c.total}
+                    </span>
+                  )}
+                  <Badge tone={s.status === "ready" ? "success"
+                    : s.status === "failed" ? "danger" : "accent"}>{s.status}</Badge>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
     </Card>

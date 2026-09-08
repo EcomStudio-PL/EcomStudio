@@ -23,9 +23,9 @@ export type KnowledgeSetRow = {
 /**
  * WIEDZA — which reference sets this tool may draw on.
  *
- * The sets themselves are imported and inspected on the knowledge screen; this
- * is only the assignment, and one set can serve several tools without the
- * files being copied.
+ * The sets themselves are imported and inspected in the knowledge library
+ * (Baza wiedzy); this is only the assignment, and one set can serve several
+ * tools without the files being copied.
  *
  * Attaching a set does NOT change the production prompt. Imported material is
  * data: it can inform a candidate version that an operator then reads and
@@ -57,7 +57,7 @@ export function ToolKnowledge({ toolKey, sets, locale }: {
         <div className="panel rounded-2xl px-5 py-10 text-center">
           <p className="text-sm font-medium">{t("aicc.knowledge.emptyTitle")}</p>
           <p className="mx-auto mt-1 max-w-[42ch] text-xs text-muted">{t("aicc.knowledge.emptyBody")}</p>
-          <Link href="/admin/engine"
+          <Link href="/admin/ai/wiedza"
             className="mt-3 inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-accent-soft px-3 text-[13px] font-semibold text-accent hover:brightness-110">
             {t("aicc.knowledge.import")} <ExternalLink size={13} aria-hidden />
           </Link>

@@ -52,17 +52,32 @@ shows them through six unrelated screens with no join between them.
 
 | Old admin entry | Route | New home |
 |---|---|---|
-| **Generacje** | `/admin/generations` | stays — it is the *output log*, not configuration. Linked from a tool's **Historia** tab. |
-| **Modele AI** | `/admin/models` | **Modele, API i koszty → Modele** |
-| **Dostawcy AI** | `/admin/providers` | **Modele, API i koszty → Dostawcy** |
-| **Image Tools** (provider status + economics) | `/admin/tools` | provider status → **Modele, API i koszty → Dostawcy**; per-tool economics → **Narzędzia i silniki → \<tool\> → Ekonomia** |
-| **AI Engine** (knowledge, rules, versions) | `/admin/engine` | **Narzędzia i silniki → \<tool\> → Wiedza** (assignment) and → **Silnik** (rules/versions) |
-| **Silnik ujęć** (concept sessions) | `/admin/concepts` | **Narzędzia i silniki → GrovShot → Historia** |
-| **Szablony promptów** | `/admin/templates` | **Narzędzia i silniki → \<tool\> → Silnik** |
-| **Usługi / ceny** | `/admin/services` | **Modele, API i koszty → Modele** (price rows) — the catalogue itself is unchanged |
+| **Generacje** | `/admin/generations` | stays — it is the *output log*, not configuration. Filtered by status and paginated. |
+| **Modele AI** | `/admin/models` | → `/admin/ai/modele?tab=modele` |
+| **Dostawcy AI** | `/admin/providers` | → `/admin/ai/modele?tab=dostawcy` |
+| **Image Tools** (backend status + economics) | `/admin/tools` | backends → `/admin/ai/modele?tab=dostawcy` (**Backendy narzędzi**); per-tool economics → **Narzędzia i silniki → \<tool\> → Ekonomia** |
+| **AI Engine** (knowledge, rules, versions) | `/admin/engine` | → `/admin/ai/wiedza` (the library), attached per tool from **\<tool\> → Wiedza** |
+| **Silnik ujęć** (concept sessions) | `/admin/concepts` | → `/admin/ai/prompts?tab=history`; one session → `/admin/ai/sesje/[id]` |
+| **Szablony promptów** | `/admin/templates` | → `/admin/ai/szablony` |
+| **Usługi / ceny** | `/admin/services` | unchanged — the catalogue keeps its own screen; **Modele, API i koszty → Modele** only reads its prices |
 
-Every old URL keeps working: Stage 5 turns them into redirects rather than
-deleting them, exactly as the Admin IA refactor did in `docs/admin-route-migration.md`.
+The AI group in the admin menu is now three entries: **Narzędzia i silniki**,
+**Modele, API i koszty**, **Generacje**. `Baza wiedzy`, `Szablony promptów` and
+`Sesje ujęć` are reachable from inside those, not from the menu.
+
+Every old URL keeps working: Stage 5 turned each of them into a `redirect()`
+rather than deleting it, exactly as the Admin IA refactor did in
+`docs/admin-route-migration.md` — including `/admin/concepts/[id]`, which a
+Telegram link or a bookmark may still point at.
+
+Nothing was retired before its job had somewhere else to live. The three things
+the new screens did not yet cover were moved first: the knowledge library
+(page moved to `/admin/ai/wiedza`), the prompt templates and blocks (moved to
+`/admin/ai/szablony`) and the shot sessions (listed in GrovShot's **Historia**,
+detail page moved to `/admin/ai/sesje/[id]`). The image-tool backends —
+remove.bg, the upscalers, the outpainting providers, which are resolved from
+their own credentials and are not `ai_providers` rows — became a **Backendy
+narzędzi** block on the Dostawcy tab.
 
 ## 4. New schema (migration 0070) — four tables, no rewrites
 

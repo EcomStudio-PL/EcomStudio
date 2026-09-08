@@ -203,8 +203,7 @@ console.log("K. four status colours, and each one means what it says");
 {
   const css = read("app/globals.css");
   const badge = read("components/ui/badge.tsx");
-  const registry = read("components/admin/tool-registry.tsx");
-  const features = read("components/admin/feature-availability-panel.tsx");
+  const tones = read("lib/status-tone.ts");
   const budgets = read("components/admin/provider-budget.tsx");
 
   // The token itself: orange means red > green > blue in the triplet, which is
@@ -218,12 +217,16 @@ console.log("K. four status colours, and each one means what it says");
   check("warning is not yellow", triplets.every(([r, g]) => r - g > 60), JSON.stringify(triplets));
 
   check("the badge has a tone for it", badge.includes("warning:") && badge.includes("var(--warning)"));
-  check("maintenance is the warning, everywhere it is shown",
-    /MAINTENANCE: "warning"/.test(registry) && /MAINTENANCE: "bg-warning"/.test(features));
+  check("maintenance is the warning",
+    /MAINTENANCE: "warning"/.test(tones) && /MAINTENANCE: "bg-warning"/.test(tones));
   check("a planned module is not a warning",
-    /COMING_SOON: "accent"/.test(registry) && /COMING_SOON: "bg-accent2"/.test(features));
+    /COMING_SOON: "accent"/.test(tones) && /COMING_SOON: "bg-accent2"/.test(tones));
   check("a module switched off on purpose is not an error",
-    /DISABLED: "neutral"/.test(registry) && /DISABLED: "bg-muted"/.test(features));
+    /DISABLED: "neutral"/.test(tones) && /DISABLED: "bg-muted"/.test(tones));
+  check("every screen that shows a status reads the same map",
+    ["components/admin/tool-registry.tsx", "components/admin/feature-availability-panel.tsx",
+      "app/admin/ai/[tool]/page.tsx"]
+      .every((f) => read(f).includes('from "@/lib/status-tone"')));
   check("a budget over its warn threshold reads as a warning",
     budgets.includes('"warn" ? "warning"') && budgets.includes('"warn" ? "bg-warning"'));
 }
@@ -245,6 +248,50 @@ console.log("L. the admin panel fits the screen it is on");
     !generations.includes('select("*'));
   check("a failed job is red and a queued one is not",
     /failed: "danger"/.test(generations) && /queued: "neutral"/.test(generations));
+}
+
+console.log("M. six menu entries became two, and nothing was dropped on the way");
+{
+  const nav = read("lib/navigation.ts");
+  const aiGroup = nav.slice(nav.indexOf('{ key: "ai", items:'), nav.indexOf('{ key: "marketing"'));
+  const retired = ["/admin/models", "/admin/providers", "/admin/engine",
+    "/admin/concepts", "/admin/templates", "/admin/tools"];
+
+  check("the AI group is the two destinations plus the output log",
+    (aiGroup.match(/href:/g) ?? []).length === 3
+    && aiGroup.includes('"/admin/ai"') && aiGroup.includes('"/admin/ai/modele"')
+    && aiGroup.includes('"/admin/generations"'));
+  check("no retired screen is still in a menu",
+    retired.every((href) => !nav.includes(`href: "${href}"`)));
+
+  // A retired route is a redirect, never a 404: a bookmark from last month
+  // still has to land on the screen that took the job over.
+  for (const href of retired) {
+    const file = `app${href}/page.tsx`;
+    const src = read(file);
+    check(`${href} redirects`, src.includes("redirect(") && !src.includes("createClient"));
+  }
+  check("a bookmarked concept session still opens",
+    read("app/admin/concepts/[id]/page.tsx").includes("/admin/ai/sesje/"));
+
+  // …and the screens they redirect TO must actually do the old job.
+  check("the knowledge library moved rather than vanished",
+    read("app/admin/ai/wiedza/page.tsx").includes("EngineAdmin")
+    && read("app/admin/engine/page.tsx").includes("/admin/ai/wiedza"));
+  check("the prompt templates moved rather than vanished",
+    read("app/admin/ai/szablony/page.tsx").includes("TemplateManager")
+    && read("app/admin/ai/szablony/page.tsx").includes("PromptBlocksManager"));
+  check("the shot sessions moved rather than vanished",
+    read("app/admin/ai/[tool]/page.tsx").includes("prompt_sessions")
+    && read("app/admin/ai/sesje/[id]/page.tsx").includes("decryptConceptPayload"));
+  check("the image-tool backends moved rather than vanished",
+    read("app/admin/ai/modele/page.tsx").includes("providerStatuses"));
+  check("the knowledge tab points at the library's new address",
+    read("components/admin/tool-knowledge.tsx").includes("/admin/ai/wiedza"));
+  check("no revalidatePath still names a retired screen",
+    !["app/actions/admin.ts", "app/actions/engine.ts", "app/actions/credentials.ts",
+      "app/actions/admin-generation.ts"]
+      .some((f) => retired.some((href) => read(f).includes(`revalidatePath("${href}")`))));
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);

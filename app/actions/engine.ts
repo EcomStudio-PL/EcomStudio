@@ -54,7 +54,7 @@ export async function updateKnowledgeSetAction(id: string, patch: {
     const { error } = await supabase.from("knowledge_sets").update(row as never).eq("id", id);
     if (error) return { ok: false, error: "generic" };
     await logAdmin(supabase, "admin.knowledge_set_updated", "knowledge_set", id);
-    revalidatePath("/admin/engine");
+    revalidatePath("/admin/ai/wiedza");
     return { ok: true };
   } catch { return { ok: false, error: "generic" }; }
 }
@@ -72,7 +72,7 @@ export async function deleteKnowledgeSetAction(id: string): Promise<Result> {
     const { error } = await supabase.from("knowledge_sets").delete().eq("id", id);
     if (error) return { ok: false, error: "generic" };
     await logAdmin(supabase, "admin.knowledge_set_deleted", "knowledge_set", id, { files: paths.length });
-    revalidatePath("/admin/engine");
+    revalidatePath("/admin/ai/wiedza");
     return { ok: true };
   } catch { return { ok: false, error: "generic" }; }
 }
@@ -130,7 +130,7 @@ export async function updateKnowledgeExampleAction(id: string, patch: {
       if (v) await supabase.from("knowledge_examples").update({ embedding: JSON.stringify(v) as never }).eq("id", id);
     }
     await logAdmin(supabase, "admin.knowledge_example_updated", "knowledge_example", id);
-    revalidatePath("/admin/engine");
+    revalidatePath("/admin/ai/wiedza");
     return { ok: true };
   } catch { return { ok: false, error: "generic" }; }
 }
@@ -145,7 +145,7 @@ export async function deleteKnowledgeExampleAction(id: string): Promise<Result> 
     const { error } = await supabase.from("knowledge_examples").delete().eq("id", id);
     if (error) return { ok: false, error: "generic" };
     await logAdmin(supabase, "admin.knowledge_example_deleted", "knowledge_example", id);
-    revalidatePath("/admin/engine");
+    revalidatePath("/admin/ai/wiedza");
     return { ok: true };
   } catch { return { ok: false, error: "generic" }; }
 }
@@ -189,7 +189,7 @@ export async function saveEngineRuleAction(input: {
       if (error || !created) return { ok: false, error: "generic" };
       await logAdmin(supabase, "admin.engine_rule_created", "prompt_engine_rule", created.id);
     }
-    revalidatePath("/admin/engine");
+    revalidatePath("/admin/ai/wiedza");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error && e.message === "encryption_key_missing" ? "encryption_unavailable" : "generic" };
@@ -203,7 +203,7 @@ export async function toggleEngineRuleAction(id: string, enabled: boolean): Prom
       .update({ enabled: !!enabled, updated_at: new Date().toISOString() } as never).eq("id", id);
     if (error) return { ok: false, error: "generic" };
     await logAdmin(supabase, "admin.engine_rule_toggled", "prompt_engine_rule", id, { enabled });
-    revalidatePath("/admin/engine");
+    revalidatePath("/admin/ai/wiedza");
     return { ok: true };
   } catch { return { ok: false, error: "generic" }; }
 }
@@ -214,7 +214,7 @@ export async function deleteEngineRuleAction(id: string): Promise<Result> {
     const { error } = await supabase.from("prompt_engine_rules").delete().eq("id", id);
     if (error) return { ok: false, error: "generic" };
     await logAdmin(supabase, "admin.engine_rule_deleted", "prompt_engine_rule", id);
-    revalidatePath("/admin/engine");
+    revalidatePath("/admin/ai/wiedza");
     return { ok: true };
   } catch { return { ok: false, error: "generic" }; }
 }
@@ -237,7 +237,7 @@ export async function addEngineVersionAction(input: {
     } as never).select("id").single();
     if (error || !created) return { ok: false, error: "generic" };
     await logAdmin(supabase, "admin.engine_version_added", "prompt_engine_version", created.id, { version, active: !!input.activate });
-    revalidatePath("/admin/engine");
+    revalidatePath("/admin/ai/wiedza");
     return { ok: true };
   } catch { return { ok: false, error: "generic" }; }
 }
@@ -249,7 +249,7 @@ export async function activateEngineVersionAction(id: string): Promise<Result> {
     const { error } = await supabase.from("prompt_engine_versions").update({ active: true } as never).eq("id", id);
     if (error) return { ok: false, error: "generic" };
     await logAdmin(supabase, "admin.engine_version_activated", "prompt_engine_version", id);
-    revalidatePath("/admin/engine");
+    revalidatePath("/admin/ai/wiedza");
     return { ok: true };
   } catch { return { ok: false, error: "generic" }; }
 }

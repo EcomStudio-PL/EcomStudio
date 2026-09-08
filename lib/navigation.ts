@@ -1,9 +1,9 @@
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard, Package, Sparkles, PenLine, Images, History as HistoryIcon,
-  Coins, Rocket, LifeBuoy, Settings, Shield, Users, Building2, Cpu, Plug, Wrench,
-  FileText, ScrollText, SlidersHorizontal, Wand2, BarChart3, Layers, Globe,
-  FolderOpen, Lightbulb, MessageSquare, BrainCircuit, ListChecks, Mail,
+  Coins, Rocket, LifeBuoy, Settings, Shield, Users, Building2, Cpu, Wrench,
+  ScrollText, SlidersHorizontal, Wand2, BarChart3, Layers, Globe,
+  FolderOpen, Lightbulb, MessageSquare, ListChecks, Mail,
   ToggleLeft, Gift, DoorOpen, ClipboardList,
 } from "lucide-react";
 
@@ -80,21 +80,17 @@ export const ADMIN_NAV: readonly NavGroup[] = [
     { href: "/admin/plans", key: "plans", icon: Rocket },
     { href: "/admin/services", key: "services", icon: Layers },
   ]},
-  // What the product generates and everything that decides how: the output
-  // first, then the machinery behind it.
+  // What the product generates and everything that decides how — in TWO
+  // entries, not eight: what each tool does, and what it all runs on and
+  // costs. Modele AI, Dostawcy AI, AI Engine, Silnik ujęć, Szablony promptów
+  // and Image Tools were six menu entries for parts of those two jobs; they
+  // are tabs and sub-pages now, and every old route redirects (see
+  // docs/ai-control-center.md). Generacje stays: it is the output log, not
+  // configuration.
   { key: "ai", items: [
-    // The consolidated control centre. The six entries below it are the
-    // screens it replaces; they stay reachable until their functionality has
-    // been verified in the new home (see docs/ai-control-center.md).
     { href: "/admin/ai", key: "aiTools", icon: Sparkles },
     { href: "/admin/ai/modele", key: "aiModels", icon: Cpu },
     { href: "/admin/generations", key: "generations", icon: Wand2 },
-    { href: "/admin/models", key: "models", icon: Cpu },
-    { href: "/admin/providers", key: "providers", icon: Plug },
-    { href: "/admin/engine", key: "engine", icon: BrainCircuit },
-    { href: "/admin/concepts", key: "concepts", icon: PenLine },
-    { href: "/admin/templates", key: "templates", icon: FileText },
-    { href: "/admin/tools", key: "tools", icon: Wrench },
   ]},
   // One entry per job, not one per screen: every public page — the homepage,
   // the launch page, the legal documents — is edited behind "Strony WWW".

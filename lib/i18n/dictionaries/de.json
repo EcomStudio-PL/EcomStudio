@@ -3655,6 +3655,7 @@
     "toolName.tool_expand": "Bild erweitern",
     "toolName.tool_watermark": "Wasserzeichen",
     "toolName.video": "Video",
-    "alerts.settings": "Alarm-Einstellungen"
+    "alerts.settings": "Alarm-Einstellungen",
+    "templates.sub": "Shot-Vorlagen und die Prompt-Bausteine, aus denen der Planer zusammensetzt."
   }
 }

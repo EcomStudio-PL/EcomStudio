@@ -2,7 +2,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
+import { CheckCircle2, ExternalLink, Plug } from "lucide-react";
 import { encryptionAvailable } from "@/lib/server/crypto";
+import { providerStatuses } from "@/lib/server/image-tools";
 import {
   groupBy, monthStart, periodStart, readBudgetStatus, readUsage, summarise,
   type PeriodKey,
@@ -142,6 +144,67 @@ async function ProvidersTab({ supabase, t, locale }: Ctx & { locale: string }) {
           );
         })}
       </div>
+
+      <ToolBackends supabase={supabase} t={t} />
+    </div>
+  );
+}
+
+/**
+ * The image tools do not buy from `ai_providers` — remove.bg, the upscalers
+ * and the outpainting backends are resolved from their own credentials, and
+ * the old Image Tools screen was the only place that said whether they were
+ * connected. It moves here rather than disappearing with that screen.
+ *
+ * Never a key, only where the key would come from and whether one resolved.
+ */
+async function ToolBackends({ supabase, t }: Ctx) {
+  const providers = await providerStatuses(supabase);
+  const connected = providers.filter((p) => p.status === "connected").length;
+
+  return (
+    <div className="panel rounded-2xl p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="overline">{t("admin.tools.providers")}</p>
+        <Badge tone={connected > 0 ? "success" : "neutral"} dot>
+          {t("admin.tools.connectedCount", { n: connected, total: providers.length })}
+        </Badge>
+      </div>
+      <div className="grid gap-2.5 [&>*]:min-w-0 sm:grid-cols-2 xl:grid-cols-3">
+        {providers.map((p) => (
+          <div key={p.slug} className="plate flex items-start gap-3 rounded-xl p-3">
+            <span aria-hidden className={cn(
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+              p.status === "connected" ? "bg-[rgb(var(--success)/0.14)] text-success" : "bg-sunken text-faint",
+            )}>
+              {p.status === "connected" ? <CheckCircle2 size={16} /> : <Plug size={16} />}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="truncate text-[13px] font-semibold">{p.label}</p>
+                <Badge tone={p.status === "connected" ? "success" : "neutral"}>
+                  {t(`admin.tools.status.${p.status}`)}
+                </Badge>
+              </div>
+              <p className="mt-0.5 truncate text-[11px] text-faint">
+                {p.capabilities.map((c) => t(`admin.tools.cap.${c}`)).join(" · ")}
+              </p>
+              <p className="mt-1 font-mono text-[11px] text-muted">{p.envVar}</p>
+              {p.status === "connected" ? (
+                <p className="mt-0.5 text-[11px] text-faint">{t(`admin.tools.source.${p.source}`)}</p>
+              ) : (
+                <a href={p.keyUrl} target="_blank" rel="noreferrer noopener"
+                  className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-medium text-accent hover:underline">
+                  {t("admin.tools.getKey")} <ExternalLink size={11} aria-hidden />
+                </a>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 rounded-xl bg-sunken/70 px-3 py-2.5 text-[12px] leading-relaxed text-muted">
+        {t("admin.tools.keyNote")}
+      </p>
     </div>
   );
 }

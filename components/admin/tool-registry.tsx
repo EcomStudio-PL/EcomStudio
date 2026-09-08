@@ -5,6 +5,7 @@ import { ChevronRight, History, Search, Settings2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import type { ToolRow, ToolCategory, EngineMode } from "@/lib/services/ai-tools";
 import type { FeatureStatus } from "@/lib/features";
+import { STATUS_TONE } from "@/lib/status-tone";
 import { Badge } from "@/components/ui/badge";
 import { Input, Select } from "@/components/ui/input";
 import { RelativeTime } from "@/components/ui/relative-time";
@@ -18,19 +19,6 @@ import { cn } from "@/lib/utils";
  * Filtering is client-side because there are ten tools: a URL round trip to
  * narrow ten rows would be slower than reading them.
  */
-
-/**
- * Four statuses, four meanings, four colours — and the colour IS the meaning:
- * green runs, orange needs attention, purple is planned-but-not-yet, grey is
- * switched off on purpose. A module an operator turned off is not an error, so
- * it does not get the red that a real failure needs to keep for itself.
- */
-const STATUS_TONE: Record<FeatureStatus, "success" | "warning" | "accent" | "neutral"> = {
-  ACTIVE: "success",
-  COMING_SOON: "accent",
-  MAINTENANCE: "warning",
-  DISABLED: "neutral",
-};
 
 const ENGINE_TONE: Record<EngineMode, "neutral" | "info" | "accent"> = {
   off: "neutral", user: "info", grovbase: "accent", hybrid: "accent",

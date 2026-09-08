@@ -18,6 +18,7 @@ import {
   batchFeatureStatusAction, batchMenuVisibilityAction, saveFeatureAvailabilityAction,
   setClientPreviewAction, type FeatureAdminRow,
 } from "@/app/actions/features";
+import { STATUS_CHIP, STATUS_DOT } from "@/lib/status-tone";
 
 /**
  * DOSTĘPNOŚĆ FUNKCJI — the switchboard for every real user-facing module.
@@ -33,26 +34,6 @@ import {
  * refuses any key outside the registry, so nothing in this component is a
  * security boundary — it is the operator's console.
  */
-
-/**
- * One colour per status, and the colour carries the meaning: green is running,
- * orange needs attention now, purple is planned but not yet, grey is switched
- * off on purpose. "Wyłączone" is a decision, not a fault, so red stays reserved
- * for the failures on the other admin screens.
- */
-const STATUS_DOT: Record<FeatureStatus, string> = {
-  ACTIVE: "bg-success",
-  COMING_SOON: "bg-accent2",
-  MAINTENANCE: "bg-warning",
-  DISABLED: "bg-muted",
-};
-
-const STATUS_CHIP: Record<FeatureStatus, string> = {
-  ACTIVE: "bg-[rgb(var(--success)/0.14)] text-success",
-  COMING_SOON: "bg-accent2-soft text-accent2",
-  MAINTENANCE: "bg-[rgb(var(--warning)/0.14)] text-warning",
-  DISABLED: "bg-raised text-muted",
-};
 
 function toLocalInput(iso: string | null): string {
   if (!iso) return "";

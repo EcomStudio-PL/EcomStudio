@@ -60,7 +60,7 @@ export async function saveProviderCredentialAction(
       p_workspace_id: null as unknown as string, p_action: "admin.provider_credential_saved",
       p_entity_type: "ai_provider", p_entity_id: providerId,
     });
-    revalidatePath("/admin/providers");
+    revalidatePath("/admin/ai/modele");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error && e.message === "encryption_key_missing" ? "encryption_unavailable" : "generic" };
@@ -76,7 +76,7 @@ export async function deleteProviderCredentialAction(providerId: string): Promis
       p_workspace_id: null as unknown as string, p_action: "admin.provider_credential_deleted",
       p_entity_type: "ai_provider", p_entity_id: providerId,
     });
-    revalidatePath("/admin/providers");
+    revalidatePath("/admin/ai/modele");
     return { ok: true };
   } catch {
     return { ok: false, error: "generic" };
@@ -138,7 +138,7 @@ export async function testProviderImageAction(providerId: string): Promise<Resul
     if (status === "image_ok") {
       await supabase.rpc("set_provider_health", { p_slug: provider.slug, p_state: "healthy", p_cooldown_seconds: 0 });
     }
-    revalidatePath("/admin/providers");
+    revalidatePath("/admin/ai/modele");
     return { ok: status === "image_ok", status, message: message ?? undefined };
   } catch {
     return { ok: false, error: "generic" };
@@ -173,7 +173,7 @@ export async function testProviderConnectionAction(providerId: string): Promise<
     if (result.status === "connected") {
       await supabase.rpc("set_provider_health", { p_slug: provider.slug, p_state: "healthy", p_cooldown_seconds: 0 });
     }
-    revalidatePath("/admin/providers");
+    revalidatePath("/admin/ai/modele");
     return { ok: true, status: result.status, message: result.message };
   } catch {
     return { ok: false, error: "generic" };

@@ -40,7 +40,7 @@ export async function saveGenerationPriorityAction(priority: string[]): Promise<
     p_entity_type: "app_settings",
     p_metadata: { priority: clean } as never,
   });
-  revalidatePath("/admin/models");
+  revalidatePath("/admin/ai/modele");
   return { ok: true };
 }
 
@@ -60,7 +60,7 @@ export async function savePlannerConfigAction(primary: string, fallback: string)
     const value = { ...((row?.value as Record<string, unknown>) ?? {}), planner_provider: primary, planner_fallback: fallback };
     const { error } = await supabase.from("app_settings").update({ value }).eq("key", "generation");
     if (error) return { ok: false, error: "generic" };
-    revalidatePath("/admin/models");
+    revalidatePath("/admin/ai/modele");
     return { ok: true };
   } catch {
     return { ok: false, error: "generic" };

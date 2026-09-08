@@ -159,7 +159,7 @@ export async function updateModelFullAction(modelId: string, patch: {
       p_entity_type: "ai_model", p_entity_id: modelId,
       p_metadata: { fields: Object.keys(patch) },
     });
-    revalidatePath("/admin/models");
+    revalidatePath("/admin/ai/modele");
     return { ok: true };
   } catch {
     return { ok: false, error: "generic" };
@@ -227,7 +227,7 @@ export async function toggleProviderAction(providerId: string, active: boolean):
     const { supabase } = await requireAdmin();
     const { error } = await supabase.from("ai_providers").update({ active }).eq("id", providerId);
     if (error) return { ok: false, error: "generic" };
-    revalidatePath("/admin/providers");
+    revalidatePath("/admin/ai/modele");
     return { ok: true };
   } catch {
     return { ok: false, error: "generic" };
@@ -240,7 +240,7 @@ export async function updateModelCostAction(modelId: string, creditCost: number)
     if (!Number.isInteger(creditCost) || creditCost < 0) return { ok: false, error: "invalid_amount" };
     const { error } = await supabase.from("ai_models").update({ credit_cost: creditCost }).eq("id", modelId);
     if (error) return { ok: false, error: "generic" };
-    revalidatePath("/admin/models");
+    revalidatePath("/admin/ai/modele");
     return { ok: true };
   } catch {
     return { ok: false, error: "generic" };
@@ -283,7 +283,7 @@ export async function saveSystemTemplateAction(input: {
       ? await supabase.from("prompt_templates").update(row).eq("id", input.id)
       : await supabase.from("prompt_templates").insert(row);
     if (error) return { ok: false, error: "generic" };
-    revalidatePath("/admin/templates");
+    revalidatePath("/admin/ai/szablony");
     return { ok: true };
   } catch {
     return { ok: false, error: "generic" };
@@ -295,7 +295,7 @@ export async function toggleTemplateAction(templateId: string, active: boolean):
     const { supabase } = await requireAdmin();
     const { error } = await supabase.from("prompt_templates").update({ active }).eq("id", templateId);
     if (error) return { ok: false, error: "generic" };
-    revalidatePath("/admin/templates");
+    revalidatePath("/admin/ai/szablony");
     return { ok: true };
   } catch {
     return { ok: false, error: "generic" };
@@ -325,7 +325,7 @@ export async function toggleModelAction(modelId: string, active: boolean): Promi
       p_workspace_id: null as unknown as string, p_action: active ? "admin.model_activated" : "admin.model_deactivated",
       p_entity_type: "ai_model", p_entity_id: modelId,
     });
-    revalidatePath("/admin/models");
+    revalidatePath("/admin/ai/modele");
     return { ok: true };
   } catch {
     return { ok: false, error: "generic" };
@@ -386,7 +386,7 @@ export async function savePromptBlockAction(input: {
       ? await supabase.from("prompt_blocks").update(row).eq("id", input.id)
       : await supabase.from("prompt_blocks").insert(row);
     if (error) return { ok: false, error: "generic" };
-    revalidatePath("/admin/templates");
+    revalidatePath("/admin/ai/szablony");
     return { ok: true };
   } catch {
     return { ok: false, error: "generic" };
@@ -398,7 +398,7 @@ export async function deletePromptBlockAction(id: string): Promise<Result> {
     const { supabase } = await requireAdmin();
     const { error } = await supabase.from("prompt_blocks").delete().eq("id", id);
     if (error) return { ok: false, error: "generic" };
-    revalidatePath("/admin/templates");
+    revalidatePath("/admin/ai/szablony");
     return { ok: true };
   } catch {
     return { ok: false, error: "generic" };
