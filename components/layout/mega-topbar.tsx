@@ -14,6 +14,7 @@ import { ThemeToggle } from "./theme-toggle";
 import { CommandPalette } from "./command-palette";
 import { CreditsControl } from "./credits-control";
 import { AccountMenu } from "./account-menu";
+import { MenuVeil } from "./menu-veil";
 import { useDrawer } from "./shell-context";
 import { NotificationsBell, type NotificationItem } from "./notifications-bell";
 
@@ -82,6 +83,13 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
 
   return (
     <header ref={barRef} className="glass sticky top-0 z-40 rounded-none border-x-0 border-t-0 pt-[env(safe-area-inset-top)]">
+      {/* The same focus veil the account popover uses: an open mega-menu is a
+          menu like any other, and the page under it goes soft for as long as
+          it is open — not only while the pointer happens to be on the trigger.
+          Rendered HERE, outside the per-trigger hover wrappers below, because
+          a portal keeps its React parentage: inside one of them it would make
+          the whole viewport part of that trigger's hover zone. */}
+      <MenuVeil open={menu !== null} />
       <div className="mx-auto flex h-[52px] w-full min-w-0 max-w-[var(--content-max)] items-center gap-1 px-2.5 sm:h-[54px] sm:gap-1.5 sm:px-4 lg:px-6 xl:px-8">
         {/* Mobile: hamburger opens the drawer (full hierarchy inside). */}
         <button
@@ -297,7 +305,7 @@ function PromoCard({ t }: { t: (k: string) => string }) {
   return (
     <section className="hidden md:block">
       <Link href={PROMO_HREF}
-        className="snake group flex h-full flex-col rounded-2xl border border-line bg-[rgb(var(--ink)/0.035)] p-4 transition-colors duration-200 hover:bg-[rgb(var(--ink)/0.06)]">
+        className="snake group flex h-full flex-col rounded-2xl border border-line bg-[rgb(var(--ink)/0.035)] p-4 transition-colors duration-200 hover:bg-[rgb(var(--accent)/0.09)]">
         {/* Decorative plate, not a screenshot: a promise made of brand light
             rather than a picture of a screen that will change next week. */}
         <span aria-hidden
@@ -404,7 +412,12 @@ function MegaLink({ entry, label, sub, soonLabel, compact, dynBadge }: {
     // The light thread runs the border of a live entry only. An inert row is
     // not a destination, so lighting it up would be an invitation to click
     // something that does nothing.
-    inert ? "cursor-default opacity-60" : "snake hover:bg-[rgb(var(--ink)/0.06)]",
+    //
+    // The hovered background is a BRAND tint rather than a neutral ink wash:
+    // on a near-black panel, `--ink` at 6% is a grey square that reads as a
+    // rendering artefact next to a magenta outline. The two now belong to the
+    // same effect.
+    inert ? "cursor-default opacity-60" : "snake hover:bg-[rgb(var(--accent)/0.09)]",
   );
   return inert
     ? <div className={cls} aria-disabled>{body}</div>

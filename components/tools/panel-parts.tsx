@@ -31,6 +31,14 @@ export type RadioRow<V extends string> = {
   /** Present ONLY when the option cannot be chosen — and then it says why,
    *  in words, instead of greying out and leaving the seller guessing. */
   disabledReason?: string;
+  /** Off, but WITHOUT a sentence under the name. The reason still exists —
+   *  it goes to `title` — but a settings rail that explains every locked
+   *  option in prose stops being a set of choices and becomes a document.
+   *  `disabledReason` is still the right tool where the reason is the point. */
+  disabled?: boolean;
+  /** Native tooltip on the row — the quiet home for a detail that no longer
+   *  earns a permanent line. */
+  title?: string;
 };
 
 export function RadioRows<V extends string>({ name, value, rows, onChange, disabled }: {
@@ -44,11 +52,11 @@ export function RadioRows<V extends string>({ name, value, rows, onChange, disab
   return (
     <div role="radiogroup" aria-label={name} className="space-y-1.5">
       {rows.map((row) => {
-        const off = disabled || !!row.disabledReason;
+        const off = disabled || !!row.disabledReason || !!row.disabled;
         const active = value === row.value && !off;
         const Icon = row.icon;
         return (
-          <label key={row.value}
+          <label key={row.value} title={row.title}
             className={cn(
               "flex min-h-[2.75rem] items-center gap-2.5 rounded-xl border px-3 py-2 transition-colors duration-200",
               // A CHOICE, NOT AN ANNOUNCEMENT. These rows used to wear the

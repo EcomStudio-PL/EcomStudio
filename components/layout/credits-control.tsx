@@ -45,19 +45,26 @@ export function CreditsControl({ credits, compact = false }: { credits: number; 
       )}
     >
       <Diamond />
-      <span className={cn("metric leading-none tabular-nums", compact ? "text-[13px]" : "text-[14.5px]")}>
-        {new Intl.NumberFormat(locale).format(credits)}
+      {/* ONE BASELINE for the two pieces of text. They are four points apart
+          in size and set in different faces — the balance in the display
+          face, the invitation in the UI face — so centring their line boxes
+          left "Doładuj" visibly riding above the number. Baselines are what
+          the eye actually reads a row of type against; the icons stay centred
+          on the tile because they have no baseline worth aligning to. */}
+      <span className={cn("inline-flex items-baseline", compact ? "gap-1.5" : "gap-2")}>
+        <span className={cn("metric leading-none tabular-nums", compact ? "text-[13px]" : "text-[14.5px]")}>
+          {new Intl.NumberFormat(locale).format(credits)}
+        </span>
+        {/* "Doładuj" in words, not just a plus. The + alone made buying
+            credits a guess; on a narrow bar the word hides and the icon
+            carries it, so nothing is lost and nothing overflows. */}
+        {!compact && (
+          <span className="hidden text-[11.5px] font-semibold leading-none opacity-80 xl:inline">
+            {t("creditsPanel.topUpShort")}
+          </span>
+        )}
       </span>
-      {/* "Doładuj" in words, not just a plus. The + alone made buying credits
-          a guess; on a narrow bar the word hides and the icon carries it, so
-          nothing is lost and nothing overflows. */}
-      <span className={cn(
-        "inline-flex items-center gap-0.5 font-semibold leading-none opacity-80",
-        compact ? "text-[11px]" : "text-[11.5px]",
-      )}>
-        {!compact && <span className="hidden xl:inline">{t("creditsPanel.topUpShort")}</span>}
-        <Plus size={12} aria-hidden strokeWidth={2.8} />
-      </span>
+      <Plus size={12} aria-hidden strokeWidth={2.8} className="shrink-0 opacity-80" />
     </Link>
   );
 }

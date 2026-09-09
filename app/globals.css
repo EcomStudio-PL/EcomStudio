@@ -324,11 +324,18 @@ body::after {
      per-frame React, and nothing that can move a neighbour: the element is
      absolutely positioned and only its BACKGROUND scrolls, so there is no
      layout or paint outside its own box.
-   · The thread is a conic gradient that is transparent for most of its turn,
-     masked to the 1px border ring — the mask is what makes it a border rather
-     than a glowing card.
-   · Premium, not gaming: ONE thread, one lap every 2.4s, in the two brand
-     magentas with a violet in the middle. No rainbow, no strobe.
+   · The thread is a conic gradient masked to the 1px border ring — the mask is
+     what makes it a border rather than a glowing card.
+   · THE RING IS COMPLETE AT EVERY FRAME. It used to be transparent for 250 of
+     its 360 degrees, so what the eye actually saw was a bright arc ending in
+     nothing on two sides of the tile — a broken line chasing itself, not an
+     outline. Now the whole perimeter carries the brand light at a low level
+     and a brighter crest travels around it: the tile always reads as fully
+     outlined, and the movement is a highlight rather than the outline itself.
+   · Premium, not gaming: one lap every 3.2s, in the two brand magentas with a
+     violet between them. No rainbow, no strobe.
+   · The glow is OUTSIDE the ring and stays small — one soft magenta halo of a
+     few pixels, so a row of tiles cannot turn into a light show.
    · Hover only, and only where a pointer exists. A phone gets the plain
      active state — see the focus rule below, which is the keyboard's version
      of the same signal. */
@@ -336,7 +343,7 @@ body::after {
   position: relative;
   isolation: isolate;
 }
-@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+@media (hover: hover) {
   .snake::after {
     content: "";
     position: absolute;
@@ -344,15 +351,15 @@ body::after {
     border-radius: inherit;
     padding: 1px;
     opacity: 0;
-    transition: opacity 0.2s ease;
+    transition: opacity 0.22s ease;
     background: conic-gradient(
       from var(--snake-angle, 0deg),
-      transparent 0deg,
-      transparent 250deg,
-      rgb(var(--accent) / 0.9) 300deg,
-      rgb(var(--violet) / 0.9) 330deg,
-      rgb(var(--accent-glow)) 355deg,
-      transparent 360deg
+      rgb(var(--accent) / 0.34) 0deg,
+      rgb(var(--violet) / 0.5) 70deg,
+      rgb(var(--accent-glow) / 0.95) 150deg,
+      rgb(var(--accent) / 0.75) 210deg,
+      rgb(var(--violet) / 0.5) 290deg,
+      rgb(var(--accent) / 0.34) 360deg
     );
     /* Border-only: paint the ring, punch out the middle. */
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -362,10 +369,20 @@ body::after {
     pointer-events: none;
   }
   .snake:hover::after,
-  .snake:focus-visible::after {
-    opacity: 1;
-    animation: snake-run 2.4s linear infinite;
+  .snake:focus-visible::after { opacity: 1; }
+  /* The halo is on the tile, not on the ring: a box-shadow on the masked
+     pseudo-element would be clipped away with everything else it punches out. */
+  .snake:hover,
+  .snake:focus-visible {
+    box-shadow: 0 0 0 1px rgb(var(--accent) / 0.14), 0 6px 20px -10px rgb(var(--accent-glow) / 0.5);
   }
+}
+/* The crest only travels where motion is welcome. Without this the ring is
+   still a complete, correctly-coloured outline — it simply holds still, which
+   is the whole reason the gradient no longer relies on the gap. */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .snake:hover::after,
+  .snake:focus-visible::after { animation: snake-run 3.2s linear infinite; }
 }
 @property --snake-angle {
   syntax: "<angle>";

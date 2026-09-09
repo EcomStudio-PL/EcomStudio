@@ -1,6 +1,5 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowUpRight, ChevronDown, CreditCard, LifeBuoy, LogOut, Plus, Settings, Shield, User } from "lucide-react";
@@ -12,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { setLocaleAction } from "@/app/actions/settings";
 import { LOCALES } from "@/lib/i18n/config";
 import { Diamond } from "./credits-control";
+import { MenuVeil } from "./menu-veil";
 import { Flag } from "./flag";
 
 /**
@@ -90,24 +90,9 @@ export function AccountMenu({ name, email, credits, plan, isAdmin, showName }: {
 
   return (
     <>
-      {/* FOCUS VEIL — the page behind goes soft while the panel is open, the
-          same idea as the drawer and the command palette, at a lighter dose.
-          It is PORTALLED to the body at `z-30` on purpose: the bar itself is
-          `sticky z-40`, so the header stays sharp and readable above the veil
-          while everything under it blurs, and the panel — `z-50` inside the
-          header's own stacking context — is never touched by it.
-
-          It is a SIBLING of the hover zone, never a child. A portal keeps its
-          React parentage wherever the DOM node lands, so a veil rendered
-          inside the zone would have made the whole viewport part of the zone:
-          the pointer could never leave it, and the panel would never close on
-          its own. Closing needs nothing extra — the veil is outside `ref`, so
-          the outside-mousedown listener above already catches a click on it. */}
-      {open && typeof document !== "undefined" && createPortal(
-        <div aria-hidden
-          className="animate-fade fixed inset-0 z-30 bg-[rgb(var(--scrim)/calc(var(--scrim-alpha)*0.55))] backdrop-blur-[6px]" />,
-        document.body,
-      )}
+      {/* The focus veil, and deliberately a SIBLING of the hover zone below —
+          see `MenuVeil` for why that placement is load-bearing. */}
+      <MenuVeil open={open} />
       <div ref={ref} className="relative" onMouseEnter={onEnter} onMouseLeave={onLeave}>
         <button
           type="button"

@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  Crop, Gauge, Maximize2, PenLine, Scaling, Scissors, SlidersHorizontal, Square, Stamp,
+  Crop, Gauge, Maximize2, Scaling, Scissors, SlidersHorizontal, Square, Stamp,
   Sun, Sparkles, WandSparkles, Wrench,
 } from "lucide-react";
 import { CATEGORIES, VIDEO_CREATE_WF, VIDEO_EDIT_WF, VIDEO_ICON, categoryHref, type CategoryAccent } from "./categories";
@@ -35,16 +35,16 @@ export type MegaEntry = {
 };
 
 /**
- * TWÓRZ — the generator itself, then the six category workspaces.
+ * TWÓRZ — the six category workspaces.
  *
- * "Własny prompt" leads this column rather than sitting in the row of buttons
- * underneath, where it used to compete with the tools hub for the same slot.
- * It belongs here on the merits: it CREATES an image, which is what this
- * column is for, and a seller who knows exactly what they want should not have
- * to read past six categories to find the blank prompt.
+ * "Własny prompt" is NOT a tile here. It is a MODE of the generator, not a
+ * separate product: `GeneratorModeSwitch` sits at the top of both `/prompts`
+ * and `/generator`, so the blank prompt is one click from the generator
+ * itself. Listing it in the menu as a seventh peer of the categories said the
+ * opposite — that GrovBase ships two generators — and it took the slot next to
+ * the categories that a category deserves.
  */
 export const IMAGE_CREATE: readonly MegaEntry[] = [
-  { key: "custom", href: "/generator", icon: PenLine, labelKey: "mega.custom", subKey: "mega.customSub" },
   ...CATEGORIES.map((c) => ({
     key: c.key,
     href: categoryHref(c),
@@ -62,10 +62,11 @@ export const IMAGE_CREATE: readonly MegaEntry[] = [
  * bottom of the panel or at the end of the list, not reliably at both.
  */
 export const IMAGE_MODES: readonly MegaEntry[] = [
-  // The CTA says what pressing it DOES — "Utwórz obraz" — while the ready
-  // generator keeps its own name (`mega.engine`) everywhere it is named as a
-  // feature: the admin registry, the home screen's continue button, the mode
-  // switch inside the generator itself.
+  // The CTA carries the product's own name — "Generator Grovshot" — because
+  // it is now the ONE door into making an image: the custom prompt lives
+  // behind it as a mode, not beside it as a tile. `mega.engine` stays the
+  // internal name used by the admin registry, the home screen's continue
+  // button and the mode switch itself.
   { key: "engine", href: "/prompts", icon: Sparkles, labelKey: "mega.createImage" },
   { key: "allTools", href: "/tools", icon: Wrench, labelKey: "nav.allTools" },
 ] as const;

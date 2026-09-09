@@ -448,11 +448,17 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
           </div>
 
           <div className="min-w-0">
-            {/* The cap is stated on the label, not discovered after a run. */}
-            <GroupLabel hint={`≤ ${MAX_SIDE} px`}>{t("resize.resolution")}</GroupLabel>
-            {/* Rows, not chips. 8K is a real 8192px and sharp stops at 8000,
-                so it is listed and switched off WITH ITS REASON — a chip had
-                room for the word "unavailable" and nothing else. */}
+            <GroupLabel>{t("resize.resolution")}</GroupLabel>
+            {/* NAMES ONLY. 2K, 4K and 8K are the whole vocabulary a seller
+                needs here; "≤ 2048 × 2048 px" under each of them, a pixel
+                ceiling on the group label and a sentence of apology under 8K
+                turned four controls into six lines of small print.
+
+                8K is still OFF — it is a real 8192 px and sharp stops at
+                8000, so offering it would be a quiet lie about the output —
+                but it is off the way a disabled control normally is, with the
+                reason in `title` for whoever wants it, not as a permanent
+                paragraph in the rail. */}
             <RadioRows
               name="resize-resolution"
               value={custom ? null : presetKey}
@@ -461,11 +467,10 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
               rows={PRESETS.map((p) => ({
                 value: p.key,
                 label: p.label,
-                // Both sides, the way a seller reads a resolution — and still
-                // a CEILING, never a promise to enlarge, which is what the
-                // "≤" says in all three languages.
-                meta: `≤ ${p.side} × ${p.side} px`,
-                disabledReason: p.side > MAX_SIDE ? t("resize.overMax", { n: MAX_SIDE }) : undefined,
+                disabled: p.side > MAX_SIDE,
+                title: p.side > MAX_SIDE
+                  ? t("resize.overMax", { n: MAX_SIDE })
+                  : `≤ ${p.side} × ${p.side} px`,
               }))}
             />
           </div>
@@ -475,9 +480,11 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
           {custom && (
             <div className="flex items-end gap-2">
               <div className="min-w-0 flex-1 space-y-1.5">
-                {/* The accepted range on the label, so an out-of-range entry
-                    is a visible rule rather than a button that went grey. */}
-                <Label htmlFor="resize-w" hint={`${MIN_SIDE}–${MAX_SIDE}`}>{t("editor.f.width")}</Label>
+                {/* No "16–8000" over the field. The range is enforced where it
+                    matters — `min`/`max` on the input, and `clampInput` on
+                    blur, which CORRECTS an out-of-range number in front of the
+                    seller instead of leaving them to read a rule first. */}
+                <Label htmlFor="resize-w">{t("editor.f.width")}</Label>
                 <Input id="resize-w" type="number" inputMode="numeric" min={MIN_SIDE} max={MAX_SIDE}
                   value={customWidth}
                   onChange={(e) => setCustomWidth(e.target.value)}
@@ -492,7 +499,7 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
                 {lockRatio ? <Link2 size={15} aria-hidden /> : <Unlink size={15} aria-hidden />}
               </button>
               <div className="min-w-0 flex-1 space-y-1.5">
-                <Label htmlFor="resize-h" hint={`${MIN_SIDE}–${MAX_SIDE}`}>{t("editor.f.height")}</Label>
+                <Label htmlFor="resize-h">{t("editor.f.height")}</Label>
                 <Input id="resize-h" type="number" inputMode="numeric" min={MIN_SIDE} max={MAX_SIDE}
                   value={lockRatio ? "" : customHeight}
                   disabled={lockRatio}
