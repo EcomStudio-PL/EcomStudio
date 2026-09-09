@@ -111,7 +111,10 @@ export const LOGIN_SECURITY_DEFAULTS: LoginSecuritySettings = {
   reverifyDays: 7,
   codeTtlSeconds: 120,
   maxAttempts: 5,
-  resendSeconds: 60,
+  // 59 s, so the first frame after a send reads 00:59 — the number the
+  // product asks for — while the code itself stays valid for 120 s. The two
+  // are separate settings and an operator can move either.
+  resendSeconds: 59,
 };
 
 export const LOGIN_SECURITY_KEY = "login_security";

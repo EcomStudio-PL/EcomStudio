@@ -10,6 +10,7 @@
  */
 import { createGate } from "@/lib/single-flight";
 import { mmss, resendView } from "@/lib/auth/resend";
+import { LOGIN_SECURITY_DEFAULTS } from "@/lib/server/login-security";
 import pl from "@/lib/i18n/dictionaries/pl.json";
 import en from "@/lib/i18n/dictionaries/en.json";
 import de from "@/lib/i18n/dictionaries/de.json";
@@ -73,7 +74,7 @@ console.log("\nC. WHAT THE BUTTON SAYS");
   const sending = resendView({ sending: true, expired: false, cooldown: 0 });
   check("sending: disabled", sending.disabled);
   check("sending: shows a spinner", sending.loading);
-  check("sending: says so", t(sending.labelKey) === "Wysyłam kod…", t(sending.labelKey));
+  check("sending: says so", t(sending.labelKey) === "Wysyłanie…", t(sending.labelKey));
 
   const cooling = resendView({ sending: false, expired: false, cooldown: 59 });
   check("cooldown: disabled", cooling.disabled);
@@ -102,6 +103,30 @@ console.log("\nD. mm:ss");
   check("120 → 02:00", mmss(120) === "02:00", mmss(120));
 }
 
+console.log("\nE1. THE CLOCKS ARE DEADLINES, NOT COUNTERS");
+{
+  const ui = await import("node:fs").then((fs) =>
+    fs.readFileSync("components/auth/security-check.tsx", "utf8"));
+
+  check("both clocks are wall-clock instants",
+    /const \[resendAt, setResendAt\] = useState<number \| null>/.test(ui)
+    && /const \[expiresAt, setExpiresAt\] = useState<number \| null>/.test(ui));
+  check("nothing decrements a counter any more",
+    !/setCooldown\(\(n\) =>/.test(ui) && !/n - 1/.test(ui));
+  check("the time left is read from the clock on every render",
+    /Math\.ceil\(\(at - now\) \/ 1000\)/.test(ui));
+  check("coming back to the tab re-reads the clock",
+    /visibilitychange/.test(ui) && /\"focus\"/.test(ui) && /pageshow/.test(ui));
+  check("a send in flight always releases the button",
+    /finally \{\s*setSending\(false\);/.test(ui));
+  check("a failed REQUEST is not reported as a wrong code",
+    /if \(!res\) \{ setError\(t\("security\.serverError"\)\); return; \}/.test(ui));
+  check("the verify button says what it is doing",
+    /t\("security\.verifying"\)/.test(ui));
+  check("a full code submits once, and only when nothing is in flight",
+    /if \(clean\.length === 6 && !busy\) void submit\(clean\);/.test(ui));
+}
+
 console.log("\nE. COOLDOWN ≠ CODE LIFETIME");
 {
   // The two numbers come from two different settings and neither is derived
@@ -112,17 +137,29 @@ console.log("\nE. COOLDOWN ≠ CODE LIFETIME");
     /p_ttl_seconds:\s*opts\.settings\.codeTtlSeconds/.test(src));
   check("the resend window is a separate setting",
     /const wait = opts\.settings\.resendSeconds - age/.test(src));
-  check("defaults are 120 s of code life and a 60 s resend window",
-    /codeTtlSeconds:\s*120/.test(src) && /resendSeconds:\s*60/.test(src));
+  check("defaults are 120 s of code life and a 59 s resend window",
+    /codeTtlSeconds:\s*120/.test(src) && /resendSeconds:\s*59/.test(src));
+  // The product rule, stated as arithmetic: a second code may be ASKED for
+  // before the first one dies, and the window is shorter than the lifetime.
+  check("the resend window is shorter than the code's life",
+    LOGIN_SECURITY_DEFAULTS.resendSeconds < LOGIN_SECURITY_DEFAULTS.codeTtlSeconds);
+  check("the first frame after a send reads 00:59",
+    mmss(LOGIN_SECURITY_DEFAULTS.resendSeconds) === "00:59");
+  check("and the code's own clock starts at 02:00",
+    mmss(LOGIN_SECURITY_DEFAULTS.codeTtlSeconds) === "02:00");
+  check("a new code retires the live one in the DATABASE, not in the UI",
+    /update public\.login_security_challenges[\s\S]{0,200}?set used_at = now\(\)/
+      .test(await import("node:fs").then((fs) =>
+        fs.readFileSync("supabase/migrations/0057_login_security.sql", "utf8"))));
 
   const ui = await import("node:fs").then((fs) =>
     fs.readFileSync("components/auth/security-check.tsx", "utf8"));
   check("the expiry countdown still runs on the SERVER's expires_at",
-    /setDeadline\(Date\.now\(\) \+ res\.expiresInSeconds \* 1000\)/.test(ui));
-  check("the cooldown never touches the deadline",
-    !/setDeadline\([^)]*resendWindow/.test(ui));
+    /setExpiresAt\(Date\.now\(\) \+ res\.expiresInSeconds \* 1000\)/.test(ui));
+  check("the cooldown never touches the code's deadline",
+    !/setExpiresAt\([^)]*resendWindow/.test(ui));
   check("only a send the server CONFIRMS starts the cooldown",
-    /res\.status === "sent"[\s\S]{0,400}?setCooldown\(resendWindow\)/.test(ui));
+    /res\.status === "sent"[\s\S]{0,400}?setResendAt\(Date\.now\(\) \+ resendWindow \* 1000\)/.test(ui));
   check("every send goes through the gate",
     /await sendGate\.run\(/.test(ui) && (ui.match(/resendCodeAction\(\)/g) ?? []).length === 1);
   check("a verify goes through its own gate",

@@ -33,11 +33,21 @@ export function SecurityCheck({ next }: { next: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [cooldown, setCooldown] = useState(0);
   const [sending, setSending] = useState(false);
-  const [resendWindow, setResendWindow] = useState(60);
-  const [deadline, setDeadline] = useState<number | null>(null);
-  const [remaining, setRemaining] = useState<number | null>(null);
+  const [resendWindow, setResendWindow] = useState(59);
+  /**
+   * BOTH CLOCKS ARE DEADLINES, NOT COUNTERS.
+   *
+   * The resend cooldown used to be a number decremented by a `setInterval`.
+   * A background tab throttles that interval to once a minute, so locking the
+   * phone for half a minute and coming back showed a clock that had barely
+   * moved — and a re-render could restart it. These are wall-clock instants
+   * (epoch ms) derived from what the SERVER said, and every render reads the
+   * time left from `now`; nothing accumulates and nothing can drift.
+   */
+  const [resendAt, setResendAt] = useState<number | null>(null);
+  const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const [notConfigured, setNotConfigured] = useState(false);
   const started = useRef(false);
   // In-flight latches. `disabled` on a button is one render away from a tap;
@@ -59,30 +69,39 @@ export function SecurityCheck({ next }: { next: string }) {
       setMasked(res.masked);
       setResendWindow(res.resendSeconds);
       // What the SERVER would still refuse, not a fresh window invented here:
-      // reopening the page onto a code sent 40 s ago waits 20 s, not 60.
-      setCooldown(res.resendWaitSeconds);
-      setDeadline(res.expiresInSeconds > 0 ? Date.now() + res.expiresInSeconds * 1000 : null);
+      // reopening the page onto a code sent 40 s ago waits 19 s, not 59.
+      setResendAt(res.resendWaitSeconds > 0 ? Date.now() + res.resendWaitSeconds * 1000 : null);
+      setExpiresAt(res.expiresInSeconds > 0 ? Date.now() + res.expiresInSeconds * 1000 : null);
       if (res.status === "not_configured") setNotConfigured(true);
     });
   }, [next]);
 
-  // Resend countdown.
+  /**
+   * ONE TICKER for both clocks. It only re-reads the wall clock, so a throttled
+   * interval costs accuracy in nothing but refresh rate — and coming back to a
+   * backgrounded tab re-reads it immediately instead of waiting for the next
+   * tick, which is what makes "minimise Safari for 30 s" show the truth.
+   */
   useEffect(() => {
-    if (cooldown <= 0) return;
-    const id = setInterval(() => setCooldown((n) => Math.max(0, n - 1)), 1000);
-    return () => clearInterval(id);
-  }, [cooldown]);
-
-  // Expiry countdown — renders the server-issued deadline, never extends it.
-  useEffect(() => {
-    if (deadline === null) { setRemaining(null); return; }
-    const tick = () => setRemaining(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+    if (resendAt === null && expiresAt === null) return;
+    const tick = () => setNow(Date.now());
     tick();
     const id = setInterval(tick, 500);
-    return () => clearInterval(id);
-  }, [deadline]);
+    document.addEventListener("visibilitychange", tick);
+    window.addEventListener("focus", tick);
+    window.addEventListener("pageshow", tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+      window.removeEventListener("focus", tick);
+      window.removeEventListener("pageshow", tick);
+    };
+  }, [resendAt, expiresAt]);
 
-  const expired = deadline !== null && remaining === 0;
+  const left = (at: number | null) => (at === null ? null : Math.max(0, Math.ceil((at - now) / 1000)));
+  const cooldown = left(resendAt) ?? 0;
+  const remaining = left(expiresAt);
+  const expired = expiresAt !== null && remaining === 0;
 
   const submit = useCallback(async (code: string) => {
     // The sixth digit and a tap on "Potwierdź" can land in the same frame, and
@@ -98,10 +117,15 @@ export function SecurityCheck({ next }: { next: string }) {
       return;
     }
     setBusy(false);
-    if (!res) { setDigits(""); setError(t("common.error")); return; }
+    // A failed REQUEST is not a wrong code: the attempt was never counted, so
+    // it says the server had the problem and leaves the digits alone.
+    if (!res) { setError(t("security.serverError")); return; }
     setDigits("");
     if (res.reason === "locked") setError(t("security.locked"));
-    else if (res.reason === "expired") { setDeadline(Date.now()); setError(t("security.expired")); }
+    else if (res.reason === "expired") { setExpiresAt(Date.now()); setError(t("security.expired")); }
+    else if (res.reason === "error" || res.reason === "no_session" || res.reason === "no_device") {
+      setError(t("security.serverError"));
+    }
     else if (typeof res.attemptsLeft === "number") {
       setError(t("security.wrongCode", { n: res.attemptsLeft }));
     } else setError(t("security.wrongCode", { n: 0 }));
@@ -122,31 +146,37 @@ export function SecurityCheck({ next }: { next: string }) {
    * The button used to fire the action on every click while it waited: on a
    * phone, where a tap that shows no feedback invites another tap, that is one
    * e-mail per tap. Now the first call takes a synchronous latch, the button
-   * goes into "Wysyłam kod…" in the same tick, and every further tap returns
-   * immediately. Only a send the SERVER confirms starts the cooldown; a failure
-   * hands the button straight back so the user is not stranded.
+   * goes into "Wysyłanie…" in the same tick, and every further tap returns
+   * immediately. Only a send the SERVER confirms starts the cooldown; every
+   * other outcome — a refusal, a failure, a dead connection — hands the button
+   * straight back, which is what the `finally` is for: an early return that
+   * skipped `setSending(false)` would leave it spinning for good.
    */
   const resend = useCallback(async () => {
     await sendGate.run(async () => {
       setSending(true);
       setError(null);
       setNotice(null);
-      const res = await resendCodeAction().catch(() => null);
-      if (!res) { setError(t("security.resendFailed")); return; }
-      if (res.status === "sent") {
-        setNotice(t("security.resent"));
-        setDigits("");
-        setCooldown(resendWindow);
-        if (typeof res.expiresInSeconds === "number" && res.expiresInSeconds > 0) {
-          setDeadline(Date.now() + res.expiresInSeconds * 1000);
-        }
-      } else if (res.status === "cooldown") {
-        // The server refused because a code is still fresh — show ITS clock.
-        setCooldown(res.waitSeconds && res.waitSeconds > 0 ? res.waitSeconds : resendWindow);
-      } else if (res.status === "not_configured") {
-        setNotConfigured(true);
-      } else setError(t("security.resendFailed"));
-      setSending(false);
+      try {
+        const res = await resendCodeAction().catch(() => null);
+        if (!res) { setError(t("security.resendFailed")); return; }
+        if (res.status === "sent") {
+          setNotice(t("security.resent"));
+          setDigits("");
+          setResendAt(Date.now() + resendWindow * 1000);
+          if (typeof res.expiresInSeconds === "number" && res.expiresInSeconds > 0) {
+            setExpiresAt(Date.now() + res.expiresInSeconds * 1000);
+          }
+        } else if (res.status === "cooldown") {
+          // The server refused because a code is still fresh — show ITS clock.
+          const wait = res.waitSeconds && res.waitSeconds > 0 ? res.waitSeconds : resendWindow;
+          setResendAt(Date.now() + wait * 1000);
+        } else if (res.status === "not_configured") {
+          setNotConfigured(true);
+        } else setError(t("security.resendFailed"));
+      } finally {
+        setSending(false);
+      }
     });
   }, [resendWindow, sendGate, t]);
 
@@ -207,7 +237,10 @@ export function SecurityCheck({ next }: { next: string }) {
           <button type="button" disabled={busy || expired || digits.length !== 6} onClick={() => void submit(digits)}
             className="cta relative mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold disabled:opacity-60">
             {busy && <Loader2 size={15} className="animate-spin" aria-hidden />}
-            {busy ? t("common.loading") : t("security.confirm")}
+            {/* "Weryfikowanie…", not a generic spinner caption: the six digits
+                are already in, and the only question left is whether they are
+                right. */}
+            {busy ? t("security.verifying") : t("security.confirm")}
           </button>
 
           <button type="button" onClick={() => void resend()} disabled={view.disabled}

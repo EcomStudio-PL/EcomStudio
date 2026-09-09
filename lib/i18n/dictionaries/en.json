@@ -3112,8 +3112,10 @@
     "expiredHint": "Send a new code to continue.",
     "newCode": "Send a new code",
     "mailUnavailable": "We can't send a code right now. Please try again later.",
-    "sending": "Sending the code…",
-    "resendFailed": "We could not send the code. Please try again."
+    "sending": "Sending…",
+    "resendFailed": "We could not send the code. Please try again.",
+    "verifying": "Verifying…",
+    "serverError": "We could not reach the server. Please try again."
   },
   "features": {
     "comingTitle": "Coming soon",
