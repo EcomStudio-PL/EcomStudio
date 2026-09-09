@@ -36,7 +36,12 @@ export default async function ResizePage() {
     ?? { slug: "format" as const, kind: "local" as const, available: false, credits: 0, providerLabel: null, reason: "maintenance" as const };
 
   return (
-    <div>
+    // WORKSPACE GROUND — the same class the generator, the editor and Retusz
+    // already carry. Inside it the surface tokens resolve to the flat
+    // near-black ramp (`--workspace-*`), so this screen loses the violet glass
+    // wash without a single page-local colour: magenta survives where it means
+    // something — the chosen resolution, focus, the CTA.
+    <div className="workspace workspace-page">
       {/*
         No title bar. "Narzędzia → Zmiana rozmiaru → Za darmo → Przeskaluj
         wiele zdjęć naraz" was a row that repeated what the menu, the panel

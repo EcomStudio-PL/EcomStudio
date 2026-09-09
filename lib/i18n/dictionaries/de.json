@@ -1803,7 +1803,8 @@
     "costTotal": "Gesamt",
     "addPhotos": "Fotos hinzufügen (max. {n})",
     "dropManyTitle": "Fotos hier ablegen",
-    "dropCompressTitle": "Fotos zum Komprimieren ablegen"
+    "dropCompressTitle": "Fotos zum Komprimieren ablegen",
+    "import": "Import"
   },
   "editor": {
     "title": "Bildbearbeitung",
@@ -1930,7 +1931,12 @@
     "custom": "Eigene Größe (px)",
     "newSize": "Neue Größe",
     "run": "Größe ändern",
-    "overMax": "Nicht verfügbar — unser Encoder endet bei {n} px"
+    "overMax": "Nicht verfügbar — unser Encoder endet bei {n} px",
+    "emptyTitle": "Noch keine Fotos.",
+    "emptyBody": "Fotos hinzufügen und „Größe ändern“ drücken, um sie zu skalieren.",
+    "needPhotos": "Füge mindestens ein Foto hinzu.",
+    "needSize": "Gib eine Größe zwischen {min} und {max} px an.",
+    "nothingQueued": "Alle Fotos sind bereits verarbeitet."
   },
   "compress": {
     "title": "Kompression",

@@ -1803,7 +1803,8 @@
     "costTotal": "Łączny koszt",
     "addPhotos": "Dodaj zdjęcia (maks. {n})",
     "dropManyTitle": "Upuść zdjęcia tutaj",
-    "dropCompressTitle": "Upuść zdjęcia do kompresji"
+    "dropCompressTitle": "Upuść zdjęcia do kompresji",
+    "import": "Import"
   },
   "editor": {
     "title": "Edycja obrazu",
@@ -1930,7 +1931,12 @@
     "custom": "Własny rozmiar (px)",
     "newSize": "Nowy rozmiar",
     "run": "Zmień rozmiar",
-    "overMax": "Niedostępne — nasz serwer koduje maks. {n} px"
+    "overMax": "Niedostępne — nasz serwer koduje maks. {n} px",
+    "emptyTitle": "Nie masz jeszcze zdjęć.",
+    "emptyBody": "Dodaj zdjęcia i kliknij „Zmień rozmiar”, aby zmienić ich rozmiar.",
+    "needPhotos": "Dodaj przynajmniej jedno zdjęcie.",
+    "needSize": "Podaj rozmiar od {min} do {max} px.",
+    "nothingQueued": "Wszystkie zdjęcia są już przetworzone."
   },
   "compress": {
     "title": "Kompresja",

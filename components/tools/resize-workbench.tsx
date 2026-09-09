@@ -204,6 +204,21 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
   }, [custom, presetKey, customWidth, customHeight, lockRatio]);
 
   const hasTarget = target.width !== null || target.height !== null;
+
+  /**
+   * WHY THE BUTTON IS OFF — one line, in the card where the decision is made.
+   *
+   * A disabled CTA with nothing next to it is a dead end: the seller cannot
+   * tell whether they forgot the photos, typed a size the encoder refuses, or
+   * ran out of credits. Null when there is nothing to explain, so the card
+   * stays quiet once everything is ready.
+   */
+  const status = items.length === 0 ? t("resize.needPhotos")
+    : !hasTarget ? t("resize.needSize", { min: MIN_SIDE, max: MAX_SIDE })
+      : notEnough ? t("tools.err.insufficient_credits")
+        : pending.length === 0 ? t("resize.nothingQueued")
+          : null;
+
   const targetLabel = hasTarget
     ? `≤ ${[target.width, target.height].filter((v): v is number => v !== null).join(" × ")} px`
     : null;
@@ -374,7 +389,7 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
   return (
     // The action bar floats above the app dock on phones, so the gallery keeps
     // its own room underneath; on desktop the bar returns to the flow.
-    <div className="grid gap-4 pb-36 [&>*]:min-w-0 lg:grid-cols-[21rem_minmax(0,1fr)] lg:gap-5 lg:pb-0">
+    <div className="grid gap-4 pb-36 [&>*]:min-w-0 lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-4 lg:pb-0">
       {/* The tool's whole page is the target — the dashed tile below is a
           convenience, not the only way in. */}
       <FileDropOverlay
@@ -396,21 +411,30 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
         <Panel className="space-y-4 rounded-2xl p-4">
           <div className="min-w-0">
           <GroupLabel>{t("tools.addPhotos", { n: MAX_FILES })}</GroupLabel>
+          {/* THE IMPORT TILE — a word, a count, and the rule underneath.
+              It used to lead with "Przeciągnij zdjęcia albo kliknij" over a
+              full line of formats, which is a paragraph where a button should
+              be. Both ways in still work: this is a real <button> that opens
+              the picker, and the whole page is a drop target. */}
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
             className={cn(
-              "flex w-full flex-col items-center gap-1.5 rounded-xl border border-dashed px-4 py-6 transition-colors",
+              "flex w-full flex-col items-center gap-1 rounded-xl border border-dashed px-4 py-5 transition-colors",
               dragging
-                ? "border-[rgb(var(--accent)/0.7)] bg-accent-soft/40 text-accent"
-                : "border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/50 text-faint hover:border-[rgb(var(--accent)/0.55)] hover:text-accent"
+                ? "border-[rgb(var(--accent)/0.7)] bg-accent-soft/30 text-accent"
+                : "border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/60 text-muted hover:border-[rgb(var(--accent)/0.55)] hover:text-accent"
             )}
           >
-            <ImagePlus size={22} aria-hidden />
-            <span className="text-[13px] font-semibold">{t("tools.drop")}</span>
-            <span className="text-center text-[11px]">{t("tools.dropHint", { n: MAX_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })}</span>
-            <span className="mt-0.5 text-[11px] font-semibold tabular-nums text-muted">
+            <ImagePlus size={20} aria-hidden />
+            <span className="text-[13px] font-semibold text-ink">{t("tools.import")}</span>
+            <span className="text-[11.5px] font-medium tabular-nums text-muted">
               {items.length} / {MAX_FILES} {t("common.photos")}
+            </span>
+            {/* The rule stays visible — a file the picker refuses should be
+                refused on the card, not discovered in a toast. */}
+            <span className="text-center text-[10.5px] leading-tight text-faint">
+              {t("tools.dropHint", { n: MAX_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })}
             </span>
           </button>
           </div>
@@ -429,9 +453,10 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
               rows={PRESETS.map((p) => ({
                 value: p.key,
                 label: p.label,
-                // Every preset is a ceiling, never a promise to enlarge — the
-                // "≤" is the whole story and reads in all three languages.
-                meta: `≤ ${p.side} px`,
+                // Both sides, the way a seller reads a resolution — and still
+                // a CEILING, never a promise to enlarge, which is what the
+                // "≤" says in all three languages.
+                meta: `≤ ${p.side} × ${p.side} px`,
                 disabledReason: p.side > MAX_SIDE ? t("resize.overMax", { n: MAX_SIDE }) : undefined,
               }))}
             />
@@ -471,10 +496,23 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
           )}
         </Panel>
 
+        {/* COST + ACTION — its own card under the settings, because it answers
+            a different question: not "what do I want", but "what will this
+            cost and shall I run it". The line under the figures says why the
+            button is off, instead of leaving a grey button to be guessed at. */}
         <ActionBar
-          summary={<CostSummary perImage={credits} count={pending.length} enough={!notEnough} />}
+          summary={
+            <div className="min-w-0 flex-1">
+              <CostSummary perImage={credits} count={pending.length} enough={!notEnough} />
+              {status && <p className={cn("mt-2 text-[11.5px] leading-snug",
+                notEnough ? "text-danger" : "text-faint")}>{status}</p>}
+            </div>
+          }
         >
-          <Button className="w-full" size="lg" onClick={() => run()}
+          {/* `size="lg"` carries `w-full sm:w-auto`, which is right for a page
+              CTA and wrong for one living in a 20rem rail — on a desktop the
+              button shrank to the width of its own label. */}
+          <Button className="w-full sm:w-full" size="lg" onClick={() => run()}
             disabled={running || pending.length === 0 || notEnough || !hasTarget}>
             {running ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <Maximize2 size={16} aria-hidden />}
             {running ? t("tools.progress", { done: done.length + failed.length, total: items.length }) : t("resize.run")}
@@ -482,27 +520,33 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
         </ActionBar>
       </div>
 
-      {/* THE WORKSPACE — the gallery and its toolbar, the same pair the
-          compression screen uses. */}
-      {items.length === 0 ? (
-        <EmptyState icon={ImagePlus} title={t("tools.noQueue")}
-          body={t("tools.dropHint", { n: MAX_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })} />
-      ) : (
-        <Panel className="min-w-0 rounded-2xl p-3 sm:p-4">
-          <BatchGalleryToolbar
-            items={cards} view={view} onView={setView} zoom={zoom} onZoom={setZoom}
-            filter={filter} onFilter={setFilter}
-            selecting={selecting}
-            onSelecting={(on) => {
-              setSelecting(on);
-              // Leaving selection mode drops both the picks and the filter
-              // that depends on them — a hidden "tylko zaznaczone" over an
-              // empty selection is an empty gallery nobody asked for.
-              if (!on) { setSelected(new Set()); setFilter((f) => ({ ...f, selectedOnly: false })); }
-            }}
-          />
+      {/* THE WORKSPACE — the toolbar sits ABOVE the gallery, on the page
+          ground, and is there from the first paint. It used to appear only
+          once a photo had been added, so the screen a seller meets was a bare
+          box: the controls that shape the gallery belong to the workspace,
+          not to its contents. With an empty queue they are disabled, not
+          hidden — a control that moves nothing is worse than one that says
+          so. */}
+      <div className="min-w-0">
+        <BatchGalleryToolbar
+          items={cards} view={view} onView={setView} zoom={zoom} onZoom={setZoom}
+          filter={filter} onFilter={setFilter}
+          disabled={items.length === 0}
+          selecting={selecting}
+          onSelecting={(on) => {
+            setSelecting(on);
+            // Leaving selection mode drops both the picks and the filter
+            // that depends on them — a hidden "tylko zaznaczone" over an
+            // empty selection is an empty gallery nobody asked for.
+            if (!on) { setSelected(new Set()); setFilter((f) => ({ ...f, selectedOnly: false })); }
+          }}
+        />
 
-          {/* The batch's own actions, on the row under the toolbar: what is
+        {items.length === 0 ? (
+          <EmptyState icon={ImagePlus} title={t("resize.emptyTitle")} body={t("resize.emptyBody")} />
+        ) : (
+        <Panel className="min-w-0 rounded-2xl p-3 sm:p-4">
+          {/* The batch's own actions, on the row above the grid: what is
               queued, what failed, and what can be taken away. */}
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
@@ -594,7 +638,8 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
             onToggleSelected={(id) => setSelected((prev) => toggleIn(prev, id))}
           />
         </Panel>
-      )}
+        )}
+      </div>
     </div>
   );
 }

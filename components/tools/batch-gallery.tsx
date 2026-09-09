@@ -98,7 +98,7 @@ export function applyBatchFilter<T extends BatchItem>(
 /* ── the toolbar ────────────────────────────────────────────────────────── */
 
 export function BatchGalleryToolbar({
-  items, view, onView, zoom, onZoom, filter, onFilter, selecting, onSelecting,
+  items, view, onView, zoom, onZoom, filter, onFilter, selecting, onSelecting, disabled = false,
 }: {
   /** The WHOLE queue, so the filters can offer only values that exist in it. */
   items: readonly BatchItem[];
@@ -110,6 +110,14 @@ export function BatchGalleryToolbar({
   onFilter: (filter: BatchFilter) => void;
   selecting: boolean;
   onSelecting: (selecting: boolean) => void;
+  /**
+   * Nothing in the queue yet. The bar stays on screen — it is part of the
+   * workspace, not of its contents — but everything that acts ON photos is
+   * genuinely disabled rather than left live over an empty list. The view
+   * switch and the zoom are NOT: they are preferences that decide how the
+   * first photo will land, and they still take effect.
+   */
+  disabled?: boolean;
 }) {
   const { t } = useI18n();
 
@@ -172,26 +180,28 @@ export function BatchGalleryToolbar({
         <Search size={14} aria-hidden
           className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
         <input value={filter.q} onChange={(e) => patch({ q: e.target.value })}
+          disabled={disabled}
           placeholder={t("batch.searchPh")} aria-label={t("batch.searchLabel")}
-          className={cn(control, "w-full pl-8 pr-2 placeholder:text-faint focus:border-[rgb(var(--accent)/0.55)]")} />
+          className={cn(control, "w-full pl-8 pr-2 placeholder:text-faint focus:border-[rgb(var(--accent)/0.55)]",
+            disabled && "opacity-45")} />
       </div>
 
       {/* SELECTION MODE */}
-      <button type="button" aria-pressed={selecting}
+      <button type="button" aria-pressed={selecting} disabled={disabled}
         aria-label={selecting ? t("batch.selectOff") : t("batch.selectOn")}
         title={selecting ? t("batch.selectOff") : t("batch.selectOn")}
         onClick={() => onSelecting(!selecting)}
-        className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors",
+        className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors disabled:opacity-45",
           selecting ? "border-[rgb(var(--accent)/0.5)] bg-accent-soft/40 text-accent"
             : "border-line text-faint hover:text-ink")}>
         <SquareDashedMousePointer size={14} aria-hidden />
       </button>
 
       {/* FAVOURITES */}
-      <button type="button" aria-pressed={filter.favOnly}
+      <button type="button" aria-pressed={filter.favOnly} disabled={disabled}
         aria-label={t("batch.favFilter")} title={t("batch.favFilter")}
         onClick={() => patch({ favOnly: !filter.favOnly })}
-        className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors",
+        className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors disabled:opacity-45",
           filter.favOnly ? "border-[rgb(var(--accent)/0.5)] bg-accent-soft/40 text-accent"
             : "border-line text-faint hover:text-ink")}>
         <Heart size={14} aria-hidden fill={filter.favOnly ? "currentColor" : "none"} />
@@ -223,7 +233,8 @@ export function BatchGalleryToolbar({
       )}
 
       <select value={filter.sort} onChange={(e) => patch({ sort: e.target.value as BatchFilter["sort"] })}
-        aria-label={t("batch.sortLabel")} className={cn(control, "px-2")}>
+        disabled={disabled}
+        aria-label={t("batch.sortLabel")} className={cn(control, "px-2", disabled && "opacity-45")}>
         <option value="added">{t("batch.sort.added")}</option>
         <option value="name">{t("batch.sort.name")}</option>
         <option value="size">{t("batch.sort.size")}</option>

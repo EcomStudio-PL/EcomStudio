@@ -1803,7 +1803,8 @@
     "costTotal": "Total",
     "addPhotos": "Add photos (max. {n})",
     "dropManyTitle": "Drop your photos here",
-    "dropCompressTitle": "Drop photos to compress"
+    "dropCompressTitle": "Drop photos to compress",
+    "import": "Import"
   },
   "editor": {
     "title": "Image editing",
@@ -1930,7 +1931,12 @@
     "custom": "Custom size (px)",
     "newSize": "New size",
     "run": "Resize",
-    "overMax": "Unavailable — our encoder stops at {n} px"
+    "overMax": "Unavailable — our encoder stops at {n} px",
+    "emptyTitle": "No photos yet.",
+    "emptyBody": "Add photos and press “Resize” to change their size.",
+    "needPhotos": "Add at least one photo.",
+    "needSize": "Enter a size between {min} and {max} px.",
+    "nothingQueued": "Every photo has been processed already."
   },
   "compress": {
     "title": "Compression",

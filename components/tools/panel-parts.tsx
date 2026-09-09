@@ -51,7 +51,14 @@ export function RadioRows<V extends string>({ name, value, rows, onChange, disab
           <label key={row.value}
             className={cn(
               "flex min-h-[2.75rem] items-center gap-2.5 rounded-xl border px-3 py-2 transition-colors duration-200",
-              active ? "is-selected" : "border-line",
+              // A CHOICE, NOT AN ANNOUNCEMENT. These rows used to wear the
+              // `.is-selected` treatment the generator's model cards use — a
+              // saturated wash plus a glow, which on a settings rail reads as
+              // a pink block rather than a ticked option. The accent stays
+              // where it carries meaning: the radio, the border, the label.
+              active
+                ? "border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.07)]"
+                : "border-line",
               off ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-raised",
             )}>
             <input type="radio" name={name} value={row.value} checked={active} disabled={off}
