@@ -49,3 +49,17 @@ export function signedBytes(delta: number, format: (bytes: number) => string): s
 export function signedPercent(percent: number): string {
   return percent < 0 ? `−${-percent}%` : `${percent}%`;
 }
+
+/**
+ * The same number as a CHANGE IN SIZE, for the badge on a card — where there
+ * is no label to say which way it points.
+ *
+ * `reduction()` is positive when a file shrank, so printing it bare put "51%"
+ * next to "3.5 MB → 1.7 MB" and "−51%" next to a file that had GROWN by half:
+ * a minus sign that meant "bigger". Here the sign follows the file: it lost
+ * 51% of its weight, so it reads −51%, and one that gained reads +18%.
+ */
+export function sizeDelta(percent: number): string {
+  if (percent === 0) return "0%";
+  return percent > 0 ? `−${percent}%` : `+${-percent}%`;
+}

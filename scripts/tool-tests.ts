@@ -14,7 +14,7 @@ import sharp from "sharp";
 import {
   composeEditor, compress, dropShadow, flattenToColor, inspect, resizeConvert, watermark,
 } from "../lib/images/local";
-import { batchTotals, reduction, signedBytes, signedPercent } from "../lib/images/weight";
+import { batchTotals, reduction, signedBytes, signedPercent, sizeDelta } from "../lib/images/weight";
 import {
   applyPatch, clampEditorState, describePatch, isPristine, pushHistory,
   EDITOR_DEFAULTS, type EditorState, type HistoryEntry,
@@ -108,6 +108,12 @@ async function main() {
     check("a growth is printed with a sign, not as a negative byte count",
       signedPercent(grew.percent) === "−20%"
       && signedBytes(grew.delta, (b) => `${b} B`) === "−200 B");
+
+    // The badge on a card has no label, so its sign follows the FILE: a photo
+    // that lost half its weight reads −50%, one that gained reads +20%.
+    check("the card badge signs a shrink as negative", sizeDelta(reduction(1000, 500)) === "−50%");
+    check("...a growth as positive", sizeDelta(grew.percent) === "+20%");
+    check("...and an unchanged file as plain zero", sizeDelta(0) === "0%");
   }
 
   console.log("\nC. WATERMARK");

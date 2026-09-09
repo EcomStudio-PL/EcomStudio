@@ -1951,7 +1951,11 @@
     "saved": "Oszczędzono",
     "summary": "Podsumowanie kompresji",
     "reduction": "Redukcja",
-    "lossyNote": "Kompresja jest stratna: im mocniejsza, tym mniejszy plik i mniej szczegółów. Realny wynik dla każdego zdjęcia widzisz niżej."
+    "lossyNote": "Kompresja jest stratna: im mocniejsza, tym mniejszy plik i mniej szczegółów. Realny wynik dla każdego zdjęcia widzisz niżej.",
+    "emptyTitle": "Nie masz jeszcze skompresowanych zdjęć.",
+    "emptyBody": "Dodaj zdjęcia i kliknij „Kompresuj”, aby zmniejszyć ich wielkość, zachowując jakość.",
+    "needPhotos": "Dodaj przynajmniej jedno zdjęcie.",
+    "nothingQueued": "Wszystkie zdjęcia są już skompresowane."
   },
   "hub": {
     "title": "Wszystkie narzędzia",

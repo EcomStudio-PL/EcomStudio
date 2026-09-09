@@ -24,7 +24,7 @@ import {
 } from "@/components/tools/batch-gallery";
 import { createZip, outputName } from "@/lib/images/zip";
 import { cn, formatBytes } from "@/lib/utils";
-import { batchTotals, reduction, signedPercent, signedBytes as withSign } from "@/lib/images/weight";
+import { batchTotals, reduction, signedPercent, sizeDelta, signedBytes as withSign } from "@/lib/images/weight";
 import { acceptFiles, type IntakeLimits } from "@/lib/images/file-intake";
 import { FileDropOverlay, useFileDrop } from "@/components/ui/file-drop";
 
@@ -221,6 +221,19 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
 
   const level = LEVELS.find((l) => l.key === levelKey) ?? LEVELS[1];
 
+  /** The footnote the strength control used to print in full: what lossy means,
+   *  plus the encoder quality this strength genuinely uses. */
+  const strengthNote = `${t("compress.lossyNote")} ${t("tools.opt.quality")}: ${level.quality}.`;
+
+  /**
+   * WHY THE BUTTON IS OFF — one line, in the card where the decision is made,
+   * and silent once there is nothing left to explain.
+   */
+  const status = items.length === 0 ? t("compress.needPhotos")
+    : notEnough ? t("tools.err.insufficient_credits")
+      : pending.length === 0 ? t("compress.nothingQueued")
+        : null;
+
   /**
    * The batch total, over finished photos only. "Before" is the file the
    * seller picked, straight from `File.size`, so the number on screen is the
@@ -402,7 +415,7 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
   return (
     // The action bar floats above the app dock on phones, so the gallery keeps
     // its own room underneath; on desktop the bar returns to the flow.
-    <div className="grid gap-4 pb-36 [&>*]:min-w-0 lg:grid-cols-[21rem_minmax(0,1fr)] lg:gap-5 lg:pb-0">
+    <div className="grid gap-4 pb-36 [&>*]:min-w-0 lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-4 lg:pb-0">
       {/* The tool's whole page is the target — the dashed tile below is a
           convenience, not the only way in. */}
       <FileDropOverlay
@@ -420,34 +433,43 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
         <Panel className="space-y-4 rounded-2xl p-4">
           <div className="min-w-0">
           <GroupLabel>{t("tools.addPhotos", { n: MAX_FILES })}</GroupLabel>
+          {/* A word, a count, and the rule underneath — the same tile the
+              resize screen uses, because it is the same job. Both ways in
+              still work: this is a real <button> that opens the picker, and
+              the whole page is a drop target (see useFileDrop below). */}
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
             className={cn(
-              "flex w-full flex-col items-center gap-1.5 rounded-xl border border-dashed px-4 py-6 transition-colors",
+              "flex w-full flex-col items-center gap-1 rounded-xl border border-dashed px-4 py-5 transition-colors",
               dragging
-                ? "border-[rgb(var(--accent)/0.7)] bg-accent-soft/40 text-accent"
-                : "border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/50 text-faint hover:border-[rgb(var(--accent)/0.55)] hover:text-accent"
+                ? "border-[rgb(var(--accent)/0.7)] bg-accent-soft/30 text-accent"
+                : "border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2.5))] bg-sunken/60 text-muted hover:border-[rgb(var(--accent)/0.55)] hover:text-accent"
             )}
           >
-            <ImagePlus size={22} aria-hidden />
-            <span className="text-[13px] font-semibold">{t("tools.drop")}</span>
-            <span className="text-center text-[11px]">{t("tools.dropHint", { n: MAX_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })}</span>
-            <span className="mt-0.5 text-[11px] font-semibold tabular-nums text-muted">
+            <ImagePlus size={20} aria-hidden />
+            <span className="text-[13px] font-semibold text-ink">{t("tools.import")}</span>
+            <span className="text-[11.5px] font-medium tabular-nums text-muted">
               {items.length} / {MAX_FILES} {t("common.photos")}
+            </span>
+            <span className="text-center text-[10.5px] leading-tight text-faint">
+              {t("tools.dropHint", { n: MAX_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })}
             </span>
           </button>
           </div>
 
           <div className="min-w-0">
-            {/* The encoder quality the chosen strength really uses, on the
-                label — so "Mocna" is a number, not a promise. */}
-            <GroupLabel hint={`${t("tools.opt.quality")} ${level.quality}`}>
+            {/* THREE BUTTONS, NOTHING UNDER THEM. The encoder quality the
+                chosen strength really uses is still available — it moved onto
+                the info icon together with the lossy warning, because a
+                settings rail is not the place for a paragraph and a number
+                nobody asked for. */}
+            <GroupLabel>
               <span className="inline-flex items-center gap-1.5">
                 {t("compress.strength")}
                 <Info size={13} aria-hidden className="text-faint" tabIndex={0}
-                  role="img" aria-label={t("compress.lossyNote")}>
-                  <title>{t("compress.lossyNote")}</title>
+                  role="img" aria-label={strengthNote}>
+                  <title>{strengthNote}</title>
                 </Info>
               </span>
             </GroupLabel>
@@ -465,7 +487,18 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
           </div>
 
           <div className="min-w-0">
-            <GroupLabel>{t("tools.opt.format")}</GroupLabel>
+            <GroupLabel>
+              <span className="inline-flex items-center gap-1.5">
+                {t("tools.opt.format")}
+                {/* The transparency rule was a grey line under the rows. It is
+                    a footnote about two of the four formats, so it lives on
+                    the icon and the rows stay a clean list of names. */}
+                <Info size={13} aria-hidden className="text-faint" tabIndex={0}
+                  role="img" aria-label={t("tools.opt.alphaHint")}>
+                  <title>{t("tools.opt.alphaHint")}</title>
+                </Info>
+              </span>
+            </GroupLabel>
             {/* Rows, not chips: four options in a 21rem rail turned
                 "Bez zmiany formatu" into "Bez z…", which is a control that
                 has stopped saying what it does. Only formats this pipeline
@@ -485,14 +518,24 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
                 meta: f.value === "keep" ? t("tools.opt.keepHint") : undefined,
               }))}
             />
-            <p className="mt-1.5 text-[11px] leading-relaxed text-faint">{t("tools.opt.alphaHint")}</p>
           </div>
         </Panel>
 
+        {/* COST + ACTION — its own card, because it answers a different
+            question from the settings above it: not "how hard", but "what
+            will this cost and shall I run it". */}
         <ActionBar
-          summary={<CostSummary perImage={credits} count={pending.length} enough={!notEnough} />}
+          summary={
+            <div className="min-w-0 flex-1">
+              <CostSummary perImage={credits} count={pending.length} enough={!notEnough} />
+              {status && <p className={cn("mt-2 text-[11.5px] leading-snug",
+                notEnough ? "text-danger" : "text-faint")}>{status}</p>}
+            </div>
+          }
         >
-          <Button className="w-full" size="lg" onClick={() => run()}
+          {/* `size="lg"` ships `w-full sm:w-auto`, which is right for a page
+              CTA and wrong for one in a 20rem rail. */}
+          <Button className="w-full sm:w-full" size="lg" onClick={() => run()}
             disabled={running || pending.length === 0 || notEnough}>
             {running ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <Gauge size={16} aria-hidden />}
             {running ? t("tools.progress", { done: done.length + failed.length, total: items.length }) : t("compress.run")}
@@ -500,24 +543,27 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
         </ActionBar>
       </div>
 
-      {/* THE WORKSPACE — the gallery and its toolbar, the same pair the
-          resize screen uses. */}
-      {items.length === 0 ? (
-        <EmptyState icon={ImagePlus} title={t("tools.noQueue")}
-          body={t("tools.dropHint", { n: MAX_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })} />
-      ) : (
-        <div className="min-w-0 space-y-4">
-          <Panel className="min-w-0 rounded-2xl p-3 sm:p-4">
-            <BatchGalleryToolbar
-              items={cards} view={view} onView={setView} zoom={zoom} onZoom={setZoom}
-              filter={filter} onFilter={setFilter}
-              selecting={selecting}
-              onSelecting={(on) => {
-                setSelecting(on);
-                if (!on) { setSelected(new Set()); setFilter((f) => ({ ...f, selectedOnly: false })); }
-              }}
-            />
+      {/* THE WORKSPACE — the toolbar sits ABOVE the gallery and is there from
+          the first paint: it belongs to the workspace, not to its contents.
+          With an empty queue the controls that act ON photos are disabled
+          rather than hidden. */}
+      <div className="min-w-0 space-y-4">
+        <BatchGalleryToolbar
+          items={cards} view={view} onView={setView} zoom={zoom} onZoom={setZoom}
+          filter={filter} onFilter={setFilter}
+          disabled={items.length === 0}
+          selecting={selecting}
+          onSelecting={(on) => {
+            setSelecting(on);
+            if (!on) { setSelected(new Set()); setFilter((f) => ({ ...f, selectedOnly: false })); }
+          }}
+        />
 
+        {items.length === 0 ? (
+          <EmptyState icon={Gauge} title={t("compress.emptyTitle")} body={t("compress.emptyBody")} />
+        ) : (
+        <>
+          <Panel className="min-w-0 rounded-2xl p-3 sm:p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <p className="overline">{t("tools.queue", { n: items.length })}</p>
               <div className="flex flex-wrap items-center gap-2">
@@ -616,8 +662,9 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
               </div>
             </Panel>
           )}
-        </div>
-      )}
+        </>
+        )}
+      </div>
     </div>
   );
 }
@@ -649,7 +696,7 @@ function WeightRow({ item, untouched }: { item: Item; untouched: string }) {
       </span>
       {same
         ? <Badge tone="neutral" className="px-1.5 py-0">{untouched}</Badge>
-        : <Badge tone={grew ? "accent" : "success"} className="px-1.5 py-0">{signedPercent(percent)}</Badge>}
+        : <Badge tone={grew ? "accent" : "success"} className="px-1.5 py-0">{sizeDelta(percent)}</Badge>}
     </p>
   );
 }

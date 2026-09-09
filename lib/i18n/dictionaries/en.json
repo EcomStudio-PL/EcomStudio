@@ -1951,7 +1951,11 @@
     "saved": "Saved",
     "summary": "Compression summary",
     "reduction": "Reduction",
-    "lossyNote": "Compression is lossy: the stronger it is, the smaller the file and the fewer the details. The real result per photo is listed below."
+    "lossyNote": "Compression is lossy: the stronger it is, the smaller the file and the fewer the details. The real result per photo is listed below.",
+    "emptyTitle": "No compressed photos yet.",
+    "emptyBody": "Add photos and press “Compress” to make them smaller while keeping their quality.",
+    "needPhotos": "Add at least one photo.",
+    "nothingQueued": "Every photo has been compressed already."
   },
   "hub": {
     "title": "All tools",

@@ -40,7 +40,11 @@ export default async function CompressPage() {
     ?? { slug: "compress" as const, kind: "local" as const, available: false, credits: 0, providerLabel: null, reason: "maintenance" as const };
 
   return (
-    <div>
+    // The same workspace ground the resize screen, the generator and the
+    // editor stand on: inside it every surface resolves to the flat near-black
+    // `--workspace-*` ramp, so the violet glass wash is gone and magenta is
+    // left where it means something.
+    <div className="workspace workspace-page">
       {/* No title bar — the same reason the resize screen lost its: the row
           repeated the menu, the panel and the button. The price lives on the
           cost card, next to the decision it belongs to. */}

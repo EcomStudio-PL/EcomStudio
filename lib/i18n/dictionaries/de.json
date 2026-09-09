@@ -1951,7 +1951,11 @@
     "saved": "Gespart",
     "summary": "Zusammenfassung der Kompression",
     "reduction": "Reduktion",
-    "lossyNote": "Kompression ist verlustbehaftet: je stärker, desto kleiner die Datei und desto weniger Details. Das echte Ergebnis pro Foto steht unten."
+    "lossyNote": "Kompression ist verlustbehaftet: je stärker, desto kleiner die Datei und desto weniger Details. Das echte Ergebnis pro Foto steht unten.",
+    "emptyTitle": "Noch keine komprimierten Fotos.",
+    "emptyBody": "Fotos hinzufügen und „Komprimieren“ drücken, um sie bei gleicher Qualität zu verkleinern.",
+    "needPhotos": "Füge mindestens ein Foto hinzu.",
+    "nothingQueued": "Alle Fotos sind bereits komprimiert."
   },
   "hub": {
     "title": "Alle Werkzeuge",

@@ -288,7 +288,14 @@ export function BatchGrid({
             )}
             <Thumb item={item} className="h-14 w-14" />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-semibold">{item.name}</p>
+              <p className="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold">
+                {/* The state, next to the name. A row is the compact view, and
+                    a compact view that cannot say whether a file is done is
+                    missing the one thing a queue is watched for; the grid has
+                    carried this mark over its thumbnail all along. */}
+                <StatusMark status={item.status} />
+                <span className="truncate">{item.name}</span>
+              </p>
               {item.status === "error" && item.errorText
                 ? <p className="truncate text-[11px] text-danger">{item.errorText}</p>
                 : meta(item.id)}

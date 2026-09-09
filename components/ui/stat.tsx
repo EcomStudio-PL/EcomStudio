@@ -49,7 +49,10 @@ export function Stat({ label, value, hint, icon: Icon, tone, meter, meterClass, 
     <>
       <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">{label}</p>
+          {/* The label WRAPS. In a two-up grid on a phone "Oszczędzono" was
+              clipped to "Oszczędzo…", which is a heading that has stopped
+              naming its number; the value below it still truncates. */}
+          <p className="text-[10px] font-semibold uppercase leading-tight tracking-[0.14em] text-faint">{label}</p>
           <p className={cn("metric mt-1.5 truncate text-[clamp(1.45rem,1.15rem+0.75vw,2rem)] leading-none", toneText)}>
             {value}
           </p>
