@@ -2007,7 +2007,7 @@
   },
   "topnav": {
     "home": "Strona główna",
-    "image": "Obraz",
+    "image": "Obrazy",
     "video": "Wideo",
     "library": "Biblioteka",
     "primary": "Nawigacja główna",
@@ -2022,7 +2022,17 @@
     "custom": "Własny prompt",
     "allTools": "Wszystkie narzędzia",
     "videoSoon": "Generowanie wideo jest w przygotowaniu — architektura już na nie czeka.",
-    "customSub": "Opisz obraz własnymi słowami"
+    "customSub": "Opisz obraz własnymi słowami",
+    "createImage": "Utwórz obraz",
+    "sub.retouch": "Zamień zdjęcie w packshot na białym tle",
+    "sub.editor": "Kadr, tło, cień i kolory w jednym oknie",
+    "sub.resize": "Przeskaluj wiele zdjęć naraz",
+    "sub.compress": "Zmniejsz wagę, zachowując jakość",
+    "sub.allTools": "Pełny zestaw narzędzi do zdjęć",
+    "promoTag": "Nowość",
+    "promoTitle": "Nowy warsztat zdjęć",
+    "promoBody": "Zmiana rozmiaru i Kompresja mają wspólną galerię wsadową: podgląd, filtry i realne rozmiary plików.",
+    "promoCta": "Zobacz narzędzia"
   },
   "cats": {
     "moda": "Moda",

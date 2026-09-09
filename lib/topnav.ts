@@ -55,34 +55,38 @@ export const IMAGE_CREATE: readonly MegaEntry[] = [
 ];
 
 /**
- * The two buttons under the create column: the guided generator, and the way
- * out to everything else.
- *
- * "Wszystkie narzędzia" is HERE and nowhere else. It used to be the last row
- * of the EDYTUJ list as well, so the same destination appeared twice in one
- * panel — once as a peer of Kompresja, once as a footer. A hub is not a peer
- * of the tools it lists.
+ * The two buttons under the create column: make an image, or go to the whole
+ * toolbox. Both are destinations the panel already contains — the second is
+ * the same `/tools` hub the EDYTUJ column ends with, kept in both places on
+ * request, because a seller who came for "the other tools" looks either at the
+ * bottom of the panel or at the end of the list, not reliably at both.
  */
 export const IMAGE_MODES: readonly MegaEntry[] = [
-  { key: "engine", href: "/prompts", icon: Sparkles },
+  // The CTA says what pressing it DOES — "Utwórz obraz" — while the ready
+  // generator keeps its own name (`mega.engine`) everywhere it is named as a
+  // feature: the admin registry, the home screen's continue button, the mode
+  // switch inside the generator itself.
+  { key: "engine", href: "/prompts", icon: Sparkles, labelKey: "mega.createImage" },
   { key: "allTools", href: "/tools", icon: Wrench, labelKey: "nav.allTools" },
 ] as const;
 
 /**
- * EDYTUJ — four destinations, not one row per dial.
+ * EDYTUJ — five destinations, not one row per dial.
  *
  * The menu used to list ten entries because every operation had a page of its
  * own. Background, white background, shadow and format are now sections of the
  * editor or of the resize screen, so listing them here would be a table of
  * contents for pages that no longer exist. What stays is the four places a
- * photo can actually be taken to; the hub for everything else is the button
- * under the create column, once.
+ * photo can actually be taken to, and then the hub that holds the rest.
  */
 export const IMAGE_EDIT: readonly MegaEntry[] = [
-  { key: "retouch", href: "/retusz", icon: WandSparkles },
-  { key: "editor", href: "/tools/editor", icon: SlidersHorizontal, labelKey: "nav.editor" },
-  { key: "resize", href: "/tools/resize", icon: Scaling, labelKey: "nav.resize" },
-  { key: "compress", href: "/tools/compress", icon: Gauge },
+  { key: "retouch", href: "/retusz", icon: WandSparkles, subKey: "mega.sub.retouch" },
+  { key: "editor", href: "/tools/editor", icon: SlidersHorizontal, labelKey: "nav.editor", subKey: "mega.sub.editor" },
+  { key: "resize", href: "/tools/resize", icon: Scaling, labelKey: "nav.resize", subKey: "mega.sub.resize" },
+  { key: "compress", href: "/tools/compress", icon: Gauge, subKey: "mega.sub.compress" },
+  // The hub is the last row of the column, not a footer: it is where the four
+  // above stop and everything else begins.
+  { key: "allTools", href: "/tools", icon: Wrench, labelKey: "nav.allTools", subKey: "mega.sub.allTools" },
 ] as const;
 
 /**

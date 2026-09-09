@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, Images, Menu } from "lucide-react";
+import { ChevronDown, Images, Menu, Sparkles } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import {
   IMAGE_CREATE, IMAGE_EDIT, IMAGE_MODES, VIDEO_CREATE, VIDEO_EDIT, editLabelKey, type MegaEntry,
@@ -19,7 +19,7 @@ import { NotificationsBell, type NotificationItem } from "./notifications-bell";
 
 /**
  * MEGA TOPBAR — the customer app's ONLY chrome. Left to right:
- * logo · Obraz ▾ · Wideo ▾ · search … Plany · credits · Biblioteka ·
+ * logo · Obrazy ▾ · Wideo ▾ · search … Plany · credits · Biblioteka ·
  * theme · bell · avatar ▾.
  *
  * The plan TIER is still absent from the bar — "Plany" is a destination, not
@@ -200,9 +200,17 @@ function MegaPanel({ which, t, avail, isAdmin }: {
   const sub = (e: MegaEntry) =>
     e.subKey ? t(e.subKey) : which === "image" ? t(`cats.${e.key}Sub`) : t(`video.wf.${e.key}.sub`);
 
+  /** The panel's third column: one card, and only on the image menu — the
+   *  video menu has nothing shipped to advertise. */
+  const promo = which === "image" && menuVisible(avail, PROMO_HREF, isAdmin);
+
   return (
-    <div role="menu" className="overlay animate-pop w-[min(56rem,calc(100vw-3rem))] rounded-2xl p-5 shadow-e4">
-      <div className="grid gap-6 md:grid-cols-[1.4fr_1fr]">
+    <div role="menu" className={cn(
+      "overlay animate-pop rounded-2xl p-5 shadow-e4",
+      promo ? "w-[min(66rem,calc(100vw-3rem))]" : "w-[min(56rem,calc(100vw-3rem))]",
+    )}>
+      <div className={cn("grid gap-6",
+        promo ? "md:grid-cols-[1.25fr_1fr_0.8fr]" : "md:grid-cols-[1.4fr_1fr]")}>
         <section>
           {/* No "TWÓRZ" heading. The column IS the creating half of the panel,
               the tiles say what they make, and a word above them was one more
@@ -237,7 +245,11 @@ function MegaPanel({ which, t, avail, isAdmin }: {
             {edit.map((e) => (
               <MegaLink key={e.key} entry={e}
                 label={which === "image" ? t(editLabelKey(e)) : t(`video.wf.${e.key}.name`)}
-                soonLabel={t("common.soon")} compact
+                // The right column names what each destination DOES, the same
+                // way the left one does. Four bare labels in a panel this size
+                // read as a list of settings, not as places to go.
+                sub={which === "image" ? (e.subKey ? t(e.subKey) : undefined) : t(`video.wf.${e.key}.sub`)}
+                soonLabel={t("common.soon")}
                 dynBadge={dynBadgeLabel(menuBadge(avail, e.href), t)} />
             ))}
             {which === "video" && (
@@ -245,6 +257,8 @@ function MegaPanel({ which, t, avail, isAdmin }: {
             )}
           </div>
         </section>
+
+        {promo && <PromoCard t={t} />}
       </div>
 
       <div className="mt-4 flex items-center justify-between border-t border-line pt-3">
@@ -261,6 +275,52 @@ function MegaPanel({ which, t, avail, isAdmin }: {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * THE "NOWOŚĆ" CARD — one tile in the panel's third column.
+ *
+ * It is a PRESENTATION component and nothing else: no feed, no CMS row, no
+ * flag. What it points at is a page that already exists, and what it says is
+ * something that already shipped — the batch workshop the resize and
+ * compression screens now share. When the next thing ships, the two lines of
+ * copy live in `mega.promo*` in the three dictionaries and the destination is
+ * the constant below; there is no third place to look.
+ *
+ * It is NOT rendered when the hub it links to is switched off in the feature
+ * registry — advertising a door an admin has closed is worse than silence.
+ */
+const PROMO_HREF = "/tools";
+
+function PromoCard({ t }: { t: (k: string) => string }) {
+  return (
+    <section className="hidden md:block">
+      <Link href={PROMO_HREF}
+        className="snake group flex h-full flex-col rounded-2xl border border-line bg-[rgb(var(--ink)/0.035)] p-4 transition-colors duration-200 hover:bg-[rgb(var(--ink)/0.06)]">
+        {/* Decorative plate, not a screenshot: a promise made of brand light
+            rather than a picture of a screen that will change next week. */}
+        <span aria-hidden
+          className="mb-3.5 flex h-24 items-center justify-center rounded-xl"
+          style={{
+            background:
+              "radial-gradient(14rem 8rem at 30% 0%, rgb(var(--accent) / 0.30), transparent 70%),"
+              + "radial-gradient(12rem 8rem at 100% 100%, rgb(var(--violet) / 0.26), transparent 70%),"
+              + "rgb(var(--ink) / 0.05)",
+          }}>
+          <Sparkles size={26} className="text-accent transition-transform duration-300 group-hover:scale-110" />
+        </span>
+        <span className="mb-1.5 inline-flex w-fit rounded-full bg-accent-soft px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.08em] text-accent">
+          {t("mega.promoTag")}
+        </span>
+        <span className="text-sm font-semibold text-ink">{t("mega.promoTitle")}</span>
+        <span className="mt-1 text-[11.5px] leading-relaxed text-faint">{t("mega.promoBody")}</span>
+        <span className="mt-3 inline-flex h-8 w-fit items-center gap-1.5 rounded-lg bg-[rgb(var(--ink)/0.07)] px-3 text-[12px] font-semibold text-ink transition-colors duration-200 group-hover:bg-[rgb(var(--accent)/0.16)] group-hover:text-accent">
+          <Sparkles size={13} aria-hidden />
+          {t("mega.promoCta")}
+        </span>
+      </Link>
+    </section>
   );
 }
 
@@ -326,7 +386,11 @@ function MegaLink({ entry, label, sub, soonLabel, compact, dynBadge }: {
             </span>
           )}
         </span>
-        {sub && <span className="mt-0.5 block truncate text-[11px] text-faint">{sub}</span>}
+        {/* The one-liner WRAPS to a second line instead of truncating: at this
+            column width "Zdjęcia modeli, przedmiotów i s…" stops describing
+            the tile it belongs to. Two lines is the cap — past that it is not
+            a one-liner any more. */}
+        {sub && <span className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-faint">{sub}</span>}
       </span>
     </>
   );

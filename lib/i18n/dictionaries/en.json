@@ -2007,7 +2007,7 @@
   },
   "topnav": {
     "home": "Home",
-    "image": "Image",
+    "image": "Images",
     "video": "Video",
     "library": "Library",
     "primary": "Primary navigation",
@@ -2022,7 +2022,17 @@
     "custom": "Own prompt",
     "allTools": "All tools",
     "videoSoon": "Video generation is in the works — the architecture is already waiting for it.",
-    "customSub": "Describe the image in your own words"
+    "customSub": "Describe the image in your own words",
+    "createImage": "Create an image",
+    "sub.retouch": "Turn a photo into a packshot on white",
+    "sub.editor": "Crop, background, shadow and colour in one window",
+    "sub.resize": "Rescale a whole shoot at once",
+    "sub.compress": "Cut the weight, keep the quality",
+    "sub.allTools": "The full photo toolbox",
+    "promoTag": "New",
+    "promoTitle": "A new photo workshop",
+    "promoBody": "Resize and Compression now share one batch gallery: previews, filters and real file sizes.",
+    "promoCta": "See the tools"
   },
   "cats": {
     "moda": "Fashion",
