@@ -120,6 +120,76 @@ export function CostSummary({ perImage, count, enough }: {
   );
 }
 
+/**
+ * THE ACTION ISLAND — the second physical part of the left column.
+ *
+ * Same shape as the generator's (`components/genv3/sections.tsx`): two figures
+ * centred in their own half with one hairline between them, the line that says
+ * why the button is off underneath, and a full-width CTA at the bottom. The
+ * batch tools were drawing a wider, looser version of the same idea, which is
+ * how two screens of one product ended up looking like two products.
+ *
+ * It is a SIBLING of the scrolling body, never anything inside it, so the cost
+ * and the button cannot scroll away; `lg:shrink-0` is what guarantees that when
+ * the viewport gets short the body shrinks and the island does not. On a phone
+ * it is the floating dock it always was, above the app's bottom navigation.
+ */
+export function CostIsland({ perImage, count, enough, status, children }: {
+  perImage: number;
+  count: number;
+  enough: boolean;
+  /** Why the button is off — or null once there is nothing to explain. */
+  status?: string | null;
+  /** The CTA itself: each tool names its own action. */
+  children: React.ReactNode;
+}) {
+  const { t } = useI18n();
+  const total = perImage * count;
+  return (
+    <div className={cn(
+      // `!fixed` because `.panel` carries `position: relative` of its own and
+      // wins on source order: without the override the island stopped docking
+      // on a phone and rode the settings column down out of reach.
+      "panel !fixed inset-x-3 bottom-[calc(var(--dock-h)+0.5rem+env(safe-area-inset-bottom))] z-30 rounded-2xl px-4 py-3 shadow-e4",
+      "lg:!static lg:inset-auto lg:z-20 lg:shrink-0 lg:shadow-e2",
+    )}>
+      <div className="grid grid-cols-2 divide-x divide-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.4))]">
+        <IslandFigure label={t("tools.costPerImage")}
+          value={perImage === 0 ? t("tools.free") : t("tools.creditsTotal", { n: perImage })}
+          tone={perImage === 0 ? "free" : "accent"} />
+        <IslandFigure label={t("tools.costTotal")}
+          value={t("tools.creditsTotal", { n: total })}
+          tone={!enough ? "danger" : total === 0 ? "muted" : "accent"} />
+      </div>
+      {status && (
+        <p className={cn("mt-2 text-center text-[11px] leading-snug",
+          enough ? "text-muted" : "text-danger")}>
+          {status}
+        </p>
+      )}
+      <div className="mt-2.5">{children}</div>
+    </div>
+  );
+}
+
+function IslandFigure({ label, value, tone }: {
+  label: string; value: string; tone: "accent" | "free" | "danger" | "muted";
+}) {
+  return (
+    <div className="min-w-0 px-2 text-center">
+      {/* The label WRAPS — "Koszt 1 zdjęcia" truncated in a half-column is a
+          heading that has stopped naming its number. */}
+      <p className="text-[10px] font-medium leading-tight text-faint">{label}</p>
+      <p className={cn("metric mt-0.5 truncate text-[14px] leading-tight",
+        tone === "danger" ? "text-danger"
+          : tone === "free" ? "text-success"
+            : tone === "muted" ? "text-muted" : "text-accent")}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
 function Figure({ label, value, tone }: {
   label: string; value: string; tone?: "danger" | "free";
 }) {

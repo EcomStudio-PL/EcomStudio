@@ -44,7 +44,7 @@ export default async function CompressPage() {
     // editor stand on: inside it every surface resolves to the flat near-black
     // `--workspace-*` ramp, so the violet glass wash is gone and magenta is
     // left where it means something.
-    <div className="workspace workspace-page">
+    <div className="workspace workspace-page gen-shell pt-1">
       {/* No title bar — the same reason the resize screen lost its: the row
           repeated the menu, the panel and the button. The price lives on the
           cost card, next to the decision it belongs to. */}

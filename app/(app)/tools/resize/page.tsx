@@ -41,7 +41,7 @@ export default async function ResizePage() {
     // near-black ramp (`--workspace-*`), so this screen loses the violet glass
     // wash without a single page-local colour: magenta survives where it means
     // something — the chosen resolution, focus, the CTA.
-    <div className="workspace workspace-page">
+    <div className="workspace workspace-page gen-shell pt-1">
       {/*
         No title bar. "Narzędzia → Zmiana rozmiaru → Za darmo → Przeskaluj
         wiele zdjęć naraz" was a row that repeated what the menu, the panel

@@ -8,14 +8,13 @@ import {
 import { useI18n } from "@/lib/i18n/provider";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/surface";
-import { ActionBar } from "@/components/ui/action-bar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label } from "@/components/ui/input";
 import {
   ACCEPTED_MIME, DEFAULT_SETTINGS, MAX_UPLOAD_BYTES,
   type OutputFormatOption, type ToolSettings, type ToolSlug,
 } from "@/lib/images/tools";
-import { CostSummary, GroupLabel, RadioRows } from "@/components/tools/panel-parts";
+import { CostIsland, GroupLabel, RadioRows } from "@/components/tools/panel-parts";
 import {
   BatchGalleryToolbar, BatchGrid, DEFAULT_BATCH_FILTER, DEFAULT_ZOOM,
   applyBatchFilter, type BatchFilter, type BatchItem,
@@ -389,7 +388,16 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
   return (
     // The action bar floats above the app dock on phones, so the gallery keeps
     // its own room underneath; on desktop the bar returns to the flow.
-    <div className="grid gap-4 pb-36 [&>*]:min-w-0 lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-4 lg:pb-0">
+    <div className={cn(
+      // THE ENGINE'S FRAME, not a document. `gen-shell-body` makes this the one
+      // growing child of the page shell, so on a desktop the height is whatever
+      // the viewport has left under the topbar and each column scrolls inside
+      // itself — the same arrangement, and the same column widths, the
+      // generator uses. Below `lg` none of it applies and the page scrolls
+      // normally, with the island floating above the app dock.
+      "gen-shell-body relative grid min-w-0 items-start gap-4 pb-36 [&>*]:min-w-0",
+      "lg:grid-cols-[clamp(420px,29vw,470px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0",
+    )}>
       {/* The tool's whole page is the target — the dashed tile below is a
           convenience, not the only way in. */}
       <FileDropOverlay
@@ -398,9 +406,9 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
         title={t("tools.dropManyTitle")}
         sub={t("tools.dropHint", { n: MAX_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })}
       />
-      {/* SETTINGS — first in the DOM, so a phone gets the dials before the
-          gallery and a desktop gets a rail that stays put while it scrolls. */}
-      <div className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
+      {/* LEFT COLUMN — a bounded scrolling body and an island that is its
+          SIBLING, so the cost and the CTA never scroll away. */}
+      <div className="flex min-w-0 flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-y-auto">
         <input ref={inputRef} type="file" multiple accept={ACCEPTED_MIME.join(",")} className="hidden"
           onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
         {/* The import box wears its own heading, so the cap is a stated rule
@@ -408,7 +416,7 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
         {/* ONE CARD: what goes in, and how big it comes out. The import tile
             and the resolution rows were two panels with a gap between them,
             which read as two unrelated decisions — they are one. */}
-        <Panel className="space-y-4 rounded-2xl p-4">
+        <Panel className="thin-scroll min-h-0 flex-1 space-y-4 overflow-y-auto rounded-2xl p-4 sm:p-5 lg:pb-6">
           <div className="min-w-0">
           <GroupLabel>{t("tools.addPhotos", { n: MAX_FILES })}</GroupLabel>
           {/* THE IMPORT TILE — a word, a count, and the rule underneath.
@@ -496,28 +504,16 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
           )}
         </Panel>
 
-        {/* COST + ACTION — its own card under the settings, because it answers
-            a different question: not "what do I want", but "what will this
-            cost and shall I run it". The line under the figures says why the
-            button is off, instead of leaving a grey button to be guessed at. */}
-        <ActionBar
-          summary={
-            <div className="min-w-0 flex-1">
-              <CostSummary perImage={credits} count={pending.length} enough={!notEnough} />
-              {status && <p className={cn("mt-2 text-[11.5px] leading-snug",
-                notEnough ? "text-danger" : "text-faint")}>{status}</p>}
-            </div>
-          }
-        >
-          {/* `size="lg"` carries `w-full sm:w-auto`, which is right for a page
-              CTA and wrong for one living in a 20rem rail — on a desktop the
-              button shrank to the width of its own label. */}
-          <Button className="w-full sm:w-full" size="lg" onClick={() => run()}
-            disabled={running || pending.length === 0 || notEnough || !hasTarget}>
-            {running ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <Maximize2 size={16} aria-hidden />}
+        {/* COST + ACTION — the island, in the shape the generator's uses. */}
+        <CostIsland perImage={credits} count={pending.length} enough={!notEnough} status={status}>
+          <button type="button" onClick={() => run()}
+            disabled={running || pending.length === 0 || notEnough || !hasTarget}
+            className={cn("cta flex h-10 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
+              (running || pending.length === 0 || notEnough || !hasTarget) && "cursor-not-allowed opacity-55")}>
+            {running ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Maximize2 size={14} aria-hidden />}
             {running ? t("tools.progress", { done: done.length + failed.length, total: items.length }) : t("resize.run")}
-          </Button>
-        </ActionBar>
+          </button>
+        </CostIsland>
       </div>
 
       {/* THE WORKSPACE — the toolbar sits ABOVE the gallery, on the page
@@ -527,7 +523,7 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
           not to its contents. With an empty queue they are disabled, not
           hidden — a control that moves nothing is worse than one that says
           so. */}
-      <div className="min-w-0">
+      <div className="thin-scroll min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pb-4 lg:pr-1">
         <BatchGalleryToolbar
           items={cards} view={view} onView={setView} zoom={zoom} onZoom={setZoom}
           filter={filter} onFilter={setFilter}

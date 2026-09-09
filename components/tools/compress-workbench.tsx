@@ -10,14 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/surface";
 import { Badge } from "@/components/ui/badge";
 import { Stat } from "@/components/ui/stat";
-import { ActionBar } from "@/components/ui/action-bar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Segmented } from "@/components/ui/segmented";
 import {
   ACCEPTED_MIME, DEFAULT_SETTINGS, MAX_UPLOAD_BYTES,
   type CompressionLevel, type ToolSettings, type ToolSlug,
 } from "@/lib/images/tools";
-import { CostSummary, GroupLabel, RadioRows } from "@/components/tools/panel-parts";
+import { CostIsland, GroupLabel, RadioRows } from "@/components/tools/panel-parts";
 import {
   BatchGalleryToolbar, BatchGrid, DEFAULT_BATCH_FILTER, DEFAULT_ZOOM,
   applyBatchFilter, type BatchFilter, type BatchItem,
@@ -415,7 +414,16 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
   return (
     // The action bar floats above the app dock on phones, so the gallery keeps
     // its own room underneath; on desktop the bar returns to the flow.
-    <div className="grid gap-4 pb-36 [&>*]:min-w-0 lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-4 lg:pb-0">
+    <div className={cn(
+      // THE ENGINE'S FRAME, not a document. `gen-shell-body` makes this the one
+      // growing child of the page shell, so on a desktop the height is whatever
+      // the viewport has left under the topbar and each column scrolls inside
+      // itself — the same arrangement, and the same column widths, the
+      // generator uses. Below `lg` none of it applies and the page scrolls
+      // normally, with the island floating above the app dock.
+      "gen-shell-body relative grid min-w-0 items-start gap-4 pb-36 [&>*]:min-w-0",
+      "lg:grid-cols-[clamp(420px,29vw,470px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0",
+    )}>
       {/* The tool's whole page is the target — the dashed tile below is a
           convenience, not the only way in. */}
       <FileDropOverlay
@@ -424,13 +432,13 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
         title={t("tools.dropCompressTitle")}
         sub={t("tools.dropHint", { n: MAX_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })}
       />
-      {/* SETTINGS — first in the DOM, so a phone gets the dials before the
-          gallery and a desktop gets a rail that stays put while it scrolls. */}
-      <div className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
+      {/* LEFT COLUMN — a bounded scrolling body and an island that is its
+          SIBLING, so the cost and the CTA never scroll away. */}
+      <div className="flex min-w-0 flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-y-auto">
         <input ref={inputRef} type="file" multiple accept={ACCEPTED_MIME.join(",")} className="hidden"
           onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
         {/* ONE CARD: what goes in, and how hard it is squeezed. */}
-        <Panel className="space-y-4 rounded-2xl p-4">
+        <Panel className="thin-scroll min-h-0 flex-1 space-y-4 overflow-y-auto rounded-2xl p-4 sm:p-5 lg:pb-6">
           <div className="min-w-0">
           <GroupLabel>{t("tools.addPhotos", { n: MAX_FILES })}</GroupLabel>
           {/* A word, a count, and the rule underneath — the same tile the
@@ -521,33 +529,23 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
           </div>
         </Panel>
 
-        {/* COST + ACTION — its own card, because it answers a different
-            question from the settings above it: not "how hard", but "what
-            will this cost and shall I run it". */}
-        <ActionBar
-          summary={
-            <div className="min-w-0 flex-1">
-              <CostSummary perImage={credits} count={pending.length} enough={!notEnough} />
-              {status && <p className={cn("mt-2 text-[11.5px] leading-snug",
-                notEnough ? "text-danger" : "text-faint")}>{status}</p>}
-            </div>
-          }
-        >
-          {/* `size="lg"` ships `w-full sm:w-auto`, which is right for a page
-              CTA and wrong for one in a 20rem rail. */}
-          <Button className="w-full sm:w-full" size="lg" onClick={() => run()}
-            disabled={running || pending.length === 0 || notEnough}>
-            {running ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <Gauge size={16} aria-hidden />}
+        {/* COST + ACTION — the island, in the shape the generator's uses. */}
+        <CostIsland perImage={credits} count={pending.length} enough={!notEnough} status={status}>
+          <button type="button" onClick={() => run()}
+            disabled={running || pending.length === 0 || notEnough}
+            className={cn("cta flex h-10 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-semibold",
+              (running || pending.length === 0 || notEnough) && "cursor-not-allowed opacity-55")}>
+            {running ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Gauge size={14} aria-hidden />}
             {running ? t("tools.progress", { done: done.length + failed.length, total: items.length }) : t("compress.run")}
-          </Button>
-        </ActionBar>
+          </button>
+        </CostIsland>
       </div>
 
       {/* THE WORKSPACE — the toolbar sits ABOVE the gallery and is there from
           the first paint: it belongs to the workspace, not to its contents.
           With an empty queue the controls that act ON photos are disabled
           rather than hidden. */}
-      <div className="min-w-0 space-y-4">
+      <div className="thin-scroll min-w-0 space-y-4 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pb-4 lg:pr-1">
         <BatchGalleryToolbar
           items={cards} view={view} onView={setView} zoom={zoom} onZoom={setZoom}
           filter={filter} onFilter={setFilter}
