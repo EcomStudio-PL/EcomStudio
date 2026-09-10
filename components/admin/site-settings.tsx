@@ -18,10 +18,12 @@ import type { HomepageMode } from "@/lib/server/launch-page";
  * of the page list because that is where an admin looks for them — the old
  * build gave the homepage switch a menu entry of its own.
  */
-export function SiteSettings({ mode, instagramUrl, facebookUrl }: {
+export function SiteSettings({ mode, instagramUrl, facebookUrl, linkedinUrl, xUrl }: {
   mode: HomepageMode;
   instagramUrl: string;
   facebookUrl: string;
+  linkedinUrl: string;
+  xUrl: string;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -29,6 +31,8 @@ export function SiteSettings({ mode, instagramUrl, facebookUrl }: {
   const [current, setCurrent] = useState<HomepageMode>(mode);
   const [instagram, setInstagram] = useState(instagramUrl);
   const [facebook, setFacebook] = useState(facebookUrl);
+  const [linkedin, setLinkedin] = useState(linkedinUrl);
+  const [x, setX] = useState(xUrl);
 
   function choose(next: HomepageMode) {
     if (next === current || pending) return;
@@ -41,7 +45,9 @@ export function SiteSettings({ mode, instagramUrl, facebookUrl }: {
 
   function saveSocial() {
     start(async () => {
-      const res = await savePublicSiteAction({ instagramUrl: instagram, facebookUrl: facebook });
+      const res = await savePublicSiteAction({
+        instagramUrl: instagram, facebookUrl: facebook, linkedinUrl: linkedin, xUrl: x,
+      });
       if (res.ok) { toast.success(t("common.saved")); router.refresh(); }
       else toast.error(res.error === "invalid_url" ? t("cms.invalidUrl") : t("common.error"));
     });
@@ -101,6 +107,16 @@ export function SiteSettings({ mode, instagramUrl, facebookUrl }: {
             <Label htmlFor="social-fb">{t("cms.facebookUrl")}</Label>
             <Input id="social-fb" inputMode="url" placeholder="https://facebook.com/…"
               value={facebook} onChange={(e) => setFacebook(e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="social-li">{t("cms.linkedinUrl")}</Label>
+            <Input id="social-li" inputMode="url" placeholder="https://linkedin.com/company/…"
+              value={linkedin} onChange={(e) => setLinkedin(e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="social-x">{t("cms.xUrl")}</Label>
+            <Input id="social-x" inputMode="url" placeholder="https://x.com/…"
+              value={x} onChange={(e) => setX(e.target.value)} />
           </div>
           <p className="text-[11.5px] text-faint sm:col-span-2">{t("cms.socialHint")}</p>
           <div className="sm:col-span-2">

@@ -37,7 +37,8 @@ export default async function AdminWww() {
         sub={t("cms.pagesSub")}
       />
 
-      <SiteSettings mode={mode} instagramUrl={site.instagramUrl} facebookUrl={site.facebookUrl} />
+      <SiteSettings mode={mode} instagramUrl={site.instagramUrl} facebookUrl={site.facebookUrl}
+        linkedinUrl={site.linkedinUrl} xUrl={site.xUrl} />
 
       <ul className="space-y-2" data-page-list>
         {(pages ?? []).map((p) => {

@@ -10,7 +10,12 @@ import type { CmsBlock, CmsBlockContent } from "@/lib/cms";
  * That rule lives here so no route can accidentally read the wrong column.
  */
 
-export type PublicSite = { instagramUrl: string; facebookUrl: string };
+export type PublicSite = {
+  instagramUrl: string;
+  facebookUrl: string;
+  linkedinUrl: string;
+  xUrl: string;
+};
 
 const httpsOnly = (value: unknown): string => {
   if (typeof value !== "string" || !value.trim()) return "";
@@ -29,6 +34,8 @@ export async function getPublicSite(supabase: Client): Promise<PublicSite> {
   return {
     instagramUrl: httpsOnly(v.instagram_url),
     facebookUrl: httpsOnly(v.facebook_url),
+    linkedinUrl: httpsOnly(v.linkedin_url),
+    xUrl: httpsOnly(v.x_url),
   };
 }
 

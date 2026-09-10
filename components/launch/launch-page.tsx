@@ -1,27 +1,39 @@
 import Link from "next/link";
+import Image from "next/image";
 import { AuthLink } from "@/components/auth/auth-link";
-import { Camera, Check, Lock, ShoppingBag } from "lucide-react";
+import { BarChart3, Gift, Percent, Sparkles, Zap } from "lucide-react";
 import { Brand } from "@/components/layout/brand";
-import { ThemeToggle } from "@/components/layout/theme-toggle";
-import { LocaleSwitcher } from "@/components/layout/locale-switcher";
 import { WaitlistForm } from "@/components/launch/waitlist-form";
+import { FacebookIcon, InstagramIcon, LinkedinIcon, XIcon } from "@/components/launch/social-icons";
+import { cn } from "@/lib/utils";
 import type { LaunchField } from "@/lib/server/launch-page";
 import type { WaitlistFieldConfig } from "@/lib/server/registration-config";
 
 /**
- * PREMIERA GROVBASE — the pre-launch front door.
+ * PREMIERA GROVBASE — the pre-launch front door, in ONE screen.
  *
- * Four sections and nothing else: what it is, why it is worth an address,
- * how it works, and one more chance to leave that address. Every line comes
- * from `content`, which the admin edits and which falls back to the shipped
- * translation, so this file holds layout and no copy.
+ * The page used to scroll through four marketing sections. It does not any
+ * more: everything that earns an address — what this is, what you get, and
+ * the field you type into — sits above the fold, with the artwork bleeding off
+ * the right edge behind it. A visitor who has to scroll to find the form is a
+ * visitor who does not fill it in.
  *
- * It uses the product's own tokens (panel, cta, accent, line) rather than a
- * separate marketing palette, so dark and light are both correct by
- * construction and the page cannot drift from the app it is announcing.
+ * Every line still comes from `content`, which the admin edits in
+ * /admin/www/premiera and which falls back to the shipped translation, so this
+ * file holds layout and no copy.
+ *
+ * The page is dark at every theme setting (see `[data-launch-page]` in
+ * globals.css). The artwork is a lit scene on near-black; a light palette
+ * behind it would put white panels next to a black photograph.
  */
+
+/** Icons for the three proof chips, in the order the copy fields are read. */
+const FEATURE_ICONS = [Zap, Sparkles, BarChart3] as const;
+/** Icons for the three sign-up perks. */
+const PERK_ICONS = [Gift, Percent, Gift] as const;
+
 export function LaunchPage({
-  content, signedIn, loginLabel, privacyNote, privacyLinkLabel, privacyLabel, termsLabel, social,
+  content, signedIn, loginLabel, privacyLabel, termsLabel, rightsLabel, social,
   waitlistFields, showAuthEntry,
 }: {
   content: Record<LaunchField, string>;
@@ -31,231 +43,220 @@ export function LaunchPage({
    *  entry point is not what closes the door — the routes do that. Someone
    *  already signed in always keeps their way back into the app. */
   showAuthEntry: boolean;
-  /** The lead-in of the consent line; the link text follows it. */
-  privacyNote: string;
-  privacyLinkLabel: string;
   privacyLabel: string;
   termsLabel: string;
+  rightsLabel: string;
   /** Social profiles from the site settings; empty URLs render nothing. */
-  social: { instagramUrl: string; facebookUrl: string };
+  social: { instagramUrl: string; facebookUrl: string; linkedinUrl: string; xUrl: string };
   /** Which name/phone fields the signup form asks for, from
-   *  /admin/settings/registration. Both copies of the form get the same
-   *  answer — one page cannot ask two different questions. */
+   *  /admin/settings/registration. */
   waitlistFields: WaitlistFieldConfig;
 }) {
   const c = content;
-  // What someone gets for leaving an address, said in three words each.
-  const perks = [c["benefit.1"], c["benefit.2"], c["benefit.3"]].filter(Boolean);
-  const values = [
-    { icon: Camera, title: c["value.t1"], body: c["value.b1"] },
-    { icon: Lock, title: c["value.t2"], body: c["value.b2"] },
-    { icon: ShoppingBag, title: c["value.t3"], body: c["value.b3"] },
-  ];
-  const steps = [c["how.s1"], c["how.s2"], c["how.s3"]];
+  const features = [
+    { t: c["feature.1t"], b: c["feature.1b"] },
+    { t: c["feature.2t"], b: c["feature.2b"] },
+    { t: c["feature.3t"], b: c["feature.3b"] },
+  ].filter((f) => f.t || f.b);
+  const perks = [
+    { t: c["benefit.1"], b: c["benefit.1sub"] },
+    { t: c["benefit.2"], b: c["benefit.2sub"] },
+    { t: c["benefit.3"], b: c["benefit.3sub"] },
+  ].filter((p) => p.t || p.b);
+  // Only profiles the admin actually configured. A social button that goes
+  // nowhere is worse than a shorter row.
+  const socials = [
+    { key: "facebook", url: social.facebookUrl, Icon: FacebookIcon, label: "Facebook" },
+    { key: "instagram", url: social.instagramUrl, Icon: InstagramIcon, label: "Instagram" },
+    { key: "linkedin", url: social.linkedinUrl, Icon: LinkedinIcon, label: "LinkedIn" },
+    { key: "x", url: social.xUrl, Icon: XIcon, label: "X" },
+  ].filter((s) => Boolean(s.url));
+  // An admin-uploaded image replaces the shipped artwork without a deploy.
+  // Three crops of ONE scene, so each viewport shape gets the whole
+  // composition rather than a zoom into whatever happens to be centred:
+  // `wide` is short enough that a desktop cover-fit shows both dinosaurs,
+  // `portrait` is narrow for phones. An admin-uploaded image replaces all of
+  // them without a deploy.
+  const art = c["hero.image"] || "/launch/hero-dino-wide.webp";
+  const artPortrait = c["hero.image"] || "/launch/hero-dino-portrait.webp";
 
   return (
-    <main data-launch-page className="relative min-h-[100svh] overflow-x-clip">
-      {/* One quiet wash behind the fold — the brand present, not shouting. */}
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[42rem]"
-        style={{
-          background:
-            "radial-gradient(46rem 22rem at 50% -18%, rgb(var(--accent) / 0.16), transparent 68%),"
-            + "radial-gradient(32rem 18rem at 88% 2%, rgb(var(--violet) / 0.12), transparent 70%)",
-        }} />
+    <main data-launch-page className="relative flex min-h-[100svh] flex-col overflow-x-clip">
+      {/* ── THE ARTWORK ────────────────────────────────────────────────────
+          Desktop: bleeds off the top and right edges behind the content, with
+          a left-to-right fade so it dissolves into the page instead of ending
+          on a seam. Phones get the portrait crop as a band at the top — same
+          scene, framed on the portal and the T-Rex so both dinosaurs survive
+          the narrower viewport. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 hidden lg:block">
+        <Image src={art} alt="" fill priority sizes="100vw"
+          className="object-cover object-[46%_center]" />
+        {/* The left half goes almost to black so the headline and the form sit
+            on their own ground, while the portal's glow still reaches under
+            them. Right of ~62% the scene is untouched. */}
+        <span className="absolute inset-0 bg-[linear-gradient(90deg,rgb(var(--bg))_0%,rgb(var(--bg)/0.93)_20%,rgb(var(--bg)/0.55)_34%,rgb(var(--bg)/0.14)_47%,transparent_58%)]" />
+        <span className="absolute inset-x-0 bottom-0 h-32 bg-[linear-gradient(0deg,rgb(var(--bg)/0.85)_0%,transparent_100%)]" />
+      </div>
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[46svh] min-h-[260px] lg:hidden">
+        <Image src={artPortrait} alt="" fill priority sizes="100vw"
+          className="object-cover object-[52%_38%]" />
+        <span className="absolute inset-0 bg-[linear-gradient(180deg,rgb(var(--bg)/0.55)_0%,transparent_28%,rgb(var(--bg)/0.72)_74%,rgb(var(--bg))_100%)]" />
+      </div>
 
-      <div className="relative mx-auto flex w-full max-w-6xl flex-col px-5 sm:px-8">
-        <header className="flex items-center justify-between gap-3 py-5 pt-[calc(1.25rem+env(safe-area-inset-top))]">
-          <Brand href="/" wordmarkClassName="hidden xs:inline-flex sm:inline-flex" />
-          <div className="flex items-center gap-1.5">
-            <LocaleSwitcher />
-            <ThemeToggle />
-            {/* The dialog opens over this page. It used to be a plain link to
-                /login, which navigates and server-redirects to /?auth=login —
-                and the provider, living in the root layout, never saw the URL
-                change. That is the bug where pressing "Zaloguj się" did
-                nothing at all. */}
+      <div className="relative mx-auto flex w-full max-w-[1360px] flex-1 flex-col px-5 sm:px-8 lg:px-10">
+        {/* ── HEADER ───────────────────────────────────────────────────── */}
+        <header className="flex items-center justify-between gap-3 py-4 pt-[calc(1rem+env(safe-area-inset-top))] lg:py-3">
+          <Brand href="/" height={30} forceDark />
+          <div className="flex items-center gap-2.5">
+            {/* Phones hide the follow row: the logo, four icons and the login
+                button do not fit 390px without crowding, and the success state
+                offers the same links right after someone signs up. */}
+            {socials.length > 0 && (
+              <div className="hidden items-center gap-2 sm:flex">
+                <span className="hidden text-[12.5px] font-medium text-muted sm:inline">
+                  {c["social.heading"]}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {socials.map(({ key, url, Icon, label }) => (
+                    <a key={key} href={url} target="_blank" rel="noopener noreferrer"
+                      aria-label={label} data-launch-social={key}
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-[rgb(var(--glass-border)/0.18)] bg-[rgb(var(--surface)/0.55)] text-muted backdrop-blur-md transition-colors hover:border-[rgb(var(--accent)/0.45)] hover:text-ink">
+                      <Icon size={15} />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* The dialog opens over this page rather than navigating — a link
+                to /login would server-redirect back to /?auth=login and the
+                provider, living in the root layout, would never see the URL
+                change. That is the bug where the button did nothing at all. */}
             {signedIn ? (
               <Link href="/dashboard" data-launch-login
-                className="whitespace-nowrap rounded-xl border border-line px-3.5 py-2 text-[13.5px] font-semibold text-ink transition-colors hover:bg-raised">
+                className="whitespace-nowrap rounded-xl border border-[rgb(var(--glass-border)/0.2)] bg-[rgb(var(--surface)/0.55)] px-3.5 py-2 text-[13px] font-semibold text-ink backdrop-blur-md transition-colors hover:border-[rgb(var(--accent)/0.45)]">
                 {loginLabel}
               </Link>
             ) : showAuthEntry ? (
               <AuthLink mode="login" data-launch-login
-                className="whitespace-nowrap rounded-xl border border-line px-3.5 py-2 text-[13.5px] font-semibold text-ink transition-colors hover:bg-raised">
+                className="whitespace-nowrap rounded-xl border border-[rgb(var(--glass-border)/0.2)] bg-[rgb(var(--surface)/0.55)] px-3.5 py-2 text-[13px] font-semibold text-ink backdrop-blur-md transition-colors hover:border-[rgb(var(--accent)/0.45)]">
                 {loginLabel}
               </AuthLink>
             ) : null}
           </div>
         </header>
 
-        {/* ── 1. HERO ───────────────────────────────────────────────────── */}
-        <section className="grid items-center gap-10 pb-16 pt-6 sm:pb-24 sm:pt-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-14">
-          <div className="min-w-0">
-            <p data-launch-badge
-              className="inline-flex items-center gap-2 rounded-full border border-[rgb(var(--accent)/0.35)] bg-accent-soft/30 px-3 py-1 text-[11.5px] font-semibold uppercase tracking-[0.14em] text-accent">
-              {c["hero.badge"]}
-            </p>
+        {/* ── THE ONE SCREEN ───────────────────────────────────────────────
+            Left column carries the whole argument and the form; the right
+            column is the artwork, which is painted behind everything, so its
+            grid cell only has to reserve the space. The perks strip closes the
+            right column at the bottom, exactly where the reference puts it. */}
+        <div className="grid flex-1 items-center gap-7 pb-5 pt-[40svh] sm:pt-[38svh] lg:grid-cols-[minmax(0,455px)_minmax(0,1fr)] lg:gap-10 lg:pb-0 lg:pt-0">
+          <div className="min-w-0 lg:py-1">
+            {c["hero.badge"] && (
+              <p data-launch-badge
+                className="inline-flex items-center gap-1.5 rounded-full border border-[rgb(var(--accent)/0.35)] bg-[rgb(var(--accent)/0.10)] px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.13em] text-accent backdrop-blur-md">
+                <Sparkles size={12} aria-hidden />
+                {c["hero.badge"]}
+              </p>
+            )}
             <h1 data-launch-h1
-              className="mt-5 text-balance font-display text-[2.1rem] font-semibold leading-[1.08] tracking-tight sm:text-[3rem] lg:text-[3.4rem]">
-              {c["hero.h1"]}
+              className="mt-4 text-balance font-display text-[2.5rem] font-semibold leading-[0.97] tracking-[-0.035em] sm:text-[3.2rem] lg:text-[3.75rem]">
+              {c["hero.h1"]}{" "}
+              {c["hero.h1Accent"] && (
+                <span className="bg-[linear-gradient(96deg,rgb(var(--accent))_0%,rgb(var(--accent-glow))_58%,rgb(var(--violet))_105%)] bg-clip-text text-transparent">
+                  {c["hero.h1Accent"]}
+                </span>
+              )}
             </h1>
-            <p className="mt-5 max-w-xl text-[15px] leading-relaxed text-muted sm:text-[16.5px]">
+            {/* The sub-headline is authored as two lines and stays two lines —
+                `whitespace-pre-line` keeps the admin's break instead of
+                reflowing it into one long sentence. */}
+            <p className="mt-3.5 max-w-md whitespace-pre-line text-[14px] leading-[1.5] text-muted sm:text-[15px]">
               {c["hero.sub"]}
             </p>
 
-            <div className="mt-8 max-w-xl">
-              <WaitlistForm placeholder={c["hero.placeholder"]} cta={c["hero.cta"]} source="hero"
-                consentLabel={c["hero.consent"]} id="waitlist-hero" fields={waitlistFields}
-                successTitle={c["success.title"]} successBody={c["success.body"]}
-                successFollow={c["success.follow"]} social={social} />
-              <p className="mt-2.5 text-[13px] text-muted">{c["hero.note"]}</p>
-
-              {perks.length > 0 && (
-                <ul data-launch-perks className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                  {perks.map((perk) => (
-                    <li key={perk}
-                      className="flex items-center gap-2 rounded-xl border border-[rgb(var(--accent)/0.22)] bg-accent-soft/20 px-3 py-2 text-[13px] font-medium">
-                      <span aria-hidden className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/90 text-white">
-                        <Check size={12} strokeWidth={3} />
+            {features.length > 0 && (
+              <ul data-launch-features className="mt-5 flex flex-wrap gap-2">
+                {features.map((f, i) => {
+                  const Icon = FEATURE_ICONS[i] ?? Sparkles;
+                  return (
+                    <li key={`${f.t}${f.b}`}
+                      className="flex items-center gap-2 rounded-xl border border-[rgb(var(--glass-border)/0.16)] bg-[rgb(var(--surface)/0.5)] px-2.5 py-2 backdrop-blur-md">
+                      <span aria-hidden
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[rgb(var(--accent)/0.16)] text-accent">
+                        <Icon size={13} />
                       </span>
-                      {perk}
+                      <span className="min-w-0 leading-[1.25]">
+                        <span className="block text-[11.5px] font-semibold text-ink">{f.t}</span>
+                        <span className="block text-[10.5px] text-faint">{f.b}</span>
+                      </span>
                     </li>
-                  ))}
-                </ul>
-              )}
-              <p className="mt-4 flex items-center gap-2 text-[13px] font-medium text-ink">
-                <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />
-                {c["hero.trust"]}
+                  );
+                })}
+              </ul>
+            )}
+
+            {/* ── THE FORM ─────────────────────────────────────────────── */}
+            <div data-launch-form-card
+              className="glass mt-5 rounded-2xl border-[rgb(var(--accent)/0.22)] p-4 sm:p-5">
+              <p className="font-display text-[17.5px] font-semibold tracking-tight sm:text-[18.5px]">
+                {c["form.title"]}
               </p>
-              <p data-launch-privacy className="mt-3 text-[11.5px] text-faint">
-                {privacyNote}{" "}
-                <Link href="/polityka-prywatnosci" className="underline underline-offset-2 transition-colors hover:text-accent">
-                  {privacyLinkLabel}
-                </Link>.
-              </p>
-            </div>
-          </div>
-
-          <HeroVisual image={c["hero.image"]} />
-        </section>
-
-        {/* ── 2. VALUE ──────────────────────────────────────────────────── */}
-        <section data-launch-value className="scroll-mt-20 border-t border-line py-16 sm:py-20">
-          <h2 className="max-w-2xl text-balance font-display text-[1.6rem] font-semibold tracking-tight sm:text-[2.1rem]">
-            {c["value.heading"]}
-          </h2>
-          <div className="mt-10 grid gap-4 sm:grid-cols-3">
-            {values.map((v) => (
-              <div key={v.title} className="panel rounded-2xl p-6">
-                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-soft/50 text-accent">
-                  <v.icon size={18} aria-hidden />
-                </span>
-                <p className="mt-4 text-[15px] font-semibold tracking-tight">{v.title}</p>
-                <p className="mt-2 text-[13.5px] leading-relaxed text-muted">{v.body}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* ── 3. HOW IT WORKS ───────────────────────────────────────────── */}
-        <section data-launch-how className="scroll-mt-20 border-t border-line py-16 sm:py-20">
-          <h2 className="max-w-2xl text-balance font-display text-[1.6rem] font-semibold tracking-tight sm:text-[2.1rem]">
-            {c["how.heading"]}
-          </h2>
-          <ol className="mt-10 grid gap-6 sm:grid-cols-3 sm:gap-4">
-            {steps.map((step, i) => (
-              <li key={step} className="relative sm:pr-6">
-                <span className="font-display text-[2rem] font-semibold leading-none text-accent/35 tabular-nums">
-                  0{i + 1}
-                </span>
-                <p className="mt-3 text-[15px] font-semibold tracking-tight">{step}</p>
-                {i < steps.length - 1 && (
-                  <span aria-hidden
-                    className="absolute right-0 top-4 hidden h-px w-4 bg-gradient-to-r from-[rgb(var(--accent)/0.5)] to-transparent sm:block" />
-                )}
-              </li>
-            ))}
-          </ol>
-        </section>
-
-        {/* ── 4. FINAL CTA ──────────────────────────────────────────────── */}
-        <section data-launch-final className="pb-16 sm:pb-20">
-          <div className="panel relative overflow-hidden rounded-3xl px-6 py-12 sm:px-12 sm:py-16">
-            <span aria-hidden className="pointer-events-none absolute inset-0"
-              style={{
-                background:
-                  "radial-gradient(28rem 14rem at 18% -10%, rgb(var(--accent) / 0.18), transparent 70%),"
-                  + "radial-gradient(24rem 12rem at 92% 110%, rgb(var(--violet) / 0.14), transparent 70%)",
-              }} />
-            <div className="relative max-w-2xl">
-              <h2 className="text-balance font-display text-[1.7rem] font-semibold tracking-tight sm:text-[2.3rem]">
-                {c["final.heading"]}
-              </h2>
-              <p className="mt-3 text-[15px] leading-relaxed text-muted">{c["final.body"]}</p>
-              <div className="mt-7 max-w-xl">
-                <WaitlistForm placeholder={c["hero.placeholder"]} cta={c["final.cta"]} source="final"
-                  consentLabel={c["hero.consent"]} id="waitlist-final" fields={waitlistFields}
+              <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{c["form.sub"]}</p>
+              <div className="mt-4">
+                <WaitlistForm placeholder={c["hero.placeholder"]} cta={c["hero.cta"]} source="hero"
+                  consentLabel={c["hero.consent"]} id="waitlist-hero" fields={waitlistFields}
+                  safetyNote={c["form.safety"]}
                   successTitle={c["success.title"]} successBody={c["success.body"]}
                   successFollow={c["success.follow"]} social={social} />
               </div>
             </div>
           </div>
-        </section>
 
-        <footer className="flex flex-wrap items-center justify-between gap-4 border-t border-line py-8 text-[12.5px] text-muted">
-          <span className="flex items-center gap-2.5">
-            <Brand href="/" height={22} />
-            © {new Date().getFullYear()}
-          </span>
-          <div className="flex flex-wrap items-center gap-4">
-            <Link href="/polityka-prywatnosci" className="transition-colors hover:text-ink">{privacyLabel}</Link>
-            <Link href="/regulamin" className="transition-colors hover:text-ink">{termsLabel}</Link>
+          {/* Right column: the artwork lives behind it, so only the perks
+              strip is real content here. `self-end` drops it to the bottom of
+              the column, under the T-Rex. */}
+          <div className="min-w-0 lg:self-end lg:pb-1">
+            {perks.length > 0 && (
+              <div data-launch-perks
+                className="glass rounded-2xl p-4 sm:p-5">
+                <p className="text-center text-[12.5px] font-medium text-muted">{c["perks.heading"]}</p>
+                <ul className="mt-3 grid gap-2.5 sm:grid-cols-3">
+                  {perks.map((p, i) => {
+                    const Icon = PERK_ICONS[i] ?? Gift;
+                    return (
+                      <li key={`${p.t}${p.b}`}
+                        className="flex items-center gap-2.5 rounded-xl border border-[rgb(var(--glass-border)/0.14)] bg-[rgb(var(--surface)/0.55)] px-3 py-2.5">
+                        <span aria-hidden className={cn(
+                          "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+                          i === 1
+                            ? "bg-[rgb(var(--violet)/0.18)] text-[rgb(var(--violet))]"
+                            : "bg-[rgb(var(--accent)/0.16)] text-accent",
+                        )}>
+                          <Icon size={16} />
+                        </span>
+                        <span className="min-w-0 leading-[1.3]">
+                          <span className="block text-[13px] font-semibold text-ink">{p.t}</span>
+                          <span className="block text-[12px] text-muted">{p.b}</span>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
           </div>
+        </div>
+
+        {/* ── FOOTER ───────────────────────────────────────────────────────
+            One line. A pre-launch page has nothing to put in columns. */}
+        <footer className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pb-[calc(0.85rem+env(safe-area-inset-bottom))] pt-1.5 text-center text-[11.5px] text-faint">
+          <span>GrovBase © {new Date().getFullYear()} · {rightsLabel}</span>
+          <span aria-hidden className="hidden sm:inline">·</span>
+          <Link href="/polityka-prywatnosci" className="transition-colors hover:text-ink">{privacyLabel}</Link>
+          <Link href="/regulamin" className="transition-colors hover:text-ink">{termsLabel}</Link>
         </footer>
       </div>
     </main>
-  );
-}
-
-/**
- * The hero visual. An admin-uploaded screenshot when there is one; otherwise
- * the promise itself, drawn from the product's own surfaces: a raw photo, the
- * engine, the finished shot. No invented UI, no stock imagery.
- */
-function HeroVisual({ image }: { image: string }) {
-  if (image) {
-    return (
-      <div data-launch-visual className="panel overflow-hidden rounded-3xl p-2">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={image} alt="" className="h-auto w-full rounded-2xl object-cover" />
-      </div>
-    );
-  }
-  return (
-    <div data-launch-visual className="panel relative overflow-hidden rounded-3xl p-5 sm:p-7">
-      <div className="grid grid-cols-[1fr_auto_1.35fr] items-center gap-3 sm:gap-4">
-        {/* Left: the reference photo the seller already has — plain, flat, unlit. */}
-        <span aria-hidden className="relative aspect-[4/5] overflow-hidden rounded-2xl border border-line bg-sunken">
-          <span className="absolute inset-x-[22%] bottom-[24%] top-[30%] rounded-lg bg-[rgb(var(--ink)/0.10)]" />
-          <span className="absolute inset-x-0 bottom-0 h-[24%] bg-[rgb(var(--ink)/0.05)]" />
-        </span>
-        <span aria-hidden className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-soft/60 text-accent">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-            strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-        </span>
-        {/* Right: the same product, lit and staged — the promise of the product. */}
-        <span aria-hidden className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-gradient-to-br from-[rgb(var(--accent)/0.30)] via-[rgb(var(--violet)/0.22)] to-transparent ring-1 ring-[rgb(var(--accent)/0.30)]">
-          <span className="absolute inset-x-[24%] bottom-[26%] top-[28%] rounded-lg bg-[rgb(var(--surface)/0.55)] shadow-[0_18px_40px_-14px_rgb(var(--accent)/0.85)]" />
-          <span className="absolute inset-x-[18%] bottom-[20%] h-2 rounded-full bg-[rgb(var(--accent)/0.35)] blur-[6px]" />
-        </span>
-      </div>
-      <div aria-hidden className="mt-5 grid grid-cols-4 gap-2">
-        {[0.26, 0.19, 0.13, 0.08].map((tint, i) => (
-          <span key={i}
-            className="aspect-square rounded-xl border border-line"
-            style={{ background: `linear-gradient(150deg, rgb(var(--accent) / ${tint}), rgb(var(--sunken) / 0.9))` }} />
-        ))}
-      </div>
-    </div>
   );
 }

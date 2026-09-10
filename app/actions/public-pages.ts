@@ -40,23 +40,36 @@ const httpsOrEmpty = (value: string): string | null => {
 };
 
 export async function savePublicSiteAction(input: {
-  instagramUrl: string; facebookUrl: string;
+  instagramUrl: string; facebookUrl: string; linkedinUrl: string; xUrl: string;
 }): Promise<Result> {
   try {
     const { supabase, adminId } = await requireAdmin();
     const instagram = httpsOrEmpty(input.instagramUrl);
     const facebook = httpsOrEmpty(input.facebookUrl);
+    const linkedin = httpsOrEmpty(input.linkedinUrl);
+    const x = httpsOrEmpty(input.xUrl);
     // A link the page will hand to a visitor: https or nothing. Rejecting
     // here means the renderer never has to guess.
-    if (instagram === null || facebook === null) return { ok: false, error: "invalid_url" };
+    if (instagram === null || facebook === null || linkedin === null || x === null) {
+      return { ok: false, error: "invalid_url" };
+    }
     const { error } = await supabase.from("app_settings").upsert(
-      { key: "public_site", value: { instagram_url: instagram, facebook_url: facebook } as never },
+      {
+        key: "public_site",
+        value: {
+          instagram_url: instagram, facebook_url: facebook,
+          linkedin_url: linkedin, x_url: x,
+        } as never,
+      },
       { onConflict: "key" },
     );
     if (error) return { ok: false, error: "generic" };
     await logAudit(supabase, {
       actorId: adminId, action: "public_site.saved", entityType: "app_settings", entityId: "public_site",
-      after: { instagram: Boolean(instagram), facebook: Boolean(facebook) },
+      after: {
+        instagram: Boolean(instagram), facebook: Boolean(facebook),
+        linkedin: Boolean(linkedin), x: Boolean(x),
+      },
     });
     revalidatePath("/", "layout");
     revalidatePath("/admin/www");

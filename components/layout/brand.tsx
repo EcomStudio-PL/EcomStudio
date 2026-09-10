@@ -57,7 +57,9 @@ export function BrandMark({ size = 28 }: { size?: number }) {
  * narrow widths (the mark then stands in), which is how the topbar keeps the
  * brand legible on a phone without ever painting it twice.
  */
-export function Brand({ href = "/", markOnly = false, height = 30, className, wordmarkClassName }: {
+export function Brand({
+  href = "/", markOnly = false, height = 30, className, wordmarkClassName, forceDark = false,
+}: {
   href?: string;
   markOnly?: boolean;
   /** Rendered height of the lockup (or the mark) in px. */
@@ -65,8 +67,23 @@ export function Brand({ href = "/", markOnly = false, height = 30, className, wo
   className?: string;
   /** Responsive visibility for the lockup, e.g. "hidden sm:inline-flex". */
   wordmarkClassName?: string;
+  /**
+   * For surfaces that are dark whatever the theme says — the launch page
+   * paints its own dark palette, so `dark:` never fires there and the LIGHT
+   * lockup would put a black wordmark on a black photograph.
+   */
+  forceDark?: boolean;
 }) {
   const width = Math.round(height * LOCKUP);
+  if (forceDark && !markOnly) {
+    return (
+      <Link href={href} aria-label="GrovBase" className={cn("inline-flex items-center", className)}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/logo-on-dark.png" alt="" width={width} height={height}
+          style={{ height, width }} className="select-none object-contain" />
+      </Link>
+    );
+  }
   return (
     <Link href={href} aria-label="GrovBase" className={cn("inline-flex items-center", className)}>
       {markOnly ? (

@@ -113,10 +113,9 @@ export default async function LandingPage({ searchParams }: {
         showAuthEntry={access.showAuthEntry}
         waitlistFields={registration.waitlist}
         loginLabel={t("launch.login")}
-        privacyNote={t("launch.privacy")}
-        privacyLinkLabel={t("launch.privacyLink")}
         privacyLabel={t("launch.privacyPage")}
         termsLabel={t("launch.terms")}
+        rightsLabel={t("launch.rights")}
       />
     );
   }

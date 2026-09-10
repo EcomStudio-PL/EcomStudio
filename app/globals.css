@@ -125,6 +125,45 @@
 }
 
 
+/* ── THE LAUNCH PAGE IS ALWAYS DARK ──────────────────────────────────────
+   The pre-launch screen is one lit photograph on near-black. A light palette
+   behind it would put white panels and dark-on-light type against a black
+   scene — so the page carries the dark ramp itself, whatever the visitor's
+   theme says, and restores it for the rest of the app on every other route.
+   Copied from the `.dark` block below rather than aliased, because a light
+   root has no dark values to point at. */
+[data-launch-page] {
+  --bg: 13 8 19;
+  --sunken: 9 5 14;
+  --sidebar: 18 11 26;
+  --surface: 26 17 37;
+  --raised: 35 23 49;
+  --float: 45 30 62;
+  --ink: 244 238 250;
+  --muted: 176 163 194;
+  --faint: 130 117 150;
+  --line: 196 150 255;
+  --line-strong: 196 150 255;
+  --hairline: 196 150 255;
+  --hairline-alpha: 0.14;
+  --accent: 240 60 224;
+  --accent-hover: 246 96 232;
+  --accent-strong: 192 20 190;
+  --accent-soft: 66 24 68;
+  --accent-glow: 255 92 226;
+  --violet: 168 85 247;
+  --accent2: 249 80 225;
+  --accent2-soft: 64 22 60;
+  --glass: 21 13 30;
+  --glass-alpha: 0.72;
+  --glass-border: 196 150 255;
+  --glass-border-alpha: 0.14;
+  --shadow-2: 0 6px 18px -8px rgb(6 2 12 / 0.7), inset 0 1px 0 rgb(196 150 255 / 0.08);
+  background-color: rgb(var(--bg));
+  color: rgb(var(--ink));
+  color-scheme: dark;
+}
+
 .dark {
   /* Dark: DEEP NAVY under a neon magenta-violet key light — never flat
      black. Five distinct layers, each a step up the same navy ramp, so a

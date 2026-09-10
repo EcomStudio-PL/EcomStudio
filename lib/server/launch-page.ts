@@ -14,14 +14,28 @@ import type { Client } from "@/lib/services/workspace";
  * reset rather than an empty page.
  */
 
+/**
+ * The page is ONE screen now, so the vocabulary is the vocabulary of one
+ * screen. The old `value.*`, `how.*` and `final.*` groups described three
+ * scrolling sections that no longer exist; leaving them in the admin editor
+ * would be a form whose fields change nothing. `cleanOverrides` drops any
+ * stored value whose key is not here, so old rows are ignored, not fatal.
+ */
 export const LAUNCH_FIELDS = [
-  "hero.badge", "hero.h1", "hero.sub", "hero.placeholder", "hero.cta", "hero.note",
-  "hero.trust", "hero.image", "hero.consent",
-  "benefit.1", "benefit.2", "benefit.3",
+  // Hero. `h1Accent` is the tail of the headline that carries the gradient —
+  // a separate field rather than markup inside h1, so an admin can translate
+  // the sentence without having to know where the colour starts.
+  "hero.badge", "hero.h1", "hero.h1Accent", "hero.sub",
+  "hero.placeholder", "hero.image", "hero.consent",
+  // The three compact proof chips under the sub-headline.
+  "feature.1t", "feature.1b", "feature.2t", "feature.2b", "feature.3t", "feature.3b",
+  // The signup card.
+  "form.title", "form.sub", "hero.cta", "form.safety",
+  // What you get for signing up — heading plus three two-line cards.
+  "perks.heading",
+  "benefit.1", "benefit.1sub", "benefit.2", "benefit.2sub", "benefit.3", "benefit.3sub",
   "success.title", "success.body", "success.follow",
-  "value.heading", "value.t1", "value.b1", "value.t2", "value.b2", "value.t3", "value.b3",
-  "how.heading", "how.s1", "how.s2", "how.s3",
-  "final.heading", "final.body", "final.cta",
+  "social.heading",
   "seo.title", "seo.description", "seo.ogTitle", "seo.ogDescription",
 ] as const;
 

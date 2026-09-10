@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
-import { ArrowRight, Check, Loader2 } from "lucide-react";
-import { FacebookIcon, InstagramIcon } from "@/components/launch/social-icons";
+import { Check, Loader2, Lock, Send } from "lucide-react";
+import { FacebookIcon, InstagramIcon, LinkedinIcon, XIcon } from "@/components/launch/social-icons";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import type { FieldMode, WaitlistFieldConfig } from "@/lib/server/registration-config";
@@ -26,10 +26,10 @@ import type { FieldMode, WaitlistFieldConfig } from "@/lib/server/registration-c
  *  inputs cannot drift from the e-mail field they sit above: 56px on phones,
  *  60 from sm, 16px text so iOS does not zoom the layout on focus. */
 const FIELD_CLASS = cn(
-  "h-14 w-full min-w-0 rounded-2xl border border-line bg-surface px-5 text-base text-ink outline-none",
-  "transition-[border-color,box-shadow] placeholder:text-faint",
+  "h-12 w-full min-w-0 rounded-xl border border-[rgb(var(--glass-border)/0.22)] bg-[rgb(var(--sunken)/0.55)]",
+  "px-4 text-base text-ink outline-none transition-[border-color,box-shadow] placeholder:text-faint",
   "focus:border-[rgb(var(--accent)/0.6)] focus:ring-4 focus:ring-[rgb(var(--accent)/0.16)]",
-  "sm:h-[60px] sm:text-[16px]",
+  "sm:text-[14.5px]",
 );
 
 /** No field is asked for unless the admin turned it on. Matches the seeded
@@ -50,7 +50,7 @@ type ExtraField = {
 
 export function WaitlistForm({
   placeholder, cta, source, consentLabel, className, id,
-  successTitle, successBody, successFollow, social, fields = NO_EXTRA_FIELDS,
+  successTitle, successBody, successFollow, social, fields = NO_EXTRA_FIELDS, safetyNote,
 }: {
   placeholder: string;
   cta: string;
@@ -67,9 +67,12 @@ export function WaitlistForm({
   successFollow?: string;
   /** Social profiles from the site settings. An empty URL means no button —
    *  a dead social icon is worse than none. */
-  social?: { instagramUrl: string; facebookUrl: string };
+  social?: { instagramUrl: string; facebookUrl: string; linkedinUrl: string; xUrl: string };
   /** Which extra fields this form asks for, from /admin/settings/registration. */
   fields?: WaitlistFieldConfig;
+  /** The short reassurance under the button ("Twoje dane są bezpieczne…").
+   *  Empty falls back to the full privacy sentence. */
+  safetyNote?: string;
 }) {
   const { t, locale } = useI18n();
   const [email, setEmail] = useState("");
@@ -121,6 +124,8 @@ export function WaitlistForm({
     const socials = [
       { key: "instagram", url: social?.instagramUrl, Icon: InstagramIcon, label: "Instagram" },
       { key: "facebook", url: social?.facebookUrl, Icon: FacebookIcon, label: "Facebook" },
+      { key: "linkedin", url: social?.linkedinUrl, Icon: LinkedinIcon, label: "LinkedIn" },
+      { key: "x", url: social?.xUrl, Icon: XIcon, label: "X" },
     ].filter((s) => Boolean(s.url));
     return (
       <div data-waitlist-success
@@ -158,9 +163,15 @@ export function WaitlistForm({
           `flex-1` is sm-only here for the same reason it is on the e-mail
           field: on phones the row is a column, where flex would size height. */}
       {extras.length > 0 && (
-        <div data-waitlist-extras className="mb-2.5 flex flex-col gap-2.5 sm:flex-row">
-          {extras.map((f) => (
-            <div key={f.name} className="min-w-0 sm:flex-1">
+        <div data-waitlist-extras className="mb-2.5 grid gap-2.5 sm:grid-cols-2">
+          {extras.map((f, i) => (
+            // Two per row — Imię next to Nazwisko. An odd trailing field (the
+            // phone, when the admin turns it on) takes the whole row instead
+            // of leaving a hole beside itself.
+            <div key={f.name} className={cn(
+              "min-w-0",
+              extras.length % 2 === 1 && i === extras.length - 1 && "sm:col-span-2",
+            )}>
               <label htmlFor={`${id ?? `waitlist-${source}`}-${f.name}`} className="sr-only">{f.label}</label>
               <input
                 id={`${id ?? `waitlist-${source}`}-${f.name}`}
@@ -178,39 +189,34 @@ export function WaitlistForm({
           ))}
         </div>
       )}
-      <div className="flex flex-col gap-2.5 sm:flex-row">
-        <label htmlFor={id ?? `waitlist-${source}`} className="sr-only">{placeholder}</label>
-        <input
-          id={id ?? `waitlist-${source}`}
-          type="email"
-          inputMode="email"
-          autoComplete="email"
-          required
-          value={email}
-          onChange={(e) => { setEmail(e.target.value); if (state !== "idle") setState("idle"); }}
-          placeholder={placeholder}
-          data-waitlist-email
-          // `flex-1` is deliberately sm-only. The row stacks on phones, so
-          // there flex sizes the HEIGHT — and a flex-basis of 0 would beat the
-          // height class and collapse the field to its text.
-          className={cn(FIELD_CLASS, "sm:flex-1")}
-        />
-        {/* Honeypot: off-screen, never announced, never focusable. */}
-        <input
-          type="text" name="company" tabIndex={-1} autoComplete="off" aria-hidden
-          value={company} onChange={(e) => setCompany(e.target.value)}
-          className="pointer-events-none absolute h-0 w-0 opacity-0"
-        />
-        <button type="submit" disabled={state === "busy" || (needsConsent && !consent) || missingRequired} data-waitlist-submit
-          className={cn(
-            "cta flex h-14 w-full shrink-0 items-center justify-center gap-2 rounded-2xl px-7 text-[15.5px] font-semibold",
-            "sm:h-[60px] sm:w-auto",
-            state === "busy" && "cursor-wait opacity-70")}>
-          {state === "busy"
-            ? <><Loader2 size={16} className="animate-spin" aria-hidden />{t("launch.busy")}</>
-            : <>{cta}<ArrowRight size={16} aria-hidden /></>}
-        </button>
-      </div>
+      <label htmlFor={id ?? `waitlist-${source}`} className="sr-only">{placeholder}</label>
+      <input
+        id={id ?? `waitlist-${source}`}
+        type="email"
+        inputMode="email"
+        autoComplete="email"
+        required
+        value={email}
+        onChange={(e) => { setEmail(e.target.value); if (state !== "idle") setState("idle"); }}
+        placeholder={placeholder}
+        data-waitlist-email
+        className={FIELD_CLASS}
+      />
+      {/* Honeypot: off-screen, never announced, never focusable. */}
+      <input
+        type="text" name="company" tabIndex={-1} autoComplete="off" aria-hidden
+        value={company} onChange={(e) => setCompany(e.target.value)}
+        className="pointer-events-none absolute h-0 w-0 opacity-0"
+      />
+      {/* Full width at every size: this button IS the page's single action. */}
+      <button type="submit" disabled={state === "busy" || (needsConsent && !consent) || missingRequired} data-waitlist-submit
+        className={cn(
+          "cta mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl px-6 text-[14.5px] font-semibold",
+          state === "busy" && "cursor-wait opacity-70")}>
+        {state === "busy"
+          ? <><Loader2 size={16} className="animate-spin" aria-hidden />{t("launch.busy")}</>
+          : <><Send size={15} aria-hidden />{cta}</>}
+      </button>
       {needsConsent && (
         <label data-waitlist-consent className="mt-3 flex items-start gap-2.5 text-[12.5px] leading-relaxed text-muted">
           <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)}
@@ -227,11 +233,15 @@ export function WaitlistForm({
       {state === "error" && (
         <p data-waitlist-note className="mt-2 text-[13px] font-medium text-danger">{t("launch.err")}</p>
       )}
-      {/* The form takes more than an address now — a name, sometimes a phone
+      {/* The form takes more than an address — a name, sometimes a phone
           number, and the IP and source the route records to keep bots out — so
-          it says so where it is asked, not only in the privacy policy. */}
-      <p data-waitlist-privacy className="mt-3 text-[11.5px] leading-relaxed text-faint">
-        {t("launch.privacyNote")}
+          it says so where it is asked, not only in the privacy policy. The
+          launch page passes its own short line; the long one is the fallback
+          for any other caller. */}
+      <p data-waitlist-privacy
+        className="mt-2.5 flex items-center justify-center gap-1.5 text-center text-[11.5px] leading-relaxed text-faint">
+        {safetyNote ? <Lock size={11} aria-hidden className="shrink-0" /> : null}
+        {safetyNote || t("launch.privacyNote")}
       </p>
     </form>
   );
