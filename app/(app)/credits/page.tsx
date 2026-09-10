@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ArrowRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
@@ -8,7 +10,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { SectionHeader } from "@/components/ui/section-header";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CreditPacks, type CreditPack } from "@/components/plan/credit-packs";
+import { Diamond } from "@/components/layout/credits-control";
 import { creditLevel, CREDIT_METER_CLASS, CREDIT_REFERENCE } from "@/lib/credit-level";
 import { formatCredits, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -24,10 +26,7 @@ export default async function CreditsPage() {
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) redirect("/home");
   const wallet = await getWallet(supabase, workspace.id);
-  const [txs, { data: packages }] = await Promise.all([
-    wallet ? getTransactions(supabase, wallet.id) : Promise.resolve([]),
-    supabase.from("credit_packages").select("*").eq("active", true).order("sort_order"),
-  ]);
+  const txs = wallet ? await getTransactions(supabase, wallet.id) : [];
   const monthStart = new Date();
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
@@ -41,11 +40,6 @@ export default async function CreditsPage() {
 
   const balance = wallet?.balance ?? 0;
   const level = creditLevel(balance);
-  const packs: CreditPack[] = (packages ?? []).map((p) => ({
-    id: p.id, name: p.name, credits: p.credits, bonusCredits: p.bonus_credits,
-    priceCents: p.price_cents, currency: p.currency, featured: p.featured, badge: p.badge,
-  }));
-
   return (
     <div>
       <PageHeader overline={t("nav.groups.account")} title={t("credits.title")} sub={t("credits.sub")} />
@@ -85,9 +79,24 @@ export default async function CreditsPage() {
         </Card>
       </div>
 
+      {/* The packs themselves live on the pricing page now, next to the plans
+          and the custom-amount slider — one place where every price is stated,
+          rather than a second grid here that has to be kept in step. This is
+          the WALLET: what you have, what you spent, and the way to get more. */}
       <section className="mt-7">
         <SectionHeader overline={t("nav.groups.account")} title={t("packs.title")} sub={t("packs.sub")} className="mb-4" />
-        <CreditPacks packs={packs} />
+        <Card className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:gap-4">
+          <span aria-hidden
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent-soft/60 text-accent">
+            <Diamond size={17} />
+          </span>
+          <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-muted">{t("packs.onPricing")}</p>
+          <Link href="/plan"
+            className="cta inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[13.5px] font-semibold">
+            {t("packs.topUpTitle")}
+            <ArrowRight size={15} aria-hidden />
+          </Link>
+        </Card>
       </section>
 
       <Card className="mt-7">
