@@ -3534,8 +3534,8 @@
   "access": {
     "loginTitle": "Jeszcze chwila",
     "loginBody": "Logowanie będzie dostępne po premierze. Zapisz się na listę oczekujących, a powiadomimy Cię jako jednego z pierwszych, gdy GrovBase wystartuje.",
-    "signupTitle": "Rejestracja rusza wkrótce",
-    "signupBody": "Przyjmujemy teraz pierwszą grupę użytkowników. Zapisz się na listę oczekujących, a damy Ci znać, gdy otworzymy rejestrację.",
+    "signupTitle": "GrovBase już wkrótce",
+    "signupBody": "Platforma jest jeszcze przed premierą. Zapisz się na listę oczekujących, a damy Ci znać, gdy GrovBase wystartuje.",
     "closedTitle": "Wracamy za moment",
     "closedBody": "Pracujemy nad platformą. Zajrzyj do nas ponownie za chwilę — wszystko będzie na swoim miejscu.",
     "joinWaitlist": "Zapisz mnie na listę",
@@ -3814,5 +3814,10 @@
     "clearSelection": "Odznacz",
     "removeSelected": "Usuń zaznaczone",
     "downloadSelected": "Pobierz zaznaczone"
+  },
+  "adminLogin": {
+    "title": "Panel administracyjny",
+    "sub": "Wejście dla zespołu GrovBase. Zaloguj się kontem administratora — dostęp do panelu sprawdzamy po zalogowaniu.",
+    "note": "Ten adres nie omija logowania. Zwykłe konto zaloguje się tu poprawnie, ale trafi do swojego workspace, nie do panelu."
   }
 }

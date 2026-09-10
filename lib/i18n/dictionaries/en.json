@@ -3534,8 +3534,8 @@
   "access": {
     "loginTitle": "Almost there",
     "loginBody": "Signing in opens at launch. Join the waiting list and we will tell you among the first, the moment GrovBase goes live.",
-    "signupTitle": "Sign-ups open soon",
-    "signupBody": "We are onboarding the first group of users right now. Join the waiting list and we will let you know when sign-ups open.",
+    "signupTitle": "GrovBase is almost here",
+    "signupBody": "The platform is still before launch. Join the waiting list and we will let you know the moment GrovBase goes live.",
     "closedTitle": "Back in a moment",
     "closedBody": "We are working on the platform. Check back shortly — everything will be right where you left it.",
     "joinWaitlist": "Join the list",
@@ -3814,5 +3814,10 @@
     "clearSelection": "Clear",
     "removeSelected": "Remove selected",
     "downloadSelected": "Download selected"
+  },
+  "adminLogin": {
+    "title": "Admin panel",
+    "sub": "Entrance for the GrovBase team. Sign in with an administrator account — panel access is checked after you sign in.",
+    "note": "This address does not skip sign-in. An ordinary account can sign in here, but lands in its own workspace, not in the panel."
   }
 }

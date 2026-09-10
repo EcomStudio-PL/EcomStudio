@@ -1,5 +1,6 @@
 "use client";
 import { useActionState, useState } from "react";
+import Link from "next/link";
 import { Loader2, MailCheck } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Input, Label } from "@/components/ui/input";
@@ -29,14 +30,17 @@ const NOTICES: Record<string, { key: string; tone: "danger" | "warning" }> = {
  * the credential path. Only the resend-confirmation helper uses an action,
  * because it never writes a session.
  */
-export function LoginForm({ next, error, email, onSwitch }: {
+export function LoginForm({ next, error, email, onSwitch, showSignup = true }: {
   next: string;
   error?: string;
   /** Prefilled address after an "unconfirmed" bounce. */
   email?: string;
-  /** Move to another mode inside the same dialog. Absent on the standalone
-   *  page, where these are ordinary links. */
+  /** Move to another mode inside the same dialog. Absent on a standalone page,
+   *  where these become ordinary links — NOT buttons that call nothing. */
   onSwitch?: (mode: "register" | "forgot") => void;
+  /** The "no account yet?" line. Off on the operator's door, where signing up
+   *  is neither offered nor possible. */
+  showSignup?: boolean;
 }) {
   const { t } = useI18n();
   const [submitting, setSubmitting] = useState(false);
@@ -71,9 +75,19 @@ export function LoginForm({ next, error, email, onSwitch }: {
               className="h-4 w-4 rounded border-line accent-[rgb(var(--accent))]" />
             {t("auth.rememberMe")}
           </label>
-          <button type="button" onClick={() => onSwitch?.("forgot")} className={`text-[13px] ${linkClass}`}>
-            {t("auth.forgotPassword")}
-          </button>
+          {/* In the dialog this switches panes; on a standalone page there is
+              no dialog to switch, so it has to be a real link. It used to be
+              the same <button> either way, which meant a control that visibly
+              did nothing outside the modal. */}
+          {onSwitch ? (
+            <button type="button" onClick={() => onSwitch("forgot")} className={`text-[13px] ${linkClass}`}>
+              {t("auth.forgotPassword")}
+            </button>
+          ) : (
+            <Link href="/forgot-password" className={`text-[13px] ${linkClass}`}>
+              {t("auth.forgotPassword")}
+            </Link>
+          )}
         </div>
 
         {/* One category per real cause. Only "invalid" is about the
@@ -120,12 +134,18 @@ export function LoginForm({ next, error, email, onSwitch }: {
         </div>
       )}
 
-      <p className="mt-5 text-center text-sm text-muted">
-        {t("auth.noAccount")}{" "}
-        <button type="button" onClick={() => onSwitch?.("register")} className={linkClass}>
-          {t("auth.signUp")}
-        </button>
-      </p>
+      {showSignup && (
+        <p className="mt-5 text-center text-sm text-muted">
+          {t("auth.noAccount")}{" "}
+          {onSwitch ? (
+            <button type="button" onClick={() => onSwitch("register")} className={linkClass}>
+              {t("auth.signUp")}
+            </button>
+          ) : (
+            <Link href="/register" className={linkClass}>{t("auth.signUp")}</Link>
+          )}
+        </p>
+      )}
     </div>
   );
 }

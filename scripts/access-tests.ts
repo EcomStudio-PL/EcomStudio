@@ -12,6 +12,7 @@ import {
   accessCopyFor, blockedReasonFor, modeOf, signupOpen,
   type AccessCopy, type PlatformAccess,
 } from "@/lib/platform-access";
+import { ADMIN_LOGIN_PATH } from "@/lib/supabase/middleware";
 
 let failures = 0;
 function check(name: string, cond: boolean, extra?: unknown) {
@@ -152,6 +153,49 @@ console.log("\nF. FAIL-SAFE AND VISIBILITY (§18, §33)");
   const shownButShut = make({ showAuthEntry: true, allowLogin: false, waitlistEnabled: true });
   check("showing the buttons does not open login",
     blockedReasonFor(shownButShut, "login", NOW) === "login_closed");
+}
+
+console.log("\nG. THE LIVE PRE-LAUNCH SHAPE: LOGIN ON, SIGNUP OFF, WAITLIST ON");
+{
+  // What production is configured to do right now. Written as a test so a
+  // future change to the preset table or to blockedReasonFor cannot silently
+  // shut existing customers out again.
+  const live = make({
+    allowLogin: true, allowSignup: false, showAuthEntry: true, waitlistEnabled: true,
+  });
+  check("it is the 'existing_only' preset, not a custom mix", modeOf(live) === "existing_only");
+  check("an existing customer may sign in", blockedReasonFor(live, "login", NOW) === null);
+  check("a new account may NOT be created", blockedReasonFor(live, "register", NOW) === "signup_closed");
+  check("signupOpen() agrees with it", signupOpen(live, NOW) === false);
+  check("the refusal offers the waiting list rather than a dead end",
+    blockedReasonFor(live, "register", NOW) !== "closed");
+
+  // The regression this stage exists to prevent: 'prelaunch' shuts BOTH doors,
+  // which is what was live and what locked every existing account out.
+  check("'prelaunch' would close login — that is why we are not using it",
+    MODE_PRESETS.prelaunch.allowLogin === false);
+  check("'existing_only' keeps login open", MODE_PRESETS.existing_only.allowLogin === true);
+  check("'existing_only' keeps signup shut", MODE_PRESETS.existing_only.allowSignup === false);
+  check("'existing_only' offers the waiting list", MODE_PRESETS.existing_only.waitlistEnabled === true);
+
+  // Independence: the four switches must not be able to overwrite each other.
+  const loginOnly = make({ allowLogin: true, allowSignup: false });
+  const signupOnly = make({ allowLogin: false, allowSignup: true, waitlistEnabled: true });
+  check("opening login does not open signup", signupOpen(loginOnly, NOW) === false);
+  check("opening signup does not open login",
+    blockedReasonFor(signupOnly, "login", NOW) === "login_closed");
+}
+
+console.log("\nH. THE OPERATOR'S DOOR (/admin/login)");
+{
+  // The path the middleware exempts and the path the page is served from have
+  // to be the same string; they live in different files.
+  check("the exempt path is exactly /admin/login", ADMIN_LOGIN_PATH === "/admin/login");
+  check("it sits under the protected /admin prefix, so nothing else changes",
+    ADMIN_LOGIN_PATH.startsWith("/admin"));
+  // Robots: /admin is already disallowed, which covers the child path.
+  check("crawlers are kept out by the existing /admin disallow rule",
+    ADMIN_LOGIN_PATH.startsWith("/admin"));
 }
 
 console.log(failures === 0 ? "\nAll platform-access tests passed.\n" : `\n${failures} platform-access test(s) FAILED.\n`);

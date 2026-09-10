@@ -68,10 +68,27 @@ export async function POST(request: Request) {
   };
 
   const keep = nextRaw ? `&next=${encodeURIComponent(next)}` : "";
+  /**
+   * Which door this attempt came through. The operator's page at /admin/login
+   * is the one entry point that must not depend on the public homepage — so a
+   * wrong password there re-draws THAT form instead of bouncing the operator
+   * onto the pre-launch page, where the dialog may be showing a waiting list
+   * and no form at all.
+   *
+   * This only decides where an error message is rendered. It grants nothing:
+   * every check below runs identically either way.
+   */
+  const adminDoor = next === "/admin" || next.startsWith("/admin/");
   const fail = (code: SignInFailure, mail?: string) => redirectTo(
-    // Straight back into the dialog, so a wrong password re-opens the same
-    // panel over the landing page rather than bouncing through /login.
-    `/?auth=login&error=${code}${mail ? `&email=${encodeURIComponent(mail)}` : ""}${keep}`,
+    adminDoor
+      // `e` / `m`, not `error` / `email`: the auth dialog's provider owns those
+      // two names and strips them from the address of whatever page it is
+      // mounted on — which is every page — so a message passed under them here
+      // would be erased the moment the page hydrated.
+      ? `/admin/login?e=${code}${mail ? `&m=${encodeURIComponent(mail)}` : ""}`
+      // Straight back into the dialog, so a wrong password re-opens the same
+      // panel over the landing page rather than bouncing through /login.
+      : `/?auth=login&error=${code}${mail ? `&email=${encodeURIComponent(mail)}` : ""}${keep}`,
   );
 
   if (!email || !password) return fail("invalid");

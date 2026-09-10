@@ -186,10 +186,6 @@ export function AuthModal() {
 
   if (!mode) return null;
 
-  // Registration earns the extra width — it is what lets first/last name and
-  // e-mail/phone sit side by side instead of stacking into a long column.
-  const wide = mode === "register";
-
   /**
    * Is this mode shut? Undecided (`access === null`) is treated as OPEN so the
    * form paints immediately — the instant-open behaviour must not regress into
@@ -200,6 +196,11 @@ export function AuthModal() {
   const blocked = mode === "login" ? (access?.loginBlocked ?? null)
     : mode === "register" ? (access?.signupBlocked ?? null)
       : null;
+
+  // Registration earns the extra width — it is what lets first/last name and
+  // e-mail/phone sit side by side instead of stacking into a long column. A
+  // closed door needs none of it: it is a paragraph and a button.
+  const wide = mode === "register" && !blocked;
 
   /** The waiting list is the EXISTING flow: the launch page's own form when we
    *  are on it, otherwise the launch page itself. No second waitlist. */
@@ -245,8 +246,13 @@ export function AuthModal() {
           ref={panelRef}
           tabIndex={-1}
           className={cn(
-            "auth-panel panel pointer-events-auto relative flex w-full flex-col overflow-hidden rounded-3xl outline-none lg:flex-row",
-            wide ? "max-w-[880px]" : "max-w-[560px] lg:max-w-[900px]",
+            "auth-panel panel pointer-events-auto relative flex w-full flex-col overflow-hidden rounded-3xl outline-none",
+            blocked
+              // One column, phone-width, at every size. A pre-launch notice
+              // stretched to 900px is a mostly-empty card with a sentence in
+              // it — and on a phone it must not swallow the screen either.
+              ? "max-w-[420px]"
+              : cn("lg:flex-row", wide ? "max-w-[880px]" : "max-w-[560px] lg:max-w-[900px]"),
           )}
           style={{
             // Relative to the STAGE, which is sized to the visual viewport —
@@ -258,12 +264,32 @@ export function AuthModal() {
           {/* The orbiting light. Decorative and CSS-only — see .auth-panel. */}
           <span aria-hidden className="auth-orbit" />
 
-          <BrandPane wide={wide} signupCredits={signupCredits} />
+          {/* A shut door shows no brand pane: the card is one message, and the
+              product tour beside it belongs to a form that is not there. */}
+          {!blocked && <BrandPane wide={wide} signupCredits={signupCredits} />}
 
           <div className={cn(
             "relative flex min-h-0 w-full flex-col",
-            wide ? "lg:w-[560px] lg:shrink-0" : "lg:w-[460px] lg:shrink-0",
+            blocked ? "" : wide ? "lg:w-[560px] lg:shrink-0" : "lg:w-[460px] lg:shrink-0",
           )}>
+            {/* THE CLOSE BUTTON ALONE, when the door is shut.
+                The "Zaloguj się do GrovBase" heading and its subtitle used to
+                stay above the notice, so the first thing a visitor read was an
+                instruction to sign in and the second was that they cannot.
+                The notice carries its own heading now (and the dialog's
+                aria-labelledby with it). */}
+            {blocked ? (
+              <div className="flex justify-end px-3 pt-3">
+                <button
+                  type="button"
+                  onClick={close}
+                  aria-label={t("common.close")}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted transition-colors hover:bg-raised hover:text-ink"
+                >
+                  <X size={18} aria-hidden />
+                </button>
+              </div>
+            ) : (
             <div className={cn(
               "flex items-start justify-between gap-3 px-4 sm:px-6",
               wide ? "pb-1 pt-4 sm:pt-5" : "pb-1.5 pt-5 sm:pt-6",
@@ -313,6 +339,7 @@ export function AuthModal() {
                 <X size={18} aria-hidden />
               </button>
             </div>
+            )}
 
             <ModeBody mode={`${mode}:${blocked ?? ""}`}>
               {/* A closed door gets an invitation, not an error. The form is not
@@ -320,8 +347,10 @@ export function AuthModal() {
               {blocked ? (
                 <AccessNotice
                   reason={blocked}
+                  titleId="auth-modal-title"
                   copy={access!.copy}
                   waitlistEnabled={access!.waitlistEnabled}
+                  perks={access!.perks}
                   onWaitlist={goToWaitlist}
                   onSwitchToLogin={
                     // Only offered when signup is the thing that is shut and

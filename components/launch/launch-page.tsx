@@ -232,8 +232,17 @@ export function LaunchPage({
 
             {/* ── THE FORM ─────────────────────────────────────────────── */}
             <div data-launch-form-card
-              className="glass mt-4 rounded-2xl border-[rgb(var(--accent)/0.22)] p-4 sm:p-[18px] lg:mt-3 lg:p-4 xl:mt-5 xl:p-5">
-              <p className="font-display text-[17px] font-semibold tracking-tight lg:text-[17.5px] xl:text-[18.5px]">
+              className="glass relative mt-4 rounded-2xl border-[rgb(var(--accent)/0.22)] p-4 sm:p-[18px] lg:mt-3 lg:p-4 xl:mt-5 xl:p-5">
+              {/* The same travelling light the auth dialog carries, on the one
+                  card this page is asking people to use. A little slower than
+                  the dialog's: this card's perimeter is shorter, so at 6s the
+                  arc crosses a corner noticeably faster. Decorative and
+                  CSS-only, and it stops moving entirely for anyone who asked
+                  for reduced motion — see .orbit-ring in globals.css. */}
+              <span aria-hidden data-launch-form-orbit
+                className="orbit-ring"
+                style={{ "--orbit-speed": "7.5s", "--orbit-inset": "-1px" } as React.CSSProperties} />
+              <p className="relative font-display text-[17px] font-semibold tracking-tight lg:text-[17.5px] xl:text-[18.5px]">
                 {c["form.title"]}
               </p>
               <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{c["form.sub"]}</p>

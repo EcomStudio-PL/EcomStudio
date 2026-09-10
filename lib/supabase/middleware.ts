@@ -5,6 +5,22 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, authCookieOptions, PERSIST_COOKIE, str
 const PROTECTED_PREFIXES = ["/home","/dashboard","/products","/generator","/library","/prompts","/history","/credits","/plan","/settings","/admin","/tools","/inspirations","/support","/k","/retusz","/wideo"];
 const AUTH_PAGES = ["/login", "/register", "/forgot-password"];
 
+/**
+ * THE OPERATOR'S OWN DOOR.
+ *
+ * `/admin` is a protected prefix, so an unauthenticated visit to anything
+ * under it is bounced to the dialog — which is right for every admin screen
+ * and wrong for the one that exists to SIGN IN to them. Without this exemption
+ * /admin/login redirects to itself forever.
+ *
+ * Exempting the path is not a hole. It renders a sign-in form and nothing
+ * else; the credentials still go to /auth/sign-in, which still checks the
+ * password and the platform door, and /admin/layout.tsx still refuses to
+ * render for an account whose profiles row is not an admin. Knowing the
+ * address buys a stranger a login form, which is what "/" already offers.
+ */
+export const ADMIN_LOGIN_PATH = "/admin/login";
+
 /** The dialog's own address. Kept as literals rather than imported from
  *  lib/auth-routes: this module runs in the edge runtime, where every import
  *  is bundled, and the two values are asserted equal by the test suite. */
@@ -53,12 +69,23 @@ export async function updateSession(request: NextRequest) {
   // page opens it over the landing page instead of navigating to a screen of
   // its own — carrying the path as the returnTo, which /auth/sign-in and the
   // OAuth callback both validate before honouring.
-  if (!user && PROTECTED_PREFIXES.some((p) => pathname.startsWith(p))) {
+  const adminLogin = pathname === ADMIN_LOGIN_PATH;
+
+  if (!user && !adminLogin && PROTECTED_PREFIXES.some((p) => pathname.startsWith(p))) {
     const url = request.nextUrl.clone();
     url.pathname = AUTH_HOST;
     url.search = "";
     url.searchParams.set(AUTH_PARAM, "login");
     url.searchParams.set("next", pathname);
+    return redirectWithCookies(url);
+  }
+  // Signed in and standing on the operator's sign-in page: there is nothing
+  // to sign into. Straight to the panel, which does its own role check and
+  // sends a non-admin to the dashboard.
+  if (user && adminLogin) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/admin";
+    url.search = "";
     return redirectWithCookies(url);
   }
   // Already signed in? Neither the old auth routes nor the dialog have

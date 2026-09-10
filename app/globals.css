@@ -1090,9 +1090,19 @@ body:has(.workspace-page)::after { display: none; }
 
 /* THE ORBIT — one masked ring carrying a conic gradient that is transparent
    for most of the turn and brightens over a short arc. What moves is that
-   arc, not the whole border: no pulsing edge, no disco. */
+   arc, not the whole border: no pulsing edge, no disco.
+
+   TWO CLASSES, ONE IMPLEMENTATION. `.auth-orbit` is the dialog's; `.orbit-ring`
+   is the same light for any other card that wants it — the launch page's
+   sign-up form uses it, so the pre-launch page and the dialog it opens share a
+   visual language instead of each inventing one. Anything with `position:
+   relative` and a border radius can carry it; `--orbit-speed` tunes the
+   travel time per card, because a small card's perimeter passes under the arc
+   faster than a large one's. */
 .auth-orbit,
-.auth-orbit::before {
+.orbit-ring,
+.auth-orbit::before,
+.orbit-ring::before {
   position: absolute;
   inset: 0;
   border-radius: inherit;
@@ -1117,24 +1127,35 @@ body:has(.workspace-page)::after { display: none; }
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask-composite: exclude;
-  animation: auth-orbit 6s linear infinite;
+  animation: auth-orbit var(--orbit-speed, 6s) linear infinite;
 }
-.auth-orbit { z-index: 2; padding: 1px; }
+.auth-orbit,
+.orbit-ring { z-index: 2; padding: 1px; }
+/* A card with its own 1px border needs the ring ON that border, not 1px
+   inside it: absolute insets resolve against the PADDING box, so `inset: 0`
+   leaves the static hairline in front of the travelling light and the arc
+   reads as a smudge behind a line. `--orbit-inset: -1px` puts the two exactly
+   on top of each other. */
+.orbit-ring { inset: var(--orbit-inset, 0px); }
 /* The glow is a second, wider, dimmer ring — not a filter on the bright one,
    so nothing re-rasterises a shadow every frame. */
-.auth-orbit::before {
+.auth-orbit::before,
+.orbit-ring::before {
   content: "";
   inset: -1px;
   padding: 2px;
   opacity: 0.28;
   filter: blur(4px);
 }
+.orbit-ring::before { inset: calc(var(--orbit-inset, 0px) - 1px); }
 @keyframes auth-orbit { to { --auth-orbit-angle: 360deg; } }
 
 /* Light mode: the same light, quieter. At full strength a magenta arc on a
    white card reads as neon, which is the opposite of the intent. */
-:root:not(.dark) .auth-orbit { opacity: 0.7; }
-:root:not(.dark) .auth-orbit::before { opacity: 0.22; }
+:root:not(.dark) .auth-orbit,
+:root:not(.dark) .orbit-ring { opacity: 0.7; }
+:root:not(.dark) .auth-orbit::before,
+:root:not(.dark) .orbit-ring::before { opacity: 0.22; }
 
 /* Login is short, registration is long. Animating the height is what stops
    the switch from looking like a page reload. */
@@ -1194,8 +1215,10 @@ body:has(.workspace-page)::after { display: none; }
 @media (prefers-reduced-motion: reduce) {
   /* No travelling light, no entrance, no height animation — a still, quiet
      border and an instant card. */
-  .auth-orbit { animation: none !important; opacity: 0.45; }
-  .auth-orbit::before { display: none; }
+  .auth-orbit,
+  .orbit-ring { animation: none !important; opacity: 0.45; }
+  .auth-orbit::before,
+  .orbit-ring::before { display: none; }
   .auth-panel, .auth-backdrop, .auth-mode-enter { animation: none !important; }
   .auth-modal-body-animated { transition: none !important; }
 }

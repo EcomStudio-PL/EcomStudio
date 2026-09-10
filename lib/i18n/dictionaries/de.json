@@ -3534,8 +3534,8 @@
   "access": {
     "loginTitle": "Gleich so weit",
     "loginBody": "Die Anmeldung öffnet zum Start. Tragen Sie sich in die Warteliste ein — wir sagen Ihnen als einer der Ersten Bescheid, sobald GrovBase live geht.",
-    "signupTitle": "Registrierung öffnet bald",
-    "signupBody": "Wir nehmen gerade die erste Gruppe von Nutzern auf. Tragen Sie sich in die Warteliste ein, und wir melden uns, sobald die Registrierung öffnet.",
+    "signupTitle": "GrovBase startet bald",
+    "signupBody": "Die Plattform ist noch vor dem Start. Trag dich in die Warteliste ein — wir melden uns, sobald GrovBase live geht.",
     "closedTitle": "Gleich zurück",
     "closedBody": "Wir arbeiten an der Plattform. Schauen Sie in Kürze wieder vorbei — alles ist dann an seinem Platz.",
     "joinWaitlist": "Auf die Liste setzen",
@@ -3814,5 +3814,10 @@
     "clearSelection": "Aufheben",
     "removeSelected": "Ausgewählte entfernen",
     "downloadSelected": "Ausgewählte herunterladen"
+  },
+  "adminLogin": {
+    "title": "Adminbereich",
+    "sub": "Eingang für das GrovBase-Team. Melde dich mit einem Administratorkonto an — der Panel-Zugriff wird nach der Anmeldung geprüft.",
+    "note": "Diese Adresse umgeht die Anmeldung nicht. Ein normales Konto kann sich hier anmelden, landet aber im eigenen Workspace, nicht im Panel."
   }
 }
