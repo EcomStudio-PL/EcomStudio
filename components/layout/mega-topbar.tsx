@@ -129,7 +129,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
               )}
             </div>
           ))}
-          <div className="ml-1.5"><CommandPalette isAdmin={isAdmin} wide /></div>
+          <div className="ml-1.5"><CommandPalette isAdmin={isAdmin} navAdmin={seesRestricted} availability={avail} wide /></div>
         </nav>
 
         <div className="min-w-0 flex-1" />
@@ -164,7 +164,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
         )}
 
         {/* Mobile search icon — the palette opens as a full overlay. */}
-        <div className="lg:hidden"><CommandPalette isAdmin={isAdmin} iconOnly /></div>
+        <div className="lg:hidden"><CommandPalette isAdmin={isAdmin} navAdmin={seesRestricted} availability={avail} iconOnly /></div>
 
         <div className="hidden sm:block"><ThemeToggle /></div>
         <NotificationsBell items={notifications} unread={unread} />

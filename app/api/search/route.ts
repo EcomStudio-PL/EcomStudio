@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentWorkspace, getProfile } from "@/lib/services/workspace";
+import { getAvailabilityMap } from "@/lib/server/feature-availability";
+import { menuVisible } from "@/lib/features";
 
 export const dynamic = "force-dynamic";
 
@@ -23,15 +25,25 @@ export async function GET(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ hits: [] }, { status: 401 });
-  const [workspace, profile] = await Promise.all([
+  const [workspace, profile, avail] = await Promise.all([
     getCurrentWorkspace(supabase, user.id),
     getProfile(supabase, user.id),
+    getAvailabilityMap(supabase),
   ]);
   if (!workspace) return NextResponse.json({ hits: [] });
 
+  // Search obeys the same switchboard as the menu. Produkty is DISABLED, so a
+  // customer would get rows pointing at a route that 404s — and one query per
+  // keystroke for a catalogue nobody can open. Admins still see them.
+  const searchProducts = menuVisible(avail, "/products", profile?.role === "admin");
+  type ProductHitRow = { id: string; name: string; category: string | null };
+  const productsQuery: PromiseLike<{ data: ProductHitRow[] | null }> = searchProducts
+    ? supabase.from("products").select("id, name, category")
+      .eq("workspace_id", workspace.id).ilike("name", like).limit(5)
+    : Promise.resolve({ data: null });
+
   const [products, sessions, prompts, jobs] = await Promise.all([
-    supabase.from("products").select("id, name, category")
-      .eq("workspace_id", workspace.id).ilike("name", like).limit(5),
+    productsQuery,
     supabase.from("prompt_sessions").select("id, product_name, status")
       .eq("workspace_id", workspace.id).ilike("product_name", like).limit(5),
     supabase.from("generated_prompts").select("id, concept_name, session_id, scene_type")

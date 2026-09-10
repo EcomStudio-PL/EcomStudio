@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { ArrowRight, Package, PenLine, Sparkles, Zap } from "lucide-react";
+import { ArrowRight, PenLine, Sparkles, Zap } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
@@ -142,12 +142,10 @@ export default async function HomePage() {
                 <span className="hidden sm:inline">{t("home.continue", { name: continueLabel })}</span>
               </Link>
             )}
-            <Link href="/products"
-              className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl text-[13px] font-semibold text-muted transition-colors duration-200 hover:text-ink sm:h-11 sm:px-3 sm:text-sm">
-              <Package size={15} aria-hidden />
-              {t("nav.products")}
-              <ArrowRight size={13} aria-hidden />
-            </Link>
+            {/* The third action used to be "Produkty". GrovBase does not keep
+                product catalogues any more — the module is DISABLED and its
+                route 404s — so the link is gone rather than left here to fail.
+                Nothing replaces it: two actions is what this hero needs. */}
           </div>
         </div>
       </Panel>

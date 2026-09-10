@@ -7,6 +7,8 @@ import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { listProducts } from "@/lib/services/products";
+import { getAvailabilityMap, viewerIsAdmin } from "@/lib/server/feature-availability";
+import { menuVisible } from "@/lib/features";
 import { signImageUrls } from "@/lib/services/images";
 import { toolCatalogue } from "@/lib/server/image-tools";
 import { toolBySlug } from "@/lib/images/tools";
@@ -48,11 +50,19 @@ export default async function ToolPage({ params }: { params: Promise<{ slug: str
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) redirect("/home");
 
-  const [catalogue, wallet, products] = await Promise.all([
+  // "Powiąż z produktem" only exists while the Produkty module does. With it
+  // DISABLED the list stays empty, which removes the affordance AND the query
+  // — the workbench already hides the picker when there is nothing to pick,
+  // and its "+ Dodaj produkt" link would otherwise lead to a 404.
+  const [catalogue, wallet, avail, isAdmin] = await Promise.all([
     toolCatalogue(supabase),
     getWallet(supabase, workspace.id),
-    listProducts(supabase, workspace.id, 200),
+    getAvailabilityMap(supabase),
+    viewerIsAdmin(supabase),
   ]);
+  const products = menuVisible(avail, "/products", isAdmin)
+    ? await listProducts(supabase, workspace.id, 200)
+    : [];
   // The catalogue is built from the same static list `toolBySlug` just matched,
   // so this row exists — but a non-null assertion is what turns "should not
   // happen" into a blank error screen, so the miss degrades instead.

@@ -44,10 +44,9 @@ export default async function VideoPage() {
                   <Sparkles size={15} aria-hidden />
                   {t("mega.engine")}
                 </Link>
-                <Link href="/products"
-                  className="plate inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-semibold text-ink transition-colors duration-200 hover:border-[rgb(var(--accent)/0.4)]">
-                  {t("nav.products")}
-                </Link>
+                {/* "Produkty" stood here as the second suggestion. The module
+                    is DISABLED and its route 404s, so pointing a waiting
+                    customer at it would be the worst kind of dead end. */}
                 <p className="w-full text-[12.5px] text-faint sm:w-auto sm:pl-2">{t("video.meanwhileBody")}</p>
               </div>
             </div>

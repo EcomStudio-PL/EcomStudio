@@ -7,6 +7,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import { CLIENT_NAV, ADMIN_NAV } from "@/lib/navigation";
 import { IMAGE_CREATE, IMAGE_EDIT, IMAGE_EDIT_MORE, editLabelKey } from "@/lib/topnav";
 import { VIDEO_CREATE_WF } from "@/lib/categories";
+import { allDefaults, menuVisible, type AvailabilityMap } from "@/lib/features";
 import { cn } from "@/lib/utils";
 import type { SearchHit } from "@/app/api/search/route";
 
@@ -31,7 +32,7 @@ type Row = {
 };
 
 const RECENT_KEY = "ecs_recent_search";
-const TABS: readonly Tab[] = ["all", "image", "video", "tools", "products"] as const;
+const ALL_TABS: readonly Tab[] = ["all", "image", "video", "tools", "products"] as const;
 
 /**
  * SEARCH — one overlay for navigating and for finding the account's own work.
@@ -43,8 +44,20 @@ const TABS: readonly Tab[] = ["all", "image", "video", "tools", "products"] as c
  * filtered by the same tabs. Ctrl/⌘K opens, Escape closes, ↑↓ + Enter work
  * throughout.
  */
-export function CommandPalette({ isAdmin, wide = false, iconOnly = false }: {
+export function CommandPalette({
+  isAdmin, navAdmin, availability, wide = false, iconOnly = false,
+}: {
   isAdmin: boolean; wide?: boolean;
+  /**
+   * The same map the menus read. Search is a menu too: a module the drawer
+   * hides must not stay reachable through a tab and a row here — that is how
+   * "Produkty" survived being switched off and kept offering a 404.
+   */
+  availability?: AvailabilityMap;
+  /** What MODULE VISIBILITY should treat as admin — `isAdmin` normally, but
+   *  false while an admin is previewing the app as a customer. `isAdmin`
+   *  itself still governs the admin destinations this palette lists. */
+  navAdmin?: boolean;
   /** Icon-only trigger for the mobile top bar; the overlay is full-screen. */
   iconOnly?: boolean;
 }) {
@@ -52,6 +65,17 @@ export function CommandPalette({ isAdmin, wide = false, iconOnly = false }: {
   // phones — but only ONE may own Ctrl/⌘K, or the shortcut opens two
   // overlays at once and the second one fights the first for focus.
   const ownsShortcut = !iconOnly;
+  // Memoised: allDefaults() builds a NEW object each call, and an unstable
+  // map here would rebuild the whole catalogue on every keystroke.
+  const avail = useMemo(() => availability ?? allDefaults(), [availability]);
+  const seesRestricted = navAdmin ?? isAdmin;
+  // Admins keep the tab and the rows (menuVisible says so) — they are the ones
+  // who can switch the module back on from /admin/settings/features.
+  const showProducts = menuVisible(avail, "/products", seesRestricted);
+  const TABS = useMemo<readonly Tab[]>(
+    () => ALL_TABS.filter((x) => x !== "products" || showProducts),
+    [showProducts],
+  );
   const { t } = useI18n();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -150,6 +174,9 @@ export function CommandPalette({ isAdmin, wide = false, iconOnly = false }: {
     }
     for (const g of CLIENT_NAV) {
       for (const i of g.items) {
+        // Same rule as the drawer and the dock: a module the customer cannot
+        // open is not offered here either.
+        if (!menuVisible(avail, i.href, seesRestricted)) continue;
         rows.push({
           key: `nav:${i.href}`, label: t(`nav.${i.key}`), sub: null, href: i.href,
           icon: i.icon, section: "suggested",
@@ -168,7 +195,7 @@ export function CommandPalette({ isAdmin, wide = false, iconOnly = false }: {
       }
     }
     return rows;
-  }, [t, isAdmin]);
+  }, [t, isAdmin, seesRestricted, avail]);
 
   /** The rows the body renders, already tab-filtered. */
   const rows = useMemo<Row[]>(() => {
@@ -190,7 +217,10 @@ export function CommandPalette({ isAdmin, wide = false, iconOnly = false }: {
       return [...recentRows, ...suggested, ...rest];
     }
 
-    const hitRows: Row[] = hits.map((h) => ({
+    // The API already withholds product hits from a customer who cannot open
+    // them; this second filter is what keeps a stale in-flight response from
+    // painting a row that leads to a 404.
+    const hitRows: Row[] = hits.filter((h) => h.kind !== "product" || showProducts).map((h) => ({
       key: `${h.kind}:${h.id}`, label: h.title, sub: h.sub, href: h.href,
       icon: KIND_ICON[h.kind],
       section: h.kind === "product" ? "products" : "suggested",
@@ -198,7 +228,7 @@ export function CommandPalette({ isAdmin, wide = false, iconOnly = false }: {
     }));
     const matched = catalogue.filter((r) => r.label.toLowerCase().includes(term)).slice(0, 8);
     return [...hitRows, ...matched].filter(inTab);
-  }, [catalogue, hits, q, tab, recent]);
+  }, [catalogue, hits, q, tab, recent, showProducts]);
 
   useEffect(() => { setCursor(0); }, [q, tab, hits.length]);
 
