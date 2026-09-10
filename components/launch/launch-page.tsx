@@ -305,18 +305,28 @@ export function LaunchPage({
                     const Icon = PERK_ICONS[i] ?? Gift;
                     return (
                       <li key={`${p.t}${p.b}`}
-                        className="flex items-center gap-2.5 rounded-xl border border-[rgb(var(--glass-border)/0.14)] bg-[rgb(var(--surface)/0.55)] px-3 py-2.5">
+                        data-launch-perk
+                        className="flex items-center gap-2 rounded-xl border border-[rgb(var(--glass-border)/0.14)] bg-[rgb(var(--surface)/0.55)] px-2.5 py-2 sm:gap-2.5 sm:px-3 sm:py-2.5">
                         <span aria-hidden className={cn(
-                          "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl sm:h-9 sm:w-9",
                           i === 1
                             ? "bg-[rgb(var(--violet)/0.18)] text-[rgb(var(--violet))]"
                             : "bg-[rgb(var(--accent)/0.16)] text-accent",
                         )}>
-                          <Icon size={16} />
+                          <Icon className="h-[15px] w-[15px] sm:h-4 sm:w-4" />
                         </span>
-                        <span className="min-w-0 leading-[1.3]">
-                          <span className="block text-[13px] font-semibold text-ink">{p.t}</span>
-                          <span className="block text-[12px] text-muted">{p.b}</span>
+                        {/* ONE LINE BESIDE THE ICON ON A PHONE.
+                            The two halves are blocks from sm up — three narrow
+                            columns there cannot hold "Darmowe kredyty na start"
+                            on one line — but below sm the row is full width and
+                            has room, so they are plain inline spans with a
+                            space between them and wrapping switched off. The
+                            size follows the viewport so the longest of the
+                            three still fits at 320px without being clipped. */}
+                        <span data-launch-perk-text
+                          className="min-w-0 whitespace-nowrap leading-[1.3] sm:whitespace-normal">
+                          <span className="text-[clamp(11.5px,3.4vw,13px)] font-semibold text-ink sm:block sm:text-[13px]">{p.t}</span>{" "}
+                          <span className="text-[clamp(10.5px,3.1vw,12px)] text-muted sm:block sm:text-[12px]">{p.b}</span>
                         </span>
                       </li>
                     );
