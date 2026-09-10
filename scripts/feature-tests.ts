@@ -52,9 +52,19 @@ console.log("\nA. REGISTRY — every real module is covered, the untouchable one
   check("every key appears exactly once", new Set(FEATURE_KEYS).size === FEATURE_KEYS.length);
   check("every registry path is absolute", FEATURE_REGISTRY.every((f) => f.path.startsWith("/")));
   // §45: a page added tomorrow must not go dark because nobody inserted a row.
-  const soon = FEATURE_KEYS.filter((k) => defaultStatusFor(k) !== "ACTIVE");
-  check("a new feature defaults to ACTIVE — only the backendless ones do not",
-    soon.length === 2 && soon.includes("image_matching") && soon.includes("video"), soon.join(","));
+  // The exceptions are named one by one on purpose: two have no engine behind
+  // them yet (image_matching, video) and one is a product decision — GrovBase
+  // does not keep product catalogues, so `products` ships off and an operator
+  // turns it back on from /admin/settings/features if that ever changes.
+  const off = FEATURE_KEYS.filter((k) => defaultStatusFor(k) !== "ACTIVE");
+  const expected = ["image_matching", "video", "products"];
+  check("a feature defaults to ACTIVE unless it is deliberately listed as off",
+    off.length === expected.length && expected.every((k) => off.includes(k as never)), off.join(","));
+  check("the two backendless modules default to COMING_SOON, not DISABLED",
+    defaultStatusFor("image_matching") === "COMING_SOON" && defaultStatusFor("video") === "COMING_SOON",
+    `${defaultStatusFor("image_matching")}/${defaultStatusFor("video")}`);
+  check("products defaults to DISABLED — the module 404s rather than promising a return",
+    defaultStatusFor("products") === "DISABLED", defaultStatusFor("products"));
 }
 
 console.log("\nB. HREF → FEATURE — prefixes, query stripping, no bypass surface");

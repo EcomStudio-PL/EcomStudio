@@ -126,7 +126,12 @@ export const FEATURE_REGISTRY: readonly FeatureDescriptor[] = [
   // ── WIDEO ────────────────────────────────────────────────────────────────
   { key: "video", nameKey: "video.title", path: "/wideo", group: "video", defaultStatus: "COMING_SOON" },
   // ── KONTO I ZASOBY ───────────────────────────────────────────────────────
-  { key: "products", nameKey: "nav.products", path: "/products", group: "account" },
+  // GrovBase does not keep product catalogues. The generator takes reference
+  // photos directly, so a per-customer catalogue was a second place to manage
+  // the same images — switched off at the registry rather than deleted, so the
+  // 28 products and 92 reference photos already stored stay intact and an
+  // operator can bring the module back from /admin/settings/features.
+  { key: "products", nameKey: "nav.products", path: "/products", group: "account", defaultStatus: "DISABLED" },
   { key: "inspirations", nameKey: "nav.inspirations", path: "/inspirations", group: "account" },
   { key: "credits", nameKey: "nav.credits", path: "/credits", group: "account" },
   { key: "support", nameKey: "nav.help", path: "/support", group: "account" },
