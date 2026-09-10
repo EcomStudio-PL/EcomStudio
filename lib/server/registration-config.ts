@@ -12,8 +12,8 @@ import type { Client } from "@/lib/services/workspace";
  * "asked but not insisted on" are different products: a required phone number
  * costs signups, a hidden one costs the sales call that would have followed.
  *
- * The store is app_settings."registration", which 0055 seeds with FLAT STRING
- * VALUES on purpose — /admin/system renders every settings row through a
+ * The store is app_settings."registration", which 0055 seeds and 0073 trims,
+ * with FLAT STRING VALUES on purpose — /admin/system renders every settings row through a
  * generic editor that would print a nested object as "[object Object]" and
  * save it back the same way. The `wl_` prefix is what keeps the landing form's
  * three fields flat instead of nested, and this module is the only place that
@@ -33,12 +33,16 @@ export type RegistrationConfig = {
   acquisition: FieldMode;
 };
 
-/** The landing form asks for less by design — no acquisition question on a
- *  page whose whole job is one address. */
+/**
+ * The landing form asks for less by design. No acquisition question on a page
+ * whose whole job is one address — and no phone number: a pre-launch list is
+ * built on e-mail, the field cost signups, and there is nothing to call about
+ * before the product ships. The signup form above keeps its phone option; this
+ * one no longer offers it at all.
+ */
 export type WaitlistFieldConfig = {
   firstName: FieldMode;
   lastName: FieldMode;
-  phone: FieldMode;
 };
 
 export type RegistrationFields = { signup: RegistrationConfig; waitlist: WaitlistFieldConfig };
@@ -63,15 +67,16 @@ export const SIGNUP_FIELD_KEYS: Readonly<Record<keyof RegistrationConfig, string
 export const WAITLIST_FIELD_KEYS: Readonly<Record<keyof WaitlistFieldConfig, string>> = {
   firstName: "wl_first_name",
   lastName: "wl_last_name",
-  phone: "wl_phone",
 };
 
-/** Exactly what 0055 seeds, so a deployment whose row was never saved and one
- *  saved with the defaults render identically. Exported because the admin UI
- *  and the forms have to agree on what "unset" looks like. */
+/** What the settings row holds once 0073 has run — 0055 seeded the original
+ *  values and 0073 is what dropped the waitlist phone and put the surname back
+ *  on the form — so a deployment whose row was never saved and one saved with
+ *  the defaults render identically. Exported because the admin UI and the
+ *  forms have to agree on what "unset" looks like. */
 export const REGISTRATION_DEFAULTS: RegistrationFields = {
   signup: { firstName: "required", lastName: "required", phone: "optional", acquisition: "optional" },
-  waitlist: { firstName: "optional", lastName: "hidden", phone: "optional" },
+  waitlist: { firstName: "required", lastName: "required" },
 };
 
 export function isFieldMode(value: unknown): value is FieldMode {

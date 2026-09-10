@@ -1144,7 +1144,7 @@
       "launchNote": "Hinweis unter dem Formular",
       "launchTrust": "Vertrauenshinweis",
       "launchConsent": "Einwilligung / Datenschutz",
-      "launchConsentHint": "Kurzer Datenhinweis unter dem Formular.",
+      "launchConsentHint": "Pflicht-Einwilligung am Formular. {privacy} und {terms} werden zu Links auf Datenschutzerklärung und Nutzungsbedingungen — bitte im Satz belassen. Leeres Feld stellt den Standardtext wieder her; die Einwilligung selbst lässt sich nicht abschalten.",
       "launchImage": "Bild im Hero-Bereich",
       "launchImageHint": "Querformat empfohlen, mindestens 1200 px breit.",
       "launchBenefit1": "Vorteil 1",
@@ -2838,7 +2838,13 @@
     "benefit.2sub": "Abonnements",
     "benefit.3sub": "Überraschung",
     "social.heading": "Folge uns",
-    "rights": "Alle Rechte vorbehalten"
+    "rights": "Alle Rechte vorbehalten",
+    "hero.consent": "Ich akzeptiere die {privacy} und die {terms}.",
+    "consentPrivacy": "Datenschutzerklärung",
+    "consentTerms": "Nutzungsbedingungen",
+    "needConsent": "Bitte stimme zu, um dich einzutragen.",
+    "needEmail": "Bitte gib eine gültige E-Mail-Adresse ein.",
+    "needFields": "Bitte ausfüllen: {fields}."
   },
   "launchAdmin": {
     "homepageTitle": "Startseite",

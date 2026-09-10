@@ -38,11 +38,11 @@ const SIGNUP_ROWS: readonly { field: keyof RegistrationConfig; labelKey: string 
 ];
 
 /** The landing form asks for less: no acquisition question on a page whose
- *  whole job is collecting one address. */
+ *  whole job is collecting one address, and no phone number at all — a
+ *  pre-launch list is built on e-mail. */
 const WAITLIST_ROWS: readonly { field: keyof WaitlistFieldConfig; labelKey: string }[] = [
   { field: "firstName", labelKey: "reg.fFirstName" },
   { field: "lastName", labelKey: "reg.fLastName" },
-  { field: "phone", labelKey: "reg.fPhone" },
 ];
 
 /** Segmented speaks plain strings; the options it was handed are the three

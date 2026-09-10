@@ -95,11 +95,15 @@ export async function getLaunchStore(supabase: Client): Promise<LaunchStore> {
 export type LaunchDefaults = Record<string, unknown>;
 
 export function launchDefault(defaults: LaunchDefaults, field: LaunchField): string {
-  // Two fields have no shipped default on purpose. `hero.image` empty means
-  // "no custom visual" and the page draws its own composition; `hero.consent`
-  // empty means the consent checkbox is off — an admin turns it on by writing
-  // the sentence people would be agreeing to.
-  if (field === "hero.image" || field === "hero.consent") return "";
+  // One field has no shipped default on purpose: `hero.image` empty means "no
+  // custom visual" and the page falls back to the artwork in /public.
+  //
+  // `hero.consent` used to be the second one, where empty meant "no consent
+  // checkbox". It is not optional any more — the box is always shown and
+  // always required — so it ships with a sentence like every other line, and
+  // clearing the field in the admin restores that sentence rather than
+  // removing the consent.
+  if (field === "hero.image") return "";
   const value = defaults[field];
   return typeof value === "string" ? value : "";
 }

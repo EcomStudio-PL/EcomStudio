@@ -1144,7 +1144,7 @@
       "launchNote": "Informacja pod formularzem",
       "launchTrust": "Zdanie budujące zaufanie",
       "launchConsent": "Zgoda / polityka prywatności",
-      "launchConsentHint": "Krótka informacja o danych, pokazywana pod formularzem.",
+      "launchConsentHint": "Obowiązkowa zgoda przy formularzu. {privacy} i {terms} zamieniają się na linki do Polityki prywatności i Regulaminu — zostaw je w treści. Puste pole przywraca tekst domyślny; zgody nie da się wyłączyć.",
       "launchImage": "Obraz w sekcji głównej",
       "launchImageHint": "Najlepiej format poziomy, minimum 1200 px szerokości.",
       "launchBenefit1": "Benefit 1",
@@ -2838,7 +2838,13 @@
     "benefit.2sub": "abonamenty",
     "benefit.3sub": "niespodzianka",
     "social.heading": "Śledź nas",
-    "rights": "Wszelkie prawa zastrzeżone"
+    "rights": "Wszelkie prawa zastrzeżone",
+    "hero.consent": "Akceptuję {privacy} oraz {terms}.",
+    "consentPrivacy": "Politykę prywatności",
+    "consentTerms": "warunki korzystania z serwisu",
+    "needConsent": "Zaznacz zgodę, aby zapisać się na listę.",
+    "needEmail": "Podaj poprawny adres e-mail.",
+    "needFields": "Uzupełnij: {fields}."
   },
   "launchAdmin": {
     "homepageTitle": "Strona główna",

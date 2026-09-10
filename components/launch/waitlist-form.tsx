@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { Check, Loader2, Lock, Send } from "lucide-react";
 import { FacebookIcon, InstagramIcon, LinkedinIcon, XIcon } from "@/components/launch/social-icons";
 import { useI18n } from "@/lib/i18n/provider";
@@ -7,7 +8,7 @@ import { cn } from "@/lib/utils";
 import type { FieldMode, WaitlistFieldConfig } from "@/lib/server/registration-config";
 
 /**
- * ZAPIS NA PREMIERĘ — the same form in the hero and in the closing block.
+ * ZAPIS NA PREMIERĘ — the pre-launch signup, in one component.
  *
  * One component, one endpoint, one table: a second copy of this on the page
  * would be a second place for the behaviour to drift. The field is a native
@@ -15,16 +16,19 @@ import type { FieldMode, WaitlistFieldConfig } from "@/lib/server/registration-c
  * iOS does not zoom the page; the state after submitting replaces the form
  * rather than sitting under it, so the answer is never below the fold.
  *
- * The name and phone fields above the address are the admin's decision, not
- * this file's: `fields` says per field whether it is hidden, optional or
- * required, and a hidden one is not rendered and not sent. The e-mail row
- * itself is untouched by that — its height, its stacking and its button are
- * the page's whole call to action.
+ * The name fields above the address are the admin's decision, not this file's:
+ * `fields` says per field whether it is hidden, optional or required. There is
+ * no phone field here at all — a mailing list is built on e-mail.
+ *
+ * NOTHING IS ENFORCED BY DISABLING THE BUTTON. A submit button that is greyed
+ * out because a checkbox further up is unticked tells the visitor nothing; it
+ * just stops working. So the button is always live and the form answers with
+ * a message that names what is missing.
  */
 
-/** The launch page's field styling, in one place so the optional name/phone
- *  inputs cannot drift from the e-mail field they sit above: 56px on phones,
- *  60 from sm, 16px text so iOS does not zoom the layout on focus. */
+/** The launch page's field styling, in one place so the optional name inputs
+ *  cannot drift from the e-mail field they sit above: 48px tall, 16px text so
+ *  iOS does not zoom the layout on focus. */
 const FIELD_CLASS = cn(
   "h-12 w-full min-w-0 rounded-xl border border-[rgb(var(--glass-border)/0.22)] bg-[rgb(var(--sunken)/0.55)]",
   "px-4 text-base text-ink outline-none transition-[border-color,box-shadow] placeholder:text-faint",
@@ -32,21 +36,38 @@ const FIELD_CLASS = cn(
   "sm:text-[14.5px]",
 );
 
+/** The same field, flagged. Applied only after a submit attempt — a form that
+ *  turns red while you are still filling it in is nagging, not helping. */
+const FIELD_INVALID = "border-[rgb(var(--danger)/0.75)] bg-[rgb(var(--danger)/0.08)]";
+
 /** No field is asked for unless the admin turned it on. Matches the seeded
  *  defaults' shape, so a caller that has not threaded the config through yet
  *  gets the plain e-mail form rather than a crash. */
-const NO_EXTRA_FIELDS: WaitlistFieldConfig = { firstName: "hidden", lastName: "hidden", phone: "hidden" };
+const NO_EXTRA_FIELDS: WaitlistFieldConfig = { firstName: "hidden", lastName: "hidden" };
+
+/** Roughly what the route's own regex accepts. Deliberately loose: this only
+ *  catches the empty box and the obvious typo, and the server decides. */
+const EMAIL_SHAPE = /^[^@\s]+@[^@\s.]+\.[^@\s]{2,}$/;
+
+/** Where the consent sentence puts its two links. An admin rewriting the
+ *  sentence keeps the links by keeping the tokens; drop them and the links are
+ *  appended after the sentence instead, because they are not optional. */
+const PRIVACY_TOKEN = "{privacy}";
+const TERMS_TOKEN = "{terms}";
+const TOKENS = /(\{privacy\}|\{terms\})/g;
 
 type ExtraField = {
-  /** The JSON key the route reads — first_name / last_name / phone. */
-  name: "first_name" | "last_name" | "phone";
+  /** The JSON key the route reads — first_name / last_name. */
+  name: "first_name" | "last_name";
   mode: FieldMode;
   label: string;
-  type: "text" | "tel";
   autoComplete: string;
   value: string;
   onChange: (value: string) => void;
 };
+
+/** What a submit attempt found wrong, or "" when it found nothing. */
+type Problem = "" | "email" | "required" | "consent";
 
 export function WaitlistForm({
   placeholder, cta, source, consentLabel, className, id,
@@ -56,8 +77,8 @@ export function WaitlistForm({
   cta: string;
   /** Which block this submission came from — kept on the row for the admin. */
   source: string;
-  /** The sentence the visitor is agreeing to. Empty (the default) means no
-   *  consent checkbox is shown; writing one in the admin turns it on. */
+  /** The sentence the visitor agrees to. Empty falls back to the shipped one:
+   *  the consent is mandatory, so it can be reworded but never switched off. */
   consentLabel?: string;
   className?: string;
   id?: string;
@@ -80,33 +101,35 @@ export function WaitlistForm({
   const [consent, setConsent] = useState(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [problem, setProblem] = useState<Problem>("");
   const [state, setState] = useState<"idle" | "busy" | "created" | "exists" | "error" | "invalid">("idle");
-  const needsConsent = Boolean(consentLabel);
 
   const configured: ExtraField[] = [
-    { name: "first_name", mode: fields.firstName, label: t("launch.firstName"), type: "text", autoComplete: "given-name", value: firstName, onChange: setFirstName },
-    { name: "last_name", mode: fields.lastName, label: t("launch.lastName"), type: "text", autoComplete: "family-name", value: lastName, onChange: setLastName },
-    { name: "phone", mode: fields.phone, label: t("launch.phone"), type: "tel", autoComplete: "tel", value: phone, onChange: setPhone },
+    { name: "first_name", mode: fields.firstName, label: t("launch.firstName"), autoComplete: "given-name", value: firstName, onChange: setFirstName },
+    { name: "last_name", mode: fields.lastName, label: t("launch.lastName"), autoComplete: "family-name", value: lastName, onChange: setLastName },
   ];
   const extras = configured.filter((f) => f.mode !== "hidden");
-  // The form carries noValidate, so the browser will not enforce `required`
-  // for us — the submit button is the gate, exactly as it already is for the
-  // consent checkbox.
-  const missingRequired = extras.some((f) => f.mode === "required" && !f.value.trim());
+  const missing = extras.filter((f) => f.mode === "required" && !f.value.trim());
+
+  /** Clear a complaint the moment the visitor acts on it. */
+  const resolve = (fixed: Problem) => setProblem((p) => (p === fixed ? "" : p));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (state === "busy") return;
-    if (needsConsent && !consent) return;
-    if (missingRequired) return;
+    // In the order they appear on the form, so the message points at the first
+    // thing the eye will land on rather than the last thing checked.
+    if (missing.length > 0) { setProblem("required"); return; }
+    if (!EMAIL_SHAPE.test(email.trim())) { setProblem("email"); return; }
+    if (!consent) { setProblem("consent"); return; }
+    setProblem("");
     setState("busy");
     try {
       const res = await fetch("/api/waitlist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email, locale, source, company, consent: needsConsent ? consent : undefined,
+          email, locale, source, company, consent,
           // Only the fields this form actually showed: a key the visitor was
           // never asked for has no business on their row.
           ...Object.fromEntries(extras.map((f) => [f.name, f.value])),
@@ -156,34 +179,42 @@ export function WaitlistForm({
     );
   }
 
+  const consentId = `${id ?? `waitlist-${source}`}-consent`;
+  const message = problem === "required"
+    ? t("launch.needFields", { fields: missing.map((f) => f.label).join(", ") })
+    : problem === "email" ? t("launch.needEmail")
+      : problem === "consent" ? t("launch.needConsent") : "";
+
   return (
     <form onSubmit={submit} data-waitlist-form className={cn("w-full", className)} noValidate>
-      {/* The extra fields sit ABOVE the e-mail row and stack the same way it
-          does — the address and its button stay one unbroken call to action.
-          `flex-1` is sm-only here for the same reason it is on the e-mail
-          field: on phones the row is a column, where flex would size height. */}
+      {/* The name fields sit ABOVE the e-mail row so the address and its button
+          stay one unbroken call to action. Two per row at every width — Imię next
+          to Nazwisko — because stacking them costs a whole row of height on
+          exactly the screen where the form is trying to reach the fold. */}
       {extras.length > 0 && (
-        <div data-waitlist-extras className="mb-2.5 grid gap-2.5 sm:grid-cols-2">
+        <div data-waitlist-extras className="mb-2.5 grid grid-cols-2 gap-2.5">
           {extras.map((f, i) => (
-            // Two per row — Imię next to Nazwisko. An odd trailing field (the
-            // phone, when the admin turns it on) takes the whole row instead
-            // of leaving a hole beside itself.
+            // An odd trailing field takes the whole row instead of leaving a
+            // hole beside itself.
             <div key={f.name} className={cn(
               "min-w-0",
-              extras.length % 2 === 1 && i === extras.length - 1 && "sm:col-span-2",
+              extras.length % 2 === 1 && i === extras.length - 1 && "col-span-2",
             )}>
               <label htmlFor={`${id ?? `waitlist-${source}`}-${f.name}`} className="sr-only">{f.label}</label>
               <input
                 id={`${id ?? `waitlist-${source}`}-${f.name}`}
-                type={f.type}
-                inputMode={f.type === "tel" ? "tel" : "text"}
+                type="text"
                 autoComplete={f.autoComplete}
                 required={f.mode === "required"}
+                aria-invalid={problem === "required" && f.mode === "required" && !f.value.trim()}
                 value={f.value}
-                onChange={(e) => f.onChange(e.target.value)}
+                onChange={(e) => { f.onChange(e.target.value); resolve("required"); }}
                 placeholder={f.label}
                 data-waitlist-extra={f.name}
-                className={FIELD_CLASS}
+                className={cn(
+                  FIELD_CLASS,
+                  problem === "required" && f.mode === "required" && !f.value.trim() && FIELD_INVALID,
+                )}
               />
             </div>
           ))}
@@ -196,11 +227,16 @@ export function WaitlistForm({
         inputMode="email"
         autoComplete="email"
         required
+        aria-invalid={problem === "email"}
         value={email}
-        onChange={(e) => { setEmail(e.target.value); if (state !== "idle") setState("idle"); }}
+        onChange={(e) => {
+          setEmail(e.target.value);
+          resolve("email");
+          if (state !== "idle") setState("idle");
+        }}
         placeholder={placeholder}
         data-waitlist-email
-        className={FIELD_CLASS}
+        className={cn(FIELD_CLASS, problem === "email" && FIELD_INVALID)}
       />
       {/* Honeypot: off-screen, never announced, never focusable. */}
       <input
@@ -208,21 +244,61 @@ export function WaitlistForm({
         value={company} onChange={(e) => setCompany(e.target.value)}
         className="pointer-events-none absolute h-0 w-0 opacity-0"
       />
-      {/* Full width at every size: this button IS the page's single action. */}
-      <button type="submit" disabled={state === "busy" || (needsConsent && !consent) || missingRequired} data-waitlist-submit
+
+      {/* Consent sits ABOVE the button: you agree, then you act. Below it, the
+          last thing before the submit would be an unticked box the visitor has
+          already scrolled past. */}
+      <label htmlFor={consentId} data-waitlist-consent
         className={cn(
-          "cta mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl px-6 text-[14.5px] font-semibold",
+          "mt-2.5 flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2 text-[12px] leading-[1.45] text-muted transition-colors sm:text-[12.5px] lg:py-1.5",
+          problem === "consent"
+            ? "border-[rgb(var(--danger)/0.7)] bg-[rgb(var(--danger)/0.08)]"
+            : "border-[rgb(var(--glass-border)/0.16)] bg-[rgb(var(--sunken)/0.4)] hover:border-[rgb(var(--accent)/0.35)]",
+        )}>
+        {/* The native box is kept for the keyboard, screen readers and form
+            semantics, and hidden from sight; the square beside it is what the
+            visitor sees. `peer` wires one to the other with no JS. */}
+        <input
+          id={consentId} type="checkbox" required checked={consent}
+          aria-invalid={problem === "consent"}
+          onChange={(e) => { setConsent(e.target.checked); if (e.target.checked) resolve("consent"); }}
+          data-waitlist-consent-input
+          className="peer sr-only"
+        />
+        <span aria-hidden className={cn(
+          "mt-px flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[6px] border transition-all",
+          "border-[rgb(var(--glass-border)/0.45)] bg-[rgb(var(--sunken)/0.8)]",
+          "peer-checked:border-transparent peer-checked:bg-[linear-gradient(135deg,rgb(var(--accent)),rgb(var(--accent-glow)))]",
+          "peer-checked:shadow-[0_4px_14px_-4px_rgb(var(--accent)/0.9)]",
+          "peer-focus-visible:ring-2 peer-focus-visible:ring-[rgb(var(--accent)/0.55)] peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[rgb(var(--surface))]",
+          // The tick lives INSIDE this span, so it cannot be a `peer-checked:`
+          // target itself — that variant only reaches siblings of the input.
+          "peer-checked:[&_svg]:opacity-100",
+        )}>
+          <Check size={12} strokeWidth={3.5} className="text-white opacity-0 transition-opacity" />
+        </span>
+        <span className="min-w-0">
+          <ConsentSentence
+            label={consentLabel?.trim() || t("launch.hero.consent")}
+            privacyLabel={t("launch.consentPrivacy")}
+            termsLabel={t("launch.consentTerms")}
+          />
+        </span>
+      </label>
+
+      {/* Full width at every size: this button IS the page's single action. It
+          is never disabled for a validation reason — see the file header. */}
+      <button type="submit" disabled={state === "busy"} data-waitlist-submit
+        className={cn(
+          "cta mt-2.5 flex h-[46px] w-full items-center justify-center gap-2 rounded-xl px-6 text-[14.5px] font-semibold sm:h-12",
           state === "busy" && "cursor-wait opacity-70")}>
         {state === "busy"
           ? <><Loader2 size={16} className="animate-spin" aria-hidden />{t("launch.busy")}</>
           : <><Send size={15} aria-hidden />{cta}</>}
       </button>
-      {needsConsent && (
-        <label data-waitlist-consent className="mt-3 flex items-start gap-2.5 text-[12.5px] leading-relaxed text-muted">
-          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)}
-            className="mt-0.5 h-4 w-4 shrink-0 accent-[rgb(var(--accent))]" />
-          <span>{consentLabel}</span>
-        </label>
+
+      {message && (
+        <p data-waitlist-error role="alert" className="mt-2 text-[12.5px] font-medium text-danger">{message}</p>
       )}
       {state === "exists" && (
         <p data-waitlist-note className="mt-2 text-[13px] font-medium text-accent">{t("launch.dup")}</p>
@@ -233,16 +309,54 @@ export function WaitlistForm({
       {state === "error" && (
         <p data-waitlist-note className="mt-2 text-[13px] font-medium text-danger">{t("launch.err")}</p>
       )}
-      {/* The form takes more than an address — a name, sometimes a phone
-          number, and the IP and source the route records to keep bots out — so
-          it says so where it is asked, not only in the privacy policy. The
-          launch page passes its own short line; the long one is the fallback
-          for any other caller. */}
+      {/* The form takes more than an address — a name, and the IP and source
+          the route records to keep bots out — so it says so where it is asked,
+          not only in the privacy policy. The launch page passes its own short
+          line; the long one is the fallback for any other caller. */}
       <p data-waitlist-privacy
-        className="mt-2.5 flex items-center justify-center gap-1.5 text-center text-[11.5px] leading-relaxed text-faint">
+        className="mt-2 flex items-center justify-center gap-1.5 text-center text-[11px] leading-relaxed text-faint sm:text-[11.5px] lg:mt-1.5">
         {safetyNote ? <Lock size={11} aria-hidden className="shrink-0" /> : null}
         {safetyNote || t("launch.privacyNote")}
       </p>
     </form>
+  );
+}
+
+/**
+ * The consent sentence, with the two documents as real links.
+ *
+ * The sentence is one editable string carrying `{privacy}` and `{terms}` where
+ * the links belong, so a translation — or an admin rewrite — can put them
+ * wherever that language wants them. If a rewrite loses the tokens the links
+ * are appended rather than dropped: what is being agreed to has to be readable
+ * before it is agreed to.
+ */
+function ConsentSentence({ label, privacyLabel, termsLabel }: {
+  label: string; privacyLabel: string; termsLabel: string;
+}) {
+  const linkClass = "font-semibold text-accent underline decoration-[rgb(var(--accent)/0.45)] underline-offset-2 transition-colors hover:text-ink";
+  // The label is a link INSIDE a <label>: clicking it must open the document,
+  // not toggle the checkbox the label is bound to.
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
+  const privacy = (
+    <Link key="p" href="/polityka-prywatnosci" target="_blank" rel="noopener"
+      onClick={stop} data-consent-privacy className={linkClass}>{privacyLabel}</Link>
+  );
+  const terms = (
+    <Link key="t" href="/regulamin" target="_blank" rel="noopener"
+      onClick={stop} data-consent-terms className={linkClass}>{termsLabel}</Link>
+  );
+
+  if (!label.includes(PRIVACY_TOKEN) && !label.includes(TERMS_TOKEN)) {
+    return <>{label} {privacy} · {terms}</>;
+  }
+  return (
+    <>
+      {label.split(TOKENS).map((part, i) => {
+        if (part === PRIVACY_TOKEN) return <span key={i}>{privacy}</span>;
+        if (part === TERMS_TOKEN) return <span key={i}>{terms}</span>;
+        return <span key={i}>{part}</span>;
+      })}
+    </>
   );
 }

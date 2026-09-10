@@ -45,25 +45,24 @@ export async function POST(request: Request) {
   let trap = "";
   let consent: boolean | undefined;
   // Optional by design: the admin decides per field whether the landing form
-  // asks for a name or a phone at all, so an absent value is normal input and
-  // never an error.
+  // asks for a name at all, so an absent value is normal input and never an
+  // error. There is no phone field on this form — see 0073.
   let firstName = "";
   let lastName = "";
-  let phone = "";
   try {
     const body = (await request.json()) as {
       email?: unknown; locale?: unknown; source?: unknown; company?: unknown; consent?: unknown;
-      first_name?: unknown; last_name?: unknown; phone?: unknown;
+      first_name?: unknown; last_name?: unknown;
     };
-    // Only recorded when the page actually asked for it, so a row never claims
-    // an agreement the visitor was never shown.
+    // The form's consent is mandatory, so a real submission always carries it.
+    // Still read defensively: a row must never claim an agreement that was not
+    // in the request that created it.
     consent = typeof body.consent === "boolean" ? body.consent : undefined;
     email = typeof body.email === "string" ? body.email.trim().toLowerCase().slice(0, 254) : "";
     locale = typeof body.locale === "string" && /^[a-z]{2}$/.test(body.locale) ? body.locale : "pl";
     source = typeof body.source === "string" ? body.source.slice(0, 40) : "landing";
     firstName = optionalText(body.first_name, 80);
     lastName = optionalText(body.last_name, 80);
-    phone = optionalText(body.phone, 32);
     // Honeypot: a field no human sees and every naive bot fills in. Answering
     // "ok" keeps the bot from learning it was caught.
     trap = typeof body.company === "string" ? body.company.trim() : "";
@@ -82,11 +81,10 @@ export async function POST(request: Request) {
     p_metadata: {
       ua: (request.headers.get("user-agent") ?? "").slice(0, 200),
       ...(consent === undefined ? {} : { consent, consent_at: new Date().toISOString() }),
-      // The function copies these three into real columns; a key that is not
-      // there stays null rather than becoming an empty string on the row.
+      // The function copies these into real columns; a key that is not there
+      // stays null rather than becoming an empty string on the row.
       ...(firstName === "" ? {} : { first_name: firstName }),
       ...(lastName === "" ? {} : { last_name: lastName }),
-      ...(phone === "" ? {} : { phone }),
     } as never,
   });
   if (error) {
@@ -132,7 +130,6 @@ export async function POST(request: Request) {
   const rows: [string, string][] = [
     ["👤 Użytkownik", `${firstName} ${lastName}`.trim()],
     ["📧 E-mail", email],
-    ["📱 Telefon", phone],
     ["🕒 Data", formatWarsaw(new Date())],
     // Which block of the landing page the visitor used, then what the server
     // saw of the visit: campaign, entry point, address, device.
@@ -142,7 +139,6 @@ export async function POST(request: Request) {
   const tplData = eventDataFrom(context, {
     name: `${firstName} ${lastName}`.trim(),
     email,
-    phone,
     source,
     language: locale.toUpperCase(),
   });

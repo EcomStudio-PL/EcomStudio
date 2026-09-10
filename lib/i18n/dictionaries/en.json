@@ -1144,7 +1144,7 @@
       "launchNote": "Note under the form",
       "launchTrust": "Trust line",
       "launchConsent": "Consent / privacy policy",
-      "launchConsentHint": "A short data note shown under the form.",
+      "launchConsentHint": "The form's required consent. {privacy} and {terms} become links to the privacy policy and the terms — keep them in the sentence. Clearing the field restores the shipped text; the consent itself cannot be switched off.",
       "launchImage": "Hero image",
       "launchImageHint": "Landscape works best, at least 1200 px wide.",
       "launchBenefit1": "Benefit 1",
@@ -2838,7 +2838,13 @@
     "benefit.2sub": "subscriptions",
     "benefit.3sub": "surprise",
     "social.heading": "Follow us",
-    "rights": "All rights reserved"
+    "rights": "All rights reserved",
+    "hero.consent": "I accept the {privacy} and the {terms}.",
+    "consentPrivacy": "Privacy Policy",
+    "consentTerms": "Terms of Service",
+    "needConsent": "Tick the consent box to join the list.",
+    "needEmail": "Enter a valid e-mail address.",
+    "needFields": "Please fill in: {fields}."
   },
   "launchAdmin": {
     "homepageTitle": "Homepage",
