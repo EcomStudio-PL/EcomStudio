@@ -79,7 +79,12 @@ export function LaunchPage({
   const art = c["hero.image"] || "/launch/hero-dino.webp";
 
   return (
-    <main data-launch-page className="relative flex min-h-[100svh] flex-col overflow-x-clip">
+    <main data-launch-page className="relative flex min-h-[100svh] flex-col overflow-x-clip"
+      style={{
+        // Read by the phone band, the header wash and the content pad.
+        "--hero-top": "calc(3.25rem + env(safe-area-inset-top))",
+        "--hero-art": "min(62vw, 32svh)",
+      } as React.CSSProperties}>
       {/* ── THE ARTWORK ────────────────────────────────────────────────────
           Desktop: a panel down the RIGHT of the screen rather than a full
           bleed. Stretched edge to edge, the scene's left third — where the
@@ -111,16 +116,37 @@ export function LaunchPage({
           <span className="absolute inset-x-0 bottom-0 h-2/5 bg-[linear-gradient(0deg,rgb(var(--bg))_0%,rgb(var(--bg)/0.72)_34%,transparent_100%)]" />
         </div>
       </div>
-      {/* min() caps the band on a short or landscape screen, where 70% of the
-          width would be taller than the viewport. Below that cap the height is
-          the image's own, so nothing is cropped and the composition is whole
-          on every phone. */}
-      <div aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-[min(70vw,38svh)] lg:hidden">
+      {/* THE PHONE BAND, and the two numbers that place everything under it.
+          `--hero-top` is how far down the artwork starts — far enough that the
+          logo and the sign-in button get ground of their own instead of
+          sitting on the T-Rex's jaw, which is what made the top of the page
+          feel packed. `--hero-art` is its height, capped in svh so a short or
+          landscape screen does not get a band taller than the viewport.
+
+          The content's padding is derived from BOTH, so the badge keeps
+          overlapping the picture by the same 2.6rem however tall the notch is
+          and whatever the screen measures. */}
+      <div aria-hidden data-launch-art-mobile
+        className="pointer-events-none absolute inset-x-0 top-[var(--hero-top)] h-[var(--hero-art)] lg:hidden">
         <Image src={art} alt="" fill priority sizes="100vw"
           className="object-cover object-[6%_center]" />
-        <span className="absolute inset-0 bg-[linear-gradient(180deg,rgb(var(--bg)/0.45)_0%,transparent_18%,rgb(var(--bg)/0.32)_56%,rgb(var(--bg)/0.86)_84%,rgb(var(--bg))_100%)]" />
+        {/* Top AND bottom now: the band no longer starts at the screen edge,
+            so its upper edge would otherwise be a visible seam across the
+            page. It dissolves into the header's ground instead. */}
+        <span className="absolute inset-0 bg-[linear-gradient(180deg,rgb(var(--bg))_0%,rgb(var(--bg)/0.55)_7%,transparent_22%,rgb(var(--bg)/0.30)_56%,rgb(var(--bg)/0.86)_84%,rgb(var(--bg))_100%)]" />
       </div>
+
+      {/* THE HEADER'S OWN GROUND. A wash that starts as the page background and
+          fades into the artwork, carrying a little of the scene's own magenta
+          on the side the portal lights — so the logo and the button read as
+          part of the composition rather than as two chips dropped on a photo. */}
+      <span aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[calc(var(--hero-top)+5rem)] lg:hidden"
+        style={{
+          background:
+            "radial-gradient(90% 130% at 82% -10%, rgb(var(--accent) / 0.20), transparent 68%),"
+            + "linear-gradient(180deg, rgb(var(--bg)) 0%, rgb(var(--bg)/0.88) 38%, rgb(var(--bg)/0.42) 68%, transparent 100%)",
+        }} />
 
       <div className="relative mx-auto flex w-full max-w-[1360px] flex-1 flex-col px-5 sm:px-8 lg:px-10">
         {/* ── HEADER ───────────────────────────────────────────────────────
@@ -128,7 +154,7 @@ export function LaunchPage({
             content below is positioned from the top of the page rather than
             from wherever the notch happened to push the logo. That is what
             lets the badge overlap the photograph by a known amount. */}
-        <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-between gap-3 px-5 py-4 pt-[calc(1rem+env(safe-area-inset-top))] sm:px-8 lg:static lg:px-0 lg:py-2">
+        <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-between gap-3 px-5 pb-4 pt-[calc(1.15rem+env(safe-area-inset-top))] sm:px-8 lg:static lg:px-0 lg:py-2">
           <Brand href="/" height={30} forceDark />
           <div className="flex items-center gap-2.5">
             {/* Phones hide the follow row: the logo, four icons and the login
@@ -178,7 +204,7 @@ export function LaunchPage({
             halves of the screen together instead of stacking them. The pad is
             width-derived like the band above it, so the overlap is the same
             fraction on every phone, and capped in svh for short screens. */}
-        <div className="grid flex-1 items-center gap-5 pb-5 pt-[min(58vw,31svh)] sm:gap-6 lg:grid-cols-[minmax(0,455px)_minmax(0,1fr)] lg:gap-10 lg:pb-0 lg:pt-0">
+        <div className="grid flex-1 items-center gap-5 pb-5 pt-[calc(var(--hero-top)+var(--hero-art)-2.6rem)] sm:gap-6 lg:grid-cols-[minmax(0,455px)_minmax(0,1fr)] lg:gap-10 lg:pb-0 lg:pt-0">
           <div className="min-w-0 lg:py-1">
             {c["hero.badge"] && (
               <p data-launch-badge
@@ -203,26 +229,36 @@ export function LaunchPage({
               {c["hero.sub"]}
             </p>
 
-            {/* Three across on a phone, always — a wrapping row left one chip
-                orphaned on its own line and cost a whole line of height right
-                where the form is trying to reach the fold. Below sm the chip
-                stacks its icon over its text and the grid keeps all three the
-                same height; from sm it goes back to icon-beside-text. */}
+            {/* Three across at EVERY width — a grid, never a wrapping flex row.
+                Flex-wrap made the row's fit depend on how long the words happen
+                to be: the moment a name grew by two characters the third chip
+                dropped to a second line and pushed the form off the desktop
+                screen. Three equal cells cannot do that; a long name wraps
+                inside its own cell and the grid keeps all three level. Below sm
+                the chip stacks its icon over its text; from sm it goes back to
+                icon-beside-text. */}
             {features.length > 0 && (
               <ul data-launch-features
-                className="mt-3.5 grid grid-cols-3 gap-1.5 sm:mt-4 sm:flex sm:flex-wrap sm:gap-2 lg:mt-3">
+                className="mt-3.5 grid grid-cols-3 gap-1.5 sm:mt-4 sm:gap-2 lg:mt-3">
                 {features.map((f, i) => {
                   const Icon = FEATURE_ICONS[i] ?? Sparkles;
                   return (
                     <li key={`${f.t}${f.b}`}
-                      className="flex flex-col items-center gap-1.5 rounded-xl border border-[rgb(var(--glass-border)/0.16)] bg-[rgb(var(--surface)/0.5)] px-1.5 py-2.5 text-center backdrop-blur-md sm:flex-row sm:gap-2 sm:px-2.5 sm:py-2 sm:text-left">
+                      className="flex flex-col items-center gap-2 rounded-2xl border border-[rgb(var(--glass-border)/0.16)] bg-[rgb(var(--surface)/0.5)] px-1.5 py-2.5 text-center backdrop-blur-md sm:flex-row sm:items-center sm:gap-2 sm:rounded-xl sm:px-2.5 sm:py-2 sm:text-left">
                       <span aria-hidden
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[rgb(var(--accent)/0.16)] text-accent sm:h-7 sm:w-7">
-                        <Icon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[rgb(var(--accent)/0.16)] text-accent sm:h-7 sm:w-7 sm:rounded-lg">
+                        <Icon className="h-3.5 w-3.5" />
                       </span>
-                      <span className="min-w-0 leading-[1.2] sm:leading-[1.25]">
-                        <span className="block text-[10px] font-semibold text-ink sm:text-[11.5px]">{f.t}</span>
-                        <span className="block text-[9.5px] text-faint sm:text-[10.5px]">{f.b}</span>
+                      {/* The name is sized off the VIEWPORT, not fixed, so it
+                          stays on one line from a 360px Android to a Pro Max
+                          instead of snapping in half on the narrow ones. */}
+                      <span className="min-w-0 leading-[1.3] sm:leading-[1.25]">
+                        {/* The desktop column is a fixed 455px, so a chip cell there is ~146px
+                            wide whatever the screen measures — the size that keeps the
+                            longest name on one line inside it is ~10px, and that is what
+                            lg gets. Between sm and lg the chips have the full width. */}
+                        <span className="block text-[clamp(9.8px,2.75vw,11.5px)] font-semibold tracking-[-0.01em] text-ink sm:text-[11.5px] lg:text-[10px]">{f.t}</span>
+                        <span className="mt-0.5 block text-[clamp(8.8px,2.45vw,10.5px)] text-faint sm:mt-0 sm:text-[10.5px] lg:text-[9.5px]">{f.b}</span>
                       </span>
                     </li>
                   );
