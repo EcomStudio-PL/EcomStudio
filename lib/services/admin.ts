@@ -29,9 +29,13 @@ export const adminBusinessStats = cache(async (supabase: Client) => {
 });
 
 export async function adminCounts(supabase: Client) {
-  const [users, products, jobs, credits] = await Promise.all([
+  // No product count. The Produkty module is DISABLED in the feature registry
+  // — customers cannot add one any more — so the number could only ever fall,
+  // and a dashboard tile counting a closed catalogue is a fact about the past
+  // dressed up as a metric. The rows stay in the database; nothing reads them
+  // here.
+  const [users, jobs, credits] = await Promise.all([
     supabase.from("profiles").select("id", { count: "exact", head: true }),
-    supabase.from("products").select("id", { count: "exact", head: true }),
     supabase.from("generation_jobs").select("id", { count: "exact", head: true }),
     // Summed in SQL (SECURITY INVOKER — RLS still applies): the old version
     // pulled every generation transaction ever written into JS to add them.
@@ -40,7 +44,6 @@ export async function adminCounts(supabase: Client) {
   const creditsUsed = Number(credits.data ?? 0);
   return {
     users: users.count ?? 0,
-    products: products.count ?? 0,
     jobs: jobs.count ?? 0,
     creditsUsed,
   };

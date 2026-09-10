@@ -185,9 +185,11 @@ export default async function AdminDashboard({ searchParams }: {
             <QuickAction href="/admin/generations" icon={Wand2} label={t("admin.nav.generations")} />
           </div>
         </Card>
-        <div className="panel grid grid-cols-3 gap-x-5 gap-y-3 rounded-2xl px-4 py-3.5 sm:px-5">
+        {/* Two facts, not three: "Produkty" left with the module. The grid
+            follows, so the row stays even instead of leaving a gap where a
+            retired metric used to be. */}
+        <div className="panel grid grid-cols-2 gap-x-5 gap-y-3 rounded-2xl px-4 py-3.5 sm:px-5">
           <MiniFact label={t("admin.statCreditsUsed")} value={counts.creditsUsed} />
-          <MiniFact label={t("admin.statProducts")} value={counts.products} />
           <MiniFact label={t("admin.statJobs")} value={counts.jobs} />
         </div>
       </div>

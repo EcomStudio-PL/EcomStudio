@@ -39,7 +39,10 @@ export default async function CrmProfile({ params }: { params: Promise<{ id: str
   const d30 = new Date(Date.now() - 30 * 86400000).toISOString();
   const SETTLED = new Set(["succeeded", "paid", "completed"]);
 
-  const [walletRes, paymentsRes, subRes, productsRes, notesRes, managersRes, actsRes, serviceUsage] =
+  // No products query. The Produkty module is DISABLED — a customer cannot add
+  // one — so "Produkty: 12" was a frozen number under a live service list, and
+  // the round-trip that fetched it bought nothing.
+  const [walletRes, paymentsRes, subRes, notesRes, managersRes, actsRes, serviceUsage] =
     await Promise.all([
       workspaceId
         ? supabase.from("credit_wallets").select("id, balance").eq("workspace_id", workspaceId).maybeSingle()
@@ -51,10 +54,6 @@ export default async function CrmProfile({ params }: { params: Promise<{ id: str
         ? supabase.from("subscriptions").select("status, subscription_plans(name, price_cents)")
             .eq("workspace_id", workspaceId).eq("status", "active").maybeSingle()
         : Promise.resolve({ data: null }),
-      workspaceId
-        ? supabase.from("products").select("id, name, created_at", { count: "exact" })
-            .eq("workspace_id", workspaceId).order("created_at", { ascending: false }).limit(1)
-        : Promise.resolve({ data: [], count: 0 }),
       supabase.from("crm_notes").select("id, body, pinned, reminder_date, created_at, author:profiles!crm_notes_author_id_fkey(full_name, email)")
         .eq("user_id", id).order("pinned", { ascending: false }).order("created_at", { ascending: false }).limit(30),
       supabase.from("profiles").select("id, full_name, email").in("role", ["admin", "manager"]),
@@ -211,10 +210,6 @@ export default async function CrmProfile({ params }: { params: Promise<{ id: str
               ))}
             </ul>
           )}
-          <p className="border-t border-line px-5 py-2.5 text-xs text-faint">
-            {t("crm.products")}: {productsRes.count ?? 0}
-            {productsRes.data?.[0] ? ` · ${t("crm.lastProduct")}: ${productsRes.data[0].name}` : ""}
-          </p>
         </Card>
 
         {/* Timeline */}

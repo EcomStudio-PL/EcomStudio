@@ -580,7 +580,6 @@
       "versionRequired": "Versionsbezeichnung angeben."
     },
     "statUsers": "Benutzer",
-    "statProducts": "Produkte",
     "statJobs": "Generierungsaufträge",
     "statCreditsUsed": "Verbrauchte Credits",
     "recent": "Letzte Aktivität",
@@ -892,8 +891,6 @@
     "lastTopup": "Letzte Aufladung",
     "aiUsage": "Service-Nutzung",
     "aiUsageSub": "Aus dem Service-Katalog — neue Services erscheinen automatisch.",
-    "products": "Produkte",
-    "lastProduct": "Zuletzt",
     "timeline": "Aktivität",
     "lastActive": "Zuletzt aktiv",
     "unverified": "Nicht verifiziert",

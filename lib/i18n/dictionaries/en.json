@@ -580,7 +580,6 @@
       "versionRequired": "Provide a version label."
     },
     "statUsers": "Users",
-    "statProducts": "Products",
     "statJobs": "Generation jobs",
     "statCreditsUsed": "Credits used",
     "recent": "Recent activity",
@@ -892,8 +891,6 @@
     "lastTopup": "Last top-up",
     "aiUsage": "Service usage",
     "aiUsageSub": "Driven by the service catalog — new services appear automatically.",
-    "products": "Products",
-    "lastProduct": "Latest",
     "timeline": "Activity",
     "lastActive": "Last active",
     "unverified": "Unverified",
