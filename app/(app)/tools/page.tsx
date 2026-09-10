@@ -2,63 +2,49 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import {
-  ArrowUpRight, Contrast, Crop, Frame, Gauge, Maximize2, Palette, Scaling, Scissors,
-  SlidersHorizontal, Square, Stamp, Sun, WandSparkles,
+  ArrowRight, Boxes, Contrast, Crop, Gauge, Lightbulb, Mail, Maximize2, Megaphone,
+  PencilRuler, Scaling, Scissors, Shirt, ShoppingBag, SlidersHorizontal, Sparkles,
+  Square, Stamp, Sun, Video, WandSparkles,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { toolCatalogue, type ToolAvailability } from "@/lib/server/image-tools";
-import { Badge } from "@/components/ui/badge";
+import { getAvailabilityMap, viewerIsAdmin } from "@/lib/server/feature-availability";
+import { menuVisible } from "@/lib/features";
+import { VIDEO_CREATE_WF } from "@/lib/categories";
 import { FeatureGate } from "@/components/feature-gate";
+import type { ToolMotif } from "@/components/tools/tool-thumb";
+import {
+  ToolsCatalogue, type CatalogueCard, type CatalogueSection,
+} from "@/components/tools/tools-catalogue";
 import type { ToolSlug } from "@/lib/images/tools";
-import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-type T = (key: string, vars?: Record<string, string | number>) => string;
-
-/** A tool that keeps a screen and a batch queue of its own. */
-type ToolCard = {
-  key: string;
-  href: string;
-  icon: LucideIcon;
-  tone: string;
-  title: string;
-  body: string;
-  /** Catalogue row that decides whether it opens and what it costs. Retusz is
-   *  not one of the sharp tools, so it has no row here. */
-  slug: ToolSlug | null;
-};
-
-/** An entry point into the one editor — a section of it, not a second copy. */
-type EditorCard = {
-  key: string;
-  href: string;
-  icon: LucideIcon;
-  tone: string;
-  title: string;
-  /** The paid step behind the section, when there is one. Everything the
-   *  editor bakes itself is local, and local is free. */
-  paid: ToolSlug | null;
-};
-
 /**
- * TOOLS — the hub.
+ * WSZYSTKIE NARZĘDZIA — the catalogue.
  *
- * Two groups, because a seller is choosing between two different things: a
- * batch screen that runs one operation over a whole shoot, and the editor,
- * where background, shadow, format, colour and crop are five sections of one
- * pass over a single photo. The editor rows link INTO it with `?tool=` — they
- * are shortcuts, never a second implementation.
+ * Sections of wide thumbnail cards, each headed by its name and a link into
+ * the screen that holds the rest. No page title, no hero, no prose: what a
+ * seller came for is the catalogue, so the catalogue starts in the fold and
+ * as much of it as possible is visible without scrolling.
  *
- * Every card states what it costs before it is opened, and the price is the
- * real one: local work says free because it genuinely never touches a paid
- * API, and the paid rows show the credits the currently connected provider
- * implies. A tool with no backend says why instead of opening onto a button
- * that cannot work.
+ * Everything listed is a real destination. A module the availability
+ * switchboard has taken down is either hidden or carries its own badge — the
+ * page never offers a card that opens onto nothing, and it never invents a
+ * tool to fill a row.
  */
+
+/** A card before the tool catalogue's verdict is attached to it. */
+type Card = Omit<CatalogueCard, "state"> & {
+  /** The catalogue row that prices it and says whether it can run. Places
+   *  (the editor, a category workspace) have none. */
+  slug?: ToolSlug | null;
+};
+type Section = Omit<CatalogueSection, "cards"> & { cards: Card[] };
+
 export default async function ToolsPage() {
   const supabase = await createClient();
   const { dict } = await getDictionary();
@@ -68,196 +54,94 @@ export default async function ToolsPage() {
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) redirect("/home");
 
-  const catalogue = await toolCatalogue(supabase);
+  const [catalogue, avail, isAdmin] = await Promise.all([
+    toolCatalogue(supabase),
+    getAvailabilityMap(supabase),
+    viewerIsAdmin(supabase),
+  ]);
   const row = (slug: ToolSlug): ToolAvailability | null =>
     catalogue.find((c) => c.slug === slug) ?? null;
   const editor = row("editor");
 
-  const tools: ToolCard[] = [
+  const sections: Section[] = [
     {
-      key: "retouch", href: "/retusz", icon: WandSparkles, tone: "bg-accent-soft text-accent",
-      title: t("tools.retouch.name"), body: t("tools.retouch.body"), slug: null,
+      key: "edit", icon: PencilRuler, title: t("hub.sec.edit"), seeAll: "/tools/editor",
+      cards: [
+        { key: "retouch", href: "/retusz", icon: WandSparkles, motif: "wipe",
+          title: t("tools.retouch.name"), body: t("tools.retouch.body") },
+        { key: "remove_bg", href: "/tools/editor?tool=remove-background", icon: Scissors, motif: "cutout",
+          title: t("tools.remove_bg.name"), body: t("hub.card.remove_bg"), slug: "remove_bg" },
+        { key: "white_bg", href: "/tools/editor?tool=white-background", icon: Square, motif: "frame",
+          title: t("tools.white_bg.name"), body: t("hub.card.white_bg") },
+        { key: "background", href: "/tools/editor?tool=background", icon: Sparkles, motif: "spark",
+          title: t("editor.bg.color"), body: t("hub.card.background") },
+        { key: "shadow", href: "/tools/editor?tool=shadow", icon: Sun, motif: "shadow",
+          title: t("tools.shadow.name"), body: t("hub.card.shadow") },
+        { key: "adjust", href: "/tools/editor?tool=adjust", icon: Contrast, motif: "swatch",
+          title: t("editor.s.adjust"), body: t("hub.card.adjust") },
+      ],
     },
     {
-      // The resize screen runs the "format" tool — same catalogue row, same
-      // price, so it reads its state from there rather than assuming free.
-      key: "resize", href: "/tools/resize", icon: Scaling, tone: "bg-accent2-soft text-accent2",
-      title: t("resize.title"), body: t("resize.sub"), slug: "format",
+      key: "create", icon: Sparkles, title: t("hub.sec.create"), seeAll: "/prompts",
+      cards: [
+        { key: "generator", href: "/prompts", icon: Sparkles, motif: "spark",
+          title: t("mega.createImage"), body: t("hub.card.generator") },
+        { key: "moda", href: "/k/moda", icon: Shirt, motif: "grid",
+          title: t("cats.moda"), body: t("cats.modaSub") },
+        { key: "ecommerce", href: "/k/ecommerce", icon: ShoppingBag, motif: "cutout",
+          title: t("cats.ecommerce"), body: t("cats.ecommerceSub") },
+        { key: "social", href: "/k/social", icon: Megaphone, motif: "wipe",
+          title: t("cats.social"), body: t("cats.socialSub") },
+        { key: "mailing", href: "/k/mailing", icon: Mail, motif: "frame",
+          title: t("cats.mailing"), body: t("cats.mailingSub") },
+        { key: "inne", href: "/k/inne", icon: Boxes, motif: "swatch",
+          title: t("cats.inne"), body: t("cats.inneSub") },
+      ],
     },
     {
-      key: "compress", href: "/tools/compress", icon: Gauge, tone: "bg-sunken text-muted",
-      title: t("compress.title"), body: t("compress.sub"), slug: "compress",
+      key: "prepare", icon: Scaling, title: t("hub.sec.prepare"),
+      cards: [
+        { key: "resize", href: "/tools/resize", icon: Scaling, motif: "scale",
+          title: t("resize.title"), body: t("resize.sub"), slug: "format" },
+        { key: "compress", href: "/tools/compress", icon: Gauge, motif: "compress",
+          title: t("compress.title"), body: t("compress.sub"), slug: "compress" },
+        { key: "upscale", href: "/tools/upscale", icon: Maximize2, motif: "scale",
+          title: t("tools.upscale.name"), body: t("tools.upscale.body"), slug: "upscale" },
+        { key: "expand", href: "/tools/expand", icon: Crop, motif: "frame",
+          title: t("tools.expand.name"), body: t("tools.expand.body"), slug: "expand" },
+        { key: "watermark", href: "/tools/watermark", icon: Stamp, motif: "stamp",
+          title: t("tools.watermark.name"), body: t("tools.watermark.body"), slug: "watermark" },
+        { key: "editor", href: "/tools/editor", icon: SlidersHorizontal, motif: "swatch",
+          title: t("nav.editor"), body: t("hub.card.editor") },
+      ],
     },
     {
-      key: "upscale", href: "/tools/upscale", icon: Maximize2, tone: "bg-accent-soft text-accent",
-      title: t("tools.upscale.name"), body: t("tools.upscale.body"), slug: "upscale",
-    },
-    {
-      key: "expand", href: "/tools/expand", icon: Crop, tone: "bg-accent-soft text-accent",
-      title: t("tools.expand.name"), body: t("tools.expand.body"), slug: "expand",
-    },
-    {
-      key: "watermark", href: "/tools/watermark", icon: Stamp, tone: "bg-accent2-soft text-accent2",
-      title: t("tools.watermark.name"), body: t("tools.watermark.body"), slug: "watermark",
-    },
-  ];
-
-  const sections: EditorCard[] = [
-    {
-      key: "open", href: "/tools/editor", icon: SlidersHorizontal, tone: "bg-accent-soft text-accent",
-      title: t("hub.openEditor"), paid: null,
-    },
-    {
-      key: "remove_bg", href: "/tools/editor?tool=remove-background", icon: Scissors,
-      tone: "bg-accent2-soft text-accent2", title: t("tools.remove_bg.name"), paid: "remove_bg",
-    },
-    {
-      key: "white_bg", href: "/tools/editor?tool=white-background", icon: Square,
-      tone: "bg-sunken text-muted", title: t("tools.white_bg.name"), paid: null,
-    },
-    {
-      key: "color", href: "/tools/editor?tool=background", icon: Palette,
-      tone: "bg-accent-soft text-accent", title: t("editor.bg.color"), paid: null,
-    },
-    {
-      key: "shadow", href: "/tools/editor?tool=shadow", icon: Sun,
-      tone: "bg-sunken text-muted", title: t("tools.shadow.name"), paid: null,
-    },
-    {
-      // The editor's third section had no shortcut, which made the hub read as
-      // if the editor did four things. It does five.
-      key: "format", href: "/tools/editor?tool=format", icon: Scaling,
-      tone: "bg-sunken text-muted", title: t("editor.s.format"), paid: null,
-    },
-    {
-      key: "adjust", href: "/tools/editor?tool=adjust", icon: Contrast,
-      tone: "bg-accent-soft text-accent", title: t("editor.s.adjust"), paid: null,
-    },
-    {
-      key: "transform", href: "/tools/editor?tool=transform", icon: Frame,
-      tone: "bg-accent2-soft text-accent2", title: t("editor.s.transform"), paid: null,
+      key: "video", icon: Video, title: t("hub.sec.video"), seeAll: "/wideo",
+      // No video backend exists. Every card says so and none of them opens —
+      // the architecture is in place, the promise is not faked.
+      cards: VIDEO_CREATE_WF.map((w) => ({
+        key: w.key, href: "/wideo", icon: w.icon, motif: "video" as ToolMotif,
+        title: t(`video.wf.${w.key}.name`), body: t(`video.wf.${w.key}.sub`), soon: true,
+      })),
     },
   ];
 
-  // A section is only as open as the editor itself: when the editor's own row
-  // is switched off, no shortcut into it can be taken, whatever the paid step
-  // behind that shortcut says.
-  const sectionState = (paid: ToolSlug | null): ToolAvailability | null =>
-    editor && !editor.available ? editor : paid ? row(paid) : editor;
+  // A shortcut into the editor is only as open as the editor itself.
+  const stateFor = (slug: ToolSlug | null | undefined, href: string): ToolAvailability | null => {
+    if (href.startsWith("/tools/editor") && editor && !editor.available) return editor;
+    return slug ? row(slug) : null;
+  };
 
-  // The hub gates on its OWN key (not via a segment layout) so switching the
-  // hub off never takes the editor / resize / compress screens down with it —
-  // those live under their own keys and their own layouts.
   return (
     <FeatureGate feature="tools">
-    <div>
-      {/* The hub used to open with a display headline, an overline and a line
-          of prose — roughly a third of a laptop screen spent telling a seller
-          the name of the page they just clicked. What they came for is the
-          grid, so the title is now one compact line and the grid starts in the
-          fold. Nothing was removed but the height. */}
-      <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h1 className="font-display text-[19px] font-semibold tracking-tight sm:text-[21px]">{t("hub.title")}</h1>
-        <p className="text-[13px] leading-relaxed text-muted">{t("hub.sub")}</p>
-      </div>
-
-      <section>
-        <SectionHead title={t("nav.tools")} sub={t("tools.sub")} />
-        <div className="stagger grid gap-2.5 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {tools.map((card) => (
-            <ToolTile key={card.key} card={card} state={card.slug ? row(card.slug) : null} t={t} />
-          ))}
-        </div>
-      </section>
-
-      <section className="mt-6">
-        {/* One badge for the whole editor — the rows below only speak up
-            when their own step costs credits or cannot run. */}
-        <SectionHead title={t("nav.editor")} sub={t("editor.sub")} badge={<StateBadge state={editor} t={t} />} />
-        <div className="stagger grid gap-2 [&>*]:min-w-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {sections.map((card) => (
-            <EditorTile key={card.key} card={card} state={sectionState(card.paid)} t={t} />
-          ))}
-        </div>
-      </section>
-    </div>
+      <ToolsCatalogue t={t} avail={avail} isAdmin={isAdmin} sections={sections.map((s) => ({
+        ...s,
+        // A module the switchboard hid for this viewer leaves the catalogue
+        // entirely; one that is merely restricted stays, with its badge.
+        cards: s.cards
+          .filter((c) => menuVisible(avail, c.href, isAdmin))
+          .map(({ slug, ...card }) => ({ ...card, state: stateFor(slug, card.href) })),
+      }))} />
     </FeatureGate>
-  );
-}
-
-/** A group heading that costs one line, not three: the name and its purpose
- *  share the baseline, and the badge sits at the far end. */
-function SectionHead({ title, sub, badge }: { title: string; sub: string; badge?: React.ReactNode }) {
-  return (
-    <div className="mb-2.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-      <h2 className="font-display text-[14px] font-semibold tracking-tight">{title}</h2>
-      <p className="min-w-0 flex-1 truncate text-[12.5px] text-muted">{sub}</p>
-      {badge && <span className="shrink-0 self-center">{badge}</span>}
-    </div>
-  );
-}
-
-/** The price when the tool can be opened, the reason when it cannot. */
-function StateBadge({ state, t }: { state: ToolAvailability | null; t: T }) {
-  if (!state) return null;
-  if (!state.available) return <Badge tone="accent">{t(`tools.state.${state.reason}`)}</Badge>;
-  return state.credits === 0
-    ? <Badge tone="success">{t("tools.free")}</Badge>
-    : <Badge tone="neutral">{t("tools.creditsTotal", { n: state.credits })}</Badge>;
-}
-
-function ToolTile({ card, state, t }: { card: ToolCard; state: ToolAvailability | null; t: T }) {
-  const Icon = card.icon;
-  const open = state?.available ?? true;
-  // Compact: the icon sits BESIDE the name rather than above it, which buys
-  // back a whole row per card, and the price rides the same line as the
-  // title. Four of these fit where three of the old ones did, and the
-  // description still gets its own line — the card is denser, not thinner.
-  const body = (
-    <>
-      <div className="flex min-w-0 items-center gap-2.5">
-        <span aria-hidden className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", card.tone)}>
-          <Icon size={17} />
-        </span>
-        <h3 className="flex min-w-0 flex-1 items-center gap-1 text-[13.5px] font-semibold tracking-tight">
-          <span className="truncate">{card.title}</span>
-          {open && <ArrowUpRight size={13} className="shrink-0 text-faint" aria-hidden />}
-        </h3>
-        <StateBadge state={state} t={t} />
-      </div>
-      <p className="mt-2 line-clamp-2 text-[12px] leading-relaxed text-muted">{card.body}</p>
-    </>
-  );
-
-  return open ? (
-    <Link href={card.href} className="panel panel-interactive flex flex-col rounded-2xl p-3.5">{body}</Link>
-  ) : (
-    <div className="panel flex flex-col rounded-2xl p-3.5 opacity-65">{body}</div>
-  );
-}
-
-/** A shortcut row: icon, name, and a badge only when there is something the
- *  section header has not already said. */
-function EditorTile({ card, state, t }: { card: EditorCard; state: ToolAvailability | null; t: T }) {
-  const Icon = card.icon;
-  const open = state?.available ?? true;
-  const body = (
-    <>
-      <span aria-hidden className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", card.tone)}>
-        <Icon size={16} />
-      </span>
-      <span className="min-w-0 flex-1 truncate text-[13px] font-semibold tracking-tight">{card.title}</span>
-      {!open && state
-        ? <Badge tone="accent">{t(`tools.state.${state.reason}`)}</Badge>
-        : state && state.credits > 0
-          ? <Badge tone="neutral">{t("tools.creditsTotal", { n: state.credits })}</Badge>
-          : open && <ArrowUpRight size={14} className="shrink-0 text-faint" aria-hidden />}
-    </>
-  );
-
-  return open ? (
-    <Link href={card.href} className="panel panel-interactive flex items-center gap-2.5 rounded-xl p-3">{body}</Link>
-  ) : (
-    <div className="panel flex items-center gap-2.5 rounded-xl p-3 opacity-65">{body}</div>
   );
 }

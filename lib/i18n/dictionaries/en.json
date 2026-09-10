@@ -86,7 +86,8 @@
     "copy": "Copy",
     "seeMore": "See more",
     "pageOf": "Page {a} of {b}",
-    "next": "Next"
+    "next": "Next",
+    "seeAll": "See all"
   },
   "landing": {
     "headline": "Professional product visuals with AI. Faster than a photo studio.",
@@ -1975,7 +1976,21 @@
   "hub": {
     "title": "All tools",
     "sub": "Everything you can use to improve a product photo.",
-    "openEditor": "Open in the editor"
+    "openEditor": "Open in the editor",
+    "sec.edit": "Image editing",
+    "sec.create": "Composition and generation",
+    "sec.prepare": "File preparation",
+    "sec.video": "AI video",
+    "card.remove_bg": "Remove the background or swap it for any other",
+    "card.white_bg": "Turn a photo into a packshot on white",
+    "card.background": "Swap the background in seconds",
+    "card.shadow": "Add a natural shadow under the product",
+    "card.adjust": "Fix brightness, contrast and colour",
+    "card.generator": "Describe the shot or pick a ready scenario",
+    "card.editor": "Every operation on a single photo",
+    "request.title": "Not finding what you need?",
+    "request.body": "Tell us what you need and we will add a tool made for you.",
+    "request.cta": "Suggest a tool"
   },
   "concepts": {
     "detailSub": "Ready shot proposals for your product. Pick and generate.",

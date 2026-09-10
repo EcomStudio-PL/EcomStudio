@@ -86,7 +86,8 @@
     "copy": "Kopiuj",
     "seeMore": "Zobacz więcej",
     "pageOf": "Strona {a} z {b}",
-    "next": "Dalej"
+    "next": "Dalej",
+    "seeAll": "Zobacz wszystkie"
   },
   "landing": {
     "headline": "Profesjonalne materiały produktowe z AI. Szybciej niż klasyczne studio.",
@@ -1975,7 +1976,21 @@
   "hub": {
     "title": "Wszystkie narzędzia",
     "sub": "Wszystko, czym możesz poprawić zdjęcie produktu.",
-    "openEditor": "Otwórz w edytorze"
+    "openEditor": "Otwórz w edytorze",
+    "sec.edit": "Edycja obrazu",
+    "sec.create": "Kompozycja i generowanie",
+    "sec.prepare": "Przygotowanie plików",
+    "sec.video": "Wideo AI",
+    "card.remove_bg": "Usuń lub zamień tło na dowolne",
+    "card.white_bg": "Zamień zdjęcie w packshot na białym tle",
+    "card.background": "Podmień tło na inne w kilka sekund",
+    "card.shadow": "Dodaj naturalny cień pod produktem",
+    "card.adjust": "Popraw jasność, kontrast i kolory",
+    "card.generator": "Opisz ujęcie albo wybierz gotowy scenariusz",
+    "card.editor": "Wszystkie operacje na jednym zdjęciu",
+    "request.title": "Nie znalazłeś czego szukasz?",
+    "request.body": "Opisz nam swoje potrzeby, a my dodamy nowe narzędzie specjalnie dla Ciebie.",
+    "request.cta": "Zaproponuj narzędzie"
   },
   "concepts": {
     "detailSub": "Gotowe propozycje ujęć dla Twojego produktu. Wybierz i generuj.",

@@ -86,7 +86,8 @@
     "copy": "Kopieren",
     "seeMore": "Mehr anzeigen",
     "pageOf": "Seite {a} von {b}",
-    "next": "Weiter"
+    "next": "Weiter",
+    "seeAll": "Alle ansehen"
   },
   "landing": {
     "headline": "Professionelle Produktvisuals mit KI. Schneller als ein Fotostudio.",
@@ -1975,7 +1976,21 @@
   "hub": {
     "title": "Alle Werkzeuge",
     "sub": "Alles, womit du ein Produktfoto verbessern kannst.",
-    "openEditor": "Im Editor öffnen"
+    "openEditor": "Im Editor öffnen",
+    "sec.edit": "Bildbearbeitung",
+    "sec.create": "Komposition und Generierung",
+    "sec.prepare": "Dateien vorbereiten",
+    "sec.video": "KI-Video",
+    "card.remove_bg": "Hintergrund entfernen oder beliebig ersetzen",
+    "card.white_bg": "Ein Foto in einen Packshot auf Weiß verwandeln",
+    "card.background": "Den Hintergrund in Sekunden austauschen",
+    "card.shadow": "Einen natürlichen Schatten unter das Produkt legen",
+    "card.adjust": "Helligkeit, Kontrast und Farben korrigieren",
+    "card.generator": "Die Aufnahme beschreiben oder ein fertiges Szenario wählen",
+    "card.editor": "Alle Bearbeitungen an einem Foto",
+    "request.title": "Nicht gefunden, was du suchst?",
+    "request.body": "Beschreib uns deinen Bedarf — wir bauen ein Werkzeug dafür.",
+    "request.cta": "Werkzeug vorschlagen"
   },
   "concepts": {
     "detailSub": "Fertige Aufnahme-Vorschläge für Ihr Produkt. Auswählen und generieren.",
