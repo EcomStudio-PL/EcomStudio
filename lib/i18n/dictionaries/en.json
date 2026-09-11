@@ -2981,6 +2981,7 @@
     "lastTested": "Last tested",
     "never": "never",
     "encryptionMissing": "The server has no encryption key. Secrets cannot be saved.",
+    "err.encryptionRead": "The server has no encryption key, so it cannot read the stored mailbox password. The data is intact — an operator has to restore the key.",
     "savedSecret": "Saved — enter a new value to change it",
     "mailTileSub": "IMAP and SMTP for the GrovBase mailbox.",
     "tgTile": "Telegram",

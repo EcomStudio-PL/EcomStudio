@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/notify";
 import {
   Check, Download, Heart, LayoutGrid, List, Loader2, Megaphone, Minus,
   Plus, RefreshCw, Search, Sparkles, SquareDashedMousePointer, Sun, Trash2, X,

@@ -1,6 +1,6 @@
 "use client";
 import { useActionState, useEffect } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { createProductAction, updateProductAction, deleteProductAction } from "@/app/actions/products";
 import { Input, Textarea, Select, Label } from "@/components/ui/input";

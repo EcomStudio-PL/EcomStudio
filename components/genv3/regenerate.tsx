@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/notify";
 import {
   ArrowUpRight, Brush, ChevronLeft, ChevronRight, Circle as CircleIcon, Eraser, Hand,
   Loader2, Minus, PenLine, Sparkles, Square, Wand2, X,

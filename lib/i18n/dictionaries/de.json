@@ -2981,6 +2981,7 @@
     "lastTested": "Letzter Test",
     "never": "nie",
     "encryptionMissing": "Auf dem Server fehlt der Verschlüsselungsschlüssel. Zugangsdaten können nicht gespeichert werden.",
+    "err.encryptionRead": "Dem Server fehlt der Verschlüsselungsschlüssel, daher kann das gespeicherte Postfach-Passwort nicht gelesen werden. Die Daten sind unversehrt — ein Betreiber muss den Schlüssel wiederherstellen.",
     "savedSecret": "Gespeichert — neuen Wert eingeben, um ihn zu ändern",
     "mailTileSub": "IMAP und SMTP des GrovBase-Postfachs.",
     "tgTile": "Telegram",

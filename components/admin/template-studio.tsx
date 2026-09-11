@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/lib/notify";
 import {
   BadgeCheck, ClipboardCopy, Loader2, Mail, MessageCircle, PencilLine, RefreshCw, RotateCcw, Send, TriangleAlert,
 } from "lucide-react";

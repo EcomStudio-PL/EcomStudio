@@ -38,3 +38,26 @@ export const createClient = cache(async () => {
     },
   });
 });
+
+/**
+ * The signed-in user, fetched ONCE per request.
+ *
+ * `supabase.auth.getUser()` is not a token decode — auth-js issues a real
+ * GET /auth/v1/user to GoTrue every single time it is called, and it does no
+ * caching of its own. On the navigation path that was being paid three times
+ * over for the same person: the shell layout asks, the feature gate asks again
+ * inside isAdminUser, and the page asks a third time. Against a database on
+ * another continent those were three serial ocean crossings to answer a
+ * question whose answer could not have changed between them.
+ *
+ * React's `cache` is per-request and per-render, so this dedupes within one
+ * navigation and shares nothing between users or across requests — the same
+ * guarantee `createClient` above already relies on. A server action that wants
+ * a deliberately fresh check can still call `auth.getUser()` directly; this is
+ * an opt-in for read paths, not a replacement.
+ */
+export const getRequestUser = cache(async () => {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  return user;
+});

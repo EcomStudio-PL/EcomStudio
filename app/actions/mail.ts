@@ -14,6 +14,7 @@ import {
   getMessage,
   listFolders,
   listMessages,
+  openMailbox,
   setSeen,
   type ImapCredentials,
   type MailFolder,
@@ -25,6 +26,7 @@ import {
   ensureDispatchHash,
   MAIL_DEFAULTS,
   readIntegrationSecrets,
+  type SecretsState,
   safeError,
   type MailConfig,
 } from "@/lib/server/integrations";
@@ -72,6 +74,13 @@ type Failure = { ok: false; error: string };
 
 export type FoldersResult = { ok: true; folders: MailFolder[] } | Failure;
 export type MessagesResult = { ok: true; items: MailListItem[]; total: number } | Failure;
+export type MailboxResult =
+  {
+    ok: true; folders: MailFolder[]; items: MailListItem[]; total: number;
+    /** The page loaded but LIST did not, so the rail is empty for a REASON.
+     *  A stable code, never the server's own words. */
+    foldersError?: string;
+  } | Failure;
 export type MessageResult = { ok: true; message: MailMessage } | Failure;
 export type SendResult = { ok: true; messageId: string } | Failure;
 export type MailSyncResult = { ok: true; found: number; sent: number; failed: number } | Failure;
@@ -88,6 +97,7 @@ const STABLE_ERRORS = new Set([
   "not_configured",
   "not_enabled",
   "encryption_unavailable",
+  "decrypt_failed",
   "cron_secret_missing",
   "invalid",
   "no_recipients",
@@ -118,25 +128,41 @@ async function requireAdmin(): Promise<{ supabase: Client; adminId: string }> {
  * needs the caller to pass RLS on integration_settings, which is why this path
  * is admin-only and the cron uses the definer function instead.
  */
-async function mailSecrets(supabase: Client): Promise<{ config: MailConfig; secrets: Record<string, string> }> {
-  const { config, secrets } = await readIntegrationSecrets<MailConfig>(supabase, "mail");
-  return { config, secrets };
+async function mailSecrets(supabase: Client) {
+  return readIntegrationSecrets<MailConfig>(supabase, "mail");
 }
 
-function imapCredentials(config: MailConfig, secrets: Record<string, string>): ImapCredentials {
+function imapCredentials(
+  config: MailConfig,
+  secrets: Record<string, string>,
+  state: SecretsState = "ok",
+  unreadable: readonly string[] = [],
+): ImapCredentials {
   const host = config.imap_host.trim();
   const user = config.imap_user.trim();
   const pass = secrets.imap_password ?? "";
-  // A missing password is indistinguishable from a key that no longer opens the
-  // stored one (readIntegrationSecrets answers with an empty bag either way),
-  // and both mean the same thing to the admin: retype it.
-  if (!host || !user || !pass) throw new Error("not_configured");
+  if (!host || !user || !pass) {
+    // The three reasons a password is missing are NOT the same fix, and saying
+    // "not configured" for all of them is what sent an operator looking at the
+    // mailbox settings while the actual fault was a server with no encryption
+    // key. Each code has its own sentence in the dictionary.
+    //
+    // The encryption codes are claimed only when THIS password is one of the
+    // ones that could not be opened. A row holding an SMTP password and no
+    // IMAP one is genuinely not configured for reading, whatever the key is
+    // doing.
+    if (unreadable.includes("imap_password")) {
+      if (state === "key_missing") throw new Error("encryption_unavailable");
+      if (state === "decrypt") throw new Error("decrypt_failed");
+    }
+    throw new Error("not_configured");
+  }
   return { host, port: config.imap_port, secure: config.imap_secure, user, pass };
 }
 
 async function imapFor(supabase: Client): Promise<ImapCredentials> {
-  const { config, secrets } = await mailSecrets(supabase);
-  return imapCredentials(config, secrets);
+  const { config, secrets, state, unreadable } = await mailSecrets(supabase);
+  return imapCredentials(config, secrets, state, unreadable);
 }
 
 function folderName(value: string): string {
@@ -158,6 +184,41 @@ export async function listFoldersAction(): Promise<FoldersResult> {
   try {
     const { supabase } = await requireAdmin();
     return { ok: true, folders: await listFolders(await imapFor(supabase)) };
+  } catch (e) {
+    return failure(e, "imap_error");
+  }
+}
+
+/**
+ * THE WHOLE SCREEN, IN ONE ROUND TRIP.
+ *
+ * The mailbox panel needs the folder rail and the first page together. Asking
+ * for them separately meant two admin checks, two credential decrypts and — the
+ * expensive part — two complete IMAP logins before anything rendered. This does
+ * both on one connection.
+ *
+ * listFoldersAction and listMessagesAction stay exactly as they were: the rail
+ * is still refreshed on its own after a delete, and paging still asks only for
+ * a page.
+ */
+export async function openMailboxAction(input: {
+  folder: string;
+  limit: number;
+  search?: string;
+  unreadOnly?: boolean;
+}): Promise<MailboxResult> {
+  try {
+    const { supabase } = await requireAdmin();
+    const view = await openMailbox(await imapFor(supabase), {
+      folder: folderName(input.folder),
+      limit: input.limit,
+      search: (input.search ?? "").trim().slice(0, 200),
+      unreadOnly: input.unreadOnly === true,
+    });
+    return {
+      ok: true, folders: view.folders, items: view.items, total: view.total,
+      ...(view.foldersFailed ? { foldersError: "imap_error" } : {}),
+    };
   } catch (e) {
     return failure(e, "imap_error");
   }
@@ -436,7 +497,16 @@ function integrationsKeyHex(): string | null {
 }
 
 type SyncFolderState = { folder: string; lastUid: number; uidValidity: number | null };
-type SyncContext = { enabled: boolean; config: MailConfig; imapPassword: string; folders: SyncFolderState[] };
+type SyncContext = {
+  enabled: boolean;
+  config: MailConfig;
+  imapPassword: string;
+  /** Why the password is empty, so the poller answers with the same code the
+   *  admin panel does rather than collapsing every cause into not_configured. */
+  secretsState: SecretsState;
+  unreadable: string[];
+  folders: SyncFolderState[];
+};
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -463,14 +533,25 @@ async function readSyncContext(supabase: Client, token: string): Promise<SyncCon
 
   const blob = asRecord(asRecord(row.secrets).imap_password);
   const keyHex = integrationsKeyHex();
+  const stored = typeof blob.c === "string" && typeof blob.i === "string" && typeof blob.t === "string";
   let imapPassword = "";
-  if (keyHex && typeof blob.c === "string" && typeof blob.i === "string" && typeof blob.t === "string") {
+  // The poller has to reach the SAME verdict as the panel. It used to fold a
+  // rotated key and a missing key into "not_configured", so pressing Sprawdź
+  // nowe wiadomości contradicted the message the list had just shown — the
+  // admin was told to retype a password on one half of the screen and that
+  // nothing was configured on the other.
+  let secretsState: SecretsState = "ok";
+  let unreadable: string[] = [];
+  if (stored && !keyHex) {
+    secretsState = "key_missing";
+    unreadable = ["imap_password"];
+  } else if (stored && keyHex) {
     try {
-      imapPassword = decryptWith(keyHex, blob.c, blob.i, blob.t);
+      imapPassword = decryptWith(keyHex, blob.c as string, blob.i as string, blob.t as string);
     } catch {
-      // A rotated key, not a broken mailbox. The empty password below turns
-      // into "not_configured", which is what the admin has to fix anyway.
       console.error("mail.sync.decrypt");
+      secretsState = "decrypt";
+      unreadable = ["imap_password"];
     }
   }
 
@@ -489,6 +570,8 @@ async function readSyncContext(supabase: Client, token: string): Promise<SyncCon
     // predates a field must not leave that field undefined in a typed config.
     config: { ...MAIL_DEFAULTS, ...asRecord(row.config) } as MailConfig,
     imapPassword,
+    secretsState,
+    unreadable,
     folders,
   };
 }
@@ -569,9 +652,13 @@ async function pollInbox(supabase: Client, token: string): Promise<{ found: numb
 
   let cred: ImapCredentials;
   try {
-    cred = imapCredentials(ctx.config, { imap_password: ctx.imapPassword });
-  } catch {
-    return { error: "not_configured" };
+    cred = imapCredentials(ctx.config, { imap_password: ctx.imapPassword }, ctx.secretsState, ctx.unreadable);
+  } catch (e) {
+    // Carry imapCredentials' verdict out instead of flattening it. All three
+    // codes it throws are in STABLE_ERRORS and all three have their own
+    // sentence, so the Sync button now agrees with the list beside it.
+    const code = e instanceof Error ? e.message : "";
+    return { error: STABLE_ERRORS.has(code) ? code : "not_configured" };
   }
 
   const state = ctx.folders.find((entry) => entry.folder === INBOX) ?? null;

@@ -161,7 +161,13 @@ export async function verifyImap(cred: ImapCredentials): Promise<{ ok: boolean; 
 }
 
 export async function listFolders(cred: ImapCredentials): Promise<MailFolder[]> {
-  return withClient(cred, async (client) => {
+  return withClient(cred, foldersOf);
+}
+
+/** The folder rail's work, WITHOUT owning the connection — so it can share one
+ *  with the first page instead of paying for a second login. */
+async function foldersOf(client: ImapFlow): Promise<MailFolder[]> {
+  {
     let entries: ListResponse[];
     try {
       // With LIST-STATUS (Dovecot has it) the unread counts ride along with the
@@ -182,7 +188,7 @@ export async function listFolders(cred: ImapCredentials): Promise<MailFolder[]> 
         specialUse: entry.specialUse ?? null,
         unseen: typeof entry.status?.unseen === "number" ? entry.status.unseen : null,
       }));
-  });
+  }
 }
 
 /**
@@ -201,7 +207,16 @@ export async function listMessages(
   const before = typeof opts.before === "number" && Number.isFinite(opts.before) ? Math.trunc(opts.before) : null;
   const filtered = Boolean(search) || opts.unreadOnly === true || before !== null;
 
-  return withClient(cred, async (client) => {
+  return withClient(cred, (client) => pageOf(client, { ...opts, limit, search, before, filtered }));
+}
+
+/** One page, on a connection somebody else owns. */
+async function pageOf(
+  client: ImapFlow,
+  opts: { folder: string; limit: number; search: string; before: number | null; filtered: boolean; unreadOnly?: boolean },
+): Promise<{ items: MailListItem[]; total: number }> {
+  const { limit, search, before, filtered } = opts;
+  {
     const mailbox = await client.mailboxOpen(opts.folder, { readOnly: true });
     if (mailbox.exists === 0) return { items: [], total: 0 };
 
@@ -227,6 +242,60 @@ export async function listMessages(
     // Newest first means the highest UIDs, which is the tail of the sorted set.
     const page = uids.slice(Math.max(0, uids.length - limit));
     return { items: await toListItems(client, page, true), total: uids.length };
+  }
+}
+
+/**
+ * THE FIRST PAINT, ON ONE CONNECTION.
+ *
+ * Opening the mailbox screen needs two things: the folder rail and the first
+ * page of the current folder. They used to be two server actions, and because
+ * every export here opens and closes its own connection, that meant TWO full
+ * IMAP logins — TCP, TLS, greeting and AUTHENTICATE, twice — before a single
+ * row appeared. Against a mail server that is most of the wait.
+ *
+ * Both jobs run inside one `withClient` here. The rail is fetched first because
+ * LIST does not touch the selected mailbox, so the subsequent SELECT is not
+ * disturbed by it.
+ *
+ * The folder rail is allowed to fail on its own: a server that refuses LIST
+ * should still show the inbox. The page is not — if that fails the screen has
+ * nothing to show and the error belongs to the caller.
+ *
+ * But a rail that failed is REPORTED rather than swallowed. Returning an empty
+ * array on its own would present "this mailbox has no folders" as the truth,
+ * which is the kind of quiet lie that costs an hour of debugging: the admin
+ * sees a blank folder column and no reason for it.
+ */
+export async function openMailbox(
+  cred: ImapCredentials,
+  opts: { folder: string; limit: number; search?: string; unreadOnly?: boolean },
+): Promise<{ folders: MailFolder[]; foldersFailed: boolean; items: MailListItem[]; total: number }> {
+  const limit = Math.min(Math.max(1, Math.trunc(opts.limit) || DEFAULT_LIMIT), MAX_LIMIT);
+  const search = (opts.search ?? "").trim();
+  const filtered = Boolean(search) || opts.unreadOnly === true;
+  return withClient(cred, async (client) => {
+    let folders: MailFolder[] = [];
+    let foldersFailed = false;
+    try {
+      folders = await foldersOf(client);
+    } catch (e) {
+      // The mailbox itself may still be perfectly readable, so this does not
+      // fail the call — but the caller is told, so an empty rail is never
+      // presented as "this mailbox has no folders".
+      //
+      // A FLAG, not the driver's message: this module's contract is that no
+      // mail-server text ever reaches the browser, because that text can quote
+      // the login it just refused. The detail is logged here and scrubbed;
+      // the caller gets a stable code.
+      folders = [];
+      foldersFailed = true;
+      console.error("imap.list", safeError(e));
+    }
+    const page = await pageOf(client, {
+      folder: opts.folder, limit, search, before: null, filtered, unreadOnly: opts.unreadOnly,
+    });
+    return { folders, foldersFailed, items: page.items, total: page.total };
   });
 }
 

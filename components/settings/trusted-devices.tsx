@@ -1,7 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/lib/notify";
 import { Monitor, ShieldOff } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { revokeDeviceAction } from "@/app/actions/login-security";

@@ -90,6 +90,10 @@
   /* Room a page leaves under its last element so nothing hides behind the
      bar — the dock plus a comfortable margin. */
   --page-bottom: calc(var(--dock-h) + 1.25rem + env(safe-area-inset-bottom));
+  /* Where a toast sits on a phone: clear of the dock, by the same margin a
+     docked action bar uses. Derived from --dock-h rather than measured, so the
+     toaster and the navigation can never disagree about the bar's height. */
+  --toast-bottom: calc(var(--dock-h) + 0.5rem + env(safe-area-inset-bottom) + 10px);
   /* The generation toolbar when a workspace docks one above the nav: two
      rows on a phone (settings, price, CTA), one row on desktop. */
   --gen-dock-h: 148px;
@@ -590,6 +594,62 @@ body::after {
 /* Status dot with a matching halo — used in lists and cards. */
 .dot { position: relative; display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 9999px; }
 .dot::after { content: ""; position: absolute; inset: -3px; border-radius: 9999px; background: currentColor; opacity: 0.18; }
+
+/* ── APP TOASTS ───────────────────────────────────────────────────────────
+   The severity skin for the one toaster in components/ui/toaster.tsx. sonner
+   is mounted `unstyled`, so everything a message looks like is here: the body
+   is the same glass as every other floating surface, and the only thing that
+   changes between the four kinds is one accent stripe plus the icon tint.
+   That is deliberate — richColors used to repaint the whole box, which is what
+   made an error read as a browser alert rather than as part of GrovBase.
+
+   The severity skin only. Geometry lives with the other chrome constants at
+   the top of this file (--toast-bottom), next to --dock-h which it derives
+   from. */
+
+/* DO NOT set `position` here. sonner positions every toast with
+   `:where([data-sonner-toast]) { position: absolute }`, and :where() carries
+   ZERO specificity — so a plain `.grov-toast { position: relative }` silently
+   wins and drops the toasts into normal flow. The stack then grows the wrong
+   way and stops honouring the bottom offset: measured, three toasts sat 111px
+   above the dock instead of the 14px a single one did. */
+/* THE STRIPE IS PAINTED ON THE BOX, not on a pseudo-element. sonner owns both
+   ::before and ::after on a toast — ::before is the ghost overlay it scaleY(2)s
+   during a swipe or a dismissal, ::after is the spacer that makes the gap
+   between stacked toasts — so borrowing either one makes the stripe stretch to
+   twice its height every time a message is dismissed. A background-image on the
+   element itself is clipped by the border-radius for free and collides with
+   nothing. */
+.grov-toast {
+  background-image: linear-gradient(to right, rgb(var(--accent)) 0 3px, transparent 3px);
+}
+.grov-toast [data-icon] { color: rgb(var(--accent)); background: rgb(var(--accent) / 0.14); }
+/* Room for the close button so a long message never runs under it. */
+.grov-toast [data-content] { padding-inline-end: 1.25rem; }
+
+.grov-toast--success { background-image: linear-gradient(to right, rgb(var(--success)) 0 3px, transparent 3px); }
+.grov-toast--success [data-icon] { color: rgb(var(--success)); background: rgb(var(--success) / 0.14); }
+
+.grov-toast--error { background-image: linear-gradient(to right, rgb(var(--danger)) 0 3px, transparent 3px); }
+.grov-toast--error [data-icon] { color: rgb(var(--danger)); background: rgb(var(--danger) / 0.14); }
+
+.grov-toast--warning { background-image: linear-gradient(to right, rgb(var(--warning)) 0 3px, transparent 3px); }
+.grov-toast--warning [data-icon] { color: rgb(var(--warning)); background: rgb(var(--warning) / 0.14); }
+
+/* Info keeps the brand accent: it is narration, not a verdict. */
+.grov-toast--info { background-image: linear-gradient(to right, rgb(var(--accent)) 0 3px, transparent 3px); }
+.grov-toast--info [data-icon] { color: rgb(var(--accent)); background: rgb(var(--accent) / 0.14); }
+
+/* Reduced motion shortens the travel; it must NOT remove it. sonner does not
+   merely animate with `transform` — it LAYS THE STACK OUT with it: every toast
+   is `position: absolute; bottom: 0` and is separated from the one in front
+   only by `transform: var(--y)`. Killing the transform therefore collapses
+   three toasts onto the same 0,0 and leaves exactly one of them visible.
+   Shortening the transition gets the same "no slide" result without touching
+   the geometry. */
+@media (prefers-reduced-motion: reduce) {
+  [data-sonner-toast] { transition-duration: 1ms !important; }
+}
 
 /* The mobile dock: a floating bar rather than a bar welded to the screen. */
 .dock {

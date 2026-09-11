@@ -1,7 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { savePackageAction } from "@/app/actions/admin";
 import { Modal } from "@/components/ui/modal";

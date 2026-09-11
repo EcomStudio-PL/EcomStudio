@@ -2,7 +2,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/lib/notify";
 import { FileBarChart, ShieldCheck, ShieldOff, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import type { CustomerRow } from "@/lib/services/admin-crm";

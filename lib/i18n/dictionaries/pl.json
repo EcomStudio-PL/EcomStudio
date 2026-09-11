@@ -2981,6 +2981,7 @@
     "lastTested": "Ostatni test",
     "never": "nigdy",
     "encryptionMissing": "Brak klucza szyfrowania na serwerze. Sekretów nie można zapisać.",
+    "err.encryptionRead": "Serwer nie ma klucza szyfrowania, więc nie odczyta zapisanego hasła skrzynki. Dane są nienaruszone — klucz musi przywrócić operator.",
     "savedSecret": "Zapisane — wpisz nową wartość, aby zmienić",
     "mailTileSub": "IMAP i SMTP skrzynki GrovBase.",
     "tgTile": "Telegram",

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/lib/notify";
 import {
   BookOpen, ChevronDown, FileArchive, History, Loader2, Plus, ScrollText, Star, Trash2, Upload, X,
 } from "lucide-react";

@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "@fontsource-variable/inter";
 import "@fontsource-variable/space-grotesk";
 import { ThemeProvider } from "next-themes";
-import { Toaster } from "sonner";
+import { AppToaster } from "@/components/ui/toaster";
 import { I18nProvider } from "@/lib/i18n/provider";
 import { getDictionary } from "@/lib/i18n/server";
 import { SITE_ORIGIN } from "@/lib/site";
@@ -52,7 +52,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 that open it live inside the page — and opening has to be a
                 state change, not a navigation. */}
             <AuthModalMount>{children}</AuthModalMount>
-            <Toaster position="top-center" richColors />
+            {/* One toaster for the whole app. Bottom-centred and, on a phone,
+                lifted clear of the dock — see components/ui/toaster.tsx. */}
+            <AppToaster />
           </I18nProvider>
         </ThemeProvider>
       </body>

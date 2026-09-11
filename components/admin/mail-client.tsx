@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/notify";
 import {
   ArrowLeft, Forward, ImageOff, Mail, MailOpen, Paperclip, Pencil,
   RefreshCw, Reply, ReplyAll, RotateCw, Trash2,
@@ -8,7 +8,7 @@ import {
 import { useI18n } from "@/lib/i18n/provider";
 import {
   deleteMessageAction, getMessageAction, listFoldersAction, listMessagesAction,
-  setSeenAction, syncNowAction,
+  openMailboxAction, setSeenAction, syncNowAction,
 } from "@/app/actions/mail";
 import type { MailFolder, MailListItem, MailMessage } from "@/lib/server/imap";
 import {
@@ -41,6 +41,15 @@ import { cn, formatBytes } from "@/lib/utils";
  */
 
 const PAGE_SIZE = 25;
+
+/** One cache entry per thing the admin can be looking at. Search text and the
+ *  unread filter change WHICH messages a folder returns, so they are part of
+ *  the identity of the view — a cached inbox must never be shown for a search
+ *  that has not run yet. */
+function viewKey(folder: string, query: string, unreadOnly: boolean): string {
+  return `${folder}\u0000${query}\u0000${unreadOnly ? "1" : "0"}`;
+}
+
 const INBOX = "INBOX";
 
 /** RFC 6154 special-use flags — the portable way to recognise a folder whose
@@ -175,6 +184,17 @@ export function MailClient({ address }: {
    *  let the old answer overwrite the new one. */
   const listRequest = useRef(0);
   const readerRequest = useRef(0);
+  /** The last page seen for each folder/search/filter combination, so going
+   *  back to one paints immediately instead of opening a new IMAP connection
+   *  and showing an empty pane while it does. Held in a ref rather than state:
+   *  writing to it must never itself cause a render. It lives for as long as
+   *  the screen does — a mailbox is not a cache that should outlive the tab. */
+  const pages = useRef(new Map<string, { items: MailListItem[]; total: number }>());
+  /** How many pages deep the admin has scrolled in the CURRENT view. Refresh
+   *  re-asks for that depth in one command instead of the first 25, so hitting
+   *  Odśwież after paging through four screens no longer throws three of them
+   *  away and scrolls the reader back to the top. */
+  const depth = useRef(1);
 
   const fail = useCallback((code: string | undefined) => {
     toast.error(t(mailErrorKey(code, "imap")));
@@ -189,25 +209,108 @@ export function MailClient({ address }: {
     setFolders(sortFolders(res.folders));
   }, [fail]);
 
-  const loadList = useCallback(async () => {
+  const loadList = useCallback(async (keepPages = 1) => {
     const id = ++listRequest.current;
-    setListBusy(true);
-    const res = await listMessagesAction({ folder, limit: PAGE_SIZE, search: query, unreadOnly });
+    const key = viewKey(folder, query, unreadOnly);
+    // STALE WHILE REVALIDATE. Every server action here opens its own IMAP
+    // connection, so stepping back into a folder used to mean staring at an
+    // empty pane for as long as a fresh login and a FETCH take — for a list the
+    // admin was looking at ten seconds ago. Painting the cached page first
+    // makes the folder switch feel instant; the request still goes out, and
+    // whatever it returns replaces what is on screen.
+    const cached = pages.current.get(key);
+    if (cached) {
+      setItems(cached.items);
+      setTotal(cached.total);
+    }
+    // Revalidate at the depth the admin actually has open. Without this,
+    // returning to a folder they had paged through four times painted the
+    // cached 100 rows and then snapped back to 25 a second later. The server
+    // clamps at MAX_LIMIT (lib/server/imap.ts) and one FETCH of 100 costs the
+    // same round trip as one of 25, so restoring depth is free.
+    const keep = cached ? Math.ceil(cached.items.length / PAGE_SIZE) : keepPages;
+    const want = Math.min(100, PAGE_SIZE * Math.max(1, keep));
+    // The skeleton belongs to a pane with nothing in it. With a cached page
+    // showing, a spinner over real rows is just noise.
+    setListBusy(!cached);
+    const res = await listMessagesAction({ folder, limit: want, search: query, unreadOnly });
     // A newer request owns the pane — and the busy flag with it.
     if (id !== listRequest.current) return;
     setListBusy(false);
     if (!res.ok) {
+      // A failed revalidation must not leave a stale page looking live: the
+      // cache entry goes with it, so the next visit re-asks instead of showing
+      // messages that may no longer be there.
+      pages.current.delete(key);
       setItems([]);
       setTotal(0);
       fail(res.error);
       return;
     }
+    pages.current.set(key, { items: res.items, total: res.total });
+    depth.current = Math.max(1, Math.ceil(res.items.length / PAGE_SIZE));
     setItems(res.items);
     setTotal(res.total);
   }, [fail, folder, query, unreadOnly]);
 
-  useEffect(() => { void loadFolders(); }, [loadFolders]);
-  useEffect(() => { void loadList(); }, [loadList]);
+  /**
+   * FIRST PAINT IS ONE REQUEST, NOT TWO.
+   *
+   * The rail and the first page used to be two effects calling two actions,
+   * and each action opens its own IMAP connection — so the screen paid two
+   * full logins before showing a row. `openMailboxAction` does both on one
+   * connection. Everything after this (folder switches, paging, refresh)
+   * keeps using the separate actions, because by then only one of the two is
+   * actually out of date.
+   */
+  const opened = useRef(false);
+  /** Consumed once by the list effect below, so the opening request is not
+   *  immediately duplicated. A ref rather than a condition on folder/query:
+   *  the admin can navigate back to an unfiltered INBOX later, and that visit
+   *  MUST re-run loadList — otherwise the pane keeps showing whichever folder
+   *  they came from. */
+  const primed = useRef(false);
+  useEffect(() => {
+    if (opened.current) return;
+    opened.current = true;
+    primed.current = true;
+    void (async () => {
+      const id = ++listRequest.current;
+      setListBusy(true);
+      const res = await openMailboxAction({ folder: INBOX, limit: PAGE_SIZE });
+      setListBusy(false);
+      if (!res.ok) {
+        fail(res.error);
+        return;
+      }
+      // THE RAIL IS APPLIED BEFORE THE RACE GUARD, deliberately. It is not part
+      // of the list race: the folder list is the same whichever folder is
+      // selected. Behind the guard it was lost for good whenever the admin
+      // clicked a folder during the 1-3s opening request — and since this is
+      // now the only thing that fetches the rail on load, "lost" meant an empty
+      // folder column until a delete happened to refresh it.
+      setFolders(sortFolders(res.folders));
+      if (res.foldersError) fail(res.foldersError);
+      if (id !== listRequest.current) return;
+      pages.current.set(viewKey(INBOX, "", false), { items: res.items, total: res.total });
+      depth.current = 1;
+      setItems(res.items);
+      setTotal(res.total);
+    })();
+    // Deliberately mount-only: this is the opening shot. Later changes to
+    // folder/search/filter are the other effect's job.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    // The opening request already fetched this exact view; skip once, then
+    // behave normally for every folder switch, search and filter change.
+    if (primed.current) {
+      primed.current = false;
+      return;
+    }
+    void loadList();
+  }, [loadList]);
 
   /** The rail's unread badge came from one LIST; keeping it in step locally is
    *  cheaper and calmer than re-listing every folder after a single click. */
@@ -266,6 +369,10 @@ export function MailClient({ address }: {
       return;
     }
     setItems((prev) => prev.map((entry) => (entry.uid === uid ? { ...entry, seen } : entry)));
+    // The unread filter selects on exactly the flag that just changed, so every
+    // cached view of this mailbox is now potentially wrong. Cheaper to forget
+    // them than to reason about which ones survived.
+    pages.current.clear();
     bumpUnseen(seen ? -1 : 1);
   }
 
@@ -288,6 +395,9 @@ export function MailClient({ address }: {
     toast.success(t("comm.deleted"));
     setItems((prev) => prev.filter((entry) => entry.uid !== uid));
     setTotal((prev) => Math.max(0, prev - 1));
+    // The message left this folder and arrived in Kosz, so both cached views
+    // are stale. Same reasoning as applySeen: forget, do not patch.
+    pages.current.clear();
     if (row && !row.seen) bumpUnseen(-1);
     closeReader();
     // Two folders changed size, so the rail is refreshed rather than guessed at.
@@ -302,15 +412,29 @@ export function MailClient({ address }: {
     const res = await listMessagesAction({
       folder, limit: PAGE_SIZE, before: oldest, search: query, unreadOnly,
     });
-    if (id !== listRequest.current) return;
+    // Clear the flag BEFORE the staleness check, not after. When the admin
+    // switched folder mid-request the old code returned on the guard below
+    // with moreBusy still true, and nothing else ever set it back — so
+    // "Wczytaj starsze" stayed disabled for the rest of the session. Unlike
+    // listBusy, which a newer loadList immediately re-owns, this flag has
+    // exactly one writer.
     setMoreBusy(false);
+    if (id !== listRequest.current) return;
     if (!res.ok) {
       fail(res.error);
       return;
     }
     // The cursor is a UID, so a page cannot overlap the one before it — but a
     // message deleted between the two requests can still shift the totals.
-    setItems((prev) => [...prev, ...res.items]);
+    setItems((prev) => {
+      const next = [...prev, ...res.items];
+      // The cache holds what the pane holds, so coming back to a folder the
+      // admin had already paged through returns them to where they were rather
+      // than to the first 25.
+      pages.current.set(viewKey(folder, query, unreadOnly), { items: next, total });
+      depth.current = Math.max(1, Math.ceil(next.length / PAGE_SIZE));
+      return next;
+    });
   }
 
   async function sync() {
@@ -322,11 +446,13 @@ export function MailClient({ address }: {
       return;
     }
     toast.success(t("comm.syncDone"));
-    await Promise.all([loadList(), loadFolders()]);
+    await Promise.all([loadList(depth.current), loadFolders()]);
   }
 
   function refresh() {
-    void loadList();
+    // Same view, same depth — re-read what is on screen rather than collapsing
+    // it back to the first page.
+    void loadList(depth.current);
     void loadFolders();
   }
 
@@ -483,7 +609,14 @@ export function MailClient({ address }: {
       <MailCompose
         draft={draft}
         onClose={() => setDraft(null)}
-        onSent={() => { setDraft(null); refresh(); }}
+        onSent={() => {
+            setDraft(null);
+            // Sending appends a copy to Wysłane, so every cached view of this
+            // mailbox is now one message out of date — same reasoning as
+            // applySeen and remove.
+            pages.current.clear();
+            refresh();
+          }}
       />
     </div>
   );
@@ -511,9 +644,39 @@ type ListProps = {
   onLoadMore: () => void;
 };
 
+/**
+ * The list's own loading state, in the SHAPE of the list.
+ *
+ * An empty pane holding the word "Ładowanie…" tells the admin nothing except
+ * that something is wrong somewhere, and on a phone it reads as a broken
+ * screen. Rows of the right height say "messages are coming, here is where
+ * they will be" and keep the pane from jumping when they arrive.
+ */
+function ListSkeleton() {
+  return (
+    <ul className="divide-y divide-line" aria-hidden>
+      {Array.from({ length: 7 }).map((_, i) => (
+        <li key={i} className="flex min-h-[64px] items-start gap-2.5 px-3.5 py-3 sm:px-4">
+          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[rgb(var(--faint)/0.18)]" />
+          <span className="min-w-0 flex-1 space-y-1.5">
+            <span className="flex items-center gap-2">
+              {/* Staggered widths so it reads as a list of different senders
+                  rather than a loading bar pretending to be one. */}
+              <span className="skeleton block h-3 rounded" style={{ width: `${38 + ((i * 13) % 26)}%` }} />
+              <span className="skeleton ml-auto block h-2.5 w-10 rounded" />
+            </span>
+            <span className="skeleton block h-3 rounded" style={{ width: `${52 + ((i * 17) % 30)}%` }} />
+            <span className="skeleton block h-2.5 rounded" style={{ width: `${60 + ((i * 11) % 25)}%` }} />
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function MessageList({ items, openUid, busy, moreBusy, hasMore, locale, t, onSelect, onLoadMore }: ListProps) {
   if (items.length === 0) {
-    return <Placeholder text={busy ? t("common.loading") : t("comm.noMessages")} />;
+    return busy ? <ListSkeleton /> : <Placeholder text={t("comm.noMessages")} />;
   }
   return (
     <>

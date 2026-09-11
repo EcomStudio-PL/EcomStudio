@@ -1,7 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { saveToolConfigAction } from "@/app/actions/ai-tools";
 import { ENGINE_MODES, type EngineMode } from "@/lib/services/ai-tools";

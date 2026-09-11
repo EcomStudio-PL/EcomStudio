@@ -1,5 +1,6 @@
 import "server-only";
 import { cache } from "react";
+import { getRequestUser } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import type { Client } from "@/lib/services/workspace";
 import {
@@ -86,7 +87,11 @@ export const getAvailabilityMap = cache(async (supabase: Client): Promise<Availa
  *  guarded against self-escalation — never a query param, header or cookie. */
 export const isAdminUser = cache(async (supabase: Client): Promise<boolean> => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    // FeatureGate wraps every page, so this runs on every navigation — and the
+    // shell layout has already asked GoTrue who this is microseconds earlier.
+    // getRequestUser is the same call memoised for the request, so the answer
+    // costs nothing the second and third time it is needed.
+    const user = await getRequestUser();
     if (!user) return false;
     const { data } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
     return data?.role === "admin";

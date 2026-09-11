@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/lib/notify";
 import {
   ChevronDown, ChevronUp, Gift, Loader2, Monitor, Plus, Smartphone, Trash2,
 } from "lucide-react";

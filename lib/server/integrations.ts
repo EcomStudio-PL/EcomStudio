@@ -272,10 +272,45 @@ export async function readIntegration<C>(supabase: Client, type: IntegrationType
  * route. A wrong or rotated key yields an EMPTY secrets object instead of an
  * exception, so the UI can report comm.err.decrypt and the admin can retype.
  */
+/**
+ * WHY the secrets bag came back empty. Three states that used to be one.
+ *
+ * An empty bag has three completely different causes with three completely
+ * different fixes, and collapsing them is how "Poczta nie została jeszcze
+ * skonfigurowana" came to be shown for a mailbox that was, in fact, fully
+ * configured and working:
+ *
+ *   · "ok"          — the row genuinely holds no secret. Type the password in.
+ *   · "key_missing" — the SERVER has no encryption key. Nothing the admin can
+ *                     type will help; an operator has to restore the key. The
+ *                     stored password is intact and untouched.
+ *   · "decrypt"     — there is a key, but it is not the one these secrets were
+ *                     written with. The stored ciphertext is unreadable and the
+ *                     credentials do have to be entered again.
+ *
+ * Telling an admin to re-enter a password that is already correct, while the
+ * real problem is a missing env var on the server, costs an afternoon. So the
+ * reason travels with the result.
+ */
+export type SecretsState = "ok" | "key_missing" | "decrypt";
+
+/** Which stored secrets could not be opened, BY NAME. The row-level state is
+ *  not enough on its own: a mail row that holds only an SMTP password would
+ *  otherwise report "the mailbox password cannot be read" when no mailbox
+ *  password was ever stored. Decryption stays all-or-nothing — a half-open bag
+ *  is worse than a closed one — so on failure this is every name in the bag. */
+export type SecretsRead<C> = {
+  enabled: boolean;
+  config: C;
+  secrets: Record<string, string>;
+  state: SecretsState;
+  unreadable: readonly string[];
+};
+
 export async function readIntegrationSecrets<C>(
   supabase: Client,
   type: IntegrationType,
-): Promise<{ enabled: boolean; config: C; secrets: Record<string, string> }> {
+): Promise<SecretsRead<C>> {
   // Any context: an admin session reads the row directly, the Send Email Hook
   // and public signup go through the token-gated door. See readRowAnyContext.
   const row = await readRowAnyContext(supabase, type);
@@ -283,7 +318,18 @@ export async function readIntegrationSecrets<C>(
   const enabled = row?.enabled === true;
   const bag = readBag(row?.secrets);
   const keyHex = integrationsKeyHex();
-  if (!keyHex) return { enabled, config, secrets: {} };
+  // No key at all. Only report it as the CAUSE when there was actually
+  // something to open — with an empty row the honest answer is still "nothing
+  // stored", and blaming the key would send the operator hunting for a
+  // non-problem.
+  const names = Object.keys(bag);
+  if (!keyHex) {
+    return {
+      enabled, config, secrets: {},
+      state: names.length > 0 ? "key_missing" : "ok",
+      unreadable: names,
+    };
+  }
   const secrets: Record<string, string> = {};
   try {
     for (const [name, blob] of Object.entries(bag)) secrets[name] = decryptWith(keyHex, blob.c, blob.i, blob.t);
@@ -291,9 +337,9 @@ export async function readIntegrationSecrets<C>(
     // All or nothing: half-decrypted credentials would look "configured" and
     // then fail at the provider with a far more confusing error.
     console.error("integrations.decrypt", type);
-    return { enabled, config, secrets: {} };
+    return { enabled, config, secrets: {}, state: "decrypt", unreadable: names };
   }
-  return { enabled, config, secrets };
+  return { enabled, config, secrets, state: "ok", unreadable: [] };
 }
 
 /**

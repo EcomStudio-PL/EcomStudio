@@ -108,9 +108,22 @@ export default async function AppLayout({ children, searchParams }: {
       </main>
     );
   }
-  const { dict: appDict } = await getDictionary();
-  const t0 = makeT(appDict);
-  const [wallet, { data: sub }, { data: notifs }, availability, navAdmin] = await Promise.all([
+  // ONE ROUND TRIP, NOT FOUR. The functions run in fra1 and the database in
+  // eu-central-1, so each await here is a real network hop — and the dictionary,
+  // the bonus config and the campaign start were three MORE of them, queued
+  // behind this batch for no reason: none of the three depends on any of the
+  // others, or on anything in it. Joining them costs nothing and removes three
+  // serial hops from every full page load.
+  //
+  // getCampaignStart is fetched even when the campaign is off. That is one
+  // cheap settings read riding along in a batch that was going to wait for the
+  // slowest member anyway — measurably free, and it keeps the bonus branch
+  // below from re-introducing a serial await.
+  const [
+    { dict: appDict }, wallet, { data: sub }, { data: notifs }, availability, navAdmin,
+    bonusConfig, campaignStart,
+  ] = await Promise.all([
+    getDictionary(),
     getWallet(supabase, workspace.id),
     supabase.from("subscriptions").select("subscription_plans(name)")
       .eq("workspace_id", workspace.id).eq("status", "active").maybeSingle(),
@@ -120,7 +133,10 @@ export default async function AppLayout({ children, searchParams }: {
     // What the NAV should treat as admin: the real role unless this admin
     // asked to look at the app as a customer.
     viewerIsAdmin(supabase),
+    getBonusConfig(supabase),
+    getCampaignStart(supabase),
   ]);
+  const t0 = makeT(appDict);
   const unread = (notifs ?? []).filter((n) => !n.read_at).length;
 
   /**
@@ -132,13 +148,12 @@ export default async function AppLayout({ children, searchParams }: {
    * Everything below degrades to "no offer" rather than throwing: a promotion
    * is never worth taking the application down for.
    */
-  const bonusConfig = await getBonusConfig(supabase);
   const bonusOffer = bonusConfig.active
     ? await ensureOffer(
         supabase,
         { id: user.id, email_confirmed_at: user.email_confirmed_at, created_at: user.created_at },
         bonusConfig,
-        await getCampaignStart(supabase),
+        campaignStart,
       )
     : null;
   const bonusView = bonusOffer ? toView(bonusOffer) : null;

@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/notify";
 import {
   AlertTriangle, ArrowDown, ArrowRight, Download, FileArchive, FileImage,
   FileType, Gauge, ImagePlus, Info, Loader2, RotateCcw, Trash2,

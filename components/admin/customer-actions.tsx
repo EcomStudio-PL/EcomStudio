@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/lib/notify";
 import { KeyRound, MailCheck, MoreHorizontal, Send, ShieldOff, ShieldCheck, Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import {

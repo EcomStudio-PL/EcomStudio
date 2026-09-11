@@ -6,14 +6,34 @@ import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
  * The master key lives ONLY in the server env (APP_ENCRYPTION_KEY, 32-byte hex).
  * Plaintext secrets are never persisted and never sent to the browser.
  */
+/**
+ * 32 bytes as 64 hex characters, or nothing.
+ *
+ * The length test alone was not enough. Buffer.from(x, "hex") does not throw on
+ * a non-hex string — it stops at the first invalid pair and hands back a SHORT
+ * buffer — so a 64-character value that is not actually hex (a pasted base64
+ * key, a quoted value, a key with a stray character) used to pass the check,
+ * report the module as ready, and then fail deep inside createCipheriv with an
+ * "Invalid key length" that says nothing about the real mistake. Worse, the two
+ * callers disagreed: lib/server/integrations.ts has always required hex, so the
+ * communications panel and the rest of the app could reach opposite conclusions
+ * about the same key.
+ */
+const KEY_HEX = /^[0-9a-fA-F]{64}$/;
+
+function validKeyHex(raw: string | null | undefined): string | null {
+  const hex = raw?.trim();
+  return hex && KEY_HEX.test(hex) ? hex : null;
+}
+
 function resolveKey(hex: string | null | undefined): Buffer {
-  if (!hex || hex.trim().length !== 64) throw new Error("encryption_key_missing");
-  return Buffer.from(hex.trim(), "hex");
+  const valid = validKeyHex(hex);
+  if (!valid) throw new Error("encryption_key_missing");
+  return Buffer.from(valid, "hex");
 }
 
 export function encryptionAvailable(): boolean {
-  const hex = process.env.APP_ENCRYPTION_KEY;
-  return Boolean(hex && hex.trim().length === 64);
+  return validKeyHex(process.env.APP_ENCRYPTION_KEY) !== null;
 }
 
 /**

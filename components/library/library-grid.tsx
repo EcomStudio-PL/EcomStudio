@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/notify";
 import { Check, Download, Heart, Loader2, Maximize2, SquareDashedMousePointer, Wrench, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";

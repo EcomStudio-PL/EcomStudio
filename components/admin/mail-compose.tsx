@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/notify";
 import { Paperclip, Send, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { sendMailAction } from "@/app/actions/mail";
@@ -71,6 +71,13 @@ const MAIL_ERROR_KEYS: Record<string, string> = {
   // The mailbox is reachable but the module's switch is off, which is the same
   // sentence and the same fix as a mailbox that was never set up.
   not_enabled: "comm.err.notConfigured",
+  // Reading and saving fail for the same reason and need opposite sentences.
+  // The shared map (integration-cards.tsx) answers "Sekretów nie można
+  // zapisać", which is right on the settings form and wrong here: the admin is
+  // opening the inbox, not saving anything, and the password they would be
+  // tempted to retype is stored correctly. So the mailbox screens say what is
+  // actually true — the key is gone, the data is not.
+  encryption_unavailable: "comm.err.encryptionRead",
 };
 
 /** A code is never shown raw. Anything unmapped falls back to the channel's

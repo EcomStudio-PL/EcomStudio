@@ -2,7 +2,7 @@
 import { useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/lib/notify";
 import { ExternalLink, ShieldCheck } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { setToolKnowledgeAction } from "@/app/actions/ai-tools";

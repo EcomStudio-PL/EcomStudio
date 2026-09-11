@@ -1,7 +1,7 @@
 "use client";
 import { useActionState, useEffect } from "react";
 import { useTheme } from "next-themes";
-import { toast } from "sonner";
+import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { saveProfileAction, setLocaleAction } from "@/app/actions/settings";
 import { Input, Select, Label } from "@/components/ui/input";
