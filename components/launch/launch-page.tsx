@@ -27,6 +27,10 @@ import type { WaitlistFieldConfig } from "@/lib/server/registration-config";
  * behind it would put white panels next to a black photograph.
  */
 
+/** The sign-in entry's chrome, shared by the signed-in link and the dialog
+ *  trigger so the two can never drift apart. */
+const ENTRY_CLASS = "whitespace-nowrap rounded-xl border border-[rgb(var(--glass-border)/0.2)] bg-[rgb(var(--surface)/0.55)] px-3.5 py-2 text-[13px] font-semibold text-ink backdrop-blur-md transition-colors hover:border-[rgb(var(--accent)/0.45)] lg:rounded-[clamp(12px,1vw,16px)] lg:px-[clamp(14px,1.1vw,22px)] lg:py-[clamp(8px,min(0.7vw,0.89vh),14px)] lg:text-[clamp(13px,min(0.95vw,1.44vh),16px)]";
+
 /** Icons for the three proof chips, in the order the copy fields are read. */
 const FEATURE_ICONS = [Zap, Sparkles, BarChart3] as const;
 /** Icons for the three sign-up perks. */
@@ -104,7 +108,7 @@ export function LaunchPage({
           Phones get the same scene as a band at the top, sized off the width
           too, so its proportions never depend on how tall the phone is. */}
       <div aria-hidden
-        className="pointer-events-none absolute right-0 top-0 hidden w-[66%] lg:block xl:w-[64%]">
+        className="pointer-events-none absolute right-0 top-0 hidden lg:block lg:w-[64%] xl:w-[61%] 2xl:w-[56%]">
         <div className="relative aspect-[1808/1152] w-full">
           <Image src={art} alt="" fill priority sizes="66vw" className="object-cover object-center" />
           {/* Only the panel's own left edge fades, and it clears before the
@@ -148,46 +152,66 @@ export function LaunchPage({
             + "linear-gradient(180deg, rgb(var(--bg)) 0%, rgb(var(--bg)/0.88) 38%, rgb(var(--bg)/0.42) 68%, transparent 100%)",
         }} />
 
-      <div className="relative mx-auto flex w-full max-w-[1360px] flex-1 flex-col px-5 sm:px-8 lg:px-10">
+      {/* DESKTOP SCALES WITH THE SCREEN. Everything below lg is untouched;
+          from lg up the container, the columns, the type and every card are
+          sized in vw between a 1280 floor and a cap, because the layout used
+          to FREEZE at 1280 — a 1920 monitor got a 1280 design marooned in the
+          middle with 280px of dead margin either side, which is what made the
+          page read as a shrunken phone rather than a landing page. */}
+        <div className="relative mx-auto flex w-full max-w-[1360px] flex-1 flex-col px-5 sm:px-8 lg:px-[clamp(48px,5vw,90px)] xl:max-w-[1760px]">
         {/* ── HEADER ───────────────────────────────────────────────────────
             Lifted OUT of the flow on phones and laid over the artwork, so the
             content below is positioned from the top of the page rather than
             from wherever the notch happened to push the logo. That is what
             lets the badge overlap the photograph by a known amount. */}
-        <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-between gap-3 px-5 pb-4 pt-[calc(1.15rem+env(safe-area-inset-top))] sm:px-8 lg:static lg:px-0 lg:py-2">
-          <Brand href="/" height={30} forceDark />
-          <div className="flex items-center gap-2.5">
+        <header className="absolute inset-x-0 top-0 z-20 flex items-center justify-between gap-3 px-5 pb-4 pt-[calc(1.15rem+env(safe-area-inset-top))] sm:px-8 lg:static lg:px-0 lg:py-2 min-[1400px]:py-[clamp(12px,min(1.3vw,1.33vh),30px)]">
+          <Brand href="/" height={30} forceDark imgClassName="min-[1400px]:!h-[clamp(32px,min(2.1vw,3.56vh),44px)] min-[1400px]:!w-auto" />
+          <div className="flex items-center gap-2.5 lg:gap-[clamp(10px,1vw,18px)]">
             {/* Phones hide the follow row: the logo, four icons and the login
                 button do not fit 390px without crowding, and the success state
                 offers the same links right after someone signs up. */}
             {socials.length > 0 && (
               <div className="hidden items-center gap-2 sm:flex">
-                <span className="hidden text-[12.5px] font-medium text-muted sm:inline">
+                <span className="hidden text-[12.5px] font-medium text-muted sm:inline lg:text-[clamp(12.5px,min(0.95vw,1.39vh),16px)]">
                   {c["social.heading"]}
                 </span>
                 <div className="flex items-center gap-1.5">
                   {socials.map(({ key, url, Icon, label }) => (
                     <a key={key} href={url} target="_blank" rel="noopener noreferrer"
                       aria-label={label} data-launch-social={key}
-                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-[rgb(var(--glass-border)/0.18)] bg-[rgb(var(--surface)/0.55)] text-muted backdrop-blur-md transition-colors hover:border-[rgb(var(--accent)/0.45)] hover:text-ink">
-                      <Icon size={15} />
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-[rgb(var(--glass-border)/0.18)] bg-[rgb(var(--surface)/0.55)] text-muted backdrop-blur-md transition-colors hover:border-[rgb(var(--accent)/0.45)] hover:text-ink lg:h-[clamp(36px,min(2.5vw,4.0vh),48px)] lg:w-[clamp(36px,min(2.5vw,4.0vh),48px)] lg:rounded-[clamp(12px,1vw,16px)]">
+                      <Icon className="h-[15px] w-[15px] lg:h-[clamp(15px,min(1.1vw,1.67vh),20px)] lg:w-[clamp(15px,min(1.1vw,1.67vh),20px)]" />
                     </a>
                   ))}
                 </div>
               </div>
             )}
-            {/* The dialog opens over this page rather than navigating — a link
+            {/* THE SIGN-IN ENTRY STEPS ASIDE FOR THE FOLLOW ROW ON DESKTOP.
+                The reference composition puts "Śledź nas" and the social icons
+                where this button sits, and two clusters in one corner is what
+                made the header feel cramped — so from lg the button is dropped
+                whenever there is a follow row to put there instead.
+
+                It is NOT dropped unconditionally: the profile URLs live in
+                /admin/www and are still unset, so an unconditional rule would
+                ship a desktop header with an empty right-hand side and no way
+                for an existing customer to sign in from the front page. When
+                the URLs are filled in, this resolves to exactly the reference.
+                Phones keep the button either way — the follow row is hidden
+                below sm, and that layout is settled.
+
+                The dialog opens over this page rather than navigating — a link
                 to /login would server-redirect back to /?auth=login and the
                 provider, living in the root layout, would never see the URL
                 change. That is the bug where the button did nothing at all. */}
             {signedIn ? (
               <Link href="/dashboard" data-launch-login
-                className="whitespace-nowrap rounded-xl border border-[rgb(var(--glass-border)/0.2)] bg-[rgb(var(--surface)/0.55)] px-3.5 py-2 text-[13px] font-semibold text-ink backdrop-blur-md transition-colors hover:border-[rgb(var(--accent)/0.45)]">
+                className={cn(ENTRY_CLASS, socials.length > 0 && "lg:hidden")}>
                 {loginLabel}
               </Link>
             ) : showAuthEntry ? (
               <AuthLink mode="login" data-launch-login
-                className="whitespace-nowrap rounded-xl border border-[rgb(var(--glass-border)/0.2)] bg-[rgb(var(--surface)/0.55)] px-3.5 py-2 text-[13px] font-semibold text-ink backdrop-blur-md transition-colors hover:border-[rgb(var(--accent)/0.45)]">
+                className={cn(ENTRY_CLASS, socials.length > 0 && "lg:hidden")}>
                 {loginLabel}
               </AuthLink>
             ) : null}
@@ -204,17 +228,17 @@ export function LaunchPage({
             halves of the screen together instead of stacking them. The pad is
             width-derived like the band above it, so the overlap is the same
             fraction on every phone, and capped in svh for short screens. */}
-        <div className="grid flex-1 items-center gap-5 pb-5 pt-[calc(var(--hero-top)+var(--hero-art)-2.6rem)] sm:gap-6 lg:grid-cols-[minmax(0,455px)_minmax(0,1fr)] lg:gap-10 lg:pb-0 lg:pt-0">
+        <div className="grid flex-1 items-center gap-5 pb-5 pt-[calc(var(--hero-top)+var(--hero-art)-2.6rem)] sm:gap-6 lg:grid-cols-[minmax(0,clamp(455px,34vw,640px))_minmax(0,1fr)] lg:gap-[clamp(40px,3.6vw,76px)] lg:pb-0 lg:pt-0">
           <div className="min-w-0 lg:py-1">
             {c["hero.badge"] && (
               <p data-launch-badge
-                className="inline-flex items-center gap-1.5 rounded-full border border-[rgb(var(--accent)/0.35)] bg-[rgb(var(--accent)/0.14)] px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.13em] text-accent shadow-[0_8px_24px_-12px_rgb(0_0_0/0.9)] backdrop-blur-md">
-                <Sparkles size={12} aria-hidden />
+                className="inline-flex items-center gap-1.5 rounded-full border border-[rgb(var(--accent)/0.35)] bg-[rgb(var(--accent)/0.14)] px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.13em] text-accent shadow-[0_8px_24px_-12px_rgb(0_0_0/0.9)] backdrop-blur-md lg:gap-2 lg:px-[clamp(12px,1vw,18px)] lg:py-[clamp(6px,min(0.5vw,0.67vh),10px)] lg:text-[clamp(10.5px,min(0.72vw,1.17vh),13px)]">
+                <Sparkles aria-hidden className="h-3 w-3 lg:h-[clamp(12px,min(0.9vw,1.33vh),16px)] lg:w-[clamp(12px,min(0.9vw,1.33vh),16px)]" />
                 {c["hero.badge"]}
               </p>
             )}
             <h1 data-launch-h1
-              className="mt-3 font-display text-[2.35rem] font-semibold leading-[0.97] tracking-[-0.035em] sm:mt-4 sm:text-[3.1rem] lg:mt-2 lg:text-[3rem] xl:text-[3.6rem]">
+              className="mt-3 font-display text-[2.35rem] font-semibold leading-[0.97] tracking-[-0.035em] sm:mt-4 sm:text-[3.1rem] lg:mt-2 lg:text-[3rem] xl:text-[3.6rem] min-[1400px]:mt-[clamp(10px,min(0.9vw,1.11vh),20px)] min-[1400px]:text-[clamp(3.6rem,min(4.7vw,6.4vh),4.8rem)]">
               {c["hero.h1"]}{" "}
               {c["hero.h1Accent"] && (
                 <span className="bg-[linear-gradient(96deg,rgb(var(--accent))_0%,rgb(var(--accent-glow))_58%,rgb(var(--violet))_105%)] bg-clip-text text-transparent">
@@ -225,7 +249,7 @@ export function LaunchPage({
             {/* The sub-headline is authored as two lines and stays two lines —
                 `whitespace-pre-line` keeps the admin's break instead of
                 reflowing it into one long sentence. */}
-            <p className="mt-2.5 max-w-md whitespace-pre-line text-[13.5px] leading-[1.45] text-muted sm:mt-3 sm:text-[14.5px] sm:leading-[1.5] xl:text-[15px]">
+            <p className="mt-2.5 max-w-md whitespace-pre-line text-[13.5px] leading-[1.45] text-muted sm:mt-3 sm:text-[14.5px] sm:leading-[1.5] xl:text-[15px] lg:max-w-[42ch] min-[1400px]:mt-[clamp(14px,min(1.1vw,1.56vh),24px)] min-[1400px]:text-[clamp(16px,min(1.22vw,1.78vh),19px)] min-[1400px]:leading-[1.55]">
               {c["hero.sub"]}
             </p>
 
@@ -239,15 +263,15 @@ export function LaunchPage({
                 icon-beside-text. */}
             {features.length > 0 && (
               <ul data-launch-features
-                className="mt-3.5 grid grid-cols-3 gap-1.5 sm:mt-4 sm:gap-2 lg:mt-3">
+                className="mt-3.5 grid grid-cols-3 gap-1.5 sm:mt-4 sm:gap-2 lg:mt-3 min-[1400px]:mt-[clamp(16px,min(1.3vw,1.78vh),28px)] min-[1400px]:gap-[clamp(9px,0.8vw,16px)]">
                 {features.map((f, i) => {
                   const Icon = FEATURE_ICONS[i] ?? Sparkles;
                   return (
                     <li key={`${f.t}${f.b}`}
-                      className="flex flex-col items-center gap-2 rounded-2xl border border-[rgb(var(--glass-border)/0.16)] bg-[rgb(var(--surface)/0.5)] px-1.5 py-2.5 text-center backdrop-blur-md sm:flex-row sm:items-center sm:gap-2 sm:rounded-xl sm:px-2.5 sm:py-2 sm:text-left">
+                      className="flex flex-col items-center gap-2 rounded-2xl border border-[rgb(var(--glass-border)/0.16)] bg-[rgb(var(--surface)/0.5)] px-1.5 py-2.5 text-center backdrop-blur-md sm:flex-row sm:items-center sm:gap-2 sm:rounded-xl sm:px-2.5 sm:py-2 sm:text-left min-[1400px]:gap-[clamp(9px,0.7vw,14px)] min-[1400px]:rounded-[clamp(12px,1vw,18px)] min-[1400px]:px-[clamp(11px,0.9vw,16px)] min-[1400px]:py-[clamp(9px,min(0.7vw,1.0vh),14px)]">
                       <span aria-hidden
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[rgb(var(--accent)/0.16)] text-accent sm:h-7 sm:w-7 sm:rounded-lg">
-                        <Icon className="h-3.5 w-3.5" />
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-[rgb(var(--accent)/0.16)] text-accent sm:h-7 sm:w-7 sm:rounded-lg min-[1400px]:h-[clamp(29px,min(1.9vw,3.22vh),38px)] min-[1400px]:w-[clamp(29px,min(1.9vw,3.22vh),38px)] min-[1400px]:rounded-[clamp(8px,0.7vw,12px)]">
+                        <Icon className="h-3.5 w-3.5 min-[1400px]:h-[clamp(15px,min(1vw,1.67vh),19px)] min-[1400px]:w-[clamp(15px,min(1vw,1.67vh),19px)]" />
                       </span>
                       {/* The name is sized off the VIEWPORT, not fixed, so it
                           stays on one line from a 360px Android to a Pro Max
@@ -257,8 +281,12 @@ export function LaunchPage({
                             wide whatever the screen measures — the size that keeps the
                             longest name on one line inside it is ~10px, and that is what
                             lg gets. Between sm and lg the chips have the full width. */}
-                        <span className="block text-[clamp(9.8px,2.75vw,11.5px)] font-semibold tracking-[-0.01em] text-ink sm:text-[11.5px] lg:text-[10px]">{f.t}</span>
-                        <span className="mt-0.5 block text-[clamp(8.8px,2.45vw,10.5px)] text-faint sm:mt-0 sm:text-[10.5px] lg:text-[9.5px]">{f.b}</span>
+                        {/* The base clamp is the PHONE's, and it is settled —
+                            it stays a pure vw ramp. Only the lg value is
+                            height-aware, because only the desktop layout has
+                            to survive a short, wide monitor. */}
+                        <span className="block text-[clamp(9.8px,2.75vw,11.5px)] font-semibold tracking-[-0.01em] text-ink sm:text-[11.5px] lg:text-[clamp(10px,min(0.66vw,1.11vh),13px)]">{f.t}</span>
+                        <span className="mt-0.5 block text-[clamp(8.8px,2.45vw,10.5px)] text-faint sm:mt-0 sm:text-[10.5px] lg:text-[clamp(9.5px,min(0.6vw,1.06vh),12px)]">{f.b}</span>
                       </span>
                     </li>
                   );
@@ -268,7 +296,7 @@ export function LaunchPage({
 
             {/* ── THE FORM ─────────────────────────────────────────────── */}
             <div data-launch-form-card
-              className="glass relative mt-4 rounded-2xl border-[rgb(var(--accent)/0.22)] p-4 sm:p-[18px] lg:mt-3 lg:p-4 xl:mt-5 xl:p-5">
+              className="glass relative mt-4 rounded-2xl border-[rgb(var(--accent)/0.22)] p-4 sm:p-[18px] lg:mt-4 lg:rounded-2xl lg:p-[18px] min-[1400px]:mt-[clamp(18px,min(1.4vw,2.0vh),30px)] min-[1400px]:rounded-[clamp(20px,1.4vw,28px)] min-[1400px]:p-[clamp(21px,min(1.5vw,2.33vh),32px)]">
               {/* The same travelling light the auth dialog carries, on the one
                   card this page is asking people to use. A little slower than
                   the dialog's: this card's perimeter is shorter, so at 6s the
@@ -278,11 +306,11 @@ export function LaunchPage({
               <span aria-hidden data-launch-form-orbit
                 className="orbit-ring"
                 style={{ "--orbit-speed": "7.5s", "--orbit-inset": "-1px" } as React.CSSProperties} />
-              <p className="relative font-display text-[17px] font-semibold tracking-tight lg:text-[17.5px] xl:text-[18.5px]">
+              <p className="relative font-display text-[17px] font-semibold tracking-tight lg:text-[clamp(18px,min(1.5vw,2.0vh),26px)]">
                 {c["form.title"]}
               </p>
-              <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{c["form.sub"]}</p>
-              <div className="mt-3.5 sm:mt-4 lg:mt-3">
+              <p className="mt-1 text-[12.5px] leading-relaxed text-muted lg:mt-[clamp(4px,min(0.4vw,0.44vh),10px)] lg:text-[clamp(13px,min(1.02vw,1.44vh),17px)]">{c["form.sub"]}</p>
+              <div className="mt-3.5 sm:mt-4 lg:mt-3 min-[1400px]:mt-[clamp(16px,min(1.3vw,1.78vh),26px)]">
                 <WaitlistForm placeholder={c["hero.placeholder"]} cta={c["hero.cta"]} source="hero"
                   consentLabel={c["hero.consent"]} id="waitlist-hero" fields={waitlistFields}
                   safetyNote={c["form.safety"]}
@@ -298,22 +326,22 @@ export function LaunchPage({
           <div className="min-w-0 lg:self-end lg:pb-1">
             {perks.length > 0 && (
               <div data-launch-perks
-                className="glass rounded-2xl p-4 sm:p-5">
-                <p className="text-center text-[12.5px] font-medium text-muted">{c["perks.heading"]}</p>
-                <ul className="mt-3 grid gap-2.5 sm:grid-cols-3">
+                className="glass rounded-2xl p-4 sm:p-5 lg:rounded-[clamp(16px,1.4vw,28px)] lg:p-[clamp(18px,min(1.5vw,2.0vh),32px)]">
+                <p className="text-center text-[12.5px] font-medium text-muted lg:text-[clamp(13px,min(1.02vw,1.44vh),17px)]">{c["perks.heading"]}</p>
+                <ul className="mt-3 grid gap-2.5 sm:grid-cols-3 lg:mt-[clamp(12px,min(1.1vw,1.33vh),22px)] lg:gap-[clamp(10px,0.9vw,18px)]">
                   {perks.map((p, i) => {
                     const Icon = PERK_ICONS[i] ?? Gift;
                     return (
                       <li key={`${p.t}${p.b}`}
                         data-launch-perk
-                        className="flex items-center gap-2 rounded-xl border border-[rgb(var(--glass-border)/0.14)] bg-[rgb(var(--surface)/0.55)] px-2.5 py-2 sm:gap-2.5 sm:px-3 sm:py-2.5">
+                        className="flex items-center gap-2 rounded-xl border border-[rgb(var(--glass-border)/0.14)] bg-[rgb(var(--surface)/0.55)] px-2.5 py-2 sm:gap-2.5 sm:px-3 sm:py-2.5 lg:gap-[clamp(10px,0.9vw,16px)] lg:rounded-[clamp(12px,1vw,18px)] lg:px-[clamp(12px,1vw,20px)] lg:py-[clamp(10px,min(0.9vw,1.11vh),18px)]">
                         <span aria-hidden className={cn(
-                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl sm:h-9 sm:w-9",
+                          "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl sm:h-9 sm:w-9 lg:h-[clamp(36px,min(2.4vw,4.0vh),46px)] lg:w-[clamp(36px,min(2.4vw,4.0vh),46px)] lg:rounded-[clamp(12px,1vw,16px)]",
                           i === 1
                             ? "bg-[rgb(var(--violet)/0.18)] text-[rgb(var(--violet))]"
                             : "bg-[rgb(var(--accent)/0.16)] text-accent",
                         )}>
-                          <Icon className="h-[15px] w-[15px] sm:h-4 sm:w-4" />
+                          <Icon className="h-[15px] w-[15px] sm:h-4 sm:w-4 lg:h-[clamp(16px,min(1.15vw,1.78vh),22px)] lg:w-[clamp(16px,min(1.15vw,1.78vh),22px)]" />
                         </span>
                         {/* ONE LINE BESIDE THE ICON ON A PHONE.
                             The two halves are blocks from sm up — three narrow
@@ -325,8 +353,10 @@ export function LaunchPage({
                             three still fits at 320px without being clipped. */}
                         <span data-launch-perk-text
                           className="min-w-0 whitespace-nowrap leading-[1.3] sm:whitespace-normal">
-                          <span className="text-[clamp(11.5px,3.4vw,13px)] font-semibold text-ink sm:block sm:text-[13px]">{p.t}</span>{" "}
-                          <span className="text-[clamp(10.5px,3.1vw,12px)] text-muted sm:block sm:text-[12px]">{p.b}</span>
+                          {/* Same rule as the feature chips: the phone's clamp
+                              is a pure vw ramp and is not to be touched. */}
+                          <span className="text-[clamp(11.5px,3.4vw,13px)] font-semibold text-ink sm:block sm:text-[13px] lg:text-[clamp(13px,min(1.02vw,1.44vh),17px)]">{p.t}</span>{" "}
+                          <span className="text-[clamp(10.5px,3.1vw,12px)] text-muted sm:block sm:text-[12px] lg:text-[clamp(12px,min(0.95vw,1.33vh),15px)]">{p.b}</span>
                         </span>
                       </li>
                     );
@@ -339,7 +369,7 @@ export function LaunchPage({
 
         {/* ── FOOTER ───────────────────────────────────────────────────────
             One line. A pre-launch page has nothing to put in columns. */}
-        <footer className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pb-[calc(0.85rem+env(safe-area-inset-bottom))] pt-1.5 text-center text-[11.5px] text-faint lg:pb-1 lg:pt-0">
+        <footer className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pb-[calc(0.85rem+env(safe-area-inset-bottom))] pt-1.5 text-center text-[11.5px] text-faint lg:pb-1 lg:pt-0 min-[1400px]:gap-x-[clamp(14px,1vw,20px)] min-[1400px]:pb-[clamp(12px,min(1vw,1.33vh),24px)] min-[1400px]:pt-[clamp(8px,min(0.6vw,0.89vh),16px)] min-[1400px]:text-[clamp(12px,min(0.88vw,1.33vh),14px)]">
           <span>GrovBase © {new Date().getFullYear()} · {rightsLabel}</span>
           <span aria-hidden className="hidden sm:inline">·</span>
           <Link href="/polityka-prywatnosci" className="transition-colors hover:text-ink">{privacyLabel}</Link>

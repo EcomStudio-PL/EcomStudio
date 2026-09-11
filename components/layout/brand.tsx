@@ -59,12 +59,22 @@ export function BrandMark({ size = 28 }: { size?: number }) {
  */
 export function Brand({
   href = "/", markOnly = false, height = 30, className, wordmarkClassName, forceDark = false,
+  imgClassName,
 }: {
   href?: string;
   markOnly?: boolean;
   /** Rendered height of the lockup (or the mark) in px. */
   height?: number;
   className?: string;
+  /**
+   * Classes on the image itself, for a surface that needs the lockup to scale
+   * with the viewport rather than sit at one pixel height. The geometry above
+   * is an inline style — it has to be, so the logo reserves its space before
+   * any CSS loads and never shifts the layout — so an override here must be
+   * marked important (`lg:!h-…`) to win. Only the forceDark lockup takes it;
+   * nothing else has asked.
+   */
+  imgClassName?: string;
   /** Responsive visibility for the lockup, e.g. "hidden sm:inline-flex". */
   wordmarkClassName?: string;
   /**
@@ -80,7 +90,8 @@ export function Brand({
       <Link href={href} aria-label="GrovBase" className={cn("inline-flex items-center", className)}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/brand/logo-on-dark.png" alt="" width={width} height={height}
-          style={{ height, width }} className="select-none object-contain" />
+          style={{ height, width }}
+          className={cn("select-none object-contain", imgClassName)} />
       </Link>
     );
   }

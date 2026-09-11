@@ -34,6 +34,11 @@ const FIELD_CLASS = cn(
   "px-4 text-base text-ink outline-none transition-[border-color,box-shadow] placeholder:text-faint",
   "focus:border-[rgb(var(--accent)/0.6)] focus:ring-4 focus:ring-[rgb(var(--accent)/0.16)]",
   "sm:text-[14.5px]",
+  // From lg the field grows with the screen, like everything else on the
+  // desktop landing page. Below lg nothing changes — the phone layout is
+  // finished and is not to be touched.
+  "min-[1400px]:h-[clamp(50px,min(3.3vw,5.56vh),62px)] min-[1400px]:rounded-[clamp(13px,1vw,18px)]",
+  "min-[1400px]:px-[clamp(17px,1.2vw,24px)] min-[1400px]:text-[clamp(15px,min(1.1vw,1.67vh),18px)]",
 );
 
 /** The same field, flagged. Applied only after a submit attempt — a form that
@@ -192,7 +197,7 @@ export function WaitlistForm({
           to Nazwisko — because stacking them costs a whole row of height on
           exactly the screen where the form is trying to reach the fold. */}
       {extras.length > 0 && (
-        <div data-waitlist-extras className="mb-2.5 grid grid-cols-2 gap-2.5">
+        <div data-waitlist-extras className="mb-2.5 grid grid-cols-2 gap-2.5 min-[1400px]:mb-[clamp(11px,min(0.85vw,1.22vh),18px)] min-[1400px]:gap-[clamp(11px,0.85vw,18px)]">
           {extras.map((f, i) => (
             // An odd trailing field takes the whole row instead of leaving a
             // hole beside itself.
@@ -250,7 +255,7 @@ export function WaitlistForm({
           already scrolled past. */}
       <label htmlFor={consentId} data-waitlist-consent
         className={cn(
-          "mt-2.5 flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2 text-[12px] leading-[1.45] text-muted transition-colors sm:text-[12.5px] lg:py-1.5",
+          "mt-2.5 flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2 text-[12px] leading-[1.45] text-muted transition-colors sm:text-[12.5px] lg:py-1.5 min-[1400px]:mt-[clamp(11px,min(0.85vw,1.22vh),18px)] min-[1400px]:gap-[clamp(11px,0.8vw,14px)] min-[1400px]:rounded-[clamp(13px,1vw,18px)] min-[1400px]:px-[clamp(13px,1vw,18px)] min-[1400px]:py-[clamp(7px,min(0.6vw,0.78vh),12px)] min-[1400px]:text-[clamp(13px,min(0.95vw,1.44vh),15px)]",
           problem === "consent"
             ? "border-[rgb(var(--danger)/0.7)] bg-[rgb(var(--danger)/0.08)]"
             : "border-[rgb(var(--glass-border)/0.16)] bg-[rgb(var(--sunken)/0.4)] hover:border-[rgb(var(--accent)/0.35)]",
@@ -266,7 +271,7 @@ export function WaitlistForm({
           className="peer sr-only"
         />
         <span aria-hidden className={cn(
-          "mt-px flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[6px] border transition-all",
+          "mt-px flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[6px] border transition-all min-[1400px]:h-[clamp(19px,min(1.35vw,2.11vh),24px)] min-[1400px]:w-[clamp(19px,min(1.35vw,2.11vh),24px)]",
           "border-[rgb(var(--glass-border)/0.45)] bg-[rgb(var(--sunken)/0.8)]",
           "peer-checked:border-transparent peer-checked:bg-[linear-gradient(135deg,rgb(var(--accent)),rgb(var(--accent-glow)))]",
           "peer-checked:shadow-[0_4px_14px_-4px_rgb(var(--accent)/0.9)]",
@@ -291,6 +296,7 @@ export function WaitlistForm({
       <button type="submit" disabled={state === "busy"} data-waitlist-submit
         className={cn(
           "cta mt-2.5 flex h-[46px] w-full items-center justify-center gap-2 rounded-xl px-6 text-[14.5px] font-semibold sm:h-12",
+          "min-[1400px]:mt-[clamp(11px,min(0.9vw,1.22vh),20px)] min-[1400px]:h-[clamp(52px,min(3.6vw,5.78vh),68px)] min-[1400px]:rounded-[clamp(13px,1vw,18px)] min-[1400px]:text-[clamp(15.5px,min(1.2vw,1.72vh),19px)]",
           state === "busy" && "cursor-wait opacity-70")}>
         {state === "busy"
           ? <><Loader2 size={16} className="animate-spin" aria-hidden />{t("launch.busy")}</>
@@ -314,7 +320,7 @@ export function WaitlistForm({
           not only in the privacy policy. The launch page passes its own short
           line; the long one is the fallback for any other caller. */}
       <p data-waitlist-privacy
-        className="mt-2 flex items-center justify-center gap-1.5 text-center text-[11px] leading-relaxed text-faint sm:text-[11.5px] lg:mt-1.5">
+        className="mt-2 flex items-center justify-center gap-1.5 text-center text-[11px] leading-relaxed text-faint sm:text-[11.5px] lg:mt-1.5 min-[1400px]:mt-[clamp(9px,min(0.7vw,1.0vh),16px)] min-[1400px]:text-[clamp(12px,min(0.88vw,1.33vh),14px)]">
         {safetyNote ? <Lock size={11} aria-hidden className="shrink-0" /> : null}
         {safetyNote || t("launch.privacyNote")}
       </p>
