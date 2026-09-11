@@ -5,11 +5,19 @@
   `deploy_to_vercel`, which clones `main` in its install step.
 - Production URL: https://grovbase.com (custom domain; `www` and the
   legacy `ecomstudio-prod.vercel.app` both 308 to it)
-- Function region: `fra1`, set in `vercel.json`. It used to be the account
-  default `iad1` (Washington DC) while Supabase PROD runs in `eu-central-1`
-  (Frankfurt), so every server-side query crossed the Atlantic and a single
-  navigation makes five to seven of them. Keep the functions in the same
-  continent as the database.
+- Function region: **actually `iad1` (Washington DC), and that is a problem.**
+  Supabase PROD runs in `eu-central-1` (Frankfurt), so every server-side query
+  crosses the Atlantic and a single navigation makes five to seven of them in
+  sequence. `vercel.json` declares `"regions": ["fra1"]` — but MEASURED, it has
+  no effect on this account: two preview deployments, one with `vercel.json`
+  only in the git clone and one with it in the uploaded payload, both came back
+  READY reporting `regions: ["iad1"]`. The team plan is `hobby`, where the
+  function region is the account default and cannot be overridden per project
+  from `vercel.json`. The declaration is kept because it is inert and correct,
+  and it will take effect if the plan changes — but moving the functions to
+  Frankfurt today means changing it in Vercel Project Settings (Functions →
+  region) or upgrading the plan. Do not report this latency fix as live until a
+  deployment's `regions` actually reads `fra1`.
 - Deploy flow: `deploy_to_vercel` with installCommand that clones `main`
   and installs; two seed files (stub package.json + .env.production with
   NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
