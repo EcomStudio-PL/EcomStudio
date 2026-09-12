@@ -59,6 +59,41 @@ export async function testProviderConnection(slug: string, apiKey: string, baseU
         // fal has no dedicated auth-probe endpoint; a non-auth error only proves reachability.
         return { status: "connected", message: "Endpoint reachable (no dedicated auth probe)" };
       }
+      case "photoroom": {
+        // A PROBE THAT COSTS NOTHING. Photoroom bills per image processed and
+        // publishes no free status endpoint, so sending a real photo to check
+        // a key would charge the operator $0.02 every time they pressed the
+        // button. This posts a request with NO image instead: authentication
+        // is checked before the (absent) image is looked at, so a rejected key
+        // still answers 401/403 while an accepted one answers 400 "no image".
+        // A 400 here is therefore the SUCCESS case.
+        const res = await fetch(baseUrl?.trim() || "https://sdk.photoroom.com/v1/segment", {
+          method: "POST",
+          headers: { "x-api-key": apiKey, Accept: "application/json" },
+          body: new FormData(),
+          signal: timeout,
+        });
+        const sandbox = apiKey.trim().toLowerCase().startsWith("sandbox_");
+        const where = sandbox ? "sandbox" : "live";
+        if (res.status === 401 || res.status === 403) {
+          return { status: "auth_failed", message: `Authentication failed (${res.status})` };
+        }
+        if (res.status === 402) return { status: "quota", message: "Insufficient balance (402)" };
+        if (res.status === 429) {
+          return { status: "rate_limited", message: `Rate limited (429) — ${where}` };
+        }
+        // 400 = the key was accepted and the missing image was the complaint.
+        // 2xx would be surprising for an empty body but is not a failure.
+        if (res.status === 400 || res.ok) {
+          return {
+            status: "connected",
+            message: sandbox
+              ? "Connected — SANDBOX key (results are watermarked, calls are free)"
+              : "Connected — live key",
+          };
+        }
+        return classify(res.status);
+      }
       default:
         return { status: "unsupported", message: "No connection test available for this provider yet" };
     }

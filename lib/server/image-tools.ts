@@ -4,13 +4,14 @@ import type { Client } from "@/lib/services/workspace";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
 import {
   DEFAULT_SETTINGS, TOOLS, toolBySlug,
+  AI_SHADOW_STYLES, BACKGROUND_PROMPT_MAX, BEAUTIFY_SUBJECTS, LIGHTING_INTENTS,
   type AspectRatio, type ToolSettings, type ToolSlug, type UpscaleFactor,
 } from "@/lib/images/tools";
 import { billingFrom, quote, usdToMicros, type BillingConfig, type PriceQuote } from "@/lib/images/pricing";
 import {
-  ALL_TOOL_PROVIDERS, BACKGROUND_PROVIDERS, EXPAND_PROVIDERS, UPSCALE_PROVIDERS,
+  ALL_TOOL_PROVIDERS, BACKGROUND_PROVIDERS, EDIT_PROVIDERS, EXPAND_PROVIDERS, UPSCALE_PROVIDERS,
   ToolProviderError, envKey,
-  type Creds, type ExpandPlan,
+  type Creds, type EditOperation, type EditOptions, type ExpandPlan, type ImageEditProvider,
 } from "@/lib/images/providers";
 import {
   composeEditor, compress, dropShadow, flattenToColor, inspect, resizeConvert, watermark,
@@ -128,6 +129,13 @@ async function primeVault(supabase: Client): Promise<void> {
   }));
 }
 
+/** The edit provider that has a key AND does this particular operation. A
+ *  vendor may implement relighting and not ghost mannequins, and a tool must
+ *  never be advertised as available because some other edit is. */
+async function pickEditProvider(supabase: Client, op: EditOperation) {
+  return pickProvider(supabase, EDIT_PROVIDERS.filter((p) => p.supports(op)));
+}
+
 /** First provider in the preference list (cheapest first) that has a key. */
 async function pickProvider<T extends ProviderBase>(supabase: Client, list: T[]): Promise<{ provider: T; creds: Creds; source: KeySource } | null> {
   for (const provider of list) {
@@ -168,11 +176,18 @@ export async function toolCatalogue(supabase: Client): Promise<ToolAvailability[
   // The catalogue read and the whole credential sweep, side by side: two
   // round trips of waiting instead of a serial walk through ten providers.
   const [{ services, billing }] = await Promise.all([loadContext(supabase), primeVault(supabase)]);
-  const [background, upscale, expand] = await Promise.all([
+  // One resolution per distinct edit operation, side by side with the three
+  // older capabilities. The vault is already primed, so each of these is a
+  // walk through an in-memory cache rather than a query.
+  const editOps = [...new Set(TOOLS.flatMap((t) => (t.operation ? [t.operation] : [])))];
+  const [background, upscale, expand, editEntries] = await Promise.all([
     pickProvider(supabase, BACKGROUND_PROVIDERS),
     pickProvider(supabase, UPSCALE_PROVIDERS),
     pickProvider(supabase, EXPAND_PROVIDERS),
+    Promise.all(editOps.map(async (op) =>
+      [op, await pickEditProvider(supabase, op as EditOperation)] as const)),
   ]);
+  const edits = new Map(editEntries);
 
   return TOOLS.map((tool): ToolAvailability => {
     const service = services.get(tool.service);
@@ -187,15 +202,20 @@ export async function toolCatalogue(supabase: Client): Promise<ToolAvailability[
       return { slug: tool.slug, kind: "local", available: true, credits: 0, providerLabel: null, reason: "ok" };
     }
     const picked = tool.capability === "background" ? background
-      : tool.capability === "upscale" ? upscale : expand;
+      : tool.capability === "upscale" ? upscale
+        : tool.capability === "expand" ? expand
+          : tool.operation ? edits.get(tool.operation) ?? null : null;
     if (!picked) {
       return { slug: tool.slug, kind: "paid", available: false, credits: 0, providerLabel: null, reason: "no_provider" };
     }
     // Upscale is priced at its most expensive factor so the card never
-    // advertises less than the seller can end up paying.
+    // advertises less than the seller can end up paying. An edit is priced for
+    // the operation it will actually request.
     const costUsd = tool.capability === "upscale"
       ? (picked.provider as { estimateUsd: (f: UpscaleFactor) => number }).estimateUsd(4)
-      : (picked.provider as { estimateUsd: () => number }).estimateUsd();
+      : tool.capability === "edit"
+        ? (picked.provider as ImageEditProvider).estimateUsd(tool.operation as EditOperation)
+        : (picked.provider as { estimateUsd: () => number }).estimateUsd();
     return {
       slug: tool.slug, kind: "paid", available: true,
       credits: quote(costUsd, floor, billing).credits,
@@ -221,6 +241,7 @@ export async function providerStatuses(supabase: Client): Promise<ProviderStatus
     BACKGROUND_PROVIDERS.some((p) => p.slug === slug) ? "background" : null,
     UPSCALE_PROVIDERS.some((p) => p.slug === slug) ? "upscale" : null,
     EXPAND_PROVIDERS.some((p) => p.slug === slug) ? "expand" : null,
+    EDIT_PROVIDERS.some((p) => p.slug === slug) ? "edit" : null,
   ].filter((x): x is string => x !== null);
 
   return Promise.all(ALL_TOOL_PROVIDERS.map(async (p): Promise<ProviderStatus> => {
@@ -299,6 +320,37 @@ export function parseSettings<K extends ToolSlug>(tool: K, raw: unknown): ToolSe
         level: pick(r.level, ["light", "balanced", "strong", "auto"] as const, d.compress.level),
         format: pick(r.format, ["keep", "jpeg", "png", "webp", "tiff"] as const, d.compress.format),
       } as ToolSettings[K];
+    // ── Generative edits ─────────────────────────────────────────────────
+    // These reach a third party, so the clamping matters more than usual: the
+    // prompt is free text a seller typed and everything else is a closed set.
+    case "ai_background":
+      return {
+        // Trimmed and capped before it becomes part of an outbound request.
+        // Newlines out too — a prompt is one line, and a multi-line value in a
+        // multipart field is a needless way to surprise the API.
+        prompt: String(r.prompt ?? "").replace(/\s+/g, " ").trim().slice(0, BACKGROUND_PROMPT_MAX),
+        color: hex(r.color, d.ai_background.color),
+        format: pick(r.format, ["png", "jpeg", "webp"] as const, d.ai_background.format),
+      } as ToolSettings[K];
+    case "relight":
+      return {
+        intent: pick(r.intent, LIGHTING_INTENTS, d.relight.intent),
+        format: pick(r.format, ["png", "jpeg", "webp"] as const, d.relight.format),
+      } as ToolSettings[K];
+    case "ai_shadow":
+      return {
+        style: pick(r.style, AI_SHADOW_STYLES, d.ai_shadow.style),
+        format: pick(r.format, ["png", "webp"] as const, d.ai_shadow.format),
+      } as ToolSettings[K];
+    case "beautify":
+      return {
+        subject: pick(r.subject, BEAUTIFY_SUBJECTS, d.beautify.subject),
+        format: pick(r.format, ["png", "jpeg", "webp"] as const, d.beautify.format),
+      } as ToolSettings[K];
+    case "uncrop":
+      return { format: pick(r.format, ["png", "jpeg", "webp"] as const, d.uncrop.format) } as ToolSettings[K];
+    case "ghost_mannequin":
+      return { format: pick(r.format, ["png", "webp"] as const, d.ghost_mannequin.format) } as ToolSettings[K];
     default:
       return {
         position: pick(r.position, [
@@ -526,15 +578,18 @@ async function runPaid(
     }
   }
 
+  const operation = toolBySlug(slug)?.operation as EditOperation | undefined;
   const background = capability === "background" ? await pickProvider(supabase, BACKGROUND_PROVIDERS) : null;
   const upscaler = capability === "upscale" ? await pickProvider(supabase, UPSCALE_PROVIDERS) : null;
   const expander = capability === "expand" ? await pickProvider(supabase, EXPAND_PROVIDERS) : null;
-  const picked = background ?? upscaler ?? expander;
+  const editor = capability === "edit" && operation ? await pickEditProvider(supabase, operation) : null;
+  const picked = background ?? upscaler ?? expander ?? editor;
   if (!picked) return { ok: false, error: "no_provider" };
 
   const costUsd = background ? background.provider.estimateUsd()
     : upscaler ? upscaler.provider.estimateUsd(factor)
-      : expander!.provider.estimateUsd();
+      : expander ? expander.provider.estimateUsd()
+        : editor!.provider.estimateUsd(operation!);
   const price: PriceQuote = quote(costUsd, floorCredits, billing);
 
   const { data: wallet } = await supabase
@@ -561,7 +616,9 @@ async function runPaid(
       ? await background.provider.removeBackground(request, background.creds)
       : upscaler
         ? await upscaler.provider.upscale(request, { factor, width: before.width, height: before.height }, upscaler.creds)
-        : await expander!.provider.expand(request, plan!, expander!.creds);
+        : expander
+          ? await expander.provider.expand(request, plan!, expander.creds)
+          : await editor!.provider.edit(request, operation!, editOptionsFor(slug, input.settings), editor!.creds);
 
     let bytes = result.bytes;
     // Providers with a fixed factor (Stability's fast upscaler is always 4×)
@@ -594,6 +651,41 @@ async function runPaid(
     // The seller keeps their credits: one idempotent refund, always.
     await failUsage(supabase, { eventId: usage.eventId, walletId: wallet.id, error: code, apiCostUsdMicros: 0 });
     return { ok: false, error: code };
+  }
+}
+
+/**
+ * The panel's settings, translated into what the edit interface takes.
+ *
+ * Each tool owns a couple of dials and nothing else, so this is a small
+ * switch rather than a spread of the raw object: an edit request must carry
+ * only fields its operation actually reads, and parseSettings has already
+ * clamped every one of them.
+ */
+function editOptionsFor(slug: ToolSlug, raw: unknown): EditOptions {
+  switch (slug) {
+    case "ai_background": {
+      const s = parseSettings("ai_background", raw);
+      return { prompt: s.prompt, color: s.color, format: s.format };
+    }
+    case "relight": {
+      const s = parseSettings("relight", raw);
+      return { lighting: s.intent, format: s.format };
+    }
+    case "ai_shadow": {
+      const s = parseSettings("ai_shadow", raw);
+      return { shadow: s.style, format: s.format };
+    }
+    case "beautify": {
+      const s = parseSettings("beautify", raw);
+      return { beautify: s.subject, format: s.format };
+    }
+    case "uncrop":
+      return { format: parseSettings("uncrop", raw).format };
+    case "ghost_mannequin":
+      return { format: parseSettings("ghost_mannequin", raw).format };
+    default:
+      return {};
   }
 }
 

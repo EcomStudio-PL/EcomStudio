@@ -3,8 +3,8 @@ import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowRight, Boxes, Contrast, Crop, Gauge, Lightbulb, Mail, Maximize2, Megaphone,
-  PencilRuler, Scaling, Scissors, Shirt, ShoppingBag, SlidersHorizontal, Sparkles,
-  Square, Stamp, Sun, Video, WandSparkles,
+  Palette, PencilRuler, Scaling, Scissors, Shirt, ShoppingBag, SlidersHorizontal,
+  Sparkles, Square, Stamp, Sun, Video, Wand2, WandSparkles,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
@@ -79,6 +79,20 @@ export default async function ToolsPage() {
           title: t("tools.shadow.name"), body: t("hub.card.shadow") },
         { key: "adjust", href: "/tools/editor?tool=adjust", icon: Contrast, motif: "swatch",
           title: t("editor.s.adjust"), body: t("hub.card.adjust") },
+        // The generative edits sit beside the local ones rather than in a
+        // section of their own: a seller is choosing what to DO to a photo,
+        // not shopping for a backend. Each card carries its own price badge,
+        // which is where the difference actually shows.
+        { key: "ai_background", href: "/tools/ai_background", icon: Palette, motif: "spark",
+          title: t("tools.ai_background.name"), body: t("tools.ai_background.body"), slug: "ai_background" },
+        { key: "relight", href: "/tools/relight", icon: Lightbulb, motif: "swatch",
+          title: t("tools.relight.name"), body: t("tools.relight.body"), slug: "relight" },
+        { key: "ai_shadow", href: "/tools/ai_shadow", icon: Sun, motif: "shadow",
+          title: t("tools.ai_shadow.name"), body: t("tools.ai_shadow.body"), slug: "ai_shadow" },
+        { key: "beautify", href: "/tools/beautify", icon: Wand2, motif: "wipe",
+          title: t("tools.beautify.name"), body: t("tools.beautify.body"), slug: "beautify" },
+        { key: "ghost_mannequin", href: "/tools/ghost_mannequin", icon: Shirt, motif: "cutout",
+          title: t("tools.ghost_mannequin.name"), body: t("tools.ghost_mannequin.body"), slug: "ghost_mannequin" },
       ],
     },
     {
@@ -109,6 +123,8 @@ export default async function ToolsPage() {
           title: t("tools.upscale.name"), body: t("tools.upscale.body"), slug: "upscale" },
         { key: "expand", href: "/tools/expand", icon: Crop, motif: "frame",
           title: t("tools.expand.name"), body: t("tools.expand.body"), slug: "expand" },
+        { key: "uncrop", href: "/tools/uncrop", icon: Maximize2, motif: "frame",
+          title: t("tools.uncrop.name"), body: t("tools.uncrop.body"), slug: "uncrop" },
         { key: "watermark", href: "/tools/watermark", icon: Stamp, motif: "stamp",
           title: t("tools.watermark.name"), body: t("tools.watermark.body"), slug: "watermark" },
         { key: "editor", href: "/tools/editor", icon: SlidersHorizontal, motif: "swatch",

@@ -1820,7 +1820,52 @@
     "addPhotos": "Dodaj zdjęcia (maks. {n})",
     "dropManyTitle": "Upuść zdjęcia tutaj",
     "dropCompressTitle": "Upuść zdjęcia do kompresji",
-    "import": "Import"
+    "import": "Import",
+    "ai_background": {
+      "name": "Tło AI",
+      "body": "Opisz scenę albo wybierz kolor — model dorysuje tło pod produkt.",
+      "suffix": "tlo-ai"
+    },
+    "relight": {
+      "name": "Doświetlenie AI",
+      "body": "Wyrównaj światło na zdjęciu bez zmiany kolorów produktu.",
+      "suffix": "swiatlo"
+    },
+    "ai_shadow": {
+      "name": "Cień AI",
+      "body": "Realistyczny cień rzucany przez produkt, wyliczony przez model.",
+      "suffix": "cien-ai"
+    },
+    "beautify": {
+      "name": "Upiększanie AI",
+      "body": "Poprawki packshotu jednym kliknięciem. Osobny tryb dla jedzenia.",
+      "suffix": "upiekszone"
+    },
+    "uncrop": {
+      "name": "Odtwórz kadr AI",
+      "body": "Model dorysowuje to, co obcięto przy kadrowaniu.",
+      "suffix": "kadr-ai"
+    },
+    "ghost_mannequin": {
+      "name": "Niewidzialny manekin",
+      "body": "Ubranie bez manekina — model usuwa go i domyka wnętrze.",
+      "suffix": "manekin"
+    },
+    "bgPrompt": "Opis tła",
+    "bgPromptHint": "Zostaw puste, aby użyć samego koloru.",
+    "bgPromptPh": "np. jasny marmurowy blat, miękkie światło",
+    "bgColor": "Kolor tła",
+    "intent": "Tryb światła",
+    "intent.auto": "Automatyczny",
+    "intent.preserve": "Zachowaj kolory",
+    "intent.portrait": "Portret",
+    "aiShadowStyle": "Rodzaj cienia",
+    "aiShadow.soft": "Miękki",
+    "aiShadow.auto": "Automatyczny",
+    "subject": "Rodzaj zdjęcia",
+    "subject.auto": "Produkt",
+    "subject.food": "Jedzenie",
+    "outFormat": "Format wyjściowy"
   },
   "editor": {
     "title": "Edycja obrazu",

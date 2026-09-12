@@ -1820,7 +1820,52 @@
     "addPhotos": "Add photos (max. {n})",
     "dropManyTitle": "Drop your photos here",
     "dropCompressTitle": "Drop photos to compress",
-    "import": "Import"
+    "import": "Import",
+    "ai_background": {
+      "name": "AI background",
+      "body": "Describe a scene or pick a colour — the model paints the background in.",
+      "suffix": "ai-background"
+    },
+    "relight": {
+      "name": "AI relight",
+      "body": "Even out the lighting without shifting the product colours.",
+      "suffix": "relit"
+    },
+    "ai_shadow": {
+      "name": "AI shadow",
+      "body": "A realistic cast shadow, computed by the model.",
+      "suffix": "ai-shadow"
+    },
+    "beautify": {
+      "name": "AI beautify",
+      "body": "One-click pack-shot clean-up, with a separate mode for food.",
+      "suffix": "beautified"
+    },
+    "uncrop": {
+      "name": "AI uncrop",
+      "body": "The model paints back what the crop cut off.",
+      "suffix": "uncropped"
+    },
+    "ghost_mannequin": {
+      "name": "Ghost mannequin",
+      "body": "Clothing without the mannequin — removed and closed up inside.",
+      "suffix": "mannequin"
+    },
+    "bgPrompt": "Background description",
+    "bgPromptHint": "Leave empty to use the colour instead.",
+    "bgPromptPh": "e.g. light marble counter, soft light",
+    "bgColor": "Background colour",
+    "intent": "Lighting mode",
+    "intent.auto": "Automatic",
+    "intent.preserve": "Keep colours",
+    "intent.portrait": "Portrait",
+    "aiShadowStyle": "Shadow type",
+    "aiShadow.soft": "Soft",
+    "aiShadow.auto": "Automatic",
+    "subject": "Photo type",
+    "subject.auto": "Product",
+    "subject.food": "Food",
+    "outFormat": "Output format"
   },
   "editor": {
     "title": "Image editing",

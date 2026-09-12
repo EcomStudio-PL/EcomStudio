@@ -3,7 +3,8 @@ import { useI18n } from "@/lib/i18n/provider";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import {
-  ASPECT_RATIOS, BACKGROUND_PRESETS, COMPRESSION_LEVELS, OUTPUT_FORMATS,
+  AI_SHADOW_STYLES, ASPECT_RATIOS, BACKGROUND_PRESETS, BACKGROUND_PROMPT_MAX,
+  BEAUTIFY_SUBJECTS, COMPRESSION_LEVELS, LIGHTING_INTENTS, OUTPUT_FORMATS,
   SHADOW_STYLES, SIZE_PRESETS, UPSCALE_FACTORS, WATERMARK_POSITIONS,
   type ToolSlug,
 } from "@/lib/images/tools";
@@ -42,6 +43,134 @@ export function ToolSettingsPanel({ tool, settings, onChange }: {
     case "remove_bg":
       return (
         <Field label={t("tools.opt.format")} hint={t("tools.opt.alphaHint")}>
+          <Segmented
+            value={String(settings.format ?? "png")}
+            onChange={(v) => set({ format: v })}
+            options={[{ value: "png", label: "PNG" }, { value: "webp", label: "WebP" }]}
+          />
+        </Field>
+      );
+
+    // ── Generative edits ─────────────────────────────────────────────────
+    // Same primitives as every panel above — Field, Segmented, ColorRow — so
+    // a Photoroom-backed tool is indistinguishable from a local one to look at.
+    case "ai_background":
+      return (
+        <>
+          <Field label={t("tools.bgPrompt")} hint={t("tools.bgPromptHint")}>
+            <Input
+              value={String(settings.prompt ?? "")}
+              maxLength={BACKGROUND_PROMPT_MAX}
+              placeholder={t("tools.bgPromptPh")}
+              onChange={(e) => set({ prompt: e.target.value })}
+            />
+          </Field>
+          {/* The colour is the fallback, so it stays visible and usable —
+              hiding it when a prompt is typed would make the two feel like a
+              mode switch the seller did not ask for. */}
+          <Field label={t("tools.bgColor")}>
+            <ColorRow value={String(settings.color ?? "#FFFFFF")} onChange={(v) => set({ color: v })} />
+          </Field>
+          <Field label={t("tools.outFormat")} hint={t("tools.opt.alphaHint")}>
+            <Segmented
+              value={String(settings.format ?? "png")}
+              onChange={(v) => set({ format: v })}
+              options={[
+                { value: "png", label: "PNG" },
+                { value: "jpeg", label: "JPEG" },
+                { value: "webp", label: "WebP" },
+              ]}
+            />
+          </Field>
+        </>
+      );
+
+    case "relight":
+      return (
+        <>
+          <Field label={t("tools.intent")}>
+            <Segmented
+              value={String(settings.intent ?? "auto")}
+              onChange={(v) => set({ intent: v })}
+              options={LIGHTING_INTENTS.map((i) => ({ value: i, label: t(`tools.intent.${i}`) }))}
+            />
+          </Field>
+          <Field label={t("tools.outFormat")}>
+            <Segmented
+              value={String(settings.format ?? "jpeg")}
+              onChange={(v) => set({ format: v })}
+              options={[
+                { value: "jpeg", label: "JPEG" },
+                { value: "png", label: "PNG" },
+                { value: "webp", label: "WebP" },
+              ]}
+            />
+          </Field>
+        </>
+      );
+
+    case "ai_shadow":
+      return (
+        <>
+          <Field label={t("tools.aiShadowStyle")}>
+            <Segmented
+              value={String(settings.style ?? "soft")}
+              onChange={(v) => set({ style: v })}
+              options={AI_SHADOW_STYLES.map((v) => ({ value: v, label: t(`tools.aiShadow.${v}`) }))}
+            />
+          </Field>
+          <Field label={t("tools.outFormat")} hint={t("tools.opt.alphaHint")}>
+            <Segmented
+              value={String(settings.format ?? "png")}
+              onChange={(v) => set({ format: v })}
+              options={[{ value: "png", label: "PNG" }, { value: "webp", label: "WebP" }]}
+            />
+          </Field>
+        </>
+      );
+
+    case "beautify":
+      return (
+        <>
+          <Field label={t("tools.subject")}>
+            <Segmented
+              value={String(settings.subject ?? "auto")}
+              onChange={(v) => set({ subject: v })}
+              options={BEAUTIFY_SUBJECTS.map((v) => ({ value: v, label: t(`tools.subject.${v}`) }))}
+            />
+          </Field>
+          <Field label={t("tools.outFormat")}>
+            <Segmented
+              value={String(settings.format ?? "jpeg")}
+              onChange={(v) => set({ format: v })}
+              options={[
+                { value: "jpeg", label: "JPEG" },
+                { value: "png", label: "PNG" },
+                { value: "webp", label: "WebP" },
+              ]}
+            />
+          </Field>
+        </>
+      );
+
+    case "uncrop":
+      return (
+        <Field label={t("tools.outFormat")}>
+          <Segmented
+            value={String(settings.format ?? "jpeg")}
+            onChange={(v) => set({ format: v })}
+            options={[
+              { value: "jpeg", label: "JPEG" },
+              { value: "png", label: "PNG" },
+              { value: "webp", label: "WebP" },
+            ]}
+          />
+        </Field>
+      );
+
+    case "ghost_mannequin":
+      return (
+        <Field label={t("tools.outFormat")} hint={t("tools.opt.alphaHint")}>
           <Segmented
             value={String(settings.format ?? "png")}
             onChange={(v) => set({ format: v })}

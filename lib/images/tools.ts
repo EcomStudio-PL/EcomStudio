@@ -20,11 +20,21 @@ import { EDITOR_DEFAULTS, type EditorState } from "./editor-state";
 export const TOOL_SLUGS = [
   "editor", "upscale", "remove_bg", "white_bg", "expand",
   "shadow", "format", "compress", "watermark",
+  // Generative edits. Each is one /v2/edit call at the provider, so they all
+  // share the "edit" capability and differ only by which operation they ask
+  // for — see EDIT_OPERATIONS in lib/images/providers.ts.
+  "ai_background", "relight", "ai_shadow", "beautify", "uncrop", "ghost_mannequin",
 ] as const;
 export type ToolSlug = (typeof TOOL_SLUGS)[number];
 
 /** Provider capability a paid tool needs. Local tools declare none. */
-export type ToolCapability = "background" | "upscale" | "expand";
+export type ToolCapability = "background" | "upscale" | "expand" | "edit";
+
+/** Which generative edit an "edit"-capability tool asks the provider for.
+ *  Mirrors EDIT_OPERATIONS in lib/images/providers.ts, which is server-only —
+ *  this file is imported by the browser and must stay free of it. */
+export type EditOperationSlug =
+  | "ai_background" | "relight" | "ai_shadow" | "beautify" | "uncrop" | "ghost_mannequin";
 
 export type ToolDefinition = {
   slug: ToolSlug;
@@ -35,6 +45,8 @@ export type ToolDefinition = {
   /** Tools whose output can carry transparency (PNG/WebP only). */
   keepsAlpha: boolean;
   sortOrder: number;
+  /** Only for capability "edit": the operation the provider is asked for. */
+  operation?: EditOperationSlug;
 };
 
 export const TOOLS: ToolDefinition[] = [
@@ -50,6 +62,24 @@ export const TOOLS: ToolDefinition[] = [
   { slug: "format",    kind: "local", service: "tool_format",    keepsAlpha: true,  sortOrder: 6 },
   { slug: "compress",  kind: "local", service: "tool_compress",  keepsAlpha: true,  sortOrder: 7 },
   { slug: "watermark", kind: "local", service: "tool_watermark", keepsAlpha: true,  sortOrder: 8 },
+
+  // ── Generative edits ───────────────────────────────────────────────────
+  // All six are the same provider call with a different operation, so they
+  // share one capability and one runner branch. keepsAlpha is true only where
+  // the result can legitimately come back cut out: a new background, a cast
+  // shadow and a ghost mannequin all replace what was behind the product.
+  { slug: "ai_background",   kind: "paid", capability: "edit", operation: "ai_background",
+    service: "tool_ai_background",   keepsAlpha: true,  sortOrder: 9 },
+  { slug: "relight",         kind: "paid", capability: "edit", operation: "relight",
+    service: "tool_relight",         keepsAlpha: false, sortOrder: 10 },
+  { slug: "ai_shadow",       kind: "paid", capability: "edit", operation: "ai_shadow",
+    service: "tool_ai_shadow",       keepsAlpha: true,  sortOrder: 11 },
+  { slug: "beautify",        kind: "paid", capability: "edit", operation: "beautify",
+    service: "tool_beautify",        keepsAlpha: false, sortOrder: 12 },
+  { slug: "uncrop",          kind: "paid", capability: "edit", operation: "uncrop",
+    service: "tool_uncrop",          keepsAlpha: false, sortOrder: 13 },
+  { slug: "ghost_mannequin", kind: "paid", capability: "edit", operation: "ghost_mannequin",
+    service: "tool_ghost_mannequin", keepsAlpha: true,  sortOrder: 14 },
 ];
 
 export function toolBySlug(slug: string): ToolDefinition | undefined {
@@ -94,6 +124,21 @@ export type ShadowStyle = (typeof SHADOW_STYLES)[number];
 export const UPSCALE_FACTORS = [2, 4] as const;
 export type UpscaleFactor = (typeof UPSCALE_FACTORS)[number];
 
+/** Lighting intents the relight model accepts. The wire values live in
+ *  lib/images/providers.ts; these are the panel's own words for them. */
+export const LIGHTING_INTENTS = ["auto", "preserve", "portrait"] as const;
+export type LightingIntent = (typeof LIGHTING_INTENTS)[number];
+
+export const AI_SHADOW_STYLES = ["soft", "auto"] as const;
+export type AiShadowStyle = (typeof AI_SHADOW_STYLES)[number];
+
+export const BEAUTIFY_SUBJECTS = ["auto", "food"] as const;
+export type BeautifySubject = (typeof BEAUTIFY_SUBJECTS)[number];
+
+/** A described background is free text, and free text goes to a model — so it
+ *  is capped here as well as on the server. */
+export const BACKGROUND_PROMPT_MAX = 300;
+
 /** Every tool's settings object, discriminated by the tool slug. */
 export type ToolSettings = {
   /** The editor sends its whole state; the panel owns the shape, not this file. */
@@ -110,6 +155,14 @@ export type ToolSettings = {
     margin: number; rotation: number; spacing: number;
     format: OutputFormatOption | "keep"; quality: number;
   };
+  /** An empty prompt means "flat colour" — the two are alternatives, not a
+   *  pair, because the API honours one or the other. */
+  ai_background: { prompt: string; color: string; format: "png" | "jpeg" | "webp" };
+  relight: { intent: LightingIntent; format: "png" | "jpeg" | "webp" };
+  ai_shadow: { style: AiShadowStyle; format: "png" | "webp" };
+  beautify: { subject: BeautifySubject; format: "png" | "jpeg" | "webp" };
+  uncrop: { format: "png" | "jpeg" | "webp" };
+  ghost_mannequin: { format: "png" | "webp" };
 };
 
 export const DEFAULT_SETTINGS: { [K in ToolSlug]: ToolSettings[K] } = {
@@ -125,6 +178,12 @@ export const DEFAULT_SETTINGS: { [K in ToolSlug]: ToolSettings[K] } = {
     position: "bottom-right", scale: 18, opacity: 60,
     margin: 4, rotation: 0, spacing: 24, format: "keep", quality: 90,
   },
+  ai_background: { prompt: "", color: "#FFFFFF", format: "png" },
+  relight: { intent: "auto", format: "jpeg" },
+  ai_shadow: { style: "soft", format: "png" },
+  beautify: { subject: "auto", format: "jpeg" },
+  uncrop: { format: "jpeg" },
+  ghost_mannequin: { format: "png" },
 };
 
 /** Background presets next to the colour picker on the white-background tool. */

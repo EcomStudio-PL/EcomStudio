@@ -1820,7 +1820,52 @@
     "addPhotos": "Fotos hinzufügen (max. {n})",
     "dropManyTitle": "Fotos hier ablegen",
     "dropCompressTitle": "Fotos zum Komprimieren ablegen",
-    "import": "Import"
+    "import": "Import",
+    "ai_background": {
+      "name": "KI-Hintergrund",
+      "body": "Szene beschreiben oder Farbe wählen — das Modell malt den Hintergrund.",
+      "suffix": "ki-hintergrund"
+    },
+    "relight": {
+      "name": "KI-Ausleuchtung",
+      "body": "Licht angleichen, ohne die Produktfarben zu verschieben.",
+      "suffix": "belichtet"
+    },
+    "ai_shadow": {
+      "name": "KI-Schatten",
+      "body": "Ein realistischer Schlagschatten, vom Modell berechnet.",
+      "suffix": "ki-schatten"
+    },
+    "beautify": {
+      "name": "KI-Aufbereitung",
+      "body": "Packshot-Politur auf einen Klick, mit eigenem Modus für Food.",
+      "suffix": "aufbereitet"
+    },
+    "uncrop": {
+      "name": "KI-Uncrop",
+      "body": "Das Modell ergänzt, was der Zuschnitt abgeschnitten hat.",
+      "suffix": "uncrop"
+    },
+    "ghost_mannequin": {
+      "name": "Geistermannequin",
+      "body": "Kleidung ohne Mannequin — entfernt und innen geschlossen.",
+      "suffix": "mannequin"
+    },
+    "bgPrompt": "Hintergrundbeschreibung",
+    "bgPromptHint": "Leer lassen, um nur die Farbe zu nutzen.",
+    "bgPromptPh": "z. B. helle Marmorplatte, weiches Licht",
+    "bgColor": "Hintergrundfarbe",
+    "intent": "Lichtmodus",
+    "intent.auto": "Automatisch",
+    "intent.preserve": "Farben behalten",
+    "intent.portrait": "Porträt",
+    "aiShadowStyle": "Schattenart",
+    "aiShadow.soft": "Weich",
+    "aiShadow.auto": "Automatisch",
+    "subject": "Fotoart",
+    "subject.auto": "Produkt",
+    "subject.food": "Food",
+    "outFormat": "Ausgabeformat"
   },
   "editor": {
     "title": "Bildbearbeitung",
