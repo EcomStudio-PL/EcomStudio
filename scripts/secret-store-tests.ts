@@ -453,6 +453,58 @@ for (const loc of ["pl", "en", "de"]) {
   check(`${loc}: the banner copy takes the channel list`,
     typeof banner === "string" && banner.includes("{channels}"), String(banner).slice(0, 40));
 }
+
+/* ── L4. NO PATH OPENS AN OLD ENVELOPE WITHOUT ASKING THE VAULT ──────────
+ *
+ * The poller and the notification dispatcher were BOTH legacy-only readers,
+ * found one at a time, and the second only turned up because the first was
+ * traced properly. That is the shape of this defect: it hides in whichever
+ * credential path nobody re-read after migration 0078, and it presents as a
+ * feature that reports itself as configured and silently does nothing.
+ *
+ * So the rule is pinned structurally instead of case by case. A module that
+ * opens a legacy AES envelope must also read the vault, in the same file. The
+ * exemptions below are not credentials at all and are listed with the reason
+ * they are exempt — adding to this list is a decision someone has to write
+ * down, which is the point. */
+console.log("\nL4. EVERY LEGACY-ENVELOPE READER ALSO ASKS THE VAULT");
+
+/** Not operator credentials, so migration 0078 deliberately left them alone.
+ *  See the "Czego świadomie NIE zrobiono" note on the Vault update: the vault
+ *  is a safe for secrets, not a store for thousands of rows. */
+const NOT_A_CREDENTIAL: Record<string, string> = {
+  "lib/server/crypto.ts": "the primitive itself",
+  "lib/server/knowledge.ts": "knowledge-base row content, encrypted at rest",
+  "lib/server/ai-engine.ts": "prompt bodies, encrypted at rest",
+  "lib/server/signup-guard.ts": "uses the key as a hash salt, never decrypts; fails open",
+  "lib/server/mailer.ts": "takes the plaintext its caller already resolved",
+};
+const OPENS_ENVELOPE = /\b(decryptWith|decryptSecret)\s*\(/;
+/** Reading the vault directly, or going through a resolver that does. The
+ *  delegation matters: lib/server/prompt-engine.ts decrypts a PROMPT BODY on
+ *  one line and resolves a provider API KEY on another, and only the second is
+ *  a credential — it hands that one to readProviderKey, which is vault-first
+ *  and is itself audited below. Requiring a literal readSecret in every such
+ *  file would only teach the next author to inline the decrypt instead. */
+const ASKS_VAULT = /\b(readSecrets?|readProviderKey)\s*\(/;
+
+const serverSrc = walk("lib").concat(walk("app")).filter((f) => !f.includes("dictionaries"));
+const legacyOnly: string[] = [];
+let audited = 0;
+for (const file of serverSrc) {
+  const src = stripComments(readFileSync(file, "utf8"));
+  if (!OPENS_ENVELOPE.test(src)) continue;
+  const rel = file.replace(/\\/g, "/");
+  if (NOT_A_CREDENTIAL[rel]) continue;
+  audited++;
+  if (!ASKS_VAULT.test(src)) legacyOnly.push(rel);
+}
+check(`every credential path that can open an old envelope reads the vault first (${audited} audited)`,
+  legacyOnly.length === 0, legacyOnly.join(", "));
+// The audit is worthless if it audits nothing — a rename of decryptWith would
+// otherwise turn this section green by finding no files at all.
+check("and the audit actually found the paths it is meant to guard",
+  audited >= 2, `${audited}`);
 }
 
 function report() {
