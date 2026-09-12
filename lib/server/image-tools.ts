@@ -1,5 +1,6 @@
 import "server-only";
 import { decryptSecret, encryptionAvailable } from "@/lib/server/crypto";
+import { dispatchToken } from "@/lib/server/integrations";
 import type { Client } from "@/lib/services/workspace";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
 import {
@@ -62,7 +63,7 @@ async function resolveCreds(supabase: Client, provider: ProviderBase): Promise<{
   if (row) {
     // SECURITY DEFINER: the credentials table itself stays admin-only, and
     // the ciphertext is useless without APP_ENCRYPTION_KEY.
-    const { data: credRows } = await supabase.rpc("get_active_provider_credential", { p_provider_id: row.id });
+    const { data: credRows } = await supabase.rpc("provider_credential_read", { p_token: dispatchToken(), p_provider_id: row.id });
     const cred = credRows?.[0];
     if (cred) {
       try {
@@ -117,7 +118,7 @@ async function primeVault(supabase: Client): Promise<void> {
     if (id) {
       // Same SECURITY DEFINER call resolveCreds makes — the credentials table
       // stays admin-only and the ciphertext is useless without the key.
-      const { data: credRows } = await supabase.rpc("get_active_provider_credential", { p_provider_id: id });
+      const { data: credRows } = await supabase.rpc("provider_credential_read", { p_token: dispatchToken(), p_provider_id: id });
       const cred = credRows?.[0];
       if (cred) {
         try { creds = { apiKey: decryptSecret(cred.encrypted_value, cred.iv, cred.auth_tag), baseUrl: cred.base_url }; }
@@ -480,13 +481,14 @@ async function runLocal(
   // Zero-credit run, still written to the ledger so the economics view can
   // report volume and the free/paid split without a second system.
   const usage = await startUsage(supabase, {
+    serverToken: dispatchToken(),
     userId, workspaceId, walletId: "",
     serviceSlug, providerSlug: "local", modelSlug: "sharp",
     creditsCharged: 0,
     idempotencyKey: input.idempotencyKey,
     metadata: { tool: slug, bytes_in: before.bytes, bytes_out: after.bytes },
   });
-  if (usage.ok) await completeUsage(supabase, usage.eventId, 1, { apiCostUsdMicros: 0 });
+  if (usage.ok) await completeUsage(supabase, dispatchToken(), usage.eventId, 1, { apiCostUsdMicros: 0 });
 
   return {
     ok: true, bytes: output, mime: mimeOf(after.format), credits: 0,
@@ -620,6 +622,7 @@ async function runPaid(
   // Reserve: credits leave the wallet now and come straight back if the
   // provider does not deliver.
   const usage = await startUsage(supabase, {
+    serverToken: dispatchToken(),
     userId, workspaceId, walletId: wallet.id,
     serviceSlug, providerSlug: picked.provider.slug, modelSlug: picked.provider.label,
     creditsCharged: price.credits,
@@ -662,7 +665,7 @@ async function runPaid(
     }
 
     const after = await inspect(bytes);
-    await completeUsage(supabase, usage.eventId, 1, {
+    await completeUsage(supabase, dispatchToken(), usage.eventId, 1, {
       apiCostUsdMicros: usdToMicros(result.costUsd),
       providerRequestId: result.requestId,
     });
@@ -675,7 +678,7 @@ async function runPaid(
   } catch (e) {
     const code = e instanceof ToolProviderError ? e.code : "provider_error";
     // The seller keeps their credits: one idempotent refund, always.
-    await failUsage(supabase, { eventId: usage.eventId, walletId: wallet.id, error: code, apiCostUsdMicros: 0 });
+    await failUsage(supabase, { serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet.id, error: code, apiCostUsdMicros: 0 });
     return { ok: false, error: code };
   }
 }

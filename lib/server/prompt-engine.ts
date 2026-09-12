@@ -2,6 +2,7 @@ import "server-only";
 import { createHash } from "crypto";
 import type { Client } from "@/lib/services/workspace";
 import { decryptSecret, encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
+import { dispatchToken } from "@/lib/server/integrations";
 import {
   ALL_ASPECT_RATIOS, ProviderError, type ReferenceImage } from "@/lib/ai/types";
 import { proposeScenes, synthesizeScenes, type PlannedScene } from "@/lib/ai/engine/scenes";
@@ -211,7 +212,7 @@ async function getVisionBackends(supabase: Client, primaryModel: string): Promis
   for (const slug of order) {
     const provider = providers.find((p) => p.slug === slug);
     if (!provider) continue;
-    const { data: credRows } = await supabase.rpc("get_active_provider_credential", { p_provider_id: provider.id });
+    const { data: credRows } = await supabase.rpc("provider_credential_read", { p_token: dispatchToken(), p_provider_id: provider.id });
     const cred = credRows?.[0];
     if (!cred) continue;
     try {
@@ -403,6 +404,7 @@ export async function runPromptSession(
   if (!wallet) return { ok: false, error: "no_wallet" };
 
   const usage = await startUsage(supabase, {
+    serverToken: dispatchToken(),
     userId, workspaceId, walletId: wallet.id, serviceSlug: "prompt_generation",
     providerSlug: "google", modelSlug: analysisModel,
     // A reused (retried) session gets a fresh ledger event — the previous one
@@ -602,7 +604,7 @@ export async function runPromptSession(
     if (insertError) throw new ProviderError("session_create_failed");
     lap("saveMs");
 
-    await completeUsage(supabase, usage.eventId, rows.length);
+    await completeUsage(supabase, dispatchToken(), usage.eventId, rows.length);
     await supabase.from("prompt_sessions")
       .update({
         status: "ready", latency_ms: Date.now() - startedAt,
@@ -636,7 +638,7 @@ export async function runPromptSession(
   } catch (e) {
     const safe = e instanceof ProviderError ? e.safeMessage : "analysis_error";
     const providerCode = e instanceof ProviderError ? e.providerCode : undefined;
-    await failUsage(supabase, { eventId: usage.eventId, walletId: wallet.id, error: safe });
+    await failUsage(supabase, { serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet.id, error: safe });
     await supabase.from("prompt_sessions").update({
       status: "failed", error: safe, error_stage: stage, latency_ms: Date.now() - startedAt,
     }).eq("id", session.id);

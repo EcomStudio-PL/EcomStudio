@@ -1,6 +1,7 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
 import { ProviderError } from "@/lib/ai/types";
+import { dispatchToken } from "@/lib/server/integrations";
 
 /**
  * PROVIDER ROUTER SUPPORT — rate limiting, retry pacing and health memory.
@@ -95,21 +96,24 @@ export function providerBlocked(health: Map<string, ProviderHealthRow>, slug: st
 export async function recordProviderFailure(supabase: Client, slug: string, error: ProviderError): Promise<void> {
   const note = [error.providerCode, error.upstream?.status].filter(Boolean).join(" http=");
   if (error.safeMessage === "provider_quota") {
-    await supabase.rpc("set_provider_health", {
+    await supabase.rpc("provider_health_set", {
+      p_token: dispatchToken(),
       p_slug: slug, p_state: "quota_exhausted", p_cooldown_seconds: 1800, p_note: note || "quota",
     });
   } else if (error.safeMessage === "provider_auth_failed") {
-    await supabase.rpc("set_provider_health", {
+    await supabase.rpc("provider_health_set", {
+      p_token: dispatchToken(),
       p_slug: slug, p_state: "auth_error", p_cooldown_seconds: 1800, p_note: note || "auth",
     });
   } else if (error.safeMessage === "provider_rate_limited") {
     const cooldown = Math.min(Math.max(Math.round((error.upstream?.retryAfterMs ?? 60_000) / 1000), 30), 600);
-    await supabase.rpc("set_provider_health", {
+    await supabase.rpc("provider_health_set", {
+      p_token: dispatchToken(),
       p_slug: slug, p_state: "rate_limited", p_cooldown_seconds: cooldown, p_note: note || "429",
     });
   }
 }
 
 export async function recordProviderSuccess(supabase: Client, slug: string): Promise<void> {
-  await supabase.rpc("set_provider_health", { p_slug: slug, p_state: "healthy", p_cooldown_seconds: 0 });
+  await supabase.rpc("provider_health_set", { p_token: dispatchToken(), p_slug: slug, p_state: "healthy", p_cooldown_seconds: 0 });
 }

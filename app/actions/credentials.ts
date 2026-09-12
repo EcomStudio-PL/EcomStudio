@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { encryptSecret, decryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { testProviderConnection } from "@/lib/server/provider-test";
+import { dispatchToken } from "@/lib/server/integrations";
 import { getAdapter } from "@/lib/ai/registry";
 import { ProviderError } from "@/lib/ai/types";
 
@@ -173,7 +174,7 @@ export async function testProviderImageAction(providerId: string): Promise<Resul
     // A positive proof of real generation clears any stored cooldown; a
     // failed one records the honest state so the router routes around it.
     if (status === "image_ok") {
-      await supabase.rpc("set_provider_health", { p_slug: provider.slug, p_state: "healthy", p_cooldown_seconds: 0 });
+      await supabase.rpc("provider_health_set", { p_token: dispatchToken(), p_slug: provider.slug, p_state: "healthy", p_cooldown_seconds: 0 });
     }
     revalidatePath("/admin/ai/modele");
     return { ok: status === "image_ok", status, message: message ?? undefined };
@@ -208,7 +209,7 @@ export async function testProviderConnectionAction(providerId: string): Promise<
     // A passing test lifts any stored cooldown so the router tries the
     // provider again immediately instead of waiting it out.
     if (result.status === "connected") {
-      await supabase.rpc("set_provider_health", { p_slug: provider.slug, p_state: "healthy", p_cooldown_seconds: 0 });
+      await supabase.rpc("provider_health_set", { p_token: dispatchToken(), p_slug: provider.slug, p_state: "healthy", p_cooldown_seconds: 0 });
     }
     revalidatePath("/admin/ai/modele");
     return { ok: true, status: result.status, message: result.message };

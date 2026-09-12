@@ -2,6 +2,7 @@ import "server-only";
 import { after } from "next/server";
 import type { Client } from "@/lib/services/workspace";
 import { decryptSecret, encryptionAvailable } from "@/lib/server/crypto";
+import { dispatchToken } from "@/lib/server/integrations";
 import { getAdapter } from "@/lib/ai/registry";
 import {
   ALL_ASPECT_RATIOS, ProviderError, effectiveQuality, modelQualities, priceFor, priceForResolution,
@@ -118,7 +119,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
 
   // Definer RPC: RLS keeps the credentials table admin-only; this returns
   // ciphertext usable only with the server-side APP_ENCRYPTION_KEY.
-  const { data: credRows } = await supabase.rpc("get_active_provider_credential", { p_provider_id: provider.id });
+  const { data: credRows } = await supabase.rpc("provider_credential_read", { p_token: dispatchToken(), p_provider_id: provider.id });
   const cred = credRows?.[0];
   if (!cred) return { ok: false, error: "model_unavailable" };
   let apiKey: string;
@@ -249,6 +250,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
 
   // Charge through the usage ledger (idempotent on job id)
   const usage = await startUsage(supabase, {
+    serverToken: dispatchToken(),
     userId, workspaceId, walletId: wallet.id, serviceSlug: "image_generation",
     providerSlug: provider.slug, modelSlug: model.model_identifier,
     generationJobId: job.id, idempotencyKey: `job:${job.id}`,
@@ -449,7 +451,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
 
   if (!result || !served) {
     const safe = lastError?.safeMessage ?? "provider_error";
-    await failUsage(supabase, { eventId: usage.eventId, walletId: wallet.id, error: safe });
+    await failUsage(supabase, { serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet.id, error: safe });
     await supabase.from("generation_jobs").update({
       status: "failed", error_message: safe, error_class: safe,
       latency_ms: Date.now() - startedAt, completed_at: new Date().toISOString(),
@@ -574,7 +576,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   }
 
   if (stored.length === 0) {
-    await failUsage(supabase, { eventId: usage.eventId, walletId: wallet.id, error: "storage_failed" });
+    await failUsage(supabase, { serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet.id, error: "storage_failed" });
     await supabase.from("generation_jobs").update({
       status: "failed", error_message: "storage_failed", error_class: "storage_failed",
       latency_ms: Date.now() - startedAt, completed_at: new Date().toISOString(),
@@ -589,7 +591,8 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   const shortfall = quantity - stored.length;
   let refunded = 0;
   if (shortfall > 0 && perImage > 0) {
-    const { data: refundTx } = await supabase.rpc("refund_usage_partial", {
+    const { data: refundTx } = await supabase.rpc("usage_event_refund_partial", {
+      p_token: dispatchToken(),
       p_event_id: usage.eventId, p_amount: shortfall * perImage,
     });
     if (refundTx) refunded = shortfall * perImage;
@@ -601,7 +604,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   // delivered. Recorded on the event so admin margin reporting is built from
   // facts rather than from the catalog estimate.
   const requestId = (result.providerMetadata?.requestId as string | undefined) ?? null;
-  await completeUsage(supabase, usage.eventId, stored.length, {
+  await completeUsage(supabase, dispatchToken(), usage.eventId, stored.length, {
     apiCostUsdMicros: (model2.internal_cost_usd_micros ?? 0) * stored.length,
     providerRequestId: requestId,
   });
@@ -637,7 +640,7 @@ async function resolveModelCandidate(supabase: Client, modelId: string) {
   const provider = (model as unknown as { ai_providers: { id: string; slug: string } } | null)?.ai_providers;
   const adapter = provider ? getAdapter(provider.slug) : undefined;
   if (!model || !provider || !adapter) return null;
-  const { data: credRows } = await supabase.rpc("get_active_provider_credential", { p_provider_id: provider.id });
+  const { data: credRows } = await supabase.rpc("provider_credential_read", { p_token: dispatchToken(), p_provider_id: provider.id });
   const cred = credRows?.[0];
   if (!cred) return null;
   try {

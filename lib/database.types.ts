@@ -3792,6 +3792,81 @@ export type Database = {
           iv: string
         }[]
       }
+      /* Server-gated replacements (migration 0077). The p_token-less originals
+         above are still declared because they still exist in the database, but
+         EXECUTE on them is revoked from anon and authenticated — only these
+         are reachable, and only by a caller holding the dispatch token. */
+      provider_credential_read: {
+        Args: { p_token: string | null; p_provider_id: string }
+        Returns: {
+          auth_tag: string
+          base_url: string
+          encrypted_value: string
+          iv: string
+        }[]
+      }
+      engine_rules_read: {
+        Args: { p_token: string | null }
+        Returns: {
+          content_encrypted: string
+          content_iv: string
+          content_tag: string
+          id: string
+        }[]
+      }
+      knowledge_match: {
+        Args: { p_token: string | null; p_embedding: string; p_top_k?: number }
+        Returns: {
+          hint_encrypted: string
+          hint_iv: string
+          hint_tag: string
+          id: string
+        }[]
+      }
+      provider_health_set: {
+        Args: {
+          p_token: string | null
+          p_slug: string
+          p_state: string
+          p_cooldown_seconds?: number
+          p_note?: string | null
+        }
+        Returns: undefined
+      }
+      usage_event_charge: {
+        Args: {
+          p_token: string | null
+          p_wallet_id: string
+          p_amount: number
+          p_description: string
+          p_reference_id: string
+          p_metadata?: Json
+        }
+        Returns: string
+      }
+      usage_event_complete: {
+        Args: {
+          p_token: string | null
+          p_event_id: string
+          p_result_count: number
+          p_api_cost_usd_micros?: number
+          p_request_id?: string | null
+        }
+        Returns: undefined
+      }
+      usage_event_fail: {
+        Args: {
+          p_token: string | null
+          p_event_id: string
+          p_error: string
+          p_api_cost_usd_micros?: number
+        }
+        Returns: string
+      }
+      usage_event_refund_partial: {
+        Args: { p_token: string | null; p_event_id: string; p_amount: number }
+        Returns: string
+      }
       get_engine_rules: {
         Args: never
         Returns: {

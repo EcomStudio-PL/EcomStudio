@@ -1,6 +1,7 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
 import { decryptSecret, encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
+import { dispatchToken } from "@/lib/server/integrations";
 
 /**
  * KNOWLEDGE BASE — the engine's memory of past reference sets.
@@ -24,7 +25,7 @@ async function openaiKey(supabase: Client): Promise<{ apiKey: string; baseUrl: s
   const { data: provider } = await supabase
     .from("ai_providers").select("id").eq("slug", "openai").eq("active", true).maybeSingle();
   if (!provider) return null;
-  const { data: rows } = await supabase.rpc("get_active_provider_credential", { p_provider_id: provider.id });
+  const { data: rows } = await supabase.rpc("provider_credential_read", { p_token: dispatchToken(), p_provider_id: provider.id });
   const cred = rows?.[0];
   if (!cred) return null;
   try {
@@ -89,7 +90,8 @@ export async function retrieveKnowledgeHints(
     const embedded = await embedTexts(supabase, [queryText]);
     const vector = embedded?.[0];
     if (!vector) return empty;
-    const { data } = await supabase.rpc("match_knowledge_examples", {
+    const { data } = await supabase.rpc("knowledge_match", {
+      p_token: dispatchToken(),
       p_embedding: JSON.stringify(vector) as unknown as string,
       p_top_k: topK,
     });
@@ -120,7 +122,7 @@ export async function retrieveKnowledgeHints(
 export async function getEngineRuleDirectives(supabase: Client): Promise<string[]> {
   try {
     if (!encryptionAvailable()) return [];
-    const { data } = await supabase.rpc("get_engine_rules");
+    const { data } = await supabase.rpc("engine_rules_read", { p_token: dispatchToken() });
     const rows = (data ?? []) as {
       id: string;
       content_encrypted: string | null; content_iv: string | null; content_tag: string | null;
