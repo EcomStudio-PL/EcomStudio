@@ -18,6 +18,7 @@ import {
   MAX_INPUT_BYTES, type OutputFormat,
 } from "@/lib/images/local";
 import { clampEditorState } from "@/lib/images/editor-state";
+import { claimFreeRun, freeToolRules, planQualifies } from "@/lib/server/free-tools";
 
 /**
  * IMAGE TOOLS SERVICE — the single place a tool run happens.
@@ -590,7 +591,24 @@ async function runPaid(
     : upscaler ? upscaler.provider.estimateUsd(factor)
       : expander ? expander.provider.estimateUsd()
         : editor!.provider.estimateUsd(operation!);
-  const price: PriceQuote = quote(costUsd, floorCredits, billing);
+  const priced: PriceQuote = quote(costUsd, floorCredits, billing);
+
+  // ── FREE ALLOWANCE ──────────────────────────────────────────────────────
+  // Taken here, between the quote and the wallet, so everything downstream —
+  // the reservation, the usage row, the refund on failure — works on ONE
+  // number and has no idea the run was free. The claim is a single counting
+  // statement in the database; a batch cannot race past it.
+  //
+  // It is also last in line deliberately: a tool with no provider, or an
+  // oversized image, has already been refused above. There is no point
+  // spending a seller's free run on a request that was never going to happen.
+  const rules = await freeToolRules(supabase);
+  const rule = rules.get(slug);
+  let freeRemaining: number | null = null;
+  if (rule && planQualifies(rule, await planSlugOf(supabase, workspaceId, rule))) {
+    freeRemaining = await claimFreeRun(supabase, workspaceId, slug, rule);
+  }
+  const price: PriceQuote = freeRemaining === null ? priced : { ...priced, credits: 0 };
 
   const { data: wallet } = await supabase
     .from("credit_wallets").select("id, balance").eq("workspace_id", workspaceId).maybeSingle();
@@ -606,7 +624,15 @@ async function runPaid(
     serviceSlug, providerSlug: picked.provider.slug, modelSlug: picked.provider.label,
     creditsCharged: price.credits,
     idempotencyKey: input.idempotencyKey,
-    metadata: { tool: slug, estimated_cost_usd: costUsd, margin_percent: Math.round(price.marginPercent) },
+    metadata: {
+      tool: slug,
+      estimated_cost_usd: costUsd,
+      margin_percent: Math.round(price.marginPercent),
+      // A zero-credit paid tool is otherwise indistinguishable from a local
+      // one on the ledger, and the whole point of the free tier is that its
+      // cost is real and has to be visible in the economics view.
+      ...(freeRemaining === null ? {} : { free_grant: true, free_remaining: freeRemaining }),
+    },
   });
   if (!usage.ok) return { ok: false, error: usage.error };
 
@@ -662,6 +688,23 @@ async function runPaid(
  * only fields its operation actually reads, and parseSettings has already
  * clamped every one of them.
  */
+/**
+ * The workspace's active plan slug, read ONLY when an allowance is actually
+ * restricted to certain plans. Most operators will leave the list empty —
+ * "free for everyone" — and that case must not cost a query per run.
+ */
+async function planSlugOf(
+  supabase: Client, workspaceId: string, rule: { plans: string[] },
+): Promise<string | null> {
+  if (rule.plans.length === 0) return null;
+  const { data } = await supabase
+    .from("subscriptions")
+    .select("subscription_plans(slug)")
+    .eq("workspace_id", workspaceId).eq("status", "active").maybeSingle();
+  const plan = (data as { subscription_plans?: { slug?: string } } | null)?.subscription_plans;
+  return plan?.slug ?? null;
+}
+
 function editOptionsFor(slug: ToolSlug, raw: unknown): EditOptions {
   switch (slug) {
     case "ai_background": {

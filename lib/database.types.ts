@@ -3571,6 +3571,24 @@ export type Database = {
         Returns: string
       }
       claim_welcome_bonus: { Args: { p_answers: Json }; Returns: Json }
+      claim_free_tool_run: {
+        Args: {
+          p_workspace_id: string
+          p_tool_slug: string
+          p_limit: number
+          p_window_start: string
+        }
+        Returns: number
+      }
+      free_tool_remaining: {
+        Args: {
+          p_workspace_id: string
+          p_tool_slug: string
+          p_limit: number
+          p_window_start: string
+        }
+        Returns: number
+      }
       integration_dispatch_read: {
         Args: { p_token: string; p_type: string }
         Returns: Json
