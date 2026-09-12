@@ -1357,7 +1357,12 @@
       "content_policy": "Inhalt vom Sicherheitsfilter des Anbieters abgelehnt.",
       "provider_invalid_request": "Der Anbieter hat die Anfrage abgelehnt.",
       "concept_locked": "Diese Aufnahme ist noch nicht bereit zur Generierung.",
-      "already_running": "Generierung läuft bereits."
+      "already_running": "Generierung läuft bereits.",
+      "prompt_unconfigured": "Dieses Werkzeug hat noch keine veröffentlichte Anweisung. Es wurden keine Credits berechnet.",
+      "unknown_tool": "Unbekanntes Werkzeug.",
+      "missing_input": "Erforderliche Fotos fehlen.",
+      "too_many_inputs": "Zu viele Fotos in einem Durchlauf.",
+      "source_unavailable": "Das hochgeladene Foto konnte nicht gelesen werden."
     },
     "fromPrompts": "Aufnahme-Session: {name} — Szene, Referenzen und Format sind vorausgefüllt.",
     "fromCr": "ab {n} ◆",
@@ -2195,9 +2200,10 @@
         "style": "Modefoto am Model, natürliche Haltung, weiches Studiolicht, Kleidungsstück vollständig sichtbar"
       },
       "flatlay": {
-        "name": "Flat Lay",
-        "sub": "Produkt ausgelegt, von oben.",
-        "style": "Flat Lay von oben, gleichmäßiges Licht, minimalistischer Hintergrund, klare Stoffstruktur"
+        "name": "Liegendes Produkt",
+        "sub": "Das Kleidungsstück flach ausgelegt und von oben fotografiert.",
+        "cta": "Generieren",
+        "empty": "Fotos hinzufügen und „Generieren“ drücken, um Flat-Lay-Aufnahmen zu erzeugen."
       },
       "street": {
         "name": "Street Style",
@@ -2213,6 +2219,24 @@
         "name": "Detail",
         "sub": "Nahaufnahmen von Stoff und Verarbeitung.",
         "style": "Makro-Produktdetail, scharfe Stoffstruktur, Nähte und Verarbeitung, geringe Schärfentiefe"
+      },
+      "ghostMannequin": {
+        "name": "Unsichtbare Puppe",
+        "sub": "Das Kleidungsstück, als trüge es eine unsichtbare Figur.",
+        "cta": "Generieren",
+        "empty": "Fotos hinzufügen und „Generieren“ drücken, um Aufnahmen mit unsichtbarer Puppe zu erzeugen."
+      },
+      "iron": {
+        "name": "Bügeln",
+        "sub": "Falten und Knitter geglättet, der Schnitt bleibt unverändert.",
+        "cta": "Generieren",
+        "empty": "Fotos hinzufügen und „Generieren“ drücken, um Falten zu glätten."
+      },
+      "changePerson": {
+        "name": "Person wechseln",
+        "sub": "Dasselbe Kleidungsstück an einer anderen Person.",
+        "cta": "Generieren",
+        "empty": "Referenzfoto und Modelfoto hinzufügen, dann „Generieren“ drücken."
       }
     },
     "ecommerce": {
@@ -3908,5 +3932,33 @@
     "title": "Adminbereich",
     "sub": "Eingang für das GrovBase-Team. Melde dich mit einem Administratorkonto an — der Panel-Zugriff wird nach der Anmeldung geprüft.",
     "note": "Diese Adresse umgeht die Anmeldung nicht. Ein normales Konto kann sich hier anmelden, landet aber im eigenen Workspace, nicht im Panel."
+  },
+  "fashion": {
+    "slot.source": "Fotos hinzufügen (max. {n})",
+    "slot.reference": "Referenzfoto (max. {n})",
+    "slot.model": "Modelfoto (max. {n})",
+    "zone.reference": "Referenzfoto hinzufügen",
+    "zone.model": "Modelfoto hinzufügen",
+    "need.source": "Fügen Sie mindestens ein Foto hinzu.",
+    "need.reference": "Fügen Sie ein Referenzfoto hinzu.",
+    "need.model": "Fügen Sie ein Modelfoto hinzu.",
+    "hint": "Hinweis für die KI",
+    "hintOptional": "(optional)",
+    "hintInfo": "Ein kurzer Hinweis präzisiert das Ergebnis. Die Anweisung des Werkzeugs und die Produkttreue gelten unabhängig davon.",
+    "hintPlaceholder": "Beschreiben Sie, wie die KI die Kleidung anlegen, das Licht setzen oder Details anpassen soll…",
+    "formatAuto": "Auto",
+    "formatAutoSub": "Bildausschnitt beibehalten",
+    "uploadFailed": "Das Foto konnte nicht hochgeladen werden.",
+    "dropTitle": "Fotos ablegen",
+    "dropSub": "JPG, PNG oder WEBP.",
+    "status_queued": "In der Warteschlange…",
+    "status_processing": "Wird generiert…",
+    "status_completed": "Fertig",
+    "status_failed": "Fehlgeschlagen",
+    "done": "{n} Fotos vorbereitet.",
+    "someFailed": "{n} Fotos konnten nicht vorbereitet werden — die Credits wurden erstattet.",
+    "allFailed": "Die Fotos konnten nicht vorbereitet werden. Die Credits wurden erstattet.",
+    "emptyTitle": "Sie haben noch keine generierten Fotos",
+    "unavailable": "Dieses Werkzeug ist noch nicht bereit — ein Administrator hat seine Anweisung nicht veröffentlicht. Es werden keine Credits berechnet."
   }
 }

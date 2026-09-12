@@ -30,6 +30,10 @@ console.log("\nA. REGISTRY — every real module is covered, the untouchable one
   const mustHave = [
     "home", "library", "history",
     "image_moda", "image_ecommerce", "image_social", "image_mailing", "image_inne", "image_matching",
+    // The four Moda tools. They are not menu rows — the category is — but each
+    // is separately switchable, so each has to be its own key on the
+    // switchboard rather than riding on image_moda's status.
+    "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person",
     "prompts", "generator",
     "retouch", "editor", "resize", "compress", "tools", "tool_upscale", "tool_expand", "tool_watermark",
     "video", "products", "inspirations", "credits", "support",
@@ -56,8 +60,19 @@ console.log("\nA. REGISTRY — every real module is covered, the untouchable one
   // them yet (image_matching, video) and one is a product decision — GrovBase
   // does not keep product catalogues, so `products` ships off and an operator
   // turns it back on from /admin/settings/features if that ever changes.
+  //
+  // The four Moda tools are a fourth kind of exception and a temporary one:
+  // everything about them is built, but each runs on an instruction an
+  // operator publishes in Admin → AI, and until that exists the tool cannot
+  // work. They ship as "Wkrótce" rather than as four buttons that take a click
+  // and do nothing. Publishing a prompt and flipping the status is an
+  // operator action, not a deploy — when all four are live this list should
+  // shrink back to three.
   const off = FEATURE_KEYS.filter((k) => defaultStatusFor(k) !== "ACTIVE");
-  const expected = ["image_matching", "video", "products"];
+  const expected = [
+    "image_matching", "video", "products",
+    "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person",
+  ];
   check("a feature defaults to ACTIVE unless it is deliberately listed as off",
     off.length === expected.length && expected.every((k) => off.includes(k as never)), off.join(","));
   check("the two backendless modules default to COMING_SOON, not DISABLED",
@@ -75,7 +90,13 @@ console.log("\nB. HREF → FEATURE — prefixes, query stripping, no bypass surf
     ["/library?tab=history", "library"],
     ["/history", "history"],
     ["/k/moda", "image_moda"],
+    // A workflow with no tool of its own still belongs to the category…
     ["/k/moda/lookbook", "image_moda"],
+    // …while each tool owns its exact path, so it can be switched off alone.
+    ["/k/moda/ghostMannequin", "fashion_ghost_mannequin"],
+    ["/k/moda/flatlay", "fashion_flat_lay"],
+    ["/k/moda/iron", "fashion_iron"],
+    ["/k/moda/changePerson", "fashion_change_person"],
     ["/k/ecommerce", "image_ecommerce"],
     ["/k/social", "image_social"],
     ["/k/mailing", "image_mailing"],

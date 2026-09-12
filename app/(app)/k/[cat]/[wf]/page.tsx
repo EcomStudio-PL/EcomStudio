@@ -8,6 +8,9 @@ import { getSessionPreviews } from "@/lib/server/generator-ui";
 import { WorkflowRuntime } from "@/components/category/workflow-runtime";
 import type { GenModel } from "@/components/genv3/types";
 import { findCategory } from "@/lib/categories";
+import { FASHION_TOOLS } from "@/lib/fashion-tools";
+import { fashionModel, fashionToolAvailable } from "@/lib/server/fashion";
+import type { FashionRuntimeData } from "@/components/category/workflow-runtime";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +52,40 @@ export default async function WorkflowPage({ params }: {
   const keyed = new Set((withKey ?? []) as string[]);
   const engineAvailable = (plannerProviders ?? []).some((p) => keyed.has(p.id));
 
+  /**
+   * EVERY TOOL'S DATA, FETCHED ONCE.
+   *
+   * Switching workflow must not reach the server (see WorkflowRuntime), and a
+   * tool needs three things the preset does not: the model's sizes and prices,
+   * whether its prompt is published, and its own past results. So all four are
+   * resolved HERE, in one parallel batch, and handed to the runtime — a switch
+   * then costs nothing, exactly like a preset switch.
+   *
+   * Only for Moda: no other category has tools, and fetching four galleries on
+   * a category that cannot show them would be work nobody asked for.
+   */
+  let fashion: FashionRuntimeData | null = null;
+  if (category.key === "moda") {
+    const model = await fashionModel(supabase);
+    const perTool = await Promise.all(FASHION_TOOLS.map(async (tool) => {
+      const [available, items] = await Promise.all([
+        fashionToolAvailable(supabase, tool.toolKey),
+        listGalleryItems(supabase, workspace.id, { limit: 24, operation: tool.operation }),
+      ]);
+      return [tool.key, {
+        available: Boolean(model) && available,
+        initialItems: items.items,
+        initialCursor: items.nextCursor,
+      }] as const;
+    }));
+    fashion = {
+      resolutions: model?.resolutions ?? [],
+      ratios: model?.ratios ?? [],
+      pricing: model?.pricing ?? {},
+      tools: Object.fromEntries(perTool),
+    };
+  }
+
   const models: GenModel[] = modelOptions.map((m) => ({
     id: m.id, name: m.name, badge: m.badge, badgeTone: m.badgeTone,
     description: m.description, pricing: m.pricing,
@@ -71,6 +108,7 @@ export default async function WorkflowPage({ params }: {
         initialItems={gallery.items}
         initialCursor={gallery.nextCursor}
         sessionPreviews={sessionPreviews}
+        fashion={fashion}
       />
     </div>
   );

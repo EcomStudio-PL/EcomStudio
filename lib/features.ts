@@ -32,6 +32,12 @@ export const FEATURE_KEYS = [
   "image_mailing",
   "image_inne",
   "image_matching",
+  // Moda — narzędzia obrazu (osobne wpisy, żeby każde dało się osobno
+  // wyłączyć albo oznaczyć jako "Wkrótce" bez ruszania pozostałych)
+  "fashion_ghost_mannequin",
+  "fashion_flat_lay",
+  "fashion_iron",
+  "fashion_change_person",
   // Tworzenie
   "prompts",
   "generator",
@@ -104,6 +110,23 @@ export const FEATURE_REGISTRY: readonly FeatureDescriptor[] = [
   { key: "history", nameKey: "nav.history", path: "/history", group: "main" },
   // ── OBRAZ ────────────────────────────────────────────────────────────────
   { key: "image_moda", nameKey: "cats.moda", path: "/k/moda", group: "image" },
+  // THE FOUR MODA TOOLS. Registered individually — not because they need
+  // their own menu rows (they do not; the Moda category is the menu entry and
+  // the brief says the menu stays untouched) but because availability, the
+  // "Wkrótce" badge and the admin's own screens are per-feature. A tool whose
+  // prompt is not written yet can therefore be switched off on its own.
+  //
+  // THEY START AS "WKRÓTCE", ON PURPOSE. The panels, the uploads, the credit
+  // arithmetic and the generation path are all finished, but the instruction
+  // each tool runs on is written by an operator in Admin → AI, and none has
+  // been published yet. A tool that is visible and cannot work is the "visible
+  // button that does nothing" this project treats as release-blocking, so the
+  // registry says "coming soon" until somebody publishes a prompt and flips
+  // the status on the availability screen. Nothing about that is a code change.
+  { key: "fashion_ghost_mannequin", nameKey: "wf.moda.ghostMannequin.name", path: "/k/moda/ghostMannequin", group: "image", defaultStatus: "COMING_SOON" },
+  { key: "fashion_flat_lay", nameKey: "wf.moda.flatlay.name", path: "/k/moda/flatlay", group: "image", defaultStatus: "COMING_SOON" },
+  { key: "fashion_iron", nameKey: "wf.moda.iron.name", path: "/k/moda/iron", group: "image", defaultStatus: "COMING_SOON" },
+  { key: "fashion_change_person", nameKey: "wf.moda.changePerson.name", path: "/k/moda/changePerson", group: "image", defaultStatus: "COMING_SOON" },
   { key: "image_ecommerce", nameKey: "cats.ecommerce", path: "/k/ecommerce", group: "image" },
   { key: "image_social", nameKey: "cats.social", path: "/k/social", group: "image" },
   { key: "image_mailing", nameKey: "cats.mailing", path: "/k/mailing", group: "image" },

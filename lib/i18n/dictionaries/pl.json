@@ -1357,7 +1357,12 @@
       "content_policy": "Treść odrzucona przez filtr bezpieczeństwa dostawcy.",
       "provider_invalid_request": "Dostawca odrzucił żądanie.",
       "concept_locked": "To ujęcie nie jest jeszcze gotowe do generowania.",
-      "already_running": "Generowanie już trwa."
+      "already_running": "Generowanie już trwa.",
+      "prompt_unconfigured": "To narzędzie nie ma jeszcze opublikowanej instrukcji. Kredyty nie zostały pobrane.",
+      "unknown_tool": "Nieznane narzędzie.",
+      "missing_input": "Brakuje wymaganych zdjęć.",
+      "too_many_inputs": "Za dużo zdjęć w jednym przebiegu.",
+      "source_unavailable": "Nie udało się odczytać wgranego zdjęcia."
     },
     "fromPrompts": "Sesja ujęć: {name} — scena, referencje i format są już ustawione.",
     "fromCr": "od {n} ◆",
@@ -2195,9 +2200,10 @@
         "style": "Zdjęcie modowe na modelce, naturalna sylwetka, miękkie światło studyjne, pełna widoczność ubrania"
       },
       "flatlay": {
-        "name": "Flat lay",
-        "sub": "Rozłożony produkt widziany z góry.",
-        "style": "Flat lay z góry, równe światło, minimalistyczne tło, czytelna faktura materiału"
+        "name": "Leżący produkt",
+        "sub": "Ubranie rozłożone płasko i sfotografowane z góry.",
+        "cta": "Generuj",
+        "empty": "Dodaj zdjęcia i kliknij „Generuj”, aby przygotować ujęcia leżącego produktu."
       },
       "street": {
         "name": "Street style",
@@ -2213,6 +2219,24 @@
         "name": "Detal",
         "sub": "Zbliżenia na materiał i wykończenie.",
         "style": "Makro detalu produktu, wyraźna faktura tkaniny, szwy i wykończenia, płytka głębia ostrości"
+      },
+      "ghostMannequin": {
+        "name": "Niewidzialny manekin",
+        "sub": "Ubranie prezentowane tak, jakby nosiła je niewidzialna sylwetka.",
+        "cta": "Generuj",
+        "empty": "Dodaj zdjęcia i kliknij „Generuj”, aby przygotować zdjęcia na niewidzialnym manekinie."
+      },
+      "iron": {
+        "name": "Wyprasuj",
+        "sub": "Wygładzone zagniecenia i fałdy, bez zmiany kroju.",
+        "cta": "Generuj",
+        "empty": "Dodaj zdjęcia i kliknij „Generuj”, aby wygładzić zagniecenia."
+      },
+      "changePerson": {
+        "name": "Zmiana postaci",
+        "sub": "To samo ubranie na innej osobie.",
+        "cta": "Generuj",
+        "empty": "Dodaj zdjęcie referencyjne i zdjęcie modela, a potem kliknij „Generuj”."
       }
     },
     "ecommerce": {
@@ -3908,5 +3932,33 @@
     "title": "Panel administracyjny",
     "sub": "Wejście dla zespołu GrovBase. Zaloguj się kontem administratora — dostęp do panelu sprawdzamy po zalogowaniu.",
     "note": "Ten adres nie omija logowania. Zwykłe konto zaloguje się tu poprawnie, ale trafi do swojego workspace, nie do panelu."
+  },
+  "fashion": {
+    "slot.source": "Dodaj zdjęcia (max. {n})",
+    "slot.reference": "Zdjęcie referencyjne (max. {n})",
+    "slot.model": "Zdjęcie modela (max. {n})",
+    "zone.reference": "Dodaj zdjęcie referencyjne",
+    "zone.model": "Dodaj zdjęcie modela",
+    "need.source": "Dodaj przynajmniej jedno zdjęcie.",
+    "need.reference": "Dodaj zdjęcie referencyjne.",
+    "need.model": "Dodaj zdjęcie modela.",
+    "hint": "Wskazówka dla AI",
+    "hintOptional": "(opcjonalnie)",
+    "hintInfo": "Krótka podpowiedź doprecyzowuje efekt. Instrukcja narzędzia i wierność produktu obowiązują niezależnie od tego, co tu wpiszesz.",
+    "hintPlaceholder": "Opisz, jak AI ma nałożyć ubrania, ustawić oświetlenie lub dopasować szczegóły…",
+    "formatAuto": "Auto",
+    "formatAutoSub": "Zachowaj kadr zdjęcia",
+    "uploadFailed": "Nie udało się wgrać zdjęcia.",
+    "dropTitle": "Upuść zdjęcia",
+    "dropSub": "JPG, PNG lub WEBP.",
+    "status_queued": "W kolejce…",
+    "status_processing": "Generowanie…",
+    "status_completed": "Gotowe",
+    "status_failed": "Nie udało się",
+    "done": "Przygotowano {n} zdjęć.",
+    "someFailed": "{n} zdjęć nie udało się przygotować — kredyty za nie zostały zwrócone.",
+    "allFailed": "Nie udało się przygotować zdjęć. Kredyty zostały zwrócone.",
+    "emptyTitle": "Nie masz jeszcze wygenerowanych zdjęć",
+    "unavailable": "To narzędzie nie jest jeszcze gotowe — administrator nie opublikował dla niego instrukcji. Kredyty nie zostaną pobrane."
   }
 }

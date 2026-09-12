@@ -1357,7 +1357,12 @@
       "content_policy": "Content rejected by the provider's safety filter.",
       "provider_invalid_request": "The provider rejected the request.",
       "concept_locked": "This shot isn't ready to generate yet.",
-      "already_running": "Generation already in progress."
+      "already_running": "Generation already in progress.",
+      "prompt_unconfigured": "This tool has no published instruction yet. No credits were charged.",
+      "unknown_tool": "Unknown tool.",
+      "missing_input": "Required photos are missing.",
+      "too_many_inputs": "Too many photos in one run.",
+      "source_unavailable": "The uploaded photo could not be read."
     },
     "fromPrompts": "Shot session: {name} — scene, references and format are prefilled.",
     "fromCr": "from {n} ◆",
@@ -2196,8 +2201,9 @@
       },
       "flatlay": {
         "name": "Flat lay",
-        "sub": "The product laid out, seen from above.",
-        "style": "Top-down flat lay, even light, minimal background, clear fabric texture"
+        "sub": "The garment laid flat and shot from above.",
+        "cta": "Generate",
+        "empty": "Add photos and press “Generate” to produce flat-lay shots."
       },
       "street": {
         "name": "Street style",
@@ -2213,6 +2219,24 @@
         "name": "Detail",
         "sub": "Close-ups on fabric and finishing.",
         "style": "Macro product detail, sharp fabric texture, seams and finishing, shallow depth of field"
+      },
+      "ghostMannequin": {
+        "name": "Invisible mannequin",
+        "sub": "The garment shown as if worn by an invisible figure.",
+        "cta": "Generate",
+        "empty": "Add photos and press “Generate” to produce invisible-mannequin shots."
+      },
+      "iron": {
+        "name": "Iron",
+        "sub": "Creases and folds smoothed out, with the cut untouched.",
+        "cta": "Generate",
+        "empty": "Add photos and press “Generate” to smooth out the creases."
+      },
+      "changePerson": {
+        "name": "Change person",
+        "sub": "The same garment on a different person.",
+        "cta": "Generate",
+        "empty": "Add a reference photo and a model photo, then press “Generate”."
       }
     },
     "ecommerce": {
@@ -3908,5 +3932,33 @@
     "title": "Admin panel",
     "sub": "Entrance for the GrovBase team. Sign in with an administrator account — panel access is checked after you sign in.",
     "note": "This address does not skip sign-in. An ordinary account can sign in here, but lands in its own workspace, not in the panel."
+  },
+  "fashion": {
+    "slot.source": "Add photos (max. {n})",
+    "slot.reference": "Reference photo (max. {n})",
+    "slot.model": "Model photo (max. {n})",
+    "zone.reference": "Add a reference photo",
+    "zone.model": "Add a model photo",
+    "need.source": "Add at least one photo.",
+    "need.reference": "Add a reference photo.",
+    "need.model": "Add a model photo.",
+    "hint": "Hint for the AI",
+    "hintOptional": "(optional)",
+    "hintInfo": "A short note refines the result. The tool's own instruction and product fidelity apply whatever you write here.",
+    "hintPlaceholder": "Describe how the AI should fit the clothing, set the lighting or match details…",
+    "formatAuto": "Auto",
+    "formatAutoSub": "Keep the photo's framing",
+    "uploadFailed": "The photo could not be uploaded.",
+    "dropTitle": "Drop photos",
+    "dropSub": "JPG, PNG or WEBP.",
+    "status_queued": "Queued…",
+    "status_processing": "Generating…",
+    "status_completed": "Done",
+    "status_failed": "Failed",
+    "done": "{n} photos prepared.",
+    "someFailed": "{n} photos could not be prepared — their credits were refunded.",
+    "allFailed": "The photos could not be prepared. The credits were refunded.",
+    "emptyTitle": "You have no generated photos yet",
+    "unavailable": "This tool is not ready yet — an administrator has not published its instruction. No credits will be charged."
   }
 }

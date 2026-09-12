@@ -5,6 +5,8 @@ import { useI18n } from "@/lib/i18n/provider";
 import { CategoryHeader } from "@/components/category/category-header";
 import { GeneratorWorkspace } from "@/components/genv3/workspace";
 import { CATEGORY_VARIANT, DEFAULT_VARIANT, findCategory } from "@/lib/categories";
+import { fashionTool } from "@/lib/fashion-tools";
+import { FashionToolWorkspace } from "@/components/fashion/tool-workspace";
 import type { GalleryItem, GenModel } from "@/components/genv3/types";
 import type { SessionPreviewMap } from "@/components/genv3/sections";
 import { cn } from "@/lib/utils";
@@ -37,10 +39,36 @@ import { cn } from "@/lib/utils";
  * seed state once, so re-using the instance would leave a switched preset
  * showing the previous preset's framing — a switcher that visibly does nothing.
  * Remounting matches what the navigation did before, without the network.
+ *
+ * TOOLS SWITCH THE SAME WAY, AND THAT IS WHY THEIR DATA ARRIVES AS A PROP.
+ *
+ * Moda now carries four image-to-image tools alongside its presets. A tool
+ * renders a different panel and shows its own results, so it needs three
+ * things a preset does not: the model's sizes and prices, whether an operator
+ * has published its prompt, and its own gallery. If any of that were fetched
+ * when the tool became active, switching would be a network round trip again —
+ * exactly what this component exists to avoid. The page therefore resolves all
+ * four tools up front and hands them down in `fashion`; selecting a tool is
+ * still nothing but local state and a History push.
  */
+/** Everything the four Moda tools need, resolved once by the page. */
+export type FashionRuntimeData = {
+  /** Sizes and framings the shared model really offers. */
+  resolutions: string[];
+  ratios: string[];
+  /** Size → credits for one image, carrying the operator's override. */
+  pricing: Record<string, number>;
+  /** Per tool: can it run, and what has it made before. */
+  tools: Record<string, {
+    available: boolean;
+    initialItems: GalleryItem[];
+    initialCursor: string | null;
+  }>;
+};
+
 export function WorkflowRuntime({
   catSlug, initialWorkflow, models, credits, workspaceId, engineAvailable,
-  initialItems, initialCursor, sessionPreviews,
+  initialItems, initialCursor, sessionPreviews, fashion = null,
 }: {
   catSlug: string;
   initialWorkflow: string;
@@ -51,6 +79,8 @@ export function WorkflowRuntime({
   initialItems: GalleryItem[];
   initialCursor: string | null;
   sessionPreviews: SessionPreviewMap;
+  /** Non-null only for Moda. */
+  fashion?: FashionRuntimeData | null;
 }) {
   const { t } = useI18n();
   const category = findCategory(catSlug);
@@ -104,6 +134,8 @@ export function WorkflowRuntime({
 
   if (!category) return null;
   const workflow = category.workflows.find((w) => w.key === active) ?? category.workflows[0];
+  /** Null for a preset — the generator then renders exactly as before. */
+  const tool = workflow.tool ? fashionTool(workflow.key) : null;
 
   // An empty or missing style entry must stay empty: makeT echoes the key on a
   // miss, and that key would otherwise become the seller's "preferred style".
@@ -138,12 +170,36 @@ export function WorkflowRuntime({
               )}>
               <w.icon size={14} aria-hidden className={isActive ? "text-[rgb(var(--cat))]" : "text-faint"} />
               {t(`wf.${category.key}.${w.key}.name`)}
-              <span className="text-[11px] font-bold tabular-nums text-faint">{w.ratio}</span>
+              {/* A framing badge is a preset's promise about its output. A tool
+                  follows the seller's own photograph, so the badge would be a
+                  number that decides nothing — it is left off. */}
+              {!w.tool && (
+                <span className="text-[11px] font-bold tabular-nums text-faint">{w.ratio}</span>
+              )}
             </a>
           );
         })}
       </div>
 
+      {tool && fashion ? (
+        /* A TOOL. Keyed like the generator below, and for the same reason: the
+           panel seeds its pools, its size and its framing from props once, so
+           re-using the instance would leave a switched tool holding the
+           previous tool's uploads. Remounting is what the navigation used to
+           do — without the navigation. */
+        <FashionToolWorkspace
+          key={workflow.key}
+          config={tool}
+          workspaceId={workspaceId}
+          credits={credits}
+          available={fashion.tools[workflow.key]?.available ?? false}
+          resolutions={fashion.resolutions}
+          ratios={fashion.ratios}
+          pricing={fashion.pricing}
+          initialItems={fashion.tools[workflow.key]?.initialItems ?? []}
+          initialCursor={fashion.tools[workflow.key]?.initialCursor ?? null}
+        />
+      ) : (
       <GeneratorWorkspace
         key={workflow.key}
         mode="managed"
@@ -159,6 +215,7 @@ export function WorkflowRuntime({
         variant={CATEGORY_VARIANT[category.key] ?? DEFAULT_VARIANT}
         sessionPreviews={sessionPreviews}
       />
+      )}
     </>
   );
 }

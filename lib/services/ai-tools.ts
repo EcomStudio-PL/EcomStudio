@@ -28,6 +28,9 @@ export const AI_TOOL_KEYS = [
   "editor", "resize", "compress",
   "tool_upscale", "tool_expand", "tool_watermark",
   "video",
+  // Moda. Each is model-driven and prompt-driven, so each gets the full set of
+  // admin tabs — this is where their prompts are written and published.
+  "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person",
 ] as const;
 export type AiToolKey = (typeof AI_TOOL_KEYS)[number];
 
@@ -45,12 +48,17 @@ const CATEGORY: Record<AiToolKey, ToolCategory> = {
   prompts: "generation", generator: "generation", retouch: "editing",
   editor: "local", resize: "local", compress: "local", tool_watermark: "local",
   tool_upscale: "editing", tool_expand: "editing", video: "video",
+  fashion_ghost_mannequin: "generation", fashion_flat_lay: "generation",
+  fashion_iron: "generation", fashion_change_person: "generation",
 };
 
 /** Which tools actually run through the ai_models path (`runGeneration`).
  *  The paid micro-tools reach a provider by capability instead, so offering
  *  them a model picker would be a control that decides nothing. */
-const MODEL_DRIVEN: readonly AiToolKey[] = ["prompts", "generator", "retouch", "video"];
+const MODEL_DRIVEN: readonly AiToolKey[] = [
+  "prompts", "generator", "retouch", "video",
+  "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person",
+];
 
 export const TOOL_TABS = ["basics", "engine", "models", "knowledge", "economics", "history"] as const;
 export type ToolTab = (typeof TOOL_TABS)[number];

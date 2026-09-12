@@ -3,6 +3,7 @@ import {
   Boxes, Camera, Gift, Grid2X2, Images, LayoutTemplate, Mail, Megaphone, Package,
   PenLine, Percent, Shirt, ShoppingBag, Smartphone, Sparkles, SwatchBook, Tag,
   Users, Video, Clapperboard, Image as ImageIcon, MessageSquareText, Film, Layers,
+  Wind, UserRoundCog,
 } from "lucide-react";
 
 /**
@@ -39,6 +40,20 @@ export type Workflow = {
   /** Dictionary key holding the style directive prefilled into the form. */
   styleKey: string;
   soon?: boolean;
+  /**
+   * A workflow that is a TOOL rather than a preset.
+   *
+   * A preset opens the generator with a framing and a style directive; a tool
+   * takes the seller's own photographs and does one job to them, behind its
+   * own panel. Both are workflows of the same category and both switch through
+   * WorkflowRuntime without a server round trip — the difference is this flag,
+   * not a second route or a second menu. `ratio`, `shots` and `styleKey` are
+   * unused on a tool and are filled with the category's own defaults so the
+   * chip row can keep rendering one shape.
+   *
+   * The configuration itself lives in lib/fashion-tools.ts, keyed by `key`.
+   */
+  tool?: boolean;
 };
 
 export type Category = {
@@ -62,8 +77,15 @@ export const CATEGORIES: readonly Category[] = [
   {
     key: "moda", slug: "moda", icon: Shirt, accent: VIOLET,
     workflows: [
+      // THE FOUR TOOLS, first because they are what the category is for now.
+      // `flatlay` keeps the slug the preset already had: old links and
+      // bookmarks land on the tool that took over the job.
+      { key: "ghostMannequin", icon: Shirt, ratio: "1:1", shots: 5, styleKey: "wf.moda.ghostMannequin.style", tool: true },
+      { key: "flatlay", icon: Grid2X2, ratio: "1:1", shots: 5, styleKey: "wf.moda.flatlay.style", tool: true },
+      { key: "iron", icon: Wind, ratio: "1:1", shots: 5, styleKey: "wf.moda.iron.style", tool: true },
+      { key: "changePerson", icon: UserRoundCog, ratio: "1:1", shots: 5, styleKey: "wf.moda.changePerson.style", tool: true },
+      // The prompt presets that were here before, untouched.
       { key: "onModel", icon: Users, ratio: "4:5", shots: 6, styleKey: "wf.moda.onModel.style" },
-      { key: "flatlay", icon: Grid2X2, ratio: "1:1", shots: 5, styleKey: "wf.moda.flatlay.style" },
       { key: "street", icon: Camera, ratio: "4:5", shots: 6, styleKey: "wf.moda.street.style" },
       { key: "editorial", icon: Sparkles, ratio: "9:16", shots: 5, styleKey: "wf.moda.editorial.style" },
       { key: "detail", icon: ImageIcon, ratio: "1:1", shots: 5, styleKey: "wf.moda.detail.style" },

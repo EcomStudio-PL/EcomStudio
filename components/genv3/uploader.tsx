@@ -84,7 +84,7 @@ export const DropOverlay = FileDropOverlay;
  */
 export function PhotoUploader({
   items, max, uploading, label, hint, counter = true, compact, capturePaste, dropTarget,
-  onFiles, onRemove, columns = 4, zone,
+  onFiles, onRemove, columns = 4, zone, zoneLabel,
 }: {
   items: UploadedRef[];
   max: number;
@@ -105,6 +105,11 @@ export function PhotoUploader({
   capturePaste?: boolean;
   /** Marks this block so a drop landing on it is routed to THIS pool. */
   dropTarget?: string;
+  /** Wording inside the big zone. Defaults to "Import", which is right when a
+   *  screen has ONE upload block. A screen with two — a garment and a person —
+   *  needs each zone to say which one it is, or the two are indistinguishable
+   *  until something has already been dropped in the wrong one. */
+  zoneLabel?: string;
   onFiles: (files: File[]) => void;
   onRemove: (index: number) => void;
   columns?: 4 | 5;
@@ -175,7 +180,7 @@ export function PhotoUploader({
               ? <Loader2 size={18} className="animate-spin" aria-hidden />
               : <ImagePlus size={18} aria-hidden />}
           </span>
-          <span className="text-[13px] font-semibold tracking-tight text-ink">{t("genv3.uploadImport")}</span>
+          <span className="text-[13px] font-semibold tracking-tight text-ink">{zoneLabel ?? t("genv3.uploadImport")}</span>
           <span className="text-[11px] font-medium tabular-nums text-faint">
             {t("genv3.uploadCount", { n: items.length, max })}
           </span>
