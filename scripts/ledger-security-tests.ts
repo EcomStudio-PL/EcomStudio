@@ -145,6 +145,12 @@ const GATED = [
   "usage_event_fail", "usage_event_complete", "usage_event_charge",
   "usage_event_refund_partial", "provider_credential_read", "engine_rules_read",
   "knowledge_match", "provider_health_set",
+  // The secret store's two readers (0078, 0080). They are the only functions in
+  // the database that return credential plaintext, and they are reachable by
+  // anon — deliberately, so the unattended paths can call them at all. What
+  // stops a browser is the token, so a call site that forgets to pass one is a
+  // path that silently stops working for every visitor who is not an admin.
+  "secret_read", "secret_read_many",
 ] as const;
 
 const tokenless: string[] = [];
