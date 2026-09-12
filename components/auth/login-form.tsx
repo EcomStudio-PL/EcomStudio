@@ -72,7 +72,10 @@ export function LoginForm({ next, error, email, onSwitch, showSignup = true }: {
         <div className="flex items-center justify-between gap-3">
           {/* Real persistence choice: the route writes session-only cookies
               when this is unchecked. See /auth/sign-in. */}
-          <label className="flex cursor-pointer items-center gap-2 text-[13px] text-muted">
+          {/* `tap` on the LABEL, not the box: tapping the label is what
+              toggles a checkbox, so the label is the real target — and at 13px
+              it was 20px tall. See .tap in globals.css. */}
+          <label className="tap flex cursor-pointer items-center gap-2 text-[13px] text-muted">
             <input type="checkbox" name="remember" defaultChecked
               className="h-4 w-4 rounded border-line accent-[rgb(var(--accent))]" />
             {t("auth.rememberMe")}

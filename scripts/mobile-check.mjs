@@ -76,9 +76,27 @@ for (const width of WIDTHS) {
       for (const el of document.querySelectorAll("a, button, input[type=checkbox], input[type=radio], [role=button]")) {
         const r = el.getBoundingClientRect();
         if (r.width === 0 || r.height === 0) continue;
-        if (r.height < 30 || r.width < 30) {
-          small.push(`${el.tagName.toLowerCase()}"${(el.textContent || "").trim().slice(0, 22)}" ${Math.round(r.width)}x${Math.round(r.height)}`);
+        if (r.height >= 30 && r.width >= 30) continue;
+
+        // A honeypot is a control nobody is meant to touch — it exists so a bot
+        // fills it in. Reporting it as unhittable is reporting it as working.
+        if (r.width <= 2 || r.height <= 2) continue;
+
+        // A checkbox is judged by the label wrapping it: tapping the label is
+        // what toggles it, so a 16px box inside a 336x42 label is a 336x42
+        // target. Only an unlabelled one is a real problem.
+        const label = el.closest("label") || (el.id ? document.querySelector(`label[for="${CSS.escape(el.id)}"]`) : null);
+        if (label) {
+          const lr = label.getBoundingClientRect();
+          if (lr.height >= 30 && lr.width >= 30) continue;
         }
+
+        // An inline link inside running prose is exempt (WCAG 2.5.8) and must
+        // NOT be padded: a bigger hit box there overlaps the lines around it.
+        // "Standalone" is the thing being measured, so prose is skipped.
+        if (el.tagName === "A" && el.closest("p, label, li")) continue;
+
+        small.push(`${el.tagName.toLowerCase()}"${(el.textContent || "").trim().slice(0, 22)}" ${Math.round(r.width)}x${Math.round(r.height)}`);
       }
       return {
         scrollW: doc.scrollWidth,
