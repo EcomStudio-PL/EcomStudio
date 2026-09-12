@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
+import { serverTokenAvailable } from "@/lib/server/server-token";
 
 type Client = SupabaseClient<Database>;
 
@@ -66,6 +67,7 @@ export async function readSystemHealth(supabase: Client): Promise<HealthCheck[]>
       checkedAt: now,
     },
     runtimeCheck(),
+    unattendedCheck(),
   ];
 
   for (const row of integrations.data ?? []) {
@@ -94,6 +96,37 @@ export async function readSystemHealth(supabase: Client): Promise<HealthCheck[]>
   }
 
   return checks;
+}
+
+/**
+ * CAN THE SERVER ACT FOR SOMEBODY WHO IS NOT LOGGED IN?
+ *
+ * Four things happen with no human present: the waitlist confirmation to an
+ * anonymous visitor, Supabase calling the Send Email Hook, the captcha check
+ * during signup, and a customer's generation reaching for a provider key. None
+ * of them has an admin session to authorise it — and GrovBase's server talks to
+ * Postgres with the same publishable key the browser holds, so nothing about
+ * the request proves it came from the application rather than from somebody's
+ * console.
+ *
+ * One value fixes that: GROVBASE_SERVER_KEY, any random string of 32
+ * characters or more. The server hashes it, the database checks the hash, and
+ * a browser cannot produce one. (The two older key names still work.)
+ *
+ * WITHOUT IT NOTHING VISIBLY BREAKS, which is exactly why this row exists. The
+ * admin panel keeps working perfectly — every screen there is authorised by
+ * being an admin — while confirmation e-mails quietly stop arriving. A failure
+ * with no symptom is the kind that runs for weeks.
+ */
+function unattendedCheck(): HealthCheck {
+  const ok = serverTokenAvailable();
+  return {
+    key: "unattended",
+    label: "Automatyczne wysyłki",
+    state: ok ? "ok" : "fail",
+    detail: ok ? "GROVBASE_SERVER_KEY" : "brak GROVBASE_SERVER_KEY",
+    checkedAt: new Date().toISOString(),
+  };
 }
 
 /**

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/services/audit";
 import { encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { verifySmtp, type SmtpConfig } from "@/lib/server/mailer";
+import { readIntegrationSecrets, type MailConfig } from "@/lib/server/integrations";
 import {
   cleanOverrides, type HomepageMode, type LaunchByLocale, type LaunchOverrides,
 } from "@/lib/server/launch-page";
@@ -244,11 +245,25 @@ export async function testEmailConnectionAction(): Promise<{ ok: boolean; error?
     if (error) return { ok: false, error: "generic" };
     const cfg = (data ?? {}) as Partial<SmtpConfig> & { configured?: boolean };
     if (!cfg.configured) return { ok: false, error: "not_configured" };
+
+    // THE SAME PASSWORD THE MAILBOX CARD USES.
+    //
+    // email_transport hands back the AES copy in email_settings, sealed with
+    // APP_ENCRYPTION_KEY. The mailbox card above owns this transport and stores
+    // its password in Supabase Vault, so reading only the ciphertext here would
+    // let this button fail while the card's own "Testuj SMTP" passes — two
+    // buttons on one screen testing one mailbox and disagreeing about it. The
+    // vault copy wins; the ciphertext stays as the fallback.
+    const mail = await readIntegrationSecrets<MailConfig>(supabase, "mail");
+    const vaultPassword = mail.secrets.smtp_password
+      ?? (mail.config.smtp_same_as_imap ? mail.secrets.imap_password : undefined);
+
     const result = await verifySmtp({
       host: cfg.host ?? "",
       port: cfg.port ?? 587,
       user: cfg.user ?? "",
       encryption: (cfg.encryption ?? "auto") as SmtpConfig["encryption"],
+      password: vaultPassword ?? null,
       ciphertext: cfg.ciphertext ?? null,
       iv: cfg.iv ?? null,
       auth_tag: cfg.auth_tag ?? null,
