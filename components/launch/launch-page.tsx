@@ -82,13 +82,14 @@ export function LaunchPage({
   // only be a second thing to keep in sync.
   const art = c["hero.image"] || "/launch/hero-dino.webp";
 
+  // `--hero-top` and `--hero-art` — the two numbers the band, the header wash
+  // and the content pad are all derived from — live in globals.css under
+  // `[data-launch-page]`, not in a style attribute here. They have to differ on
+  // a tablet in portrait, and an inline style is the one declaration a media
+  // query cannot reach: it outranks every stylesheet rule. The phone values are
+  // unchanged to the character.
   return (
-    <main data-launch-page className="relative flex min-h-[100svh] flex-col overflow-x-clip"
-      style={{
-        // Read by the phone band, the header wash and the content pad.
-        "--hero-top": "calc(3.25rem + env(safe-area-inset-top))",
-        "--hero-art": "min(62vw, 32svh)",
-      } as React.CSSProperties}>
+    <main data-launch-page className="relative flex min-h-[100svh] flex-col overflow-x-clip">
       {/* ── THE ARTWORK ────────────────────────────────────────────────────
           Desktop: a panel down the RIGHT of the screen rather than a full
           bleed. Stretched edge to edge, the scene's left third — where the
@@ -228,7 +229,26 @@ export function LaunchPage({
             halves of the screen together instead of stacking them. The pad is
             width-derived like the band above it, so the overlap is the same
             fraction on every phone, and capped in svh for short screens. */}
-        <div className="grid flex-1 items-center gap-5 pb-5 pt-[calc(var(--hero-top)+var(--hero-art)-2.6rem)] sm:gap-6 lg:grid-cols-[minmax(0,clamp(455px,34vw,640px))_minmax(0,1fr)] lg:gap-[clamp(40px,3.6vw,76px)] lg:pb-0 lg:pt-0">
+        {/* WHY THERE IS A WRAPPER HERE, AND WHY IT DOES NOTHING ON PHONES.
+            The two desktop columns have to end on the SAME line — the benefit
+            island's bottom edge is the form panel's bottom edge — and that has
+            to come out of the layout, not out of a margin that happens to be
+            right on one monitor. Bottom-aligning them is one property
+            (`lg:items-end`), but it only means anything if the grid row is as
+            tall as its content: while the grid itself was the flex child that
+            absorbed the leftover height, its row was the whole window, "bottom
+            of the row" was the bottom of the screen, and the column that was
+            centred and the column that was bottom-aligned could never meet.
+            So the leftover height moves up one level: the wrapper absorbs it
+            and centres the pair, the grid is content-height, and the two
+            columns end together at every width and every zoom.
+
+            Below lg the wrapper is a plain flex column whose single child is
+            `flex-1` — exactly the box the grid itself used to be, so the phone
+            layout is geometrically unchanged. Every part of this that moves
+            anything is behind `lg:`. */}
+        <div className="flex flex-1 flex-col lg:justify-center">
+        <div className="grid flex-1 items-center gap-5 pb-5 pt-[calc(var(--hero-top)+var(--hero-art)-2.6rem)] sm:gap-6 lg:flex-none lg:grid-cols-[minmax(0,clamp(455px,34vw,640px))_minmax(0,1fr)] lg:items-end lg:gap-[clamp(40px,3.6vw,76px)] lg:pb-0 lg:pt-0">
           <div className="min-w-0 lg:py-1">
             {c["hero.badge"] && (
               <p data-launch-badge
@@ -334,7 +354,19 @@ export function LaunchPage({
                     return (
                       <li key={`${p.t}${p.b}`}
                         data-launch-perk
-                        className="flex items-center gap-2 rounded-xl border border-[rgb(var(--glass-border)/0.14)] bg-[rgb(var(--surface)/0.55)] px-2.5 py-2 sm:gap-2.5 sm:px-3 sm:py-2.5 lg:gap-[clamp(10px,0.9vw,16px)] lg:rounded-[clamp(12px,1vw,18px)] lg:px-[clamp(12px,1vw,20px)] lg:py-[clamp(10px,min(0.9vw,1.11vh),18px)]">
+                        // ICON OVER TEXT ON A TABLET, ICON BESIDE TEXT ON A DESKTOP.
+                        // The two-column composition starts at lg, but the right
+                        // column does not get wide until xl: at 1024 it is 427px,
+                        // three tiles are about 124px each, and the icon and the
+                        // padding take 70 of them. Seventy per cent of a tile spent
+                        // on chrome is how "Darmowe kredyty" came out broken as
+                        // "Darmo / we / kredyty" — a word split down the middle,
+                        // which is the one thing a benefit card must never do.
+                        // Dropping the icon onto its own line hands the words the
+                        // whole tile and keeps all three across, so the composition
+                        // is the reference's at every width; from xl the column is
+                        // wide enough that the row reads better and comes back.
+                        className="flex items-center gap-2 rounded-xl border border-[rgb(var(--glass-border)/0.14)] bg-[rgb(var(--surface)/0.55)] px-2.5 py-2 sm:gap-2.5 sm:px-3 sm:py-2.5 lg:flex-col lg:gap-[clamp(8px,0.7vw,12px)] lg:rounded-[clamp(12px,1vw,18px)] lg:px-[clamp(10px,0.8vw,16px)] lg:py-[clamp(10px,min(0.9vw,1.11vh),18px)] lg:text-center xl:flex-row xl:gap-[clamp(10px,0.9vw,16px)] xl:px-[clamp(12px,1vw,20px)] xl:text-left">
                         <span aria-hidden className={cn(
                           "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl sm:h-9 sm:w-9 lg:h-[clamp(36px,min(2.4vw,4.0vh),46px)] lg:w-[clamp(36px,min(2.4vw,4.0vh),46px)] lg:rounded-[clamp(12px,1vw,16px)]",
                           i === 1
@@ -365,6 +397,7 @@ export function LaunchPage({
               </div>
             )}
           </div>
+        </div>
         </div>
 
         {/* ── FOOTER ───────────────────────────────────────────────────────

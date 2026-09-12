@@ -137,11 +137,27 @@ export function IntegrationCards({ mail, telegram, captcha, encryptionReady }: {
     router.refresh();
   }
 
+  /**
+   * The two ways stored credentials become unusable look identical from the
+   * outside and have opposite remedies, so the panel says which one it is
+   * BEFORE anyone presses "test" — retyping a password that is already correct,
+   * while the real fault is a missing variable on the server, costs an
+   * afternoon. "unreadable" only fires when a key IS present and still does not
+   * open what is stored; the missing-key banner above already covers the other.
+   */
+  const unreadable = encryptionReady
+    && [mail, telegram, captcha].some((v) => v.secretsState === "decrypt");
+
   return (
     <div className="space-y-5" data-integrations>
       {!encryptionReady && (
         <p className="rounded-2xl border border-[rgb(var(--warning)/0.35)] bg-[rgb(var(--warning)/0.08)] px-4 py-3 text-[13px] text-warning">
           {t("comm.encryptionMissing")}
+        </p>
+      )}
+      {unreadable && (
+        <p className="rounded-2xl border border-[rgb(var(--warning)/0.35)] bg-[rgb(var(--warning)/0.08)] px-4 py-3 text-[13px] text-warning">
+          {t("comm.encryptionRotated")}
         </p>
       )}
 

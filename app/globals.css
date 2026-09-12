@@ -166,6 +166,40 @@
   background-color: rgb(var(--bg));
   color: rgb(var(--ink));
   color-scheme: dark;
+
+  /* ── THE TWO NUMBERS THE WHOLE VERTICAL COMPOSITION HANGS OFF ──────────
+     `--hero-top` is how far down the artwork band starts, so the logo and the
+     sign-in button get ground of their own instead of sitting on the T-Rex's
+     jaw. `--hero-art` is the band's height. The content's top padding is
+     derived from BOTH, which is what keeps the badge overlapping the picture
+     by the same amount however tall the notch is.
+
+     They live here rather than in a style attribute on the element because a
+     tablet in portrait needs different ones, and an inline style is the one
+     declaration a media query cannot override. These values are the phone's
+     and are not to be touched: the ramp is vw-first and capped in svh so a
+     short or landscape screen never gets a band taller than the window. */
+  --hero-top: calc(3.25rem + env(safe-area-inset-top));
+  --hero-art: min(62vw, 32svh);
+}
+
+/* TABLET PORTRAIT — 768 to just under the lg breakpoint.
+   Everything from lg up is the two-column desktop composition, and everything
+   below 768 is a phone. In between sits a shape neither of them was drawn for:
+   a column wide enough that 62vw is an enormous band (476px on an iPad, 502 on
+   a 810) stacked above a full-width form, which pushed the one screen this page
+   is supposed to be into a scrolling one — measured at 1119px of content in a
+   1024px window, and 1136 in 1080.
+
+   The band is not cropped to fix that, it is SIZED for the shape: a tablet is
+   wide, so the width term can be a smaller fraction, and it is tall in
+   portrait, so the height cap comes down with it. Both halves of the min()
+   move together, which is what keeps the scene at its own proportions. The
+   content pad follows automatically — it is computed from these. */
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  [data-launch-page] {
+    --hero-art: min(46vw, 26svh);
+  }
 }
 
 .dark {

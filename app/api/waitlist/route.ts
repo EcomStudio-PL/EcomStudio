@@ -1,9 +1,13 @@
 import { NextResponse, after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit, clientIp } from "@/lib/server/rate-limit";
-import { deliver, type SmtpConfig } from "@/lib/server/mailer";
+import { deliver, deliverHtml, type SmtpConfig } from "@/lib/server/mailer";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
 import { collectEventContext, contextRows, eventDataFrom, formatWarsaw } from "@/lib/server/event-context";
+import { dispatchToken } from "@/lib/server/integrations";
+import {
+  defaultTemplate, lookupPublishedTemplate, renderTemplateEmail,
+} from "@/lib/server/message-templates";
 
 export const dynamic = "force-dynamic";
 
@@ -107,13 +111,38 @@ export async function POST(request: Request) {
 
   // The confirmation, when the admin turned it on. Best-effort by design: a
   // mail server that is down must not lose the signup that already succeeded.
+  //
+  // WHAT IT SAYS comes from the template studio (waitlist.confirmation:email)
+  // like every other message GrovBase sends; WHETHER it is sent, and what it is
+  // sent THROUGH, still comes from waitlist_subscribe — that function is the
+  // security boundary and it hands back a payload only when confirmation is
+  // switched on. The old email_settings copy is the last fallback, so a
+  // deployment whose template lookup is unavailable still sends what it always
+  // sent rather than nothing.
   if (result.mail) {
     const { from_name, from_email, reply_to, subject, body, smtp } = result.mail;
-    await deliver(
-      { to: email, subject, text: body },
-      { from_name, from_email, reply_to },
-      smtp,
-    ).catch(() => null);
+    const identity = { from_name, from_email, reply_to };
+    const now = new Date();
+    const data = {
+      first_name: firstName,
+      name: `${firstName} ${lastName}`.trim(),
+      email,
+      date: now.toLocaleDateString("pl-PL", { timeZone: "Europe/Warsaw" }),
+      time: now.toLocaleTimeString("pl-PL", { timeZone: "Europe/Warsaw", hour: "2-digit", minute: "2-digit" }),
+    };
+    const token = dispatchToken();
+    const def = (token
+      ? await lookupPublishedTemplate(supabase, token, "waitlist.confirmation", "email")
+      : null) ?? defaultTemplate("waitlist.confirmation:email");
+    if (def?.channel === "email") {
+      const rendered = renderTemplateEmail(def.email, data, {});
+      await deliverHtml(
+        { to: email, subject: rendered.subject, text: rendered.text, html: rendered.html },
+        identity, smtp,
+      ).catch(() => null);
+    } else {
+      await deliver({ to: email, subject, text: body }, identity, smtp).catch(() => null);
+    }
   }
 
   // Only a genuinely NEW row gets announced: the honeypot answered at the top

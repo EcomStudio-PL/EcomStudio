@@ -183,9 +183,6 @@ export type EmailSettingsInput = {
    *  password", so the form never has to echo a secret back to the browser. */
   smtpPassword?: string;
   encryption: "auto" | "tls" | "ssl";
-  confirmationEnabled: boolean;
-  confirmationSubject: string;
-  confirmationBody: string;
 };
 
 export async function saveEmailSettingsAction(input: EmailSettingsInput): Promise<Result> {
@@ -205,9 +202,13 @@ export async function saveEmailSettingsAction(input: EmailSettingsInput): Promis
       smtp_port: port,
       smtp_user: input.smtpUser.trim().slice(0, 255),
       smtp_encryption: input.encryption,
-      confirmation_enabled: input.confirmationEnabled,
-      confirmation_subject: input.confirmationSubject.trim().slice(0, 200),
-      confirmation_body: input.confirmationBody.trim().slice(0, 4000),
+      // confirmation_enabled / _subject / _body are deliberately NOT written
+      // here any more. The confirmation's copy lives in the template studio
+      // (waitlist.confirmation:email) and its on/off switch is written by
+      // setTemplateDeliveryAction — this form owns the sender identity and the
+      // transport, nothing that has words in it. An upsert that echoed the
+      // three columns back would silently revert a change made on the other
+      // screen the next time anyone pressed Save here.
       updated_by: adminId,
       updated_at: new Date().toISOString(),
     };

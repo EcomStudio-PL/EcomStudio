@@ -89,6 +89,37 @@ export async function publishTemplateAction(key: string): Promise<Result> {
   }
 }
 
+/**
+ * Whether this message goes out at all.
+ *
+ * Only the waitlist confirmation has such a switch, and it is a DIFFERENT
+ * decision from publishing: publishing changes what the message says, this
+ * decides whether a subscriber is written to. Writing it here rather than on
+ * the Kanały screen is the whole point of the move — the copy, the preview and
+ * the switch for one message now sit together instead of being split between
+ * two screens that shared nothing but a table.
+ */
+export async function setTemplateDeliveryAction(key: string, enabled: boolean): Promise<Result> {
+  try {
+    const entry = catalogEntry(key);
+    if (!entry?.deliverySwitch) return { ok: false, error: "invalid" };
+    const { supabase, adminId } = await requireAdmin();
+    const { error } = await supabase.from("email_settings")
+      .update({ confirmation_enabled: enabled, updated_at: new Date().toISOString(), updated_by: adminId })
+      .eq("id", true);
+    if (error) return { ok: false, error: "generic" };
+    await logAudit(supabase, {
+      actorId: adminId, action: "message_template.delivery_changed",
+      entityType: "message_templates", entityId: key,
+      after: { enabled },
+    });
+    revalidatePath(PAGE);
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "forbidden" };
+  }
+}
+
 /** Back to the built-in copy: clears BOTH draft and published (production
  *  falls back to the shipped default), keeps the row's version history. */
 export async function resetTemplateAction(key: string): Promise<Result> {
@@ -164,14 +195,24 @@ export type TemplateListEntry = {
   draft: TemplateDef | null;
   published: TemplateDef | null;
   defaults: TemplateDef | null;
+  /** Only for the one message that can be switched off entirely — null for
+   *  every other entry, which always sends when its event fires. */
+  delivery: boolean | null;
 };
 
 /** Everything the list and the editor need, joined catalog × stored rows. */
 export async function listTemplatesAction(): Promise<TemplateListEntry[] | null> {
   try {
     const { supabase } = await requireAdmin();
-    const { data: rows } = await supabase.from("message_templates")
-      .select("key, draft, published, published_version, published_at, updated_at");
+    const [{ data: rows }, { data: emailRow }] = await Promise.all([
+      supabase.from("message_templates")
+        .select("key, draft, published, published_version, published_at, updated_at"),
+      // The waitlist confirmation's on/off switch. It stays where
+      // waitlist_subscribe reads it, in SQL, at the moment it decides whether
+      // to hand the route a mail payload at all — moving the column would move
+      // the decision away from the one place that is a security boundary.
+      supabase.from("email_settings").select("confirmation_enabled").eq("id", true).maybeSingle(),
+    ]);
     const byKey = new Map((rows ?? []).map((r) => [r.key, r]));
     return TEMPLATE_CATALOG.map((entry) => {
       const row = byKey.get(entry.key);
@@ -191,6 +232,7 @@ export async function listTemplatesAction(): Promise<TemplateListEntry[] | null>
         draft: row ? parseStoredDef(entry.channel, row.draft) : null,
         published: row ? parseStoredDef(entry.channel, row.published) : null,
         defaults: defaultTemplate(entry.key),
+        delivery: entry.deliverySwitch ? (emailRow?.confirmation_enabled ?? false) : null,
       };
     });
   } catch {

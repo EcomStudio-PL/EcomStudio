@@ -60,4 +60,25 @@ Two rules follow.
 If the key is ever lost again, an older deployment's uploaded source files are
 the first place to look: the Vercel dashboard shows a deployment's Source tab,
 and any deployment from before the payload changed still carries the working
-`.env.production`.
+`.env.production`. `dpl_ENZ5PNTCwHM9WRNkXtgMFLSpqf44` (READY, live 22:20 UTC on
+6 September 2026) is the last deployment known to carry the ORIGINAL key — the
+captcha it saved at 22:28 the same evening decrypts, which is the proof.
+
+**This recovery cannot be done from an agent session.** The Vercel MCP server
+exposes no tool that reads or writes project environment variables, and reading
+the value into a transcript would be exactly the leak the key exists to
+prevent. It is a dashboard action, by a person:
+
+> Vercel → project `ecomstudio-prod` → the deployment above → **Source** →
+> `.env.production` → copy `APP_ENCRYPTION_KEY` → **Settings → Environment
+> Variables → Production** → save → redeploy.
+
+Put it at PROJECT level, not in the payload. That is rule 1 above, and it is
+what stops this from recurring: a project-level value outranks the file, so no
+future payload edit can drop it again.
+
+Until it is back, the panel says so itself rather than guessing — Admin →
+Kanały reads the key at render time and shows one of two banners: *no key on
+the server* (the stored passwords are intact, retyping them fixes nothing) or
+*the key does not match the stored secrets* (retyping them is exactly the fix).
+The two used to be one message, and the one they shared said "not configured".

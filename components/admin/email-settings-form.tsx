@@ -1,6 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "@/lib/notify";
 import { Lock, PlugZap } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
@@ -28,9 +29,6 @@ export type EmailSettingsView = {
   smtp_user: string;
   smtp_encryption: "auto" | "tls" | "ssl";
   has_password: boolean;
-  confirmation_enabled: boolean;
-  confirmation_subject: string;
-  confirmation_body: string;
   last_tested_at: string | null;
   last_test_status: string | null;
   last_test_error_safe: string | null;
@@ -75,9 +73,6 @@ export function EmailSettingsForm({ initial, encryptionReady, transportOwnedByMa
         smtpUser: v.smtp_user,
         smtpPassword: password || undefined,
         encryption: v.smtp_encryption,
-        confirmationEnabled: v.confirmation_enabled,
-        confirmationSubject: v.confirmation_subject,
-        confirmationBody: v.confirmation_body,
       });
       if (res.ok) {
         if (password) { setPassword(""); patch("has_password", true); }
@@ -99,8 +94,6 @@ export function EmailSettingsForm({ initial, encryptionReady, transportOwnedByMa
       fromName: v.from_name, fromEmail: v.from_email, replyTo: v.reply_to,
       smtpHost: v.smtp_host, smtpPort: Number(v.smtp_port) || 587, smtpUser: v.smtp_user,
       smtpPassword: password || undefined, encryption: v.smtp_encryption,
-      confirmationEnabled: v.confirmation_enabled,
-      confirmationSubject: v.confirmation_subject, confirmationBody: v.confirmation_body,
     });
     if (!saved.ok) { setTesting(false); toast.error(t("common.error")); return; }
     if (password) { setPassword(""); patch("has_password", true); }
@@ -220,25 +213,18 @@ export function EmailSettingsForm({ initial, encryptionReady, transportOwnedByMa
         </div>
       </Card>
 
+      {/* THE CONFIRMATION'S WORDS LIVE IN SZABLONY NOW. This screen is wires —
+          who the mail says it is from and what carries it. The message a
+          subscriber actually receives is a template like every other, with a
+          preview, a draft and a version, which is what it never had here. */}
       <Card>
         <CardHeader title={t("launchAdmin.confirmSection")} />
-        <div className="space-y-4 p-5 pt-0">
-          <label className="flex items-center gap-3 text-[14px] font-medium">
-            <input type="checkbox" checked={v.confirmation_enabled}
-              onChange={(e) => patch("confirmation_enabled", e.target.checked)}
-              className="h-4 w-4 accent-[rgb(var(--accent))]" />
-            {t("launchAdmin.confirmEnabled")}
-          </label>
-          <div>
-            <Label htmlFor="conf-subject">{t("launchAdmin.confirmSubject")}</Label>
-            <Input id="conf-subject" value={v.confirmation_subject}
-              onChange={(e) => patch("confirmation_subject", e.target.value)} />
-          </div>
-          <div>
-            <Label htmlFor="conf-body">{t("launchAdmin.confirmBody")}</Label>
-            <Textarea id="conf-body" rows={4} value={v.confirmation_body}
-              onChange={(e) => patch("confirmation_body", e.target.value)} />
-          </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 p-5 pt-0">
+          <p className="max-w-prose text-[13px] leading-relaxed text-muted">{t("launchAdmin.confirmMoved")}</p>
+          <Link href="/admin/communication/szablony"
+            className="shrink-0 text-[13px] font-semibold text-accent transition-opacity duration-200 hover:opacity-75">
+            {t("launchAdmin.confirmMovedLink")} →
+          </Link>
         </div>
       </Card>
 

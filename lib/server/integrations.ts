@@ -107,6 +107,11 @@ export type IntegrationView<C> = {
   status: IntegrationStatus;
   last_tested_at: string | null;
   last_error_safe: string | null;
+  /** Whether the server can actually OPEN what is stored here — see
+   *  SecretsState. Computed from the row this view already read, so it costs
+   *  no extra query, and it is what lets the panel say at rest that a mailbox
+   *  is configured but unreadable instead of waiting for a failed test. */
+  secretsState: SecretsState;
   /** One entry per secret this integration owns — true means a ciphertext is
    *  stored. The plaintext itself never leaves the server. */
   hasSecret: Record<string, boolean>;
@@ -249,6 +254,24 @@ async function readRowAnyContext(
   return (await readRow(supabase, type)) ?? (await readRowForDispatch(supabase, type));
 }
 
+/**
+ * Can the server OPEN this bag? Booleans out, nothing else: the plaintext is
+ * discarded the instant the trial succeeds, so this is safe to call from a
+ * render. It is CPU only — the row has already been read — which is why the
+ * panel can afford to know the answer before anyone presses "test".
+ */
+function bagState(bag: SecretBag): SecretsState {
+  if (Object.keys(bag).length === 0) return "ok";
+  const keyHex = integrationsKeyHex();
+  if (!keyHex) return "key_missing";
+  try {
+    for (const blob of Object.values(bag)) decryptWith(keyHex, blob.c, blob.i, blob.t);
+    return "ok";
+  } catch {
+    return "decrypt";
+  }
+}
+
 /** The admin-panel view. It carries no plaintext, by construction. */
 export async function readIntegration<C>(supabase: Client, type: IntegrationType): Promise<IntegrationView<C>> {
   const row = await readRow(supabase, type);
@@ -257,6 +280,7 @@ export async function readIntegration<C>(supabase: Client, type: IntegrationType
   for (const name of SECRET_NAMES[type]) hasSecret[name] = Boolean(bag[name]);
   return {
     type,
+    secretsState: bagState(bag),
     enabled: row?.enabled === true,
     config: { ...defaultsFor(type), ...asRecord(row?.config) } as C,
     status: asStatus(row?.status),

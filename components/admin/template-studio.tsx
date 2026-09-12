@@ -15,6 +15,7 @@ import type { TemplateDef } from "@/lib/server/message-templates";
 import {
   previewTemplateAction, publishTemplateAction,
   resetTemplateAction, saveTemplateDraftAction, configureAuthHookAction,
+  setTemplateDeliveryAction,
   type TemplateListEntry, type TemplatePreview,
 } from "@/app/actions/templates";
 import type { AuthDeliveryView } from "@/app/actions/templates";
@@ -268,6 +269,11 @@ function TemplateTile({ entry, onEdit }: {
         )}
         {entry.hasDraft && <Badge tone="neutral">{t("tpl.draft")}</Badge>}
         {!entry.hooked && <Badge tone="accent">{t("tpl.noHook")}</Badge>}
+        {/* A message that is switched off looks identical to one that simply
+            has not fired yet, which is how "why did nobody get the e-mail?"
+            becomes an afternoon. Only the entries that CAN be switched off
+            carry this. */}
+        {entry.delivery === false && <Badge tone="warning">{t("tpl.deliveryOffBadge")}</Badge>}
       </div>
       <div className="mt-3 flex items-center justify-between gap-2">
         <p className="truncate text-[11px] text-faint">
@@ -295,6 +301,17 @@ function TemplateEditor({ entry, onBack }: { entry: TemplateListEntry; onBack: (
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
   const focused = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+
+  // The send switch is not part of the draft: it takes effect immediately,
+  // because "stop sending this" is never something an operator wants to have
+  // to publish. Optimistic locally, reverted if the write is refused.
+  const [delivery, setDeliveryState] = useState(entry.delivery ?? false);
+  const setDelivery = async (next: boolean) => {
+    setDeliveryState(next);
+    const res = await setTemplateDeliveryAction(entry.key, next);
+    if (res.ok) { toast.success(next ? t("tpl.deliveryOnToast") : t("tpl.deliveryOffToast")); router.refresh(); }
+    else { setDeliveryState(!next); toast.error(t("common.error")); }
+  };
 
   // Every template previews the same way now — including the auth ones, which
   // GrovBase renders itself since the Send Email Hook took over.
@@ -384,6 +401,23 @@ function TemplateEditor({ entry, onBack }: { entry: TemplateListEntry; onBack: (
         <p className="mb-4 rounded-xl bg-[rgb(var(--accent)/0.08)] px-3.5 py-3 text-[13px] leading-relaxed text-muted">
           {t("tpl.authNote")}
         </p>
+      )}
+
+      {/* WHETHER IT GOES OUT AT ALL — kept apart from the render options
+          below, which only decide how the message looks. This one decides
+          whether anybody receives it. */}
+      {entry.delivery !== null && (
+        <Card className="mb-4 flex flex-wrap items-center justify-between gap-3 p-4">
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold text-ink">{t("tpl.deliveryTitle")}</p>
+            <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{t("tpl.deliverySub")}</p>
+          </div>
+          <ToggleRow
+            label={delivery ? t("tpl.deliveryOn") : t("tpl.deliveryOff")}
+            checked={delivery}
+            onChange={setDelivery}
+          />
+        </Card>
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">

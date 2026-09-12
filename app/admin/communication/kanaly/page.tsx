@@ -22,9 +22,15 @@ import { EmailSettingsForm, type EmailSettingsView } from "@/components/admin/em
  * wrote to different tables, they disagreed the moment one of them was edited,
  * and an operator had no way of telling which one the mail actually left
  * through. The transport now belongs to the mailbox card alone; the form below
- * keeps only what is genuinely its own — who the mail says it is from, and the
- * waitlist confirmation copy — and shows the server settings read-only, with a
- * pointer at the card that owns them.
+ * keeps only what is genuinely its own — who the mail says it is from — and
+ * shows the server settings read-only, with a pointer at the card that owns
+ * them.
+ *
+ * NOTHING ON THIS SCREEN HAS WORDS IN IT. The waitlist confirmation used to be
+ * edited here as three loose fields beside the SMTP host, which is why it was
+ * the one message with no preview, no draft and no version. It is a template
+ * now (waitlist.confirmation:email) and lives in Komunikacja → Szablony with
+ * every other message; Kanały is channels and credentials.
  *
  * readIntegration is the only reader used for the integrations on purpose: it
  * answers with hasSecret booleans, so no ciphertext and no plaintext is part of
@@ -45,7 +51,7 @@ export default async function CommunicationChannels() {
     // "is a password stored?" — it never leaves this function.
     supabase
       .from("email_settings")
-      .select("from_name, from_email, reply_to, smtp_host, smtp_port, smtp_user, smtp_encryption, smtp_secret_ciphertext, confirmation_enabled, confirmation_subject, confirmation_body, last_tested_at, last_test_status, last_test_error_safe")
+      .select("from_name, from_email, reply_to, smtp_host, smtp_port, smtp_user, smtp_encryption, smtp_secret_ciphertext, last_tested_at, last_test_status, last_test_error_safe")
       .eq("id", true)
       .maybeSingle(),
   ]);
@@ -60,9 +66,6 @@ export default async function CommunicationChannels() {
     smtp_user: data?.smtp_user ?? "",
     smtp_encryption: (data?.smtp_encryption ?? "auto") as EmailSettingsView["smtp_encryption"],
     has_password: Boolean(data?.smtp_secret_ciphertext),
-    confirmation_enabled: data?.confirmation_enabled ?? false,
-    confirmation_subject: data?.confirmation_subject ?? "",
-    confirmation_body: data?.confirmation_body ?? "",
     last_tested_at: data?.last_tested_at ?? null,
     last_test_status: data?.last_test_status ?? null,
     last_test_error_safe: data?.last_test_error_safe ?? null,

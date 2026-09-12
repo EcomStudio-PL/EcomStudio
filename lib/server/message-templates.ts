@@ -69,6 +69,16 @@ export type CatalogEntry = {
   /** false = the template exists but no real business flow fires it yet. */
   hooked: boolean;
   placeholders: readonly string[];
+  /**
+   * This message has an on/off switch of its own, stored outside the template
+   * (the studio shows it and writes it). Only the waitlist confirmation has
+   * one: it is the single message a seller can decide not to send at all, and
+   * that decision predates the template system — it lives in
+   * email_settings.confirmation_enabled, which waitlist_subscribe still gates
+   * on. Surfacing it here is what let the whole block move out of "Kanały"
+   * without inventing a second switch or a second template store.
+   */
+  deliverySwitch?: true;
 };
 
 const CONTEXT_PLACEHOLDERS = ["name", "email", "phone", "date", "time", "source", "ip", "device", "language", "landing"] as const;
@@ -77,9 +87,16 @@ const SALES_PLACEHOLDERS = [...CONTEXT_PLACEHOLDERS, "amount", "plan"] as const;
 function entry(
   event: string, channel: TemplateChannel, kind: "app" | "auth",
   nameKey: string, groupKey: string, hooked: boolean, placeholders: readonly string[],
+  extra: { deliverySwitch?: true } = {},
 ): CatalogEntry {
-  return { event, channel, key: `${event}:${channel}`, kind, nameKey, groupKey, hooked, placeholders };
+  return { event, channel, key: `${event}:${channel}`, kind, nameKey, groupKey, hooked, placeholders, ...extra };
 }
+
+/** What the waitlist confirmation may actually say. It goes to the SUBSCRIBER,
+ *  so the diagnostic fields the admin pings carry — ip, device, landing — are
+ *  deliberately not offered: they would be telling a customer what we know
+ *  about them, in a message that exists to welcome them. */
+const SUBSCRIBER_PLACEHOLDERS = ["first_name", "name", "email", "date", "time"] as const;
 
 /** Every editable message, grouped the way the panel lists them. */
 export const TEMPLATE_CATALOG: readonly CatalogEntry[] = [
@@ -103,6 +120,14 @@ export const TEMPLATE_CATALOG: readonly CatalogEntry[] = [
   // Marketing
   entry("waitlist.signup", "telegram", "app", "tpl.waitlist", "tpl.gMarketing", true, CONTEXT_PLACEHOLDERS),
   entry("waitlist.signup", "email", "app", "tpl.waitlist", "tpl.gMarketing", true, CONTEXT_PLACEHOLDERS),
+  // The two waitlist mails are NOT the same message and never were: the pair
+  // above pings the operator that somebody signed up, this one welcomes the
+  // person who did. It used to be edited as three loose fields on the Kanały
+  // screen, beside the SMTP host, which is why it never had a preview, a draft
+  // or a version — it lives here now, on the same footing as everything else
+  // GrovBase says.
+  entry("waitlist.confirmation", "email", "app", "tpl.waitlistConfirm", "tpl.gMarketing", true,
+    SUBSCRIBER_PLACEHOLDERS, { deliverySwitch: true }),
   // Poczta
   entry("mail.received", "telegram", "app", "tpl.newMail", "tpl.gMail", true, ["name", "email", "date", "time"]),
   // Płatności — templates ready, business hooks not built yet (no billing).
@@ -226,6 +251,18 @@ const DEFAULTS: Record<string, TemplateDef> = {
   "waitlist.signup:email": { channel: "email", email: emailDefault(
     "Nowy zapis na listę — {{email}}", "Nowy zapis na listę oczekujących",
     "Ktoś dołączył do listy oczekujących GrovBase.") },
+  // Word for word the copy 0048 seeded into email_settings, so a deployment
+  // that never opens the editor keeps sending exactly what it sent before.
+  // showFields is off: this one goes to a customer, and the field table is a
+  // dossier meant for the operator's own inbox.
+  "waitlist.confirmation:email": { channel: "email", email: {
+    subject: "Jesteś na liście GrovBase 🚀",
+    heading: "Jesteś na liście",
+    body: "Dzięki za zapis. Damy Ci znać jako jednemu z pierwszych, gdy GrovBase wystartuje.",
+    ctaLabel: "", ctaUrl: "",
+    footer: "GrovBase",
+    showLogo: true, showFields: false, showCta: false,
+  } },
   "mail.received:telegram": { channel: "telegram", telegram: tgDefault("📬", "NOWA WIADOMOŚĆ", [
     "👤 | {{name}}",
     "📧 | {{email}}",
