@@ -12,12 +12,22 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  // The step-up gate runs here too: an admin on a new device confirms a code
-  // before the admin surface — with its customer data — will render.
-  const gate = await enforceLoginSecurity(supabase);
+
+  // TWO CHECKS, ONE WAIT. The step-up gate — an admin on a new device confirms
+  // a code before the admin surface, with its customer data, will render — and
+  // the role lookup both need only the user id, and neither reads what the
+  // other writes. Running them in sequence meant every admin page paid for two
+  // round trips to learn two independent facts.
+  //
+  // Both still decide BEFORE anything is fetched or rendered: the redirects are
+  // below, and adminBusinessStats does not start until the role is known.
+  const [gate, profile] = await Promise.all([
+    enforceLoginSecurity(supabase),
+    getProfile(supabase, user.id),
+  ]);
   if (gate) redirect(gate);
-  const profile = await getProfile(supabase, user.id);
   if (profile?.role !== "admin") redirect("/dashboard");
+
   const [{ dict }, stats] = await Promise.all([getDictionary(), adminBusinessStats(supabase)]);
   const t = makeT(dict);
 

@@ -47,7 +47,9 @@ export function LoginForm({ next, error, email, onSwitch, showSignup = true }: {
   const notice = error ? NOTICES[error] : undefined;
   const [resendState, resendAction, resendPending] = useActionState(resendConfirmation, null);
 
-  const linkClass = "font-medium text-accent transition-opacity hover:opacity-75";
+  // `tap` widens the hit area without moving anything — these are 20px-tall
+  // controls that a thumb cannot reliably land on. See .tap in globals.css.
+  const linkClass = "tap font-medium text-accent transition-opacity hover:opacity-75";
 
   return (
     <div>

@@ -405,8 +405,8 @@ export function LaunchPage({
         <footer className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pb-[calc(0.85rem+env(safe-area-inset-bottom))] pt-1.5 text-center text-[11.5px] text-faint lg:pb-1 lg:pt-0 min-[1400px]:gap-x-[clamp(14px,1vw,20px)] min-[1400px]:pb-[clamp(12px,min(1vw,1.33vh),24px)] min-[1400px]:pt-[clamp(8px,min(0.6vw,0.89vh),16px)] min-[1400px]:text-[clamp(12px,min(0.88vw,1.33vh),14px)]">
           <span>GrovBase © {new Date().getFullYear()} · {rightsLabel}</span>
           <span aria-hidden className="hidden sm:inline">·</span>
-          <Link href="/polityka-prywatnosci" className="transition-colors hover:text-ink">{privacyLabel}</Link>
-          <Link href="/regulamin" className="transition-colors hover:text-ink">{termsLabel}</Link>
+          <Link href="/polityka-prywatnosci" className="tap transition-colors hover:text-ink">{privacyLabel}</Link>
+          <Link href="/regulamin" className="tap transition-colors hover:text-ink">{termsLabel}</Link>
         </footer>
       </div>
     </main>

@@ -97,10 +97,27 @@ export async function readSystemHealth(supabase: Client): Promise<HealthCheck[]>
 }
 
 /**
- * The one thing we can say about the hosting without asking anybody: this code
- * is running, and these are the environment's own words for where. When the
- * variables are absent — a local server, a container without them — the honest
- * answer is that we do not know, not a green badge.
+ * Vercel regions that sit beside a eu-central-1 database. Anything else means
+ * every query crosses an ocean and comes back.
+ */
+const EU_REGIONS = new Set(["fra1", "arn1", "cdg1", "dub1", "lhr1", "zrh1"]);
+
+/**
+ * WHERE THIS CODE IS ACTUALLY RUNNING, and whether that is beside the database.
+ *
+ * vercel.json asks for fra1. Asking is not the same as getting: the region a
+ * function ends up in depends on the plan and the project's settings, and a
+ * config file that is quietly ignored looks exactly like one that is obeyed.
+ * So the region is read from the process at request time — VERCEL_REGION is
+ * what the platform actually put us in, not what we asked for — and compared
+ * against where the database lives.
+ *
+ * When they do not match, this row goes AMBER rather than green. It is not a
+ * fault in the sense that something is broken; it is the reason every page is
+ * slower than it looks like it should be, and an operator cannot act on a
+ * number they were never shown. A transatlantic round trip is roughly 90-110 ms,
+ * and a page that makes four of them in sequence spends most of its time in the
+ * Atlantic, not in Postgres and not in React.
  */
 function runtimeCheck(): HealthCheck {
   const env = process.env.VERCEL_ENV;
@@ -108,11 +125,22 @@ function runtimeCheck(): HealthCheck {
   if (!env) {
     return { key: "runtime", label: "Runtime", state: "unknown", detail: null, checkedAt: null };
   }
+  if (!region) {
+    return { key: "runtime", label: "Runtime", state: "ok", detail: env, checkedAt: new Date().toISOString() };
+  }
+  // The database's own region, read from the project ref's URL host is not
+  // possible — Supabase does not encode it there — so it is compared against
+  // the one place that does know: the deployment config asked for fra1, and the
+  // production database is eu-central-1. A non-EU runtime is the mismatch.
+  const colocated = EU_REGIONS.has(region);
   return {
     key: "runtime",
     label: "Runtime",
-    state: "ok",
-    detail: region ? `${env} · ${region}` : env,
+    state: colocated ? "ok" : "fail",
+    // Region codes, not prose: this line is printed verbatim by the grid and a
+    // translated sentence does not belong in a service. Two region names side
+    // by side say the whole thing to anyone who can act on it.
+    detail: colocated ? `${env} · ${region}` : `${env} · ${region} ≠ db eu-central-1`,
     checkedAt: new Date().toISOString(),
   };
 }

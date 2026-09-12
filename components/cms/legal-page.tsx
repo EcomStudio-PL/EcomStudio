@@ -76,7 +76,7 @@ export async function LegalPage({ slug, titleKey }: { slug: string; titleKey: st
           sent off the site entirely. "/" is the one destination that is always
           ours and always right. */}
       <Link href="/" data-legal-back
-        className="mt-8 text-sm font-medium text-accent transition-opacity hover:opacity-75">
+        className="tap mt-8 self-start text-sm font-medium text-accent transition-opacity hover:opacity-75">
         ← {t("legal.back")}
       </Link>
     </main>

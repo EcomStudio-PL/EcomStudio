@@ -834,6 +834,30 @@ h2 { letter-spacing: -0.022em; line-height: 1.15; }
 @media (prefers-reduced-motion: reduce) { .skeleton::after { animation: none; } }
 
 
+/* A TEXT LINK THAT CAN ACTUALLY BE TAPPED.
+   A 13px link is about 16px tall. On a desktop that is a precise mouse target;
+   on a phone it is a 16px strip for a fingertip that covers roughly 45px, and
+   the usual result is hitting the link beside it or nothing at all. WCAG 2.5.8
+   asks for 24x24 CSS pixels for a standalone control, and an inline text link
+   in a paragraph is exempt — these are not in paragraphs, they are navigation.
+
+   The fix has to be invisible: this is a design the owner has asked not to be
+   changed. So the box grows and the layout is pulled back by the same amount.
+   Padding makes the hit area 32px tall; the negative margin cancels the space
+   it would otherwise take, so nothing moves by a single pixel. The horizontal
+   pair does the same for a short label like "Cennik", which is only 40px wide.
+
+   Use on standalone text links and icon-only controls — never inside running
+   prose, where the negative margin would let neighbouring lines overlap. */
+.tap {
+  padding: 0.5rem 0.375rem;
+  margin: -0.5rem -0.375rem;
+  /* Removes the 300 ms double-tap-zoom delay on iOS for these controls, which
+     is felt as "the link did not respond the first time". */
+  touch-action: manipulation;
+}
+
+
 ::selection { background: rgb(var(--accent) / 0.25); }
 
 

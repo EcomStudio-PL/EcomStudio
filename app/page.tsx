@@ -215,14 +215,20 @@ export default async function LandingPage({ searchParams }: {
 
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line py-8 text-xs text-muted">
         <span className="flex items-center gap-2.5">
-          <Brand href="/" height={22} />
+          {/* 22px tall in the footer — the mark is the one link on this row
+              that a thumb has to hit precisely. `tap` grows the box only. */}
+          <Brand href="/" height={22} className="tap" />
           © {new Date().getFullYear()}
         </span>
+        {/* `tap` on each link: these are 16px tall at 13px type, which is a
+            fine mouse target and an unhittable one on a phone. It grows the
+            box and pulls the layout back by the same amount, so the footer
+            looks exactly as it did. See .tap in globals.css. */}
         <div className="flex gap-4">
-          <a href="#showcase" className="hover:text-ink">{t("landing.navFeatures")}</a>
-          <a href="#pricing" className="hover:text-ink">{t("landing.navPricing")}</a>
+          <a href="#showcase" className="tap hover:text-ink">{t("landing.navFeatures")}</a>
+          <a href="#pricing" className="tap hover:text-ink">{t("landing.navPricing")}</a>
           {access.showAuthEntry && (
-            <AuthLink mode="login" className="hover:text-ink">{t("landing.ctaLogin")}</AuthLink>
+            <AuthLink mode="login" className="tap hover:text-ink">{t("landing.ctaLogin")}</AuthLink>
           )}
         </div>
       </footer>

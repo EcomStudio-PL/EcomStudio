@@ -5,7 +5,6 @@ import type { Client } from "@/lib/services/workspace";
 import { describeUserAgent, formatWarsaw } from "@/lib/server/event-context";
 import { dispatchToken, readIntegrationSecrets, safeError, type MailConfig } from "@/lib/server/integrations";
 import { deliverHtml, type MailIdentity, type SmtpConfig } from "@/lib/server/mailer";
-import { encryptionAvailable } from "@/lib/server/crypto";
 import { fieldsFromData, lookupPublishedTemplate, renderTemplateEmail } from "@/lib/server/message-templates";
 
 /**
@@ -536,10 +535,20 @@ export async function enforceLoginSecurity(supabase: Client): Promise<string | n
   return "/auth/security-check";
 }
 
-/** Can we actually email a code right now? Both the SMTP transport and the
- *  dispatch token have to be in place, or a challenge is a dead end. */
+/**
+ * Can we actually email a code right now? The SMTP transport and the dispatch
+ * token have to be in place, or a challenge is a dead end.
+ *
+ * IT NO LONGER ASKS FOR AN ENCRYPTION KEY. It used to, because the mailbox
+ * password was AES ciphertext that only APP_ENCRYPTION_KEY could open — so a
+ * missing deploy variable made this false, and enforceLoginSecurity FAILS OPEN
+ * on false. A lost environment variable therefore silently switched the whole
+ * step-up gate off. The password comes from Supabase Vault now (migration
+ * 0078) and needs no key of ours, so that condition would only keep a gate
+ * disabled for a reason that no longer exists.
+ */
 export async function canSendSecurityMail(supabase: Client): Promise<boolean> {
-  if (!loginSecurityToken() || !encryptionAvailable()) return false;
+  if (!loginSecurityToken()) return false;
   try {
     const { config, secrets } = await readIntegrationSecrets<MailConfig>(supabase, "mail");
     const password = secrets.smtp_password ?? (config.smtp_same_as_imap ? secrets.imap_password : undefined);
