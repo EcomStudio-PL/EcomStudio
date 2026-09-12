@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { CheckCircle2, ExternalLink, Plug } from "lucide-react";
-import { encryptionAvailable } from "@/lib/server/crypto";
 import { providerStatuses } from "@/lib/server/image-tools";
 import {
   groupBy, monthStart, periodStart, readBudgetStatus, readUsage, summarise,
@@ -123,7 +122,7 @@ async function ProvidersTab({ supabase, t, locale }: Ctx & { locale: string }) {
           const s = spendById.get(p.id);
           return (
             <div key={p.id} className="space-y-2">
-              <ProviderCard p={p} encryptionReady={encryptionAvailable()} locale={locale} />
+              <ProviderCard p={p} locale={locale} />
               {s && (
                 <div className="panel flex flex-wrap items-center justify-between gap-2 rounded-xl px-4 py-2.5 text-[13px]">
                   <span className="text-muted">

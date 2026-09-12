@@ -1,5 +1,5 @@
 import "server-only";
-import { decryptSecret, encryptionAvailable } from "@/lib/server/crypto";
+import { readProviderKey } from "@/lib/server/provider-credentials";
 import { dispatchToken } from "@/lib/server/integrations";
 import type { Client } from "@/lib/services/workspace";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
@@ -44,13 +44,13 @@ const VAULT_TTL = 60_000;
 
 /**
  * ENV first — a key in the process environment never touches the database.
- * Otherwise the encrypted credential the admin panel stores, decrypted with
- * the server-only master key.
+ * Otherwise the credential the admin panel stored: Supabase Vault for anything
+ * saved since migration 0078, the old AES ciphertext for anything older.
  */
 async function resolveCreds(supabase: Client, provider: ProviderBase): Promise<{ creds: Creds; source: KeySource } | null> {
   const fromEnv = envKey(provider);
   if (fromEnv) return { creds: { apiKey: fromEnv }, source: "env" };
-  if (!provider.vaultSlug || !encryptionAvailable()) return null;
+  if (!provider.vaultSlug) return null;
 
   const cached = vaultCache.get(provider.vaultSlug);
   if (cached && Date.now() - cached.at < VAULT_TTL) {
@@ -61,14 +61,12 @@ async function resolveCreds(supabase: Client, provider: ProviderBase): Promise<{
     .from("ai_providers").select("id").eq("slug", provider.vaultSlug).eq("active", true).maybeSingle();
   let creds: Creds | null = null;
   if (row) {
-    // SECURITY DEFINER: the credentials table itself stays admin-only, and
-    // the ciphertext is useless without APP_ENCRYPTION_KEY.
+    // SECURITY DEFINER: the credentials table itself stays admin-only.
     const { data: credRows } = await supabase.rpc("provider_credential_read", { p_token: dispatchToken(), p_provider_id: row.id });
     const cred = credRows?.[0];
     if (cred) {
-      try {
-        creds = { apiKey: decryptSecret(cred.encrypted_value, cred.iv, cred.auth_tag), baseUrl: cred.base_url };
-      } catch { creds = null; }
+      const apiKey = await readProviderKey(supabase, row.id, cred);
+      creds = apiKey ? { apiKey, baseUrl: cred.base_url } : null;
     }
   }
   vaultCache.set(provider.vaultSlug, { creds, at: Date.now() });
@@ -96,7 +94,6 @@ async function resolveCreds(supabase: Client, provider: ProviderBase): Promise<{
  * database at all.
  */
 async function primeVault(supabase: Client): Promise<void> {
-  if (!encryptionAvailable()) return;
   const now = Date.now();
   const wanted = [...new Set(
     ALL_TOOL_PROVIDERS
@@ -117,12 +114,12 @@ async function primeVault(supabase: Client): Promise<void> {
     let creds: Creds | null = null;
     if (id) {
       // Same SECURITY DEFINER call resolveCreds makes — the credentials table
-      // stays admin-only and the ciphertext is useless without the key.
+      // stays admin-only.
       const { data: credRows } = await supabase.rpc("provider_credential_read", { p_token: dispatchToken(), p_provider_id: id });
       const cred = credRows?.[0];
       if (cred) {
-        try { creds = { apiKey: decryptSecret(cred.encrypted_value, cred.iv, cred.auth_tag), baseUrl: cred.base_url }; }
-        catch { creds = null; }
+        const apiKey = await readProviderKey(supabase, id, cred);
+        creds = apiKey ? { apiKey, baseUrl: cred.base_url } : null;
       }
     }
     // A MISS is cached too, exactly as before: "no key for this provider" is

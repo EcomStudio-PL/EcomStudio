@@ -1,7 +1,8 @@
 import "server-only";
 import { createHash } from "crypto";
 import type { Client } from "@/lib/services/workspace";
-import { decryptSecret, encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
+import { decryptSecret, encryptSecret } from "@/lib/server/crypto";
+import { readProviderKey } from "@/lib/server/provider-credentials";
 import { dispatchToken } from "@/lib/server/integrations";
 import {
   ALL_ASPECT_RATIOS, ProviderError, type ReferenceImage } from "@/lib/ai/types";
@@ -202,7 +203,6 @@ async function plannerProviderOrder(supabase: Client): Promise<VisionProvider[]>
 }
 
 async function getVisionBackends(supabase: Client, primaryModel: string): Promise<VisionBackend[]> {
-  if (!encryptionAvailable()) return [];
   const order = await plannerProviderOrder(supabase);
   const { data: providers } = await supabase
     .from("ai_providers").select("id, slug").eq("active", true).in("slug", order);
@@ -215,13 +215,14 @@ async function getVisionBackends(supabase: Client, primaryModel: string): Promis
     const { data: credRows } = await supabase.rpc("provider_credential_read", { p_token: dispatchToken(), p_provider_id: provider.id });
     const cred = credRows?.[0];
     if (!cred) continue;
-    try {
-      backends.push({
-        provider: slug,
-        cred: { apiKey: decryptSecret(cred.encrypted_value, cred.iv, cred.auth_tag), baseUrl: cred.base_url },
-        model: slug === "google" ? primaryModel : undefined,
-      });
-    } catch { /* undecryptable key: skip this provider, keep the rest */ }
+    const apiKey = await readProviderKey(supabase, provider.id, cred);
+    // An unreadable key skips this provider and keeps the rest of the order.
+    if (!apiKey) continue;
+    backends.push({
+      provider: slug,
+      cred: { apiKey, baseUrl: cred.base_url },
+      model: slug === "google" ? primaryModel : undefined,
+    });
   }
   return backends;
 }

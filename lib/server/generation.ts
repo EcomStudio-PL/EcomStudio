@@ -1,7 +1,7 @@
 import "server-only";
 import { after } from "next/server";
 import type { Client } from "@/lib/services/workspace";
-import { decryptSecret, encryptionAvailable } from "@/lib/server/crypto";
+import { readProviderKey } from "@/lib/server/provider-credentials";
 import { dispatchToken } from "@/lib/server/integrations";
 import { getAdapter } from "@/lib/ai/registry";
 import {
@@ -102,7 +102,6 @@ const THUMB_EDGE = 640;
 export async function runGeneration(supabase: Client, userId: string, workspaceId: string, input: GenerateInput): Promise<GenerateOutput> {
   if (!input.prompt.trim() || !RATIOS.has(input.aspectRatio)) return { ok: false, error: "invalid_input" };
   const quantity = Math.min(Math.max(Math.trunc(input.quantity) || 1, 1), 4);
-  if (!encryptionAvailable()) return { ok: false, error: "encryption_unavailable" };
 
   // Model + provider + credential
   const { data: model } = await supabase
@@ -117,14 +116,14 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     return { ok: false, error: "model_unavailable" };
   }
 
-  // Definer RPC: RLS keeps the credentials table admin-only; this returns
-  // ciphertext usable only with the server-side APP_ENCRYPTION_KEY.
+  // Definer RPC: RLS keeps the credentials table admin-only. It returns the
+  // metadata row — base URL and, for pre-vault credentials, the ciphertext;
+  // readProviderKey prefers the vault copy and falls back to that.
   const { data: credRows } = await supabase.rpc("provider_credential_read", { p_token: dispatchToken(), p_provider_id: provider.id });
   const cred = credRows?.[0];
   if (!cred) return { ok: false, error: "model_unavailable" };
-  let apiKey: string;
-  try { apiKey = decryptSecret(cred.encrypted_value, cred.iv, cred.auth_tag); }
-  catch { return { ok: false, error: "credential_error" }; }
+  const apiKey = await readProviderKey(supabase, provider.id, cred);
+  if (!apiKey) return { ok: false, error: "credential_error" };
 
   // Resolution must be one the model actually supports (capability-driven
   // UI can never request an impossible variant; the server enforces it too).
@@ -643,13 +642,9 @@ async function resolveModelCandidate(supabase: Client, modelId: string) {
   const { data: credRows } = await supabase.rpc("provider_credential_read", { p_token: dispatchToken(), p_provider_id: provider.id });
   const cred = credRows?.[0];
   if (!cred) return null;
-  try {
-    return {
-      model, providerSlug: provider.slug, adapter,
-      apiKey: decryptSecret(cred.encrypted_value, cred.iv, cred.auth_tag),
-      baseUrl: cred.base_url,
-    };
-  } catch { return null; }
+  const apiKey = await readProviderKey(supabase, provider.id, cred);
+  if (!apiKey) return null;
+  return { model, providerSlug: provider.slug, adapter, apiKey, baseUrl: cred.base_url };
 }
 
 function buildProductContext(name: string, description: string | null, extraInfo: string | null): string {

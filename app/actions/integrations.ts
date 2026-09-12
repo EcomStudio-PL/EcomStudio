@@ -6,6 +6,8 @@ import { logAudit } from "@/lib/services/audit";
 import { encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { verifySmtp, deliver, type SmtpConfig } from "@/lib/server/mailer";
 import { verifyImap } from "@/lib/server/imap";
+import { imapAdvice, smtpAdvice, validPort } from "@/lib/mail/transport";
+import { probeSocket, type ProbeStep } from "@/lib/server/mail-probe";
 import { formatWarsaw } from "@/lib/server/event-context";
 import { getTelegramChats, sendTelegramMessage, tgEscape, type TelegramError } from "@/lib/server/telegram";
 import { verifyTurnstile } from "@/lib/server/captcha";
@@ -45,8 +47,11 @@ import {
 
 type Result = { ok: true } | { ok: false; error: string };
 /** Tests answer with the same shape as testEmailConnectionAction so the two
- *  admin screens can share their button logic. */
-type TestResult = { ok: boolean; error?: string };
+ *  admin screens can share their button logic. `steps` is the per-stage detail
+ *  the mail card renders — settings, connection, encryption, login — so a
+ *  failure names WHICH of them broke instead of listing three things to check.
+ *  Every entry is a stable code; nothing a driver said reaches this array. */
+type TestResult = { ok: boolean; error?: string; steps?: ProbeStep[] };
 
 /**
  * The screens these actions belong to.
@@ -141,9 +146,6 @@ function normaliseMail(input: MailConfig): MailConfig {
   };
 }
 
-function validPort(port: number): boolean {
-  return Number.isInteger(port) && port >= 1 && port <= 65535;
-}
 
 /** Which non-secret fields the admin actually changed — the audit trail records
  *  that and never a value that could be a credential. */
@@ -165,6 +167,17 @@ export async function saveMailIntegrationAction(input: MailIntegrationInput): Pr
     if (!config.imap_host || !config.smtp_host) return { ok: false, error: "invalid_host" };
     if (!validPort(config.imap_port) || !validPort(config.smtp_port)) return { ok: false, error: "invalid_port" };
     if (!SMTP_ENCRYPTIONS.includes(config.smtp_encryption)) return { ok: false, error: "invalid_encryption" };
+    // PORT AND ENCRYPTION HAVE TO AGREE, and this is checked here and not only
+    // in the form. IMAP on 587 with SSL/TLS — which is what production was
+    // actually configured with — is not a preference, it is a combination that
+    // cannot connect; storing it only buys a timeout later, reported as
+    // "check host, port or credentials", which names three things and
+    // identifies none. The form shows the same sentence live (lib/mail/
+    // transport.ts is shared), so this is the backstop, not the first line.
+    const imapBad = imapAdvice(config.imap_port, config.imap_secure);
+    if (imapBad?.level === "error") return { ok: false, error: "imap_port_mismatch" };
+    const smtpBad = smtpAdvice(config.smtp_port, config.smtp_encryption);
+    if (smtpBad?.level === "error") return { ok: false, error: "smtp_port_mismatch" };
 
     // Trimmed for the "did the admin type anything?" decision AND for storage:
     // a password pasted with a trailing newline is a support ticket, not a
@@ -197,11 +210,33 @@ export async function saveMailIntegrationAction(input: MailIntegrationInput): Pr
       return { ok: false, error: written.error === "encryption_unavailable" ? "encryption_unavailable" : "generic" };
     }
 
-    // The waitlist mailer still reads email_settings. Mirroring keeps that one
-    // working when the admin decides this mailbox is also the sender, and is
-    // read back from the row we just wrote so it carries the merged secret
-    // rather than whatever happened to be in the form.
+    // READ IT BACK BEFORE CALLING IT SAVED.
+    //
+    // An upsert that returns no error is not proof that a row changed: RLS can
+    // refuse a write and report nothing, and a vault write that the database
+    // rejected would leave the panel congratulating the admin on a password
+    // that is not there. The row is re-read here — the same read the screen
+    // will do after the refresh — and the save is only reported as successful
+    // when what came back is what was sent.
     const stored = await readIntegrationSecrets<MailConfig>(supabase, "mail");
+    const missing = Object.entries(secrets)
+      .filter(([name, value]) => value !== null && stored.secrets[name] !== value)
+      .map(([name]) => name);
+    if (missing.length > 0) {
+      // Named in the log, never valued. The admin gets a code, not a list of
+      // which of their passwords failed to store.
+      console.error("integrations.mail.verify", missing.join(","));
+      return { ok: false, error: "secret_write_failed" };
+    }
+    if (stored.config.imap_host !== config.imap_host
+      || stored.config.imap_port !== config.imap_port
+      || stored.config.smtp_host !== config.smtp_host
+      || stored.config.smtp_port !== config.smtp_port
+      || stored.config.smtp_encryption !== config.smtp_encryption) {
+      console.error("integrations.mail.verify", "config_not_persisted");
+      return { ok: false, error: "not_persisted" };
+    }
+
     const mirrored = await mirrorToEmailSettings(
       supabase, adminId, config, stored.secrets.smtp_password ?? "",
     );
@@ -307,15 +342,21 @@ async function finishMailTest(
   adminId: string,
   channel: "imap" | "smtp" | "send",
   result: { ok: boolean; error?: string },
+  steps?: ProbeStep[],
 ): Promise<TestResult> {
   const code = result.ok ? undefined : classifyMailError(result.error ?? "");
   await setIntegrationStatus(supabase, "mail", result.ok ? "connected" : "error", result.error ?? null);
   await logAudit(supabase, {
     actorId: adminId, action: "integration.tested", entityType: "integration_settings", entityId: "mail",
-    after: { channel, ok: result.ok, code: code ?? null },
+    // The step ids and their codes, which are a fixed vocabulary. No host, no
+    // user, no message a server sent us.
+    after: {
+      channel, ok: result.ok, code: code ?? null,
+      steps: steps?.map((x) => `${x.id}:${x.status}${x.code ? `/${x.code}` : ""}`) ?? null,
+    },
   });
   revalidatePath(ADMIN_PATH);
-  return result.ok ? { ok: true } : { ok: false, error: code };
+  return result.ok ? { ok: true, steps } : { ok: false, error: code, steps };
 }
 
 export async function testImapAction(): Promise<TestResult> {
@@ -328,6 +369,31 @@ export async function testImapAction(): Promise<TestResult> {
       await setIntegrationStatus(supabase, "mail", "not_configured", null);
       return { ok: false, error: "not_configured" };
     }
+    // 1. SETTINGS. Refused here, before a socket is opened, because IMAP on an
+    // SMTP port cannot succeed and a timeout would only obscure why.
+    const advice = imapAdvice(config.imap_port, config.imap_secure);
+    const steps: ProbeStep[] = [{
+      id: "settings",
+      status: advice?.level === "error" ? "failed" : "ok",
+      code: advice?.level === "error" ? "port_mismatch" : undefined,
+    }];
+    if (advice?.level === "error") {
+      return finishMailTest(supabase, adminId, "imap", { ok: false, error: "imap_port_mismatch" }, steps);
+    }
+
+    // 2+3. CONNECTION and ENCRYPTION, separated: a refused socket is a host or
+    // port problem and is never the password.
+    const socket = await probeSocket(config.imap_host, config.imap_port, config.imap_secure);
+    steps.push(socket.connect, socket.tls);
+    if (socket.connect.status === "failed" || socket.tls.status === "failed") {
+      const failed = socket.connect.status === "failed" ? socket.connect : socket.tls;
+      steps.push({ id: "auth", status: "skipped" });
+      return finishMailTest(supabase, adminId, "imap", { ok: false, error: failed.code ?? "network" }, steps);
+    }
+
+    // 4. LOGIN. Only reached once the wire is proven, so a failure here really
+    // is the credential.
+    const startedAt = Date.now();
     const result = await verifyImap({
       host: config.imap_host,
       port: config.imap_port,
@@ -335,29 +401,34 @@ export async function testImapAction(): Promise<TestResult> {
       user: config.imap_user,
       pass: imapPassword,
     });
-    return finishMailTest(supabase, adminId, "imap", result);
+    steps.push({
+      id: "auth",
+      status: result.ok ? "ok" : "failed",
+      code: result.ok ? undefined : classifyMailError(result.error ?? ""),
+      ms: Date.now() - startedAt,
+    });
+    return finishMailTest(supabase, adminId, "imap", result, steps);
   } catch (e) {
     return { ok: false, error: reason(e) };
   }
 }
 
 /**
- * verifySmtp() takes the ciphertext shape email_settings stores, so the
- * plaintext is re-encrypted with APP_ENCRYPTION_KEY for the length of one call.
- * That is deliberate reuse: the transport builder, its timeouts and its
- * "auto/tls/ssl" handling are already proven by the waitlist mailer.
+ * The transport for one call, from the row the admin just saved.
+ *
+ * It used to re-encrypt this password with APP_ENCRYPTION_KEY because
+ * SmtpConfig only accepted ciphertext — which meant "Testuj SMTP" was dead
+ * whenever that key was missing, despite the password being right here in a
+ * local variable. SmtpConfig takes the plaintext now.
  */
 function smtpConfigFor(config: MailConfig, password: string): SmtpConfig | null {
-  if (!password || !encryptionAvailable()) return null;
-  const { ciphertext, iv, authTag } = encryptSecret(password);
+  if (!password) return null;
   return {
     host: config.smtp_host,
     port: config.smtp_port,
     user: config.smtp_user,
     encryption: LEGACY_ENCRYPTION[config.smtp_encryption],
-    ciphertext,
-    iv,
-    auth_tag: authTag,
+    password,
   };
 }
 
@@ -369,9 +440,35 @@ export async function testSmtpAction(): Promise<TestResult> {
       await setIntegrationStatus(supabase, "mail", "not_configured", null);
       return { ok: false, error: "not_configured" };
     }
+    const advice = smtpAdvice(config.smtp_port, config.smtp_encryption);
+    const steps: ProbeStep[] = [{
+      id: "settings",
+      status: advice?.level === "error" ? "failed" : "ok",
+      code: advice?.level === "error" ? "port_mismatch" : undefined,
+    }];
+    if (advice?.level === "error") {
+      return finishMailTest(supabase, adminId, "smtp", { ok: false, error: "smtp_port_mismatch" }, steps);
+    }
+
+    const socket = await probeSocket(config.smtp_host, config.smtp_port, config.smtp_encryption === "ssl");
+    steps.push(socket.connect, socket.tls);
+    if (socket.connect.status === "failed" || socket.tls.status === "failed") {
+      const failed = socket.connect.status === "failed" ? socket.connect : socket.tls;
+      steps.push({ id: "auth", status: "skipped" });
+      return finishMailTest(supabase, adminId, "smtp", { ok: false, error: failed.code ?? "network" }, steps);
+    }
+
     const smtp = smtpConfigFor(config, smtpPassword);
-    if (!smtp) return { ok: false, error: "encryption_unavailable" };
-    return finishMailTest(supabase, adminId, "smtp", await verifySmtp(smtp));
+    if (!smtp) return { ok: false, error: "not_configured" };
+    const startedAt = Date.now();
+    const result = await verifySmtp(smtp);
+    steps.push({
+      id: "auth",
+      status: result.ok ? "ok" : "failed",
+      code: result.ok ? undefined : classifyMailError(result.error ?? ""),
+      ms: Date.now() - startedAt,
+    });
+    return finishMailTest(supabase, adminId, "smtp", result, steps);
   } catch (e) {
     return { ok: false, error: reason(e) };
   }
@@ -389,7 +486,7 @@ export async function sendTestEmailAction(to: string): Promise<TestResult> {
       return { ok: false, error: "not_configured" };
     }
     const smtp = smtpConfigFor(config, smtpPassword);
-    if (!smtp) return { ok: false, error: "encryption_unavailable" };
+    if (!smtp) return { ok: false, error: "not_configured" };
 
     const result = await deliver(
       {

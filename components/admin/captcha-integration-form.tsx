@@ -25,9 +25,8 @@ import { integrationErrorKey } from "@/components/admin/integration-cards";
 
 type Busy = "test" | null;
 
-export function CaptchaIntegrationForm({ view, encryptionReady }: {
+export function CaptchaIntegrationForm({ view }: {
   view: IntegrationView<CaptchaConfig>;
-  encryptionReady: boolean;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -92,12 +91,12 @@ export function CaptchaIntegrationForm({ view, encryptionReady }: {
             <Input id="captcha-site" autoComplete="off" maxLength={100} value={siteKey}
               onChange={(e) => setSiteKey(e.target.value)} />
           </div>
-          <fieldset disabled={!encryptionReady} className="min-w-0 disabled:opacity-60"
-            title={encryptionReady ? undefined : t("comm.encryptionMissing")}>
+          {/* Always typeable — see mail-integration-form.tsx. */}
+          <div className="min-w-0">
             <Label htmlFor="captcha-secret">{t("comm.secretKey")}</Label>
             <SecretInput id="captcha-secret" value={secretKey} onChange={setSecretKey}
               placeholder={storedSecret ? t("comm.savedSecret") : ""} />
-          </fieldset>
+          </div>
         </div>
         <p className="text-[12px] leading-relaxed text-faint">{t("comm.captchaDisabledHint")}</p>
 

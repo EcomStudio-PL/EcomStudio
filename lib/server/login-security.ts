@@ -5,7 +5,7 @@ import type { Client } from "@/lib/services/workspace";
 import { describeUserAgent, formatWarsaw } from "@/lib/server/event-context";
 import { dispatchToken, readIntegrationSecrets, safeError, type MailConfig } from "@/lib/server/integrations";
 import { deliverHtml, type MailIdentity, type SmtpConfig } from "@/lib/server/mailer";
-import { encryptionAvailable, encryptSecret } from "@/lib/server/crypto";
+import { encryptionAvailable } from "@/lib/server/crypto";
 import { fieldsFromData, lookupPublishedTemplate, renderTemplateEmail } from "@/lib/server/message-templates";
 
 /**
@@ -325,17 +325,13 @@ export async function sendSecurityCode(
   if (!config.smtp_host.trim() || !config.smtp_user.trim() || !password) {
     return { sent: false, error: "not_configured" };
   }
-  if (!encryptionAvailable()) return { sent: false, error: "encryption_unavailable" };
-  const sealed = encryptSecret(password);
   const smtp: SmtpConfig = {
     host: config.smtp_host,
     port: config.smtp_port,
     user: config.smtp_user,
     encryption: config.smtp_encryption === "starttls" ? "tls"
       : config.smtp_encryption === "ssl" ? "ssl" : "auto",
-    ciphertext: sealed.ciphertext,
-    iv: sealed.iv,
-    auth_tag: sealed.authTag,
+    password,
   };
   const identity: MailIdentity = {
     from_name: config.from_name || "GrovBase",

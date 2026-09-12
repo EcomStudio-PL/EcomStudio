@@ -27,9 +27,8 @@ import { integrationErrorKey } from "@/components/admin/integration-cards";
 
 type Busy = "detect" | "test" | null;
 
-export function TelegramIntegrationForm({ view, encryptionReady }: {
+export function TelegramIntegrationForm({ view }: {
   view: IntegrationView<TelegramConfig>;
-  encryptionReady: boolean;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -110,12 +109,13 @@ export function TelegramIntegrationForm({ view, encryptionReady }: {
       <CardHeader title={t("comm.tgTile")} sub={t("comm.tgTileSub")} icon={Send} />
       <div className="space-y-6 p-4 pt-0 sm:p-5 sm:pt-0">
         <div className="grid gap-4 sm:grid-cols-2">
-          <fieldset disabled={!encryptionReady} className="min-w-0 disabled:opacity-60 sm:col-span-2"
-            title={encryptionReady ? undefined : t("comm.encryptionMissing")}>
+          {/* Always typeable — see mail-integration-form.tsx. The token goes to
+              Supabase Vault, so no server-side key state can lock it. */}
+          <div className="min-w-0 sm:col-span-2">
             <Label htmlFor="tg-token">{t("comm.botToken")}</Label>
             <SecretInput id="tg-token" value={botToken} onChange={setBotToken}
               placeholder={storedToken ? t("comm.savedSecret") : ""} />
-          </fieldset>
+          </div>
           <div>
             <Label htmlFor="tg-chat">{t("comm.chatId")}</Label>
             <Input id="tg-chat" autoComplete="off" inputMode="text" value={chatId}

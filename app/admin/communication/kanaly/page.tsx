@@ -1,9 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
-import { encryptionAvailable } from "@/lib/server/crypto";
 import {
-  integrationsEncryptionAvailable, readIntegration,
+  readIntegration,
   type CaptchaConfig, type MailConfig, type TelegramConfig,
 } from "@/lib/server/integrations";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -75,19 +74,12 @@ export default async function CommunicationChannels() {
     <div className="space-y-8">
       <div>
         <SectionHeader className="mb-4" title={t("comm.integrations")} sub={t("comm.integrationsSub")} />
-        <IntegrationCards
-          mail={mail} telegram={telegram} captcha={captcha}
-          encryptionReady={integrationsEncryptionAvailable()}
-        />
+        <IntegrationCards mail={mail} telegram={telegram} captcha={captcha} />
       </div>
 
       <div>
         <SectionHeader className="mb-4" title={t("launchAdmin.emailTitle")} sub={t("launchAdmin.emailSub")} />
-        <EmailSettingsForm
-          initial={initial}
-          encryptionReady={encryptionAvailable()}
-          transportOwnedByMailbox
-        />
+        <EmailSettingsForm initial={initial} transportOwnedByMailbox />
       </div>
     </div>
   );

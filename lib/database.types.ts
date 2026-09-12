@@ -3867,6 +3867,29 @@ export type Database = {
         Args: { p_token: string | null; p_event_id: string; p_amount: number }
         Returns: string
       }
+      /* The one secret store (migration 0078). Backed by Supabase Vault, so no
+         encryption key of ours is involved; writing needs only an admin
+         session, which is what makes a lost env var unable to lock an operator
+         out of their own panel. secret_read is the only one that yields
+         plaintext and it never reaches a browser. */
+      secret_put: {
+        Args: { p_name: string; p_value: string }
+        Returns: undefined
+      }
+      secret_clear: { Args: { p_name: string }; Returns: boolean }
+      secret_status: {
+        Args: { p_names: string[] }
+        Returns: {
+          name: string
+          configured: boolean
+          last_four: string | null
+          updated_at: string | null
+        }[]
+      }
+      secret_read: {
+        Args: { p_name: string; p_token?: string | null }
+        Returns: string | null
+      }
       get_engine_rules: {
         Args: never
         Returns: {

@@ -34,9 +34,8 @@ export type EmailSettingsView = {
   last_test_error_safe: string | null;
 };
 
-export function EmailSettingsForm({ initial, encryptionReady, transportOwnedByMailbox = false }: {
+export function EmailSettingsForm({ initial, transportOwnedByMailbox = false }: {
   initial: EmailSettingsView;
-  encryptionReady: boolean;
   /**
    * ONE EDITABLE SMTP CONFIGURATION, NOT TWO.
    *
@@ -78,8 +77,6 @@ export function EmailSettingsForm({ initial, encryptionReady, transportOwnedByMa
         if (password) { setPassword(""); patch("has_password", true); }
         toast.success(t("common.save"));
         router.refresh();
-      } else if (res.error === "encryption_unavailable") {
-        toast.error(t("launchAdmin.encryptionMissing"));
       } else if (res.error === "invalid_email" || res.error === "invalid_reply_to") {
         toast.error(t("launch.invalid"));
       } else toast.error(t("common.error"));
@@ -107,12 +104,6 @@ export function EmailSettingsForm({ initial, encryptionReady, transportOwnedByMa
 
   return (
     <div data-email-settings className="space-y-5">
-      {!encryptionReady && (
-        <p className="rounded-2xl border border-[rgb(var(--warning)/0.35)] bg-[rgb(var(--warning)/0.08)] px-4 py-3 text-[13px] text-warning">
-          {t("launchAdmin.encryptionMissing")}
-        </p>
-      )}
-
       <Card>
         <CardHeader title={t("launchAdmin.senderSection")} />
         <div className="grid gap-4 p-5 pt-0 sm:grid-cols-3">

@@ -8,6 +8,10 @@ import {
   saveMailIntegrationAction, sendAdminTestNotificationAction, sendTestEmailAction, testImapAction, testSmtpAction,
 } from "@/app/actions/integrations";
 import type { IntegrationView, MailConfig } from "@/lib/server/integrations";
+import {
+  IMAP_PRESET, SMTP_PRESET, imapAdvice, smtpAdvice, type Advice,
+} from "@/lib/mail/transport";
+import type { ProbeStep } from "@/lib/server/mail-probe";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
@@ -19,11 +23,20 @@ import { reportNotificationTest } from "@/components/admin/notification-prefs";
  * POCZTA — the mailbox behind the whole communications module: one IMAP
  * connection to read it and one SMTP connection to answer from it.
  *
- * Two behaviours are load-bearing. Passwords are write-only: what is stored is
- * ciphertext the browser never sees, so an empty box means KEEP and the
- * placeholder says so. And every test SAVES FIRST — the server actions read the
- * stored row, so testing what is merely on screen would report on the previous
- * settings and tell the admin nothing.
+ * Three behaviours are load-bearing.
+ *
+ * PASSWORDS ARE ALWAYS TYPEABLE. They used to be disabled whenever the server
+ * had no encryption key — which is to say, precisely when the mailbox was
+ * broken and a new password was the fix. Secrets now go to Supabase Vault
+ * (migration 0078) and an admin session is the only thing a save needs, so
+ * there is no state in which this form can refuse to accept a password.
+ *
+ * PASSWORDS ARE STILL WRITE-ONLY. The stored value never comes back to the
+ * browser; an empty box means KEEP and the placeholder says so. "Pokaż" reveals
+ * only what was typed here, in this session.
+ *
+ * EVERY TEST SAVES FIRST. The server actions read the STORED row, so testing
+ * what is merely on screen would report on the previous settings.
  *
  * Two tests, and they prove different things. "Wyślij testowy e-mail" opens an
  * SMTP session from this very form; "Wyślij testowe powiadomienie
@@ -34,9 +47,61 @@ import { reportNotificationTest } from "@/components/admin/notification-prefs";
 
 type Busy = "imap" | "smtp" | "send" | "notify" | null;
 
-export function MailIntegrationForm({ view, encryptionReady }: {
+/**
+ * WHAT THE TEST ACTUALLY DID, step by step.
+ *
+ * A single red toast saying "check host, port or credentials" names three
+ * things and identifies none — which is how a wrong PORT cost an afternoon of
+ * retyping a password that was correct. Four lines instead: settings,
+ * connection, encryption, login. The one that failed is the one to fix, and
+ * everything after it is honestly marked as not attempted rather than quietly
+ * left out.
+ *
+ * Codes only. Nothing a mail server said reaches this component.
+ */
+function StepList({ channel, steps }: { channel: "imap" | "smtp"; steps: ProbeStep[] }) {
+  const { t } = useI18n();
+  if (steps.length === 0) return null;
+  return (
+    <ul className="space-y-1.5 rounded-xl bg-raised px-4 py-3 text-[12.5px]" data-test-steps={channel}>
+      {steps.map((step) => (
+        <li key={step.id} className="flex flex-wrap items-baseline gap-x-2">
+          <span aria-hidden className={
+            step.status === "ok" ? "text-success" : step.status === "failed" ? "text-danger" : "text-faint"
+          }>
+            {step.status === "ok" ? "✓" : step.status === "failed" ? "✗" : "–"}
+          </span>
+          <span className={step.status === "failed" ? "font-medium text-danger" : undefined}>
+            {t(`comm.step.${step.id}`)}
+          </span>
+          {step.status === "failed" && step.code && (
+            <span className="text-danger">— {t(`comm.stepErr.${step.code}`)}</span>
+          )}
+          {step.status === "skipped" && <span className="text-faint">— {t("comm.step.notRun")}</span>}
+          {/* Timings are not a secret and they tell an operator the difference
+              between "refused instantly" and "hung until it gave up". */}
+          {typeof step.ms === "number" && step.status !== "skipped" && (
+            <span className="text-faint">{step.ms} ms</span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Port advice under a field. Errors read as errors; a warning is a nudge. */
+function Hint({ advice }: { advice: Advice }) {
+  const { t } = useI18n();
+  if (!advice) return null;
+  return (
+    <p className={`mt-1.5 text-[12px] leading-relaxed ${advice.level === "error" ? "text-danger" : "text-warning"}`}>
+      {t(advice.key)}
+    </p>
+  );
+}
+
+export function MailIntegrationForm({ view }: {
   view: IntegrationView<MailConfig>;
-  encryptionReady: boolean;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -52,6 +117,9 @@ export function MailIntegrationForm({ view, encryptionReady }: {
     smtp: view.hasSecret.smtp_password === true,
   });
   const [testTo, setTestTo] = useState(view.config.email);
+  /** The last per-step result for each connection, cleared when a new test
+   *  starts so a stale "✓ everything fine" can never sit under a red toast. */
+  const [steps, setSteps] = useState<{ imap: ProbeStep[]; smtp: ProbeStep[] }>({ imap: [], smtp: [] });
 
   const patch = <K extends keyof MailConfig>(key: K, value: MailConfig[K]) =>
     setV((prev) => ({ ...prev, [key]: value }));
@@ -60,6 +128,14 @@ export function MailIntegrationForm({ view, encryptionReady }: {
   /** "Same as IMAP" is resolved by the action, so the disabled field shows the
    *  value that will actually be stored instead of a stale one. */
   const smtpUser = v.smtp_same_as_imap ? v.imap_user : v.smtp_user;
+
+  // Live transport advice. Computed on every keystroke because a port typed
+  // wrong is cheap to catch here and expensive to catch as a timeout later.
+  const imapHint = imapAdvice(v.imap_port, v.imap_secure);
+  const smtpHint = smtpAdvice(v.smtp_port, v.smtp_encryption);
+  /** A save is refused by the action anyway; blocking here says WHY, next to
+   *  the field, instead of as a toast the admin has to translate back. */
+  const transportBroken = imapHint?.level === "error" || smtpHint?.level === "error";
 
   async function persist(): Promise<boolean> {
     const res = await saveMailIntegrationAction({
@@ -100,6 +176,9 @@ export function MailIntegrationForm({ view, encryptionReady }: {
       return;
     }
     setBusy(channel);
+    if (channel === "imap" || channel === "smtp") {
+      setSteps((prev) => ({ ...prev, [channel]: [] }));
+    }
     if (!(await persist())) {
       setBusy(null);
       return;
@@ -110,6 +189,9 @@ export function MailIntegrationForm({ view, encryptionReady }: {
         ? await testSmtpAction()
         : await sendTestEmailAction(testTo);
     setBusy(null);
+    if ((channel === "imap" || channel === "smtp") && res.steps) {
+      setSteps((prev) => ({ ...prev, [channel]: res.steps! }));
+    }
     if (res.ok) {
       toast.success(t(channel === "imap" ? "comm.imapOk" : channel === "smtp" ? "comm.smtpOk" : "comm.testMailSent"));
     } else {
@@ -158,10 +240,19 @@ export function MailIntegrationForm({ view, encryptionReady }: {
         </div>
 
         <section className="space-y-4 border-t border-line pt-5">
-          <p className="overline flex items-center gap-2">
-            <Inbox size={13} aria-hidden />
-            {t("comm.imap")}
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="overline flex items-center gap-2">
+              <Inbox size={13} aria-hidden />
+              {t("comm.imap")}
+            </p>
+            {/* One click to the combination that works. Typing 993 and then
+                remembering to tick SSL/TLS is two steps with one wrong state in
+                between, and that wrong state is the production bug. */}
+            <button type="button" className="text-[12px] font-medium text-accent underline-offset-2 hover:underline"
+              onClick={() => setV((p) => ({ ...p, imap_port: IMAP_PRESET.port, imap_secure: IMAP_PRESET.secure }))}>
+              {t("comm.hint.useImapPreset")}
+            </button>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <Label htmlFor="imap-host">{t("comm.host")}</Label>
@@ -171,6 +262,8 @@ export function MailIntegrationForm({ view, encryptionReady }: {
             <div>
               <Label htmlFor="imap-port">{t("comm.port")}</Label>
               <Input id="imap-port" type="number" inputMode="numeric" min={1} max={65535} value={v.imap_port}
+                aria-invalid={imapHint?.level === "error" || undefined}
+                aria-describedby="imap-port-hint"
                 onChange={(e) => patch("imap_port", Number(e.target.value))} />
             </div>
             <label className="flex items-center gap-3 pt-1 text-[13.5px] font-medium sm:pt-7">
@@ -179,27 +272,41 @@ export function MailIntegrationForm({ view, encryptionReady }: {
                 className="h-4 w-4 accent-[rgb(var(--accent))]" />
               {t("comm.sslTls")}
             </label>
+            <div className="sm:col-span-2" id="imap-port-hint">
+              <Hint advice={imapHint} />
+            </div>
             <div>
               <Label htmlFor="imap-user">{t("comm.username")}</Label>
               <Input id="imap-user" autoComplete="off" value={v.imap_user}
                 onChange={(e) => patch("imap_user", e.target.value)} />
             </div>
-            {/* A fieldset rather than a prop: it disables the reveal button too,
-                and without a server key nothing typed here could be stored. */}
-            <fieldset disabled={!encryptionReady} className="min-w-0 disabled:opacity-60"
-              title={encryptionReady ? undefined : t("comm.encryptionMissing")}>
+            {/* ALWAYS EDITABLE. This field carried `disabled={!encryptionReady}`
+                until the vault landed, which meant the panel locked the one
+                control that could end a credential outage. Nothing gates it
+                now: what is typed goes to Supabase Vault, and an admin session
+                is the whole requirement. */}
+            <div className="min-w-0">
               <Label htmlFor="imap-pass">{t("comm.password")}</Label>
               <SecretInput id="imap-pass" value={imapPassword} onChange={setImapPassword}
                 placeholder={stored.imap ? t("comm.savedSecret") : ""} />
-            </fieldset>
+            </div>
+            <div className="sm:col-span-2">
+              <StepList channel="imap" steps={steps.imap} />
+            </div>
           </div>
         </section>
 
         <section className="space-y-4 border-t border-line pt-5">
-          <p className="overline flex items-center gap-2">
-            <SendHorizonal size={13} aria-hidden />
-            {t("comm.smtp")}
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="overline flex items-center gap-2">
+              <SendHorizonal size={13} aria-hidden />
+              {t("comm.smtp")}
+            </p>
+            <button type="button" className="text-[12px] font-medium text-accent underline-offset-2 hover:underline"
+              onClick={() => setV((p) => ({ ...p, smtp_port: SMTP_PRESET.port, smtp_encryption: SMTP_PRESET.encryption }))}>
+              {t("comm.hint.useSmtpPreset")}
+            </button>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <Label htmlFor="smtp-host">{t("comm.host")}</Label>
@@ -209,6 +316,8 @@ export function MailIntegrationForm({ view, encryptionReady }: {
             <div>
               <Label htmlFor="smtp-port">{t("comm.port")}</Label>
               <Input id="smtp-port" type="number" inputMode="numeric" min={1} max={65535} value={v.smtp_port}
+                aria-invalid={smtpHint?.level === "error" || undefined}
+                aria-describedby="smtp-port-hint"
                 onChange={(e) => patch("smtp_port", Number(e.target.value))} />
             </div>
             <div>
@@ -219,6 +328,9 @@ export function MailIntegrationForm({ view, encryptionReady }: {
                 <option value="ssl">{t("comm.sslTls")}</option>
                 <option value="none">{t("comm.noneEnc")}</option>
               </Select>
+            </div>
+            <div className="sm:col-span-2" id="smtp-port-hint">
+              <Hint advice={smtpHint} />
             </div>
             <label className="flex items-start gap-3 text-[13.5px] font-medium sm:col-span-2">
               <input type="checkbox" checked={v.smtp_same_as_imap}
@@ -231,12 +343,17 @@ export function MailIntegrationForm({ view, encryptionReady }: {
               <Input id="smtp-user" autoComplete="off" value={smtpUser} disabled={v.smtp_same_as_imap}
                 onChange={(e) => patch("smtp_user", e.target.value)} />
             </div>
-            <fieldset disabled={v.smtp_same_as_imap || !encryptionReady} className="min-w-0 disabled:opacity-60"
-              title={encryptionReady ? undefined : t("comm.encryptionMissing")}>
+            {/* The only thing that may ever disable this box is the admin's own
+                "use the same credentials as IMAP" choice — never the state of
+                the server. */}
+            <fieldset disabled={v.smtp_same_as_imap} className="min-w-0 disabled:opacity-60">
               <Label htmlFor="smtp-pass">{t("comm.password")}</Label>
               <SecretInput id="smtp-pass" value={smtpPassword} onChange={setSmtpPassword}
                 placeholder={stored.smtp ? t("comm.savedSecret") : ""} />
             </fieldset>
+            <div className="sm:col-span-2">
+              <StepList channel="smtp" steps={steps.smtp} />
+            </div>
           </div>
         </section>
 
@@ -267,20 +384,24 @@ export function MailIntegrationForm({ view, encryptionReady }: {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="secondary" disabled={working} onClick={() => runTest("imap")}>
+            <Button size="sm" variant="secondary" disabled={working || imapHint?.level === "error"}
+              onClick={() => runTest("imap")}>
               {busy === "imap" ? "…" : t("comm.testImap")}
             </Button>
-            <Button size="sm" variant="secondary" disabled={working} onClick={() => runTest("smtp")}>
+            <Button size="sm" variant="secondary" disabled={working || smtpHint?.level === "error"}
+              onClick={() => runTest("smtp")}>
               {busy === "smtp" ? "…" : t("comm.testSmtp")}
             </Button>
-            <Button size="sm" variant="secondary" disabled={working} onClick={() => runTest("send")}>
+            <Button size="sm" variant="secondary" disabled={working || transportBroken}
+              onClick={() => runTest("send")}>
               {busy === "send" ? "…" : t("comm.sendTest")}
             </Button>
-            <Button size="sm" variant="secondary" disabled={working} onClick={() => void runNotificationTest()}>
+            <Button size="sm" variant="secondary" disabled={working || transportBroken}
+              onClick={() => void runNotificationTest()}>
               {busy === "notify" ? "…" : t("comm.testAdminEmail")}
             </Button>
             <span className="hidden flex-1 sm:block" />
-            <Button size="sm" disabled={working} onClick={save} data-mail-save>
+            <Button size="sm" disabled={working || transportBroken} onClick={save} data-mail-save>
               {t("comm.save")}
             </Button>
           </div>

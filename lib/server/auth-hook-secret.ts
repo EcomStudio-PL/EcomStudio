@@ -1,10 +1,9 @@
 import "server-only";
 import { randomBytes } from "crypto";
 import type { Client } from "@/lib/services/workspace";
-import {
-  decryptSecret, encryptSecret, encryptionAvailable,
-} from "@/lib/server/crypto";
+import { decryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { safeError } from "@/lib/server/integrations";
+import { putSecret, readSecret, secretName } from "@/lib/server/secret-store";
 
 /**
  * THE SEND EMAIL HOOK SECRET — where it lives, and why not in a chat window.
@@ -13,8 +12,8 @@ import { safeError } from "@/lib/server/integrations";
  * one, and this file supports both so the operator does not have to care:
  *
  *  1. GENERATED HERE (preferred). The panel presses a button, this file makes
- *     32 random bytes, seals them with APP_ENCRYPTION_KEY into app_settings,
- *     and the Management API push writes the same value into Supabase. The
+ *     32 random bytes, stores them in Supabase Vault (migration 0078), and the
+ *     Management API push writes the same value into Supabase. The
  *     secret never appears on a screen, in a chat message, in a log line or
  *     in an environment variable — nobody has to copy it anywhere, which is
  *     the only way a copied secret cannot be mislaid.
@@ -29,6 +28,13 @@ import { safeError } from "@/lib/server/integrations";
  *
  * Standard Webhooks format: `v1,whsec_<base64>`. Several may be configured at
  * once, separated by `|`, which is how a rotation happens without downtime.
+ *
+ * WHERE THE SEALED COPY LIVES. It used to be an AES envelope in app_settings,
+ * sealed with APP_ENCRYPTION_KEY — which meant the panel's "generate" button
+ * was dead whenever that variable was missing. It is a vault secret now, like
+ * every other credential GrovBase manages; the app_settings row keeps only the
+ * timestamps the panel displays. An envelope written before that change is
+ * still read, so a deployment mid-migration keeps verifying deliveries.
  */
 
 const SETTINGS_KEY = "auth_email_hook";
@@ -38,8 +44,11 @@ export function envSecret(): string | null {
   return raw ? raw : null;
 }
 
+/** The vault name for the hook secret. */
+const VAULT_NAME = secretName("auth_hook", "secret");
+
 type StoredHook = {
-  /** AES-256-GCM envelope of the secret string, app key. */
+  /** Legacy AES-256-GCM envelope, app key. Read, never written. */
   ciphertext?: string;
   iv?: string;
   auth_tag?: string;
@@ -83,6 +92,15 @@ export function generateSecret(): string {
 export async function activeSecret(supabase: Client): Promise<string> {
   const fromEnv = envSecret();
   if (fromEnv) return fromEnv;
+
+  // The vault is authoritative — a secret generated since the migration lives
+  // there and needs no key of ours. This call is made by the hook ENDPOINT,
+  // which has no admin session, so it is authorised by the proof-of-server
+  // token that readSecret attaches.
+  const fromVault = await readSecret(supabase, VAULT_NAME);
+  if (fromVault) return fromVault;
+
+  // A pre-migration envelope, for a deployment that has not regenerated yet.
   const stored = await readStored(supabase);
   if (!stored.ciphertext || !stored.iv || !stored.auth_tag) return "";
   if (!encryptionAvailable()) return "";
@@ -96,16 +114,15 @@ export async function activeSecret(supabase: Client): Promise<string> {
 /** Store a newly generated secret. The plaintext is returned to the CALLER —
  *  the server-side push — and to nobody else. */
 export async function storeSecret(supabase: Client, secret: string): Promise<boolean> {
-  if (!encryptionAvailable()) return false;
-  const sealed = encryptSecret(secret);
+  const sealed = await putSecret(supabase, VAULT_NAME, secret);
+  if (!sealed.ok) return false;
   const previous = await readStored(supabase);
+  // The envelope columns are deliberately NOT carried forward: the vault now
+  // holds the live value, and leaving a stale ciphertext beside it would make
+  // activeSecret's fallback answer with a secret that is no longer current.
   return writeStored(supabase, {
-    ...previous,
-    ciphertext: sealed.ciphertext,
-    iv: sealed.iv,
-    auth_tag: sealed.authTag,
     created_at: new Date().toISOString(),
-    pushed_at: undefined,
+    hook_uri: previous.hook_uri,
   });
 }
 
@@ -121,7 +138,8 @@ export type HookSecretState = {
   generatedAt: string | null;
   pushedAt: string | null;
   hookUri: string | null;
-  /** Can a secret be generated and sealed at all (APP_ENCRYPTION_KEY set)? */
+  /** Whether generating one can work. Always true now: an admin session is
+   *  the only requirement, and only an admin reaches this screen. */
   canGenerate: boolean;
 };
 
@@ -129,12 +147,15 @@ export type HookSecretState = {
  *  value. */
 export async function hookSecretState(supabase: Client): Promise<HookSecretState> {
   const stored = await readStored(supabase);
-  const hasStored = Boolean(stored.ciphertext && stored.iv && stored.auth_tag && encryptionAvailable());
+  // Either store counts as "we have one": the vault for anything generated
+  // since the migration, the envelope for anything older.
+  const inVault = Boolean(await readSecret(supabase, VAULT_NAME));
+  const hasLegacy = Boolean(stored.ciphertext && stored.iv && stored.auth_tag && encryptionAvailable());
   return {
-    source: envSecret() ? "env" : hasStored ? "stored" : "none",
+    source: envSecret() ? "env" : inVault || hasLegacy ? "stored" : "none",
     generatedAt: stored.created_at ?? null,
     pushedAt: stored.pushed_at ?? null,
     hookUri: stored.hook_uri ?? null,
-    canGenerate: encryptionAvailable(),
+    canGenerate: true,
   };
 }

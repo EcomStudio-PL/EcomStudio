@@ -35,7 +35,9 @@ import { TelegramIntegrationForm } from "@/components/admin/telegram-integration
 const ERROR_KEYS: Record<string, string> = {
   forbidden: "comm.err.forbidden",
   not_configured: "comm.err.notConfigured",
-  encryption_unavailable: "comm.encryptionMissing",
+  encryption_unavailable: "comm.secretUnreadable",
+  secret_write_failed: "comm.err.secretWrite",
+  not_persisted: "comm.err.notPersisted",
   decrypt_failed: "comm.err.decrypt",
   invalid_email: "comm.invalidEmail",
   // The mail form saves every field at once, so a rejected save has to name the
@@ -43,6 +45,8 @@ const ERROR_KEYS: Record<string, string> = {
   invalid_host: "comm.err.invalidHost",
   invalid_port: "comm.err.invalidPort",
   invalid_encryption: "comm.err.invalidEncryption",
+  imap_port_mismatch: "comm.hint.imapSmtpPort",
+  smtp_port_mismatch: "comm.hint.smtpImapPort",
   auth: "comm.err.auth",
   chat_not_found: "comm.err.chatNotFound",
   // A malformed id and an id Telegram does not know lead to the same fix, and
@@ -91,11 +95,10 @@ const STATUS_TONE: Record<IntegrationStatus, "success" | "neutral" | "danger"> =
 
 type OpenPanel = "mail" | "telegram" | "captcha" | null;
 
-export function IntegrationCards({ mail, telegram, captcha, encryptionReady }: {
+export function IntegrationCards({ mail, telegram, captcha }: {
   mail: IntegrationView<MailConfig>;
   telegram: IntegrationView<TelegramConfig>;
   captcha: IntegrationView<CaptchaConfig>;
-  encryptionReady: boolean;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -138,26 +141,29 @@ export function IntegrationCards({ mail, telegram, captcha, encryptionReady }: {
   }
 
   /**
-   * The two ways stored credentials become unusable look identical from the
-   * outside and have opposite remedies, so the panel says which one it is
-   * BEFORE anyone presses "test" — retyping a password that is already correct,
-   * while the real fault is a missing variable on the server, costs an
-   * afternoon. "unreadable" only fires when a key IS present and still does not
-   * open what is stored; the missing-key banner above already covers the other.
+   * LEFTOVERS FROM THE OLD STORE, AND WHY THERE IS NOW ONLY ONE SENTENCE.
+   *
+   * A credential written before migration 0078 is AES ciphertext sealed with
+   * APP_ENCRYPTION_KEY. If that key is gone (key_missing) or has been rotated
+   * (decrypt), the old value cannot be opened — and the panel used to have two
+   * different banners for that, one of which told the admin to go and restore
+   * an environment variable in a deploy platform.
+   *
+   * It is the same situation now and it has one remedy: type the password in
+   * and save. The new value goes to Supabase Vault, which needs no key of ours,
+   * so the fix is entirely inside this screen. The banner says what to do, and
+   * every field below it stays editable while it is shown — that combination is
+   * the whole point of the rewrite.
    */
-  const unreadable = encryptionReady
-    && [mail, telegram, captcha].some((v) => v.secretsState === "decrypt");
+  const staleSecret = [mail, telegram, captcha]
+    .some((v) => v.secretsState === "key_missing" || v.secretsState === "decrypt");
 
   return (
     <div className="space-y-5" data-integrations>
-      {!encryptionReady && (
-        <p className="rounded-2xl border border-[rgb(var(--warning)/0.35)] bg-[rgb(var(--warning)/0.08)] px-4 py-3 text-[13px] text-warning">
-          {t("comm.encryptionMissing")}
-        </p>
-      )}
-      {unreadable && (
-        <p className="rounded-2xl border border-[rgb(var(--warning)/0.35)] bg-[rgb(var(--warning)/0.08)] px-4 py-3 text-[13px] text-warning">
-          {t("comm.encryptionRotated")}
+      {staleSecret && (
+        <p className="rounded-2xl border border-[rgb(var(--warning)/0.35)] bg-[rgb(var(--warning)/0.08)] px-4 py-3 text-[13px] text-warning"
+          data-stale-secret>
+          {t("comm.secretUnreadable")}
         </p>
       )}
 
@@ -187,17 +193,17 @@ export function IntegrationCards({ mail, telegram, captcha, encryptionReady }: {
 
       {open === "mail" && (
         <div id="integration-panel-mail">
-          <MailIntegrationForm view={mail} encryptionReady={encryptionReady} />
+          <MailIntegrationForm view={mail} />
         </div>
       )}
       {open === "telegram" && (
         <div id="integration-panel-telegram">
-          <TelegramIntegrationForm view={telegram} encryptionReady={encryptionReady} />
+          <TelegramIntegrationForm view={telegram} />
         </div>
       )}
       {open === "captcha" && (
         <div id="integration-panel-captcha">
-          <CaptchaIntegrationForm view={captcha} encryptionReady={encryptionReady} />
+          <CaptchaIntegrationForm view={captcha} />
         </div>
       )}
     </div>

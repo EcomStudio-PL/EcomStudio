@@ -1,6 +1,7 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
 import { decryptSecret, encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
+import { readProviderKey } from "@/lib/server/provider-credentials";
 import { dispatchToken } from "@/lib/server/integrations";
 
 /**
@@ -21,19 +22,15 @@ export const EMBEDDING_MODEL = "text-embedding-3-small";
 export const EMBEDDING_DIMS = 1536;
 
 async function openaiKey(supabase: Client): Promise<{ apiKey: string; baseUrl: string } | null> {
-  if (!encryptionAvailable()) return null;
   const { data: provider } = await supabase
     .from("ai_providers").select("id").eq("slug", "openai").eq("active", true).maybeSingle();
   if (!provider) return null;
   const { data: rows } = await supabase.rpc("provider_credential_read", { p_token: dispatchToken(), p_provider_id: provider.id });
   const cred = rows?.[0];
   if (!cred) return null;
-  try {
-    return {
-      apiKey: decryptSecret(cred.encrypted_value, cred.iv, cred.auth_tag),
-      baseUrl: cred.base_url?.replace(/\/$/, "") || "https://api.openai.com",
-    };
-  } catch { return null; }
+  const apiKey = await readProviderKey(supabase, provider.id, cred);
+  if (!apiKey) return null;
+  return { apiKey, baseUrl: cred.base_url?.replace(/\/$/, "") || "https://api.openai.com" };
 }
 
 /** Batch-embed up to ~40 short texts. Returns null when embeddings are not

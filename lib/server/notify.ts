@@ -5,7 +5,7 @@ import {
   fieldsFromData, lookupPublishedTemplate, renderTemplateEmail, renderTemplateTelegram,
   type TemplateDef,
 } from "@/lib/server/message-templates";
-import { decryptWith, encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
+import { decryptWith } from "@/lib/server/crypto";
 import { dispatchToken, safeError } from "@/lib/server/integrations";
 import type { SmtpConfig } from "@/lib/server/mailer";
 import { richEntitiesEnabled, sendTelegramMessage, type TelegramKeyboard } from "@/lib/server/telegram";
@@ -464,22 +464,17 @@ async function dispatchAdminEmail(row: ClaimedRow, keyHex: string | null): Promi
     return { status: "skipped", error: "decrypt_failed" };
   }
 
-  // smtpTransport() takes the ciphertext shape email_settings stores and opens
-  // it with APP_ENCRYPTION_KEY, while the claim's envelope was sealed with the
-  // integrations key — which may be a different one. So the plaintext is
-  // re-sealed for the length of one send rather than duplicating the transport
-  // builder and its timeouts here. Without the app key there is nothing to
-  // re-seal it with, and retrying will not produce one.
-  if (!encryptionAvailable()) return { status: "skipped", error: "encryption_unavailable" };
-  const sealed = encryptSecret(password);
+  // The plaintext goes straight to the transport builder. It used to be
+  // re-sealed with APP_ENCRYPTION_KEY first, purely because SmtpConfig only
+  // accepted ciphertext, which made an admin notification undeliverable
+  // whenever that key was absent — with the password already decrypted, in
+  // this function, on the line above.
   const smtp: SmtpConfig = {
     host: row.mail.host,
     port: row.mail.port,
     user: row.mail.user,
     encryption: row.mail.encryption,
-    ciphertext: sealed.ciphertext,
-    iv: sealed.iv,
-    auth_tag: sealed.authTag,
+    password,
   };
 
   // A published e-mail template wins the same way: rendered here (through the

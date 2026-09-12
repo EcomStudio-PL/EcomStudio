@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { encryptSecret, decryptSecret, encryptionAvailable } from "@/lib/server/crypto";
+import { readProviderKey, vaultPlaceholderColumns, writeProviderKey } from "@/lib/server/provider-credentials";
 import { testProviderConnection } from "@/lib/server/provider-test";
 import { dispatchToken } from "@/lib/server/integrations";
 import { getAdapter } from "@/lib/ai/registry";
@@ -35,22 +35,33 @@ async function requireAdmin() {
   return { supabase, adminId: user.id };
 }
 
-/** Encrypt and store a provider credential. Plaintext is used only in-memory. */
+/**
+ * Store a provider credential.
+ *
+ * The key goes to Supabase Vault and the row keeps only the metadata around it
+ * — see lib/server/provider-credentials.ts. It used to be refused outright
+ * unless the server held APP_ENCRYPTION_KEY, which is precisely the dependency
+ * an operator is no longer expected to maintain: adding a Photoroom or OpenAI
+ * key is now a thing you do in this panel and nowhere else.
+ *
+ * The vault write comes FIRST. If it fails, the metadata row is left alone
+ * rather than updated to advertise a key that was never stored.
+ */
 export async function saveProviderCredentialAction(
   providerId: string, apiKey: string, baseUrl?: string
 ): Promise<Result> {
   try {
     const { supabase, adminId } = await requireAdmin();
-    if (!encryptionAvailable()) return { ok: false, error: "encryption_unavailable" };
     const key = apiKey.trim();
     if (key.length < 8) return { ok: false, error: "invalid" };
-    const { ciphertext, iv, authTag } = encryptSecret(key);
+    const sealed = await writeProviderKey(supabase, providerId, key);
+    if (!sealed.ok) {
+      return { ok: false, error: sealed.error === "forbidden" ? "forbidden" : "secret_write_failed" };
+    }
     const row = {
       provider_id: providerId,
       credential_name: "api_key",
-      encrypted_value: ciphertext,
-      iv,
-      auth_tag: authTag,
+      ...vaultPlaceholderColumns(),
       last_four: key.slice(-4),
       base_url: baseUrl?.trim() || null,
       active: true,
@@ -100,8 +111,8 @@ export async function saveProviderCredentialAction(
     });
     revalidatePath("/admin/ai/modele");
     return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error && e.message === "encryption_key_missing" ? "encryption_unavailable" : "generic" };
+  } catch {
+    return { ok: false, error: "generic" };
   }
 }
 
@@ -146,9 +157,8 @@ export async function testProviderImageAction(providerId: string): Promise<Resul
       .order("sort_order", { ascending: true }).limit(1).maybeSingle();
     if (!model) return { ok: false, error: "no_model" };
 
-    let apiKey: string;
-    try { apiKey = decryptSecret(cred.encrypted_value, cred.iv, cred.auth_tag); }
-    catch { return { ok: false, error: "decrypt_failed" }; }
+    const apiKey = await readProviderKey(supabase, providerId, cred);
+    if (!apiKey) return { ok: false, error: "no_credential" };
 
     let status = "image_ok";
     let message: string | null = null;
@@ -194,12 +204,8 @@ export async function testProviderConnectionAction(providerId: string): Promise<
       .eq("provider_id", providerId)
       .maybeSingle();
     if (!provider || !cred) return { ok: false, error: "no_credential" };
-    let apiKey: string;
-    try {
-      apiKey = decryptSecret(cred.encrypted_value, cred.iv, cred.auth_tag);
-    } catch {
-      return { ok: false, error: "decrypt_failed" };
-    }
+    const apiKey = await readProviderKey(supabase, providerId, cred);
+    if (!apiKey) return { ok: false, error: "no_credential" };
     const result = await testProviderConnection(provider.slug, apiKey, cred.base_url);
     await supabase.from("ai_provider_credentials").update({
       last_tested_at: new Date().toISOString(),

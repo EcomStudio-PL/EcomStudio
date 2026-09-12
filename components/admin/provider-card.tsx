@@ -29,8 +29,8 @@ const TEST_TONE: Record<string, "success" | "danger" | "accent" | "neutral"> = {
   invalid: "danger", unsupported: "neutral",
 };
 
-export function ProviderCard({ p, encryptionReady, locale }: {
-  p: ProviderView; encryptionReady: boolean; locale: string;
+export function ProviderCard({ p, locale }: {
+  p: ProviderView; locale: string;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -45,7 +45,7 @@ export function ProviderCard({ p, encryptionReady, locale }: {
       const res = await p2;
       if (onDone) onDone(res);
       else if (res.ok) { toast.success(t("common.save")); router.refresh(); }
-      else toast.error(res.error === "encryption_unavailable" ? t("admin.encryptionMissing") : t("common.error"));
+      else toast.error(res.error === "secret_write_failed" ? t("admin.secretWriteFailed") : t("common.error"));
     });
   }
 
@@ -151,11 +151,6 @@ export function ProviderCard({ p, encryptionReady, locale }: {
       </div>
 
       <Modal open={configOpen} onClose={() => setConfigOpen(false)} title={`${p.name} — ${t("admin.configure")}`}>
-        {!encryptionReady && (
-          <p className="mb-4 rounded-xl bg-[rgb(var(--warning)/0.12)] px-4 py-3 text-xs text-warning">
-            {t("admin.encryptionMissing")}
-          </p>
-        )}
         <div className="space-y-4">
           <div>
             <Label htmlFor={`key-${p.id}`}>{t("admin.apiKey")}</Label>
@@ -169,10 +164,13 @@ export function ProviderCard({ p, encryptionReady, locale }: {
           </div>
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={() => setConfigOpen(false)}>{t("common.cancel")}</Button>
-            <Button disabled={pending || key.trim().length < 8 || !encryptionReady}
+            {/* Nothing about the server can disable this. Saving a provider key
+                needs an admin session and a vault, both of which are present
+                whenever this modal is open. */}
+            <Button disabled={pending || key.trim().length < 8}
               onClick={() => run(saveProviderCredentialAction(p.id, key, baseUrl), (res) => {
                 if (res.ok) { toast.success(t("admin.credentialSaved")); setKey(""); setConfigOpen(false); router.refresh(); }
-                else toast.error(res.error === "encryption_unavailable" ? t("admin.encryptionMissing") : `${t("common.error")}${res.error ? ` (${res.error})` : ""}`);
+                else toast.error(res.error === "secret_write_failed" ? t("admin.secretWriteFailed") : `${t("common.error")}${res.error ? ` (${res.error})` : ""}`);
               })}>
               {p.credential ? t("admin.replaceCredential") : t("admin.saveCredential")}
             </Button>

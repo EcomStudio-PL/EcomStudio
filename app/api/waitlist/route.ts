@@ -4,7 +4,7 @@ import { rateLimit, clientIp } from "@/lib/server/rate-limit";
 import { deliver, deliverHtml, type SmtpConfig } from "@/lib/server/mailer";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
 import { collectEventContext, contextRows, eventDataFrom, formatWarsaw } from "@/lib/server/event-context";
-import { dispatchToken } from "@/lib/server/integrations";
+import { dispatchToken, readIntegrationSecrets, type MailConfig } from "@/lib/server/integrations";
 import {
   defaultTemplate, lookupPublishedTemplate, renderTemplateEmail,
 } from "@/lib/server/message-templates";
@@ -122,6 +122,19 @@ export async function POST(request: Request) {
   if (result.mail) {
     const { from_name, from_email, reply_to, subject, body, smtp } = result.mail;
     const identity = { from_name, from_email, reply_to };
+    // THE PASSWORD, PREFERABLY FROM THE VAULT. waitlist_subscribe hands back
+    // the email_settings copy, which is AES ciphertext sealed with
+    // APP_ENCRYPTION_KEY — the exact thing an operator is no longer expected to
+    // maintain. What the admin last typed into Komunikacja → Kanały lives in
+    // Supabase Vault instead, so that is tried first and the ciphertext stays
+    // as the fallback for a deployment that has not re-saved yet.
+    //
+    // This is an anonymous request with no admin to authorise it, so the read
+    // is authorised by the proof-of-server token (secret_read → server_call_ok).
+    const mailSecrets = await readIntegrationSecrets<MailConfig>(supabase, "mail");
+    const vaultPassword = mailSecrets.secrets.smtp_password
+      ?? (mailSecrets.config.smtp_same_as_imap ? mailSecrets.secrets.imap_password : undefined);
+    if (vaultPassword) smtp.password = vaultPassword;
     const now = new Date();
     const data = {
       first_name: firstName,

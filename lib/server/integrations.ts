@@ -3,6 +3,12 @@ import { createHash } from "crypto";
 import type { Json } from "@/lib/database.types";
 import type { Client } from "@/lib/services/workspace";
 import { decryptWith, encryptWith } from "@/lib/server/crypto";
+// Imported as well as re-exported below: `export … from` forwards a name
+// without binding it locally, and this module calls dispatchToken itself.
+import { dispatchToken } from "@/lib/server/server-token";
+import {
+  clearSecret, putSecret, readSecrets, secretName, secretStatuses,
+} from "@/lib/server/secret-store";
 
 /**
  * COMMUNICATION INTEGRATIONS — the single door to the mail and Telegram rows.
@@ -112,9 +118,13 @@ export type IntegrationView<C> = {
    *  no extra query, and it is what lets the panel say at rest that a mailbox
    *  is configured but unreadable instead of waiting for a failed test. */
   secretsState: SecretsState;
-  /** One entry per secret this integration owns — true means a ciphertext is
-   *  stored. The plaintext itself never leaves the server. */
+  /** One entry per secret this integration owns — true means something is
+   *  stored, in the vault or in the legacy bag. The plaintext itself never
+   *  leaves the server. */
   hasSecret: Record<string, boolean>;
+  /** When each secret was last written, for the "zapisane <data>" line. A
+   *  timestamp is not credential material; the value behind it never ships. */
+  secretUpdatedAt: Record<string, string | null>;
 };
 
 /** The secret names each integration owns; they are also the jsonb keys. */
@@ -276,17 +286,36 @@ function bagState(bag: SecretBag): SecretsState {
 export async function readIntegration<C>(supabase: Client, type: IntegrationType): Promise<IntegrationView<C>> {
   const row = await readRow(supabase, type);
   const bag = readBag(row?.secrets);
+  const names = SECRET_NAMES[type];
+
+  // THE VAULT IS THE ANSWER; the legacy bag is only what is left over. A secret
+  // an operator has saved since 0078 is stored by Supabase and needs no key of
+  // ours, so it can never be the reason this panel reports trouble.
+  const vault = await secretStatuses(supabase, names.map((f) => secretName(type, f)));
+
   const hasSecret: Record<string, boolean> = {};
-  for (const name of SECRET_NAMES[type]) hasSecret[name] = Boolean(bag[name]);
+  const secretUpdatedAt: Record<string, string | null> = {};
+  const legacyOnly: SecretBag = {};
+  for (const name of names) {
+    const v = vault.get(secretName(type, name));
+    const inVault = v?.configured === true;
+    hasSecret[name] = inVault || Boolean(bag[name]);
+    secretUpdatedAt[name] = inVault ? v!.updatedAt : null;
+    // Only a field the vault does NOT answer for can still be blocked by a
+    // missing or rotated encryption key.
+    if (!inVault && bag[name]) legacyOnly[name] = bag[name]!;
+  }
+
   return {
     type,
-    secretsState: bagState(bag),
+    secretsState: bagState(legacyOnly),
     enabled: row?.enabled === true,
     config: { ...defaultsFor(type), ...asRecord(row?.config) } as C,
     status: asStatus(row?.status),
     last_tested_at: row?.last_tested_at ?? null,
     last_error_safe: row?.last_error_safe ?? null,
     hasSecret,
+    secretUpdatedAt,
   };
 }
 
@@ -340,28 +369,59 @@ export async function readIntegrationSecrets<C>(
   const row = await readRowAnyContext(supabase, type);
   const config = { ...defaultsFor(type), ...asRecord(row?.config) } as C;
   const enabled = row?.enabled === true;
+
+  // THE VAULT FIRST. Anything an operator has saved since migration 0078 lives
+  // in Supabase Vault and needs no key of ours to open. Whatever it returns is
+  // authoritative — a freshly typed password must beat a stale ciphertext.
+  const wanted = SECRET_NAMES[type];
+  const fromVault = await readSecrets(supabase, wanted.map((f) => secretName(type, f)));
+  const vaultSecrets: Record<string, string> = {};
+  for (const field of wanted) {
+    const v = fromVault[secretName(type, field)];
+    if (v) vaultSecrets[field] = v;
+  }
+
   const bag = readBag(row?.secrets);
+  // Everything the vault already answered for is settled; the legacy bag is
+  // only consulted for the fields it did not.
+  const legacyNames = Object.keys(bag).filter((n) => !(n in vaultSecrets));
+  if (legacyNames.length === 0) {
+    return {
+      enabled, config, secrets: vaultSecrets,
+      state: "ok",
+      unreadable: [],
+    };
+  }
+
   const keyHex = integrationsKeyHex();
   // No key at all. Only report it as the CAUSE when there was actually
   // something to open — with an empty row the honest answer is still "nothing
   // stored", and blaming the key would send the operator hunting for a
   // non-problem.
-  const names = Object.keys(bag);
   if (!keyHex) {
+    // Legacy ciphertext we cannot open, and no vault copy to fall back on. This
+    // is no longer a dead end: the panel keeps its password fields editable and
+    // a newly typed value goes straight to the vault, so the operator can fix
+    // it from the panel instead of from a deploy environment.
     return {
-      enabled, config, secrets: {},
-      state: names.length > 0 ? "key_missing" : "ok",
-      unreadable: names,
+      enabled, config, secrets: vaultSecrets,
+      state: "key_missing",
+      unreadable: legacyNames,
     };
   }
-  const secrets: Record<string, string> = {};
+  const secrets: Record<string, string> = { ...vaultSecrets };
   try {
-    for (const [name, blob] of Object.entries(bag)) secrets[name] = decryptWith(keyHex, blob.c, blob.i, blob.t);
+    for (const name of legacyNames) {
+      const blob = bag[name]!;
+      secrets[name] = decryptWith(keyHex, blob.c, blob.i, blob.t);
+    }
   } catch {
-    // All or nothing: half-decrypted credentials would look "configured" and
-    // then fail at the provider with a far more confusing error.
+    // All or nothing for the LEGACY half: half-decrypted credentials would look
+    // "configured" and then fail at the provider with a far more confusing
+    // error. Anything the vault already answered for survives — it was never
+    // sealed with this key and a bad key says nothing about it.
     console.error("integrations.decrypt", type);
-    return { enabled, config, secrets: {}, state: "decrypt", unreadable: names };
+    return { enabled, config, secrets: vaultSecrets, state: "decrypt", unreadable: legacyNames };
   }
   return { enabled, config, secrets, state: "ok", unreadable: [] };
 }
@@ -399,21 +459,37 @@ export async function writeIntegration<C>(
   type: IntegrationType,
   patch: { config?: Partial<C>; enabled?: boolean; secrets?: Record<string, string | null> },
 ): Promise<{ ok: boolean; error?: string }> {
-  const wantsNewSecret = Object.values(patch.secrets ?? {}).some((v) => typeof v === "string" && v !== "");
-  if (wantsNewSecret && !integrationsEncryptionAvailable()) return { ok: false, error: "encryption_unavailable" };
-
   const row = await readRow(supabase, type);
   const config = { ...defaultsFor(type), ...asRecord(row?.config) };
   for (const [key, value] of Object.entries(asRecord(patch.config))) {
     if (value !== undefined) config[key] = value;
   }
 
-  let secrets: SecretBag;
-  try {
-    secrets = mergeSecrets(readBag(row?.secrets), patch.secrets);
-  } catch (e) {
-    return { ok: false, error: safeError(e) };
+  // SECRETS GO TO THE VAULT, NOT INTO THIS ROW.
+  //
+  // A typed value is sealed by Supabase (secret_put); an explicit null removes
+  // it; absent or empty means KEEP, which is what an untouched password field
+  // posts. Nothing here needs an encryption key, which is the entire point:
+  // the old path refused to save at all when APP_ENCRYPTION_KEY was missing,
+  // so the outage disabled the only control that could end it.
+  //
+  // The legacy ciphertext bag on the row is left exactly as it is. It is still
+  // read as a fallback (readIntegrationSecrets) for a deployment whose secrets
+  // have not been re-entered yet, and overwriting it here would destroy the one
+  // copy that an operator with the old key could still recover.
+  for (const [field, value] of Object.entries(patch.secrets ?? {})) {
+    const vaultName = secretName(type, field);
+    if (value === null) {
+      await clearSecret(supabase, vaultName);
+      continue;
+    }
+    if (typeof value !== "string" || value.trim() === "") continue;
+    const stored = await putSecret(supabase, vaultName, value);
+    if (!stored.ok) {
+      return { ok: false, error: stored.error === "forbidden" ? "forbidden" : "secret_write_failed" };
+    }
   }
+  const secrets: SecretBag = readBag(row?.secrets);
 
   // Who changed it, for the audit trail the admin panel shows. An anonymous
   // caller can never reach this write anyway — RLS keeps the table admin-only.
@@ -468,11 +544,15 @@ export async function setIntegrationStatus(
  * sha256(token): holding the anon key — which every browser has — is therefore
  * not enough to claim an outbox row or read the mail credentials.
  */
-export function dispatchToken(): string | null {
-  const keyHex = integrationsKeyHex();
-  if (!keyHex) return null;
-  return createHash("sha256").update(`grovbase-notify-dispatch:${keyHex}`).digest("hex");
-}
+/**
+ * MOVED, NOT CHANGED. The derivation now lives in lib/server/server-token.ts
+ * because the secret store needs it too and importing this module from there
+ * would be a cycle. Re-exported here so the thirteen existing callers keep
+ * working untouched. It also now accepts GROVBASE_SERVER_KEY — the token stopped
+ * being an encryption key when the secrets moved to Supabase Vault, and its one
+ * remaining job is proving identity.
+ */
+export { dispatchToken, serverSecret, serverTokenAvailable } from "@/lib/server/server-token";
 
 /** Publish sha256(token) so the SECURITY DEFINER functions can verify it.
  *  Idempotent, and it merges into the "notifications" row rather than

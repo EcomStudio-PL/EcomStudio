@@ -12,8 +12,22 @@ import { sendEmail } from "@/lib/server/email";
  * it is an explicit act; Resend is the fallback, and with neither the send is
  * an honest no-op (`{sent:false}`) that never blocks the business logic.
  *
- * The password never exists at rest: the row holds AES-256-GCM ciphertext and
- * it is decrypted here, in the server process, for the duration of one send.
+ * THE PASSWORD NEVER EXISTS AT REST, and there are now two ways it reaches
+ * this module.
+ *
+ * `password` is for a caller that ALREADY HOLDS the plaintext — it read it from
+ * Supabase Vault a moment ago, or the admin just typed it into the form. Four
+ * callers are in that position, and until this field existed every one of them
+ * had to re-encrypt the password with APP_ENCRYPTION_KEY purely to satisfy the
+ * ciphertext shape below, then have it decrypted again three lines later. That
+ * round trip is why testing SMTP, sending a login code, mailing an admin
+ * notification and sending an authentication e-mail ALL failed when the deploy
+ * key went missing — not because anything was encrypted with it, but because
+ * the type demanded a ciphertext and there was no key to make one with.
+ *
+ * The ciphertext triple stays for the callers that genuinely read ciphertext
+ * from a row: email_settings and the waitlist_subscribe payload. Those are
+ * legacy at-rest secrets and they are opened here, for one send, as before.
  */
 
 export type SmtpConfig = {
@@ -21,9 +35,12 @@ export type SmtpConfig = {
   port: number;
   user: string;
   encryption: "auto" | "tls" | "ssl";
-  ciphertext: string | null;
-  iv: string | null;
-  auth_tag: string | null;
+  /** The plaintext, when the caller has it. Preferred over the ciphertext. */
+  password?: string | null;
+  /** Legacy at-rest form: AES-256-GCM sealed with APP_ENCRYPTION_KEY. */
+  ciphertext?: string | null;
+  iv?: string | null;
+  auth_tag?: string | null;
 };
 
 export type MailIdentity = {
@@ -41,14 +58,25 @@ function fromHeader(identity: MailIdentity): string | null {
   return name ? `${name} <${email}>` : email;
 }
 
-/** A transport built from the admin's row, or null when SMTP is not set up
- *  (no host, no password, or no key to decrypt it with). */
-export function smtpTransport(cfg: SmtpConfig | null) {
-  if (!cfg?.host?.trim() || !cfg.ciphertext || !cfg.iv || !cfg.auth_tag) return null;
-  if (!encryptionAvailable()) return null;
-  let password: string;
-  try { password = decryptSecret(cfg.ciphertext, cfg.iv, cfg.auth_tag); }
+/**
+ * The password for one send: the plaintext the caller passed, or the legacy
+ * ciphertext opened with the app key. Null when neither is usable — a missing
+ * app key only matters for the second case now.
+ */
+function smtpPassword(cfg: SmtpConfig): string | null {
+  const direct = cfg.password?.trim();
+  if (direct) return direct;
+  if (!cfg.ciphertext || !cfg.iv || !cfg.auth_tag || !encryptionAvailable()) return null;
+  try { return decryptSecret(cfg.ciphertext, cfg.iv, cfg.auth_tag); }
   catch { return null; }
+}
+
+/** A transport built from the admin's row, or null when SMTP is not set up
+ *  (no host, or no password this process can get at). */
+export function smtpTransport(cfg: SmtpConfig | null) {
+  if (!cfg?.host?.trim()) return null;
+  const password = smtpPassword(cfg);
+  if (!password) return null;
   const port = cfg.port || 587;
   // "auto" follows the port the way every mail client does: 465 is implicit
   // TLS, everything else upgrades with STARTTLS.
