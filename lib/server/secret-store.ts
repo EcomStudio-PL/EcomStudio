@@ -132,15 +132,35 @@ export async function readSecret(supabase: Client, name: string): Promise<string
   return typeof data === "string" && data !== "" ? data : null;
 }
 
-/** Several at once, for an integration that owns more than one field. */
+/**
+ * Several at once, in ONE round trip.
+ *
+ * An integration owns more than one credential and this runs where latency is
+ * a person waiting: the captcha check inside a signup, the SMTP password
+ * inside a login attempt, the waitlist confirmation inside a visitor's POST.
+ * One call per name would be one network hop per name on all three.
+ *
+ * A name with nothing stored is simply absent from the result — the same
+ * answer an unauthorised caller gets, so the shape of the reply still reveals
+ * nothing about what exists.
+ */
 export async function readSecrets(
   supabase: Client, names: readonly string[],
 ): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
-  const values = await Promise.all(names.map((n) => readSecret(supabase, n)));
-  names.forEach((n, i) => {
-    const v = values[i];
-    if (v) out[n] = v;
+  if (names.length === 0) return out;
+
+  const { data, error } = await supabase.rpc("secret_read_many", {
+    p_names: [...names],
+    p_token: dispatchToken(),
   });
+  if (error) {
+    // The code only: an RPC error can echo the parameters that produced it.
+    console.error("secretStore.readMany", error.code ?? "rpc_error");
+    return out;
+  }
+  for (const row of (data ?? []) as { name: string; value: string | null }[]) {
+    if (row.value) out[row.name] = row.value;
+  }
   return out;
 }

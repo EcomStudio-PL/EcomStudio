@@ -3890,6 +3890,10 @@ export type Database = {
         Args: { p_name: string; p_token?: string | null }
         Returns: string | null
       }
+      secret_read_many: {
+        Args: { p_names: string[]; p_token?: string | null }
+        Returns: { name: string; value: string | null }[]
+      }
       get_engine_rules: {
         Args: never
         Returns: {
