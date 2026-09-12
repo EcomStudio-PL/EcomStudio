@@ -5,7 +5,23 @@
  * (all access is enforced by Row Level Security). Never put a service-role key here.
  */
 const ENV_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const ENV_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+/**
+ * TWO NAMES FOR ONE KEY, and both are accepted deliberately.
+ *
+ * Supabase renamed this credential: their dashboard and current documentation
+ * call it the PUBLISHABLE key, while every older setup guide — including this
+ * project's own — calls it the ANON key. It is the same value either way.
+ *
+ * Reading only one name is a trap that costs an afternoon, because getting it
+ * wrong does not fail: the fallback below takes over and the deployment quietly
+ * talks to the DEV project. That happened to a preview of this very change, and
+ * it looked exactly like a working deployment — the pages rendered, they were
+ * simply reading a different database. So both spellings are read, and the
+ * environment always wins over the fallback.
+ */
+const ENV_ANON_KEY =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 /**
  * Whether the connection details came from the environment rather than the
@@ -31,8 +47,9 @@ export const SUPABASE_CONFIG_FROM_ENV = Boolean(ENV_URL && ENV_ANON_KEY);
 if (process.env.VERCEL_ENV === "production" && !SUPABASE_CONFIG_FROM_ENV) {
   throw new Error(
     "Supabase is not configured for production. NEXT_PUBLIC_SUPABASE_URL and " +
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY must both be set for a production deployment; " +
-    "refusing to fall back to the development project.",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) must " +
+    "both be set for a production deployment; refusing to fall back to the " +
+    "development project.",
   );
 }
 

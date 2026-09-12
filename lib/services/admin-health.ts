@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import { serverTokenAvailable } from "@/lib/server/server-token";
+import { SUPABASE_CONFIG_FROM_ENV } from "@/lib/supabase/config";
 
 type Client = SupabaseClient<Database>;
 
@@ -62,8 +63,17 @@ export async function readSystemHealth(supabase: Client): Promise<HealthCheck[]>
     {
       key: "database",
       label: "Supabase",
-      state: db.error == null ? "ok" : "fail",
-      detail: db.error == null ? `${db.count ?? 0} profiles` : "query_failed",
+      // WHICH database, not just whether one answered. When the connection
+      // details are missing, lib/supabase/config.ts falls back to the DEV
+      // project — a real production build refuses to do that, but a preview
+      // will, and a preview reading the wrong database looks exactly like one
+      // reading the right database. The row says which.
+      state: db.error != null ? "fail" : SUPABASE_CONFIG_FROM_ENV ? "ok" : "fail",
+      detail: db.error != null
+        ? "query_failed"
+        : SUPABASE_CONFIG_FROM_ENV
+          ? `${db.count ?? 0} profiles`
+          : `${db.count ?? 0} profiles — fallback DEV, brak NEXT_PUBLIC_SUPABASE_ANON_KEY`,
       checkedAt: now,
     },
     runtimeCheck(),
