@@ -2201,7 +2201,7 @@
       },
       "flatlay": {
         "name": "Leżący produkt",
-        "sub": "Ubranie rozłożone płasko i sfotografowane z góry.",
+        "sub": "Ułóż produkt estetycznie w formie flat lay.",
         "cta": "Generuj",
         "empty": "Dodaj zdjęcia i kliknij „Generuj”, aby przygotować ujęcia leżącego produktu."
       },
@@ -2222,19 +2222,19 @@
       },
       "ghostMannequin": {
         "name": "Niewidzialny manekin",
-        "sub": "Ubranie prezentowane tak, jakby nosiła je niewidzialna sylwetka.",
+        "sub": "Profesjonalne zdjęcie ubrania bez widocznego modela.",
         "cta": "Generuj",
         "empty": "Dodaj zdjęcia i kliknij „Generuj”, aby przygotować zdjęcia na niewidzialnym manekinie."
       },
       "iron": {
         "name": "Wyprasuj",
-        "sub": "Wygładzone zagniecenia i fałdy, bez zmiany kroju.",
+        "sub": "Wygładź zagniecenia i popraw prezentację ubrania.",
         "cta": "Generuj",
         "empty": "Dodaj zdjęcia i kliknij „Generuj”, aby wygładzić zagniecenia."
       },
       "changePerson": {
         "name": "Zmiana postaci",
-        "sub": "To samo ubranie na innej osobie.",
+        "sub": "Przenieś ubranie lub stylizację na wybraną postać.",
         "cta": "Generuj",
         "empty": "Dodaj zdjęcie referencyjne i zdjęcie modela, a potem kliknij „Generuj”."
       }

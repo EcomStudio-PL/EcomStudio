@@ -6,7 +6,7 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { listAssets } from "@/lib/services/generator";
-import { CATEGORIES, findCategory } from "@/lib/categories";
+import { CATEGORIES, findCategory, offeredWorkflows } from "@/lib/categories";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
 import { getWallet } from "@/lib/services/credits";
 import { CategoryHeader } from "@/components/category/category-header";
@@ -48,7 +48,11 @@ export default async function CategoryPage({ params }: { params: Promise<{ cat: 
     signed?.forEach((s) => { if (s.signedUrl && s.path) urls.set(s.path, s.signedUrl); });
   }
   const thumbs = paths.map((p) => urls.get(p) ?? null);
-  const previews = category.workflows.map((_, i) => thumbs[i] ?? null);
+  // One thumbnail per CARD, so the list that is indexed here is the same list
+  // the grid renders — a retired preset must not silently shift the previews.
+  const offered = offeredWorkflows(category);
+  const previews = offered.map((_, i) => thumbs[i] ?? null);
+  const firstWorkflow = offered[0] ?? category.workflows[0];
 
   // Per-shot price at the default model, so a preset card can say what it
   // will cost before the user opens the generator.
@@ -78,7 +82,7 @@ export default async function CategoryPage({ params }: { params: Promise<{ cat: 
       >
         {!category.soon && (
           <>
-            <Link href={`/k/${category.slug}/${category.workflows[0].key}`}
+            <Link href={`/k/${category.slug}/${firstWorkflow.key}`}
               className="cta inline-flex h-11 items-center gap-2 rounded-xl px-5 text-sm font-semibold">
               <Sparkles size={16} aria-hidden />
               {t("catpage.openGenerator")}

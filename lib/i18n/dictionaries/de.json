@@ -2201,7 +2201,7 @@
       },
       "flatlay": {
         "name": "Liegendes Produkt",
-        "sub": "Das Kleidungsstück flach ausgelegt und von oben fotografiert.",
+        "sub": "Das Produkt ästhetisch als Flat Lay arrangieren.",
         "cta": "Generieren",
         "empty": "Fotos hinzufügen und „Generieren“ drücken, um Flat-Lay-Aufnahmen zu erzeugen."
       },
@@ -2222,19 +2222,19 @@
       },
       "ghostMannequin": {
         "name": "Unsichtbare Puppe",
-        "sub": "Das Kleidungsstück, als trüge es eine unsichtbare Figur.",
+        "sub": "Ein professionelles Kleidungsfoto ohne sichtbares Model.",
         "cta": "Generieren",
         "empty": "Fotos hinzufügen und „Generieren“ drücken, um Aufnahmen mit unsichtbarer Puppe zu erzeugen."
       },
       "iron": {
         "name": "Bügeln",
-        "sub": "Falten und Knitter geglättet, der Schnitt bleibt unverändert.",
+        "sub": "Falten glätten und die Präsentation des Kleidungsstücks verbessern.",
         "cta": "Generieren",
         "empty": "Fotos hinzufügen und „Generieren“ drücken, um Falten zu glätten."
       },
       "changePerson": {
         "name": "Person wechseln",
-        "sub": "Dasselbe Kleidungsstück an einer anderen Person.",
+        "sub": "Kleidungsstück oder Styling auf eine gewählte Person übertragen.",
         "cta": "Generieren",
         "empty": "Referenzfoto und Modelfoto hinzufügen, dann „Generieren“ drücken."
       }

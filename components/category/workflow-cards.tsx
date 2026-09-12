@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, Layers, Ratio } from "lucide-react";
-import type { Category } from "@/lib/categories";
+import { offeredWorkflows, type Category } from "@/lib/categories";
 import { Media } from "@/components/mobile/media";
 import { cn } from "@/lib/utils";
 
@@ -34,7 +34,9 @@ export function WorkflowCards({ category, t, previews, costPerShot }: {
       className="stagger grid grid-cols-2 gap-2.5 [&>*]:min-w-0 sm:gap-3 md:grid-cols-3 xl:grid-cols-5 xl:gap-3.5"
       style={{ ["--cat" as string]: rgb, ["--cat2" as string]: rgb2 }}
     >
-      {category.workflows.map((w, i) => {
+      {/* What the category OFFERS, not everything it can still resolve — a
+          retired preset keeps its route and its copy but does not get a card. */}
+      {offeredWorkflows(category).map((w, i) => {
         const Icon = w.icon;
         const preview = previews?.[i] ?? null;
         const disabled = w.soon || category.soon;

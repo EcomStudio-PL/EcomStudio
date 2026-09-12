@@ -54,6 +54,21 @@ export type Workflow = {
    * The configuration itself lives in lib/fashion-tools.ts, keyed by `key`.
    */
   tool?: boolean;
+  /**
+   * KEPT, BUT NOT OFFERED.
+   *
+   * A workflow the category no longer presents as one of its jobs: it is
+   * absent from the catalogue on /k/{cat} and from the switcher inside a
+   * workspace. Everything else about it still works — its dictionary entries,
+   * its style directive and its route — so an old bookmark lands on a working
+   * screen instead of a 404, and nothing that referenced the key has to be
+   * hunted down.
+   *
+   * This is deliberately NOT `soon`. "Wkrótce" is a promise that something is
+   * coming; these are presets whose job the four Moda tools took over, and
+   * claiming they are on the way would be a lie on the card.
+   */
+  hidden?: boolean;
 };
 
 export type Category = {
@@ -84,11 +99,15 @@ export const CATEGORIES: readonly Category[] = [
       { key: "flatlay", icon: Grid2X2, ratio: "1:1", shots: 5, styleKey: "wf.moda.flatlay.style", tool: true },
       { key: "iron", icon: Wind, ratio: "1:1", shots: 5, styleKey: "wf.moda.iron.style", tool: true },
       { key: "changePerson", icon: UserRoundCog, ratio: "1:1", shots: 5, styleKey: "wf.moda.changePerson.style", tool: true },
-      // The prompt presets that were here before, untouched.
-      { key: "onModel", icon: Users, ratio: "4:5", shots: 6, styleKey: "wf.moda.onModel.style" },
-      { key: "street", icon: Camera, ratio: "4:5", shots: 6, styleKey: "wf.moda.street.style" },
-      { key: "editorial", icon: Sparkles, ratio: "9:16", shots: 5, styleKey: "wf.moda.editorial.style" },
-      { key: "detail", icon: ImageIcon, ratio: "1:1", shots: 5, styleKey: "wf.moda.detail.style" },
+      // The prompt presets that were here before. They keep working — their
+      // routes resolve and their style directives are intact — but Moda is
+      // now a category of four named tools, so they are no longer offered as
+      // its jobs. Removing them outright would break old links and delete
+      // copy in three languages for no gain.
+      { key: "onModel", icon: Users, ratio: "4:5", shots: 6, styleKey: "wf.moda.onModel.style", hidden: true },
+      { key: "street", icon: Camera, ratio: "4:5", shots: 6, styleKey: "wf.moda.street.style", hidden: true },
+      { key: "editorial", icon: Sparkles, ratio: "9:16", shots: 5, styleKey: "wf.moda.editorial.style", hidden: true },
+      { key: "detail", icon: ImageIcon, ratio: "1:1", shots: 5, styleKey: "wf.moda.detail.style", hidden: true },
     ],
   },
   {
@@ -141,6 +160,17 @@ export const CATEGORIES: readonly Category[] = [
 ] as const;
 
 export const CATEGORY_BY_SLUG = new Map(CATEGORIES.map((c) => [c.slug, c]));
+
+/**
+ * The workflows a category OFFERS — the catalogue on /k/{cat} and the switcher
+ * inside a workspace read this, never `category.workflows`.
+ *
+ * One list, one place: a card grid that showed a retired preset the switcher
+ * did not, or the reverse, would be two answers to the same question.
+ */
+export function offeredWorkflows(c: Category): readonly Workflow[] {
+  return c.workflows.filter((w) => !w.hidden);
+}
 
 /** Legacy `?cat=` values used by earlier builds still resolve. */
 export function findCategory(slug: string | undefined | null): Category | null {

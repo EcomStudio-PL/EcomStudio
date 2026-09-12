@@ -20,6 +20,7 @@ process.env.APP_ENCRYPTION_KEY = "e".repeat(64); // throwaway, never a real one
 
 import { readFileSync } from "fs";
 import { FASHION_TOOLS, FASHION_HINT_MAX, fashionTool } from "../lib/fashion-tools";
+import { CATEGORIES, offeredWorkflows } from "../lib/categories";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string) {
@@ -208,6 +209,65 @@ check("the four presets that were already in Moda are still there",
   ["onModel", "street", "editorial", "detail"].every((k) => categories.includes(`key: "${k}"`)));
 check("no other category gained a tool",
   (categories.match(/tool: true/g) ?? []).length === 4);
+
+/* ── J. WHAT MODA OFFERS IS EXACTLY THE FOUR TOOLS ───────────────────────
+ * The category's public face — the catalogue on /k/moda and the switcher
+ * inside a workspace — must list the four tools and nothing else. The retired
+ * presets stay in the registry (section I) so their routes and their copy
+ * survive; what this section pins is that they are no longer OFFERED, and that
+ * both surfaces answer that question from the same list. */
+console.log("\nJ. THE CATEGORY OFFERS FOUR TOOLS, IN ORDER");
+
+const moda = CATEGORIES.find((c) => c.key === "moda")!;
+const offered = offeredWorkflows(moda);
+const EXPECTED = ["ghostMannequin", "flatlay", "iron", "changePerson"];
+
+check("Moda offers exactly four workflows",
+  offered.length === 4, `got ${offered.length}`);
+check("and they are the four tools, in the briefed order",
+  offered.map((w) => w.key).join(",") === EXPECTED.join(","), offered.map((w) => w.key).join(","));
+check("every offered Moda workflow is a tool",
+  offered.every((w) => w.tool === true && fashionTool(w.key) !== null));
+check("the retired presets are hidden, not deleted and not faked as 'soon'",
+  ["onModel", "street", "editorial", "detail"].every((k) => {
+    const w = moda.workflows.find((x) => x.key === k);
+    return !!w && w.hidden === true && !w.soon;
+  }));
+check("no other category hides anything",
+  CATEGORIES.filter((c) => c.key !== "moda").every((c) => c.workflows.every((w) => !w.hidden)));
+
+const cards = stripComments(readFileSync("components/category/workflow-cards.tsx", "utf8"));
+check("the catalogue renders the offered list, not the whole registry",
+  /offeredWorkflows\(category\)\.map\(/.test(cards) && !/category\.workflows\.map\(/.test(cards));
+check("the switcher renders the offered list too",
+  /offeredWorkflows\(category\)/.test(runtime) && !/category\.workflows\.filter\(/.test(runtime));
+// Indexing previews off a different list than the grid renders would hand card
+// n the thumbnail of card n+1 the moment anything is hidden.
+const catPage = stripComments(readFileSync("app/(app)/k/[cat]/page.tsx", "utf8"));
+check("the card thumbnails are indexed off the same offered list",
+  /offeredWorkflows\(category\)/.test(catPage) && !/category\.workflows\.map\(/.test(catPage));
+
+/* Copy: the four descriptions are the seller's only explanation of what a tool
+ * does, and a missing key renders as the key itself. */
+console.log("\nJ2. NAMES AND DESCRIPTIONS EXIST IN ALL THREE LANGUAGES");
+
+const PL_NAME: Record<string, string> = {
+  ghostMannequin: "Niewidzialny manekin",
+  flatlay: "Leżący produkt",
+  iron: "Wyprasuj",
+  changePerson: "Zmiana postaci",
+};
+for (const locale of ["pl", "en", "de"]) {
+  const dict = JSON.parse(readFileSync(`lib/i18n/dictionaries/${locale}.json`, "utf8"));
+  const wf = dict?.wf?.moda ?? {};
+  check(`${locale}: every offered tool has a name and a description`,
+    EXPECTED.every((k) => typeof wf[k]?.name === "string" && wf[k].name.trim().length > 0
+      && typeof wf[k]?.sub === "string" && wf[k].sub.trim().length > 0));
+}
+const pl = JSON.parse(readFileSync("lib/i18n/dictionaries/pl.json", "utf8")).wf.moda;
+check("the Polish names are the ones the category is supposed to show",
+  EXPECTED.every((k) => pl[k].name === PL_NAME[k]),
+  EXPECTED.map((k) => pl[k].name).join(" / "));
 }
 
 function existsSafe(path: string): boolean {

@@ -2201,7 +2201,7 @@
       },
       "flatlay": {
         "name": "Flat lay",
-        "sub": "The garment laid flat and shot from above.",
+        "sub": "Arrange the product neatly as a flat lay.",
         "cta": "Generate",
         "empty": "Add photos and press “Generate” to produce flat-lay shots."
       },
@@ -2222,19 +2222,19 @@
       },
       "ghostMannequin": {
         "name": "Invisible mannequin",
-        "sub": "The garment shown as if worn by an invisible figure.",
+        "sub": "A professional garment photo with no visible model.",
         "cta": "Generate",
         "empty": "Add photos and press “Generate” to produce invisible-mannequin shots."
       },
       "iron": {
         "name": "Iron",
-        "sub": "Creases and folds smoothed out, with the cut untouched.",
+        "sub": "Smooth out creases and improve how the garment looks.",
         "cta": "Generate",
         "empty": "Add photos and press “Generate” to smooth out the creases."
       },
       "changePerson": {
         "name": "Change person",
-        "sub": "The same garment on a different person.",
+        "sub": "Move the garment or styling onto a chosen person.",
         "cta": "Generate",
         "empty": "Add a reference photo and a model photo, then press “Generate”."
       }

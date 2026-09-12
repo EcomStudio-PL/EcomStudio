@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { useI18n } from "@/lib/i18n/provider";
 import { CategoryHeader } from "@/components/category/category-header";
 import { GeneratorWorkspace } from "@/components/genv3/workspace";
-import { CATEGORY_VARIANT, DEFAULT_VARIANT, findCategory } from "@/lib/categories";
+import { CATEGORY_VARIANT, DEFAULT_VARIANT, findCategory, offeredWorkflows } from "@/lib/categories";
 import { fashionTool } from "@/lib/fashion-tools";
 import { FashionToolWorkspace } from "@/components/fashion/tool-workspace";
 import type { GalleryItem, GenModel } from "@/components/genv3/types";
@@ -134,6 +134,11 @@ export function WorkflowRuntime({
 
   if (!category) return null;
   const workflow = category.workflows.find((w) => w.key === active) ?? category.workflows[0];
+  /** The switcher's contents: the offered workflows, plus the active one when
+   *  it is a retired preset someone reached by its own URL. */
+  const offered = workflow.hidden
+    ? [...offeredWorkflows(category), workflow]
+    : offeredWorkflows(category);
   /** Null for a preset — the generator then renders exactly as before. */
   const tool = workflow.tool ? fashionTool(workflow.key) : null;
 
@@ -154,9 +159,13 @@ export function WorkflowRuntime({
         lead={t(`wf.${category.key}.${workflow.key}.sub`)}
       />
 
-      {/* SIBLING PRESETS — switch workflow without leaving the workspace. */}
+      {/* SIBLING WORKFLOWS — switch without leaving the workspace.
+          The row is what the category OFFERS: in Moda that is exactly the four
+          tools. A retired preset is still reachable by its own URL, so it gets
+          a chip only while it is the active one — otherwise the switcher would
+          show nothing selected and read as broken. */}
       <div className="mb-4 flex flex-wrap gap-1.5" style={{ ["--cat" as string]: category.accent.rgb }}>
-        {category.workflows.filter((w) => !w.soon).map((w) => {
+        {offered.filter((w) => !w.soon).map((w) => {
           const isActive = w.key === workflow.key;
           return (
             <a key={w.key} href={`/k/${category.slug}/${w.key}`}
