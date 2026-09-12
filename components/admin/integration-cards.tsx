@@ -35,7 +35,10 @@ import { TelegramIntegrationForm } from "@/components/admin/telegram-integration
 const ERROR_KEYS: Record<string, string> = {
   forbidden: "comm.err.forbidden",
   not_configured: "comm.err.notConfigured",
-  encryption_unavailable: "comm.secretUnreadable",
+  // NOT comm.secretUnreadable: that one is the page banner and names the
+  // channels it concerns, so it needs a variable this table cannot supply. A
+  // toast is already attached to the channel the admin just acted on.
+  encryption_unavailable: "comm.err.secretStale",
   secret_write_failed: "comm.err.secretWrite",
   not_persisted: "comm.err.notPersisted",
   decrypt_failed: "comm.err.decrypt",
@@ -154,16 +157,28 @@ export function IntegrationCards({ mail, telegram, captcha }: {
    * so the fix is entirely inside this screen. The banner says what to do, and
    * every field below it stays editable while it is shown — that combination is
    * the whole point of the rewrite.
+   *
+   * IT ALSO HAS TO SAY WHICH CHANNEL.
+   *
+   * `secretsState` is already per integration and already excludes anything the
+   * vault answers for, so the condition below is exactly the briefed one: no
+   * vault copy, a legacy value present, and that value unopenable. What was
+   * wrong was the sentence. One unnamed warning across three channels meant an
+   * operator who had just saved a new mailbox password — and could see the
+   * mailbox connected and listing mail — read it as being about the mailbox,
+   * when what could not be opened was the Telegram token and the Turnstile key.
+   * A warning nobody can act on is worse than none, so it names its channels.
    */
-  const staleSecret = [mail, telegram, captcha]
-    .some((v) => v.secretsState === "key_missing" || v.secretsState === "decrypt");
+  const stale = ([[mail, "comm.mail"], [telegram, "comm.tgTile"], [captcha, "comm.captchaTile"]] as const)
+    .filter(([v]) => v.secretsState === "key_missing" || v.secretsState === "decrypt")
+    .map(([, label]) => t(label));
 
   return (
     <div className="space-y-5" data-integrations>
-      {staleSecret && (
+      {stale.length > 0 && (
         <p className="rounded-2xl border border-[rgb(var(--warning)/0.35)] bg-[rgb(var(--warning)/0.08)] px-4 py-3 text-[13px] text-warning"
-          data-stale-secret>
-          {t("comm.secretUnreadable")}
+          data-stale-secret={stale.length}>
+          {t("comm.secretUnreadable", { channels: stale.join(", ") })}
         </p>
       )}
 

@@ -28,6 +28,8 @@ import { join } from "path";
 import { imapAdvice, smtpAdvice, IMAP_PRESET, SMTP_PRESET, validPort } from "../lib/mail/transport";
 import { secretName } from "../lib/server/secret-store";
 import { providerSecretName, VAULT_SENTINEL } from "../lib/server/provider-credentials";
+import { encryptWith } from "../lib/server/crypto";
+import { resolveSecrets } from "../lib/server/integrations";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string) {
@@ -328,6 +330,129 @@ for (const f of allSrc) {
 }
 check(`no source references a removed key (${allSrc.length} files scanned)`,
   stale.length === 0, stale.join(", "));
+
+/* ── L. THE VAULT WINS, AND A SUPERSEDED CIPHERTEXT IS NOT AN ERROR ───────
+ *
+ * THE BUG THIS SECTION EXISTS FOR. An operator saved a new mailbox password in
+ * the panel. It went to the vault, the inbox opened on it and listed mail —
+ * while "Sprawdź nowe wiadomości", one button away on the same screen,
+ * answered that the saved password could not be read. Both were telling the
+ * truth about different things: the poller read the ROW's ciphertext, which was
+ * the superseded password sealed with a key this deployment no longer has, and
+ * never asked the vault at all.
+ *
+ * The rule is one sentence — the vault answers first, and the legacy bag is
+ * consulted only for fields it did not answer — and the fix was to have exactly
+ * one implementation of it. The three cases below are the ones that were, and
+ * must stay, distinguishable. */
+console.log("\nL. VAULT FIRST, LEGACY ONLY AS FALLBACK");
+
+const KEY_A = "a".repeat(64);
+const KEY_B = "b".repeat(64);
+/** A legacy envelope nothing in this process can open: sealed with KEY_B while
+ *  the deployment holds KEY_A. That is a rotated key, exactly. */
+function sealedWith(keyHex: string, value: string) {
+  const e = encryptWith(keyHex, value);
+  return { c: e.ciphertext, i: e.iv, t: e.authTag };
+}
+
+process.env.GROVBASE_INTEGRATIONS_ENCRYPTION_KEY = "";
+process.env.APP_ENCRYPTION_KEY = KEY_A;
+
+// CASE A — the vault has it, the legacy copy is unopenable. The vault wins and
+// NOTHING is reported as unreadable: the operator has already done the only
+// thing they could do, and telling them to do it again is the bug.
+const caseA = resolveSecrets(
+  { imap_password: "from-vault" },
+  { imap_password: sealedWith(KEY_B, "old-password") },
+);
+check("A: the credential comes from the vault", caseA.secrets.imap_password === "from-vault");
+check("A: the verdict is ok, not decrypt", caseA.state === "ok", caseA.state);
+check("A: nothing is reported unreadable", caseA.unreadable.length === 0, caseA.unreadable.join(","));
+
+// CASE B — no vault copy and the legacy one cannot be opened. This IS the
+// warning case, and it has to name the field rather than the row.
+const caseB = resolveSecrets({}, { imap_password: sealedWith(KEY_B, "old-password") });
+check("B: no credential is produced", caseB.secrets.imap_password === undefined);
+check("B: the verdict is decrypt", caseB.state === "decrypt", caseB.state);
+check("B: the unopenable field is named", caseB.unreadable.join(",") === "imap_password");
+
+// B2 — same shape with no key on the server at all. Different cause, different
+// sentence, same "cannot be read" outcome.
+process.env.APP_ENCRYPTION_KEY = "";
+const caseB2 = resolveSecrets({}, { imap_password: sealedWith(KEY_B, "old-password") });
+check("B2: no key on the server reads as key_missing", caseB2.state === "key_missing", caseB2.state);
+check("B2: and still names the field", caseB2.unreadable.join(",") === "imap_password");
+// …and the vault copy survives a server with no key, which is the entire point
+// of migration 0078.
+const caseB3 = resolveSecrets({ imap_password: "from-vault" }, { imap_password: sealedWith(KEY_B, "x") });
+check("B3: a vault credential works with no encryption key at all",
+  caseB3.secrets.imap_password === "from-vault" && caseB3.state === "ok");
+process.env.APP_ENCRYPTION_KEY = KEY_A;
+
+// CASE C — both exist and both are readable. The vault still wins, because the
+// freshly typed password is the one the operator meant.
+const caseC = resolveSecrets(
+  { imap_password: "from-vault" },
+  { imap_password: sealedWith(KEY_A, "legacy-but-openable") },
+);
+check("C: the vault beats a perfectly readable legacy value",
+  caseC.secrets.imap_password === "from-vault");
+check("C: and the row stays ok", caseC.state === "ok" && caseC.unreadable.length === 0);
+
+// D — a field the vault does NOT answer for still falls back, so a deployment
+// that has re-entered only one of two credentials keeps the other one working.
+const caseD = resolveSecrets(
+  { imap_password: "from-vault" },
+  { imap_password: sealedWith(KEY_B, "old"), smtp_password: sealedWith(KEY_A, "legacy-smtp") },
+);
+check("D: the untouched field is still read from the legacy bag",
+  caseD.secrets.smtp_password === "legacy-smtp" && caseD.secrets.imap_password === "from-vault");
+check("D: and the row is ok, because everything resolved", caseD.state === "ok", caseD.state);
+
+/* ── L2. ONE IMPLEMENTATION, NOT THREE ───────────────────────────────────
+ * The rule above is only worth anything if every credential path goes through
+ * it. Each of these three used to open a ciphertext by hand. */
+console.log("\nL2. EVERY CREDENTIAL PATH USES IT");
+
+const mailActions = readFileSync("app/actions/mail.ts", "utf8");
+check("the mail poller resolves through the shared function",
+  /resolveSecrets\(/.test(mailActions));
+check("and asks the vault before the row",
+  /readSecrets\(supabase, \[name\]\)/.test(mailActions));
+check("the poller no longer carries its own key resolution",
+  !/function integrationsKeyHex/.test(mailActions));
+
+const integrationsSrc = readFileSync("lib/server/integrations.ts", "utf8");
+check("the panel's per-card verdict comes from the same function",
+  /secretsState: resolveSecrets\(\{\}, legacyOnly\)\.state/.test(integrationsSrc));
+check("there is no second bag-opening helper left",
+  !/function bagState/.test(integrationsSrc));
+
+const notifySrc = readFileSync("lib/server/notify.ts", "utf8");
+check("the notification dispatcher reads the vault once per batch",
+  /readSecrets\(supabase, \[TELEGRAM_TOKEN_SECRET, SMTP_PASSWORD_SECRET\]\)/.test(notifySrc));
+check("a vault credential counts as configured even with no ciphertext on the row",
+  /!vault\.botToken && !row\.blob/.test(notifySrc) && /!vault\.smtpPassword && !row\.smtpBlob/.test(notifySrc));
+
+/* ── L3. THE WARNING NAMES ITS CHANNEL ───────────────────────────────────
+ * One unnamed banner across three integrations is how a legacy Telegram token
+ * came to read as "your mailbox password is unreadable" on a screen where the
+ * mailbox was connected and listing mail. */
+console.log("\nL3. THE STALE-SECRET WARNING IS ATTRIBUTABLE");
+
+check("the banner is built from the per-integration verdict",
+  /secretsState === "key_missing" \|\| \w+\.secretsState === "decrypt"/.test(cards));
+check("and names the channels it concerns",
+  /t\("comm\.secretUnreadable", \{ channels:/.test(cards));
+check("the toast for a single channel does NOT reuse the banner's copy",
+  !/encryption_unavailable: "comm\.secretUnreadable"/.test(cards));
+for (const loc of ["pl", "en", "de"]) {
+  const dict = dicts[loc]!;
+  const banner = (dict.comm as Record<string, unknown>)?.secretUnreadable;
+  check(`${loc}: the banner copy takes the channel list`,
+    typeof banner === "string" && banner.includes("{channels}"), String(banner).slice(0, 40));
+}
 }
 
 function report() {

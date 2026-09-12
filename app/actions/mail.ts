@@ -6,7 +6,7 @@ import MailComposer from "nodemailer/lib/mail-composer";
 import { createClient } from "@/lib/supabase/server";
 import type { Client } from "@/lib/services/workspace";
 import { logAudit } from "@/lib/services/audit";
-import { decryptWith } from "@/lib/server/crypto";
+import { readSecrets, secretName } from "@/lib/server/secret-store";
 import {
   appendToSent,
   deleteMessage,
@@ -26,6 +26,7 @@ import {
   ensureDispatchHash,
   MAIL_DEFAULTS,
   readIntegrationSecrets,
+  resolveSecrets,
   type SecretsState,
   safeError,
   type MailConfig,
@@ -482,20 +483,6 @@ export async function sendMailAction(formData: FormData): Promise<SendResult> {
 
 /* --------------------------------------------------------------- the poller */
 
-/**
- * Repeats the key resolution from integrations.ts for the reason notify.ts does:
- * `mail_sync_context` hands back the password as ciphertext, and the cron caller
- * is anonymous — RLS keeps it out of integration_settings, so the process has to
- * hold the key itself.
- */
-function integrationsKeyHex(): string | null {
-  for (const candidate of [process.env.GROVBASE_INTEGRATIONS_ENCRYPTION_KEY, process.env.APP_ENCRYPTION_KEY]) {
-    const hex = candidate?.trim();
-    if (hex && hex.length === 64 && /^[0-9a-fA-F]+$/.test(hex)) return hex;
-  }
-  return null;
-}
-
 type SyncFolderState = { folder: string; lastUid: number; uidValidity: number | null };
 type SyncContext = {
   enabled: boolean;
@@ -531,29 +518,39 @@ async function readSyncContext(supabase: Client, token: string): Promise<SyncCon
   const row = asRecord(data);
   if (Object.keys(row).length === 0) return null;
 
+  /**
+   * THE VAULT FIRST, HERE TOO.
+   *
+   * This is the one path that used to read the row's ciphertext and stop there.
+   * `mail_sync_context` returns the legacy bag because it predates the vault,
+   * and so pressing "Sprawdź nowe wiadomości" reported that the saved mailbox
+   * password could not be read — on a mailbox whose inbox, beside it on the
+   * same screen, was listing messages perfectly well off a vault password saved
+   * minutes earlier. The row's ciphertext was simply the old one, sealed with a
+   * key this deployment no longer has, and nothing was ever going to open it.
+   *
+   * The verdict now comes from resolveSecrets, the same function the panel and
+   * the inbox use, so the three cannot disagree again. `secret_read_many` is
+   * token-gated rather than session-gated, which is what lets the anonymous
+   * cron caller take this same road.
+   */
+  const name = secretName("mail", "imap_password");
+  const fromVault = await readSecrets(supabase, [name]);
   const blob = asRecord(asRecord(row.secrets).imap_password);
-  const keyHex = integrationsKeyHex();
   const stored = typeof blob.c === "string" && typeof blob.i === "string" && typeof blob.t === "string";
-  let imapPassword = "";
+  const resolved = resolveSecrets(
+    fromVault[name] ? { imap_password: fromVault[name]! } : {},
+    stored ? { imap_password: { c: blob.c as string, i: blob.i as string, t: blob.t as string } } : {},
+  );
+  if (resolved.state === "decrypt") console.error("mail.sync.decrypt");
+  const imapPassword = resolved.secrets.imap_password ?? "";
   // The poller has to reach the SAME verdict as the panel. It used to fold a
   // rotated key and a missing key into "not_configured", so pressing Sprawdź
   // nowe wiadomości contradicted the message the list had just shown — the
   // admin was told to retype a password on one half of the screen and that
   // nothing was configured on the other.
-  let secretsState: SecretsState = "ok";
-  let unreadable: string[] = [];
-  if (stored && !keyHex) {
-    secretsState = "key_missing";
-    unreadable = ["imap_password"];
-  } else if (stored && keyHex) {
-    try {
-      imapPassword = decryptWith(keyHex, blob.c as string, blob.i as string, blob.t as string);
-    } catch {
-      console.error("mail.sync.decrypt");
-      secretsState = "decrypt";
-      unreadable = ["imap_password"];
-    }
-  }
+  const secretsState: SecretsState = resolved.state;
+  const unreadable: string[] = [...resolved.unreadable];
 
   const folders: SyncFolderState[] = [];
   for (const entry of Array.isArray(row.folders) ? row.folders : []) {

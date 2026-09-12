@@ -26,8 +26,14 @@ console.log("A. the registry is the feature registry, not a second list");
   const unknown = AI_TOOL_KEYS.filter((k) => !(FEATURE_KEYS as readonly string[]).includes(k));
   check("every tool key exists in lib/features.ts", unknown.length === 0, unknown.join(", "));
   check("an unknown key is refused", !isAiToolKey("not_a_tool"));
-  check("the seed covers every listed tool", AI_TOOL_KEYS.every((k) =>
-    read("supabase/migrations/0070_ai_control_center.sql").includes(`('${k}'`)));
+  // A key with no `ai_tools` row cannot be given a prompt at all:
+  // ai_save_tool_prompt (0071) answers `unknown_tool`, and ai_tool_prompts has a
+  // foreign key onto ai_tools. So every listed tool must be seeded SOMEWHERE —
+  // 0070 for the original ten, a later migration for anything added since.
+  const seeds = ["0070_ai_control_center", "0081_fashion_tools_registry"]
+    .map((f) => read(`supabase/migrations/${f}.sql`)).join("\n");
+  const unseeded = AI_TOOL_KEYS.filter((k) => !seeds.includes(`('${k}'`));
+  check("the seed covers every listed tool", unseeded.length === 0, unseeded.join(", "));
 }
 
 console.log("B. a tool only gets the tabs it can answer for");

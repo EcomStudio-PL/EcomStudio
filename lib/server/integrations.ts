@@ -264,24 +264,6 @@ async function readRowAnyContext(
   return (await readRow(supabase, type)) ?? (await readRowForDispatch(supabase, type));
 }
 
-/**
- * Can the server OPEN this bag? Booleans out, nothing else: the plaintext is
- * discarded the instant the trial succeeds, so this is safe to call from a
- * render. It is CPU only — the row has already been read — which is why the
- * panel can afford to know the answer before anyone presses "test".
- */
-function bagState(bag: SecretBag): SecretsState {
-  if (Object.keys(bag).length === 0) return "ok";
-  const keyHex = integrationsKeyHex();
-  if (!keyHex) return "key_missing";
-  try {
-    for (const blob of Object.values(bag)) decryptWith(keyHex, blob.c, blob.i, blob.t);
-    return "ok";
-  } catch {
-    return "decrypt";
-  }
-}
-
 /** The admin-panel view. It carries no plaintext, by construction. */
 export async function readIntegration<C>(supabase: Client, type: IntegrationType): Promise<IntegrationView<C>> {
   const row = await readRow(supabase, type);
@@ -308,7 +290,11 @@ export async function readIntegration<C>(supabase: Client, type: IntegrationType
 
   return {
     type,
-    secretsState: bagState(legacyOnly),
+    // Exactly the verdict a real read would reach, by the same function — the
+    // plaintext is discarded here and only the state is kept, so the panel can
+    // know before anyone presses "test". A field the vault answers for is not
+    // in `legacyOnly`, so it can never make this card report trouble.
+    secretsState: resolveSecrets({}, legacyOnly).state,
     enabled: row?.enabled === true,
     config: { ...defaultsFor(type), ...asRecord(row?.config) } as C,
     status: asStatus(row?.status),
@@ -360,6 +346,59 @@ export type SecretsRead<C> = {
   unreadable: readonly string[];
 };
 
+/**
+ * THE ORDER OF PRECEDENCE, IN ONE FUNCTION — the only place it is decided.
+ *
+ * 1. The vault answers. Whatever it holds IS the credential, full stop.
+ * 2. Only a field the vault did NOT answer for is looked for in the legacy bag.
+ * 3. Only such a field can make the verdict anything other than "ok" — and a
+ *    legacy ciphertext that has been superseded by a vault entry is dead weight
+ *    on the row, never a reason to report trouble.
+ *
+ * This used to exist twice: once here, and once open-coded inside the mail
+ * poller, which read the row's ciphertext and never asked the vault at all. The
+ * two disagreed exactly where it hurt — the inbox opened on a vault password
+ * while "Sprawdź nowe wiadomości" reported that the saved password could not be
+ * read. Two implementations of one rule is how a fix reaches half the app, so
+ * there is now one, and both callers pass through it.
+ *
+ * Pure and synchronous: the vault read and the row read belong to the caller,
+ * which is what lets the poller — with no admin session — use the same rule.
+ */
+export function resolveSecrets(
+  vaultSecrets: Record<string, string>,
+  bag: SecretBag,
+): { secrets: Record<string, string>; state: SecretsState; unreadable: readonly string[] } {
+  const legacyNames = Object.keys(bag).filter((n) => !(n in vaultSecrets));
+  if (legacyNames.length === 0) {
+    return { secrets: { ...vaultSecrets }, state: "ok", unreadable: [] };
+  }
+
+  const keyHex = integrationsKeyHex();
+  // No key at all. Legacy ciphertext we cannot open, and no vault copy to fall
+  // back on. This is no longer a dead end: the panel keeps its password fields
+  // editable and a newly typed value goes straight to the vault, so the operator
+  // can fix it from the panel instead of from a deploy environment.
+  if (!keyHex) {
+    return { secrets: { ...vaultSecrets }, state: "key_missing", unreadable: legacyNames };
+  }
+
+  const secrets: Record<string, string> = { ...vaultSecrets };
+  try {
+    for (const name of legacyNames) {
+      const blob = bag[name]!;
+      secrets[name] = decryptWith(keyHex, blob.c, blob.i, blob.t);
+    }
+  } catch {
+    // All or nothing for the LEGACY half: half-decrypted credentials would look
+    // "configured" and then fail at the provider with a far more confusing
+    // error. Anything the vault already answered for survives — it was never
+    // sealed with this key and a bad key says nothing about it.
+    return { secrets: { ...vaultSecrets }, state: "decrypt", unreadable: legacyNames };
+  }
+  return { secrets, state: "ok", unreadable: [] };
+}
+
 export async function readIntegrationSecrets<C>(
   supabase: Client,
   type: IntegrationType,
@@ -381,49 +420,11 @@ export async function readIntegrationSecrets<C>(
     if (v) vaultSecrets[field] = v;
   }
 
-  const bag = readBag(row?.secrets);
   // Everything the vault already answered for is settled; the legacy bag is
-  // only consulted for the fields it did not.
-  const legacyNames = Object.keys(bag).filter((n) => !(n in vaultSecrets));
-  if (legacyNames.length === 0) {
-    return {
-      enabled, config, secrets: vaultSecrets,
-      state: "ok",
-      unreadable: [],
-    };
-  }
-
-  const keyHex = integrationsKeyHex();
-  // No key at all. Only report it as the CAUSE when there was actually
-  // something to open — with an empty row the honest answer is still "nothing
-  // stored", and blaming the key would send the operator hunting for a
-  // non-problem.
-  if (!keyHex) {
-    // Legacy ciphertext we cannot open, and no vault copy to fall back on. This
-    // is no longer a dead end: the panel keeps its password fields editable and
-    // a newly typed value goes straight to the vault, so the operator can fix
-    // it from the panel instead of from a deploy environment.
-    return {
-      enabled, config, secrets: vaultSecrets,
-      state: "key_missing",
-      unreadable: legacyNames,
-    };
-  }
-  const secrets: Record<string, string> = { ...vaultSecrets };
-  try {
-    for (const name of legacyNames) {
-      const blob = bag[name]!;
-      secrets[name] = decryptWith(keyHex, blob.c, blob.i, blob.t);
-    }
-  } catch {
-    // All or nothing for the LEGACY half: half-decrypted credentials would look
-    // "configured" and then fail at the provider with a far more confusing
-    // error. Anything the vault already answered for survives — it was never
-    // sealed with this key and a bad key says nothing about it.
-    console.error("integrations.decrypt", type);
-    return { enabled, config, secrets: vaultSecrets, state: "decrypt", unreadable: legacyNames };
-  }
-  return { enabled, config, secrets, state: "ok", unreadable: [] };
+  // only consulted for the fields it did not. See resolveSecrets.
+  const resolved = resolveSecrets(vaultSecrets, readBag(row?.secrets));
+  if (resolved.state === "decrypt") console.error("integrations.decrypt", type);
+  return { enabled, config, ...resolved };
 }
 
 /**

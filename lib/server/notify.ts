@@ -7,6 +7,7 @@ import {
 } from "@/lib/server/message-templates";
 import { decryptWith } from "@/lib/server/crypto";
 import { dispatchToken, safeError } from "@/lib/server/integrations";
+import { readSecrets, secretName } from "@/lib/server/secret-store";
 import type { SmtpConfig } from "@/lib/server/mailer";
 import { richEntitiesEnabled, sendTelegramMessage, type TelegramKeyboard } from "@/lib/server/telegram";
 import { renderNotification } from "@/lib/server/telegram-notification";
@@ -230,6 +231,10 @@ export async function notify(supabase: Client, input: NotifyInput): Promise<void
 
 type SecretBlob = { c: string; i: string; t: string };
 
+/** The two vault entries this dispatcher can use, named once. */
+const TELEGRAM_TOKEN_SECRET = secretName("telegram", "bot_token");
+const SMTP_PASSWORD_SECRET = secretName("mail", "smtp_password");
+
 /** The two destinations notification_outbox.channel allows (0055). An unknown
  *  value reads as Telegram, which is the column's own default. */
 export type NotificationChannel = "telegram" | "admin_email";
@@ -411,24 +416,60 @@ export function readClaim(raw: unknown): ClaimedRow | null {
  *
  * Exported for scripts/comm-tests.ts alongside `readClaim`.
  */
-export async function dispatchOne(row: ClaimedRow, keyHex: string | null): Promise<{ status: DispatchStatus; error: string | null }> {
-  return row.channel === "admin_email" ? dispatchAdminEmail(row, keyHex) : dispatchTelegram(row, keyHex);
+/**
+ * The credentials the VAULT holds, read once per drain.
+ *
+ * `notification_dispatch_claim` predates migration 0078 and hands back the
+ * row's AES ciphertext, so this dispatcher used to be able to reach only the
+ * legacy copy. On a deployment whose operator has since re-entered the
+ * credentials in the panel — which is now the ONLY way to enter them — the
+ * ciphertext is the superseded one and no key exists to open it, so every
+ * admin e-mail and every Telegram card was closed as "skipped" while the panel
+ * showed both channels as configured.
+ *
+ * Same precedence as everywhere else: the vault answers first, the ciphertext
+ * is consulted only for what the vault did not answer.
+ */
+export type VaultCredentials = { botToken?: string | null; smtpPassword?: string | null };
+
+export async function dispatchOne(
+  row: ClaimedRow, keyHex: string | null, vault: VaultCredentials = {},
+): Promise<{ status: DispatchStatus; error: string | null }> {
+  return row.channel === "admin_email"
+    ? dispatchAdminEmail(row, keyHex, vault)
+    : dispatchTelegram(row, keyHex, vault);
 }
 
-async function dispatchTelegram(row: ClaimedRow, keyHex: string | null): Promise<{ status: DispatchStatus; error: string | null }> {
+/** Vault value, else the legacy envelope opened with the deploy key. Null means
+ *  "there is nothing usable"; the caller says which of the two reasons it was. */
+function openSecret(vaultValue: string | null | undefined, blob: SecretBlob | null, keyHex: string | null):
+  { ok: true; value: string } | { ok: false; reason: "encryption_unavailable" | "decrypt_failed" } {
+  if (vaultValue) return { ok: true, value: vaultValue };
+  if (!keyHex) return { ok: false, reason: "encryption_unavailable" };
+  if (!blob) return { ok: false, reason: "decrypt_failed" };
+  try {
+    return { ok: true, value: decryptWith(keyHex, blob.c, blob.i, blob.t) };
+  } catch {
+    return { ok: false, reason: "decrypt_failed" };
+  }
+}
+
+async function dispatchTelegram(
+  row: ClaimedRow, keyHex: string | null, vault: VaultCredentials,
+): Promise<{ status: DispatchStatus; error: string | null }> {
   // The integration switched off is the admin's decision, not a delivery
   // attempt: checked before the credentials so a leftover token in a disabled
   // row can never post. Same skip reason — from the outbox's point of view
   // there is no Telegram to send to either way.
   if (!row.enabled) return { status: "skipped", error: "telegram_not_configured" };
-  if (!row.chatId || !row.blob) return { status: "skipped", error: "telegram_not_configured" };
-  if (!keyHex) return { status: "skipped", error: "encryption_unavailable" };
-  let botToken: string;
-  try {
-    botToken = decryptWith(keyHex, row.blob.c, row.blob.i, row.blob.t);
-  } catch {
-    return { status: "skipped", error: "decrypt_failed" };
+  // A vault token is a configured token even when the row carries no ciphertext
+  // at all — which is what a credential saved after 0078 looks like.
+  if (!row.chatId || (!vault.botToken && !row.blob)) {
+    return { status: "skipped", error: "telegram_not_configured" };
   }
+  const opened = openSecret(vault.botToken, row.blob, keyHex);
+  if (!opened.ok) return { status: "skipped", error: opened.reason };
+  const botToken = opened.value;
   // A published admin template decides the WORDS; the shared renderer always
   // decides the SHAPE — so a customised template is still recognisably the
   // same product, and still gets the same buttons and the same meta line.
@@ -452,17 +493,17 @@ async function dispatchTelegram(row: ClaimedRow, keyHex: string | null): Promise
  * exists — and the claim's own precondition already refused to hand out an
  * e-mail row until the mailbox was configured.
  */
-async function dispatchAdminEmail(row: ClaimedRow, keyHex: string | null): Promise<{ status: DispatchStatus; error: string | null }> {
+async function dispatchAdminEmail(
+  row: ClaimedRow, keyHex: string | null, vault: VaultCredentials,
+): Promise<{ status: DispatchStatus; error: string | null }> {
   if (!row.adminEmailTo) return { status: "skipped", error: "admin_email_not_configured" };
-  if (!row.mail.host || !row.mail.user || !row.smtpBlob) return { status: "skipped", error: "smtp_not_configured" };
-  if (!keyHex) return { status: "skipped", error: "encryption_unavailable" };
-
-  let password: string;
-  try {
-    password = decryptWith(keyHex, row.smtpBlob.c, row.smtpBlob.i, row.smtpBlob.t);
-  } catch {
-    return { status: "skipped", error: "decrypt_failed" };
+  // As above: a vault password is a configured password, ciphertext or not.
+  if (!row.mail.host || !row.mail.user || (!vault.smtpPassword && !row.smtpBlob)) {
+    return { status: "skipped", error: "smtp_not_configured" };
   }
+  const opened = openSecret(vault.smtpPassword, row.smtpBlob, keyHex);
+  if (!opened.ok) return { status: "skipped", error: opened.reason };
+  const password = opened.value;
 
   // The plaintext goes straight to the transport builder. It used to be
   // re-sealed with APP_ENCRYPTION_KEY first, purely because SmtpConfig only
@@ -551,6 +592,15 @@ export async function drainNotifications(supabase: Client, limit = MAX_BATCH): P
     }
     if (!Array.isArray(data)) return { sent, failed };
     const keyHex = integrationsKeyHex();
+    // ONE vault read for the whole batch. Both channels' credentials at once,
+    // token-gated rather than session-gated, so the anonymous cron caller gets
+    // the same answer the admin's button does. The claim's ciphertext stays as
+    // the fallback for a deployment that has not re-entered them yet.
+    const vault = await readSecrets(supabase, [TELEGRAM_TOKEN_SECRET, SMTP_PASSWORD_SECRET]);
+    const credentials: VaultCredentials = {
+      botToken: vault[TELEGRAM_TOKEN_SECRET] ?? null,
+      smtpPassword: vault[SMTP_PASSWORD_SECRET] ?? null,
+    };
     // One template lookup per distinct (event, channel) per batch — a published
     // admin template overrides the built-in copy, a missing one costs nothing.
     const templates = new Map<string, TemplateDef | null>();
@@ -567,7 +617,7 @@ export async function drainNotifications(supabase: Client, limit = MAX_BATCH): P
       }
       // One bad row must not cost the rest of the batch its delivery.
       try {
-        const outcome = await dispatchOne(row, keyHex);
+        const outcome = await dispatchOne(row, keyHex, credentials);
         if (outcome.status === "sent") sent += 1;
         else if (outcome.status === "failed") failed += 1;
         const { error: finishError } = await supabase.rpc("notification_dispatch_finish", {
