@@ -8,6 +8,23 @@ import { ProviderError } from "@/lib/ai/types";
 
 type Result = { ok: boolean; error?: string; status?: string; message?: string };
 
+/**
+ * "sandbox" or "live" when the key itself says so, null when the vendor gives
+ * no such signal and the question does not apply.
+ *
+ * Only the shape of the key is inspected — never its value beyond the prefix,
+ * and nothing is logged.
+ */
+function keyEnvironment(apiKey: string): "sandbox" | "live" {
+  // Anything without the sandbox prefix is a live key — including every key
+  // from a vendor that has no sandbox at all, which is exactly what those keys
+  // are. Returning null for "unknown" would have been the subtler bug: an
+  // operator swapping a sandbox key for a live one would have left the stored
+  // verdict reading "sandbox" for ever, and the panel would have gone on
+  // promising free, watermarked runs against a key that bills.
+  return apiKey.trim().toLowerCase().startsWith("sandbox_") ? "sandbox" : "live";
+}
+
 async function requireAdmin() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -56,6 +73,26 @@ export async function saveProviderCredentialAction(
     // RLS can silently swallow a write (0 rows) without an error object —
     // report that honestly instead of pretending the key was replaced.
     if (!write.data) return { ok: false, error: "db:rls_denied" };
+
+    // WHICH ENVIRONMENT THIS KEY BELONGS TO, recorded at the moment it is
+    // known. Some vendors distinguish a test key by a prefix rather than a
+    // separate host — Photoroom's sandbox keys start with `sandbox_`, run
+    // against the same endpoints, cost nothing and stamp a watermark on every
+    // result. The panel has to be able to SAY that, or watermarked output
+    // looks like a defect and free calls look like a billing bug.
+    //
+    // It is derived here, from the plaintext, and only the VERDICT is stored —
+    // never the prefix itself, and never anything an operator has to keep in
+    // step by hand. A key swap re-derives it.
+    const { data: provider } = await supabase
+      .from("ai_providers").select("metadata").eq("id", providerId).maybeSingle();
+    await supabase.from("ai_providers").update({
+      metadata: {
+        ...(provider?.metadata as Record<string, unknown> | null ?? {}),
+        environment: keyEnvironment(key),
+      },
+    }).eq("id", providerId);
+
     await supabase.rpc("log_activity", {
       p_workspace_id: null as unknown as string, p_action: "admin.provider_credential_saved",
       p_entity_type: "ai_provider", p_entity_id: providerId,
