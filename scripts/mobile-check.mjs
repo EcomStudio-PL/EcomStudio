@@ -61,7 +61,11 @@ for (const width of WIDTHS) {
         // 2px of slack: sub-pixel layout rounding is not a bug.
         if (r.right > vw + 2 || r.left < -2) {
           const cs = getComputedStyle(el);
-          // An element inside its own horizontal scroller is allowed to be wide.
+          // An element that IS a horizontal scroller is allowed to be wider than
+          // the screen — that is what the scroller is for, and a filter row that
+          // bleeds its own edge with a negative margin is doing it on purpose.
+          if (cs.overflowX === "auto" || cs.overflowX === "scroll") continue;
+          // …and so is anything inside one.
           let p = el.parentElement, scrollable = false;
           while (p && p !== document.body) {
             const ps = getComputedStyle(p);
