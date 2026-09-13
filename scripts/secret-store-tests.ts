@@ -30,6 +30,9 @@ import { secretName } from "../lib/server/secret-store";
 import { providerSecretName, VAULT_SENTINEL } from "../lib/server/provider-credentials";
 import { encryptWith } from "../lib/server/crypto";
 import { resolveSecrets } from "../lib/server/integrations";
+import {
+  integrationErrorKey, ERROR_CHANNELS, KNOWN_ERROR_CODES, SENTENCE_OWNERS,
+} from "../lib/integration-errors";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string) {
@@ -505,6 +508,65 @@ check(`every credential path that can open an old envelope reads the vault first
 // otherwise turn this section green by finding no files at all.
 check("and the audit actually found the paths it is meant to guard",
   audited >= 2, `${audited}`);
+
+/* ── M. NO CHANNEL SPEAKS IN ANOTHER CHANNEL'S VOICE ─────────────────────
+ *
+ * Reported from production: pressing "Testuj połączenie" on the TELEGRAM card
+ * answered "Poczta nie została jeszcze skonfigurowana." Three channels share
+ * the code `not_configured`, the shared table mapped it to the mailbox's own
+ * sentence, and the `channel` argument that would have disambiguated it was
+ * accepted and then ignored.
+ *
+ * This could not be tested before, because the table lived inside a client
+ * component that drags in next/navigation and the server actions. That is why
+ * it now lives in lib/integration-errors.ts — and why this section exists. */
+console.log("\nM. EVERY CHANNEL GETS ITS OWN SENTENCE");
+
+/* The ownership map is the module's own — duplicating it here would let the
+   two drift apart and still agree with each other. */
+const trespass: string[] = [];
+for (const channel of ERROR_CHANNELS) {
+  for (const code of [...KNOWN_ERROR_CODES, "network", "totally_unknown_code", undefined]) {
+    const key = integrationErrorKey(code as string | undefined, channel);
+    const owners = SENTENCE_OWNERS[key];
+    if (owners && !owners.includes(channel)) {
+      trespass.push(`${channel} + ${code ?? "(brak kodu)"} -> ${key}`);
+    }
+  }
+}
+check(`no channel resolves to a sentence owned by another (${ERROR_CHANNELS.length} channels × ${KNOWN_ERROR_CODES.length + 3} codes)`,
+  trespass.length === 0, trespass.slice(0, 6).join(" | "));
+
+// The exact production report, pinned as its own case.
+check("Telegram + not_configured does NOT say the mailbox is unconfigured",
+  integrationErrorKey("not_configured", "telegram") === "comm.err.tgNotConfigured",
+  integrationErrorKey("not_configured", "telegram"));
+check("Turnstile + not_configured does NOT say the mailbox is unconfigured",
+  integrationErrorKey("not_configured", "captcha") === "comm.err.captchaNotConfigured",
+  integrationErrorKey("not_configured", "captcha"));
+check("and the mailbox still gets the mailbox sentence",
+  integrationErrorKey("not_configured", "imap") === "comm.err.notConfigured");
+
+// A sentence nobody can read is the other half of the same failure.
+for (const loc of ["pl", "en", "de"]) {
+  const missing: string[] = [];
+  for (const channel of ERROR_CHANNELS) {
+    for (const code of [...KNOWN_ERROR_CODES, "network", undefined]) {
+      const key = integrationErrorKey(code as string | undefined, channel);
+      if (!has(dicts[loc]!, key)) missing.push(key);
+    }
+  }
+  check(`${loc}.json resolves every channel×code combination`,
+    missing.length === 0, [...new Set(missing)].join(", "));
+}
+
+/* The card's badge is a claim about NOW, not a record of a past test. */
+const tile = stripComments(readFileSync("components/admin/integration-cards.tsx", "utf8"));
+check("an unreadable secret stops the card claiming the channel is connected",
+  /const unreadable = view\.secretsState === "key_missing" \|\| view\.secretsState === "decrypt"/.test(tile)
+  && /const status: IntegrationStatus = unreadable \? "error" : view\.status/.test(tile));
+check("and the badge renders that derived status, not the stored one",
+  /STATUS_TONE\[status\]/.test(tile) && !/STATUS_TONE\[view\.status\]/.test(tile));
 }
 
 function report() {

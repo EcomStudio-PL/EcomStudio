@@ -27,68 +27,12 @@ import { TelegramIntegrationForm } from "@/components/admin/telegram-integration
  * a test.
  */
 
-/**
- * Every code app/actions/integrations.ts answers with, mapped to the one
- * translated sentence that tells the admin what to do next. It lives here
- * because all three screens of this module read the same vocabulary.
- */
-const ERROR_KEYS: Record<string, string> = {
-  forbidden: "comm.err.forbidden",
-  not_configured: "comm.err.notConfigured",
-  // NOT comm.secretUnreadable: that one is the page banner and names the
-  // channels it concerns, so it needs a variable this table cannot supply. A
-  // toast is already attached to the channel the admin just acted on.
-  encryption_unavailable: "comm.err.secretStale",
-  secret_write_failed: "comm.err.secretWrite",
-  not_persisted: "comm.err.notPersisted",
-  decrypt_failed: "comm.err.decrypt",
-  invalid_email: "comm.invalidEmail",
-  // The mail form saves every field at once, so a rejected save has to name the
-  // one that was wrong — the generic sentence would leave the admin guessing.
-  invalid_host: "comm.err.invalidHost",
-  invalid_port: "comm.err.invalidPort",
-  invalid_encryption: "comm.err.invalidEncryption",
-  imap_port_mismatch: "comm.hint.imapSmtpPort",
-  smtp_port_mismatch: "comm.hint.smtpImapPort",
-  auth: "comm.err.auth",
-  chat_not_found: "comm.err.chatNotFound",
-  // A malformed id and an id Telegram does not know lead to the same fix, and
-  // that sentence points straight at the field the admin has to correct.
-  invalid_chat_id: "comm.err.chatNotFound",
-  invalid_token: "comm.err.telegram",
-  // A rejected captcha secret and an unreachable Cloudflare are different
-  // fixes: retype the key vs. simply try again.
-  captcha_secret: "comm.err.captchaSecret",
-  timeout: "comm.err.timeout",
-};
-
-/** Which channel failed, so an unrecognised code still names the right thing. */
-export type ErrorChannel = "imap" | "smtp" | "telegram" | "captcha" | "generic";
-
-const CHANNEL_FALLBACK: Record<ErrorChannel, string> = {
-  imap: "comm.err.imap",
-  smtp: "comm.err.smtp",
-  telegram: "comm.err.telegram",
-  captcha: "comm.err.generic",
-  generic: "comm.err.generic",
-};
-
-/**
- * A code is never shown raw — "auth" on a screen is the same failure as a
- * stack trace on a screen. Anything this table does not know falls back to the
- * channel's sentence, so a code added to the actions later still reads as
- * Polish rather than as debug output.
- */
-export function integrationErrorKey(code: string | undefined, channel: ErrorChannel): string {
-  if (!code) return CHANNEL_FALLBACK[channel];
-  const mapped = ERROR_KEYS[code];
-  if (mapped) return mapped;
-  // A network failure against Telegram is always the 10 s abort in
-  // lib/server/telegram.ts; a mail server can stall for a dozen reasons, and
-  // the channel sentence names all of them at once.
-  if (code === "network" && channel === "telegram") return "comm.err.timeout";
-  return CHANNEL_FALLBACK[channel];
-}
+/* The failure vocabulary lives in lib/integration-errors.ts — pure data and a
+   pure function, so a suite can actually check that no channel renders another
+   channel's sentence. Re-exported here because these screens have imported it
+   from this module since before it moved. */
+import { integrationErrorKey, type ErrorChannel } from "@/lib/integration-errors";
+export { integrationErrorKey, type ErrorChannel };
 
 const STATUS_TONE: Record<IntegrationStatus, "success" | "neutral" | "danger"> = {
   connected: "success",
@@ -245,15 +189,35 @@ function IntegrationTile({ view, icon, title, sub, channel, panelId, expanded, b
       { dateStyle: "short", timeStyle: "short" }).format(new Date(view.last_tested_at))
     : t("comm.never");
 
+  /**
+   * ONE SOURCE OF TRUTH FOR WHAT THIS CARD CLAIMS.
+   *
+   * `status` is a record of the LAST TEST — Telegram's said "Połączono" from a
+   * test that passed on 5 September, while its token had since become a legacy
+   * ciphertext nobody can open. The card therefore announced a working channel
+   * whose very next call was guaranteed to fail, and the admin had no way to
+   * tell from the panel.
+   *
+   * A stored success is only true while the credential behind it is still
+   * readable. When it is not, the badge says so instead — the same badge, the
+   * same card, just not a claim that stopped being true.
+   */
+  const unreadable = view.secretsState === "key_missing" || view.secretsState === "decrypt";
+  const status: IntegrationStatus = unreadable ? "error" : view.status;
+
   return (
     <Card className="flex flex-col">
       <CardHeader
         title={title} sub={sub} icon={icon}
-        action={<Badge tone={STATUS_TONE[view.status]} dot>{t(`comm.status.${view.status}`)}</Badge>}
+        action={<Badge tone={STATUS_TONE[status]} dot>{t(`comm.status.${status}`)}</Badge>}
       />
       <div className="mt-auto space-y-3 px-4 pb-4 sm:px-5 sm:pb-5">
         <p className="text-[12px] text-faint">{t("comm.lastTested")}: {lastTested}</p>
-        {view.status === "error" && <TileError detail={view.last_error_safe} channel={channel} />}
+        {/* The unreadable secret is THIS channel's problem and is named as such;
+            the stored error only speaks when there is nothing more current. */}
+        {unreadable
+          ? <p className="text-[12px] text-danger">{t(integrationErrorKey("encryption_unavailable", channel))}</p>
+          : status === "error" && <TileError detail={view.last_error_safe} channel={channel} />}
         <div className="flex flex-wrap gap-2">
           <Button size="sm" onClick={onEdit} aria-expanded={expanded} aria-controls={panelId}>
             <Pencil size={14} aria-hidden />
