@@ -116,6 +116,29 @@ check(
   mains.filter((m) => m[2].includes("<FeedbackCTA")).length === 1,
   "blocked-account and setup-failed screens are excluded by the brief",
 );
+
+// ── nothing switches it off ────────────────────────────────────────────────
+// It WAS switched off once, on every viewport-locked generator and tool from
+// 1024 up, because a full-height workspace left no room after it. That is the
+// whole product's desktop, and it was reported from outside before anyone here
+// noticed. The room is made now instead; this makes sure nobody makes the same
+// trade again by reaching for `display: none`.
+const css = read("app/globals.css");
+const rules = [...css.matchAll(/([^{}]*\[data-feedback-cta\][^{]*)\{([^}]*)\}/g)]
+  // The capture reaches back past the rule's own comment; the selector is
+  // what a failure needs to name, so the prose is dropped.
+  .map((m) => [m[0], m[1].replace(/\/\*[\s\S]*?\*\//g, "").trim(), m[2]]);
+check(
+  "no stylesheet rule hides the feedback CTA",
+  !rules.some((r) => /display\s*:\s*none|visibility\s*:\s*hidden/.test(r[2])),
+  rules.filter((r) => /display\s*:\s*none|visibility\s*:\s*hidden/.test(r[2]))
+    .map((r) => `${r[1]} { ${r[2].trim()} }`).join("\n     "),
+);
+check(
+  "no responsive utility hides it either",
+  !/(sm|md|lg|xl|2xl):hidden/.test(component.match(/<div data-feedback-cta className="([^"]*)"/)?.[1] ?? ""),
+  "a `lg:hidden` on the block is the other way this disappears from a desktop",
+);
 for (const other of ["app/(auth)/layout.tsx", "app/admin/layout.tsx"]) {
   check(
     `${other} does NOT mount it`,

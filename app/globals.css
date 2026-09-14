@@ -1144,6 +1144,14 @@ body:has(.workspace-page)::after { display: none; }
        stack on top of the viewport height and overflow again, so the shell
        below takes over that job. */
     body:has(.gen-shell) .app-shell > main {
+      /* A COLUMN, so the frame has somewhere to put its last row. The
+         workspace used to be the only thing in here and took the whole
+         height; anything after it fell past `overflow: hidden`. As a flex
+         column the workspace takes what is LEFT and the feedback row keeps
+         its own height — which is how the row below becomes reachable on a
+         desktop without a single pixel of trickery. */
+      display: flex;
+      flex-direction: column;
       min-height: 0;
       padding-top: 0;
       padding-bottom: 0;
@@ -1153,11 +1161,17 @@ body:has(.workspace-page)::after { display: none; }
        `pt-1`/`lg:pt-*` on the same element and be decided by emission order,
        which is not a thing a layout should depend on. */
     body:has(.gen-shell) .gen-shell {
-      height: 100%;
+      /* `flex: 1 1 auto` rather than `height: 100%`. Both gave the workspace
+         the frame's whole height while it was the only child; only this one
+         gives it "the frame MINUS the feedback row" now that there is one. A
+         percentage would have kept measuring the parent and quietly pushed
+         the row back off the bottom. */
+      flex: 1 1 auto;
+      min-height: 0;
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      padding-block: 1rem;
+      padding-block: 1rem 0.75rem;
     }
     /* Bands above the workspace keep their natural height and are never
        squeezed to make room. */
@@ -1169,17 +1183,28 @@ body:has(.workspace-page)::after { display: none; }
       flex: 1 1 auto;
       min-height: 0;
     }
-    /* THE FEEDBACK CTA HAS NO PLACE IN A FRAME. It is mounted once at the end
-       of the app's <main>, which on every other screen is the bottom of a
-       document you scroll to. Here the page does not scroll at all — the
-       workspace takes exactly the height that is left — so an extra block
-       after it would be pushed past `overflow: hidden` and simply disappear.
-       Switched off explicitly rather than left to be clipped: an element that
-       is in the DOM but unreachable is the kind of thing that later reads as a
-       bug. Below 1024px this frame is off and the generator scrolls like any
-       other page, so the phone and tablet keep it. */
+    /* THE FEEDBACK CTA IS THE FRAME'S LAST ROW.
+       It used to be `display: none` here. The reasoning was sound as far as it
+       went — this page does not scroll, so a block after a full-height
+       workspace falls past `overflow: hidden` and cannot be reached — but the
+       conclusion was wrong: the fix for "there is no room" is to make room,
+       not to delete the thing. Switched off, it was simply missing from every
+       generator and every tool on every desktop, which is where most of this
+       product is used.
+
+       So it keeps its natural height (`flex: 0 0 auto` — a flex item must be
+       told not to shrink, or the column would squeeze it to nothing the moment
+       the workspace wanted the space back) and the workspace takes the rest.
+       Costs the workspace about 45px of a 1080-tall window.
+
+       The vertical rhythm is the ROW's, not the document's: on a scrolling
+       page the CTA separates itself from the content above with a large
+       margin, and here the frame's own edge already does that job — a 3rem
+       margin inside a viewport-locked page is 3rem stolen from the tool. */
     body:has(.gen-shell) .app-shell > main > [data-feedback-cta] {
-      display: none;
+      flex: 0 0 auto;
+      margin-top: 0;
+      padding-block: 0.5rem 0.625rem;
     }
   }
 }
