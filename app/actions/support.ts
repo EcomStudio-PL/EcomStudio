@@ -24,6 +24,66 @@ export async function createThreadAction(subject: string, body: string): Promise
   return { ok: true, threadId: thread.id };
 }
 
+/**
+ * FEEDBACK IS A SUPPORT THREAD, NOT A SECOND INBOX.
+ *
+ * "Zgłoś błąd / zaproponuj zmianę" could have had its own table, its own admin
+ * screen and its own unread count. It would also have had its own half of the
+ * reports — the operator would answer tickets in one place and never look at
+ * the other. So a report lands in `support_threads` exactly like a message the
+ * customer typed on /support: same RLS, same admin list, same reply flow, same
+ * e-mail when staff answers. Nothing new to build, nothing new to remember.
+ *
+ * THE KIND IS DECIDED HERE, FROM AN ENUM, and never from text the browser sent.
+ * It becomes a stable Polish prefix on the subject because the subject is read
+ * by the OPERATOR in the Polish admin panel — a German customer's report still
+ * has to be scannable in the list it lands in.
+ */
+const FEEDBACK_KINDS = {
+  bug: "BŁĄD",
+  change: "ZMIANA",
+  feature: "FUNKCJA",
+  other: "INNE",
+} as const;
+
+export type FeedbackKind = keyof typeof FEEDBACK_KINDS;
+
+/** What the page can tell us about where the report came from. Deliberately
+ *  short: the route and the viewport are what make a bug reproducible, and the
+ *  user and the timestamp are already columns on the row. */
+export type FeedbackContext = { route?: string; viewport?: string; agent?: string; locale?: string };
+
+export async function submitFeedbackAction(input: {
+  kind: string; message: string; context?: FeedbackContext;
+}): Promise<Result> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "unauthenticated" };
+
+  const kind = (Object.keys(FEEDBACK_KINDS) as FeedbackKind[])
+    .find((k) => k === input.kind) ?? "other";
+  const message = input.message.trim();
+  if (!message) return { ok: false, error: "invalid" };
+
+  // The subject is the first line of what they wrote, so the admin list reads
+  // as sentences rather than as four identical "Zgłoszenie błędu" rows.
+  const firstLine = message.split("\n")[0]!.trim().slice(0, 120);
+  const subject = `[${FEEDBACK_KINDS[kind]}] ${firstLine}`;
+
+  // Context goes UNDER the report, clearly fenced, so the operator reads the
+  // person's own words first and the machine detail only if they need it.
+  const c = input.context ?? {};
+  const facts = [
+    c.route && `Ekran: ${c.route}`,
+    c.viewport && `Okno: ${c.viewport}`,
+    c.locale && `Język: ${c.locale}`,
+    c.agent && `Urządzenie: ${c.agent.slice(0, 180)}`,
+  ].filter(Boolean);
+  const body = facts.length > 0 ? `${message}\n\n---\n${facts.join("\n")}` : message;
+
+  return createThreadAction(subject, body);
+}
+
 export async function postMessageAction(threadId: string, body: string): Promise<Result> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

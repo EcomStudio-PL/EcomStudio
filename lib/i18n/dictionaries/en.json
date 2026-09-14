@@ -865,6 +865,23 @@
     "f2": "Reply notifications",
     "f3": "Request history in one place"
   },
+  "feedback": {
+    "prompt": "Something not working as it should, or got an idea?",
+    "cta": "Report a bug / suggest a change",
+    "title": "Send a report",
+    "type": "Report type",
+    "bug": "Report a bug",
+    "change": "Suggest a change",
+    "feature": "Suggest a feature",
+    "other": "Other",
+    "message": "Description",
+    "placeholder": "Tell us what happened, or what you would change. The more detail, the faster we can fix it.",
+    "context": "We attach the screen you are sending from ({route}), your window size and your browser.",
+    "sending": "Sending…",
+    "send": "Send report",
+    "sent": "Thank you. Your report reached the team — the reply will appear under Support.",
+    "failed": "The report could not be sent. Try again."
+  },
   "roles": {
     "user": "User",
     "caretaker": "Caretaker",

@@ -865,6 +865,23 @@
     "f2": "Powiadomienia o odpowiedziach",
     "f3": "Historia zgłoszeń w jednym miejscu"
   },
+  "feedback": {
+    "prompt": "Coś nie działa tak, jak powinno, albo masz pomysł?",
+    "cta": "Zgłoś błąd / zaproponuj zmianę",
+    "title": "Zgłoszenie",
+    "type": "Typ zgłoszenia",
+    "bug": "Zgłoś błąd",
+    "change": "Zaproponuj zmianę",
+    "feature": "Zaproponuj funkcję",
+    "other": "Inne",
+    "message": "Opis",
+    "placeholder": "Opisz, co się wydarzyło albo co chcesz zmienić. Im więcej szczegółów, tym szybciej to naprawimy.",
+    "context": "Do zgłoszenia dołączymy ekran, z którego je wysyłasz ({route}), rozmiar okna i przeglądarkę.",
+    "sending": "Wysyłanie…",
+    "send": "Wyślij zgłoszenie",
+    "sent": "Dziękujemy. Zgłoszenie trafiło do zespołu — odpowiedź znajdziesz w sekcji Pomoc.",
+    "failed": "Nie udało się wysłać zgłoszenia. Spróbuj ponownie."
+  },
   "roles": {
     "user": "Użytkownik",
     "caretaker": "Opiekun",

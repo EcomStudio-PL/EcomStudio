@@ -19,6 +19,7 @@ import { MegaTopbar } from "@/components/layout/mega-topbar";
 import { CustomerDrawer } from "@/components/layout/customer-drawer";
 import { CustomerBottomNav } from "@/components/layout/customer-bottom-nav";
 import { DrawerProvider } from "@/components/layout/shell-context";
+import { FeedbackCTA } from "@/components/feedback/feedback-cta";
 
 export default async function AppLayout({ children, searchParams }: {
   children: React.ReactNode;
@@ -187,6 +188,16 @@ export default async function AppLayout({ children, searchParams }: {
             screenshot. */}
         <main className="mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-[var(--page-x)] pt-4 pb-[var(--page-bottom)] sm:px-6 sm:pt-5 lg:px-8 lg:pb-14 lg:pt-6 xl:px-10">
           {children}
+          {/* MOUNTED ONCE, FOR THE WHOLE CUSTOMER APP. Every screen a customer
+              can reach lives under this <main>, so "report a bug / suggest a
+              change" is at the end of all of them without a single page having
+              to wire it up — and cannot drift out of one of them later.
+              It inherits this element's own `--page-bottom`, which is derived
+              from the dock height plus the safe area, so the fixed bottom
+              navigation can never cover it. Sign-in, the security check and
+              the admin panel are separate layouts and deliberately do not get
+              it. */}
+          <FeedbackCTA />
         </main>
         <CustomerBottomNav name={displayName} availability={availability} isAdmin={navAdmin} />
         <CustomerDrawer name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} navAdmin={navAdmin} availability={availability} />

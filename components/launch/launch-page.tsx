@@ -402,7 +402,16 @@ export function LaunchPage({
 
         {/* ── FOOTER ───────────────────────────────────────────────────────
             One line. A pre-launch page has nothing to put in columns. */}
-        <footer className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pb-[calc(0.85rem+env(safe-area-inset-bottom))] pt-1.5 text-center text-[11.5px] text-faint lg:pb-1 lg:pt-0 min-[1400px]:gap-x-[clamp(14px,1vw,20px)] min-[1400px]:pb-[clamp(12px,min(1vw,1.33vh),24px)] min-[1400px]:pt-[clamp(8px,min(0.6vw,0.89vh),16px)] min-[1400px]:text-[clamp(12px,min(0.88vw,1.33vh),14px)]">
+        {/* `lg:pb-2`, NOT pb-1. The three links carry `.tap`, which grows the
+            hit box by 8px top and bottom and pulls the layout back by the same
+            amount — so the box a finger can press extends 8px BELOW the text.
+            The page is exactly 100svh tall and the footer is its last child, so
+            a 4px pad left those targets hanging 4px past the bottom of the
+            document: every screen from 1024 to 1399 scrolled by exactly 4px, on
+            a page whose whole premise is that it does not scroll. 8px contains
+            the target. Above 1400 the clamp below was already ≥12px, which is
+            why the big monitors never showed it. */}
+        <footer className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pb-[calc(0.85rem+env(safe-area-inset-bottom))] pt-1.5 text-center text-[11.5px] text-faint lg:pb-2 lg:pt-0 min-[1400px]:gap-x-[clamp(14px,1vw,20px)] min-[1400px]:pb-[clamp(12px,min(1vw,1.33vh),24px)] min-[1400px]:pt-[clamp(8px,min(0.6vw,0.89vh),16px)] min-[1400px]:text-[clamp(12px,min(0.88vw,1.33vh),14px)]">
           <span>GrovBase © {new Date().getFullYear()} · {rightsLabel}</span>
           <span aria-hidden className="hidden sm:inline">·</span>
           <Link href="/polityka-prywatnosci" className="tap transition-colors hover:text-ink">{privacyLabel}</Link>

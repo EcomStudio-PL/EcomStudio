@@ -176,10 +176,19 @@
 
      They live here rather than in a style attribute on the element because a
      tablet in portrait needs different ones, and an inline style is the one
-     declaration a media query cannot override. These values are the phone's
-     and are not to be touched: the ramp is vw-first and capped in svh so a
-     short or landscape screen never gets a band taller than the window. */
-  --hero-top: calc(3.25rem + env(safe-area-inset-top));
+     declaration a media query cannot override. The ramp is vw-first and capped
+     in svh so a short or landscape screen never gets a band taller than the
+     window.
+
+     `--hero-top` WENT DOWN A NOTCH (3.25 → 4.25rem, one line of text). The
+     header's wash is `--hero-top + 5rem` tall and starts at the screen edge, so
+     when the band began higher the fade was still at its most opaque where the
+     artwork started — the shadow sat ON the dinosaurs instead of landing in
+     front of them. Sixteen pixels is the whole correction: the band clears the
+     dense part of the wash, and because the content pad is computed from this
+     number the badge and everything under it travel with the picture rather
+     than drifting away from it. */
+  --hero-top: calc(4.25rem + env(safe-area-inset-top));
   --hero-art: min(62vw, 32svh);
 }
 
@@ -198,7 +207,22 @@
    content pad follows automatically — it is computed from these. */
 @media (min-width: 768px) and (max-width: 1023.98px) {
   [data-launch-page] {
-    --hero-art: min(46vw, 26svh);
+    /* THE THIRD TERM IS A SUBTRACTION, AND IT HAS TO BE.
+       Everything under the band — badge, headline, sub, chips, form, perks,
+       footer — has a height that depends on the WIDTH, not on the height: at
+       768 it measures 780px and it stays 780px whether the tablet is 1024 tall
+       or 1180. A cap expressed only as a fraction of the height cannot know
+       that. So the two short tablets in portrait overflowed while the two tall
+       ones fitted — measured at 49px past the fold on a 768×1024 iPad and 8px
+       on an 810×1080, which is the worst possible amount: the perks island is
+       sliced off and the page scrolls a finger's width to show it.
+
+       `100svh - 51rem` is that fixed stack plus about ten pixels of headroom
+       for a line of copy growing, so the band takes what is genuinely left
+       rather than a guess. It only ever BINDS on the short tablets: at
+       834×1112 and 820×1180 the 26svh term is still the smaller one and those
+       two screens render to the pixel as they did. */
+    --hero-art: min(46vw, 26svh, calc(100svh - 51rem));
   }
 }
 
@@ -647,31 +671,38 @@ body::after {
    wins and drops the toasts into normal flow. The stack then grows the wrong
    way and stops honouring the bottom offset: measured, three toasts sat 111px
    above the dock instead of the 14px a single one did. */
-/* THE STRIPE IS PAINTED ON THE BOX, not on a pseudo-element. sonner owns both
-   ::before and ::after on a toast — ::before is the ghost overlay it scaleY(2)s
-   during a swipe or a dismissal, ::after is the spacer that makes the gap
-   between stacked toasts — so borrowing either one makes the stripe stretch to
-   twice its height every time a message is dismissed. A background-image on the
-   element itself is clipped by the border-radius for free and collides with
-   nothing. */
+/* SEVERITY IS THE BORDER, ALL FOUR SIDES OF IT.
+   This used to be a 3px bar painted down the left edge with a background-image
+   gradient, sitting on top of a 1px border on the other three. The result read
+   as a box someone had forgotten to finish: one thick accent rail, three
+   hairlines. So the colour moved onto the border itself — same thin line the
+   rest of the design system uses, the whole way round.
+
+   THE BORDER IS DECLARED HERE AND NOWHERE ELSE. The component used to also
+   carry Tailwind's `border` + a colour utility, which is how the two ended up
+   fighting; with one owner there is no way to reintroduce a thick edge on one
+   side while the others stay thin. Alpha keeps it a tint rather than a neon
+   outline — it has to name the severity, not shout it. */
 .grov-toast {
-  background-image: linear-gradient(to right, rgb(var(--accent)) 0 3px, transparent 3px);
+  border: 1px solid rgb(var(--accent) / 0.34);
 }
 .grov-toast [data-icon] { color: rgb(var(--accent)); background: rgb(var(--accent) / 0.14); }
 /* Room for the close button so a long message never runs under it. */
 .grov-toast [data-content] { padding-inline-end: 1.25rem; }
 
-.grov-toast--success { background-image: linear-gradient(to right, rgb(var(--success)) 0 3px, transparent 3px); }
+/* Doubled class = specificity 0,2,0, so a severity always outranks the base
+   rule above regardless of the order sonner happens to apply the classes in. */
+.grov-toast.grov-toast--success { border-color: rgb(var(--success) / 0.42); }
 .grov-toast--success [data-icon] { color: rgb(var(--success)); background: rgb(var(--success) / 0.14); }
 
-.grov-toast--error { background-image: linear-gradient(to right, rgb(var(--danger)) 0 3px, transparent 3px); }
+.grov-toast.grov-toast--error { border-color: rgb(var(--danger) / 0.42); }
 .grov-toast--error [data-icon] { color: rgb(var(--danger)); background: rgb(var(--danger) / 0.14); }
 
-.grov-toast--warning { background-image: linear-gradient(to right, rgb(var(--warning)) 0 3px, transparent 3px); }
+.grov-toast.grov-toast--warning { border-color: rgb(var(--warning) / 0.42); }
 .grov-toast--warning [data-icon] { color: rgb(var(--warning)); background: rgb(var(--warning) / 0.14); }
 
 /* Info keeps the brand accent: it is narration, not a verdict. */
-.grov-toast--info { background-image: linear-gradient(to right, rgb(var(--accent)) 0 3px, transparent 3px); }
+.grov-toast.grov-toast--info { border-color: rgb(var(--accent) / 0.42); }
 .grov-toast--info [data-icon] { color: rgb(var(--accent)); background: rgb(var(--accent) / 0.14); }
 
 /* Reduced motion shortens the travel; it must NOT remove it. sonner does not
@@ -1137,6 +1168,18 @@ body:has(.workspace-page)::after { display: none; }
     body:has(.gen-shell) .gen-shell > .gen-shell-body {
       flex: 1 1 auto;
       min-height: 0;
+    }
+    /* THE FEEDBACK CTA HAS NO PLACE IN A FRAME. It is mounted once at the end
+       of the app's <main>, which on every other screen is the bottom of a
+       document you scroll to. Here the page does not scroll at all — the
+       workspace takes exactly the height that is left — so an extra block
+       after it would be pushed past `overflow: hidden` and simply disappear.
+       Switched off explicitly rather than left to be clipped: an element that
+       is in the DOM but unreachable is the kind of thing that later reads as a
+       bug. Below 1024px this frame is off and the generator scrolls like any
+       other page, so the phone and tablet keep it. */
+    body:has(.gen-shell) .app-shell > main > [data-feedback-cta] {
+      display: none;
     }
   }
 }

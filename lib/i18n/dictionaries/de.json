@@ -865,6 +865,23 @@
     "f2": "Benachrichtigungen bei Antworten",
     "f3": "Anfragehistorie an einem Ort"
   },
+  "feedback": {
+    "prompt": "Etwas funktioniert nicht wie erwartet, oder hast du eine Idee?",
+    "cta": "Fehler melden / Änderung vorschlagen",
+    "title": "Meldung senden",
+    "type": "Art der Meldung",
+    "bug": "Fehler melden",
+    "change": "Änderung vorschlagen",
+    "feature": "Funktion vorschlagen",
+    "other": "Sonstiges",
+    "message": "Beschreibung",
+    "placeholder": "Beschreibe, was passiert ist oder was du ändern würdest. Je mehr Details, desto schneller können wir es beheben.",
+    "context": "Wir hängen den Bildschirm an, von dem du sendest ({route}), deine Fenstergröße und deinen Browser.",
+    "sending": "Wird gesendet…",
+    "send": "Meldung senden",
+    "sent": "Danke. Deine Meldung ist beim Team — die Antwort findest du unter Support.",
+    "failed": "Die Meldung konnte nicht gesendet werden. Versuche es erneut."
+  },
   "roles": {
     "user": "Nutzer",
     "caretaker": "Betreuer",

@@ -32,8 +32,9 @@ import { CheckCircle2, AlertTriangle, RotateCcw, Info } from "lucide-react";
  *
  * `unstyled` turns off sonner's own skin completely — richColors is what made
  * the old box look like a browser alert. Everything below is GrovBase tokens:
- * the same glass, border and shadow as the rest of the app, with one accent
- * stripe carrying the severity.
+ * the same glass and shadow as the rest of the app, with the severity carried
+ * by the border — all four sides of it, tinted, at the one hairline weight the
+ * design system uses everywhere else.
  */
 export function AppToaster() {
   return (
@@ -65,12 +66,17 @@ export function AppToaster() {
         classNames: {
           toast: [
             "grov-toast group pointer-events-auto flex w-full items-center gap-3",
-            "rounded-2xl border px-3.5 py-3",
+            "rounded-2xl px-3.5 py-3",
+            // NO BORDER UTILITY HERE ON PURPOSE. The border — all four sides of
+            // it, tinted by severity — belongs to `.grov-toast` in globals.css
+            // and has exactly one owner. Declaring it here as well is what let a
+            // 3px accent rail on the left coexist with 1px hairlines elsewhere.
+            //
             // OPAQUE, not glassy-transparent. At 0.96 the toast behind the front
             // one showed its text through, so a stack read as one smudged
             // message. The backdrop blur below still does the glass work
             // against the page.
-            "border-[rgb(var(--glass-border)/0.22)] bg-[rgb(var(--glass))]",
+            "bg-[rgb(var(--glass))]",
             "text-[13px] leading-[1.35] text-ink backdrop-blur-2xl",
             "shadow-[0_18px_44px_-18px_rgb(0_0_0/0.75),inset_0_1px_0_rgb(190_200_255/0.06)]",
           ].join(" "),
@@ -82,9 +88,9 @@ export function AppToaster() {
             "!h-6 !w-6 !rounded-lg !border-[rgb(var(--glass-border)/0.25)]",
             "!bg-[rgb(var(--surface)/0.7)] !text-faint hover:!text-ink",
           ].join(" "),
-          // One stripe and one icon tint per severity. The body stays the same
-          // GrovBase glass in all four, so a message never stops looking like
-          // part of the product.
+          // One border tint and one icon tint per severity. The body stays the
+          // same GrovBase glass in all four, so a message never stops looking
+          // like part of the product.
           success: "grov-toast--success",
           error: "grov-toast--error",
           warning: "grov-toast--warning",
