@@ -376,7 +376,7 @@ export function GeneratorWorkspace({
     // with the real chrome. Both columns then scroll inside themselves and
     // the page does not scroll at all.
     <div className={cn(
-      "gen-shell-body relative grid min-w-0 items-start gap-5 pb-[var(--gen-page-bottom)] [&>*]:min-w-0",
+      "gen-shell-body relative grid min-w-0 items-start gap-5 [&>*]:min-w-0",
       "lg:grid-cols-[clamp(420px,29vw,470px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0",
     )}>
       <DropOverlay show={dragging} title={t("genv3.dropTitle")} sub={t("genv3.dropSub")} />

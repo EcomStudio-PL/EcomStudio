@@ -421,7 +421,7 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
       // itself — the same arrangement, and the same column widths, the
       // generator uses. Below `lg` none of it applies and the page scrolls
       // normally, with the island floating above the app dock.
-      "gen-shell-body relative grid min-w-0 items-start gap-4 pb-36 [&>*]:min-w-0",
+      "gen-shell-body relative grid min-w-0 items-start gap-4 [&>*]:min-w-0",
       "lg:grid-cols-[clamp(420px,29vw,470px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0",
     )}>
       {/* The tool's whole page is the target — the dashed tile below is a

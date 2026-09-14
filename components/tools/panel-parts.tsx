@@ -1,6 +1,8 @@
 "use client";
+import { useRef } from "react";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
+import { useDockRoom } from "@/components/layout/dock-room";
 import { cn } from "@/lib/utils";
 
 /**
@@ -153,8 +155,13 @@ export function CostIsland({ perImage, count, enough, status, children }: {
 }) {
   const { t } = useI18n();
   const total = perImage * count;
+  // Below `lg` this island IS a docked bar, so the page reserves room for it
+  // the same way a generator does — measured, once, on the outermost
+  // scroller. See components/layout/dock-room.ts.
+  const islandRef = useRef<HTMLDivElement>(null);
+  useDockRoom(islandRef);
   return (
-    <div className={cn(
+    <div ref={islandRef} data-gen-dock className={cn(
       // `!fixed` because `.panel` carries `position: relative` of its own and
       // wins on source order: without the override the island stopped docking
       // on a phone and rode the settings column down out of reach.

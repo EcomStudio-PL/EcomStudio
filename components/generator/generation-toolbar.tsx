@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check, ChevronUp, Layers, Loader2, Maximize, PenLine, Ratio as RatioIcon, Sparkles,
 } from "lucide-react";
@@ -7,6 +7,7 @@ import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Diamond } from "@/components/layout/credits-control";
 import { BottomSheet } from "@/components/mobile/sheet";
+import { useDockRoom } from "@/components/layout/dock-room";
 import { modelBadgeLabel } from "@/lib/model-badge";
 import { cn } from "@/lib/utils";
 
@@ -93,6 +94,9 @@ export function GenerationToolbar({
 }) {
   const { t, locale } = useI18n();
   const [sheet, setSheet] = useState<Sheet>(null);
+  // One owner for the room this bar needs — see components/layout/dock-room.ts.
+  const dockRef = useRef<HTMLDivElement>(null);
+  useDockRoom(dockRef);
 
   const model = useMemo(
     () => models.find((m) => m.id === state.modelId) ?? models[0] ?? null,
@@ -168,6 +172,8 @@ export function GenerationToolbar({
   return (
     <>
       <div
+        ref={dockRef}
+        data-gen-dock
         className={cn(
           "fixed inset-x-0 z-30 px-[var(--page-x)] sm:px-4 lg:px-6 xl:px-8",
           // Phones: sit directly on top of the bottom navigation, sharing its

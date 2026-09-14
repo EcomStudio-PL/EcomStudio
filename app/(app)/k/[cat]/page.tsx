@@ -73,7 +73,7 @@ export default async function CategoryPage({ params }: { params: Promise<{ cat: 
   const isMatching = category.key === "matching";
 
   return (
-    <div className={isMatching ? "pb-[var(--gen-page-bottom)] lg:pb-[7.5rem]" : undefined}>
+    <div className={isMatching ? "lg:pb-[7.5rem]" : undefined}>
       <CategoryHeader
         category={category}
         title={t(`cats.${category.key}`)}

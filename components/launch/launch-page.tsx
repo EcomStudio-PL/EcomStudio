@@ -134,7 +134,7 @@ export function LaunchPage({
       <div aria-hidden data-launch-art-mobile
         className="pointer-events-none absolute inset-x-0 top-[var(--hero-top)] h-[var(--hero-art)] lg:hidden">
         <Image src={art} alt="" fill priority sizes="100vw"
-          className="object-cover object-[6%_center]" />
+          className="object-cover object-[6%_center] md:object-[6%_12%]" />
         {/* Top AND bottom now: the band no longer starts at the screen edge,
             so its upper edge would otherwise be a visible seam across the
             page. It dissolves into the header's ground instead. */}
@@ -248,7 +248,16 @@ export function LaunchPage({
             layout is geometrically unchanged. Every part of this that moves
             anything is behind `lg:`. */}
         <div className="flex flex-1 flex-col lg:justify-center">
-        <div className="grid flex-1 items-center gap-5 pb-5 pt-[calc(var(--hero-top)+var(--hero-art)-2.6rem)] sm:gap-6 lg:flex-none lg:grid-cols-[minmax(0,clamp(455px,34vw,640px))_minmax(0,1fr)] lg:items-end lg:gap-[clamp(40px,3.6vw,76px)] lg:pb-0 lg:pt-0">
+        {/* THE TABLET OVERLAPS THE ARTWORK MORE, ON PURPOSE. A tablet is wide
+            enough that the scene needs real height to keep the dinosaurs'
+            heads — and the stack underneath it does not shrink with the
+            window, so the extra height has to come from somewhere. It comes
+            from the overlap the composition already uses: the badge sits five
+            rem into the picture instead of two and a half, where the band's
+            own bottom fade is already near-black, so it reads as the same
+            deliberate relationship, only deeper. Worth about forty pixels,
+            which is most of what the taller band costs. */}
+        <div className="grid flex-1 items-center gap-5 pb-5 pt-[calc(var(--hero-top)+var(--hero-art)-2.6rem)] sm:gap-6 md:pt-[calc(var(--hero-top)+var(--hero-art)-5rem)] lg:flex-none lg:grid-cols-[minmax(0,clamp(455px,34vw,640px))_minmax(0,1fr)] lg:items-end lg:gap-[clamp(40px,3.6vw,76px)] lg:pb-0 lg:pt-0">
           <div className="min-w-0 lg:py-1">
             {c["hero.badge"] && (
               <p data-launch-badge

@@ -8,6 +8,7 @@ import {
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
 import type { GalleryItem, GallerySessionType, GenModel } from "@/components/genv3/types";
 import { ImageDetails, extOf, saveBlob } from "@/components/genv3/image-details";
 import { RegenerateModal } from "@/components/genv3/regenerate";
@@ -120,7 +121,7 @@ export function GenerationGallery({
     if (f.order === "asc") p.set("order", "asc");
     if (cur) p.set("cursor", cur);
     if (operation) p.set("op", operation);
-    p.set("limit", "24");
+    p.set("limit", String(GALLERY_PAGE_SIZE));
     return `/api/generations?${p.toString()}`;
   }, [operation]);
 

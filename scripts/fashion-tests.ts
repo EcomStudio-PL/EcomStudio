@@ -181,8 +181,15 @@ const retouch = readFileSync("components/retouch/workspace.tsx", "utf8");
 const SHELL = "lg:grid-cols-[clamp(380px,27vw,430px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0";
 check("the two-column shell matches the retouch panel exactly",
   retouch.includes(SHELL) && panel.includes(SHELL));
+// Compared against retouch rather than against a literal, like the shell
+// above it. The literal used to carry `pb-[var(--gen-page-bottom)]`, and
+// pinning that here meant the test failed the day the bottom offset moved to
+// the one box where it belongs — the app shell's <main> — even though the two
+// panels still matched each other perfectly. Neither of these screens docks a
+// toolbar, so neither reserves room for one.
+const STACK = "gen-shell-body relative grid min-w-0 items-start gap-5 [&>*]:min-w-0";
 check("the mobile stack is the same single column below lg",
-  panel.includes("gen-shell-body relative grid min-w-0 items-start gap-5 pb-[var(--gen-page-bottom)]"));
+  retouch.includes(STACK) && panel.includes(STACK));
 check("the left column scrolls inside itself rather than the page",
   panel.includes("lg:h-full lg:min-h-0 lg:overflow-y-auto"));
 check("the cost island keeps the retouch card's geometry",

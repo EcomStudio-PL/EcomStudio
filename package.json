@@ -30,6 +30,7 @@
     "test:secrets": "esbuild scripts/secret-store-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/secret-store-tests.cjs && node .next/secret-store-tests.cjs",
     "test:mobile": "node scripts/mobile-check.mjs",
     "test:landing": "node scripts/landing-geometry.mjs",
+    "test:genlayout": "node scripts/gen-layout-probe.mjs",
     "test:toastborder": "node scripts/toast-border-check.mjs",
     "test:feedback": "node scripts/feedback-tests.mjs",
     "test:fashion": "esbuild scripts/fashion-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/fashion-tests.cjs --log-level=silent && node .next/fashion-tests.cjs"

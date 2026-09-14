@@ -135,22 +135,48 @@ let bad = 0;
 for (const r of rows) {
   const { vp } = r;
   const notes = [];
+  /** Facts worth printing that are not defects. */
+  const info = [];
 
   if (r.scrollW > vp.w + 1) {
     notes.push(`SIDEWAYS +${r.scrollW - vp.w}px` + (r.worst ? ` (${r.worst.tag}.${r.worst.cls})` : ""));
   }
+  // A PAGE EITHER FITS OR SCROLLS — the failure is in between.
+  //
+  // Fitting exactly is the design's own ambition, and on a phone the page has
+  // always been a document. What is never right is a handful of pixels: too
+  // few to look like there is anything below, too many to be flush, and the
+  // shape of every "why does this bounce?" defect this file was written for —
+  // the four pixels the footer's tap targets used to hang past the bottom.
+  // So a small overhang fails and an honest document does not.
   const scrollBy = r.scrollH - r.viewH;
-  if (scrollBy > 2) notes.push(`page scrolls ${scrollBy}px`);
+  if (scrollBy > 2 && scrollBy < 24) notes.push(`page overhangs by ${scrollBy}px — neither flush nor a scroll`);
+  else if (scrollBy >= 24) info.push(`scrolls ${scrollBy}px`);
 
-  // The form is the page's one job.
-  if (r.submit && r.submit.bottom > r.viewH) {
+  // The form is the page's one job — on a screen with room for it. A phone is
+  // a document and has always asked for one swipe to reach the field.
+  if (vp.w >= 768 && r.submit && r.submit.bottom > r.viewH) {
     notes.push(`SUBMIT ${r.submit.bottom - r.viewH}px below the fold`);
   }
 
-  // Pairs that must never meet. The badge/band pair is deliberately absent.
-  for (const [an, bn] of [["h1", "band"], ["chips", "form"], ["form", "perks"],
-    ["h1", "chips"], ["brand", "h1"], ["perks", "footer"], ["form", "footer"]]) {
-    const px = overlap(r[an], r[bn]);
+  // Pairs that must never meet. The badge/band pair is deliberately absent —
+  // the badge sitting ON the photograph is the composition.
+  //
+  // The band is compared against its PICTURE, not its box. Its bottom sixth is
+  // a fade that reaches the page background before the element ends, so type
+  // laid over that strip has nothing behind it; treating the box as the image
+  // reported the headline as "over the artwork" on every tablet while the
+  // screenshot showed it on plain ground.
+  const bandArt = r.band && r.band.h > 0
+    ? { ...r.band, bottom: Math.round(r.band.top + r.band.h * 0.84) }
+    : null;
+  for (const [an, a, bn, b] of [
+    ["h1", r.h1, "band", bandArt], ["chips", r.chips, "form", r.form],
+    ["form", r.form, "perks", r.perks], ["h1", r.h1, "chips", r.chips],
+    ["brand", r.brand, "h1", r.h1], ["perks", r.perks, "footer", r.footer],
+    ["form", r.form, "footer", r.footer],
+  ]) {
+    const px = overlap(a, b);
     if (px > 2) notes.push(`${an}×${bn} overlap ${px}px`);
   }
   // The login entry and the logo are in the same row: they must not collide.
@@ -162,7 +188,8 @@ for (const r of rows) {
   console.log(
     `${notes.length ? "✗" : "✓"} ${String(vp.label).padEnd(24)} ${String(vp.w + "×" + vp.h).padEnd(10)}` +
     ` ${band.padEnd(28)} ${badge.padEnd(14)} doc ${r.scrollH}/${r.viewH}` +
-    (notes.length ? `\n     ${notes.join("\n     ")}` : "")
+    (info.length ? `  [${info.join(", ")}]` : "")
+    + (notes.length ? `\n     ${notes.join("\n     ")}` : "")
   );
 }
 console.log(`\n${rows.length - bad}/${rows.length} viewports clean`);

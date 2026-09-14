@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { listGalleryItems } from "@/lib/server/gallery";
+import { GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
 import { getSessionPreviews } from "@/lib/server/generator-ui";
 import { WorkflowRuntime } from "@/components/category/workflow-runtime";
@@ -46,7 +47,7 @@ export default async function WorkflowPage({ params }: {
     supabase.rpc("providers_with_credentials"),
     getWallet(supabase, workspace.id),
     conceptModelOptions(supabase),
-    listGalleryItems(supabase, workspace.id, { limit: 24 }),
+    listGalleryItems(supabase, workspace.id, { limit: GALLERY_PAGE_SIZE }),
     getSessionPreviews(supabase),
   ]);
   const keyed = new Set((withKey ?? []) as string[]);
@@ -70,7 +71,7 @@ export default async function WorkflowPage({ params }: {
     const perTool = await Promise.all(FASHION_TOOLS.map(async (tool) => {
       const [available, items] = await Promise.all([
         fashionToolAvailable(supabase, tool.toolKey),
-        listGalleryItems(supabase, workspace.id, { limit: 24, operation: tool.operation }),
+        listGalleryItems(supabase, workspace.id, { limit: GALLERY_PAGE_SIZE, operation: tool.operation }),
       ]);
       return [tool.key, {
         available: Boolean(model) && available,

@@ -5,6 +5,7 @@ import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { listGalleryItems } from "@/lib/server/gallery";
+import { GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
 import { customModels, getUsableModels, toClientModel } from "@/lib/ai/router";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
 import { GeneratorModeSwitch } from "@/components/generator/mode-switch";
@@ -34,7 +35,7 @@ export default async function GeneratorPage({ searchParams }: {
   const [usable, wallet, gallery, priceOptions] = await Promise.all([
     getUsableModels(supabase),
     getWallet(supabase, workspace.id),
-    listGalleryItems(supabase, workspace.id, { limit: 24 }),
+    listGalleryItems(supabase, workspace.id, { limit: GALLERY_PAGE_SIZE }),
     conceptModelOptions(supabase),
   ]);
 

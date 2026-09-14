@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { listGalleryItems } from "@/lib/server/gallery";
+import { GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
 import { retouchModel, RETOUCH_OPERATION } from "@/lib/server/retouch";
 import { RetouchWorkspace } from "@/components/retouch/workspace";
 
@@ -27,7 +28,7 @@ export default async function RetouchPage() {
   const [model, wallet, gallery] = await Promise.all([
     retouchModel(supabase),
     getWallet(supabase, workspace.id),
-    listGalleryItems(supabase, workspace.id, { limit: 24, operation: RETOUCH_OPERATION }),
+    listGalleryItems(supabase, workspace.id, { limit: GALLERY_PAGE_SIZE, operation: RETOUCH_OPERATION }),
   ]);
 
   return (

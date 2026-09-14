@@ -277,7 +277,7 @@ export function FashionToolWorkspace({
 
   return (
     <div className={cn(
-      "gen-shell-body relative grid min-w-0 items-start gap-5 pb-[var(--gen-page-bottom)] [&>*]:min-w-0",
+      "gen-shell-body relative grid min-w-0 items-start gap-5 [&>*]:min-w-0",
       "lg:grid-cols-[clamp(380px,27vw,430px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0",
     )}>
       <DropOverlay show={dragging} title={t("fashion.dropTitle")} sub={t("fashion.dropSub")} />

@@ -1,9 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { Check, Layers, Loader2, Maximize, Minus, PenLine, Plus, Ratio as RatioIcon, SlidersHorizontal, Sparkles } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { BottomSheet } from "@/components/mobile/sheet";
+import { useDockRoom } from "@/components/layout/dock-room";
 import { ratioIcon, ratioName } from "@/components/genv3/ratio-options";
 import { Diamond } from "@/components/layout/credits-control";
 import { ModelBadge, ModelTile } from "@/components/genv3/model-select";
@@ -42,6 +43,10 @@ export function MobileDock({
 }) {
   const { t, locale } = useI18n();
   const [sheet, setSheet] = useState<Sheet>(null);
+  // The page reserves room for this bar exactly once, at the bottom of its
+  // outermost scroller, from the height measured here. See dock-room.ts.
+  const barRef = useRef<HTMLDivElement>(null);
+  useDockRoom(barRef);
   const model = models.find((m) => m.id === modelId) ?? models[0];
   const n = (v: number) => new Intl.NumberFormat(locale).format(v);
   const qualityLabel = (q: string) =>
@@ -49,7 +54,7 @@ export function MobileDock({
 
   return (
     <>
-      <div className="fixed inset-x-0 z-30 px-[var(--page-x)] lg:hidden"
+      <div ref={barRef} data-gen-dock className="fixed inset-x-0 z-30 px-[var(--page-x)] lg:hidden"
         style={{ bottom: "calc(var(--dock-h) + env(safe-area-inset-bottom))" }}>
         <div className="dock mx-auto w-full max-w-[var(--content-max)] rounded-2xl p-2 shadow-e4">
           <div className="thin-scroll -mx-1 flex items-stretch gap-1.5 overflow-x-auto px-1 pb-1.5">

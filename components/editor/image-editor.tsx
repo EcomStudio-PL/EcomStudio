@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/surface";
 import { BottomSheet } from "@/components/mobile/sheet";
+import { useDockRoom } from "@/components/layout/dock-room";
 import { HistoryList } from "@/components/editor/history";
 import type { CutoutState, PatchFn } from "@/components/editor/panels";
 import {
@@ -540,12 +541,15 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
   const exporting = busy === "export";
   /** Is THIS edit the one sitting in the library? Any change makes it false. */
   const storedNow = ready && saved?.key === bakeKey(working, state);
+  // One owner for the room this bar needs — see components/layout/dock-room.ts.
+  const dockRef = useRef<HTMLDivElement>(null);
+  useDockRoom(dockRef);
 
   return (
     <div className={cn(
       // Same viewport-locked shell the generator uses: both columns scroll
       // inside themselves and the desktop page does not scroll at all.
-      "gen-shell-body relative grid min-w-0 items-start gap-4 pb-[var(--gen-page-bottom)] [&>*]:min-w-0",
+      "gen-shell-body relative grid min-w-0 items-start gap-4 [&>*]:min-w-0",
       "lg:grid-cols-[clamp(292px,22vw,340px)_minmax(0,1fr)] lg:items-stretch lg:gap-5 lg:overflow-hidden lg:pb-0",
     )}>
       {picker}
@@ -683,7 +687,7 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
       </div>
 
       {/* ── PHONES: the canvas stays visible, the tools come up as sheets ── */}
-      <div className="fixed inset-x-0 z-30 px-[var(--page-x)] lg:hidden"
+      <div ref={dockRef} data-gen-dock className="fixed inset-x-0 z-30 px-[var(--page-x)] lg:hidden"
         style={{ bottom: "calc(var(--dock-h) + env(safe-area-inset-bottom))" }}>
         <div className="dock mx-auto w-full max-w-[var(--content-max)] rounded-2xl p-2 shadow-e4">
           <div className="thin-scroll -mx-1 mb-1.5 flex items-stretch gap-1.5 overflow-x-auto px-1 pb-1">

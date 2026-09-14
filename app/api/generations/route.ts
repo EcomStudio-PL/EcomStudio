@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { listGalleryItems, type GallerySessionType } from "@/lib/server/gallery";
+import { GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
   const st = url.searchParams.get("session");
   const page = await listGalleryItems(supabase, workspace.id, {
     cursor: url.searchParams.get("cursor"),
-    limit: Number(url.searchParams.get("limit")) || 24,
+    limit: Number(url.searchParams.get("limit")) || GALLERY_PAGE_SIZE,
     sessionType: st === "advertising" || st === "lifestyle" ? (st as GallerySessionType) : null,
     favorite: url.searchParams.get("fav") === "1",
     q: url.searchParams.get("q"),

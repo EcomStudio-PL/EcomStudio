@@ -5,6 +5,7 @@ import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { listGalleryItems } from "@/lib/server/gallery";
+import { GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
 import { getSessionPreviews } from "@/lib/server/generator-ui";
 import { GeneratorModeSwitch } from "@/components/generator/mode-switch";
@@ -36,7 +37,7 @@ export default async function PromptsPage({ searchParams }: {
     supabase.rpc("providers_with_credentials"),
     getWallet(supabase, workspace.id),
     conceptModelOptions(supabase),
-    listGalleryItems(supabase, workspace.id, { limit: 24 }),
+    listGalleryItems(supabase, workspace.id, { limit: GALLERY_PAGE_SIZE }),
     getSessionPreviews(supabase),
   ]);
   const keyed = new Set((withKey ?? []) as string[]);

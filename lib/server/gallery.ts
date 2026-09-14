@@ -1,5 +1,6 @@
 import "server-only";
 import { QUALITIES } from "@/lib/ai/types";
+import { GALLERY_PAGE_MAX, GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
 import type { Client } from "@/lib/services/workspace";
 
 /**
@@ -118,7 +119,7 @@ type Row = {
 export async function listGalleryItems(
   supabase: Client, workspaceId: string, filter: GalleryFilter = {},
 ): Promise<GalleryPage> {
-  const limit = Math.min(Math.max(filter.limit ?? 24, 1), 48);
+  const limit = Math.min(Math.max(filter.limit ?? GALLERY_PAGE_SIZE, 1), GALLERY_PAGE_MAX);
   const bySession = filter.sessionType === "advertising" || filter.sessionType === "lifestyle";
   const asc = filter.order === "asc";
 
