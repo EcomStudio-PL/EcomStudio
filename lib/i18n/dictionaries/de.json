@@ -1558,10 +1558,19 @@
       "generators": "Generatoren",
       "products": "Produkte",
       "tools": "Werkzeuge",
-      "video": "Video"
+      "video": "Video",
+      "yours": "Deine Inhalte",
+      "pages": "Seiten"
     },
     "emptyTab": "Keine Treffer in diesem Tab.",
-    "clearRecent": "Leeren"
+    "clearRecent": "Leeren",
+    "toolPlaceholder": "Werkzeugnamen eingeben, z. B. „Bild generieren“, „Produktvideo“, „Hintergrund entfernen“…",
+    "mostUsed": "Beliebteste Werkzeuge",
+    "popularTools": "Beliebte Werkzeuge",
+    "allTools": "Alle Werkzeuge ansehen",
+    "ai": "KI",
+    "seeAll": "Alle ansehen",
+    "browseAll": "Nicht sicher, wonach Sie suchen? Alle Werkzeuge durchsuchen"
   },
   "econ": {
     "title": "Kundenrentabilität",
@@ -3980,5 +3989,99 @@
     "allFailed": "Die Fotos konnten nicht vorbereitet werden. Die Credits wurden erstattet.",
     "emptyTitle": "Sie haben noch keine generierten Fotos",
     "unavailable": "Dieses Werkzeug ist noch nicht bereit — ein Administrator hat seine Anweisung nicht veröffentlicht. Es werden keine Credits berechnet."
+  },
+  "toolsearch": {
+    "image_moda": {
+      "desc": "Kleidung und Accessoires — am Model oder ohne.",
+      "words": "mode, kleidung, klamotten, fashion, model, outfit, shooting, kategorie"
+    },
+    "fashion_ghost_mannequin": {
+      "desc": "Das Kleidungsstück allein — ohne Puppe, ohne Model.",
+      "words": "mode, puppe, ghost mannequin, unsichtbare puppe, kleidungsstück, ohne model"
+    },
+    "fashion_flat_lay": {
+      "desc": "Das Kleidungsstück flach ausgelegt, von oben.",
+      "words": "mode, flat lay, flatlay, liegend, von oben, flach"
+    },
+    "fashion_iron": {
+      "desc": "Entfernt Falten und Knitter aus dem Stoff.",
+      "words": "mode, bügeln, falten, knitter, glatt, glätten"
+    },
+    "fashion_change_person": {
+      "desc": "Dasselbe Produkt an einer anderen Person.",
+      "words": "mode, model, person, model wechseln, gesicht"
+    },
+    "image_ecommerce": {
+      "desc": "Produktfotos für Marktplätze und den eigenen Shop.",
+      "words": "e-commerce, shop, marktplatz, amazon, listing, weißer hintergrund, kategorie"
+    },
+    "image_social": {
+      "desc": "Formate für Instagram, TikTok und Anzeigen.",
+      "words": "social media, instagram, tiktok, facebook, reels, stories, werbung, post, kategorie"
+    },
+    "image_mailing": {
+      "desc": "Grafiken für Newsletter und E-Mail-Kampagnen.",
+      "words": "mailing, newsletter, e-mail, mail, kampagne, banner, kategorie"
+    },
+    "image_inne": {
+      "desc": "Alles, was in keine andere Kategorie passt.",
+      "words": "sonstiges, andere, allgemein, kategorie"
+    },
+    "image_matching": {
+      "desc": "Ein Produkt in eine fertige Szene einpassen.",
+      "words": "matching, einpassen, szene, komposition, set, kategorie"
+    },
+    "prompts": {
+      "desc": "GrovBase schreibt den Prompt und plant die Aufnahmen.",
+      "words": "generator, bild generieren, fertiger generator, engine, prompt, aufnahmen, ki"
+    },
+    "generator": {
+      "desc": "Eigenen Prompt schreiben und das Bild generieren.",
+      "words": "eigener prompt, bild generieren, text, beschreibung, generator, ki"
+    },
+    "retouch": {
+      "desc": "Bereinigt und verbessert ein Produktfoto mit einem Klick.",
+      "words": "retusche, bereinigen, korrektur, foto verbessern, aufhübschen"
+    },
+    "editor": {
+      "desc": "Hintergrund, Schatten, Zuschnitt und Farben in einem Editor.",
+      "words": "editor, bearbeiten, hintergrund entfernen, hintergrund, weißer hintergrund, schatten, zuschneiden, farben"
+    },
+    "resize": {
+      "desc": "Ändert Größe und Format für den gewählten Marktplatz.",
+      "words": "größe ändern, größe, format, skalieren, maße, seitenverhältnis, amazon, px"
+    },
+    "compress": {
+      "desc": "Verkleinert die Datei ohne sichtbaren Qualitätsverlust.",
+      "words": "kompression, komprimieren, dateigröße, mb, kb, optimieren, verkleinern"
+    },
+    "tool_upscale": {
+      "desc": "Vergrößert das Foto und ergänzt fehlende Details.",
+      "words": "upscale, vergrößern, auflösung, qualität, 2x, 4x, details, schärfen"
+    },
+    "tool_expand": {
+      "desc": "Zeichnet den Hintergrund über den Originalrahmen hinaus.",
+      "words": "erweitern, outpainting, ausdehnen, rahmen, hintergrund, seitenverhältnis"
+    },
+    "tool_watermark": {
+      "desc": "Legt Logo oder Wasserzeichen über eine Fotoserie.",
+      "words": "wasserzeichen, logo, signatur, stempel, branding, schutz"
+    },
+    "video": {
+      "desc": "Produktvideos — bald verfügbar.",
+      "words": "video, film, clip, produktvideo, animation, bewegung"
+    },
+    "remove_bg": {
+      "desc": "Schneidet das Produkt frei und macht den Hintergrund transparent.",
+      "words": "hintergrund entfernen, hintergrund, freistellen, transparent, png, ohne hintergrund"
+    },
+    "white_bg": {
+      "desc": "Der reinweiße Hintergrund, den Marktplätze verlangen.",
+      "words": "weißer hintergrund, hintergrund, weiß, amazon, marktplatz, hintergrund ändern"
+    },
+    "shadow": {
+      "desc": "Fügt einen natürlichen Schatten unter dem Produkt hinzu.",
+      "words": "schatten, produktschatten, schlagschatten, reflexion, realismus, hintergrund"
+    }
   }
 }

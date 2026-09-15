@@ -415,6 +415,45 @@ body::after {
   box-shadow: var(--shadow-4);
 }
 
+/* THE SEARCH FIELD — the lit pill at the top of the global search.
+   The brand's edge is the point: it is the one control in the overlay and the
+   design gives it its own light rather than a plain border. `focus-within` is
+   what makes that light also do a job — see the note on the outline below. */
+.search-field {
+  background: rgb(var(--raised) / 0.55);
+  border: 1px solid rgb(var(--accent) / 0.42);
+  box-shadow:
+    0 0 20px -8px rgb(var(--accent) / 0.55),
+    inset 0 1px 0 rgb(255 255 255 / 0.04);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+.search-field:focus-within {
+  border-color: rgb(var(--accent) / 0.75);
+  box-shadow:
+    0 0 0 1px rgb(var(--accent) / 0.2),
+    0 0 28px -8px rgb(var(--accent) / 0.8),
+    inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+/* The field itself IS the focus indicator here, and a brighter one than the
+   global 2px outline — which, on an input that fills the pill and is focused
+   the instant the overlay opens, drew a hard ring around the whole control the
+   moment you pressed the magnifier. Suppressed only inside this pill, and only
+   because something stronger replaces it. */
+.search-field input:focus-visible { outline: none; }
+
+/* THE GLOBAL SEARCH PANEL — .overlay, plus the brand's own edge.
+   A hairline of accent around the border and one wide, very soft bloom under
+   it. Deliberately a SHADOW and not a glowing border: the panel has to read as
+   lit from within the product rather than outlined in neon, and a shadow adds
+   no layout, no second border and nothing that can double up against the
+   .overlay border it sits on. */
+.search-panel {
+  box-shadow:
+    var(--shadow-4),
+    0 0 0 1px rgb(var(--accent) / 0.16),
+    0 28px 80px -34px rgb(var(--accent) / 0.5);
+}
+
 /* ── THE LIGHT SNAKE ─────────────────────────────────────────────────────
    A thread of brand light running once around a card while the pointer is on
    it. Used on the mega-menu entries, where a plain background tint could not

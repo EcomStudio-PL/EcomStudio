@@ -253,7 +253,15 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     userId, workspaceId, walletId: wallet.id, serviceSlug: "image_generation",
     providerSlug: provider.slug, modelSlug: model.model_identifier,
     generationJobId: job.id, idempotencyKey: `job:${job.id}`,
-    metadata: { quantity, model: model.model_identifier, quality: quality ?? null, prompt_origin: input.promptOrigin ?? null },
+    // `operation` is carried onto the usage row as well as the job row. Every
+    // tool that generates through this pipeline — Retusz, the four Moda tools —
+    // is charged as `image_generation`, so without this tag the ledger cannot
+    // tell them apart from the plain generator and the popularity ranking
+    // (lib/server/tool-popularity.ts) would credit all of them to /generator.
+    metadata: {
+      quantity, model: model.model_identifier, quality: quality ?? null,
+      prompt_origin: input.promptOrigin ?? null, operation: input.operation ?? null,
+    },
     creditsCharged: cost,
   });
   if (!usage.ok) {

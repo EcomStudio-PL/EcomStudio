@@ -6,6 +6,7 @@ import {
 import { getWallet } from "@/lib/services/credits";
 import { enforceLoginSecurity } from "@/lib/server/login-security";
 import { getAvailabilityMap, viewerIsAdmin } from "@/lib/server/feature-availability";
+import { readToolPopularity } from "@/lib/server/tool-popularity";
 import {
   copyFor, ensureBonusNotification, ensureOffer, getBonusConfig, getCampaignStart, toView,
 } from "@/lib/server/welcome-bonus";
@@ -122,7 +123,7 @@ export default async function AppLayout({ children, searchParams }: {
   // below from re-introducing a serial await.
   const [
     { dict: appDict }, wallet, { data: sub }, { data: notifs }, availability, navAdmin,
-    bonusConfig, campaignStart,
+    bonusConfig, campaignStart, popularity,
   ] = await Promise.all([
     getDictionary(),
     getWallet(supabase, workspace.id),
@@ -136,6 +137,10 @@ export default async function AppLayout({ children, searchParams }: {
     viewerIsAdmin(supabase),
     getBonusConfig(supabase),
     getCampaignStart(supabase),
+    // The weekly tool ranking the global search opens with. One settings row,
+    // joined to a batch that was already waiting on its slowest member, so the
+    // search costs nothing to open and nothing extra to render the page.
+    readToolPopularity(supabase),
   ]);
   const t0 = makeT(appDict);
   const unread = (notifs ?? []).filter((n) => !n.read_at).length;
@@ -181,7 +186,7 @@ export default async function AppLayout({ children, searchParams }: {
           itself stops scrolling. Every other page keeps min-h-dvh and
           scrolls normally. */}
       <div className="app-shell flex min-h-dvh w-full min-w-0 flex-col">
-        <MegaTopbar name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} notifications={notifs ?? []} unread={unread} availability={availability} navAdmin={navAdmin} />
+        <MegaTopbar name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} notifications={notifs ?? []} unread={unread} availability={availability} navAdmin={navAdmin} popularTools={popularity.keys} />
         {/* Full-width work surface. The bottom padding is DERIVED from the
             chrome tokens, so the fixed navigation can never cover the last
             element on the page — the defect that showed up on every phone

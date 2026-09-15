@@ -1558,10 +1558,19 @@
       "generators": "Generatory",
       "products": "Produkty",
       "tools": "Narzędzia",
-      "video": "Wideo"
+      "video": "Wideo",
+      "yours": "Twoje zasoby",
+      "pages": "Strony"
     },
     "emptyTab": "Brak wyników w tej zakładce.",
-    "clearRecent": "Wyczyść"
+    "clearRecent": "Wyczyść",
+    "toolPlaceholder": "Wpisz nazwę narzędzia, np. „generuj obraz”, „film produktowy”, „usuń tło”…",
+    "mostUsed": "Najpopularniejsze narzędzia",
+    "popularTools": "Popularne narzędzia",
+    "allTools": "Zobacz wszystkie narzędzia",
+    "ai": "AI",
+    "seeAll": "Zobacz wszystkie",
+    "browseAll": "Nie wiesz, czego szukasz? Przeglądaj wszystkie narzędzia"
   },
   "econ": {
     "title": "Rentowność klienta",
@@ -3980,5 +3989,99 @@
     "allFailed": "Nie udało się przygotować zdjęć. Kredyty zostały zwrócone.",
     "emptyTitle": "Nie masz jeszcze wygenerowanych zdjęć",
     "unavailable": "To narzędzie nie jest jeszcze gotowe — administrator nie opublikował dla niego instrukcji. Kredyty nie zostaną pobrane."
+  },
+  "toolsearch": {
+    "image_moda": {
+      "desc": "Zdjęcia odzieży i akcesoriów — na modelu lub bez.",
+      "words": "moda, ubrania, odzież, fashion, model, modelka, ciuchy, sesja, kategoria"
+    },
+    "fashion_ghost_mannequin": {
+      "desc": "Ubranie bez manekina i bez modela — sam produkt.",
+      "words": "moda, manekin, ghost mannequin, niewidzialny manekin, ubranie, bez modela"
+    },
+    "fashion_flat_lay": {
+      "desc": "Ubranie rozłożone płasko, widziane z góry.",
+      "words": "moda, flat lay, flatlay, leżący produkt, z góry, płasko, rozłożone"
+    },
+    "fashion_iron": {
+      "desc": "Usuwa zagniecenia i fałdy z tkaniny.",
+      "words": "moda, prasowanie, wyprasuj, zagniecenia, fałdy, gniecenia, gładkie"
+    },
+    "fashion_change_person": {
+      "desc": "Ten sam produkt na innej osobie.",
+      "words": "moda, model, modelka, osoba, postać, zmiana modela, twarz"
+    },
+    "image_ecommerce": {
+      "desc": "Zdjęcia produktowe pod Allegro, Amazon i sklep.",
+      "words": "e-commerce, sklep, allegro, amazon, marketplace, karta produktu, białe tło, kategoria"
+    },
+    "image_social": {
+      "desc": "Kadry pod Instagram, TikTok i reklamy.",
+      "words": "social media, instagram, tiktok, facebook, reels, stories, reklama, post, kategoria"
+    },
+    "image_mailing": {
+      "desc": "Grafiki do newsletterów i kampanii e-mail.",
+      "words": "mailing, newsletter, e-mail, mail, kampania, baner, wysyłka, kategoria"
+    },
+    "image_inne": {
+      "desc": "Wszystko, co nie pasuje do pozostałych kategorii.",
+      "words": "inne, pozostałe, dowolne, uniwersalne, kategoria"
+    },
+    "image_matching": {
+      "desc": "Dopasowanie produktu do gotowej sceny.",
+      "words": "matching, dopasowanie, scena, kompozycja, zestaw, kategoria"
+    },
+    "prompts": {
+      "desc": "GrovBase pisze prompt i planuje serię ujęć.",
+      "words": "generator, generuj obraz, gotowy generator, silnik, prompt, ujęcia, plan, ai"
+    },
+    "generator": {
+      "desc": "Wpisujesz własny prompt i generujesz obraz.",
+      "words": "własny prompt, generuj obraz, prompt, tekst, opis, generator, ai"
+    },
+    "retouch": {
+      "desc": "Czyści i poprawia zdjęcie produktu jednym kliknięciem.",
+      "words": "retusz, poprawa, czyszczenie, korekta, popraw zdjęcie, upiększ"
+    },
+    "editor": {
+      "desc": "Tło, cień, kadr i kolory w jednym edytorze.",
+      "words": "edytor, edycja, usuń tło, tło, białe tło, cień, przytnij, kolory, jasność, kontrast"
+    },
+    "resize": {
+      "desc": "Zmienia rozmiar i format pod wybrany marketplace.",
+      "words": "rozmiar, format, skalowanie, wymiary, proporcje, allegro, amazon, px, przeskaluj"
+    },
+    "compress": {
+      "desc": "Zmniejsza wagę pliku bez widocznej straty jakości.",
+      "words": "kompresja, waga, rozmiar pliku, mb, kb, optymalizacja, zmniejsz, szybkość"
+    },
+    "tool_upscale": {
+      "desc": "Powiększa zdjęcie i dodaje brakujące detale.",
+      "words": "upscale, powiększ, rozdzielczość, jakość, 2x, 4x, detale, wyostrz"
+    },
+    "tool_expand": {
+      "desc": "Dorysowuje tło poza oryginalnym kadrem.",
+      "words": "rozszerz, kadr, outpainting, dorysuj, tło, proporcje, poszerz"
+    },
+    "tool_watermark": {
+      "desc": "Nakłada logo lub znak wodny na serię zdjęć.",
+      "words": "watermark, znak wodny, logo, sygnatura, podpis, ochrona"
+    },
+    "video": {
+      "desc": "Filmy produktowe — wkrótce.",
+      "words": "wideo, film, video, klip, film produktowy, animacja, ruch"
+    },
+    "remove_bg": {
+      "desc": "Wycina produkt i zostawia przezroczyste tło.",
+      "words": "usuń tło, tło, wytnij, przezroczyste, png, bez tła, background"
+    },
+    "white_bg": {
+      "desc": "Czyste białe tło wymagane przez marketplace'y.",
+      "words": "białe tło, tło, biel, allegro, amazon, marketplace, zmiana tła"
+    },
+    "shadow": {
+      "desc": "Dokłada naturalny cień pod produktem.",
+      "words": "cień, cień produktu, refleks, podstawa, realizm, tło"
+    }
   }
 }

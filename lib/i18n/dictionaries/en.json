@@ -1558,10 +1558,19 @@
       "generators": "Generators",
       "products": "Products",
       "tools": "Tools",
-      "video": "Video"
+      "video": "Video",
+      "yours": "Your content",
+      "pages": "Pages"
     },
     "emptyTab": "No results in this tab.",
-    "clearRecent": "Clear"
+    "clearRecent": "Clear",
+    "toolPlaceholder": "Type a tool name, e.g. “generate image”, “product video”, “remove background”…",
+    "mostUsed": "Most popular tools",
+    "popularTools": "Popular tools",
+    "allTools": "See all tools",
+    "ai": "AI",
+    "seeAll": "See all",
+    "browseAll": "Not sure what you need? Browse all tools"
   },
   "econ": {
     "title": "Customer profitability",
@@ -3980,5 +3989,99 @@
     "allFailed": "The photos could not be prepared. The credits were refunded.",
     "emptyTitle": "You have no generated photos yet",
     "unavailable": "This tool is not ready yet — an administrator has not published its instruction. No credits will be charged."
+  },
+  "toolsearch": {
+    "image_moda": {
+      "desc": "Clothing and accessory shots, on a model or without one.",
+      "words": "fashion, clothes, clothing, apparel, model, outfit, shoot, category"
+    },
+    "fashion_ghost_mannequin": {
+      "desc": "The garment alone — no mannequin, no model.",
+      "words": "fashion, mannequin, ghost mannequin, invisible mannequin, garment, no model"
+    },
+    "fashion_flat_lay": {
+      "desc": "The garment laid flat and shot from above.",
+      "words": "fashion, flat lay, flatlay, laid flat, top down, overhead"
+    },
+    "fashion_iron": {
+      "desc": "Smooths creases and folds out of the fabric.",
+      "words": "fashion, iron, ironing, creases, wrinkles, folds, smooth"
+    },
+    "fashion_change_person": {
+      "desc": "The same product worn by a different person.",
+      "words": "fashion, model, person, swap model, change model, face"
+    },
+    "image_ecommerce": {
+      "desc": "Product shots for marketplaces and your own shop.",
+      "words": "e-commerce, shop, store, marketplace, amazon, listing, white background, category"
+    },
+    "image_social": {
+      "desc": "Framing for Instagram, TikTok and paid ads.",
+      "words": "social media, instagram, tiktok, facebook, reels, stories, ad, post, category"
+    },
+    "image_mailing": {
+      "desc": "Artwork for newsletters and e-mail campaigns.",
+      "words": "mailing, newsletter, e-mail, mail, campaign, banner, category"
+    },
+    "image_inne": {
+      "desc": "Everything that does not fit the other categories.",
+      "words": "other, misc, anything, general, category"
+    },
+    "image_matching": {
+      "desc": "Fitting a product into a ready-made scene.",
+      "words": "matching, fit, scene, composition, set, category"
+    },
+    "prompts": {
+      "desc": "GrovBase writes the prompt and plans the shots.",
+      "words": "generator, generate image, ready generator, engine, prompt, shots, plan, ai"
+    },
+    "generator": {
+      "desc": "Write your own prompt and generate the image.",
+      "words": "own prompt, custom prompt, generate image, text, description, generator, ai"
+    },
+    "retouch": {
+      "desc": "Cleans up and improves a product photo in one click.",
+      "words": "retouch, retouching, cleanup, fix photo, improve, enhance"
+    },
+    "editor": {
+      "desc": "Background, shadow, crop and colour in one editor.",
+      "words": "editor, editing, remove background, background, white background, shadow, crop, colour, brightness"
+    },
+    "resize": {
+      "desc": "Resizes and reformats for the marketplace you pick.",
+      "words": "resize, size, format, scale, dimensions, ratio, amazon, px"
+    },
+    "compress": {
+      "desc": "Shrinks the file with no visible loss of quality.",
+      "words": "compression, compress, file size, weight, mb, kb, optimise, shrink, speed"
+    },
+    "tool_upscale": {
+      "desc": "Enlarges the photo and adds the missing detail.",
+      "words": "upscale, enlarge, resolution, quality, 2x, 4x, detail, sharpen"
+    },
+    "tool_expand": {
+      "desc": "Paints the background out beyond the original frame.",
+      "words": "expand, outpaint, outpainting, extend, frame, background, ratio"
+    },
+    "tool_watermark": {
+      "desc": "Stamps a logo or watermark across a batch of photos.",
+      "words": "watermark, logo, signature, stamp, branding, protection"
+    },
+    "video": {
+      "desc": "Product video — coming soon.",
+      "words": "video, film, clip, product video, animation, motion"
+    },
+    "remove_bg": {
+      "desc": "Cuts the product out and leaves the background transparent.",
+      "words": "remove background, background, cut out, transparent, png, no background"
+    },
+    "white_bg": {
+      "desc": "The clean white background marketplaces ask for.",
+      "words": "white background, background, white, amazon, marketplace, change background"
+    },
+    "shadow": {
+      "desc": "Adds a natural shadow under the product.",
+      "words": "shadow, product shadow, drop shadow, reflection, realism, background"
+    }
   }
 }

@@ -7,7 +7,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import {
   IMAGE_CREATE, IMAGE_EDIT, IMAGE_MODES, VIDEO_CREATE, VIDEO_EDIT, editLabelKey, type MegaEntry,
 } from "@/lib/topnav";
-import { allDefaults, menuBadge, menuVisible, type AvailabilityMap, type MenuBadge } from "@/lib/features";
+import { allDefaults, menuBadge, menuVisible, type AvailabilityMap, type FeatureKey, type MenuBadge } from "@/lib/features";
 import { cn } from "@/lib/utils";
 import { Brand } from "./brand";
 import { ThemeToggle } from "./theme-toggle";
@@ -33,7 +33,7 @@ import { NotificationsBell, type NotificationItem } from "./notifications-bell";
  * belongs to the hover target, not empty page. Opening is instant on hover
  * and on click; closing waits 200 ms so the pointer can travel.
  */
-export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdmin, notifications = [], unread = 0, availability }: {
+export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdmin, notifications = [], unread = 0, availability, popularTools }: {
   name: string; email?: string; credits: number; plan: string; isAdmin?: boolean;
   /** What the MENU should treat as admin. Same as `isAdmin` normally, but an
    *  admin previewing the app as a customer gets `false` here while keeping
@@ -43,6 +43,9 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
   /** Feature availability from the server layout — filters and badges the
    *  menus. Absent (other shells) means everything active. */
   availability?: AvailabilityMap;
+  /** The weekly tool-usage ranking, handed straight to the search overlay so
+   *  pressing the magnifier fetches nothing. See lib/server/tool-popularity.ts. */
+  popularTools?: readonly FeatureKey[];
 }) {
   const { t } = useI18n();
   const { setOpen: setDrawerOpen } = useDrawer();
@@ -129,7 +132,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
               )}
             </div>
           ))}
-          <div className="ml-1.5"><CommandPalette isAdmin={isAdmin} navAdmin={seesRestricted} availability={avail} wide /></div>
+          <div className="ml-1.5"><CommandPalette isAdmin={isAdmin} navAdmin={seesRestricted} availability={avail} popular={popularTools} wide /></div>
         </nav>
 
         <div className="min-w-0 flex-1" />
@@ -164,7 +167,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
         )}
 
         {/* Mobile search icon — the palette opens as a full overlay. */}
-        <div className="lg:hidden"><CommandPalette isAdmin={isAdmin} navAdmin={seesRestricted} availability={avail} iconOnly /></div>
+        <div className="lg:hidden"><CommandPalette isAdmin={isAdmin} navAdmin={seesRestricted} availability={avail} popular={popularTools} iconOnly /></div>
 
         <div className="hidden sm:block"><ThemeToggle /></div>
         <NotificationsBell items={notifications} unread={unread} />

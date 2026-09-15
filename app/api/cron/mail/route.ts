@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { syncNowAction } from "@/app/actions/mail";
 import { runBudgetCheckAction } from "@/app/actions/ai-budgets";
 import { expireBlocksAction } from "@/app/actions/admin-crm";
+import { createClient } from "@/lib/supabase/server";
+import {
+  popularityIsStale, readToolPopularity, refreshToolPopularity,
+} from "@/lib/server/tool-popularity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,10 +51,23 @@ export async function GET() {
   if (!result.ok && UNAUTHORIZED[result.error]) {
     return NextResponse.json({ ok: false, reason: UNAUTHORIZED[result.error] }, { status: 401 });
   }
+
+  /*
+    The caller is authorised from here on, so the housekeeping that has nothing
+    to do with the mailbox runs FIRST.
+
+    The tool-popularity ranking is one of those. It is recomputed at most once a
+    week — the schedule is daily, the staleness check is what makes it weekly —
+    and it must not be skipped just because nobody has configured an inbox yet:
+    the global search reads that row on every page load, and a mail integration
+    is not a prerequisite for knowing which tools people use.
+  */
+  const popularity = await refreshPopularityIfDue().catch(() => ({ ok: false as const, reason: "error" }));
+
   if (!result.ok) {
     // A disabled or unconfigured integration is a state, not a server fault:
     // answering 500 would turn a normal "not set up yet" into a paging alert.
-    return NextResponse.json({ ok: false, reason: result.error }, { status: 200 });
+    return NextResponse.json({ ok: false, reason: result.error, popularity }, { status: 200 });
   }
   /*
     The same run also checks the provider budgets.
@@ -76,5 +93,38 @@ export async function GET() {
     ok: true, found: result.found, sent: result.sent, failed: result.failed,
     budgets: budgets.ok ? { checked: budgets.checked, alerted: budgets.alerted } : { ok: false },
     blocksLifted: blocks.ok ? blocks.lifted : null,
+    popularity,
   });
+}
+
+/**
+ * THE WEEKLY TOOL RANKING.
+ *
+ * "Co 7 dni przelicz popularność narzędzi" — but a cron entry of its own is a
+ * deployment change for a job that already has somewhere to run, so the
+ * schedule stays daily and the SEVEN DAYS live in the stored row: the recompute
+ * happens only when the last one is at least a week old. That also means a
+ * deployment, a re-run or a manual "sync now" cannot churn the ranking.
+ *
+ * The read is one settings row and the write is a definer RPC, so this costs a
+ * single query on the six days out of seven when there is nothing to do.
+ */
+async function refreshPopularityIfDue(): Promise<
+  { ok: true; refreshed: boolean; source: string; sample?: number; measured?: number }
+  | { ok: false; reason: string }
+> {
+  const supabase = await createClient();
+  const current = await readToolPopularity(supabase);
+  // Measured against the last time the job LOOKED. A week with too little
+  // usage to rank is still a week that was checked, so a quiet product does
+  // not make this retry every single day.
+  if (!popularityIsStale(current.checkedAt, Date.now())) {
+    return { ok: true, refreshed: false, source: current.source };
+  }
+  const result = await refreshToolPopularity(supabase);
+  if (!result.ok) return { ok: false, reason: result.error };
+  return {
+    ok: true, refreshed: true,
+    source: result.source, sample: result.sample, measured: result.measured,
+  };
 }

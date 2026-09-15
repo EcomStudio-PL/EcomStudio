@@ -3894,6 +3894,25 @@ export type Database = {
         Args: { p_names: string[]; p_token?: string | null }
         Returns: { name: string; value: string | null }[]
       }
+      /* Tool popularity (migration 0082). The counting half is SECURITY DEFINER
+         because usage_events is fenced to one workspace by RLS and the ranking
+         is product-wide; the storing half is, because the weekly job has no
+         admin session. Both are gated by server_call_ok — the same
+         proof-of-server token as the rest of this file's definer functions. */
+      tool_usage_counts: {
+        Args: { p_token: string | null; p_since: string }
+        Returns: {
+          service_slug: string
+          tool: string | null
+          operation: string | null
+          prompt_origin: string | null
+          uses: number
+        }[]
+      }
+      tool_popularity_store: {
+        Args: { p_token: string | null; p_value: Json }
+        Returns: undefined
+      }
       get_engine_rules: {
         Args: never
         Returns: {
