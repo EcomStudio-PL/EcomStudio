@@ -24,9 +24,9 @@ const JOB_TONE = { queued: "neutral", processing: "info", completed: "success", 
  * and HISTORIA as a tab instead of a separate application area.
  */
 export default async function LibraryPage({ searchParams }: {
-  searchParams: Promise<{ tab?: string; product?: string }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
-  const { tab: tabParam, product: productFilter } = await searchParams;
+  const { tab: tabParam } = await searchParams;
   const tab = tabParam === "history" ? "history"
     : tabParam === "tools" ? "tools"
       : tabParam === "favorites" ? "favorites" : "all";
@@ -38,13 +38,8 @@ export default async function LibraryPage({ searchParams }: {
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) redirect("/home");
 
-  const [generations, products, jobs, { data: toolResults }] = await Promise.all([
+  const [generations, jobs, { data: toolResults }] = await Promise.all([
     listAssets(supabase, workspace.id),
-    // Filter chips need names only — the full product rows carry
-    // description/instructions/metadata blobs this page never shows.
-    supabase.from("products").select("id, name")
-      .eq("workspace_id", workspace.id).order("created_at", { ascending: false }).limit(100)
-      .then((r) => r.data ?? []),
     tab === "history" ? listJobs(supabase, workspace.id) : Promise.resolve([]),
     supabase.from("tool_results")
       .select("id, tool_slug, storage_path, created_at")
@@ -53,10 +48,7 @@ export default async function LibraryPage({ searchParams }: {
       .limit(60),
   ]);
 
-  const byProduct = productFilter
-    ? generations.filter((g) => g.product_id === productFilter)
-    : generations;
-  const filtered = tab === "favorites" ? byProduct.filter((g) => g.favorite) : byProduct;
+  const filtered = tab === "favorites" ? generations.filter((g) => g.favorite) : generations;
 
   const paths = [
     ...filtered.flatMap((g) => g.generation_assets.map((a) => a.storage_path)),
@@ -70,7 +62,7 @@ export default async function LibraryPage({ searchParams }: {
 
   const cards: LibraryCard[] = filtered.map((g) => ({
     id: g.id,
-    product: g.products?.name ?? null,
+    product: null,
     created: g.created_at,
     favorite: g.favorite,
     assets: g.generation_assets.map((a) => ({ id: a.id, path: a.storage_path, url: urlMap.get(a.storage_path) ?? null })),
@@ -85,9 +77,6 @@ export default async function LibraryPage({ searchParams }: {
     { key: "history", href: "/library?tab=history", label: t("library.tabHistory"), count: tab === "history" ? jobs.length : null },
   ];
 
-  // Product filter — products become a Library dimension, per the spec.
-  const usedProductIds = new Set(generations.map((g) => g.product_id).filter(Boolean));
-  const filterableProducts = products.filter((p) => usedProductIds.has(p.id));
 
   return (
     <div>
@@ -113,22 +102,6 @@ export default async function LibraryPage({ searchParams }: {
             </Link>
           ))}
         </div>
-        {(tab === "all" || tab === "favorites") && filterableProducts.length > 0 && (
-          <div className="flex max-w-full items-center gap-1.5 overflow-x-auto">
-            <Link href="/library"
-              className={cn("shrink-0 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors",
-                !productFilter ? "bg-[rgb(var(--accent)/0.16)] text-ink ring-1 ring-[rgb(var(--accent)/0.4)]" : "plate text-muted hover:text-ink")}>
-              {t("library.allProducts")}
-            </Link>
-            {filterableProducts.slice(0, 8).map((p) => (
-              <Link key={p.id} href={`/library?product=${p.id}`}
-                className={cn("max-w-[12rem] shrink-0 truncate rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors",
-                  productFilter === p.id ? "bg-[rgb(var(--accent)/0.16)] text-ink ring-1 ring-[rgb(var(--accent)/0.4)]" : "plate text-muted hover:text-ink")}>
-                {p.name}
-              </Link>
-            ))}
-          </div>
-        )}
       </div>
 
       {tab === "history" ? (

@@ -68,7 +68,7 @@ export default async function HomePage() {
   const continueLabel = lastCustom ? t("mega.custom") : t("mega.engine");
 
   const genTiles = recentGens
-    .flatMap((g) => g.generation_assets.map((a) => ({ id: a.id, path: a.storage_path, product: g.products?.name ?? null })))
+    .flatMap((g) => g.generation_assets.map((a) => ({ id: a.id, path: a.storage_path })))
     .slice(0, 6);
   const genUrls = new Map<string, string>();
   if (genTiles.length > 0) {
@@ -142,10 +142,10 @@ export default async function HomePage() {
                 <span className="hidden sm:inline">{t("home.continue", { name: continueLabel })}</span>
               </Link>
             )}
-            {/* The third action used to be "Produkty". GrovBase does not keep
-                product catalogues any more — the module is DISABLED and its
-                route 404s — so the link is gone rather than left here to fail.
-                Nothing replaces it: two actions is what this hero needs. */}
+            {/* The third action used to be "Produkty". GrovBase does not
+                keep product catalogues, and the module has now been withdrawn
+                from the product entirely. Nothing replaces it: two actions is
+                what this hero needs. */}
           </div>
         </div>
       </Panel>
@@ -207,7 +207,7 @@ export default async function HomePage() {
             <div className="rail-x">
               {genTiles.map((g) => (
                 <Link key={g.id} href="/library" className="group w-[6.75rem]">
-                  <Media src={genUrls.get(g.path) ?? null} alt={g.product ?? ""} ratio="1/1"
+                  <Media src={genUrls.get(g.path) ?? null} alt="" ratio="1/1"
                     className="w-full ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]" />
                 </Link>
               ))}
@@ -216,7 +216,7 @@ export default async function HomePage() {
           <div className="hidden grid-cols-6 gap-2 px-4 pb-4 sm:grid sm:px-5 sm:pb-5">
             {genTiles.map((g) => (
               <Link key={g.id} href="/library" className="group block">
-                <Media src={genUrls.get(g.path) ?? null} alt={g.product ?? ""} ratio="1/1"
+                <Media src={genUrls.get(g.path) ?? null} alt="" ratio="1/1"
                   className="w-full ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]" />
               </Link>
             ))}

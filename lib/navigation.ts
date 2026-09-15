@@ -26,7 +26,6 @@ export const CLIENT_NAV: readonly NavGroup[] = [
     { href: "/home", key: "dashboard", icon: LayoutDashboard },
   ]},
   { key: "work", items: [
-    { href: "/products", key: "products", icon: Package },
     { href: "/generator", key: "generator", icon: Sparkles },
     { href: "/prompts", key: "prompts", icon: PenLine },
     { href: "/tools", key: "tools", icon: Wrench },

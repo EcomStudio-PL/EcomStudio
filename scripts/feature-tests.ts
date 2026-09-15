@@ -36,7 +36,7 @@ console.log("\nA. REGISTRY — every real module is covered, the untouchable one
     "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person",
     "prompts", "generator",
     "retouch", "editor", "resize", "compress", "tools", "tool_upscale", "tool_expand", "tool_watermark",
-    "video", "products", "inspirations", "credits", "support",
+    "video", "inspirations", "credits", "support",
   ];
   check(`all ${mustHave.length} real user-facing modules have a key`,
     mustHave.every((k) => (FEATURE_KEYS as readonly string[]).includes(k)),
@@ -70,7 +70,7 @@ console.log("\nA. REGISTRY — every real module is covered, the untouchable one
   // shrink back to three.
   const off = FEATURE_KEYS.filter((k) => defaultStatusFor(k) !== "ACTIVE");
   const expected = [
-    "image_matching", "video", "products",
+    "image_matching", "video",
     "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person",
   ];
   check("a feature defaults to ACTIVE unless it is deliberately listed as off",
@@ -78,8 +78,13 @@ console.log("\nA. REGISTRY — every real module is covered, the untouchable one
   check("the two backendless modules default to COMING_SOON, not DISABLED",
     defaultStatusFor("image_matching") === "COMING_SOON" && defaultStatusFor("video") === "COMING_SOON",
     `${defaultStatusFor("image_matching")}/${defaultStatusFor("video")}`);
-  check("products defaults to DISABLED — the module 404s rather than promising a return",
-    defaultStatusFor("products") === "DISABLED", defaultStatusFor("products"));
+  // "products" used to be here, defaulting to DISABLED. The module is gone
+  // from the product entirely now, so the registry must not still carry a key
+  // for it — a switch for a feature that no longer exists is a switch that
+  // promises something back.
+  check("the withdrawn products module is no longer a feature at all",
+    !FEATURE_KEYS.includes("products" as never),
+    FEATURE_KEYS.join(","));
 }
 
 console.log("\nB. HREF → FEATURE — prefixes, query stripping, no bypass surface");
@@ -114,7 +119,9 @@ console.log("\nB. HREF → FEATURE — prefixes, query stripping, no bypass surf
     ["/tools/watermark", "tool_watermark"],
     ["/tools", "tools"],
     ["/wideo", "video"],
-    ["/products/123", "products"],
+    // /products was a real route until the module was withdrawn; the table
+    // must no longer claim it, or a stale link would resolve to a feature.
+    ["/products/123", null],
     ["/inspirations", "inspirations"],
     ["/credits", "credits"],
     ["/support", "support"],
@@ -305,7 +312,6 @@ console.log("\nG. §51/§52 MATRIX — the exact scenario the brief asks for, pe
     ["resize", "ACTIVE", "/tools/resize", false],
     ["compress", "ACTIVE", "/tools/compress", false],
     ["video", "COMING_SOON", "/wideo", false],
-    ["products", "ACTIVE", "/products", false],
     ["inspirations", "ACTIVE", "/inspirations", false],
   ];
   const map: AvailabilityMap = { ...allDefaults() };

@@ -1,8 +1,6 @@
 "use client";
-import { useRef } from "react";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
-import { useDockRoom } from "@/components/layout/dock-room";
 import { cn } from "@/lib/utils";
 
 /**
@@ -139,10 +137,24 @@ export function CostSummary({ perImage, count, enough }: {
  * batch tools were drawing a wider, looser version of the same idea, which is
  * how two screens of one product ended up looking like two products.
  *
- * It is a SIBLING of the scrolling body, never anything inside it, so the cost
- * and the button cannot scroll away; `lg:shrink-0` is what guarantees that when
- * the viewport gets short the body shrinks and the island does not. On a phone
- * it is the floating dock it always was, above the app's bottom navigation.
+ * It is a SIBLING of the scrolling body, never anything inside it, so on a
+ * desktop the cost and the button cannot scroll away; `shrink-0` is what
+ * guarantees that when the viewport gets short the body shrinks and the island
+ * does not.
+ *
+ * IT NO LONGER FLOATS ON A PHONE. It used to be `position: fixed` below `lg`,
+ * docked above the bottom navigation — which meant that on every phone and
+ * every tablet it sat ON TOP of the settings it belongs under, following the
+ * finger down the list and covering the last resolution row and the head of
+ * the gallery. Retusz and the Moda tools never did that: their footer is a
+ * plain flow sibling that arrives after the settings card and stays there.
+ * This is now the same element, so one shape covers every tool instead of two
+ * that drift.
+ *
+ * Losing the floating variant also means losing `data-gen-dock`: that marker
+ * is what `useDockRoom` reads to reserve room at the foot of the page for a
+ * bar that overlaps content. Nothing overlaps any more, and leaving the marker
+ * would reserve a few hundred pixels of empty page under the gallery.
  */
 export function CostIsland({ perImage, count, enough, status, children }: {
   perImage: number;
@@ -155,19 +167,10 @@ export function CostIsland({ perImage, count, enough, status, children }: {
 }) {
   const { t } = useI18n();
   const total = perImage * count;
-  // Below `lg` this island IS a docked bar, so the page reserves room for it
-  // the same way a generator does — measured, once, on the outermost
-  // scroller. See components/layout/dock-room.ts.
-  const islandRef = useRef<HTMLDivElement>(null);
-  useDockRoom(islandRef);
   return (
-    <div ref={islandRef} data-gen-dock className={cn(
-      // `!fixed` because `.panel` carries `position: relative` of its own and
-      // wins on source order: without the override the island stopped docking
-      // on a phone and rode the settings column down out of reach.
-      "panel !fixed inset-x-3 bottom-[calc(var(--dock-h)+0.5rem+env(safe-area-inset-bottom))] z-30 rounded-2xl px-4 py-3 shadow-e4",
-      "lg:!static lg:inset-auto lg:z-20 lg:shrink-0 lg:shadow-e2",
-    )}>
+    // The exact shape Retusz and the Moda tools use for their footer, so the
+    // three read as one product: a panel in the flow, after the settings.
+    <div data-cost-island className="panel relative z-20 shrink-0 rounded-2xl px-4 py-3 lg:shadow-e2">
       <div className="grid grid-cols-2 divide-x divide-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.4))]">
         <IslandFigure label={t("tools.costPerImage")}
           value={perImage === 0 ? t("tools.free") : t("tools.creditsTotal", { n: perImage })}

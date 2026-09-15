@@ -26,7 +26,7 @@ export async function listAssets(supabase: Client, workspaceId: string, limit = 
   // by any gallery — only ids, paths and the favorite flag are.
   const { data } = await supabase
     .from("generations")
-    .select("id, product_id, favorite, created_at, generation_assets(id, storage_path), products(name)")
+    .select("id, favorite, created_at, generation_assets(id, storage_path)")
     .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: false })
     .limit(limit);

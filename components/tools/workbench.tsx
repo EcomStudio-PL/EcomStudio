@@ -3,14 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/lib/notify";
 import {
   AlertTriangle, CheckCircle2, Download, FileArchive, ImagePlus,
-  Loader2, Package, RotateCcw, Save, Trash2, X, Zap,
+  Loader2, RotateCcw, Save, Trash2, X, Zap,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/surface";
 import { Badge } from "@/components/ui/badge";
 import { ActionBar } from "@/components/ui/action-bar";
-import { ProductPicker, type PickableProduct } from "@/components/products/product-picker";
 import { ToolSettingsPanel } from "@/components/tools/settings";
 import { Compare } from "@/components/tools/compare";
 import { WatermarkPreview } from "@/components/tools/watermark-preview";
@@ -59,14 +58,13 @@ const CONCURRENCY = 3;
  * browser as blobs until the seller explicitly saves them, which keeps
  * storage (and its bill) proportional to what people actually want to keep.
  */
-export function ToolWorkbench({ tool, available, credits, providerLabel, reason, balance, products }: {
+export function ToolWorkbench({ tool, available, credits, providerLabel, reason, balance }: {
   tool: ToolSlug;
   available: boolean;
   credits: number;
   providerLabel: string | null;
   reason: string;
   balance: number;
-  products: PickableProduct[];
 }) {
   const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -76,7 +74,6 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
   const [logo, setLogo] = useState<{ file: File; url: string } | null>(null);
   const [running, setRunning] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [product, setProduct] = useState<PickableProduct | null>(null);
   const cancelled = useRef(false);
 
   /**
@@ -222,14 +219,13 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
       const form = new FormData();
       form.append("tool", tool);
       form.append("file", new File([item.resultBlob!], item.file.name, { type: item.resultBlob!.type }));
-      if (product) form.append("productId", product.id);
       const res = await fetch("/api/tools/save", { method: "POST", body: form });
       if (res.ok) {
         saved++;
         setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, saved: true } : i)));
       }
     }
-    if (saved > 0) toast.success(t(product ? "tools.savedProduct" : "tools.savedLibrary", { n: saved }));
+    if (saved > 0) toast.success(t("tools.savedLibrary", { n: saved }));
     else toast.error(t("tools.saveFailed"));
   }
 
@@ -263,8 +259,8 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
         title={t("tools.dropManyTitle")}
         sub={t("tools.dropHint", { n: MAX_BATCH_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })}
       />
-      <div className="min-w-0 space-y-4">
-        {/* UPLOAD */}
+      {/* UPLOAD — first on every layout, phone and desktop alike. */}
+      <div className="order-1 min-w-0 lg:order-none lg:col-start-1 lg:row-start-1">
         <input ref={inputRef} type="file" multiple accept={ACCEPTED_MIME.join(",")} className="hidden"
           onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
         <button
@@ -281,7 +277,14 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
           <span className="text-sm font-semibold">{t("tools.drop")}</span>
           <span className="text-[11px]">{t("tools.dropHint", { n: MAX_BATCH_FILES, size: formatBytes(MAX_UPLOAD_BYTES) })}</span>
         </button>
+      </div>
 
+      {/* QUEUE + RESULT — the output. On a phone it comes AFTER the settings
+          and the action, which is the order the work happens in: choose, run,
+          then look. It used to sit between the uploader and the settings, so a
+          seller with a queue had to scroll past their own files to reach the
+          controls that act on them. */}
+      <div className="order-3 min-w-0 space-y-4 lg:order-none lg:col-start-1 lg:row-start-2">
         {/* QUEUE */}
         {items.length > 0 && (
           <Panel className="rounded-2xl p-3 sm:p-4">
@@ -357,20 +360,6 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
             <Compare before={done[0].sourceUrl} after={done[0].resultUrl!} alt={done[0].file.name} />
 
             <div className="mt-4 space-y-2.5">
-              {products.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => setPickerOpen(true)}>
-                    <Package size={14} aria-hidden />
-                    {product ? product.name : t("tools.linkProduct")}
-                  </Button>
-                  {product && (
-                    <button type="button" onClick={() => setProduct(null)}
-                      className="text-xs font-medium text-faint underline-offset-2 hover:text-ink hover:underline">
-                      {t("common.clear")}
-                    </button>
-                  )}
-                </div>
-              )}
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Button className="flex-1" onClick={downloadAll}>
                   {done.length > 1 ? <FileArchive size={15} aria-hidden /> : <Download size={15} aria-hidden />}
@@ -392,8 +381,11 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
         )}
       </div>
 
-      {/* SETTINGS RAIL */}
-      <div className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
+      {/* SETTINGS RAIL — and the cost + action panel at its foot. */}
+      <div className={cn(
+        "order-2 min-w-0 space-y-4",
+        "lg:order-none lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:sticky lg:top-4 lg:self-start",
+      )}>
         <Panel className="space-y-4 rounded-2xl p-4">
           <p className="overline">{t("tools.settings")}</p>
 
@@ -441,8 +433,6 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
         </ActionBar>
       </div>
 
-      <ProductPicker open={pickerOpen} onClose={() => setPickerOpen(false)} products={products}
-        selectedId={product?.id} onSelect={(p) => { setProduct(p); setPickerOpen(false); }} />
     </div>
   );
 }

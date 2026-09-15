@@ -2542,7 +2542,9 @@
     "generate": "Generate",
     "library": "Library",
     "products": "Products",
-    "account": "Account"
+    "account": "Account",
+    "tools": "Tools",
+    "profile": "Profile"
   },
   "match": {
     "overline": "Matching",

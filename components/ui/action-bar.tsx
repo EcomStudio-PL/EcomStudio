@@ -2,13 +2,23 @@
 import { cn } from "@/lib/utils";
 
 /**
- * ACTION BAR — the primary action stays reachable with a thumb.
+ * ACTION BAR — what the tool will do, what it costs, and the button.
  *
- * On phones the generate/save action would otherwise sit far below the fold
- * after a long form, so it docks above the bottom navigation as a floating
- * summary: what it will do, what it costs, and the button itself. On desktop
- * it collapses back into the page flow, where the sticky right rail already
- * does this job.
+ * IT SITS IN THE PAGE, NOT ON TOP OF IT. This used to be `position: fixed`
+ * below `lg`, floating above the bottom navigation so the button stayed under
+ * a thumb. The cost of that was the whole rest of the screen: on a phone and on
+ * a tablet the card rode the scroll, covering the settings it belongs under and
+ * the head of the results below it, and there was no way to read the last
+ * option in a list because the panel was parked over it.
+ *
+ * Retusz and the Moda tools never did this — their footer is a plain flow
+ * sibling that arrives after the settings card and stays where it was put — and
+ * that is now the one shape every tool uses. A seller scrolls to the button
+ * once, the same way they scroll to it on a desktop, and nothing is hidden
+ * behind anything.
+ *
+ * The desktop arrangement is unchanged: the settings rail is `lg:sticky`, so on
+ * a wide screen this is already in view without needing to float.
  */
 export function ActionBar({ summary, children, className, note }: {
   /** Left-hand summary (cost, credits, selection count). */
@@ -19,9 +29,9 @@ export function ActionBar({ summary, children, className, note }: {
 }) {
   return (
     <div
+      data-action-bar
       className={cn(
-        "dock fixed inset-x-3 bottom-[calc(var(--dock-h)+0.5rem+env(safe-area-inset-bottom))] z-30 rounded-2xl p-3",
-        "lg:static lg:inset-auto lg:rounded-2xl lg:p-4 lg:shadow-e2",
+        "panel relative z-20 shrink-0 rounded-2xl p-3 lg:p-4 lg:shadow-e2",
         className
       )}
     >

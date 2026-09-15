@@ -53,7 +53,6 @@ export const FEATURE_KEYS = [
   // Wideo
   "video",
   // Konto i zasoby
-  "products",
   "inspirations",
   "credits",
   "support",
@@ -96,7 +95,7 @@ export type FeatureDescriptor = {
   group: FeatureGroup;
   /**
    * Extra route prefixes this feature owns, so a guard covers the children
-   * too (/products/new, /prompts/<id>, /k/moda/<workflow>…).
+   * too (/prompts/<id>, /k/moda/<workflow>, /tools/<slug>…).
    */
   extraPaths?: readonly string[];
   /** A module with no backend yet starts restricted rather than pretending. */
@@ -149,12 +148,12 @@ export const FEATURE_REGISTRY: readonly FeatureDescriptor[] = [
   // ── WIDEO ────────────────────────────────────────────────────────────────
   { key: "video", nameKey: "video.title", path: "/wideo", group: "video", defaultStatus: "COMING_SOON" },
   // ── KONTO I ZASOBY ───────────────────────────────────────────────────────
-  // GrovBase does not keep product catalogues. The generator takes reference
-  // photos directly, so a per-customer catalogue was a second place to manage
-  // the same images — switched off at the registry rather than deleted, so the
-  // 28 products and 92 reference photos already stored stay intact and an
-  // operator can bring the module back from /admin/settings/features.
-  { key: "products", nameKey: "nav.products", path: "/products", group: "account", defaultStatus: "DISABLED" },
+  // GrovBase does not keep product catalogues, and no longer has the code for
+  // one. The generator takes reference photos directly; a per-customer
+  // catalogue was a second place to manage the same images. The module was
+  // switched off here first and is now gone from the product entirely — the
+  // rows it wrote are left in the database untouched, because generations
+  // reference them and the library reads those generations.
   { key: "inspirations", nameKey: "nav.inspirations", path: "/inspirations", group: "account" },
   { key: "credits", nameKey: "nav.credits", path: "/credits", group: "account" },
   { key: "support", nameKey: "nav.help", path: "/support", group: "account" },

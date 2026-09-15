@@ -6,7 +6,6 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
-import { listProducts } from "@/lib/services/products";
 import { getAvailabilityMap, viewerIsAdmin } from "@/lib/server/feature-availability";
 import { menuVisible } from "@/lib/features";
 import { signImageUrls } from "@/lib/services/images";
@@ -60,20 +59,11 @@ export default async function ToolPage({ params }: { params: Promise<{ slug: str
     getAvailabilityMap(supabase),
     viewerIsAdmin(supabase),
   ]);
-  const products = menuVisible(avail, "/products", isAdmin)
-    ? await listProducts(supabase, workspace.id, 200)
-    : [];
   // The catalogue is built from the same static list `toolBySlug` just matched,
   // so this row exists — but a non-null assertion is what turns "should not
   // happen" into a blank error screen, so the miss degrades instead.
   const entry = catalogue.find((c) => c.slug === tool.slug)
     ?? { slug: tool.slug, kind: tool.kind, available: false, credits: 0, providerLabel: null, reason: "maintenance" as const };
-
-  // Thumbnails for the "attach to product" picker, signed in one round trip.
-  const thumbPaths = products
-    .map((p) => (p.product_images.find((i) => i.is_primary) ?? p.product_images[0])?.storage_path)
-    .filter((v): v is string => !!v);
-  const urls = await signImageUrls(supabase, thumbPaths);
 
   return (
     <div>
@@ -93,14 +83,6 @@ export default async function ToolPage({ params }: { params: Promise<{ slug: str
         providerLabel={entry.providerLabel}
         reason={entry.reason}
         balance={wallet?.balance ?? 0}
-        products={products.map((p) => {
-          const thumb = (p.product_images.find((i) => i.is_primary) ?? p.product_images[0])?.storage_path;
-          return {
-            id: p.id, name: p.name, category: p.category, sku: p.sku,
-            thumbnail: thumb ? urls.get(thumb) ?? null : null,
-            imageCount: p.product_images.length,
-          };
-        })}
       />
     </div>
   );

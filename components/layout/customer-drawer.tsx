@@ -3,7 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  ArrowUpRight, ChevronDown, Home, Images, LifeBuoy, Lightbulb, LogOut, Package,
+  ArrowUpRight, ChevronDown, Home, Images, LifeBuoy, Lightbulb, LogOut,
   Plus, Settings, Shield,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
@@ -168,10 +168,6 @@ export function CustomerDrawer({ name, email, credits, plan, isAdmin, navAdmin, 
       )}
 
       <Section title={t("nav.groups.account")} defaultOpen>
-        {show("/products") && (
-          <NavLink href="/products" label={t("nav.products")} icon={Package} onNavigate={closeNav}
-            badge={badge("/products")} />
-        )}
         {show("/inspirations") && (
           <NavLink href="/inspirations" label={t("nav.inspirations")} icon={Lightbulb} onNavigate={closeNav}
             badge={badge("/inspirations")} />

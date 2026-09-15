@@ -29,6 +29,7 @@ import {
   SEARCHABLE, TOOL_CARDS, TOOL_SECTIONS, buildToolIndex, matchTools, normalise,
   splitPopular, ALL_TOOLS_HREF,
 } from "@/lib/tool-search";
+import { DOCK_SLOTS, dockSlotActive } from "@/lib/bottom-nav";
 import { allDefaults, type AvailabilityMap, type FeatureKey } from "@/lib/features";
 import { FALLBACK_ORDER } from "@/lib/server/tool-popularity";
 
@@ -72,6 +73,9 @@ for (const entry of SEARCHABLE) {
   check(`${entry.id} → ${entry.href} is a real page`, routeExists(entry.href));
 }
 check(`the footer link → ${ALL_TOOLS_HREF} is a real page`, routeExists(ALL_TOOLS_HREF));
+for (const slot of DOCK_SLOTS) {
+  check(`dock “${slot.key}” → ${slot.href} is a real page`, routeExists(slot.href));
+}
 
 /* ── the copy exists in every language ───────────────────────────────────── */
 
@@ -234,6 +238,43 @@ check("a disabled tool is dropped and the next one moves up",
   filtered.top.map((c) => c.key).join(", "));
 check("…and an admin still sees it, because they are who switches it back on",
   splitPopular(["compress"] as FeatureKey[], hidden, true, COUNTS).top[0].key === "compress");
+
+/* ── the dock ────────────────────────────────────────────────────────────── */
+
+check("five slots, in the brief's order",
+  DOCK_SLOTS.map((s) => s.key).join(",") === "home,library,generate,tools,profile",
+  DOCK_SLOTS.map((s) => s.key).join(", "));
+check("exactly one of them is the primary action", DOCK_SLOTS.filter((s) => s.primary).length === 1);
+check("…and it is the middle one", DOCK_SLOTS.findIndex((s) => s.primary) === 2);
+check("the withdrawn products module has no slot",
+  !DOCK_SLOTS.some((s) => s.href.startsWith("/products")));
+
+for (const [route, expected] of [
+  ["/home", "home"],
+  ["/library", "library"],
+  ["/library?tab=history", "library"],
+  ["/library/anything", "library"],
+  ["/prompts", "generate"],
+  ["/prompts/abc-123", "generate"],
+  ["/generator", "generate"],
+  ["/generator?prompt=x", "generate"],
+  ["/k/moda", "generate"],
+  ["/k/moda/ghostMannequin", "generate"],
+  ["/tools", "tools"],
+  ["/tools/editor", "tools"],
+  ["/tools/editor?tool=remove-background", "tools"],
+  ["/retusz", "tools"],
+  ["/settings", "profile"],
+  ["/settings#security", "profile"],
+] as const) {
+  const lit = DOCK_SLOTS.filter((s) => dockSlotActive(s, route)).map((s) => s.key);
+  check(`${route} lights ${expected}`, lit.length === 1 && lit[0] === expected,
+    `lit: ${lit.join(", ") || "(nothing)"}`);
+}
+check("/home does not claim a route that merely starts with it",
+  !dockSlotActive(DOCK_SLOTS.find((s) => s.key === "home")!, "/homework"));
+check("a route belonging to no slot lights nothing",
+  DOCK_SLOTS.every((s) => !dockSlotActive(s, "/credits")));
 
 console.log(failed === 0 ? "\nsearch: all checks passed" : `\nsearch: ${failed} check(s) failed`);
 process.exit(failed > 0 ? 1 : 0);

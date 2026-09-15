@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
-  ArrowRight, Images, Loader2, Package, PenLine, Search, Sparkles, User, Video, Wrench, X,
+  ArrowRight, Images, Loader2, PenLine, Search, Sparkles, User, Video, Wrench, X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
@@ -18,11 +18,11 @@ import { cn } from "@/lib/utils";
 import type { SearchHit } from "@/app/api/search/route";
 
 const KIND_ICON: Record<SearchHit["kind"], LucideIcon> = {
-  product: Package, session: PenLine, prompt: Sparkles, generation: Images, user: User,
+  session: PenLine, prompt: Sparkles, generation: Images, user: User,
 };
 
 /** Which tab a result belongs to. A result can belong to several. */
-type Facet = ToolFacet | "products";
+type Facet = ToolFacet;
 type Tab = "all" | Facet;
 
 type Row = {
@@ -37,7 +37,7 @@ type Row = {
 };
 
 const RECENT_KEY = "ecs_recent_search";
-const ALL_TABS: readonly Tab[] = ["all", "image", "video", "tools", "products"] as const;
+const ALL_TABS: readonly Tab[] = ["all", "image", "video", "tools"] as const;
 
 /** The two lists the modal opens with. Fixed by the design: 1–3, then 4–9. */
 const TOP_COUNT = 3;
@@ -77,8 +77,7 @@ export function CommandPalette({
   isAdmin: boolean; wide?: boolean;
   /**
    * The same map the menus read. Search is a menu too: a module the drawer
-   * hides must not stay reachable through a tab and a row here — that is how
-   * "Produkty" survived being switched off and kept offering a 404.
+   * hides must not stay reachable through a tab and a row here.
    */
   availability?: AvailabilityMap;
   /** What MODULE VISIBILITY should treat as admin — `isAdmin` normally, but
@@ -102,13 +101,7 @@ export function CommandPalette({
   // map here would rebuild the whole catalogue on every keystroke.
   const avail = useMemo(() => availability ?? allDefaults(), [availability]);
   const seesRestricted = navAdmin ?? isAdmin;
-  // Admins keep the tab and the rows (menuVisible says so) — they are the ones
-  // who can switch the module back on from /admin/settings/features.
-  const showProducts = menuVisible(avail, "/products", seesRestricted);
-  const TABS = useMemo<readonly Tab[]>(
-    () => ALL_TABS.filter((x) => x !== "products" || showProducts),
-    [showProducts],
-  );
+  const TABS = ALL_TABS;
   const { t } = useI18n();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -231,8 +224,7 @@ export function CommandPalette({
         if (!menuVisible(avail, i.href, seesRestricted)) continue;
         rows.push({
           key: `nav:${i.href}`, label: t(`nav.${i.key}`), sub: null, href: i.href,
-          icon: i.icon, section: "pages",
-          facets: i.href.startsWith("/products") ? ["products"] : [],
+          icon: i.icon, section: "pages", facets: [],
         });
       }
     }
@@ -257,16 +249,12 @@ export function CommandPalette({
 
     const tools = matchTools(toolIndex, term).map(entryRow);
     const pages = pageRows.filter((r) => r.label.toLowerCase().includes(term.toLowerCase())).slice(0, 5);
-    // The API already withholds product hits from a customer who cannot open
-    // them; this second filter is what keeps a stale in-flight response from
-    // painting a row that leads to a 404.
-    const yours: Row[] = hits.filter((h) => h.kind !== "product" || showProducts).map((h) => ({
+    const yours: Row[] = hits.map((h) => ({
       key: `${h.kind}:${h.id}`, label: h.title, sub: h.sub, href: h.href,
-      icon: KIND_ICON[h.kind], section: "yours",
-      facets: h.kind === "product" ? ["products"] : ["image"],
+      icon: KIND_ICON[h.kind], section: "yours", facets: ["image"],
     }));
     return [...tools, ...yours, ...pages].filter(inTab);
-  }, [toolIndex, entryRow, pageRows, hits, q, tab, showProducts]);
+  }, [toolIndex, entryRow, pageRows, hits, q, tab]);
 
   const searching = q.trim().length > 0;
 
@@ -324,7 +312,7 @@ export function CommandPalette({
   }
 
   const tabIcon: Record<Tab, LucideIcon | null> = {
-    all: null, image: Images, video: Video, tools: Wrench, products: Package,
+    all: null, image: Images, video: Video, tools: Wrench,
   };
 
   /* ── the shared pieces ─────────────────────────────────────────────────── */

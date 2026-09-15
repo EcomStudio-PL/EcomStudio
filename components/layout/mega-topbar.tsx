@@ -279,11 +279,6 @@ function MegaPanel({ which, t, avail, isAdmin }: {
             {which === "image" ? t("nav.inspirations") : t("video.title")} →
           </Link>
         ) : <span />}
-        {menuVisible(avail, "/products", isAdmin) && (
-          <Link href="/products" className="text-[12.5px] font-semibold text-muted transition-colors duration-200 hover:text-ink">
-            {t("nav.products")} →
-          </Link>
-        )}
       </div>
     </div>
   );

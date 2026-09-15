@@ -227,9 +227,10 @@ console.log("G. a temporary block is a pause, enforced where it counts");
   check("every money- or data-writing route asks",
     guarded.every((f) => read(f).includes("accountBlockedResponse(supabase, user.id)")),
     guarded.filter((f) => !read(f).includes("accountBlockedResponse(supabase, user.id)")).join(", "));
+  // app/actions/products.ts was the other one, until the products module was
+  // withdrawn. Its guard went with it; the rule it proved lives on here.
   check("the customer's own write actions ask too",
-    read("app/actions/products.ts").includes("assertNotBlocked")
-    && read("app/actions/prompts.ts").includes("assertNotBlocked"));
+    read("app/actions/prompts.ts").includes("assertNotBlocked"));
   // …and support does NOT, deliberately: a paused customer must be able to ask why.
   check("the support desk stays open to a blocked customer",
     !read("app/actions/support.ts").includes("assertNotBlocked"));

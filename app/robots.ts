@@ -9,7 +9,7 @@ import { absoluteUrl } from "@/lib/site";
  */
 const PRIVATE = [
   "/admin", "/api/", "/auth/", "/home", "/dashboard", "/generator", "/library",
-  "/products", "/prompts", "/history", "/credits", "/plan", "/settings",
+  "/prompts", "/history", "/credits", "/plan", "/settings",
   "/tools", "/inspirations", "/support", "/retusz", "/wideo", "/k/",
   "/reset-password",
 ];

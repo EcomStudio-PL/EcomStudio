@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, authCookieOptions, PERSIST_COOKIE, stripPersistence } from "./config";
 
-const PROTECTED_PREFIXES = ["/home","/dashboard","/products","/generator","/library","/prompts","/history","/credits","/plan","/settings","/admin","/tools","/inspirations","/support","/k","/retusz","/wideo"];
+const PROTECTED_PREFIXES = ["/home","/dashboard","/generator","/library","/prompts","/history","/credits","/plan","/settings","/admin","/tools","/inspirations","/support","/k","/retusz","/wideo"];
 const AUTH_PAGES = ["/login", "/register", "/forgot-password"];
 
 /**
