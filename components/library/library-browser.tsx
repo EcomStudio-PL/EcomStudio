@@ -109,9 +109,16 @@ export function LibraryBrowser({ first, locale }: { first: GalleryPage; locale: 
   /**
    * SWITCHING SHELVES, and coming back to one.
    *
-   * A view already in the cache is painted before the network is touched and
-   * then refreshed underneath; a view never seen fetches once. Either way the
-   * customer never watches an empty grid that used to have their work in it.
+   * Three cases, and only one of them touches the network:
+   *   · the default photo shelf — the server already rendered it, so its
+   *     fresh page one is merged over the session's cache and nothing is
+   *     fetched at all;
+   *   · a shelf the session has seen — painted from cache immediately, then
+   *     revalidated underneath and merged, so the grid never goes blank;
+   *   · a shelf never seen — one fetch, with skeletons while it runs.
+   *
+   * In none of them does the customer watch an empty grid that used to have
+   * their work in it.
    */
   useEffect(() => {
     if (seenKey.current === key) return;
