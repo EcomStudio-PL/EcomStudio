@@ -14,15 +14,16 @@
  * navigation would give it. Then it reads the DOM and the COMPUTED styles.
  *
  * What it measures, in order:
- *   A. THE TWO CARDS. The account card carries the avatar, the name, the plan
- *      badge and a chevron — and NOT the close control, which belongs outside
- *      it. The wallet card carries the balance, the meter and both buttons.
+ *   A. THE TOP ROW. The account card and the way back share one line — 88 %,
+ *      a 2 % gap and 10 % — at the same height, with the icon-only back
+ *      button closing the drawer. The wallet is the card under them.
  *   B. THE METER. It draws WHAT IS LEFT and says "Pozostało", never
  *      "Wykorzystano"; its colour still follows depletion, read back as
  *      computed pixels at 100 / 90 / 40 / 20 / 5 / 0 % remaining, plus the
  *      no-limit case which must stay neutral and show no percentage.
  *   C. FOUR GROUPS. GŁÓWNE / OBRAZY / NARZĘDZIA / WIDEO, nothing outside them,
- *      and a heading that outranks its rows by height, corner, case and indent.
+ *      a heading that outranks its rows by height, corner, case and indent,
+ *      and no rail down the side of an open one.
  *   D. NOTHING OPENS ITSELF. On every route: four shut headings, no rows
  *      rendered, nothing lit — until the seller clicks a heading, and then
  *      exactly one row inside it is pink. Closing the menu forgets the click.
@@ -96,8 +97,13 @@ const READ = () => {
   };
 
   const nav = panel.querySelector("nav");
-  const account = nav.querySelector('a[href="/settings"]');
-  const avatar = [...nav.querySelectorAll("span")]
+  // The account card sits in the pinned top row now, so it comes from the
+  // PANEL — and it is the first `/settings` link in the document, ahead of the
+  // row of the same name inside GŁÓWNE.
+  const top = panel.firstElementChild.firstElementChild;
+  const account = panel.querySelector('a[href="/settings"]');
+  const backBtn = top?.querySelector("button") ?? null;
+  const avatar = [...panel.querySelectorAll("span")]
     .find((s) => String(s.className).includes("brand-gradient") && s.textContent.trim().length === 1);
   const upgrade = nav.querySelector('a[href="/plan"]');
   const topUp = nav.querySelector('a[href="/credits"]');
@@ -136,6 +142,10 @@ const READ = () => {
       caps: getComputedStyle(b.firstElementChild).textTransform,
       tracking: getComputedStyle(b.firstElementChild).letterSpacing,
       rows: b.parentElement ? [...b.parentElement.querySelectorAll("a")].map((a) => a.getAttribute("href")) : [],
+      // Any left-hand rule between a heading and its rows, in pixels.
+      railPx: b.nextElementSibling
+        ? Math.round(parseFloat(getComputedStyle(b.nextElementSibling).borderLeftWidth))
+        : 0,
       lit: b.parentElement
         ? [...b.parentElement.querySelectorAll('a[aria-current="page"]')].map((a) => a.getAttribute("href"))
         : [],
@@ -180,7 +190,24 @@ const READ = () => {
     pathname: location.pathname,
     panel: box(panel),
     header: box(panel.firstElementChild),
-    headerText: panel.firstElementChild.textContent.trim(),
+    topRow: box(top),
+    // The row's CONTENT width — the 88/2/10 split is of the space the two
+    // controls actually share, not of the panel plus its gutters.
+    topRowInner: top
+      ? Math.round((top.clientWidth
+          - parseFloat(getComputedStyle(top).paddingLeft)
+          - parseFloat(getComputedStyle(top).paddingRight)) * 10) / 10
+      : 0,
+    topKids: top ? [...top.children].map((e) => ({ tag: e.tagName.toLowerCase(), ...box(e) })) : [],
+    back: backBtn ? {
+      ...box(backBtn),
+      radius: Math.round(parseFloat(getComputedStyle(backBtn).borderTopLeftRadius)),
+      border: getComputedStyle(backBtn).borderTopWidth,
+      bg: getComputedStyle(backBtn).backgroundColor,
+      text: backBtn.textContent.trim(),
+      label: backBtn.getAttribute("aria-label") ?? "",
+      icon: backBtn.querySelector("svg")?.getAttribute("class") ?? "",
+    } : null,
     headerButtons: panel.firstElementChild.querySelectorAll("button").length,
     account: box(account),
     accountRadius: account ? Math.round(parseFloat(getComputedStyle(account).borderTopLeftRadius)) : 0,
@@ -276,18 +303,49 @@ const expandAll = async (page) => {
   await page.goto(`${BASE}${PROBE}`, { waitUntil: "networkidle", timeout: 60000 });
   await goRoute(page, "/credits");
 
-  console.log("\n══ A. THE TWO CARDS ══");
+  console.log("\n══ A. THE TOP ROW, AND THE TWO CARDS ══");
   const a = await readOpen(page);
+  note(a.topKids.length === 2, `the account and the way back share ONE row (${a.topKids.map((k) => k.tag).join(", ")})`);
+  note(Math.abs((a.account.t + a.account.h / 2) - (a.back.t + a.back.h / 2)) < 0.6,
+    `…on one centre line (${a.account.t}–${a.account.b} vs ${a.back.t}–${a.back.b})`);
+  note(Math.abs(a.account.h - a.back.h) < 0.6, `…at exactly the same height (${a.account.h} vs ${a.back.h})`);
+  /* 88 / 2 / 10, measured against the row they share. */
+  {
+    const row = a.topRowInner;
+    const pct = (v) => Math.round((v / row) * 1000) / 10;
+    const gap = a.back.l - a.account.r;
+    note(Math.abs(pct(a.account.w) - 88) <= 1.5, `the card takes ${pct(a.account.w)}% of the row`);
+    note(Math.abs(pct(gap) - 2) <= 1.5, `the gap is ${pct(gap)}%`);
+    note(Math.abs(pct(a.back.w) - 10) <= 1.5, `the way back is ${pct(a.back.w)}%`);
+  }
+  note(a.headerButtons === 1, `one control up there, not two (${a.headerButtons})`);
+  note(a.back.text === "", `it carries an icon and no word (“${a.back.text}”)`);
+  note(/chevron-left|arrow-left/.test(a.back.icon), `…and that icon points back (${a.back.icon})`);
+  note(a.back.label.length > 2, `…with a name for a screen reader ("${a.back.label}")`);
+  note(a.back.radius === a.accountRadius, `same corner as the card (${a.back.radius}px vs ${a.accountRadius}px)`);
+  note(parseFloat(a.back.border) > 0, `a border of its own (${a.back.border})`);
+  note(!/rgb\(2[0-9]{2}, [0-9]{1,2}, 2[0-9]{2}\)/.test(a.back.bg), `and no brand fill (${a.back.bg})`);
+
+  /* Clicking it closes the menu — the X's job, on the new control. */
+  await open(page);
+  await page.click('[role="dialog"] .drawer-panel > div:first-child button');
+  await page.waitForSelector('[role="dialog"]', { state: "detached", timeout: 5000 });
+  note(true, "pressing it closes the drawer");
+
+  /* THE TOP STARTS HIGHER. The row used to sit under a 44px line of its own. */
+  note(a.topRow.t <= 12, `the row starts at the top of the panel (${a.topRow.t}px from it)`);
+  note(a.headerPadTop >= 8, `…keeping a floor for the status bar (${a.headerPadTop}px with zero insets)`);
+  note(a.account.t - a.panel.t <= 14, `the card itself begins ${Math.round(a.account.t - a.panel.t)}px into the panel`);
+
   note(Boolean(a.account), "the account is a card of its own");
   note(a.accountRadius >= 14, `…with a card's corner (${a.accountRadius}px)`);
   note(a.accountHasBadge, "the plan badge sits inside it, under the name");
   note(a.accountHasChevron, "…and it carries a chevron, like the reference");
-  note(!a.accountHasClose, "the X is NOT inside the account card any more");
-  note(a.headerButtons === 1 && a.headerText === "", "…it lives above it, on its own line");
+  note(!a.accountHasClose, "the way back is NOT inside the account card");
   note(Boolean(a.avatar) && a.avatar.w >= 44, `the avatar is large (${a.avatar?.w}×${a.avatar?.h})`);
   note(a.avatarRadius === "9999px" || parseFloat(a.avatarRadius) >= 20, `…and round (${a.avatarRadius})`);
   note(a.avatarGlow, "…with a glow behind it");
-  note(Boolean(a.wallet) && a.wallet.t > a.account.b, "the wallet is a SECOND card, under the account");
+  note(Boolean(a.wallet) && a.wallet.t > a.account.b, "the wallet is a SECOND card, under the row");
   note(!a.walletText.includes("@"), "no loose e-mail line anywhere in the cards");
 
   console.log("\n══ B. THE METER ══");
@@ -353,6 +411,9 @@ const expandAll = async (page) => {
   note(all.tiles.every((x) => x.l > all.sections[0].l + 8),
     `every row is indented under its heading (rows at ${[...new Set(all.tiles.map((x) => x.l))].join("/")}, headings at ${all.sections[0].l})`);
   note(all.tiles.every((x) => x.r <= all.sections[0].r + 0.5), "…and none of them is wider than it");
+  // NO RAIL. A hairline used to run down the left of an open group.
+  note(all.sections.every((x) => x.railPx === 0),
+    `no vertical line beside an open group (${all.sections.map((x) => `${x.title}:${x.railPx}px`).join(" ")})`);
 
   /* WHAT EACH GROUP HOLDS. */
   note(all.sections.every((x) => x.expanded && x.rows.length > 0),

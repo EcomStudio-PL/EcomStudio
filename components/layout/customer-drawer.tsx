@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
-  ArrowUpRight, ChevronDown, ChevronRight, Home, Images, LifeBuoy,
+  ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, Home, Images, LifeBuoy,
   LogOut, Plus, Settings, Shield,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
@@ -16,22 +16,23 @@ import {
 } from "@/lib/features";
 import { isNavActive } from "@/lib/nav-active";
 import { creditUsage, USAGE_BAR, USAGE_TEXT } from "@/lib/credit-usage";
-import { Drawer, IslandClose } from "./drawer";
+import { Drawer } from "./drawer";
 import { LocaleSwitcher } from "./locale-switcher";
 import { ThemeToggle } from "./theme-toggle";
 import { Diamond } from "./credits-control";
-import { planTone, PLAN_BADGE, firstName } from "@/lib/plan-tone";
+import { planTone, PLAN_BADGE, firstName, type PlanTone } from "@/lib/plan-tone";
 import { useDrawer } from "./shell-context";
 import { cn } from "@/lib/utils";
 
 /**
  * MOBILE MENU — a column of cards, not a list of links.
  *
- * TWO CARDS AND THEN TILES. The account and the wallet each get a surface of
- * their own at the top, and every destination below them is its own rounded
- * tile with an icon plate, a label and a chevron. The flat text list this
- * replaced was legible and cheap and read like a table of contents; at phone
- * scale a tile is what says "this is a thing you can press".
+ * TWO CARDS AND THEN TILES. The account card and the way back share the
+ * pinned top row; the wallet is the first thing in the list under it, and
+ * every destination below that is its own rounded tile with an icon plate and
+ * a label. The flat text list this replaced was legible and cheap and read
+ * like a table of contents; at phone scale a tile is what says "this is a
+ * thing you can press".
  *
  * THE METER SHOWS WHAT IS LEFT. The bar empties as credits are spent and the
  * label says "Pozostało", because that is the question a seller opens this
@@ -47,10 +48,10 @@ import { cn } from "@/lib/utils";
  * as the pink row inside once you open the group yourself.
  *
  * A HEADING OUTRANKS ITS ROWS. It is taller, it sits on glass with a real
- * border, and its label is set in small caps; the rows are shorter, indented
- * off a hairline, less rounded and quieter. The two used to be the same tile
- * in two tints, which made a group heading look like one more thing to press
- * through on the way to something else.
+ * border, and its label is set in small caps; the rows are shorter, indented,
+ * less rounded and quieter. The two used to be the same tile in two tints,
+ * which made a group heading look like one more thing to press through on the
+ * way to something else.
  */
 export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdmin, navAdmin, availability }: {
   name: string; email?: string; credits: number;
@@ -99,11 +100,32 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
       onClose={() => setOpen(false)}
       label={t("nav.menu")}
       header={(close) => (
-        /* The close control lives ABOVE the account card, not inside it: the
-           card is the account, and an X in its corner read as "dismiss this
-           account". */
-        <div className="flex justify-end px-3 pt-[max(0.5rem,calc(env(safe-area-inset-top)+0.25rem))]">
-          <IslandClose onClick={close} label={t("common.close")} />
+        /**
+         * THE ACCOUNT AND THE WAY OUT, ON ONE LINE.
+         *
+         * The close control used to sit on a line of its own above the card:
+         * 44px of button plus its padding, spent on one X, at the top of a
+         * panel where vertical space is the scarce thing. Sharing the row
+         * costs nothing — the button simply stretches to the card's height —
+         * and the menu now starts roughly a row and a half higher.
+         *
+         * 88 / 2 / 10. The card takes what is left after the gap and the
+         * button, so the split holds at every width without being restated;
+         * `min-w` only stops the button collapsing below a thumb at 320px.
+         * `items-stretch` is what makes the two exactly the same height.
+         */
+        <div className="flex items-stretch gap-[2%] px-3 pt-[max(0.5rem,env(safe-area-inset-top))]">
+          <AccountCard who={who} initial={initial} plan={plan} tone={tone} onNavigate={closeNav} />
+          {/* An arrow, not an X: this panel slides in from the left edge, so
+              the gesture it undoes is "go back", not "dismiss". */}
+          <button
+            type="button"
+            onClick={close}
+            aria-label={t("common.close")}
+            className="flex w-[10%] min-w-[34px] shrink-0 items-center justify-center rounded-2xl border border-[rgb(var(--line)/0.14)] bg-[rgb(var(--ink)/0.045)] text-muted transition-colors duration-200 hover:bg-[rgb(var(--ink)/0.08)] hover:text-ink active:bg-[rgb(var(--ink)/0.11)]"
+          >
+            <ChevronLeft size={20} aria-hidden />
+          </button>
         </div>
       )}
       footer={
@@ -124,31 +146,8 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
         </div>
       }
     >
-      {/* ── THE ACCOUNT ──────────────────────────────────────────────────── */}
-      <Link href="/settings" onClick={closeNav}
-        className="group flex items-center gap-3 rounded-2xl border border-[rgb(var(--line)/0.14)] bg-gradient-to-b from-[rgb(var(--ink)/0.075)] to-[rgb(var(--ink)/0.035)] p-3 shadow-e1 transition-colors duration-200 hover:to-[rgb(var(--ink)/0.06)]">
-        <span aria-hidden className="relative flex h-12 w-12 shrink-0 items-center justify-center">
-          {/* The glow is a blurred copy of the avatar, so it is always the
-              brand gradient and never a second colour to keep in step. */}
-          <span className="brand-gradient absolute inset-1 rounded-full opacity-40 blur-[9px]" />
-          <span className="brand-gradient relative flex h-12 w-12 items-center justify-center rounded-full text-[17px] font-bold text-white ring-2 ring-[rgb(var(--accent)/0.35)]">
-            {initial}
-          </span>
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[15.5px] font-semibold leading-tight text-ink">{who}</span>
-          <span className={cn(
-            "mt-1.5 inline-flex max-w-full truncate rounded-full px-2 py-[3px] text-[9.5px] font-bold uppercase leading-none tracking-wide",
-            PLAN_BADGE[tone],
-          )}>
-            {plan}
-          </span>
-        </span>
-        <ChevronRight size={18} aria-hidden className="shrink-0 text-faint transition-colors duration-200 group-hover:text-ink" />
-      </Link>
-
       {/* ── THE WALLET ───────────────────────────────────────────────────── */}
-      <div className="mt-2.5 overflow-hidden rounded-2xl border border-[rgb(var(--accent)/0.24)] bg-gradient-to-b from-[rgb(var(--accent)/0.10)] to-[rgb(var(--ink)/0.04)] p-3 shadow-e1">
+      <div className="overflow-hidden rounded-2xl border border-[rgb(var(--accent)/0.24)] bg-gradient-to-b from-[rgb(var(--accent)/0.10)] to-[rgb(var(--ink)/0.04)] p-3 shadow-e1">
         <div className="flex items-center justify-between gap-2">
           <span className="inline-flex min-w-0 items-center gap-2.5">
             <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent ring-1 ring-[rgb(var(--accent)/0.35)]">
@@ -256,6 +255,44 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
         </Section>
       )}
     </Drawer>
+  );
+}
+
+/**
+ * WHO IS SIGNED IN — avatar with a soft brand glow, the name, the plan badge
+ * under it, and a chevron, because the whole card is a link to the account
+ * screen. It takes whatever width the row leaves it (88 %, next to the 2 % gap
+ * and the 10 % back button) and sets the height both of them share.
+ */
+function AccountCard({ who, initial, plan, tone, onNavigate }: {
+  who: string;
+  initial: string;
+  plan: string;
+  tone: PlanTone;
+  onNavigate: () => void;
+}) {
+  return (
+    <Link href="/settings" onClick={onNavigate}
+      className="group flex min-w-0 flex-1 items-center gap-3 rounded-2xl border border-[rgb(var(--line)/0.14)] bg-gradient-to-b from-[rgb(var(--ink)/0.075)] to-[rgb(var(--ink)/0.035)] p-3 shadow-e1 transition-colors duration-200 hover:to-[rgb(var(--ink)/0.06)]">
+      <span aria-hidden className="relative flex h-12 w-12 shrink-0 items-center justify-center">
+        {/* The glow is a blurred copy of the avatar, so it is always the
+            brand gradient and never a second colour to keep in step. */}
+        <span className="brand-gradient absolute inset-1 rounded-full opacity-40 blur-[9px]" />
+        <span className="brand-gradient relative flex h-12 w-12 items-center justify-center rounded-full text-[17px] font-bold text-white ring-2 ring-[rgb(var(--accent)/0.35)]">
+          {initial}
+        </span>
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[15.5px] font-semibold leading-tight text-ink">{who}</span>
+        <span className={cn(
+          "mt-1.5 inline-flex max-w-full truncate rounded-full px-2 py-[3px] text-[9.5px] font-bold uppercase leading-none tracking-wide",
+          PLAN_BADGE[tone],
+        )}>
+          {plan}
+        </span>
+      </span>
+      <ChevronRight size={18} aria-hidden className="shrink-0 text-faint transition-colors duration-200 group-hover:text-ink" />
+    </Link>
   );
 }
 
@@ -391,8 +428,12 @@ function Section({ title, children }: {
       </button>
       {/* The rows hang off a hairline, indented — the one piece of structure
           that says "these belong to the heading above" without a second box. */}
+      {/* Indented, and nothing else. A hairline ran down the left of an open
+          group as a connector; at this scale it read as a stray border on the
+          rows rather than as structure, and the indent already says whose
+          rows these are. */}
       {open && (
-        <div className="animate-fade ml-3 mt-1.5 space-y-1 border-l border-[rgb(var(--line)/0.18)] pl-2.5">
+        <div className="animate-fade mt-1.5 space-y-1 pl-3">
           {children}
         </div>
       )}
