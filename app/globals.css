@@ -68,6 +68,12 @@
     both muted enough to sit next to the brand without shouting.
   */
   --caution: 202 138 4;
+  /*
+    THE COLOUR THE PAGE FADES INTO UNDER THE DOCK.
+    The page's own base, so the fade reads as the background coming forward
+    rather than as a grey panel laid over the content. On dark it is #0C0814.
+  */
+  --dock-veil: 245 242 251;
 
   --glass: 252 250 255;
   --glass-alpha: 0.72;
@@ -279,6 +285,7 @@
   --danger: 248 113 113;
   /* The meter's middle stop — see the light block. */
   --caution: 251 191 36;
+  --dock-veil: 12 8 20;
 
   --glass: 21 13 30;
   --glass-alpha: 0.78;
@@ -796,6 +803,33 @@ body::after {
 }
 
 /* The mobile dock: a floating bar rather than a bar welded to the screen. */
+/*
+ * THE FADE UNDER THE DOCK — a floor for the bar, not a panel behind it.
+ *
+ * The dock is glass, and glass over a busy page is a bar you have to look for:
+ * a gallery scrolling underneath puts photographs directly behind the labels.
+ * This is the page's own colour rising from the bottom edge and thinning out
+ * ABOVE the bar, so content dims into the background before it ever reaches
+ * the icons. At the bottom it is nearly solid — and invisible, because down
+ * there it is the same colour as the page behind it; the only place it does
+ * visible work is the 32px band above the bar and the gutters beside it.
+ *
+ * It is drawn inside the dock's own `nav`, which is `lg:hidden`, so it exists
+ * on phones and tablets and nowhere else. It covers the home-indicator strip
+ * as well — that is why it is anchored to the nav's padding box rather than to
+ * the bar — and it takes no pointer events, so nothing under it stops working.
+ */
+.dock-veil {
+  background: linear-gradient(
+    to top,
+    rgb(var(--dock-veil) / 0.94) 0%,
+    rgb(var(--dock-veil) / 0.88) 34%,
+    rgb(var(--dock-veil) / 0.56) 62%,
+    rgb(var(--dock-veil) / 0.2) 84%,
+    rgb(var(--dock-veil) / 0) 100%
+  );
+}
+
 .dock {
   background:
     linear-gradient(180deg, rgb(190 200 255 / 0.06), transparent 55%),
@@ -1156,6 +1190,10 @@ h2 { letter-spacing: -0.022em; line-height: 1.15; }
   --raised: var(--workspace-surface-elevated);
   --float: var(--workspace-surface-elevated);
   --sunken: var(--workspace-bg);
+  /* The dock's fade follows the room it is standing in, so on a generator
+     screen it thins into the workspace's own background rather than into the
+     brand one. */
+  --dock-veil: var(--workspace-bg);
   --ink: var(--workspace-text-primary);
   --muted: var(--workspace-text-secondary);
   --line: var(--workspace-border);

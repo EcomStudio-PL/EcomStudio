@@ -17,10 +17,19 @@
  * measured against the hamburger on one side and the credits, search and bell
  * on the other, with no overlap and no horizontal overflow anywhere.
  *
+ * THE FADE UNDER THE DOCK. A glass bar over a gallery is a bar you have to
+ * look for, so the page's own colour rises from the bottom edge and thins out
+ * above it. What is checked is that it is BEHIND the bar and not over it, that
+ * it reaches the bottom of the screen (the home-indicator strip included) and
+ * stops above the bar, that it is transparent at the top and the page colour
+ * at the bottom in BOTH themes, and that it takes no pointer events — a fade
+ * that swallows taps is not a cosmetic change.
+ *
  * Run:  npm run test:chrome -- <base-url>
  * Needs the temporary /probe-tmp/chrome route; skips cleanly without it.
  */
 import { chromium } from "playwright";
+import sharp from "sharp";
 
 const BASE = process.argv[2];
 if (!BASE) { console.error("usage: npm run test:chrome -- <base-url>"); process.exit(2); }
@@ -40,6 +49,49 @@ const note = (ok, line) => { if (!ok) failed++; console.log(`${ok ? "✓" : "✗
 
 const browser = await chromium.launch({
   executablePath: "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell",
+});
+
+const readVeil = (page) => page.evaluate(() => {
+  const nav = [...document.querySelectorAll("nav[aria-label]")].find((n) => !n.closest("header"));
+  const veil = nav?.querySelector(".dock-veil") ?? null;
+  const bar = nav?.querySelector(".dock") ?? null;
+  const box = (el) => {
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const n = (v) => Math.round(v * 10) / 10;
+    return { l: n(r.left), r: n(r.right), t: n(r.top), b: n(r.bottom), w: n(r.width), h: n(r.height) };
+  };
+  if (!veil) return { veil: null, bar: box(bar), navPadBottom: nav ? getComputedStyle(nav).paddingBottom : null };
+  const cs = getComputedStyle(veil);
+  // What the browser actually paints at the top and bottom of the fade.
+  const r = veil.getBoundingClientRect();
+  const topHit = document.elementFromPoint(Math.round(r.left + r.width / 2), Math.round(r.top + 1));
+  const overBar = bar
+    ? document.elementFromPoint(Math.round(bar.getBoundingClientRect().left + bar.getBoundingClientRect().width / 2),
+        Math.round(bar.getBoundingClientRect().top + 10))
+    : null;
+  return {
+    veil: box(veil),
+    bar: box(bar),
+    bg: cs.backgroundImage,
+    pointer: cs.pointerEvents,
+    zIndex: cs.zIndex,
+    tag: veil.tagName.toLowerCase(),
+    hidden: veil.getAttribute("aria-hidden"),
+    // A hit test can never RETURN the veil — it takes no pointer events — so
+    // these two say what actually matters: a tap over the bar lands on the
+    // bar, and a tap in the fade's band lands on the page underneath.
+    overBar: overBar ? (overBar.closest(".dock") ? "dock" : overBar.tagName.toLowerCase()) : null,
+    topHit: topHit ? topHit.tagName.toLowerCase() : null,
+    // What guarantees the paint order: the fade comes first and the bar is
+    // positioned, so the bar is painted over it.
+    veilBeforeBar: Boolean(bar && veil.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING),
+    barPosition: bar ? getComputedStyle(bar).position : null,
+    navDisplay: nav ? getComputedStyle(nav).display : null,
+    veilToken: getComputedStyle(document.documentElement).getPropertyValue("--dock-veil").trim(),
+    navPadBottom: nav ? getComputedStyle(nav).paddingBottom : null,
+    dark: document.documentElement.classList.contains("dark"),
+  };
 });
 
 const readChrome = (page) => page.evaluate(() => {
@@ -187,8 +239,91 @@ for (const w of WIDTHS) {
     const circles = c.slots.filter((s) => s.hasCircle);
     note(circles.length === 1 && circles[0].circle.w >= 44,
       `${w}: exactly one gradient CTA, ${circles[0]?.circle.w}px across`);
+
+    /* ── the fade under the bar ──────────────────────────────────────── */
+    const v = await readVeil(page);
+    note(Boolean(v.veil), `${w}: the dock stands on a fade`);
+    if (v.veil) {
+      note(v.veil.l <= 0.5 && v.veil.r >= w - 0.5,
+        `${w}: …spanning the whole width (${v.veil.l} → ${v.veil.r})`);
+      note(Math.abs(v.veil.b - 800) < 1.5, `${w}: …down to the bottom edge (${v.veil.b})`);
+      // It has to start ABOVE the bar and stop there — a fade that ends at the
+      // bar's own edge is a panel, not a fade.
+      const above = Math.round(v.bar.t - v.veil.t);
+      note(above >= 24 && above <= 44, `${w}: …ending ${above}px above the bar`);
+      note(v.pointer === "none", `${w}: …and taking no taps (pointer-events: ${v.pointer})`);
+      note(v.hidden === "true", `${w}: …hidden from screen readers`);
+      note(/linear-gradient/.test(v.bg) && /rgba?\([^)]*0\)/.test(v.bg),
+        `${w}: it is a gradient that reaches zero alpha`);
+      note(v.veilBeforeBar && v.barPosition === "relative",
+        `${w}: the bar is painted over it (fade first, bar positioned: ${v.barPosition})`);
+      note(v.overBar === "dock", `${w}: a tap on the bar reaches the bar (${v.overBar})`);
+      note(v.topHit !== null && v.topHit !== "html",
+        `${w}: …and a tap in the fade reaches the page under it (${v.topHit})`);
+    }
   }
 
+  await ctx.close();
+}
+
+/* ══ THE FADE, IN BOTH THEMES AND WHERE IT MUST NOT BE ═════════════════════ */
+
+console.log("\n══ the fade: colour, themes, desktop ══");
+{
+  for (const [theme, want] of [["dark", "12 8 20"], ["light", "245 242 251"]]) {
+    const ctx = await browser.newContext({
+      viewport: { width: 390, height: 800 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true,
+    });
+    const page = await ctx.newPage();
+    await page.goto(`${BASE}${PROBE}`, { waitUntil: "networkidle", timeout: 60000 });
+    if (theme === "light") {
+      await page.evaluate(() => localStorage.setItem("theme", "light"));
+      await page.reload({ waitUntil: "networkidle", timeout: 60000 });
+    }
+    await page.waitForTimeout(400);
+    const v = await readVeil(page);
+    note(v.dark === (theme === "dark"), `${theme}: the page is in the ${theme} theme`);
+    note(v.veilToken === want, `${theme}: it fades into the page's own colour (--dock-veil: ${v.veilToken})`);
+    note(Boolean(v.veil), `${theme}: …and the fade is drawn`);
+    await ctx.close();
+  }
+
+  /* A TAP UNDER THE FADE STILL LANDS. */
+  const ctx = await browser.newContext({
+    viewport: { width: 390, height: 800 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true,
+  });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}${PROBE}`, { waitUntil: "networkidle", timeout: 60000 });
+  await page.waitForTimeout(300);
+  /* THE FADE ACTUALLY DIMS WHAT IS BEHIND IT. Two pixels of the same bright
+     strip: one well above the fade, one inside it. If the second is not
+     visibly darker, the gradient is decoration that paints nothing. */
+  const dim = await (async () => {
+    const band = await page.evaluate(() => {
+      const nav = [...document.querySelectorAll("nav[aria-label]")].find((n) => !n.closest("header"));
+      const v = nav.querySelector(".dock-veil").getBoundingClientRect();
+      // The middle of the screen, over the uniform band the probe page puts
+      // behind the dock — same colour inside and outside the fade.
+      return { x: Math.round(v.left + v.width / 2), inside: Math.round(v.top + 10), above: Math.round(v.top - 20) };
+    });
+    const px = async (y) => {
+      const buf = await page.screenshot({ clip: { x: band.x, y, width: 2, height: 2 } });
+      const { data } = await sharp(buf).raw().toBuffer({ resolveWithObject: true });
+      return (data[0] + data[1] + data[2]) / 3;
+    };
+    return { above: await px(band.above), inside: await px(band.inside) };
+  })();
+  note(dim.inside < dim.above - 6,
+    `the fade visibly dims the content behind it (luma ${Math.round(dim.above)} above → ${Math.round(dim.inside)} inside)`);
+  const navPad = (await readVeil(page)).navPadBottom;
+  note(navPad !== null, `the dock still reserves the home-indicator strip (padding-bottom: ${navPad})`);
+
+  /* AND IT IS A PHONE/TABLET THING. The whole dock is `lg:hidden`. */
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.waitForTimeout(300);
+  const desktop = await readVeil(page);
+  note(desktop.navDisplay === "none",
+    `at 1280 the whole dock is hidden, fade included (display: ${desktop.navDisplay})`);
   await ctx.close();
 }
 

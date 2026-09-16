@@ -28,6 +28,10 @@ import { cn } from "@/lib/utils";
  * circle does. The overhang is ~11px and the page already reserves 20px of air
  * above the dock (`--page-bottom` = dock + 1.25rem + safe area), so it rises
  * into empty space and covers nothing.
+ *
+ * THE BAR STANDS ON A FADE, NOT ON WHATEVER IS SCROLLING PAST. A glass bar over
+ * a gallery is a bar you have to look for. The veil below adds the page's own
+ * colour under it, fading out just above the top edge — see `.dock-veil`.
  */
 export function CustomerBottomNav({ availability, isAdmin = false }: {
   availability?: AvailabilityMap;
@@ -53,8 +57,17 @@ export function CustomerBottomNav({ availability, isAdmin = false }: {
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       aria-label={t("topnav.primary")}
     >
+      {/* THE FLOOR UNDER THE BAR. The page's own colour rising from the bottom
+          edge and gone 32px above the dock, so whatever scrolls past — a
+          gallery, a photograph — dims into the background before it reaches
+          the labels instead of sitting directly behind them. It is anchored to
+          the nav's padding box, which is why it also covers the home-indicator
+          strip; `-top-8` is the only part of it that is visible over content.
+          No pointer events: everything underneath stays pressable. See
+          `.dock-veil` in globals.css. */}
+      <span aria-hidden className="dock-veil pointer-events-none absolute inset-x-0 -top-8 bottom-0" />
       <div
-        className="dock mx-[var(--page-x)] flex items-stretch rounded-2xl px-1"
+        className="dock relative mx-[var(--page-x)] flex items-stretch rounded-2xl px-1"
         style={{ height: "var(--bottom-nav-h)", marginBottom: "var(--bottom-nav-gap)" }}
       >
         {slots.map((s) => {
