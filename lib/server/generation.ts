@@ -1,4 +1,7 @@
 import "server-only";
+import {
+  PREVIEW_EDGE, PREVIEW_QUALITY, THUMB_EDGE, THUMB_QUALITY, previewPathFor, thumbPathFor,
+} from "@/lib/thumbs";
 import { after } from "next/server";
 import type { Client } from "@/lib/services/workspace";
 import { readProviderKey } from "@/lib/server/provider-credentials";
@@ -90,7 +93,7 @@ const MAX_REFERENCE_PATHS = 10;
 
 /** Longest edge of the gallery thumbnail derivative. Originals stay the
  *  source of truth; the thumb only spares the grid from full-size loads. */
-const THUMB_EDGE = 640;
+
 
 /**
  * The full real generation path: resolve model + decrypted credential →
@@ -544,30 +547,76 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     const { error: upErr } = await supabase.storage.from("generation-assets")
       .upload(path, bytes, { contentType: mime, upsert: true });
     if (!upErr && generation) {
-      // Gallery thumbnail derivative: grids load ~40KB instead of a full
-      // render. Best-effort — a failed thumb never fails the generation,
-      // the gallery just falls back to the original.
-      let thumbPath: string | null = null;
+      // Real dimensions off the header — a few microseconds, and the gallery
+      // reserves the right box before the picture arrives.
       let dims: { width?: number; height?: number } = { width: img.width, height: img.height };
       try {
         const { default: sharp } = await import("sharp");
-        const pipeline = sharp(bytes, { failOn: "none" });
-        const meta = await pipeline.metadata();
+        const meta = await sharp(bytes, { failOn: "none" }).metadata();
         if (meta.width && meta.height) dims = { width: meta.width, height: meta.height };
-        const thumb = await pipeline
-          .resize({ width: THUMB_EDGE, height: THUMB_EDGE, fit: "inside", withoutEnlargement: true })
-          .webp({ quality: 72 })
-          .toBuffer();
-        const tPath = `${workspaceId}/${job.id}/${idx}_t.webp`;
-        const { error: tErr } = await supabase.storage.from("generation-assets")
-          .upload(tPath, thumb, { contentType: "image/webp", upsert: true });
-        if (!tErr) thumbPath = tPath;
-      } catch { /* originals remain the source of truth */ }
-      await supabase.from("generation_assets").insert({
+      } catch { /* the model's own figures stand */ }
+      const { data: assetRow } = await supabase.from("generation_assets").insert({
         generation_id: generation.id, asset_type: "image", storage_path: path,
         width: dims.width ?? null, height: dims.height ?? null,
-        metadata: { provider: served.providerSlug, model: model2.model_identifier, thumb: thumbPath } as never,
-      });
+        metadata: { provider: served.providerSlug, model: model2.model_identifier },
+      }).select("id").single();
+
+      /**
+       * THE DERIVATIVE IS MADE AFTER THE ANSWER IS SENT.
+       *
+       * Resizing a 4-megapixel render costs a few hundred milliseconds per
+       * image, and the customer was waiting through all of it for something
+       * they do not need until the next time they open a grid. `after()` runs
+       * it once the response is on its way.
+       *
+       * The row goes in WITHOUT `thumb` and the path is recorded only once
+       * the object exists — the order matters: metadata pointing at a file
+       * that is still being written is a broken tile, while metadata that is
+       * briefly absent is just the original, which is what every asset used
+       * before this existed.
+       */
+      if (assetRow) {
+        const source = bytes;
+        after(async () => {
+          try {
+            const { default: sharp } = await import("sharp");
+            const derive = async (edge: number, quality: number) =>
+              sharp(source, { failOn: "none" })
+                .resize({ width: edge, height: edge, fit: "inside", withoutEnlargement: true })
+                // `.webp()` drops EXIF and every other ancillary chunk on the
+                // way out, so a derivative carries no camera or prompt data.
+                .webp({ quality })
+                .toBuffer();
+            const [thumb, preview] = await Promise.all([
+              derive(THUMB_EDGE, THUMB_QUALITY),
+              derive(PREVIEW_EDGE, PREVIEW_QUALITY),
+            ]);
+            const tPath = thumbPathFor(path);
+            const pPath = previewPathFor(path);
+            // A derivative at a derived path never changes: let the CDN and
+            // the browser hold it. The original keeps the default.
+            const opts = {
+              contentType: "image/webp", upsert: true,
+              cacheControl: "public, max-age=31536000, immutable",
+            } as const;
+            const bucket = supabase.storage.from("generation-assets");
+            const [tRes, pRes] = await Promise.all([
+              bucket.upload(tPath, thumb, opts),
+              bucket.upload(pPath, preview, opts),
+            ]);
+            if (tRes.error) return;
+            const { error: rpcErr } = await supabase.rpc("set_asset_derivatives", {
+              asset_id: assetRow.id, thumb_path: tPath,
+              preview_path: pRes.error ? null : pPath,
+            });
+            // Silence here would mean every grid serves full-size originals
+            // forever with nothing to show for it, so say so in the log.
+            if (rpcErr) console.error("[generation] derivative not recorded", assetRow.id, rpcErr.message);
+          } catch (e) {
+            console.error("[generation] derivative failed", assetRow.id, e);
+          }
+        });
+      }
       stored.push({ url: "", path });
     }
     idx++;

@@ -24,6 +24,28 @@ export type GalleryItem = {
   url: string;
   /** Small derivative for grids; equals `url` for pre-derivative assets. */
   thumbUrl: string;
+  /**
+   * FALSE when `thumbUrl` is really the original — an asset made before the
+   * generator started writing derivatives. The library uses this to trickle a
+   * backfill through `/api/library/thumb` for what is actually on screen,
+   * rather than scanning the whole history on a schedule.
+   */
+  hasThumb: boolean;
+  /**
+   * Mid-size derivative for the lightbox (~1400px). Falls back to `url` — the
+   * full original — for assets that have none, so opening a preview always
+   * works; it is only the byte count that differs.
+   */
+  previewUrl: string;
+  /**
+   * What the file is. A video tile paints `thumbUrl` as its poster when one
+   * exists; nothing in this codebase writes video posters yet, so for video
+   * `hasThumb` is honestly false and the tile shows a placeholder rather than
+   * pulling the whole file down to show a first frame.
+   */
+  assetType: "image" | "video";
+  /** Seconds, for the badge on a video tile. Null when unknown. */
+  durationSec: number | null;
   width: number | null;
   height: number | null;
   ratio: string | null;
@@ -70,12 +92,23 @@ export type GalleryFilter = {
    *  operation to list only its results; "none" excludes every tool job from
    *  the plain generator's gallery. */
   operation?: string | null;
+  /**
+   * "image" or "video" — the library's two shelves.
+   *
+   * Applied to the FETCHED WINDOW rather than to the query, because the
+   * column lives on the embedded assets and PostgREST would have to inner-join
+   * the embed to filter on it, which changes what a page of GENERATIONS means.
+   * The window is 20–48 rows; narrowing it in memory costs nothing and keeps
+   * the cursor honest (it still advances through the full window, exactly as
+   * the product-name search below does).
+   */
+  assetType?: "image" | "video" | null;
 };
 
 const SELECT_BASE = `
   id, favorite, user_note, created_at,
   products(name),
-  generation_assets(id, storage_path, width, height, metadata),
+  generation_assets(id, storage_path, width, height, asset_type, metadata),
   generation_jobs!inner(
     aspect_ratio, resolution, prompt_origin, prompt_text, prompt_id, status, model_id, settings,
     quantity, credits_charged, reference_image_ids,
@@ -93,7 +126,8 @@ type Row = {
   products: { name: string } | null;
   generation_assets: {
     id: string; storage_path: string; width: number | null; height: number | null;
-    metadata: { thumb?: string | null } | null;
+    asset_type: "image" | "video" | "text";
+    metadata: { thumb?: string | null; preview?: string | null; duration?: number | null } | null;
   }[];
   generation_jobs: {
     aspect_ratio: string | null;
@@ -115,6 +149,17 @@ type Row = {
     generated_prompts: { customer_description: string | null } | null;
   } | null;
 };
+
+/**
+ * A cursor is "<created_at>|<id>". Cursors minted before the id half existed
+ * (or handed in by a client mid-deploy) carry only the timestamp, and those
+ * still page correctly — just without the tie-break.
+ */
+function parseCursor(cursor: string): { at: string; id: string | null } {
+  const cut = cursor.lastIndexOf("|");
+  if (cut < 0) return { at: cursor, id: null };
+  return { at: cursor.slice(0, cut), id: cursor.slice(cut + 1) || null };
+}
 
 export async function listGalleryItems(
   supabase: Client, workspaceId: string, filter: GalleryFilter = {},
@@ -140,7 +185,26 @@ export async function listGalleryItems(
     query = query.is("generation_jobs.settings->>operation", null);
   }
   if (filter.favorite) query = query.eq("favorite", true);
-  if (filter.cursor) query = asc ? query.gt("created_at", filter.cursor) : query.lt("created_at", filter.cursor);
+  // KEYSET, ON THE KEY THE INDEX WAS BUILT FOR. `generations_ws_created_idx`
+  // is (workspace_id, created_at desc, id desc); paginating on created_at
+  // ALONE silently drops every row that ties on the boundary timestamp —
+  // rows written in one transaction share `now()`, so a batch insert could
+  // lose an image from the gallery permanently, with no error anywhere. The
+  // cursor therefore carries both halves and compares them as a pair.
+  query = query.order("id", { ascending: asc });
+  if (filter.cursor) {
+    const { at, id } = parseCursor(filter.cursor);
+    const cmp = asc ? "gt" : "lt";
+    // The values are QUOTED. A timestamptz renders as
+    // "2026-08-26T12:34:56.789012+00:00" — dots, colons and a plus, all of
+    // which are reserved inside a PostgREST `or(...)` expression. Quoting is
+    // the documented way to hand such a value over intact, and it costs
+    // nothing for the uuid.
+    const q = (v: string) => `"${v.replace(/"/g, "")}"`;
+    query = id
+      ? query.or(`created_at.${cmp}.${q(at)},and(created_at.eq.${q(at)},id.${cmp}.${q(id)})`)
+      : query[cmp]("created_at", at);
+  }
 
   const { data, error } = await query;
   if (error || !data) return { items: [], nextCursor: null };
@@ -150,7 +214,8 @@ export async function listGalleryItems(
   rows = rows.slice(0, limit);
   // The cursor must advance through the FULL fetched window — deriving it
   // from the q-filtered subset would stall pagination on a sparse match.
-  const pageEnd = rows.length > 0 ? rows[rows.length - 1].created_at : null;
+  const last = rows.length > 0 ? rows[rows.length - 1] : null;
+  const pageEnd = last ? `${last.created_at}|${last.id}` : null;
 
   // Product-name search is applied to the fetched window (names are not
   // indexed for ilike through the embed) — the client widens by paging.
@@ -168,6 +233,7 @@ export async function listGalleryItems(
     for (const a of r.generation_assets ?? []) {
       paths.add(a.storage_path);
       if (a.metadata?.thumb) paths.add(a.metadata.thumb);
+      if (a.metadata?.preview) paths.add(a.metadata.preview);
     }
   }
   const signedMap = new Map<string, string>();
@@ -198,12 +264,21 @@ export async function listGalleryItems(
     for (const a of r.generation_assets ?? []) {
       const url = signedMap.get(a.storage_path);
       if (!url) continue;
+      // "text" assets are not something a gallery shows.
+      const assetType = a.asset_type === "video" ? "video" : "image";
+      if (a.asset_type === "text") continue;
+      if (filter.assetType && filter.assetType !== assetType) continue;
+      const thumbUrl = (a.metadata?.thumb && signedMap.get(a.metadata.thumb)) || url;
       items.push({
         generationId: r.id,
         assetId: a.id,
         path: a.storage_path,
         url,
-        thumbUrl: (a.metadata?.thumb && signedMap.get(a.metadata.thumb)) || url,
+        thumbUrl,
+        hasThumb: thumbUrl !== url,
+        previewUrl: (a.metadata?.preview && signedMap.get(a.metadata.preview)) || url,
+        assetType,
+        durationSec: typeof a.metadata?.duration === "number" ? a.metadata.duration : null,
         width: a.width,
         height: a.height,
         ratio: job?.aspect_ratio ?? null,

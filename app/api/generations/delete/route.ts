@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { accountBlockedResponse } from "@/lib/server/account-block";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
+import { previewPathFor, thumbPathFor } from "@/lib/thumbs";
 
 export const dynamic = "force-dynamic";
 
@@ -33,8 +34,16 @@ export async function POST(request: Request) {
     const status = /not_found/.test(error.message) ? 404 : 400;
     return NextResponse.json({ ok: false, error: "not_found" }, { status });
   }
-  const toRemove = (paths ?? []).filter((p): p is string => typeof p === "string" && p.length > 0);
-  if (toRemove.length > 0) {
+  const originals = (paths ?? []).filter((p): p is string => typeof p === "string" && p.length > 0);
+  if (originals.length > 0) {
+    // THE DERIVATIVES GO WITH THE ORIGINAL. `delete_generation` hands back the
+    // rows' storage_path — the originals — but each image also has a grid
+    // thumbnail and a preview beside it at a derived path. Removing only the
+    // original would leave two orphans per asset in the bucket for good, and
+    // the customer would keep paying for storage they asked us to free.
+    // Derived paths are computed, not looked up, and removing one that was
+    // never made is a no-op.
+    const toRemove = originals.flatMap((p) => [p, thumbPathFor(p), previewPathFor(p)]);
     await supabase.storage.from("generation-assets").remove(toRemove);
   }
   return NextResponse.json({ ok: true });

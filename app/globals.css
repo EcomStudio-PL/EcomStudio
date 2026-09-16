@@ -1680,3 +1680,54 @@ body:has(.workspace-page)::after { display: none; }
   .bonus-pop { animation: none !important; }
   .bonus-other { animation: none !important; }
 }
+
+/* ── BIBLIOTEKA ─────────────────────────────────────────────────────────── */
+
+/* THE ADAPTIVE GRID. No column count is written down anywhere: above a phone
+   the browser fits as many columns of at least `--tile` as the width allows,
+   so the same rule serves 640px and 2560px and every density step in between.
+
+   A PHONE IS THE ONE PINNED CASE, and deliberately so. The default tile is
+   210px, which does not fit twice into a 320px screen — `auto-fill` would hand
+   back a single column, and a library one enormous tile wide is a feed, not an
+   asset manager. Two columns is what the brief asks for and what a phone can
+   actually show, so below `sm` the count is fixed and the tiles divide the
+   width between them. `minmax(0, 1fr)` rather than `1fr` so a wide child can
+   never push the track past the viewport. */
+.library-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+@media (min-width: 640px) {
+  .library-grid {
+    /* `min(--tile, 100%)` keeps the track from exceeding the container when
+       the tile is wider than the space available. */
+    grid-template-columns: repeat(auto-fill, minmax(min(var(--tile, 210px), 100%), 1fr));
+  }
+}
+
+/* THE DENSITY SLIDER. A range input with no styling is a piece of operating
+   system sitting in the middle of the toolbar; this makes it a GrovBase
+   control — a thin track with a small accent thumb — without changing what it
+   is or how a keyboard drives it. */
+.library-density::-webkit-slider-thumb {
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  background: rgb(var(--accent));
+  border: 2px solid rgb(var(--surface));
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.28);
+  cursor: pointer;
+}
+.library-density::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  background: rgb(var(--accent));
+  border: 2px solid rgb(var(--surface));
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.28);
+  cursor: pointer;
+}
+.library-density:focus-visible {
+  outline: 2px solid rgb(var(--accent) / 0.55);
+  outline-offset: 3px;
+}

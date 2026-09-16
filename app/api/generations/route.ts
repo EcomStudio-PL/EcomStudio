@@ -29,6 +29,10 @@ export async function GET(request: Request) {
     order: url.searchParams.get("order") === "asc" ? "asc" : "desc",
     // Whitelisted: a tool asks for its own operation, the generator for none.
     operation: OPERATIONS.has(url.searchParams.get("op") ?? "") ? url.searchParams.get("op") : null,
+    // The library's two shelves. Anything else is ignored rather than passed
+    // through — this reaches a column value.
+    assetType: url.searchParams.get("type") === "video" ? "video"
+      : url.searchParams.get("type") === "image" ? "image" : null,
   });
   return NextResponse.json({ ok: true, ...page }, {
     headers: { "Cache-Control": "no-store" },

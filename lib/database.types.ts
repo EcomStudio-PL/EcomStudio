@@ -4041,6 +4041,10 @@ export type Database = {
         Args: { p_amount: number; p_event_id: string }
         Returns: string
       }
+      set_asset_derivatives: {
+        Args: { asset_id: string; thumb_path: string; preview_path?: string | null }
+        Returns: string
+      }
       set_generation_favorite: {
         Args: { gen_id: string; value: boolean }
         Returns: boolean

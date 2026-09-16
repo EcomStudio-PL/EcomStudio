@@ -1,35 +1,51 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
-import { listAssets, listJobs } from "@/lib/services/generator";
+import { listJobs } from "@/lib/services/generator";
+import { listGalleryItems } from "@/lib/server/gallery";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AdminTable } from "@/components/ui/admin-table";
 import { Badge } from "@/components/ui/badge";
-import { LibraryGrid, type LibraryCard } from "@/components/library/library-grid";
+import { LibraryBrowser } from "@/components/library/library-browser";
 import { formatDate } from "@/lib/utils";
-import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+
+/** How much of the shelf is rendered into the HTML. Enough to fill the first
+ *  screen of a 2560px monitor at the default tile size; everything after it
+ *  arrives by cursor as the customer scrolls. */
+const FIRST_PAGE = 24;
 
 const JOB_TONE = { queued: "neutral", processing: "info", completed: "success", failed: "danger", cancelled: "neutral" } as const;
 
 /**
- * BIBLIOTEKA — the one destination for everything the account produced
- * (UX spec §6): a grid of generations with hover preview and multi-select
- * ZIP download, the tool outputs on their own shelf, filters by product,
- * and HISTORIA as a tab instead of a separate application area.
+ * BIBLIOTEKA — everything the account has produced.
+ *
+ * THE FIRST PAGE IS RENDERED HERE, and only the first page. This route used to
+ * read sixty generations with `listAssets`, sign every full-size original in
+ * them in one call, and hand the lot to the client — several megabytes of
+ * pictures before anything was on screen, on every single visit, whether or
+ * not the customer scrolled past the first row.
+ *
+ * It now asks the SAME projection every other gallery in the product uses
+ * (`listGalleryItems`) for 24 items with a cursor, and the browser component
+ * pages the rest in as they are needed. The projection signs the small
+ * derivative beside each original, so a tile downloads ~50KB instead of the
+ * full render.
+ *
+ * `?tab=tools` and `?tab=history` are unchanged — different data, different
+ * shape, and both still reachable from the library's own filter sheet.
  */
 export default async function LibraryPage({ searchParams }: {
   searchParams: Promise<{ tab?: string }>;
 }) {
   const { tab: tabParam } = await searchParams;
-  const tab = tabParam === "history" ? "history"
-    : tabParam === "tools" ? "tools"
-      : tabParam === "favorites" ? "favorites" : "all";
+  const tab = tabParam === "history" ? "history" : tabParam === "tools" ? "tools" : "assets";
   const supabase = await createClient();
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
@@ -38,74 +54,15 @@ export default async function LibraryPage({ searchParams }: {
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) redirect("/home");
 
-  const [generations, jobs, { data: toolResults }] = await Promise.all([
-    listAssets(supabase, workspace.id),
-    tab === "history" ? listJobs(supabase, workspace.id) : Promise.resolve([]),
-    supabase.from("tool_results")
-      .select("id, tool_slug, storage_path, created_at")
-      .eq("workspace_id", workspace.id)
-      .order("created_at", { ascending: false })
-      .limit(60),
-  ]);
+  /* ── the shelves that are not the grid ───────────────────────────────── */
 
-  const filtered = tab === "favorites" ? generations.filter((g) => g.favorite) : generations;
-
-  const paths = [
-    ...filtered.flatMap((g) => g.generation_assets.map((a) => a.storage_path)),
-    ...(toolResults ?? []).map((r) => r.storage_path),
-  ];
-  const urlMap = new Map<string, string>();
-  if (paths.length > 0) {
-    const { data: signed } = await supabase.storage.from("generation-assets").createSignedUrls(paths, 3600);
-    signed?.forEach((s) => { if (s.signedUrl && s.path) urlMap.set(s.path, s.signedUrl); });
-  }
-
-  const cards: LibraryCard[] = filtered.map((g) => ({
-    id: g.id,
-    product: null,
-    created: g.created_at,
-    favorite: g.favorite,
-    assets: g.generation_assets.map((a) => ({ id: a.id, path: a.storage_path, url: urlMap.get(a.storage_path) ?? null })),
-  }));
-
-  // Counts on the tabs: the user can see where their work actually is
-  // before clicking through four empty shelves.
-  const tabs = [
-    { key: "all", href: "/library", label: t("library.tabAll"), count: generations.length },
-    { key: "favorites", href: "/library?tab=favorites", label: t("library.tabFavorites"), count: generations.filter((g) => g.favorite).length },
-    { key: "tools", href: "/library?tab=tools", label: t("library.tabTools"), count: (toolResults ?? []).length },
-    { key: "history", href: "/library?tab=history", label: t("library.tabHistory"), count: tab === "history" ? jobs.length : null },
-  ];
-
-
-  return (
-    <div>
-      <PageHeader overline={t("nav.groups.assets")} title={t("library.title")} sub={t("library.sub")} />
-
-      {/* TABS + FILTERS */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2.5">
-        <div className="flex items-stretch gap-1 rounded-xl border border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*0.8))] bg-sunken/80 p-1">
-          {tabs.map((tb) => (
-            <Link key={tb.key} href={tb.href}
-              aria-current={tab === tb.key ? "page" : undefined}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[13px] font-semibold transition-all duration-200",
-                tab === tb.key ? "bg-surface text-ink shadow-e2 ring-1 ring-[rgb(var(--accent)/0.45)]" : "text-muted hover:text-ink",
-              )}>
-              {tb.label}
-              {typeof tb.count === "number" && tb.count > 0 && (
-                <span className={cn("rounded-full px-1.5 text-[10px] font-bold tabular-nums",
-                  tab === tb.key ? "bg-[rgb(var(--accent)/0.18)] text-accent" : "bg-raised text-faint")}>
-                  {tb.count}
-                </span>
-              )}
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      {tab === "history" ? (
-        jobs.length === 0 ? (
+  if (tab === "history") {
+    const jobs = await listJobs(supabase, workspace.id);
+    return (
+      <div>
+        <PageHeader overline={t("nav.groups.assets")} title={t("library.history")} sub={t("library.sub")} />
+        <BackToLibrary label={t("library.title")} />
+        {jobs.length === 0 ? (
           <EmptyState title={t("history.emptyTitle")} body={t("history.emptyBody")} />
         ) : (
           <AdminTable
@@ -119,30 +76,75 @@ export default async function LibraryPage({ searchParams }: {
               <span key="d" className="text-muted">{formatDate(j.created_at, locale)}</span>,
             ])}
           />
-        )
-      ) : tab === "tools" ? (
-        (toolResults ?? []).length === 0 ? (
+        )}
+      </div>
+    );
+  }
+
+  if (tab === "tools") {
+    const { data: toolResults } = await supabase.from("tool_results")
+      .select("id, tool_slug, storage_path, created_at")
+      .eq("workspace_id", workspace.id)
+      .order("created_at", { ascending: false })
+      .limit(60);
+    const rows = toolResults ?? [];
+    // Tool outputs have no derivative of their own; they are signed as they
+    // always were, and there are at most sixty of them.
+    const urlMap = new Map<string, string>();
+    if (rows.length > 0) {
+      const { data: signed } = await supabase.storage
+        .from("generation-assets").createSignedUrls(rows.map((r) => r.storage_path), 3600);
+      signed?.forEach((s) => { if (s.signedUrl && s.path) urlMap.set(s.path, s.signedUrl); });
+    }
+    return (
+      <div>
+        <PageHeader overline={t("nav.groups.assets")} title={t("library.toolResults")} sub={t("library.sub")} />
+        <BackToLibrary label={t("library.title")} />
+        {rows.length === 0 ? (
           <EmptyState title={t("library.emptyTitle")} body={t("library.emptyBody")} />
         ) : (
-          <div className="grid grid-cols-2 gap-2 [&>*]:min-w-0 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
-            {(toolResults ?? []).map((r) => {
+          <div className="grid gap-2 [&>*]:min-w-0" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(210px, 100%), 1fr))" }}>
+            {rows.map((r) => {
               const url = urlMap.get(r.storage_path);
               return url ? (
                 <a key={r.id} href={url} target="_blank" rel="noreferrer noopener"
                   className="panel panel-interactive block overflow-hidden rounded-xl">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={url} alt="" loading="lazy" className="aspect-square w-full bg-checker object-contain" />
+                  <img src={url} alt="" loading="lazy" decoding="async"
+                    className="aspect-square w-full bg-checker object-contain" />
                   <p className="truncate px-2 py-1.5 text-[11px] font-medium">{t(`tools.${r.tool_slug}.name`)}</p>
                 </a>
               ) : null;
             })}
           </div>
-        )
-      ) : cards.length === 0 ? (
-        <EmptyState title={t("library.emptyTitle")} body={t("library.emptyBody")} />
-      ) : (
-        <LibraryGrid cards={cards} locale={locale} />
-      )}
+        )}
+      </div>
+    );
+  }
+
+  /* ── the grid ────────────────────────────────────────────────────────── */
+
+  // `assetType: "image"` is not decoration: the browser adopts this payload
+  // verbatim as its default "Zdjęcia" shelf, so the server has to hand back
+  // exactly what that shelf asks for — otherwise videos land on the photo
+  // shelf on first paint and nothing ever corrects them.
+  const first = await listGalleryItems(supabase, workspace.id, { limit: FIRST_PAGE, assetType: "image" });
+
+  return (
+    <div>
+      <PageHeader overline={t("nav.groups.assets")} title={t("library.title")} sub={t("library.sub")} />
+      <LibraryBrowser first={first} locale={locale} />
     </div>
+  );
+}
+
+/** The two side shelves are pages of their own; this is the way back. */
+function BackToLibrary({ label }: { label: string }) {
+  return (
+    <Link href="/library"
+      className="mb-4 inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-sunken/60 px-3 text-[12.5px] font-semibold text-muted transition-colors hover:text-ink">
+      <ArrowLeft size={14} aria-hidden />
+      {label}
+    </Link>
   );
 }
