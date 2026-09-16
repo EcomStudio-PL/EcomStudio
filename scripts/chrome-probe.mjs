@@ -51,6 +51,60 @@ const browser = await chromium.launch({
   executablePath: "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell",
 });
 
+/**
+ * THE DESKTOP BAR: how tall it is, and whether everything in it sits on the
+ * same middle line. Each control is named by what a seller would call it, so a
+ * failure says "Plany is 3px low" rather than "child 7 is off".
+ */
+const readHeader = (page) => page.evaluate(() => {
+  const header = document.querySelector("header");
+  const row = header?.firstElementChild ?? null;
+  const box = (el) => {
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const n = (v) => Math.round(v * 10) / 10;
+    return { l: n(r.left), r: n(r.right), t: n(r.top), b: n(r.bottom), w: n(r.width), h: n(r.height) };
+  };
+  const visible = (el) => Boolean(el && el.getBoundingClientRect().width > 0
+    && getComputedStyle(el).display !== "none" && getComputedStyle(el).visibility !== "hidden");
+  const byText = (sel, text) => [...(row?.querySelectorAll(sel) ?? [])]
+    .filter(visible).find((e) => e.textContent.trim().startsWith(text)) ?? null;
+
+  const nav = row?.querySelector("nav[aria-label]") ?? null;
+  const navButtons = nav ? [...nav.querySelectorAll("button")].filter(visible) : [];
+  const items = {
+    logo: [...(row?.querySelectorAll('img[src*="logo-on-"]') ?? [])].find(visible) ?? null,
+    images: navButtons[0] ?? null,
+    video: navButtons[1] ?? null,
+    search: nav?.querySelector('input, [role="button"], button:not([aria-haspopup])') ?? null,
+    plans: byText("a", "Plany"),
+    credits: row?.querySelector('a[href="/credits"]') ?? null,
+    library: byText("a", "Biblioteka"),
+    theme: row?.querySelector('[role="group"]') ?? null,
+    bell: [...(row?.querySelectorAll("button") ?? [])].filter(visible)
+      .find((b) => /powiadomien|notification|benachricht/i.test(b.getAttribute("aria-label") ?? "")) ?? null,
+    avatar: [...(row?.querySelectorAll("button") ?? [])].filter(visible).pop() ?? null,
+  };
+
+  const measured = {};
+  for (const [k, el] of Object.entries(items)) measured[k] = visible(el) ? box(el) : null;
+  return {
+    header: box(header),
+    row: box(row),
+    rowHeight: row ? Math.round(row.getBoundingClientRect().height) : 0,
+    padX: row ? Math.round(parseFloat(getComputedStyle(row).paddingLeft)) : 0,
+    gap: row ? getComputedStyle(row).columnGap : null,
+    token: getComputedStyle(document.documentElement).getPropertyValue("--header-h").trim(),
+    items: measured,
+    // Font sizes, so "taller bar" can never quietly mean "bigger type".
+    fontPx: Object.fromEntries(Object.entries(items)
+      .filter(([, el]) => visible(el))
+      .map(([k, el]) => [k, Math.round(parseFloat(getComputedStyle(el).fontSize))])),
+    docW: document.documentElement.scrollWidth,
+    clientW: document.documentElement.clientWidth,
+  };
+});
+
 const readVeil = (page) => page.evaluate(() => {
   const nav = [...document.querySelectorAll("nav[aria-label]")].find((n) => !n.closest("header"));
   const veil = nav?.querySelector(".dock-veil") ?? null;
@@ -324,6 +378,87 @@ console.log("\n══ the fade: colour, themes, desktop ══");
   const desktop = await readVeil(page);
   note(desktop.navDisplay === "none",
     `at 1280 the whole dock is hidden, fade included (display: ${desktop.navDisplay})`);
+  await ctx.close();
+}
+
+/* ══ THE DESKTOP HEADER ════════════════════════════════════════════════════ */
+
+/**
+ * WHAT A TALLER BAR MUST NOT COST. The height is the change; everything else
+ * has to be exactly what it was, which is why the type sizes and the control
+ * heights are asserted against fixed numbers rather than against each other.
+ */
+const DESKTOP = [
+  { w: 1366, h: 768 },
+  { w: 1440, h: 900 },
+  { w: 1920, h: 1080 },
+  { w: 2560, h: 1440 },
+];
+
+console.log("\n══ the desktop header ══");
+for (const { w, h } of DESKTOP) {
+  const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}${PROBE}`, { waitUntil: "networkidle", timeout: 60000 });
+  await page.waitForTimeout(400);
+  const s = await readHeader(page);
+
+  note(s.rowHeight === 64, `${w}: the bar is 64px tall (was 54)`);
+  note(s.token === "64px", `${w}: …and --header-h says so too (${s.token})`);
+
+  /* EVERYTHING ON ONE MIDDLE LINE. */
+  const mid = s.row.t + s.row.h / 2;
+  const named = Object.entries(s.items).filter(([, b]) => b);
+  note(named.length >= 9, `${w}: ${named.length} controls measured (${named.map(([k]) => k).join(", ")})`);
+  const off = named
+    .map(([k, b]) => [k, Math.round(((b.t + b.h / 2) - mid) * 10) / 10])
+    .filter(([, d]) => Math.abs(d) > 1);
+  note(off.length === 0,
+    `${w}: every control is centred in it (${off.map(([k, d]) => `${k} ${d > 0 ? "+" : ""}${d}px`).join(", ") || "all within 1px"})`);
+
+  /* THE AIR ABOVE AND BELOW, which is what "more breathing room" means. */
+  const tallest = Math.max(...named.map(([, b]) => b.h));
+  const air = Math.round((64 - tallest) / 2);
+  note(air >= 12, `${w}: ${air}px of clearance above and below the tallest control (${tallest}px)`);
+
+  /* …AND WHAT IT MUST NOT HAVE CHANGED. */
+  note(s.items.logo && Math.round(s.items.logo.h) === 30,
+    `${w}: the lockup is still 30px tall (${s.items.logo?.h})`);
+  // Only the controls that actually SET type: an icon button inherits the
+  // root's 16px and has never had a font size of its own.
+  const TYPED = ["images", "video", "plans", "library"];
+  const grown = Object.entries(s.fontPx).filter(([k, px]) => TYPED.includes(k) && px > 14);
+  note(grown.length === 0,
+    `${w}: no type grew with the bar (${TYPED.map((k) => `${k} ${s.fontPx[k]}px`).join(", ")})`);
+  const controlHeights = [s.items.plans, s.items.library, s.items.credits]
+    .filter(Boolean).map((b) => Math.round(b.h));
+  note(controlHeights.every((x) => x === 36), `${w}: the pill controls are still 36px (${controlHeights.join("/")})`);
+
+  /* NOTHING OVERLAPS, NOTHING FALLS OUT. */
+  const order = named.map(([k, b]) => ({ k, ...b })).sort((a, b) => a.l - b.l);
+  const clashes = order.slice(1).filter((x, i) => x.l < order[i].r - 1)
+    .map((x, i) => `${order[i].k} → ${x.k}`);
+  note(clashes.length === 0, `${w}: no two controls overlap (${clashes.join(", ") || "none"})`);
+  note(order[0].l >= s.row.l + s.padX - 1 && order[order.length - 1].r <= s.row.r - s.padX + 1,
+    `${w}: all of them stay inside the bar's gutters`);
+  note(s.docW <= s.clientW + 1, `${w}: no horizontal overflow (${s.docW} <= ${s.clientW})`);
+  note(s.items.logo.l < s.items.images.l && s.items.plans.l > s.items.video.l
+    && s.items.credits.l > s.items.plans.l && s.items.avatar.l > s.items.bell.l,
+    `${w}: the order of the bar is unchanged, left to right`);
+
+  /* THE MEGA PANEL STILL HANGS OFF THE BAR. */
+  await s.items.images && await page.click('header nav[aria-label] button');
+  await page.waitForTimeout(300);
+  const panel = await page.evaluate(() => {
+    const p = document.querySelector('header [role="menu"], header nav[aria-label] .absolute');
+    const row = document.querySelector("header").firstElementChild.getBoundingClientRect();
+    if (!p) return null;
+    const r = p.getBoundingClientRect();
+    return { top: Math.round(r.top), rowBottom: Math.round(row.bottom) };
+  });
+  note(panel !== null && panel.top >= panel.rowBottom - 2 && panel.top <= panel.rowBottom + 16,
+    `${w}: the mega panel opens directly under the taller bar (${panel?.top} vs ${panel?.rowBottom})`);
+
   await ctx.close();
 }
 

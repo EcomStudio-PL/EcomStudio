@@ -94,7 +94,17 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
           a portal keeps its React parentage: inside one of them it would make
           the whole viewport part of that trigger's hover zone. */}
       <MenuVeil open={menu !== null} />
-      <div className="mx-auto flex h-[52px] w-full min-w-0 max-w-[var(--content-max)] items-center gap-1 px-2.5 sm:h-[54px] sm:gap-1.5 sm:px-4 lg:px-6 xl:px-8">
+      {/* THE BAR IS TALLER WHERE THERE IS ROOM FOR IT TO BE.
+          52/54px is a phone's budget: a fixed bar there is space taken from
+          the work. A desktop has no such pressure, and at 54px the row read as
+          packed — 36px controls with 9px of air above and below them, which is
+          a toolbar rather than a product's own chrome. 64px gives every
+          control 14px of clearance on each side without touching a single
+          font size, icon or width: the height and the padding are doing the
+          work, and `items-center` puts everything on the same middle line.
+          `--header-h` follows in globals.css, so the search overlay, the sheet
+          cap and the viewport-locked generator keep measuring the real bar. */}
+      <div className="mx-auto flex h-[52px] w-full min-w-0 max-w-[var(--content-max)] items-center gap-1 px-2.5 sm:h-[54px] sm:gap-1.5 sm:px-4 lg:h-16 lg:gap-2 lg:px-6 xl:px-8">
         {/* Mobile: hamburger opens the drawer (full hierarchy inside). */}
         <button
           type="button"
@@ -128,9 +138,18 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
         />
 
         {/* PRIMARY: Obraz / Wideo mega-menus + search. */}
-        <nav className="relative ml-2 hidden items-center gap-0.5 lg:flex" aria-label={t("topnav.primary")}>
+        {/* THE TRIGGERS ARE AS TALL AS THE BAR, the buttons inside them are
+            not. `top-full` on the panel measures from its wrapper, so while
+            the wrapper was button-height the panel opened from the button's
+            own bottom edge — 9px inside the old bar, and 14px inside the
+            taller one, which put the top of the panel over the header it
+            belongs to. Stretching the wrapper (not the button) to the row's
+            height makes `top-full` mean "under the bar", and it widens the
+            hover bridge to the whole strip between the two at the same time. */}
+        <nav className="relative ml-2 hidden items-center gap-0.5 self-stretch lg:flex" aria-label={t("topnav.primary")}>
           {(["image", "video"] as const).map((which) => (
-            <div key={which} onMouseEnter={() => hoverOpen(which)} onMouseLeave={hoverLeave} className="relative">
+            <div key={which} onMouseEnter={() => hoverOpen(which)} onMouseLeave={hoverLeave}
+              className="relative flex h-full items-center">
               <button
                 type="button"
                 aria-expanded={menu === which}

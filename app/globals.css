@@ -93,7 +93,9 @@
   --shadow-4: 0 28px 70px -24px rgb(66 36 104 / 0.32);
   --ring-accent: 0 0 0 1px rgb(var(--accent) / 0.35);
 
-  /* LAYOUT CONSTANTS — one source for chrome dimensions. */
+  /* LAYOUT CONSTANTS — one source for chrome dimensions. The desktop
+     override is a few lines below; a nested @media here would depend on CSS
+     nesting, which this stylesheet does not otherwise rely on. */
   --header-h: 54px;
 
   /* MOBILE CHROME — one source of truth for the two fixed bars, so page
@@ -154,6 +156,16 @@
    theme says, and restores it for the rest of the app on every other route.
    Copied from the `.dark` block below rather than aliased, because a light
    root has no dark values to point at. */
+
+/* THE DESKTOP BAR IS TALLER — see the note in mega-topbar.tsx. Everything that
+   positions itself under the header reads this token rather than a number of
+   its own, so the search overlay, the bottom sheet's cap and the
+   viewport-locked generator follow the real bar instead of drifting 10px out
+   of step with it. */
+@media (min-width: 1024px) {
+  :root { --header-h: 64px; }
+}
+
 [data-launch-page] {
   --bg: 13 8 19;
   --sunken: 9 5 14;
