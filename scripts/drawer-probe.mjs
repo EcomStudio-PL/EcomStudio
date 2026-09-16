@@ -21,17 +21,15 @@
  *      "Wykorzystano"; its colour still follows depletion, read back as
  *      computed pixels at 100 / 90 / 40 / 20 / 5 / 0 % remaining, plus the
  *      no-limit case which must stay neutral and show no percentage.
- *   C. THE TILES. Every destination is its own bordered tile with an icon
- *      plate, a label and a chevron, all the same height; the five main ones
- *      are always visible, with no heading over them.
- *   D. THE ROUTE. The section holding the current page opens itself and
- *      exactly one tile lights up — on the second open too, because that is
- *      where the original defect lived.
- *   E. THE BOTTOM. Sign-out is a full-width tile, and under it one line with
- *      the language on the left and the theme on the right.
- *   F. ADMIN. The tile exists for an admin and does not for a customer.
- *   G. GEOMETRY, at eight phone widths: nothing overflows, nothing is
- *      truncated, the list scrolls, the bottom does not.
+ *   C. FOUR GROUPS. GŁÓWNE / OBRAZY / NARZĘDZIA / WIDEO, nothing outside them,
+ *      and a heading that outranks its rows by height, corner, case and indent.
+ *   D. NOTHING OPENS ITSELF. On every route: four shut headings, no rows
+ *      rendered, nothing lit — until the seller clicks a heading, and then
+ *      exactly one row inside it is pink. Closing the menu forgets the click.
+ *   E. THE BOTTOM. One line: sign-out, the flag alone, the theme pill.
+ *   F. ADMIN. The row exists for an admin and does not for a customer.
+ *   G. GEOMETRY, at eight phone widths and four tablet ones: nothing
+ *      overflows, nothing is truncated, the list scrolls, the bottom does not.
  *
  * Run:  npm run test:drawer -- <base-url>
  * Needs the temporary /probe-tmp/drawer route; skips cleanly without it.
@@ -55,8 +53,8 @@ if (!(await fetch(`${BASE}${PROBE}`).then((r) => r.ok).catch(() => false))) {
  */
 const WIDTHS = [320, 360, 375, 390, 393, 412, 414, 430, 768, 820, 834, 1023];
 
-/** route → the section that must open itself (null = a main tile), and the
- *  tile that must light up. */
+/** route → the section a seller has to OPEN to find where they are, and the
+ *  row inside it that must be the lit one once they do. */
 const CASES = [
   { route: "/retusz", section: "NARZĘDZIA", label: "Retusz" },
   { route: "/tools/editor", section: "NARZĘDZIA", label: "Edycja" },
@@ -247,6 +245,16 @@ const pick = async (page, key) => {
   await page.click(`[data-probe-case="${key}"]`);
   await page.waitForTimeout(80);
 };
+/** Click a heading by its title — the only thing that opens a section. */
+const clickHeading = async (page, title) => {
+  const headings = await page.$$('[role="dialog"] nav button[aria-expanded]:not([aria-haspopup])');
+  for (const h of headings) {
+    const text = (await h.textContent()).trim().toUpperCase();
+    if (text.startsWith(title.toUpperCase())) { await h.click(); await page.waitForTimeout(220); return true; }
+  }
+  return false;
+};
+
 /** Open every section, so what each one CONTAINS can be read. */
 const SHUT_HEADINGS = '[role="dialog"] nav button[aria-expanded="false"]:not([aria-haspopup])';
 const expandAll = async (page) => {
@@ -368,40 +376,48 @@ const expandAll = async (page) => {
   note(all.tiles.every((x) => x.plate && x.plate.w >= 28), "…with an icon beside the name");
   await shut(page);
 
-  console.log("\n══ D. THE ROUTE DECIDES ══");
+  console.log("\n══ D. NOTHING OPENS ITSELF ══");
+  /**
+   * The rule this replaced was "the section holding the current page expands".
+   * It is gone, so the assertion is the opposite one, and it is made on every
+   * route the menu can be opened from: four shut headings, no rows rendered at
+   * all, nothing lit — and then, after the seller clicks the heading, the row
+   * for the page they are on, in pink, inside it.
+   */
   for (const t of CASES) {
     await goRoute(page, t.route);
+
     const first = await readOpen(page);
     const second = await readOpen(page);
-    note(first.lit.length === 1 && second.lit.length === 1,
-      `${t.route}: exactly one tile lit — 1st open ${first.lit.length}, 2nd ${second.lit.length}` +
-      (first.lit.length ? ` (${first.lit.map((r) => r.href).join(" + ")})` : ""));
-    const sec = second.sections.find((s) => s.title.toUpperCase().startsWith(t.section));
-    note(Boolean(sec?.expanded), `${t.route}: ${t.section} opens itself on the SECOND open`);
-    note(Boolean(sec && sec.lit.length === 1), `${t.route}: …and the highlight is inside it (${sec?.lit.join(",") || "none"})`);
-    note(second.sections.filter((s) => s.expanded).length === 1,
-      `${t.route}: no other section opens (${second.sections.filter((s) => s.expanded).map((s) => s.title).join(", ")})`);
-    const hit = first.lit[0]?.text ?? "";
-    note(hit.includes(t.label), `${t.route}: the lit tile is "${t.label}" — got "${hit}"`);
+    for (const [n, s] of [["1st", first], ["2nd", second]]) {
+      note(s.sections.length === 4 && s.sections.every((x) => !x.expanded),
+        `${t.route}: ${n} open — all four headings shut (${s.sections.filter((x) => x.expanded).map((x) => x.title).join(", ") || "none open"})`);
+      note(s.tiles.length === 0 && s.lit.length === 0,
+        `${t.route}: ${n} open — no rows rendered, nothing lit (${s.tiles.length} rows)`);
+    }
+
+    // …and only now, by hand.
+    await open(page);
+    await clickHeading(page, t.section);
+    const opened = await page.evaluate(READ);
+    await shut(page);
+    note(opened.sections.filter((x) => x.expanded).length === 1,
+      `${t.route}: clicking ${t.section} opens it, and only it`);
+    note(opened.lit.length === 1, `${t.route}: …with exactly one row lit inside (${opened.lit.map((r) => r.href).join(",") || "none"})`);
+    note((opened.lit[0]?.text ?? "").includes(t.label),
+      `${t.route}: …and it is "${t.label}" — got "${opened.lit[0]?.text ?? ""}"`);
   }
 
-  /* A manual collapse is respected, and expires when the route changes. */
+  /* The click is forgotten as soon as the menu closes — that is what makes
+     "shut on every open" true rather than true-for-now. */
   await goRoute(page, "/tools/resize");
   await open(page);
-  const heading = await page.evaluateHandle(() =>
-    [...document.querySelectorAll('[role="dialog"] nav button[aria-expanded]:not([aria-haspopup])')]
-      .find((b) => b.getAttribute("aria-expanded") === "true"));
-  await heading.asElement()?.click();
-  await page.waitForTimeout(200);
-  const collapsed = await page.evaluate(() =>
-    ![...document.querySelectorAll('[role="dialog"] nav button[aria-expanded]:not([aria-haspopup])')]
-      .some((b) => b.getAttribute("aria-expanded") === "true"));
-  note(collapsed, "a manual collapse of the active section is respected");
+  await clickHeading(page, "NARZĘDZIA");
+  const held = await page.evaluate(READ);
   await shut(page);
-  await goRoute(page, "/tools/compress");
-  const afterNav = await readOpen(page);
-  note(afterNav.lit.length === 1 && afterNav.lit[0].href === "/tools/compress",
-    `…and the next route takes over again (${afterNav.lit.map((r) => r.href).join(",") || "nothing lit"})`);
+  const reopened = await readOpen(page);
+  note(held.sections.filter((x) => x.expanded).length === 1 && reopened.sections.every((x) => !x.expanded),
+    "a section opened by hand is shut again on the next open of the menu");
 
   console.log("\n══ E. THE BOTTOM — ONE LINE ══");
   const e = await readOpen(page);
@@ -470,19 +486,28 @@ const expandAll = async (page) => {
   note(back === before, `…and back again (dark ${back})`);
   await shut(page);
 
-  console.log("\n══ F. THE ADMIN TILE ══");
-  // On /home, GŁÓWNE opens itself — which is where the admin row lives.
+  console.log("\n══ F. THE ADMIN ROW ══");
+  // GŁÓWNE does not open itself any more, so the admin row is reached the way
+  // a seller reaches it: open the menu, click the heading, look.
   await goRoute(page, "/home");
   await pick(page, "admin");
-  const admin = await readOpen(page);
-  note(admin.admin, "an admin sees „Panel admina”");
-  note(admin.tiles.find((x) => x.href === "/admin")?.h === admin.tiles[0].h,
+  await open(page);
+  await clickHeading(page, "GŁÓWNE");
+  const admin = await page.evaluate(READ);
+  await shut(page);
+  note(admin.admin, "an admin sees „Panel admina” once GŁÓWNE is open");
+  note(admin.tiles.find((x) => x.href === "/admin")?.h === admin.tiles[0]?.h,
     "…as a row like the others, not a special shape");
   const mainRows = admin.sections.find((x) => x.title.toUpperCase().startsWith("GŁÓWNE"))?.rows ?? [];
   note(mainRows[mainRows.length - 1] === "/admin", `…and it is last in GŁÓWNE (${mainRows.join(" ")})`);
+
   await pick(page, "free");
-  const cust = await readOpen(page);
-  note(!cust.admin, "a customer does not — the tile is not rendered at all");
+  await open(page);
+  await clickHeading(page, "GŁÓWNE");
+  const cust = await page.evaluate(READ);
+  await shut(page);
+  note(!cust.admin, "a customer does not — the row is not rendered at all");
+  note(cust.tiles.length === 4, `…and GŁÓWNE is four rows for them (${cust.tiles.map((x) => x.href).join(" ")})`);
 
   await ctx.close();
 }
@@ -516,14 +541,21 @@ for (const w of WIDTHS) {
   const clipped = s.labelSpans.filter((l) => l.clipped);
   note(clipped.length === 0,
     `${w}: no button label is cut off (${clipped.map((l) => l.text).join(", ") || "none"})`);
-  note(s.tiles.every((t) => t.r <= s.panel.r - 8), `${w}: no tile runs past the panel`);
   note(s.foot.b <= s.panel.b + 0.5 && s.foot.t >= s.nav.b - 0.5,
     `${w}: the bottom is below the list and inside the panel`);
-  note(s.lit.length === 1, `${w}: one tile lit (${s.lit.map((r) => r.href).join(",")})`);
+  note(s.sections.length === 4 && s.sections.every((x) => !x.expanded),
+    `${w}: the menu opens with all four headings shut`);
   note(s.rowKids.length === 3 && new Set(s.rowKids.map((k) => Math.round(k.t))).size === 1,
     `${w}: the bottom row stays on ONE line (${s.rowKids.map((k) => `${k.w}×${k.h}`).join(" ")})`);
   note(s.sections.every((x) => x.r <= s.panel.r - 8 && x.l >= s.panel.l + 8),
     `${w}: the headings keep the same gutter as the cards`);
+
+  /* …and once a heading is opened by hand, its rows fit the panel too. */
+  await clickHeading(page, "NARZĘDZIA");
+  const opened = await page.evaluate(READ);
+  note(opened.lit.length === 1, `${w}: one row lit inside it (${opened.lit.map((r) => r.href).join(",") || "none"})`);
+  note(opened.tiles.every((t) => t.r <= opened.panel.r - 8 && t.l >= opened.panel.l + 8),
+    `${w}: no row runs past the panel`);
 
   /* The LIST scrolls; the bottom does not move with it. */
   const scrolled = await page.evaluate(() => {

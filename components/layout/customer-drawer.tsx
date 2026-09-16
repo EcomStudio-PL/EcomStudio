@@ -14,7 +14,7 @@ import {
   allDefaults, menuBadge, menuVisible,
   type AvailabilityMap, type MenuBadge,
 } from "@/lib/features";
-import { isNavActive, sectionOwnsRoute } from "@/lib/nav-active";
+import { isNavActive } from "@/lib/nav-active";
 import { creditUsage, USAGE_BAR, USAGE_TEXT } from "@/lib/credit-usage";
 import { Drawer, IslandClose } from "./drawer";
 import { LocaleSwitcher } from "./locale-switcher";
@@ -41,9 +41,10 @@ import { cn } from "@/lib/utils";
  * not an error state.
  *
  * FOUR GROUPS, AND NOTHING OUTSIDE THEM. GŁÓWNE, OBRAZY, NARZĘDZIA, WIDEO —
- * every destination belongs to one of them, and all four start shut. The one
- * exception is the group holding the page you are on, which opens itself,
- * because a menu that hides where you already are is a menu you have to search.
+ * every destination belongs to one of them, and every one of them is SHUT when
+ * the menu opens. No exception, including the group holding the page you are
+ * standing on: the panel looks the same every time, and where you are shows up
+ * as the pink row inside once you open the group yourself.
  *
  * A HEADING OUTRANKS ITS ROWS. It is taller, it sits on glass with a real
  * border, and its label is set in small caps; the rows are shorter, indented
@@ -78,13 +79,7 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
   // is no reference constant here and nothing is assumed about the tier.
   const usage = creditUsage(credits, creditsTotal);
 
-  /**
-   * EACH SECTION'S ROWS, RESOLVED ONCE.
-   *
-   * The same array both renders the rows and tells the section which routes it
-   * owns, so a heading can never auto-expand onto rows that are not there —
-   * and a row can never appear in a section that does not know about it.
-   */
+  /** Each section's rows, resolved once, from the availability map. */
   const categories = CATEGORIES.filter((c) => show(`/k/${c.slug}`));
   /**
    * NARZĘDZIA — the section formerly called EDYTUJ, with the same five rows.
@@ -95,20 +90,8 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
    * TWÓRZ, where the contrast is the whole point; the drawer has no such pair.
    */
   const toolEntries = IMAGE_EDIT.filter((e) => !e.soon && show(e.href));
-  /**
-   * GŁÓWNE — the places that are not a workshop, in the order they are asked
-   * for: the dashboard, what you have made, help, settings, and the staff
-   * entrance last. The admin href is listed even though the drawer never
-   * renders on /admin, because the section's claim on a route and the tiles it
-   * holds have to be the same list or the heading could open onto nothing.
-   */
-  const mainHrefs = [
-    "/home",
-    ...(show("/library") ? ["/library"] : []),
-    "/support",
-    "/settings",
-    ...(isAdmin ? ["/admin"] : []),
-  ];
+  /* GŁÓWNE holds the places that are not a workshop: the dashboard, what you
+     have made, help, settings, and the staff entrance last. */
 
   return (
     <Drawer
@@ -227,7 +210,7 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
       </div>
 
       {/* ── FOUR GROUPS, AND NOTHING OUTSIDE THEM ────────────────────────── */}
-      <Section title={t("nav.groups.main")} hrefs={mainHrefs}>
+      <Section title={t("nav.groups.main")}>
         <Tile href="/home" label={t("nav.pulpit")} icon={Home} onNavigate={closeNav} badge={badge("/home")} />
         {show("/library") && (
           <Tile href="/library" label={t("topnav.library")} icon={Images} onNavigate={closeNav} badge={badge("/library")} />
@@ -246,7 +229,7 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
 
       {/* ── THE WORKSHOPS ────────────────────────────────────────────────── */}
       {categories.length > 0 && (
-        <Section title={t("topnav.image")} hrefs={categories.map((c) => `/k/${c.slug}`)}>
+        <Section title={t("topnav.image")}>
           {categories.map((c) => (
             <Tile key={c.key} href={`/k/${c.slug}`} label={t(`cats.${c.key}`)} icon={c.icon}
               onNavigate={closeNav} rgb={c.accent.rgb}
@@ -256,7 +239,7 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
       )}
 
       {toolEntries.length > 0 && (
-        <Section title={t("nav.groups.tools")} hrefs={toolEntries.map((e) => e.href)}>
+        <Section title={t("nav.groups.tools")}>
           {/* The hub is the last of these five entries, so it is not appended a
               second time underneath them. */}
           {toolEntries.map((e) => (
@@ -267,7 +250,7 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
       )}
 
       {show("/wideo") && (
-        <Section title={t("topnav.video")} hrefs={["/wideo"]}>
+        <Section title={t("topnav.video")}>
           <Tile href="/wideo" label={t("video.title")} icon={VideoIcon} onNavigate={closeNav}
             rgb="var(--violet)" badge={badge("/wideo") ?? t("common.soon")} />
         </Section>
@@ -356,38 +339,29 @@ function Tile({ href, label, icon: Icon, onNavigate, badge, rgb = "var(--accent)
 }
 
 /**
- * Collapsible group — the three workshops, folded so the whole tree fits.
+ * Collapsible group — four of them, and every one of them opens SHUT.
  *
- * THE ROUTE DECIDES WHETHER THIS IS OPEN, not a remembered click.
+ * NOTHING BUT A CLICK OPENS A SECTION. This used to derive its open state from
+ * the route: the group holding the current page expanded itself, on the theory
+ * that a menu should not hide where you already are. In use that is not what it
+ * reads as. The menu is how you go SOMEWHERE ELSE, and a group that unfolds by
+ * itself means the panel looks different every time you open it — on /retusz
+ * you get a list, on /credits you get four headings — so there is no shape to
+ * learn. Four shut headings is the shape; opening one is the seller's decision,
+ * and where they are shows up as the pink row inside once they get there.
  *
- * It used to be `useState(defaultOpen)`, where `defaultOpen` is a literal
- * written per section. EDYTUJ has none, so it started shut — and because the
+ * The state therefore lives for exactly as long as the menu is on screen. The
  * drawer unmounts its contents when it closes (`drawer.tsx`, `if (!open)
- * return null`), that literal was re-applied EVERY time the menu was opened.
- * A seller on Retusz zdjęć opened the menu and found the section containing
- * the page they were looking at collapsed, every single time, with the
- * highlight hidden inside it.
- *
- * Now the section is open when it holds the tile for the current page, decided
- * by `sectionOwnsRoute` — the same function that decides which tile lights up,
- * so the two can never disagree. That is also why this survives a refresh, a
- * direct URL, and back/forward: none of them are remembered state, they are
- * just a pathname, and the pathname is the whole input.
- *
- * A visitor can still fold a section away, and that click is remembered — but
- * only for the page they were on when they made it. Navigate, and the route
- * takes over again. Storing the route alongside the choice is what makes it
- * expire on its own, with no effect to run and nothing to reset.
+ * return null`), so the next open starts from `false` again with nothing to
+ * reset and no effect to run. That is deliberate, not a side effect: "every
+ * section shut on every open" and "this component has no memory" are the same
+ * sentence.
  */
-function Section({ title, hrefs = [], children }: {
+function Section({ title, children }: {
   title: string;
-  /** The destinations this section renders — its claim on the current route. */
-  hrefs?: readonly string[];
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
-  const [choice, setChoice] = useState<{ route: string; open: boolean } | null>(null);
-  const open = choice?.route === pathname ? choice.open : sectionOwnsRoute(pathname, hrefs);
+  const [open, setOpen] = useState(false);
   return (
     <div className="mt-3">
       {/* THE HEADING OUTRANKS ITS ROWS, VISIBLY. It is taller, it sits on
@@ -396,7 +370,7 @@ function Section({ title, hrefs = [], children }: {
           like one more thing to press through. */}
       <button
         type="button"
-        onClick={() => setChoice({ route: pathname, open: !open })}
+        onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         className={cn(
           "flex min-h-[56px] w-full items-center justify-between gap-2 rounded-2xl border px-4 py-3 backdrop-blur-[2px] transition-colors duration-200",

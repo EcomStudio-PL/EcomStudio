@@ -41,23 +41,24 @@ function section(title: string) { console.log(`\n${title}`); }
 /* ── the drawer, as it is actually assembled ─────────────────────────────── */
 
 /**
- * The customer drawer's sections and their rows, mirroring
+ * The customer drawer's four sections and their rows, mirroring
  * `components/layout/customer-drawer.tsx` with everything visible.
  *
- * `createEntries` drops any href EDYTUJ already renders, exactly as the
- * component does — that de-duplication is the thing being tested, so it is
- * reproduced rather than assumed.
+ * NO SECTION CARRIES AN OPEN STATE any more. The drawer opens every group shut
+ * and only a click opens one, so there is nothing here for a `defaultOpen` to
+ * model — what is still worth asserting is that the rows are partitioned
+ * cleanly and that exactly one of them lights up per route.
  */
 const EDIT_ROWS = IMAGE_EDIT.filter((e) => !e.soon).map((e) => e.href);
+/** What the drawer deliberately no longer renders: the generator entry that
+ *  „Tworzenie" used to hold, kept here only to assert its absence. */
 const CREATE_ROWS = IMAGE_MODES.map((e) => e.href).filter((h) => !EDIT_ROWS.includes(h));
 
-const DRAWER: readonly { title: string; rows: readonly string[]; defaultOpen?: boolean }[] = [
-  { title: "GŁÓWNE", rows: ["/home", "/library"], defaultOpen: true },
-  { title: "OBRAZ", rows: CATEGORIES.map(categoryHref), defaultOpen: true },
-  { title: "TWORZENIE", rows: CREATE_ROWS },
-  { title: "EDYTUJ", rows: EDIT_ROWS },
+const DRAWER: readonly { title: string; rows: readonly string[] }[] = [
+  { title: "GŁÓWNE", rows: ["/home", "/library", "/support", "/settings"] },
+  { title: "OBRAZY", rows: CATEGORIES.map(categoryHref) },
+  { title: "NARZĘDZIA", rows: EDIT_ROWS },
   { title: "WIDEO", rows: ["/wideo"] },
-  { title: "KONTO", rows: ["/inspirations", "/settings", "/support"], defaultOpen: true },
 ];
 
 const DRAWER_ROWS = DRAWER.flatMap((s) => s.rows);
@@ -145,41 +146,51 @@ check("…specifically: „Wszystkie narzędzia” belongs to EDYTUJ, not TWORZE
 check("…and TWORZENIE still has the generator", CREATE_ROWS.includes("/prompts"),
   `TWORZENIE rows: ${CREATE_ROWS.join(", ") || "none"}`);
 
-/* ── C. the section holding the lit row is the one that opens ────────────── */
+/* ── C. no section opens itself, ever ────────────────────────────────────── */
 
-section("C. AUTO-EXPAND FOLLOWS THE HIGHLIGHT");
+section("C. A SECTION OPENS ON A CLICK AND ON NOTHING ELSE");
 
-const openSections = (pathname: string) =>
-  DRAWER.filter((s) => sectionOwnsRoute(pathname, s.rows)).map((s) => s.title);
+/**
+ * The drawer used to expand the group holding the current page. It no longer
+ * does, and the rule that replaced it is stricter and easier to state: the
+ * open state is component state seeded to `false`, so the ROUTE cannot reach
+ * it at all. That is asserted two ways here — the component no longer imports
+ * the function that used to decide it, and its section state is a plain
+ * `useState(false)` — because a browser probe can show the sections are shut
+ * on the routes it visits, while this shows there is no code path that could
+ * open one on any route.
+ */
+const DRAWER_SRC = fs.readFileSync("components/layout/customer-drawer.tsx", "utf8");
 
-for (const [route, want] of [
-  ["/retusz", "EDYTUJ"],
-  ["/tools/resize", "EDYTUJ"],
-  ["/tools/compress", "EDYTUJ"],
-  ["/tools/editor", "EDYTUJ"],
-  ["/tools", "EDYTUJ"],
-  ["/prompts", "TWORZENIE"],
-  ["/wideo", "WIDEO"],
-  ["/home", "GŁÓWNE"],
-  ["/library", "GŁÓWNE"],
-  ["/settings", "KONTO"],
-  [categoryHref(CATEGORIES[0]!), "OBRAZ"],
-] as const) {
-  const open = openSections(route);
-  check(`${route} → ${want} expands`, open.join() === want,
-    `expanded: ${open.join(", ") || "nothing"}`);
-}
+check("the drawer does not consult sectionOwnsRoute any more",
+  !/sectionOwnsRoute/.test(DRAWER_SRC));
+check("…nor the pathname, inside Section",
+  !/function Section[\s\S]*?usePathname/.test(DRAWER_SRC.slice(DRAWER_SRC.indexOf("function Section"))));
+check("…and a section's open state starts false",
+  /function Section[\s\S]{0,400}useState\(false\)/.test(DRAWER_SRC),
+  DRAWER_SRC.slice(DRAWER_SRC.indexOf("function Section"), DRAWER_SRC.indexOf("function Section") + 260));
+check("…with no defaultOpen left anywhere in it", !/defaultOpen/.test(DRAWER_SRC));
 
-// The invariant behind all of the above, over every route: a section never
-// opens itself unless it really holds the lit row.
+// `sectionOwnsRoute` itself stays correct for anything that may want it later:
+// it must never claim a section that does not hold the lit row.
 const mismatched = ROUTES.filter((r) => {
   const lit = litRows(r);
-  const open = DRAWER.filter((s) => sectionOwnsRoute(r, s.rows));
-  if (lit.length === 0) return open.length > 0;
-  return open.length !== 1 || !open[0]!.rows.includes(lit[0]!);
+  const owning = DRAWER.filter((s) => sectionOwnsRoute(r, s.rows));
+  if (lit.length === 0) return owning.length > 0;
+  return owning.length !== 1 || !owning[0]!.rows.includes(lit[0]!);
 });
-check("no route opens a section that does not hold its lit row", mismatched.length === 0,
+check("sectionOwnsRoute still answers honestly for every route", mismatched.length === 0,
   mismatched.slice(0, 6).join(", "));
+
+// What the four groups hold, and what they must not.
+check("GŁÓWNE is Pulpit / Biblioteka / Pomoc / Ustawienia",
+  DRAWER[0]!.rows.join() === "/home,/library,/support,/settings", DRAWER[0]!.rows.join(" "));
+check("…and „Inspiracje” is not in the drawer at all",
+  !DRAWER_ROWS.includes("/inspirations"));
+check("…and neither is the „Tworzenie” generator entry",
+  CREATE_ROWS.every((h) => !DRAWER_ROWS.includes(h)), CREATE_ROWS.join(", "));
+check("NARZĘDZIA holds the hub, exactly once",
+  DRAWER_ROWS.filter((h) => h === "/tools").length === 1);
 
 /* ── D. the registry stays complete ──────────────────────────────────────── */
 
