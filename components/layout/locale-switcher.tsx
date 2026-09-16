@@ -13,8 +13,25 @@ const NAMES: Record<string, string> = { pl: "Polski", en: "English", de: "Deutsc
  * LANGUAGE — the trigger is the flag and nothing else: no "PL" label, no
  * caret. The popover lists every language as flag + native name with a
  * checkmark on the active one.
+ *
+ * TWO SHAPES, ONE SWITCHER. `flagsOnly` renders the popover as a row of three
+ * flags instead of a list of names — the form the mobile drawer's bottom bar
+ * asks for, where a 200px-wide list of native language names would be the
+ * biggest thing in the menu. It is a different PRESENTATION of the same
+ * control: same state, same server action, same `ecs_locale` cookie. The
+ * accessible name stays the language's own name in both shapes, because a flag
+ * is a picture and a screen reader cannot read a picture.
+ *
+ * `side="top"` opens it upwards, for the same reason — in a bottom bar there
+ * is nothing below to open into.
  */
-export function LocaleSwitcher({ align = "right" }: { align?: "right" | "left" }) {
+export function LocaleSwitcher({ align = "right", side = "bottom", flagsOnly = false, size = "sm" }: {
+  align?: "right" | "left";
+  side?: "top" | "bottom";
+  flagsOnly?: boolean;
+  /** `md` is the 44px touch form, matching the drawer's bottom bar. */
+  size?: "sm" | "md";
+}) {
   const { t, locale } = useI18n();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
@@ -41,29 +58,52 @@ export function LocaleSwitcher({ align = "right" }: { align?: "right" | "left" }
         aria-expanded={open}
         disabled={pending}
         onClick={() => setOpen((v) => !v)}
-        className="flex h-10 w-10 items-center justify-center rounded-xl transition-colors duration-200 hover:bg-raised disabled:opacity-60 lg:h-9 lg:w-9"
+        className={cn(
+          "flex shrink-0 items-center justify-center rounded-xl transition-colors duration-200 hover:bg-raised disabled:opacity-60",
+          // In a bar of controls the flag needs the same frame as its
+          // neighbours, or it reads as a picture that fell into the row.
+          size === "md"
+            ? "h-11 w-11 border border-line bg-[rgb(var(--ink)/0.04)]"
+            : "h-10 w-10 lg:h-9 lg:w-9",
+        )}
       >
-        <Flag code={locale} size={20} />
+        <Flag code={locale} size={size === "md" ? 22 : 20} />
       </button>
       {open && (
         <div role="menu" className={cn(
-          "overlay animate-pop absolute top-full z-50 mt-2 w-48 rounded-2xl p-1.5",
+          "overlay animate-pop absolute z-50 rounded-2xl p-1.5",
+          side === "top" ? "bottom-full mb-2" : "top-full mt-2",
           align === "left" ? "left-0" : "right-0",
+          flagsOnly ? "flex gap-1" : "w-48",
         )}>
           {LOCALES.map((l) => (
             <button
               key={l}
               role="menuitem"
               type="button"
+              aria-label={NAMES[l] ?? l.toUpperCase()}
+              title={NAMES[l] ?? l.toUpperCase()}
               onClick={() => { setOpen(false); start(() => setLocaleAction(l)); }}
               className={cn(
-                "flex min-h-[42px] w-full items-center gap-2.5 rounded-xl px-3 text-left text-sm transition-colors duration-200 hover:bg-raised",
-                l === locale ? "font-semibold text-ink" : "text-muted",
+                "flex items-center transition-colors duration-200",
+                flagsOnly
+                  ? cn(
+                      "h-10 w-10 shrink-0 justify-center rounded-xl",
+                      l === locale
+                        ? "bg-accent-soft ring-1 ring-[rgb(var(--accent)/0.45)]"
+                        : "hover:bg-raised",
+                    )
+                  : cn(
+                      "min-h-[42px] w-full gap-2.5 rounded-xl px-3 text-left text-sm hover:bg-raised",
+                      l === locale ? "font-semibold text-ink" : "text-muted",
+                    ),
               )}
             >
-              <Flag code={l} size={20} />
-              {NAMES[l] ?? l.toUpperCase()}
-              {l === locale && <Check size={15} aria-hidden className="ml-auto text-accent" strokeWidth={3} />}
+              <Flag code={l} size={flagsOnly ? 22 : 20} />
+              {!flagsOnly && (NAMES[l] ?? l.toUpperCase())}
+              {!flagsOnly && l === locale && (
+                <Check size={15} aria-hidden className="ml-auto text-accent" strokeWidth={3} />
+              )}
             </button>
           ))}
         </div>

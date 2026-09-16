@@ -14,6 +14,7 @@
     "groups": {
       "main": "Główne",
       "create": "Tworzenie",
+      "tools": "Narzędzia",
       "assets": "Zasoby",
       "account": "Konto",
       "admin": "Administracja",
@@ -2110,7 +2111,9 @@
     "low": "Kredyty się kończą",
     "buy": "Dokup kredyty",
     "upgrade": "Ulepsz plan",
-    "topUpShort": "Doładuj"
+    "topUpShort": "Doładuj",
+    "used": "Wykorzystano",
+    "noLimit": "Plan bez miesięcznego limitu"
   },
   "topnav": {
     "home": "Strona główna",

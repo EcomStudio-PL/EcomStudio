@@ -17,18 +17,27 @@ import { cn } from "@/lib/utils";
  * two themes, and `resolvedTheme` maps any legacy "system" preference onto
  * whichever one is actually showing.
  */
-export function ThemeToggle() {
+export function ThemeToggle({ size = "sm" }: {
+  /** `md` is the 44px touch form the mobile drawer's bottom bar uses, so the
+   *  theme pill, the flag button and "Wyloguj się" are one height — and that
+   *  height is a target a thumb can actually hit. */
+  size?: "sm" | "md";
+}) {
   const { resolvedTheme, setTheme } = useTheme();
   const { t } = useI18n();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  const md = size === "md";
   // Reserve the pill's own size before mount, so the bar does not jump.
-  if (!mounted) return <div className="h-9 w-[62px]" />;
+  if (!mounted) return <div className={md ? "h-11 w-[76px]" : "h-9 w-[62px]"} />;
   const dark = resolvedTheme === "dark";
 
   return (
     <div role="group" aria-label={t("settings.theme")}
-      className="inline-flex h-9 shrink-0 items-center rounded-full border border-line bg-sunken/50 p-0.5">
+      className={cn(
+        "inline-flex shrink-0 items-center rounded-full border border-line bg-sunken/50 p-0.5",
+        md ? "h-11" : "h-9",
+      )}>
       {([["dark", Moon], ["light", Sun]] as const).map(([mode, Icon]) => {
         const active = mode === (dark ? "dark" : "light");
         return (
@@ -38,10 +47,11 @@ export function ThemeToggle() {
             title={t(`settings.theme.${mode}`)}
             onClick={() => setTheme(mode)}
             className={cn(
-              "flex h-8 w-[30px] items-center justify-center rounded-full transition-colors duration-200",
+              "flex items-center justify-center rounded-full transition-colors duration-200",
+              md ? "h-10 w-[36px]" : "h-8 w-[30px]",
               active ? "bg-raised text-ink shadow-e1" : "text-faint hover:text-ink",
             )}>
-            <Icon aria-hidden size={15} />
+            <Icon aria-hidden size={md ? 16 : 15} />
           </button>
         );
       })}

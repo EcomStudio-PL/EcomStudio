@@ -14,6 +14,7 @@
     "groups": {
       "main": "Main",
       "create": "Create",
+      "tools": "Tools",
       "assets": "Assets",
       "account": "Account",
       "admin": "Admin",
@@ -2110,7 +2111,9 @@
     "low": "Credits running low",
     "buy": "Buy credits",
     "upgrade": "Upgrade plan",
-    "topUpShort": "Top up"
+    "topUpShort": "Top up",
+    "used": "Used",
+    "noLimit": "Plan without a monthly limit"
   },
   "topnav": {
     "home": "Home",

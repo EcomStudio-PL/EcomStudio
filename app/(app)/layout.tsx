@@ -122,13 +122,21 @@ export default async function AppLayout({ children, searchParams }: {
   // slowest member anyway — measurably free, and it keeps the bonus branch
   // below from re-introducing a serial await.
   const [
-    { dict: appDict }, wallet, { data: sub }, { data: notifs }, availability, navAdmin,
-    bonusConfig, campaignStart, popularity,
+    { dict: appDict }, wallet, { data: sub }, { data: freePlan }, { data: notifs },
+    availability, navAdmin, bonusConfig, campaignStart, popularity,
   ] = await Promise.all([
     getDictionary(),
     getWallet(supabase, workspace.id),
-    supabase.from("subscriptions").select("subscription_plans(name)")
+    // The plan's own monthly grant rides along with its name: the mobile menu's
+    // credit meter measures the wallet against THIS number, so a Pro account is
+    // never scored against a Free allowance — and no constant stands in for it.
+    supabase.from("subscriptions").select("subscription_plans(name, monthly_credits)")
       .eq("workspace_id", workspace.id).eq("status", "active").maybeSingle(),
+    // A workspace with no active subscription is on Free, and Free's allowance
+    // is a row like any other. Fetched in the same batch rather than after the
+    // branch, so it costs nothing: this Promise.all was already waiting for its
+    // slowest member.
+    supabase.from("subscription_plans").select("monthly_credits").eq("slug", "free").maybeSingle(),
     supabase.from("notifications").select("id, type, title, body, href, read_at, created_at")
       .eq("user_id", user.id).order("created_at", { ascending: false }).limit(10),
     getAvailabilityMap(supabase),
@@ -175,6 +183,9 @@ export default async function AppLayout({ children, searchParams }: {
   }
   const askedForBonus = ((await searchParams)?.bonus ?? "") === "1";
   const planName = sub?.subscription_plans?.name ?? "Free";
+  // Null rather than a guess when neither row can be read — the meter then
+  // shows the balance with a neutral bar instead of inventing a limit.
+  const planCredits = sub?.subscription_plans?.monthly_credits ?? freePlan?.monthly_credits ?? null;
   const isAdmin = profile.role === "admin";
   const displayName = profile.full_name ?? profile.email;
   return (
@@ -205,7 +216,7 @@ export default async function AppLayout({ children, searchParams }: {
           <FeedbackCTA />
         </main>
         <CustomerBottomNav availability={availability} isAdmin={navAdmin} />
-        <CustomerDrawer name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} navAdmin={navAdmin} availability={availability} />
+        <CustomerDrawer name={displayName} email={profile.email} credits={wallet?.balance ?? 0} creditsTotal={planCredits} plan={planName} isAdmin={isAdmin} navAdmin={navAdmin} availability={availability} />
         {bonusView?.status === "ELIGIBLE" && (
           <WelcomeBonusMount
             offer={bonusView}

@@ -56,6 +56,18 @@
   */
   --warning: 194 65 12;
   --danger: 194 38 52;
+  /*
+    THE ONE YELLOW, AND IT IS A METER STOP — NOT A STATUS COLOUR.
+
+    The design system has no yellow for chips, badges or states; that is
+    deliberate and the note above says why. A usage meter is the exception it
+    does not cover: a bar that walks from "plenty" to "empty" needs FOUR stops,
+    and green → orange → red skips the step where a seller should start paying
+    attention but nothing is wrong yet. This token exists for that step and is
+    used by `lib/credit-usage.ts` alone — yellow-600 here, amber-400 on dark,
+    both muted enough to sit next to the brand without shouting.
+  */
+  --caution: 202 138 4;
 
   --glass: 252 250 255;
   --glass-alpha: 0.72;
@@ -265,6 +277,8 @@
   --success: 74 222 128;
   --warning: 251 146 60;
   --danger: 248 113 113;
+  /* The meter's middle stop — see the light block. */
+  --caution: 251 191 36;
 
   --glass: 21 13 30;
   --glass-alpha: 0.78;
