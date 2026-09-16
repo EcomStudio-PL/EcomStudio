@@ -7,6 +7,7 @@ import { I18nProvider } from "@/lib/i18n/provider";
 import { getDictionary } from "@/lib/i18n/server";
 import { SITE_ORIGIN } from "@/lib/site";
 import { AuthModalMount } from "@/components/auth/auth-modal-mount";
+import { ViewportLock } from "@/components/layout/viewport-lock";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -29,9 +30,36 @@ export const metadata: Metadata = {
   },
   twitter: { card: "summary_large_image" },
 };
+/**
+ * THE APP IS FIXED AT 1:1 ON A TOUCH DEVICE.
+ *
+ * GrovBase is a tool, not a document: a seller comparing a generation against
+ * their reference photo double-taps a card and the whole interface jumps to
+ * 180%, with the header off the top and the dock off the bottom. A native app
+ * would never do that, so neither does this.
+ *
+ * ONE declaration, here. Next.js renders the single `<meta name="viewport">`
+ * from this export — hand-writing another one in a `<head>` would leave two
+ * tags fighting, and which one wins is browser-dependent.
+ *
+ * `maximumScale` + `userScalable` are honoured by Chrome and Firefox on
+ * Android, and by iOS when the app runs from the home screen. Mobile SAFARI IN
+ * A TAB DELIBERATELY IGNORES BOTH (it has since iOS 10, as an accessibility
+ * decision), so on an iPhone or iPad these two lines do nothing on their own —
+ * `touch-action: manipulation` in globals.css stops the double tap there, and
+ * `components/layout/viewport-lock.tsx` stops the pinch.
+ *
+ * The cost is real and worth naming: WCAG 1.4.4 asks that a page survive 200%
+ * zoom, and this removes browser zoom as the way to get it on a phone. What
+ * replaces it is the OS — system text size still reflows the app (nothing here
+ * pins a px font to the root), Zoom / Magnifier still magnifies the screen, and
+ * every field stays at 16px so nothing is small by default.
+ */
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#FFF8FD" },
@@ -44,6 +72,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang={locale} suppressHydrationWarning>
       <body className="font-sans">
+        {/* Renders nothing. Cancels iOS Safari's pinch, which is the one part
+            of the 1:1 lock the viewport meta cannot do — see the file. */}
+        <ViewportLock />
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <I18nProvider locale={locale} dict={dict}>
             {/* One dialog for the whole site: `?auth=` opens sign-in, sign-up

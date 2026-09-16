@@ -853,8 +853,35 @@ body::after {
    backstop that guarantees the PAGE itself never scrolls sideways, while
    deliberate containers (wide admin tables) keep their own local scroll.
    `clip` rather than `hidden` so position:sticky keeps working. */
-html { -webkit-tap-highlight-color: transparent; overflow-x: clip; }
-body { @apply bg-bg text-ink antialiased; overflow-x: clip; max-width: 100vw; }
+html {
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: clip;
+  /* iOS inflates body text when a page is rotated to landscape, judging by
+     itself how big the copy "should" be. On a layout whose every size is
+     declared that is not a favour: headings outgrow their cards and the app
+     comes back from a rotation at a scale nobody chose. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+body {
+  @apply bg-bg text-ink antialiased;
+  overflow-x: clip;
+  max-width: 100vw;
+  /* NO DOUBLE-TAP ZOOM, AND NOTHING ELSE TAKEN AWAY.
+     `manipulation` reads as "this element's touches are for scrolling and
+     pinching" — which drops exactly two UA behaviours, double-tap-to-zoom and
+     the 300ms click delay that comes with it. Panning is NOT among them, so
+     vertical scroll, the `.rail-x` carousels, the before/after slider and
+     drag-to-upload keep working. The same value already ships on `.tap`
+     below, on every standalone link and icon button in the app.
+     `npm run test:viewport` walks every scroll container on every public page
+     and fails if anything in its ancestor chain forbids the axis that
+     container scrolls — it audits the cascade, which is what can be checked
+     off a real device; the gesture itself has to be checked on one.
+     One declaration on the shell, per the brief — not a preventDefault on
+     touchmove, which WOULD cancel every one-finger drag in the app. */
+  touch-action: manipulation;
+}
 /* Media never widens its container, whatever the intrinsic size. */
 img, svg, video, canvas { max-width: 100%; }
 /* Long unbroken strings (URLs, IDs, prompt text) wrap instead of pushing. */
@@ -951,6 +978,40 @@ h2 { letter-spacing: -0.022em; line-height: 1.15; }
    ───────────────────────────────────────────────────────────────────────── */
 @media (max-width: 359px) {
   :root { --page-x: 0.875rem; }
+}
+
+/* NO FIELD IS SMALL ENOUGH FOR SAFARI TO ZOOM INTO.
+ *
+ * iOS decides a form field is too small to read and zooms the whole page to it
+ * whenever its computed font-size is under 16px — on focus, before a character
+ * is typed. The page then stays magnified after the keyboard closes, which is
+ * the same broken state as an accidental double tap and arrives without the
+ * user doing anything at all. Sign-in, the search overlay, a custom prompt and
+ * every admin form all did it.
+ *
+ * 16px IS THE FIX; there is no way to keep a 13px field and refuse the zoom.
+ * `components/ui/input.tsx` already knew that and carries `text-base
+ * sm:text-sm` — but `sm:` is 640px, so it hands the 14px back at 768 and
+ * above, and an iPad in Safari is 768, 820 or 1024. That is the gap this
+ * closes, in the same direction rather than as a second opinion.
+ *
+ * Deliberately one rule rather than 33 edited call sites: most fields carry
+ * their own Tailwind classes with no shared component at all, and the next
+ * input somebody writes has to be covered too. A rule cannot forget one.
+ *
+ * SPECIFICITY IS LOAD-BEARING. `input` alone is 0,0,1 and would lose to
+ * `.text-sm`; each `:not()` here contributes a class's worth, which is what
+ * puts these selectors above the utilities. `:where()` would be exactly wrong.
+ *
+ * Scoped by POINTER, not by width: an iPad in landscape is 1024px wide and
+ * still zooms, while a desktop window dragged down to 375px never did. Controls
+ * with no text of their own are left alone so nothing about them shifts. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+  textarea:not([hidden]),
+  select:not([hidden]) {
+    font-size: 16px;
+  }
 }
 
 /* A row that scrolls sideways INSIDE itself. The negative margin plus the
