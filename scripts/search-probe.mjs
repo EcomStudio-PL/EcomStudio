@@ -142,8 +142,17 @@ for (const theme of ["dark", "light"]) {
         if (vp.w >= 1280 && (p.w < 700 || p.w > 860)) bad.push(`panel is ${p.w}px — the design is an 800px modal`);
       }
       if (m.docScroll > m.docClient + 1) bad.push("the open modal makes the page scroll sideways");
-      if (m.veilZ !== "30") bad.push(`the veil is at z-index ${m.veilZ}, not 30 — the header would be blurred`);
-      if (!/blur/.test(m.veilBlur ?? "")) bad.push("the veil does not blur");
+      // THE VEIL EXISTS TO SOFTEN A PAGE YOU CAN STILL SEE. Below 640 the
+      // search covers the screen with an opaque surface, so there is no page
+      // left showing and no header to blur — and a second full-viewport
+      // backdrop-filter composited under something nobody can see through is
+      // pure cost on every scrolled frame. It is not rendered there.
+      if (vp.w >= 640) {
+        if (m.veilZ !== "30") bad.push(`the veil is at z-index ${m.veilZ}, not 30 — the header would be blurred`);
+        if (!/blur/.test(m.veilBlur ?? "")) bad.push("the veil does not blur");
+      } else if (m.veilZ !== null) {
+        bad.push(`a veil is still rendered behind the full-screen search (z-index ${m.veilZ})`);
+      }
       if (m.headerZ !== "40") bad.push(`the header is at z-index ${m.headerZ}, so it is not above the veil`);
       if (m.headerFilter && m.headerFilter !== "none") bad.push(`the header itself is filtered (${m.headerFilter})`);
       if (m.cards !== 3) bad.push(`${m.cards} cards, expected 3`);

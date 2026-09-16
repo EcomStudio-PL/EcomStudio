@@ -43,8 +43,19 @@ const browser = await chromium.launch({
   executablePath: "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell",
 });
 
+/**
+ * Press the magnifier — the real one, by its accessible name.
+ *
+ * Not "the first button in the header": that is the hamburger, and clicking it
+ * opens the drawer while the probe waits for a dialog that never arrives.
+ */
 const openSearch = async (page) => {
-  await page.click("[data-probe-header] button");
+  await page.evaluate(() => {
+    const header = document.querySelector("header");
+    const btn = [...header.querySelectorAll("button[aria-label]")]
+      .find((b) => b.querySelector("svg") && /szukaj|search|suche/i.test(b.getAttribute("aria-label") ?? ""));
+    btn?.click();
+  });
   await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
   await page.waitForTimeout(320);
 };
@@ -79,6 +90,23 @@ const readOverlay = (page) => page.evaluate(() => {
     railBarWidth: rail ? rail.offsetHeight - rail.clientHeight : null,
     railScrollbarWidth: rail ? getComputedStyle(rail).scrollbarWidth : null,
     bodyPosition: getComputedStyle(document.body).position,
+    bodyTouchAction: body ? getComputedStyle(body).touchAction : null,
+    bodyPadBottom: body ? getComputedStyle(body).paddingBottom : null,
+    panelBackdrop: cs ? (cs.backdropFilter || cs.webkitBackdropFilter) : null,
+    close: (() => {
+      const btn = dialog.querySelector("button[aria-label]");
+      if (!btn) return null;
+      const r = btn.getBoundingClientRect();
+      // What the browser says is actually on top at the centre of the button:
+      // if anything else answers, the tap will never reach it.
+      const hit = document.elementFromPoint(Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2));
+      return {
+        w: Math.round(r.width), h: Math.round(r.height),
+        top: Math.round(r.top), right: Math.round(r.right),
+        reachable: Boolean(btn.contains(hit) || hit === btn),
+        pointerEvents: getComputedStyle(btn).pointerEvents,
+      };
+    })(),
   };
 });
 
@@ -121,12 +149,12 @@ for (const w of PHONES) {
     };
     const zOf = (el) => (el ? Number(getComputedStyle(el).zIndex) || 0 : null);
     return {
-      header: inside(document.querySelector("[data-probe-header]")),
-      headerOffscreen: (document.querySelector("[data-probe-header]")?.getBoundingClientRect().bottom ?? 1) <= 0,
-      nav: inside(document.querySelector("nav[aria-label]")),
+      header: inside(document.querySelector("header")),
+      headerOffscreen: (document.querySelector("header")?.getBoundingClientRect().bottom ?? 1) <= 0,
+      nav: inside([...document.querySelectorAll("nav[aria-label]")].find((n) => !n.closest("header"))),
       dialogZ: Number(getComputedStyle(dialog).zIndex),
-      headerZ: zOf(document.querySelector("[data-probe-header]")),
-      navZ: zOf(document.querySelector("nav[aria-label]")),
+      headerZ: zOf(document.querySelector("header")),
+      navZ: zOf([...document.querySelectorAll("nav[aria-label]")].find((n) => !n.closest("header"))),
     };
   });
   // "Hidden" here means NOT SHOWING, which is true two different ways: the
@@ -194,7 +222,25 @@ for (const w of PHONES) {
   });
   note(swipe.after > swipe.before, `${w}: the carousel still moves (${swipe.before} → ${swipe.after})`);
 
-  /* 7. closing puts everything back */
+  /* 6b. THE CLOSE BUTTON — the thing that was reported broken. */
+  const afterScroll = await readOverlay(page);
+  note(afterScroll.close.w >= 44 && afterScroll.close.h >= 44,
+    `${w}: X is a real target (${afterScroll.close.w}×${afterScroll.close.h})`);
+  // A full-screen panel starts at y=0, so without the inset the button sits in
+  // the strip a notched iPhone keeps for its own status bar.
+  note(afterScroll.close.top >= 8,
+    `${w}: X clears the status-bar strip (top=${afterScroll.close.top})`);
+  note(afterScroll.close.reachable && afterScroll.close.pointerEvents !== "none",
+    `${w}: nothing covers X — hit test reaches it (pointer-events: ${afterScroll.close.pointerEvents})`);
+  note(afterScroll.bodyTouchAction === "pan-y",
+    `${w}: the list declares touch-action: ${afterScroll.bodyTouchAction}`);
+  note(parseFloat(afterScroll.bodyPadBottom) >= 16,
+    `${w}: the list ends clear of the home indicator (${afterScroll.bodyPadBottom})`);
+  note(!afterScroll.panelBackdrop || afterScroll.panelBackdrop === "none",
+    `${w}: no full-screen backdrop-filter to composite (${afterScroll.panelBackdrop})`);
+
+  /* 7. closing puts everything back — clicked AFTER scrolling and typing,
+        which is the state it was reported to stop working in. */
   await page.click('[role="dialog"] button[aria-label]');
   await page.waitForSelector('[role="dialog"]', { state: "detached", timeout: 5000 });
   await page.waitForTimeout(260);
@@ -202,8 +248,8 @@ for (const w of PHONES) {
     y: window.scrollY,
     bodyPosition: getComputedStyle(document.body).position,
     bodyOverflow: getComputedStyle(document.body).overflow,
-    headerVisible: Boolean(document.querySelector("[data-probe-header]")?.getBoundingClientRect().height),
-    navVisible: Boolean(document.querySelector("nav[aria-label]")?.getBoundingClientRect().height),
+    headerVisible: Boolean(document.querySelector("header")?.getBoundingClientRect().height),
+    navVisible: Boolean([...document.querySelectorAll("nav[aria-label]")].find((n) => !n.closest("header"))?.getBoundingClientRect().height),
     focused: document.activeElement?.tagName?.toLowerCase(),
   }));
   note(after.y === startY, `${w}: page came back to exactly ${startY} (got ${after.y})`);
@@ -225,6 +271,35 @@ for (const w of PHONES) {
   note(back.bodyPosition !== "fixed", `${w}: …and releases the scroll lock (${back.bodyPosition})`);
   note(page.url() === urlBefore, `${w}: …and stays on the page (${page.url() === urlBefore})`);
 
+  /* 9. IT SURVIVES BEING USED. Open, type, scroll, close — three times over,
+        because "the screen gets stuck" is a thing that shows up on the second
+        or third go, not the first. */
+  for (let i = 1; i <= 3; i++) {
+    await openSearch(page);
+    await page.fill('[role="dialog"] input', "a");
+    await page.waitForTimeout(420);
+    await page.evaluate(() => {
+      const b = document.querySelector('[role="dialog"] .overscroll-contain');
+      if (b) b.scrollTop += 300;
+    });
+    await page.waitForTimeout(160);
+    const st = await readOverlay(page);
+    const moved = await page.evaluate(() =>
+      (document.querySelector('[role="dialog"] .overscroll-contain')?.scrollTop ?? 0) > 0);
+    note(moved, `${w}: round ${i} — the list scrolled while open`);
+    note(st.close.reachable, `${w}: round ${i} — X still reachable after scrolling`);
+    await page.click('[role="dialog"] button[aria-label]');
+    await page.waitForSelector('[role="dialog"]', { state: "detached", timeout: 5000 });
+    await page.waitForTimeout(220);
+    const clean = await page.evaluate(() => ({
+      pos: document.body.style.position, top: document.body.style.top,
+      overflow: document.body.style.overflow, y: window.scrollY,
+    }));
+    note(!clean.pos && !clean.top && !clean.overflow,
+      `${w}: round ${i} — no inline style left on body (pos:"${clean.pos}" top:"${clean.top}" overflow:"${clean.overflow}")`);
+    note(clean.y === startY, `${w}: round ${i} — back at ${startY} (got ${clean.y})`);
+  }
+
   await ctx.close();
 }
 
@@ -238,10 +313,10 @@ for (const w of DESKTOP) {
   await page.evaluate(() => window.scrollTo(0, 600));
   await page.waitForTimeout(200);
   const headerBefore = await page.evaluate(() =>
-    Math.round(document.querySelector("[data-probe-header]").getBoundingClientRect().top));
+    Math.round(document.querySelector("header").getBoundingClientRect().top));
   await openSearch(page);
   const headerDuring = await page.evaluate(() =>
-    Math.round(document.querySelector("[data-probe-header]").getBoundingClientRect().top));
+    Math.round(document.querySelector("header").getBoundingClientRect().top));
   // The regression that gating the scroll lock to phones exists to prevent:
   // a pinned body drops a sticky header to its static position, and on the
   // desktop the page around the panel is still on show while that happens.

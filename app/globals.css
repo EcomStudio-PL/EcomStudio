@@ -467,6 +467,16 @@ body::after {
     border: 0;
     border-radius: 0;
     box-shadow: none;
+    /* AND NO BLUR, because there is nothing left to blur.
+       `.overlay` carries `backdrop-filter: blur(20px) saturate(1.3)`, which is
+       right for a card floating over a page you can still see through it. At
+       full screen the surface above it is opaque, so the filter samples a
+       backdrop nobody will ever look at — and a backdrop-filter the size of
+       the whole viewport is one of the most expensive things you can ask iOS
+       to composite. It buys no pixels and costs every frame the overlay is
+       open, which is exactly when scrolling has to stay smooth. */
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 }
 

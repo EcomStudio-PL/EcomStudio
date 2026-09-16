@@ -540,8 +540,14 @@ export function CommandPalette({
       {open && typeof document !== "undefined" && createPortal(
         <>
           {/* The page softens; the header does not. Same veil, same z-30, same
-              blur as an open "Obrazy" menu — see MenuVeil. */}
-          <MenuVeil open />
+              blur as an open "Obrazy" menu — see MenuVeil.
+
+              NOT ON A PHONE, where the search fills the screen with an opaque
+              surface: the veil would be a second full-viewport
+              `backdrop-filter` composited under something nobody can see
+              through, paid for on every frame while the list is being
+              scrolled. There is no page left showing to soften. */}
+          {!phone && <MenuVeil open />}
           <div
             role="dialog" aria-modal="true" aria-label={t("search.title")}
             className={cn(
@@ -573,16 +579,33 @@ export function CommandPalette({
                 field and the list inside what can actually be seen. */}
             <div ref={stageRef} className="relative flex h-[100dvh] w-full items-start justify-center sm:h-auto sm:max-h-full">
               <div className="overlay search-panel search-sheet animate-pop relative flex h-full max-h-full w-full flex-col overflow-hidden sm:h-auto sm:max-w-[800px] sm:rounded-[24px]">
-              {/* CLOSE — top right of the panel, as in the design. */}
-              <div className="flex justify-end px-4 pt-3.5 sm:px-6">
+              {/* CLOSE — and on a phone this is the one control that must never
+                  be unreachable, so three things about it are deliberate.
+
+                  IT CLEARS THE STATUS BAR. Full screen means the panel starts
+                  at y=0, and at `pt-3.5` the button sat in the strip a notched
+                  iPhone reserves for its own clock and battery — where taps
+                  belong to the system, not to us. That is the "X sometimes
+                  does nothing": it was not ignoring the tap, it was never
+                  getting it.
+
+                  IT IS 44px. It was 30 (an 18px glyph in 6px of padding),
+                  under every thumb-target guideline and well under what the
+                  brief asks for.
+
+                  IT CANNOT BE COVERED. The row sits above the scrolling list
+                  in the stacking order, and the list is a SIBLING of it rather
+                  than something it floats over — so no result, card or
+                  carousel can ever paint on top of it. */}
+              <div className="relative z-10 flex shrink-0 justify-end px-2.5 pt-[calc(env(safe-area-inset-top)+0.5rem)] sm:px-5 sm:pt-3.5">
                 <button type="button" onClick={close} aria-label={t("common.close")}
-                  className="-mr-1 shrink-0 rounded-lg p-1.5 text-faint transition-colors duration-200 hover:bg-raised hover:text-ink">
-                  <X size={18} />
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-faint transition-colors duration-200 hover:bg-raised hover:text-ink">
+                  <X size={20} />
                 </button>
               </div>
 
               {/* THE FIELD */}
-              <form onSubmit={onSubmit} className="px-4 pb-1 pt-1.5 sm:px-6">
+              <form onSubmit={onSubmit} className="relative z-10 shrink-0 px-4 pb-1 pt-1.5 sm:px-6">
                 <div className="search-field flex items-center gap-2.5 rounded-full py-1.5 pl-4 pr-1.5">
                   <Search size={17} className="shrink-0 text-faint" aria-hidden />
                   <input
@@ -650,7 +673,7 @@ export function CommandPalette({
               )}
 
               {/* BODY */}
-              <div ref={bodyRef} className="thin-scroll touch-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-2 sm:px-6 sm:pt-3">
+              <div ref={bodyRef} className="thin-scroll touch-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain [touch-action:pan-y] px-4 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] pt-2 sm:px-6 sm:pb-4 sm:pt-3">
                 {!searching ? (
                   <>
                     {/* The phone gives the strip a heading and a way out; the
