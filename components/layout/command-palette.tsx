@@ -14,6 +14,7 @@ import {
   type ToolEntry, type ToolFacet,
 } from "@/lib/tool-search";
 import { MenuVeil } from "./menu-veil";
+import { useScrollLock } from "./scroll-lock";
 import { cn } from "@/lib/utils";
 import type { SearchHit } from "@/app/api/search/route";
 
@@ -115,10 +116,110 @@ export function CommandPalette({
   const inputRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  /** Set when the overlay is closing BECAUSE a result was opened — see `go`. */
+  const navigatingRef = useRef(false);
 
   const close = useCallback(() => {
     setOpen(false); setQ(""); setHits([]); setCursor(-1); setTab("all"); setCard(0);
+    // The field keeps focus after the panel unmounts otherwise, and on a phone
+    // that leaves the keyboard up over a page with nothing to type into.
+    inputRef.current?.blur();
   }, []);
+
+  /**
+   * PHONES ONLY, and the reason is the header.
+   *
+   * Freezing the page means taking the body out of flow, and a `position:
+   * sticky` header inside a body that no longer scrolls loses the scrollport
+   * it was sticking to: it drops back to its static position, which on a page
+   * scrolled 600px down is 600px above the screen. Behind the phone's
+   * full-screen search that is invisible. Behind the DESKTOP panel, where the
+   * page is still on show around it, the header would simply fly away — a
+   * regression in the one thing this change was told not to touch.
+   *
+   * Tracking the breakpoint rather than reading it once also means a rotation
+   * or a resize across it releases the lock properly instead of stranding the
+   * body pinned.
+   */
+  const [phone, setPhone] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639.98px)");
+    const sync = () => setPhone(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  /**
+   * THE PAGE BEHIND DOES NOT MOVE while the search is open — and comes back to
+   * the pixel it was on. See components/layout/scroll-lock.ts for why
+   * `overflow: hidden` alone is not enough on iOS.
+   */
+  useScrollLock(open && phone);
+
+  /**
+   * ANDROID'S BACK BUTTON CLOSES THE SEARCH instead of leaving the page.
+   *
+   * Opening pushes one history entry, so the gesture every Android user makes
+   * to dismiss a full-screen surface is spent on this overlay rather than on
+   * navigating away from whatever they were reading. Closing any other way
+   * spends that entry itself, so the stack never grows a phantom step the
+   * customer would have to press through later.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const state = { grovSearch: true };
+    window.history.pushState(state, "");
+    let ours = true;
+    const onPop = () => { ours = false; close(); };
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      const navigating = navigatingRef.current;
+      navigatingRef.current = false;
+      // DO NOT UNWIND WHEN A RESULT WAS OPENED. `go` closes the overlay and
+      // then pushes the route, and a `back()` racing that push simply undoes
+      // it — the tool opens and the browser immediately returns. The push
+      // supersedes our entry on its own, and back from the tool then lands on
+      // the page the search was opened from, which is where it should land.
+      if (navigating) return;
+      // Otherwise unwind the entry we added, if it is still the top one.
+      if (ours && (window.history.state as { grovSearch?: boolean } | null)?.grovSearch) {
+        window.history.back();
+      }
+    };
+  }, [open, close]);
+
+  /**
+   * THE STAGE FOLLOWS THE SOFTWARE KEYBOARD, and nothing else does.
+   *
+   * Same split as the auth dialog: the root stays `fixed inset-0` so the veil
+   * keeps covering the layout viewport, and only this inner box is resized to
+   * the VISUAL viewport. Without it the panel is a full `100dvh` tall with the
+   * keyboard up, so its lower half — the popular tools, the results — sits
+   * behind the keys with no way to reach it.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const vv = window.visualViewport;
+    const stage = stageRef.current;
+    if (!vv || !stage) return;
+    const sync = () => {
+      if (window.innerWidth >= 640) { stage.style.height = ""; stage.style.transform = ""; return; }
+      stage.style.height = `${vv.height}px`;
+      stage.style.transform = `translateY(${vv.offsetTop}px)`;
+    };
+    sync();
+    vv.addEventListener("resize", sync);
+    vv.addEventListener("scroll", sync);
+    return () => {
+      vv.removeEventListener("resize", sync);
+      vv.removeEventListener("scroll", sync);
+      stage.style.height = "";
+      stage.style.transform = "";
+    };
+  }, [open]);
 
   // The binding is ⌘K on Apple hardware, Ctrl K everywhere else. SSR renders
   // the Mac glyph; the effect corrects it post-hydration to avoid a mismatch.
@@ -269,6 +370,7 @@ export function CommandPalette({
   const go = useCallback((href: string) => {
     if (!href) return;
     rememberQuery(q);
+    navigatingRef.current = true;
     close();
     router.push(href);
   }, [close, router, q, recent]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -443,13 +545,19 @@ export function CommandPalette({
           <div
             role="dialog" aria-modal="true" aria-label={t("search.title")}
             className={cn(
-              "fixed inset-0 z-[60] flex items-start justify-center px-3 sm:px-4",
-              // Under the header on every viewport, and clear of the phone's
-              // fixed dock and home indicator at the bottom. The panel's own
-              // max-height is `100%` of what is left after this padding, so it
-              // can never leave the viewport or slide under either bar.
-              "pt-[calc(env(safe-area-inset-top)+var(--header-h)+0.5rem)] pb-[var(--page-bottom)]",
-              "sm:pt-[calc(env(safe-area-inset-top)+var(--header-h)+1.5rem)]",
+              // THE ROOT COVERS THE LAYOUT VIEWPORT AND IS NEVER TRANSFORMED.
+              // It owns the veil; the stage inside it is what follows the
+              // keyboard. Moving this layer instead would uncover the page at
+              // the top and drop the blur in WebKit — the lesson already
+              // written down in components/auth/auth-modal.tsx.
+              "fixed inset-0 z-[60] flex items-start justify-center",
+              // PHONE: edge to edge. No gutter and no room left for the header
+              // or the dock — at this size the search IS the screen, so both
+              // are covered rather than peeking around a floating card.
+              "p-0",
+              // From `sm` up it is a panel over the page again, under the
+              // header and clear of the dock, exactly as before.
+              "sm:px-4 sm:pt-[calc(env(safe-area-inset-top)+var(--header-h)+1.5rem)] sm:pb-[var(--page-bottom)]",
               "lg:pb-10 lg:pt-[max(calc(var(--header-h)+3.5rem),9vh)]",
             )}
           >
@@ -457,7 +565,14 @@ export function CommandPalette({
                 the click that closes and keeps the page behind inert. */}
             <div className="absolute inset-0" onClick={close} aria-hidden />
 
-            <div className="overlay search-panel animate-pop relative flex max-h-full w-full max-w-[800px] flex-col overflow-hidden rounded-[24px]">
+            {/* THE STAGE — the only box that tracks the software keyboard.
+                `100dvh` handles Safari's collapsing toolbar but not the
+                keyboard: with it up the layout viewport is unchanged and only
+                the visual one shrinks, so a full-height panel would run on
+                behind the keys. Sizing this to `visualViewport` keeps the
+                field and the list inside what can actually be seen. */}
+            <div ref={stageRef} className="relative flex h-[100dvh] w-full items-start justify-center sm:h-auto sm:max-h-full">
+              <div className="overlay search-panel search-sheet animate-pop relative flex h-full max-h-full w-full flex-col overflow-hidden sm:h-auto sm:max-w-[800px] sm:rounded-[24px]">
               {/* CLOSE — top right of the panel, as in the design. */}
               <div className="flex justify-end px-4 pt-3.5 sm:px-6">
                 <button type="button" onClick={close} aria-label={t("common.close")}
@@ -494,7 +609,7 @@ export function CommandPalette({
               {/* RECENT QUERIES — only for somebody who has some. A first-time
                   seller sees the two ranked lists and nothing else. */}
               {!searching && recent.length > 0 && (
-                <div className="thin-scroll flex items-center gap-1.5 overflow-x-auto px-4 pt-2.5 sm:px-6">
+                <div className="no-scrollbar touch-scroll flex items-center gap-1.5 overflow-x-auto overscroll-x-contain px-4 pt-2.5 sm:px-6">
                   {recent.map((r) => (
                     <button key={r} type="button" onClick={() => { setQ(r); inputRef.current?.focus(); }}
                       className="plate inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[11.5px] text-muted transition-colors duration-200 hover:text-ink">
@@ -512,7 +627,7 @@ export function CommandPalette({
 
               {/* TABS — they filter results, so they arrive with the results. */}
               {searching && (
-                <div className="thin-scroll mt-2 flex items-center gap-1.5 overflow-x-auto px-4 pb-3 sm:flex-wrap sm:overflow-visible sm:px-6">
+                <div className="no-scrollbar touch-scroll mt-2 flex items-center gap-1.5 overflow-x-auto overscroll-x-contain px-4 pb-3 sm:flex-wrap sm:overflow-visible sm:px-6">
                   {TABS.map((tb) => {
                     const Icon = tabIcon[tb];
                     const active = tab === tb;
@@ -535,7 +650,7 @@ export function CommandPalette({
               )}
 
               {/* BODY */}
-              <div ref={bodyRef} className="thin-scroll min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-2 sm:px-6 sm:pt-3">
+              <div ref={bodyRef} className="thin-scroll touch-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-2 sm:px-6 sm:pt-3">
                 {!searching ? (
                   <>
                     {/* The phone gives the strip a heading and a way out; the
@@ -569,7 +684,7 @@ export function CommandPalette({
                         setCard(Math.max(0, Math.min(top.length - 1,
                           Math.round(el.scrollLeft / Math.max(pitch, 1)))));
                       }}
-                      className="thin-scroll -mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 sm:pb-0"
+                      className="no-scrollbar touch-scroll -mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain px-1 pb-1 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 sm:pb-0"
                     >
                       {top.map((entry, i) => toolCard(entry, i))}
                     </div>
@@ -651,6 +766,7 @@ export function CommandPalette({
                 <ArrowRight size={13} aria-hidden
                   className="transition-transform duration-200 group-hover:translate-x-0.5" />
               </button>
+            </div>
             </div>
           </div>
         </>,

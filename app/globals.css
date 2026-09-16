@@ -454,6 +454,22 @@ body::after {
     0 28px 80px -34px rgb(var(--accent) / 0.5);
 }
 
+/* THE PHONE'S SEARCH IS A SCREEN, NOT A CARD.
+   `.overlay` is 98.5% opaque with a blur behind it, which is right for a panel
+   floating over a page you can still see. Filling the viewport with it instead
+   leaves the header and the bottom dock faintly readable THROUGH the search,
+   which is the "prześwitujący header" this removes: edge to edge, fully
+   opaque, no radius and no border to draw a box nobody is meant to see. From
+   `sm` up nothing changes — the floating panel is still a floating panel. */
+@media (max-width: 639.98px) {
+  .search-sheet {
+    background: rgb(var(--surface));
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
 /* ── THE LIGHT SNAKE ─────────────────────────────────────────────────────
    A thread of brand light running once around a card while the pointer is on
    it. Used on the mega-menu entries, where a plain background tint could not
@@ -811,6 +827,19 @@ body::after {
 
 /* Scrollbars inside panels: present, thin, never a grey slab. */
 .thin-scroll { scrollbar-width: thin; scrollbar-color: rgb(var(--faint) / 0.4) transparent; }
+
+/* A SCROLLER WITH NO VISIBLE BAR, and everything else about it unchanged.
+   The search overlay's horizontal strips — the top-three carousel, the recent
+   queries, the result tabs — are swiped, not dragged by a bar, and on a phone
+   a 6px track under three cards reads as a rendering fault rather than as a
+   control. Snapping, momentum and the swipe itself are untouched: this hides
+   the indicator, it does not disable the overflow. */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+/* Momentum scrolling inside an overlay on older iOS, where a nested scroller
+   without it stops dead instead of gliding. */
+.touch-scroll { -webkit-overflow-scrolling: touch; }
 .thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
 .thin-scroll::-webkit-scrollbar-thumb { background: rgb(var(--faint) / 0.35); border-radius: 9999px; }
 .thin-scroll::-webkit-scrollbar-track { background: transparent; }

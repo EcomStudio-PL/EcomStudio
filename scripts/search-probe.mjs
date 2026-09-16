@@ -120,13 +120,25 @@ for (const theme of ["dark", "light"]) {
       const p = m.panel;
       if (!p) bad.push("no .search-panel inside the dialog");
       else {
-        if (p.top < m.headerBottom - 1) bad.push(`panel starts under the header (${p.top} < ${m.headerBottom})`);
-        if (p.bottom > vp.h + 1) bad.push(`panel bottom ${p.bottom} is past the viewport (${vp.h})`);
-        if (p.left < -1 || p.right > vp.w + 1) bad.push(`panel ${p.left}..${p.right} is outside 0..${vp.w}`);
+        // A PHONE GETS A SCREEN; EVERYTHING ELSE GETS A PANEL.
+        // Below 640 the search fills the viewport by design — over the header,
+        // over the dock, corner to corner — so the two rules that keep it
+        // clear of both are the wrong question there and are replaced by the
+        // one that matters: it really does cover the whole screen.
+        const fullscreen = vp.w < 640;
+        if (fullscreen) {
+          if (p.top !== 0) bad.push(`fullscreen panel starts at ${p.top}, not 0`);
+          if (Math.abs(p.bottom - vp.h) > 2) bad.push(`fullscreen panel ends at ${p.bottom}, not ${vp.h}`);
+          if (p.left !== 0 || p.w !== vp.w) bad.push(`fullscreen panel is ${p.left}..${p.right}, not 0..${vp.w}`);
+        } else {
+          if (p.top < m.headerBottom - 1) bad.push(`panel starts under the header (${p.top} < ${m.headerBottom})`);
+          if (p.bottom > vp.h + 1) bad.push(`panel bottom ${p.bottom} is past the viewport (${vp.h})`);
+          if (p.left < -1 || p.right > vp.w + 1) bad.push(`panel ${p.left}..${p.right} is outside 0..${vp.w}`);
+          // Only where there IS a dock: above lg it is `hidden`, and a hidden
+          // element's rect is a zero-height box at the top of the page.
+          if (m.dockH && p.bottom > m.dockTop + 1) bad.push(`panel runs under the dock (${p.bottom} > ${m.dockTop})`);
+        }
         if (p.bottom - p.top < 200) bad.push(`panel is only ${p.bottom - p.top}px tall — it has collapsed`);
-        // Only where there IS a dock: above lg it is `hidden`, and a hidden
-        // element's rect is a zero-height box at the top of the page.
-        if (m.dockH && p.bottom > m.dockTop + 1) bad.push(`panel runs under the dock (${p.bottom} > ${m.dockTop})`);
         if (vp.w >= 1280 && (p.w < 700 || p.w > 860)) bad.push(`panel is ${p.w}px — the design is an 800px modal`);
       }
       if (m.docScroll > m.docClient + 1) bad.push("the open modal makes the page scroll sideways");
@@ -191,11 +203,17 @@ for (const [w, h, label] of [[390, 844, "phone"], [1440, 900, "desktop"]]) {
   await page.waitForTimeout(250);
   note(!(await isOpen(page)), `${label}: the X closes it`);
 
-  await openSearch(page, w);
-  await page.waitForTimeout(300);
-  await page.mouse.click(Math.round(w / 2), h - 6);
-  await page.waitForTimeout(250);
-  note(!(await isOpen(page)), `${label}: a click outside the panel closes it`);
+  // ONLY WHERE THERE IS AN OUTSIDE. On a phone the panel fills the screen, so
+  // the bottom edge is inside it and this gesture does not exist; the X, Esc
+  // and the back button are the ways out, and they are checked above and in
+  // scripts/search-mobile-probe.mjs.
+  if (w >= 640) {
+    await openSearch(page, w);
+    await page.waitForTimeout(300);
+    await page.mouse.click(Math.round(w / 2), h - 6);
+    await page.waitForTimeout(250);
+    note(!(await isOpen(page)), `${label}: a click outside the panel closes it`);
+  }
 
   // TYPING IS LOCAL AND INSTANT: the tool rows must be painted before the
   // debounced content request has even been sent.
@@ -224,16 +242,24 @@ for (const [w, h, label] of [[390, 844, "phone"], [1440, 900, "desktop"]]) {
     return { current: el?.getAttribute("aria-current"), text: el?.textContent?.trim().slice(0, 24) };
   });
   note(first.current === "true", `${label}: ArrowDown selects the first card (${first.text})`);
+  // WHERE THE HIGHLIGHTED CARD ACTUALLY POINTS, read before pressing Enter.
+  // This used to be hard-coded to /prompts, which made the check a test of the
+  // ranking data rather than of the keyboard: whichever tool happens to rank
+  // first, Enter has to open THAT one.
+  const target = await page.evaluate(() => {
+    const el = document.querySelector('[role="dialog"] [aria-current="true"]');
+    return el?.getAttribute("href") ?? el?.closest("a")?.getAttribute("href") ?? null;
+  });
   await page.keyboard.press("Enter");
   await page.waitForTimeout(700);
   const landed = page.url();
   // The probe browser has no session, so the app's own guard bounces it to
   // sign-in with `next=` pointing at where it was going. That redirect IS the
-  // proof: the tile sent it to /prompts and the route is still protected.
+  // proof: the tile sent it somewhere real and the route is still protected.
   const parsed = new globalThis.URL(landed);
   const wanted = parsed.searchParams.get("next") ?? parsed.pathname;
-  note(!landed.includes("/probe-tmp/chrome") && wanted === "/prompts",
-    `${label}: Enter closes the modal and opens the tool (→ ${wanted})`);
+  note(!landed.includes("/probe-tmp/chrome") && wanted.length > 1 && (!target || wanted === target),
+    `${label}: Enter closes the modal and opens the tool (→ ${wanted}${target ? `, card pointed at ${target}` : ""})`);
 
   // THE PHONE CAROUSEL — a real swipe has to move it, land on a card, and
   // move the dot that claims to follow it.
