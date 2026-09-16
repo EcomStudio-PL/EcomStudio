@@ -2,13 +2,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/lib/notify";
 import {
-  Check, ChevronDown, ChevronLeft, ChevronRight, Columns2, Copy, Download, Eraser, Expand,
-  Heart, Link2, Loader2, Maximize2, Minus, Plus, Save, Scaling, Sparkles, Trash2, Wand2, X,
+  Calendar, ChevronDown, ChevronLeft, ChevronRight, Clock, Columns2, Copy, Cpu, Crop, Download,
+  Eraser, Expand, FileText, Heart, Link2, Loader2, Maximize2, Minus, Plus, Ruler, Save, Scaling,
+  Sparkles, Trash2, Wand2, X,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
-import { InfoHint } from "@/components/ui/hint";
 import { cn } from "@/lib/utils";
 import type { GalleryItem } from "@/components/genv3/types";
 import { ratioName } from "@/components/genv3/ratio-options";
@@ -117,6 +117,11 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
     await navigator.clipboard.writeText(item.url).catch(() => null);
     toast.success(t("genv3.copiedUrl"));
   }
+  async function copyNote() {
+    if (!note.trim()) return;
+    await navigator.clipboard.writeText(note.trim()).catch(() => null);
+    toast.success(t("genv3.copied"));
+  }
   async function copyImage() {
     const blob = await fetchBlob();
     if (!blob) { toast.error(t("common.error")); return; }
@@ -200,14 +205,19 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
       className="fixed inset-0 z-[60] flex items-stretch justify-center sm:items-center sm:p-4">
       <button type="button" aria-label={t("common.close")} onClick={onClose}
         className="scrim absolute inset-0 cursor-default backdrop-blur-[10px]" />
-      {/* The work surface, not a dialog squeezed into a corner: the picture is
-          the subject, so it takes the larger column and the modal takes the
-          viewport minus a 32px frame, capped at 1280. */}
+      {/* The work surface, not a dialog squeezed into a corner: the viewport
+          minus a 24px frame, out to 1920.
+
+          The picture is the subject, so the PANEL takes a fixed, comfortable
+          width (380–440) and every remaining pixel goes to the image. That is
+          what stops a wide monitor from padding the sidebar instead of
+          enlarging the photo — at 2560 the image gets ~1450px rather than the
+          ~1130 a proportional split would have handed it. */}
       <div data-details-modal
-        className="overlay animate-pop relative flex h-full w-full min-w-0 flex-col overflow-y-auto rounded-none sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:w-[calc(100vw-4rem)] sm:max-w-[1280px] sm:rounded-2xl lg:grid lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] lg:overflow-hidden">
+        className="overlay animate-pop relative flex h-full w-full min-w-0 flex-col overflow-y-auto rounded-none sm:h-auto sm:max-h-[calc(100dvh-3rem)] sm:w-[calc(100vw-3rem)] sm:max-w-[1920px] sm:rounded-2xl lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(380px,400px)] lg:overflow-hidden xl:grid-cols-[minmax(0,1fr)_440px]">
         {/* ── IMAGE SIDE ─────────────────────────────────────────────────── */}
-        <div className="flex min-w-0 flex-col bg-sunken/60 p-3 sm:p-4 lg:max-h-[calc(100dvh-4rem)]">
-          <div className="relative flex min-h-[46dvh] flex-1 items-center justify-center overflow-hidden rounded-xl bg-[rgb(var(--bg))] lg:min-h-0">
+        <div className="flex min-w-0 flex-col bg-sunken/60 p-3 sm:p-4 lg:max-h-[calc(100dvh-3rem)]">
+          <div className="relative flex min-h-[46dvh] flex-1 items-center justify-center overflow-hidden rounded-2xl bg-[rgb(var(--bg))] lg:min-h-0">
             {item.ratio && (
               <span className="absolute left-2.5 top-2.5 z-10 rounded-lg bg-black/55 px-2 py-1 text-[11px] font-bold text-white backdrop-blur">{item.ratio}</span>
             )}
@@ -247,7 +257,7 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
                 </div>
               </div>
             )}
-            <div className="absolute bottom-2.5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/55 px-1.5 py-1 backdrop-blur">
+            <div data-zoom-bar className="absolute bottom-2.5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/55 px-1.5 py-1 backdrop-blur">
               <button type="button" aria-label={t("genv3.zoomOut")} disabled={zoom <= 50}
                 onClick={() => setZoom((z) => Math.max(50, z - 25))}
                 className="flex h-7 w-7 items-center justify-center rounded-full text-white transition-colors hover:bg-white/15 disabled:opacity-40">
@@ -270,41 +280,19 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
                   <span className="hidden sm:inline">{t("tools.compare")}</span>
                 </button>
               )}
-              <button type="button" aria-label={t("genv3.fullscreen")} onClick={() => setFullscreen(true)}
-                className="flex h-7 w-7 items-center justify-center rounded-full text-white transition-colors hover:bg-white/15">
+              <button type="button" aria-label={t("genv3.fullImage")} onClick={() => setFullscreen(true)}
+                className="flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-semibold text-white transition-colors hover:bg-white/15">
                 <Maximize2 size={13} aria-hidden />
+                <span className="hidden sm:inline">{t("genv3.fullImage")}</span>
               </button>
             </div>
           </div>
 
-          {/* Filmstrip */}
-          {items.length > 1 && (
-            <div className="thin-scroll -mx-1 mt-3 flex shrink-0 gap-1.5 overflow-x-auto px-1 pb-0.5">
-              {items.map((s, i) => (
-                <button key={s.assetId} type="button" aria-label={t("genv3.thumbAria", { n: i + 1 })}
-                  aria-current={i === index}
-                  onClick={() => onIndex(i)}
-                  className={cn(
-                    "h-14 w-14 shrink-0 overflow-hidden rounded-lg ring-2 transition-all duration-150",
-                    i === index ? "ring-accent" : "opacity-70 ring-transparent hover:opacity-100",
-                  )}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={s.thumbUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="mt-3 hidden shrink-0 items-center justify-between lg:flex">
-            <button type="button" disabled={index === 0} onClick={() => onIndex(index - 1)}
-              className="plate flex h-10 items-center gap-1.5 rounded-xl px-3.5 text-[13px] font-semibold text-ink transition-colors hover:bg-raised disabled:opacity-40">
-              <ChevronLeft size={14} aria-hidden />{t("genv3.prev")}
-            </button>
-            <button type="button" disabled={index === items.length - 1} onClick={() => onIndex(index + 1)}
-              className="cta flex h-10 items-center gap-1.5 rounded-xl px-4 text-[13px] font-semibold disabled:opacity-40">
-              {t("genv3.next")}<ChevronRight size={14} aria-hidden />
-            </button>
-          </div>
+          {/* NO FILMSTRIP, NO SECOND PREV/NEXT ROW. The reference keeps the
+              image side to the picture and its zoom bar, and the batch is
+              still walkable: the chevrons over the image and the ← → keys do
+              the same job without a second strip of thumbnails competing with
+              the reference photos at the top of the panel. */}
         </div>
 
         {/* ── INFO SIDE ──────────────────────────────────────────────────── */}
@@ -324,28 +312,34 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
 
           <PromptBox text={item.prompt} onCopy={copyPrompt} />
 
-          {/* INFORMACJE — what the seller actually needs to read back. The
-              engine, the shape, the size, the day. Everything an operator
-              needs and a customer does not (the asset id, the quantity, the
-              quality knob) sits one click away under "Więcej informacji". */}
-          <div data-details-settings>
-            <p className="mb-2 text-[13px] font-semibold tracking-tight">{t("genv3.infoTitle")}</p>
-            <dl className="space-y-2 text-[12.5px]">
-              {/* A tool's engine is GrovBase's business: the customer bought
-                  "Retusz zdjęć", and the provider behind it stays in the
-                  cost log where the admin can see it. */}
-              {!isTool && <MetaRow label={t("genv3.metaModel")} value={item.model ?? "—"} />}
-              {/* "Tryb" only where it names a product the seller chose. */}
-              {isTool && <MetaRow label={t("genv3.metaOrigin")} value={t("retouch.title")} />}
-              {item.sessionType && (
-                <MetaRow label={t("genv3.metaSession")}
-                  value={t(item.sessionType === "advertising" ? "genv3.sessionAd" : "genv3.sessionLife")} />
-              )}
-              <MetaRow label={t("genv3.metaFormat")} value={item.ratio ? ratioName(t, item.ratio) : dims ?? "—"} />
-              {item.resolution && <MetaRow label={t("genv3.resolution")} value={item.resolution} />}
-              <MetaRow label={t("genv3.metaDate")} value={created} />
-            </dl>
-            <details className="group/more mt-2">
+          {/* THE FACTS, AS A GRID OF TILES — no "Informacje" heading, because
+              a seller looking at "Model AI / GPT Image 2" does not need to be
+              told it is information. Each fact is its own cell: an icon, what
+              it is, what it says. Entries are built as a list and filtered, so
+              a missing figure leaves no empty tile and nothing is invented to
+              fill one. */}
+          <div data-details-settings className="grid grid-cols-2 gap-2">
+            {([
+              // A tool's engine is GrovBase's business: the customer bought
+              // "Retusz zdjęć", and the provider stays in the cost log.
+              isTool
+                ? { icon: Wand2, label: t("genv3.metaOrigin"), value: t("retouch.title") }
+                : { icon: Cpu, label: t("genv3.metaModel"), value: item.model },
+              { icon: Crop, label: t("genv3.metaFormat"), value: item.ratio ? ratioName(t, item.ratio) : null },
+              { icon: Scaling, label: t("genv3.resolution"), value: item.resolution },
+              { icon: Ruler, label: t("genv3.metaPixels"), value: dims ? `${dims} px` : null },
+              { icon: Calendar, label: t("genv3.metaDate"), value: created },
+              // Straight from the job. Absent on anything rendered before the
+              // figure was recorded — then the tile simply is not there.
+              { icon: Clock, label: t("genv3.metaTime"),
+                value: item.latencyMs != null ? t("genv3.secondsShort", { n: Math.max(1, Math.round(item.latencyMs / 1000)) }) : null },
+            ] as { icon: typeof Cpu; label: string; value: string | null }[])
+              .filter((f) => !!f.value)
+              .map((f) => <InfoTile key={f.label} icon={f.icon} label={f.label} value={f.value!} />)}
+          </div>
+
+          <div>
+            <details className="group/more">
               <summary data-details-more
                 className="flex cursor-pointer list-none items-center gap-1 text-[11.5px] font-semibold text-faint transition-colors hover:text-accent">
                 <ChevronDown size={12} aria-hidden className="transition-transform group-open/more:rotate-180" />
@@ -356,7 +350,12 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
                   <MetaRow label={t("genv3.metaOrigin")}
                     value={t(item.origin === "engine" ? "genv3.modeManaged" : "genv3.modeCustom")} />
                 )}
-                {dims && <MetaRow label={t("genv3.metaPixels")} value={dims} />}
+                {/* The pixel size moved up into the grid; what stays here is
+                    what the grid deliberately does not carry. */}
+                {item.sessionType && (
+                  <MetaRow label={t("genv3.metaSession")}
+                    value={t(item.sessionType === "advertising" ? "genv3.sessionAd" : "genv3.sessionLife")} />
+                )}
                 {item.quality && <MetaRow label={t("genv3.quality")} value={qualityLabel(item.quality, t)} />}
                 {item.quantity != null && <MetaRow label={t("genv3.countImages")} value={String(item.quantity)} />}
                 {item.credits != null && (
@@ -372,9 +371,13 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
             </details>
           </div>
 
-          {/* EDYTUJ OBRAZ — real tools on this exact file */}
+          {/* FOUR EDIT TILES, no heading — real tools on this exact file. The
+              fifth ("Popraw obraz (AI)") is gone: it had no backend, so it was
+              a permanently disabled tile taking a row of the panel to say
+              "Wkrótce". "Usuń wybrane" keeps its honest Wkrótce badge because
+              the tile is in the reference; it is visibly unavailable, never a
+              button that pretends to work. */}
           <div>
-            <p className="mb-2 text-[13px] font-semibold tracking-tight">{t("genv3.editTitle")}</p>
             <div className="grid grid-cols-2 gap-2 [&>*]:min-w-0">
               <EditTile icon={Expand} busy={toolBusy === "expand"} title={t("genv3.editFormat")} sub={t("genv3.editFormatSub")}
                 onClick={() => setExpandPick(!expandPick)} />
@@ -383,9 +386,6 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
               <EditTile icon={Eraser} busy={toolBusy === "remove_bg"} title={t("genv3.editRemoveBg")} sub={t("genv3.editRemoveBgSub")}
                 onClick={() => runTool("remove_bg", { format: "png" })} />
               <EditTile icon={Wand2} disabled title={t("genv3.editElements")} sub={t("genv3.editElementsSub")} soonLabel={t("genv3.soon")} />
-              {/* Honest state: no AI-enhance backend exists yet — the tile is
-                  visible per the mockup but disabled, never a fake button. */}
-              <EditTile icon={Sparkles} disabled title={t("genv3.editEnhance")} sub={t("genv3.editEnhanceSub")} soonLabel={t("genv3.soon")} />
             </div>
             {expandPick && (
               <div className="animate-fade mt-2 flex flex-wrap items-center gap-1.5 rounded-xl border border-line bg-sunken/40 p-2">
@@ -404,61 +404,63 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
             <p className="mt-1.5 text-[10.5px] leading-relaxed text-faint">{t("genv3.editNote")}</p>
           </div>
 
-          {/* NOTATKA + AKCJE share one row: both are small, and stacking them
-              pushed the CTA below the fold on a laptop. */}
-          <div className="grid gap-4 sm:grid-cols-2 sm:gap-3">
-            <div className="min-w-0">
-              <p className="mb-2 text-[13px] font-semibold tracking-tight">{t("genv3.noteTitle")}</p>
-              <div className="relative">
-                <textarea
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  rows={2}
-                  maxLength={2000}
-                  placeholder={t("genv3.notePh")}
-                  aria-label={t("genv3.noteTitle")}
-                  className="w-full resize-y rounded-xl border border-line bg-sunken/50 p-3 pr-10 text-[12.5px] leading-relaxed text-ink outline-none transition-colors placeholder:text-faint focus:border-[rgb(var(--accent)/0.5)]"
-                />
-                <button type="button" aria-label={t("genv3.noteSave")} disabled={!noteDirty || savingNote}
-                  onClick={saveNote}
-                  className={cn("absolute bottom-2.5 right-2 rounded-lg p-1.5 transition-colors",
-                    noteDirty ? "text-accent hover:bg-accent-soft/50" : "text-faint")}>
-                  {savingNote ? <Loader2 size={14} className="animate-spin" aria-hidden />
-                    : noteDirty ? <Save size={14} aria-hidden /> : <Check size={14} aria-hidden />}
-                </button>
-              </div>
-            </div>
+          {/* NOTATKA — one line, no heading. The placeholder says what it is.
+              The trailing button SAVES while there is something unsaved and
+              COPIES once there is not, so the quick-copy the brief asks for
+              never costs the seller an unsaved note. */}
+          <div className="relative">
+            <FileText size={14} aria-hidden className="pointer-events-none absolute left-3 top-3.5 text-faint" />
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={1}
+              maxLength={2000}
+              placeholder={t("genv3.notePh")}
+              aria-label={t("genv3.noteTitle")}
+              className="thin-scroll min-h-[46px] w-full resize-y rounded-xl border border-line bg-sunken/50 py-3 pl-9 pr-10 text-[12.5px] leading-relaxed text-ink outline-none transition-colors placeholder:text-faint focus:border-[rgb(var(--accent)/0.5)]"
+            />
+            <button type="button"
+              aria-label={noteDirty ? t("genv3.noteSave") : t("genv3.copyNote")}
+              title={noteDirty ? t("genv3.noteSave") : t("genv3.copyNote")}
+              disabled={savingNote || (!noteDirty && !note.trim())}
+              onClick={() => { if (noteDirty) void saveNote(); else void copyNote(); }}
+              className={cn("absolute right-2 top-2.5 rounded-lg p-1.5 transition-colors",
+                noteDirty ? "text-accent hover:bg-accent-soft/50" : "text-faint hover:bg-raised hover:text-ink disabled:hover:bg-transparent")}>
+              {savingNote ? <Loader2 size={14} className="animate-spin" aria-hidden />
+                : noteDirty ? <Save size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
+            </button>
+          </div>
 
-            <div className="min-w-0">
-              <p className="mb-2 text-[13px] font-semibold tracking-tight">{t("genv3.actionsTitle")}</p>
-              <div className="flex flex-wrap items-start gap-1.5">
-                <button type="button" onClick={copyImage} title={t("genv3.copyImage")}
-                  className="plate flex h-10 items-center gap-1.5 rounded-xl px-2.5 text-[12px] font-semibold text-ink transition-colors hover:bg-raised">
-                  <Copy size={13} aria-hidden className="text-muted" />{t("genv3.copyImage")}
-                </button>
-                <button type="button" onClick={copyUrl} data-copy-url title={t("genv3.copyUrl")}
-                  className="plate flex h-10 items-center gap-1.5 rounded-xl px-2.5 text-[12px] font-semibold text-ink transition-colors hover:bg-raised">
-                  <Link2 size={13} aria-hidden className="text-muted" />{t("genv3.copyUrl")}
-                </button>
-                <div className="relative">
-                  <button type="button" aria-expanded={dlOpen} onClick={() => setDlOpen(!dlOpen)}
-                    disabled={toolBusy === "download"} data-download-btn
-                    className="cta flex h-10 items-center gap-1.5 rounded-xl px-3 text-[12px] font-semibold">
-                    {toolBusy === "download" ? <Loader2 size={13} className="animate-spin" aria-hidden /> : <Download size={13} aria-hidden />}
-                    {t("common.download")}
-                    <ChevronDown size={12} aria-hidden className={cn("transition-transform", dlOpen && "rotate-180")} />
-                  </button>
-                  {dlOpen && (
-                    <div className="panel absolute bottom-11 right-0 z-20 w-52 rounded-xl p-1 shadow-e3">
-                      <DlItem label="JPG" sub={t("genv3.dlJpg")} onClick={() => downloadAs("jpeg")} />
-                      <DlItem label="PNG" sub={t("genv3.dlPng")} onClick={() => downloadAs("png")} />
-                      <DlItem label="WEBP" sub={t("genv3.dlWebp")} onClick={() => downloadAs("webp")} />
-                      <DlItem label="TIFF" sub={t("genv3.dlTiff")} onClick={() => downloadAs("tiff")} />
-                      <DlItem label={t("genv3.dlOriginal")} sub={t("genv3.dlOriginalSub")} onClick={() => downloadAs("original")} />
-                    </div>
-                  )}
+          {/* AKCJE — three of equal weight, no heading. */}
+          <div className="grid grid-cols-3 gap-2 [&>*]:min-w-0">
+            <button type="button" onClick={copyImage} title={t("genv3.copyImage")}
+              className="plate flex h-11 items-center justify-center gap-1.5 rounded-xl px-2 text-[12px] font-semibold text-ink transition-colors hover:bg-raised">
+              <Copy size={13} aria-hidden className="shrink-0 text-muted" />
+              <span className="truncate">{t("genv3.copyImage")}</span>
+            </button>
+            <button type="button" onClick={copyUrl} data-copy-url title={t("genv3.copyUrl")}
+              className="plate flex h-11 items-center justify-center gap-1.5 rounded-xl px-2 text-[12px] font-semibold text-ink transition-colors hover:bg-raised">
+              <Link2 size={13} aria-hidden className="shrink-0 text-muted" />
+              <span className="truncate">{t("genv3.copyUrl")}</span>
+            </button>
+            <div className="relative min-w-0">
+              <button type="button" aria-expanded={dlOpen} onClick={() => setDlOpen(!dlOpen)}
+                disabled={toolBusy === "download"} data-download-btn title={t("genv3.downloadImage")}
+                className="plate flex h-11 w-full items-center justify-center gap-1.5 rounded-xl px-2 text-[12px] font-semibold text-ink transition-colors hover:bg-raised">
+                {toolBusy === "download" ? <Loader2 size={13} className="shrink-0 animate-spin" aria-hidden />
+                  : <Download size={13} aria-hidden className="shrink-0 text-muted" />}
+                <span className="truncate">{t("genv3.downloadImage")}</span>
+                <ChevronDown size={12} aria-hidden className={cn("shrink-0 text-faint transition-transform", dlOpen && "rotate-180")} />
+              </button>
+              {dlOpen && (
+                <div className="panel absolute bottom-12 right-0 z-20 w-52 rounded-xl p-1 shadow-e3">
+                  <DlItem label="JPG" sub={t("genv3.dlJpg")} onClick={() => downloadAs("jpeg")} />
+                  <DlItem label="PNG" sub={t("genv3.dlPng")} onClick={() => downloadAs("png")} />
+                  <DlItem label="WEBP" sub={t("genv3.dlWebp")} onClick={() => downloadAs("webp")} />
+                  <DlItem label="TIFF" sub={t("genv3.dlTiff")} onClick={() => downloadAs("tiff")} />
+                  <DlItem label={t("genv3.dlOriginal")} sub={t("genv3.dlOriginalSub")} onClick={() => downloadAs("original")} />
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -602,10 +604,12 @@ function SourcesSection({ item }: { item: GalleryItem }) {
 
   return (
     <div data-sources data-sources-status={state.status} data-sources-gen={item.generationId} className="min-w-0 flex-1">
-      <p className="mb-2 flex items-center gap-1.5 text-[13px] font-semibold tracking-tight">
-        {t("genv3.sourcesTitle")}
-        <InfoHint text={t("genv3.sourcesHint")} />
-      </p>
+      {/* NO HEADING. A row of photographs at the top of a panel about an
+          image is self-evident, and the reference leads with the pictures
+          themselves. The explanatory hint goes with it: every tile already
+          carries its own kind ("Zdjęcia referencyjne" / "Inspiracje") as a
+          title and an aria-label, so the question it answered is answered by
+          hovering the thing itself. */}
       {state.status === "loading" && (
         <div className="grid grid-cols-4 gap-2" aria-busy="true">
           {Array.from({ length: Math.min(Math.max(expected, 1), MAX_TILES) }, (_, i) => (
@@ -681,25 +685,46 @@ function PromptBox({ text, onCopy }: { text: string | null; onCopy: () => void }
   const [open, setOpen] = useState(false);
   const long = (text?.length ?? 0) > 220;
   return (
-    <div>
-      <p className="mb-1.5 text-[13px] font-semibold tracking-tight">{t("genv3.promptLabel")}</p>
-      <div className="relative rounded-xl border border-line bg-sunken/50 p-3 pr-9">
-        <p data-details-prompt className={cn("whitespace-pre-line text-[12.5px] leading-relaxed text-ink",
-          !open && long && "line-clamp-4")}>
-          {text ?? <span className="text-faint">{t("genv3.noPrompt")}</span>}
-        </p>
-        {long && (
-          <button type="button" data-prompt-expand onClick={() => setOpen((v) => !v)}
-            className="mt-1.5 text-[11.5px] font-semibold text-faint transition-colors hover:text-accent">
-            {open ? t("genv3.promptCollapse") : t("genv3.promptExpand")}
-          </button>
-        )}
-        {text && (
-          <button type="button" aria-label={t("genv3.copyPrompt")} onClick={onCopy}
-            className="absolute right-2 top-2 rounded-lg p-1.5 text-faint transition-colors hover:bg-raised hover:text-ink">
-            <Copy size={13} aria-hidden />
-          </button>
-        )}
+    // NO "Prompt" HEADING. The spark on the left says what this box is, and a
+    // seller reading their own sentence back does not need it labelled.
+    <div className="relative rounded-xl border border-line bg-sunken/50 py-3 pl-9 pr-9">
+      <Sparkles size={14} aria-hidden className="absolute left-3 top-3.5 text-accent" />
+      <p data-details-prompt className={cn("whitespace-pre-line text-[12.5px] leading-relaxed text-ink",
+        !open && long && "line-clamp-4")}>
+        {text ?? <span className="text-faint">{t("genv3.noPrompt")}</span>}
+      </p>
+      {long && (
+        <button type="button" data-prompt-expand onClick={() => setOpen((v) => !v)}
+          className="mt-1.5 text-[11.5px] font-semibold text-faint transition-colors hover:text-accent">
+          {open ? t("genv3.promptCollapse") : t("genv3.promptExpand")}
+        </button>
+      )}
+      {text && (
+        <button type="button" aria-label={t("genv3.copyPrompt")} onClick={onCopy}
+          className="absolute right-2 top-2.5 rounded-lg p-1.5 text-faint transition-colors hover:bg-raised hover:text-ink">
+          <Copy size={13} aria-hidden />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * ONE FACT, ONE CELL — the tiles of the info grid. An icon in a tinted
+ * square, the name of the thing, then the thing. Two of these per row read
+ * faster than six dotted leader lines, which is what the reference is really
+ * saying: the panel is scanned, not read.
+ */
+function InfoTile({ icon: Icon, label, value }: { icon: typeof Cpu; label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2.5 rounded-xl border border-line bg-sunken/50 p-2.5">
+      <span aria-hidden
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft/60 text-accent">
+        <Icon size={15} />
+      </span>
+      <div className="min-w-0">
+        <p className="truncate text-[11px] leading-tight text-faint">{label}</p>
+        <p className="truncate text-[12.5px] font-semibold leading-tight text-ink" title={value}>{value}</p>
       </div>
     </div>
   );
@@ -720,7 +745,7 @@ function EditTile({ icon: Icon, title, sub, onClick, disabled, soonLabel, busy }
   onClick?: () => void; disabled?: boolean; soonLabel?: string; busy?: boolean;
 }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled || busy}
+    <button type="button" onClick={onClick} disabled={disabled || busy} data-edit-tile
       className={cn(
         "relative rounded-xl border border-line bg-sunken/40 p-2.5 text-left transition-colors duration-200",
         disabled ? "cursor-default opacity-55" : "hover:border-[rgb(var(--accent)/0.4)] hover:bg-raised",

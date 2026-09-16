@@ -2753,7 +2753,7 @@
     "noProduct": "Bez produktu",
     "openImage": "Otwórz obraz",
     "open": "Otwórz",
-    "regen": "Regeneruj",
+    "regen": "Wygeneruj ponownie",
     "deleteConfirm": "Usunąć ten obraz? Tej operacji nie można cofnąć.",
     "deleted": "Obraz został usunięty.",
     "detailsTitle": "Informacje o obrazie",
@@ -2783,7 +2783,7 @@
     "editUpscaleSub": "Zwiększ rozdzielczość obrazu ×2",
     "editRemoveBg": "Usuń tło",
     "editRemoveBgSub": "Automatyczne usunięcie tła",
-    "editElements": "Usuń elementy",
+    "editElements": "Usuń wybrane",
     "editElementsSub": "Usuń niechciane obiekty",
     "soon": "Wkrótce",
     "editNote": "Efekt zapisuje się w Bibliotece (zakładka Narzędzia). Operacje AI pobierają kredyty.",
@@ -2894,7 +2894,12 @@
     "sourcesUnknown": "Brak zapisanych danych o zdjęciach referencyjnych dla tej generacji.",
     "regenPrevModel": "Poprzedni",
     "regenMarkTitle": "Zaznacz element",
-    "regenModelSub": "Wybierz model do regeneracji obrazu."
+    "regenModelSub": "Wybierz model do regeneracji obrazu.",
+    "fullImage": "Pełny obraz",
+    "metaTime": "Czas generacji",
+    "secondsShort": "{n} s",
+    "downloadImage": "Pobierz obraz",
+    "copyNote": "Kopiuj notatkę"
   },
   "retouch": {
     "title": "Retusz zdjęć",

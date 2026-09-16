@@ -2753,7 +2753,7 @@
     "noProduct": "Ohne Produkt",
     "openImage": "Bild öffnen",
     "open": "Öffnen",
-    "regen": "Regenerieren",
+    "regen": "Erneut generieren",
     "deleteConfirm": "Dieses Bild löschen? Das kann nicht rückgängig gemacht werden.",
     "deleted": "Bild gelöscht.",
     "detailsTitle": "Bilddetails",
@@ -2783,7 +2783,7 @@
     "editUpscaleSub": "Bildauflösung ×2 erhöhen",
     "editRemoveBg": "Hintergrund entfernen",
     "editRemoveBgSub": "Automatische Hintergrundentfernung",
-    "editElements": "Elemente entfernen",
+    "editElements": "Auswahl entfernen",
     "editElementsSub": "Unerwünschte Objekte entfernen",
     "soon": "Bald verfügbar",
     "editNote": "Ergebnisse landen in der Bibliothek (Tab Werkzeuge). KI-Operationen kosten Credits.",
@@ -2894,7 +2894,12 @@
     "sourcesUnknown": "Für diese Generierung wurden keine Daten zu Referenzfotos gespeichert.",
     "regenPrevModel": "Vorheriges",
     "regenMarkTitle": "Element markieren",
-    "regenModelSub": "Wähle das Modell für die Neugenerierung."
+    "regenModelSub": "Wähle das Modell für die Neugenerierung.",
+    "fullImage": "Vollbild",
+    "metaTime": "Generierungszeit",
+    "secondsShort": "{n} s",
+    "downloadImage": "Bild herunterladen",
+    "copyNote": "Notiz kopieren"
   },
   "retouch": {
     "title": "Foto-Retusche",

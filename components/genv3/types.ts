@@ -102,6 +102,8 @@ export type GalleryItem = {
    *  view's "how this was made" figures. Shared by every asset of a job. */
   quantity: number | null;
   credits: number | null;
+  /** Render time in ms, from the job. Null where it was never recorded. */
+  latencyMs: number | null;
   /** Reference / inspiration photo counts; thumbnails are signed lazily. */
   referenceCount: number;
   inspirationCount: number;

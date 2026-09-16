@@ -28,7 +28,7 @@ import { chromium } from "playwright";
  */
 const HARNESS_DIR = "app/probe-tmp/library";
 const HARNESS_FILE = `${HARNESS_DIR}/page.tsx`;
-const HARNESS_SRC = "/**\n * TEMPORARY PROBE ROUTE \u2014 written by scripts/library-probe.mjs --harness.\n *\n * The library lives behind auth and Supabase is not reachable from the build\n * sandbox, so the only way to measure the real component at seventeen\n * viewports is to mount it with a synthetic page of items. The COMPONENT is\n * the real one; only the rows it is handed are made up, and the pictures are\n * inline SVG so nothing is fetched.\n */\nimport { I18nProvider } from \"@/lib/i18n/provider\";\nimport pl from \"@/lib/i18n/dictionaries/pl.json\";\nimport { LibraryBrowser } from \"@/components/library/library-browser\";\nimport type { GalleryItem, GalleryPage } from \"@/lib/server/gallery\";\n\nexport const dynamic = \"force-static\";\n\nconst swatch = (i: number) => {\n  const hue = (i * 37) % 360;\n  const svg = '<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"640\" height=\"640\">'\n    + '<rect width=\"640\" height=\"640\" fill=\"hsl(' + hue + ' 55% 55%)\"/>'\n    + '<text x=\"320\" y=\"350\" font-size=\"120\" text-anchor=\"middle\" fill=\"white\">' + i + '</text></svg>';\n  return \"data:image/svg+xml;utf8,\" + encodeURIComponent(svg);\n};\n\nfunction item(i: number): GalleryItem {\n  const url = swatch(i);\n  return {\n    generationId: \"gen-\" + Math.floor(i / 3),\n    assetId: \"asset-\" + i,\n    path: \"ws/gen/\" + i + \".png\",\n    url,\n    thumbUrl: url,\n    hasThumb: true,\n    previewUrl: url,\n    assetType: i % 7 === 3 ? \"video\" : \"image\",\n    durationSec: i % 7 === 3 ? 12 + i : null,\n    width: 640,\n    height: 640,\n    ratio: \"1:1\",\n    resolution: \"1024\",\n    quality: \"high\",\n    quantity: 2,\n    credits: 4,\n    referenceCount: 1,\n    inspirationCount: 0,\n    operation: null,\n    model: \"Nano Banana Pro\",\n    modelId: \"m1\",\n    product: \"Produkt \" + i,\n    sessionType: \"advertising\",\n    origin: \"engine\",\n    prompt: null,\n    favorite: i % 5 === 0,\n    note: null,\n    createdAt: new Date(Date.UTC(2026, 0, 1 + (i % 28))).toISOString(),\n  };\n}\n\nconst first: GalleryPage = {\n  items: Array.from({ length: 24 }, (_, i) => item(i)),\n  nextCursor: null,\n};\n\nexport default function ProbeLibrary() {\n  return (\n    <I18nProvider locale=\"pl\" dict={pl as Record<string, unknown>}>\n      <main className=\"mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-[var(--page-x)] pt-4 pb-[var(--page-bottom)] sm:px-6 sm:pt-5 lg:px-8 lg:pb-14 lg:pt-6 xl:px-10\">\n        <div data-probe=\"library-root\">\n          <LibraryBrowser first={first} locale=\"pl\" />\n        </div>\n      </main>\n    </I18nProvider>\n  );\n}\n";
+const HARNESS_SRC = "/**\n * TEMPORARY PROBE ROUTE \u2014 written by scripts/library-probe.mjs --harness.\n *\n * The library lives behind auth and Supabase is not reachable from the build\n * sandbox, so the only way to measure the real component at seventeen\n * viewports is to mount it with a synthetic page of items. The COMPONENT is\n * the real one; only the rows it is handed are made up, and the pictures are\n * inline SVG so nothing is fetched.\n */\nimport { I18nProvider } from \"@/lib/i18n/provider\";\nimport pl from \"@/lib/i18n/dictionaries/pl.json\";\nimport { LibraryBrowser } from \"@/components/library/library-browser\";\nimport type { GalleryItem, GalleryPage } from \"@/lib/server/gallery\";\n\nexport const dynamic = \"force-static\";\n\nconst swatch = (i: number) => {\n  const hue = (i * 37) % 360;\n  const svg = '<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"640\" height=\"640\">'\n    + '<rect width=\"640\" height=\"640\" fill=\"hsl(' + hue + ' 55% 55%)\"/>'\n    + '<text x=\"320\" y=\"350\" font-size=\"120\" text-anchor=\"middle\" fill=\"white\">' + i + '</text></svg>';\n  return \"data:image/svg+xml;utf8,\" + encodeURIComponent(svg);\n};\n\nfunction item(i: number): GalleryItem {\n  const url = swatch(i);\n  return {\n    generationId: \"gen-\" + Math.floor(i / 3),\n    assetId: \"asset-\" + i,\n    path: \"ws/gen/\" + i + \".png\",\n    url,\n    thumbUrl: url,\n    hasThumb: true,\n    previewUrl: url,\n    assetType: i % 7 === 3 ? \"video\" : \"image\",\n    durationSec: i % 7 === 3 ? 12 + i : null,\n    width: 640,\n    height: 640,\n    ratio: \"1:1\",\n    resolution: \"1024\",\n    quality: \"high\",\n    quantity: 2,\n    credits: 4,\n    latencyMs: 12400,\n    referenceCount: 1,\n    inspirationCount: 0,\n    operation: null,\n    model: \"Nano Banana Pro\",\n    modelId: \"m1\",\n    product: \"Produkt \" + i,\n    sessionType: \"advertising\",\n    origin: \"engine\",\n    prompt: null,\n    favorite: i % 5 === 0,\n    note: null,\n    createdAt: new Date(Date.UTC(2026, 0, 1 + (i % 28))).toISOString(),\n  };\n}\n\nconst first: GalleryPage = {\n  items: Array.from({ length: 24 }, (_, i) => item(i)),\n  nextCursor: null,\n};\n\nexport default function ProbeLibrary() {\n  return (\n    <I18nProvider locale=\"pl\" dict={pl as Record<string, unknown>}>\n      <main className=\"mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-[var(--page-x)] pt-4 pb-[var(--page-bottom)] sm:px-6 sm:pt-5 lg:px-8 lg:pb-14 lg:pt-6 xl:px-10\">\n        <div data-probe=\"library-root\">\n          <LibraryBrowser first={first} locale=\"pl\" />\n        </div>\n      </main>\n    </I18nProvider>\n  );\n}\n";
 
 if (process.argv.includes("--harness")) {
   fs.mkdirSync(HARNESS_DIR, { recursive: true });
@@ -340,6 +340,28 @@ async function noShift(page) {
 
   const net = await dataBehaviour(page);
   const cls = await noShift(page);
+
+  // THE LIBRARY OPENS THE REAL DETAILS VIEW, not a lightbox of its own.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.click("[data-probe='library-root'] .aspect-square [aria-label='Otwórz']");
+  await page.waitForTimeout(400);
+  const details = await page.evaluate(() => {
+    const m = document.querySelector("[data-details-modal]");
+    if (!m) return null;
+    return {
+      tiles: m.querySelectorAll("[data-edit-tile]").length,
+      info: !!m.querySelector("[data-details-settings]"),
+      // Regeneration needs the model catalogue and the price, which live in
+      // the generator — so from here the CTA must be absent, not disabled.
+      regen: !!m.querySelector("[data-regen-cta]"),
+    };
+  });
+  ok(details !== null, "library: clicking a tile did not open the details modal");
+  if (details) {
+    ok(details.tiles === 4, `library: details modal has ${details.tiles} edit tiles`);
+    ok(details.info, "library: details modal has no info grid");
+    ok(!details.regen, "library: regenerate CTA present where it cannot work");
+  }
 
   await browser.close();
 

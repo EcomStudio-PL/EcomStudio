@@ -2753,7 +2753,7 @@
     "noProduct": "No product",
     "openImage": "Open image",
     "open": "Open",
-    "regen": "Regenerate",
+    "regen": "Generate again",
     "deleteConfirm": "Delete this image? This cannot be undone.",
     "deleted": "Image deleted.",
     "detailsTitle": "Image details",
@@ -2783,7 +2783,7 @@
     "editUpscaleSub": "Increase the image resolution ×2",
     "editRemoveBg": "Remove background",
     "editRemoveBgSub": "Automatic background removal",
-    "editElements": "Remove elements",
+    "editElements": "Remove selected",
     "editElementsSub": "Remove unwanted objects",
     "soon": "Coming soon",
     "editNote": "Results are saved to the Library (Tools tab). AI operations use credits.",
@@ -2894,7 +2894,12 @@
     "sourcesUnknown": "No reference-photo data was recorded for this generation.",
     "regenPrevModel": "Previous",
     "regenMarkTitle": "Mark an element",
-    "regenModelSub": "Pick the engine for this retake."
+    "regenModelSub": "Pick the engine for this retake.",
+    "fullImage": "Full image",
+    "metaTime": "Generation time",
+    "secondsShort": "{n} s",
+    "downloadImage": "Download image",
+    "copyNote": "Copy note"
   },
   "retouch": {
     "title": "Photo retouch",

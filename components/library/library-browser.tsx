@@ -10,6 +10,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import type { GalleryItem, GalleryPage } from "@/lib/server/gallery";
 import { libraryKey, patchLibrary, readLibrary, writeLibrary } from "@/lib/library-cache";
+import { ImageDetails } from "@/components/genv3/image-details";
 import { cn } from "@/lib/utils";
 
 /**
@@ -320,7 +321,19 @@ export function LibraryBrowser({ first, locale }: { first: GalleryPage; locale: 
   async function removeSelected() {
     if (picked.size === 0 || busy) return;
     const gens = [...new Set(items.filter((i) => picked.has(i.assetId)).map((i) => i.generationId))];
-    if (gens.length === 0) return;
+    await removeGenerations(gens);
+  }
+
+  /** The details view deletes the one image it is showing — the same
+   *  per-generation primitive, for a selection of exactly one. */
+  async function removeOne(item: GalleryItem) {
+    if (busy) return;
+    setPreview(null);
+    await removeGenerations([item.generationId]);
+  }
+
+  async function removeGenerations(gens: string[]) {
+    if (gens.length === 0 || busy) return;
     if (!window.confirm(t("library.confirmDelete"))) return;
     setBusy(true);
     try {
@@ -560,7 +573,42 @@ export function LibraryBrowser({ first, locale }: { first: GalleryPage; locale: 
         />
       )}
 
-      {preview && <Preview item={preview} t={t} onClose={() => setPreview(null)} />}
+      {/* ONE DETAILS VIEW FOR THE WHOLE PRODUCT. The library used to open a
+          bare lightbox of its own while the generator opened the real thing —
+          two answers to "show me this image", and the poorer one on the page
+          named after the collection. This is the same component, handed the
+          shelf the customer is looking at, so arrows walk the grid they came
+          from.
+
+          `canRegenerate` is false here and that is deliberate: a retake needs
+          the model catalogue, a price and the regeneration modal, all of
+          which live in the generator. A button that cannot do its job is
+          worse than no button. */}
+      {preview && (() => {
+        const idx = items.findIndex((i) => i.assetId === preview.assetId);
+        return idx < 0 ? null : (
+          <ImageDetails
+            items={items}
+            index={idx}
+            onIndex={(i) => items[i] && setPreview(items[i])}
+            onClose={() => setPreview(null)}
+            canRegenerate={false}
+            onRegenerate={() => { /* not offered from the library — see above */ }}
+            // The details view speaks the generator's narrower item type, so
+            // each callback resolves back to the library's own row before
+            // acting on it. Same asset, the shape this component owns.
+            onFavorite={(g) => { const full = items.find((i) => i.assetId === g.assetId); if (full) void toggleFavorite(full); }}
+            onDelete={(g) => { const full = items.find((i) => i.assetId === g.assetId); if (full) void removeOne(full); }}
+            onNote={(item, note) => {
+              const apply = (list: GalleryItem[]) =>
+                list.map((i) => (i.generationId === item.generationId ? { ...i, note } : i));
+              setItems(apply);
+              patchLibrary(apply);
+              setPreview((p) => (p ? { ...p, note } : p));
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -809,57 +857,6 @@ function FilterSheet({ t, order, favOnly, onOrder, onFav, onClose }: {
         <button type="button" onClick={onClose} className="cta mt-4 h-11 w-full rounded-xl text-[13px] font-semibold">
           {t("library.filtersApply")}
         </button>
-      </div>
-    </div>
-  );
-}
-
-/** The single asset: the PREVIEW derivative if we have one, the original only
- *  when the customer asks for the file itself. */
-function Preview({ item, t, onClose }: { item: GalleryItem; t: T; onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4" role="dialog" aria-modal="true">
-      <div className="scrim animate-fade absolute inset-0 backdrop-blur-[3px]" onClick={onClose} />
-      <div className="animate-sheet relative max-h-[92dvh] w-full max-w-4xl overflow-hidden rounded-2xl">
-        {item.assetType === "video" ? (
-          // The poster is what loads; the file itself only once it is played.
-          <video src={item.url} poster={item.thumbUrl} controls preload="none"
-            className="max-h-[76dvh] w-full bg-sunken object-contain" />
-        ) : (
-          // The PREVIEW derivative, not the original: ~1400px is more than a
-          // lightbox can show on any screen this runs on, at a fraction of
-          // the bytes. The full file is one click away, under Download, and
-          // it is untouched.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.previewUrl} alt={item.product ?? ""} width={item.width ?? undefined}
-            height={item.height ?? undefined} decoding="async"
-            className="max-h-[76dvh] w-full bg-sunken object-contain" />
-        )}
-        <div className="glass flex flex-wrap items-center justify-between gap-2 rounded-b-2xl px-3 py-2.5 sm:px-4 sm:py-3">
-          <p className="min-w-0 truncate text-[13px] font-semibold">{item.product ?? item.model ?? "—"}</p>
-          <div className="flex items-center gap-2">
-            <a href={item.url} download target="_blank" rel="noreferrer noopener"
-              className="cta inline-flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-[12.5px] font-semibold">
-              <Download size={14} aria-hidden />
-              {t("common.download")}
-            </a>
-            <Link href="/tools"
-              className="plate inline-flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-[12.5px] font-semibold text-ink">
-              <Wrench size={14} aria-hidden />
-              {t("library.editAsset")}
-            </Link>
-            <button type="button" onClick={onClose} aria-label={t("common.close")}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-ink">
-              <X size={15} aria-hidden />
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );

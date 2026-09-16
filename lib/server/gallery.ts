@@ -56,6 +56,12 @@ export type GalleryItem = {
   quantity: number | null;
   /** Credits the job actually charged, after any partial refund. */
   credits: number | null;
+  /**
+   * How long the render actually took, in milliseconds, straight from the
+   * job. NULL for jobs written before this was recorded — the details view
+   * then omits the figure rather than guessing one.
+   */
+  latencyMs: number | null;
   /** How many product references / inspiration photos the job carried —
    *  counts only; the thumbnails are signed on demand by the details view. */
   referenceCount: number;
@@ -111,7 +117,7 @@ const SELECT_BASE = `
   generation_assets(id, storage_path, width, height, asset_type, metadata),
   generation_jobs!inner(
     aspect_ratio, resolution, prompt_origin, prompt_text, prompt_id, status, model_id, settings,
-    quantity, credits_charged, reference_image_ids,
+    quantity, credits_charged, reference_image_ids, latency_ms,
     ai_models(display_name, name),
     prompt_sessions(session_type),
     generated_prompts!generation_jobs_prompt_id_fkey(customer_description)
@@ -144,6 +150,7 @@ type Row = {
     quantity: number | null;
     credits_charged: number | null;
     reference_image_ids: string[] | null;
+    latency_ms: number | null;
     ai_models: { display_name: string | null; name: string } | null;
     prompt_sessions: { session_type: string | null } | null;
     generated_prompts: { customer_description: string | null } | null;
@@ -287,6 +294,7 @@ export async function listGalleryItems(
           ? job.settings.quality : null,
         quantity: typeof job?.quantity === "number" ? job.quantity : null,
         credits: typeof job?.credits_charged === "number" ? job.credits_charged : null,
+        latencyMs: typeof job?.latency_ms === "number" ? job.latency_ms : null,
         referenceCount,
         inspirationCount,
         operation: typeof job?.settings?.operation === "string" ? job.settings.operation : null,
