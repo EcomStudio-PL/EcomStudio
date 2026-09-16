@@ -107,15 +107,27 @@ export function CustomerBottomNav({ availability, isAdmin = false }: {
               {/* One line, always — never truncated, never wrapped. See the
                   note on `slotClass` for why that is a fixed-height problem
                   rather than a typographic preference. */}
-              <span className="w-full text-center leading-none">{t(`mobilenav.${s.key}`)}</span>
-              {/* The CTA says which screen you are on with a rule under its
-                  name — the circle cannot, because its fill never changes. */}
-              {s.primary && (
-                <span aria-hidden className={cn(
-                  "h-[2px] w-5 rounded-full transition-colors duration-200",
-                  active ? "bg-accent" : "bg-transparent",
-                )} />
-              )}
+              <span className="relative w-full text-center leading-none">
+                {t(`mobilenav.${s.key}`)}
+                {/* The CTA says which screen you are on with a rule under its
+                    name — the circle cannot, because its fill never changes.
+
+                    IT HANGS OFF THE LABEL RATHER THAN FOLLOWING IT IN THE
+                    COLUMN. As a third flex child it added its 2px plus the
+                    3px gap to this slot's height, and `justify-center` then
+                    split that 5px evenly — which lifted GENERUJ's label 2.5px
+                    above the other four, measurably and at every width. Out of
+                    flow it contributes no height, so all five labels sit on
+                    one line again; anchoring it to the label (rather than to
+                    the slot) keeps it 3px under the text even when the type
+                    steps up a pixel at 360. */}
+                {s.primary && (
+                  <span aria-hidden className={cn(
+                    "absolute left-1/2 top-[calc(100%+3px)] h-[2px] w-5 -translate-x-1/2 rounded-full transition-colors duration-200",
+                    active ? "bg-accent" : "bg-transparent",
+                  )} />
+                )}
+              </span>
             </Link>
           );
         })}

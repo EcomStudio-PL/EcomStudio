@@ -70,8 +70,15 @@ const readChrome = (page) => page.evaluate(() => {
       iconShadowClear: ics ? (ics.boxShadow === "none" || /drop-shadow/.test(ics.filter)) : null,
       iconFilter: ics ? ics.filter : null,
       labelColor: label ? getComputedStyle(label).color : null,
+      labelBox: box(label),
+      flexKids: a.children.length,
       hasCircle: Boolean(circle),
       circle: box(circle),
+      // The active rule under GENERUJ, wherever it lives in the tree.
+      rule: box([...a.querySelectorAll("span")].find((x) => {
+        const r = x.getBoundingClientRect();
+        return r.height > 0 && r.height <= 3 && r.width > 10 && r.width < 30;
+      })),
     };
   }) : [];
 
@@ -156,6 +163,24 @@ for (const w of WIDTHS) {
         note(accentish(tab.linkColor),
           `${w} ${route}: icon and label carry the brand colour (${tab.linkColor})`);
       }
+    }
+
+    /* EVERY LABEL ON ONE LINE.
+       GENERUJ's slot used to carry a third flex child — the rule that marks it
+       as the current screen — and `justify-center` split its height across the
+       column, lifting the label 2.5px above the other four at every width. */
+    const mids = c.slots.map((s) => s.labelBox.t + s.labelBox.h / 2);
+    const spread = Math.max(...mids) - Math.min(...mids);
+    note(spread < 0.6, `${w}: all five labels share a baseline (spread ${spread.toFixed(1)}px)`);
+    const kidCounts = [...new Set(c.slots.map((s) => s.flexKids))];
+    note(kidCounts.length === 1,
+      `${w}: every slot lays out the same number of children (${kidCounts.join("/")})`);
+
+    // The rule is still drawn, and still inside the bar it belongs to.
+    const primary = c.slots.find((s) => s.hasCircle);
+    if (primary?.rule) {
+      note(primary.rule.b <= c.navBox.b + 1,
+        `${w}: the CTA's rule stays inside the dock (${primary.rule.b} <= ${c.navBox.b})`);
     }
 
     // The centre CTA is a circle whether or not it is the current tab.
