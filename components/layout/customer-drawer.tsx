@@ -2,9 +2,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { LucideIcon } from "lucide-react";
 import {
-  ArrowUpRight, ChevronDown, Home, Images, LifeBuoy, Lightbulb, LogOut,
-  Plus, Settings, Shield,
+  ArrowUpRight, ChevronDown, ChevronRight, Home, Images, LifeBuoy, Lightbulb,
+  LogOut, Plus, Settings, Shield,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { CATEGORIES, VIDEO_ICON as VideoIcon } from "@/lib/categories";
@@ -15,8 +16,7 @@ import {
 } from "@/lib/features";
 import { isNavActive, sectionOwnsRoute } from "@/lib/nav-active";
 import { creditUsage, USAGE_BAR, USAGE_TEXT } from "@/lib/credit-usage";
-import { NavLink } from "./nav-link";
-import { Drawer, IslandClose, NavGroupLabel } from "./drawer";
+import { Drawer, IslandClose } from "./drawer";
 import { LocaleSwitcher } from "./locale-switcher";
 import { ThemeToggle } from "./theme-toggle";
 import { Diamond } from "./credits-control";
@@ -25,29 +25,24 @@ import { useDrawer } from "./shell-context";
 import { cn } from "@/lib/utils";
 
 /**
- * MOBILE MENU — the desktop information architecture folded into a drawer.
+ * MOBILE MENU — a column of cards, not a list of links.
  *
- * The panel is three fixed zones: ONE account card pinned at the top, a
- * navigation tree that scrolls on its own, and a single bar of controls pinned
- * at the bottom so sign-out, language and theme stay reachable on the shortest
- * phone.
+ * TWO CARDS AND THEN TILES. The account and the wallet each get a surface of
+ * their own at the top, and every destination below them is its own rounded
+ * tile with an icon plate, a label and a chevron. The flat text list this
+ * replaced was legible and cheap and read like a table of contents; at phone
+ * scale a tile is what says "this is a thing you can press".
  *
- * THE TOP IS ONE CARD, NOT FOUR THINGS IN A ROW. It used to be a strip of
- * controls, then a card whose right-hand corner carried the balance and the
- * plan badge stacked on top of each other, with the buttons below — four
- * unrelated boxes that happened to be adjacent. Identity (avatar, name, plan)
- * and the wallet (balance, meter, the two ways to get more) are now one
- * surface, in that order, because that is one subject: this account.
+ * THE METER SHOWS WHAT IS LEFT. The bar empties as credits are spent and the
+ * label says "Pozostało", because that is the question a seller opens this
+ * menu with. The COLOUR still comes from how much is gone
+ * (`lib/credit-usage.ts`): 10 % left is red whichever way the number is
+ * phrased, and the card itself never changes colour — nearly out of credits is
+ * not an error state.
  *
- * THE METER IS THE POINT OF THE CARD. It is the only place in the product that
- * answers "how much of my package is left" against the plan's REAL allowance,
- * and its colour walks green → yellow → orange → red as the package empties
- * (`lib/credit-usage.ts`). The card itself never changes colour: a seller at
- * 95 % is nearly out of credits, not in an error state.
- *
- * GROUPS ARE LABELLED — GŁÓWNE, OBRAZY, NARZĘDZIA, WIDEO — because a flat list
- * of twenty links is not navigation, it is an index. They all start collapsed
- * except the one holding the page you are on, which opens itself.
+ * THE MAIN DESTINATIONS HAVE NO HEADING. They are five tiles under the wallet,
+ * always visible; only the three workshops — OBRAZY, NARZĘDZIA, WIDEO — fold,
+ * and the one holding the page you are on opens itself.
  */
 export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdmin, navAdmin, availability }: {
   name: string; email?: string; credits: number;
@@ -94,163 +89,156 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
    */
   const toolEntries = IMAGE_EDIT.filter((e) => !e.soon && show(e.href));
 
-  /**
-   * GŁÓWNE holds the places that are not a workshop: the dashboard, the things
-   * you have made, and account business. "Tworzenie" is gone as a section —
-   * every way of making an image is either a category above or the Generuj
-   * button in the bottom bar, and a heading whose only job was to duplicate
-   * those was a third route to the same two places.
-   */
-  const mainHrefs = [
-    "/home",
-    ...(show("/library") ? ["/library"] : []),
-    ...(show("/inspirations") ? ["/inspirations"] : []),
-    "/support",
-    "/settings",
-    // The admin row follows the REAL role, and the section must know about it
-    // or the heading would not open on the route it contains.
-    ...(isAdmin ? ["/admin"] : []),
-  ];
-
   return (
     <Drawer
       open={open}
       onClose={() => setOpen(false)}
       label={t("nav.menu")}
       header={(close) => (
-        <div className="px-3 pt-[max(0.75rem,calc(env(safe-area-inset-top)+0.5rem))]">
-          <div className="rounded-2xl border border-line bg-[rgb(var(--ink)/0.045)] p-2.5 shadow-e1">
-            {/* WHO — avatar, name, plan. The close control sits in the card's
-                own corner rather than floating over the panel. */}
-            <div className="flex items-start gap-3">
-              <span aria-hidden className="brand-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-[15px] font-bold text-white shadow-e2">
-                {initial}
-              </span>
-              <div className="min-w-0 flex-1 pt-0.5">
-                <p className="truncate text-[15px] font-semibold leading-tight">{who}</p>
-                <span className={cn(
-                  "mt-1.5 inline-flex max-w-full truncate rounded-full px-2 py-[3px] text-[9.5px] font-bold uppercase leading-none tracking-wide",
-                  PLAN_BADGE[tone],
-                )}>
-                  {plan}
-                </span>
-              </div>
-              <IslandClose onClick={close} label={t("common.close")} />
-            </div>
-
-            {/* THE WALLET — one name for it everywhere: "Kredyty". */}
-            <div className="mt-2.5 rounded-xl bg-[rgb(var(--ink)/0.05)] p-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="inline-flex min-w-0 items-center gap-2">
-                  <span aria-hidden className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
-                    <Diamond size={9} />
-                  </span>
-                  <span className="truncate text-[12.5px] font-semibold text-muted">{t("nav.credits")}</span>
-                </span>
-                <span className="metric inline-flex shrink-0 items-center gap-1.5 text-[16px] leading-none text-accent">
-                  <Diamond size={8} />
-                  {num(credits)}
-                </span>
-              </div>
-
-              {/* NO LIMIT, NO METER. A plan without a monthly grant says so
-                  rather than showing a bar computed from a number nobody
-                  granted. */}
-              {usage.percent === null || usage.total === null ? (
-                <p className="mt-2 text-[11px] leading-tight text-faint">{t("creditsPanel.noLimit")}</p>
-              ) : (
-                <>
-                  <span className="mt-2.5 block h-2 w-full overflow-hidden rounded-full bg-[rgb(var(--ink)/0.12)]">
-                    <span
-                      className={cn(
-                        "block h-full rounded-full transition-[width,background-color,box-shadow] duration-500 ease-out",
-                        USAGE_BAR[usage.band],
-                      )}
-                      // A 3% floor so "nothing used yet" is still a visible bar
-                      // rather than an empty track that reads as "no data".
-                      style={{ width: `${Math.max(3, usage.percent)}%` }}
-                    />
-                  </span>
-                  <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] leading-none">
-                    <span className="min-w-0 truncate text-muted">
-                      {t("creditsPanel.used")}:{" "}
-                      <span className={cn("font-semibold tabular-nums", USAGE_TEXT[usage.band])}>
-                        {usage.percent}%
-                      </span>
-                    </span>
-                    <span className="metric shrink-0 tabular-nums text-faint">
-                      {num(usage.used)} / {num(usage.total)}
-                    </span>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* TWO WAYS FORWARD, both to pages that exist: the pricing board
-                and the wallet. Upgrading is the quieter of the two — most
-                sellers who open this menu want credits, not a new plan. */}
-            <div className="mt-2.5 grid grid-cols-1 gap-2 min-[360px]:grid-cols-2">
-              <Link href="/plan" onClick={closeNav}
-                className="flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-line bg-[rgb(var(--ink)/0.05)] px-2 text-[12.5px] font-semibold text-ink transition-colors duration-200 hover:bg-raised">
-                <ArrowUpRight size={14} aria-hidden className="shrink-0" />
-                <span className="truncate">{t("nav.upgrade")}</span>
-              </Link>
-              <Link href="/credits" onClick={closeNav}
-                className="cta flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 text-[12.5px] font-semibold">
-                <Plus size={14} aria-hidden strokeWidth={2.6} className="shrink-0" />
-                <span className="truncate">{t("credits.topupTitle")}</span>
-              </Link>
-            </div>
-          </div>
+        /* The close control lives ABOVE the account card, not inside it: the
+           card is the account, and an X in its corner read as "dismiss this
+           account". */
+        <div className="flex justify-end px-3 pt-[max(0.5rem,calc(env(safe-area-inset-top)+0.25rem))]">
+          <IslandClose onClick={close} label={t("common.close")} />
         </div>
       )}
       footer={
-        /* ONE BAR, THREE CONTROLS, ONE HEIGHT. Language and theme used to sit
-           at the very top of the drawer, above the account card, which put two
-           preferences in the most valuable space in the menu. They belong with
-           sign-out: things you touch on your way out. */
-        <div className="flex items-center gap-2">
-          <form method="post" action="/auth/sign-out" className="min-w-0 flex-1">
-            <button className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-line bg-[rgb(var(--ink)/0.04)] px-2.5 text-[12.5px] font-semibold text-muted transition-colors duration-200 hover:bg-raised hover:text-ink">
-              <LogOut size={15} aria-hidden className="shrink-0" />
-              <span className="truncate">{t("common.signOut")}</span>
+        <div className="space-y-2">
+          {/* Sign-out is a destination like any other, so it wears the same
+              tile. It used to be a small quiet button, which is how it ended
+              up looking like a footnote. */}
+          <form method="post" action="/auth/sign-out">
+            <button className="group flex min-h-[52px] w-full items-center gap-3 rounded-2xl border border-[rgb(var(--line)/0.12)] bg-[rgb(var(--ink)/0.04)] px-3 py-2.5 text-left transition-colors duration-200 hover:bg-[rgb(var(--ink)/0.07)]">
+              <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[rgb(var(--ink)/0.07)] text-muted transition-colors duration-200 group-hover:text-ink">
+                <LogOut size={17} />
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink">{t("common.signOut")}</span>
+              <ChevronRight size={16} aria-hidden className="shrink-0 text-faint" />
             </button>
           </form>
-          {/* Flags only, opening upwards — there is nothing below this bar. */}
-          <LocaleSwitcher align="left" side="top" flagsOnly size="md" />
-          <ThemeToggle size="md" />
+
+          {/* One line, two preferences: language on the left, theme on the
+              right, both compact enough to leave the row calm. */}
+          <div className="flex items-center justify-between gap-2">
+            <LocaleSwitcher align="left" side="top" flagsOnly size="md" pill />
+            <ThemeToggle size="md" />
+          </div>
         </div>
       }
     >
-      {/* Every group below is drawn from the availability map: entries the
-          customer may not see are filtered out, and a group left with nothing
-          in it drops its heading too — an empty "WIDEO" is worse than none. */}
-      <Section title={t("nav.groups.main")} hrefs={mainHrefs}>
-        <NavLink href="/home" label={t("topnav.home")} icon={Home} onNavigate={closeNav}
-          badge={badge("/home")} />
+      {/* ── THE ACCOUNT ──────────────────────────────────────────────────── */}
+      <Link href="/settings" onClick={closeNav}
+        className="group flex items-center gap-3 rounded-2xl border border-[rgb(var(--line)/0.14)] bg-gradient-to-b from-[rgb(var(--ink)/0.075)] to-[rgb(var(--ink)/0.035)] p-3 shadow-e1 transition-colors duration-200 hover:to-[rgb(var(--ink)/0.06)]">
+        <span aria-hidden className="relative flex h-12 w-12 shrink-0 items-center justify-center">
+          {/* The glow is a blurred copy of the avatar, so it is always the
+              brand gradient and never a second colour to keep in step. */}
+          <span className="brand-gradient absolute inset-1 rounded-full opacity-40 blur-[9px]" />
+          <span className="brand-gradient relative flex h-12 w-12 items-center justify-center rounded-full text-[17px] font-bold text-white ring-2 ring-[rgb(var(--accent)/0.35)]">
+            {initial}
+          </span>
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[15.5px] font-semibold leading-tight text-ink">{who}</span>
+          <span className={cn(
+            "mt-1.5 inline-flex max-w-full truncate rounded-full px-2 py-[3px] text-[9.5px] font-bold uppercase leading-none tracking-wide",
+            PLAN_BADGE[tone],
+          )}>
+            {plan}
+          </span>
+        </span>
+        <ChevronRight size={18} aria-hidden className="shrink-0 text-faint transition-colors duration-200 group-hover:text-ink" />
+      </Link>
+
+      {/* ── THE WALLET ───────────────────────────────────────────────────── */}
+      <div className="mt-2.5 overflow-hidden rounded-2xl border border-[rgb(var(--accent)/0.24)] bg-gradient-to-b from-[rgb(var(--accent)/0.10)] to-[rgb(var(--ink)/0.04)] p-3 shadow-e1">
+        <div className="flex items-center justify-between gap-2">
+          <span className="inline-flex min-w-0 items-center gap-2.5">
+            <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent ring-1 ring-[rgb(var(--accent)/0.35)]">
+              <Diamond size={12} />
+            </span>
+            <span className="truncate text-[14px] font-semibold text-ink">{t("nav.credits")}</span>
+          </span>
+          <span className="metric inline-flex shrink-0 items-center gap-1.5 text-[19px] leading-none text-accent">
+            <Diamond size={10} />
+            {num(credits)}
+          </span>
+        </div>
+
+        {/* NO LIMIT, NO METER. A plan without a monthly grant says so rather
+            than showing a bar computed from a number nobody granted. */}
+        {usage.remainingPercent === null || usage.total === null ? (
+          <p className="mt-3 text-[11.5px] leading-tight text-faint">{t("creditsPanel.noLimit")}</p>
+        ) : (
+          <>
+            <span className="mt-3 block h-2.5 w-full overflow-hidden rounded-full bg-[rgb(var(--ink)/0.13)]">
+              <span
+                className={cn(
+                  "block h-full rounded-full transition-[width,background-color,box-shadow] duration-500 ease-out",
+                  USAGE_BAR[usage.band],
+                )}
+                // The bar draws WHAT IS LEFT, so a full wallet is a full bar.
+                // The 3 % floor keeps an empty wallet visible as a line rather
+                // than as an empty track that reads as "no data".
+                style={{ width: `${Math.max(3, usage.remainingPercent)}%` }}
+              />
+            </span>
+            <div className="mt-2 flex items-center justify-between gap-2 text-[11.5px] leading-none">
+              <span className="min-w-0 truncate text-muted">
+                {t("creditsPanel.left")}:{" "}
+                <span className="metric tabular-nums text-ink">{num(usage.remaining)} / {num(usage.total)}</span>
+              </span>
+              <span className={cn("shrink-0 font-semibold tabular-nums", USAGE_TEXT[usage.band])}>
+                {usage.remainingPercent}%
+              </span>
+            </div>
+          </>
+        )}
+
+        {/* Two across only when "Doładuj kredyty" actually fits beside
+            "Ulepsz plan" — measured, not guessed. Below that the pair stacks
+            rather than truncating the label that spends money. */}
+        <div className="mt-3 grid grid-cols-1 gap-2 min-[375px]:grid-cols-2">
+          <Link href="/plan" onClick={closeNav}
+            className="flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-[rgb(var(--accent)/0.30)] bg-[rgb(var(--accent)/0.10)] px-2 text-[12.5px] font-semibold text-ink transition-colors duration-200 hover:bg-[rgb(var(--accent)/0.16)]">
+            <ArrowUpRight size={15} aria-hidden className="shrink-0 text-accent" />
+            <span className="truncate">{t("nav.upgrade")}</span>
+          </Link>
+          <Link href="/credits" onClick={closeNav}
+            className="cta flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 text-[12.5px] font-semibold">
+            <Plus size={15} aria-hidden strokeWidth={2.6} className="shrink-0" />
+            <span className="truncate">{t("credits.topupTitle")}</span>
+          </Link>
+        </div>
+      </div>
+
+      {/* ── THE PLACES ───────────────────────────────────────────────────── */}
+      <div className="mt-3 space-y-1.5">
+        <Tile href="/home" label={t("topnav.home")} icon={Home} onNavigate={closeNav} badge={badge("/home")} />
         {show("/library") && (
-          <NavLink href="/library" label={t("topnav.library")} icon={Images} onNavigate={closeNav}
-            badge={badge("/library")} />
+          <Tile href="/library" label={t("topnav.library")} icon={Images} onNavigate={closeNav} badge={badge("/library")} />
         )}
         {show("/inspirations") && (
-          <NavLink href="/inspirations" label={t("nav.inspirations")} icon={Lightbulb} onNavigate={closeNav}
-            badge={badge("/inspirations")} />
+          <Tile href="/inspirations" label={t("nav.inspirations")} icon={Lightbulb} onNavigate={closeNav} badge={badge("/inspirations")} />
         )}
-        <NavLink href="/support" label={t("nav.help")} icon={LifeBuoy} onNavigate={closeNav} />
-        <NavLink href="/settings" label={t("nav.settings")} icon={Settings} onNavigate={closeNav} />
-        {/* ADMIN IS A ROLE CHECK, NOT A STYLE. Hiding this row is the LAST of
+        <Tile href="/settings" label={t("nav.settings")} icon={Settings} onNavigate={closeNav} />
+        <Tile href="/support" label={t("nav.help")} icon={LifeBuoy} onNavigate={closeNav} />
+        {/* ADMIN IS A ROLE CHECK, NOT A STYLE. Hiding this tile is the LAST of
             three gates, not the only one: `/admin` has its own server-side
             redirect for anyone whose profile role is not admin, and every
             admin action is checked again in the database. */}
-        {isAdmin && <AdminRow label={t("nav.admin")} onNavigate={closeNav} />}
-      </Section>
+        {isAdmin && (
+          <Tile href="/admin" label={t("nav.admin")} icon={Shield} onNavigate={closeNav}
+            rgb="var(--accent2)" tinted />
+        )}
+      </div>
 
-      {/* OBRAZY — the six category workspaces, each its own switchable module
-          in its own colour. */}
+      {/* ── THE WORKSHOPS ────────────────────────────────────────────────── */}
       {categories.length > 0 && (
         <Section title={t("topnav.image")} hrefs={categories.map((c) => `/k/${c.slug}`)}>
           {categories.map((c) => (
-            <CategoryRow key={c.key} c={c} t={t} onNavigate={closeNav} dynBadge={badge(`/k/${c.slug}`)} />
+            <Tile key={c.key} href={`/k/${c.slug}`} label={t(`cats.${c.key}`)} icon={c.icon}
+              onNavigate={closeNav} rgb={c.accent.rgb}
+              badge={badge(`/k/${c.slug}`) ?? (c.soon ? t("common.soon") : null)} />
           ))}
         </Section>
       )}
@@ -260,16 +248,16 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
           {/* The hub is the last of these five entries, so it is not appended a
               second time underneath them. */}
           {toolEntries.map((e) => (
-            <NavLink key={e.key} href={e.href} label={t(editLabelKey(e))} icon={e.icon} onNavigate={closeNav}
-              badge={badge(e.href)} />
+            <Tile key={e.key} href={e.href} label={t(editLabelKey(e))} icon={e.icon}
+              onNavigate={closeNav} badge={badge(e.href)} />
           ))}
         </Section>
       )}
 
       {show("/wideo") && (
         <Section title={t("topnav.video")} hrefs={["/wideo"]}>
-          <SoonRow href="/wideo" label={t("video.title")} onNavigate={closeNav}
-            icon={<VideoIcon size={16} />} soonLabel={badge("/wideo") ?? t("common.soon")} rgb="var(--violet)" />
+          <Tile href="/wideo" label={t("video.title")} icon={VideoIcon} onNavigate={closeNav}
+            rgb="var(--violet)" badge={badge("/wideo") ?? t("common.soon")} />
         </Section>
       )}
     </Drawer>
@@ -284,106 +272,83 @@ function badgeLabel(kind: MenuBadge, t: (k: string) => string): string | null {
   return null;
 }
 
-/** Staff-only entry into the admin panel. Same geometry as every other row —
- *  only the colour says it belongs to someone else. */
-function AdminRow({ label, onNavigate }: { label: string; onNavigate: () => void }) {
-  return (
-    <Link href="/admin" onClick={onNavigate}
-      className="flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-accent2 transition-colors duration-200 hover:bg-accent2-soft">
-      <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent2-soft">
-        <Shield size={16} />
-      </span>
-      <span className="truncate">{label}</span>
-    </Link>
-  );
-}
-
-/** A category row in the category's own colour, with an honest badge when
- *  the engine does not support it yet — or when the generator module itself
- *  is restricted (dynBadge). */
-function CategoryRow({ c, t, onNavigate, dynBadge }: {
-  c: (typeof CATEGORIES)[number];
-  t: (k: string) => string;
-  onNavigate: () => void;
-  dynBadge?: string | null;
-}) {
-  const pathname = usePathname();
-  // The same rule as every other row, rather than a second opinion: a bare
-  // `startsWith` here would light the category up alongside any deeper menu
-  // entry that ever lands under `/k/<slug>/`.
-  const active = isNavActive(pathname, `/k/${c.slug}`);
-  return (
-    <Link
-      href={`/k/${c.slug}`}
-      onClick={onNavigate}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "group relative flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors duration-200",
-        active ? "bg-[rgb(var(--cat)/0.12)] font-semibold text-ink" : "font-medium text-ink hover:bg-[rgb(var(--ink)/0.05)]",
-      )}
-      style={{ ["--cat" as string]: c.accent.rgb }}
-    >
-      <span aria-hidden className={cn(
-        "absolute left-0 top-1/2 w-[3px] -translate-y-1/2 rounded-r-full bg-[rgb(var(--cat))] transition-all duration-200",
-        active ? "h-6 opacity-100" : "h-2 opacity-0",
-      )} />
-      <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[rgb(var(--cat))]"
-        style={{ background: `rgb(${c.accent.rgb} / 0.16)` }}>
-        <c.icon size={16} />
-      </span>
-      <span className="min-w-0 flex-1 truncate">{t(`cats.${c.key}`)}</span>
-      {(dynBadge || c.soon) && (
-        <span className="shrink-0 rounded-full bg-raised px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-faint">
-          {dynBadge ?? t("common.soon")}
-        </span>
-      )}
-    </Link>
-  );
-}
-
 /**
- * A destination that exists but cannot generate yet — a real link to a page
- * that explains itself, never a dead entry.
+ * ONE DESTINATION, ONE TILE — the only row shape this menu has.
  *
- * IT STILL SAYS "YOU ARE HERE". This row used to be the one row in the menu
- * that could not: a seller standing on /wideo saw the WIDEO section open with
- * nothing highlighted inside it, which reads as a section that opened by
- * mistake. "Not finished" and "not where you are" are different facts, and the
- * badge already carries the first one.
+ * Icon plate, label, chevron, and a hairline that closes the card. Categories
+ * pass their own colour through `rgb` so Moda is still Moda and the admin tile
+ * is still staff-coloured, but the geometry never changes: same height, same
+ * plate, same chevron, so a list of them reads as a column rather than as a
+ * pile of differently-sized things.
+ *
+ * The ACTIVE tile is tinted, ringed and lit from the left in its own colour,
+ * with the icon plate filled. `isNavActive` decides that — the same rule every
+ * other menu in the product uses — so at most one tile can ever claim it.
  */
-function SoonRow({ href, label, icon, soonLabel, rgb, onNavigate }: {
-  href: string; label: string; icon: React.ReactNode; soonLabel: string;
-  rgb: string; onNavigate: () => void;
+function Tile({ href, label, icon: Icon, onNavigate, badge, rgb = "var(--accent)", tinted = false }: {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  onNavigate?: () => void;
+  /** Availability pill ("Wkrótce" / "Prace techniczne") — the link stays live. */
+  badge?: string | null;
+  /** The tile's accent as a bare `r g b` triplet or a var() reference. */
+  rgb?: string;
+  /** Carry that accent even when the tile is NOT the current page — how the
+   *  staff entrance says it belongs to someone else without a second shape. */
+  tinted?: boolean;
 }) {
   const pathname = usePathname();
   const active = isNavActive(pathname, href);
   return (
-    <Link href={href} onClick={onNavigate}
+    <Link
+      href={href}
+      prefetch
+      onClick={onNavigate}
       aria-current={active ? "page" : undefined}
+      style={{ ["--tile" as string]: rgb }}
       className={cn(
-        "group relative flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors duration-200",
-        active ? "bg-[rgb(var(--soon)/0.12)] font-semibold text-ink" : "font-medium text-ink hover:bg-[rgb(var(--ink)/0.05)]",
+        "group relative flex min-h-[52px] items-center gap-3 overflow-hidden rounded-2xl border px-3 py-2.5 transition-all duration-200",
+        active
+          ? "border-[rgb(var(--tile)/0.45)] bg-[rgb(var(--tile)/0.13)] shadow-[0_0_18px_-6px_rgb(var(--tile)/0.55)]"
+          : "border-[rgb(var(--line)/0.12)] bg-[rgb(var(--ink)/0.035)] hover:bg-[rgb(var(--ink)/0.065)]",
       )}
-      style={{ ["--soon" as string]: rgb }}
     >
       <span aria-hidden className={cn(
-        "absolute left-0 top-1/2 w-[3px] -translate-y-1/2 rounded-r-full bg-[rgb(var(--soon))] transition-all duration-200",
-        active ? "h-6 opacity-100" : "h-2 opacity-0",
+        "absolute left-0 top-1/2 w-[3px] -translate-y-1/2 rounded-r-full bg-[rgb(var(--tile))] transition-all duration-200",
+        active ? "h-7 opacity-100" : "h-3 opacity-0",
       )} />
-      <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
-        style={{ background: `rgb(${rgb} / 0.16)`, color: `rgb(${rgb})` }}>
-        {icon}
+      <span aria-hidden className={cn(
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors duration-200",
+        active
+          ? "bg-[rgb(var(--tile)/0.22)] text-[rgb(var(--tile))] ring-1 ring-[rgb(var(--tile)/0.45)]"
+          : tinted
+            ? "bg-[rgb(var(--tile)/0.14)] text-[rgb(var(--tile))] ring-1 ring-[rgb(var(--tile)/0.28)]"
+            : "bg-[rgb(var(--ink)/0.07)] text-muted group-hover:text-ink",
+      )}>
+        <Icon size={17} strokeWidth={active ? 2.3 : 2} />
       </span>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      <span className="shrink-0 rounded-full bg-raised px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-faint">
-        {soonLabel}
+      <span className={cn(
+        "min-w-0 flex-1 truncate text-[14px]",
+        active ? "font-semibold text-ink" : tinted ? "font-semibold text-[rgb(var(--tile))]" : "font-medium text-ink",
+      )}>
+        {label}
       </span>
+      {badge && (
+        <span className="shrink-0 rounded-full bg-[rgb(var(--ink)/0.08)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-faint">
+          {badge}
+        </span>
+      )}
+      <ChevronRight size={16} aria-hidden className={cn(
+        "shrink-0 transition-colors duration-200",
+        active ? "text-[rgb(var(--tile))]" : "text-faint",
+      )} />
     </Link>
   );
 }
 
 /**
- * Collapsible drawer group — the whole tree fits without endless scrolling.
+ * Collapsible group — the three workshops, folded so the whole tree fits.
  *
  * THE ROUTE DECIDES WHETHER THIS IS OPEN, not a remembered click.
  *
@@ -395,17 +360,11 @@ function SoonRow({ href, label, icon, soonLabel, rgb, onNavigate }: {
  * the page they were looking at collapsed, every single time, with the
  * highlight hidden inside it.
  *
- * Now the section is open when it holds the row for the current page, decided
- * by `sectionOwnsRoute` — the same function that decides which row lights up,
+ * Now the section is open when it holds the tile for the current page, decided
+ * by `sectionOwnsRoute` — the same function that decides which tile lights up,
  * so the two can never disagree. That is also why this survives a refresh, a
  * direct URL, and back/forward: none of them are remembered state, they are
  * just a pathname, and the pathname is the whole input.
- *
- * NOTHING ELSE OPENS ON ITS OWN. `defaultOpen` is gone: a section that is not
- * where you are is closed, whichever section it is. Three headings used to
- * carry it, which meant a drawer opened on a tool route showed its own
- * section expanded plus three others, and the seller had to read past a dozen
- * rows that had nothing to do with where they were.
  *
  * A visitor can still fold a section away, and that click is remembered — but
  * only for the page they were on when they made it. Navigate, and the route
@@ -422,18 +381,27 @@ function Section({ title, hrefs = [], children }: {
   const [choice, setChoice] = useState<{ route: string; open: boolean } | null>(null);
   const open = choice?.route === pathname ? choice.open : sectionOwnsRoute(pathname, hrefs);
   return (
-    <div className="mb-0.5">
+    <div className="mt-3">
       <button
         type="button"
         onClick={() => setChoice({ route: pathname, open: !open })}
         aria-expanded={open}
-        className="flex w-full items-center justify-between rounded-xl px-2.5 py-1.5 transition-colors duration-200 hover:bg-raised/60"
+        className={cn(
+          "flex min-h-[44px] w-full items-center justify-between gap-2 rounded-2xl border px-3 py-2 transition-colors duration-200",
+          open
+            ? "border-[rgb(var(--line)/0.16)] bg-[rgb(var(--ink)/0.05)]"
+            : "border-[rgb(var(--line)/0.10)] bg-[rgb(var(--ink)/0.025)] hover:bg-[rgb(var(--ink)/0.05)]",
+        )}
       >
-        <NavGroupLabel>{title}</NavGroupLabel>
-        <ChevronDown size={14} aria-hidden
-          className={cn("shrink-0 text-faint transition-transform duration-200", open && "rotate-180")} />
+        <span className="overline truncate text-[10px] tracking-[0.18em] opacity-90">{title}</span>
+        <span aria-hidden className={cn(
+          "flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[rgb(var(--ink)/0.07)] text-faint transition-transform duration-200",
+          open && "rotate-180",
+        )}>
+          <ChevronDown size={14} />
+        </span>
       </button>
-      {open && <div className="animate-fade">{children}</div>}
+      {open && <div className="animate-fade mt-1.5 space-y-1.5">{children}</div>}
     </div>
   );
 }

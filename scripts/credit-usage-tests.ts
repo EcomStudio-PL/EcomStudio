@@ -86,6 +86,32 @@ for (const [balance, allowance, pct, band, label] of WALLETS) {
     `got ${u.percent}% / ${u.band} (used ${u.used} of ${u.total})`);
 }
 
+/* ── what the bar actually draws ─────────────────────────────────────────── */
+
+console.log("\nB2. WHAT IS LEFT — THE FIGURE THE METER DRAWS");
+
+for (const [balance, allowance, want, label] of [
+  [PLAN.pro * 0.9, PLAN.pro, 90, "Pro with 1080 of 1200 → 90 % left"],
+  [PLAN.pro * 0.4, PLAN.pro, 40, "Pro with 480 → 40 % left"],
+  [0, PLAN.free, 0, "an empty wallet has nothing left"],
+  [25, PLAN.free, 100, "a fresh Free account has all of it"],
+  [525, PLAN.free, 100, "…and a topped-up one is not shown as more than full"],
+] as [number, number, number, string][]) {
+  const u = creditUsage(balance, allowance);
+  check(label, u.remainingPercent === want, `got ${u.remainingPercent}%`);
+}
+// The two figures are complements of ONE rounding, so "70 % used" can never
+// sit beside "31 % left".
+for (const [balance, allowance] of [[1, 3], [7, 9], [123, 457], [0, 25], [1200, 1200]] as [number, number][]) {
+  const u = creditUsage(balance, allowance);
+  check(`${balance}/${allowance}: used ${u.percent}% + left ${u.remainingPercent}% = 100`,
+    (u.percent ?? 0) + (u.remainingPercent ?? 0) === 100);
+}
+{
+  const u = creditUsage(120, null);
+  check("no limit → no figure to draw either", u.remainingPercent === null, JSON.stringify(u));
+}
+
 /* ── the clamps ──────────────────────────────────────────────────────────── */
 
 console.log("\nC. NO NEGATIVES, NO OVER-HUNDRED");

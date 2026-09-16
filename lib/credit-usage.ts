@@ -37,8 +37,17 @@ export type CreditUsage = {
   used: number;
   /** What is still there — the wallet balance, clamped at zero. */
   remaining: number;
-  /** 0–100, or null when there is nothing to compute it against. */
+  /** How much of the package is GONE, 0–100. Null when incomputable. */
   percent: number | null;
+  /**
+   * How much of it is LEFT, 0–100 — what the meter actually draws.
+   *
+   * The bar empties as credits are spent, which is the direction a seller
+   * reads without thinking: a full bar is a full wallet. The BAND still comes
+   * from `percent`, because the colour is about danger, not about length —
+   * 10 % left is red whichever number you print next to it.
+   */
+  remainingPercent: number | null;
   band: UsageBand;
 };
 
@@ -66,7 +75,7 @@ export function creditUsage(balance: number, allowance: number | null | undefine
       : null;
 
   if (total === null) {
-    return { total: null, used: 0, remaining, percent: null, band: "unknown" };
+    return { total: null, used: 0, remaining, percent: null, remainingPercent: null, band: "unknown" };
   }
 
   const used = Math.min(total, Math.max(0, total - remaining));
@@ -74,7 +83,9 @@ export function creditUsage(balance: number, allowance: number | null | undefine
   // lies: 89.6 % of a package is shown as 90 % and is coloured as 90 %,
   // because the band is read off the same rounded figure the label shows.
   const percent = Math.round((used / total) * 100);
-  return { total, used, remaining, percent, band: usageBand(percent) };
+  // The complement of the SAME rounded figure, so "70 % used" and "30 % left"
+  // can never appear as 70 and 31 next to each other.
+  return { total, used, remaining, percent, remainingPercent: 100 - percent, band: usageBand(percent) };
 }
 
 /**

@@ -2112,7 +2112,7 @@
     "buy": "Credits kaufen",
     "upgrade": "Plan upgraden",
     "topUpShort": "Aufladen",
-    "used": "Verbraucht",
+    "left": "Verbleibend",
     "noLimit": "Tarif ohne monatliches Limit"
   },
   "topnav": {

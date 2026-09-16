@@ -2112,7 +2112,7 @@
     "buy": "Dokup kredyty",
     "upgrade": "Ulepsz plan",
     "topUpShort": "Doładuj",
-    "used": "Wykorzystano",
+    "left": "Pozostało",
     "noLimit": "Plan bez miesięcznego limitu"
   },
   "topnav": {
