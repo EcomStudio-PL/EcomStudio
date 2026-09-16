@@ -12,6 +12,7 @@ import { AI_TOOL_KEYS, ENGINE_MODES, isAiToolKey, toolTabs } from "@/lib/service
 import { costOf, summarise, groupBy, periodStart, monthStart, type UsageEventRow } from "@/lib/services/ai-economics";
 import { DEFAULT_BILLING } from "@/lib/images/pricing";
 import { FEATURE_KEYS } from "@/lib/features";
+import { isNavActive } from "@/lib/nav-active";
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -198,9 +199,16 @@ console.log("I. the budget is ours, and the panel says so");
 
 console.log("J. one menu entry highlights at a time");
 {
-  const navLink = read("components/layout/nav-link.tsx");
-  check("the longest matching href wins", navLink.includes("ALL_HREFS.some")
-    && navLink.includes("other.startsWith(`${href}/`)"));
+  // The rule moved out of the component into `lib/nav-active.ts`, so this
+  // asks it directly rather than grepping for the old variable name: on the
+  // deeper screen only the deeper entry lights, and on a sub-page with no menu
+  // row of its own the section keeps the highlight instead of going dark.
+  check("the longest matching href wins",
+    isNavActive("/admin/ai/modele", "/admin/ai/modele") && !isNavActive("/admin/ai/modele", "/admin/ai"));
+  check("a sub-page with no entry of its own keeps its section lit",
+    isNavActive("/admin/ai/szablony", "/admin/ai"));
+  check("the customer menu obeys the same rule",
+    isNavActive("/tools/resize", "/tools/resize") && !isNavActive("/tools/resize", "/tools"));
   check("both AI destinations are in the menu",
     read("lib/navigation.ts").includes('"/admin/ai/modele"'));
 }

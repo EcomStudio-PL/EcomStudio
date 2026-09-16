@@ -10,9 +10,10 @@ import { useI18n } from "@/lib/i18n/provider";
 import { CATEGORIES, VIDEO_ICON as VideoIcon } from "@/lib/categories";
 import { IMAGE_EDIT, IMAGE_MODES, editLabelKey } from "@/lib/topnav";
 import {
-  allDefaults, groupHasVisible, menuBadge, menuVisible,
+  allDefaults, menuBadge, menuVisible,
   type AvailabilityMap, type MenuBadge,
 } from "@/lib/features";
+import { isNavActive, sectionOwnsRoute } from "@/lib/nav-active";
 import { NavLink } from "./nav-link";
 import { Drawer, IslandClose, NavGroupLabel } from "./drawer";
 import { LocaleSwitcher } from "./locale-switcher";
@@ -50,6 +51,28 @@ export function CustomerDrawer({ name, email, credits, plan, isAdmin, navAdmin, 
   const tone = planTone(plan);
   const isFree = tone === "free";
   const closeNav = () => setOpen(false);
+
+  /**
+   * EACH SECTION'S ROWS, RESOLVED ONCE.
+   *
+   * The same array both renders the rows and tells the section which routes it
+   * owns, so a heading can never auto-expand onto rows that are not there —
+   * and a row can never appear in a section that does not know about it.
+   */
+  const categories = CATEGORIES.filter((c) => show(`/k/${c.slug}`));
+  // THE HUB BELONGS TO EDYTUJ, ONCE. `IMAGE_MODES` also carries "Wszystkie
+  // narzędzia", which the desktop mega panel deliberately shows in both of its
+  // columns. A drawer is a single list, so the same thing appearing twice is
+  // not emphasis — it is two rows that both light up on /tools, which is the
+  // duplicate-highlight this change exists to remove. Filtering by href rather
+  // than by name keeps that true if either list changes.
+  const editEntries = IMAGE_EDIT.filter((e) => !e.soon && show(e.href));
+  const createEntries = IMAGE_MODES.filter(
+    (e) => show(e.href) && !editEntries.some((x) => x.href === e.href),
+  );
+
+  const mainHrefs = ["/home", ...(show("/library") ? ["/library"] : [])];
+  const accountHrefs = [...(show("/inspirations") ? ["/inspirations"] : []), "/settings", "/support"];
 
   return (
     <Drawer
@@ -121,7 +144,7 @@ export function CustomerDrawer({ name, email, credits, plan, isAdmin, navAdmin, 
       {/* Every group below is drawn from the availability map: entries the
           customer may not see are filtered out, and a group left with nothing
           in it drops its heading too — an empty "WIDEO" is worse than none. */}
-      <Section title={t("nav.groups.main")} defaultOpen>
+      <Section title={t("nav.groups.main")} defaultOpen hrefs={mainHrefs}>
         <NavLink href="/home" label={t("topnav.home")} icon={Home} onNavigate={closeNav}
           badge={badge("/home")} />
         {show("/library") && (
@@ -132,28 +155,28 @@ export function CustomerDrawer({ name, email, credits, plan, isAdmin, navAdmin, 
 
       {/* OBRAZ — the six category workspaces, each its own switchable module
           in its own colour. */}
-      {groupHasVisible(avail, CATEGORIES.map((c) => `/k/${c.slug}`), seesRestricted) && (
-        <Section title={t("topnav.image")} defaultOpen>
-          {CATEGORIES.filter((c) => show(`/k/${c.slug}`)).map((c) => (
+      {categories.length > 0 && (
+        <Section title={t("topnav.image")} defaultOpen hrefs={categories.map((c) => `/k/${c.slug}`)}>
+          {categories.map((c) => (
             <CategoryRow key={c.key} c={c} t={t} onNavigate={closeNav} dynBadge={badge(`/k/${c.slug}`)} />
           ))}
         </Section>
       )}
 
-      {groupHasVisible(avail, IMAGE_MODES.map((e) => e.href), seesRestricted) && (
-        <Section title={t("nav.groups.create")}>
-          {IMAGE_MODES.filter((e) => show(e.href)).map((e) => (
+      {createEntries.length > 0 && (
+        <Section title={t("nav.groups.create")} hrefs={createEntries.map((e) => e.href)}>
+          {createEntries.map((e) => (
             <NavLink key={e.key} href={e.href} label={t(`mega.${e.key}`)} icon={e.icon} onNavigate={closeNav}
               badge={badge(e.href)} />
           ))}
         </Section>
       )}
 
-      {groupHasVisible(avail, IMAGE_EDIT.filter((e) => !e.soon).map((e) => e.href), seesRestricted) && (
-        <Section title={t("mega.edit")}>
+      {editEntries.length > 0 && (
+        <Section title={t("mega.edit")} hrefs={editEntries.map((e) => e.href)}>
           {/* The hub is the last of these five entries, so it is not appended a
               second time underneath them. */}
-          {IMAGE_EDIT.filter((e) => !e.soon && show(e.href)).map((e) => (
+          {editEntries.map((e) => (
             <NavLink key={e.key} href={e.href} label={t(editLabelKey(e))} icon={e.icon} onNavigate={closeNav}
               badge={badge(e.href)} />
           ))}
@@ -161,13 +184,13 @@ export function CustomerDrawer({ name, email, credits, plan, isAdmin, navAdmin, 
       )}
 
       {show("/wideo") && (
-        <Section title={t("topnav.video")}>
+        <Section title={t("topnav.video")} hrefs={["/wideo"]}>
           <SoonRow href="/wideo" label={t("video.title")} onNavigate={closeNav}
             icon={<VideoIcon size={15} />} soonLabel={badge("/wideo") ?? t("common.soon")} rgb="var(--violet)" />
         </Section>
       )}
 
-      <Section title={t("nav.groups.account")} defaultOpen>
+      <Section title={t("nav.groups.account")} defaultOpen hrefs={accountHrefs}>
         {show("/inspirations") && (
           <NavLink href="/inspirations" label={t("nav.inspirations")} icon={Lightbulb} onNavigate={closeNav}
             badge={badge("/inspirations")} />
@@ -206,7 +229,10 @@ function CategoryRow({ c, t, onNavigate, dynBadge }: {
   dynBadge?: string | null;
 }) {
   const pathname = usePathname();
-  const active = pathname.startsWith(`/k/${c.slug}`);
+  // The same rule as every other row, rather than a second opinion: a bare
+  // `startsWith` here would light the category up alongside any deeper menu
+  // entry that ever lands under `/k/<slug>/`.
+  const active = isNavActive(pathname, `/k/${c.slug}`);
   return (
     <Link
       href={`/k/${c.slug}`}
@@ -257,16 +283,47 @@ function SoonRow({ href, label, icon, soonLabel, rgb, onNavigate }: {
   );
 }
 
-/** Collapsible drawer group — the whole tree fits without endless scrolling. */
-function Section({ title, defaultOpen = false, children }: {
-  title: string; defaultOpen?: boolean; children: React.ReactNode;
+/**
+ * Collapsible drawer group — the whole tree fits without endless scrolling.
+ *
+ * THE ROUTE DECIDES WHETHER THIS IS OPEN, not a remembered click.
+ *
+ * It used to be `useState(defaultOpen)`, where `defaultOpen` is a literal
+ * written per section. EDYTUJ has none, so it started shut — and because the
+ * drawer unmounts its contents when it closes (`drawer.tsx`, `if (!open)
+ * return null`), that literal was re-applied EVERY time the menu was opened.
+ * A seller on Retusz zdjęć opened the menu and found the section containing
+ * the page they were looking at collapsed, every single time, with the
+ * highlight hidden inside it.
+ *
+ * Now the section is open when it holds the row for the current page, decided
+ * by `sectionOwnsRoute` — the same function that decides which row lights up,
+ * so the two can never disagree. That is also why this survives a refresh, a
+ * direct URL, and back/forward: none of them are remembered state, they are
+ * just a pathname, and the pathname is the whole input.
+ *
+ * A visitor can still fold a section away, and that click is remembered — but
+ * only for the page they were on when they made it. Navigate, and the route
+ * takes over again. Storing the route alongside the choice is what makes it
+ * expire on its own, with no effect to run and nothing to reset.
+ */
+function Section({ title, defaultOpen = false, hrefs = [], children }: {
+  title: string;
+  defaultOpen?: boolean;
+  /** The destinations this section renders — its claim on the current route. */
+  hrefs?: readonly string[];
+  children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const pathname = usePathname();
+  const [choice, setChoice] = useState<{ route: string; open: boolean } | null>(null);
+  const open = choice?.route === pathname
+    ? choice.open
+    : sectionOwnsRoute(pathname, hrefs) || defaultOpen;
   return (
     <div className="mb-0.5">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setChoice({ route: pathname, open: !open })}
         aria-expanded={open}
         className="flex w-full items-center justify-between rounded-xl px-2.5 py-1.5 transition-colors duration-200 hover:bg-raised/60"
       >

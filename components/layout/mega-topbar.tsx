@@ -8,6 +8,7 @@ import {
   IMAGE_CREATE, IMAGE_EDIT, IMAGE_MODES, VIDEO_CREATE, VIDEO_EDIT, editLabelKey, type MegaEntry,
 } from "@/lib/topnav";
 import { allDefaults, menuBadge, menuVisible, type AvailabilityMap, type FeatureKey, type MenuBadge } from "@/lib/features";
+import { isNavActive } from "@/lib/nav-active";
 import { cn } from "@/lib/utils";
 import { Brand } from "./brand";
 import { ThemeToggle } from "./theme-toggle";
@@ -146,7 +147,9 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
           <Link href="/plan"
             className={cn(
               "hidden h-9 items-center rounded-xl px-3 text-sm font-semibold transition-colors duration-200 lg:inline-flex",
-              pathname.startsWith("/plan") ? "bg-[rgb(var(--accent)/0.14)] text-ink" : "text-muted hover:bg-raised hover:text-ink",
+              // Segment-aware, so a future /plans or /planner cannot light
+              // "Plany" — `startsWith` had no boundary. Same rule as the menus.
+              isNavActive(pathname, "/plan") ? "bg-[rgb(var(--accent)/0.14)] text-ink" : "text-muted hover:bg-raised hover:text-ink",
             )}>
             {t("nav.plans")}
           </Link>
@@ -158,7 +161,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
           <Link href="/library"
             className={cn(
               "hidden h-9 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition-colors duration-200 lg:inline-flex",
-              pathname.startsWith("/library") ? "bg-[rgb(var(--accent)/0.14)] text-ink" : "text-muted hover:bg-raised hover:text-ink",
+              isNavActive(pathname, "/library") ? "bg-[rgb(var(--accent)/0.14)] text-ink" : "text-muted hover:bg-raised hover:text-ink",
             )}>
             <Images size={15} aria-hidden />
             {t("topnav.library")}
