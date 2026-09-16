@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Check, ChevronUp, Layers, Loader2, Maximize, PenLine, Ratio as RatioIcon, Sparkles,
 } from "lucide-react";
@@ -7,7 +7,6 @@ import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Diamond } from "@/components/layout/credits-control";
 import { BottomSheet } from "@/components/mobile/sheet";
-import { useDockRoom } from "@/components/layout/dock-room";
 import { modelBadgeLabel } from "@/lib/model-badge";
 import { cn } from "@/lib/utils";
 
@@ -95,8 +94,6 @@ export function GenerationToolbar({
   const { t, locale } = useI18n();
   const [sheet, setSheet] = useState<Sheet>(null);
   // One owner for the room this bar needs — see components/layout/dock-room.ts.
-  const dockRef = useRef<HTMLDivElement>(null);
-  useDockRoom(dockRef);
 
   const model = useMemo(
     () => models.find((m) => m.id === state.modelId) ?? models[0] ?? null,
@@ -172,8 +169,6 @@ export function GenerationToolbar({
   return (
     <>
       <div
-        ref={dockRef}
-        data-gen-dock
         className={cn(
           // PHONE AND TABLET: an ordinary block in the page, arriving after
           // the settings it belongs to. It used to be pinned above the bottom
