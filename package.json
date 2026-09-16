@@ -43,6 +43,7 @@
     "test:drawer": "node scripts/drawer-probe.mjs",
     "test:island": "node scripts/action-island-probe.mjs",
     "test:searchmobile": "node scripts/search-mobile-probe.mjs",
+    "test:chrome": "node scripts/chrome-probe.mjs",
     "test:nav": "esbuild scripts/nav-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/nav-tests.cjs --log-level=silent && node .next/nav-tests.cjs"
   },
   "dependencies": {

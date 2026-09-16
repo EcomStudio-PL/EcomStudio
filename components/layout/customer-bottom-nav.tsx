@@ -69,11 +69,20 @@ export function CustomerBottomNav({ availability, isAdmin = false }: {
               aria-current={active ? "page" : undefined}
               className={cn(slotClass, s.primary ? "text-ink" : active ? "text-accent" : "text-faint")}
             >
+              {/* NO TILE UNDER THE ACTIVE ICON.
+                  The current tab used to wear a tinted rounded box with an
+                  inset ring, which at dock scale reads as a button somebody
+                  has pressed rather than as "you are here" — and it competes
+                  with the one thing in this bar that IS a button. The tab is
+                  now marked the way the rest of the product marks a selection:
+                  the brand colour on the icon and on the label, with a soft
+                  bloom so it is lit rather than merely recoloured.
+                  `group-active:` stays — that is the momentary press feedback
+                  every tab gives while a finger is down, not a state. */}
               <span aria-hidden className={cn(
                 "relative flex h-7 w-11 items-center justify-center rounded-lg transition-all duration-200",
-                !s.primary && (active
-                  ? "bg-[rgb(var(--accent)/0.15)] shadow-[inset_0_0_0_1px_rgb(var(--accent)/0.32)]"
-                  : "group-active:bg-[rgb(var(--faint)/0.12)]"),
+                !s.primary && !active && "group-active:bg-[rgb(var(--faint)/0.12)]",
+                !s.primary && active && "drop-shadow-[0_0_6px_rgb(var(--accent)/0.55)]",
               )}>
                 {s.primary ? (
                   // THE ONE CTA. Brand gradient, a fine light edge and a soft

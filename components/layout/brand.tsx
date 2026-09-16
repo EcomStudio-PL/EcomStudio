@@ -58,8 +58,8 @@ export function BrandMark({ size = 28 }: { size?: number }) {
  * brand legible on a phone without ever painting it twice.
  */
 export function Brand({
-  href = "/", markOnly = false, height = 30, className, wordmarkClassName, forceDark = false,
-  imgClassName,
+  href = "/", markOnly = false, height = 30, className, wordmarkClassName, markClassName,
+  forceDark = false, imgClassName,
 }: {
   href?: string;
   markOnly?: boolean;
@@ -71,12 +71,26 @@ export function Brand({
    * with the viewport rather than sit at one pixel height. The geometry above
    * is an inline style — it has to be, so the logo reserves its space before
    * any CSS loads and never shifts the layout — so an override here must be
-   * marked important (`lg:!h-…`) to win. Only the forceDark lockup takes it;
-   * nothing else has asked.
+   * marked important (`lg:!h-…`) to win, and it has to set the WIDTH as well:
+   * the box is `object-contain`, so overriding the height alone leaves the
+   * lockup letterboxed inside the original width and the space is still
+   * reserved. Both lockup variants take it.
    */
   imgClassName?: string;
   /** Responsive visibility for the lockup, e.g. "hidden sm:inline-flex". */
   wordmarkClassName?: string;
+  /**
+   * Responsive visibility for the MARK that stands in where the lockup is
+   * hidden — and it has to be spelled out by the caller, not derived.
+   *
+   * `flipVisibility` below can compute it, and for the callers that already
+   * rely on that it still does. But a class name built at runtime is a class
+   * name Tailwind never saw while scanning the source, so it is never
+   * generated: `min-[360px]:hidden` came out of the flip, matched nothing in
+   * the stylesheet, and the mark stayed on screen NEXT TO the lockup. Any
+   * variant not already used literally somewhere has to be written here.
+   */
+  markClassName?: string;
   /**
    * For surfaces that are dark whatever the theme says — the launch page
    * paints its own dark palette, so `dark:` never fires there and the LIGHT
@@ -104,17 +118,17 @@ export function Brand({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/logo-on-light.png" alt="" width={width} height={height}
             style={{ height, width }}
-            className="select-none object-contain dark:hidden" />
+            className={cn("select-none object-contain dark:hidden", imgClassName)} />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/logo-on-dark.png" alt="" width={width} height={height}
             style={{ height, width }}
-            className="hidden select-none object-contain dark:inline" />
+            className={cn("hidden select-none object-contain dark:inline", imgClassName)} />
         </span>
       )}
       {/* A lockup hidden by `wordmarkClassName` leaves the mark in its place,
           so the brand is present at every width and duplicated at none. */}
       {!markOnly && wordmarkClassName && (
-        <span className={cn("inline-flex items-center", flipVisibility(wordmarkClassName))}>
+        <span className={cn("inline-flex items-center", markClassName ?? flipVisibility(wordmarkClassName))}>
           <BrandMark size={height} />
         </span>
       )}

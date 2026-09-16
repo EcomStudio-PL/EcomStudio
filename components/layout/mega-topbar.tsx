@@ -105,9 +105,27 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
           <Menu aria-hidden size={20} />
         </button>
 
-        {/* ONE brand lockup. The wordmark collapses below `sm`; the mark is
-            never duplicated at any width. */}
-        <Brand href="/home" className="shrink-0" wordmarkClassName="hidden sm:inline-flex" />
+        {/* THE FULL LOCKUP ON A PHONE, not just the symbol.
+            The wordmark used to collapse below `sm`, so every phone showed a
+            bare mark and the product never said its own name on the surface a
+            seller looks at most.
+
+            It is smaller there because the room is real and measured: this row
+            holds the hamburger, the credits, the search and the bell, and the
+            only flexible thing in it is the spacer between the brand and the
+            credits — 66px of give at 360px and 26px at 320px. A 30px lockup is
+            138px wide against a 39px mark, so it needs 99px it simply does not
+            have. At 22px it is 101px wide and fits from 360 up; below that the
+            mark stands in, which is what `wordmarkClassName` has always done.
+            Width is overridden alongside height because the box is
+            `object-contain` and would otherwise keep reserving the wide one. */}
+        <Brand
+          href="/home"
+          className="shrink-0"
+          wordmarkClassName="hidden min-[360px]:inline-flex"
+          markClassName="min-[360px]:hidden"
+          imgClassName="!h-[22px] !w-[101px] sm:!h-[30px] sm:!w-[138px]"
+        />
 
         {/* PRIMARY: Obraz / Wideo mega-menus + search. */}
         <nav className="relative ml-2 hidden items-center gap-0.5 lg:flex" aria-label={t("topnav.primary")}>
