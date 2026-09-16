@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
-  ArrowUpRight, ChevronDown, ChevronRight, Home, Images, LifeBuoy, Lightbulb,
+  ArrowUpRight, ChevronDown, ChevronRight, Home, Images, LifeBuoy,
   LogOut, Plus, Settings, Shield,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
@@ -40,9 +40,16 @@ import { cn } from "@/lib/utils";
  * phrased, and the card itself never changes colour — nearly out of credits is
  * not an error state.
  *
- * THE MAIN DESTINATIONS HAVE NO HEADING. They are five tiles under the wallet,
- * always visible; only the three workshops — OBRAZY, NARZĘDZIA, WIDEO — fold,
- * and the one holding the page you are on opens itself.
+ * FOUR GROUPS, AND NOTHING OUTSIDE THEM. GŁÓWNE, OBRAZY, NARZĘDZIA, WIDEO —
+ * every destination belongs to one of them, and all four start shut. The one
+ * exception is the group holding the page you are on, which opens itself,
+ * because a menu that hides where you already are is a menu you have to search.
+ *
+ * A HEADING OUTRANKS ITS ROWS. It is taller, it sits on glass with a real
+ * border, and its label is set in small caps; the rows are shorter, indented
+ * off a hairline, less rounded and quieter. The two used to be the same tile
+ * in two tints, which made a group heading look like one more thing to press
+ * through on the way to something else.
  */
 export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdmin, navAdmin, availability }: {
   name: string; email?: string; credits: number;
@@ -88,6 +95,20 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
    * TWÓRZ, where the contrast is the whole point; the drawer has no such pair.
    */
   const toolEntries = IMAGE_EDIT.filter((e) => !e.soon && show(e.href));
+  /**
+   * GŁÓWNE — the places that are not a workshop, in the order they are asked
+   * for: the dashboard, what you have made, help, settings, and the staff
+   * entrance last. The admin href is listed even though the drawer never
+   * renders on /admin, because the section's claim on a route and the tiles it
+   * holds have to be the same list or the heading could open onto nothing.
+   */
+  const mainHrefs = [
+    "/home",
+    ...(show("/library") ? ["/library"] : []),
+    "/support",
+    "/settings",
+    ...(isAdmin ? ["/admin"] : []),
+  ];
 
   return (
     <Drawer
@@ -103,26 +124,20 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
         </div>
       )}
       footer={
-        <div className="space-y-2">
-          {/* Sign-out is a destination like any other, so it wears the same
-              tile. It used to be a small quiet button, which is how it ended
-              up looking like a footnote. */}
-          <form method="post" action="/auth/sign-out">
-            <button className="group flex min-h-[52px] w-full items-center gap-3 rounded-2xl border border-[rgb(var(--line)/0.12)] bg-[rgb(var(--ink)/0.04)] px-3 py-2.5 text-left transition-colors duration-200 hover:bg-[rgb(var(--ink)/0.07)]">
-              <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[rgb(var(--ink)/0.07)] text-muted transition-colors duration-200 group-hover:text-ink">
-                <LogOut size={17} />
-              </span>
-              <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink">{t("common.signOut")}</span>
-              <ChevronRight size={16} aria-hidden className="shrink-0 text-faint" />
+        /* ONE LINE, THREE CONTROLS. Leaving, language and theme are the three
+           things you touch on the way out, and they were three stacked rows
+           eating the bottom of the menu. The language trigger is the current
+           flag and nothing else — a word there ("Polski", or even "PL") made
+           the quietest control in the row the widest. */
+        <div className="flex items-center gap-1.5">
+          <form method="post" action="/auth/sign-out" className="min-w-0 flex-1">
+            <button className="group flex h-11 w-full items-center gap-1.5 rounded-2xl border border-[rgb(var(--line)/0.14)] bg-[rgb(var(--ink)/0.04)] px-2 text-left transition-colors duration-200 hover:bg-[rgb(var(--ink)/0.07)]">
+              <LogOut size={16} aria-hidden className="shrink-0 text-muted transition-colors duration-200 group-hover:text-ink" />
+              <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-ink">{t("common.signOut")}</span>
             </button>
           </form>
-
-          {/* One line, two preferences: language on the left, theme on the
-              right, both compact enough to leave the row calm. */}
-          <div className="flex items-center justify-between gap-2">
-            <LocaleSwitcher align="left" side="top" flagsOnly size="md" pill />
-            <ThemeToggle size="md" />
-          </div>
+          <LocaleSwitcher align="left" side="top" flagsOnly size="md" />
+          <ThemeToggle size="md" />
         </div>
       }
     >
@@ -211,17 +226,14 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
         </div>
       </div>
 
-      {/* ── THE PLACES ───────────────────────────────────────────────────── */}
-      <div className="mt-3 space-y-1.5">
-        <Tile href="/home" label={t("topnav.home")} icon={Home} onNavigate={closeNav} badge={badge("/home")} />
+      {/* ── FOUR GROUPS, AND NOTHING OUTSIDE THEM ────────────────────────── */}
+      <Section title={t("nav.groups.main")} hrefs={mainHrefs}>
+        <Tile href="/home" label={t("nav.pulpit")} icon={Home} onNavigate={closeNav} badge={badge("/home")} />
         {show("/library") && (
           <Tile href="/library" label={t("topnav.library")} icon={Images} onNavigate={closeNav} badge={badge("/library")} />
         )}
-        {show("/inspirations") && (
-          <Tile href="/inspirations" label={t("nav.inspirations")} icon={Lightbulb} onNavigate={closeNav} badge={badge("/inspirations")} />
-        )}
-        <Tile href="/settings" label={t("nav.settings")} icon={Settings} onNavigate={closeNav} />
         <Tile href="/support" label={t("nav.help")} icon={LifeBuoy} onNavigate={closeNav} />
+        <Tile href="/settings" label={t("nav.settings")} icon={Settings} onNavigate={closeNav} />
         {/* ADMIN IS A ROLE CHECK, NOT A STYLE. Hiding this tile is the LAST of
             three gates, not the only one: `/admin` has its own server-side
             redirect for anyone whose profile role is not admin, and every
@@ -230,7 +242,7 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
           <Tile href="/admin" label={t("nav.admin")} icon={Shield} onNavigate={closeNav}
             rgb="var(--accent2)" tinted />
         )}
-      </div>
+      </Section>
 
       {/* ── THE WORKSHOPS ────────────────────────────────────────────────── */}
       {categories.length > 0 && (
@@ -308,41 +320,37 @@ function Tile({ href, label, icon: Icon, onNavigate, badge, rgb = "var(--accent)
       aria-current={active ? "page" : undefined}
       style={{ ["--tile" as string]: rgb }}
       className={cn(
-        "group relative flex min-h-[52px] items-center gap-3 overflow-hidden rounded-2xl border px-3 py-2.5 transition-all duration-200",
+        "group relative flex min-h-[44px] items-center gap-2.5 overflow-hidden rounded-xl border px-2.5 py-1.5 transition-all duration-200",
         active
-          ? "border-[rgb(var(--tile)/0.45)] bg-[rgb(var(--tile)/0.13)] shadow-[0_0_18px_-6px_rgb(var(--tile)/0.55)]"
-          : "border-[rgb(var(--line)/0.12)] bg-[rgb(var(--ink)/0.035)] hover:bg-[rgb(var(--ink)/0.065)]",
+          ? "border-[rgb(var(--tile)/0.38)] bg-[rgb(var(--tile)/0.12)]"
+          : "border-transparent bg-[rgb(var(--ink)/0.03)] hover:bg-[rgb(var(--ink)/0.06)]",
       )}
     >
       <span aria-hidden className={cn(
         "absolute left-0 top-1/2 w-[3px] -translate-y-1/2 rounded-r-full bg-[rgb(var(--tile))] transition-all duration-200",
-        active ? "h-7 opacity-100" : "h-3 opacity-0",
+        active ? "h-5 opacity-100" : "h-2 opacity-0",
       )} />
       <span aria-hidden className={cn(
-        "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors duration-200",
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200",
         active
-          ? "bg-[rgb(var(--tile)/0.22)] text-[rgb(var(--tile))] ring-1 ring-[rgb(var(--tile)/0.45)]"
+          ? "bg-[rgb(var(--tile)/0.20)] text-[rgb(var(--tile))]"
           : tinted
-            ? "bg-[rgb(var(--tile)/0.14)] text-[rgb(var(--tile))] ring-1 ring-[rgb(var(--tile)/0.28)]"
-            : "bg-[rgb(var(--ink)/0.07)] text-muted group-hover:text-ink",
+            ? "bg-[rgb(var(--tile)/0.13)] text-[rgb(var(--tile))]"
+            : "bg-[rgb(var(--ink)/0.06)] text-muted group-hover:text-ink",
       )}>
-        <Icon size={17} strokeWidth={active ? 2.3 : 2} />
+        <Icon size={16} strokeWidth={active ? 2.3 : 2} />
       </span>
       <span className={cn(
-        "min-w-0 flex-1 truncate text-[14px]",
+        "min-w-0 flex-1 truncate text-[13px]",
         active ? "font-semibold text-ink" : tinted ? "font-semibold text-[rgb(var(--tile))]" : "font-medium text-ink",
       )}>
         {label}
       </span>
       {badge && (
-        <span className="shrink-0 rounded-full bg-[rgb(var(--ink)/0.08)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-faint">
+        <span className="shrink-0 rounded-full bg-[rgb(var(--ink)/0.08)] px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wide text-faint">
           {badge}
         </span>
       )}
-      <ChevronRight size={16} aria-hidden className={cn(
-        "shrink-0 transition-colors duration-200",
-        active ? "text-[rgb(var(--tile))]" : "text-faint",
-      )} />
     </Link>
   );
 }
@@ -382,26 +390,38 @@ function Section({ title, hrefs = [], children }: {
   const open = choice?.route === pathname ? choice.open : sectionOwnsRoute(pathname, hrefs);
   return (
     <div className="mt-3">
+      {/* THE HEADING OUTRANKS ITS ROWS, VISIBLY. It is taller, it sits on
+          glass with a real border, and its label is set in small caps — three
+          differences, not one, because a single tint made a group heading look
+          like one more thing to press through. */}
       <button
         type="button"
         onClick={() => setChoice({ route: pathname, open: !open })}
         aria-expanded={open}
         className={cn(
-          "flex min-h-[44px] w-full items-center justify-between gap-2 rounded-2xl border px-3 py-2 transition-colors duration-200",
+          "flex min-h-[56px] w-full items-center justify-between gap-2 rounded-2xl border px-4 py-3 backdrop-blur-[2px] transition-colors duration-200",
           open
-            ? "border-[rgb(var(--line)/0.16)] bg-[rgb(var(--ink)/0.05)]"
-            : "border-[rgb(var(--line)/0.10)] bg-[rgb(var(--ink)/0.025)] hover:bg-[rgb(var(--ink)/0.05)]",
+            ? "border-[rgb(var(--accent)/0.26)] bg-[rgb(var(--ink)/0.08)] shadow-e1"
+            : "border-[rgb(var(--line)/0.20)] bg-[rgb(var(--ink)/0.06)] hover:bg-[rgb(var(--ink)/0.085)]",
         )}
       >
-        <span className="overline truncate text-[10px] tracking-[0.18em] opacity-90">{title}</span>
+        <span className="truncate text-[11.5px] font-bold uppercase leading-none tracking-[0.17em] text-ink">
+          {title}
+        </span>
         <span aria-hidden className={cn(
-          "flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[rgb(var(--ink)/0.07)] text-faint transition-transform duration-200",
-          open && "rotate-180",
+          "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all duration-200",
+          open ? "rotate-180 bg-[rgb(var(--accent)/0.16)] text-accent" : "bg-[rgb(var(--ink)/0.08)] text-muted",
         )}>
-          <ChevronDown size={14} />
+          <ChevronDown size={15} />
         </span>
       </button>
-      {open && <div className="animate-fade mt-1.5 space-y-1.5">{children}</div>}
+      {/* The rows hang off a hairline, indented — the one piece of structure
+          that says "these belong to the heading above" without a second box. */}
+      {open && (
+        <div className="animate-fade ml-3 mt-1.5 space-y-1 border-l border-[rgb(var(--line)/0.18)] pl-2.5">
+          {children}
+        </div>
+      )}
     </div>
   );
 }

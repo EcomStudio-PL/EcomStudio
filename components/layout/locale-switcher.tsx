@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { Check } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { setLocaleAction } from "@/app/actions/settings";
 import { LOCALES } from "@/lib/i18n/config";
@@ -25,18 +25,12 @@ const NAMES: Record<string, string> = { pl: "Polski", en: "English", de: "Deutsc
  * `side="top"` opens it upwards, for the same reason — in a bottom bar there
  * is nothing below to open into.
  */
-export function LocaleSwitcher({ align = "right", side = "bottom", flagsOnly = false, size = "sm", pill = false }: {
+export function LocaleSwitcher({ align = "right", side = "bottom", flagsOnly = false, size = "sm" }: {
   align?: "right" | "left";
   side?: "top" | "bottom";
   flagsOnly?: boolean;
   /** `md` is the 44px touch form, matching the drawer's bottom bar. */
   size?: "sm" | "md";
-  /**
-   * Flag + language code + caret in a bordered pill, for a row where the
-   * control has to look pressable next to a segmented toggle. Still compact:
-   * "PL" rather than "Polski", so it cannot grow to half the width of a phone.
-   */
-  pill?: boolean;
 }) {
   const { t, locale } = useI18n();
   const [pending, start] = useTransition();
@@ -65,24 +59,15 @@ export function LocaleSwitcher({ align = "right", side = "bottom", flagsOnly = f
         disabled={pending}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "flex shrink-0 items-center transition-colors duration-200 hover:bg-raised disabled:opacity-60",
-          pill
-            ? "h-11 gap-2 rounded-2xl border border-[rgb(var(--line)/0.14)] bg-[rgb(var(--ink)/0.04)] px-3"
-            : "justify-center rounded-xl",
+          "flex shrink-0 items-center justify-center transition-colors duration-200 hover:bg-raised disabled:opacity-60",
           // In a bar of controls the flag needs the same frame as its
           // neighbours, or it reads as a picture that fell into the row.
-          !pill && (size === "md"
-            ? "h-11 w-11 border border-line bg-[rgb(var(--ink)/0.04)]"
-            : "h-10 w-10 lg:h-9 lg:w-9"),
+          size === "md"
+            ? "h-11 w-11 rounded-2xl border border-[rgb(var(--line)/0.14)] bg-[rgb(var(--ink)/0.04)]"
+            : "h-10 w-10 rounded-xl lg:h-9 lg:w-9",
         )}
       >
-        <Flag code={locale} size={size === "md" || pill ? 22 : 20} />
-        {pill && (
-          <>
-            <span className="text-[12.5px] font-semibold uppercase leading-none tracking-wide text-ink">{locale}</span>
-            <ChevronDown size={14} aria-hidden className={cn("shrink-0 text-faint transition-transform duration-200", open && "rotate-180")} />
-          </>
-        )}
+        <Flag code={locale} size={size === "md" ? 22 : 20} />
       </button>
       {open && (
         <div role="menu" className={cn(

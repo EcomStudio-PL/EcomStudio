@@ -48,8 +48,12 @@ if (!(await fetch(`${BASE}${PROBE}`).then((r) => r.ok).catch(() => false))) {
   process.exit(0);
 }
 
-/** 320 and 360 are the floors; 393/412 are the Pixel and the common Android. */
-const WIDTHS = [320, 360, 375, 390, 393, 412, 414, 430];
+/**
+ * 320 and 360 are the floors; 393/412 are the Pixel and the common Android;
+ * 768/820/834 are iPads in portrait and 1023 is the last width before the
+ * desktop navigation takes over and this drawer stops rendering at all.
+ */
+const WIDTHS = [320, 360, 375, 390, 393, 412, 414, 430, 768, 820, 834, 1023];
 
 /** route → the section that must open itself (null = a main tile), and the
  *  tile that must light up. */
@@ -62,10 +66,10 @@ const CASES = [
   { route: "/k/moda", section: "OBRAZY", label: "Moda" },
   { route: "/k/ecommerce", section: "OBRAZY", label: "E-commerce" },
   { route: "/wideo", section: "WIDEO", label: "Wideo" },
-  { route: "/home", section: null, label: "Strona główna" },
-  { route: "/library", section: null, label: "Biblioteka" },
-  { route: "/settings", section: null, label: "Ustawienia" },
-  { route: "/support", section: null, label: "Pomoc" },
+  { route: "/home", section: "GŁÓWNE", label: "Pulpit" },
+  { route: "/library", section: "GŁÓWNE", label: "Biblioteka" },
+  { route: "/settings", section: "GŁÓWNE", label: "Ustawienia" },
+  { route: "/support", section: "GŁÓWNE", label: "Pomoc" },
 ];
 
 let failed = 0;
@@ -121,15 +125,24 @@ const READ = () => {
 
   // Section headings only. The language trigger also carries `aria-expanded`,
   // and it is not a section — hence both filters.
-  const sections = [...nav.querySelectorAll("button[aria-expanded]:not([aria-haspopup])")].map((b) => ({
-    title: b.textContent.trim(),
-    expanded: b.getAttribute("aria-expanded") === "true",
-    top: Math.round(b.getBoundingClientRect().top),
-    rows: b.parentElement ? [...b.parentElement.querySelectorAll("a")].map((a) => a.getAttribute("href")) : [],
-    lit: b.parentElement
-      ? [...b.parentElement.querySelectorAll('a[aria-current="page"]')].map((a) => a.getAttribute("href"))
-      : [],
-  }));
+  const sections = [...nav.querySelectorAll("button[aria-expanded]:not([aria-haspopup])")].map((b) => {
+    const cs = getComputedStyle(b);
+    return {
+      title: b.textContent.trim(),
+      expanded: b.getAttribute("aria-expanded") === "true",
+      top: Math.round(b.getBoundingClientRect().top),
+      ...box(b),
+      radius: Math.round(parseFloat(cs.borderTopLeftRadius)),
+      padX: Math.round(parseFloat(cs.paddingLeft)),
+      // The small caps are on the label, not on the button that holds it.
+      caps: getComputedStyle(b.firstElementChild).textTransform,
+      tracking: getComputedStyle(b.firstElementChild).letterSpacing,
+      rows: b.parentElement ? [...b.parentElement.querySelectorAll("a")].map((a) => a.getAttribute("href")) : [],
+      lit: b.parentElement
+        ? [...b.parentElement.querySelectorAll('a[aria-current="page"]')].map((a) => a.getAttribute("href"))
+        : [],
+    };
+  });
 
   /** Every navigation tile: the links that are not the account card or a CTA. */
   const CTA = new Set(["/plan", "/credits"]);
@@ -150,15 +163,14 @@ const READ = () => {
       };
     });
 
-  // The panel's last child is the footer SLOT; what the menu puts in it is the
-  // sign-out tile and then the preferences row.
+  // The panel's last child is the footer SLOT; what the menu puts in it is one
+  // row: the sign-out form, the flag and the theme pill.
   const foot = panel.lastElementChild;
-  const footInner = foot?.firstElementChild ?? null;
+  const row = foot?.firstElementChild ?? null;
   const signOut = foot?.querySelector('form[action="/auth/sign-out"] button') ?? null;
-  const prefs = footInner ? [...footInner.children].find((e) => !e.matches("form")) : null;
-  const prefKids = prefs ? [...prefs.children].map((e) => ({ tag: e.tagName.toLowerCase(), ...box(e) })) : [];
-  const flagBtn = prefs?.querySelector("button[aria-haspopup='menu']") ?? null;
-  const themeBtns = prefs ? [...prefs.querySelectorAll("button[aria-pressed]")] : [];
+  const rowKids = row ? [...row.children].map((e) => ({ tag: e.tagName.toLowerCase(), ...box(e) })) : [];
+  const flagBtn = row?.querySelector("button[aria-haspopup='menu']") ?? null;
+  const themeBtns = row ? [...row.querySelectorAll("button[aria-pressed]")] : [];
 
   const labelSpans = [upgrade, topUp, signOut]
     .filter(Boolean)
@@ -200,8 +212,8 @@ const READ = () => {
     lit: tiles.filter((x) => x.current),
     admin: tiles.some((x) => x.href === "/admin"),
     foot: box(foot),
-    signOut: { ...box(signOut), chevron: Boolean(signOut?.querySelector("svg.lucide-chevron-right")) },
-    prefKids,
+    signOut: box(signOut),
+    rowKids,
     flag: box(flagBtn),
     flagText: flagBtn?.textContent.trim() ?? "",
     theme: themeBtns.map((b) => ({ ...box(b), pressed: b.getAttribute("aria-pressed") === "true" })),
@@ -306,43 +318,55 @@ const expandAll = async (page) => {
   }
   await pick(page, "free");
 
-  console.log("\n══ C. THE TILES ══");
+  console.log("\n══ C. FOUR GROUPS, AND THE RANK BETWEEN THEM ══");
   await open(page);
   const c0 = await page.evaluate(READ);
-  const titles = c0.sections.map((s) => s.title.toUpperCase());
-  note(titles.length === 3, `three foldable sections: ${titles.join(" · ")}`);
-  note(titles.join("|").includes("OBRAZY") && titles.join("|").includes("NARZĘDZIA") && titles.join("|").includes("WIDEO"),
-    "…named OBRAZY / NARZĘDZIA / WIDEO");
-  note(!titles.some((x) => /TWORZENIE|EDYTUJ|GŁÓWNE/.test(x)), "no „Tworzenie”, no „Edytuj”, no heading over the main tiles");
-  note(c0.sections.every((s) => !s.expanded),
-    `on /credits — a route no section owns — all three are collapsed (${c0.sections.filter((s) => s.expanded).length} open)`);
-  // The five main destinations are visible without opening anything.
-  for (const want of ["/home", "/library", "/settings", "/support"]) {
-    note(c0.tiles.some((x) => x.href === want), `${want} is a tile, always visible`);
-  }
-  note(c0.tiles.every((x) => x.radius >= 14), `every tile is rounded (${[...new Set(c0.tiles.map((x) => x.radius))].join("/")}px)`);
-  note(c0.tiles.every((x) => parseFloat(x.border) > 0), "…bordered");
-  note(c0.tiles.every((x) => x.plate && x.plate.w >= 32 && x.plate.h >= 32),
-    `…and each carries an icon plate (${[...new Set(c0.tiles.map((x) => `${x.plate?.w}×${x.plate?.h}`))].join(" ")})`);
-  note(c0.tiles.every((x) => x.chevron), "…and a chevron on the right");
-  const heights = [...new Set(c0.tiles.map((x) => Math.round(x.h)))];
-  note(heights.length === 1, `all tiles are one height (${heights.join("/")}px)`);
-  note(heights[0] >= 52, `…and that height is a comfortable target (${heights[0]}px)`);
-  const gaps = c0.tiles.slice(1, 5).map((x, i) => Math.round(x.t - c0.tiles[i].b));
-  note(gaps.every((g) => g === gaps[0]), `even spacing between them (${gaps.join(", ")}px)`);
+  const titles = c0.sections.map((x) => x.title.toUpperCase());
+  note(titles.length === 4, `four sections: ${titles.join(" · ")}`);
+  note(["GŁÓWNE", "OBRAZY", "NARZĘDZIA", "WIDEO"].every((x, i) => titles[i] === x),
+    "…named GŁÓWNE / OBRAZY / NARZĘDZIA / WIDEO, in that order");
+  note(!titles.some((x) => /TWORZENIE|EDYTUJ/.test(x)), "no „Tworzenie”, no „Edytuj”");
+  note(c0.sections.every((x) => !x.expanded),
+    `on /credits — a route no section owns — all four are shut (${c0.sections.filter((x) => x.expanded).length} open)`);
+  note(c0.tiles.length === 0, `…and nothing hangs outside a section (${c0.tiles.length} loose tiles)`);
+  const headGaps = c0.sections.slice(1).map((x, i) => Math.round(x.t - c0.sections[i].b));
+  note(headGaps.every((g) => g === headGaps[0]), `even spacing between the headings (${headGaps.join(", ")}px)`);
 
+  /* A HEADING MUST NOT LOOK LIKE A ROW. Three differences, measured. */
   await expandAll(page);
   const all = await page.evaluate(READ);
-  await shut(page);
-  note(all.sections.every((s) => s.expanded && s.rows.length > 0),
-    `every section holds tiles (${all.sections.map((s) => `${s.title}:${s.rows.length}`).join(" ")})`);
+  const headH = Math.round(all.sections[0].h);
+  const tileH = Math.round(all.tiles[0].h);
+  note(headH > tileH + 6, `a heading is taller than its rows (${headH}px vs ${tileH}px)`);
+  note(all.sections[0].radius > all.tiles[0].radius,
+    `…rounder (${all.sections[0].radius}px vs ${all.tiles[0].radius}px)`);
+  note(all.sections[0].padX > all.tiles[0].padX || all.sections[0].caps === "uppercase",
+    `…and set apart in small caps (${all.sections[0].caps}, tracking ${all.sections[0].tracking})`);
+  note(all.tiles.every((x) => x.l > all.sections[0].l + 8),
+    `every row is indented under its heading (rows at ${[...new Set(all.tiles.map((x) => x.l))].join("/")}, headings at ${all.sections[0].l})`);
+  note(all.tiles.every((x) => x.r <= all.sections[0].r + 0.5), "…and none of them is wider than it");
+
+  /* WHAT EACH GROUP HOLDS. */
+  note(all.sections.every((x) => x.expanded && x.rows.length > 0),
+    `every section holds rows (${all.sections.map((x) => `${x.title}:${x.rows.length}`).join(" ")})`);
+  const main = all.sections.find((x) => x.title.toUpperCase().startsWith("GŁÓWNE"));
+  note(JSON.stringify(main?.rows) === JSON.stringify(["/home", "/library", "/support", "/settings"]),
+    `GŁÓWNE is exactly Pulpit / Biblioteka / Pomoc / Ustawienia (${main?.rows.join(" ")})`);
+  note(!all.tiles.some((x) => x.href === "/inspirations"), "„Inspiracje” is gone from the menu");
+  note(all.tiles.some((x) => x.href === "/home" && /Pulpit/.test(x.text)),
+    `/home is labelled „Pulpit” (${all.tiles.find((x) => x.href === "/home")?.text})`);
   note(all.tiles.filter((x) => x.href === "/tools").length === 1, "„Wszystkie narzędzia” appears exactly once");
   note(!all.tiles.some((x) => /Gotowy generator/i.test(x.text)) && !all.tiles.some((x) => x.href === "/prompts"),
     "…and with everything open there is still no „Gotowy generator”");
-  const tools = all.sections.find((s) => s.title.toUpperCase().startsWith("NARZĘDZIA"));
+  const tools = all.sections.find((x) => x.title.toUpperCase().startsWith("NARZĘDZIA"));
   note(tools?.rows.length === 5, `NARZĘDZIA keeps all five entries (${tools?.rows.join(" ")})`);
+  const images = all.sections.find((x) => x.title.toUpperCase().startsWith("OBRAZY"));
+  note(images?.rows.length === 6, `OBRAZY keeps all six categories (${images?.rows.length})`);
   const allHeights = [...new Set(all.tiles.map((x) => Math.round(x.h)))];
-  note(allHeights.length === 1, `tiles inside the sections are the same height too (${allHeights.join("/")}px)`);
+  note(allHeights.length === 1, `every row is one height (${allHeights.join("/")}px)`);
+  note(allHeights[0] >= 44, `…and still a 44px touch target (${allHeights[0]}px)`);
+  note(all.tiles.every((x) => x.plate && x.plate.w >= 28), "…with an icon beside the name");
+  await shut(page);
 
   console.log("\n══ D. THE ROUTE DECIDES ══");
   for (const t of CASES) {
@@ -352,16 +376,11 @@ const expandAll = async (page) => {
     note(first.lit.length === 1 && second.lit.length === 1,
       `${t.route}: exactly one tile lit — 1st open ${first.lit.length}, 2nd ${second.lit.length}` +
       (first.lit.length ? ` (${first.lit.map((r) => r.href).join(" + ")})` : ""));
-    if (t.section) {
-      const sec = second.sections.find((s) => s.title.toUpperCase().startsWith(t.section));
-      note(Boolean(sec?.expanded), `${t.route}: ${t.section} opens itself on the SECOND open`);
-      note(Boolean(sec && sec.lit.length === 1), `${t.route}: …and the highlight is inside it (${sec?.lit.join(",") || "none"})`);
-      note(second.sections.filter((s) => s.expanded).length === 1,
-        `${t.route}: no other section opens (${second.sections.filter((s) => s.expanded).map((s) => s.title).join(", ")})`);
-    } else {
-      note(second.sections.every((s) => !s.expanded),
-        `${t.route}: it is a main tile, so nothing folds open (${second.sections.filter((s) => s.expanded).map((s) => s.title).join(", ") || "none"})`);
-    }
+    const sec = second.sections.find((s) => s.title.toUpperCase().startsWith(t.section));
+    note(Boolean(sec?.expanded), `${t.route}: ${t.section} opens itself on the SECOND open`);
+    note(Boolean(sec && sec.lit.length === 1), `${t.route}: …and the highlight is inside it (${sec?.lit.join(",") || "none"})`);
+    note(second.sections.filter((s) => s.expanded).length === 1,
+      `${t.route}: no other section opens (${second.sections.filter((s) => s.expanded).map((s) => s.title).join(", ")})`);
     const hit = first.lit[0]?.text ?? "";
     note(hit.includes(t.label), `${t.route}: the lit tile is "${t.label}" — got "${hit}"`);
   }
@@ -384,19 +403,18 @@ const expandAll = async (page) => {
   note(afterNav.lit.length === 1 && afterNav.lit[0].href === "/tools/compress",
     `…and the next route takes over again (${afterNav.lit.map((r) => r.href).join(",") || "nothing lit"})`);
 
-  console.log("\n══ E. THE BOTTOM ══");
+  console.log("\n══ E. THE BOTTOM — ONE LINE ══");
   const e = await readOpen(page);
-  note(e.signOut.w > 200, `sign-out is a full-width tile (${e.signOut.w}px wide)`);
-  note(e.signOut.h >= 52, `…the same height as a menu tile (${e.signOut.h}px)`);
-  note(e.signOut.chevron, "…with an icon, a label and a chevron");
-  note(e.prefKids.length === 2, `one line under it, two controls (${e.prefKids.map((k) => k.tag).join(", ")})`);
-  const mids = e.prefKids.map((k) => k.t + k.h / 2);
+  note(e.rowKids.length === 3, `three controls on ONE line (${e.rowKids.map((k) => k.tag).join(", ")})`);
+  const mids = e.rowKids.map((k) => k.t + k.h / 2);
   note(Math.max(...mids) - Math.min(...mids) < 1, `…sharing a centre line (spread ${(Math.max(...mids) - Math.min(...mids)).toFixed(1)}px)`);
-  const hs = [...new Set(e.prefKids.map((k) => Math.round(k.h)))];
+  const hs = [...new Set(e.rowKids.map((k) => Math.round(k.h)))];
   note(hs.length === 1 && hs[0] === 44, `…and one height (${hs.join("/")}px)`);
-  note(e.flag.l < e.theme[0].l, "language on the left, theme on the right");
-  note(e.flag.w <= 110, `the language control stays compact (${e.flag.w}px — "${e.flagText}")`);
-  note(!/Polski|English|Deutsch/.test(e.flagText), `…a code, not a word (“${e.flagText}”)`);
+  note(e.signOut.w > 100, `sign-out takes the room that is left (${e.signOut.w}px)`);
+  note(e.signOut.l < e.flag.l && e.flag.l < e.theme[0].l,
+    "sign-out on the left, flag in the middle, theme on the right");
+  note(e.flag.w <= 48 && e.flag.h >= 44, `the flag is a square button (${e.flag.w}×${e.flag.h})`);
+  note(e.flagText === "", `…with no text at all beside it (“${e.flagText}”)`);
   note(e.theme.length === 2 && e.theme.filter((t) => t.pressed).length === 1,
     `the theme pill shows two options with one active (${e.theme.filter((t) => t.pressed).length})`);
   note(e.foot.b <= e.panel.b + 0.5, `the bottom sits inside the panel (${e.foot.b} <= ${e.panel.b})`);
@@ -453,11 +471,15 @@ const expandAll = async (page) => {
   await shut(page);
 
   console.log("\n══ F. THE ADMIN TILE ══");
+  // On /home, GŁÓWNE opens itself — which is where the admin row lives.
+  await goRoute(page, "/home");
   await pick(page, "admin");
   const admin = await readOpen(page);
   note(admin.admin, "an admin sees „Panel admina”");
   note(admin.tiles.find((x) => x.href === "/admin")?.h === admin.tiles[0].h,
-    "…as a tile like the others, not a special row");
+    "…as a row like the others, not a special shape");
+  const mainRows = admin.sections.find((x) => x.title.toUpperCase().startsWith("GŁÓWNE"))?.rows ?? [];
+  note(mainRows[mainRows.length - 1] === "/admin", `…and it is last in GŁÓWNE (${mainRows.join(" ")})`);
   await pick(page, "free");
   const cust = await readOpen(page);
   note(!cust.admin, "a customer does not — the tile is not rendered at all");
@@ -465,12 +487,16 @@ const expandAll = async (page) => {
   await ctx.close();
 }
 
-/* ══ G. GEOMETRY AT EVERY PHONE WIDTH ══════════════════════════════════════ */
+/* ══ G. GEOMETRY AT EVERY WIDTH THAT GETS THIS MENU ════════════════════════ */
 
 for (const w of WIDTHS) {
-  console.log(`\n══ G. ${w}px ══`);
+  // A tablet is not a big phone: portrait 768–834 and the 1023 landscape edge
+  // are run in a landscape-shaped viewport as well, because the thing that
+  // actually breaks a drawer on a tablet is HEIGHT, not width.
+  const tall = w >= 768 ? 1024 : 740;
+  console.log(`\n══ G. ${w}×${tall} ══`);
   const ctx = await browser.newContext({
-    viewport: { width: w, height: 740 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true,
+    viewport: { width: w, height: tall }, deviceScaleFactor: 1, isMobile: w < 1024, hasTouch: true,
   });
   const page = await ctx.newPage();
   await page.goto(`${BASE}${PROBE}`, { waitUntil: "networkidle", timeout: 60000 });
@@ -494,6 +520,10 @@ for (const w of WIDTHS) {
   note(s.foot.b <= s.panel.b + 0.5 && s.foot.t >= s.nav.b - 0.5,
     `${w}: the bottom is below the list and inside the panel`);
   note(s.lit.length === 1, `${w}: one tile lit (${s.lit.map((r) => r.href).join(",")})`);
+  note(s.rowKids.length === 3 && new Set(s.rowKids.map((k) => Math.round(k.t))).size === 1,
+    `${w}: the bottom row stays on ONE line (${s.rowKids.map((k) => `${k.w}×${k.h}`).join(" ")})`);
+  note(s.sections.every((x) => x.r <= s.panel.r - 8 && x.l >= s.panel.l + 8),
+    `${w}: the headings keep the same gutter as the cards`);
 
   /* The LIST scrolls; the bottom does not move with it. */
   const scrolled = await page.evaluate(() => {

@@ -29,7 +29,7 @@ export function ThemeToggle({ size = "sm" }: {
   useEffect(() => setMounted(true), []);
   const md = size === "md";
   // Reserve the pill's own size before mount, so the bar does not jump.
-  if (!mounted) return <div className={md ? "h-11 w-[92px]" : "h-9 w-[62px]"} />;
+  if (!mounted) return <div className={md ? "h-11 w-[84px]" : "h-9 w-[62px]"} />;
   const dark = resolvedTheme === "dark";
 
   return (
@@ -50,7 +50,7 @@ export function ThemeToggle({ size = "sm" }: {
             onClick={() => setTheme(mode)}
             className={cn(
               "flex items-center justify-center transition-colors duration-200",
-              md ? "h-10 w-[42px] rounded-xl" : "h-8 w-[30px] rounded-full",
+              md ? "h-10 w-[38px] rounded-xl" : "h-8 w-[30px] rounded-full",
               // In the drawer's bottom row the active half is lit rather than
               // merely raised: at that size a one-step background change was
               // not enough to say which theme you are in.
