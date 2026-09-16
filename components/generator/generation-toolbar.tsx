@@ -175,10 +175,14 @@ export function GenerationToolbar({
         ref={dockRef}
         data-gen-dock
         className={cn(
-          "fixed inset-x-0 z-30 px-[var(--page-x)] sm:px-4 lg:px-6 xl:px-8",
-          // Phones: sit directly on top of the bottom navigation, sharing its
-          // gutter so the two bars read as one stack.
-          "bottom-[calc(var(--dock-h)+env(safe-area-inset-bottom))] lg:bottom-3",
+          // PHONE AND TABLET: an ordinary block in the page, arriving after
+          // the settings it belongs to. It used to be pinned above the bottom
+          // navigation, which meant it travelled with the scroll and sat on
+          // top of the results below it — the same island Retusz never had.
+          "mt-4",
+          // DESKTOP: unchanged. The bar still floats 12px off the window edge,
+          // where it covers nothing and keeps the CTA in reach of the cursor.
+          "lg:fixed lg:inset-x-0 lg:bottom-3 lg:z-30 lg:mt-0 lg:px-6 xl:px-8",
         )}
       >
         <div className="dock mx-auto w-full max-w-[var(--content-max)] rounded-2xl p-2 shadow-e4">

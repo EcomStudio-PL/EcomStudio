@@ -236,9 +236,13 @@ export function ConceptBoard({ concepts, models, balance, engineReady, initialMo
 
   return (
     <div className="min-w-0">
-      {/* GENERUJ WSZYSTKIE — always visible above the grid, sticky-safe on phones. */}
+      {/* GENERUJ WSZYSTKIE — the batch cost and the batch button, at the head
+          of the grid. It was `sticky top-2` below sm, so on a phone it peeled
+          off and followed the thumb down over the concepts it was describing.
+          A count and a price that refer to the grid belong above the grid,
+          not on top of it. */}
       {engineReady && concepts.length > 0 && (
-        <div className="dock sticky top-2 z-20 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl p-3 sm:static sm:p-4">
+        <div className="dock mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl p-3 sm:p-4">
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold">{t("concepts.readyTitle", { n: concepts.length })}</p>
             <p className={cn("text-xs", notEnough && pending.length > 0 ? "text-danger" : "text-muted")}>{summary}</p>

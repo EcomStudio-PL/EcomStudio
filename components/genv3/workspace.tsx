@@ -4,7 +4,6 @@ import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { GenerationGallery } from "@/components/genv3/gallery";
-import { MobileDock } from "@/components/genv3/mobile-dock";
 import {
   CostSummary, InspirationSection, ProductRefsSection,
   PromptSection, SessionTypeSection, SettingsSection, ShotBriefsSection, VariantChips,
@@ -499,21 +498,18 @@ export function GeneratorWorkspace({
         />
       </div>
 
-      <MobileDock
-        managed={managed}
-        models={models}
-        modelId={model?.id ?? ""}
-        onModel={pickModel}
-        ratio={effRatio} ratios={model?.ratios ?? []} onRatio={setRatio}
-        resolution={effResolution} resolutions={model?.resolutions ?? []} onResolution={setResolution}
-        quality={effQuality} qualities={model?.qualities ?? []} onQuality={setQuality}
-        count={effCount} maxCount={maxCount} onCount={setCount}
-        perShot={perShot} total={total} balance={balance}
-        busy={busy} busyLabel={stageLabel}
-        canGenerate={canGenerate}
-        onGenerate={generate}
-        priceOf={(m) => unitPrice(m, snapTo(m.resolutions, effResolution), mode, snapQuality(m, quality))}
-      />
+      {/* NO FLOATING DOCK. The phone used to get a second copy of every
+          control here — mode, model, format, size, count, the price line and
+          a second GENERUJ — in a `position: fixed` bar above the navigation.
+          It rode the scroll, covered the gallery, and made the page reserve
+          225px of empty space underneath itself for a bar that was never part
+          of the page.
+
+          Nothing was lost by deleting it. `SettingsSection`, `ModelSelect`
+          and the mode switch on the page above all render at every width, and
+          `CostSummary` below the settings body is the same cost + CTA panel
+          Retusz has always had, in the same place. One panel, in the page. */}
+
     </div>
   );
 }

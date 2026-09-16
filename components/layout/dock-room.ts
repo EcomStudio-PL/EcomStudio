@@ -36,6 +36,17 @@ export function useDockRoom(ref: RefObject<HTMLElement | null>) {
     const measure = () => {
       const r = el.getBoundingClientRect();
       if (r.height === 0) { root.style.removeProperty("--gen-dock-room"); return; }
+      // ONLY A BAR THAT REALLY FLOATS NEEDS ROOM MADE FOR IT. The arithmetic
+      // below reads the rect as viewport coordinates, which is only true of a
+      // fixed element; for one sitting in the page it measures the distance
+      // from wherever the bar happens to have scrolled to, and reserves that
+      // much empty page under content nothing is covering. A bar that is
+      // `fixed` on a desktop and static on a phone — see
+      // `generation-toolbar.tsx` — hits exactly that case at phone width.
+      if (getComputedStyle(el).position !== "fixed") {
+        root.style.removeProperty("--gen-dock-room");
+        return;
+      }
       root.style.setProperty("--gen-dock-room", `${Math.max(0, Math.round(window.innerHeight - r.top + 12))}px`);
     };
     measure();
