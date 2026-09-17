@@ -751,11 +751,13 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
                           {t("cms.noContentFields")}
                         </p>
                       )}
-                      {quick.map((def) => (
-                        <Field key={def.key} def={def} locale={locale} content={active.content}
-                          onChange={(content) => edit({ content })}
-                          onChangeWith={(update) => edit({ content: update(active.content) })} />
-                      ))}
+                      <div className="space-y-4" data-quick-fields>
+                        {quick.map((def) => (
+                          <Field key={def.key} def={def} locale={locale} content={active.content}
+                            onChange={(content) => edit({ content })}
+                            onChangeWith={(update) => edit({ content: update(active.content) })} />
+                        ))}
+                      </div>
 
                       {/* WIĘCEJ USTAWIEŃ. The rest of the fields exist and
                           nothing was taken away — they are simply not the
@@ -770,7 +772,7 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
                               className={cn("transition-transform", showAdvanced && "rotate-180")} />
                           </button>
                           {showAdvanced && (
-                            <div className="mt-2 space-y-4">
+                            <div className="mt-2 space-y-4" data-advanced-fields>
                               {advanced.map((def) => (
                                 <Field key={def.key} def={def} locale={locale} content={active.content}
                                   onChange={(content) => edit({ content })}
@@ -834,7 +836,7 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
       {/* ── ADD A SECTION ──────────────────────────────────────────────── */}
       <Modal open={adding} onClose={() => { setAdding(false); setPickQuery(""); }}
         title={t("cms.addBlock")} wide>
-        <div className="space-y-5">
+        <div className="space-y-5" data-section-picker>
           <div className="relative">
             <Search size={14} aria-hidden
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
