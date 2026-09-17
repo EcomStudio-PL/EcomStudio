@@ -278,7 +278,13 @@ export function FashionToolWorkspace({
   return (
     <div className={cn(
       "gen-shell-body relative grid min-w-0 items-start gap-5 [&>*]:min-w-0",
-      "lg:grid-cols-[clamp(380px,27vw,430px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0",
+      // THE SETTINGS COLUMN IS A WIDTH, NOT A SHARE. 300–330 is what the
+      // controls need — an upload box, two selects, a hint field — and a
+      // wider monitor has nothing to spend the extra on but whitespace. The
+      // clamp's middle term keeps it from collapsing on a 1280 laptop; past
+      // ~1435px it is pinned at 330 and every further pixel goes to the
+      // gallery, which is the half that can actually use them.
+      "lg:grid-cols-[clamp(300px,23vw,330px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0",
     )}>
       <DropOverlay show={dragging} title={t("fashion.dropTitle")} sub={t("fashion.dropSub")} />
 
@@ -395,7 +401,7 @@ export function FashionToolWorkspace({
         </div>
 
         {/* ── The footer: two figures, a hairline, the action ───────────── */}
-        <div className="panel relative z-20 shrink-0 rounded-2xl px-4 py-3">
+        <div data-cost-island className="panel relative z-20 shrink-0 rounded-2xl px-4 py-3">
           <div className="grid grid-cols-2 divide-x divide-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.4))]">
             <div className="min-w-0 px-2 text-center">
               <p className="text-[10px] font-medium leading-tight text-faint">{t("retouch.costPer")}</p>
@@ -436,7 +442,9 @@ export function FashionToolWorkspace({
       </div>
 
       {/* ── RIGHT: jobs in flight, then everything this tool has made ───── */}
-      <div className="thin-scroll min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pb-4 lg:pr-1">
+      {/* A COLUMN on desktop, so the gallery below can claim the height left
+          over and centre an empty state in it rather than hugging the toolbar. */}
+      <div className="thin-scroll min-w-0 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-y-auto lg:pb-4 lg:pr-1">
         {pending.length > 0 && (
           <div className="mb-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3" data-fashion-jobs>
             {pending.map((job) => (
@@ -478,6 +486,7 @@ export function FashionToolWorkspace({
           operation={config.operation}
           emptyTitle={t("fashion.emptyTitle")}
           emptyBody={t(`wf.moda.${config.key}.empty`)}
+          fillEmpty
         />
       </div>
     </div>

@@ -170,17 +170,26 @@ for (const tool of FASHION_TOOLS) {
 check("all four are model-driven, so the admin gets the prompt tab",
   FASHION_TOOLS.every((t) => new RegExp(`MODEL_DRIVEN[\\s\\S]{0,240}"${t.toolKey}"`).test(aiTools)));
 
-/* ── H2. THE RESPONSIVE SHELL IS THE PROVEN ONE, CHARACTER FOR CHARACTER ──
- * The panel's breakpoints are not re-invented here. The retouch screen already
- * ships this exact grid and has been through the mobile sweep, so the strongest
- * guarantee available is that the two strings are identical — a divergence is
- * then a test failure rather than a phone-only bug nobody sees on a desktop. */
-console.log("\nH2. THE PANEL REUSES THE SHELL THAT IS ALREADY PROVEN");
+/* ── H2. THE RESPONSIVE SHELL ──────────────────────────────────────────────
+ * The panel's breakpoints are not re-invented here: the mobile stack is still
+ * the retouch screen's, character for character, because that one has been
+ * through the sweep.
+ *
+ * The DESKTOP column widths deliberately no longer match. Retouch gives its
+ * settings 380–430; this panel was measured against its own reference and
+ * takes 300–330, so a wide monitor spends the difference on the gallery
+ * instead of on whitespace beside two selects. That is a decision, so it is
+ * pinned as a number here rather than as "whatever retouch does". */
+console.log("\nH2. THE PANEL'S SHELL IS PINNED, NOT INHERITED");
 
 const retouch = readFileSync("components/retouch/workspace.tsx", "utf8");
-const SHELL = "lg:grid-cols-[clamp(380px,27vw,430px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0";
-check("the two-column shell matches the retouch panel exactly",
-  retouch.includes(SHELL) && panel.includes(SHELL));
+const SHELL = "lg:grid-cols-[clamp(300px,23vw,330px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0";
+check("the settings column is the measured 300–330, and the gallery takes the rest",
+  panel.includes(SHELL));
+check("retouch keeps its own width — this change did not reach another tab",
+  retouch.includes("clamp(380px,27vw,430px)"));
+check("an empty gallery fills this panel's column instead of hugging the toolbar",
+  panel.includes("fillEmpty"));
 // Compared against retouch rather than against a literal, like the shell
 // above it. The literal used to carry `pb-[var(--gen-page-bottom)]`, and
 // pinning that here meant the test failed the day the bottom offset moved to
