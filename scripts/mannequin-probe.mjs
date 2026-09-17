@@ -16,10 +16,10 @@
 import fs from "node:fs";
 import { chromium } from "playwright";
 
-const DIR = "app/probe-tmp/manekin";
+const TOOLS = { manekin: "ghostMannequin", postac: "changePerson" };
 const PAGE_SRC = `import { I18nProvider } from "@/lib/i18n/provider";
 import pl from "@/lib/i18n/dictionaries/pl.json";
-import { ManekinProbe } from "@/app/probe-tmp/manekin/client";
+import { ManekinProbe } from "@/app/probe-tmp/__DIR__/client";
 
 export const dynamic = "force-static";
 
@@ -38,7 +38,7 @@ const CLIENT_SRC = `"use client";
 import { FashionToolWorkspace } from "@/components/fashion/tool-workspace";
 import { FASHION_TOOL_BY_KEY } from "@/lib/fashion-tools";
 
-const CONFIG = FASHION_TOOL_BY_KEY.get("ghostMannequin")!;
+const CONFIG = FASHION_TOOL_BY_KEY.get("__TOOL__")!;
 
 export function ManekinProbe() {
   return (
@@ -65,15 +65,19 @@ if (process.argv.includes("--clean")) {
   process.exit(0);
 }
 if (process.argv.includes("--harness")) {
-  fs.mkdirSync(DIR, { recursive: true });
-  fs.writeFileSync(`${DIR}/page.tsx`, PAGE_SRC);
-  fs.writeFileSync(`${DIR}/client.tsx`, CLIENT_SRC);
-  console.log(`wrote ${DIR}/{page,client}.tsx — build, start, then probe`);
+  for (const [dir, tool] of Object.entries(TOOLS)) {
+    const at = `app/probe-tmp/${dir}`;
+    fs.mkdirSync(at, { recursive: true });
+    fs.writeFileSync(`${at}/page.tsx`, PAGE_SRC.replaceAll("__DIR__", dir));
+    fs.writeFileSync(`${at}/client.tsx`, CLIENT_SRC.replaceAll("__TOOL__", tool));
+    console.log(`wrote ${at}/{page,client}.tsx (${tool})`);
+  }
   process.exit(0);
 }
 
-const BASE = process.argv[2] ?? "http://127.0.0.1:3100";
-const URL_ = `${BASE}/probe-tmp/manekin`;
+const BASE = process.argv.find((a) => a.startsWith("http")) ?? "http://127.0.0.1:3100";
+const DIR_ARG = (process.argv.find((a) => a.startsWith("--tool=")) ?? "--tool=manekin").slice(7);
+const URL_ = `${BASE}/probe-tmp/${DIR_ARG}`;
 
 const DESKTOP = [1280, 1366, 1440, 1536, 1600, 1920, 2560];
 const TABLET = [768, 820, 1024, 1180];
@@ -141,6 +145,15 @@ async function measure(page, width, height, band) {
         return Math.abs(top - bottom);
       })(),
       galH: gr?.height ?? 0,
+      // Upload zones: one per pool, and the brief asks for equal heights.
+      zones: [...root.querySelectorAll("[data-upload-zone]")].map((z) => {
+        const b = z.getBoundingClientRect();
+        return { h: Math.round(b.height), w: Math.round(b.width), text: z.textContent.trim().slice(0, 40) };
+      }),
+      hasFormat: !!root.querySelector('[data-dropdown-trigger="format"]'),
+      hasResolution: !!root.querySelector('[data-dropdown-trigger="resolution"]'),
+      hasHint: !!root.querySelector("[data-fashion-hint]"),
+      zoneLabels: [...root.querySelectorAll("[data-upload-zone]")].map((z) => z.textContent.trim()),
     };
   });
   ok(m !== null, `${tag}: workspace not found`);
@@ -190,6 +203,27 @@ async function measure(page, width, height, band) {
   if (m.emptySkew !== null) {
     ok(m.emptySkew <= 4, `${tag}: empty text off-centre inside its box by ${m.emptySkew.toFixed(0)}px`);
   }
+  // THE PANEL IS CONFIG-DRIVEN: changePerson shows two pools and a format,
+  // and deliberately no resolution and no hint (its reference has neither).
+  if (TOOLS[DIR_ARG] === "changePerson") {
+    ok(m.zones.length === 2, `${tag}: ${m.zones.length} upload zones, expected 2`);
+    ok(m.hasFormat, `${tag}: format control missing`);
+    ok(!m.hasResolution, `${tag}: resolution offered on a tool whose reference has none`);
+    ok(!m.hasHint, `${tag}: hint offered on a tool whose reference has none`);
+  } else {
+    ok(m.zones.length === 1, `${tag}: ${m.zones.length} upload zones, expected 1`);
+    ok(m.hasFormat && m.hasResolution && m.hasHint, `${tag}: a control is missing`);
+  }
+
+  // UPLOAD ZONES — one per pool, all the same height.
+  ok(m.zones.length >= 1, `${tag}: no upload zone rendered`);
+  if (m.zones.length > 1) {
+    const hs = m.zones.map((z) => z.h);
+    ok(Math.max(...hs) - Math.min(...hs) <= 1,
+      `${tag}: upload zones differ in height (${hs.join(" vs ")})`);
+    const ws = m.zones.map((z) => z.w);
+    ok(Math.max(...ws) - Math.min(...ws) <= 1, `${tag}: upload zones differ in width (${ws.join(" vs ")})`);
+  }
   return m;
 }
 
@@ -209,7 +243,7 @@ async function measure(page, width, height, band) {
 
   await browser.close();
 
-  console.log("\nLAYOUT");
+  console.log(`\nLAYOUT — ${DIR_ARG} (${TOOLS[DIR_ARG]})`);
   for (const [label, m] of rows) {
     if (m) {
       const c = m.cols.length === 2
