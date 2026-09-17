@@ -3,7 +3,11 @@ import { unstable_cache } from "next/cache";
 import { createClient as createAnonClient } from "@supabase/supabase-js";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase/config";
 import type { Client } from "@/lib/services/workspace";
-import type { CmsBlock, CmsBlockContent, CmsCode, PageSeo, SectionStyle } from "@/lib/cms";
+import {
+  isChromeMode,
+  type ChromeMode, type CmsBlock, type CmsBlockContent, type CmsCode,
+  type PagePromo, type PageSeo, type SectionStyle,
+} from "@/lib/cms";
 
 /**
  * READING THE PUBLIC SITE.
@@ -56,6 +60,11 @@ export type PublicPage = {
   kind: string;
   blocks: CmsBlock[];
   seo: PageSeo;
+  /** What the page wears. A campaign landing usually asks for `minimal`. */
+  headerMode: ChromeMode;
+  footerMode: ChromeMode;
+  /** Set only on a campaign page; decides whether the page is still open. */
+  promo: PagePromo | undefined;
   publishedAt: string | null;
   updatedAt: string | null;
 };
@@ -79,6 +88,11 @@ export function toBlocks(snapshot: unknown): CmsBlock[] {
       code: (b.code ?? undefined) as CmsCode | undefined,
       analytics_id: typeof b.analytics_id === "string" ? b.analytics_id : null,
       anchor: typeof b.anchor === "string" ? b.anchor : null,
+      // A snapshot written before section windows existed has none of these,
+      // which reads as "always, to everybody" — the behaviour it had.
+      show_from: typeof b.show_from === "string" ? b.show_from : null,
+      show_until: typeof b.show_until === "string" ? b.show_until : null,
+      audience: typeof b.audience === "string" ? b.audience : "everyone",
     }));
 }
 
@@ -86,7 +100,33 @@ function toSeo(value: unknown): PageSeo {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as PageSeo) : {};
 }
 
-const PAGE_COLUMNS = "slug, title, kind, status, published_snapshot, published_at, updated_at, seo";
+/** A promotion is only a promotion when it says so. An `{}` in the column —
+ *  which is what a page that was never a campaign carries — must not make the
+ *  renderer think there is a window to close. */
+function toPromo(value: unknown): PagePromo | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const promo = value as PagePromo;
+  return promo.active ? promo : undefined;
+}
+
+const PAGE_COLUMNS = "slug, title, kind, status, published_snapshot, published_at, updated_at, seo, header_mode, footer_mode, promo, scheduled_at";
+
+/**
+ * Is this row public RIGHT NOW? Published, or scheduled for a moment that has
+ * already passed — the same rule the read policy enforces in 0093, written
+ * once more here because this file is the one responsible for the answer.
+ *
+ * A page whose schedule has arrived is live within a few minutes rather than
+ * at the second: the row is read through a five-minute cache, and the cached
+ * answer for "not yet" is what has to expire first. The settings screen says
+ * so in as many words rather than promising a precision that is not there.
+ */
+function isLive(row: { status: string; scheduled_at?: string | null }): boolean {
+  if (row.status === "published") return true;
+  if (row.status !== "scheduled") return false;
+  const at = row.scheduled_at ? Date.parse(row.scheduled_at) : NaN;
+  return Number.isFinite(at) && Date.now() >= at;
+}
 
 /**
  * One page's published content, or null when it was never published. A draft
@@ -105,14 +145,18 @@ const readPublishedPage = unstable_cache(
     const { data } = await anon.from("cms_pages").select(PAGE_COLUMNS).eq("slug", slug).maybeSingle();
     // RLS already refuses a draft to an anonymous reader; the status check is
     // the second lock on the same door, and the one this file is responsible
-    // for. A 'scheduled' or 'archived' page is not public either.
-    if (!data || data.status !== "published") return null;
+    // for. An 'archived' page is not public, and a 'scheduled' one is public
+    // only once its moment has passed.
+    if (!data || !isLive(data)) return null;
     return {
       slug: data.slug,
       title: data.title,
       kind: (data.kind as string | null) ?? "standard",
       blocks: toBlocks(data.published_snapshot),
       seo: toSeo(data.seo),
+      headerMode: isChromeMode(data.header_mode) ? data.header_mode : "global",
+      footerMode: isChromeMode(data.footer_mode) ? data.footer_mode : "global",
+      promo: toPromo(data.promo),
       publishedAt: data.published_at,
       updatedAt: data.updated_at,
     };
@@ -204,11 +248,15 @@ const readNavPages = unstable_cache(
   async (): Promise<NavPage[]> => {
     const anon = createAnonClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const { data } = await anon.from("cms_pages")
-      .select("slug, title, nav_group, nav_order, kind")
-      .eq("status", "published")
+      .select("slug, title, nav_group, nav_order, kind, status, scheduled_at")
+      // Both statuses the read policy can hand back; `isLive` decides which of
+      // them is really live, so a menu entry and the page behind it can never
+      // disagree about whether the page exists.
+      .in("status", ["published", "scheduled"])
       .not("nav_group", "is", null)
       .order("nav_order");
     return (data ?? [])
+      .filter(isLive)
       // A launch page answers "/" through the homepage switch and has no URL
       // of its own, so it can never be a menu entry.
       .filter((p) => p.kind !== "launch")

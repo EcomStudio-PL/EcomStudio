@@ -4,7 +4,10 @@ import { getProfile } from "@/lib/services/workspace";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { BlockRenderer, renderContext } from "@/components/cms/blocks";
-import { AnnouncementBar, SiteHeader, SiteFooter } from "@/components/cms/site-shell";
+import {
+  AnnouncementBar, MinimalFooter, MinimalHeader, SiteHeader, SiteFooter,
+} from "@/components/cms/site-shell";
+import { isChromeMode } from "@/lib/cms";
 import {
   getDraftBlocks, getGlobalDrafts, getNavPages, getPublicSite,
 } from "@/lib/server/public-site";
@@ -40,7 +43,7 @@ export default async function CmsPreview({ params }: { params: Promise<{ slug: s
   const t = makeT(dict);
 
   const { data: page } = await supabase.from("cms_pages")
-    .select("id, title, kind").eq("slug", slug).maybeSingle();
+    .select("id, title, kind, header_mode, footer_mode").eq("slug", slug).maybeSingle();
   if (!page) notFound();
   // The launch page is not a stack of blocks — previewing it means seeing the
   // real page, so send the admin to the draft view of "/" itself.
@@ -59,10 +62,17 @@ export default async function CmsPreview({ params }: { params: Promise<{ slug: s
 
   const shell = { global, nav, site, locale, t, showAuth: true, signedIn: false };
 
+  // The preview wears what the page wears — a landing set to `minimal` has to
+  // look like a landing here, or the responsive check is of a layout that will
+  // never ship.
+  const headerMode = isChromeMode(page.header_mode) ? page.header_mode : "global";
+  const footerMode = isChromeMode(page.footer_mode) ? page.footer_mode : "global";
+
   return (
     <div className="flex min-h-dvh flex-col bg-bg" data-cms-preview={slug}>
-      <AnnouncementBar global={global} locale={locale} />
-      <SiteHeader {...shell} />
+      {headerMode === "global" && <AnnouncementBar global={global} locale={locale} />}
+      {headerMode === "global" && <SiteHeader {...shell} />}
+      {headerMode === "minimal" && <MinimalHeader />}
       <main className="flex-1">
         <BlockRenderer
           blocks={blocks}
@@ -71,7 +81,8 @@ export default async function CmsPreview({ params }: { params: Promise<{ slug: s
           ctx={renderContext({ locale, t, media, data, admin: true, showAuth: true })}
         />
       </main>
-      <SiteFooter {...shell} />
+      {footerMode === "global" && <SiteFooter {...shell} />}
+      {footerMode === "minimal" && <MinimalFooter t={t} />}
     </div>
   );
 }

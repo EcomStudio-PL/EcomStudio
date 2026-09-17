@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
+import { promoIsOpen } from "@/lib/cms";
 import { BlockRenderer, renderContext } from "@/components/cms/blocks";
-import { AnnouncementBar, SiteHeader, SiteFooter } from "@/components/cms/site-shell";
+import {
+  AnnouncementBar, MinimalFooter, MinimalHeader, SiteHeader, SiteFooter,
+} from "@/components/cms/site-shell";
+import { normalizeTarget } from "@/lib/server/redirects";
 import {
   getGlobalSections, getNavPages, getPublicSite, getPublishedPage,
 } from "@/lib/server/public-site";
@@ -55,6 +59,18 @@ export default async function CmsPage({ params }: Params) {
   // Nothing to show is a 404, not an empty shell with a header and a footer.
   if (!page || page.kind === "launch" || visible.length === 0) notFound();
 
+  // A CAMPAIGN THAT IS OVER IS NOT A PAGE ANY MORE. An expired offer left up
+  // and still buyable is the one failure mode of a promotion page, so the
+  // window is enforced on the render, not on a cron job somebody forgets to
+  // run. Only pages that declared `active` have a window at all.
+  if (!promoIsOpen(page.promo)) {
+    const after = normalizeTarget(page.promo?.afterEndRedirect ?? "");
+    // No destination set means the campaign simply ceases to exist — better a
+    // 404 than a live page selling a price that has expired.
+    if (after) redirect(after);
+    notFound();
+  }
+
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
 
@@ -72,17 +88,22 @@ export default async function CmsPage({ params }: Params) {
     signedIn: Boolean(user),
   };
 
+  // WHAT THE PAGE WEARS IS THE PAGE'S OWN SETTING. `global` is the site's
+  // chrome, `minimal` is the brand alone, `none` is nothing — and the
+  // announcement bar belongs to the site's chrome, so it goes with it.
   return (
     <div className="flex min-h-dvh flex-col bg-bg">
-      <AnnouncementBar global={global} locale={locale} />
-      <SiteHeader {...shell} />
+      {page.headerMode === "global" && <AnnouncementBar global={global} locale={locale} />}
+      {page.headerMode === "global" && <SiteHeader {...shell} />}
+      {page.headerMode === "minimal" && <MinimalHeader />}
       <main className="flex-1">
         <BlockRenderer
           blocks={visible}
           ctx={renderContext({ locale, t, media, data, showAuth: access.showAuthEntry, signedIn: Boolean(user) })}
         />
       </main>
-      <SiteFooter {...shell} />
+      {page.footerMode === "global" && <SiteFooter {...shell} />}
+      {page.footerMode === "minimal" && <MinimalFooter t={t} />}
     </div>
   );
 }

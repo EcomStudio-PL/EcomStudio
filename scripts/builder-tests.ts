@@ -18,6 +18,7 @@
  *
  * Run: npm run test:builder
  */
+import { readFileSync } from "node:fs";
 import { BLOCK_TYPES, SECTION_GROUPS, sectionIsLive, promoIsOpen, PINNED_SECTIONS } from "../lib/cms";
 import { PAGE_TEMPLATES, templateBlocks, templateByKey } from "../lib/cms-templates";
 import { fieldsFor, splitFields } from "../lib/cms-schema";
@@ -180,6 +181,49 @@ check("an active promotion inside its window is open",
 
 check("only the two bar-shaped sections are pinned",
   PINNED_SECTIONS.size === 2 && PINNED_SECTIONS.has("promo_bar") && PINNED_SECTIONS.has("sticky_cta"));
+
+/* ═══════════════════════════════════════════════════════════════════════ */
+console.log("\nE. PUBLISHING LOSES NOTHING");
+
+/**
+ * The bug this exists for: `show_from` / `show_until` / `audience` were added
+ * to cms_blocks and to the renderer, and the publish snapshot kept copying the
+ * five fields it had always copied. Everything worked in the preview — which
+ * reads the table — and the settings did nothing at all once the page was
+ * live, because a visitor only ever sees the snapshot.
+ *
+ * It is a class of bug, not an incident: every future column is one more
+ * chance to make the same omission, and none of them announce themselves. So
+ * the two lists are compared directly, in the source, where the omission is.
+ */
+const source = (path: string) => readFileSync(`${process.cwd()}/${path}`, "utf8");
+
+/** The keys of the object literal that starts at `marker`. */
+function literalKeys(text: string, marker: string): string[] {
+  const start = text.indexOf(marker);
+  if (start < 0) return [];
+  const open = text.indexOf("({", start);
+  const close = text.indexOf("}))", open);
+  if (open < 0 || close < 0) return [];
+  return [...text.slice(open, close).matchAll(/(?:^|[\s{,])([a-z_][a-z0-9_]*)\s*:/gi)]
+    .map((m) => m[1]);
+}
+
+const written = literalKeys(source("app/actions/cms.ts"), "function snapshotOf");
+const read = literalKeys(source("lib/server/public-site.ts"), "export function toBlocks");
+
+check("the snapshot writer was found in the source", written.length > 0, written.join(","));
+check("the snapshot reader was found in the source", read.length > 0, read.join(","));
+
+const missing = read.filter((k) => !written.includes(k));
+check("every field the public renderer reads is written into the snapshot",
+  missing.length === 0, missing.join(", "));
+
+// The three that were actually dropped, named so a future edit cannot quietly
+// pass this section by deleting them from BOTH sides at once.
+for (const key of ["show_from", "show_until", "audience", "style", "code", "anchor"]) {
+  check(`…including ${key}`, written.includes(key) && read.includes(key));
+}
 
 /* ═══════════════════════════════════════════════════════════════════════ */
 console.log(failures === 0 ? "\nAll builder tests passed." : `\n${failures} check(s) failed.`);

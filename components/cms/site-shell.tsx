@@ -130,6 +130,43 @@ export function SiteHeader({ global, nav, locale, t, showAuth, signedIn }: Shell
   );
 }
 
+/* ── MINIMAL CHROME ──────────────────────────────────────────────────────── */
+
+/**
+ * WHAT A CAMPAIGN LANDING WEARS.
+ *
+ * The brand, and nothing that carries the visitor somewhere else. This is not
+ * a second header: it is the same `header_mode` switch as `none`, one notch
+ * up — the logo stays so the page still says whose offer it is, the menu and
+ * the auth entry go, because every one of those links leaves the offer.
+ */
+export function MinimalHeader() {
+  return (
+    <header data-chrome="minimal"
+      className="border-b border-line/70 bg-bg/85 backdrop-blur-md">
+      <div className="mx-auto flex h-[60px] w-full max-w-[88rem] items-center px-[var(--page-x,1rem)] sm:h-[68px]">
+        <Brand />
+      </div>
+    </header>
+  );
+}
+
+/** The legal minimum: who is selling, and the two documents that must be one
+ *  click away from anything that takes money. */
+export function MinimalFooter({ t }: { t: CmsT }) {
+  return (
+    <footer data-chrome="minimal" className="mt-auto border-t border-line bg-sunken/40">
+      <div className="mx-auto flex w-full max-w-[88rem] flex-wrap items-center justify-between gap-3 px-[var(--page-x,1rem)] py-6 text-[12px] text-muted">
+        <span>© {new Date().getFullYear()} GrovBase</span>
+        <span className="flex flex-wrap gap-4">
+          <Link href="/regulamin" className="tap transition-colors hover:text-ink">{t("launch.terms")}</Link>
+          <Link href="/polityka-prywatnosci" className="tap transition-colors hover:text-ink">{t("launch.privacyPage")}</Link>
+        </span>
+      </div>
+    </footer>
+  );
+}
+
 /* ── FOOTER ──────────────────────────────────────────────────────────────── */
 
 /** The groups a footer link may belong to, in the order they are printed.

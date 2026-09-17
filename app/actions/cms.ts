@@ -9,7 +9,8 @@ import {
 import { SEED_PAGES } from "@/lib/cms-seed";
 import { TEMPLATE_KEYS, templateBlocks } from "@/lib/cms-templates";
 import { normalizePath, normalizeTarget, sourceIsProtected } from "@/lib/server/redirects";
-import type { CmsBlockContent, CmsCode, PageSeo, SectionStyle } from "@/lib/cms";
+import type { CmsBlock, CmsBlockContent, CmsCode, PagePromo, PageSeo, SectionStyle } from "@/lib/cms";
+import { isChromeMode } from "@/lib/cms";
 
 /**
  * EVERY WRITE THE CMS MAKES.
@@ -300,6 +301,10 @@ export async function savePageSettingsAction(input: {
   navGroup: string | null;
   navOrder: number;
   seo: PageSeo;
+  /** What the page wears, and whether it is a campaign with an end. */
+  headerMode?: string;
+  footerMode?: string;
+  promo?: PagePromo;
 }): Promise<Result<{ slug: string }>> {
   try {
     const { supabase, adminId } = await requireAdmin();
@@ -328,6 +333,9 @@ export async function savePageSettingsAction(input: {
       nav_group: input.navGroup || null,
       nav_order: Number.isFinite(input.navOrder) ? Math.round(input.navOrder) : 100,
       seo: input.seo as never,
+      header_mode: isChromeMode(input.headerMode) ? input.headerMode : "global",
+      footer_mode: isChromeMode(input.footerMode) ? input.footerMode : "global",
+      promo: (input.promo ?? {}) as never,
       updated_at: new Date().toISOString(),
       updated_by: adminId,
     }).eq("id", input.pageId);
@@ -601,6 +609,25 @@ export async function deleteBlockAction(blockId: string): Promise<Result> {
 /* ── PUBLISH AND HISTORY ─────────────────────────────────────────────────── */
 
 /**
+ * The draft, frozen into the shape the public renderer reads.
+ *
+ * EVERY COLUMN THAT RENDERER LOOKS AT HAS TO BE IN HERE. A visitor never sees
+ * cms_blocks — only this snapshot — so a field left out is a setting that
+ * works in the preview and silently does nothing once the page is live. The
+ * section window and the audience are exactly that kind of field: invisible by
+ * design, and impossible to notice missing.
+ */
+function snapshotOf(blocks: CmsBlock[]) {
+  return blocks.map((b) => ({
+    id: b.id, type: b.type, sort_order: b.sort_order, visible: b.visible,
+    content: b.content, style: b.style ?? {}, code: b.code ?? {},
+    analytics_id: b.analytics_id ?? null, anchor: b.anchor ?? null,
+    show_from: b.show_from ?? null, show_until: b.show_until ?? null,
+    audience: b.audience ?? "everyone",
+  }));
+}
+
+/**
  * Publish: take a snapshot of the draft, store it as the page's published
  * content AND as a numbered version, and clear the public cache.
  *
@@ -616,11 +643,7 @@ export async function publishPageAction(pageId: string): Promise<Result> {
       .select("slug, seo").eq("id", pageId).maybeSingle();
     if (!page) return { ok: false, error: "missing" };
 
-    const snapshot = blocks.map((b) => ({
-      id: b.id, type: b.type, sort_order: b.sort_order, visible: b.visible,
-      content: b.content, style: b.style ?? {}, code: b.code ?? {},
-      analytics_id: b.analytics_id ?? null, anchor: b.anchor ?? null,
-    }));
+    const snapshot = snapshotOf(blocks);
 
     const version = await nextVersion(supabase, pageId);
     const { error: versionError } = await supabase.from("cms_page_versions").insert({
@@ -661,6 +684,83 @@ export async function unpublishPageAction(pageId: string): Promise<Result> {
     if (error || !page) return { ok: false, error: "generic" };
     await logAudit(supabase, {
       actorId: adminId, action: "cms.unpublished", entityType: "cms_page", entityId: page.slug,
+    });
+    invalidate(page.slug);
+    return { ok: true };
+  } catch (e) { return { ok: false, error: message(e) }; }
+}
+
+/**
+ * PUBLISH LATER, WITHOUT A CRON JOB.
+ *
+ * Scheduling takes the same snapshot publishing does and stores it on the row
+ * with a moment attached; migration 0093 lets the read policy hand that row
+ * out once the moment passes. So what goes live on Friday is what the page
+ * looked like when the admin scheduled it — not whatever the draft happens to
+ * contain on Friday, which is the trap in every "publish at" that re-reads the
+ * blocks at fire time.
+ *
+ * Nothing runs in between. There is no job to miss, no worker to be down, and
+ * cancelling is an UPDATE.
+ */
+export async function schedulePageAction(pageId: string, at: string): Promise<Result> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    const when = Date.parse(at);
+    if (!Number.isFinite(when)) return { ok: false, error: "date" };
+    // A time in the past is a publish somebody typed wrong, and publishing on
+    // their behalf is not this action's decision to make.
+    if (when <= Date.now()) return { ok: false, error: "past" };
+
+    const blocks = await listBlocks(supabase, pageId);
+    if (blocks.length === 0) return { ok: false, error: "noSections" };
+    const { data: page } = await supabase.from("cms_pages")
+      .select("slug, seo").eq("id", pageId).maybeSingle();
+    if (!page) return { ok: false, error: "missing" };
+
+    const snapshot = snapshotOf(blocks);
+    const version = await nextVersion(supabase, pageId);
+    const { error: versionError } = await supabase.from("cms_page_versions").insert({
+      page_id: pageId, version, snapshot: snapshot as never,
+      seo: (page.seo ?? {}) as never, reason: "schedule", created_by: adminId,
+    });
+    if (versionError) return { ok: false, error: "generic" };
+
+    const { error } = await supabase.from("cms_pages").update({
+      published_snapshot: snapshot as never,
+      status: "scheduled",
+      scheduled_at: new Date(when).toISOString(),
+      updated_at: new Date().toISOString(),
+      updated_by: adminId,
+    }).eq("id", pageId);
+    if (error) return { ok: false, error: "generic" };
+
+    await logAudit(supabase, {
+      actorId: adminId, action: "cms.scheduled", entityType: "cms_page", entityId: page.slug,
+      after: { at: new Date(when).toISOString(), blocks: snapshot.length, version },
+    });
+    invalidate(page.slug);
+    return { ok: true };
+  } catch (e) { return { ok: false, error: message(e) }; }
+}
+
+/** Call off a pending schedule. The page goes back to being a draft; the
+ *  snapshot it would have shown stays on the row and in the history. */
+export async function cancelScheduleAction(pageId: string): Promise<Result> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    const { data: page, error } = await supabase.from("cms_pages")
+      .update({
+        status: "draft", scheduled_at: null,
+        updated_at: new Date().toISOString(), updated_by: adminId,
+      })
+      .eq("id", pageId).eq("status", "scheduled").select("slug").maybeSingle();
+    if (error) return { ok: false, error: "generic" };
+    // Nothing matched: the page is not scheduled, which is the state the
+    // caller wanted anyway.
+    if (!page) return { ok: true };
+    await logAudit(supabase, {
+      actorId: adminId, action: "cms.schedule_cancelled", entityType: "cms_page", entityId: page.slug,
     });
     invalidate(page.slug);
     return { ok: true };
