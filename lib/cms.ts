@@ -48,6 +48,29 @@ export type CmsBlockContent = {
   filter?: string[];
   /** spacer: how much air, in the same vocabulary as the style presets. */
   size?: Space;
+
+  /* ── CONVERSION ────────────────────────────────────────────────────────
+   *
+   * A countdown, a price and a bonus are the difference between a page that
+   * describes an offer and a page that sells one. Every one of them is a
+   * value an admin types — there is no invented scarcity here: no fake
+   * viewer counts, no "3 people are looking at this", no timer that resets
+   * itself when it runs out. A deadline that has passed says so.
+   */
+
+  /** An absolute instant (ISO 8601). The admin picks a local date and time;
+   *  it is stored as the moment it refers to, so a visitor in another
+   *  timezone sees the same deadline rather than a different one. */
+  deadline?: string;
+  /** What the section says once `deadline` is behind us. Empty means the
+   *  section hides itself when the offer ends, which is the honest default. */
+  endedLabel?: LocaleText;
+  /** The offer's price, exactly as it should read: "999 zł", "2× kredyty". */
+  price?: LocaleText;
+  /** The price it replaces, shown struck through. */
+  oldPrice?: LocaleText;
+  /** The small print under a price: "jednorazowo", "za 1000 kredytów". */
+  priceNote?: LocaleText;
   /**
    * Open bag for section types whose fields are their own vocabulary rather
    * than the shared title/subtitle/cta shape — today only the launch page,
@@ -126,7 +149,38 @@ export type CmsBlock = {
   analytics_id?: string | null;
   /** #anchor, for in-page navigation and the legal table of contents. */
   anchor?: string | null;
+
+  /* ── WHEN, AND FOR WHOM ──────────────────────────────────────────────
+   *
+   * A promo banner that runs 17–20 September, and a "załóż konto" block
+   * that a signed-in visitor should never be shown. Both are decided on
+   * the SERVER: a section outside its window or its audience is not
+   * rendered at all, rather than rendered and hidden with CSS, so it never
+   * reaches the browser and cannot be read out of the markup.
+   */
+  /** ISO instant, inclusive. Null means "from the beginning". */
+  show_from?: string | null;
+  /** ISO instant, exclusive. Null means "forever". */
+  show_until?: string | null;
+  /** everyone | anon | user. */
+  audience?: string | null;
 };
+
+/** Is this section within its own window, for this visitor, right now? */
+export function sectionIsLive(
+  block: Pick<CmsBlock, "show_from" | "show_until" | "audience">,
+  opts: { now?: number; signedIn?: boolean } = {},
+): boolean {
+  const now = opts.now ?? Date.now();
+  const from = block.show_from ? Date.parse(block.show_from) : NaN;
+  const until = block.show_until ? Date.parse(block.show_until) : NaN;
+  if (Number.isFinite(from) && now < from) return false;
+  if (Number.isFinite(until) && now >= until) return false;
+  const audience = block.audience ?? "everyone";
+  if (audience === "anon" && opts.signedIn) return false;
+  if (audience === "user" && !opts.signedIn) return false;
+  return true;
+}
 
 /* ── SEO ─────────────────────────────────────────────────────────────────── */
 
@@ -142,6 +196,51 @@ export type PageSeo = {
   nofollow?: boolean;
 };
 
+/* ── PAGE CHROME AND CAMPAIGN ────────────────────────────────────────────
+ *
+ * A campaign landing is the same page type as "O nas" with two differences:
+ * what it wears (usually less), and the fact that it ends.
+ */
+
+/** global = the site's own header/footer, minimal = logo only, none = nothing.
+ *  `minimal` is what an ad landing wants: the brand is still there, the
+ *  navigation that would carry the visitor away is not. */
+export type ChromeMode = "global" | "minimal" | "none";
+
+export const CHROME_MODES: readonly ChromeMode[] = ["global", "minimal", "none"];
+
+export const isChromeMode = (v: unknown): v is ChromeMode =>
+  typeof v === "string" && (CHROME_MODES as readonly string[]).includes(v);
+
+/**
+ * A page that is a promotion. Deliberately five fields on the page rather
+ * than a promotions subsystem: the offer itself lives in the pricing and the
+ * credit ledger, and this only says when the page selling it is open.
+ */
+export type PagePromo = {
+  active?: boolean;
+  /** ISO instants. */
+  startAt?: string;
+  endAt?: string;
+  /** Where a visitor goes once `endAt` has passed. Internal path or https. */
+  afterEndRedirect?: string;
+  /** Shown on the page and quoted in support; not validated against Stripe. */
+  code?: string;
+  /** Free-form tag an admin can match against their ad platform. */
+  campaignId?: string;
+};
+
+/** Is the promotion window open right now? A page with no promotion, or an
+ *  inactive one, is simply a page — this only answers for `active` ones. */
+export function promoIsOpen(promo: PagePromo | undefined, now = Date.now()): boolean {
+  if (!promo?.active) return true;
+  const start = promo.startAt ? Date.parse(promo.startAt) : NaN;
+  const end = promo.endAt ? Date.parse(promo.endAt) : NaN;
+  if (Number.isFinite(start) && now < start) return false;
+  if (Number.isFinite(end) && now >= end) return false;
+  return true;
+}
+
 export const BLOCK_TYPES = [
   "hero", "showcase", "before_after", "video", "product_lock", "workflow",
   "use_cases", "features", "stats", "text_image", "cta", "faq", "pricing", "logo_cloud",
@@ -151,22 +250,45 @@ export const BLOCK_TYPES = [
   "rich_text", "cards", "tools_grid", "models", "gallery", "comparison",
   "testimonials", "pricing_table", "contact_form", "newsletter",
   "spacer", "divider", "custom_code",
+  // Added with Builder 2.0 — the sections a campaign landing is made of.
+  "countdown", "promo_bar", "offer", "bonus", "guarantee", "trust_badges",
+  "urgency_cta", "sticky_cta",
 ] as const;
 
 /**
  * The section types an admin may actually add, grouped the way the picker
  * shows them. Deliberately NOT the same list as BLOCK_TYPES: `launch` belongs
  * to exactly one page and is created with it, so it is never offered here.
+ *
+ * THE FIRST GROUP IS THE ONE THAT GETS USED. A picker that opens on
+ * twenty-eight equal choices is a decision, not a shortcut, so the six
+ * sections that build nine landing pages out of ten come first and the rest
+ * are grouped by what they are FOR — selling, proving, showing — rather than
+ * by what they are made of. A type may appear in two groups: "popular" is a
+ * shortcut into the same catalogue, not a separate one.
  */
 export const SECTION_GROUPS: readonly { key: string; types: readonly string[] }[] = [
-  { key: "layout", types: ["hero", "cta", "spacer", "divider"] },
-  { key: "text", types: ["text", "rich_text", "legal", "faq", "stats"] },
-  { key: "media", types: ["media", "video", "gallery", "before_after", "showcase", "logo_cloud"] },
-  { key: "grid", types: ["features", "benefits", "cards", "workflow", "use_cases", "testimonials", "comparison"] },
-  { key: "product", types: ["tools_grid", "models", "pricing_table", "product_lock", "text_image"] },
+  { key: "popular", types: ["hero", "features", "cta", "faq", "gallery", "before_after"] },
+  { key: "sales", types: ["offer", "pricing_table", "bonus", "countdown", "urgency_cta", "promo_bar", "sticky_cta", "guarantee", "comparison", "benefits"] },
+  { key: "proof", types: ["testimonials", "logo_cloud", "stats", "trust_badges", "text_image", "product_lock"] },
+  { key: "text", types: ["text", "rich_text", "legal", "workflow", "use_cases", "cards"] },
+  { key: "media", types: ["media", "video", "showcase"] },
+  { key: "product", types: ["tools_grid", "models"] },
   { key: "forms", types: ["contact", "contact_form", "newsletter"] },
+  { key: "layout", types: ["spacer", "divider"] },
   { key: "advanced", types: ["custom_code"] },
 ] as const;
+
+/**
+ * Sections that sell against a clock. They share one rule the renderer
+ * enforces: once the deadline has passed they either say so or disappear —
+ * never quietly keep counting, and never restart.
+ */
+export const DEADLINE_SECTIONS = new Set(["countdown", "urgency_cta", "promo_bar"]);
+
+/** Sections that pin themselves to an edge of the viewport rather than
+ *  sitting in the flow. They ignore the section padding entirely. */
+export const PINNED_SECTIONS = new Set(["promo_bar", "sticky_cta"]);
 
 export const SECTION_TYPES = SECTION_GROUPS.flatMap((g) => g.types);
 

@@ -1,6 +1,6 @@
 import type { Client } from "@/lib/services/workspace";
-import type { CmsBlock, CmsCode, PageSeo, SectionStyle } from "@/lib/cms";
-import { BLOCK_TYPES } from "@/lib/cms";
+import type { ChromeMode, CmsBlock, CmsCode, PagePromo, PageSeo, SectionStyle } from "@/lib/cms";
+import { BLOCK_TYPES, isChromeMode } from "@/lib/cms";
 
 /**
  * THE CMS, AS BUSINESS LOGIC.
@@ -33,12 +33,19 @@ export type PageRow = {
   updatedAt: string;
   updatedBy: string | null;
   scheduledAt: string | null;
+  headerMode: ChromeMode;
+  footerMode: ChromeMode;
+  promo: PagePromo;
+  template: string | null;
 };
 
 export type BlockRow = CmsBlock & { id: string };
 
 const asSeo = (value: unknown): PageSeo =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as PageSeo) : {};
+
+const asPromo = (value: unknown): PagePromo =>
+  value && typeof value === "object" && !Array.isArray(value) ? (value as PagePromo) : {};
 
 const asStyle = (value: unknown): SectionStyle =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as SectionStyle) : {};
@@ -47,13 +54,15 @@ const asCode = (value: unknown): CmsCode =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as CmsCode) : {};
 
 const PAGE_SELECT =
-  "id, slug, title, status, kind, sort_order, nav_group, nav_order, seo, published_at, updated_at, updated_by, scheduled_at";
+  "id, slug, title, status, kind, sort_order, nav_group, nav_order, seo, published_at, updated_at, updated_by, scheduled_at, header_mode, footer_mode, promo, template";
 
 type RawPage = {
   id: string; slug: string; title: string; status: string; kind: string;
   sort_order: number; nav_group: string | null; nav_order: number;
   seo: unknown; published_at: string | null; updated_at: string;
   updated_by: string | null; scheduled_at: string | null;
+  header_mode: string | null; footer_mode: string | null;
+  promo: unknown; template: string | null;
 };
 
 const toPage = (row: RawPage): PageRow => ({
@@ -70,6 +79,10 @@ const toPage = (row: RawPage): PageRow => ({
   updatedAt: row.updated_at,
   updatedBy: row.updated_by,
   scheduledAt: row.scheduled_at,
+  headerMode: isChromeMode(row.header_mode) ? row.header_mode : "global",
+  footerMode: isChromeMode(row.footer_mode) ? row.footer_mode : "global",
+  promo: asPromo(row.promo),
+  template: row.template,
 });
 
 export async function listPages(supabase: Client): Promise<PageRow[]> {
@@ -83,7 +96,7 @@ export async function getPage(supabase: Client, slug: string): Promise<PageRow |
   return data ? toPage(data) : null;
 }
 
-const BLOCK_SELECT = "id, type, sort_order, visible, content, style, code, analytics_id, anchor";
+const BLOCK_SELECT = "id, type, sort_order, visible, content, style, code, analytics_id, anchor, show_from, show_until, audience";
 
 export async function listBlocks(supabase: Client, pageId: string): Promise<BlockRow[]> {
   const { data } = await supabase.from("cms_blocks").select(BLOCK_SELECT)
@@ -98,6 +111,9 @@ export async function listBlocks(supabase: Client, pageId: string): Promise<Bloc
     code: asCode(b.code),
     analytics_id: b.analytics_id,
     anchor: b.anchor,
+    show_from: b.show_from,
+    show_until: b.show_until,
+    audience: b.audience ?? "everyone",
   }));
 }
 

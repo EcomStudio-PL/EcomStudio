@@ -79,7 +79,7 @@ export default async function CmsPage({ params }: Params) {
       <main className="flex-1">
         <BlockRenderer
           blocks={visible}
-          ctx={renderContext({ locale, t, media, data, showAuth: access.showAuthEntry })}
+          ctx={renderContext({ locale, t, media, data, showAuth: access.showAuthEntry, signedIn: Boolean(user) })}
         />
       </main>
       <SiteFooter {...shell} />

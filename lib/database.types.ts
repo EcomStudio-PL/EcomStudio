@@ -653,6 +653,78 @@ export type Database = {
           },
         ]
       }
+      cms_redirects: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          enabled: boolean
+          hits: number
+          id: string
+          last_hit_at: string | null
+          note: string | null
+          source: string
+          status_code: number
+          target: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          hits?: number
+          id?: string
+          last_hit_at?: string | null
+          note?: string | null
+          source: string
+          status_code?: number
+          target: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          hits?: number
+          id?: string
+          last_hit_at?: string | null
+          note?: string | null
+          source?: string
+          status_code?: number
+          target?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      cms_templates: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          kind: string
+          name: string
+          payload: Json
+          section_type: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind: string
+          name: string
+          payload?: Json
+          section_type?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          name?: string
+          payload?: Json
+          section_type?: string | null
+        }
+        Relationships: []
+      }
       cms_blocks: {
         Row: {
           analytics_id: string | null
@@ -668,6 +740,9 @@ export type Database = {
           updated_at: string
           updated_by: string | null
           visible: boolean
+          audience: string
+          show_from: string | null
+          show_until: string | null
         }
         Insert: {
           analytics_id?: string | null
@@ -683,6 +758,9 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
           visible?: boolean
+          audience?: string
+          show_from?: string | null
+          show_until?: string | null
         }
         Update: {
           analytics_id?: string | null
@@ -698,6 +776,9 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
           visible?: boolean
+          audience?: string
+          show_from?: string | null
+          show_until?: string | null
         }
         Relationships: [
           {
@@ -780,6 +861,10 @@ export type Database = {
           title: string
           updated_at: string
           updated_by: string | null
+          footer_mode: string
+          header_mode: string
+          promo: Json
+          template: string | null
         }
         Insert: {
           created_at?: string
@@ -797,6 +882,10 @@ export type Database = {
           title: string
           updated_at?: string
           updated_by?: string | null
+          footer_mode?: string
+          header_mode?: string
+          promo?: Json
+          template?: string | null
         }
         Update: {
           created_at?: string
@@ -814,6 +903,10 @@ export type Database = {
           title?: string
           updated_at?: string
           updated_by?: string | null
+          footer_mode?: string
+          header_mode?: string
+          promo?: Json
+          template?: string | null
         }
         Relationships: [
           {
@@ -3913,6 +4006,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cms_redirects_active: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          source: string
+          status_code: number
+          target: string
+        }[]
+      }
+      cms_redirect_would_loop: {
+        Args: { p_ignore_id?: string; p_source: string; p_target: string }
+        Returns: boolean
+      }
       admin_adjust_credits: {
         Args: { p_amount: number; p_description?: string; p_wallet_id: string }
         Returns: string

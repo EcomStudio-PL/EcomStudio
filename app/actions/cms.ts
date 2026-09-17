@@ -260,6 +260,11 @@ export async function saveBlockAction(input: {
   visible: boolean;
   analyticsId?: string | null;
   anchor?: string | null;
+  /** The window this section is live in, and who it is for. Both are
+   *  enforced by the PUBLIC renderer, which is why they are columns. */
+  showFrom?: string | null;
+  showUntil?: string | null;
+  audience?: string | null;
 }): Promise<Result<{ id: string }>> {
   try {
     const { supabase, adminId } = await requireAdmin();
@@ -274,6 +279,11 @@ export async function saveBlockAction(input: {
       visible: input.visible,
       analytics_id: clean(input.analyticsId, 80),
       anchor: clean(input.anchor, 64),
+      show_from: instant(input.showFrom),
+      show_until: instant(input.showUntil),
+      // An unknown value is not a new audience, it is a typo: fall back to
+      // the one that shows the section to everybody rather than to nobody.
+      audience: AUDIENCES.has(input.audience ?? "") ? (input.audience as string) : "everyone",
       updated_at: new Date().toISOString(),
       updated_by: adminId,
     };
@@ -652,6 +662,20 @@ async function touchPage(
 const clean = (value: string | null | undefined, max: number): string | null => {
   const v = (value ?? "").trim().slice(0, max);
   return v || null;
+};
+
+/** The three audiences a section can be written for. Anything else is a
+ *  typo, and a typo must not hide a section from everybody. */
+const AUDIENCES = new Set(["everyone", "anon", "user"]);
+
+/** A timestamp the database will accept, or null. An unparseable date is
+ *  stored as "no limit" rather than as a constraint violation — a scheduling
+ *  field left half-typed must not fail the whole save. */
+const instant = (value: string | null | undefined): string | null => {
+  const v = (value ?? "").trim();
+  if (!v) return null;
+  const ms = Date.parse(v);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 };
 
 function message(e: unknown): string {

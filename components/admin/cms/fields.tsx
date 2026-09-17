@@ -121,6 +121,41 @@ export function Field({ def, locale, content, onChange, onChangeWith }: {
     );
   }
 
+  /**
+   * A DEADLINE IS A MOMENT, NOT A STRING. `datetime-local` gives the admin
+   * their own clock; what is stored is the instant it refers to, so the
+   * countdown a visitor in Berlin sees ends at the same second as the one in
+   * Warsaw. The conversion is done here, at the edge, rather than leaving an
+   * ambiguous "2026-09-20T23:59" to be guessed at by the renderer.
+   */
+  if (def.kind === "datetime") {
+    const asLocalInput = (iso: string): string => {
+      const ms = Date.parse(iso);
+      if (!Number.isFinite(ms)) return "";
+      const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000);
+      return d.toISOString().slice(0, 16);
+    };
+    return (
+      <div>
+        <Label htmlFor={id}>{label}</Label>
+        <div className="flex items-center gap-2">
+          <Input id={id} type="datetime-local" value={asLocalInput(value)}
+            onChange={(e) => {
+              const ms = Date.parse(e.target.value);
+              set(Number.isFinite(ms) ? new Date(ms).toISOString() : "");
+            }} />
+          {value && (
+            <button type="button" onClick={() => set("")} data-clear-datetime
+              className="shrink-0 rounded-lg px-2.5 py-2 text-[12px] font-semibold text-muted transition-colors hover:bg-raised hover:text-ink">
+              {t("common.clear")}
+            </button>
+          )}
+        </div>
+        {hint && <p className="mt-1.5 text-[11.5px] leading-relaxed text-faint">{hint}</p>}
+      </div>
+    );
+  }
+
   if (def.kind === "richtext") {
     return (
       <div>

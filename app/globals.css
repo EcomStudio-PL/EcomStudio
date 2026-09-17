@@ -1850,6 +1850,35 @@ body:has(.workspace-page)::after { display: none; }
   padding: clamp(1.5rem, 3vw, 2.5rem);
 }
 
+/* ── PINNED SECTIONS ──────────────────────────────────────────────────────
+   A promo bar and a sticky call to action are the two sections whose job is
+   to stay on screen while the visitor reads past everything else. They keep
+   the section frame — their own id, their own scoped CSS — and trade the
+   flow for a fixed edge.
+
+   THE SAFE-AREA INSET IS NOT DECORATION: without it a sticky CTA sits under
+   an iPhone's home indicator, which is both ugly and untappable. */
+.cms-pinned {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+  background: var(--cms-bg, rgb(var(--accent)));
+  color: #fff;
+  box-shadow: 0 -1px 0 rgb(0 0 0 / 0.08), 0 10px 30px rgb(0 0 0 / 0.16);
+}
+.cms-pinned > .cms-in { padding-inline: var(--page-x, 1rem); max-width: 80rem; }
+.cms-pinned-top { top: 0; }
+.cms-pinned-bottom {
+  bottom: 0;
+  padding-bottom: calc(0.6rem + env(safe-area-inset-bottom, 0px));
+}
+/* A pinned bar's buttons sit on the accent, not on the page background. */
+.cms-pinned .cta,
+.cms-pinned a[class*="cta"] { background: #fff; color: rgb(var(--accent)); }
+
 @media (max-width: 1023px) {
   .cms-sec {
     padding-top: var(--cms-pt-t, var(--cms-pt, 3rem));

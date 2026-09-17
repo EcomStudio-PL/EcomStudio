@@ -66,6 +66,9 @@ type Draft = {
   code: CmsCode;
   analyticsId: string | null;
   anchor: string | null;
+  showFrom: string | null;
+  showUntil: string | null;
+  audience: string;
 };
 
 const toDraft = (b: BlockRow): Draft => ({
@@ -77,6 +80,9 @@ const toDraft = (b: BlockRow): Draft => ({
   code: b.code ?? {},
   analyticsId: b.analytics_id ?? null,
   anchor: b.anchor ?? null,
+  showFrom: b.show_from ?? null,
+  showUntil: b.show_until ?? null,
+  audience: b.audience ?? "everyone",
 });
 
 export function Builder({ page, blocks: initial, previewPath }: {
@@ -133,6 +139,9 @@ export function Builder({ page, blocks: initial, previewPath }: {
       visible: draft.visible,
       analyticsId: draft.analyticsId,
       anchor: draft.anchor,
+      showFrom: draft.showFrom,
+      showUntil: draft.showUntil,
+      audience: draft.audience,
     });
     if (res.ok) {
       setSaveState("saved");
@@ -245,6 +254,7 @@ export function Builder({ page, blocks: initial, previewPath }: {
       const created: Draft = {
         id: res.data.id, type, visible: true, content: {}, style: {}, code: {},
         analyticsId: null, anchor: null,
+        showFrom: null, showUntil: null, audience: "everyone",
       };
       setBlocks((prev) => { remember(prev); return [...prev, created]; });
       setActiveId(created.id);

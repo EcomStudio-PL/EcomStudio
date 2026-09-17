@@ -1,14 +1,16 @@
 import Link from "next/link";
-import { Check, Minus, Quote, Sparkles } from "lucide-react";
+import { Check, Clock, Gift, Minus, Quote, ShieldCheck, Sparkles } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { CmsBlock, CmsBlockContent, CmsItem } from "@/lib/cms";
-import { lt, safeUrl, videoEmbedUrl } from "@/lib/cms";
+import { lt, safeUrl, sectionIsLive, videoEmbedUrl, PINNED_SECTIONS } from "@/lib/cms";
 import { resolveStyle } from "@/lib/cms-style";
 import { sanitizeRichText, sanitizeHtml } from "@/lib/cms-sanitize";
 import { cmsIcon } from "@/lib/cms-icons";
-import { formatCredits, formatPrice } from "@/lib/utils";
+import { cn, formatCredits, formatPrice } from "@/lib/utils";
 import { EMPTY_LIVE_DATA, type CmsLiveData } from "@/lib/server/cms-data";
 import { metaFor, type MediaIndex } from "@/lib/server/cms-media";
 import { Reveal, BeforeAfter, LazyVideo } from "./widgets";
+import { Countdown } from "./countdown";
 import { CmsImage } from "./cms-image";
 import { CustomBlock } from "./custom-block";
 import { CmsForm } from "./cms-form";
@@ -50,13 +52,20 @@ export type RenderContext = {
   admin?: boolean;
   /** Whether the auth CTAs should be offered at all (pre-launch they are not). */
   showAuth?: boolean;
+  /** Decides which sections an "only for logged-out visitors" rule keeps. */
+  signedIn?: boolean;
 };
 
 export function BlockRenderer({ blocks, ctx }: { blocks: CmsBlock[]; ctx: RenderContext }) {
+  // A SCHEDULED OR TARGETED SECTION IS FILTERED HERE, on the server, before
+  // anything renders — so a banner that starts on Friday is not in Thursday's
+  // HTML at all, and a "sign up" block is not delivered to someone who has.
+  // The admin preview keeps everything: the point of the preview is to see
+  // what you are building, including the part that is not live yet.
+  const live = blocks.filter((b) => b.visible && (ctx.admin || sectionIsLive(b, { signedIn: ctx.signedIn })));
   return (
     <>
-      {blocks
-        .filter((b) => b.visible)
+      {live
         .sort((a, b) => a.sort_order - b.sort_order)
         .map((block, i) => (
           <CmsSection key={block.id ?? i} block={block} ctx={ctx} first={i === 0} />
@@ -77,6 +86,7 @@ export function renderContext(input: {
   data?: CmsLiveData;
   admin?: boolean;
   showAuth?: boolean;
+  signedIn?: boolean;
 }): RenderContext {
   return {
     locale: input.locale,
@@ -85,6 +95,7 @@ export function renderContext(input: {
     data: input.data ?? EMPTY_LIVE_DATA,
     admin: input.admin,
     showAuth: input.showAuth,
+    signedIn: input.signedIn,
   };
 }
 
@@ -124,13 +135,27 @@ function CmsSection({ block, ctx, first }: { block: CmsBlock; ctx: RenderContext
 
   const bare = block.type === "spacer" || block.type === "divider";
 
+  /**
+   * A PROMO BAR AND A STICKY CTA ARE NOT IN THE FLOW. One sits at the top of
+   * the page, one at the bottom of the viewport, and both are the section
+   * types whose whole job is to stay visible while the visitor scrolls past
+   * everything else. They keep the section frame — their own id, their own
+   * analytics name, their own custom CSS scope — and trade the padding for a
+   * fixed position and a safe-area inset, so a sticky CTA never lands under
+   * a phone's home indicator.
+   */
+  const pinned = PINNED_SECTIONS.has(block.type);
+  const pinnedClass = block.type === "promo_bar"
+    ? "cms-pinned cms-pinned-top"
+    : "cms-pinned cms-pinned-bottom";
+
   return (
     <section
       data-cms-section={id}
       data-cms-type={block.type}
       {...(block.analytics_id ? { "data-analytics": block.analytics_id } : {})}
       {...(anchor ? { id: anchor } : {})}
-      className={className}
+      className={pinned ? cn(pinnedClass, className) : className}
       style={style}
     >
       {bare ? body : <div className="cms-in">{body}</div>}
@@ -707,6 +732,226 @@ function renderBlock(block: CmsBlock, ctx: RenderContext, first: boolean): React
         </>
       );
 
+    /* ── CONVERSION ─────────────────────────────────────────────────────
+     *
+     * These sell, and they are held to one rule: every number on screen is
+     * a value an admin typed. No invented scarcity, no counter that watches
+     * the visitor, no timer that starts again when it runs out. When a
+     * deadline passes the section says the offer closed, or it leaves.
+     */
+
+    case "countdown": {
+      const ended = T("endedLabel");
+      if (!c.deadline) return null;
+      // A deadline already behind us, with nothing to say about it, is a
+      // section that should not be on the page at all.
+      if (!ended && Date.parse(c.deadline) <= Date.now()) return null;
+      return (
+        <Reveal className="cms-center-x max-w-3xl text-center">
+          {T("title") && <SectionHeading>{T("title")}</SectionHeading>}
+          {T("subtitle") && <p className="mt-3 text-[15px] leading-relaxed text-muted">{T("subtitle")}</p>}
+          <Countdown
+            deadline={c.deadline}
+            className="mt-7"
+            labels={[t("cms.time.days"), t("cms.time.hours"), t("cms.time.minutes"), t("cms.time.seconds")]}
+            onEnded={ended ? <p className="mt-6 text-[15px] font-semibold text-muted">{ended}</p> : null}
+          />
+          <CtaRow content={c} locale={locale} className="mt-8 justify-center" />
+        </Reveal>
+      );
+    }
+
+    case "promo_bar":
+      return (
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-center">
+          {T("badge") && (
+            <span className="rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em]">
+              {T("badge")}
+            </span>
+          )}
+          {T("title") && <span className="text-[13.5px] font-semibold sm:text-[14.5px]">{T("title")}</span>}
+          {c.deadline && (
+            <Countdown
+              deadline={c.deadline} compact
+              labels={[t("cms.time.days"), t("cms.time.hours"), t("cms.time.minutes"), t("cms.time.seconds")]}
+              className="text-[13.5px]"
+            />
+          )}
+          <CtaRow content={c} locale={locale} className="justify-center" />
+        </div>
+      );
+
+    case "offer": {
+      const includes = items.filter((it) => lt(it.title, locale));
+      return (
+        <Reveal className="mx-auto max-w-2xl">
+          <div className="panel rounded-3xl p-6 text-center sm:p-9">
+            {T("badge") && (
+              <p className="mb-4 inline-flex rounded-full border border-accent/25 bg-accent-soft/60 px-3.5 py-1.5 font-display text-[11.5px] font-semibold uppercase tracking-[0.16em] text-accent">
+                {T("badge")}
+              </p>
+            )}
+            {T("title") && <SectionHeading>{T("title")}</SectionHeading>}
+            {T("description") && (
+              <p className="mt-3 text-[15px] leading-relaxed text-muted">{T("description")}</p>
+            )}
+            {T("price") && (
+              <p className="mt-6 flex flex-wrap items-baseline justify-center gap-3">
+                {T("oldPrice") && (
+                  <span className="text-[18px] font-medium text-faint line-through">{T("oldPrice")}</span>
+                )}
+                <span className="font-display text-[clamp(2rem,6vw,3rem)] font-semibold leading-none tracking-tight">
+                  {T("price")}
+                </span>
+              </p>
+            )}
+            {T("priceNote") && <p className="mt-2 text-[12.5px] text-faint">{T("priceNote")}</p>}
+            {includes.length > 0 && (
+              <ul className="mx-auto mt-7 max-w-md space-y-2.5 text-left">
+                {includes.map((it, i) => (
+                  <li key={i} className="flex items-start gap-2.5 text-[14px] leading-relaxed">
+                    <Check size={16} aria-hidden className="mt-0.5 shrink-0 text-accent" />
+                    <span>{lt(it.title, locale)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <CtaRow content={c} locale={locale} className="mt-8 justify-center" />
+          </div>
+        </Reveal>
+      );
+    }
+
+    case "bonus":
+      return (
+        <div className="grid items-center gap-8 lg:grid-cols-[1.1fr_1fr]">
+          <Reveal>
+            {T("badge") && (
+              <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-accent/25 bg-accent-soft/60 px-3.5 py-1.5 font-display text-[11.5px] font-semibold uppercase tracking-[0.16em] text-accent">
+                <Gift size={13} aria-hidden />{T("badge")}
+              </p>
+            )}
+            {T("title") && <SectionHeading>{T("title")}</SectionHeading>}
+            {T("description") && (
+              <p className="mt-3 text-[15px] leading-relaxed text-muted">{T("description")}</p>
+            )}
+            {items.length > 0 && (
+              <ul className="mt-6 space-y-3">
+                {items.map((it, i) => (
+                  <li key={i} className="flex items-start gap-3">
+                    <span aria-hidden className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+                      <ItemIcon name={it.icon} fallback={Check} size={15} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-[14.5px] font-semibold">{lt(it.title, locale)}</span>
+                      {lt(it.description, locale) && (
+                        <span className="mt-0.5 block text-[13px] leading-relaxed text-muted">
+                          {lt(it.description, locale)}
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <CtaRow content={c} locale={locale} className="mt-8" />
+          </Reveal>
+          {c.mediaUrl && (
+            <Reveal className="overflow-hidden rounded-3xl border border-line shadow-xl">
+              <CmsImage url={c.mediaUrl} alt={T("alt") || T("title")} meta={img(c.mediaUrl)}
+                aspect="4 / 3" sizes="(max-width: 1023px) 100vw, 45vw"
+                className="h-full w-full object-cover" />
+            </Reveal>
+          )}
+        </div>
+      );
+
+    case "guarantee":
+      return (
+        <Reveal className="mx-auto max-w-3xl">
+          <div className="panel flex flex-col items-center gap-5 rounded-3xl p-6 text-center sm:flex-row sm:items-start sm:gap-6 sm:p-8 sm:text-left">
+            <span aria-hidden className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+              <ShieldCheck size={26} />
+            </span>
+            <div className="min-w-0">
+              {T("title") && (
+                <h2 className="font-display text-[clamp(1.2rem,2.6vw,1.6rem)] font-semibold tracking-tight">
+                  {T("title")}
+                </h2>
+              )}
+              {T("description") && (
+                <p className="mt-2 text-[14.5px] leading-relaxed text-muted">{T("description")}</p>
+              )}
+              {items.length > 0 && (
+                <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+                  {items.map((it, i) => (
+                    <li key={i} className="flex items-start gap-2 text-[13.5px] leading-relaxed">
+                      <Check size={15} aria-hidden className="mt-0.5 shrink-0 text-accent" />
+                      <span>{lt(it.title, locale)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </Reveal>
+      );
+
+    case "trust_badges":
+      if (items.length === 0) return null;
+      return (
+        <ul className="flex flex-wrap items-center justify-center gap-x-6 gap-y-4 sm:gap-x-10">
+          {items.map((it, i) => (
+            <li key={i} className="flex items-center gap-2.5 text-[13px] font-semibold text-muted">
+              <span aria-hidden className="flex h-9 w-9 items-center justify-center rounded-xl bg-raised text-accent">
+                <ItemIcon name={it.icon} fallback={ShieldCheck} size={17} />
+              </span>
+              <span className="min-w-0">
+                <span className="block">{lt(it.title, locale)}</span>
+                {lt(it.description, locale) && (
+                  <span className="block text-[11.5px] font-medium text-faint">{lt(it.description, locale)}</span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      );
+
+    case "urgency_cta": {
+      const ended = T("endedLabel");
+      const over = c.deadline ? Date.parse(c.deadline) <= Date.now() : false;
+      if (over && !ended) return null;
+      return (
+        <Reveal className="mx-auto max-w-3xl">
+          <div className="panel rounded-3xl p-6 text-center sm:p-9">
+            {T("title") && <SectionHeading>{T("title")}</SectionHeading>}
+            {T("description") && (
+              <p className="mt-3 text-[15px] leading-relaxed text-muted">{T("description")}</p>
+            )}
+            {c.deadline && (
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-[13.5px] font-semibold text-accent">
+                <Clock size={15} aria-hidden />
+                <Countdown
+                  deadline={c.deadline} compact
+                  labels={[t("cms.time.days"), t("cms.time.hours"), t("cms.time.minutes"), t("cms.time.seconds")]}
+                  onEnded={ended ? <span className="text-muted">{ended}</span> : null}
+                />
+              </div>
+            )}
+            <CtaRow content={c} locale={locale} className="mt-7 justify-center" />
+          </div>
+        </Reveal>
+      );
+    }
+
+    case "sticky_cta":
+      return (
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+          {T("title") && <span className="text-[13.5px] font-semibold">{T("title")}</span>}
+          <CtaRow content={c} locale={locale} className="justify-center" />
+        </div>
+      );
+
     /* ── CODE ───────────────────────────────────────────────────────────── */
 
     case "custom_code":
@@ -731,6 +976,16 @@ function renderBlock(block: CmsBlock, ctx: RenderContext, first: boolean): React
 /* ────────────────────────────────────────────────────────────────────────
    SHARED PIECES
    ──────────────────────────────────────────────────────────────────────── */
+
+/** The icon an admin chose for a list item, or the section's own default.
+ *  `cmsIcon` returns a COMPONENT, not an element — rendering the result
+ *  directly is the mistake this exists to prevent. */
+function ItemIcon({ name, fallback: Fallback, size }: {
+  name?: string; fallback: LucideIcon; size: number;
+}) {
+  const Icon = cmsIcon(name) ?? Fallback;
+  return <Icon size={size} />;
+}
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (

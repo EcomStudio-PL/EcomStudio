@@ -21,6 +21,7 @@ export type FieldKind =
   | "align"     // left / right
   | "groups"    // which tool/feature groups a live section shows
   | "handler"   // which approved form handler receives a submission
+  | "datetime"  // an absolute moment — a campaign deadline
   | "items";    // the repeatable list (cards, steps, questions…)
 
 export type FieldDef = {
@@ -120,6 +121,54 @@ export const SECTION_FIELDS: Record<string, FieldDef[]> = {
   divider: [],
   // The code itself lives on its own tab, not in this list.
   custom_code: [HEADING],
+
+  /* ── CONVERSION ─────────────────────────────────────────────────────────
+   *
+   * Every one of these is filled in by hand. Nothing counts visitors,
+   * invents stock levels or restarts a timer — a deadline is a date the
+   * admin typed, and when it passes the section says so or leaves.
+   */
+  countdown: [
+    HEADING,
+    f("subtitle", "textarea", "subheading"),
+    f("deadline", "datetime", "deadline", "deadlineHint"),
+    f("endedLabel", "text", "endedLabel", "endedLabelHint"),
+    ...CTA,
+  ],
+  promo_bar: [
+    f("badge", "text", "badge"),
+    HEADING,
+    f("deadline", "datetime", "deadline", "deadlineHint"),
+    ...CTA,
+  ],
+  offer: [
+    f("badge", "text", "badge"),
+    HEADING,
+    BODY,
+    f("price", "text", "price", "priceHint"),
+    f("oldPrice", "text", "oldPrice"),
+    f("priceNote", "text", "priceNote"),
+    f("items", "items", "offerIncludes"),
+    ...CTA,
+  ],
+  bonus: [
+    f("badge", "text", "badge"),
+    HEADING,
+    BODY,
+    f("items", "items", "bonusItems"),
+    ...CTA,
+    ...IMAGE,
+  ],
+  guarantee: [HEADING, BODY, f("items", "items", "guaranteeItems")],
+  trust_badges: [f("items", "items", "trustItems")],
+  urgency_cta: [
+    HEADING,
+    BODY,
+    f("deadline", "datetime", "deadline", "deadlineHint"),
+    f("endedLabel", "text", "endedLabel", "endedLabelHint"),
+    ...CTA,
+  ],
+  sticky_cta: [HEADING, ...CTA],
 };
 
 /**
@@ -176,7 +225,7 @@ export const usesFieldBag = (type: string) => type === "launch";
 /** Field kinds whose value is ONE string shared by every language — a URL, a
  *  handler name, an alignment. Localising those would be a bug: /cennik is
  *  /cennik in German too. */
-const PLAIN_KINDS = new Set<FieldKind>(["url", "media", "align", "handler"]);
+const PLAIN_KINDS = new Set<FieldKind>(["url", "media", "align", "handler", "datetime"]);
 
 export function readField(content: CmsBlockContent, def: FieldDef, locale: string): string {
   if (def.key.includes(".")) {
