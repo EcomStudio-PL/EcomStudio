@@ -321,9 +321,9 @@ export function CustomerActions({ userId, email, blocked, blockedUntil, verified
         <div className="space-y-4">
           <p className="text-sm text-muted">{t("crm.deleteBody")}</p>
           <ul className="space-y-1 rounded-xl bg-raised px-4 py-3 text-[13px] text-muted">
-            <li>• {t("crm.deleteKeepsLedger")}</li>
-            <li>• {t("crm.deleteAnonymises")}</li>
-            <li>• {t("crm.deleteLocksLogin")}</li>
+            <li>• {t("crm.deleteRemovesAll")}</li>
+            <li>• {t("crm.deleteFreesEmail")}</li>
+            <li>• {t("crm.deleteKeepsPayments")}</li>
           </ul>
           <div>
             <Label htmlFor={`del-${userId}`}>{t("crm.deleteConfirmLabel", { email })}</Label>

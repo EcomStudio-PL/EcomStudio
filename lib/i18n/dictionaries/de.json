@@ -986,12 +986,9 @@
     "blockedDone": "Konto gesperrt.",
     "unblocked": "Konto entsperrt.",
     "deleteAccount": "Konto löschen",
-    "deleteBody": "Das Konto wird geschlossen und die personenbezogenen Daten entfernt. Nicht widerrufbar.",
-    "deleteKeepsLedger": "Zahlungen und Credit-Historie bleiben — die Buchhaltung verlangt es.",
-    "deleteAnonymises": "Name, Telefon und Firmendaten werden gelöscht.",
-    "deleteLocksLogin": "Die Anmeldung wird dauerhaft gesperrt.",
+    "deleteBody": "Das Konto wird ENDGÜLTIG gelöscht. Das lässt sich nicht rückgängig machen.",
     "deleteConfirmLabel": "Zur Bestätigung {email} eingeben",
-    "deleted": "Konto geschlossen.",
+    "deleted": "Das Konto wurde endgültig gelöscht.",
     "errRateLimited": "Zu viele Versuche. Bitte kurz warten.",
     "errAlreadyVerified": "Dieses Konto ist bereits verifiziert.",
     "errMailNotConfigured": "Das GrovBase-Postfach ist nicht konfiguriert.",
@@ -1020,7 +1017,10 @@
     "statusTemp": "Vorübergehend gesperrt",
     "errCannotBlockSelf": "Sie können Ihr eigenes Konto nicht sperren.",
     "errUntilPast": "Dieses Datum liegt in der Vergangenheit.",
-    "errUntilTooFar": "Eine vorübergehende Sperre kann höchstens ein Jahr dauern."
+    "errUntilTooFar": "Eine vorübergehende Sperre kann höchstens ein Jahr dauern.",
+    "deleteRemovesAll": "Konto, Profil, Generierungen, Credits und Dateien sind unwiderruflich weg.",
+    "deleteFreesEmail": "Die E-Mail-Adresse wird frei — ein neues Konto damit ist möglich.",
+    "deleteKeepsPayments": "Zahlungen bleiben für die Buchhaltung, vom gelöschten Konto getrennt."
   },
   "svc": {
     "title": "Service-Katalog",

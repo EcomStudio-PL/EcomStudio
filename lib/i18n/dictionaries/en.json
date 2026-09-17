@@ -986,12 +986,9 @@
     "blockedDone": "Account suspended.",
     "unblocked": "Account reactivated.",
     "deleteAccount": "Delete account",
-    "deleteBody": "The account will be closed and the personal data removed. This cannot be undone.",
-    "deleteKeepsLedger": "Payments and credit history stay — accounting requires them.",
-    "deleteAnonymises": "Name, phone and company details are cleared.",
-    "deleteLocksLogin": "Sign-in is permanently blocked.",
+    "deleteBody": "The account will be PERMANENTLY deleted. This cannot be undone.",
     "deleteConfirmLabel": "Type {email} to confirm",
-    "deleted": "Account closed.",
+    "deleted": "The account has been permanently deleted.",
     "errRateLimited": "Too many attempts. Try again in a moment.",
     "errAlreadyVerified": "This account is already verified.",
     "errMailNotConfigured": "The GrovBase mailbox is not configured.",
@@ -1020,7 +1017,10 @@
     "statusTemp": "Temporarily blocked",
     "errCannotBlockSelf": "You cannot block your own account.",
     "errUntilPast": "That date is in the past.",
-    "errUntilTooFar": "A temporary block can last at most a year."
+    "errUntilTooFar": "A temporary block can last at most a year.",
+    "deleteRemovesAll": "Account, profile, generations, credits and files are gone for good.",
+    "deleteFreesEmail": "The e-mail address is released — it can be used for a new account.",
+    "deleteKeepsPayments": "Payments are kept for accounting, detached from the deleted account."
   },
   "svc": {
     "title": "Service catalog",

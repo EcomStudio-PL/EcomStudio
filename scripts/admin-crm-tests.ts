@@ -106,12 +106,32 @@ console.log("D. the CRM never handles a password, and never bulk-deletes (§32, 
   check("no password input anywhere in the CRM UI",
     !/type="password"/.test(menu) && !/type="password"/.test(table));
 
-  check("delete is the soft, ledger-preserving RPC", actions.includes("admin_soft_delete_user"));
-  check("no cascade delete of a customer's rows",
+  // DELETE MEANS DELETE. The old RPC renamed the customer to
+  // usuniete-…@grovbase.invalid and left the row — and the real address stayed
+  // occupied in auth.users, so they could never sign up again.
+  const hardDelete = read("supabase/migrations/0084_admin_hard_delete_user.sql");
+  check("delete goes through the hard-delete RPC", actions.includes("admin_hard_delete_user"));
+  check("the soft delete is gone from the codebase", !actions.includes("admin_soft_delete_user"));
+  // Comments are stripped first: the action's doc block explains the
+  // placeholder it replaced, and describing a bug is not committing it.
+  const actionCode = actions.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  check("no code writes a @grovbase.invalid placeholder any more",
+    !actionCode.includes("grovbase.invalid") && !hardDelete.includes("email = 'usuniete-"));
+  check("the delete removes the auth row, which is what frees the address",
+    /delete\s+from\s+auth\.users/.test(hardDelete));
+  check("the old soft-delete function is dropped",
+    /drop function if exists public\.admin_soft_delete_user/.test(hardDelete));
+  check("payments survive the account and are stamped with its address",
+    hardDelete.includes("archived_account_email") && hardDelete.includes("on delete set null"));
+  check("the action never deletes rows itself — one transaction does it all",
     !/from\("payments"\)[\s\S]{0,80}\.delete\(/.test(actions) &&
     !/from\("profiles"\)[\s\S]{0,80}\.delete\(/.test(actions));
   check("the typed confirmation is checked on the server too",
-    read("supabase/migrations/0068_admin_user_facts.sql").includes("confirmation_mismatch"));
+    hardDelete.includes("confirmation_mismatch"));
+  check("an operator cannot delete themselves", hardDelete.includes("cannot_delete_self"));
+  check("only an admin may call it",
+    hardDelete.includes("not_authorized")
+    && /revoke all on function public\.admin_hard_delete_user\(uuid, text\) from anon/.test(hardDelete));
 
   check("bulk offers only the reversible pair", actions.includes("bulkSetBlockedAction")
     && !/bulkDelete/i.test(actions) && !/bulkDelete/i.test(table));

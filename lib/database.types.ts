@@ -3679,7 +3679,7 @@ export type Database = {
             }
             Returns: string
           }
-      admin_soft_delete_user: { Args: { p_user_id: string; p_confirm_email: string }; Returns: Json }
+      admin_hard_delete_user: { Args: { p_user_id: string; p_confirm_email: string }; Returns: Json }
       admin_user_facts: {
         Args: { p_ids: string[] }
         Returns: { id: string; email_confirmed_at: string | null; last_sign_in_at: string | null }[]

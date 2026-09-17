@@ -986,12 +986,9 @@
     "blockedDone": "Konto zablokowane.",
     "unblocked": "Konto odblokowane.",
     "deleteAccount": "Usuń konto",
-    "deleteBody": "Konto zostanie zamknięte, a dane osobowe usunięte. Operacji nie można cofnąć.",
-    "deleteKeepsLedger": "Płatności i historia kredytów zostają — wymaga tego księgowość.",
-    "deleteAnonymises": "Imię, nazwisko, telefon i dane firmy zostaną wyczyszczone.",
-    "deleteLocksLogin": "Logowanie zostanie trwale zablokowane.",
+    "deleteBody": "Konto zostanie TRWALE usunięte z systemu. Operacji nie można cofnąć.",
     "deleteConfirmLabel": "Wpisz {email}, aby potwierdzić",
-    "deleted": "Konto zamknięte.",
+    "deleted": "Konto zostało trwale usunięte.",
     "errRateLimited": "Za dużo prób. Spróbuj ponownie za chwilę.",
     "errAlreadyVerified": "To konto jest już zweryfikowane.",
     "errMailNotConfigured": "Skrzynka GrovBase nie jest skonfigurowana.",
@@ -1020,7 +1017,10 @@
     "statusTemp": "Tymczasowo zablokowani",
     "errCannotBlockSelf": "Nie możesz zablokować własnego konta.",
     "errUntilPast": "Wybrana data jest w przeszłości.",
-    "errUntilTooFar": "Blokada tymczasowa może trwać maksymalnie rok."
+    "errUntilTooFar": "Blokada tymczasowa może trwać maksymalnie rok.",
+    "deleteRemovesAll": "Konto, profil, generacje, kredyty i pliki znikają bezpowrotnie.",
+    "deleteFreesEmail": "Adres e-mail zostaje zwolniony — można na niego założyć nowe konto.",
+    "deleteKeepsPayments": "Płatności zostają dla księgowości, odłączone od usuniętego konta."
   },
   "svc": {
     "title": "Katalog usług",

@@ -15,9 +15,12 @@ import { sendAuthMail } from "@/lib/server/auth-mail";
  *   1. The admin never learns or sets a password. "Reset hasła" sends the
  *      customer the same self-service link the login screen sends; there is
  *      no screen anywhere in this panel that shows or accepts one.
- *   2. Nothing here deletes accounting. "Usuń konto" anonymises and locks
- *      (0068) — payments and credit transactions keep their rows, because a
- *      ledger with holes in it is not a ledger.
+ *   2. "Usuń konto" REALLY deletes the account (0084): the row leaves
+ *      `auth.users` and the cascade takes the profile, the workspaces and
+ *      everything under them, so the address is free to sign up with again.
+ *      Payments are the exception — they are detached and stamped with the
+ *      address they belonged to, because a ledger with holes in it is not a
+ *      ledger. Nothing is kept alive merely to hold a receipt.
  *
  * Mail goes out on the mailbox the product already uses. There is no SMS and
  * no WhatsApp: GrovBase has one outbound channel to a customer, and inventing
@@ -133,26 +136,52 @@ export async function sendCustomerMessageAction(input: {
 }
 
 /**
- * Close an account: anonymise the personal data, lock the login, keep the books.
+ * DELETE AN ACCOUNT — for real, and in one transaction.
+ *
+ * `admin_hard_delete_user` (0084) removes the row from `auth.users`, and the
+ * cascade takes the profile, the workspaces and everything under them. The
+ * address is free the moment it returns, which is the whole point: an operator
+ * deletes an account so the person can sign up again.
+ *
+ * It replaced a function that renamed the customer to
+ * `usuniete-…@grovbase.invalid` and left them in the database — visible in the
+ * CRM forever, their real address still occupied in `auth.users`, and their
+ * login still working if anything cleared the `blocked` flag.
+ *
+ * Payments are not deleted: the function detaches them and stamps them with
+ * the address they belonged to before the account goes.
+ *
  * The typed e-mail confirmation is re-checked inside the function — a dialog
  * that only checks in the browser is decoration.
  */
 export async function deleteCustomerAction(userId: string, confirmEmail: string): Promise<Result> {
   try {
     const { supabase, adminId } = await requireAdmin();
-    const { data, error } = await supabase.rpc("admin_soft_delete_user", {
+    // Read the address BEFORE the delete: afterwards there is nothing left to
+    // read it from, and an audit row nobody can name is not an audit trail.
+    const knownEmail = await emailOf(supabase, userId);
+    const { data, error } = await supabase.rpc("admin_hard_delete_user", {
       p_user_id: userId, p_confirm_email: confirmEmail,
     });
-    if (error) return { ok: false, error: /cannot_delete_self/.test(error.message) ? "self" : "generic" };
-    const result = data as { ok?: boolean; error?: string; email?: string } | null;
+    if (error) {
+      // A failure here means NOTHING was deleted — the whole function is one
+      // transaction — so the operator is told, never shown a false success.
+      if (/cannot_delete_self/.test(error.message)) return { ok: false, error: "self" };
+      if (/not_authorized/.test(error.message)) return { ok: false, error: "not_admin" };
+      console.error("[admin] hard delete failed", userId, error.message);
+      return { ok: false, error: "generic" };
+    }
+    const result = data as
+      { ok?: boolean; error?: string; email?: string; payments_archived?: number } | null;
     if (!result?.ok) return { ok: false, error: result?.error ?? "generic" };
 
-    // The audit row keeps the address the account had — after this call the
-    // profile no longer carries it, and an anonymised row nobody can name is
-    // not much of an audit trail.
     await logAudit(supabase, {
       actorId: adminId, action: "user.deleted",
-      entityType: "profile", entityId: userId, before: { email: result.email ?? null },
+      entityType: "profile", entityId: userId,
+      before: {
+        email: result.email ?? knownEmail ?? null,
+        paymentsArchived: result.payments_archived ?? 0,
+      },
     });
     revalidatePath("/admin/users");
     return { ok: true };
