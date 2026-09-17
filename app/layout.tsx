@@ -19,7 +19,39 @@ export const metadata: Metadata = {
   description: "Professional e-commerce product content, faster.",
   applicationName: "GrovBase",
   appleWebApp: { capable: true, title: "GrovBase", statusBarStyle: "black-translucent" },
-  icons: { apple: "/icons/apple-touch-icon.png?v=5" },
+  /**
+   * THE TAB ICON — and why it is declared HERE and nowhere else.
+   *
+   * Setting `icons` in metadata REPLACES Next's file conventions: with only
+   * `apple` listed, `app/icon.png` existed in the repo and was served at
+   * /icon.png, but no `<link rel="icon">` was ever emitted and /favicon.ico
+   * answered 404 — measured on production, not assumed. Every GrovBase tab
+   * therefore showed the browser's blank placeholder.
+   *
+   * So the whole set is declared in this one object, and every file it names
+   * is cut from the official master `public/brand/app-icon.png` by
+   * `scripts/make-favicon.mjs` — the same artwork as the PWA and the Apple
+   * icon, downscaled, never redrawn.
+   *
+   * `/favicon.ico` carries 16/32/48 for the browsers (and bookmark managers,
+   * feed readers, link unfurlers) that ask for it by name before reading any
+   * markup. The PNGs are what a modern browser picks up; both are the
+   * gradient app icon, which stays legible on a light and a dark tab strip
+   * without a box drawn around it.
+   *
+   * `?v=5` is this repo's icon generation, already on the Apple icon and on
+   * every entry in `app/manifest.ts`; the new URLs join it so one bump moves
+   * the whole set the next time the artwork changes. The FILE still sits at
+   * a bare /favicon.ico, which is what a browser asks for on its own.
+   */
+  icons: {
+    icon: [
+      { url: "/favicon.ico?v=5", sizes: "48x48 32x32 16x16", type: "image/x-icon" },
+      { url: "/icons/icon-32.png?v=5", sizes: "32x32", type: "image/png" },
+      { url: "/icons/icon-16.png?v=5", sizes: "16x16", type: "image/png" },
+    ],
+    apple: "/icons/apple-touch-icon.png?v=5",
+  },
   formatDetection: { telephone: false },
   // Deliberately no `url` here: it would be inherited by every route and each
   // page would announce itself as the homepage. Pages that are actually

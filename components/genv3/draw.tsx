@@ -114,6 +114,32 @@ export function renderShapes(ctx: CanvasRenderingContext2D, shapes: Shape[], W: 
   }
 }
 
+/**
+ * THE NIB, IN ON-SCREEN PIXELS — the one number a size preview may show.
+ *
+ * `sizePx` is already in the displayed image box's CSS pixels: a mark is
+ * stored as `sizePx / W` (the fraction above) and drawn back as
+ * `lineWidth = size * W`, so the two cancel and a stroke is exactly `sizePx`
+ * wide on screen. `lineCap`/`lineJoin` are round, and a single tap of the
+ * brush is literally `arc(..., lineWidth / 2)` — so a circle of THIS diameter
+ * is not an approximation of the nib, it is the nib.
+ *
+ * NULL MEANS "THE SLIDER DOES NOTHING HERE", and that is a fact about this
+ * code rather than a design preference:
+ *   · the ERASER removes whole elements — `onPointerDown` never reads the
+ *     size, and the reach comes from the TARGET's own thickness
+ *     (`hitShape`: `max(10, s.size * W / 2 + 8)`), so it differs per mark;
+ *   · the HAND picks up an element through the same hit test;
+ *   · the WAND has no size term at all — its `Shape` has no `size` field.
+ * Drawing `sizePx` for any of those would be a number with nothing behind it.
+ */
+export function toolNibPx(tool: DrawTool, sizePx: number): number | null {
+  if (tool === "eraser" || tool === "hand" || tool === "magic") return null;
+  // The same floor the renderer applies, so the preview cannot promise a
+  // hairline the canvas would not draw.
+  return Math.max(1, sizePx);
+}
+
 // ── Hit testing (px space) — for the eraser and the hand ───────────────────
 function distToSegment(p: Pt, a: Pt, b: Pt): number {
   const dx = b.x - a.x, dy = b.y - a.y;
