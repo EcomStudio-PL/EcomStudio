@@ -173,8 +173,14 @@ async function layout(page, width, height, band) {
       order: order.sort((a, b) => a[1] - b[1]).map(([nm]) => nm),
       // Things the brief explicitly bans from this window.
       filmstrip: modal.querySelectorAll("[data-regen-strip]").length,
+      // SINGLE backslashes. This body is a function, not a template literal:
+      // `\\d` matched the two characters `\d` and the filter could never
+      // return anything, so the banned format badge was "absent" at all 13
+      // viewports whether it was there or not.
       ratioBadge: [...modal.querySelectorAll("span")]
-        .filter((s) => /^\\d+:\\d+$/.test(s.textContent.trim())).length,
+        .filter((s) => /^\d+:\d+$/.test(s.textContent.trim())).length,
+      // A positive control for that filter, so it cannot rot silently again.
+      ratioRegexWorks: /^\d+:\d+$/.test("3:2"),
       headings: [...modal.querySelectorAll("p")]
         .map((e) => e.textContent.trim())
         .filter((s) => ["Model AI", "Zaznacz element", "Opisz, co chcesz poprawić",
@@ -221,6 +227,7 @@ async function layout(page, width, height, band) {
 
   // Banned furniture.
   ok(m.filmstrip === 0, `${tag}: filmstrip still present`);
+  ok(m.ratioRegexWorks, `${tag}: the format-badge filter matches nothing — the absence check is empty`);
   ok(m.ratioBadge === 0, `${tag}: a format badge is still rendered`);
   ok(m.headings.length === 0, `${tag}: section headings still present: ${m.headings.join(", ")}`);
 
@@ -231,18 +238,29 @@ async function layout(page, width, height, band) {
 
 // ── The size preview ───────────────────────────────────────────────────────
 
-/** The ring, the image box, the modal box and the slider's own value. */
+/**
+ * The ring, THE PICTURE ITSELF, the modal box and the slider's own value.
+ *
+ * The reference box is the `<img>`, deliberately, and not its parent: the
+ * parent is the ring's own containing block, so "is the ring centred in it"
+ * is a CSS tautology that would pass for any layout, forever. Today the two
+ * coincide because the wrapper shrink-wraps the picture — but a single
+ * `w-full` on that wrapper would put the ring hundreds of pixels off the
+ * photo and the tautology would still report a perfect 0.00 offset.
+ */
 const readRing = (page) => page.evaluate(() => {
   const img = document.querySelector("[data-regen-image]");
-  const box = img?.parentElement;
   const ring = document.querySelector("[data-brush-preview]");
   const slider = document.querySelector("[data-regen-size]");
-  const b = box?.getBoundingClientRect();
+  const b = img?.getBoundingClientRect();
   const r = ring?.getBoundingClientRect();
   const modal = document.querySelector("[data-regen-modal]")?.getBoundingClientRect();
   return {
     value: slider ? Number(slider.value) : null,
-    box: b ? { cx: b.left + b.width / 2, cy: b.top + b.height / 2, w: b.width, h: b.height } : null,
+    box: b ? {
+      cx: b.left + b.width / 2, cy: b.top + b.height / 2, w: b.width, h: b.height,
+      left: b.left, right: b.right, top: b.top, bottom: b.bottom,
+    } : null,
     modal: modal ? { cx: modal.left + modal.width / 2, cy: modal.top + modal.height / 2 } : null,
     ring: r ? {
       cx: r.left + r.width / 2, cy: r.top + r.height / 2, w: r.width, h: r.height,
@@ -304,8 +322,12 @@ async function waitGone(page) {
  * someone draw a replacement? A downscale of the master, compared against the
  * master downscaled the same way, differs by almost nothing. */
 {
+  // FOUR channels, not three. Comparing RGB only is blind to transparency:
+  // a master with a transparent background and a pipeline that zeroed alpha
+  // would produce an invisible favicon that still measured as a perfect
+  // match.
   const raw = (buf, size) => sharp(buf).resize(size, size, { fit: "cover" })
-    .removeAlpha().raw().toBuffer();
+    .ensureAlpha().raw().toBuffer();
   const meanDiff = async (buf, size) => {
     const [a, b] = await Promise.all([raw(buf, size), raw(fs.readFileSync(MASTER), size)]);
     let sum = 0;
@@ -362,7 +384,12 @@ async function waitGone(page) {
   const browser = await chromium.launch({
     executablePath: "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell",
   });
-  const page = await browser.newPage();
+  /* A RETINA SCREEN, DELIBERATELY. The canvas is the only place a scale
+     factor exists — its backing store is `W*dpr` under a matching transform —
+     so a preview measured only at devicePixelRatio 1 never exercises the one
+     conversion that could be wrong. At 2, a ring sized in device pixels
+     instead of CSS pixels would come out twice the paint and this fails. */
+  const page = await browser.newPage({ deviceScaleFactor: 2 });
   const res = await page.goto(URL_, { waitUntil: "networkidle" });
   if (!res || !res.ok()) { console.error(`probe route unreachable: ${res?.status()}`); process.exit(2); }
   await page.waitForTimeout(400);
@@ -404,6 +431,9 @@ async function waitGone(page) {
     // ON THE PICTURE — not on the modal, and not on the panel.
     ok(near(mid.ring.cx, mid.box.cx, 0.75) && near(mid.ring.cy, mid.box.cy, 0.75),
       `ring is ${(mid.ring.cx - mid.box.cx).toFixed(1)},${(mid.ring.cy - mid.box.cy).toFixed(1)}px off the picture's centre`);
+    ok(mid.ring.cx > mid.box.left && mid.ring.cx < mid.box.right
+      && mid.ring.cy > mid.box.top && mid.ring.cy < mid.box.bottom,
+    "the ring is not even on the picture");
     ok(Math.abs(mid.ring.cx - mid.modal.cx) > 40,
       "ring sits at the modal's centre rather than the picture's — with the panel included it cannot be both");
     // THE SIZE IS THE SLIDER'S OWN NUMBER.
@@ -421,6 +451,7 @@ async function waitGone(page) {
 
   // IT FOLLOWS THE SLIDER, 1:1, ALL THE WAY ALONG.
   const seen = [];
+  const widths = [];
   for (const frac of [0, 0.25, 0.5, 0.75, 1]) {
     const b = await page.locator("[data-regen-size]").boundingBox();
     await page.mouse.move(b.x + 9 + (b.width - 18) * frac, hold.y);
@@ -429,8 +460,12 @@ async function waitGone(page) {
     ok(r.ring !== null && near(r.ring.w, r.value, 0.6),
       `at ${r.value}px the ring is ${r.ring ? r.ring.w.toFixed(1) : "absent"}px`);
     seen.push(`${r.value}→${r.ring ? r.ring.w.toFixed(0) : "–"}`);
+    // The RING's widths, not the pairs: a set of `value→width` strings is
+    // distinct because the value is, so it would count five even for a ring
+    // frozen at one size.
+    widths.push(r.ring ? Math.round(r.ring.w) : -1);
   }
-  ok(new Set(seen).size >= 4, `the ring did not change size across the track: ${seen.join(" ")}`);
+  ok(new Set(widths).size >= 4, `the ring did not change size across the track: ${seen.join(" ")}`);
   console.log(`  slider→ring  ${seen.join("  ")}`);
 
   // NOTHING OF THIS REACHES THE DRAWING.
@@ -446,8 +481,12 @@ async function waitGone(page) {
   // AND IT LEAVES BY ITSELF.
   const gone = await waitGone(page);
   ok(gone > 0, "the ring is still on the picture 1.6s after the slider was released");
-  ok(gone >= 200, `the ring vanished after ${gone}ms — too fast to read the size that was set`);
-  ok(gone <= 1200, `the ring lingered ${gone}ms`);
+  // THE BRIEF'S OWN WINDOW, 300–600ms, widened only by the measurement: the
+  // release helper waits 40ms before `waitGone` starts its clock, and the
+  // poll grid is 40ms. A band twice this wide would accept a ring that sits
+  // on the picture for over a second, which reads as "stuck".
+  ok(gone >= 260, `the ring vanished after ${gone}ms — too fast to read the size that was set`);
+  ok(gone <= 620, `the ring lingered ${gone}ms — past the 300–600ms the brief allows`);
   console.log(`  linger       ${gone}ms after release`);
 
   /* THE RING IS THE NIB — measured against the paint it promises. */
@@ -607,7 +646,12 @@ async function waitGone(page) {
   console.log(`  drawing      stroke ${drawn.w.toFixed(0)}x${drawn.h.toFixed(0)}px across a ${line.width.toFixed(0)}px picture`);
 
   /* ── A FINGER, ON A PHONE ─────────────────────────────────────────────── */
-  const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  // A real 390px phone is a 3× screen; the canvas caps its backing store at
+  // 2×, and the probe derives the divisor from the canvas itself rather than
+  // from `devicePixelRatio`, so both ends of that cap are covered here.
+  const phone = await browser.newPage({
+    viewport: { width: 390, height: 844 }, hasTouch: true, deviceScaleFactor: 3,
+  });
   await phone.goto(URL_, { waitUntil: "networkidle" });
   await phone.waitForTimeout(400);
   await phone.locator("[data-regen-size]").scrollIntoViewIfNeeded();
