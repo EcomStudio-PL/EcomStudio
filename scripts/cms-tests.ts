@@ -331,6 +331,32 @@ check("nothing in the CMS calls eval",
   [custom, sandbox, renderer].every((src) => !/\beval\s*\(|new Function\s*\(/.test(stripComments(src))));
 
 /* ═══════════════════════════════════════════════════════════════════════ */
+console.log("\nG2. THE PUBLIC RENDERER READS ONLY WHAT A VISITOR MAY READ");
+
+const mediaLib = readFileSync("lib/server/cms-media.ts", "utf8");
+check("image metadata comes from the bounded lookup, not the catalogue",
+  /rpc\("cms_media_meta"/.test(mediaLib) && !/from\("media_assets"\)/.test(mediaLib));
+check("the lookup is capped, so it can never become a scan",
+  /MAX_LOOKUP/.test(mediaLib) && /slice\(0, MAX_LOOKUP\)/.test(mediaLib));
+check("a failed lookup degrades to an unoptimised image, not an error",
+  /if \(error \|\| !data\) return EMPTY;/.test(mediaLib));
+
+const m88 = readFileSync("supabase/migrations/0088_cms_media_meta_for_visitors.sql", "utf8");
+check("the lookup function is definer and granted to anon",
+  /security definer/.test(m88) && /grant execute on function public\.cms_media_meta/.test(m88));
+check("the grant is preceded by an explicit revoke from public",
+  /revoke all on function public\.cms_media_meta\(text\[\]\) from public, anon, authenticated;/.test(m88));
+check("the lookup takes paths and cannot be asked to list",
+  /m\.storage_path = any \(p_paths\)/.test(m88) && !/limit \d+\s*;/.test(m88));
+
+const m89 = readFileSync("supabase/migrations/0089_media_catalogue_is_not_public.sql", "utf8");
+check("the world-readable media policy is dropped",
+  /drop policy if exists "media_read" on public\.media_assets;/.test(m89));
+check("media policies are scoped to authenticated, never the public role",
+  (m89.match(/create policy[\s\S]*?to authenticated/g) ?? []).length === 2
+  && !/create policy[^;]*to public/.test(m89));
+
+/* ═══════════════════════════════════════════════════════════════════════ */
 console.log("\nH. THE WAITING-LIST PAGE IS UNTOUCHED");
 
 const root = readFileSync("app/page.tsx", "utf8");

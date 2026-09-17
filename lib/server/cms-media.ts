@@ -47,52 +47,51 @@ export function collectMediaUrls(blocks: readonly CmsBlock[]): string[] {
 
 const EMPTY: MediaIndex = new Map();
 
+/** At most one page's worth of images, matching the function's own cap. */
+const MAX_LOOKUP = 200;
+
 /**
  * Metadata for the given URLs. Matching is on the PUBLIC URL, which is what a
- * block stores, so the query asks for the rows whose storage path is the tail
+ * block stores, so the lookup asks for the rows whose storage path is the tail
  * of one of those URLs — and for external assets, on external_url directly.
+ *
+ * READ THROUGH cms_media_meta(), NOT THE TABLE. `media_assets` is admin-only,
+ * and must stay that way: a stranger has no business listing every file we
+ * hold. A public page reads it with the VISITOR'S client, so querying the
+ * table directly returned nothing for every real visitor — no width, no
+ * height, no srcset — and the whole image-optimisation path was silently dead
+ * while looking perfectly correct in an admin's own browser.
+ *
+ * The definer function takes the paths the page already references and returns
+ * only those rows: no listing, no search, nothing that is not already
+ * downloadable from a public bucket. See 0088.
  */
 export async function loadMediaIndex(supabase: Client, urls: readonly string[]): Promise<MediaIndex> {
   if (urls.length === 0) return EMPTY;
 
   // The public URL of a stored object ends with `/media/<path>`; the path is
-  // what the row holds. Deriving it here means one `in` filter instead of a
-  // LIKE per URL.
-  const paths = new Set<string>();
-  const externals = new Set<string>();
+  // what the row holds.
+  const keys = new Set<string>();
   for (const url of urls) {
     const marker = url.indexOf("/object/public/media/");
-    if (marker !== -1) paths.add(decodeURIComponent(url.slice(marker + "/object/public/media/".length)));
-    else externals.add(url);
+    keys.add(marker !== -1
+      ? decodeURIComponent(url.slice(marker + "/object/public/media/".length))
+      : url);
   }
+
+  const { data, error } = await supabase.rpc("cms_media_meta", {
+    p_paths: [...keys].slice(0, MAX_LOOKUP),
+  });
+  // A page whose images have no metadata still renders — it simply renders
+  // them the way it did before derivatives existed.
+  if (error || !data) return EMPTY;
 
   const index: MediaIndex = new Map();
-  const bucketBase = (path: string) => path;
-
-  const queries: Promise<void>[] = [];
-  if (paths.size > 0) {
-    queries.push((async () => {
-      const { data } = await supabase.from("media_assets")
-        .select("storage_path, external_url, width, height, variants, alt")
-        .in("storage_path", [...paths]);
-      for (const row of data ?? []) {
-        if (!row.storage_path) continue;
-        // Keyed by the tail so the caller can look up by either form.
-        index.set(bucketBase(row.storage_path), toMeta(row));
-      }
-    })());
+  for (const row of data) {
+    // Keyed by whichever form the block will look it up by.
+    if (row.storage_path) index.set(row.storage_path, toMeta(row));
+    if (row.external_url) index.set(row.external_url, toMeta(row));
   }
-  if (externals.size > 0) {
-    queries.push((async () => {
-      const { data } = await supabase.from("media_assets")
-        .select("storage_path, external_url, width, height, variants, alt")
-        .in("external_url", [...externals]);
-      for (const row of data ?? []) {
-        if (row.external_url) index.set(row.external_url, toMeta(row));
-      }
-    })());
-  }
-  await Promise.all(queries);
   return index;
 }
 

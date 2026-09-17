@@ -4311,6 +4311,17 @@ export type Database = {
         }
         Returns: Json
       }
+      cms_media_meta: {
+        Args: { p_paths: string[] }
+        Returns: {
+          storage_path: string
+          external_url: string
+          width: number
+          height: number
+          variants: Json
+          alt: string
+        }[]
+      }
       cms_slug_is_reserved: { Args: { p_slug: string }; Returns: boolean }
     }
     Enums: {
