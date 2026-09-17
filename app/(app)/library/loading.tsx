@@ -38,9 +38,17 @@ export default function LibraryLoading() {
         <div className="h-9 w-9 rounded-xl bg-raised/70" />
       </div>
 
-      <div className="library-grid grid gap-2 sm:gap-2.5" style={{ "--tile": "210px" } as React.CSSProperties}>
+      {/* THE TILES CANNOT BE HONEST ABOUT THEIR SHAPE — nothing is loaded yet,
+          so nothing knows what shapes are coming. They are a neutral 4:3
+          rather than a square: 16:9 is by far the commonest thing this product
+          produces, so a square would be the one guess certain to be wrong,
+          and a landscape placeholder that turns out slightly wider moves the
+          grid far less than a square that turns out much wider. The TOOLBAR
+          above is exact, which is the part that sits above the fold. */}
+      <div className="grid grid-cols-2 gap-2 sm:gap-2.5"
+        style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(210px, 100%), 1fr))" }}>
         {Array.from({ length: 12 }, (_, i) => (
-          <div key={i} className="aspect-square rounded-xl bg-raised/60" />
+          <div key={i} data-skeleton-tile className="aspect-[4/3] rounded-xl bg-raised/60" />
         ))}
       </div>
     </div>

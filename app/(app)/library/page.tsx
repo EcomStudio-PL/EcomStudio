@@ -7,6 +7,7 @@ import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { listJobs } from "@/lib/services/generator";
 import { listGalleryItems } from "@/lib/server/gallery";
+import { assetAspect, aspectCss } from "@/lib/asset-ratio";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AdminTable } from "@/components/ui/admin-table";
@@ -83,7 +84,9 @@ export default async function LibraryPage({ searchParams }: {
 
   if (tab === "tools") {
     const { data: toolResults } = await supabase.from("tool_results")
-      .select("id, tool_slug, storage_path, created_at")
+      // `metadata` carries the width/height recorded when the result was
+      // saved, so a tool output is shown at its own shape rather than boxed.
+      .select("id, tool_slug, storage_path, created_at, metadata")
       .eq("workspace_id", workspace.id)
       .order("created_at", { ascending: false })
       .limit(60);
@@ -106,12 +109,18 @@ export default async function LibraryPage({ searchParams }: {
           <div className="grid gap-2 [&>*]:min-w-0" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(210px, 100%), 1fr))" }}>
             {rows.map((r) => {
               const url = urlMap.get(r.storage_path);
+              // Results saved before the shape was recorded have no
+              // dimensions; `object-contain` means they are letterboxed in a
+              // square rather than cropped, which is the honest rendering of
+              // "we do not know".
+              const meta = (r.metadata ?? {}) as { width?: number; height?: number };
               return url ? (
                 <a key={r.id} href={url} target="_blank" rel="noreferrer noopener"
                   className="panel panel-interactive block overflow-hidden rounded-xl">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={url} alt="" loading="lazy" decoding="async"
-                    className="aspect-square w-full bg-checker object-contain" />
+                    style={{ aspectRatio: aspectCss(assetAspect(meta)) }}
+                    className="w-full bg-checker object-contain" />
                   <p className="truncate px-2 py-1.5 text-[11px] font-medium">{t(`tools.${r.tool_slug}.name`)}</p>
                 </a>
               ) : null;

@@ -5,6 +5,7 @@ import {
   Minus, Plus, Search, SquareDashedMousePointer, X,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
+import { assetAspect, aspectCss } from "@/lib/asset-ratio";
 import { cn } from "@/lib/utils";
 
 /**
@@ -37,6 +38,12 @@ export type BatchItem = {
   errorText?: string;
   /** Bytes of the source file — used by the size sort, which both tools want. */
   bytes: number;
+  /** The file's real pixels, read off the decode that made the thumbnail.
+   *  Absent until that decode finishes, and absent for a file that could not
+   *  be decoded at all — the tile is then square, which is the honest answer
+   *  when nothing knows the shape. */
+  width?: number;
+  height?: number;
   canDownload: boolean;
 };
 
@@ -320,7 +327,13 @@ export function BatchGrid({
             selecting && selected.has(item.id) && "ring-1 ring-[rgb(var(--accent)/0.55)]")}
           style={{ contentVisibility: "auto", containIntrinsicSize: "auto 12rem" }}>
           <div className="relative">
-            <Thumb item={item} className="aspect-square w-full" />
+            {/* The file's own shape, not a square. This sheet keeps uniform
+                COLUMNS on purpose — every tile carries a name, a size and a
+                row of actions under it, and a masonry of captioned cards is
+                a worse read than a tidy table of them. The picture inside is
+                still never squashed. */}
+            <Thumb item={item} className="w-full"
+              style={{ aspectRatio: aspectCss(assetAspect(item)) }} />
             {selecting && (
               <label className="absolute left-1.5 top-1.5 flex size-6 items-center justify-center rounded-lg bg-[rgb(var(--surface)/0.85)] backdrop-blur">
                 <input type="checkbox" checked={selected.has(item.id)}
@@ -344,9 +357,11 @@ export function BatchGrid({
   );
 }
 
-function Thumb({ item, className }: { item: BatchItem; className?: string }) {
+function Thumb({ item, className, style }: {
+  item: BatchItem; className?: string; style?: React.CSSProperties;
+}) {
   return (
-    <span className={cn("relative block shrink-0 overflow-hidden rounded-lg bg-checker", className)}>
+    <span style={style} className={cn("relative block shrink-0 overflow-hidden rounded-lg bg-checker", className)}>
       {item.thumbUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={item.thumbUrl} alt="" loading="lazy" decoding="async"

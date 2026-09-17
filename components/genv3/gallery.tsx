@@ -7,6 +7,8 @@ import {
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
+import { assetAspect, aspectCss, parseRatioLabel } from "@/lib/asset-ratio";
+import { useRatioGrid } from "@/components/gallery/ratio-grid";
 import { cn } from "@/lib/utils";
 import { GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
 import type { GalleryItem, GallerySessionType, GenModel } from "@/components/genv3/types";
@@ -420,7 +422,15 @@ export function GenerationGallery({
     { key: "lifestyle", label: t("genv3.sessionLife"), icon: Sun },
   ];
 
-  const skeletonRatio = pendingRatio.includes(":") ? pendingRatio.replace(":", "/") : "1/1";
+  // What a job in flight will come back as. `pendingRatio` is the job's own
+  // label, so this is the honest reservation — and it goes through the same
+  // helper as everything else rather than a second string transform.
+  const pendingAspect = parseRatioLabel(pendingRatio) ?? 1;
+
+  // THE GALLERY'S ROW HEIGHT. `gap-1` was 4px. The density steps were column
+  // widths and are now read as row heights — the honest unit for a justified
+  // layout, and the same control with the same five stops.
+  const grid = useRatioGrid({ row: DENSITY_STEPS[density], gap: 4 });
 
   return (
     // No section heading: the gallery IS the right half of the workspace, not
@@ -632,17 +642,22 @@ export function GenerationGallery({
         // auto-filled from a minimum card width, so the column count follows
         // the slider AND the width the gallery column actually has. Nothing
         // remounts, so scroll position and loaded images survive a change.
-        <div
-          className="grid gap-1 [&>*]:min-w-0"
-          style={{ gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${DENSITY_STEPS[density]}px), 1fr))` }}
-        >
+        // MIXED SHAPES, PACKED. Each card is painted at the ratio its file was
+        // actually generated at, and `useRatioGrid` gives it a row span so the
+        // card below starts where this one ends rather than where the tallest
+        // in the row ends. Density still decides the column count and nothing
+        // else — a 16:9 stays 16:9 at every step of the slider.
+        <div style={grid.style} data-gallery-grid className="gallery-justified">
           {Array.from({ length: pendingCount }, (_, i) => (
-            <div key={`pending-${i}`} className="skeleton rounded-xl" style={{ aspectRatio: skeletonRatio }} />
+            <div key={`pending-${i}`} style={grid.itemStyle(pendingAspect)}>
+              <div className="skeleton w-full rounded-xl" style={{ aspectRatio: aspectCss(pendingAspect) }} />
+            </div>
           ))}
           {merged.map((item) => (
             <GalleryCard
               key={item.assetId}
               item={item}
+              style={grid.itemStyle(assetAspect(item))}
               compact={density <= 1}
               canRegenerate={models.length > 0}
               selecting={selecting}
@@ -677,7 +692,7 @@ export function GenerationGallery({
                   </span>
                 )}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={item.thumbUrl} alt="" loading="lazy" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
+                <img src={item.thumbUrl} alt="" loading="lazy" className="h-14 w-14 shrink-0 rounded-lg bg-sunken object-contain" />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
                     <span className="min-w-0 truncate text-[13px] font-semibold">{item.product ?? t("genv3.noProduct")}</span>
@@ -750,9 +765,11 @@ export function GenerationGallery({
 /* ── One image card ───────────────────────────────────────────────────── */
 
 function GalleryCard({
-  item, compact, canRegenerate, selecting, picked, onPick, onOpen, onRegenerate, onDownload, onFavorite, onDelete,
+  item, compact, canRegenerate, selecting, picked, style, onPick, onOpen, onRegenerate, onDownload, onFavorite, onDelete,
 }: {
   item: GalleryItem;
+  /** The grid's row span and gutter for this card. */
+  style?: React.CSSProperties;
   /** False where no engine can serve a retake (a tool's own gallery) — the
    *  action is then absent rather than present and broken. */
   canRegenerate: boolean;
@@ -769,18 +786,27 @@ function GalleryCard({
   onDelete: () => void;
 }) {
   const { t } = useI18n();
+  // THE CARD IS THE FILE'S OWN SHAPE. The wrapper carries the grid span (a
+  // grid item cannot both span rows and be sized by `aspect-ratio`); the card
+  // inside carries the ratio, set before the picture loads so nothing moves
+  // when it arrives.
+  const aspect = assetAspect(item);
   return (
+    <div style={style} data-card-aspect={aspectCss(aspect)}>
     <div data-gallery-card data-picked={picked || undefined}
-      className={cn("group relative overflow-hidden rounded-xl bg-sunken ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]",
+      style={{ aspectRatio: aspectCss(aspect) }}
+      className={cn("group relative w-full overflow-hidden rounded-xl bg-sunken ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]",
         picked && "ring-2 ring-accent")}>
       {/* In selection mode the whole card is the tick target. */}
       <button type="button" onClick={selecting ? onPick : onOpen}
         aria-label={selecting ? t("genv3.selectCard") : t("genv3.openImage")}
         aria-pressed={selecting ? picked : undefined}
-        className="block w-full">
+        className="block h-full w-full">
         {/* eslint-disable-next-line @next/next/no-img-element */}
+        {/* `h-full` inside a box that already has the right shape — `cover`
+            then crops nothing, because the box IS the file's ratio. */}
         <img src={item.thumbUrl} alt={item.product ?? ""} loading="lazy" decoding="async"
-          className={cn("aspect-square w-full object-cover transition-transform duration-300",
+          className={cn("h-full w-full object-cover transition-transform duration-300",
             !selecting && "group-hover:scale-[1.02]", picked && "scale-[0.94] rounded-lg")} />
       </button>
       {/* THE TICK — on hover and focus outside selection mode, always while
@@ -840,6 +866,7 @@ function GalleryCard({
           ))}
         </div>
       )}
+    </div>
     </div>
   );
 }

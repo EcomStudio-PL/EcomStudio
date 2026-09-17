@@ -131,6 +131,8 @@ type Item = {
   thumbUrl?: string;
   status: ItemStatus;
   resultBlob?: Blob;
+  /** The original's true pixels, read off the decode. Absent until it runs. */
+  source?: { width: number; height: number };
   /** Real size of what came back, reported by the server that encoded it. */
   after?: { width: number; height: number; bytes: number };
   error?: string;
@@ -201,6 +203,9 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
   const cards: BatchItem[] = useMemo(() => items.map((i) => ({
     id: i.id, name: i.file.name, thumbUrl: i.thumbUrl, status: i.status,
     bytes: i.file.size, canDownload: i.status === "done",
+    // The sheet paints each tile at the file's own shape; these are the real
+    // pixels from the decode, so it never has to guess or measure.
+    width: i.source?.width, height: i.source?.height,
     errorText: i.status === "error" ? t(`tools.err.${errorKey(i.error)}`) : undefined,
   })), [items, t]);
 
@@ -255,8 +260,13 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
         // Removed while its decode was still running: drop the result rather
         // than mint an object URL nothing will ever revoke.
         if (!thumb || !live.current.has(item.id)) continue;
-        const url = track(item.id, thumb);
-        setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, thumbUrl: url } : i)));
+        const url = thumb.blob ? track(item.id, thumb.blob) : undefined;
+        // The dimensions land in the SAME state update as the thumbnail, so
+        // the tile is never painted at one shape and then corrected to
+        // another — the shift this whole change exists to remove.
+        setItems((prev) => prev.map((i) => (i.id === item.id
+          ? { ...i, thumbUrl: url, source: { width: thumb.width, height: thumb.height } }
+          : i)));
       }
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, worker));
@@ -707,23 +717,30 @@ function settingsFor(level: CompressionLevel, format: ToolSettings["compress"]["
  * reason sharp calls `.rotate()` server-side: a portrait phone photo would
  * otherwise preview on its side.
  */
-async function readThumb(file: File): Promise<Blob | null> {
+/** The decode already knows the file's real pixels; it used to return only
+ *  the downscaled blob and drop them. The sheet needs them to paint each tile
+ *  at the shape its file actually is. */
+async function readThumb(file: File): Promise<{ blob: Blob | null; width: number; height: number } | null> {
   let bitmap: ImageBitmap;
   try { bitmap = await createImageBitmap(file, { imageOrientation: "from-image" }); }
   catch { return null; }
 
+  const source = { width: bitmap.width, height: bitmap.height };
   const scale = Math.min(THUMB_SIDE / bitmap.width, THUMB_SIDE / bitmap.height, 1);
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(bitmap.width * scale));
   canvas.height = Math.max(1, Math.round(bitmap.height * scale));
   const context = canvas.getContext("2d");
-  if (!context) { bitmap.close(); return null; }
+  // No canvas: the shape is still known, so the tile is still the right shape.
+  if (!context) { bitmap.close(); return { blob: null, ...source }; }
   context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
 
   // A browser without WebP encoding falls back to PNG on its own; at 256 px
   // the difference is a few kilobytes either way.
-  return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.72));
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/webp", 0.72));
+  return { blob, ...source };
 }
 
 /** Codes we have a translation for; anything else becomes the generic failure

@@ -89,9 +89,22 @@ export async function POST(request: Request) {
     .upload(path, bytes, { contentType: mime, upsert: false });
   if (error) return NextResponse.json({ ok: false, error: "storage_failed" }, { status: 500 });
 
+  // THE SHAPE, RECORDED AT SAVE TIME. `tool_results` has no width/height
+  // columns and adding them would be a migration for a cosmetic need, but it
+  // has a jsonb `metadata` — and reading the header costs microseconds on
+  // bytes already in memory. Without this the library's tool shelf has
+  // nothing to go on and has to fall back to a square.
+  let dims: { width?: number; height?: number } = {};
+  try {
+    const { default: sharp } = await import("sharp");
+    const meta = await sharp(bytes, { failOn: "none" }).metadata();
+    if (meta.width && meta.height) dims = { width: meta.width, height: meta.height };
+  } catch { /* an unreadable header is not a reason to fail the save */ }
+
   const { error: rowError } = await supabase.from("tool_results").insert({
     workspace_id: workspace.id, user_id: user.id, tool_slug: tool.slug,
     storage_path: path, mime_type: mime, file_size: bytes.length,
+    metadata: dims,
   });
   if (rowError) {
     await supabase.storage.from("generation-assets").remove([path]);

@@ -1704,6 +1704,63 @@ body:has(.workspace-page)::after { display: none; }
   }
 }
 
+/* JUSTIFIED GALLERIES — the library and every tool's results.
+   ---------------------------------------------------------------------------
+   Tiles are laid out by components/gallery/ratio-grid.ts, which sets each
+   one's flex basis and growth from the file's OWN aspect ratio so a row comes
+   out exactly full with every tile at its true shape. The one thing that
+   cannot live in those inline styles is the breakpoint: a JavaScript branch on
+   the viewport would render one thing on the server and another on the client,
+   which is the layout shift the whole design exists to avoid.
+
+   So the row height is a custom property, and the phone's shorter row is a
+   media query — decided by the browser, identically in both places.
+
+   WHY A PHONE NEEDS ITS OWN. At the default 210px row a 16:9 tile asks for
+   373px of basis, which is wider than a 390px phone: one tile per row, a feed
+   instead of an asset manager. 0.62 of the row puts two ordinary landscape
+   tiles side by side and leaves portrait ones room to sit three across. */
+/* The layout itself lives HERE and not in an inline style, so the phone rule
+   below can override it — an inline `display: flex` cannot be undone by any
+   stylesheet, and the first attempt at this left every phone row holding one
+   tile because of exactly that. */
+.gallery-justified {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--gallery-gap, 8px);
+  --gallery-row: var(--gallery-row-base, 210px);
+}
+
+/* A PHONE IS NOT JUSTIFIED, AND DELIBERATELY SO.
+   The justified layout's whole promise is that a row's tiles share one height
+   because they share one growth factor. On a 358px-wide phone that promise
+   costs too much to keep: at a row height that fits two 16:9 tiles, a 9:16
+   tile asks for 53px and six of them land in a row — arithmetically perfect
+   and unreadable. Putting a floor under the narrow ones buys legibility and
+   sells the equal heights, which the probe measured as rows ragged by 94px
+   and a row left 15% empty.
+
+   So below `sm` the gallery is the two-column grid the library already had,
+   with every tile still at its own true ratio. Rows end unevenly by the
+   difference between two adjacent tiles — a step, not a hole — and that is
+   the trade the brief asks for in as many words: correct proportions and a
+   readable layout before perfectly equal rectangles.
+
+   `!important` because the flex sizing is an inline style, and an inline
+   style cannot otherwise be undone by a stylesheet. */
+@media (max-width: 639px) {
+  .gallery-justified {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .gallery-justified > * {
+    max-width: none !important;
+    min-width: 0 !important;
+  }
+}
+
 /* RANGE INPUTS. A range with no styling is a piece of operating system
    sitting in the middle of a toolbar; this makes it a GrovBase control — a
    thin track with a small accent thumb — without changing what it is or how a

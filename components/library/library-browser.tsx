@@ -11,6 +11,8 @@ import { createClient } from "@/lib/supabase/client";
 import type { GalleryItem, GalleryPage } from "@/lib/server/gallery";
 import { libraryKey, patchLibrary, readLibrary, writeLibrary } from "@/lib/library-cache";
 import { ImageDetails } from "@/components/genv3/image-details";
+import { assetAspect, aspectCss } from "@/lib/asset-ratio";
+import { useRatioGrid } from "@/components/gallery/ratio-grid";
 import { saveBlob, saveImageFrom, stamp } from "@/lib/save-image";
 import { cn } from "@/lib/utils";
 
@@ -393,6 +395,16 @@ export function LibraryBrowser({ first, locale }: { first: GalleryPage; locale: 
   const tile = DENSITY[density];
   const empty = booted && !loading && items.length === 0;
 
+  // THE GALLERY'S ROW HEIGHT. The density slider used to be a column WIDTH;
+  // in a justified layout the honest unit is a row HEIGHT, so the same five
+  // steps are read that way. `gallery-justified` in globals.css shortens the
+  // row on a phone, where a 210px row would fit a single 16:9 tile across the
+  // whole screen.
+  const grid = useRatioGrid({ row: tile, gap: 10 });
+  // What shape the "loading more" placeholders should take: whatever the
+  // shelf is already full of.
+  const pendingAspect = items.length > 0 ? assetAspect(items[items.length - 1]) : 1;
+
   return (
     <div className="min-w-0">
       {/* THE BAR. Left: what you are looking at and how. Right: what you have
@@ -510,23 +522,23 @@ export function LibraryBrowser({ first, locale }: { first: GalleryPage; locale: 
         </div>
       )}
 
-      {/* THE GRID — `.library-grid` in globals.css, driven by `--tile`.
-          `auto-fill` with a minimum tile is what makes this adaptive without a
-          single hard-coded column count: the browser fits as many columns of
-          at least `--tile` as the width allows, at every viewport and every
-          density step. A phone is the one deliberate exception — see the rule
-          for why two columns are pinned there. */}
+      {/* THE GRID — mixed shapes, packed.
+          Tiles are no longer squares: each one is painted at the ratio its
+          file was actually generated at, and `useRatioGrid` gives each a row
+          span so the tile below starts where this one ends instead of where
+          the tallest one in the row ends. `tile` — the density slider — is
+          still the MINIMUM column width and still the only thing that
+          decides how many columns there are; it does not touch any tile's
+          shape. Two columns are pinned on a phone, as before. */}
       {empty ? (
         <EmptyShelf shelf={shelf} favOnly={favOnly} t={t} />
       ) : view === "grid" ? (
-        <div
-          className="library-grid grid gap-2 sm:gap-2.5"
-          style={{ "--tile": `${tile}px` } as React.CSSProperties}
-        >
+        <div style={grid.style} data-library-grid className="gallery-justified">
           {items.map((item) => (
             <Tile
               key={item.assetId}
               item={item}
+              style={grid.itemStyle(assetAspect(item))}
               picked={picked.has(item.assetId)}
               onPick={() => togglePick(item.assetId)}
               onOpen={() => setPreview(item)}
@@ -535,8 +547,14 @@ export function LibraryBrowser({ first, locale }: { first: GalleryPage; locale: 
               t={t}
             />
           ))}
+          {/* The placeholders cannot know what shape is coming, so they take
+              the shape of what is already on the shelf — the last item's
+              ratio, which for a shelf of one session is exactly right and
+              for a mixed one is at least not a square by default. */}
           {loading && Array.from({ length: 8 }, (_, i) => (
-            <div key={`sk-${i}`} className="skeleton aspect-square rounded-xl" />
+            <div key={`sk-${i}`} style={grid.itemStyle(pendingAspect)}>
+              <div className="skeleton h-full w-full rounded-xl" />
+            </div>
           ))}
         </div>
       ) : (
@@ -669,19 +687,37 @@ function Segmented({ options, value, onChange, compact = false }: {
  * appears on hover. Nothing is written across the picture: a library of
  * captions is a file listing, and this is meant to be looked at.
  */
-function Tile({ item, picked, onPick, onOpen, onFavorite, onDownload, t }: {
+function Tile({ item, picked, style, onPick, onOpen, onFavorite, onDownload, t }: {
   item: GalleryItem;
   picked: boolean;
+  /** The grid's row span and gutter for this tile. */
+  style?: React.CSSProperties;
   onPick: () => void;
   onOpen: () => void;
   onFavorite: () => void;
   onDownload: () => void;
   t: T;
 }) {
+  // THE BOX IS THE FILE'S OWN SHAPE. `aspect-ratio` rather than a computed
+  // pixel height, so the browser derives it from the column the grid actually
+  // gave us — the span above only reserves the room. It is set BEFORE the
+  // picture loads, which is what keeps the grid still while thumbnails arrive.
+  const aspect = assetAspect(item);
   return (
     <div
+      style={style}
+      // The outer element carries the span; the inner one carries the shape.
+      // Two elements because a grid item cannot both span rows and be sized
+      // by `aspect-ratio`.
+      data-tile-aspect={aspectCss(aspect)}
+    >
+    <div
+      style={{ aspectRatio: aspectCss(aspect) }}
       className={cn(
-        "group relative aspect-square overflow-hidden rounded-xl border bg-raised transition-all duration-200",
+        // `w-full` and NOT `h-full`: the height must come from the aspect
+        // ratio, and a full height would take it from the wrapper's span
+        // instead — which is the rounded reservation, not the true shape.
+        "group relative w-full overflow-hidden rounded-xl border bg-raised transition-all duration-200",
         picked
           ? "border-[rgb(var(--accent)/0.75)] ring-2 ring-[rgb(var(--accent)/0.35)]"
           : "border-[rgb(var(--line)/0.16)] hover:border-[rgb(var(--accent)/0.35)]",
@@ -746,6 +782,7 @@ function Tile({ item, picked, onPick, onOpen, onFavorite, onDownload, t }: {
         <RailButton label={t("library.editAsset")} href="/tools"><Wrench size={13} /></RailButton>
       </div>
     </div>
+    </div>
   );
 }
 
@@ -783,7 +820,7 @@ function Row({ item, picked, onPick, onOpen, onFavorite, when, t }: {
       <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 text-left">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={item.thumbUrl} alt="" loading="lazy" decoding="async"
-          className="h-11 w-11 shrink-0 rounded-lg bg-raised object-cover" />
+          className="h-11 w-11 shrink-0 rounded-lg bg-raised object-contain" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13px] font-semibold text-ink">{item.product ?? item.model ?? "—"}</span>
           <span className="block truncate text-[11.5px] text-faint">{when}</span>

@@ -174,6 +174,9 @@ export function ResizeWorkbench({ available, credits, reason, balance }: {
   const cards: BatchItem[] = useMemo(() => items.map((i) => ({
     id: i.id, name: i.file.name, thumbUrl: i.thumbUrl, status: i.status,
     bytes: i.file.size, canDownload: i.status === "done",
+    // The sheet paints each tile at the file's own shape; these are the real
+    // pixels from the decode, so it never has to guess or measure.
+    width: i.source?.width, height: i.source?.height,
     errorText: i.status === "error" ? t(`tools.err.${errorKey(i.error)}`) : undefined,
   })), [items, t]);
 
