@@ -153,12 +153,39 @@ export default function ProbeLibraryBefore() {
 }
 `;
 
+/**
+ * THE SKELETON AND THE PAGE MUST AGREE.
+ *
+ * A loading fallback is a promise about the shape of what is coming. When it
+ * reserves a heading the page does not draw, the content jumps upward the
+ * moment it arrives — on EVERY entry, because the library is force-dynamic.
+ * This route renders the real app/(app)/library/loading.tsx so the promise can
+ * be measured against what it promises.
+ */
+const SKELETON_DIR = `${HARNESS_DIR}/skeleton`;
+const SKELETON_SRC = `import LibraryLoading from "@/app/(app)/library/loading";
+
+export const dynamic = "force-static";
+
+export default function ProbeLibrarySkeleton() {
+  return (
+    <main className="mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-[var(--page-x)] pt-4 pb-[var(--page-bottom)] sm:px-6 sm:pt-5 lg:px-8 lg:pb-14 lg:pt-6 xl:px-10">
+      <div data-probe="library-skeleton">
+        <LibraryLoading />
+      </div>
+    </main>
+  );
+}
+`;
+
 if (process.argv.includes("--harness")) {
   fs.mkdirSync(HARNESS_DIR, { recursive: true });
   fs.writeFileSync(HARNESS_FILE, HARNESS_SRC);
   fs.writeFileSync(`${HARNESS_DIR}/fixture.ts`, FIXTURE_SRC);
   fs.mkdirSync(BEFORE_DIR, { recursive: true });
   fs.writeFileSync(`${BEFORE_DIR}/page.tsx`, BEFORE_SRC);
+  fs.mkdirSync(SKELETON_DIR, { recursive: true });
+  fs.writeFileSync(`${SKELETON_DIR}/page.tsx`, SKELETON_SRC);
   console.log(`wrote ${HARNESS_FILE} — build, start, then run the probe against it`);
   process.exit(0);
 }
@@ -265,7 +292,14 @@ async function measure(page, width, height, band) {
     // Count WRAPPED ROWS, not distinct top edges: the bar is `items-center`,
     // so controls of different heights legitimately have different tops
     // within one row. A row is a band of vertical overlap.
-    const toolbar = root.firstElementChild?.firstElementChild;
+    // BY ATTRIBUTE, NOT BY POSITION. This used to be
+    // `root.firstElementChild?.firstElementChild`, which walked into whatever
+    // happened to be first in the tree — and the moment the page gained an
+    // off-screen h1 above the browser, that chain resolved to null, `boxes`
+    // to [], `rowCount` to 0, and the wrap assertion below passed
+    // unconditionally at every viewport. A test that cannot fail is worse
+    // than no test.
+    const toolbar = root.querySelector("[data-library-toolbar]");
     const boxes = [...(toolbar ? toolbar.children : [])]
       .map((el) => el.getBoundingClientRect())
       .filter((r) => r.width > 0)
@@ -277,7 +311,7 @@ async function measure(page, width, height, band) {
       else bandBottom = Math.max(bandBottom, r.bottom);
     }
     const vis = (el) => !!el && el.getBoundingClientRect().width > 0;
-    return { densityVisible: vis(density), sortVisible: vis(sort), rowCount };
+    return { densityVisible: vis(density), sortVisible: vis(sort), rowCount, controls: boxes.length };
   });
   // The density slider is a desktop control; a phone must not carry it.
   if (width < 768) ok(!bar.densityVisible, `${tag}: density slider shown on a phone`);
@@ -286,6 +320,7 @@ async function measure(page, width, height, band) {
   if (width < 640) ok(!bar.sortVisible, `${tag}: sort select shown at phone width`);
   if (width >= 640) ok(bar.sortVisible, `${tag}: sort select missing at ≥640`);
   // The toolbar may wrap on a phone, but never into a tower.
+  ok(bar.controls > 0, `${tag}: no toolbar controls found — the selector is broken, not the layout`);
   ok(bar.rowCount <= (width < 640 ? 2 : 1), `${tag}: toolbar wrapped into ${bar.rowCount} rows`);
 
   /* ── 5. SELECTION COSTS NOTHING UNTIL IT EXISTS ──────────────────────── */
@@ -458,7 +493,14 @@ async function headerRemoved(browser) {
   const GONE = ["ZASOBY", "Biblioteka", "Wygenerowane materiały"];
   const read = async (url, width) => {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
-    await page.goto(url, { waitUntil: "networkidle" });
+    const res = await page.goto(url, { waitUntil: "networkidle" });
+    // A missing control route must say so, not fail later as an opaque
+    // TypeError inside the measurement.
+    if (!res || !res.ok()) {
+      await page.close();
+      throw new Error(`probe route ${url} returned ${res ? res.status() : "no response"} `
+        + `— run \`node scripts/library-probe.mjs --harness\` and rebuild`);
+    }
     await page.waitForTimeout(200);
     const out = await page.evaluate(() => {
       const main = document.querySelector("main");
@@ -499,9 +541,15 @@ async function headerRemoved(browser) {
     const after = await read(URL_, width);
     const before = await read(`${URL_}/before`, width);
 
+    // CASE-INSENSITIVE on purpose: the overline's capitals come from
+    // `text-transform: uppercase`, so its text node reads "Zasoby" and an
+    // exact match against "ZASOBY" could never fire.
     for (const word of GONE) {
-      ok(!after.visible.some((v) => v === word || v.startsWith(word)),
+      const needle = word.toLowerCase();
+      ok(!after.visible.some((v) => v.toLowerCase().startsWith(needle)),
         `${band}: "${word}" is still painted above the gallery`);
+      ok(before.visible.some((v) => v.toLowerCase().startsWith(needle)),
+        `${band}: the BEFORE route never painted "${word}" — the guard proves nothing`);
     }
     ok(!after.hasDisplayLg, `${band}: a display headline is still rendered`);
     ok(!after.hasOverline, `${band}: the overline is still rendered`);
@@ -524,6 +572,60 @@ async function headerRemoved(browser) {
   }
 }
 
+/**
+ * No jump between the skeleton and the page it stands in for. Measured at the
+ * three bands, because the toolbar's margin changes at `sm` and the grid's
+ * column count changes at every breakpoint.
+ */
+async function skeletonMatchesPage(browser) {
+  for (const [band, width] of [["mobile", 390], ["tablet", 834], ["desktop", 1440]]) {
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+
+    await page.goto(`${URL_}/skeleton`, { waitUntil: "networkidle" });
+    const sk = await page.evaluate(() => {
+      const main = document.querySelector("main");
+      const root = document.querySelector("[data-probe='library-skeleton']");
+      const cs = getComputedStyle(main);
+      const kids = [...root.firstElementChild.children];
+      const tile = root.querySelector(".aspect-square");
+      return {
+        contentTop: main.getBoundingClientRect().top + parseFloat(cs.paddingTop),
+        firstTop: kids[0]?.getBoundingClientRect().top ?? null,
+        tileTop: tile?.getBoundingClientRect().top ?? null,
+        blocks: kids.length,
+      };
+    });
+
+    await page.goto(URL_, { waitUntil: "networkidle" });
+    await page.waitForTimeout(200);
+    const real = await page.evaluate(() => {
+      const bar = document.querySelector("[data-library-toolbar]");
+      const tile = document.querySelector("[data-probe='library-root'] .aspect-square");
+      return {
+        barTop: bar?.getBoundingClientRect().top ?? null,
+        tileTop: tile?.getBoundingClientRect().top ?? null,
+      };
+    });
+    await page.close();
+
+    // The skeleton reserves NOTHING above its first block.
+    ok(Math.abs(sk.firstTop - sk.contentTop) <= 1,
+      `${band}: the skeleton reserves ${(sk.firstTop - sk.contentTop).toFixed(1)}px above its first block`);
+    // Two blocks only: a toolbar row and a grid. A third would be the
+    // dashboard's stat strip leaking back in.
+    ok(sk.blocks === 2, `${band}: the skeleton has ${sk.blocks} blocks, expected 2`);
+    // And it lands where the real page's toolbar and first tile land.
+    const barDrift = sk.firstTop - real.barTop;
+    ok(Math.abs(barDrift) <= 1,
+      `${band}: toolbar jumps ${barDrift.toFixed(1)}px between skeleton and page`);
+    const tileDrift = sk.tileTop - real.tileTop;
+    ok(Math.abs(tileDrift) <= 1,
+      `${band}: first tile jumps ${tileDrift.toFixed(1)}px between skeleton and page`);
+    console.log(`  ${band.padEnd(8)} toolbar drift ${barDrift.toFixed(1)}px, `
+      + `tile drift ${tileDrift.toFixed(1)}px`);
+  }
+}
+
 (async () => {
   // The sandbox ships a newer Chromium than the pinned Playwright expects.
   const browser = await chromium.launch({
@@ -538,6 +640,9 @@ async function headerRemoved(browser) {
 
   console.log("\nHEADER REMOVAL (delta against the same page with it)");
   await headerRemoved(browser);
+
+  console.log("\nLOADING SKELETON vs THE PAGE IT STANDS IN FOR");
+  await skeletonMatchesPage(browser);
 
   const table = [];
   for (const w of PHONES) table.push([`phone ${w}`, await measure(page, w, 844, "PHONE")]);
