@@ -139,22 +139,42 @@ function toSlot(row: Row): ResolvedSlot | null {
  */
 export async function loadSlots(_supabase: Client, keys: readonly string[]): Promise<SlotMap> {
   if (keys.length === 0) return EMPTY;
-  return readSlots([...new Set(keys)].sort());
+  // THE MAP IS BUILT HERE, OUTSIDE THE CACHE, and that is the whole point of
+  // the split below.
+  return new Map(Object.entries(await readSlots([...new Set(keys)].sort())));
 }
 
+/**
+ * WHAT THE CACHE HOLDS IS A PLAIN OBJECT, NOT A MAP — and this is not a
+ * stylistic choice.
+ *
+ * `unstable_cache` persists what the function returns and hands back a
+ * DESERIALIZED copy on every hit. A `Map` does not survive that: it comes back
+ * as `{}`, so `slots.get(...)` and `slots.has(...)` throw
+ * "get is not a function" — on /home, /tools, /prompts, /k/[cat]/[wf] and the
+ * generator panel, all at once, and only once the entry has been written and
+ * read back. The first request after a deploy computes the value in-process
+ * and works, which is exactly what made this look like a random crash with no
+ * deploy behind it.
+ *
+ * So the cached payload is a `Record<string, ResolvedSlot>` — JSON in, JSON
+ * out, identical on both sides of the cache — and `loadSlots` turns it into
+ * the `Map` the callers have always been given. Nothing outside this file
+ * changes, and nothing outside this file can be broken by it again.
+ */
 const readSlots = unstable_cache(
-  async (keys: string[]): Promise<SlotMap> => {
+  async (keys: string[]): Promise<Record<string, ResolvedSlot>> => {
     const anon = createAnonClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const { data, error } = await anon.rpc("media_slots_resolve", { p_keys: keys });
     // A screen whose slots cannot be read still renders — every surface has a
     // fallback, so the worst case is the interface it had before this feature.
-    if (error || !data) return EMPTY;
-    const map: SlotMap = new Map();
+    if (error || !data) return {};
+    const out: Record<string, ResolvedSlot> = {};
     for (const row of data as Row[]) {
       const slot = toSlot(row);
-      if (slot) map.set(slot.key, slot);
+      if (slot) out[slot.key] = slot;
     }
-    return map;
+    return out;
   },
   ["media-slots"],
   { revalidate: 600, tags: [MEDIA_SLOT_TAG] },

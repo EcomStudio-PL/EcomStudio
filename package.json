@@ -56,7 +56,8 @@
     "test:libraryprobe": "node scripts/library-probe.mjs",
     "test:detailsprobe": "node scripts/details-probe.mjs",
     "test:regenprobe": "node scripts/regen-probe.mjs",
-    "icons:build": "node scripts/make-favicon.mjs"
+    "icons:build": "node scripts/make-favicon.mjs",
+    "test:cache": "esbuild scripts/cache-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/cache-tests.cjs --log-level=silent && node .next/cache-tests.cjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
