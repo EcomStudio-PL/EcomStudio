@@ -1704,11 +1704,12 @@ body:has(.workspace-page)::after { display: none; }
   }
 }
 
-/* THE DENSITY SLIDER. A range input with no styling is a piece of operating
-   system sitting in the middle of the toolbar; this makes it a GrovBase
-   control — a thin track with a small accent thumb — without changing what it
-   is or how a keyboard drives it. */
-.library-density::-webkit-slider-thumb {
+/* RANGE INPUTS. A range with no styling is a piece of operating system
+   sitting in the middle of a toolbar; this makes it a GrovBase control — a
+   thin track with a small accent thumb — without changing what it is or how a
+   keyboard drives it. Used by the library's thumbnail-size control and by the
+   brush size in the regeneration editor. */
+.gb-range::-webkit-slider-thumb {
   appearance: none;
   width: 13px;
   height: 13px;
@@ -1718,7 +1719,7 @@ body:has(.workspace-page)::after { display: none; }
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.28);
   cursor: pointer;
 }
-.library-density::-moz-range-thumb {
+.gb-range::-moz-range-thumb {
   width: 13px;
   height: 13px;
   border-radius: 999px;
@@ -1727,7 +1728,7 @@ body:has(.workspace-page)::after { display: none; }
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.28);
   cursor: pointer;
 }
-.library-density:focus-visible {
+.gb-range:focus-visible {
   outline: 2px solid rgb(var(--accent) / 0.55);
   outline-offset: 3px;
 }

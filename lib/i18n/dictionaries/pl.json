@@ -2808,7 +2808,7 @@
     "regenTitle": "Regeneruj obraz",
     "regenSub": "Wprowadź poprawki lub zaznacz zmiany na obrazie.",
     "regenDescribe": "Opisz, co chcesz poprawić",
-    "regenPh": "Np. Zmień kolor poduszki na beżowy, usuń koc, dodaj kwiaty w tle…",
+    "regenPh": "Opisz, co chcesz poprawić (opcjonalnie)…",
     "regenEmptyHint": "Puste pole = nowe podejście do tego samego ujęcia z delikatną wariacją.",
     "regenModel": "Model AI",
     "regenSameModel": "Ten sam model co poprzednio",
@@ -2899,7 +2899,11 @@
     "metaTime": "Czas generacji",
     "secondsShort": "{n} s",
     "downloadImage": "Pobierz obraz",
-    "copyNote": "Kopiuj notatkę"
+    "copyNote": "Kopiuj notatkę",
+    "perUseShort": "{n} kr. / użycie",
+    "regenPrevSub": "Model, którym powstał ten obraz.",
+    "regenRecoSub": "Rekomendowany do nanoszenia zmian na obrazie.",
+    "regenGenerate": "Generuj"
   },
   "retouch": {
     "title": "Retusz zdjęć",

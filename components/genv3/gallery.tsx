@@ -724,10 +724,8 @@ export function GenerationGallery({
       {regenItem && (
         <RegenerateModal
           item={regenItem}
-          siblings={merged}
           models={models}
           balance={balance}
-          onPick={setRegenItem}
           onClose={() => setRegenItem(null)}
           onDone={async (credits) => {
             onBalance((b) => Math.max(0, b - credits));

@@ -2808,7 +2808,7 @@
     "regenTitle": "Bild regenerieren",
     "regenSub": "Beschreibe Korrekturen oder markiere die Änderungen im Bild.",
     "regenDescribe": "Beschreibe, was verbessert werden soll",
-    "regenPh": "Z. B. Kissenfarbe auf Beige ändern, Decke entfernen, Blumen im Hintergrund hinzufügen…",
+    "regenPh": "Beschreibe, was du ändern möchtest (optional)…",
     "regenEmptyHint": "Leeres Feld = neuer Versuch derselben Aufnahme mit dezenter Variation.",
     "regenModel": "KI-Modell",
     "regenSameModel": "Dasselbe Modell wie zuvor",
@@ -2899,7 +2899,11 @@
     "metaTime": "Generierungszeit",
     "secondsShort": "{n} s",
     "downloadImage": "Bild herunterladen",
-    "copyNote": "Notiz kopieren"
+    "copyNote": "Notiz kopieren",
+    "perUseShort": "{n} Cr. / Nutzung",
+    "regenPrevSub": "Das Modell, mit dem dieses Bild entstand.",
+    "regenRecoSub": "Empfohlen für Änderungen am Bild.",
+    "regenGenerate": "Generieren"
   },
   "retouch": {
     "title": "Foto-Retusche",

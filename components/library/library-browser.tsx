@@ -426,7 +426,7 @@ export function LibraryBrowser({ first, locale }: { first: GalleryPage; locale: 
               value={density}
               onChange={(e) => setDensity(Number(e.target.value))}
               aria-label={t("library.density")}
-              className="library-density h-1 w-24 cursor-pointer appearance-none rounded-full bg-[rgb(var(--ink)/0.14)] lg:w-28"
+              className="gb-range h-1 w-24 cursor-pointer appearance-none rounded-full bg-[rgb(var(--ink)/0.14)] lg:w-28"
             />
             <LayoutGrid size={16} aria-hidden className="shrink-0 text-faint" />
           </div>

@@ -2808,7 +2808,7 @@
     "regenTitle": "Regenerate image",
     "regenSub": "Describe corrections or mark the changes on the image.",
     "regenDescribe": "Describe what to improve",
-    "regenPh": "E.g. Change the cushion colour to beige, remove the blanket, add flowers in the background…",
+    "regenPh": "Describe what you want to fix (optional)…",
     "regenEmptyHint": "Empty field = a fresh take on the same shot with a subtle variation.",
     "regenModel": "AI model",
     "regenSameModel": "Same model as before",
@@ -2899,7 +2899,11 @@
     "metaTime": "Generation time",
     "secondsShort": "{n} s",
     "downloadImage": "Download image",
-    "copyNote": "Copy note"
+    "copyNote": "Copy note",
+    "perUseShort": "{n} cr. / use",
+    "regenPrevSub": "The model this image was made with.",
+    "regenRecoSub": "Recommended for applying changes to an image.",
+    "regenGenerate": "Generate"
   },
   "retouch": {
     "title": "Photo retouch",
