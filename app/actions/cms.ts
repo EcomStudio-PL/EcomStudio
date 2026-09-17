@@ -8,6 +8,7 @@ import {
 } from "@/lib/services/cms";
 import { SEED_PAGES } from "@/lib/cms-seed";
 import { TEMPLATE_KEYS, templateBlocks } from "@/lib/cms-templates";
+import { normalizePath, normalizeTarget, sourceIsProtected } from "@/lib/server/redirects";
 import type { CmsBlockContent, CmsCode, PageSeo, SectionStyle } from "@/lib/cms";
 
 /**
@@ -102,6 +103,93 @@ export async function createPageAction(input: {
     });
     invalidate(slug);
     return { ok: true, data: { slug } };
+  } catch (e) { return { ok: false, error: message(e) }; }
+}
+
+/* ── REDIRECTS ───────────────────────────────────────────────────────────
+ *
+ * The validation lives here rather than only in the database because the
+ * admin deserves to be told WHY: "that address is already redirected", "that
+ * would point at itself", "you cannot redirect the admin panel". The database
+ * still enforces uniqueness and the loop check independently.
+ */
+
+export async function saveRedirectAction(input: {
+  id?: string;
+  source: string;
+  target: string;
+  statusCode: number;
+  enabled: boolean;
+  note?: string | null;
+}): Promise<Result<{ id: string }>> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+
+    const source = normalizePath(input.source);
+    const target = normalizeTarget(input.target);
+    if (!source || source === "/") return { ok: false, error: "redirectSource" };
+    if (!target) return { ok: false, error: "redirectTarget" };
+    // Redirecting the app's own routes would take the product off the air.
+    if (sourceIsProtected(source)) return { ok: false, error: "redirectReserved" };
+    if (source === normalizePath(target)) return { ok: false, error: "redirectLoop" };
+    const status = [301, 302, 307, 308].includes(input.statusCode) ? input.statusCode : 307;
+
+    // A page that exists AND a redirect from the same path is a rule nobody
+    // can reason about later; the redirect would silently win.
+    const { data: clashPage } = await supabase.from("cms_pages")
+      .select("id").eq("slug", source.replace(/^\//, "")).maybeSingle();
+    if (clashPage) return { ok: false, error: "redirectIsPage" };
+
+    const { data: existing } = await supabase.from("cms_redirects")
+      .select("id").eq("source", source).maybeSingle();
+    if (existing && existing.id !== input.id) return { ok: false, error: "redirectTaken" };
+
+    // Ask the database to walk the chain: A→B→C→A is not visible from here.
+    const { data: loops } = await supabase.rpc("cms_redirect_would_loop", {
+      p_source: source, p_target: target, p_ignore_id: input.id ?? undefined,
+    });
+    if (loops === true) return { ok: false, error: "redirectLoop" };
+
+    const row = {
+      source, target, status_code: status, enabled: input.enabled,
+      note: clean(input.note, 200), updated_at: new Date().toISOString(),
+    };
+
+    if (input.id) {
+      const { error } = await supabase.from("cms_redirects").update(row).eq("id", input.id);
+      if (error) return { ok: false, error: error.code === "23505" ? "redirectTaken" : "generic" };
+      await logAudit(supabase, {
+        actorId: adminId, action: "cms.redirect_saved", entityType: "cms_redirect",
+        entityId: input.id, after: { source, target, status },
+      });
+      revalidatePath("/admin/www/przekierowania");
+      return { ok: true, data: { id: input.id } };
+    }
+
+    const { data: created, error } = await supabase.from("cms_redirects")
+      .insert({ ...row, created_by: adminId }).select("id").single();
+    if (error || !created) {
+      return { ok: false, error: error?.code === "23505" ? "redirectTaken" : "generic" };
+    }
+    await logAudit(supabase, {
+      actorId: adminId, action: "cms.redirect_created", entityType: "cms_redirect",
+      entityId: created.id, after: { source, target, status },
+    });
+    revalidatePath("/admin/www/przekierowania");
+    return { ok: true, data: { id: created.id } };
+  } catch (e) { return { ok: false, error: message(e) }; }
+}
+
+export async function deleteRedirectAction(id: string): Promise<Result> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    const { error } = await supabase.from("cms_redirects").delete().eq("id", id);
+    if (error) return { ok: false, error: "generic" };
+    await logAudit(supabase, {
+      actorId: adminId, action: "cms.redirect_deleted", entityType: "cms_redirect", entityId: id,
+    });
+    revalidatePath("/admin/www/przekierowania");
+    return { ok: true };
   } catch (e) { return { ok: false, error: message(e) }; }
 }
 

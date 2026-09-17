@@ -1,5 +1,6 @@
-import { type NextRequest, type NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
+import { matchRedirect } from "@/lib/server/redirects";
 
 /**
  * FIRST-TOUCH ATTRIBUTION.
@@ -69,6 +70,35 @@ function rememberFirstTouch(request: NextRequest, response: NextResponse): void 
 }
 
 export async function middleware(request: NextRequest) {
+  /**
+   * ADMIN-MANAGED REDIRECTS COME FIRST, before the session is even touched.
+   *
+   * `/promocja` has to be able to point at whichever campaign is current, and
+   * an ad that has been running for a week must not stop working because the
+   * landing behind it was replaced. So the mapping is data the panel owns,
+   * read here from an instance-level cache — a map lookup, not a query.
+   *
+   * Only ordinary page loads are redirected: an API call, an RSC navigation
+   * payload or a prefetch that gets a 30x back is a broken response, not a
+   * moved page.
+   */
+  if (request.method === "GET"
+    && !request.nextUrl.pathname.startsWith("/api")
+    && !request.nextUrl.pathname.startsWith("/_next")
+    && request.headers.get("rsc") !== "1"
+    && (request.headers.get("accept") ?? "").includes("text/html")) {
+    const hit = await matchRedirect(request.nextUrl.pathname);
+    if (hit) {
+      const destination = /^https:\/\//i.test(hit.target)
+        ? new URL(hit.target)
+        : new URL(hit.target, request.nextUrl.origin);
+      // THE QUERY STRING TRAVELS. A campaign link is `/promocja?utm_source=ig`
+      // and the utm tags are the entire point of the click.
+      if (!destination.search) destination.search = request.nextUrl.search;
+      return NextResponse.redirect(destination, hit.status);
+    }
+  }
+
   // updateSession owns the response: it may have written refreshed auth cookies
   // onto it, or replaced it with a redirect that carries them. The first-touch
   // cookie has to go onto THAT object — a fresh NextResponse here would throw

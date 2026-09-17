@@ -164,6 +164,30 @@ export function isBlockType(value: string): boolean {
   return (BLOCK_TYPES as readonly string[]).includes(value);
 }
 
+/* ── REDIRECTS ────────────────────────────────────────────────────────────
+ *
+ * The admin's view of the routing table. The PUBLIC read is a different path
+ * entirely (lib/server/redirects.ts, cached, through a definer function) —
+ * this one is for the manager and carries the columns the manager shows.
+ */
+
+export type RedirectRow = {
+  id: string; source: string; target: string; statusCode: number;
+  enabled: boolean; note: string | null; hits: number; lastHitAt: string | null;
+  createdAt: string;
+};
+
+export async function listRedirects(supabase: Client): Promise<RedirectRow[]> {
+  const { data } = await supabase.from("cms_redirects")
+    .select("id, source, target, status_code, enabled, note, hits, last_hit_at, created_at")
+    .order("source");
+  return (data ?? []).map((r) => ({
+    id: r.id, source: r.source, target: r.target, statusCode: r.status_code,
+    enabled: r.enabled, note: r.note, hits: r.hits ?? 0, lastHitAt: r.last_hit_at,
+    createdAt: r.created_at,
+  }));
+}
+
 /* ── OWN TEMPLATES ────────────────────────────────────────────────────────
  *
  * "Zapisz sekcję jako szablon", read back for the picker's «Moje sekcje».

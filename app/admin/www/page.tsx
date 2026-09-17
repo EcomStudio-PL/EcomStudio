@@ -2,10 +2,9 @@ import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { PageHeader } from "@/components/ui/page-header";
-import { SiteSettings } from "@/components/admin/site-settings";
+import { CmsNav } from "@/components/admin/cms/cms-nav";
 import { PageList } from "@/components/admin/cms/page-list";
 import { getHomepageMode } from "@/lib/server/launch-page";
-import { getPublicSite } from "@/lib/server/public-site";
 import { listPages } from "@/lib/services/cms";
 
 /**
@@ -20,10 +19,9 @@ export default async function AdminWww() {
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
 
-  const [pages, mode, site] = await Promise.all([
+  const [pages, mode] = await Promise.all([
     listPages(supabase),
     getHomepageMode(supabase),
-    getPublicSite(supabase),
   ]);
 
   // "Autor zmian" is a name, not a uuid. One query for every editor on the
@@ -44,8 +42,10 @@ export default async function AdminWww() {
         sub={t("cms.pagesSub")}
       />
 
-      <SiteSettings mode={mode} instagramUrl={site.instagramUrl} facebookUrl={site.facebookUrl}
-        linkedinUrl={site.linkedinUrl} xUrl={site.xUrl} />
+      {/* THE LIST IS THE SCREEN. Global settings moved to their own view —
+          they were a full form above the pages, which is the least-used
+          thing on this screen taking the most of it. */}
+      <CmsNav />
 
       <PageList pages={pages} editors={editors} mode={mode} locale={locale} />
     </div>
