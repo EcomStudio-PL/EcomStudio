@@ -132,7 +132,22 @@ export default async function LibraryPage({ searchParams }: {
 
   return (
     <div>
-      <PageHeader overline={t("nav.groups.assets")} title={t("library.title")} sub={t("library.sub")} />
+      {/*
+        NO PAGE HEADER HERE, DELIBERATELY.
+
+        The library is a workspace, not an article. An overline, a display
+        headline and a line of prose above the grid pushed the first row of
+        thumbnails a third of a screen down on a phone to tell the customer
+        the name of the screen they had just tapped to open. The toolbar is
+        the top of this page and the grid starts directly under it.
+
+        The HEADING ITSELF STAYS, off-screen. A page with no h1 is a page a
+        screen reader cannot announce and a document outline cannot place;
+        the brief asked for it gone from VIEW, which is what `sr-only` does.
+        The two side shelves (?tab=history, ?tab=tools) keep their visible
+        header — they have no toolbar, so it is the only thing naming them.
+      */}
+      <h1 className="sr-only">{t("library.title")}</h1>
       <LibraryBrowser first={first} locale={locale} />
     </div>
   );

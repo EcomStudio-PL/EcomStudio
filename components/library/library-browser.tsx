@@ -398,7 +398,8 @@ export function LibraryBrowser({ first, locale }: { first: GalleryPage; locale: 
       {/* THE BAR. Left: what you are looking at and how. Right: what you have
           picked and how it is ordered. On a phone the same two halves stack
           into one scroll-free row of compact controls. */}
-      <div className="mb-3 flex flex-wrap items-center gap-2 sm:mb-4 sm:gap-2.5">
+      <div data-library-toolbar
+        className="mb-3 flex flex-wrap items-center gap-2 sm:mb-4 sm:gap-2.5">
         <Segmented
           options={[
             { key: "image", label: t("library.photos"), icon: ImageIcon },

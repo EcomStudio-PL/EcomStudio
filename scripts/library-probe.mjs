@@ -28,11 +28,137 @@ import { chromium } from "playwright";
  */
 const HARNESS_DIR = "app/probe-tmp/library";
 const HARNESS_FILE = `${HARNESS_DIR}/page.tsx`;
-const HARNESS_SRC = "/**\n * TEMPORARY PROBE ROUTE \u2014 written by scripts/library-probe.mjs --harness.\n *\n * The library lives behind auth and Supabase is not reachable from the build\n * sandbox, so the only way to measure the real component at seventeen\n * viewports is to mount it with a synthetic page of items. The COMPONENT is\n * the real one; only the rows it is handed are made up, and the pictures are\n * inline SVG so nothing is fetched.\n */\nimport { I18nProvider } from \"@/lib/i18n/provider\";\nimport pl from \"@/lib/i18n/dictionaries/pl.json\";\nimport { LibraryBrowser } from \"@/components/library/library-browser\";\nimport type { GalleryItem, GalleryPage } from \"@/lib/server/gallery\";\n\nexport const dynamic = \"force-static\";\n\nconst swatch = (i: number) => {\n  const hue = (i * 37) % 360;\n  const svg = '<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"640\" height=\"640\">'\n    + '<rect width=\"640\" height=\"640\" fill=\"hsl(' + hue + ' 55% 55%)\"/>'\n    + '<text x=\"320\" y=\"350\" font-size=\"120\" text-anchor=\"middle\" fill=\"white\">' + i + '</text></svg>';\n  return \"data:image/svg+xml;utf8,\" + encodeURIComponent(svg);\n};\n\nfunction item(i: number): GalleryItem {\n  const url = swatch(i);\n  return {\n    generationId: \"gen-\" + Math.floor(i / 3),\n    assetId: \"asset-\" + i,\n    path: \"ws/gen/\" + i + \".png\",\n    url,\n    thumbUrl: url,\n    hasThumb: true,\n    previewUrl: url,\n    assetType: i % 7 === 3 ? \"video\" : \"image\",\n    durationSec: i % 7 === 3 ? 12 + i : null,\n    width: 640,\n    height: 640,\n    ratio: \"1:1\",\n    resolution: \"1024\",\n    quality: \"high\",\n    quantity: 2,\n    credits: 4,\n    latencyMs: 12400,\n    referenceCount: 1,\n    inspirationCount: 0,\n    operation: null,\n    model: \"Nano Banana Pro\",\n    modelId: \"m1\",\n    product: \"Produkt \" + i,\n    sessionType: \"advertising\",\n    origin: \"engine\",\n    prompt: null,\n    favorite: i % 5 === 0,\n    note: null,\n    createdAt: new Date(Date.UTC(2026, 0, 1 + (i % 28))).toISOString(),\n  };\n}\n\nconst first: GalleryPage = {\n  items: Array.from({ length: 24 }, (_, i) => item(i)),\n  nextCursor: null,\n};\n\nexport default function ProbeLibrary() {\n  return (\n    <I18nProvider locale=\"pl\" dict={pl as Record<string, unknown>}>\n      <main className=\"mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-[var(--page-x)] pt-4 pb-[var(--page-bottom)] sm:px-6 sm:pt-5 lg:px-8 lg:pb-14 lg:pt-6 xl:px-10\">\n        <div data-probe=\"library-root\">\n          <LibraryBrowser first={first} locale=\"pl\" />\n        </div>\n      </main>\n    </I18nProvider>\n  );\n}\n";
+/**
+ * THE ITEMS, shared by both routes so the only difference between them is the
+ * header. Separate module because two routes import it.
+ */
+const FIXTURE_SRC = `import type { GalleryItem, GalleryPage } from "@/lib/server/gallery";
+
+const swatch = (i: number) => {
+  const hue = (i * 37) % 360;
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640">'
+    + '<rect width="640" height="640" fill="hsl(' + hue + ' 55% 55%)"/>'
+    + '<text x="320" y="350" font-size="120" text-anchor="middle" fill="white">' + i + '</text></svg>';
+  return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+};
+
+function item(i: number): GalleryItem {
+  const url = swatch(i);
+  return {
+    generationId: "gen-" + Math.floor(i / 3),
+    assetId: "asset-" + i,
+    path: "ws/gen/" + i + ".png",
+    url,
+    thumbUrl: url,
+    hasThumb: true,
+    previewUrl: url,
+    assetType: i % 7 === 3 ? "video" : "image",
+    durationSec: i % 7 === 3 ? 12 + i : null,
+    width: 640,
+    height: 640,
+    ratio: "1:1",
+    resolution: "1024",
+    quality: "high",
+    quantity: 2,
+    credits: 4,
+    latencyMs: 12400,
+    referenceCount: 1,
+    inspirationCount: 0,
+    operation: null,
+    model: "Nano Banana Pro",
+    modelId: "m1",
+    product: "Produkt " + i,
+    sessionType: "advertising",
+    origin: "engine",
+    prompt: null,
+    favorite: i % 5 === 0,
+    note: null,
+    createdAt: new Date(Date.UTC(2026, 0, 1 + (i % 28))).toISOString(),
+  };
+}
+
+export const first: GalleryPage = {
+  items: Array.from({ length: 24 }, (_, i) => item(i)),
+  nextCursor: null,
+};
+`;
+
+/**
+ * TEMPORARY PROBE ROUTE — written by scripts/library-probe.mjs --harness.
+ *
+ * The library lives behind auth and Supabase is not reachable from the build
+ * sandbox, so the only way to measure the real component at seventeen
+ * viewports is to mount it with a synthetic page of items. The COMPONENT is
+ * the real one; only the rows it is handed are made up, and the pictures are
+ * inline SVG so nothing is fetched.
+ *
+ * The body mirrors app/(app)/library/page.tsx EXACTLY — the off-screen h1 and
+ * the browser, inside the <main> whose classes are copied from the (app)
+ * layout. Anything less and the probe would be measuring a different page
+ * from the one that ships.
+ */
+const HARNESS_SRC = `import { I18nProvider } from "@/lib/i18n/provider";
+import pl from "@/lib/i18n/dictionaries/pl.json";
+import { LibraryBrowser } from "@/components/library/library-browser";
+import { first } from "@/app/probe-tmp/library/fixture";
+
+export const dynamic = "force-static";
+
+const TITLE = (pl as { library: { title: string } }).library.title;
+
+export default function ProbeLibrary() {
+  return (
+    <I18nProvider locale="pl" dict={pl as Record<string, unknown>}>
+      <main className="mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-[var(--page-x)] pt-4 pb-[var(--page-bottom)] sm:px-6 sm:pt-5 lg:px-8 lg:pb-14 lg:pt-6 xl:px-10">
+        <div data-probe="library-root">
+          <h1 className="sr-only">{TITLE}</h1>
+          <LibraryBrowser first={first} locale="pl" />
+        </div>
+      </main>
+    </I18nProvider>
+  );
+}
+`;
+
+/**
+ * THE SAME PAGE AS IT WAS, for one purpose only: measuring the delta.
+ *
+ * "The gallery starts higher" is a comparison, and a comparison needs both
+ * sides. This route renders the library body with the PageHeader that used to
+ * sit above it, so the probe can subtract one from the other instead of
+ * asserting an absolute pixel number that would mean nothing.
+ */
+const BEFORE_DIR = `${HARNESS_DIR}/before`;
+const BEFORE_SRC = `import { I18nProvider } from "@/lib/i18n/provider";
+import pl from "@/lib/i18n/dictionaries/pl.json";
+import { PageHeader } from "@/components/ui/page-header";
+import { LibraryBrowser } from "@/components/library/library-browser";
+import { first } from "@/app/probe-tmp/library/fixture";
+
+export const dynamic = "force-static";
+
+const D = pl as { library: { title: string; sub: string }; nav: { groups: { assets: string } } };
+
+export default function ProbeLibraryBefore() {
+  return (
+    <I18nProvider locale="pl" dict={pl as Record<string, unknown>}>
+      <main className="mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-[var(--page-x)] pt-4 pb-[var(--page-bottom)] sm:px-6 sm:pt-5 lg:px-8 lg:pb-14 lg:pt-6 xl:px-10">
+        <div data-probe="library-root">
+          <PageHeader overline={D.nav.groups.assets} title={D.library.title} sub={D.library.sub} />
+          <LibraryBrowser first={first} locale="pl" />
+        </div>
+      </main>
+    </I18nProvider>
+  );
+}
+`;
 
 if (process.argv.includes("--harness")) {
   fs.mkdirSync(HARNESS_DIR, { recursive: true });
   fs.writeFileSync(HARNESS_FILE, HARNESS_SRC);
+  fs.writeFileSync(`${HARNESS_DIR}/fixture.ts`, FIXTURE_SRC);
+  fs.mkdirSync(BEFORE_DIR, { recursive: true });
+  fs.writeFileSync(`${BEFORE_DIR}/page.tsx`, BEFORE_SRC);
   console.log(`wrote ${HARNESS_FILE} — build, start, then run the probe against it`);
   process.exit(0);
 }
@@ -312,6 +438,92 @@ async function noShift(page) {
   return shift;
 }
 
+/**
+ * THE HEADER IS GONE, AND THE GRID MOVED UP BY EXACTLY WHAT IT OCCUPIED.
+ *
+ * Four things, at a phone, a tablet and a desktop:
+ *
+ *   1. NOTHING OF THE HEADER IS PAINTED — not the overline, not the title,
+ *      not the line of prose. Checked against the rendered text, so a heading
+ *      that merely moved somewhere else would still fail.
+ *   2. THE PAGE IS STILL ANNOUNCED. An h1 exists and is clipped rather than
+ *      deleted: "remove from view" is not "remove from the document".
+ *   3. NO GAP WHERE IT WAS. The toolbar's top sits on the content box of
+ *      <main> — if the header's margin had been left behind, this is the
+ *      assertion that would catch it.
+ *   4. THE GALLERY STARTS HIGHER, measured as a delta against the same page
+ *      with the header still in it.
+ */
+async function headerRemoved(browser) {
+  const GONE = ["ZASOBY", "Biblioteka", "Wygenerowane materiały"];
+  const read = async (url, width) => {
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    await page.goto(url, { waitUntil: "networkidle" });
+    await page.waitForTimeout(200);
+    const out = await page.evaluate(() => {
+      const main = document.querySelector("main");
+      const root = document.querySelector("[data-probe='library-root']");
+      const bar = document.querySelector("[data-library-toolbar]");
+      const tile = document.querySelector("[data-probe='library-root'] .aspect-square");
+      const cs = getComputedStyle(main);
+      const box = main.getBoundingClientRect();
+      const h1 = root.querySelector("h1");
+      const h1box = h1 ? h1.getBoundingClientRect() : null;
+      // What a sighted visitor can actually read on the page.
+      const visible = [...root.querySelectorAll("*")]
+        .filter((el) => {
+          const b = el.getBoundingClientRect();
+          const s = getComputedStyle(el);
+          return b.width > 1 && b.height > 1 && s.visibility !== "hidden" && s.display !== "none";
+        })
+        .map((el) => (el.childNodes.length === 1 && el.firstChild.nodeType === 3
+          ? el.textContent.trim() : ""))
+        .filter(Boolean);
+      return {
+        contentTop: box.top + window.scrollY + parseFloat(cs.paddingTop),
+        barTop: bar ? bar.getBoundingClientRect().top + window.scrollY : null,
+        tileTop: tile ? tile.getBoundingClientRect().top + window.scrollY : null,
+        h1Exists: Boolean(h1),
+        h1Text: h1 ? h1.textContent.trim() : null,
+        h1Painted: h1box ? h1box.width > 1 && h1box.height > 1 : false,
+        visible,
+        hasDisplayLg: Boolean(root.querySelector(".display-lg")),
+        hasOverline: Boolean(root.querySelector(".overline")),
+      };
+    });
+    await page.close();
+    return out;
+  };
+
+  for (const [band, width] of [["mobile", 390], ["tablet", 834], ["desktop", 1440]]) {
+    const after = await read(URL_, width);
+    const before = await read(`${URL_}/before`, width);
+
+    for (const word of GONE) {
+      ok(!after.visible.some((v) => v === word || v.startsWith(word)),
+        `${band}: "${word}" is still painted above the gallery`);
+    }
+    ok(!after.hasDisplayLg, `${band}: a display headline is still rendered`);
+    ok(!after.hasOverline, `${band}: the overline is still rendered`);
+
+    ok(after.h1Exists, `${band}: the page has no h1 at all — it must be hidden, not deleted`);
+    ok(after.h1Text === "Biblioteka", `${band}: the off-screen h1 says "${after.h1Text}"`);
+    ok(!after.h1Painted, `${band}: the h1 is meant to be off-screen but occupies ${after.h1Text}`);
+
+    ok(after.barTop !== null, `${band}: no toolbar found`);
+    const gap = after.barTop - after.contentTop;
+    ok(Math.abs(gap) <= 1,
+      `${band}: ${gap.toFixed(1)}px of empty space above the toolbar (expected 0)`);
+
+    ok(before.hasDisplayLg, `${band}: the BEFORE route did not render the old header — bad control`);
+    const lifted = before.tileTop - after.tileTop;
+    ok(lifted > 60,
+      `${band}: the gallery only moved up ${lifted.toFixed(0)}px`);
+    console.log(`  ${band.padEnd(8)} gallery ${lifted.toFixed(0)}px higher, `
+      + `toolbar gap ${gap.toFixed(1)}px`);
+  }
+}
+
 (async () => {
   // The sandbox ships a newer Chromium than the pinned Playwright expects.
   const browser = await chromium.launch({
@@ -323,6 +535,9 @@ async function noShift(page) {
     console.error(`probe route unreachable: ${res?.status()} ${URL_}`);
     process.exit(2);
   }
+
+  console.log("\nHEADER REMOVAL (delta against the same page with it)");
+  await headerRemoved(browser);
 
   const table = [];
   for (const w of PHONES) table.push([`phone ${w}`, await measure(page, w, 844, "PHONE")]);
