@@ -64,6 +64,9 @@ export type FashionToolConfig = {
   showResolution: boolean;
   showFormat: boolean;
   showHint: boolean;
+  /** Show the "what the AI will do" card under the controls. On where the
+   *  tool's reference panel has it; the copy is the tool's own `sub`. */
+  showAiNote: boolean;
   /** Preselected framing. "auto" means "follow the source photograph". */
   defaultFormat: string;
 };
@@ -86,6 +89,7 @@ const SINGLE_INPUT = {
   showResolution: true,
   showFormat: true,
   showHint: true,
+  showAiNote: false,
   defaultFormat: "1:1",
 } as const;
 
@@ -125,6 +129,7 @@ export const FASHION_TOOLS: readonly FashionToolConfig[] = [
     showResolution: false,
     showFormat: true,
     showHint: false,
+    showAiNote: true,
     defaultFormat: "auto",
   },
 ] as const;

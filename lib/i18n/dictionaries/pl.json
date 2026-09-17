@@ -4033,7 +4033,9 @@
     "someFailed": "{n} zdjęć nie udało się przygotować — kredyty za nie zostały zwrócone.",
     "allFailed": "Nie udało się przygotować zdjęć. Kredyty zostały zwrócone.",
     "emptyTitle": "Nie masz jeszcze wygenerowanych zdjęć",
-    "unavailable": "To narzędzie nie jest jeszcze gotowe — administrator nie opublikował dla niego instrukcji. Kredyty nie zostaną pobrane."
+    "unavailable": "To narzędzie nie jest jeszcze gotowe — administrator nie opublikował dla niego instrukcji. Kredyty nie zostaną pobrane.",
+    "aiNoteTitle": "Automatyczne dopasowanie AI",
+    "aiNoteHint": "Model pracuje na Twoich zdjęciach i zachowuje rzeczywisty wygląd produktu."
   },
   "toolsearch": {
     "image_moda": {

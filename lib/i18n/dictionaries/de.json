@@ -4033,7 +4033,9 @@
     "someFailed": "{n} Fotos konnten nicht vorbereitet werden — die Credits wurden erstattet.",
     "allFailed": "Die Fotos konnten nicht vorbereitet werden. Die Credits wurden erstattet.",
     "emptyTitle": "Sie haben noch keine generierten Fotos",
-    "unavailable": "Dieses Werkzeug ist noch nicht bereit — ein Administrator hat seine Anweisung nicht veröffentlicht. Es werden keine Credits berechnet."
+    "unavailable": "Dieses Werkzeug ist noch nicht bereit — ein Administrator hat seine Anweisung nicht veröffentlicht. Es werden keine Credits berechnet.",
+    "aiNoteTitle": "Automatische KI-Anpassung",
+    "aiNoteHint": "Das Modell arbeitet mit deinen Fotos und behält das echte Aussehen des Produkts."
   },
   "toolsearch": {
     "image_moda": {

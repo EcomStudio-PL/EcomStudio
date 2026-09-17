@@ -4033,7 +4033,9 @@
     "someFailed": "{n} photos could not be prepared — their credits were refunded.",
     "allFailed": "The photos could not be prepared. The credits were refunded.",
     "emptyTitle": "You have no generated photos yet",
-    "unavailable": "This tool is not ready yet — an administrator has not published its instruction. No credits will be charged."
+    "unavailable": "This tool is not ready yet — an administrator has not published its instruction. No credits will be charged.",
+    "aiNoteTitle": "Automatic AI matching",
+    "aiNoteHint": "The model works from your photos and keeps the product's real appearance."
   },
   "toolsearch": {
     "image_moda": {

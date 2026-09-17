@@ -274,6 +274,8 @@ export function FashionToolWorkspace({
   const canRun = available && !busy && !uploading && runCount > 0 && missing === 0;
   const pending = jobs.filter((j) => j.status !== "completed");
   const ctaLabel = t(`wf.moda.${config.key}.cta`);
+  /** Several photographs to supply in order → number the steps. */
+  const stepped = config.slots.length > 1;
 
   return (
     <div className={cn(
@@ -292,7 +294,14 @@ export function FashionToolWorkspace({
       <div className="flex min-w-0 flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-y-auto">
         <div className="panel thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto rounded-2xl p-4 sm:p-5 lg:pb-6">
           {/* One block per pool. Only the first claims the paste shortcut:
-              a single Ctrl+V must not land the same image in both pools. */}
+              a single Ctrl+V must not land the same image in both pools.
+
+              A TOOL THAT TAKES SEVERAL PHOTOGRAPHS IS NUMBERED. With two pools
+              the seller has to supply them in order and know which is which,
+              so the heading carries the instruction ("2. Dodaj zdjęcie
+              modela") and the box below it just says Import. With one pool
+              there is no sequence to number, and the heading keeps its plain
+              "Dodaj zdjęcia (max. 200)" form. */}
           {config.slots.map((slot, index) => (
             <PhotoUploader
               key={slot.key}
@@ -303,10 +312,12 @@ export function FashionToolWorkspace({
               compact
               zone
               dropTarget={`fashion-${slot.key}`}
-              zoneLabel={slot.zoneLabelKey ? t(slot.zoneLabelKey) : undefined}
+              zoneLabel={stepped || !slot.zoneLabelKey ? undefined : t(slot.zoneLabelKey)}
               onFiles={(files) => void upload(slot.key, files)}
               onRemove={(i) => removeAt(slot.key, i)}
-              label={t(slot.labelKey, { n: slot.max })}
+              label={stepped && slot.zoneLabelKey
+                ? `${index + 1}. ${t(slot.zoneLabelKey)}`
+                : t(slot.labelKey, { n: slot.max })}
             />
           ))}
 
@@ -320,7 +331,7 @@ export function FashionToolWorkspace({
                   <div className="rounded-xl border border-line bg-sunken/50 p-2">
                     <Dropdown
                       testId="resolution"
-                      label={t("genv3.resolution")}
+                      label={stepped ? `${config.slots.length + 1}. ${t("genv3.resolution")}` : t("genv3.resolution")}
                       value={resolution}
                       options={resolutions.map((r) => ({
                         value: r, label: r, meta: t("genv3.creditsShort", { n: pricing[r] ?? 0 }),
@@ -334,7 +345,7 @@ export function FashionToolWorkspace({
                   <div className="rounded-xl border border-line bg-sunken/50 p-2">
                     <Dropdown
                       testId="format"
-                      label={t("genv3.format")}
+                      label={stepped ? `${config.slots.length + (config.showResolution ? 2 : 1)}. ${t("genv3.format")}` : t("genv3.format")}
                       value={format}
                       options={[
                         {
@@ -389,6 +400,26 @@ export function FashionToolWorkspace({
                   {n(hint.length)} / {n(FASHION_HINT_MAX)}
                 </span>
               </div>
+            </section>
+          )}
+
+          {/* WHAT THIS TOOL DOES, in one card — the retouch panel's own box,
+              same border, same tint, same rhythm. The COPY is this tool's
+              though: the retouch wording promises better lighting, materials
+              and cleanliness, which is a different product. A card that
+              describes somebody else's feature is decoration at best and a
+              false promise at worst. */}
+          {config.showAiNote && (
+            <section data-fashion-ai-note
+              className="rounded-xl border border-[rgb(var(--accent)/0.3)] bg-accent-soft/25 p-3">
+              <p className="flex items-center gap-1.5 text-[13px] font-semibold tracking-tight">
+                <Sparkles size={14} aria-hidden className="text-accent" />
+                {t("fashion.aiNoteTitle")}
+                <InfoHint text={t("fashion.aiNoteHint")} />
+              </p>
+              <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
+                {t(`wf.moda.${config.key}.sub`)}
+              </p>
             </section>
           )}
 

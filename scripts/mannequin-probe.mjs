@@ -154,6 +154,13 @@ async function measure(page, width, height, band) {
       hasResolution: !!root.querySelector('[data-dropdown-trigger="resolution"]'),
       hasHint: !!root.querySelector("[data-fashion-hint]"),
       zoneLabels: [...root.querySelectorAll("[data-upload-zone]")].map((z) => z.textContent.trim()),
+      aiNote: !!root.querySelector("[data-fashion-ai-note]"),
+      // Section headings in the settings column, in document order.
+      headings: [...root.querySelectorAll("[data-upload-zone]")].map((z) => {
+        const sec = z.closest("section");
+        const h = sec?.previousElementSibling ?? sec?.querySelector("p");
+        return (h?.textContent ?? "").trim();
+      }),
     };
   });
   ok(m !== null, `${tag}: workspace not found`);
@@ -207,12 +214,19 @@ async function measure(page, width, height, band) {
   // and deliberately no resolution and no hint (its reference has neither).
   if (TOOLS[DIR_ARG] === "changePerson") {
     ok(m.zones.length === 2, `${tag}: ${m.zones.length} upload zones, expected 2`);
+    // The reference numbers the steps and lets the box just say Import.
+    ok(m.zones.every((z) => /Import/.test(z.text)),
+      `${tag}: upload boxes do not read Import (${m.zones.map((z) => z.text).join(" | ")})`);
+    ok(m.aiNote, `${tag}: the AI note card is missing`);
     ok(m.hasFormat, `${tag}: format control missing`);
     ok(!m.hasResolution, `${tag}: resolution offered on a tool whose reference has none`);
     ok(!m.hasHint, `${tag}: hint offered on a tool whose reference has none`);
   } else {
     ok(m.zones.length === 1, `${tag}: ${m.zones.length} upload zones, expected 1`);
     ok(m.hasFormat && m.hasResolution && m.hasHint, `${tag}: a control is missing`);
+    // A single-input tool has no sequence, so it is not numbered and it has
+    // no AI card — neither appears on its reference.
+    ok(!m.aiNote, `${tag}: AI note card leaked onto a single-input tool`);
   }
 
   // UPLOAD ZONES — one per pool, all the same height.
