@@ -1,11 +1,4 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import type { LucideIcon } from "lucide-react";
-import {
-  ArrowRight, Boxes, Contrast, Crop, Gauge, Lightbulb, Mail, Maximize2, Megaphone,
-  Palette, PencilRuler, Scaling, Scissors, Shirt, ShoppingBag, SlidersHorizontal,
-  Sparkles, Square, Stamp, Sun, Video, Wand2, WandSparkles,
-} from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
@@ -13,12 +6,12 @@ import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { toolCatalogue, type ToolAvailability } from "@/lib/server/image-tools";
 import { getAvailabilityMap, viewerIsAdmin } from "@/lib/server/feature-availability";
 import { menuVisible } from "@/lib/features";
-import { VIDEO_CREATE_WF } from "@/lib/categories";
+import { TOOL_SECTIONS } from "@/lib/tool-cards";
+import { bannerSlotKey, toolSlotKey } from "@/lib/media-slots";
+import { loadSlots, loadBanners } from "@/lib/server/media-slots";
+import { DashboardBanner } from "@/components/dashboard/banner";
 import { FeatureGate } from "@/components/feature-gate";
-import type { ToolMotif } from "@/components/tools/tool-thumb";
-import {
-  ToolsCatalogue, type CatalogueCard, type CatalogueSection,
-} from "@/components/tools/tools-catalogue";
+import { ToolsCatalogue } from "@/components/tools/tools-catalogue";
 import type { ToolSlug } from "@/lib/images/tools";
 
 export const dynamic = "force-dynamic";
@@ -37,17 +30,9 @@ export const dynamic = "force-dynamic";
  * tool to fill a row.
  */
 
-/** A card before the tool catalogue's verdict is attached to it. */
-type Card = Omit<CatalogueCard, "state"> & {
-  /** The catalogue row that prices it and says whether it can run. Places
-   *  (the editor, a category workspace) have none. */
-  slug?: ToolSlug | null;
-};
-type Section = Omit<CatalogueSection, "cards"> & { cards: Card[] };
-
 export default async function ToolsPage() {
   const supabase = await createClient();
-  const { dict } = await getDictionary();
+  const { dict, locale } = await getDictionary();
   const t = makeT(dict);
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -63,101 +48,44 @@ export default async function ToolsPage() {
     catalogue.find((c) => c.slug === slug) ?? null;
   const editor = row("editor");
 
-  const sections: Section[] = [
-    {
-      key: "edit", icon: PencilRuler, title: t("hub.sec.edit"), seeAll: "/tools/editor",
-      cards: [
-        { key: "retouch", href: "/retusz", icon: WandSparkles, motif: "wipe",
-          title: t("tools.retouch.name"), body: t("tools.retouch.body") },
-        { key: "remove_bg", href: "/tools/editor?tool=remove-background", icon: Scissors, motif: "cutout",
-          title: t("tools.remove_bg.name"), body: t("hub.card.remove_bg"), slug: "remove_bg" },
-        { key: "white_bg", href: "/tools/editor?tool=white-background", icon: Square, motif: "frame",
-          title: t("tools.white_bg.name"), body: t("hub.card.white_bg") },
-        { key: "background", href: "/tools/editor?tool=background", icon: Sparkles, motif: "spark",
-          title: t("editor.bg.color"), body: t("hub.card.background") },
-        { key: "shadow", href: "/tools/editor?tool=shadow", icon: Sun, motif: "shadow",
-          title: t("tools.shadow.name"), body: t("hub.card.shadow") },
-        { key: "adjust", href: "/tools/editor?tool=adjust", icon: Contrast, motif: "swatch",
-          title: t("editor.s.adjust"), body: t("hub.card.adjust") },
-        // The generative edits sit beside the local ones rather than in a
-        // section of their own: a seller is choosing what to DO to a photo,
-        // not shopping for a backend. Each card carries its own price badge,
-        // which is where the difference actually shows.
-        { key: "ai_background", href: "/tools/ai_background", icon: Palette, motif: "spark",
-          title: t("tools.ai_background.name"), body: t("tools.ai_background.body"), slug: "ai_background" },
-        { key: "relight", href: "/tools/relight", icon: Lightbulb, motif: "swatch",
-          title: t("tools.relight.name"), body: t("tools.relight.body"), slug: "relight" },
-        { key: "ai_shadow", href: "/tools/ai_shadow", icon: Sun, motif: "shadow",
-          title: t("tools.ai_shadow.name"), body: t("tools.ai_shadow.body"), slug: "ai_shadow" },
-        { key: "beautify", href: "/tools/beautify", icon: Wand2, motif: "wipe",
-          title: t("tools.beautify.name"), body: t("tools.beautify.body"), slug: "beautify" },
-        { key: "ghost_mannequin", href: "/tools/ghost_mannequin", icon: Shirt, motif: "cutout",
-          title: t("tools.ghost_mannequin.name"), body: t("tools.ghost_mannequin.body"), slug: "ghost_mannequin" },
-      ],
-    },
-    {
-      key: "create", icon: Sparkles, title: t("hub.sec.create"), seeAll: "/prompts",
-      cards: [
-        { key: "generator", href: "/prompts", icon: Sparkles, motif: "spark",
-          title: t("mega.createImage"), body: t("hub.card.generator") },
-        { key: "moda", href: "/k/moda", icon: Shirt, motif: "grid",
-          title: t("cats.moda"), body: t("cats.modaSub") },
-        { key: "ecommerce", href: "/k/ecommerce", icon: ShoppingBag, motif: "cutout",
-          title: t("cats.ecommerce"), body: t("cats.ecommerceSub") },
-        { key: "social", href: "/k/social", icon: Megaphone, motif: "wipe",
-          title: t("cats.social"), body: t("cats.socialSub") },
-        { key: "mailing", href: "/k/mailing", icon: Mail, motif: "frame",
-          title: t("cats.mailing"), body: t("cats.mailingSub") },
-        { key: "inne", href: "/k/inne", icon: Boxes, motif: "swatch",
-          title: t("cats.inne"), body: t("cats.inneSub") },
-      ],
-    },
-    {
-      key: "prepare", icon: Scaling, title: t("hub.sec.prepare"),
-      cards: [
-        { key: "resize", href: "/tools/resize", icon: Scaling, motif: "scale",
-          title: t("resize.title"), body: t("resize.sub"), slug: "format" },
-        { key: "compress", href: "/tools/compress", icon: Gauge, motif: "compress",
-          title: t("compress.title"), body: t("compress.sub"), slug: "compress" },
-        { key: "upscale", href: "/tools/upscale", icon: Maximize2, motif: "scale",
-          title: t("tools.upscale.name"), body: t("tools.upscale.body"), slug: "upscale" },
-        { key: "expand", href: "/tools/expand", icon: Crop, motif: "frame",
-          title: t("tools.expand.name"), body: t("tools.expand.body"), slug: "expand" },
-        { key: "uncrop", href: "/tools/uncrop", icon: Maximize2, motif: "frame",
-          title: t("tools.uncrop.name"), body: t("tools.uncrop.body"), slug: "uncrop" },
-        { key: "watermark", href: "/tools/watermark", icon: Stamp, motif: "stamp",
-          title: t("tools.watermark.name"), body: t("tools.watermark.body"), slug: "watermark" },
-        { key: "editor", href: "/tools/editor", icon: SlidersHorizontal, motif: "swatch",
-          title: t("nav.editor"), body: t("hub.card.editor") },
-      ],
-    },
-    {
-      key: "video", icon: Video, title: t("hub.sec.video"), seeAll: "/wideo",
-      // No video backend exists. Every card says so and none of them opens —
-      // the architecture is in place, the promise is not faked.
-      cards: VIDEO_CREATE_WF.map((w) => ({
-        key: w.key, href: "/wideo", icon: w.icon, motif: "video" as ToolMotif,
-        title: t(`video.wf.${w.key}.name`), body: t(`video.wf.${w.key}.sub`), soon: true,
-      })),
-    },
-  ];
+  // The catalogue's own cards and any live banner, in ONE resolve for the
+  // whole page — not one per card.
+  const banners = await loadBanners(supabase, "tools");
+  const slots = await loadSlots(supabase, [
+    ...TOOL_SECTIONS.flatMap((s) =>
+      s.cards.filter((c) => !c.category).map((c) => toolSlotKey(c.key))),
+    ...banners.map((b) => bannerSlotKey(b.key)),
+  ]);
 
   // A shortcut into the editor is only as open as the editor itself.
-  const stateFor = (slug: ToolSlug | null | undefined, href: string): ToolAvailability | null => {
+  const stateFor = (slug: ToolSlug | undefined, href: string): ToolAvailability | null => {
     if (href.startsWith("/tools/editor") && editor && !editor.available) return editor;
     return slug ? row(slug) : null;
   };
 
   return (
     <FeatureGate feature="tools">
-      <ToolsCatalogue t={t} avail={avail} isAdmin={isAdmin} sections={sections.map((s) => ({
-        ...s,
-        // A module the switchboard hid for this viewer leaves the catalogue
-        // entirely; one that is merely restricted stays, with its badge.
-        cards: s.cards
-          .filter((c) => menuVisible(avail, c.href, isAdmin))
-          .map(({ slug, ...card }) => ({ ...card, state: stateFor(slug, card.href) })),
-      }))} />
+      {/* A campaign above the catalogue, when an admin scheduled one. Nothing
+          is reserved for it otherwise. */}
+      <div className="mb-5 empty:hidden">
+        <DashboardBanner banners={banners} slots={slots} locale={locale} />
+      </div>
+      <ToolsCatalogue t={t} avail={avail} isAdmin={isAdmin} slots={slots}
+        sections={TOOL_SECTIONS.map((s) => ({
+          key: s.key, icon: s.icon, title: t(s.titleKey), seeAll: s.seeAll,
+          // A module the switchboard hid for this viewer leaves the catalogue
+          // entirely; one that is merely restricted stays, with its badge.
+          cards: s.cards
+            .filter((c) => menuVisible(avail, c.href, isAdmin))
+            .map((c) => ({
+              key: c.key, href: c.href, icon: c.icon, motif: c.motif,
+              title: t(c.titleKey), body: t(c.bodyKey), soon: c.soon,
+              // A category entry point shows the category's own picture, set
+              // on the Kategorie tab; it has no second slot of its own.
+              slotKey: c.category ? null : toolSlotKey(c.key),
+              state: stateFor(c.slug, c.href),
+            })),
+        }))} />
     </FeatureGate>
   );
 }

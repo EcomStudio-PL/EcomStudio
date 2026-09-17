@@ -1,5 +1,6 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
+import { loadSlots } from "@/lib/server/media-slots";
 
 /**
  * GENERATOR UI SETTINGS — the two session tiles ("Sesja reklamowa" /
@@ -37,12 +38,30 @@ function safeMediaUrl(raw: unknown): string | null {
   }
 }
 
+const ADVERTISING_SLOT = "generator.session.advertising.preview";
+const LIFESTYLE_SLOT = "generator.session.lifestyle.preview";
+
+/**
+ * The slot first, the old setting second.
+ *
+ * These two previews predate the media slot system and already worked the way
+ * it works: an admin-set URL, swapped without a deploy. Now they are set from
+ * Media → Sekcje aplikacji like every other picture in the product, and the
+ * `app_settings.generator_ui` value stays as the fallback — so an installation
+ * that configured them years ago keeps exactly what it had until somebody
+ * deliberately replaces it.
+ */
 export async function getSessionPreviews(supabase: Client): Promise<SessionPreviews> {
-  const { data } = await supabase
-    .from("app_settings").select("value").eq("key", "generator_ui").maybeSingle();
+  const [{ data }, slots] = await Promise.all([
+    supabase.from("app_settings").select("value").eq("key", "generator_ui").maybeSingle(),
+    loadSlots(supabase, [ADVERTISING_SLOT, LIFESTYLE_SLOT]),
+  ]);
   const v = (data?.value ?? {}) as Record<string, unknown>;
+  const fromSlot = (key: string) => slots.get(key)?.desktop ?? null;
   return {
-    advertising: safeMediaUrl(v.advertising_session_preview) ?? EMPTY.advertising,
-    lifestyle: safeMediaUrl(v.lifestyle_session_preview) ?? EMPTY.lifestyle,
+    advertising: fromSlot(ADVERTISING_SLOT)
+      ?? safeMediaUrl(v.advertising_session_preview) ?? EMPTY.advertising,
+    lifestyle: fromSlot(LIFESTYLE_SLOT)
+      ?? safeMediaUrl(v.lifestyle_session_preview) ?? EMPTY.lifestyle,
   };
 }

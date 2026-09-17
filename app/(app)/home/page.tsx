@@ -10,6 +10,11 @@ import { listAssets } from "@/lib/services/generator";
 import { Panel } from "@/components/ui/surface";
 import { PanelHeader, SectionHeader } from "@/components/ui/section-header";
 import { HeroArt } from "@/components/dashboard/hero-art";
+import { SlotMedia, hasSlot } from "@/components/media/slot-media";
+import { CATEGORIES } from "@/lib/categories";
+import { bannerSlotKey, categorySlotKey } from "@/lib/media-slots";
+import { loadSlots, loadBanners } from "@/lib/server/media-slots";
+import { DashboardBanner } from "@/components/dashboard/banner";
 import { TipBanner } from "@/components/dashboard/tip-banner";
 import { CategoryGrid } from "@/components/home/category-grid";
 import { Media } from "@/components/mobile/media";
@@ -84,6 +89,17 @@ export default async function HomePage() {
     return tile ? genUrls.get(tile.path) ?? null : null;
   });
 
+  // Which banner is live decides which banner picture to ask for, so the
+  // banners are read first and everything else resolves in ONE round trip:
+  // six tiles, the hero and the banner together, cached until an admin
+  // changes something.
+  const banners = await loadBanners(supabase, "dashboard");
+  const slots = await loadSlots(supabase, [
+    ...CATEGORIES.map((c) => categorySlotKey(c.key)),
+    "dashboard.hero.art",
+    ...banners.map((b) => bannerSlotKey(b.key)),
+  ]);
+
   // Three recent images shown on desktop hover over a category tile.
   const hoverStrip = genTiles
     .map((g) => genUrls.get(g.path))
@@ -112,7 +128,20 @@ export default async function HomePage() {
           className="pointer-events-none absolute -right-16 -top-24 h-72 w-[30rem]"
           style={{ background: "radial-gradient(24rem 14rem at 70% 40%, rgb(var(--accent) / 0.28), transparent 72%)" }}
         />
-        <HeroArt className="pointer-events-none absolute -right-6 top-1/2 hidden h-[125%] w-auto -translate-y-1/2 lg:block" />
+        {/* The drawn scene, unless an admin put something else there.
+            Branched rather than wrapped: the SVG is sized by its own height
+            (`h-[125%] w-auto`) and a photograph is sized by its frame, so one
+            set of classes cannot serve both without the two fighting. With no
+            slot set, this is the exact element the dashboard always had. */}
+        {hasSlot(slots, "dashboard.hero.art") ? (
+          <span aria-hidden
+            className="pointer-events-none absolute -right-6 top-1/2 hidden w-[46%] -translate-y-1/2 lg:block">
+            <SlotMedia slot="dashboard.hero.art" slots={slots} ratio="16/9"
+              className="rounded-2xl" sizes="46vw" fallback={null} />
+          </span>
+        ) : (
+          <HeroArt className="pointer-events-none absolute -right-6 top-1/2 hidden h-[125%] w-auto -translate-y-1/2 lg:block" />
+        )}
         {/* The hero states who you are and where to start, then gets out of
             the way: on a phone it occupies roughly a third of the first
             screen instead of all of it, so the categories are visible without
@@ -150,6 +179,10 @@ export default async function HomePage() {
         </div>
       </Panel>
 
+      {/* A campaign, when an admin scheduled one. Renders nothing otherwise —
+          the dashboard has no reserved banner strip. */}
+      <DashboardBanner banners={banners} slots={slots} locale={locale} />
+
       {/* 2 — COMPACT STATS STRIP */}
       {/* Three facts in three columns — the stacked version spent a third of
           the first screen restating numbers the header already shows. */}
@@ -176,7 +209,7 @@ export default async function HomePage() {
       {/* 3 — CATEGORY GRID */}
       <section>
         <SectionHeader overline={t("mega.create")} title={t("home.categoriesTitle")} className="mb-3.5 mt-1" />
-        <CategoryGrid t={t} previews={categoryPreviews} hoverStrip={hoverStrip} />
+        <CategoryGrid t={t} previews={categoryPreviews} hoverStrip={hoverStrip} slots={slots} />
       </section>
 
       {/* 4 — ONE AI SUGGESTION, dismissible, never a modal */}

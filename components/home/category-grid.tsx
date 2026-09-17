@@ -2,7 +2,14 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { CATEGORIES } from "@/lib/categories";
 import { Media } from "@/components/mobile/media";
+import { SlotMedia } from "@/components/media/slot-media";
+import { categorySlotKey } from "@/lib/media-slots";
+import type { SlotMap } from "@/lib/server/media-slots";
 import { cn } from "@/lib/utils";
+
+/** A caller that never resolved slots gets the same answer as one whose slots
+ *  are all empty: every tile draws what it drew before. */
+const EMPTY_SLOTS: SlotMap = new Map();
 
 /**
  * CATEGORY GRID — the homepage's main navigation surface: six tiles, each
@@ -20,12 +27,18 @@ import { cn } from "@/lib/utils";
  * hue per tile from a single family: the grid reads as six rooms in one
  * building, not six unrelated apps.
  */
-export function CategoryGrid({ t, previews, hoverStrip }: {
+export function CategoryGrid({ t, previews, hoverStrip, slots }: {
   t: (key: string) => string;
   /** One signed thumbnail per tile, from the account's own library. */
   previews?: (string | null)[];
   /** Two or three extra thumbnails revealed on desktop hover. */
   hoverStrip?: string[];
+  /**
+   * What an admin put on each tile. A tile with nothing set falls through to
+   * `previews` — the account's own work — exactly as before, so the grid on a
+   * fresh install is byte for byte the grid that shipped.
+   */
+  slots?: SlotMap;
 }) {
   return (
     <div id="kategorie" className="stagger grid grid-cols-2 gap-2.5 [&>*]:min-w-0 sm:gap-3 md:grid-cols-3 xl:grid-cols-6 xl:gap-3.5">
@@ -55,11 +68,23 @@ export function CategoryGrid({ t, previews, hoverStrip }: {
                 instead of taking a row of its own: on a 164px phone column
                 that is the difference between a tile and a tower. */}
             <span className="relative block">
-              <Media
-                src={previews?.[i] ?? null}
+              {/* SLOT → OWN WORK → EMPTY FRAME. Three levels, in that order:
+                  an operator's deliberate showcase beats a thumbnail picked
+                  positionally out of the library, and both beat a blank. */}
+              <SlotMedia
+                slot={categorySlotKey(c.key)}
+                slots={slots ?? EMPTY_SLOTS}
                 ratio="16/10"
-                rounded="rounded-xl"
-                className="w-full ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]"
+                className="rounded-xl ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]"
+                sizes="(max-width: 640px) 45vw, (max-width: 1280px) 30vw, 16vw"
+                fallback={(
+                  <Media
+                    src={previews?.[i] ?? null}
+                    ratio="16/10"
+                    rounded="rounded-xl"
+                    className="w-full ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]"
+                  />
+                )}
               />
               <span
                 aria-hidden

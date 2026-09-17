@@ -7,10 +7,14 @@ import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { saveMediaAssetAction, deleteMediaAssetAction } from "@/app/actions/admin-b2b";
 import { deriveMedia } from "@/lib/media-derive";
+import { mediaUsageAction, replaceMediaAction, type UsageReport } from "@/app/actions/media-slots";
+import { slotDef } from "@/lib/media-slots";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
-import { Modal, ConfirmModal } from "@/components/ui/modal";
+import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
+import { AssetPicker } from "@/components/admin/media/asset-picker";
+import type { LibraryItem } from "@/lib/services/media-slots";
 
 /**
  * THE MEDIA LIBRARY.
@@ -43,7 +47,18 @@ type Editing = {
   id: string; title: string; alt: string; folder: string; tags: string;
 };
 
-export function MediaManager({ assets }: { assets: MediaRow[] }) {
+/** What the delete dialog knows while it is open: the file, and — once the
+ *  server has answered — every place that would lose it. */
+type Deleting = { asset: MediaRow; usage: UsageReport | null };
+
+export function MediaManager({ assets, usage, library }: {
+  assets: MediaRow[];
+  /** media id → how many slots point at it. Shown on the tile so an operator
+   *  can see what is in use before opening anything. */
+  usage?: Record<string, number>;
+  /** The same rows in picker shape, for "replace everywhere". */
+  library?: LibraryItem[];
+}) {
   const { t } = useI18n();
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -53,7 +68,8 @@ export function MediaManager({ assets }: { assets: MediaRow[] }) {
   const [kind, setKind] = useState("");
   const [external, setExternal] = useState<{ kind: "video" | "image"; url: string; poster: string; title: string } | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
-  const [deleting, setDeleting] = useState<MediaRow | null>(null);
+  const [deleting, setDeleting] = useState<Deleting | null>(null);
+  const [replacing, setReplacing] = useState<MediaRow | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const folders = useMemo(
@@ -136,6 +152,46 @@ export function MediaManager({ assets }: { assets: MediaRow[] }) {
   }
 
   const copy = (url: string) => { navigator.clipboard.writeText(url); toast.success(t("media.copied")); };
+
+  /**
+   * DELETING SAFELY. The dialog opens before the answer arrives and then
+   * fills in: every place this file is used, named. A file used nowhere is a
+   * plain confirm; a file used in six places offers to replace it in all six
+   * instead — which is what somebody swapping a picture actually wanted.
+   */
+  function askDelete(asset: MediaRow) {
+    setDeleting({ asset, usage: null });
+    start(async () => {
+      const res = await mediaUsageAction(asset.id);
+      setDeleting((cur) => cur && cur.asset.id === asset.id
+        ? { ...cur, usage: res.ok ? res.data ?? [] : [] }
+        : cur);
+    });
+  }
+
+  function confirmDelete() {
+    const asset = deleting?.asset;
+    if (!asset) return;
+    start(async () => {
+      const res = await deleteMediaAssetAction(asset.id);
+      if (res.ok) { setDeleting(null); router.refresh(); } else toast.error(t("common.error"));
+    });
+  }
+
+  /** Point every reference at a different file, then let the operator delete
+   *  the old one from a library where nothing uses it any more. */
+  function replaceEverywhere(withItem: LibraryItem) {
+    const from = replacing;
+    if (!from) return;
+    start(async () => {
+      const res = await replaceMediaAction(from.id, withItem.id);
+      if (!res.ok) { toast.error(t(`media.err.${res.error}`)); return; }
+      toast.success(t("media.replaced", { n: res.data?.replaced ?? 0 }));
+      setReplacing(null);
+      setDeleting(null);
+      router.refresh();
+    });
+  }
 
   return (
     <div data-media-manager>
@@ -223,6 +279,13 @@ export function MediaManager({ assets }: { assets: MediaRow[] }) {
                     <span className="text-[10px] font-semibold text-[rgb(var(--caution))]">ALT</span>
                   )}
                 </div>
+                {/* "Używany w: 4 miejscach" — the difference between deleting
+                    confidently and deleting blind. */}
+                {usage && (usage[a.id] ?? 0) > 0 && (
+                  <p className="mt-1 text-[10.5px] font-medium text-accent" data-media-usage={usage[a.id]}>
+                    {t("media.usedIn", { n: usage[a.id] })}
+                  </p>
+                )}
                 {a.folder && <p className="mt-1 truncate text-[10.5px] text-faint">📁 {a.folder}</p>}
                 <div className="mt-1.5 flex gap-0.5">
                   <IconBtn title={t("common.edit")}
@@ -237,7 +300,7 @@ export function MediaManager({ assets }: { assets: MediaRow[] }) {
                     <Copy size={13} />
                   </IconBtn>
                   <span className="flex-1" />
-                  <IconBtn title={t("common.delete")} danger onClick={() => setDeleting(a)}>
+                  <IconBtn title={t("common.delete")} danger onClick={() => askDelete(a)}>
                     <Trash2 size={13} />
                   </IconBtn>
                 </div>
@@ -321,13 +384,63 @@ export function MediaManager({ assets }: { assets: MediaRow[] }) {
         )}
       </Modal>
 
-      <ConfirmModal open={!!deleting} onClose={() => setDeleting(null)}
-        onConfirm={() => { if (deleting) start(async () => {
-          const res = await deleteMediaAssetAction(deleting.id);
-          if (res.ok) { setDeleting(null); router.refresh(); } else toast.error(t("common.error"));
-        }); }}
-        title={t("common.delete")} body={t("media.deleteBody")}
-        confirmLabel={t("common.delete")} danger pending={pending} />
+      {/* ── DELETE, WITH THE CONSEQUENCES ON SCREEN ────────────────────── */}
+      <Modal open={!!deleting} onClose={() => setDeleting(null)} title={t("common.delete")}>
+        {deleting && (
+          <div className="space-y-4">
+            {deleting.usage === null ? (
+              <p className="text-sm text-muted">{t("common.loading")}</p>
+            ) : deleting.usage.length === 0 ? (
+              <p className="text-sm text-muted">{t("media.deleteBody")}</p>
+            ) : (
+              <>
+                <p className="text-sm font-semibold">
+                  {t("media.usedInPlaces", { n: deleting.usage.length })}
+                </p>
+                <ul className="thin-scroll max-h-52 space-y-1 overflow-y-auto rounded-xl border border-line bg-sunken/40 p-3">
+                  {deleting.usage.map((u) => {
+                    // A slot key is an identifier; the name beside it is what
+                    // an operator recognises.
+                    const def = u.kind === "slot" ? slotDef(u.key) : undefined;
+                    return (
+                      <li key={`${u.kind}:${u.key}:${u.label}`} className="text-[12.5px]">
+                        <span className="text-faint">{t(`media.usage.${u.kind}`)} · </span>
+                        {def ? t(def.labelKey) : u.key}
+                        <span className="text-faint"> · {u.label}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="text-[12.5px] leading-relaxed text-muted">
+                  {t("media.deleteUsedBody")}
+                </p>
+              </>
+            )}
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button variant="ghost" onClick={() => setDeleting(null)}>{t("common.cancel")}</Button>
+              {library && deleting.usage !== null && deleting.usage.length > 0 && (
+                <Button variant="secondary" onClick={() => setReplacing(deleting.asset)}>
+                  {t("media.replaceEverywhere")}
+                </Button>
+              )}
+              <Button variant="danger" disabled={pending || deleting.usage === null}
+                onClick={confirmDelete} data-media-delete-confirm>
+                {deleting.usage && deleting.usage.length > 0
+                  ? t("media.deleteAnyway") : t("common.delete")}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {library && (
+        <AssetPicker open={!!replacing} onClose={() => setReplacing(null)}
+          title={t("media.replaceEverywhere")}
+          // The file being replaced is not a candidate to replace itself.
+          library={library.filter((a) => a.id !== replacing?.id)}
+          kind={replacing?.kind === "video" ? "video" : "image"}
+          onPick={replaceEverywhere} />
+      )}
     </div>
   );
 }

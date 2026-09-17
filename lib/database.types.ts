@@ -476,6 +476,65 @@ export type Database = {
         }
         Relationships: []
       }
+      app_banners: {
+        Row: {
+          active: boolean
+          banner_key: string
+          body: Json
+          created_at: string
+          cta_label: Json
+          cta_url: string | null
+          ends_at: string | null
+          id: string
+          label: Json
+          placement: string
+          sort_order: number
+          starts_at: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          active?: boolean
+          banner_key: string
+          body?: Json
+          created_at?: string
+          cta_label?: Json
+          cta_url?: string | null
+          ends_at?: string | null
+          id?: string
+          label?: Json
+          placement?: string
+          sort_order?: number
+          starts_at?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          active?: boolean
+          banner_key?: string
+          body?: Json
+          created_at?: string
+          cta_label?: Json
+          cta_url?: string | null
+          ends_at?: string | null
+          id?: string
+          label?: Json
+          placement?: string
+          sort_order?: number
+          starts_at?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_banners_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       app_settings: {
         Row: {
           key: string
@@ -2020,6 +2079,114 @@ export type Database = {
           {
             foreignKeyName: "media_assets_created_by_fkey"
             columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      media_slots: {
+        Row: {
+          alt_text: string | null
+          autoplay: boolean
+          controls: boolean
+          created_at: string
+          enabled: boolean
+          entity_id: string
+          entity_type: string
+          id: string
+          loop: boolean
+          media_id: string | null
+          media_type: string
+          mobile_media_id: string | null
+          muted: boolean
+          object_fit: string
+          object_position: string
+          poster_media_id: string | null
+          slot_key: string
+          slot_name: string
+          tablet_media_id: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          alt_text?: string | null
+          autoplay?: boolean
+          controls?: boolean
+          created_at?: string
+          enabled?: boolean
+          entity_id: string
+          entity_type: string
+          id?: string
+          loop?: boolean
+          media_id?: string | null
+          media_type?: string
+          mobile_media_id?: string | null
+          muted?: boolean
+          object_fit?: string
+          object_position?: string
+          poster_media_id?: string | null
+          slot_key: string
+          slot_name: string
+          tablet_media_id?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          alt_text?: string | null
+          autoplay?: boolean
+          controls?: boolean
+          created_at?: string
+          enabled?: boolean
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          loop?: boolean
+          media_id?: string | null
+          media_type?: string
+          mobile_media_id?: string | null
+          muted?: boolean
+          object_fit?: string
+          object_position?: string
+          poster_media_id?: string | null
+          slot_key?: string
+          slot_name?: string
+          tablet_media_id?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "media_slots_media_id_fkey"
+            columns: ["media_id"]
+            isOneToOne: false
+            referencedRelation: "media_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "media_slots_mobile_media_id_fkey"
+            columns: ["mobile_media_id"]
+            isOneToOne: false
+            referencedRelation: "media_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "media_slots_poster_media_id_fkey"
+            columns: ["poster_media_id"]
+            isOneToOne: false
+            referencedRelation: "media_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "media_slots_tablet_media_id_fkey"
+            columns: ["tablet_media_id"]
+            isOneToOne: false
+            referencedRelation: "media_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "media_slots_updated_by_fkey"
+            columns: ["updated_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -4298,6 +4465,39 @@ export type Database = {
           p_source?: string
         }
         Returns: Json
+      }
+      media_usage: {
+        Args: { p_media_id: string }
+        Returns: {
+          usage_key: string
+          usage_kind: string
+          usage_label: string
+        }[]
+      }
+      media_slots_resolve: {
+        Args: { p_keys: string[] }
+        Returns: {
+          alt_text: string
+          autoplay: boolean
+          controls: boolean
+          desktop_height: number
+          desktop_path: string
+          desktop_url: string
+          desktop_variants: Json
+          desktop_width: number
+          loop: boolean
+          media_type: string
+          mobile_path: string
+          mobile_url: string
+          muted: boolean
+          object_fit: string
+          object_position: string
+          poster_path: string
+          poster_url: string
+          slot_key: string
+          tablet_path: string
+          tablet_url: string
+        }[]
       }
       submit_contact_message: {
         Args: {

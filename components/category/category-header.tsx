@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import type { Category } from "@/lib/categories";
+import { categoryHeroKey } from "@/lib/media-slots";
+import type { SlotMap } from "@/lib/server/media-slots";
+import { SlotMedia } from "@/components/media/slot-media";
 import { cn } from "@/lib/utils";
 
 /**
@@ -11,7 +14,7 @@ import { cn } from "@/lib/utils";
  * overline only. The primary CTA stays brand magenta everywhere, so the
  * accent reads as "which room am I in", not as six competing brands.
  */
-export function CategoryHeader({ category, title, lead, backLabel, backHref = "/home", children, compact }: {
+export function CategoryHeader({ category, title, lead, backLabel, backHref = "/home", children, compact, slots }: {
   category: Category;
   title: string;
   lead: string;
@@ -20,6 +23,9 @@ export function CategoryHeader({ category, title, lead, backLabel, backHref = "/
   /** Actions rendered on the right at desktop widths. */
   children?: React.ReactNode;
   compact?: boolean;
+  /** An admin's picture for this header, when there is one. The gradient
+   *  stays on top of it either way, so the text keeps its contrast. */
+  slots?: SlotMap;
 }) {
   const Icon = category.icon;
   const { rgb, rgb2 } = category.accent;
@@ -28,6 +34,14 @@ export function CategoryHeader({ category, title, lead, backLabel, backHref = "/
       className="panel relative mb-5 overflow-hidden rounded-2xl"
       style={{ ["--cat" as string]: rgb, ["--cat2" as string]: rgb2 }}
     >
+      {/* A photograph BEHIND the gradient, never instead of it: the wash is
+          what keeps the heading readable, so it stays whatever is underneath. */}
+      {slots && (
+        <span aria-hidden className="pointer-events-none absolute inset-0">
+          <SlotMedia slot={categoryHeroKey(category.key)} slots={slots} ratio="21/9"
+            className="h-full" sizes="100vw" fallback={null} />
+        </span>
+      )}
       <span
         aria-hidden
         className="pointer-events-none absolute inset-0"

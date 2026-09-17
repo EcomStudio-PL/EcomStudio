@@ -9,6 +9,8 @@ import { listAssets } from "@/lib/services/generator";
 import { CATEGORIES, findCategory, offeredWorkflows } from "@/lib/categories";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
 import { getWallet } from "@/lib/services/credits";
+import { categoryHeroKey, workflowSlotKey } from "@/lib/media-slots";
+import { loadSlots } from "@/lib/server/media-slots";
 import { CategoryHeader } from "@/components/category/category-header";
 import { WorkflowCards } from "@/components/category/workflow-cards";
 import { MatchingWorkspace } from "@/components/category/matching-workspace";
@@ -54,6 +56,12 @@ export default async function CategoryPage({ params }: { params: Promise<{ cat: 
   const previews = offered.map((_, i) => thumbs[i] ?? null);
   const firstWorkflow = offered[0] ?? category.workflows[0];
 
+  // The header picture and every workflow card's, in one round trip.
+  const slots = await loadSlots(supabase, [
+    categoryHeroKey(category.key),
+    ...offered.map((w) => workflowSlotKey(category.key, w.key)),
+  ]);
+
   // Per-shot price at the default model, so a preset card can say what it
   // will cost before the user opens the generator.
   const [models, wallet] = await Promise.all([
@@ -75,6 +83,7 @@ export default async function CategoryPage({ params }: { params: Promise<{ cat: 
   return (
     <div className={isMatching ? "lg:pb-[7.5rem]" : undefined}>
       <CategoryHeader
+        slots={slots}
         category={category}
         title={t(`cats.${category.key}`)}
         lead={t(`cats.${category.key}Lead`)}
@@ -112,7 +121,7 @@ export default async function CategoryPage({ params }: { params: Promise<{ cat: 
         <>
           <section>
             <SectionHeader overline={t("catpage.overline")} title={t("catpage.chooseTitle")} sub={t("catpage.chooseSub")} className="mb-3.5" />
-            <WorkflowCards category={category} t={t} previews={previews} costPerShot={costPerShot} />
+            <WorkflowCards category={category} t={t} previews={previews} costPerShot={costPerShot} slots={slots} />
           </section>
 
           {/* HOW IT WORKS — three steps, in the category's own accent. */}

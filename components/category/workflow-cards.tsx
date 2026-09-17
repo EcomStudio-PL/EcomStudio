@@ -2,6 +2,9 @@ import Link from "next/link";
 import { ArrowRight, Layers, Ratio } from "lucide-react";
 import { offeredWorkflows, type Category } from "@/lib/categories";
 import { Media } from "@/components/mobile/media";
+import { SlotMedia } from "@/components/media/slot-media";
+import { workflowSlotKey } from "@/lib/media-slots";
+import type { SlotMap } from "@/lib/server/media-slots";
 import { cn } from "@/lib/utils";
 
 /**
@@ -19,7 +22,7 @@ import { cn } from "@/lib/utils";
  * of the frame and the ratio chip at the BOTTOM-RIGHT: on a two-column phone
  * grid those two badges shared one line and overlapped.
  */
-export function WorkflowCards({ category, t, previews, costPerShot }: {
+export function WorkflowCards({ category, t, previews, costPerShot, slots }: {
   category: Category;
   t: (key: string, vars?: Record<string, string | number>) => string;
   /** Signed thumbnails from the user's own library, one per card when
@@ -27,6 +30,9 @@ export function WorkflowCards({ category, t, previews, costPerShot }: {
   previews?: (string | null)[];
   /** Credits one shot costs at the default model, when a model is usable. */
   costPerShot?: number | null;
+  /** An admin's picture per card. Empty = the account's own work, then the
+   *  ratio frame — the two things that were here before. */
+  slots?: SlotMap;
 }) {
   const { rgb, rgb2 } = category.accent;
   return (
@@ -50,7 +56,12 @@ export function WorkflowCards({ category, t, previews, costPerShot }: {
               className="relative block overflow-hidden rounded-xl ring-1 ring-[rgb(var(--hairline)/var(--hairline-alpha))]"
               style={{ background: `linear-gradient(160deg, rgb(${rgb} / 0.14), rgb(${rgb2} / 0.05))` }}
             >
-              {preview ? (
+              {slots?.has(workflowSlotKey(category.key, w.key)) ? (
+                <SlotMedia slot={workflowSlotKey(category.key, w.key)} slots={slots}
+                  ratio="4/3" className="rounded-xl"
+                  sizes="(max-width: 640px) 45vw, (max-width: 1280px) 30vw, 19vw"
+                  fallback={null} />
+              ) : preview ? (
                 <Media src={preview} ratio="4/3" rounded="rounded-xl" className="w-full" />
               ) : (
                 <span className="flex aspect-[4/3] items-center justify-center p-2">

@@ -239,8 +239,12 @@ alter table public.media_assets
   add column if not exists tags text[] not null default '{}',
   add column if not exists width integer,
   add column if not exists height integer,
-  -- { "webp": { "1600": "path", "800": "path" }, "avif": {…} } — filled by
-  -- the derivative route, absent until then. The original is never replaced.
+  -- A FLAT width → url map: { "640": "https://…_w640.webp", "1024": …,
+  -- "<original width>": "<the original>" }. Filled by /api/admin/media/derive,
+  -- absent until then. The original is never replaced — it is the largest
+  -- candidate in that map, which is what lets a browser pick it on a wide
+  -- screen. Read by cms-image.tsx, cms-media.ts and media-slots.ts, all of
+  -- which expect exactly this shape.
   add column if not exists variants jsonb not null default '{}'::jsonb,
   add column if not exists updated_at timestamptz not null default now();
 

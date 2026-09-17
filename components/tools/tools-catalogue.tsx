@@ -3,6 +3,8 @@ import type { LucideIcon } from "lucide-react";
 import { ArrowRight, Lightbulb, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ToolThumb, type ToolMotif } from "@/components/tools/tool-thumb";
+import { SlotMedia } from "@/components/media/slot-media";
+import type { SlotMap } from "@/lib/server/media-slots";
 import { menuBadge, type AvailabilityMap } from "@/lib/features";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +30,9 @@ export type CatalogueCard = {
   body: string;
   /** A module with no backend yet: shown, badged, never clickable. */
   soon?: boolean;
+  /** This card's media slot, when it has one. A category entry point does
+   *  not — its picture belongs to the category. */
+  slotKey?: string | null;
   /** The tool catalogue's verdict: null when this card is a place rather than
    *  a priced operation. */
   state?: { available: boolean; credits: number; reason: string | null } | null;
@@ -45,11 +50,14 @@ export type CatalogueSection = {
 
 type T = (key: string, vars?: Record<string, string | number>) => string;
 
-export function ToolsCatalogue({ sections, avail, isAdmin, t }: {
+export function ToolsCatalogue({ sections, avail, isAdmin, t, slots }: {
   sections: CatalogueSection[];
   avail: AvailabilityMap;
   isAdmin: boolean;
   t: T;
+  /** What an admin put in each card's slot. Empty map = every card keeps its
+   *  drawn motif, which is what it had before this existed. */
+  slots?: SlotMap;
 }) {
   return (
     <div className="space-y-6">
@@ -60,7 +68,7 @@ export function ToolsCatalogue({ sections, avail, isAdmin, t }: {
             <SectionHead icon={s.icon} title={s.title} seeAll={s.seeAll} t={t} />
             <div className="stagger grid grid-cols-2 gap-2.5 [&>*]:min-w-0 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
               {s.cards.map((c) => (
-                <ToolCard key={c.key} card={c} avail={avail} isAdmin={isAdmin} t={t} />
+                <ToolCard key={c.key} card={c} avail={avail} isAdmin={isAdmin} t={t} slots={slots} />
               ))}
             </div>
           </section>
@@ -117,8 +125,9 @@ function SectionHead({ icon: Icon, title, seeAll, t }: {
  * One catalogue card: the preview, then the name, then one line about it.
  * Compact on purpose — six fit a desktop row, two a phone.
  */
-function ToolCard({ card, avail, isAdmin, t }: {
+function ToolCard({ card, avail, isAdmin, t, slots }: {
   card: CatalogueCard; avail: AvailabilityMap; isAdmin: boolean; t: T;
+  slots?: SlotMap;
 }) {
   // Three things can close a card: the module switchboard, the tool catalogue
   // (no provider / maintenance), or the module having no backend at all.
@@ -146,7 +155,17 @@ function ToolCard({ card, avail, isAdmin, t }: {
           ate the width on a phone and truncated every name to "Wideo pr…";
           here it is visible at a glance and the caption keeps its two lines. */}
       <span className="relative block">
-        <ToolThumb motif={card.motif} icon={card.icon} dimmed={blocked} />
+        {/* The drawn motif is the DEFAULT, not a placeholder: it states the
+            operation, which a stock photo cannot. A picture appears here only
+            where an admin deliberately put one. */}
+        {slots && card.slotKey ? (
+          <SlotMedia slot={card.slotKey} slots={slots} ratio="16/10"
+            className="rounded-xl"
+            sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 16vw"
+            fallback={<ToolThumb motif={card.motif} icon={card.icon} dimmed={blocked} />} />
+        ) : (
+          <ToolThumb motif={card.motif} icon={card.icon} dimmed={blocked} />
+        )}
         {badge && <span className="absolute right-1.5 top-1.5">{badge}</span>}
       </span>
       {/* A fixed caption height keeps a row of cards level whether the
