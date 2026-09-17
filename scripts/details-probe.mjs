@@ -1,201 +1,471 @@
 /**
- * IMAGE-DETAILS PROBE — measures the rebuilt preview modal against the brief.
+ * THE DETAILS MODAL, MEASURED IN A REAL BROWSER.
  *
- * Run against a PRODUCTION build (`next start`), never `next dev`: the app's
- * CSP forbids `unsafe-eval`, which dev mode needs, so nothing hydrates there.
+ * Three things were asked for and each is a fact a browser can be asked about,
+ * not a claim to be made in a report:
+ *
+ *   DOWNLOAD — one button, no menu, and what comes back is the file the model
+ *   produced, byte for byte, with its own type. Checked by intercepting the
+ *   save: a PNG asset must hand over a PNG, a WEBP a WEBP, and the click must
+ *   never navigate anywhere near the storage host.
+ *   ZOOM AND PAN — at 200% the picture must MOVE when dragged, in every
+ *   direction, and must stop at its own edges rather than fly off screen.
+ *   Dragging must not scroll the page or move the modal.
+ *   PRZED / PO — gone from this modal, with nothing left where it was.
  *
  *   node scripts/details-probe.mjs --harness
- *   npm run build && npx next start -p 3100 &
- *   node scripts/details-probe.mjs http://127.0.0.1:3100
+ *   npm run build && npx next start -p 3160 &
+ *   node scripts/details-probe.mjs http://127.0.0.1:3160
  *   node scripts/details-probe.mjs --clean
- *
- * The reference sources endpoint is fulfilled by the probe itself rather than
- * stubbed in the app: the component runs its real fetch, its real cache and
- * its real render path, and only the bytes on the wire are the probe's.
  */
 import fs from "node:fs";
 import { chromium } from "playwright";
 
 const DIR = "app/probe-tmp/details";
-const FILES = {
-  "page.tsx": "/**\n * TEMPORARY PROBE ROUTE \u2014 written by scripts/details-probe.mjs --harness.\n *\n * Mounts the REAL ImageDetails with one synthetic item so its layout can be\n * measured at every width the brief names. Only the row is invented; the\n * component, its styles and its DOM are exactly what ships.\n */\nimport { I18nProvider } from \"@/lib/i18n/provider\";\nimport pl from \"@/lib/i18n/dictionaries/pl.json\";\nimport { DetailsProbe } from \"@/app/probe-tmp/details/client\";\n\nexport const dynamic = \"force-static\";\n\nexport default function Page() {\n  return (\n    <I18nProvider locale=\"pl\" dict={pl as Record<string, unknown>}>\n      <DetailsProbe />\n    </I18nProvider>\n  );\n}\n",
-  "client.tsx": "\"use client\";\nimport { useState } from \"react\";\nimport { ImageDetails } from \"@/components/genv3/image-details\";\nimport type { GalleryItem } from \"@/components/genv3/types\";\n\n/** A 3:2 photo, so a squashed or cropped render is measurable. */\nconst PHOTO = \"data:image/svg+xml;utf8,\" + encodeURIComponent(\n  '<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1500\" height=\"1000\">'\n  + '<rect width=\"1500\" height=\"1000\" fill=\"#8a7f9c\"/>'\n  + '<rect x=\"200\" y=\"300\" width=\"1100\" height=\"500\" rx=\"40\" fill=\"#c9c2d4\"/></svg>',\n);\n\nconst ITEM: GalleryItem = {\n  generationId: \"11111111-1111-1111-1111-111111111111\",\n  assetId: \"22222222-2222-2222-2222-222222222222\",\n  path: \"ws/gen/0.png\",\n  url: PHOTO,\n  thumbUrl: PHOTO,\n  width: 1500,\n  height: 1000,\n  ratio: \"3:2\",\n  resolution: \"1K\",\n  quality: \"high\",\n  quantity: 2,\n  credits: 4,\n  latencyMs: 12400,\n  referenceCount: 3,\n  inspirationCount: 1,\n  operation: null,\n  model: \"GPT Image 2\",\n  modelId: \"m1\",\n  product: \"Sofa\",\n  sessionType: \"advertising\",\n  origin: \"custom\",\n  prompt: \"Nowoczesna sofa w stylu skandynawskim, szara tkanina, minimalistyczne wn\u0119trze, naturalne \u015bwiat\u0142o, wysoka jako\u015b\u0107 fotografii produktowej.\",\n  favorite: false,\n  note: null,\n  createdAt: \"2026-08-17T21:05:00.000Z\",\n};\n\nexport function DetailsProbe() {\n  const [open, setOpen] = useState(true);\n  return (\n    <div data-probe=\"details-root\">\n      {open && (\n        <ImageDetails\n          items={[ITEM]}\n          index={0}\n          onIndex={() => undefined}\n          onClose={() => setOpen(false)}\n          canRegenerate\n          onRegenerate={() => undefined}\n          onFavorite={() => undefined}\n          onDelete={() => undefined}\n          onNote={() => undefined}\n        />\n      )}\n    </div>\n  );\n}\n",
+const ASSETS = "public/probe-tmp";
+
+/* Two files of two different TYPES, so "the original format" is a thing the
+ * probe can read off the saved blob rather than take on trust.
+ *
+ * THEY ARE WRITTEN AS REAL FILES AND SERVED BY THE APP, not inlined as data
+ * URIs, because the product's own Content-Security-Policy says
+ * `connect-src 'self' https://*.supabase.co` — a `fetch()` of a data: URI is
+ * refused. A fixture the real CSP would not allow proves nothing about the
+ * real download.
+ *
+ * AND THEY ARE 900×1200, PORTRAIT, WHICH IS NOT DECORATION. `object-contain`
+ * never enlarges a picture past its own pixels, so a 100px fixture is 100px
+ * wide at 200% and there is nothing to pan — the first run of this probe
+ * measured exactly that and reported "not pannable" nine times. A portrait
+ * picture is TALLER than every one of these viewports is proportionally, so
+ * it fits by one axis, and doubling it overflows BOTH on desktop, tablet and
+ * phone alike. That is what makes "drag left, drag up, drag back" a question
+ * with the same answer in all three bands. */
+const FIXTURE = { width: 900, height: 1200 };
+const PNG = "/probe-tmp/a.png";
+const WEBP = "/probe-tmp/b.webp";
+
+const PAGE_SRC = `"use client";
+import { useState } from "react";
+import { I18nProvider } from "@/lib/i18n/provider";
+import pl from "@/lib/i18n/dictionaries/pl.json";
+import { ImageDetails } from "@/components/genv3/image-details";
+import type { GalleryItem } from "@/components/genv3/types";
+
+export const dynamic = "force-static";
+
+/** A tall picture so a 200% zoom overflows the viewport on BOTH axes — that
+ *  is the only shape that can prove panning up, down, left and right. */
+const base = {
+  generationId: "gen-1", path: "ws/gen/0.png", thumbUrl: "${PNG}", hasThumb: true,
+  previewUrl: "${PNG}", assetType: "image" as const, durationSec: null,
+  width: ${FIXTURE.width}, height: ${FIXTURE.height}, ratio: "3:4", resolution: "2K", quality: "high",
+  quantity: 1, credits: 4, latencyMs: 1200, referenceCount: 0, inspirationCount: 0,
+  operation: null, model: "GPT Image 2 High", modelId: "m1", product: "Sofa",
+  sessionType: "advertising" as const, origin: "engine" as const, prompt: "Prompt",
+  favorite: false, note: null, createdAt: "2026-08-26T10:00:00.000Z",
 };
 
+const ITEMS = [
+  { ...base, assetId: "png-asset", url: "${PNG}", path: "ws/gen/0.png" },
+  { ...base, assetId: "webp-asset", url: "${WEBP}", path: "ws/gen/1.webp" },
+] as unknown as GalleryItem[];
+
+export default function ProbeDetails() {
+  const [index, setIndex] = useState(0);
+  return (
+    <I18nProvider locale="pl" dict={pl as Record<string, unknown>}>
+      <div data-probe="details" style={{ minHeight: "100dvh" }}>
+        <ImageDetails
+          items={ITEMS} index={index} onIndex={setIndex} onClose={() => {}}
+          canRegenerate={false} onRegenerate={() => {}}
+          onFavorite={() => {}} onDelete={() => {}} onNote={() => {}} />
+      </div>
+    </I18nProvider>
+  );
+}
+`;
+
+if (process.argv.includes("--harness")) {
+  const sharp = (await import("sharp")).default;
+  const source = {
+    create: {
+      width: FIXTURE.width, height: FIXTURE.height, channels: 3,
+      background: { r: 38, g: 42, b: 58 },
+    },
+  };
+  fs.mkdirSync(DIR, { recursive: true });
+  fs.mkdirSync(ASSETS, { recursive: true });
+  fs.writeFileSync(`${DIR}/page.tsx`, PAGE_SRC);
+  await sharp(source).png().toFile(`${ASSETS}/a.png`);
+  await sharp(source).webp().toFile(`${ASSETS}/b.webp`);
+  console.log(`harness written to ${DIR} and ${ASSETS}`);
+  process.exit(0);
+}
 if (process.argv.includes("--clean")) {
   fs.rmSync("app/probe-tmp", { recursive: true, force: true });
-  console.log("removed app/probe-tmp");
-  process.exit(0);
-}
-if (process.argv.includes("--harness")) {
-  fs.mkdirSync(DIR, { recursive: true });
-  for (const [name, src] of Object.entries(FILES)) fs.writeFileSync(`${DIR}/${name}`, src);
-  console.log(`wrote ${DIR}/{page,client}.tsx — build, start, then probe`);
+  fs.rmSync(ASSETS, { recursive: true, force: true });
+  console.log("harness removed");
   process.exit(0);
 }
 
-const BASE = process.argv[2] ?? "http://127.0.0.1:3100";
+const BASE = process.argv[2] ?? "http://127.0.0.1:3160";
 const URL_ = `${BASE}/probe-tmp/details`;
 
-const LAPTOP = [1280, 1366, 1440, 1600];
-const DESKTOP = [1920, 2560];
-const TABLET_P = [768, 820, 834];
-const TABLET_L = [1024, 1112, 1180, 1194];
-
-let pass = 0, fail = 0;
+let pass = 0;
 const failures = [];
-const ok = (c, label) => { if (c) pass++; else { fail++; failures.push(label); } };
+const ok = (cond, label) => { if (cond) pass++; else failures.push(label); };
 
-/** A reference photo for the sources strip, served to the component's own fetch. */
-const REF = "data:image/svg+xml;utf8," + encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#6d6480"/></svg>');
+const browser = await chromium.launch({
+  executablePath: "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell",
+});
 
-async function layout(page, width, height, band) {
-  await page.setViewportSize({ width, height });
-  await page.waitForTimeout(160);
-  const tag = `${band} ${width}×${height}`;
+/** Where the picture sits right now, and how big it is drawn. */
+const readImage = (page) => page.evaluate(() => {
+  const box = document.querySelector("[data-zoom-viewport]");
+  const img = box?.querySelector("img");
+  if (!box || !img) return null;
+  const b = box.getBoundingClientRect();
+  const i = img.getBoundingClientRect();
+  return {
+    pannable: box.hasAttribute("data-pannable"),
+    cursor: getComputedStyle(box).cursor,
+    touch: getComputedStyle(box).touchAction,
+    draggable: img.getAttribute("draggable"),
+    // The picture's centre relative to the viewport's: zero when centred.
+    dx: (i.left + i.width / 2) - (b.left + b.width / 2),
+    dy: (i.top + i.height / 2) - (b.top + b.height / 2),
+    w: i.width, h: i.height,
+    boxW: b.width, boxH: b.height,
+    clipped: getComputedStyle(box).overflow,
+  };
+});
 
-  const doc = await page.evaluate(() => ({
-    sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth,
-  }));
-  ok(doc.sw <= doc.cw + 1, `${tag}: horizontal overflow (${doc.sw} > ${doc.cw})`);
-
-  const m = await page.evaluate(() => {
-    const modal = document.querySelector("[data-details-modal]");
-    if (!modal) return null;
-    const r = modal.getBoundingClientRect();
-    const cols = getComputedStyle(modal).gridTemplateColumns.split(" ").filter(Boolean);
-    const img = modal.querySelector("img");
-    const ir = img?.getBoundingClientRect();
-    const panel = modal.querySelector("[data-details-settings]")?.closest("div.thin-scroll");
-    const pr = panel?.getBoundingClientRect();
-    const q = (s) => modal.querySelector(s);
-    const order = [];
-    for (const [name, sel] of [
-      ["sources", "[data-sources]"], ["prompt", "[data-details-prompt]"],
-      ["info", "[data-details-settings]"], ["note", "textarea"],
-      ["actions", "[data-copy-url]"], ["regen", "[data-regen-cta]"],
-    ]) {
-      const el = q(sel);
-      if (el) order.push([name, el.getBoundingClientRect().top]);
-    }
-    return {
-      w: r.width, h: r.height,
-      cols: cols.length,
-      colWidths: cols.map((c) => parseFloat(c)),
-      imgW: ir?.width ?? 0, imgH: ir?.height ?? 0,
-      imgNatW: img?.naturalWidth ?? 0, imgNatH: img?.naturalHeight ?? 0,
-      imgFit: img ? getComputedStyle(img).objectFit : null,
-      panelW: pr?.width ?? 0,
-      infoCols: (() => {
-        const g = q("[data-details-settings]");
-        return g ? getComputedStyle(g).gridTemplateColumns.split(" ").filter(Boolean).length : 0;
-      })(),
-      editTiles: modal.querySelectorAll("[data-edit-tile]").length,
-      actionRow: (() => {
-        const a = q("[data-copy-url]");
-        return a ? getComputedStyle(a.parentElement).gridTemplateColumns.split(" ").filter(Boolean).length : 0;
-      })(),
-      regenW: q("[data-regen-cta]")?.getBoundingClientRect().width ?? 0,
-      order: order.sort((x, y) => x[1] - y[1]).map(([n]) => n),
-      zoomBar: !!q("[data-zoom-bar]"),
-      headings: [...modal.querySelectorAll("p,h1,h2,h3")]
-        .map((e) => e.textContent.trim())
-        .filter((s) => ["Informacje", "Edytuj obraz", "Notatka", "Akcje", "Prompt", "Zdjęcia referencyjne"].includes(s)),
-    };
-  });
-  ok(m !== null, `${tag}: no modal`);
-  if (!m) return null;
-
-  // 1. WIDE. The modal takes the viewport minus a 24px frame, capped at 1920.
-  const expect = Math.min(width - 48, 1920);
-  ok(Math.abs(m.w - expect) <= 3, `${tag}: modal ${m.w.toFixed(0)}px, expected ~${expect}`);
-
-  // 2. TWO COLUMNS from lg up, image column the larger one.
-  if (width >= 1024) {
-    ok(m.cols === 2, `${tag}: ${m.cols} column(s), expected 2`);
-    if (m.cols === 2) {
-      ok(m.colWidths[0] > m.colWidths[1],
-        `${tag}: image column ${m.colWidths[0].toFixed(0)} not wider than panel ${m.colWidths[1].toFixed(0)}`);
-      ok(m.panelW >= 370 && m.panelW <= 460, `${tag}: panel ${m.panelW.toFixed(0)}px outside 370–460`);
-    }
-  } else {
-    ok(m.cols === 1, `${tag}: ${m.cols} columns below lg, expected a single stack`);
+async function drag(page, fromDx, fromDy) {
+  const box = await page.locator("[data-zoom-viewport]").boundingBox();
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  // Several steps: one jump can be swallowed as a click.
+  for (let i = 1; i <= 6; i++) {
+    await page.mouse.move(cx + (fromDx * i) / 6, cy + (fromDy * i) / 6);
   }
-
-  // 3. THE PHOTO IS WHOLE AND BIG.
-  //
-  // `object-fit: contain` is the actual guarantee the brief is asking for —
-  // it is what makes the picture impossible to squash and impossible to crop.
-  // The element's own box is NOT the picture (contain letterboxes inside it),
-  // so the painted rectangle is derived and measured instead.
-  if (m.imgNatW && m.imgH) {
-    ok(m.imgFit === "contain", `${tag}: object-fit is ${m.imgFit}, expected contain (crop/squash risk)`);
-    const scale = Math.min(m.imgW / m.imgNatW, m.imgH / m.imgNatH);
-    const paintedW = m.imgNatW * scale, paintedH = m.imgNatH * scale;
-    ok(paintedW > 300, `${tag}: painted image only ${paintedW.toFixed(0)}px wide`);
-    // …and the container is not so oversized that the photo floats in a void.
-    const fill = (paintedW * paintedH) / (m.imgW * m.imgH);
-    ok(fill > 0.4, `${tag}: photo fills only ${(fill * 100).toFixed(0)}% of its container`);
-  }
-
-  // 4. THE PANEL, exactly as the brief orders it.
-  ok(m.infoCols === 2, `${tag}: info grid has ${m.infoCols} columns, expected 2`);
-  ok(m.editTiles === 4, `${tag}: ${m.editTiles} edit tiles, expected 4`);
-  ok(m.actionRow === 3, `${tag}: action row has ${m.actionRow} columns, expected 3`);
-  ok(m.regenW > 200, `${tag}: regenerate CTA only ${m.regenW.toFixed(0)}px wide`);
-  ok(m.zoomBar, `${tag}: zoom bar missing`);
-
-  // 5. NO SECTION HEADINGS — the brief removes every one of them.
-  ok(m.headings.length === 0, `${tag}: section headings still present: ${m.headings.join(", ")}`);
-
-  // 6. HIERARCHY, at every width.
-  const want = ["sources", "prompt", "info", "note", "actions", "regen"];
-  ok(m.order.join(">") === want.join(">"), `${tag}: panel order ${m.order.join(" > ")}`);
-  return m;
+  await page.mouse.up();
+  await page.waitForTimeout(80);
 }
 
-(async () => {
-  const browser = await chromium.launch({
-    executablePath: "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell",
-  });
-  const page = await browser.newPage();
-  // The component's own fetch, answered by the probe.
-  await page.route("**/api/generations/sources**", (route) => route.fulfill({
-    status: 200, contentType: "application/json",
-    body: JSON.stringify({ ok: true, references: [REF, REF, REF], inspirations: [REF], marked: null, known: true }),
-  }));
+const setZoom = async (page, target) => {
+  for (let i = 0; i < 12; i++) {
+    const now = Number((await page.locator("[data-zoom-bar] span").first().textContent()).replace("%", ""));
+    if (now === target) return;
+    await page.locator(`[data-zoom-bar] button[aria-label="${now < target ? "Powiększ" : "Pomniejsz"}"]`).click();
+    await page.waitForTimeout(60);
+  }
+};
 
+/* ── 1. THE MODAL'S TOOLBAR ──────────────────────────────────────────────── */
+{
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const res = await page.goto(URL_, { waitUntil: "networkidle" });
-  if (!res || !res.ok()) { console.error(`probe route unreachable: ${res?.status()}`); process.exit(2); }
-  await page.waitForTimeout(500);
+  ok(res && res.ok(), `harness unreachable: ${res && res.status()}`);
+  await page.waitForTimeout(300);
 
-  const rows = [];
-  for (const w of LAPTOP) rows.push([`laptop ${w}`, await layout(page, w, 900, "LAPTOP")]);
-  for (const w of DESKTOP) rows.push([`desktop ${w}`, await layout(page, w, 1080, "DESKTOP")]);
-  for (const w of TABLET_P) rows.push([`tablet-p ${w}`, await layout(page, w, 1180, "TABLET-P")]);
-  for (const w of TABLET_L) rows.push([`tablet-l ${w}`, await layout(page, w, 834, "TABLET-L")]);
+  const bar = await page.evaluate(() => {
+    const zoomBar = document.querySelector("[data-zoom-bar]");
+    const text = (document.body.innerText || "");
+    return {
+      exists: Boolean(zoomBar),
+      compareToggle: Boolean(document.querySelector("[data-compare-toggle]")),
+      beforeAfter: Boolean(document.querySelector("[data-before-after]")),
+      comparePhrase: /przed\s*\/\s*po/i.test(text),
+      buttons: [...(zoomBar?.querySelectorAll("button") ?? [])].map((b) => b.getAttribute("aria-label")),
+      dividers: (zoomBar?.querySelectorAll("span[aria-hidden]") ?? []).length,
+    };
+  });
+  ok(bar.exists, "no zoom bar");
+  // PRZED / PO — gone, and gone completely.
+  ok(!bar.compareToggle, "the compare toggle is still in the toolbar");
+  ok(!bar.beforeAfter, "the before/after slider still renders");
+  ok(!bar.comparePhrase, "the words 'Przed / po' are still on screen");
+  ok(bar.buttons.join(",") === "Pomniejsz,Powiększ,Pełny obraz",
+    `toolbar is ${bar.buttons.join(",")}`);
+  // One divider, not the two the removed button sat between.
+  ok(bar.dividers === 1, `${bar.dividers} dividers left in the toolbar`);
 
-  // The reference thumbnails really did render, from the component's own path.
-  const thumbs = await page.$$eval("[data-source-thumb]", (e) => e.length);
-  ok(thumbs === 4, `reference thumbnails: ${thumbs}, expected 4`);
+  /* ── 2. THE DOWNLOAD BUTTON ───────────────────────────────────────────── */
+  const dl = await page.evaluate(() => {
+    const btn = document.querySelector("[data-download-btn]");
+    if (!btn) return null;
+    const svgs = btn.querySelectorAll("svg").length;
+    return {
+      expanded: btn.getAttribute("aria-expanded"),
+      text: btn.textContent.trim(),
+      icons: svgs,
+      height: btn.getBoundingClientRect().height,
+      siblings: [...btn.parentElement.children].length,
+    };
+  });
+  ok(dl !== null, "no download button");
+  // A menu button announces itself; this one must not, because there is none.
+  ok(dl.expanded === null, "the download button still claims to expand a menu");
+  ok(dl.icons === 1, `the download button has ${dl.icons} icons — a chevron is back`);
+  ok(dl.text === "Pobierz obraz", `the download button says "${dl.text}"`);
+  ok(Math.abs(dl.height - 44) <= 1, `the download button is ${dl.height}px tall`);
+  ok(dl.siblings === 3, "the actions row is no longer three equal buttons");
 
-  // Closing works.
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.click("[data-details-modal] [aria-label='Zamknij']").catch(() => null);
+  await page.locator("[data-download-btn]").click();
   await page.waitForTimeout(250);
-  ok(await page.$("[data-details-modal]") === null, "close button did not dismiss the modal");
+  const menu = await page.evaluate(() => {
+    const t = document.body.innerText;
+    return { jpg: /\bJPG\b/.test(t), webp: /\bWEBP\b/.test(t), tiff: /\bTIFF\b/.test(t) };
+  });
+  ok(!menu.jpg && !menu.webp && !menu.tiff, "a format list appeared after clicking Pobierz");
 
-  await browser.close();
+  /* ── 2b. A PRESSED BUTTON STAYS UNDER THE FINGER ──────────────────────
+     The global press feedback used to write `transform`, which REPLACED the
+     `-translate-y-1/2` that centres the chevrons over the image: pressing one
+     dropped it 18px, the pointer was no longer over it on release, and the
+     click never happened. Press and hold, then ask whether the button is
+     still where the press landed. */
+  {
+    const box = await page.locator('[aria-label="Następny"]').boundingBox();
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.waitForTimeout(200);
+    const held = await page.evaluate(({ x, y }) => {
+      const btn = document.querySelector('[aria-label="Następny"]');
+      const r = btn.getBoundingClientRect();
+      const under = document.elementFromPoint(x, y);
+      return { covers: x >= r.left && x <= r.right && y >= r.top && y <= r.bottom, hit: Boolean(under && btn.contains(under)) };
+    }, { x, y });
+    await page.mouse.up();
+    await page.waitForTimeout(120);
+    ok(held.covers, "the next chevron slides out from under the pointer while pressed");
+    ok(held.hit, "a pressed next chevron is no longer the element under the pointer");
+    // …and the press actually advanced the picture.
+    const advanced = await page.evaluate(() => Boolean(document.querySelector('[aria-label="Poprzedni"]')));
+    ok(advanced, "clicking the next chevron did not change the picture");
+  }
 
-  console.log("\nMODAL GEOMETRY");
-  for (const [label, m] of rows) {
-    if (m) console.log(`  ${label.padEnd(14)} ${m.w.toFixed(0).padStart(4)}px  image ${m.imgW.toFixed(0).padStart(4)}px  panel ${m.panelW.toFixed(0).padStart(3)}px  ${m.cols} col`);
+  await page.close();
+}
+
+/* ── 3. THE DOWNLOAD ITSELF ──────────────────────────────────────────────── */
+{
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  // Intercept the save: the anchor click is what actually writes the file.
+  await page.addInitScript(() => {
+    window.__saved = [];
+    window.__navigated = [];
+    const realCreate = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = (blob) => {
+      window.__saved.push({ type: blob.type, size: blob.size });
+      return realCreate(blob);
+    };
+    const realClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () {
+      window.__navigated.push(this.getAttribute("href") || "");
+      window.__downloadName = this.getAttribute("download") || "";
+    };
+    void realClick;
+  });
+  await page.goto(URL_, { waitUntil: "networkidle" });
+  await page.waitForTimeout(300);
+
+  for (const [label, expectType, expectExt] of [
+    ["png", "image/png", ".png"],
+    ["webp", "image/webp", ".webp"],
+  ]) {
+    if (label === "webp") {
+      await page.locator('[aria-label="Następny"]').click();
+      await page.waitForTimeout(300);
+    }
+    await page.evaluate(() => { window.__saved = []; window.__navigated = []; });
+    await page.locator("[data-download-btn]").click();
+    await page.waitForTimeout(900);
+    const out = await page.evaluate(() => ({
+      saved: window.__saved, navigated: window.__navigated, name: window.__downloadName,
+    }));
+    ok(out.saved.length === 1, `${label}: ${out.saved.length} blobs handed over, expected 1`);
+    // THE ORIGINAL TYPE, not a re-encode.
+    ok(out.saved[0]?.type === expectType,
+      `${label}: saved as ${out.saved[0]?.type}, expected ${expectType}`);
+    ok((out.name || "").endsWith(expectExt),
+      `${label}: filename "${out.name}" does not end ${expectExt}`);
+    // AND NOWHERE NEAR THE STORAGE HOST.
+    ok(!out.navigated.some((h) => h.includes("supabase.co")),
+      `${label}: the click reached a supabase.co URL`);
+    ok(out.navigated.every((h) => h.startsWith("blob:")),
+      `${label}: the click used ${out.navigated.join(",")} rather than a blob`);
   }
-  console.log(`\n${pass} passed, ${fail} failed`);
-  if (fail) {
-    console.log("\nFAILURES");
-    for (const f of failures) console.log(`  ✗ ${f}`);
-    process.exit(1);
+  await page.close();
+}
+
+/* ── 4. ZOOM, PAN, BOUNDS, RESET ─────────────────────────────────────────── */
+for (const [band, width, height] of [
+  ["desktop", 1440, 900], ["tablet", 834, 1100], ["mobile", 390, 844],
+]) {
+  const page = await browser.newPage({ viewport: { width, height } });
+  await page.goto(URL_, { waitUntil: "networkidle" });
+  await page.waitForTimeout(350);
+
+  // At 100% the picture fits, so there is nothing to pan and no grab cursor.
+  const rest = await readImage(page);
+  ok(rest !== null, `${band}: no zoom viewport`);
+  ok(rest.clipped === "hidden", `${band}: the viewport is not clipping (${rest.clipped})`);
+  ok(rest.draggable === "false", `${band}: the image is still natively draggable`);
+  ok(!rest.pannable, `${band}: claims to be pannable at 100%`);
+  ok(rest.cursor !== "grab", `${band}: shows a grab cursor with nothing to grab`);
+  ok(Math.abs(rest.dx) < 1 && Math.abs(rest.dy) < 1, `${band}: not centred at 100%`);
+
+  await setZoom(page, 200);
+  const zoomed = await readImage(page);
+  ok(zoomed.w > rest.w * 1.9, `${band}: 200% did not enlarge the picture`);
+  ok(zoomed.pannable, `${band}: 200% is not pannable`);
+  ok(zoomed.cursor === "grab", `${band}: no grab cursor at 200% (${zoomed.cursor})`);
+  ok(zoomed.touch === "none", `${band}: touch-action is ${zoomed.touch}, so a finger scrolls the page`);
+
+  // DRAG LEFT, and the picture moves left.
+  const pageYBefore = await page.evaluate(() => window.scrollY);
+  await drag(page, -120, -90);
+  const moved = await readImage(page);
+  ok(moved.dx < zoomed.dx - 20, `${band}: dragging left moved the picture ${(moved.dx - zoomed.dx).toFixed(0)}px`);
+  ok(moved.dy < zoomed.dy - 20, `${band}: dragging up moved the picture ${(moved.dy - zoomed.dy).toFixed(0)}px`);
+  // …and nothing else moved.
+  ok((await page.evaluate(() => window.scrollY)) === pageYBefore, `${band}: the page scrolled during a pan`);
+  ok((await page.evaluate(() =>
+    document.querySelector("[data-details-modal]")?.getBoundingClientRect().top ?? 0)) >= -1,
+  `${band}: the modal itself moved`);
+
+  // DRAG BACK the other way, and it comes back.
+  await drag(page, 240, 180);
+  const back = await readImage(page);
+  ok(back.dx > moved.dx + 20, `${band}: dragging right did not move the picture back`);
+  ok(back.dy > moved.dy + 20, `${band}: dragging down did not move the picture back`);
+
+  // BOUNDS. A huge drag cannot push the picture off its own edges: the
+  // viewport must still be fully covered by it.
+  await drag(page, 4000, 4000);
+  const flung = await readImage(page);
+  const maxX = (flung.w - flung.boxW) / 2;
+  const maxY = (flung.h - flung.boxH) / 2;
+  ok(flung.dx <= maxX + 1.5, `${band}: panned ${flung.dx.toFixed(0)}px past the ${maxX.toFixed(0)}px limit`);
+  ok(flung.dy <= maxY + 1.5, `${band}: panned ${flung.dy.toFixed(0)}px past the ${maxY.toFixed(0)}px limit`);
+
+  // RESET at 100%.
+  await setZoom(page, 100);
+  const reset = await readImage(page);
+  ok(Math.abs(reset.dx) < 1 && Math.abs(reset.dy) < 1,
+    `${band}: back at 100% the picture is still off-centre (${reset.dx.toFixed(0)}, ${reset.dy.toFixed(0)})`);
+  ok(!reset.pannable, `${band}: still pannable after returning to 100%`);
+
+  // RESET when the picture changes.
+  await setZoom(page, 300);
+  await drag(page, -200, -200);
+  await page.locator('[aria-label="Następny"]').click();
+  await page.waitForTimeout(400);
+  const next = await readImage(page);
+  const level = await page.locator("[data-zoom-bar] span").first().textContent();
+  ok(level.trim() === "100%", `${band}: the next picture opened at ${level}`);
+  ok(Math.abs(next.dx) < 1 && Math.abs(next.dy) < 1,
+    `${band}: the next picture opened off-centre`);
+
+  // Nothing overflows the page at any of this.
+  const overflow = await page.evaluate(() =>
+    document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  ok(!overflow, `${band}: horizontal overflow`);
+
+  console.log(`  ${band.padEnd(8)} ${width}×${height}  `
+    + `200% → ${zoomed.w.toFixed(0)}px wide, pan limit ±${maxX.toFixed(0)}/${maxY.toFixed(0)}px`);
+  await page.close();
+}
+
+/* ── 5. TOUCH PAN ────────────────────────────────────────────────────────── */
+{
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  await page.goto(URL_, { waitUntil: "networkidle" });
+  await page.waitForTimeout(350);
+  await setZoom(page, 200);
+  const before = await readImage(page);
+
+  // A real finger: pointer events of type "touch", which is what the
+  // component listens for.
+  const box = await page.locator("[data-zoom-viewport]").boundingBox();
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  const client = await page.context().newCDPSession(page);
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchStart", touchPoints: [{ x: cx, y: cy }],
+  });
+  for (let i = 1; i <= 6; i++) {
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchMove", touchPoints: [{ x: cx - (100 * i) / 6, y: cy - (80 * i) / 6 }],
+    });
   }
-})();
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await page.waitForTimeout(150);
+
+  const after = await readImage(page);
+  ok(after.dx < before.dx - 20,
+    `touch: a finger drag moved the picture ${(after.dx - before.dx).toFixed(0)}px horizontally`);
+  ok(after.dy < before.dy - 20,
+    `touch: a finger drag moved the picture ${(after.dy - before.dy).toFixed(0)}px vertically`);
+  console.log(`  touch    390×844   finger drag moved the picture `
+    + `${(after.dx - before.dx).toFixed(0)}px / ${(after.dy - before.dy).toFixed(0)}px`);
+  await page.close();
+}
+
+/* ── 6. EVERY WIDTH THE BRIEF NAMES ──────────────────────────────────────── */
+{
+  const WIDTHS = [
+    [1920, 1080], [1600, 900], [1440, 900], [1366, 768], [1280, 800],
+    [1024, 1366], [834, 1112], [820, 1180], [768, 1024],
+    [430, 932], [414, 896], [393, 852], [390, 844], [375, 812], [360, 800],
+  ];
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const wide = [];
+  for (const [width, height] of WIDTHS) {
+    await page.setViewportSize({ width, height });
+    await page.goto(URL_, { waitUntil: "networkidle" });
+    await page.waitForTimeout(250);
+    const rest = await readImage(page);
+    ok(rest !== null, `${width}px: no zoom viewport`);
+    ok(rest.clipped === "hidden", `${width}px: the viewport is not clipping`);
+    ok(!await page.evaluate(() =>
+      document.documentElement.scrollWidth > document.documentElement.clientWidth + 1),
+    `${width}px: horizontal overflow at 100%`);
+    // The picture must stay inside its own viewport, not spill over the panel.
+    ok(rest.w <= rest.boxW + 1 && rest.h <= rest.boxH + 1,
+      `${width}px: the picture is larger than its viewport at 100%`);
+
+    await setZoom(page, 200);
+    const zoomed = await readImage(page);
+    ok(zoomed.pannable, `${width}px: not pannable at 200%`);
+    const spill = await page.evaluate(() => {
+      const box = document.querySelector("[data-zoom-viewport]").getBoundingClientRect();
+      const img = document.querySelector("[data-zoom-viewport] img").getBoundingClientRect();
+      // The zoomed picture is bigger than the box — that is the point — but
+      // `overflow: hidden` must mean the PAGE never grows because of it.
+      return {
+        bigger: img.width > box.width + 1,
+        overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+      };
+    });
+    ok(spill.bigger, `${width}px: 200% did not overflow the viewport`);
+    ok(!spill.overflow, `${width}px: horizontal overflow at 200%`);
+    wide.push(`${width}`);
+  }
+  console.log(`  widths   ${wide.join(" ")} — clipped, pannable, no overflow`);
+  await page.close();
+}
+
+await browser.close();
+console.log(`\n${pass} passed, ${failures.length} failed`);
+if (failures.length) {
+  console.log("\nFAILURES");
+  for (const f of failures) console.log(`  ✗ ${f}`);
+  process.exit(1);
+}

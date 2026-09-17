@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/lib/notify";
 import {
-  Calendar, ChevronDown, ChevronLeft, ChevronRight, Clock, Columns2, Copy, Cpu, Crop, Download,
+  Calendar, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, Cpu, Crop, Download,
   Eraser, Expand, FileText, Heart, Link2, Loader2, Maximize2, Minus, Plus, Ruler, Save, Scaling,
   Sparkles, Trash2, Wand2, X,
 } from "lucide-react";
@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import type { GalleryItem } from "@/components/genv3/types";
 import { ratioName } from "@/components/genv3/ratio-options";
 import { fileNameFor, saveBlob } from "@/lib/save-image";
+import { ZoomPan, ZOOM_MAX, ZOOM_MIN, stepZoom } from "@/components/genv3/zoom-pan";
 
 /**
  * INFORMACJE O OBRAZIE — the premium image-details view.
@@ -20,10 +21,10 @@ import { fileNameFor, saveBlob } from "@/lib/save-image";
  * Desktop: image left (zoom, prev/next, filmstrip), metadata and actions
  * right. Phones get the same content as a full-screen sheet. Every action
  * here is real: the edit tiles run the existing tool pipeline on this very
- * file and save the result to the library; the download menu converts
- * through the local format tool so the browser receives a same-origin blob
- * it can genuinely save. Unsupported operations are visibly "Wkrótce" —
- * never dead buttons pretending.
+ * file and save the result to the library; "Pobierz" hands over the exact
+ * file the model produced, fetched into a blob so the browser saves it
+ * without ever leaving GrovBase for the storage host. Unsupported operations
+ * are visibly "Wkrótce" — never dead buttons pretending.
  *
  * The prompt shown is customer-safe by construction: their own prompt for
  * custom generations, the concept's seller-facing description for managed
@@ -47,30 +48,19 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
   const [fullscreen, setFullscreen] = useState(false);
   const [note, setNote] = useState(item.note ?? "");
   const [savingNote, setSavingNote] = useState(false);
-  const [dlOpen, setDlOpen] = useState(false);
   const [toolBusy, setToolBusy] = useState<string | null>(null);
   const [expandPick, setExpandPick] = useState(false);
-  // PRZED / PO. The "before" is the photo the job was made from, which the
-  // sources endpoint already signs — so comparing costs nothing extra.
-  const [compare, setCompare] = useState(false);
-  const [before, setBefore] = useState<string | null>(() => cachedSources(item.generationId)?.references[0] ?? null);
   const noteDirty = note.trim() !== (item.note ?? "").trim();
 
-  // The sources request is deduped and cached per generation, so asking here
-  // and in the reference strip costs one call between them — and asking
-  // unconditionally is what lets an older job's recovered references show up
-  // in "Przed / Po" as well.
-  useEffect(() => {
-    let alive = true;
-    setBefore(cachedSources(item.generationId)?.references[0] ?? null);
-    void loadSources(item.generationId).then((data) => {
-      if (alive) setBefore(data?.references[0] ?? null);
-    });
-    return () => { alive = false; };
-  }, [item.generationId]);
+  // THIS PREFETCH WENT WITH "PRZED / PO". It existed to have the job's first
+  // reference photo signed and ready for the comparison; the reference strip
+  // lower down asks for the same (deduped, cached) sources on its own, so
+  // nothing else lost anything when the comparison went.
 
-  // Reset per-image state when navigating.
-  useEffect(() => { setZoom(100); setNote(item.note ?? ""); setDlOpen(false); setExpandPick(false); setCompare(false); }, [item.assetId, item.note]);
+  // Reset per-image state when navigating — zoom included, so the next
+  // picture never opens at 300% and shoved off screen. The pan resets with
+  // it, inside ZoomPan, which watches the same two things.
+  useEffect(() => { setZoom(100); setNote(item.note ?? ""); setExpandPick(false); }, [item.assetId, item.note]);
 
   // ESC + arrows; body scroll lock.
   useEffect(() => {
@@ -97,6 +87,19 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
   const dims = item.width && item.height ? `${item.width} × ${item.height}` : null;
   const created = useMemo(() => new Intl.DateTimeFormat(locale, { dateStyle: "long", timeStyle: "short" })
     .format(new Date(item.createdAt)), [item.createdAt, locale]);
+
+  /** The storage object's extension, for the rare answer with no
+   *  Content-Type. Only ever a FALLBACK — the bytes decide, not the name. */
+  function mimeFromPath(path: string): string {
+    const ext = (path.split(".").pop() ?? "").toLowerCase();
+    if (ext === "png") return "image/png";
+    if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+    if (ext === "webp") return "image/webp";
+    if (ext === "avif") return "image/avif";
+    if (ext === "gif") return "image/gif";
+    if (ext === "tiff" || ext === "tif") return "image/tiff";
+    return "image/png";
+  }
 
   const fetchBlob = useCallback(async (): Promise<Blob | null> => {
     try {
@@ -135,32 +138,32 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
   }
 
   /**
-   * Convert + hand over through the LOCAL format tool, so the browser always
-   * receives bytes this app owns. `saveBlob` then decides how to deliver
-   * them: the native share sheet on a phone, a download elsewhere. A
-   * dismissed sheet is a decision, not a failure, so it says nothing.
+   * ONE CLICK, THE FILE THAT WAS GENERATED.
+   *
+   * This used to open a menu of formats — JPG, PNG, WEBP, TIFF, "original" —
+   * and every branch but the last ran the image back through the format tool
+   * on the server. So "Pobierz" meant a round trip, a re-encode and a new file
+   * that was not the thing the model produced, chosen from a list nobody asked
+   * for. Now the button is a button: fetch the asset's own bytes and hand them
+   * over, whatever they are. A PNG saves as a PNG, a WEBP as a WEBP.
+   *
+   * `item.url` is the ORIGINAL — the projection signs the derivatives
+   * separately as `thumbUrl` and `previewUrl`, and neither is used here — and
+   * `saveBlob` is the one save path in the product: the native share sheet on
+   * a phone, an anchor everywhere else, and never a redirect to the storage
+   * host. A dismissed share sheet is a decision, not a failure, so it says
+   * nothing.
    */
-  async function downloadAs(format: "jpeg" | "png" | "webp" | "tiff" | "original") {
-    setDlOpen(false);
-    const seed = item.product ?? item.model;
-    if (format === "original") {
-      const blob = await fetchBlob();
-      if (!blob) { toast.error(t("genv3.downloadFailed")); return; }
-      await saveBlob(blob, fileNameFor(seed, blob.type));
-      return;
-    }
-    const blob = await fetchBlob();
-    if (!blob) { toast.error(t("genv3.downloadFailed")); return; }
+  async function downloadOriginal() {
+    if (toolBusy) return;
     setToolBusy("download");
     try {
-      const fd = new FormData();
-      fd.set("tool", "format");
-      fd.set("file", new File([blob], "image", { type: blob.type || "image/png" }));
-      fd.set("settings", JSON.stringify({ format, width: null, height: null, quality: 92, fit: "inside" }));
-      const res = await fetch("/api/tools/run", { method: "POST", body: fd });
-      if (!res.ok) { toast.error(t("genv3.downloadFailed")); return; }
-      const out = await res.blob();
-      await saveBlob(out, fileNameFor(seed, out.type || `image/${format}`));
+      const blob = await fetchBlob();
+      if (!blob) { toast.error(t("genv3.downloadFailed")); return; }
+      // The storage object's own Content-Type, with the path's extension as
+      // the fallback for a bucket that answered with nothing useful.
+      const mime = blob.type || mimeFromPath(item.path);
+      await saveBlob(blob, fileNameFor(item.product ?? item.model, mime));
     } catch { toast.error(t("genv3.downloadFailed")); }
     finally { setToolBusy(null); }
   }
@@ -252,42 +255,37 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
                 <ChevronRight size={17} aria-hidden />
               </button>
             )}
-            {/* The layout box itself scales, so zoomed overflow starts at the
-                scroll origin and every edge stays reachable. */}
-            {compare && before ? (
-              <BeforeAfter before={before} after={item.url} beforeLabel={t("tools.before")} afterLabel={t("tools.after")} />
-            ) : (
-              <div className="h-full max-h-[64dvh] w-full overflow-auto lg:max-h-none">
-                <div className="mx-auto" style={{ width: `${zoom}%`, height: `${zoom}%`, minWidth: "100%", minHeight: "100%" }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={item.url} alt={item.product ?? ""} className="h-full w-full object-contain" />
-                </div>
-              </div>
-            )}
+            {/* ZOOM AND PAN. This used to be an `overflow-auto` box holding a
+                percentage-sized wrapper: it magnified, but reaching a corner
+                at 200% meant hunting for a scrollbar, and on a phone it meant
+                nothing at all. Now the picture is transformed inside a clipped
+                viewport and dragged with the pointer — see zoom-pan.tsx. */}
+            <div className="h-full max-h-[64dvh] w-full lg:max-h-none">
+              <ZoomPan src={item.url} alt={item.product ?? ""} zoom={zoom} />
+            </div>
             <div data-zoom-bar className="absolute bottom-2.5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/55 px-1.5 py-1 backdrop-blur">
-              <button type="button" aria-label={t("genv3.zoomOut")} disabled={zoom <= 50}
-                onClick={() => setZoom((z) => Math.max(50, z - 25))}
+              <button type="button" aria-label={t("genv3.zoomOut")} disabled={zoom <= ZOOM_MIN}
+                onClick={() => setZoom((z) => stepZoom(z, -1))}
                 className="flex h-7 w-7 items-center justify-center rounded-full text-white transition-colors hover:bg-white/15 disabled:opacity-40">
                 <Minus size={13} aria-hidden />
               </button>
               <span className="w-12 text-center text-[11.5px] font-bold tabular-nums text-white">{zoom}%</span>
-              <button type="button" aria-label={t("genv3.zoomIn")} disabled={zoom >= 200}
-                onClick={() => setZoom((z) => Math.min(200, z + 25))}
+              <button type="button" aria-label={t("genv3.zoomIn")} disabled={zoom >= ZOOM_MAX}
+                onClick={() => setZoom((z) => stepZoom(z, 1))}
                 className="flex h-7 w-7 items-center justify-center rounded-full text-white transition-colors hover:bg-white/15 disabled:opacity-40">
                 <Plus size={13} aria-hidden />
               </button>
               <span aria-hidden className="mx-0.5 h-4 w-px bg-white/25" />
-              {before && (
-                <button type="button" aria-pressed={compare} data-compare-toggle
-                  aria-label={t("tools.compare")} title={t("tools.compare")}
-                  onClick={() => setCompare((v) => !v)}
-                  className={cn("flex h-7 items-center gap-1 rounded-full px-2 text-[11px] font-semibold transition-colors",
-                    compare ? "bg-white/25 text-white" : "text-white hover:bg-white/15")}>
-                  <Columns2 size={13} aria-hidden />
-                  <span className="hidden sm:inline">{t("tools.compare")}</span>
-                </button>
-              )}
-              <button type="button" aria-label={t("genv3.fullImage")} onClick={() => setFullscreen(true)}
+              {/* NO "PRZED / PO" HERE ANY MORE. The comparison belonged to a
+                  tool's own workbench, not to the viewer for a finished file:
+                  in this modal it turned the one thing the screen is for —
+                  looking at the picture — into a mode you could be stuck in.
+                  The tools' own before/after and the CMS widget are untouched;
+                  this modal's copy was local to this file. */}
+              <button type="button" aria-label={t("genv3.fullImage")}
+                // Fitting the whole image means starting from the top: back to
+                // 100%, centred, and then the overlay.
+                onClick={() => { setZoom(100); setFullscreen(true); }}
                 className="flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-semibold text-white transition-colors hover:bg-white/15">
                 <Maximize2 size={13} aria-hidden />
                 <span className="hidden sm:inline">{t("genv3.fullImage")}</span>
@@ -450,25 +448,14 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
               <Link2 size={13} aria-hidden className="shrink-0 text-muted" />
               <span className="truncate">{t("genv3.copyUrl")}</span>
             </button>
-            <div className="relative min-w-0">
-              <button type="button" aria-expanded={dlOpen} onClick={() => setDlOpen(!dlOpen)}
-                disabled={toolBusy === "download"} data-download-btn title={t("genv3.downloadImage")}
-                className="plate flex h-11 w-full items-center justify-center gap-1.5 rounded-xl px-2 text-[12px] font-semibold text-ink transition-colors hover:bg-raised">
-                {toolBusy === "download" ? <Loader2 size={13} className="shrink-0 animate-spin" aria-hidden />
-                  : <Download size={13} aria-hidden className="shrink-0 text-muted" />}
-                <span className="truncate">{t("genv3.downloadImage")}</span>
-                <ChevronDown size={12} aria-hidden className={cn("shrink-0 text-faint transition-transform", dlOpen && "rotate-180")} />
-              </button>
-              {dlOpen && (
-                <div className="panel absolute bottom-12 right-0 z-20 w-52 rounded-xl p-1 shadow-e3">
-                  <DlItem label="JPG" sub={t("genv3.dlJpg")} onClick={() => downloadAs("jpeg")} />
-                  <DlItem label="PNG" sub={t("genv3.dlPng")} onClick={() => downloadAs("png")} />
-                  <DlItem label="WEBP" sub={t("genv3.dlWebp")} onClick={() => downloadAs("webp")} />
-                  <DlItem label="TIFF" sub={t("genv3.dlTiff")} onClick={() => downloadAs("tiff")} />
-                  <DlItem label={t("genv3.dlOriginal")} sub={t("genv3.dlOriginalSub")} onClick={() => downloadAs("original")} />
-                </div>
-              )}
-            </div>
+            {/* No menu, no chevron: the same plate as its two neighbours. */}
+            <button type="button" onClick={downloadOriginal}
+              disabled={toolBusy === "download"} data-download-btn title={t("genv3.downloadImage")}
+              className="plate flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 text-[12px] font-semibold text-ink transition-colors hover:bg-raised disabled:opacity-60">
+              {toolBusy === "download" ? <Loader2 size={13} className="shrink-0 animate-spin" aria-hidden />
+                : <Download size={13} aria-hidden className="shrink-0 text-muted" />}
+              <span className="truncate">{t("genv3.downloadImage")}</span>
+            </button>
           </div>
 
           {/* The one thing this panel exists to lead to, at full width. */}
@@ -767,16 +754,6 @@ function EditTile({ icon: Icon, title, sub, onClick, disabled, soonLabel, busy }
   );
 }
 
-function DlItem({ label, sub, onClick }: { label: string; sub: string; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick}
-      className="flex w-full items-baseline justify-between gap-2 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-sunken">
-      <span className="text-[12.5px] font-bold">{label}</span>
-      <span className="truncate text-[10.5px] text-faint">{sub}</span>
-    </button>
-  );
-}
-
 async function toPng(blob: Blob): Promise<Blob> {
   const bmp = await createImageBitmap(blob);
   const canvas = document.createElement("canvas");
@@ -786,62 +763,3 @@ async function toPng(blob: Blob): Promise<Blob> {
     canvas.toBlob((b) => b ? resolve(b) : reject(new Error("png")), "image/png"));
 }
 
-/**
- * PRZED / PO — one image over the other, split by a divider the customer
- * drags. Pointer events, not mouse events, so a finger works exactly like a
- * cursor; the divider is also a slider for the keyboard. The "before" is
- * clipped rather than resized, so both halves stay in register at any width.
- */
-function BeforeAfter({ before, after, beforeLabel, afterLabel }: {
-  before: string; after: string; beforeLabel: string; afterLabel: string;
-}) {
-  const [pct, setPct] = useState(50);
-  const boxRef = useRef<HTMLDivElement>(null);
-  const dragging = useRef(false);
-
-  const setFromClientX = (clientX: number) => {
-    const box = boxRef.current?.getBoundingClientRect();
-    if (!box || box.width === 0) return;
-    setPct(Math.min(100, Math.max(0, ((clientX - box.left) / box.width) * 100)));
-  };
-
-  return (
-    <div
-      ref={boxRef}
-      data-before-after
-      className="relative h-full max-h-[64dvh] w-full touch-none select-none overflow-hidden lg:max-h-none"
-      onPointerDown={(e) => { dragging.current = true; e.currentTarget.setPointerCapture(e.pointerId); setFromClientX(e.clientX); }}
-      onPointerMove={(e) => { if (dragging.current) setFromClientX(e.clientX); }}
-      onPointerUp={(e) => { dragging.current = false; e.currentTarget.releasePointerCapture(e.pointerId); }}
-      onPointerCancel={() => { dragging.current = false; }}
-      onTouchStart={(e) => { const p = e.touches[0]; if (p) setFromClientX(p.clientX); }}
-      onTouchMove={(e) => { const p = e.touches[0]; if (p) setFromClientX(p.clientX); }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={after} alt="" className="h-full w-full object-contain" draggable={false} />
-      <div className="absolute inset-0" style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={before} alt="" className="h-full w-full object-contain" draggable={false} />
-      </div>
-      <span aria-hidden className="pointer-events-none absolute inset-y-0 w-0.5 bg-white/80 shadow-[0_0_10px_rgb(0_0_0/0.5)]"
-        style={{ left: `${pct}%` }} />
-      <span aria-hidden className="pointer-events-none absolute top-1/2 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white text-black shadow-e3"
-        style={{ left: `${pct}%` }}>
-        <Columns2 size={13} />
-      </span>
-      <span className="pointer-events-none absolute left-2.5 top-2.5 rounded-lg bg-black/60 px-2 py-1 text-[10.5px] font-bold uppercase tracking-wide text-white backdrop-blur">
-        {beforeLabel}
-      </span>
-      <span className="pointer-events-none absolute right-2.5 top-2.5 rounded-lg bg-black/60 px-2 py-1 text-[10.5px] font-bold uppercase tracking-wide text-white backdrop-blur">
-        {afterLabel}
-      </span>
-      {/* The same control for a keyboard: arrows move the split. */}
-      <input
-        type="range" min={0} max={100} value={Math.round(pct)}
-        onChange={(e) => setPct(Number(e.target.value))}
-        aria-label={`${beforeLabel} / ${afterLabel}`}
-        className="absolute bottom-2 left-1/2 w-1/2 -translate-x-1/2 cursor-pointer accent-[rgb(var(--accent))] opacity-0 focus-visible:opacity-100"
-      />
-    </div>
-  );
-}

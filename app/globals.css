@@ -1012,10 +1012,22 @@ h2 { letter-spacing: -0.022em; line-height: 1.15; }
 }
 
 /* Pressed feedback: everything tappable acknowledges the touch within 120ms.
-   On mobile this is most of the perceived quality of the product. */
+   On mobile this is most of the perceived quality of the product.
+
+   IT USES `translate`/`scale`, NOT `transform`, AND THAT IS NOT A STYLE
+   CHOICE. `transform` is one property: writing it here REPLACED whatever
+   transform the button already had — and the buttons that centre themselves
+   with `-translate-y-1/2` (the next/prev chevrons over an image, the zoom bar,
+   every `left-1/2 -translate-x-1/2` pill) are positioned BY that transform.
+   Pressing one dropped it 18px, out from under the finger that was pressing
+   it, so mouseup landed on whatever was behind and the click never fired: the
+   chevrons in the details modal simply did not work when clicked in the
+   middle. Measured, not guessed — a browser probe could not click "Następny".
+   The individual properties compose with `transform` instead of overwriting
+   it, so the press reads identically and the centring survives it. */
 @media (prefers-reduced-motion: no-preference) {
-  button:active:not(:disabled), .brand-gradient:active, .cta:active:not(:disabled) { transform: translateY(1px) scale(0.994); }
-  button, a { transition: transform 120ms cubic-bezier(0.2, 0.9, 0.2, 1), color 150ms ease, background-color 150ms ease, border-color 150ms ease, box-shadow 180ms ease; }
+  button:active:not(:disabled), .brand-gradient:active, .cta:active:not(:disabled) { translate: 0 1px; scale: 0.994; }
+  button, a { transition: transform 120ms cubic-bezier(0.2, 0.9, 0.2, 1), translate 120ms cubic-bezier(0.2, 0.9, 0.2, 1), scale 120ms cubic-bezier(0.2, 0.9, 0.2, 1), color 150ms ease, background-color 150ms ease, border-color 150ms ease, box-shadow 180ms ease; }
 }
 
 /* Skeletons: a slow sweep rather than a blinking block, so a loading screen
