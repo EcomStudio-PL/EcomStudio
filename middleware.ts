@@ -78,15 +78,23 @@ export async function middleware(request: NextRequest) {
    * landing behind it was replaced. So the mapping is data the panel owns,
    * read here from an instance-level cache — a map lookup, not a query.
    *
-   * Only ordinary page loads are redirected: an API call, an RSC navigation
-   * payload or a prefetch that gets a 30x back is a broken response, not a
-   * moved page.
+   * Only ordinary page loads are redirected: an API call or an RSC navigation
+   * payload that gets a 30x back is a broken response, not a moved page.
+   *
+   * THE ACCEPT HEADER IS NOT PART OF THE TEST, and requiring `text/html` here
+   * was a bug: a campaign link is pasted into a messenger long before anybody
+   * clicks it, and the crawler that fetches it to build the preview card sends
+   * a wildcard Accept. So do curl, link checkers and uptime monitors. Each of them
+   * would have been told the campaign address does not exist while a browser
+   * was redirected correctly — the worst shape of failure, because the people
+   * running the campaign would never see it. `rsc` and the prefetch header are
+   * what actually distinguish a navigation payload from a page load.
    */
   if (request.method === "GET"
     && !request.nextUrl.pathname.startsWith("/api")
     && !request.nextUrl.pathname.startsWith("/_next")
     && request.headers.get("rsc") !== "1"
-    && (request.headers.get("accept") ?? "").includes("text/html")) {
+    && request.headers.get("next-router-prefetch") !== "1") {
     const hit = await matchRedirect(request.nextUrl.pathname);
     if (hit) {
       const destination = /^https:\/\//i.test(hit.target)

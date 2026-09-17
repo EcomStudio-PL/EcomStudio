@@ -74,8 +74,20 @@ export async function getRedirects(): Promise<Map<string, Redirect>> {
   // turn into twenty identical queries.
   if (!inflight) {
     inflight = load()
-      .then((rows) => { cache = { at: Date.now(), rows }; return rows; })
-      .catch(() => {
+      .then((rows) => {
+        cache = { at: Date.now(), rows };
+        // A refresh happens at most once a minute per instance, and it is the
+        // only evidence that the routing table is being read at all — without
+        // it, "the redirect did not fire" and "the table never loaded" look
+        // identical from the outside.
+        console.info(`[redirects] loaded ${rows.size}`);
+        return rows;
+      })
+      .catch((error) => {
+        // SILENCE WAS THE BUG. A redirect table that cannot be read makes every
+        // campaign address 404 while everything else keeps working, so it has
+        // to say so somewhere.
+        console.warn("[redirects] load failed:", error instanceof Error ? error.message : error);
         // Keep whatever we had; an empty map only on the very first failure.
         if (cache) { cache = { at: Date.now(), rows: cache.rows }; return cache.rows; }
         cache = { at: Date.now(), rows: new Map() };

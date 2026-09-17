@@ -141,6 +141,24 @@ check("a nested campaign path is fine", !sourceIsProtected("/promo/2x-kredyty"))
 check("a path that merely starts with a reserved word is fine",
   !sourceIsProtected("/toolsy-promo"));
 
+/**
+ * AND THE GUARD IN FRONT OF THE LOOKUP.
+ *
+ * The first version required `Accept: text/html`, which meant a browser was
+ * redirected and every messenger's link-preview crawler, curl and uptime
+ * monitor was told the campaign address did not exist. A failure only
+ * non-browsers could see is one nobody would have reported.
+ */
+{
+  const mw = readFileSync(`${process.cwd()}/middleware.ts`, "utf8");
+  const start = mw.indexOf("export async function middleware");
+  const guard = mw.slice(start, mw.indexOf("matchRedirect(", start));
+  check("the redirect guard does not depend on the Accept header",
+    !/accept/i.test(guard.replace(/\/\*[\s\S]*?\*\//g, "")));
+  check("…but it still skips RSC payloads and prefetches",
+    guard.includes('"rsc"') && guard.includes('"next-router-prefetch"'));
+}
+
 /* ═══════════════════════════════════════════════════════════════════════ */
 console.log("\nD. A SECTION APPEARS WHEN IT SHOULD, FOR WHOM IT SHOULD");
 
