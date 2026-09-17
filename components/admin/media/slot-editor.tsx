@@ -164,7 +164,10 @@ export function SlotEditor({ def, row, library, entityName }: {
             <button key={key} type="button" onClick={() => setDevice(key)}
               aria-pressed={device === key} data-preview-device={key}
               className={cn(
-                "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11.5px] font-semibold transition-colors",
+                // 32px, not the 25 that `Segmented size="sm"` gives: this row
+                // is the control an operator taps most on a phone, and a
+                // quarter-inch target next to two others is a mis-tap.
+                "flex min-h-[32px] flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-2 text-[11.5px] font-semibold transition-colors",
                 device === key ? "bg-surface text-accent shadow-e1" : "text-muted hover:text-ink",
               )}>
               <Icon size={13} aria-hidden />

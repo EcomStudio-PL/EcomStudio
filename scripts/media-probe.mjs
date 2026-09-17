@@ -132,12 +132,76 @@ export default function Page() {
 }
 `;
 
+
+/* The ADMIN screen, at phone widths. §20 of the brief is a sentence — "zero
+ * horizontal scroll" — and it is the one thing about an admin panel that is
+ * either true or false and cannot be argued about. */
+const ADMIN_SRC = `"use client";
+import { I18nProvider } from "@/lib/i18n/provider";
+import { SlotsPanel } from "@/components/admin/media/slots-panel";
+import { BannerEditor } from "@/components/admin/media/banner-editor";
+import { MEDIA_SLOTS, bannerSlotKey } from "@/lib/media-slots";
+import type { LibraryItem, SlotRow, BannerRow } from "@/lib/services/media-slots";
+import dict from "@/lib/i18n/dictionaries/pl.json";
+
+const LIBRARY: LibraryItem[] = [
+  { id: "a1", kind: "image", url: "${DESKTOP}", posterUrl: null,
+    title: "zdjecie-produktowe-bardzo-dluga-nazwa-pliku.png", alt: null, folder: "kampanie",
+    tags: [], width: 1600, height: 1000, sizeBytes: 482000, mime: "image/png",
+    createdAt: "2026-01-01T00:00:00Z" },
+  { id: "a2", kind: "video", url: "/probe-clip.mp4", posterUrl: "${DESKTOP}",
+    title: "klip.mp4", alt: null, folder: null, tags: [], width: null, height: null,
+    sizeBytes: 9400000, mime: "video/mp4", createdAt: "2026-01-02T00:00:00Z" },
+];
+
+const CONFIGURED: SlotRow = {
+  slotKey: "dashboard.category.moda.card", mediaType: "image", mediaId: "a1",
+  tabletMediaId: null, mobileMediaId: null, posterMediaId: null,
+  altText: "Kafelek Moda", objectFit: "cover", objectPosition: "right bottom",
+  autoplay: true, muted: true, loop: true, controls: false, enabled: true,
+  updatedAt: null, updatedBy: null,
+};
+
+const GROUPS = ["moda", "ecommerce", "social", "mailing", "inne", "matching", "x1", "x2"]
+  .map((id, i) => ({
+    id, name: i < 6 ? "Kategoria " + id : "Dodatkowa " + id, sub: "/k/" + id,
+    slots: MEDIA_SLOTS.filter((s) => s.entityType === "category" && s.entityId === id)
+      .map((def) => ({ def, row: def.slotName === "card" ? CONFIGURED : null })),
+  }))
+  .filter((g) => g.slots.length > 0);
+
+const BANNERS: BannerRow[] = [{
+  bannerKey: "dashboard.promo", placement: "dashboard",
+  label: { pl: "Promocja" }, body: { pl: "Tresc" }, ctaLabel: { pl: "Sprawdz" },
+  ctaUrl: "/tools", active: true, startsAt: null, endsAt: null, sortOrder: 10,
+  slotKey: bannerSlotKey("dashboard.promo"),
+}];
+
+export default function Page() {
+  return (
+    <I18nProvider locale="pl" dict={dict}>
+      <div className="min-h-dvh bg-bg p-4">
+        <section data-probe="admin-slots">
+          <SlotsPanel groups={GROUPS} library={LIBRARY} emptyLabel="brak" />
+        </section>
+        <section data-probe="admin-banners" className="mt-6">
+          <BannerEditor banners={BANNERS} library={LIBRARY}
+            slotRows={{ [bannerSlotKey("dashboard.promo")]: null }} />
+        </section>
+      </div>
+    </I18nProvider>
+  );
+}
+`;
+
 const WIDTHS = [320, 360, 390, 414, 639, 640, 768, 834, 1023, 1024, 1280, 1440, 1920];
 
 if (process.argv.includes("--harness")) {
   fs.mkdirSync(DIR, { recursive: true });
   fs.writeFileSync(`${DIR}/fixture.ts`, FIXTURE_SRC);
   fs.writeFileSync(`${DIR}/page.tsx`, PAGE_SRC);
+  fs.mkdirSync(`${DIR}/admin`, { recursive: true });
+  fs.writeFileSync(`${DIR}/admin/page.tsx`, ADMIN_SRC);
   console.log(`harness written to ${DIR}`);
   process.exit(0);
 }
@@ -332,6 +396,76 @@ for (const theme of ["light", "dark"]) {
   }, sel);
   check("prefers-reduced-motion stops the loop and offers a control",
     calm.autoplay === false && calm.controls === true, JSON.stringify(calm));
+}
+
+
+/* ── THE ADMIN SCREEN ON A PHONE ─────────────────────────────────────── */
+for (const width of [320, 360, 390, 414, 768, 1280]) {
+  const page = await browser.newPage({ viewport: { width, height: 900 } });
+  await page.goto(`${BASE}/probe-tmp/media/admin`, { waitUntil: "networkidle" });
+  const label = `admin ${width}px`;
+
+  // Open a group so the editor itself — the widest thing on the screen — is
+  // measured rather than assumed.
+  await page.locator("[data-slot-group] button").first().click();
+  await page.waitForTimeout(150);
+  // And open "Zaawansowane", which holds the 3×3 grid and the toggles.
+  const adv = page.locator('[data-slot-editor] button[aria-expanded]').first();
+  if (await adv.count()) { await adv.click(); await page.waitForTimeout(150); }
+
+  const r = await page.evaluate(() => {
+    const q = (s) => [...document.querySelectorAll(s)];
+    const over = q("*").filter((el) => {
+      const b = el.getBoundingClientRect();
+      return b.width > 0 && (b.right > document.documentElement.clientWidth + 1 || b.left < -1);
+    }).slice(0, 4).map((el) => `${el.tagName}.${(el.className || "").toString().slice(0, 40)}`);
+    // EFFECTIVE hit area, not the painted box. The house Switch is a 24px
+    // pill with `after:-inset-2.5`, i.e. a 44px target — measuring the button
+    // alone would fail a control that is in fact the most thumb-friendly
+    // thing on the screen.
+    const hitBox = (el) => {
+      const b = el.getBoundingClientRect();
+      const a = getComputedStyle(el, "::after");
+      if (!a || a.content === "none") return b.height;
+      const grow = (v) => { const n = parseFloat(v); return Number.isFinite(n) && n < 0 ? -n : 0; };
+      return b.height + grow(a.top) + grow(a.bottom);
+    };
+    const tap = q("[data-slot-editor] button").filter((el) => {
+      const b = el.getBoundingClientRect();
+      return b.width > 0 && b.height > 0 && hitBox(el) < 28;
+    }).length;
+    return {
+      scrollW: document.documentElement.scrollWidth,
+      clientW: document.documentElement.clientWidth,
+      editors: q("[data-slot-editor]").length,
+      previews: q("[data-slot-preview]").length,
+      devices: q("[data-preview-device]").length,
+      positions: q("[data-position]").length,
+      groups: q("[data-slot-group]").length,
+      banners: q("[data-banner]").length,
+      saves: q("[data-slot-save]").length,
+      overflowing: over,
+      smallTargets: tap,
+    };
+  });
+
+  check(`${label}: zero horizontal scroll`,
+    r.scrollW <= r.clientW + 1, `${r.scrollW} > ${r.clientW}`);
+  check(`${label}: nothing sticks out of the viewport`,
+    r.overflowing.length === 0, `${r.overflowing}`);
+  check(`${label}: the opened group shows its editors`, r.editors >= 1, `${r.editors}`);
+  check(`${label}: each editor previews the card`, r.previews === r.editors,
+    `${r.previews}/${r.editors}`);
+  check(`${label}: each editor offers all three devices`,
+    r.devices === r.editors * 3, `${r.devices}`);
+  check(`${label}: the position picker is the full 3×3`,
+    r.positions === 9, `${r.positions}`);
+  check(`${label}: every category is listed as a group`, r.groups === 6, `${r.groups}`);
+  check(`${label}: the banner editor renders`, r.banners === 1, `${r.banners}`);
+  check(`${label}: the editor has a save`, r.saves >= 1, `${r.saves}`);
+  check(`${label}: every control has a 28px+ hit area`, r.smallTargets === 0, `${r.smallTargets}`);
+
+  await page.close();
 }
 
 await browser.close();
