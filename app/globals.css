@@ -1732,3 +1732,162 @@ body:has(.workspace-page)::after { display: none; }
   outline: 2px solid rgb(var(--accent) / 0.55);
   outline-offset: 3px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PUBLIC PAGES — the CMS section frame.
+
+   Every section rendered by the page builder wears `.cms-sec` and carries its
+   spacing, width, alignment and column count as custom properties (see
+   lib/cms-style.ts). The three rules below are the ONLY place those variables
+   are read, which is why a thirty-section page ships one stylesheet instead
+   of thirty inline ones.
+
+   The cascade is deliberate: a value set only for `base` is used at every
+   width; a tablet override applies from 1023px down; a mobile override from
+   639px down. Nothing is duplicated and nothing needs a second page.
+
+   These rules are scoped to `.cms-sec`. They cannot reach the client
+   dashboard or the admin panel, which never render one.
+   ═══════════════════════════════════════════════════════════════════════ */
+.cms-sec {
+  padding-top: var(--cms-pt, 3rem);
+  padding-bottom: var(--cms-pb, 3rem);
+  text-align: var(--cms-align, left);
+  background: var(--cms-bg, transparent);
+  position: relative;
+}
+/* The inner column is what the width preset constrains — the background
+   itself always spans the full bleed, which is how a "sekcja z tłem" is
+   supposed to look. */
+.cms-sec > .cms-in {
+  margin-inline: auto;
+  width: 100%;
+  max-width: var(--cms-w, 72rem);
+  padding-inline: var(--page-x, 1rem);
+}
+.cms-sec .cms-grid {
+  display: grid;
+  gap: clamp(0.75rem, 1.8vw, 1.25rem);
+  grid-template-columns: repeat(var(--cms-cols, 3), minmax(0, 1fr));
+}
+/* A centred section centres its own blocks too, not only its text. */
+.cms-sec[style*="--cms-align: center"] .cms-center-x,
+.cms-sec[style*="--cms-align:center"] .cms-center-x { margin-inline: auto; }
+
+.cms-panel > .cms-in {
+  border: 1px solid rgb(var(--line));
+  background: rgb(var(--surface));
+  border-radius: 1.5rem;
+  padding: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+@media (max-width: 1023px) {
+  .cms-sec {
+    padding-top: var(--cms-pt-t, var(--cms-pt, 3rem));
+    padding-bottom: var(--cms-pb-t, var(--cms-pb, 3rem));
+    text-align: var(--cms-align-t, var(--cms-align, left));
+  }
+  .cms-sec > .cms-in { max-width: var(--cms-w-t, var(--cms-w, 72rem)); }
+  .cms-sec .cms-grid {
+    /* Two columns is the tablet default whatever the desktop asked for: a
+       six-across grid at 768px is six unreadable slivers. An admin who wants
+       three on a tablet sets it, and --cms-cols-t wins.
+       Deliberately NOT min(var(--cms-cols), 2): repeat() wants an integer and
+       browser support for a math function in that position is not uniform. */
+    grid-template-columns: repeat(var(--cms-cols-t, 2), minmax(0, 1fr));
+  }
+  .cms-hide-t { display: none !important; }
+}
+@media (max-width: 639px) {
+  .cms-sec {
+    padding-top: var(--cms-pt-m, var(--cms-pt-t, var(--cms-pt, 3rem)));
+    padding-bottom: var(--cms-pb-m, var(--cms-pb-t, var(--cms-pb, 3rem)));
+    text-align: var(--cms-align-m, var(--cms-align-t, var(--cms-align, left)));
+  }
+  .cms-sec > .cms-in { max-width: 100%; }
+  .cms-sec .cms-grid { grid-template-columns: repeat(var(--cms-cols-m, 1), minmax(0, 1fr)); }
+  .cms-hide-m { display: none !important; }
+}
+@media (min-width: 1024px) {
+  .cms-hide-d { display: none !important; }
+}
+
+/* RICH TEXT and LEGAL DOCUMENTS. Authored markup arrives sanitised and
+   unstyled — Tailwind's preflight has already flattened headings and lists,
+   so without these a Regulamin would render as one undifferentiated column of
+   identical grey lines. */
+.cms-rt { color: rgb(var(--muted)); line-height: 1.75; }
+.cms-rt > :first-child { margin-top: 0; }
+.cms-rt h2 {
+  color: rgb(var(--ink));
+  font-weight: 600;
+  font-size: clamp(1.15rem, 2.2vw, 1.5rem);
+  letter-spacing: -0.01em;
+  margin: 2.25rem 0 0.75rem;
+  scroll-margin-top: 5rem;
+}
+.cms-rt h3 {
+  color: rgb(var(--ink));
+  font-weight: 600;
+  font-size: 1.0625rem;
+  margin: 1.75rem 0 0.5rem;
+  scroll-margin-top: 5rem;
+}
+.cms-rt p { margin: 0.85rem 0; }
+.cms-rt ul, .cms-rt ol { margin: 0.85rem 0; padding-left: 1.4rem; }
+.cms-rt ul { list-style: disc; }
+.cms-rt ol { list-style: decimal; }
+.cms-rt li { margin: 0.35rem 0; }
+.cms-rt strong { color: rgb(var(--ink)); font-weight: 600; }
+.cms-rt a { color: rgb(var(--accent)); text-underline-offset: 3px; }
+.cms-rt a:hover { text-decoration: underline; }
+.cms-rt blockquote {
+  border-left: 3px solid rgb(var(--accent) / 0.4);
+  padding-left: 1rem;
+  margin: 1.25rem 0;
+  font-style: italic;
+}
+.cms-rt table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  font-size: 0.9rem;
+  /* A wide table on a 320px phone must scroll, not push the page sideways. */
+  display: block;
+  overflow-x: auto;
+}
+.cms-rt th, .cms-rt td {
+  border: 1px solid rgb(var(--line));
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+.cms-rt th { color: rgb(var(--ink)); font-weight: 600; background: rgb(var(--raised) / 0.6); }
+.cms-rt code {
+  background: rgb(var(--raised));
+  border-radius: 0.375rem;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.875em;
+}
+.cms-rt hr { border: 0; border-top: 1px solid rgb(var(--line)); margin: 2rem 0; }
+.cms-rt img { max-width: 100%; height: auto; border-radius: 0.75rem; }
+
+/* A custom block that threw, or whose HTML sanitised down to nothing. In
+   production the section is skipped entirely; this is what the admin preview
+   shows in its place, so a broken block is visible to the person who can fix
+   it and invisible to everyone else. */
+.cms-broken {
+  border: 1px dashed rgb(var(--caution, 234 179 8) / 0.5);
+  border-radius: 1rem;
+  padding: 1.25rem;
+  font-size: 0.8125rem;
+  color: rgb(var(--muted));
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cms-sec * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

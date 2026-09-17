@@ -33,10 +33,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // filter, and the launch page has no URL of its own.
   const supabase = await createClient();
   const { data } = await supabase.from("cms_pages")
-    .select("slug, published_at, kind, status")
+    .select("slug, published_at, kind, status, seo")
     .eq("status", "published");
   const managed = (data ?? [])
-    .filter((p) => p.kind !== "launch" && !RESERVED_SLUGS.has(p.slug))
+    // A page an admin marked "nie indeksuj" must not be advertised here
+    // either. Both read the same column, so the sitemap and the page's own
+    // robots meta can never disagree — see lib/server/cms-page.ts.
+    .filter((p) => p.kind !== "launch" && !RESERVED_SLUGS.has(p.slug) && !isNoindex(p.seo))
     .map((p) => ({
       url: absoluteUrl(p.slug === "home" ? "/" : `/${p.slug}`),
       lastModified: p.published_at ? new Date(p.published_at) : now,
@@ -47,4 +50,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // The fixed list wins on collisions (home and the two legal pages).
   const seen = new Set(fixed.map((e) => e.url));
   return [...fixed, ...managed.filter((e) => !seen.has(e.url))];
+}
+
+function isNoindex(seo: unknown): boolean {
+  return Boolean(seo && typeof seo === "object" && (seo as { noindex?: unknown }).noindex === true);
 }

@@ -148,11 +148,22 @@ export async function deleteFlagAction(id: string): Promise<Result> {
 
 const SAFE_URL = /^https:\/\//;
 
+/**
+ * Save or update a media row.
+ *
+ * Returns the row's ID on success, which the uploader needs: the derivative
+ * route (/api/admin/media/derive) is called with it straight afterwards, so a
+ * freshly uploaded picture gains its real dimensions and its smaller copies
+ * without the person who uploaded it waiting for either.
+ */
 export async function saveMediaAssetAction(input: {
   id?: string; kind: "image" | "video" | "file"; storagePath?: string | null;
   externalUrl?: string | null; posterUrl?: string | null; alt?: string; title?: string;
   mime?: string; sizeBytes?: number;
-}): Promise<Result> {
+  /** A folder is a plain label, not a path — the storage layout is flat. */
+  folder?: string | null;
+  tags?: string[];
+}): Promise<Result & { id?: string }> {
   try {
     const { supabase, adminId } = await requireAdmin();
     if (!input.storagePath && !input.externalUrl) return { ok: false, error: "invalid" };
@@ -162,26 +173,50 @@ export async function saveMediaAssetAction(input: {
       kind: input.kind, storage_path: input.storagePath ?? null, external_url: input.externalUrl ?? null,
       poster_url: input.posterUrl ?? null, alt: input.alt ?? null, title: input.title ?? null,
       mime: input.mime ?? null, size_bytes: input.sizeBytes ?? null,
+      ...(input.folder === undefined ? {} : { folder: input.folder?.trim().slice(0, 60) || null }),
+      ...(input.tags === undefined ? {} : {
+        tags: input.tags.map((t) => t.trim().toLowerCase().slice(0, 40)).filter(Boolean).slice(0, 12),
+      }),
+      updated_at: new Date().toISOString(),
     };
-    const { error } = input.id
-      ? await supabase.from("media_assets").update(row).eq("id", input.id)
-      : await supabase.from("media_assets").insert({ ...row, created_by: adminId });
-    if (error) return { ok: false, error: "generic" };
+    const { data, error } = input.id
+      ? await supabase.from("media_assets").update(row).eq("id", input.id).select("id").single()
+      : await supabase.from("media_assets").insert({ ...row, created_by: adminId }).select("id").single();
+    if (error || !data) return { ok: false, error: "generic" };
     revalidatePath("/admin/media");
-    return { ok: true };
+    return { ok: true, id: data.id };
   } catch { return { ok: false, error: "generic" }; }
 }
 
 export async function deleteMediaAssetAction(id: string): Promise<Result> {
   try {
     const { supabase } = await requireAdmin();
-    const { data: asset } = await supabase.from("media_assets").select("storage_path").eq("id", id).maybeSingle();
-    if (asset?.storage_path) await supabase.storage.from("media").remove([asset.storage_path]);
+    const { data: asset } = await supabase.from("media_assets")
+      .select("storage_path, variants").eq("id", id).maybeSingle();
+    if (asset?.storage_path) {
+      // The original AND its derivatives. Deleting only the original would
+      // leave orphaned WebP files nothing ever reads and nothing ever removes.
+      const paths = [asset.storage_path, ...derivativePaths(asset.storage_path, asset.variants)];
+      await supabase.storage.from("media").remove(paths);
+    }
     const { error } = await supabase.from("media_assets").delete().eq("id", id);
     if (error) return { ok: false, error: "generic" };
     revalidatePath("/admin/media");
     return { ok: true };
   } catch { return { ok: false, error: "generic" }; }
+}
+
+/** The stored paths of an asset's generated copies, derived the same way
+ *  /api/admin/media/derive names them. */
+function derivativePaths(storagePath: string, variants: unknown): string[] {
+  if (!variants || typeof variants !== "object") return [];
+  const dot = storagePath.lastIndexOf(".");
+  const stem = dot > 0 ? storagePath.slice(0, dot) : storagePath;
+  return Object.keys(variants as Record<string, unknown>)
+    .map((edge) => `${stem}_w${edge}.webp`)
+    // The original's own width is a key in `variants` and points at the
+    // original, which is removed separately — never twice.
+    .filter((p) => p !== storagePath);
 }
 
 // ---------- CMS ----------

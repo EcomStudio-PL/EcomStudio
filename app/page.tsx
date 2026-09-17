@@ -1,24 +1,21 @@
-import Link from "next/link";
 import type { Metadata } from "next";
-import { unstable_cache } from "next/cache";
-import { createClient as createAnonClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase/config";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
-import { AuthLink } from "@/components/auth/auth-link";
-import { Brand } from "@/components/layout/brand";
-import { BlockRenderer } from "@/components/cms/blocks";
+import { BlockRenderer, renderContext } from "@/components/cms/blocks";
+import { AnnouncementBar, SiteHeader, SiteFooter } from "@/components/cms/site-shell";
 import { LaunchPage } from "@/components/launch/launch-page";
 import {
   getHomepageMode, getLaunchStore, resolveLaunchContent, launchFieldsFromBlocks,
 } from "@/lib/server/launch-page";
-import { getPublicSite, getPublishedPage, getDraftBlocks } from "@/lib/server/public-site";
+import {
+  getGlobalSections, getNavPages, getPublicSite, getPublishedPage, getDraftBlocks,
+} from "@/lib/server/public-site";
+import { collectMediaUrls, loadMediaIndex } from "@/lib/server/cms-media";
+import { loadLiveData } from "@/lib/server/cms-data";
 import { getRegistrationConfig } from "@/lib/server/registration-config";
 import { getPlatformAccess } from "@/lib/server/platform-access";
 import { DEFAULT_HOME_BLOCKS } from "@/lib/cms-defaults";
-import type { CmsBlock } from "@/lib/cms";
-import { formatCredits, formatPrice } from "@/lib/utils";
 
 /**
  * The title and description follow whichever front door is live: before the
@@ -119,119 +116,47 @@ export default async function LandingPage({ searchParams }: {
       />
     );
   }
-  // The CMS snapshot and the plan table are identical for every visitor, so
-  // anonymous landing hits are served from a 5-minute cache instead of two
-  // DB round-trips. Only the auth check stays per-request. The cached client
-  // is anonymous on purpose — nothing user-scoped may live in this closure.
-  const loadLandingContent = unstable_cache(
-    async () => {
-      const anon = createAnonClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      const [{ data: page }, { data: plans }] = await Promise.all([
-        anon.from("cms_pages").select("published_snapshot, status").eq("slug", "home").maybeSingle(),
-        anon.from("subscription_plans").select("name, price_cents, currency, monthly_credits, featured, slug")
-          .eq("active", true).order("sort_order").limit(4),
-      ]);
-      return { page, plans };
-    },
-    ["landing-content"],
-    // An explicit tag so publishing a page clears this immediately rather
-    // than up to five minutes later.
-    { revalidate: 300, tags: ["landing-content"] },
-  );
-  const [{ page, plans }, { data: { user } }] = await Promise.all([
-    loadLandingContent(),
+  // THE FULL PUBLIC HOMEPAGE — the other front door, reached when an admin
+  // switches the mode away from `waitlist`. It renders the CMS page `home`
+  // through the same builder, header and footer as every other public page,
+  // so what an admin arranges in the editor is exactly what ships.
+  //
+  // In draft preview an admin sees their unpublished work; everyone else gets
+  // the published snapshot, and the curated defaults if nothing is published,
+  // so this page is never empty.
+  const [published, homeDraft, { data: { user } }] = await Promise.all([
+    getPublishedPage(supabase, "home"),
+    which === "draft" ? getDraftBlocks(supabase, "home") : Promise.resolve([]),
     supabase.auth.getUser(),
   ]);
+  const authored = which === "draft" ? homeDraft : (published?.blocks ?? []);
+  const blocks = (authored.length > 0 ? authored : DEFAULT_HOME_BLOCKS).filter((b) => b.visible);
 
-  // Published CMS content wins; the curated defaults are the fallback so
-  // the homepage is never empty.
-  const snapshot = (page?.status === "published" && Array.isArray(page.published_snapshot))
-    ? (page.published_snapshot as unknown as CmsBlock[])
-    : null;
-  const blocks = snapshot && snapshot.length > 0 ? snapshot : DEFAULT_HOME_BLOCKS;
-  const mainBlocks = blocks.filter((b) => b.type !== "cta");
-  const ctaBlocks = blocks.filter((b) => b.type === "cta");
-  const labels = { before: t("landing.before"), after: t("landing.after"), video: "Video" };
+  const [media, data, global, nav, site] = await Promise.all([
+    loadMediaIndex(supabase, collectMediaUrls(blocks)),
+    loadLiveData(supabase, new Set(blocks.map((b) => b.type))),
+    getGlobalSections(),
+    getNavPages(),
+    getPublicSite(supabase),
+  ]);
+
+  const shell = {
+    global, nav, site, locale, t,
+    showAuth: access.showAuthEntry,
+    signedIn: Boolean(user),
+  };
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-6xl flex-col px-5 sm:px-8">
-      <header className="sticky top-0 z-30 -mx-5 flex items-center justify-between gap-2 bg-bg/80 px-5 pb-4 pt-[calc(1rem+env(safe-area-inset-top))] backdrop-blur-md sm:-mx-8 sm:px-8">
-        <div className="sm:hidden"><Brand href="/" markOnly /></div>
-        <div className="hidden sm:block"><Brand href="/" /></div>
-        <nav className="hidden items-center gap-6 text-sm text-muted md:flex">
-          <a href="#showcase" className="transition-colors hover:text-ink">{t("landing.navFeatures")}</a>
-          <a href="#how" className="transition-colors hover:text-ink">{t("landing.navHow")}</a>
-          <a href="#pricing" className="transition-colors hover:text-ink">{t("landing.navPricing")}</a>
-        </nav>
-        <div className="flex min-w-0 items-center gap-1.5">
-          {user ? (
-            <Link href="/dashboard" className="brand-gradient whitespace-nowrap rounded-xl px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90">
-              {t("landing.openApp")}
-            </Link>
-          ) : !access.showAuthEntry ? null : (
-            <>
-              {/* The dialog opens over this page — no navigation, no empty
-                  sign-in screen. See components/auth/auth-modal.tsx. */}
-              <AuthLink mode="login" className="whitespace-nowrap rounded-xl px-2.5 py-2 text-sm font-medium text-muted transition-colors hover:text-ink">
-                {t("landing.ctaLogin")}
-              </AuthLink>
-              <AuthLink mode="register" className="brand-gradient whitespace-nowrap rounded-xl px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90">
-                {t("landing.cta")}
-              </AuthLink>
-            </>
-          )}
-        </div>
-      </header>
-
-      <BlockRenderer blocks={mainBlocks} locale={locale} labels={labels} />
-
-      <section id="pricing" className="scroll-mt-20 py-12">
-        <h2 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">{t("landing.navPricing")}</h2>
-        <p className="mt-2 text-sm text-muted">{t("landing.pricingSub")}</p>
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {(plans ?? []).map((p) => (
-            <div key={p.slug} className={`panel relative flex flex-col rounded-2xl p-5 ${p.featured ? "ring-1 ring-accent2" : ""}`}>
-              {p.featured && (
-                <span className="absolute -top-2.5 left-4 rounded-full bg-accent2 px-2.5 py-0.5 text-[11px] font-semibold text-white">
-                  ★ {t("plan.recommended")}
-                </span>
-              )}
-              <p className="text-sm font-semibold">{p.name}</p>
-              <p className="mt-2 font-display text-2xl font-semibold tracking-tight">
-                {p.price_cents === 0 ? "0 zł" : formatPrice(p.price_cents, p.currency)}
-              </p>
-              <p className="mt-1 text-xs text-muted">{t("plan.creditsMo", { n: formatCredits(p.monthly_credits) })}</p>
-              {access.showAuthEntry && (
-                <AuthLink mode="register" className="mt-4 rounded-xl border border-line px-4 py-2 text-center text-sm font-semibold transition-colors hover:bg-raised">
-                  {t("landing.cta")}
-                </AuthLink>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <BlockRenderer blocks={ctaBlocks} locale={locale} labels={labels} />
-
-      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line py-8 text-xs text-muted">
-        <span className="flex items-center gap-2.5">
-          {/* 22px tall in the footer — the mark is the one link on this row
-              that a thumb has to hit precisely. `tap` grows the box only. */}
-          <Brand href="/" height={22} className="tap" />
-          © {new Date().getFullYear()}
-        </span>
-        {/* `tap` on each link: these are 16px tall at 13px type, which is a
-            fine mouse target and an unhittable one on a phone. It grows the
-            box and pulls the layout back by the same amount, so the footer
-            looks exactly as it did. See .tap in globals.css. */}
-        <div className="flex gap-4">
-          <a href="#showcase" className="tap hover:text-ink">{t("landing.navFeatures")}</a>
-          <a href="#pricing" className="tap hover:text-ink">{t("landing.navPricing")}</a>
-          {access.showAuthEntry && (
-            <AuthLink mode="login" className="tap hover:text-ink">{t("landing.ctaLogin")}</AuthLink>
-          )}
-        </div>
-      </footer>
-    </main>
+    <div className="flex min-h-dvh flex-col bg-bg">
+      <AnnouncementBar global={global} locale={locale} />
+      <SiteHeader {...shell} />
+      <main className="flex-1">
+        <BlockRenderer
+          blocks={blocks}
+          ctx={renderContext({ locale, t, media, data, showAuth: access.showAuthEntry })}
+        />
+      </main>
+      <SiteFooter {...shell} />
+    </div>
   );
 }

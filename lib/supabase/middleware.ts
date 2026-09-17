@@ -2,7 +2,11 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, authCookieOptions, PERSIST_COOKIE, stripPersistence } from "./config";
 
-const PROTECTED_PREFIXES = ["/home","/dashboard","/generator","/library","/prompts","/history","/credits","/plan","/settings","/admin","/tools","/inspirations","/support","/k","/retusz","/wideo"];
+// `/podglad` is the CMS draft preview: an unpublished page rendered as a
+// visitor would see it. It is not under /admin because it must carry NO admin
+// chrome — the builder loads it in an iframe to judge a real layout — so it
+// needs its own entry here, and the route checks the admin role itself.
+const PROTECTED_PREFIXES = ["/home","/dashboard","/generator","/library","/prompts","/history","/credits","/plan","/settings","/admin","/podglad","/tools","/inspirations","/support","/k","/retusz","/wideo"];
 const AUTH_PAGES = ["/login", "/register", "/forgot-password"];
 
 /**

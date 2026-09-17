@@ -91,13 +91,16 @@ export const ADMIN_NAV: readonly NavGroup[] = [
     { href: "/admin/ai/modele", key: "aiModels", icon: Cpu },
     { href: "/admin/generations", key: "generations", icon: Wand2 },
   ]},
-  // One entry per job, not one per screen: every public page — the homepage,
-  // the launch page, the legal documents — is edited behind "Strony WWW".
+  // The public website, in the three places an operator actually goes: the
+  // list of pages, the header/footer shared by all of them, and the media
+  // every one of them draws from. Everything else about a page — its sections,
+  // its SEO, its history — is inside the page, where it belongs.
   { key: "marketing", items: [
     { href: "/admin/www", key: "www", icon: Globe },
+    { href: "/admin/www/sekcje-globalne", key: "globalSections", icon: Layers },
+    { href: "/admin/media", key: "media", icon: FolderOpen },
     { href: "/admin/waitlist", key: "waitlist", icon: ListChecks },
     { href: "/admin/inspirations", key: "inspirations", icon: Lightbulb },
-    { href: "/admin/media", key: "media", icon: FolderOpen },
   ]},
   { key: "system", items: [
     { href: "/admin/settings/access", key: "access", icon: DoorOpen },

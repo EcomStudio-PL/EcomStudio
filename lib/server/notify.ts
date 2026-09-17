@@ -41,6 +41,9 @@ export type NotificationEvent =
   // where the customer came from and what they sell.
   | "welcome.survey_completed"
   | "waitlist.signup"
+  // Somebody used the contact form on a public page. Seeded enabled on both
+  // channels in 0086, because an enquiry nobody is told about is a lost lead.
+  | "contact.message"
   | "payment.received"
   | "credits.purchased"
   | "subscription.created"
@@ -71,6 +74,7 @@ export const NOTIFICATION_EVENTS: readonly {
   { type: "user.registered", category: "users", sortOrder: 20, wired: true },
   { type: "welcome.survey_completed", category: "users", sortOrder: 25, wired: true },
   { type: "waitlist.signup", category: "users", sortOrder: 30, wired: true },
+  { type: "contact.message", category: "users", sortOrder: 35, wired: true },
   { type: "payment.received", category: "sales", sortOrder: 40, wired: false },
   { type: "credits.purchased", category: "sales", sortOrder: 50, wired: false },
   { type: "subscription.created", category: "sales", sortOrder: 60, wired: false },

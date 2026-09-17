@@ -66,6 +66,7 @@ const EVENT_LABELS: Record<NotificationEvent, string> = {
   "user.registered": "comm.ev.userRegistered",
   "welcome.survey_completed": "comm.ev.welcomeSurvey",
   "waitlist.signup": "comm.ev.waitlistSignup",
+  "contact.message": "comm.ev.contactMessage",
   "payment.received": "comm.ev.paymentReceived",
   "credits.purchased": "comm.ev.creditsPurchased",
   "subscription.created": "comm.ev.subscriptionCreated",

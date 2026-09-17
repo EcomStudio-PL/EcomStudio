@@ -23,17 +23,27 @@ const csp = [
   "media-src 'self' blob: https:",
   "font-src 'self' data:",
   "connect-src 'self' https://*.supabase.co https://challenges.cloudflare.com",
-  "frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://challenges.cloudflare.com",
+  // 'self' is here for the CMS builder: the page preview is this app's own
+  // preview route in an iframe, which is the only way a preview can answer a
+  // media query the way a real 375px phone does. A container scaled with a
+  // transform looks right and lies — it still reports the desktop viewport.
+  "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://challenges.cloudflare.com",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
-  "frame-ancestors 'none'",
+  // SAME-ORIGIN, not 'none'. Clickjacking is a CROSS-origin attack: another
+  // site framing ours and stealing a click. That is still refused. What is now
+  // allowed is GrovBase framing GrovBase, which is the builder previewing a
+  // page, and carries none of that risk. A custom-code block runs in a
+  // sandboxed frame with no same-origin access and is unaffected either way.
+  "frame-ancestors 'self'",
 ].join("; ");
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "X-Frame-Options", value: "DENY" },
+  // Paired with frame-ancestors above: third-party framing stays refused.
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
   { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
   { key: "Content-Security-Policy", value: csp },

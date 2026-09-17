@@ -5,6 +5,7 @@ import { Film, ImagePlus, Loader2, Trash2, Upload } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { saveMediaAssetAction } from "@/app/actions/admin-b2b";
+import { deriveMedia } from "@/lib/media-derive";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -107,6 +108,11 @@ export function MediaPicker({ value, onChange, kind = "image", label, alt, onAlt
     // The file is uploaded and reachable either way; only the library row is
     // missing, so the field still gets its URL.
     if (!res.ok) toast.error(t("common.error"));
+    // Dimensions and smaller copies, so a picture chosen from a CMS field is
+    // exactly as well prepared as one uploaded in the media library. Without
+    // this the two paths would produce different-quality pages from the same
+    // action, which is how "it's slow but only on that page" happens.
+    if (res.ok && res.id && sniffed === "image") await deriveMedia(res.id);
     onChange(supabase.storage.from("media").getPublicUrl(path).data.publicUrl);
     setUploading(false);
   }

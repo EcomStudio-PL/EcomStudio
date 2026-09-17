@@ -596,33 +596,48 @@ export type Database = {
       }
       cms_blocks: {
         Row: {
+          analytics_id: string | null
+          anchor: string | null
+          code: Json
           content: Json
           created_at: string
           id: string
           page_id: string
           sort_order: number
+          style: Json
           type: string
           updated_at: string
+          updated_by: string | null
           visible: boolean
         }
         Insert: {
+          analytics_id?: string | null
+          anchor?: string | null
+          code?: Json
           content?: Json
           created_at?: string
           id?: string
           page_id: string
           sort_order?: number
+          style?: Json
           type: string
           updated_at?: string
+          updated_by?: string | null
           visible?: boolean
         }
         Update: {
+          analytics_id?: string | null
+          anchor?: string | null
+          code?: Json
           content?: Json
           created_at?: string
           id?: string
           page_id?: string
           sort_order?: number
+          style?: Json
           type?: string
           updated_at?: string
+          updated_by?: string | null
           visible?: boolean
         }
         Relationships: [
@@ -633,6 +648,60 @@ export type Database = {
             referencedRelation: "cms_pages"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "cms_blocks_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cms_global_sections: {
+        Row: {
+          content: Json
+          id: string
+          published_at: string | null
+          published_snapshot: Json | null
+          slot: string
+          style: Json
+          type: string
+          updated_at: string
+          updated_by: string | null
+          visible: boolean
+        }
+        Insert: {
+          content?: Json
+          id?: string
+          published_at?: string | null
+          published_snapshot?: Json | null
+          slot: string
+          style?: Json
+          type: string
+          updated_at?: string
+          updated_by?: string | null
+          visible?: boolean
+        }
+        Update: {
+          content?: Json
+          id?: string
+          published_at?: string | null
+          published_snapshot?: Json | null
+          slot?: string
+          style?: Json
+          type?: string
+          updated_at?: string
+          updated_by?: string | null
+          visible?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cms_global_sections_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       cms_pages: {
@@ -640,39 +709,166 @@ export type Database = {
           created_at: string
           id: string
           kind: string
+          nav_group: string | null
+          nav_order: number
           published_at: string | null
           published_snapshot: Json | null
+          scheduled_at: string | null
+          seo: Json
           slug: string
           sort_order: number
           status: string
           title: string
           updated_at: string
+          updated_by: string | null
         }
         Insert: {
           created_at?: string
           id?: string
           kind?: string
+          nav_group?: string | null
+          nav_order?: number
           published_at?: string | null
           published_snapshot?: Json | null
+          scheduled_at?: string | null
+          seo?: Json
           slug: string
           sort_order?: number
           status?: string
           title: string
           updated_at?: string
+          updated_by?: string | null
         }
         Update: {
           created_at?: string
           id?: string
           kind?: string
+          nav_group?: string | null
+          nav_order?: number
           published_at?: string | null
           published_snapshot?: Json | null
+          scheduled_at?: string | null
+          seo?: Json
           slug?: string
           sort_order?: number
           status?: string
           title?: string
           updated_at?: string
+          updated_by?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cms_pages_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cms_page_versions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          label: string | null
+          page_id: string
+          reason: string
+          seo: Json
+          snapshot: Json
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string | null
+          page_id: string
+          reason?: string
+          seo?: Json
+          snapshot?: Json
+          version: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string | null
+          page_id?: string
+          reason?: string
+          seo?: Json
+          snapshot?: Json
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cms_page_versions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cms_page_versions_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "cms_pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contact_messages: {
+        Row: {
+          created_at: string
+          email: string
+          handled_at: string | null
+          handled_by: string | null
+          id: string
+          locale: string
+          message: string
+          metadata: Json
+          name: string
+          source: string | null
+          status: string
+          topic: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          handled_at?: string | null
+          handled_by?: string | null
+          id?: string
+          locale?: string
+          message: string
+          metadata?: Json
+          name: string
+          source?: string | null
+          status?: string
+          topic?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          handled_at?: string | null
+          handled_by?: string | null
+          id?: string
+          locale?: string
+          message?: string
+          metadata?: Json
+          name?: string
+          source?: string | null
+          status?: string
+          topic?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_messages_handled_by_fkey"
+            columns: ["handled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       credit_packages: {
         Row: {
@@ -1768,39 +1964,57 @@ export type Database = {
           created_at: string
           created_by: string | null
           external_url: string | null
+          folder: string | null
+          height: number | null
           id: string
           kind: string
           mime: string | null
           poster_url: string | null
           size_bytes: number | null
           storage_path: string | null
+          tags: string[]
           title: string | null
+          updated_at: string
+          variants: Json
+          width: number | null
         }
         Insert: {
           alt?: string | null
           created_at?: string
           created_by?: string | null
           external_url?: string | null
+          folder?: string | null
+          height?: number | null
           id?: string
           kind?: string
           mime?: string | null
           poster_url?: string | null
           size_bytes?: number | null
           storage_path?: string | null
+          tags?: string[]
           title?: string | null
+          updated_at?: string
+          variants?: Json
+          width?: number | null
         }
         Update: {
           alt?: string | null
           created_at?: string
           created_by?: string | null
           external_url?: string | null
+          folder?: string | null
+          height?: number | null
           id?: string
           kind?: string
           mime?: string | null
           poster_url?: string | null
           size_bytes?: number | null
           storage_path?: string | null
+          tags?: string[]
           title?: string | null
+          updated_at?: string
+          variants?: Json
+          width?: number | null
         }
         Relationships: [
           {
@@ -4085,6 +4299,19 @@ export type Database = {
         }
         Returns: Json
       }
+      submit_contact_message: {
+        Args: {
+          p_email: string
+          p_locale?: string
+          p_message: string
+          p_metadata?: Json
+          p_name: string
+          p_source?: string
+          p_topic: string
+        }
+        Returns: Json
+      }
+      cms_slug_is_reserved: { Args: { p_slug: string }; Returns: boolean }
     }
     Enums: {
       asset_type: "image" | "video" | "text"

@@ -15,9 +15,12 @@ import type { CmsBlockContent, LocaleText } from "./cms";
 export type FieldKind =
   | "text"      // one localized line
   | "textarea"  // localized paragraph
+  | "richtext"  // localized markup, sanitized on render (legal documents)
   | "url"       // a plain link, not localized
   | "media"     // an image/video URL, offered with the media picker
   | "align"     // left / right
+  | "groups"    // which tool/feature groups a live section shows
+  | "handler"   // which approved form handler receives a submission
   | "items";    // the repeatable list (cards, steps, questions…)
 
 export type FieldDef = {
@@ -78,6 +81,45 @@ export const SECTION_FIELDS: Record<string, FieldDef[]> = {
   legal: [HEADING, f("description", "textarea", "legalBody")],
   contact: [HEADING, BODY, f("items", "items", "contactItems")],
   logo_cloud: [f("items", "items", "logos")],
+
+  // ── ADDED WITH THE PAGE BUILDER ────────────────────────────────────────
+  // A long document: headings, paragraphs, lists, links, tables. Sanitised
+  // against an allowlist on render (lib/cms-sanitize.ts) — a `<script>` typed
+  // here does not survive to the page.
+  rich_text: [HEADING, f("html", "richtext", "richBody", "richBodyHint")],
+  cards: [HEADING, BODY, f("items", "items", "cardItems")],
+  gallery: [HEADING, BODY, f("items", "items", "galleryItems")],
+  testimonials: [HEADING, BODY, f("items", "items", "testimonialItems")],
+  comparison: [
+    HEADING, BODY,
+    f("ctaLabel", "text", "compareUs", "compareUsHint"),
+    f("cta2Label", "text", "compareThem"),
+    f("items", "items", "compareRows"),
+  ],
+  // Content comes from the product, not from here: the section only decides
+  // what to call it and which groups to show.
+  tools_grid: [HEADING, BODY, f("filter", "groups", "toolGroups", "toolGroupsHint")],
+  models: [HEADING, BODY],
+  pricing_table: [HEADING, BODY, ...CTA],
+  contact_form: [
+    HEADING, BODY,
+    f("formHandler", "handler", "formHandler"),
+    f("ctaLabel", "text", "formSubmit"),
+    f("subtitle", "textarea", "formConsent"),
+    f("items", "items", "formTopics", "formTopicsHint"),
+  ],
+  newsletter: [
+    HEADING, BODY,
+    f("formHandler", "handler", "formHandler"),
+    f("ctaLabel", "text", "formSubmit"),
+    f("subtitle", "textarea", "formConsent"),
+  ],
+  // A spacer is its padding and a divider is a line: both are configured on
+  // the STYLE tab, so neither has any content to edit.
+  spacer: [],
+  divider: [],
+  // The code itself lives on its own tab, not in this list.
+  custom_code: [HEADING],
 };
 
 /**
@@ -131,6 +173,11 @@ export const usesFieldBag = (type: string) => type === "launch";
 /** Read one localized value out of a block, whichever storage it uses.
  *  A dotted field key is the marker for the `fields` bag — the launch page's
  *  vocabulary — and matches how writeField stores it. */
+/** Field kinds whose value is ONE string shared by every language — a URL, a
+ *  handler name, an alignment. Localising those would be a bug: /cennik is
+ *  /cennik in German too. */
+const PLAIN_KINDS = new Set<FieldKind>(["url", "media", "align", "handler"]);
+
 export function readField(content: CmsBlockContent, def: FieldDef, locale: string): string {
   if (def.key.includes(".")) {
     const bag = content.fields ?? {};
@@ -140,9 +187,7 @@ export function readField(content: CmsBlockContent, def: FieldDef, locale: strin
     return text?.[locale] ?? text?.pl ?? "";
   }
   const value = (content as Record<string, unknown>)[def.key];
-  if (def.kind === "url" || def.kind === "media" || def.kind === "align") {
-    return typeof value === "string" ? value : "";
-  }
+  if (PLAIN_KINDS.has(def.kind)) return typeof value === "string" ? value : "";
   return ((value ?? {}) as Record<string, string | undefined>)[locale] ?? "";
 }
 
@@ -156,7 +201,7 @@ export function writeField(
     bag[def.key] = { ...prev, [locale]: value };
     return { ...content, fields: bag };
   }
-  if (def.kind === "url" || def.kind === "media" || def.kind === "align") {
+  if (PLAIN_KINDS.has(def.kind)) {
     return { ...content, [def.key]: value || undefined };
   }
   const prev = ((content as Record<string, unknown>)[def.key] ?? {}) as LocaleText;
