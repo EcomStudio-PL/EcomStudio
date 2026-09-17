@@ -1807,7 +1807,11 @@
     "seo.check.heading": "A heading on the page",
     "seo.check.ogImage": "Share image",
     "seo.check.canonical": "Canonical URL",
-    "seo.check.alt": "Alternative text for images"
+    "seo.check.alt": "Alternative text for images",
+    "link.home": "Homepage",
+    "link.register": "Sign up",
+    "link.login": "Sign in",
+    "linkGoesTo": "Goes to:"
   },
   "insp": {
     "title": "Inspirations",

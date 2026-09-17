@@ -1807,7 +1807,11 @@
     "seo.check.heading": "Eine Überschrift auf der Seite",
     "seo.check.ogImage": "Bild beim Teilen",
     "seo.check.canonical": "Kanonische URL",
-    "seo.check.alt": "Alternativtexte für Bilder"
+    "seo.check.alt": "Alternativtexte für Bilder",
+    "link.home": "Startseite",
+    "link.register": "Registrierung",
+    "link.login": "Anmeldung",
+    "linkGoesTo": "Führt zu:"
   },
   "insp": {
     "title": "Inspirationen",

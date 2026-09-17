@@ -22,7 +22,8 @@ import { Button } from "@/components/ui/button";
 import { Modal, ConfirmModal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Field, LocaleTabs, type Locale } from "./fields";
+import { buildLinkTargets, type LinkPage } from "@/lib/cms-links";
+import { Field, LinkTargetsProvider, LocaleTabs, type Locale } from "./fields";
 import { StylePanel, ResponsivePanel } from "./style-panel";
 import { CodePanel } from "./code-panel";
 import { cn, formatDate } from "@/lib/utils";
@@ -87,9 +88,12 @@ const toDraft = (b: BlockRow): Draft => ({
   audience: b.audience ?? "everyone",
 });
 
-export function Builder({ page, blocks: initial, templates = [], previewPath }: {
+export function Builder({ page, blocks: initial, templates = [], pages = [], previewPath }: {
   page: PageRow;
   blocks: BlockRow[];
+  /** Every page in the CMS, so a CTA can be pointed at one by name instead of
+   *  by a path typed from memory. */
+  pages?: LinkPage[];
   /** Sections saved earlier with "Zapisz jako szablon", offered in the
    *  picker under «Moje sekcje». */
   templates?: SectionTemplateRow[];
@@ -419,6 +423,23 @@ export function Builder({ page, blocks: initial, templates = [], previewPath }: 
     [active, fields],
   );
 
+  /** Every destination a button on this page can be pointed at: the other
+   *  pages, and the anchors this page's own sections declare. Rebuilt as
+   *  anchors are typed, so a link to a section added a minute ago is offered. */
+  const linkTargets = useMemo(
+    () => buildLinkTargets(
+      pages,
+      blocks
+        .filter((b) => b.anchor)
+        .map((b) => ({
+          anchor: b.anchor as string,
+          label: `${t(`cms.sectionType.${b.type}`)} · #${b.anchor}`,
+        })),
+      t,
+    ),
+    [pages, blocks, t],
+  );
+
   /** The sections a search in the left column leaves standing. Matching the
    *  TYPE NAME as well as the text is what makes "faq" find the FAQ. */
   const visibleBlocks = useMemo(() => {
@@ -433,6 +454,7 @@ export function Builder({ page, blocks: initial, templates = [], previewPath }: 
   /* ── RENDER ───────────────────────────────────────────────────────────── */
 
   return (
+    <LinkTargetsProvider targets={linkTargets}>
     <div data-cms-builder className="min-w-0">
       {/* ── TOOLBAR ────────────────────────────────────────────────────── */}
       <div className="panel mb-3 rounded-2xl px-3 py-2.5" data-builder-toolbar>
@@ -908,6 +930,7 @@ export function Builder({ page, blocks: initial, templates = [], previewPath }: 
           refs do not trigger renders on their own. */}
       <span hidden data-history-tick={historyTick} />
     </div>
+    </LinkTargetsProvider>
   );
 }
 

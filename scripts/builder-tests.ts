@@ -23,6 +23,7 @@ import { BLOCK_TYPES, SECTION_GROUPS, sectionIsLive, promoIsOpen, PINNED_SECTION
 import { PAGE_TEMPLATES, templateBlocks, templateByKey } from "../lib/cms-templates";
 import { fieldsFor, splitFields } from "../lib/cms-schema";
 import { normalizePath, normalizeTarget, sourceIsProtected } from "../lib/server/redirects";
+import { buildLinkTargets } from "../lib/cms-links";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string) {
@@ -224,6 +225,34 @@ check("every field the public renderer reads is written into the snapshot",
 for (const key of ["show_from", "show_until", "audience", "style", "code", "anchor"]) {
   check(`…including ${key}`, written.includes(key) && read.includes(key));
 }
+
+/* ═══════════════════════════════════════════════════════════════════════ */
+console.log("\nF. A CTA IS OFFERED ONLY REAL DESTINATIONS");
+
+const targets = buildLinkTargets(
+  [
+    { slug: "home", title: "Start", status: "published" },
+    { slug: "cennik", title: "Cennik", status: "published" },
+    { slug: "2x-kredyty", title: "2× kredyty", status: "draft" },
+    { slug: "premiera", title: "Premiera", status: "published", kind: "launch" },
+  ],
+  [{ anchor: "oferta", label: "Oferta · #oferta" }],
+  (key) => key,
+);
+const values = targets.map((tg) => tg.value);
+
+check("the app's public entrances are offered",
+  ["/", "/register", "/login"].every((v) => values.includes(v)), values.join(" "));
+check("a published page is offered by its path", values.includes("/cennik"));
+check("an anchor on this page is offered", values.includes("#oferta"));
+check("the launch page is not offered — it has no URL of its own",
+  !values.includes("/premiera"));
+check("the `home` row does not produce a second '/'",
+  values.filter((v) => v === "/").length === 1, values.join(" "));
+check("a draft is offered, and says it is a draft",
+  targets.some((tg) => tg.value === "/2x-kredyty" && tg.label.includes("cms.status.draft")),
+  JSON.stringify(targets.find((tg) => tg.value === "/2x-kredyty")));
+check("nothing is offered twice", new Set(values).size === values.length, values.join(" "));
 
 /* ═══════════════════════════════════════════════════════════════════════ */
 console.log(failures === 0 ? "\nAll builder tests passed." : `\n${failures} check(s) failed.`);

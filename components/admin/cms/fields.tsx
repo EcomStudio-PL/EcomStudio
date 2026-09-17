@@ -1,4 +1,5 @@
 "use client";
+import { createContext, useContext } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { MediaPicker } from "@/components/admin/media-picker";
@@ -8,6 +9,7 @@ import { CMS_ICON_NAMES } from "@/lib/cms-icons";
 import { FORM_HANDLERS } from "@/lib/cms-forms";
 import { FEATURE_GROUPS } from "@/lib/features";
 import { readField, writeField, type FieldDef } from "@/lib/cms-schema";
+import type { LinkTarget } from "@/lib/cms-links";
 import type { CmsBlockContent, CmsItem, LocaleText } from "@/lib/cms";
 
 /**
@@ -23,6 +25,38 @@ import type { CmsBlockContent, CmsItem, LocaleText } from "@/lib/cms";
 
 export type Locale = "pl" | "en" | "de";
 export const LOCALES: Locale[] = ["pl", "en", "de"];
+
+/* ── WHERE A LINK CAN GO ──────────────────────────────────────────────────
+ *
+ * Every address field in the builder — a hero's button, a card's link, a
+ * sticky CTA — shares one list of destinations: the pages that exist, the
+ * anchors on the page being edited, the app's public entrances. It is a
+ * `<datalist>`, so it suggests without taking the field over: an external
+ * campaign URL is still just typed in.
+ *
+ * Through context rather than props because these fields are three levels
+ * down inside repeatable item rows, and threading the same array through
+ * every one of them would be the only thing those components learned.
+ */
+const LinkTargetsContext = createContext<LinkTarget[]>([]);
+
+/** The id every address input points its `list` at. One datalist per screen. */
+const LINK_LIST_ID = "cms-link-targets";
+
+export function LinkTargetsProvider({ targets, children }: {
+  targets: LinkTarget[]; children: React.ReactNode;
+}) {
+  return (
+    <LinkTargetsContext.Provider value={targets}>
+      {children}
+      <datalist id={LINK_LIST_ID} data-link-targets>
+        {targets.map((tg) => (
+          <option key={tg.value} value={tg.value} label={tg.label} />
+        ))}
+      </datalist>
+    </LinkTargetsContext.Provider>
+  );
+}
 
 export function Field({ def, locale, content, onChange, onChangeWith }: {
   def: FieldDef; locale: Locale; content: CmsBlockContent;
@@ -168,16 +202,53 @@ export function Field({ def, locale, content, onChange, onChangeWith }: {
     );
   }
 
+  if (def.kind === "url") {
+    return (
+      <div>
+        <Label htmlFor={id}>{label}</Label>
+        <LinkInput id={id} value={value} onChange={set} />
+        {hint && <p className="mt-1.5 text-[11.5px] text-faint">{hint}</p>}
+      </div>
+    );
+  }
+
   return (
     <div>
       <Label htmlFor={id} hint={localized ? locale.toUpperCase() : undefined}>{label}</Label>
       {def.kind === "textarea"
         ? <Textarea id={id} rows={3} value={value} onChange={(e) => set(e.target.value)} />
-        : <Input id={id} value={value} inputMode={def.kind === "url" ? "url" : undefined}
-            placeholder={def.kind === "url" ? "https://… / /cennik" : undefined}
-            onChange={(e) => set(e.target.value)} />}
+        : <Input id={id} value={value} onChange={(e) => set(e.target.value)} />}
       {hint && <p className="mt-1.5 text-[11.5px] text-faint">{hint}</p>}
     </div>
+  );
+}
+
+/**
+ * An address field with the page's own destinations behind it.
+ *
+ * The line underneath is the whole point: it names where the link goes when
+ * the value matches something that exists, and says nothing when it is an
+ * external address. A CTA pointing at `/cennk` therefore looks different from
+ * one pointing at `/cennik` BEFORE the page is published, which is the only
+ * moment the typo is cheap.
+ */
+export function LinkInput({ id, value, onChange, placeholder }: {
+  id?: string; value: string; onChange: (next: string) => void; placeholder?: string;
+}) {
+  const { t } = useI18n();
+  const targets = useContext(LinkTargetsContext);
+  const match = targets.find((tg) => tg.value === value.trim());
+  return (
+    <>
+      <Input id={id} value={value} inputMode="url" list={LINK_LIST_ID} spellCheck={false}
+        data-link-input placeholder={placeholder ?? "https://… / /cennik / #oferta"}
+        onChange={(e) => onChange(e.target.value)} />
+      {match && (
+        <p className="mt-1.5 text-[11.5px] text-muted" data-link-resolved>
+          {t("cms.linkGoesTo")} {match.label}
+        </p>
+      )}
+    </>
   );
 }
 
@@ -235,8 +306,8 @@ export function ItemsField({ label, hint, locale, content, onChange }: {
               <Textarea rows={2} placeholder={t("cms.label.itemBody")} value={text(item, "description")}
                 onChange={(e) => setText(i, "description", e.target.value)} />
               <div className="grid gap-2 sm:grid-cols-2">
-                <Input placeholder={t("cms.label.itemUrl")} value={item.url ?? ""}
-                  onChange={(e) => patch(i, { url: e.target.value || undefined })} />
+                <LinkInput value={item.url ?? ""} placeholder={t("cms.label.itemUrl")}
+                  onChange={(next) => patch(i, { url: next || undefined })} />
                 {/* Stats render this instead of a title, and a comparison row
                     uses it for the other column — dropping it would make two
                     section types impossible to author. */}

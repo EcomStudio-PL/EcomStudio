@@ -1807,7 +1807,11 @@
     "seo.check.heading": "Nagłówek na stronie",
     "seo.check.ogImage": "Obraz przy udostępnianiu",
     "seo.check.canonical": "Adres kanoniczny",
-    "seo.check.alt": "Opisy alternatywne obrazów"
+    "seo.check.alt": "Opisy alternatywne obrazów",
+    "link.home": "Strona główna",
+    "link.register": "Rejestracja",
+    "link.login": "Logowanie",
+    "linkGoesTo": "Prowadzi do:"
   },
   "insp": {
     "title": "Inspiracje",
