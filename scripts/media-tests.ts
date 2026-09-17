@@ -327,5 +327,19 @@ check("the customer-facing read is granted, the admin-facing one is not",
 check("a deleted file nulls its references rather than deleting the slot",
   (migration.match(/on delete set null/g) ?? []).length >= 4);
 
+// 0091: the resolve function returns only slots that can actually be painted.
+// Found on production — deleting a file left the slot answering with every
+// file column null, which the renderer discarded but should never have been
+// sent. The application-side guard above stays as the second line.
+const renderable = read("supabase/migrations/0091_media_slots_renderable.sql");
+check("the resolve function inner-joins the desktop file",
+  /\n  join public\.media_assets d on d\.id = s\.media_id/.test(renderable));
+check("…and still left-joins the three optional ones",
+  (renderable.match(/left join public\.media_assets/g) ?? []).length === 3);
+check("…and refuses a file row that points at nothing",
+  renderable.includes("d.storage_path is not null or d.external_url is not null"));
+check("…and re-revokes execute after replacing the function",
+  renderable.includes("revoke all on function public.media_slots_resolve(text[]) from public, anon, authenticated"));
+
 console.log(failures === 0 ? "\nAll media tests passed." : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
