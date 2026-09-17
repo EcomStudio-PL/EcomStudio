@@ -6,6 +6,7 @@ import {
   Loader2, RotateCcw, Save, Trash2, X, Zap,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
+import { saveBlob } from "@/lib/save-image";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/surface";
 import { Badge } from "@/components/ui/badge";
@@ -187,13 +188,9 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
 
   function download(item: Item, index: number) {
     if (!item.resultBlob) return;
-    const url = URL.createObjectURL(item.resultBlob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = outputName(item.file.name, t(`tools.${tool}.suffix`), item.resultBlob.type, index);
-    a.click();
-    // Revoking in the same tick can cancel the download the click just began.
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    // One helper for every save in the product: the native share sheet
+    // on a phone, a real download on a desktop.
+    void saveBlob(item.resultBlob, outputName(item.file.name, t(`tools.${tool}.suffix`), item.resultBlob.type, index));
   }
 
   async function downloadAll() {
@@ -203,12 +200,7 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
       name: outputName(item.file.name, t(`tools.${tool}.suffix`), item.resultBlob!.type, index),
       data: new Uint8Array(await item.resultBlob!.arrayBuffer()),
     })));
-    const url = URL.createObjectURL(createZip(entries));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `grovbase-${tool}.zip`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    await saveBlob(createZip(entries), `grovbase-${tool}.zip`);
   }
 
   async function saveAll() {

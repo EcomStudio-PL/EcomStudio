@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { GalleryItem, GalleryPage } from "@/lib/server/gallery";
 import { libraryKey, patchLibrary, readLibrary, writeLibrary } from "@/lib/library-cache";
 import { ImageDetails } from "@/components/genv3/image-details";
+import { saveBlob, saveImageFrom, stamp } from "@/lib/save-image";
 import { cn } from "@/lib/utils";
 
 /**
@@ -360,6 +361,16 @@ export function LibraryBrowser({ first, locale }: { first: GalleryPage; locale: 
     finally { setBusy(false); }
   }
 
+  /** ONE IMAGE. The share sheet on a phone, a real download everywhere else —
+   *  and never a trip to the storage host. */
+  async function downloadOne(item: GalleryItem) {
+    try {
+      // No toast on success: a share sheet that closed, or a file that
+      // landed in Downloads, is its own confirmation.
+      await saveImageFrom(item.url, { seed: item.product ?? item.model });
+    } catch { toast.error(t("genv3.downloadFailed")); }
+  }
+
   async function downloadSelected() {
     if (picked.size === 0 || busy) return;
     setBusy(true);
@@ -371,12 +382,7 @@ export function LibraryBrowser({ first, locale }: { first: GalleryPage; locale: 
         body: JSON.stringify({ paths }),
       });
       if (!res.ok) { toast.error(t("common.error")); return; }
-      const blob = await res.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `grovbase-${new Date().toISOString().slice(0, 10)}.zip`;
-      a.click();
-      URL.revokeObjectURL(a.href);
+      await saveBlob(await res.blob(), `grovbase-${stamp()}.zip`);
       setPicked(new Set());
     } catch { toast.error(t("common.error")); }
     finally { setBusy(false); }
@@ -524,6 +530,7 @@ export function LibraryBrowser({ first, locale }: { first: GalleryPage; locale: 
               onPick={() => togglePick(item.assetId)}
               onOpen={() => setPreview(item)}
               onFavorite={() => toggleFavorite(item)}
+              onDownload={() => void downloadOne(item)}
               t={t}
             />
           ))}
@@ -661,12 +668,13 @@ function Segmented({ options, value, onChange, compact = false }: {
  * appears on hover. Nothing is written across the picture: a library of
  * captions is a file listing, and this is meant to be looked at.
  */
-function Tile({ item, picked, onPick, onOpen, onFavorite, t }: {
+function Tile({ item, picked, onPick, onOpen, onFavorite, onDownload, t }: {
   item: GalleryItem;
   picked: boolean;
   onPick: () => void;
   onOpen: () => void;
   onFavorite: () => void;
+  onDownload: () => void;
   t: T;
 }) {
   return (
@@ -733,7 +741,7 @@ function Tile({ item, picked, onPick, onOpen, onFavorite, t }: {
           rail that needs a long press to reach. */}
       <div className="pointer-events-none absolute right-2 top-10 hidden flex-col gap-1 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 [@media(hover:hover)]:flex">
         <RailButton label={t("library.quickOpen")} onClick={onOpen}><Maximize2 size={13} /></RailButton>
-        <RailButton label={t("common.download")} href={item.url}><Download size={13} /></RailButton>
+        <RailButton label={t("common.download")} onClick={onDownload}><Download size={13} /></RailButton>
         <RailButton label={t("library.editAsset")} href="/tools"><Wrench size={13} /></RailButton>
       </div>
     </div>

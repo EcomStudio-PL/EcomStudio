@@ -6,6 +6,7 @@ import {
   FileType, Gauge, ImagePlus, Info, Loader2, RotateCcw, Trash2,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
+import { saveBlob } from "@/lib/save-image";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/surface";
 import { Badge } from "@/components/ui/badge";
@@ -369,13 +370,9 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
 
   function download(item: Item, index: number) {
     if (!item.resultBlob) return;
-    const url = URL.createObjectURL(item.resultBlob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = outputName(item.file.name, t(`tools.${TOOL}.suffix`), item.resultBlob.type, index);
-    a.click();
-    // Revoking in the same tick can cancel the download the click just began.
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    // One helper for every save in the product: the native share sheet
+    // on a phone, a real download on a desktop.
+    void saveBlob(item.resultBlob, outputName(item.file.name, t(`tools.${TOOL}.suffix`), item.resultBlob.type, index));
   }
 
   /** One file goes straight down; several become a ZIP. Shared by "pobierz
@@ -387,12 +384,7 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
       name: outputName(item.file.name, t(`tools.${TOOL}.suffix`), item.resultBlob!.type, index),
       data: new Uint8Array(await item.resultBlob!.arrayBuffer()),
     })));
-    const url = URL.createObjectURL(createZip(entries));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "grovbase-compress.zip";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    await saveBlob(createZip(entries), "grovbase-compress.zip");
   }
 
   const downloadAll = () => downloadMany(done);

@@ -4,6 +4,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "@/lib/notify";
 import { Download, Plus } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
+import { saveBlob, stamp } from "@/lib/save-image";
 import {
   addSubscriberAction, bulkSubscribersAction, exportSubscribersAction,
 } from "@/app/actions/launch";
@@ -92,12 +93,12 @@ export function WaitlistManager({ rows, page, pages, total }: {
       if (!res.ok) { toast.error(t("common.error")); return; }
       // The CSV is built on the server and handed over as text; the browser
       // only turns it into a file.
-      const url = URL.createObjectURL(new Blob([`﻿${res.csv}`], { type: "text/csv;charset=utf-8" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `grovbase-waitlist-${new Date().toISOString().slice(0, 10)}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
+      // Revoking in the same tick could cancel the download the click just
+      // began, which `saveBlob` gets right for every file in the product.
+      await saveBlob(
+        new Blob([`﻿${res.csv}`], { type: "text/csv;charset=utf-8" }),
+        `grovbase-waitlist-${stamp()}.csv`,
+      );
     });
   }
 

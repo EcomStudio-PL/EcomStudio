@@ -6,6 +6,7 @@ import {
   Check, Download, Loader2, MoreHorizontal, RefreshCw, Sparkles, Zap,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
+import { saveImageFrom } from "@/lib/save-image";
 import { Card } from "@/components/ui/card";
 import { Select, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -368,14 +369,14 @@ function ConceptCard({ c, state, url, error, models, chosenId, cost, generatedWi
   const [savingPrompt, setSavingPrompt] = useState(false);
   const busy = state === "generating" || state === "queued";
 
-  function download() {
+  /** Fetch the bytes and hand them over. The previous version pointed an
+   *  anchor at the storage URL with target="_blank", which on iOS Safari
+   *  simply navigated to the bucket and showed the picture. */
+  async function download() {
     if (!url) return;
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `grovbase-${c.index}.png`;
-    a.target = "_blank";
-    a.rel = "noreferrer noopener";
-    a.click();
+    try {
+      await saveImageFrom(url, { seed: `koncept-${c.index}` });
+    } catch { toast.error(t("genv3.downloadFailed")); }
   }
 
   async function savePrompt() {

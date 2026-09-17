@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { GalleryItem } from "@/components/genv3/types";
 import { ratioName } from "@/components/genv3/ratio-options";
+import { fileNameFor, saveBlob } from "@/lib/save-image";
 
 /**
  * INFORMACJE O OBRAZIE — the premium image-details view.
@@ -133,19 +134,23 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
     } catch { toast.error(t("genv3.copyImageFailed")); }
   }
 
-  /** Convert + download through the LOCAL format tool: the browser gets a
-   *  same-origin blob, so "download" really downloads. */
+  /**
+   * Convert + hand over through the LOCAL format tool, so the browser always
+   * receives bytes this app owns. `saveBlob` then decides how to deliver
+   * them: the native share sheet on a phone, a download elsewhere. A
+   * dismissed sheet is a decision, not a failure, so it says nothing.
+   */
   async function downloadAs(format: "jpeg" | "png" | "webp" | "tiff" | "original") {
     setDlOpen(false);
-    const base = (item.product ?? "grovbase").toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "grovbase";
+    const seed = item.product ?? item.model;
     if (format === "original") {
       const blob = await fetchBlob();
-      if (!blob) { toast.error(t("common.error")); return; }
-      saveBlob(blob, `${base}-${item.assetId.slice(0, 8)}.${extOf(blob.type)}`);
+      if (!blob) { toast.error(t("genv3.downloadFailed")); return; }
+      await saveBlob(blob, fileNameFor(seed, blob.type));
       return;
     }
     const blob = await fetchBlob();
-    if (!blob) { toast.error(t("common.error")); return; }
+    if (!blob) { toast.error(t("genv3.downloadFailed")); return; }
     setToolBusy("download");
     try {
       const fd = new FormData();
@@ -153,9 +158,11 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
       fd.set("file", new File([blob], "image", { type: blob.type || "image/png" }));
       fd.set("settings", JSON.stringify({ format, width: null, height: null, quality: 92, fit: "inside" }));
       const res = await fetch("/api/tools/run", { method: "POST", body: fd });
-      if (!res.ok) { toast.error(t("common.error")); return; }
-      saveBlob(await res.blob(), `${base}-${item.assetId.slice(0, 8)}.${format === "jpeg" ? "jpg" : format}`);
-    } finally { setToolBusy(null); }
+      if (!res.ok) { toast.error(t("genv3.downloadFailed")); return; }
+      const out = await res.blob();
+      await saveBlob(out, fileNameFor(seed, out.type || `image/${format}`));
+    } catch { toast.error(t("genv3.downloadFailed")); }
+    finally { setToolBusy(null); }
   }
 
   /** Run one real tool on this image and save the result to the library. */
@@ -768,22 +775,6 @@ function DlItem({ label, sub, onClick }: { label: string; sub: string; onClick: 
       <span className="truncate text-[10.5px] text-faint">{sub}</span>
     </button>
   );
-}
-
-export function extOf(mime: string): string {
-  return mime.includes("webp") ? "webp" : mime.includes("jpeg") ? "jpg" : mime.includes("png") ? "png" : "img";
-}
-
-/** Hand the browser a same-origin blob to save — the one way a click can
- *  genuinely download rather than open a tab. Shared with the gallery's
- *  "Pobierz wybrane". */
-export function saveBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
 async function toPng(blob: Blob): Promise<Blob> {

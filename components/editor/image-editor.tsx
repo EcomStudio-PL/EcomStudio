@@ -8,6 +8,7 @@ import {
   Plus, Redo2, RotateCw, Save, Undo2,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
+import { saveBlob } from "@/lib/save-image";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/surface";
@@ -376,15 +377,10 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
     const current = workingRef.current;
     const blob = await bake();
     if (!blob || !current) return;
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
     // A neutral suffix, not a translated one: a file name travels between
     // machines and marketplaces long after the interface language is forgotten.
-    link.download = outputName(current.file.name, "grovbase", blob.type, 0);
-    link.click();
-    // Revoking in the same tick can cancel the download the click just began.
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    // `saveBlob` picks the share sheet on a phone and a download elsewhere.
+    await saveBlob(blob, outputName(current.file.name, "grovbase", blob.type, 0));
   }, [bake]);
 
   const saveToLibrary = useCallback(async (): Promise<string | null> => {

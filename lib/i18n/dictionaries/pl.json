@@ -2903,7 +2903,8 @@
     "perUseShort": "{n} kr. / użycie",
     "regenPrevSub": "Model, którym powstał ten obraz.",
     "regenRecoSub": "Rekomendowany do nanoszenia zmian na obrazie.",
-    "regenGenerate": "Generuj"
+    "regenGenerate": "Generuj",
+    "downloadFailed": "Nie udało się pobrać obrazu. Spróbuj ponownie."
   },
   "retouch": {
     "title": "Retusz zdjęć",

@@ -10,7 +10,8 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
 import type { GalleryItem, GallerySessionType, GenModel } from "@/components/genv3/types";
-import { ImageDetails, extOf, saveBlob } from "@/components/genv3/image-details";
+import { ImageDetails } from "@/components/genv3/image-details";
+import { saveBlob, saveImageFrom, stamp } from "@/lib/save-image";
 import { RegenerateModal } from "@/components/genv3/regenerate";
 
 type Filter = { session: GallerySessionType | "all"; fav: boolean; q: string; order: "desc" | "asc" };
@@ -346,17 +347,14 @@ export function GenerationGallery({
     try {
       if (chosen.length === 1) {
         const item = chosen[0];
-        const res = await fetch(item.url);
-        if (!res.ok) throw new Error("fetch_failed");
-        const blob = await res.blob();
-        saveBlob(blob, `grovbase-${item.assetId.slice(0, 8)}.${extOf(blob.type)}`);
+        await saveImageFrom(item.url, { seed: item.product ?? item.model });
       } else {
         const res = await fetch("/api/library/zip", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ paths: chosen.map((i) => i.path) }),
         });
         if (!res.ok) throw new Error("zip_failed");
-        saveBlob(await res.blob(), `grovbase-${chosen.length}-${new Date().toISOString().slice(0, 10)}.zip`);
+        await saveBlob(await res.blob(), `grovbase-${chosen.length}-${stamp()}.zip`);
       }
       toast.success(t("genv3.downloadStarted"));
       exitSelection();
@@ -403,16 +401,16 @@ export function GenerationGallery({
   }
 
   async function download(item: GalleryItem) {
-    // Fetch, then hand the browser a same-origin blob: a signed URL opened in
-    // a tab only DISPLAYS the image, which is not what "Pobierz" promises.
+    // The share sheet on a touch device, a real download everywhere else.
+    // There is deliberately NO "open the URL instead" fallback: on iOS that
+    // navigated to the storage host and showed the customer the bucket
+    // instead of saving their picture.
     try {
-      const res = await fetch(item.url);
-      if (!res.ok) throw new Error("fetch_failed");
-      const blob = await res.blob();
-      saveBlob(blob, `grovbase-${item.assetId.slice(0, 8)}.${extOf(blob.type)}`);
+      // No toast on success: a share sheet that closed, or a file that
+      // landed in Downloads, is its own confirmation.
+      await saveImageFrom(item.url, { seed: item.product ?? item.model });
     } catch {
-      // Last resort: at least put the image in front of them.
-      window.open(item.url, "_blank", "noopener");
+      toast.error(t("genv3.downloadFailed"));
     }
   }
 
