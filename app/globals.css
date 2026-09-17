@@ -1796,6 +1796,13 @@ body:has(.workspace-page)::after { display: none; }
        browser support for a math function in that position is not uniform. */
     grid-template-columns: repeat(var(--cms-cols-t, 2), minmax(0, 1fr));
   }
+}
+/* VISIBILITY IS NOT INHERITED, unlike every rule above it.
+   Spacing and columns cascade down on purpose: a tablet value should still
+   apply at 390px unless the phone overrides it. "Hidden on a tablet" is the
+   opposite — it is a statement about tablets, and a plain max-width:1023px
+   would have hidden the section on every phone as well. Hence the band. */
+@media (min-width: 640px) and (max-width: 1023px) {
   .cms-hide-t { display: none !important; }
 }
 @media (max-width: 639px) {
