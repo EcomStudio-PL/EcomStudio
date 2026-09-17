@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Builder } from "@/components/admin/cms/builder";
 import { ensureLaunchSectionAction } from "@/app/actions/public-pages";
-import { getPage, listBlocks } from "@/lib/services/cms";
+import { getPage, listBlocks, listSectionTemplates } from "@/lib/services/cms";
 
 /**
  * THE BUILDER, for one page.
@@ -23,7 +23,13 @@ export default async function AdminWwwPage({ params }: { params: Promise<{ slug:
   // editors never shows an admin an empty form where their text used to be.
   if (page.kind === "launch") await ensureLaunchSectionAction(page.id);
 
-  const blocks = await listBlocks(supabase, page.id);
+  const [blocks, templates] = await Promise.all([
+    listBlocks(supabase, page.id),
+    listSectionTemplates(supabase),
+  ]);
 
-  return <Builder page={page} blocks={blocks} previewPath={`/podglad/${page.slug}`} />;
+  return (
+    <Builder page={page} blocks={blocks} templates={templates}
+      previewPath={`/podglad/${page.slug}`} />
+  );
 }

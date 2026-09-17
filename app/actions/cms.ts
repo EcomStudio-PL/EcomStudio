@@ -7,6 +7,7 @@ import {
   listBlocks, nextVersion, slugProblem, slugify, isBlockType,
 } from "@/lib/services/cms";
 import { SEED_PAGES } from "@/lib/cms-seed";
+import { TEMPLATE_KEYS, templateBlocks } from "@/lib/cms-templates";
 import type { CmsBlockContent, CmsCode, PageSeo, SectionStyle } from "@/lib/cms";
 
 /**
@@ -49,6 +50,9 @@ function invalidate(slug?: string) {
 
 export async function createPageAction(input: {
   title: string; slug?: string; navGroup?: string | null;
+  /** One of lib/cms-templates.ts. The page is created with that skeleton —
+   *  the right sections in the right order, every one of them empty. */
+  template?: string | null;
 }): Promise<Result<{ slug: string }>> {
   try {
     const { supabase, adminId } = await requireAdmin();
@@ -62,20 +66,140 @@ export async function createPageAction(input: {
       .select("id").eq("slug", slug).maybeSingle();
     if (existing) return { ok: false, error: "taken" };
 
-    const { error } = await supabase.from("cms_pages").insert({
+    const template = input.template && TEMPLATE_KEYS.includes(input.template)
+      ? input.template : null;
+
+    const { data: created, error } = await supabase.from("cms_pages").insert({
       slug, title, status: "draft", kind: "standard",
       nav_group: input.navGroup ?? null,
+      template,
       updated_by: adminId,
-    });
+    }).select("id").single();
     // A race against the unique index, or the database's own slug guard.
-    if (error) return { ok: false, error: error.code === "23505" ? "taken" : "generic" };
+    if (error || !created) {
+      return { ok: false, error: error?.code === "23505" ? "taken" : "generic" };
+    }
+
+    // THE SKELETON, IF ONE WAS ASKED FOR. A failure here leaves the page —
+    // an empty page you can add sections to beats no page and a lost title.
+    const blocks = template ? templateBlocks(template) : [];
+    if (blocks.length > 0) {
+      await supabase.from("cms_blocks").insert(blocks.map((b) => ({
+        page_id: created.id,
+        type: b.type,
+        sort_order: b.sort_order,
+        visible: b.visible,
+        content: b.content as never,
+        style: b.style as never,
+        anchor: b.anchor,
+        updated_by: adminId,
+      })));
+    }
 
     await logAudit(supabase, {
       actorId: adminId, action: "cms.page_created", entityType: "cms_page", entityId: slug,
-      after: { title },
+      after: { title, template, sections: blocks.length },
     });
     invalidate(slug);
     return { ok: true, data: { slug } };
+  } catch (e) { return { ok: false, error: message(e) }; }
+}
+
+/* ── OWN TEMPLATES ───────────────────────────────────────────────────────
+ *
+ * "Zapisz sekcję jako szablon" and the picker's «Moje sekcje». A saved
+ * template is a copy of the block's own payload — not a reference to it, so
+ * editing the page it came from does not rewrite the template, and deleting
+ * that page does not empty it.
+ */
+
+export async function saveSectionTemplateAction(input: {
+  name: string; blockId: string;
+}): Promise<Result<{ id: string }>> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    const name = input.name.trim().slice(0, 80);
+    if (!name) return { ok: false, error: "title" };
+
+    const { data: block } = await supabase.from("cms_blocks")
+      .select("type, content, style, code, anchor").eq("id", input.blockId).maybeSingle();
+    if (!block) return { ok: false, error: "missing" };
+
+    const { data: created, error } = await supabase.from("cms_templates").insert({
+      kind: "section",
+      name,
+      section_type: block.type,
+      payload: [{
+        type: block.type,
+        content: block.content,
+        style: block.style,
+        code: block.code,
+        anchor: block.anchor,
+      }] as never,
+      created_by: adminId,
+    }).select("id").single();
+    if (error || !created) return { ok: false, error: "generic" };
+
+    await logAudit(supabase, {
+      actorId: adminId, action: "cms.template_saved", entityType: "cms_template",
+      entityId: created.id, after: { name, type: block.type },
+    });
+    revalidatePath("/admin/www");
+    return { ok: true, data: { id: created.id } };
+  } catch (e) { return { ok: false, error: message(e) }; }
+}
+
+/** Put a saved section on a page, at the end, as a new block. */
+export async function applySectionTemplateAction(input: {
+  pageId: string; templateId: string;
+}): Promise<Result<{ id: string }>> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    const { data: tpl } = await supabase.from("cms_templates")
+      .select("payload, kind").eq("id", input.templateId).maybeSingle();
+    if (!tpl || tpl.kind !== "section") return { ok: false, error: "missing" };
+
+    const payload = Array.isArray(tpl.payload) ? tpl.payload : [];
+    const first = payload[0] as {
+      type?: string; content?: unknown; style?: unknown; code?: unknown; anchor?: string | null;
+    } | undefined;
+    if (!first?.type || !isBlockType(first.type)) return { ok: false, error: "type" };
+
+    const { data: last } = await supabase.from("cms_blocks")
+      .select("sort_order").eq("page_id", input.pageId)
+      .order("sort_order", { ascending: false }).limit(1).maybeSingle();
+
+    const { data: created, error } = await supabase.from("cms_blocks").insert({
+      page_id: input.pageId,
+      type: first.type,
+      sort_order: (last?.sort_order ?? -1) + 1,
+      visible: true,
+      content: (first.content ?? {}) as never,
+      style: (first.style ?? {}) as never,
+      code: (first.code ?? {}) as never,
+      // DELIBERATELY NOT the anchor: two sections answering to #cennik is a
+      // broken link, and the copy is the one that should give way.
+      anchor: null,
+      updated_by: adminId,
+    }).select("id").single();
+    if (error || !created) return { ok: false, error: "generic" };
+
+    await touchPage(supabase, input.pageId, adminId);
+    return { ok: true, data: { id: created.id } };
+  } catch (e) { return { ok: false, error: message(e) }; }
+}
+
+export async function deleteTemplateAction(templateId: string): Promise<Result> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    const { error } = await supabase.from("cms_templates").delete().eq("id", templateId);
+    if (error) return { ok: false, error: "generic" };
+    await logAudit(supabase, {
+      actorId: adminId, action: "cms.template_deleted", entityType: "cms_template",
+      entityId: templateId,
+    });
+    revalidatePath("/admin/www");
+    return { ok: true };
   } catch (e) { return { ok: false, error: message(e) }; }
 }
 

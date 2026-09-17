@@ -39,7 +39,22 @@ const OK_MS = 4000;
 /** A retry prompt is an instruction, so it sits between the two. */
 const WARN_MS = 5500;
 
-type Options = { id?: string | number; duration?: number; description?: string };
+/**
+ * `action` is here DELIBERATELY, which is the bar this file sets for adding
+ * anything sonner can do. One thing earns it: an undoable delete. "Sekcja
+ * usunięta — Cofnij" is not decoration on a notification, it is the only
+ * moment the undo exists, and putting the button anywhere else (a bar, a
+ * modal) would be a second mechanism for the same five seconds.
+ *
+ * It stays narrow on purpose: a label and a callback, no JSX. A toast that
+ * can render arbitrary components stops being a message.
+ */
+type Options = {
+  id?: string | number;
+  duration?: number;
+  description?: string;
+  action?: { label: string; onClick: () => void };
+};
 
 /** A toast is a message, not a payload: anything that is not a string is a bug
  *  at the call site, and an empty message is worse than none at all. */

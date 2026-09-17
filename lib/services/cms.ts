@@ -164,6 +164,26 @@ export function isBlockType(value: string): boolean {
   return (BLOCK_TYPES as readonly string[]).includes(value);
 }
 
+/* ── OWN TEMPLATES ────────────────────────────────────────────────────────
+ *
+ * "Zapisz sekcję jako szablon", read back for the picker's «Moje sekcje».
+ * Admin-only by RLS; the payload is a copy, so a template survives the page
+ * it was cut from.
+ */
+
+export type SectionTemplateRow = {
+  id: string; name: string; sectionType: string | null; createdAt: string;
+};
+
+export async function listSectionTemplates(supabase: Client): Promise<SectionTemplateRow[]> {
+  const { data } = await supabase.from("cms_templates")
+    .select("id, name, section_type, created_at")
+    .eq("kind", "section").order("created_at", { ascending: false }).limit(60);
+  return (data ?? []).map((r) => ({
+    id: r.id, name: r.name, sectionType: r.section_type, createdAt: r.created_at,
+  }));
+}
+
 /* ── VERSIONS ─────────────────────────────────────────────────────────────── */
 
 export type VersionRow = {

@@ -14,7 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
+import { PAGE_TEMPLATES } from "@/lib/cms-templates";
 
 /**
  * THE PAGE LIST.
@@ -47,6 +48,7 @@ export function PageList({ pages, editors, mode, locale }: Props) {
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [navGroup, setNavGroup] = useState("");
+  const [template, setTemplate] = useState("blank");
   const [slugTouched, setSlugTouched] = useState(false);
   const [deleting, setDeleting] = useState<PageRow | null>(null);
   const [confirmSlug, setConfirmSlug] = useState("");
@@ -56,10 +58,12 @@ export function PageList({ pages, editors, mode, locale }: Props) {
 
   function create() {
     start(async () => {
-      const res = await createPageAction({ title, slug: effectiveSlug, navGroup: navGroup || null });
+      const res = await createPageAction({
+        title, slug: effectiveSlug, navGroup: navGroup || null, template,
+      });
       if (res.ok && res.data) {
         setCreating(false);
-        setTitle(""); setSlug(""); setNavGroup(""); setSlugTouched(false);
+        setTitle(""); setSlug(""); setNavGroup(""); setSlugTouched(false); setTemplate("blank");
         router.push(`/admin/www/${res.data.slug}`);
         return;
       }
@@ -187,6 +191,40 @@ export function PageList({ pages, editors, mode, locale }: Props) {
               {problem ? t(`cms.err.${problem}`) : `grovbase.com/${effectiveSlug}`}
             </p>
           </div>
+          {/* THE LAYOUT, CHOSEN BEFORE THE PAGE EXISTS.
+              Picking "Promocja" here is the difference between a landing that
+              takes two minutes and one that takes twenty: the sections arrive
+              in the order that sells, with their anchors already set. The
+              words stay yours — every section is created empty. */}
+          <div>
+            <Label>{t("cms.templateLabel")}</Label>
+            <div className="mt-1.5 grid grid-cols-2 gap-1.5" data-template-picker>
+              {PAGE_TEMPLATES.map((tpl) => {
+                const on = template === tpl.key;
+                return (
+                  <button key={tpl.key} type="button" onClick={() => setTemplate(tpl.key)}
+                    aria-pressed={on} data-template={tpl.key}
+                    className={cn(
+                      "rounded-xl border px-3 py-2.5 text-left transition-colors duration-150",
+                      on ? "is-selected" : "border-line hover:bg-raised",
+                    )}>
+                    <span className="block text-[12.5px] font-semibold">
+                      {t(`cms.template.${tpl.key}`)}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] leading-snug text-faint">
+                      {tpl.sections.length === 0
+                        ? t("cms.templateEmpty")
+                        : t("cms.templateSections", { n: tpl.sections.length })}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-[11.5px] leading-relaxed text-faint">
+              {t(`cms.templateHint.${template}`)}
+            </p>
+          </div>
+
           <div>
             <Label htmlFor="cms-new-nav">{t("cms.navGroup")}</Label>
             <Select id="cms-new-nav" value={navGroup} onChange={(e) => setNavGroup(e.target.value)}>

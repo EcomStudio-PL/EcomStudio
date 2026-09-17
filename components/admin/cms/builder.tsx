@@ -4,18 +4,20 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "@/lib/notify";
 import {
-  ArrowLeft, Check, Copy, ExternalLink, Eye, EyeOff, GripVertical, History, Loader2,
-  Monitor, Plus, Redo2, Settings2, Smartphone, Tablet, Trash2, Undo2,
+  ArrowLeft, Check, ChevronDown, Copy, ExternalLink, Eye, EyeOff, GripVertical,
+  BookmarkPlus, History, Loader2, Maximize2, Monitor, Plus, Redo2, Rows3, Search, Settings2,
+  Smartphone, Tablet, Trash2, Undo2, X as XIcon,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import {
   saveBlockAction, reorderBlocksAction, duplicateBlockAction, deleteBlockAction,
-  publishPageAction, unpublishPageAction,
+  publishPageAction, unpublishPageAction, applySectionTemplateAction,
+  saveSectionTemplateAction,
 } from "@/app/actions/cms";
 import { SECTION_GROUPS, type CmsBlockContent, type CmsCode, type SectionStyle } from "@/lib/cms";
 import { DEVICE_PRESETS, type DeviceKind } from "@/lib/cms-style";
-import { fieldsFor } from "@/lib/cms-schema";
-import type { BlockRow, PageRow } from "@/lib/services/cms";
+import { fieldsFor, splitFields } from "@/lib/cms-schema";
+import type { BlockRow, PageRow, SectionTemplateRow } from "@/lib/services/cms";
 import { Button } from "@/components/ui/button";
 import { Modal, ConfirmModal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
@@ -85,9 +87,12 @@ const toDraft = (b: BlockRow): Draft => ({
   audience: b.audience ?? "everyone",
 });
 
-export function Builder({ page, blocks: initial, previewPath }: {
+export function Builder({ page, blocks: initial, templates = [], previewPath }: {
   page: PageRow;
   blocks: BlockRow[];
+  /** Sections saved earlier with "Zapisz jako szablon", offered in the
+   *  picker under «Moje sekcje». */
+  templates?: SectionTemplateRow[];
   /** /podglad/<slug> — the draft, rendered as a visitor would see it. */
   previewPath: string;
 }) {
@@ -105,6 +110,15 @@ export function Builder({ page, blocks: initial, previewPath }: {
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<Draft | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  /** Quick edit: the rarely-used half of a section's fields, folded away. */
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  /** The section list, and the picker, both searchable once a page is long. */
+  const [treeQuery, setTreeQuery] = useState("");
+  const [pickQuery, setPickQuery] = useState("");
+  /** Compact hides the summary line, so a thirty-section page reorders in
+   *  one screen instead of three. */
+  const [compact, setCompact] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
   const [previewNonce, setPreviewNonce] = useState(0);
   const [dragId, setDragId] = useState<string | null>(null);
 
@@ -115,6 +129,10 @@ export function Builder({ page, blocks: initial, previewPath }: {
   const [historyTick, setHistoryTick] = useState(0);
 
   const active = blocks.find((b) => b.id === activeId) ?? null;
+
+  // Every section opens on its quick fields. Leaving "advanced" latched on
+  // from the previous section is how the wall of inputs comes back.
+  useEffect(() => { setShowAdvanced(false); }, [activeId]);
 
   const remember = useCallback((snapshot: Draft[]) => {
     past.current = [...past.current.slice(-HISTORY_LIMIT + 1), snapshot];
@@ -264,6 +282,94 @@ export function Builder({ page, blocks: initial, previewPath }: {
     });
   }
 
+  /** The picker, filtered. Matching the translated NAME is the point: the
+   *  admin is looking for "Odliczanie", not for `countdown`. */
+  const pickedGroups = useMemo(() => {
+    const q = pickQuery.trim().toLowerCase();
+    return SECTION_GROUPS
+      .map((g) => ({
+        key: g.key,
+        types: g.types.filter((type) =>
+          !q || t(`cms.sectionType.${type}`).toLowerCase().includes(q) || type.includes(q)),
+      }))
+      .filter((g) => g.types.length > 0);
+  }, [pickQuery, t]);
+
+  const matchingTemplates = useMemo(() => {
+    const q = pickQuery.trim().toLowerCase();
+    if (!q) return templates;
+    return templates.filter((tpl) => tpl.name.toLowerCase().includes(q));
+  }, [templates, pickQuery]);
+
+  /** Drop a saved section onto this page. */
+  function addFromTemplate(templateId: string) {
+    setAdding(false);
+    setPickQuery("");
+    start(async () => {
+      const res = await applySectionTemplateAction({ pageId: page.id, templateId });
+      if (!res.ok) { toast.error(t(`cms.err.${res.error}`)); return; }
+      setPreviewNonce((n) => n + 1);
+      router.refresh();
+    });
+  }
+
+  /** Keep this section for the next page. */
+  function saveAsTemplate(block: Draft) {
+    const name = window.prompt(t("cms.templateNamePrompt"),
+      t(`cms.sectionType.${block.type}`));
+    if (!name?.trim()) return;
+    start(async () => {
+      const res = await saveSectionTemplateAction({ name, blockId: block.id });
+      if (res.ok) { toast.success(t("cms.templateSaved")); router.refresh(); }
+      else toast.error(t(`cms.err.${res.error}`));
+    });
+  }
+
+  /**
+   * DELETING A SECTION IS UNDOABLE FOR A FEW SECONDS.
+   *
+   * The confirmation stops the accident; the toast catches the confirmed
+   * mistake, which is the more common one. Undo re-creates the block from
+   * the copy held here and puts it back where it was — same content, same
+   * style, same code, same position. Only the id changes, and nothing
+   * pointed at the old one.
+   */
+  function removeSection(block: Draft) {
+    const index = blocks.findIndex((b) => b.id === block.id);
+    run(deleteBlockAction(block.id), () => {
+      setBlocks((prev) => { remember(prev); return prev.filter((b) => b.id !== block.id); });
+      if (activeId === block.id) setActiveId(null);
+      setDeleting(null);
+      toast.success(t("cms.sectionDeleted"), {
+        action: {
+          label: t("cms.undoDelete"),
+          onClick: () => restoreSection(block, index),
+        },
+      });
+    });
+  }
+
+  function restoreSection(block: Draft, index: number) {
+    start(async () => {
+      const res = await saveBlockAction({
+        pageId: page.id, type: block.type, content: block.content,
+        style: block.style, code: block.code, visible: block.visible,
+        analyticsId: block.analyticsId, anchor: block.anchor,
+        showFrom: block.showFrom, showUntil: block.showUntil, audience: block.audience,
+      });
+      if (!res.ok || !res.data) { toast.error(t(`cms.err.${res.ok ? "generic" : res.error}`)); return; }
+      const restored: Draft = { ...block, id: res.data.id };
+      const next = [...blocks];
+      next.splice(Math.max(0, Math.min(index, next.length)), 0, restored);
+      setBlocks(next);
+      setActiveId(restored.id);
+      // It came back last in the database; put the order back to what it was.
+      await reorderBlocksAction(page.id, next.map((b) => b.id));
+      setPreviewNonce((n) => n + 1);
+      router.refresh();
+    });
+  }
+
   function commitOrder(ordered: Draft[]) {
     setBlocks((prev) => { remember(prev); return ordered; });
     run(reorderBlocksAction(page.id, ordered.map((b) => b.id)));
@@ -308,6 +414,21 @@ export function Builder({ page, blocks: initial, previewPath }: {
   useEffect(() => { setWidth(DEVICE_PRESETS[device][0]); }, [device]);
 
   const fields = useMemo(() => (active ? fieldsFor(active.type) : []), [active]);
+  const { quick, advanced } = useMemo(
+    () => (active ? splitFields(active.type, fields) : { quick: [], advanced: [] }),
+    [active, fields],
+  );
+
+  /** The sections a search in the left column leaves standing. Matching the
+   *  TYPE NAME as well as the text is what makes "faq" find the FAQ. */
+  const visibleBlocks = useMemo(() => {
+    const q = treeQuery.trim().toLowerCase();
+    if (!q) return blocks;
+    return blocks.filter((b) =>
+      t(`cms.sectionType.${b.type}`).toLowerCase().includes(q)
+      || b.type.includes(q)
+      || summarize(b, locale).toLowerCase().includes(q));
+  }, [blocks, treeQuery, t, locale]);
 
   /* ── RENDER ───────────────────────────────────────────────────────────── */
 
@@ -397,10 +518,38 @@ export function Builder({ page, blocks: initial, previewPath }: {
               <h2 className="text-[11.5px] font-semibold uppercase tracking-[0.1em] text-faint">
                 {t("cms.sections")}
               </h2>
-              <span className="text-[11px] tabular-nums text-faint">{blocks.length}</span>
+              <span className="flex items-center gap-1">
+                <TinyBtn title={t(compact ? "cms.viewDetailed" : "cms.viewCompact")}
+                  onClick={() => setCompact((v) => !v)}>
+                  <Rows3 size={13} />
+                </TinyBtn>
+                <span className="text-[11px] tabular-nums text-faint">{blocks.length}</span>
+              </span>
             </div>
+
+            {/* A thirty-section page is exactly when "scroll and look" stops
+                working. Matching the type name too is what makes "faq" find
+                the FAQ on a page whose FAQ heading is still empty. */}
+            {blocks.length > 6 && (
+              <div className="relative mb-2">
+                <Search size={13} aria-hidden
+                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
+                <input value={treeQuery} onChange={(e) => setTreeQuery(e.target.value)}
+                  data-section-search placeholder={t("cms.searchSections")}
+                  aria-label={t("cms.searchSections")}
+                  className="h-9 w-full rounded-lg border border-line bg-sunken/50 pl-8 pr-7 text-[12.5px] outline-none transition-colors focus:border-[rgb(var(--accent)/0.5)]" />
+                {treeQuery && (
+                  <button type="button" onClick={() => setTreeQuery("")}
+                    aria-label={t("common.clear")}
+                    className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-faint hover:bg-raised hover:text-ink">
+                    <XIcon size={12} aria-hidden />
+                  </button>
+                )}
+              </div>
+            )}
+
             <ul className="space-y-1" data-section-tree>
-              {blocks.map((b, i) => (
+              {visibleBlocks.map((b, i) => (
                 <li key={b.id}
                   draggable
                   onDragStart={() => setDragId(b.id)}
@@ -422,9 +571,11 @@ export function Builder({ page, blocks: initial, previewPath }: {
                     <span className="block truncate text-[13px] font-medium">
                       {t(`cms.sectionType.${b.type}`)}
                     </span>
-                    <span className="block truncate text-[11px] text-faint">
-                      {summarize(b, locale) || `#${i + 1}`}
-                    </span>
+                    {!compact && (
+                      <span className="block truncate text-[11px] text-faint">
+                        {summarize(b, locale) || `#${i + 1}`}
+                      </span>
+                    )}
                   </button>
                   <span className="flex shrink-0 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
                     <TinyBtn title={b.visible ? t("cms.hide") : t("cms.show")}
@@ -440,6 +591,10 @@ export function Builder({ page, blocks: initial, previewPath }: {
                       onClick={() => run(duplicateBlockAction(b.id))}>
                       <Copy size={13} />
                     </TinyBtn>
+                    <TinyBtn title={t("cms.saveAsTemplate")} disabled={pending}
+                      onClick={() => saveAsTemplate(b)}>
+                      <BookmarkPlus size={13} />
+                    </TinyBtn>
                     <TinyBtn title={t("common.delete")} onClick={() => setDeleting(b)}>
                       <Trash2 size={13} />
                     </TinyBtn>
@@ -451,6 +606,11 @@ export function Builder({ page, blocks: initial, previewPath }: {
             {blocks.length === 0 && (
               <p className="rounded-xl border border-dashed border-line px-3 py-6 text-center text-[12.5px] text-faint">
                 {t("cms.emptyBody")}
+              </p>
+            )}
+            {blocks.length > 0 && visibleBlocks.length === 0 && (
+              <p className="rounded-xl border border-dashed border-line px-3 py-6 text-center text-[12.5px] text-faint">
+                {t("cms.searchNothing")}
               </p>
             )}
 
@@ -490,16 +650,20 @@ export function Builder({ page, blocks: initial, previewPath }: {
                   </button>
                 ))}
               </div>
-              <div className="flex flex-wrap gap-1">
-                {widths.map((w) => (
-                  <button key={w} type="button" onClick={() => setWidth(w)} aria-pressed={w === width}
-                    className={cn("rounded-md px-2 py-1 text-[11.5px] font-medium tabular-nums transition-colors",
-                      w === width ? "bg-accent-soft text-accent" : "text-muted hover:bg-raised")}>
-                    {w}
-                  </button>
-                ))}
-              </div>
-              <span className="ml-auto text-[11px] text-faint">{t("cms.previewDraft")}</span>
+              {/* ONE WIDTH AT A TIME. Seven buttons side by side was a row of
+                  numbers to decode; the device is the choice, the exact width
+                  is a refinement of it. */}
+              <select value={width} onChange={(e) => setWidth(Number(e.target.value))}
+                aria-label={t("cms.previewWidth")} data-preview-width
+                className="h-8 rounded-lg border border-line bg-surface px-2 text-[11.5px] font-medium tabular-nums text-muted outline-none">
+                {widths.map((w) => <option key={w} value={w}>{w} px</option>)}
+              </select>
+              <span className="ml-auto flex items-center gap-1.5">
+                <span className="hidden text-[11px] text-faint sm:inline">{t("cms.previewDraft")}</span>
+                <IconBtn title={t("cms.fullscreenPreview")} onClick={() => setFullscreen(true)}>
+                  <Maximize2 size={14} />
+                </IconBtn>
+              </span>
             </div>
 
             {/* The frame is the real page at a real width. Centred and
@@ -525,6 +689,13 @@ export function Builder({ page, blocks: initial, previewPath }: {
               <p className="px-4 py-10 text-center text-[13px] text-muted">{t("cms.selectSection")}</p>
             ) : (
               <>
+                {/* ← WSZYSTKIE SEKCJE. One tap back to the list on a phone,
+                    where the list and the editor are the same column. */}
+                <button type="button" onClick={() => setPane("tree")} data-back-to-sections
+                  className="flex w-full items-center gap-1.5 border-b border-line px-3 py-2 text-[12px] font-semibold text-muted transition-colors hover:text-ink xl:hidden">
+                  <ArrowLeft size={14} aria-hidden />{t("cms.allSections")}
+                </button>
+
                 <div className="flex items-center gap-2 border-b border-line px-3 py-2.5">
                   <Settings2 size={15} aria-hidden className="text-faint" />
                   <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">
@@ -558,11 +729,35 @@ export function Builder({ page, blocks: initial, previewPath }: {
                           {t("cms.noContentFields")}
                         </p>
                       )}
-                      {fields.map((def) => (
+                      {quick.map((def) => (
                         <Field key={def.key} def={def} locale={locale} content={active.content}
                           onChange={(content) => edit({ content })}
                           onChangeWith={(update) => edit({ content: update(active.content) })} />
                       ))}
+
+                      {/* WIĘCEJ USTAWIEŃ. The rest of the fields exist and
+                          nothing was taken away — they are simply not the
+                          thing you came here to change. */}
+                      {advanced.length > 0 && (
+                        <div className="border-t border-line pt-3">
+                          <button type="button" onClick={() => setShowAdvanced((v) => !v)}
+                            aria-expanded={showAdvanced} data-more-settings
+                            className="flex w-full items-center justify-between rounded-lg px-1 py-2 text-[12.5px] font-semibold text-muted transition-colors hover:text-ink">
+                            <span>{t("cms.moreSettings")}</span>
+                            <ChevronDown size={15} aria-hidden
+                              className={cn("transition-transform", showAdvanced && "rotate-180")} />
+                          </button>
+                          {showAdvanced && (
+                            <div className="mt-2 space-y-4">
+                              {advanced.map((def) => (
+                                <Field key={def.key} def={def} locale={locale} content={active.content}
+                                  onChange={(content) => edit({ content })}
+                                  onChangeWith={(update) => edit({ content: update(active.content) })} />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </>
                   )}
 
@@ -615,9 +810,44 @@ export function Builder({ page, blocks: initial, previewPath }: {
       </div>
 
       {/* ── ADD A SECTION ──────────────────────────────────────────────── */}
-      <Modal open={adding} onClose={() => setAdding(false)} title={t("cms.addBlock")} wide>
+      <Modal open={adding} onClose={() => { setAdding(false); setPickQuery(""); }}
+        title={t("cms.addBlock")} wide>
         <div className="space-y-5">
-          {SECTION_GROUPS.map((group) => (
+          <div className="relative">
+            <Search size={14} aria-hidden
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+            <input value={pickQuery} onChange={(e) => setPickQuery(e.target.value)} autoFocus
+              data-picker-search placeholder={t("cms.searchSectionTypes")}
+              aria-label={t("cms.searchSectionTypes")}
+              className="h-10 w-full rounded-xl border border-line bg-sunken/50 pl-9 pr-3 text-[13px] outline-none transition-colors focus:border-[rgb(var(--accent)/0.5)]" />
+          </div>
+
+          {/* MOJE SEKCJE first, because a section you saved is one you meant
+              to use again. Empty until something has been saved, and then it
+              is the shortest path there is. */}
+          {templates.length > 0 && matchingTemplates.length > 0 && (
+            <div>
+              <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-faint">
+                {t("cms.myTemplates")}
+              </h3>
+              <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {matchingTemplates.map((tpl) => (
+                  <li key={tpl.id}>
+                    <button type="button" onClick={() => addFromTemplate(tpl.id)}
+                      data-template-choice={tpl.id}
+                      className="panel panel-interactive w-full rounded-xl px-3 py-3 text-left">
+                      <span className="block truncate text-[13px] font-medium">{tpl.name}</span>
+                      <span className="block truncate text-[11px] text-faint">
+                        {tpl.sectionType ? t(`cms.sectionType.${tpl.sectionType}`) : ""}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {pickedGroups.map((group) => (
             <div key={group.key}>
               <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-faint">
                 {t(`cms.sectionGroup.${group.key}`)}
@@ -635,20 +865,44 @@ export function Builder({ page, blocks: initial, previewPath }: {
               </ul>
             </div>
           ))}
+
+          {pickedGroups.length === 0 && matchingTemplates.length === 0 && (
+            <p className="rounded-xl border border-dashed border-line px-3 py-8 text-center text-[12.5px] text-faint">
+              {t("cms.searchNothing")}
+            </p>
+          )}
         </div>
       </Modal>
 
       <ConfirmModal open={!!deleting} onClose={() => setDeleting(null)}
-        onConfirm={() => {
-          if (!deleting) return;
-          run(deleteBlockAction(deleting.id), () => {
-            setBlocks((prev) => { remember(prev); return prev.filter((b) => b.id !== deleting.id); });
-            if (activeId === deleting.id) setActiveId(null);
-            setDeleting(null);
-          });
-        }}
+        onConfirm={() => { if (deleting) removeSection(deleting); }}
         title={t("common.delete")} body={t("common.confirmDelete")}
         confirmLabel={t("common.delete")} danger pending={pending} />
+
+      {/* ── FULL-SCREEN PREVIEW ─────────────────────────────────────────
+          On a phone the preview column is a postage stamp inside an editor
+          inside a panel. This is the same frame, at the width the device
+          actually is, with nothing else on screen. */}
+      {fullscreen && (
+        <div className="fixed inset-0 z-[70] flex flex-col bg-bg" data-preview-fullscreen>
+          <div className="flex items-center gap-2 border-b border-line px-3 py-2">
+            <span className="text-[12.5px] font-semibold">{t("cms.preview")}</span>
+            <span className="text-[11px] tabular-nums text-faint">{width} px</span>
+            <span className="flex-1" />
+            <button type="button" onClick={() => setFullscreen(false)}
+              aria-label={t("cms.closePreview")} data-close-fullscreen
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-ink">
+              <XIcon size={16} aria-hidden />
+            </button>
+          </div>
+          <div className="thin-scroll flex-1 overflow-auto bg-sunken/40 p-2">
+            <iframe key={`fs-${previewNonce}`} src={previewSrc} title={t("cms.preview")}
+              data-cms-frame-full
+              style={{ width, height: "100%", minHeight: "100%" }}
+              className="mx-auto block rounded-lg border border-line bg-bg" />
+          </div>
+        </div>
+      )}
 
       {/* Referenced so the history buttons re-render when the stacks change;
           refs do not trigger renders on their own. */}

@@ -216,6 +216,59 @@ export function fieldsFor(type: string): FieldDef[] {
   return SECTION_FIELDS[type] ?? [HEADING, BODY];
 }
 
+/* ── QUICK EDIT ───────────────────────────────────────────────────────────
+ *
+ * Opening a section used to mean a wall of fourteen inputs, most of which
+ * stay empty on most pages. On a phone that is a screen and a half of
+ * scrolling before the heading is even reachable.
+ *
+ * So the fields are split in two. The FIRST group is what an edit almost
+ * always is — the words, the picture, the button — and it is the only thing
+ * on screen when a section opens. Everything else is a second image, an
+ * alignment, a form handler: real settings, used rarely, and folded away
+ * behind "Więcej ustawień" until they are wanted.
+ *
+ * THE SPLIT IS BY MEANING, NOT BY POSITION. A CTA's label and its URL are one
+ * decision and always travel together; the "after" picture of a before/after
+ * is not an extra image, it is half the section.
+ */
+
+/** Keys that are the point of whatever section they appear in. */
+const ALWAYS_QUICK = new Set([
+  "title", "subtitle", "description", "items", "html",
+  "mediaUrl", "ctaLabel", "ctaUrl", "price", "deadline",
+]);
+
+/** Sections where something else is load-bearing too. */
+const EXTRA_QUICK: Record<string, string[]> = {
+  // The "after" image is not a decoration here, it is the comparison.
+  before_after: ["media2Url"],
+  // These two are the column headings of the table, not calls to action.
+  comparison: ["cta2Label"],
+  // A form that posts nowhere is not a form.
+  contact_form: ["formHandler"],
+  newsletter: ["formHandler"],
+  // The wand: what it shows is the whole configuration.
+  tools_grid: ["filter"],
+  // A video's poster is the only thing visible before a click.
+  video: ["posterUrl"],
+};
+
+export function splitFields(type: string, fields: FieldDef[]): {
+  quick: FieldDef[]; advanced: FieldDef[];
+} {
+  // The launch page is one long form by design — it IS the page, and every
+  // field on it is used. Splitting it would hide half a page behind a toggle.
+  if (type === "launch") return { quick: fields, advanced: [] };
+  const extra = new Set(EXTRA_QUICK[type] ?? []);
+  const quick = fields.filter((f) => ALWAYS_QUICK.has(f.key) || extra.has(f.key));
+  const advanced = fields.filter((f) => !quick.includes(f));
+  // A section whose every field is "advanced" would open empty, which is
+  // worse than the wall it replaced.
+  if (quick.length === 0) return { quick: fields, advanced: [] };
+  return { quick, advanced };
+}
+
 /** Whether a section type stores its values in the `fields` bag. */
 export const usesFieldBag = (type: string) => type === "launch";
 
