@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Package, Sparkles, PenLine, Images, History as HistoryIcon,
   Coins, Rocket, LifeBuoy, Settings, Shield, Users, Building2, Cpu, Wrench,
   ScrollText, SlidersHorizontal, Wand2, BarChart3, Layers, Globe,
-  FolderOpen, Lightbulb, MessageSquare, ListChecks, Mail,
+  FolderOpen, Lightbulb, MessageSquare, ListChecks, Mail, Send,
   ToggleLeft, Gift, DoorOpen, ClipboardList,
 } from "lucide-react";
 
@@ -98,6 +98,12 @@ export const ADMIN_NAV: readonly NavGroup[] = [
   { key: "marketing", items: [
     { href: "/admin/www", key: "www", icon: Globe },
     { href: "/admin/www/sekcje-globalne", key: "globalSections", icon: Layers },
+    // NEWSLETTER IS NOT POCZTA, and it is deliberately not in the "clients"
+    // group next to it. Poczta is the inbox and the messages the app sends
+    // because something happened; this is campaigns written to a list. They
+    // share a transport and nothing else — putting them side by side is how
+    // an operator ends up sending a campaign from the mailbox screen.
+    { href: "/admin/newsletter", key: "newsletter", icon: Send },
     { href: "/admin/media", key: "media", icon: FolderOpen },
     { href: "/admin/waitlist", key: "waitlist", icon: ListChecks },
     { href: "/admin/inspirations", key: "inspirations", icon: Lightbulb },

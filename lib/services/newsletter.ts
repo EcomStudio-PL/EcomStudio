@@ -638,3 +638,403 @@ export async function listSuppressions(
     pageSize,
   };
 }
+
+/* ── FREEZING AN AUDIENCE INTO A QUEUE ───────────────────────────────────── */
+
+/**
+ * The moment a campaign stops being a draft.
+ *
+ * Every message that will ever be sent becomes a row here, once, before
+ * anything goes out. Three consequences worth stating, because each of them is
+ * a decision:
+ *
+ * THE AUDIENCE IS FROZEN. A contact who joins the group after this runs is not
+ * in this campaign. That is the honest reading of "send to these people" — the
+ * alternative, a live query at send time, means the recipient count on the
+ * confirm screen was never the truth.
+ *
+ * THE WHOLE SEQUENCE IS QUEUED AT ONCE, with each step's `send_after` computed
+ * from the cumulative delay. A later step is therefore cancellable (stop on
+ * conversion, unsubscribe) by flipping pending rows, and no step depends on a
+ * worker invocation having survived to create it.
+ *
+ * AND IT IS SAFE TO RUN TWICE. Every insert lands on the unique index
+ * (campaign, step, contact); a re-run inserts what is missing and collides
+ * harmlessly with what is not. That is what makes a retried action, a
+ * double-tapped button and a resumed campaign all the same operation.
+ */
+export async function snapshotRecipients(
+  supabase: Client,
+  campaign: CampaignRow,
+  steps: StepRow[],
+  opts: { startAt?: Date } = {},
+): Promise<{ created: number; mailable: number }> {
+  const breakdown = await audienceBreakdown(supabase, campaign.audience);
+  if (breakdown.ids.length === 0) return { created: 0, mailable: 0 };
+
+  const base = opts.startAt ?? new Date();
+  const contacts = await contactEmails(supabase, breakdown.ids);
+
+  // Which variants exist per step. A step with one row is not an A/B test; a
+  // step with three is, and the audience is split across exactly those.
+  const byStep = new Map<number, string[]>();
+  for (const s of steps) {
+    const list = byStep.get(s.stepIndex) ?? [];
+    if (!list.includes(s.variant)) list.push(s.variant);
+    byStep.set(s.stepIndex, list.sort());
+  }
+
+  const rows: {
+    campaign_id: string; step_index: number; variant: string;
+    contact_id: string; email: string; send_after: string;
+  }[] = [];
+
+  let cumulative = 0;
+  for (const stepIndex of [...byStep.keys()].sort((a, b) => a - b)) {
+    const variants = byStep.get(stepIndex) ?? ["A"];
+    const delay = steps.find((s) => s.stepIndex === stepIndex)?.delayMinutes ?? 0;
+    cumulative += stepIndex === 0 ? 0 : delay;
+    const sendAfter = new Date(base.getTime() + cumulative * 60_000).toISOString();
+
+    // A/B: only the test share is queued now. The rest waits for a winner and
+    // is queued by the decision, so nobody is sent a variant that lost.
+    const abOn = campaign.abEnabled && variants.length > 1 && stepIndex === 0;
+    const pool = abOn
+      ? breakdown.ids.slice(0, Math.max(variants.length,
+        Math.round((breakdown.ids.length * campaign.abSharePct) / 100)))
+      : breakdown.ids;
+
+    pool.forEach((contactId, i) => {
+      const email = contacts.get(contactId);
+      if (!email) return;
+      rows.push({
+        campaign_id: campaign.id,
+        step_index: stepIndex,
+        // Round-robin rather than a random draw: an even split is the point,
+        // and a random one is only even in expectation.
+        variant: abOn ? variants[i % variants.length] : variants[0],
+        contact_id: contactId,
+        email,
+        send_after: sendAfter,
+      });
+    });
+  }
+
+  let created = 0;
+  for (let i = 0; i < rows.length; i += 500) {
+    const chunk = rows.slice(i, i + 500);
+    const { data } = await supabase
+      .from("newsletter_recipients")
+      .upsert(chunk as never, {
+        onConflict: "campaign_id,step_index,contact_id",
+        ignoreDuplicates: true,
+      })
+      .select("id");
+    created += (data ?? []).length;
+  }
+
+  return { created, mailable: breakdown.mailable };
+}
+
+/** Address per contact id, chunked to keep the request URL sane. */
+async function contactEmails(supabase: Client, ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (let i = 0; i < ids.length; i += 400) {
+    const { data } = await supabase
+      .from("newsletter_contacts").select("id, email").in("id", ids.slice(i, i + 400));
+    for (const r of data ?? []) out.set(r.id as string, r.email as string);
+  }
+  return out;
+}
+
+/**
+ * Register every destination a campaign links to, so the redirect endpoint can
+ * resolve an id instead of trusting a URL. Returns the map the renderer needs.
+ */
+export async function ensureLinks(
+  supabase: Client, campaignId: string, urls: string[],
+): Promise<Map<string, string>> {
+  if (urls.length > 0) {
+    await supabase.from("newsletter_links").upsert(
+      urls.map((url) => ({ campaign_id: campaignId, url })) as never,
+      { onConflict: "campaign_id,url", ignoreDuplicates: true },
+    );
+  }
+  const { data } = await supabase
+    .from("newsletter_links").select("id, url").eq("campaign_id", campaignId);
+  return new Map((data ?? []).map((r) => [r.url as string, r.id as string]));
+}
+
+/* ── DASHBOARD ───────────────────────────────────────────────────────────── */
+
+export type DashboardTotals = {
+  contacts: number;
+  newContacts: number;
+  sent: number;
+  accepted: number;
+  failed: number;
+  openedUnique: number;
+  clickedUnique: number;
+  replied: number;
+  unsubscribed: number;
+  converted: number;
+  revenueCents: number | null;
+  /** False when billing is not live at all, so the UI can say so instead of
+   *  rendering a confident zero. */
+  hasSalesData: boolean;
+};
+
+export async function dashboardTotals(
+  supabase: Client, sinceIso: string, untilIso: string,
+): Promise<DashboardTotals> {
+  const [contacts, fresh, events, recipients, attributions, payments] = await Promise.all([
+    supabase.from("newsletter_contacts").select("id", { count: "exact", head: true }),
+    supabase.from("newsletter_contacts").select("id", { count: "exact", head: true })
+      .gte("created_at", sinceIso).lte("created_at", untilIso),
+    supabase.from("newsletter_events").select("event_type, contact_id")
+      .gte("created_at", sinceIso).lte("created_at", untilIso).limit(500_000),
+    supabase.from("newsletter_recipients").select("status")
+      .gte("created_at", sinceIso).lte("created_at", untilIso).limit(500_000),
+    supabase.from("newsletter_attributions").select("amount_cents, converted_at")
+      .gte("created_at", sinceIso).lte("created_at", untilIso).limit(100_000),
+    // THE HONESTY CHECK. Not "how much revenue" but "is there a payments
+    // system at all" — the answer decides between a number and a sentence.
+    supabase.from("payments").select("id", { count: "exact", head: true }),
+  ]);
+
+  const uniq = new Map<string, Set<string>>();
+  const totals = new Map<string, number>();
+  for (const e of events.data ?? []) {
+    const type = e.event_type as string;
+    totals.set(type, (totals.get(type) ?? 0) + 1);
+    if (!uniq.has(type)) uniq.set(type, new Set());
+    if (e.contact_id) uniq.get(type)!.add(e.contact_id as string);
+  }
+
+  let sent = 0, failed = 0;
+  for (const r of recipients.data ?? []) {
+    if (r.status === "sent") sent += 1;
+    else if (r.status === "failed") failed += 1;
+  }
+
+  const amounts = (attributions.data ?? [])
+    .map((a) => a.amount_cents as number | null)
+    .filter((v): v is number => typeof v === "number");
+
+  return {
+    contacts: contacts.count ?? 0,
+    newContacts: fresh.count ?? 0,
+    sent,
+    accepted: totals.get("accepted") ?? sent,
+    failed,
+    openedUnique: uniq.get("opened")?.size ?? 0,
+    clickedUnique: uniq.get("clicked")?.size ?? 0,
+    replied: uniq.get("replied")?.size ?? 0,
+    unsubscribed: totals.get("unsubscribed") ?? 0,
+    converted: (attributions.data ?? []).filter((a) => a.converted_at).length,
+    revenueCents: amounts.length > 0 ? amounts.reduce((a, b) => a + b, 0) : null,
+    hasSalesData: (payments.count ?? 0) > 0,
+  };
+}
+
+/** How many messages are waiting, for the dashboard and the worker panel. */
+export async function queueDepth(supabase: Client): Promise<number> {
+  const { count } = await supabase
+    .from("newsletter_recipients").select("id", { count: "exact", head: true })
+    .in("status", ["pending", "sending"]);
+  return count ?? 0;
+}
+
+/* ── AUTOMATIONS ─────────────────────────────────────────────────────────── */
+
+export type AutomationRow = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  triggerType: string;
+  triggerConfig: Record<string, unknown>;
+  campaignId: string;
+  campaignName: string | null;
+  createdAt: string;
+};
+
+export async function listAutomations(supabase: Client): Promise<AutomationRow[]> {
+  const { data } = await supabase
+    .from("newsletter_automations")
+    .select("id, name, enabled, trigger_type, trigger_config, campaign_id, created_at, newsletter_campaigns(name)")
+    .order("created_at", { ascending: false });
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    enabled: Boolean(r.enabled),
+    triggerType: r.trigger_type as string,
+    triggerConfig: (r.trigger_config ?? {}) as Record<string, unknown>,
+    campaignId: r.campaign_id as string,
+    campaignName: (r as { newsletter_campaigns?: { name?: string } | null })
+      .newsletter_campaigns?.name ?? null,
+    createdAt: r.created_at as string,
+  }));
+}
+
+/* ── TEMPLATES ───────────────────────────────────────────────────────────── */
+
+export type TemplateRow = {
+  id: string;
+  name: string;
+  category: string;
+  subject: string;
+  preheader: string;
+  editor: "builder" | "html";
+  blocks: MailBlock[];
+  bodyHtml: string;
+  isBuiltin: boolean;
+};
+
+export async function listTemplates(supabase: Client): Promise<TemplateRow[]> {
+  const { data } = await supabase
+    .from("newsletter_templates")
+    .select("id, name, category, subject, preheader, editor, blocks, body_html, is_builtin")
+    .order("is_builtin", { ascending: false }).order("name");
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    category: (r.category as string) ?? "custom",
+    subject: (r.subject as string) ?? "",
+    preheader: (r.preheader as string) ?? "",
+    editor: r.editor === "html" ? "html" : "builder",
+    blocks: toBlocks(r.blocks),
+    bodyHtml: (r.body_html as string) ?? "",
+    isBuiltin: Boolean(r.is_builtin),
+  }));
+}
+
+/* ── READS THE WRITE PATH NEEDS ──────────────────────────────────────────────
+ *
+ * Appended for app/actions/newsletter.ts. Both of these exist because the
+ * obvious alternative is worse in a way that only shows up in production.
+ */
+
+/**
+ * One template, by id.
+ *
+ * `listTemplates` already exists and would answer this — by fetching every
+ * template, every block array and every pasted HTML document in the table, so
+ * that "Użyj" can read one of them. A template body is the largest text this
+ * module stores; loading all of them to use one is the kind of thing that is
+ * invisible with eight rows and embarrassing with two hundred.
+ */
+export async function getTemplate(supabase: Client, id: string): Promise<TemplateRow | null> {
+  const { data } = await supabase
+    .from("newsletter_templates")
+    .select("id, name, category, subject, preheader, editor, blocks, body_html, is_builtin")
+    .eq("id", id)
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    id: data.id as string,
+    name: data.name as string,
+    category: (data.category as string) ?? "custom",
+    subject: (data.subject as string) ?? "",
+    preheader: (data.preheader as string) ?? "",
+    editor: data.editor === "html" ? "html" : "builder",
+    blocks: toBlocks(data.blocks),
+    bodyHtml: (data.body_html as string) ?? "",
+    isBuiltin: Boolean(data.is_builtin),
+  };
+}
+
+/**
+ * EVERY contact matching a filter, for the CSV export — not one page of them.
+ *
+ * `listContacts` caps `pageSize` at 200 because it answers a screen, and that
+ * cap is right there. An export that silently handed back the first 200 rows of
+ * a 4 000-row list would be worse than no export: the operator would have no
+ * way to tell, and would go on to treat the file as the list.
+ *
+ * So this pages through in blocks of 1 000 (PostgREST's own default ceiling is
+ * 1 000 rows per request) until the filter is exhausted or `limit` is reached,
+ * and the caller is told which happened by comparing `rows.length` to `limit`.
+ */
+export async function contactsForExport(
+  supabase: Client, filter: ContactFilter = {}, limit = 50_000,
+): Promise<ContactRow[]> {
+  const ceiling = Math.min(200_000, Math.max(1, Math.floor(limit)));
+  const out: ContactRow[] = [];
+
+  let ids: string[] | null = null;
+  if (filter.groupId) {
+    const { data } = await supabase
+      .from("newsletter_group_members")
+      .select("contact_id")
+      .eq("group_id", filter.groupId)
+      .limit(200_000);
+    ids = (data ?? []).map((r) => r.contact_id as string);
+    if (ids.length === 0) return [];
+  }
+
+  const CHUNK = 1_000;
+  for (let from = 0; from < ceiling; from += CHUNK) {
+    const to = Math.min(from + CHUNK, ceiling) - 1;
+    let query = supabase
+      .from("newsletter_contacts")
+      .select(CONTACT_SELECT)
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    // The same filter vocabulary listContacts uses, so the file an operator
+    // downloads is exactly the list they were looking at when they asked.
+    if (ids) query = query.in("id", ids);
+    if (filter.sourceKey) query = query.eq("source_key", filter.sourceKey);
+    if (filter.consent === "consented") {
+      query = query.eq("marketing_consent", true).is("unsubscribed_at", null);
+    } else if (filter.consent === "no_consent") {
+      query = query.eq("marketing_consent", false);
+    } else if (filter.consent === "unsubscribed") {
+      query = query.not("unsubscribed_at", "is", null);
+    }
+    const search = (filter.search ?? "").trim();
+    if (search) {
+      const safe = search.replace(/[%_]/g, (c) => `\\${c}`);
+      query = query.or(`email.ilike.%${safe}%,first_name.ilike.%${safe}%,last_name.ilike.%${safe}%`);
+    }
+
+    const { data } = await query;
+    const batch = data ?? [];
+    for (const r of batch) out.push(toContact(r as RawContact));
+    if (batch.length < to - from + 1) break;
+  }
+
+  return out;
+}
+
+/** Which of these addresses this module already knows, normalised and chunked
+ *  so a 10 000-row import does not become a 10 000-row `in(…)` URL. */
+export async function existingContactEmails(
+  supabase: Client, emails: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (let i = 0; i < emails.length; i += 400) {
+    const { data } = await supabase
+      .from("newsletter_contacts")
+      .select("id, email")
+      .in("email", emails.slice(i, i + 400));
+    for (const r of data ?? []) out.set(r.email as string, r.id as string);
+  }
+  return out;
+}
+
+/** Which of these addresses are on the suppression list. Same chunking, same
+ *  reason — and the answer is what an import must never overrule. */
+export async function suppressedAmong(
+  supabase: Client, emails: string[],
+): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (let i = 0; i < emails.length; i += 400) {
+    const { data } = await supabase
+      .from("newsletter_suppressions")
+      .select("email")
+      .in("email", emails.slice(i, i + 400));
+    for (const r of data ?? []) out.add(r.email as string);
+  }
+  return out;
+}

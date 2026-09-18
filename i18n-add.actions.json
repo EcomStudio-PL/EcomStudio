@@ -1,0 +1,15 @@
+{
+  "_why": "Two failure modes app/actions/newsletter.ts can produce that the existing newsletter.err.* vocabulary has no honest word for. Reusing a near-miss key was the alternative and it lies to the operator: 'not_admin' ('Brak uprawnień') would tell an admin their role is wrong when the real answer is that a built-in template is not theirs to delete, and 'missing' ('Nie znaleziono') would claim a campaign does not exist when it does and has simply moved on since the page was rendered.",
+  "pl": {
+    "newsletter.err.state": "Ta kampania zmieniła stan, odkąd otworzyłeś tę stronę. Odśwież i spróbuj jeszcze raz.",
+    "newsletter.err.builtin": "Szablonu wbudowanego nie da się usunąć. Skopiuj go i edytuj kopię."
+  },
+  "en": {
+    "newsletter.err.state": "This campaign has changed state since you opened this page. Refresh and try again.",
+    "newsletter.err.builtin": "A built-in template cannot be deleted. Copy it and edit the copy."
+  },
+  "de": {
+    "newsletter.err.state": "Diese Kampagne hat ihren Status geändert, seit du diese Seite geöffnet hast. Lade sie neu und versuche es erneut.",
+    "newsletter.err.builtin": "Eine eingebaute Vorlage kann nicht gelöscht werden. Kopiere sie und bearbeite die Kopie."
+  }
+}
