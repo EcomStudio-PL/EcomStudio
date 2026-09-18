@@ -35,37 +35,63 @@ function stripComments(src: string): string {
 
 async function main() {
 
-/* ── A. THE SWITCH STAYS LOCAL ───────────────────────────────────────────── */
-console.log("A. SWITCHING WORKFLOW MUST NOT NAVIGATE");
+/* ── A. ONE TOOL PER SCREEN ──────────────────────────────────────────────── */
+console.log("A. A TOOL PAGE OFFERS NO OTHER TOOL");
 
+/*
+  THIS SECTION USED TO ASSERT THE OPPOSITE, and the reversal is the product
+  decision, not a weakening of the test.
+
+  It guarded a sibling-chip row and the local-switching machinery that made
+  clicking one instant: `active` state, a History pushState, a popstate
+  listener and a pathname effect. The chips are gone — choosing a tool belongs
+  to the category page, which is the one place that has to list them — and
+  with no chips there is nothing left to switch client-side, so all four
+  became unreachable rather than merely unused.
+
+  What the checks below pin instead: the row does not come back, the dead
+  machinery does not come back with it, and the panel is driven by the prop
+  the server resolved rather than by state that can go stale.
+*/
 const runtime = stripComments(readFileSync("components/category/workflow-runtime.tsx", "utf8"));
 
 check("the runtime never calls router.push/replace",
   !/router\s*\.\s*(push|replace|refresh)\s*\(/.test(runtime));
-/*
-  THE CHIPS, not the file. This used to ban `next/link` anywhere in the
-  runtime, which was a proxy for the thing that matters and stopped being one
-  the moment the tool hero was replaced by a back button: that button is a
-  real <Link> to the category, and navigating is exactly what it is for. The
-  check now reads the switcher row itself, so it still fails if a chip is ever
-  turned into a <Link> — which would put a server round trip back on every
-  switch — and stays quiet about links that are not chips.
-*/
-const chipRow = runtime.slice(
-  runtime.indexOf("offered.filter("), runtime.indexOf("{tool && fashion"));
-check("the chip row was found", chipRow.length > 0);
-check("the chips are plain anchors, not next/link",
-  /<a\s/.test(chipRow) && !/<Link\b/.test(chipRow));
-check("the switch still uses the History API",
-  /window\.history\.pushState\(/.test(runtime));
-check("the selection is still local state",
-  /setActive\(key\)/.test(runtime));
-// A fetch here would be a network round trip on every switch — the exact cost
-// the optimisation removed.
+
+// The row was a list of sibling workflows rendered as chips. Any of these
+// coming back means a tool page is advertising other tools again.
+check("no sibling row is rendered",
+  !/offeredWorkflows\(/.test(runtime)
+  && !/offered\.filter\(/.test(runtime)
+  && !/aria-current=\{isActive/.test(runtime),
+  "choosing a tool belongs to /k/{cat}, not to the tool's own screen");
+
+// The four pieces of switching machinery, named one by one so a partial
+// revival fails loudly rather than leaving a listener nothing can trigger.
+for (const [what, pattern] of [
+  ["local active state", /useState\(/],
+  ["History pushState", /window\.history\.pushState\(/],
+  ["popstate listener", /popstate/],
+  ["pathname effect", /usePathname\(/],
+] as const) {
+  check(`…and no ${what} survives it`, !pattern.test(runtime));
+}
+
+check("the panel follows the prop the server resolved",
+  /w\.key === initialWorkflow/.test(runtime),
+  "state seeded once would show the previous tool if the router reused this instance");
+
+// A fetch here would put a network round trip inside a component whose whole
+// job is to render what the page already resolved.
 check("the runtime fetches nothing",
   !/\bfetch\s*\(/.test(runtime) && !/useEffect\([^)]*fetch/.test(runtime));
-check("both branches are keyed by workflow, so a switch cannot show stale state",
+check("both branches are still keyed by workflow",
   (runtime.match(/key=\{workflow\.key\}/g) ?? []).length === 2, "expected 2");
+
+// WHAT MUST NOT BE COLLATERAL DAMAGE. Removing the row must not touch the
+// registry, the routes or the category's own catalogue.
+check("the tool registry is untouched",
+  FASHION_TOOLS.length === 4 && FASHION_TOOLS.every((t) => t.toolKey && t.operation));
 
 /* ── B. A TOOL'S DATA ARRIVES AS A PROP ──────────────────────────────────
  * If any of it were fetched when a tool becomes active, the switch would be a
@@ -187,7 +213,11 @@ check("…but it does offer a way back", /data-tool-back/.test(runtime));
 check("…which is a link to the category, not history.back()",
   /href=\{`\/k\/\$\{category\.slug\}`\}/.test(runtime)
   && !/history\.back\(\)/.test(runtime));
-check("…and the switcher chips survive", /aria-current=\{isActive/.test(runtime));
+// The back link is now the ONLY thing above the panel. Section A pins the
+// absence of the chips; this pins that nothing else crept in to replace them.
+check("…and the back link is the only band above the panel",
+  runtime.indexOf("data-tool-back") < runtime.indexOf("{tool && fashion")
+  && !/<nav\b/.test(runtime) && !/<header\b/.test(runtime));
 
 // The CATEGORY page is a different screen and keeps its header: that is where
 // the wash and the icon are the subject, and it is where the back link goes.
@@ -361,8 +391,11 @@ check("no other category hides anything",
 const cards = stripComments(readFileSync("components/category/workflow-cards.tsx", "utf8"));
 check("the catalogue renders the offered list, not the whole registry",
   /offeredWorkflows\(category\)\.map\(/.test(cards) && !/category\.workflows\.map\(/.test(cards));
-check("the switcher renders the offered list too",
-  /offeredWorkflows\(category\)/.test(runtime) && !/category\.workflows\.filter\(/.test(runtime));
+// The runtime used to render the offered list as chips; it renders no list at
+// all now, so the only consumers left are the catalogue, the category page and
+// the media-slot keys — and those three must keep agreeing with each other.
+check("the runtime lists no workflows at all",
+  !/offeredWorkflows\(/.test(runtime) && !/category\.workflows\.filter\(/.test(runtime));
 // Indexing previews off a different list than the grid renders would hand card
 // n the thumbnail of card n+1 the moment anything is hidden.
 const catPage = stripComments(readFileSync("app/(app)/k/[cat]/page.tsx", "utf8"));

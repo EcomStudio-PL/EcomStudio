@@ -1,56 +1,49 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { usePathname } from "next/navigation";
 import { useI18n } from "@/lib/i18n/provider";
 import { GeneratorWorkspace } from "@/components/genv3/workspace";
-import { CATEGORY_VARIANT, DEFAULT_VARIANT, findCategory, offeredWorkflows } from "@/lib/categories";
+import { CATEGORY_VARIANT, DEFAULT_VARIANT, findCategory } from "@/lib/categories";
 import { fashionTool } from "@/lib/fashion-tools";
 import { FashionToolWorkspace } from "@/components/fashion/tool-workspace";
 import type { GalleryItem, GenModel } from "@/components/genv3/types";
 import type { SessionPreviewMap } from "@/components/genv3/sections";
-import { cn } from "@/lib/utils";
 
 /**
- * PRESET SWITCHING WITHOUT A SERVER ROUND-TRIP.
+ * ONE TOOL PER SCREEN.
  *
- * The sibling-preset chips used to be plain links to /k/{cat}/{wf}. That route
- * is force-dynamic, so every switch re-ran the whole page on the server —
- * auth, workspace, wallet, model chain, provider health, twenty-four gallery
- * rows and a Storage signing call — and, because the nearest Suspense boundary
- * is the app-wide loading skeleton, the entire workspace was replaced by an
- * unrelated placeholder for the duration. Measured at the database the work is
- * about eight milliseconds; the rest is four sequential round trips between the
- * function region and the Supabase region, and it is spent on data that does
- * not depend on the preset at all.
+ * A tool page is a way back and the tool. That is the whole layout, and it is
+ * the second thing this screen has lost: first the category hero, now the row
+ * of sibling chips that sat under it.
  *
- * NOTHING here depends on `wf`. The only things a preset changes are its
- * framing, its shot count, its style directive and its labels — all of them
- * static, all of them already in the bundle via lib/categories and the
- * dictionary. So the switch is local state, and the URL is updated with the
- * native History API (which Next's router observes) so deep links, refresh and
- * back/forward keep working exactly as before.
+ * WHY THE CHIPS WENT. They answered "which other tool could I be using",
+ * which is a question the CATEGORY page exists to answer, and they answered it
+ * on every screen where the seller had already decided. In Moda that was four
+ * chips; in E-commerce five. On a phone the row wrapped to two lines and the
+ * panel started that much further down. Choosing a tool is now one place —
+ * /k/{cat} — instead of two places that had to be kept in step.
  *
- * The chips stay real anchors with real hrefs and the same classes: a
- * middle-click or ctrl-click still opens the preset in a new tab, and the
- * appearance is unchanged. Only the plain left click is intercepted.
+ * WHAT WENT WITH THEM, AND WHY THAT IS NOT OVER-REMOVAL. This component used
+ * to hold local `active` state, a History pushState, a popstate listener and a
+ * pathname effect. All four existed for ONE reason: a chip click had to change
+ * the panel without re-running a force-dynamic page. With no chips there is no
+ * client-side switch to make, so every one of them became unreachable — and a
+ * popstate listener nothing can trigger is not caution, it is a trap for the
+ * next reader.
  *
- * GeneratorWorkspace is keyed by preset ON PURPOSE. Its ratio/shots/style props
- * seed state once, so re-using the instance would leave a switched preset
- * showing the previous preset's framing — a switcher that visibly does nothing.
- * Remounting matches what the navigation did before, without the network.
+ * Deriving the workflow straight from the prop is also strictly MORE correct
+ * than the state was. The App Router can reuse this instance across a
+ * navigation between two /k/{cat}/* routes; seeded-once state would then show
+ * the previous tool until an effect caught up, which is precisely what those
+ * effects were there to paper over. A prop cannot go stale.
  *
- * TOOLS SWITCH THE SAME WAY, AND THAT IS WHY THEIR DATA ARRIVES AS A PROP.
+ * WHAT DID NOT GO: the tool registry, the routes, the category config, the
+ * per-tool data the page resolves, and the choice between a tool panel and the
+ * generator. Nothing about how a tool RUNS is in here.
  *
- * Moda now carries four image-to-image tools alongside its presets. A tool
- * renders a different panel and shows its own results, so it needs three
- * things a preset does not: the model's sizes and prices, whether an operator
- * has published its prompt, and its own gallery. If any of that were fetched
- * when the tool became active, switching would be a network round trip again —
- * exactly what this component exists to avoid. The page therefore resolves all
- * four tools up front and hands them down in `fashion`; selecting a tool is
- * still nothing but local state and a History push.
+ * Both branches stay keyed by workflow. Their ratio/shots/style props seed
+ * state once, so if the router does reuse this instance across routes the key
+ * is what forces a clean panel instead of the previous tool's uploads.
  */
 /** Everything the four Moda tools need, resolved once by the page. */
 export type FashionRuntimeData = {
@@ -85,61 +78,13 @@ export function WorkflowRuntime({
 }) {
   const { t } = useI18n();
   const category = findCategory(catSlug);
-  const [active, setActive] = useState(initialWorkflow);
-  const pathname = usePathname();
-
-  /** A preset this category actually offers — anything else is ignored, so a
-   *  hand-edited URL can never blank the workspace. */
-  const known = useCallback(
-    (key: string | undefined) =>
-      !!key && (category?.workflows.some((w) => w.key === key && !w.soon) ?? false),
-    [category],
-  );
-
-  const fromPath = (path: string): string | undefined => {
-    const parts = path.split("/");
-    // ["", "k", cat, wf]
-    return parts[1] === "k" && parts[2] === catSlug ? parts[3] : undefined;
-  };
-
-  // Follows Next's own view of the URL, which it keeps in step with the
-  // History API calls below. Same-value updates are a no-op.
-  useEffect(() => {
-    const key = fromPath(pathname ?? "");
-    if (known(key)) setActive((prev) => (key === prev ? prev : key!));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, catSlug, known]);
-
-  // Back and forward, read straight off the browser rather than through the
-  // router — the panel must land on the right preset even if the entry was one
-  // this component pushed itself.
-  useEffect(() => {
-    const onPop = () => {
-      const key = fromPath(window.location.pathname);
-      if (known(key)) setActive((prev) => (key === prev ? prev : key!));
-    };
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catSlug, known]);
-
-  const select = useCallback((event: React.MouseEvent<HTMLAnchorElement>, key: string) => {
-    // Modified clicks belong to the browser: open-in-new-tab must keep working.
-    if (event.defaultPrevented || event.button !== 0
-      || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    if (key === active) return;
-    setActive(key);
-    window.history.pushState(null, "", `/k/${catSlug}/${key}`);
-  }, [active, catSlug]);
 
   if (!category) return null;
-  const workflow = category.workflows.find((w) => w.key === active) ?? category.workflows[0];
-  /** The switcher's contents: the offered workflows, plus the active one when
-   *  it is a retired preset someone reached by its own URL. */
-  const offered = workflow.hidden
-    ? [...offeredWorkflows(category), workflow]
-    : offeredWorkflows(category);
+  /** Straight from the prop, which the server resolved from the URL. A
+   *  hand-edited or retired key falls back to the category's first workflow,
+   *  so the workspace can never render blank. */
+  const workflow = category.workflows.find((w) => w.key === initialWorkflow)
+    ?? category.workflows[0];
   /** Null for a preset — the generator then renders exactly as before. */
   const tool = workflow.tool ? fashionTool(workflow.key) : null;
 
@@ -160,6 +105,10 @@ export function WorkflowRuntime({
           band on desktop, restating the answer to a question nobody had. The
           thing the seller opened the page for started below the fold.
 
+          (The name then lived in the selected chip below this link. The chips
+          are gone too, so the tool's name is now only where it always
+          mattered: on the card the seller clicked, and in the page title.)
+
           A plain link is what is left, in the same idiom /tools/[slug] and
           /prompts/[id] already use. It is a real <Link> to the category, not
           history.back(): a tool reached from a bookmark, a shared URL or an
@@ -176,43 +125,15 @@ export function WorkflowRuntime({
         {t(`cats.${category.key}`)}
       </Link>
 
-      {/* SIBLING WORKFLOWS — switch without leaving the workspace.
-          The row is what the category OFFERS: in Moda that is exactly the four
-          tools. A retired preset is still reachable by its own URL, so it gets
-          a chip only while it is the active one — otherwise the switcher would
-          show nothing selected and read as broken. */}
-      <div className="mb-4 flex flex-wrap gap-1.5" style={{ ["--cat" as string]: category.accent.rgb }}>
-        {offered.filter((w) => !w.soon).map((w) => {
-          const isActive = w.key === workflow.key;
-          return (
-            <a key={w.key} href={`/k/${category.slug}/${w.key}`}
-              onClick={(e) => select(e, w.key)}
-              aria-current={isActive ? "page" : undefined}
-              className={cn(
-                "inline-flex h-9 items-center gap-2 rounded-xl px-3 text-[13px] font-semibold transition-colors duration-200",
-                isActive
-                  ? "bg-[rgb(var(--cat)/0.16)] text-ink ring-1 ring-[rgb(var(--cat)/0.45)]"
-                  : "plate text-muted hover:text-ink",
-              )}>
-              <w.icon size={14} aria-hidden className={isActive ? "text-[rgb(var(--cat))]" : "text-faint"} />
-              {t(`wf.${category.key}.${w.key}.name`)}
-              {/* A framing badge is a preset's promise about its output. A tool
-                  follows the seller's own photograph, so the badge would be a
-                  number that decides nothing — it is left off. */}
-              {!w.tool && (
-                <span className="text-[11px] font-bold tabular-nums text-faint">{w.ratio}</span>
-              )}
-            </a>
-          );
-        })}
-      </div>
+      {/* The sibling-chip row stood here. Nothing replaces it: the back link's
+          own `mb-3` is the gap to the panel, so there is no wrapper, no height
+          and no margin left behind. */}
 
       {tool && fashion ? (
         /* A TOOL. Keyed like the generator below, and for the same reason: the
            panel seeds its pools, its size and its framing from props once, so
-           re-using the instance would leave a switched tool holding the
-           previous tool's uploads. Remounting is what the navigation used to
-           do — without the navigation. */
+           an instance the router reused across two /k/{cat}/* routes would
+           otherwise hold the previous tool's uploads. */
         <FashionToolWorkspace
           key={workflow.key}
           config={tool}
