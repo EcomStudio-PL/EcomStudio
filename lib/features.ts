@@ -33,11 +33,14 @@ export const FEATURE_KEYS = [
   "image_inne",
   "image_matching",
   // Moda — narzędzia obrazu (osobne wpisy, żeby każde dało się osobno
-  // wyłączyć albo oznaczyć jako "Wkrótce" bez ruszania pozostałych)
+  // wyłączyć albo oznaczyć jako "Wkrótce" bez ruszania pozostałych).
+  // Zmiana twarzy jest OSOBNYM wpisem od Zmiany postaci: to inne narzędzie,
+  // z własnym promptem, i musi dać się wyłączyć bez ruszania tamtego.
   "fashion_ghost_mannequin",
   "fashion_flat_lay",
   "fashion_iron",
   "fashion_change_person",
+  "fashion_change_face",
   // Tworzenie
   "prompts",
   "generator",
@@ -126,6 +129,7 @@ export const FEATURE_REGISTRY: readonly FeatureDescriptor[] = [
   { key: "fashion_flat_lay", nameKey: "wf.moda.flatlay.name", path: "/k/moda/flatlay", group: "image", defaultStatus: "COMING_SOON" },
   { key: "fashion_iron", nameKey: "wf.moda.iron.name", path: "/k/moda/iron", group: "image", defaultStatus: "COMING_SOON" },
   { key: "fashion_change_person", nameKey: "wf.moda.changePerson.name", path: "/k/moda/changePerson", group: "image", defaultStatus: "COMING_SOON" },
+  { key: "fashion_change_face", nameKey: "wf.moda.changeFace.name", path: "/k/moda/changeFace", group: "image", defaultStatus: "COMING_SOON" },
   { key: "image_ecommerce", nameKey: "cats.ecommerce", path: "/k/ecommerce", group: "image" },
   { key: "image_social", nameKey: "cats.social", path: "/k/social", group: "image" },
   { key: "image_mailing", nameKey: "cats.mailing", path: "/k/mailing", group: "image" },

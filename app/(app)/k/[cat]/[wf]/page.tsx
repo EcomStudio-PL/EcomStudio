@@ -58,11 +58,11 @@ export default async function WorkflowPage({ params }: {
    *
    * Switching workflow must not reach the server (see WorkflowRuntime), and a
    * tool needs three things the preset does not: the model's sizes and prices,
-   * whether its prompt is published, and its own past results. So all four are
+   * whether its prompt is published, and its own past results. So every one is
    * resolved HERE, in one parallel batch, and handed to the runtime — a switch
    * then costs nothing, exactly like a preset switch.
    *
-   * Only for Moda: no other category has tools, and fetching four galleries on
+   * Only for Moda: no other category has tools, and fetching a gallery per tool on
    * a category that cannot show them would be work nobody asked for.
    */
   let fashion: FashionRuntimeData | null = null;

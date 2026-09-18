@@ -30,10 +30,13 @@ console.log("\nA. REGISTRY — every real module is covered, the untouchable one
   const mustHave = [
     "home", "library", "history",
     "image_moda", "image_ecommerce", "image_social", "image_mailing", "image_inne", "image_matching",
-    // The four Moda tools. They are not menu rows — the category is — but each
+    // The Moda tools. They are not menu rows — the category is — but each
     // is separately switchable, so each has to be its own key on the
-    // switchboard rather than riding on image_moda's status.
+    // switchboard rather than riding on image_moda's status. "Zmiana twarzy
+    // modela" is its own key for the same reason it is its own tool: it runs a
+    // different prompt from "Zmiana postaci" and has to be switchable alone.
     "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person",
+    "fashion_change_face",
     "prompts", "generator",
     "retouch", "editor", "resize", "compress", "tools", "tool_upscale", "tool_expand", "tool_watermark",
     "video", "inspirations", "credits", "support",
@@ -72,6 +75,7 @@ console.log("\nA. REGISTRY — every real module is covered, the untouchable one
   const expected = [
     "image_matching", "video",
     "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person",
+    "fashion_change_face",
   ];
   check("a feature defaults to ACTIVE unless it is deliberately listed as off",
     off.length === expected.length && expected.every((k) => off.includes(k as never)), off.join(","));
@@ -102,6 +106,7 @@ console.log("\nB. HREF → FEATURE — prefixes, query stripping, no bypass surf
     ["/k/moda/flatlay", "fashion_flat_lay"],
     ["/k/moda/iron", "fashion_iron"],
     ["/k/moda/changePerson", "fashion_change_person"],
+    ["/k/moda/changeFace", "fashion_change_face"],
     ["/k/ecommerce", "image_ecommerce"],
     ["/k/social", "image_social"],
     ["/k/mailing", "image_mailing"],

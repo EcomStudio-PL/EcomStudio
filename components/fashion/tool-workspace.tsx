@@ -15,25 +15,32 @@ import { cn } from "@/lib/utils";
 import type { GalleryItem, UploadedRef } from "@/components/genv3/types";
 
 /**
- * MODA — one panel for all four tools.
+ * MODA — one panel for every tool in the category.
  *
- * The brief supplied two reference screenshots and three of the four tools use
- * the first one: an upload block, a size, a framing, an optional hint, the two
- * figures and the button. The fourth ("Zmiana postaci") replaces the single
- * upload block with TWO — a garment and a person — and drops the controls its
- * reference does not show.
+ * The brief supplied two reference screenshots and the three single-input tools
+ * use the first one: an upload block, a size, a framing, an optional hint, the
+ * two figures and the button. The PAIRED ones replace the single upload block
+ * with TWO — a garment and a person for "Zmiana postaci", a photograph and a
+ * face for "Zmiana twarzy modela" — and each drops or adds the controls its own
+ * reference shows.
  *
- * That is one component, not four. Copying a panel per tool would mean four
- * places to fix one padding and four chances for them to drift into looking
- * like four different products; the shape comes from `config.slots` and the
- * three `show*` flags instead. Geometry, tokens, radii and spacing are taken
- * verbatim from the retouch panel, which is the screenshot's own source, so
- * nothing here introduces a new colour or a new measurement.
+ * That is one component, not one per tool. Copying the panel per tool would
+ * mean a place per tool to fix one padding and a chance per tool for them to
+ * drift into looking like separate products; the shape comes from
+ * `config.slots` and the flags beside it instead. Geometry, tokens, radii and
+ * spacing are taken verbatim from the retouch panel, which is the screenshot's
+ * own source, so nothing here introduces a new colour or a new measurement.
+ *
+ * THE TWO PAIRED TOOLS DO NOT LOOK THE SAME, and that is configuration rather
+ * than drift: one is numbered with a counter in the box, the other names the
+ * pool and its capacity in the heading. See `numberedSteps` and `denseZones`
+ * in lib/fashion-tools.ts.
  *
  * TWO POOLS STAY TWO POOLS. A dual-input tool keeps its uploads in separate
  * lists and posts them under separate names, because the server has to know
- * which photograph is the garment and which is the person. Flattening them
- * into one array would be a silent, unrecoverable loss of meaning.
+ * which photograph is which — a garment is not a person and a photograph is
+ * not a face. Flattening them into one array would be a silent, unrecoverable
+ * loss of meaning.
  *
  * ONE RUN PER CLICK. `running` is a ref, not state: a second click that lands
  * before React re-renders would otherwise start a second paid batch.
@@ -275,6 +282,39 @@ export function FashionToolWorkspace({
   const pending = jobs.filter((j) => j.status !== "completed");
   const ctaLabel = t(`wf.moda.${config.key}.cta`);
 
+  /**
+   * NUMBERED MODE MOVES THE WORDING, it does not just add a digit.
+   *
+   * Off (the default): the heading names the pool and its capacity — "Zdjęcie
+   * referencyjne (max. 10)" — and the box carries the instruction, "Dodaj
+   * zdjęcie referencyjne".
+   *
+   * On: the heading carries the numbered instruction — "1. Dodaj zdjęcie
+   * referencyjne" — and the box falls back to the plain "Import" with its
+   * counter, which is then the only place the capacity is written. That is
+   * why `denseZones` (which removes the counter) must stay OFF wherever this
+   * is on: together they would take the capacity off the screen entirely.
+   *
+   * `step` numbers the controls after the pools, so a two-pool tool with one
+   * dropdown ends at "3. Format" and one with two ends at "4. Format".
+   */
+  const step = (n: number) => config.numberedSteps ? `${config.slots.length + n}. ` : "";
+
+  /**
+   * The AI card's body: the tool's OWN sentence about what happens after the
+   * button, not its catalogue line. The `sub` is the pitch on the tile the
+   * seller just clicked, so repeating it here says nothing new.
+   *
+   * NO RUNTIME FALLBACK, deliberately. `t()` humanizes a missing key rather
+   * than returning it (lib/i18n/t.ts), so a component cannot tell "absent"
+   * from "present" and any fallback written here would be dead code that
+   * silently rendered "Ai note". The guarantee belongs where it can be
+   * enforced: `scripts/fashion-tests.ts` fails if a tool sets `showAiNote`
+   * without an `aiNote` entry in all three dictionaries — which `i18n:check`
+   * cannot do for itself, because this key is interpolated.
+   */
+  const aiNoteBody = t(`wf.moda.${config.key}.aiNote`);
+
   return (
     <div className={cn(
       "gen-shell-body relative grid min-w-0 items-start gap-5 [&>*]:min-w-0",
@@ -302,17 +342,22 @@ export function FashionToolWorkspace({
               CAPACITY is written — "(max. 10)" — off the screen entirely, and
               the two boxes looked identical once the headings scrolled away.
 
-              NO STEP NUMBERS. They were meant to say "supply these in order",
-              but the order is already the order they are stacked in, and the
-              numbering pushed the heading wide enough to compete with the
-              pool's own name. Both pools are required and neither can be
-              filled before the other, so there is no sequence to teach.
+              …UNLESS THE TOOL IS NUMBERED, in which case the two swap back —
+              see `step` above. Numbering is a per-tool choice and not a
+              global one: it was taken off "Zmiana postaci" because both of
+              its pools are required and neither can be filled before the
+              other, so the digits taught an order that does not exist. Where
+              a tool's own reference panel shows them, `numberedSteps` puts
+              them back for that tool alone.
 
-              `zoneDense` IS THE SLOT COUNT, not a per-tool flag: a panel that
-              stacks two dropzones cannot give each of them the room a panel
-              with one gives its only one. Deriving it from `config.slots`
-              means a tool that ever grows a third pool gets the right box
-              without anybody remembering to set a boolean. */}
+              `zoneDense` IS ALSO PER-TOOL. It used to be derived from
+              `slots.length > 1` — a panel that stacks two dropzones cannot
+              give each the room a panel with one gives its only one — and
+              that reasoning still holds, but it is not the whole rule: the
+              counter inside the box is redundant only while the HEADING
+              carries the capacity, which numbered mode stops doing. Two
+              dual-pool tools therefore want different boxes, so the shape no
+              longer decides it. */}
           {config.slots.map((slot, index) => (
             <PhotoUploader
               key={slot.key}
@@ -323,11 +368,13 @@ export function FashionToolWorkspace({
               compact
               zone
               dropTarget={`fashion-${slot.key}`}
-              zoneLabel={slot.zoneLabelKey ? t(slot.zoneLabelKey) : undefined}
-              zoneDense={config.slots.length > 1}
+              zoneLabel={config.numberedSteps || !slot.zoneLabelKey ? undefined : t(slot.zoneLabelKey)}
+              zoneDense={config.denseZones}
               onFiles={(files) => void upload(slot.key, files)}
               onRemove={(i) => removeAt(slot.key, i)}
-              label={t(slot.labelKey, { n: slot.max })}
+              label={config.numberedSteps && slot.zoneLabelKey
+                ? `${index + 1}. ${t(slot.zoneLabelKey)}`
+                : t(slot.labelKey, { n: slot.max })}
             />
           ))}
 
@@ -362,7 +409,7 @@ export function FashionToolWorkspace({
                   <div className="rounded-xl border border-line bg-sunken/50 p-2">
                     <Dropdown
                       testId="resolution"
-                      label={t("genv3.resolution")}
+                      label={`${step(1)}${t("genv3.resolution")}`}
                       value={resolution}
                       options={resolutions.map((r) => ({
                         value: r, label: r, meta: t("genv3.creditsShort", { n: pricing[r] ?? 0 }),
@@ -376,7 +423,7 @@ export function FashionToolWorkspace({
                   <div className="rounded-xl border border-line bg-sunken/50 p-2">
                     <Dropdown
                       testId="format"
-                      label={t("genv3.format")}
+                      label={`${step(config.showResolution ? 2 : 1)}${t("genv3.format")}`}
                       value={format}
                       options={[
                         {
@@ -439,7 +486,9 @@ export function FashionToolWorkspace({
               though: the retouch wording promises better lighting, materials
               and cleanliness, which is a different product. A card that
               describes somebody else's feature is decoration at best and a
-              false promise at worst. */}
+              false promise at worst — which is also why the body is the
+              tool's own `aiNote` and not its catalogue `sub`. See the note on
+              `aiNoteBody` above. */}
           {config.showAiNote && (
             <section data-fashion-ai-note
               className="rounded-xl border border-[rgb(var(--accent)/0.3)] bg-accent-soft/25 p-3">
@@ -449,7 +498,7 @@ export function FashionToolWorkspace({
                 <InfoHint text={t("fashion.aiNoteHint")} />
               </p>
               <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
-                {t(`wf.moda.${config.key}.sub`)}
+                {aiNoteBody}
               </p>
             </section>
           )}

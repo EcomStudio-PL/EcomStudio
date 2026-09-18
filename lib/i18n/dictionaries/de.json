@@ -2811,6 +2811,13 @@
         "sub": "Kleidungsstück oder Styling auf eine gewählte Person übertragen.",
         "cta": "Generieren",
         "empty": "Referenzfoto und Modelfoto hinzufügen, dann „Generieren“ drücken."
+      },
+      "changeFace": {
+        "name": "Gesicht des Models ändern",
+        "sub": "Tausche das Gesicht des Models aus und behalte Foto, Outfit und Szene.",
+        "cta": "Gesicht ändern",
+        "aiNote": "Die KI passt das Gesicht an Licht, Perspektive und Bildausschnitt des Fotos an. Outfit, Pose, Hintergrund und der Rest des Bildes bleiben unverändert.",
+        "empty": "Referenzfoto und Gesichtsfoto hinzufügen, dann „Gesicht ändern“ drücken."
       }
     },
     "ecommerce": {
@@ -4523,11 +4530,14 @@
     "slot.source": "Fotos hinzufügen (max. {n})",
     "slot.reference": "Referenzfoto (max. {n})",
     "slot.model": "Modelfoto (max. {n})",
+    "slot.face": "Gesichtsfoto (max. {n})",
     "zone.reference": "Referenzfoto hinzufügen",
     "zone.model": "Modelfoto hinzufügen",
+    "zone.face": "Gesichtsfoto hinzufügen",
     "need.source": "Fügen Sie mindestens ein Foto hinzu.",
     "need.reference": "Fügen Sie ein Referenzfoto hinzu.",
     "need.model": "Fügen Sie ein Modelfoto hinzu.",
+    "need.face": "Fügen Sie ein Gesichtsfoto hinzu.",
     "hint": "Hinweis für die KI",
     "hintOptional": "(optional)",
     "hintInfo": "Ein kurzer Hinweis präzisiert das Ergebnis. Die Anweisung des Werkzeugs und die Produkttreue gelten unabhängig davon.",
@@ -4569,6 +4579,10 @@
     "fashion_change_person": {
       "desc": "Dasselbe Produkt an einer anderen Person.",
       "words": "mode, model, person, model wechseln, gesicht"
+    },
+    "fashion_change_face": {
+      "desc": "Dasselbe Foto mit dem Gesicht eines anderen Models.",
+      "words": "mode, gesicht, gesicht ändern, gesichtstausch, face swap, model, kopf"
     },
     "image_ecommerce": {
       "desc": "Produktfotos für Marktplätze und den eigenen Shop.",

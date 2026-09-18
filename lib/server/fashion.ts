@@ -7,11 +7,11 @@ import { fashionTool, type FashionToolConfig } from "@/lib/fashion-tools";
 import { RATIO_SHAPE, type AspectRatio, type Resolution } from "@/lib/ai/types";
 
 /**
- * MODA — the four tools' server half.
+ * MODA — the tools' server half.
  *
- * ONE RUNNER, NOT FOUR. The tools differ in their prompt, their price row and
- * which photographs they take; none of that justifies four endpoints or four
- * copies of the credit and storage plumbing. Everything below is driven by the
+ * ONE RUNNER, NOT ONE PER TOOL. The tools differ in their prompt, their price
+ * row and which photographs they take; none of that justifies an endpoint each
+ * or a copy each of the credit and storage plumbing. Everything below is driven by the
  * tool's config, and the whole pipeline — model resolution, decrypted provider
  * credential, credit reservation, storage, history, refund on failure — is the
  * existing `runGeneration`. There is no "Moda API".
@@ -19,7 +19,7 @@ import { RATIO_SHAPE, type AspectRatio, type Resolution } from "@/lib/ai/types";
  * THE PROMPT IS NOT IN THIS FILE, AND THAT IS THE POINT.
  *
  * The retouch tool keeps its prompt as a server-only constant, which works
- * because it is one tool with one job. These four are meant to be tuned by an
+ * because it is one tool with one job. These are meant to be tuned by an
  * operator without a deploy, so their prompts live where every other tool
  * prompt already lives: `ai_tool_prompts`, written from Admin → AI → the
  * tool's own screen, published with a version and a reason, and read here
@@ -121,12 +121,13 @@ async function ratioOfSource(bytes: Buffer, allowed: string[]): Promise<AspectRa
 }
 
 export type FashionRunInput = {
-  /** Workflow key — `ghostMannequin`, `flatlay`, `iron`, `changePerson`. */
+  /** Workflow key — whichever `FASHION_TOOLS` entry this run belongs to. */
   tool: string;
   /**
    * Storage paths in `product-images`, BY POOL. The pool name is load-bearing
-   * for the paired tool: `reference` is the garment and `model` is the person,
-   * and the two are handed to the provider in that order so the instruction
+   * for the paired tools: `reference` + `model` is a garment and the person to
+   * put it on, `reference` + `face` is a photograph and the face to put into
+   * it. Each pair is handed to the provider in slot order, so the instruction
    * can refer to "the first image" and "the second image" and mean it.
    */
   inputs: Record<string, string[]>;

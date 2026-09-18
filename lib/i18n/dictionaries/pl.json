@@ -2811,6 +2811,13 @@
         "sub": "Przenieś ubranie lub stylizację na wybraną postać.",
         "cta": "Generuj",
         "empty": "Dodaj zdjęcie referencyjne i zdjęcie modela, a potem kliknij „Generuj”."
+      },
+      "changeFace": {
+        "name": "Zmiana twarzy modela",
+        "sub": "Podmień twarz modela, zachowując zdjęcie, ubranie i scenę.",
+        "cta": "Zmień twarz",
+        "aiNote": "AI dopasuje twarz do oświetlenia, perspektywy i kadru zdjęcia. Ubranie, poza, tło i reszta zdjęcia zostają bez zmian.",
+        "empty": "Dodaj zdjęcie referencyjne i zdjęcie twarzy, a potem kliknij „Zmień twarz”."
       }
     },
     "ecommerce": {
@@ -4523,11 +4530,14 @@
     "slot.source": "Dodaj zdjęcia (max. {n})",
     "slot.reference": "Zdjęcie referencyjne (max. {n})",
     "slot.model": "Zdjęcie modela (max. {n})",
+    "slot.face": "Zdjęcie twarzy (max. {n})",
     "zone.reference": "Dodaj zdjęcie referencyjne",
     "zone.model": "Dodaj zdjęcie modela",
+    "zone.face": "Dodaj zdjęcie twarzy",
     "need.source": "Dodaj przynajmniej jedno zdjęcie.",
     "need.reference": "Dodaj zdjęcie referencyjne.",
     "need.model": "Dodaj zdjęcie modela.",
+    "need.face": "Dodaj zdjęcie twarzy.",
     "hint": "Wskazówka dla AI",
     "hintOptional": "(opcjonalnie)",
     "hintInfo": "Krótka podpowiedź doprecyzowuje efekt. Instrukcja narzędzia i wierność produktu obowiązują niezależnie od tego, co tu wpiszesz.",
@@ -4569,6 +4579,10 @@
     "fashion_change_person": {
       "desc": "Ten sam produkt na innej osobie.",
       "words": "moda, model, modelka, osoba, postać, zmiana modela, twarz"
+    },
+    "fashion_change_face": {
+      "desc": "To samo zdjęcie, inna twarz modela.",
+      "words": "moda, twarz, zmiana twarzy, podmiana twarzy, face swap, model, modelka, głowa"
     },
     "image_ecommerce": {
       "desc": "Zdjęcia produktowe pod Allegro, Amazon i sklep.",

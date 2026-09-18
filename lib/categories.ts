@@ -3,7 +3,7 @@ import {
   Boxes, Camera, Gift, Grid2X2, Images, LayoutTemplate, Mail, Megaphone, Package,
   PenLine, Percent, Shirt, ShoppingBag, Smartphone, Sparkles, SwatchBook, Tag,
   Users, Video, Clapperboard, Image as ImageIcon, MessageSquareText, Film, Layers,
-  Wind, UserRoundCog,
+  Wind, UserRoundCog, ScanFace,
 } from "lucide-react";
 
 /**
@@ -65,7 +65,7 @@ export type Workflow = {
    * hunted down.
    *
    * This is deliberately NOT `soon`. "Wkrótce" is a promise that something is
-   * coming; these are presets whose job the four Moda tools took over, and
+   * coming; these are presets whose job the Moda tools took over, and
    * claiming they are on the way would be a lie on the card.
    */
   hidden?: boolean;
@@ -92,13 +92,18 @@ export const CATEGORIES: readonly Category[] = [
   {
     key: "moda", slug: "moda", icon: Shirt, accent: VIOLET,
     workflows: [
-      // THE FOUR TOOLS, first because they are what the category is for now.
+      // THE TOOLS, first because they are what the category is for now.
       // `flatlay` keeps the slug the preset already had: old links and
       // bookmarks land on the tool that took over the job.
       { key: "ghostMannequin", icon: Shirt, ratio: "1:1", shots: 5, styleKey: "wf.moda.ghostMannequin.style", tool: true },
       { key: "flatlay", icon: Grid2X2, ratio: "1:1", shots: 5, styleKey: "wf.moda.flatlay.style", tool: true },
       { key: "iron", icon: Wind, ratio: "1:1", shots: 5, styleKey: "wf.moda.iron.style", tool: true },
       { key: "changePerson", icon: UserRoundCog, ratio: "1:1", shots: 5, styleKey: "wf.moda.changePerson.style", tool: true },
+      // …and the face swap LAST, after the tool it is most easily confused
+      // with. The two sit next to each other on the catalogue on purpose: a
+      // seller deciding between "put this outfit on someone else" and "keep
+      // this photograph, change the face" should see both at once.
+      { key: "changeFace", icon: ScanFace, ratio: "1:1", shots: 5, styleKey: "wf.moda.changeFace.style", tool: true },
       // The prompt presets that were here before. They keep working — their
       // routes resolve and their style directives are intact — but Moda is
       // now a category of four named tools, so they are no longer offered as

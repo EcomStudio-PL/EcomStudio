@@ -76,7 +76,7 @@ const VISUAL_SOURCES: readonly { href: string; icon: LucideIcon; accent?: Catego
   ...IMAGE_CREATE.map((e) => ({ href: e.href, icon: e.icon, accent: e.accent })),
   ...IMAGE_EDIT.map((e) => ({ href: e.href, icon: e.icon })),
   ...IMAGE_EDIT_MORE.map((e) => ({ href: e.href, icon: e.icon })),
-  // The four Moda tools live inside the category, so their icons do too.
+  // The Moda tools live inside the category, so their icons do too.
   ...CATEGORIES.flatMap((c) =>
     c.workflows.map((w) => ({ href: `${categoryHref(c)}/${w.key}`, icon: w.icon, accent: c.accent }))),
   { href: "/prompts", icon: Sparkles },

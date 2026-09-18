@@ -31,6 +31,7 @@ export const AI_TOOL_KEYS = [
   // Moda. Each is model-driven and prompt-driven, so each gets the full set of
   // admin tabs — this is where their prompts are written and published.
   "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person",
+  "fashion_change_face",
 ] as const;
 export type AiToolKey = (typeof AI_TOOL_KEYS)[number];
 
@@ -50,6 +51,7 @@ const CATEGORY: Record<AiToolKey, ToolCategory> = {
   tool_upscale: "editing", tool_expand: "editing", video: "video",
   fashion_ghost_mannequin: "generation", fashion_flat_lay: "generation",
   fashion_iron: "generation", fashion_change_person: "generation",
+  fashion_change_face: "generation",
 };
 
 /** Which tools actually run through the ai_models path (`runGeneration`).
@@ -58,6 +60,7 @@ const CATEGORY: Record<AiToolKey, ToolCategory> = {
 const MODEL_DRIVEN: readonly AiToolKey[] = [
   "prompts", "generator", "retouch", "video",
   "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person",
+  "fashion_change_face",
 ];
 
 export const TOOL_TABS = ["basics", "engine", "models", "knowledge", "economics", "history"] as const;

@@ -45,7 +45,7 @@ import type { SessionPreviewMap } from "@/components/genv3/sections";
  * state once, so if the router does reuse this instance across routes the key
  * is what forces a clean panel instead of the previous tool's uploads.
  */
-/** Everything the four Moda tools need, resolved once by the page. */
+/** Everything the Moda tools need, resolved once by the page. */
 export type FashionRuntimeData = {
   /** Sizes and framings the shared model really offers. */
   resolutions: string[];

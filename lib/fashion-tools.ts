@@ -1,5 +1,5 @@
 /**
- * MODA — the four image-to-image tools, described once.
+ * MODA — the five image-to-image tools, described once.
  *
  * These are NOT the category's prompt presets. A preset hands the generator a
  * framing and a style directive and lets the seller write the brief; a tool
@@ -8,20 +8,26 @@
  * difference has to be a property of the workflow rather than a second route,
  * a second layout system or a second menu.
  *
- * WHY ONE CONFIG AND NOT FOUR COMPONENTS. Three of these tools are the same
+ * WHY ONE CONFIG AND NOT FIVE COMPONENTS. Three of these tools are the same
  * panel with a different job behind it — one upload block, a size, a framing,
  * an optional hint, a price and a button. Copying that panel three times would
  * mean three places to fix a padding, and three chances for them to drift into
  * looking like three different products. The panel is therefore ONE component
- * driven by the `slots` and the three `show*` flags below; what stays separate
- * is what genuinely differs per tool — its name, its prompt, its price row,
- * its results and its URL.
+ * driven by the `slots` and the flags below; what stays separate is what
+ * genuinely differs per tool — its name, its prompt, its price row, its
+ * results and its URL.
  *
- * "Zmiana postaci" is the one that is really different: two DISTINCT pools of
- * photographs, a garment reference and the person who should be wearing it.
- * Those must never be mixed into one list, because the server has to know
- * which is which. That is expressed here as two slots, not as a second
- * component.
+ * TWO of them take a PAIR of photographs. "Zmiana postaci" takes a garment and
+ * the person who should be wearing it; "Zmiana twarzy modela" takes a finished
+ * photograph and the face to put on the person already in it. Neither pair may
+ * be mixed into one list, because the server has to know which is which — and
+ * the two tools must not be collapsed into one either, because the second
+ * photograph means something different in each. That is expressed here as two
+ * configs with two slots, not as a second component and not as a switch inside
+ * one tool.
+ *
+ * The two pairs also do NOT look the same, and that is configuration rather
+ * than an accident: see `numberedSteps` and `denseZones`.
  *
  * This module is client-safe on purpose — the panel imports it. It carries no
  * prompts, no model identifiers and NO PRICES; all three are operator-managed
@@ -31,8 +37,15 @@
  */
 
 /** The pools of photographs a tool accepts. `source` is the single-input
- *  case; `reference` + `model` is the pair. */
-export type FashionSlotKey = "source" | "reference" | "model";
+ *  case; `reference` + `model` and `reference` + `face` are the pairs.
+ *
+ *  `model` and `face` are NOT the same pool under two names. "Zmiana postaci"
+ *  takes a garment and the person who should wear it; "Zmiana twarzy modela"
+ *  takes a finished photograph and the face to put on the person already in
+ *  it. Different second input, different instruction, different tool — and
+ *  keeping the keys apart is what lets the server, the prompt and the history
+ *  say which is which. */
+export type FashionSlotKey = "source" | "reference" | "model" | "face";
 
 export type FashionSlot = {
   key: FashionSlotKey;
@@ -65,8 +78,37 @@ export type FashionToolConfig = {
   showFormat: boolean;
   showHint: boolean;
   /** Show the "what the AI will do" card under the controls. On where the
-   *  tool's reference panel has it; the copy is the tool's own `sub`. */
+   *  tool's reference panel has it; the copy is the tool's own `aiNote`, and
+   *  its `sub` when it has not been given one. */
   showAiNote: boolean;
+  /**
+   * NUMBER THE BLOCKS — "1. Dodaj zdjęcie referencyjne", "2. …", "3. Format".
+   *
+   * A PER-TOOL DECISION, and deliberately not a global one. Numbering was
+   * removed from "Zmiana postaci" on purpose: both of its pools are required,
+   * neither can be filled before the other, so the numbers taught an order
+   * that does not exist while pushing the pool's capacity off the heading.
+   *
+   * "Zmiana twarzy modela" is briefed with it and its reference panel shows
+   * it, so it gets it HERE rather than by reviving the shared behaviour the
+   * other tool just had removed. Numbered mode also moves the wording: the
+   * heading carries the instruction and the box keeps the plain "Import" plus
+   * its counter, which is where the capacity then lives.
+   */
+  numberedSteps: boolean;
+  /**
+   * THE COMPACT UPLOAD BOX — smaller desktop padding, no "0 / 10 zdjęć" line.
+   *
+   * Was derived from `slots.length > 1`, on the reasoning that a panel with
+   * two dropzones cannot give each the room a panel with one gives its only
+   * one. That is still true, but it turned out not to be the whole story: two
+   * dual-pool tools can want different boxes, because the counter is
+   * redundant only when the HEADING already carries the capacity. Numbered
+   * mode moves the capacity into the box, so the box has to keep it.
+   *
+   * So it is an explicit choice per tool, not an inference from the shape.
+   */
+  denseZones: boolean;
   /** Preselected framing. "auto" means "follow the source photograph". */
   defaultFormat: string;
 };
@@ -90,6 +132,10 @@ const SINGLE_INPUT = {
   showFormat: true,
   showHint: true,
   showAiNote: false,
+  numberedSteps: false,
+  // One pool, one box: the generous zone with its counter, exactly as these
+  // three tools' own reference panel shows it.
+  denseZones: false,
   defaultFormat: "1:1",
 } as const;
 
@@ -153,6 +199,44 @@ export const FASHION_TOOLS: readonly FashionToolConfig[] = [
     // where the tool's one CONTROL should be. The desktop reference shows the
     // panel ending at Format, and so does this.
     showAiNote: false,
+    // NO NUMBERS. Both pools are required and neither can be supplied before
+    // the other, so there is no sequence to teach — see `numberedSteps`.
+    numberedSteps: false,
+    // The compact box: the heading already reads "(max. 10)", and with two
+    // dropzones stacked in a viewport-locked column the generous padding was
+    // spending 292px of a 393px panel on emptiness.
+    denseZones: true,
+    defaultFormat: "auto",
+  },
+  {
+    // ZMIANA TWARZY MODELA — the fifth tool, and the second dual-pool one.
+    //
+    // NOT A VARIANT OF "Zmiana postaci", even though the panels rhyme. That
+    // tool moves a GARMENT onto a chosen person; this one keeps the whole
+    // photograph — the clothes, the pose, the set, the light — and replaces
+    // only the face. Different job, different instruction, different prompt
+    // row, its own history. The shared panel renders both because the SHAPE
+    // is the same, which is exactly what the config is for.
+    key: "changeFace",
+    toolKey: "fashion_change_face",
+    operation: "fashion_change_face",
+    slots: [
+      // `reference` is the photograph being edited; `face` is the person whose
+      // face goes into it. The order is the order the provider sees them, so
+      // the operator's prompt may say "the first image" and "the second
+      // image" and be right.
+      { key: "reference", max: 10, labelKey: "fashion.slot.reference", zoneLabelKey: "fashion.zone.reference", required: true },
+      { key: "face", max: 10, labelKey: "fashion.slot.face", zoneLabelKey: "fashion.zone.face", required: true },
+    ],
+    // One control, as its reference panel shows: no size, no instruction box.
+    showResolution: false,
+    showFormat: true,
+    showHint: false,
+    // …and one explanation, because "we will fit the face to the light and the
+    // perspective" is not something the panel says anywhere else.
+    showAiNote: true,
+    numberedSteps: true,
+    denseZones: false,
     defaultFormat: "auto",
   },
 ] as const;

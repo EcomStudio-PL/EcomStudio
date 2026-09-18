@@ -2811,6 +2811,13 @@
         "sub": "Move the garment or styling onto a chosen person.",
         "cta": "Generate",
         "empty": "Add a reference photo and a model photo, then press “Generate”."
+      },
+      "changeFace": {
+        "name": "Change the model's face",
+        "sub": "Swap the model's face and keep the photo, the outfit and the scene.",
+        "cta": "Change face",
+        "aiNote": "AI fits the face to the photo's lighting, perspective and framing. The outfit, the pose, the background and the rest of the shot stay as they are.",
+        "empty": "Add a reference photo and a face photo, then press “Change face”."
       }
     },
     "ecommerce": {
@@ -4523,11 +4530,14 @@
     "slot.source": "Add photos (max. {n})",
     "slot.reference": "Reference photo (max. {n})",
     "slot.model": "Model photo (max. {n})",
+    "slot.face": "Face photo (max. {n})",
     "zone.reference": "Add a reference photo",
     "zone.model": "Add a model photo",
+    "zone.face": "Add a face photo",
     "need.source": "Add at least one photo.",
     "need.reference": "Add a reference photo.",
     "need.model": "Add a model photo.",
+    "need.face": "Add a face photo.",
     "hint": "Hint for the AI",
     "hintOptional": "(optional)",
     "hintInfo": "A short note refines the result. The tool's own instruction and product fidelity apply whatever you write here.",
@@ -4569,6 +4579,10 @@
     "fashion_change_person": {
       "desc": "The same product worn by a different person.",
       "words": "fashion, model, person, swap model, change model, face"
+    },
+    "fashion_change_face": {
+      "desc": "The same photo with a different model's face.",
+      "words": "fashion, face, change face, face swap, swap face, model, head"
     },
     "image_ecommerce": {
       "desc": "Product shots for marketplaces and your own shop.",

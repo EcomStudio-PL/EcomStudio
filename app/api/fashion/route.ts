@@ -13,7 +13,7 @@ export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
 /**
- * MODA — one result per request, for all four tools.
+ * MODA — one result per request, for every tool in the registry.
  *
  * The browser uploads to its own workspace prefix and sends PATHS; the prompt,
  * the model and the price are the server's business and none of the three
