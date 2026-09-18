@@ -227,6 +227,26 @@ async function getVisionBackends(supabase: Client, primaryModel: string): Promis
   return backends;
 }
 
+/**
+ * THE SAME CHAIN, FOR CALLERS WHO ONLY WANT TEXT.
+ *
+ * `callVisionJson` is this codebase's one door to a text-capable model; it is
+ * called "vision" because images are what it was written for, but a request
+ * with `images: []` is an ordinary text request to both backends it speaks.
+ * The newsletter's copywriter (lib/server/newsletter/ai.ts) needs exactly this
+ * chain and nothing else — the same providers, the same admin-managed
+ * credentials, the same fallback order.
+ *
+ * SO IT IS EXPORTED RATHER THAN COPIED. A second resolver would be a second
+ * place to add a provider, a second thing to forget when the vault moves, and
+ * eventually a deployment where the generator has a key and the newsletter
+ * quietly does not. This function adds no behaviour: it is `getVisionBackends`
+ * with the configured analysis model already looked up.
+ */
+export async function textCapableBackends(supabase: Client): Promise<VisionBackend[]> {
+  return getVisionBackends(supabase, await getAnalysisModel(supabase));
+}
+
 async function downloadReferences(supabase: Client, paths: string[]): Promise<ReferenceImage[]> {
   const refs: ReferenceImage[] = [];
   let total = 0;

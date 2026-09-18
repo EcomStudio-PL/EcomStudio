@@ -5191,6 +5191,10 @@ export type Database = {
         Args: { p_token: string; p_reason?: string }
         Returns: Json
       }
+      newsletter_resubscribe: {
+        Args: { p_token: string; p_consent_version?: string }
+        Returns: Json
+      }
       newsletter_track: {
         Args: { p_recipient: string; p_event: string; p_link?: string }
         Returns: Json

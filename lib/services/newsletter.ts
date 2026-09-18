@@ -89,6 +89,17 @@ export type ContactFilter = {
   groupId?: string;
   /** 'consented' | 'no_consent' | 'unsubscribed' */
   consent?: string;
+  /** The CONTACT's language — 'pl' | 'en' | 'de' — not the operator's. It is
+   *  what decides which wording a campaign reaches them in, so it is a filter
+   *  an operator picks an audience by, and the export honours it for the same
+   *  reason the other four are honoured: the file has to be the list that was
+   *  on screen when they asked for it. */
+  locale?: string;
+  /** Exactly these contacts, and nothing else — what the bulk bar's "export"
+   *  means when an operator has ticked fourteen rows. It INTERSECTS with the
+   *  other filters rather than replacing them, so a selection made under a
+   *  filter cannot quietly widen into rows the operator never saw. */
+  ids?: string[];
   page?: number;
   pageSize?: number;
 };
@@ -120,6 +131,11 @@ export async function listContacts(
     ids = (data ?? []).map((r) => r.contact_id);
     if (ids.length === 0) return { rows: [], total: 0, page, pageSize };
   }
+  if (filter.ids && filter.ids.length > 0) {
+    const chosen = new Set(filter.ids);
+    ids = ids ? ids.filter((id) => chosen.has(id)) : [...chosen];
+    if (ids.length === 0) return { rows: [], total: 0, page, pageSize };
+  }
 
   let query = supabase
     .from("newsletter_contacts")
@@ -129,6 +145,7 @@ export async function listContacts(
 
   if (ids) query = query.in("id", ids);
   if (filter.sourceKey) query = query.eq("source_key", filter.sourceKey);
+  if (filter.locale) query = query.eq("locale", filter.locale);
   if (filter.consent === "consented") {
     query = query.eq("marketing_consent", true).is("unsubscribed_at", null);
   } else if (filter.consent === "no_consent") {
@@ -662,15 +679,34 @@ export async function listSuppressions(
  * (campaign, step, contact); a re-run inserts what is missing and collides
  * harmlessly with what is not. That is what makes a retried action, a
  * double-tapped button and a resumed campaign all the same operation.
+ *
+ * ── WHY IT REPORTS `queued` AS WELL AS `mailable` ───────────────────────────
+ *
+ * `mailable` is a fact about the AUDIENCE: how many people could be written to.
+ * It is NOT how many will be, and the two diverge in two ordinary cases that
+ * both used to be reported to the operator as the larger number:
+ *
+ *   · A/B IS ON. Only the test share is queued for the first message (see
+ *     below), so "4 281 odbiorców" on the confirm screen described a send of
+ *     856. Nothing in the product picks a winner yet, so the other 3 425 are
+ *     not waiting for anything — they are simply not in this campaign.
+ *   · THE CAMPAIGN WAS CANCELLED AND RESCHEDULED. Cancelling sets every queued
+ *     row to 'cancelled', and those rows still occupy the unique index, so the
+ *     re-run inserts nothing and the queue stays empty. The old return said
+ *     "mailable: 4 281" for a campaign that was about to send zero messages.
+ *
+ * `queued` counts what is actually pending for the first message — the number
+ * of people who will receive it. A confirm screen that says anything else is
+ * not a confirmation, it is a guess with a button under it.
  */
 export async function snapshotRecipients(
   supabase: Client,
   campaign: CampaignRow,
   steps: StepRow[],
   opts: { startAt?: Date } = {},
-): Promise<{ created: number; mailable: number }> {
+): Promise<{ created: number; mailable: number; queued: number }> {
   const breakdown = await audienceBreakdown(supabase, campaign.audience);
-  if (breakdown.ids.length === 0) return { created: 0, mailable: 0 };
+  if (breakdown.ids.length === 0) return { created: 0, mailable: 0, queued: 0 };
 
   const base = opts.startAt ?? new Date();
   const contacts = await contactEmails(supabase, breakdown.ids);
@@ -733,7 +769,24 @@ export async function snapshotRecipients(
     created += (data ?? []).length;
   }
 
-  return { created, mailable: breakdown.mailable };
+  /*
+    WHAT WILL ACTUALLY GO OUT, read back from the table rather than counted from
+    the array above. `created` is only the rows this call inserted, so a re-run
+    of a half-queued campaign would report zero; the rows already sitting in the
+    queue are just as much part of this send. Counting the FIRST step is what
+    makes this a number of people rather than a number of messages — a sequence
+    queues every step at once, and "4 281 odbiorców" must not become "12 843"
+    because the campaign has three of them.
+  */
+  const firstStep = [...byStep.keys()].sort((a, b) => a - b)[0] ?? 0;
+  const { count } = await supabase
+    .from("newsletter_recipients")
+    .select("id", { count: "exact", head: true })
+    .eq("campaign_id", campaign.id)
+    .eq("step_index", firstStep)
+    .eq("status", "pending");
+
+  return { created, mailable: breakdown.mailable, queued: count ?? 0 };
 }
 
 /** Address per contact id, chunked to keep the request URL sane. */
@@ -750,16 +803,58 @@ async function contactEmails(supabase: Client, ids: string[]): Promise<Map<strin
 /**
  * Register every destination a campaign links to, so the redirect endpoint can
  * resolve an id instead of trusting a URL. Returns the map the renderer needs.
+ *
+ * IT READS FIRST AND INSERTS WHAT IS MISSING, rather than upserting.
+ *
+ * That is not a style preference, it is the only thing that works here. 0094's
+ * uniqueness is `newsletter_links_unique (campaign_id, md5(url))` — an
+ * EXPRESSION index, chosen so a 2000-character tracking URL still fits in an
+ * index tuple. PostgREST turns `onConflict: "campaign_id,url"` into
+ * `ON CONFLICT (campaign_id, url)`, and Postgres matches a conflict target
+ * against index COLUMNS: `(campaign_id, md5(url))` is not `(campaign_id, url)`,
+ * so every such call came back 42P10 "no unique or exclusion constraint
+ * matching the ON CONFLICT specification".
+ *
+ * The consequence was silent and total. `scheduleCampaignAction` does not check
+ * this function's error — it cannot, the old signature had nowhere to put
+ * one — so no link row was ever written, the map came back empty, and
+ * `renderCampaign` fell back to the plain destination for every href. Click
+ * tracking was off for every campaign ever sent while the campaign screen went
+ * on saying it was on, which is the exact failure `scheduleCampaignAction`'s
+ * own comment says the ordering of its three writes exists to prevent.
+ *
+ * A read-then-insert has a race — two operators scheduling one campaign in the
+ * same second — and it is harmless: the loser hits the unique index, its insert
+ * fails, and the final read below picks up the row the winner wrote. The map is
+ * built from what the table actually holds, never from what we believe we put
+ * there.
  */
 export async function ensureLinks(
   supabase: Client, campaignId: string, urls: string[],
 ): Promise<Map<string, string>> {
   if (urls.length > 0) {
-    await supabase.from("newsletter_links").upsert(
-      urls.map((url) => ({ campaign_id: campaignId, url })) as never,
-      { onConflict: "campaign_id,url", ignoreDuplicates: true },
-    );
+    const { data: known } = await supabase
+      .from("newsletter_links").select("url").eq("campaign_id", campaignId);
+    const have = new Set((known ?? []).map((r) => r.url as string));
+    const missing = [...new Set(urls)].filter((url) => !have.has(url));
+
+    for (let i = 0; i < missing.length; i += 200) {
+      const chunk = missing.slice(i, i + 200);
+      const { error } = await supabase.from("newsletter_links").insert(
+        chunk.map((url) => ({ campaign_id: campaignId, url })) as never,
+      );
+      // One INSERT is one statement, so a single colliding row would take the
+      // other 199 down with it. That only happens when somebody else registered
+      // the same campaign's links a moment ago, so the retry is per row and
+      // every failure is ignored: whatever is already there is what we wanted.
+      if (error) {
+        for (const url of chunk) {
+          await supabase.from("newsletter_links").insert({ campaign_id: campaignId, url } as never);
+        }
+      }
+    }
   }
+
   const { data } = await supabase
     .from("newsletter_links").select("id, url").eq("campaign_id", campaignId);
   return new Map((data ?? []).map((r) => [r.url as string, r.id as string]));
@@ -770,6 +865,11 @@ export async function ensureLinks(
 export type DashboardTotals = {
   contacts: number;
   newContacts: number;
+  /** Everyone snapshotted into a send in this range, whatever became of them:
+   *  the funnel's first stage. Counting `sent + failed` instead would quietly
+   *  shrink the top of the funnel every time a queue still has work in it, and
+   *  a funnel whose first stage moves is one nobody can reason about. */
+  recipients: number;
   sent: number;
   accepted: number;
   failed: number;
@@ -824,6 +924,7 @@ export async function dashboardTotals(
   return {
     contacts: contacts.count ?? 0,
     newContacts: fresh.count ?? 0,
+    recipients: (recipients.data ?? []).length,
     sent,
     accepted: totals.get("accepted") ?? sent,
     failed,
@@ -971,6 +1072,13 @@ export async function contactsForExport(
     ids = (data ?? []).map((r) => r.contact_id as string);
     if (ids.length === 0) return [];
   }
+  // A selection narrows the filter, exactly as it does on screen: the file is
+  // the ticked rows, not every row the filter would have matched.
+  if (filter.ids && filter.ids.length > 0) {
+    const chosen = new Set(filter.ids);
+    ids = ids ? ids.filter((id) => chosen.has(id)) : [...chosen];
+    if (ids.length === 0) return [];
+  }
 
   const CHUNK = 1_000;
   for (let from = 0; from < ceiling; from += CHUNK) {
@@ -985,6 +1093,7 @@ export async function contactsForExport(
     // downloads is exactly the list they were looking at when they asked.
     if (ids) query = query.in("id", ids);
     if (filter.sourceKey) query = query.eq("source_key", filter.sourceKey);
+    if (filter.locale) query = query.eq("locale", filter.locale);
     if (filter.consent === "consented") {
       query = query.eq("marketing_consent", true).is("unsubscribed_at", null);
     } else if (filter.consent === "no_consent") {
@@ -1037,4 +1146,568 @@ export async function suppressedAmong(
     for (const r of data ?? []) out.add(r.email as string);
   }
   return out;
+}
+
+/* ── ANALYTICS ───────────────────────────────────────────────────────────── */
+
+export type CampaignPerformance = {
+  id: string;
+  name: string;
+  status: CampaignStatus;
+  recipients: number;
+  sent: number;
+  accepted: number;
+  failed: number;
+  openedUnique: number;
+  clickedUnique: number;
+  replied: number;
+  unsubscribed: number;
+  converted: number;
+  revenueCents: number | null;
+};
+
+/**
+ * EVERY CAMPAIGN'S NUMBERS, IN A FIXED NUMBER OF QUERIES.
+ *
+ * `campaignStats` answers this for ONE campaign in three reads. The analytics
+ * table asks it about every campaign that moved inside a date range, and the
+ * obvious implementation — call the singular version in a loop — is three
+ * round trips per row. Thirty campaigns is ninety queries and a page that
+ * gives up before it renders. So the three reads happen once, unfiltered by
+ * campaign, and the grouping happens in memory.
+ *
+ * THE RANGE FILTERS THE ACTIVITY, NOT THE CAMPAIGN. A campaign sent five weeks
+ * ago that was clicked yesterday belongs in yesterday's report: the question
+ * this screen answers is "what happened in this window", not "what was created
+ * in it". The consequence worth knowing is that a row's `sent` can be 0 while
+ * its `clickedUnique` is not — that is a real campaign still earning clicks
+ * after the send finished, not a bug.
+ *
+ * Opens and clicks are unique contacts for the same reason `campaignStats`
+ * gives, and `revenueCents` stays null rather than collapsing to 0 when
+ * nothing was attributed, so the table prints "—" instead of an amount nobody
+ * measured.
+ */
+export async function campaignPerformance(
+  supabase: Client, sinceIso: string, untilIso: string,
+): Promise<CampaignPerformance[]> {
+  const [recipients, events, attributions] = await Promise.all([
+    supabase.from("newsletter_recipients").select("campaign_id, status")
+      .gte("created_at", sinceIso).lte("created_at", untilIso).limit(500_000),
+    supabase.from("newsletter_events").select("campaign_id, event_type, contact_id")
+      .gte("created_at", sinceIso).lte("created_at", untilIso).limit(500_000),
+    supabase.from("newsletter_attributions").select("campaign_id, amount_cents, converted_at")
+      .gte("created_at", sinceIso).lte("created_at", untilIso).limit(100_000),
+  ]);
+
+  type Acc = {
+    recipients: number; sent: number; failed: number;
+    acceptedEvents: number; replied: Set<string>; opened: Set<string>; clicked: Set<string>;
+    unsubscribed: number; converted: number; amounts: number[];
+  };
+  const acc = new Map<string, Acc>();
+  const of = (id: string): Acc => {
+    let row = acc.get(id);
+    if (!row) {
+      row = {
+        recipients: 0, sent: 0, failed: 0, acceptedEvents: 0,
+        replied: new Set(), opened: new Set(), clicked: new Set(),
+        unsubscribed: 0, converted: 0, amounts: [],
+      };
+      acc.set(id, row);
+    }
+    return row;
+  };
+
+  for (const r of recipients.data ?? []) {
+    const id = r.campaign_id as string | null;
+    if (!id) continue;
+    const row = of(id);
+    row.recipients += 1;
+    if (r.status === "sent") row.sent += 1;
+    else if (r.status === "failed") row.failed += 1;
+  }
+
+  for (const e of events.data ?? []) {
+    // An event with no campaign is a lifecycle event (a subscribe, a manual
+    // block). It is real, but it belongs to a contact rather than to any
+    // campaign, and folding it into one would invent a number.
+    const id = e.campaign_id as string | null;
+    if (!id) continue;
+    const row = of(id);
+    const contact = (e.contact_id as string | null) ?? "";
+    switch (e.event_type as string) {
+      case "accepted": row.acceptedEvents += 1; break;
+      case "opened": if (contact) row.opened.add(contact); break;
+      case "clicked": if (contact) row.clicked.add(contact); break;
+      case "replied": if (contact) row.replied.add(contact); break;
+      case "unsubscribed": row.unsubscribed += 1; break;
+      default: break;
+    }
+  }
+
+  for (const a of attributions.data ?? []) {
+    const id = a.campaign_id as string | null;
+    if (!id) continue;
+    const row = of(id);
+    if (a.converted_at) row.converted += 1;
+    const amount = a.amount_cents as number | null;
+    if (typeof amount === "number") row.amounts.push(amount);
+  }
+
+  const ids = [...acc.keys()];
+  if (ids.length === 0) return [];
+
+  // Names in one read per 200 ids rather than one per row. A campaign that has
+  // vanished between these two queries is dropped rather than rendered as a
+  // uuid: a row nobody can click is worse than a row that is not there.
+  const meta = new Map<string, { name: string; status: CampaignStatus }>();
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data } = await supabase
+      .from("newsletter_campaigns").select("id, name, status").in("id", ids.slice(i, i + 200));
+    for (const r of data ?? []) {
+      meta.set(r.id as string, {
+        name: r.name as string,
+        status: (r.status as CampaignStatus) ?? "draft",
+      });
+    }
+  }
+
+  return ids
+    .flatMap((id) => {
+      const row = acc.get(id)!;
+      const info = meta.get(id);
+      if (!info) return [];
+      return [{
+        id,
+        name: info.name,
+        status: info.status,
+        recipients: row.recipients,
+        sent: row.sent,
+        // Same fallback as everywhere else in this module: when the worker
+        // recorded no explicit acceptance, a message that went out was
+        // accepted by definition — nothing else would have let it leave.
+        accepted: row.acceptedEvents || row.sent,
+        failed: row.failed,
+        openedUnique: row.opened.size,
+        clickedUnique: row.clicked.size,
+        replied: row.replied.size,
+        unsubscribed: row.unsubscribed,
+        converted: row.converted,
+        revenueCents: row.amounts.length > 0 ? row.amounts.reduce((a, b) => a + b, 0) : null,
+      }];
+    })
+    .sort((a, b) => b.sent - a.sent || b.clickedUnique - a.clickedUnique);
+}
+
+export type SourcePerformance = {
+  key: string;
+  name: string;
+  contacts: number;
+  sent: number;
+  clickedUnique: number;
+  converted: number;
+  revenueCents: number | null;
+};
+
+/**
+ * WHICH SIGN-UP ROUTE PRODUCES PEOPLE WHO ACTUALLY DO SOMETHING.
+ *
+ * `listSources` answers "how many contacts per source" and is the right
+ * function for the contact screens. This one answers a strictly larger
+ * question — it needs to know WHICH contact belongs to which source, so that a
+ * click event can be traced back to the form that produced the person who made
+ * it — and that map cannot be assembled from a tally. Calling `listSources`
+ * first and then reading the contacts again for their ids would read the
+ * largest table in the module twice for one screen, so the tally is recomputed
+ * here from the read that has to happen anyway.
+ *
+ * THE CEILING IS 100 000 CONTACTS, the same one `listSources` already accepts.
+ * Past that the percentages drift, and the fix is a grouped count in Postgres
+ * rather than a bigger limit here.
+ */
+export async function sourcePerformance(
+  supabase: Client, sinceIso: string, untilIso: string,
+): Promise<SourcePerformance[]> {
+  const [sources, contacts, events, attributions] = await Promise.all([
+    supabase.from("newsletter_sources").select("key, name").order("name"),
+    supabase.from("newsletter_contacts").select("id, source_key").limit(100_000),
+    supabase.from("newsletter_events").select("event_type, contact_id")
+      .in("event_type", ["sent", "clicked"])
+      .gte("created_at", sinceIso).lte("created_at", untilIso).limit(500_000),
+    supabase.from("newsletter_attributions").select("contact_id, amount_cents, converted_at")
+      .gte("created_at", sinceIso).lte("created_at", untilIso).limit(100_000),
+  ]);
+
+  const sourceOf = new Map<string, string>();
+  const tally = new Map<string, number>();
+  for (const c of contacts.data ?? []) {
+    const key = c.source_key as string;
+    sourceOf.set(c.id as string, key);
+    tally.set(key, (tally.get(key) ?? 0) + 1);
+  }
+
+  const sent = new Map<string, number>();
+  const clicked = new Map<string, Set<string>>();
+  for (const e of events.data ?? []) {
+    const contact = e.contact_id as string | null;
+    if (!contact) continue;
+    const key = sourceOf.get(contact);
+    // A contact deleted since the event, or one past the read ceiling above.
+    // Dropped rather than bucketed into an "unknown" row that would look like
+    // a source somebody could go and fix.
+    if (!key) continue;
+    if (e.event_type === "sent") sent.set(key, (sent.get(key) ?? 0) + 1);
+    else {
+      if (!clicked.has(key)) clicked.set(key, new Set());
+      clicked.get(key)!.add(contact);
+    }
+  }
+
+  const converted = new Map<string, number>();
+  const amounts = new Map<string, number[]>();
+  for (const a of attributions.data ?? []) {
+    const contact = a.contact_id as string | null;
+    if (!contact) continue;
+    const key = sourceOf.get(contact);
+    if (!key) continue;
+    if (a.converted_at) converted.set(key, (converted.get(key) ?? 0) + 1);
+    const amount = a.amount_cents as number | null;
+    if (typeof amount === "number") {
+      if (!amounts.has(key)) amounts.set(key, []);
+      amounts.get(key)!.push(amount);
+    }
+  }
+
+  return (sources.data ?? []).map((s) => {
+    const key = s.key as string;
+    const money = amounts.get(key) ?? [];
+    return {
+      key,
+      name: s.name as string,
+      contacts: tally.get(key) ?? 0,
+      sent: sent.get(key) ?? 0,
+      clickedUnique: clicked.get(key)?.size ?? 0,
+      converted: converted.get(key) ?? 0,
+      revenueCents: money.length > 0 ? money.reduce((a, b) => a + b, 0) : null,
+    };
+  }).sort((a, b) => b.contacts - a.contacts);
+}
+
+/* ── READS THE CONTACT SCREENS NEED ──────────────────────────────────────────
+ *
+ * Appended for app/admin/newsletter/kontakty. Both answer a question the
+ * functions above cannot, and both are here rather than in a page because a
+ * query written inside a component is a query the next screen copies.
+ */
+
+/**
+ * Whole contacts for a set of ids, chunked.
+ *
+ * The bulk bar can export exactly what an operator ticked, and a selection is
+ * a list of ids — not a filter. `contactsForExport` answers the filter case and
+ * cannot answer this one: there is no `ContactFilter` that means "these
+ * fourteen rows and nothing else", and inventing one would put a thousand-uuid
+ * list into a PostgREST URL.
+ *
+ * Chunked at 400 for the same reason `contactEmails` is: the `in(…)` filter
+ * travels in the query string, and a selection spanning several pages is
+ * easily past what a proxy will forward. Order is not preserved across chunks
+ * and does not need to be — the CSV writer sorts nothing and the file reads in
+ * whatever order the database answers, which is the same order for every run.
+ */
+export async function contactsByIds(supabase: Client, ids: string[]): Promise<ContactRow[]> {
+  const out: ContactRow[] = [];
+  const unique = [...new Set(ids)];
+  for (let i = 0; i < unique.length; i += 400) {
+    const { data } = await supabase
+      .from("newsletter_contacts")
+      .select(CONTACT_SELECT)
+      .in("id", unique.slice(i, i + 400));
+    for (const r of data ?? []) out.push(toContact(r as RawContact));
+  }
+  return out;
+}
+
+/**
+ * Which STATIC groups each of these contacts belongs to.
+ *
+ * One read of the membership table for the whole page, tallied here, rather
+ * than one query per row: the contact list renders fifty rows at a time and
+ * fifty round trips to fill one column is a screen that takes a second to
+ * load for information nobody sorts by.
+ *
+ * SEGMENTS ARE DELIBERATELY ABSENT. A dynamic group has no membership rows at
+ * all — it is a saved filter — so answering "which segments does this contact
+ * match" means running every segment's conditions for every row on the page.
+ * That is a measurable amount of database work to fill a cell, and it would
+ * make the column mean two different things depending on which kind of group
+ * happened to be involved. The column shows lists; `resolveSegment` answers
+ * segments, where the caller is asking for one on purpose.
+ */
+export async function groupsOfContacts(
+  supabase: Client, contactIds: string[],
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  const unique = [...new Set(contactIds)];
+  for (let i = 0; i < unique.length; i += 400) {
+    const { data } = await supabase
+      .from("newsletter_group_members")
+      .select("group_id, contact_id")
+      .in("contact_id", unique.slice(i, i + 400));
+    for (const r of data ?? []) {
+      const contactId = r.contact_id as string;
+      const list = out.get(contactId) ?? [];
+      list.push(r.group_id as string);
+      out.set(contactId, list);
+    }
+  }
+  return out;
+}
+
+/**
+ * The suppression row for one address, or null.
+ *
+ * WHY THE REASON MATTERS AND A BOOLEAN DOES NOT. `suppressedAmong` answers "is
+ * this address blocked", which is all a list needs. A contact's own screen has
+ * to answer WHY, because the two reasons lead to opposite decisions: an address
+ * on the list because an operator blocked it is one an operator may unblock,
+ * and an address on it because the person unsubscribed themselves is one where
+ * lifting the block still leaves them unmailable — only they can consent again.
+ * Showing "zablokowany" without the reason is how somebody talks themselves
+ * into undoing a customer's own decision.
+ */
+export async function suppressionFor(
+  supabase: Client, email: string,
+): Promise<{ email: string; reason: string; note: string | null; createdAt: string } | null> {
+  const { data } = await supabase
+    .from("newsletter_suppressions")
+    .select("email, reason, note, created_at")
+    .eq("email", email)
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    email: data.email as string,
+    reason: data.reason as string,
+    note: (data.note as string | null) ?? null,
+    createdAt: data.created_at as string,
+  };
+}
+
+/* ── READS THE LIBRARY SCREENS NEED ──────────────────────────────────────────
+ *
+ * Appended for the three screens that are about the module's furniture rather
+ * than about a single campaign: grupy, szablony and automatyzacje. Both
+ * functions exist because the obvious existing call answers a different
+ * question and answers it expensively.
+ */
+
+/** A campaign reduced to what a <select> and a lookup need. */
+export type CampaignBrief = {
+  id: string;
+  name: string;
+  kind: CampaignKind;
+  status: CampaignStatus;
+  stopOnConversion: boolean;
+};
+
+/**
+ * Every campaign, as a name and four flags.
+ *
+ * `listCampaigns` already exists and would answer this — paged, twenty-five at
+ * a time, carrying each row's audience JSON, UTM object and eight A/B columns.
+ * That shape is right for the campaigns SCREEN and wrong everywhere here:
+ *
+ *   · A PICKER MUST NOT BE PAGED. "Która kampania?" in the segment builder and
+ *     in the automation form is one dropdown; a dropdown that shows the first
+ *     page of the answer is a dropdown that silently cannot express half the
+ *     choices, and the operator has no way to tell which half.
+ *   · A LOOKUP MUST NOT MISS. The automations list has to name the sequence
+ *     each rule runs and say whether it stops on conversion. Resolving those
+ *     ids against page one of `listCampaigns` would render "—" for any
+ *     automation pointing at the twenty-sixth-oldest campaign.
+ *
+ * Capped at 500 rather than unbounded: at that point a dropdown is the wrong
+ * control anyway, and an unbounded select is how a screen quietly stops
+ * loading. `ids` narrows it when the caller already knows which rows it wants.
+ */
+export async function campaignBriefs(
+  supabase: Client, ids?: string[],
+): Promise<CampaignBrief[]> {
+  if (ids && ids.length === 0) return [];
+  let q = supabase
+    .from("newsletter_campaigns")
+    .select("id, name, kind, status, stop_on_conversion")
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (ids) q = q.in("id", [...new Set(ids)].slice(0, 500));
+  const { data } = await q;
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    kind: (r.kind as CampaignKind) ?? "one_off",
+    status: (r.status as CampaignStatus) ?? "draft",
+    stopOnConversion: r.stop_on_conversion !== false,
+  }));
+}
+
+/** A step reduced to its place in the sequence. No body. */
+export type StepSummary = {
+  id: string;
+  campaignId: string;
+  stepIndex: number;
+  variant: string;
+  delayMinutes: number;
+  subject: string;
+};
+
+/**
+ * The running order of several sequences at once.
+ *
+ * The automations screen shows, for every rule, the messages its sequence
+ * sends and how long after the trigger each one goes out. `listSteps` answers
+ * that for ONE campaign and returns the full body of every step — blocks and
+ * pasted HTML, the largest text this module stores. Calling it per automation
+ * would be N queries pulling N whole mailings across the wire so the screen
+ * can print "+3 dni".
+ *
+ * So this is one query, and it selects no body at all. It is grouped in JS
+ * rather than by the caller because the ordering has to survive the grouping:
+ * PostgREST returns the rows already sorted, and pushing them into arrays in
+ * arrival order keeps each sequence in send order without a second sort.
+ */
+export async function stepSummaries(
+  supabase: Client, campaignIds: string[],
+): Promise<Map<string, StepSummary[]>> {
+  const out = new Map<string, StepSummary[]>();
+  const ids = [...new Set(campaignIds)].filter(Boolean);
+  if (ids.length === 0) return out;
+
+  const { data } = await supabase
+    .from("newsletter_campaign_steps")
+    .select("id, campaign_id, step_index, variant, delay_minutes, subject")
+    .in("campaign_id", ids.slice(0, 500))
+    .order("step_index").order("variant");
+
+  for (const r of data ?? []) {
+    const campaignId = r.campaign_id as string;
+    const list = out.get(campaignId) ?? [];
+    list.push({
+      id: r.id as string,
+      campaignId,
+      stepIndex: (r.step_index as number) ?? 0,
+      variant: (r.variant as string) ?? "A",
+      delayMinutes: (r.delay_minutes as number) ?? 0,
+      subject: (r.subject as string) ?? "",
+    });
+    out.set(campaignId, list);
+  }
+  return out;
+}
+
+/* ── PREPARED PERSONALISATION ────────────────────────────────────────────────
+ *
+ * Appended for the campaign editor's final confirm screen.
+ */
+
+/**
+ * How many of this campaign's queued messages already carry AI-written copy.
+ *
+ * §73's confirm screen has to state whether AI personalisation is on before an
+ * operator commits to a send, and this is the only answer in the schema that
+ * is a MEASUREMENT rather than an intention. `newsletter_recipients.
+ * personalization` is written before a send, never during it, so a non-zero
+ * count means individual subjects and openers genuinely exist for this
+ * campaign; zero means every recipient gets the same words, whatever any
+ * switch elsewhere claims.
+ *
+ * It is a `head` count on purpose — the confirm screen needs the number, not
+ * the JSON, and those documents are the largest rows the queue holds.
+ */
+export async function personalizedRecipientCount(
+  supabase: Client, campaignId: string,
+): Promise<number> {
+  const { count } = await supabase
+    .from("newsletter_recipients")
+    .select("id", { count: "exact", head: true })
+    .eq("campaign_id", campaignId)
+    .not("personalization", "is", null);
+  return count ?? 0;
+}
+
+/* ── THE PERSONALISATION PASS ────────────────────────────────────────────────
+ *
+ * Appended for app/actions/newsletter-ai.ts. Two reads, both scoped to rows
+ * that have not gone anywhere yet.
+ */
+
+/** One queued message waiting for its personalised copy. The STEP is part of
+ *  it because a sequence's third mail is not its first, and an A/B variant B
+ *  is not variant A — the opener has to be written against the words that
+ *  recipient will actually receive. */
+export type PersonalizationTarget = {
+  id: string;
+  contactId: string;
+  stepIndex: number;
+  variant: string;
+};
+
+/**
+ * The next `limit` queued messages that have no personalisation yet.
+ *
+ * ONLY 'pending' ROWS, and that filter is the whole safety argument. A row
+ * that is 'sending' is inside a claim right now and a row that is 'sent' has
+ * already left the building; writing generated copy onto either would at best
+ * be wasted money and at worst would make the per-recipient log describe a
+ * message that was never sent. Personalisation is something you do to a mail
+ * that has not happened.
+ *
+ * ORDERED BY id so repeated calls walk the queue instead of re-reading the
+ * same page: the batch runs under a time budget and finishes over several
+ * invocations, and "the next hundred" has to mean a different hundred each
+ * time. `personalization is null` shrinks the set as the work lands, so the
+ * ordering only has to be stable, not meaningful.
+ */
+export async function recipientsAwaitingPersonalization(
+  supabase: Client, campaignId: string, limit: number,
+): Promise<PersonalizationTarget[]> {
+  const { data } = await supabase
+    .from("newsletter_recipients")
+    .select("id, contact_id, step_index, variant")
+    .eq("campaign_id", campaignId)
+    .eq("status", "pending")
+    .is("personalization", null)
+    .order("id")
+    .limit(Math.min(500, Math.max(1, Math.floor(limit))));
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    contactId: r.contact_id as string,
+    stepIndex: (r.step_index as number) ?? 0,
+    variant: (r.variant as string) ?? "A",
+  }));
+}
+
+/**
+ * How far the pass has got: queued messages, and how many of them already
+ * carry generated copy.
+ *
+ * BOTH NUMBERS COUNT THE SAME SET — rows still 'pending' — so the panel can
+ * subtract them and get a remainder that is true. `personalizedRecipientCount`
+ * answers a different question (how many rows of ANY status were personalised,
+ * which is what the confirm screen needs to state about a send that has
+ * already started) and the two are deliberately not the same query.
+ */
+export async function personalizationProgress(
+  supabase: Client, campaignId: string,
+): Promise<{ queued: number; written: number }> {
+  const [{ count: queued }, { count: written }] = await Promise.all([
+    supabase.from("newsletter_recipients")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", campaignId).eq("status", "pending"),
+    supabase.from("newsletter_recipients")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", campaignId).eq("status", "pending")
+      .not("personalization", "is", null),
+  ]);
+  return { queued: queued ?? 0, written: written ?? 0 };
 }

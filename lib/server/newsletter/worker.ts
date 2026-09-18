@@ -377,9 +377,9 @@ const sleep = (ms: number): Promise<void> =>
  * five-minute reaper, and arrives five minutes late for no reason. `batchSize`
  * is the operator's ceiling; this is the floor the clock imposes on it.
  */
-function batchLimit(batchSize: number, pace: number): number {
+function batchLimit(batchSize: number, pace: number, remainingMs: number): number {
   const perMessage = Math.max(1, pace + MIN_SLOT_MS);
-  return Math.max(1, Math.min(batchSize, Math.floor(RUN_BUDGET_MS / perMessage)));
+  return Math.max(1, Math.min(batchSize, Math.floor(Math.max(0, remainingMs) / perMessage)));
 }
 
 /** The mailbox, as the newsletter needs it: the same one every other GrovBase
@@ -421,6 +421,15 @@ async function resolveMailbox(
  * row retire a recipient permanently.
  */
 export async function runWorkerBatch(supabase: Client): Promise<WorkerRun> {
+  /*
+    THE CLOCK STARTS HERE, not at the first send. The preflight is not free —
+    an unreachable SMTP host spends its full connection timeout before saying
+    so — and a budget measured from after it would let a slow preflight push
+    the sending loop past the platform's limit, which is precisely the case
+    where rows get stranded mid-batch.
+  */
+  const deadline = Date.now() + RUN_BUDGET_MS;
+
   /* a. THE KILL SWITCH, FIRST AND CHEAPEST.
         §74's pause is marketing-only and has to take effect within one batch,
         so it is read before anything is claimed and before the mailbox is even
@@ -434,7 +443,13 @@ export async function runWorkerBatch(supabase: Client): Promise<WorkerRun> {
         There is no session fallback by design: the alternative would be a mass
         mailing that any request carrying an admin cookie could trigger. */
   const token = dispatchToken();
-  if (!token) return { ...EMPTY, reason: "no_server_token" };
+  if (!token) {
+    // Recorded rather than merely returned: with no server key the scheduled
+    // path cannot run at all, and the only place an operator would ever see
+    // that is the line on the settings screen this writes.
+    await stampRun(supabase, null, EMPTY, "no_server_token");
+    return { ...EMPTY, reason: "no_server_token" };
+  }
 
   /* c. WHAT THE CLOCK SAYS IS DUE.
         Cheap, bounded, and separate from the claim so a scheduled campaign
@@ -444,7 +459,10 @@ export async function runWorkerBatch(supabase: Client): Promise<WorkerRun> {
 
   /* d. THE MAILBOX, PROVEN BEFORE ANYTHING IS CLAIMED. */
   const mailbox = await resolveMailbox(supabase);
-  if (!mailbox) return { ...EMPTY, reason: "smtp_not_configured" };
+  if (!mailbox) {
+    await stampRun(supabase, token, EMPTY, "smtp_not_configured");
+    return { ...EMPTY, reason: "smtp_not_configured" };
+  }
 
   const verified = await verifySmtp(mailbox.smtp);
   if (!verified.ok) {
@@ -466,10 +484,13 @@ export async function runWorkerBatch(supabase: Client): Promise<WorkerRun> {
     limit: Math.max(1, Math.round(settings.ratePerHour / 60)),
     deltaMs: 60_000,
   });
-  if (!mailer) return { ...EMPTY, reason: "smtp_not_configured" };
+  if (!mailer) {
+    await stampRun(supabase, token, EMPTY, "smtp_not_configured");
+    return { ...EMPTY, reason: "smtp_not_configured" };
+  }
 
   try {
-    return await drainQueue(supabase, token, mailer, settings.batchSize, pace);
+    return await drainQueue(supabase, token, mailer, settings.batchSize, pace, deadline);
   } finally {
     // A pooled transport keeps its sockets open. Leaving one behind on a
     // serverless platform means a connection the mailbox counts against us
@@ -479,9 +500,10 @@ export async function runWorkerBatch(supabase: Client): Promise<WorkerRun> {
 }
 
 async function drainQueue(
-  supabase: Client, token: string, mailer: BulkMailer, batchSize: number, pace: number,
+  supabase: Client, token: string, mailer: BulkMailer,
+  batchSize: number, pace: number, deadline: number,
 ): Promise<WorkerRun> {
-  const limit = batchLimit(batchSize, pace);
+  const limit = batchLimit(batchSize, pace, deadline - Date.now());
   const { data, error } = await supabase.rpc("newsletter_queue_claim", {
     p_token: token, p_limit: limit,
   });
@@ -558,7 +580,6 @@ async function drainQueue(
     for (const [id, value] of viaRpc.extras) extras.set(id, value);
   }
 
-  const deadline = Date.now() + RUN_BUDGET_MS;
   let lastError: string | null = null;
   let first = true;
 
@@ -643,8 +664,21 @@ async function sendOne(
     List-Unsubscribe header and the one-click POST — because a recipient whose
     exit does not work reaches for the spam button instead, and that costs the
     whole sending domain.
+
+    IT POINTS AT THE API ROUTE, NOT AT /wypisz-sie/<token>, and that is what
+    keeps the sentence above true. mailer.ts sends List-Unsubscribe together
+    with `List-Unsubscribe-Post: List-Unsubscribe=One-Click`, which promises
+    Gmail and Apple Mail that a POST to this URL — no cookies, no page, no human
+    — performs the unsubscribe (RFC 8058). In the App Router a `page.tsx` cannot
+    export POST and a `route.ts` cannot share its path, so the URL is one or the
+    other: the route handles the machine's POST, and its GET redirects a person
+    who clicked the visible footer link to /wypisz-sie/<token>, which is the
+    page in their own language. One URL, three places, and nothing in the mail
+    claims a capability the address does not have.
+
+    See app/api/newsletter/unsubscribe/[token]/route.ts for the full argument.
   */
-  const unsubscribeUrl = `${SITE_URL}/wypisz-sie/${row.unsubscribeToken}`;
+  const unsubscribeUrl = `${SITE_URL}/api/newsletter/unsubscribe/${row.unsubscribeToken}`;
 
   const merge: MergeValues = {
     first_name: row.firstName,
@@ -754,17 +788,25 @@ async function recordAccepted(supabase: Client, token: string, recipientId: stri
  * stamp function is the door for that path; `writeSettings` remains the writer
  * for the admin path and the fallback for a deployment where 0095 has not been
  * applied yet.
+ *
+ * A null token means there is no proof of server to offer, so the RPC would be
+ * refused SILENTLY — the same contract every other token-gated function here
+ * has — and silence is indistinguishable from success. It goes straight to
+ * `writeSettings`, which succeeds under an admin session and fails harmlessly
+ * without one. That is exactly the capability each caller actually has.
  */
 async function stampRun(
-  supabase: Client, token: string, run: WorkerRun, lastError: string | null,
+  supabase: Client, token: string | null, run: WorkerRun, lastError: string | null,
 ): Promise<void> {
-  const { error } = await serverRpc(supabase).rpc("newsletter_worker_stamp", {
-    p_token: token,
-    p_sent: run.sent,
-    p_failed: run.failed,
-    p_error: lastError,
-  });
-  if (!error) return;
+  if (token) {
+    const { error } = await serverRpc(supabase).rpc("newsletter_worker_stamp", {
+      p_token: token,
+      p_sent: run.sent,
+      p_failed: run.failed,
+      p_error: lastError,
+    });
+    if (!error) return;
+  }
 
   await writeSettings(supabase, {
     lastRunAt: new Date().toISOString(),

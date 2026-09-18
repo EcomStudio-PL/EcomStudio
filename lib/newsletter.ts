@@ -293,3 +293,71 @@ export function formatRate(value: number | null, locale = "pl"): string {
     minimumFractionDigits: 1, maximumFractionDigits: 1,
   })}%`;
 }
+
+/* ── REPORTING RANGE ─────────────────────────────────────────────────────── */
+
+/**
+ * WHICH WINDOW THE DASHBOARD IS ASKING ABOUT.
+ *
+ * Lives here, with the other pure helpers, rather than next to the picker that
+ * sets it — and that is not filing preference. The picker is a `"use client"`
+ * component, and a Server Component importing a plain function out of a client
+ * module does not get the function: it gets a client reference that throws the
+ * moment it is called. The server pages are the only callers of `resolveRange`
+ * — they have to be, since the boundaries have to exist before the queries run
+ * — so the function belongs in the isomorphic module both halves can import.
+ *
+ * The range travels in the URL, which is what makes a dashboard linkable and
+ * server-renderable at once, and one function decides the boundaries so the
+ * control's caption and the query behind it can never disagree.
+ */
+export type ResolvedRange = { key: "7d" | "30d" | "custom"; since: string; until: string };
+
+const DAY_MS = 86_400_000;
+
+export function resolveRange(
+  params: { range?: string; from?: string; to?: string },
+  now = Date.now(),
+): ResolvedRange {
+  if (params.range === "custom") {
+    const from = Date.parse(params.from ?? "");
+    const to = Date.parse(params.to ?? "");
+    if (Number.isFinite(from) && Number.isFinite(to) && to >= from) {
+      // The `to` date is INCLUSIVE: somebody picking 1–7 September means the
+      // whole of the 7th, not up to its first second. Without the day's worth
+      // of milliseconds, a campaign sent on the last day of a custom range
+      // vanishes from the report that was built to look at it.
+      return {
+        key: "custom",
+        since: new Date(from).toISOString(),
+        until: new Date(to + DAY_MS - 1).toISOString(),
+      };
+    }
+  }
+  // Anything unparseable falls back to 30 days rather than erroring: a
+  // hand-edited URL should give an operator the default view, not a stack
+  // trace. `formatWindow` then states which window they actually got.
+  const days = params.range === "7d" ? 7 : 30;
+  return {
+    key: days === 7 ? "7d" : "30d",
+    since: new Date(now - days * DAY_MS).toISOString(),
+    until: new Date(now).toISOString(),
+  };
+}
+
+/**
+ * The window written out for the operator.
+ *
+ * Dates only, and in Europe/Warsaw for the same reason `formatInstant` in
+ * lib/utils uses that zone: the database stores UTC and a Vercel server
+ * renders in UTC, so a range that reads "1–30 September" must not silently
+ * begin at 02:00 on the 1st for the person deciding whether a send fell
+ * inside it.
+ */
+export function formatWindow(range: ResolvedRange, locale = "pl"): string {
+  const fmt = new Intl.DateTimeFormat(
+    locale === "pl" ? "pl-PL" : locale === "de" ? "de-DE" : "en-GB",
+    { dateStyle: "medium", timeZone: "Europe/Warsaw" },
+  );
+  return `${fmt.format(new Date(range.since))} – ${fmt.format(new Date(range.until))}`;
+}

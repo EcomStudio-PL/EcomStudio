@@ -12,8 +12,8 @@ import {
   type Locale, type MailBlock, type SegmentRules, type Utm,
 } from "@/lib/newsletter";
 import {
-  audienceBreakdown, contactsForExport, ensureLinks, existingContactEmails,
-  getCampaign, getGroup, getTemplate, listSteps, resolveSegment, snapshotRecipients,
+  audienceBreakdown, contactsByIds, contactsForExport, ensureLinks, existingContactEmails,
+  getCampaign, getContact, getGroup, getTemplate, listSteps, resolveSegment, snapshotRecipients,
   suppressedAmong,
   type CampaignRow, type ContactFilter, type ContactRow, type StepRow,
 } from "@/lib/services/newsletter";
@@ -734,55 +734,75 @@ export async function commitImportAction(input: {
       for (const row of data ?? []) createdIds.push(row.id as string);
     }
 
-    // Existing contacts: fill the gaps, and move consent forward only.
-    let updated = 0;
+    // ── EXISTING CONTACTS: fill the gaps, move consent forward, nothing else.
+    //
+    // ONE BATCHED WRITE PER CONCERN, not three per row. Re-importing the same
+    // 5 000-line file is a completely normal thing for an operator to do, and
+    // it must not turn into fifteen thousand round trips. Names are the only
+    // part that genuinely varies per contact, and even those are written only
+    // where the column is actually empty — which is read once, up front.
+    const existingIds = existing
+      .map((r) => known.get(r.email)).filter((v): v is string => Boolean(v));
+
+    const gaps = new Map<string, { first: boolean; last: boolean }>();
+    for (let i = 0; i < existingIds.length; i += 400) {
+      const { data } = await supabase.from("newsletter_contacts")
+        .select("id, first_name, last_name")
+        .in("id", existingIds.slice(i, i + 400));
+      for (const r of data ?? []) {
+        gaps.set(r.id as string, { first: r.first_name === null, last: r.last_name === null });
+      }
+    }
+
+    // Which contacts this import actually changed. A row the file repeats
+    // verbatim changed nothing and is reported as skipped, not as updated.
+    const touched = new Set<string>();
     for (const row of existing) {
       const id = known.get(row.email);
-      if (!id) continue;
-      const patch: Record<string, unknown> = {};
-      if (row.firstName) patch.first_name = row.firstName;
-      if (row.lastName) patch.last_name = row.lastName;
-      if (consent) {
-        patch.marketing_consent = true;
-        patch.consent_at = now;
-        patch.consent_source = "import";
-        patch.consent_version = consentVersion;
-      }
+      const gap = id ? gaps.get(id) : undefined;
+      if (!id || !gap) continue;
+      const patch: { first_name?: string; last_name?: string } = {};
+      // A name somebody typed for themselves is never replaced by one from a
+      // stale file. Only a genuinely empty column is filled.
+      if (row.firstName && gap.first) patch.first_name = row.firstName;
+      if (row.lastName && gap.last) patch.last_name = row.lastName;
       if (Object.keys(patch).length === 0) continue;
-      // `coalesce`-style semantics have to be expressed as a filtered update:
-      // only rows that are actually missing the value are touched, so a name
-      // somebody typed themselves is never replaced by one from a stale file,
-      // and an older consent date is never moved forward.
-      if (patch.first_name) {
-        await supabase.from("newsletter_contacts")
-          .update({ first_name: patch.first_name as string } as never)
-          .eq("id", id).is("first_name", null);
-      }
-      if (patch.last_name) {
-        await supabase.from("newsletter_contacts")
-          .update({ last_name: patch.last_name as string } as never)
-          .eq("id", id).is("last_name", null);
-      }
-      if (consent) {
-        await supabase.from("newsletter_contacts").update({
+      const { error } = await supabase.from("newsletter_contacts")
+        .update(patch as never).eq("id", id);
+      if (!error) touched.add(id);
+    }
+
+    if (consent) {
+      // `.eq("marketing_consent", false)` is what makes this move consent
+      // FORWARD only: a contact who already agreed keeps their original date,
+      // source and wording version, which are the parts with legal meaning.
+      for (let i = 0; i < existingIds.length; i += 400) {
+        const { data } = await supabase.from("newsletter_contacts").update({
           marketing_consent: true,
           consent_at: now,
           consent_source: "import",
           consent_version: consentVersion,
           unsubscribed_at: null,
-        } as never).eq("id", id).eq("marketing_consent", false);
+        } as never)
+          .in("id", existingIds.slice(i, i + 400))
+          .eq("marketing_consent", false)
+          .select("id");
+        for (const r of data ?? []) touched.add(r.id as string);
       }
-      updated += 1;
     }
+    const updated = touched.size;
 
-    const memberIds = [...createdIds, ...existing.map((r) => known.get(r.email)).filter((v): v is string => Boolean(v))];
+    const memberIds = [...createdIds, ...existingIds];
     await addToGroups(supabase, memberIds, input.groupIds ?? []);
 
+    // created + updated + skipped equals the number of data lines in the file,
+    // exactly. A report whose parts do not add up to the whole teaches an
+    // operator to distrust the importer, and then to import twice.
     const skipped = suppressedRows + repeatRows + scan.invalid
-      // A chunk that lost a race against a concurrent signup imported fewer
-      // rows than it was given. Those are skipped too, and saying so is the
-      // difference between a report and a guess.
-      + (fresh.length - createdIds.length);
+      // Rows whose insert lost a race against a concurrent public signup.
+      + (fresh.length - createdIds.length)
+      // Contacts the file named but did not change.
+      + (existing.length - updated);
 
     await logAudit(supabase, {
       actorId: adminId, action: "newsletter.contacts_imported",
@@ -1228,8 +1248,8 @@ export async function deleteCampaignAction(id: string): Promise<Result> {
 export async function audiencePreviewAction(audience: Audience): Promise<Result<AudienceBreakdown>> {
   try {
     const { supabase } = await requireAdmin();
-    const { ids, ...breakdown } = await audienceBreakdown(supabase, toAudience(audience));
-    void ids;
+    const full = await audienceBreakdown(supabase, toAudience(audience));
+    const { ids: _ids, ...breakdown } = full;
     return { ok: true, data: breakdown };
   } catch (e) { return { ok: false, error: message(e) }; }
 }
@@ -1304,6 +1324,27 @@ export async function sendTestCampaignAction(input: {
     if (addresses.length === 0) return { ok: false, error: "email" };
     if (addresses.length > 5) return { ok: false, error: "tooMany" };
     if (addresses.some((a) => !isEmail(a))) return { ok: false, error: "email" };
+
+    /*
+      THE SUPPRESSION LIST APPLIES TO A TEST TOO, AND IT IS THE ONLY PLACE IN
+      THIS FILE THAT HAS TO SAY SO.
+
+      Everywhere else the queue is the guard: `newsletter_queue_claim` re-checks
+      consent, unsubscription and suppression on every batch, so no action here
+      needs to remember. A test does not go through the queue — it renders a
+      step and hands it straight to the mailer — so this is the one send in the
+      module with nothing between it and the mail server.
+
+      That matters because the address is TYPED, and the reason to type a
+      customer's address into this box ("does it look right for them?") is
+      exactly the case where they may have unsubscribed. The suppressions screen
+      promises "adresy, na które nie wyślemy nic, nawet przez pomyłkę"; a test
+      send is precisely the pomyłka that sentence is about. Refused as a whole
+      rather than filtered silently, because an operator who is told "sent" while
+      one of their five addresses was dropped has learnt something untrue.
+    */
+    const blocked = await suppressedAmong(supabase, addresses);
+    if (blocked.size > 0) return { ok: false, error: "suppressedAddress" };
 
     const campaign = await getCampaign(supabase, input.campaignId);
     if (!campaign) return { ok: false, error: "missing" };
@@ -1409,8 +1450,10 @@ export async function scheduleCampaignAction(input: {
     if (campaign.audience.include.length === 0) return { ok: false, error: "audience" };
 
     const steps = await listSteps(supabase, input.campaignId);
-    const first = steps.find((s) => s.stepIndex === 0) ?? steps[0];
-    if (!first) return { ok: false, error: "body" };
+    // A campaign with no steps has nothing to send. EVERY step is checked, not
+    // just the first: an A/B variant left half-written would otherwise go out
+    // as an empty message to whichever half of the audience drew it.
+    if (steps.length === 0) return { ok: false, error: "body" };
     for (const step of steps) {
       if (!step.subject.trim()) return { ok: false, error: "subject" };
       if (!stepHasBody(step)) return { ok: false, error: "body" };
@@ -1441,8 +1484,16 @@ export async function scheduleCampaignAction(input: {
     await ensureLinks(supabase, campaign.id, [...urls]);
 
     // 2. THE QUEUE.
+    //
+    //    THE GATE IS `queued`, NOT `mailable`. `mailable` says how many people
+    //    COULD be written to; `queued` says how many rows are actually pending.
+    //    They differ whenever a cancelled campaign is rescheduled — the
+    //    cancelled rows still hold the unique index, so nothing new is inserted
+    //    and the queue stays empty — and gating on `mailable` there flipped the
+    //    campaign to 'sending' and reported four thousand recipients for a send
+    //    of nothing at all.
     const snapshot = await snapshotRecipients(supabase, campaign, steps, { startAt });
-    if (snapshot.mailable === 0) return { ok: false, error: "noRecipients" };
+    if (snapshot.queued === 0) return { ok: false, error: "noRecipients" };
 
     // 3. THE STATUS.
     const status: CampaignStatus = input.when === "at" ? "scheduled" : "sending";
@@ -1460,11 +1511,15 @@ export async function scheduleCampaignAction(input: {
       entityType: "newsletter_campaign", entityId: campaign.id,
       after: {
         status, scheduledAt,
-        queued: snapshot.created, mailable: snapshot.mailable, links: urls.size,
+        created: snapshot.created, queued: snapshot.queued,
+        mailable: snapshot.mailable, links: urls.size,
       },
     });
     invalidate(PATHS.campaigns, `${PATHS.campaigns}/${campaign.id}`, PATHS.dashboard, PATHS.analytics);
-    return { ok: true, data: { status, recipients: snapshot.mailable, scheduledAt } };
+    // `queued`, so the toast the operator reads counts the messages that are
+    // about to leave rather than the size of the audience they were drawn from.
+    // With A/B on those are different numbers by design.
+    return { ok: true, data: { status, recipients: snapshot.queued, scheduledAt } };
   } catch (e) { return { ok: false, error: message(e) }; }
 }
 
@@ -2002,5 +2057,169 @@ export async function runWorkerNowAction(): Promise<
     });
     invalidate(PATHS.dashboard, PATHS.campaigns, PATHS.analytics);
     return { ok: true, data: outcome };
+  } catch (e) { return { ok: false, error: message(e) }; }
+}
+
+/* ── BULK BLOCK ──────────────────────────────────────────────────────────────
+ *
+ * Appended for the contact list's bulk bar.
+ */
+
+/**
+ * Block every selected contact's address in one go.
+ *
+ * WHY THIS EXISTS RATHER THAN A LOOP OVER `blockContactAction`. Twenty ticked
+ * rows would be twenty server round trips, twenty audit entries describing one
+ * decision, and twenty revalidations of the same three screens — and a partial
+ * failure halfway through would leave the operator with no idea which half
+ * happened. One action, one audit row, one answer.
+ *
+ * IT IS THE SAME RULE AS THE SINGLE BLOCK, on purpose, and the reasoning in
+ * `blockContactAction` applies here unchanged: the contact rows are left alone
+ * so the dated consent survives the block, an address already on the list keeps
+ * its original reason (`ignoreDuplicates`), and everything already queued for
+ * those contacts is cancelled — "blocked from now on" has to include the
+ * messages that are already rows.
+ *
+ * ADDRESSES ARE READ THROUGH THE SERVICE, not taken from the browser. The
+ * client knows the addresses it rendered, but a suppression list built from
+ * what a form posted is a suppression list an attacker writes; the ids are
+ * looked up and the addresses come from the database.
+ */
+export async function bulkBlockContactsAction(input: {
+  contactIds: string[];
+  reason?: string;
+  note?: string | null;
+}): Promise<Result<{ blocked: number }>> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    const ids = (input.contactIds ?? []).filter(isUuid).slice(0, 5000);
+    if (ids.length === 0) return { ok: false, error: "missing" };
+
+    const contacts = await contactsByIds(supabase, ids);
+    if (contacts.length === 0) return { ok: false, error: "missing" };
+
+    const reason = (SUPPRESSION_REASONS as readonly string[]).includes(input.reason ?? "")
+      ? (input.reason as string) : "blocked";
+    const note = clean(input.note, 200);
+
+    const rows = contacts.map((c) => ({
+      email: c.email, reason, note, created_by: adminId,
+    }));
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await supabase.from("newsletter_suppressions")
+        .upsert(rows.slice(i, i + 500), { onConflict: "email", ignoreDuplicates: true });
+      if (error) return { ok: false, error: "generic" };
+    }
+
+    for (let i = 0; i < ids.length; i += 400) {
+      await supabase.from("newsletter_recipients")
+        .update({ status: "cancelled" } as never)
+        .in("contact_id", ids.slice(i, i + 400))
+        .in("status", ["pending", "sending"]);
+    }
+
+    await logAudit(supabase, {
+      actorId: adminId, action: "newsletter.contacts_blocked",
+      entityType: "newsletter_contact",
+      // The count and the reason, never the addresses: an audit log is not a
+      // place to accumulate a second copy of the contact list.
+      after: { contacts: contacts.length, reason },
+    });
+    invalidate(PATHS.contacts, PATHS.suppressions, PATHS.dashboard);
+    return { ok: true, data: { blocked: contacts.length } };
+  } catch (e) { return { ok: false, error: message(e) }; }
+}
+
+/* ── THE PREVIEW ─────────────────────────────────────────────────────────────
+ *
+ * Appended for the campaign editor's "Podgląd" step.
+ */
+
+/**
+ * Render one message exactly as it will leave the building, and hand the panel
+ * the finished document.
+ *
+ * WHY THIS IS A SERVER ACTION RATHER THAN A RENDERER IN THE BROWSER.
+ * `renderCampaign` is `server-only` deliberately: it is the ONE place a
+ * campaign becomes an email. A second implementation in the editor — however
+ * faithful on the day it is written — drifts from the real one a sanitiser
+ * rule at a time, and an operator then approves a document nobody ever posts.
+ * The round trip costs a few hundred milliseconds and buys the guarantee that
+ * the preview IS the mail.
+ *
+ * IT RENDERS WITH NO TRACKING, for the reason `sendTestCampaignAction` gives.
+ * `renderCampaign` only rewrites hrefs and adds a pixel when it is handed a
+ * `tracking` block carrying a RECIPIENT id — which a preview does not have and
+ * must not invent, because `/r/<recipient>/<link>` built from somebody else's
+ * id would record their click. So a preview cannot contaminate the numbers
+ * even by accident, and the operator sees clean links they can safely click.
+ *
+ * THE UNSUBSCRIBE LINK IS THE SITE ORIGIN, never a real token. This document
+ * is opened in a browser, by a person whose job is to click everything in it.
+ *
+ * AND NOTHING IS WRITTEN, INCLUDING AN AUDIT ROW. Previewing is reading. An
+ * operator polishing a subject line looks at this ten times a minute, and ten
+ * audit entries a minute is how the log that records who deleted a contact
+ * stops being readable.
+ */
+export async function previewCampaignAction(input: {
+  campaignId: string;
+  /** Which message. Omitted = the campaign's first step. */
+  stepId?: string;
+  /** Resolve the merge tags for this contact, so the operator reads the mail a
+   *  real person gets instead of the empty case. */
+  contactId?: string;
+}): Promise<Result<{ subject: string; preheader: string; html: string; text: string }>> {
+  try {
+    const { supabase } = await requireAdmin();
+    if (!isUuid(input.campaignId)) return { ok: false, error: "missing" };
+
+    const campaign = await getCampaign(supabase, input.campaignId);
+    if (!campaign) return { ok: false, error: "missing" };
+
+    const steps = await listSteps(supabase, input.campaignId);
+    const step = input.stepId ? steps.find((s) => s.id === input.stepId) : steps[0];
+    if (!step) return { ok: false, error: "missing" };
+    // An empty body is not a rendering failure, it is a campaign that has not
+    // been written yet — and the panel has words for that. Rendering the shell
+    // around nothing would show an operator a finished-looking email with a
+    // footer and no message, which is the one thing they must not approve.
+    if (!stepHasBody(step)) return { ok: false, error: "body" };
+
+    // "Podgląd jako": the real values of a real contact, so a missing first
+    // name shows up here rather than in four thousand inboxes.
+    const contact = input.contactId && isUuid(input.contactId)
+      ? await getContact(supabase, input.contactId) : null;
+
+    const rendered = renderCampaign({
+      editor: step.editor,
+      blocks: step.blocks,
+      bodyHtml: step.bodyHtml,
+      subject: step.subject,
+      preheader: step.preheader,
+      merge: contact ? {
+        first_name: contact.firstName ?? "",
+        last_name: contact.lastName ?? "",
+        email: contact.email,
+        locale: contact.locale,
+        source: contact.sourceKey,
+      } : {},
+      unsubscribeUrl: SITE_URL,
+      // The footer follows the CONTACT's language, not the operator's: a
+      // preview of what a German subscriber receives has to be in German, or
+      // it is a preview of a different message.
+      locale: contact?.locale ?? "pl",
+    });
+
+    return {
+      ok: true,
+      data: {
+        subject: rendered.subject,
+        preheader: rendered.preheader,
+        html: rendered.html,
+        text: rendered.text,
+      },
+    };
   } catch (e) { return { ok: false, error: message(e) }; }
 }

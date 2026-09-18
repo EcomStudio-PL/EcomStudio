@@ -78,7 +78,11 @@ export function SendingPanel({ queued, paused, ratePerHour, lastRunAt, lastRunSe
         <Button size="sm" variant="secondary" disabled={pending || paused} data-run-now
           onClick={() => run(runWorkerNowAction(), t("newsletter.schedule.started"))}>
           {pending ? <Loader2 size={14} aria-hidden className="animate-spin" /> : <Send size={14} aria-hidden />}
-          {t("newsletter.worker.title")}
+          {/* "Wyślij teraz", not "Wysyłka" — the panel is already titled
+              "Wysyłka", and a button wearing its own section's name tells an
+              operator nothing about what pressing it does. This one drains the
+              queue now instead of waiting for the next scheduled run. */}
+          {t("newsletter.schedule.now")}
         </Button>
 
         <label className="flex min-w-[10rem] flex-col gap-1">
@@ -96,6 +100,18 @@ export function SendingPanel({ queued, paused, ratePerHour, lastRunAt, lastRunSe
           </span>
         </label>
       </div>
+
+      {/* THE BLAST RADIUS IS STATED BEFORE THE BUTTON IS PRESSED, not only in
+          the banner afterwards. An operator reaching for a kill switch during
+          an incident is deciding whether they are about to stop password
+          resets and login codes too; learning the answer once the switch is
+          already thrown is learning it too late. When paused, the banner above
+          carries the same sentence, so it is never absent. */}
+      {!paused && (
+        <p className="mt-2 text-[11.5px] leading-relaxed text-faint" data-pause-blast-radius>
+          {t("newsletter.worker.pausedHint")}
+        </p>
+      )}
 
       <p className="mt-2 text-[11.5px] leading-relaxed text-faint">{t("newsletter.worker.rateHint")}</p>
 
