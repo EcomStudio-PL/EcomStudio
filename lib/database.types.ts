@@ -2322,6 +2322,552 @@ export type Database = {
         }
         Relationships: []
       }
+      newsletter_attributions: {
+        Row: {
+          id: string
+          campaign_id: string
+          contact_id: string | null
+          recipient_id: string | null
+          click_at: string
+          converted_at: string | null
+          order_ref: string | null
+          amount_cents: number | null
+          currency: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          campaign_id: string
+          contact_id?: string | null
+          recipient_id?: string | null
+          click_at?: string
+          converted_at?: string | null
+          order_ref?: string | null
+          amount_cents?: number | null
+          currency?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          campaign_id?: string
+          contact_id?: string | null
+          recipient_id?: string | null
+          click_at?: string
+          converted_at?: string | null
+          order_ref?: string | null
+          amount_cents?: number | null
+          currency?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      newsletter_automations: {
+        Row: {
+          id: string
+          name: string
+          enabled: boolean
+          trigger_type: string
+          trigger_config: Json
+          campaign_id: string
+          created_at: string
+          updated_at: string
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          name: string
+          enabled?: boolean
+          trigger_type: string
+          trigger_config?: Json
+          campaign_id: string
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          enabled?: boolean
+          trigger_type?: string
+          trigger_config?: Json
+          campaign_id?: string
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Relationships: []
+      }
+      newsletter_campaign_steps: {
+        Row: {
+          id: string
+          campaign_id: string
+          step_index: number
+          variant: string
+          delay_minutes: number
+          subject: string
+          preheader: string
+          editor: string
+          blocks: Json
+          body_html: string
+          body_text: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          campaign_id: string
+          step_index?: number
+          variant?: string
+          delay_minutes?: number
+          subject?: string
+          preheader?: string
+          editor?: string
+          blocks?: Json
+          body_html?: string
+          body_text?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          campaign_id?: string
+          step_index?: number
+          variant?: string
+          delay_minutes?: number
+          subject?: string
+          preheader?: string
+          editor?: string
+          blocks?: Json
+          body_html?: string
+          body_text?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      newsletter_campaigns: {
+        Row: {
+          id: string
+          name: string
+          kind: string
+          status: string
+          audience: Json
+          scheduled_at: string | null
+          started_at: string | null
+          finished_at: string | null
+          track_opens: boolean
+          track_clicks: boolean
+          utm: Json
+          ab_enabled: boolean
+          ab_share_pct: number
+          ab_decide_after_hours: number
+          ab_metric: string
+          ab_winner: string | null
+          ab_decided_at: string | null
+          stop_on_conversion: boolean
+          created_at: string
+          updated_at: string
+          created_by: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          name: string
+          kind?: string
+          status?: string
+          audience?: Json
+          scheduled_at?: string | null
+          started_at?: string | null
+          finished_at?: string | null
+          track_opens?: boolean
+          track_clicks?: boolean
+          utm?: Json
+          ab_enabled?: boolean
+          ab_share_pct?: number
+          ab_decide_after_hours?: number
+          ab_metric?: string
+          ab_winner?: string | null
+          ab_decided_at?: string | null
+          stop_on_conversion?: boolean
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          kind?: string
+          status?: string
+          audience?: Json
+          scheduled_at?: string | null
+          started_at?: string | null
+          finished_at?: string | null
+          track_opens?: boolean
+          track_clicks?: boolean
+          utm?: Json
+          ab_enabled?: boolean
+          ab_share_pct?: number
+          ab_decide_after_hours?: number
+          ab_metric?: string
+          ab_winner?: string | null
+          ab_decided_at?: string | null
+          stop_on_conversion?: boolean
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      newsletter_contacts: {
+        Row: {
+          id: string
+          email: string
+          first_name: string | null
+          last_name: string | null
+          locale: string
+          source_key: string
+          user_id: string | null
+          tags: string[]
+          marketing_consent: boolean
+          consent_at: string | null
+          consent_source: string | null
+          consent_version: string | null
+          unsubscribed_at: string | null
+          unsubscribe_reason: string | null
+          unsubscribe_token: string
+          last_activity_at: string | null
+          last_sent_at: string | null
+          last_opened_at: string | null
+          last_clicked_at: string | null
+          created_at: string
+          updated_at: string
+          created_by: string | null
+          metadata: Json
+        }
+        Insert: {
+          id?: string
+          email: string
+          first_name?: string | null
+          last_name?: string | null
+          locale?: string
+          source_key?: string
+          user_id?: string | null
+          tags?: string[]
+          marketing_consent?: boolean
+          consent_at?: string | null
+          consent_source?: string | null
+          consent_version?: string | null
+          unsubscribed_at?: string | null
+          unsubscribe_reason?: string | null
+          unsubscribe_token?: string
+          last_activity_at?: string | null
+          last_sent_at?: string | null
+          last_opened_at?: string | null
+          last_clicked_at?: string | null
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+          metadata?: Json
+        }
+        Update: {
+          id?: string
+          email?: string
+          first_name?: string | null
+          last_name?: string | null
+          locale?: string
+          source_key?: string
+          user_id?: string | null
+          tags?: string[]
+          marketing_consent?: boolean
+          consent_at?: string | null
+          consent_source?: string | null
+          consent_version?: string | null
+          unsubscribed_at?: string | null
+          unsubscribe_reason?: string | null
+          unsubscribe_token?: string
+          last_activity_at?: string | null
+          last_sent_at?: string | null
+          last_opened_at?: string | null
+          last_clicked_at?: string | null
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+          metadata?: Json
+        }
+        Relationships: []
+      }
+      newsletter_events: {
+        Row: {
+          id: number
+          event_type: string
+          campaign_id: string | null
+          step_index: number | null
+          variant: string | null
+          contact_id: string | null
+          recipient_id: string | null
+          link_id: string | null
+          metadata: Json
+          created_at: string
+        }
+        Insert: {
+          id?: number
+          event_type: string
+          campaign_id?: string | null
+          step_index?: number | null
+          variant?: string | null
+          contact_id?: string | null
+          recipient_id?: string | null
+          link_id?: string | null
+          metadata?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: number
+          event_type?: string
+          campaign_id?: string | null
+          step_index?: number | null
+          variant?: string | null
+          contact_id?: string | null
+          recipient_id?: string | null
+          link_id?: string | null
+          metadata?: Json
+          created_at?: string
+        }
+        Relationships: []
+      }
+      newsletter_group_members: {
+        Row: {
+          group_id: string
+          contact_id: string
+          added_at: string
+        }
+        Insert: {
+          group_id: string
+          contact_id: string
+          added_at?: string
+        }
+        Update: {
+          group_id?: string
+          contact_id?: string
+          added_at?: string
+        }
+        Relationships: []
+      }
+      newsletter_groups: {
+        Row: {
+          id: string
+          key: string
+          name: string
+          description: string | null
+          is_dynamic: boolean
+          rules: Json
+          created_at: string
+          updated_at: string
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          key: string
+          name: string
+          description?: string | null
+          is_dynamic?: boolean
+          rules?: Json
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          key?: string
+          name?: string
+          description?: string | null
+          is_dynamic?: boolean
+          rules?: Json
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Relationships: []
+      }
+      newsletter_links: {
+        Row: {
+          id: string
+          campaign_id: string
+          url: string
+          label: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          campaign_id: string
+          url: string
+          label?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          campaign_id?: string
+          url?: string
+          label?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      newsletter_recipients: {
+        Row: {
+          id: string
+          campaign_id: string
+          step_index: number
+          variant: string
+          contact_id: string
+          email: string
+          status: string
+          send_after: string
+          attempts: number
+          claimed_at: string | null
+          next_attempt_at: string | null
+          sent_at: string | null
+          smtp_response: string | null
+          message_id: string | null
+          last_error_safe: string | null
+          personalization: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          campaign_id: string
+          step_index?: number
+          variant?: string
+          contact_id: string
+          email: string
+          status?: string
+          send_after?: string
+          attempts?: number
+          claimed_at?: string | null
+          next_attempt_at?: string | null
+          sent_at?: string | null
+          smtp_response?: string | null
+          message_id?: string | null
+          last_error_safe?: string | null
+          personalization?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          campaign_id?: string
+          step_index?: number
+          variant?: string
+          contact_id?: string
+          email?: string
+          status?: string
+          send_after?: string
+          attempts?: number
+          claimed_at?: string | null
+          next_attempt_at?: string | null
+          sent_at?: string | null
+          smtp_response?: string | null
+          message_id?: string | null
+          last_error_safe?: string | null
+          personalization?: Json | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      newsletter_sources: {
+        Row: {
+          key: string
+          name: string
+          note: string | null
+          created_at: string
+        }
+        Insert: {
+          key: string
+          name: string
+          note?: string | null
+          created_at?: string
+        }
+        Update: {
+          key?: string
+          name?: string
+          note?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      newsletter_suppressions: {
+        Row: {
+          email: string
+          reason: string
+          note: string | null
+          created_at: string
+          created_by: string | null
+        }
+        Insert: {
+          email: string
+          reason?: string
+          note?: string | null
+          created_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          email?: string
+          reason?: string
+          note?: string | null
+          created_at?: string
+          created_by?: string | null
+        }
+        Relationships: []
+      }
+      newsletter_templates: {
+        Row: {
+          id: string
+          key: string | null
+          name: string
+          category: string
+          subject: string
+          preheader: string
+          editor: string
+          blocks: Json
+          body_html: string
+          is_builtin: boolean
+          created_at: string
+          updated_at: string
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          key?: string | null
+          name: string
+          category?: string
+          subject?: string
+          preheader?: string
+          editor?: string
+          blocks?: Json
+          body_html?: string
+          is_builtin?: boolean
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          key?: string | null
+          name?: string
+          category?: string
+          subject?: string
+          preheader?: string
+          editor?: string
+          blocks?: Json
+          body_html?: string
+          is_builtin?: boolean
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Relationships: []
+      }
       notification_outbox: {
         Row: {
           attempts: number
@@ -4628,6 +5174,55 @@ export type Database = {
         }[]
       }
       cms_slug_is_reserved: { Args: { p_slug: string }; Returns: boolean }
+      newsletter_subscribe: {
+        Args: {
+          p_email: string
+          p_first_name?: string
+          p_locale?: string
+          p_source_key?: string
+          p_group_keys?: string[]
+          p_consent?: boolean
+          p_consent_version?: string
+          p_consent_source?: string
+        }
+        Returns: Json
+      }
+      newsletter_unsubscribe: {
+        Args: { p_token: string; p_reason?: string }
+        Returns: Json
+      }
+      newsletter_track: {
+        Args: { p_recipient: string; p_event: string; p_link?: string }
+        Returns: Json
+      }
+      newsletter_queue_claim: {
+        Args: { p_token: string; p_limit?: number }
+        Returns: {
+          id: string
+          campaign_id: string
+          step_index: number
+          variant: string
+          contact_id: string
+          email: string
+          attempts: number
+          personalization: Json
+          first_name: string
+          locale: string
+          unsubscribe_token: string
+        }[]
+      }
+      newsletter_queue_finish: {
+        Args: {
+          p_token: string
+          p_id: string
+          p_status: string
+          p_error?: string
+          p_message_id?: string
+          p_smtp_response?: string
+        }
+        Returns: undefined
+      }
+      newsletter_start_due: { Args: { p_token: string }; Returns: number }
     }
     Enums: {
       asset_type: "image" | "video" | "text"

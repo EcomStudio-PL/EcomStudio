@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "crypto";
 import nodemailer from "nodemailer";
 import { decryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { sendEmail } from "@/lib/server/email";
@@ -154,6 +155,163 @@ export async function deliverHtml(
   } finally {
     transport.close();
   }
+}
+
+/* ── BULK ────────────────────────────────────────────────────────────────── */
+
+/**
+ * THE NEWSLETTER'S SENDER, and why it is not `deliverHtml` in a loop.
+ *
+ * `deliverHtml` opens a connection, sends one message and closes it. That is
+ * exactly right for a login code and exactly wrong for two thousand: it is a
+ * TCP handshake, a TLS negotiation and an AUTH round trip per recipient
+ * against a shared-hosting mailbox that also carries this app's signup mail.
+ * A loop over it is the fastest way to get the sending identity throttled —
+ * and because SMTP and IMAP share one credential here, a throttle would take
+ * the admin inbox down with it.
+ *
+ * So this one is pooled and paced, and the caller closes it when its batch is
+ * done. Three further differences, each of which the newsletter needs and the
+ * transactional path must never grow:
+ *
+ *   HEADERS. A marketing message carries List-Unsubscribe and
+ *   List-Unsubscribe-Post, which is what puts a native "Unsubscribe" button in
+ *   Gmail and Apple Mail. Without them a recipient's only exit is the spam
+ *   button, and that costs the whole domain.
+ *
+ *   A MESSAGE-ID WE KEEP. Replies are correlated by matching an incoming
+ *   In-Reply-To against the id we sent under, so the id has to be minted here
+ *   and handed back rather than left to the server.
+ *
+ *   THE ANSWER, NOT A BOOLEAN. nodemailer reports which addresses the server
+ *   accepted, which it rejected and what it said. Every existing call site
+ *   throws that away, which is why nothing in GrovBase can honestly say
+ *   "delivered" — it can only say the call did not raise. Keeping it lets the
+ *   campaign report say "accepted by the mail server", which is true, instead
+ *   of "delivered", which nobody here can substantiate.
+ */
+export type BulkPacing = {
+  /** Parallel connections. One is the safe default for shared hosting. */
+  connections?: number;
+  /** Messages per connection before it is recycled. */
+  messagesPerConnection?: number;
+  /** At most `limit` messages per `deltaMs`. */
+  limit?: number;
+  deltaMs?: number;
+};
+
+export type BulkMessage = {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  /** Where a one-click unsubscribe should go. Absent = no header, which is
+   *  only ever right for a test send to the operator themselves. */
+  unsubscribeUrl?: string;
+  /** Pre-minted so the caller can store it before the send returns. */
+  messageId?: string;
+};
+
+export type BulkResult = {
+  sent: boolean;
+  /** Addresses the server took responsibility for. */
+  accepted: string[];
+  rejected: string[];
+  /** The server's own last word, e.g. "250 2.0.0 Ok: queued as …". */
+  response?: string;
+  messageId?: string;
+  error?: string;
+};
+
+export type BulkMailer = {
+  send(message: BulkMessage): Promise<BulkResult>;
+  close(): void;
+  /** The domain the Message-IDs are minted under, for the caller's records. */
+  newMessageId(): string;
+};
+
+/**
+ * One pooled connection for a whole batch, or null when SMTP is not set up.
+ * The caller MUST close it — a pooled transport keeps its sockets open.
+ */
+export function bulkMailer(
+  smtp: SmtpConfig | null,
+  identity: MailIdentity,
+  pacing: BulkPacing = {},
+): BulkMailer | null {
+  if (!smtp?.host?.trim()) return null;
+  const password = smtpPassword(smtp);
+  if (!password) return null;
+  const from = fromHeader(identity);
+  if (!from) return null;
+
+  const port = smtp.port || 587;
+  const secure = smtp.encryption === "ssl" || (smtp.encryption === "auto" && port === 465);
+  const transport = nodemailer.createTransport({
+    host: smtp.host.trim(),
+    port,
+    secure,
+    requireTLS: smtp.encryption === "tls",
+    auth: smtp.user.trim() ? { user: smtp.user.trim(), pass: password } : undefined,
+    pool: true,
+    maxConnections: Math.max(1, Math.min(pacing.connections ?? 1, 5)),
+    maxMessages: Math.max(1, Math.min(pacing.messagesPerConnection ?? 50, 500)),
+    // nodemailer's own governor. Belt and braces with the worker's pacing:
+    // this one holds even if a future caller forgets to sleep between batches.
+    rateDelta: Math.max(1000, pacing.deltaMs ?? 60_000),
+    rateLimit: Math.max(1, pacing.limit ?? 30),
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 30_000,
+  });
+
+  const domain = (identity.from_email.split("@")[1] ?? smtp.host)
+    .trim().toLowerCase().replace(/[^a-z0-9.-]/g, "") || "localhost";
+  const replyTo = identity.reply_to.trim() || undefined;
+
+  return {
+    newMessageId: () => `<${randomUUID()}@${domain}>`,
+    close: () => { transport.close(); },
+    async send(message): Promise<BulkResult> {
+      try {
+        const info = await transport.sendMail({
+          from,
+          to: message.to,
+          subject: message.subject,
+          text: message.text,
+          html: message.html,
+          replyTo,
+          messageId: message.messageId,
+          headers: message.unsubscribeUrl
+            ? {
+              // RFC 8058: the two together are what makes the mail client
+              // offer its own one-click unsubscribe. The mailto: form is the
+              // fallback for clients that do not do the POST.
+              "List-Unsubscribe": `<${message.unsubscribeUrl}>`,
+              "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+              // Marks the message as bulk so that autoresponders and
+              // out-of-office replies do not answer it.
+              "Precedence": "bulk",
+              "Auto-Submitted": "auto-generated",
+            }
+            : undefined,
+        });
+        const accepted = (info.accepted ?? []).map(String);
+        const rejected = (info.rejected ?? []).map(String);
+        return {
+          // "Sent" here means the server took the address, not that a human
+          // received it. The column it lands in is named accordingly.
+          sent: accepted.length > 0,
+          accepted,
+          rejected,
+          response: typeof info.response === "string" ? info.response : undefined,
+          messageId: info.messageId ?? message.messageId,
+        };
+      } catch (e) {
+        return { sent: false, accepted: [], rejected: [message.to], error: safeError(e) };
+      }
+    },
+  };
 }
 
 /** Prove the SMTP settings work, without sending anything to anyone. */
