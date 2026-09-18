@@ -263,8 +263,39 @@ check("the settings column is the measured 300–330, and the gallery takes the 
   panel.includes(SHELL));
 check("retouch keeps its own width — this change did not reach another tab",
   retouch.includes("clamp(380px,27vw,430px)"));
-check("an empty gallery fills this panel's column instead of hugging the toolbar",
-  panel.includes("fillEmpty"));
+/*
+  THE EMPTY GALLERY HUGS ITS CONTENTS — the reverse of what this asserted.
+
+  `fillEmpty` stretched the empty state to the column's full height so the two
+  columns ended level. Measured at 1280×720 that turned a 217px card into a
+  478px one holding four lines of text, which reads as a panel that failed to
+  load rather than as a workspace with nothing in it yet. The desktop
+  reference and /retusz agree with each other against it, so the prop is gone
+  from the whole app rather than merely unused here.
+
+  Asserted against retouch, not a literal: the point is that the two screens
+  match, and a literal would fail the day they move together.
+*/
+const RIGHT_COLUMN = 'className="thin-scroll min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pb-4 lg:pr-1"';
+check("the results column is the retouch column, to the character",
+  panel.includes(RIGHT_COLUMN) && retouch.includes(RIGHT_COLUMN));
+check("…and nothing asks the empty state to fill it any more",
+  !stripComments(panel).includes("fillEmpty")
+  && !stripComments(readFileSync("components/genv3/gallery.tsx", "utf8")).includes("fillEmpty"));
+
+/*
+  ROZDZIELCZOŚĆ AND FORMAT STACK ON A DESKTOP.
+
+  Two controls across a 300px settings column give each 146px, which fits "2K"
+  and truncates "1:1 (kwadrat)" to "1:1" — a labelled choice reduced to a bare
+  number. Below `lg` the panel is the whole page and two across it are fine,
+  so this is a `lg:` rule and the phone layout is untouched. A tool showing
+  only one of the two keeps a full-width single column at every size.
+*/
+check("the two controls stack from lg, and only from lg",
+  panel.includes('"grid-cols-2 lg:grid-cols-1"'));
+check("…while a tool with one control never gets a half-width cell",
+  /showResolution && config\.showFormat[\s\S]{0,80}:\s*"grid-cols-1"/.test(panel));
 // Compared against retouch rather than against a literal, like the shell
 // above it. The literal used to carry `pb-[var(--gen-page-bottom)]`, and
 // pinning that here meant the test failed the day the bottom offset moved to

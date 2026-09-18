@@ -55,7 +55,7 @@ const DENSITY_KEY = "grovbase.gallery.density";
  */
 export function GenerationGallery({
   initialItems, initialCursor, freshItems, onFresh, pendingCount, pendingRatio,
-  models, balance, onBalance, onAbsorb, operation, emptyTitle, emptyBody, fillEmpty,
+  models, balance, onBalance, onAbsorb, operation, emptyTitle, emptyBody,
 }: {
   initialItems: GalleryItem[];
   initialCursor: string | null;
@@ -73,14 +73,14 @@ export function GenerationGallery({
   /** Copy for the empty state, so a tool can say what IT is waiting for. */
   emptyTitle?: string;
   emptyBody?: string;
-  /**
-   * Let the empty state FILL the column and centre itself in it, instead of
-   * being a short box under the toolbar. A tool page is two columns of equal
-   * height, so an empty gallery that hugs the top leaves a hole the size of
-   * the panel opposite. The generator does not opt in: its gallery sits under
-   * a tall configurator and is scrolled to, not framed.
+  /*
+   * `fillEmpty` used to be here: it let the empty state stretch to the
+   * column's height and centre itself in it, so a tool page's two columns
+   * ended level. The Moda panel was its only caller, and it has stopped
+   * asking — a 478px card holding four lines of text reads as a panel that
+   * failed to load, where the short card reads as "nothing here yet", which
+   * is the truth. Every gallery in the app now uses one empty state.
    */
-  fillEmpty?: boolean;
 }) {
   const { t } = useI18n();
   const [filter, setFilter] = useState<Filter>({ session: "all", fav: false, q: "", order: "desc" });
@@ -436,7 +436,7 @@ export function GenerationGallery({
     // No section heading: the gallery IS the right half of the workspace, not
     // a titled block inside a page, and dropping the title lets its toolbar
     // start on the same line as the configuration panel opposite.
-    <div data-gallery-panel className={cn("min-w-0", fillEmpty && "flex min-h-0 flex-1 flex-col")}>
+    <div data-gallery-panel className="min-w-0">
       {/* ONE toolbar row: session chips on the left, view/search/filter/sort
           on the right, every control the same 36px height on a shared centre
           line. Below `lg` the two groups wrap onto their own rows instead of
@@ -625,10 +625,7 @@ export function GenerationGallery({
       )}
 
       {merged.length === 0 && pendingCount === 0 && !loading ? (
-        <div data-gallery-empty className={cn(
-          "panel rounded-2xl px-6 py-14 text-center",
-          fillEmpty && "flex min-h-0 flex-1 flex-col items-center justify-center",
-        )}>
+        <div data-gallery-empty className="panel rounded-2xl px-6 py-14 text-center">
           <Sparkles size={22} aria-hidden className="mx-auto mb-3 text-faint" />
           <p className="font-display text-[15px] font-semibold">
             {isDefault ? emptyTitle ?? t("genv3.emptyTitle") : t("genv3.emptyFiltered")}

@@ -323,9 +323,30 @@ export function FashionToolWorkspace({
 
           {(config.showResolution || config.showFormat) && (
             <section>
+              {/* TWO CONTROLS, SIDE BY SIDE ON A PHONE AND STACKED ON A DESKTOP,
+                  which sounds backwards until you look at the widths. Below
+                  `lg` this panel is the whole page — 320px and up — and two
+                  boxes across it read fine. From `lg` it is the SETTINGS
+                  COLUMN, 300px, and half of that is 146px: enough for "2K",
+                  not for "1:1 (kwadrat)", which truncated to "1:1" and turned
+                  a labelled choice into a bare number.
+
+                  So the stack is a desktop rule, not a redesign of the phone
+                  layout, and `lg:` is doing the whole job.
+
+                  The condition stays: a tool showing only ONE of the two
+                  (Zmiana postaci has no resolution) must not put that control
+                  in a half-width cell with nothing beside it. */}
               <div className={cn(
-                "grid gap-2 [&>*]:min-w-0",
-                config.showResolution && config.showFormat ? "grid-cols-2" : "grid-cols-1",
+                // 8px is a GUTTER between two boxes on one line; stacked, the
+                // same 8px is a cramped gap that makes two separate choices
+                // look like one control split in half. 16px from `lg` reads as
+                // two rows without competing with the card's own 20px rhythm
+                // between sections.
+                "grid gap-2 [&>*]:min-w-0 lg:gap-4",
+                config.showResolution && config.showFormat
+                  ? "grid-cols-2 lg:grid-cols-1"
+                  : "grid-cols-1",
               )}>
                 {config.showResolution && (
                   <div className="rounded-xl border border-line bg-sunken/50 p-2">
@@ -473,9 +494,19 @@ export function FashionToolWorkspace({
       </div>
 
       {/* ── RIGHT: jobs in flight, then everything this tool has made ───── */}
-      {/* A COLUMN on desktop, so the gallery below can claim the height left
-          over and centre an empty state in it rather than hugging the toolbar. */}
-      <div className="thin-scroll min-w-0 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-y-auto lg:pb-4 lg:pr-1">
+      {/* THE RESULTS CARD IS THE SIZE OF ITS CONTENTS, NOT THE SIZE OF THE
+          COLUMN. This used to be a flex column feeding `fillEmpty`, so an
+          empty gallery stretched a 217px card to 478px and centred four lines
+          of text in the middle of it. The reasoning was that a two-column
+          workspace with a short right card leaves a hole — but the hole is
+          what an empty workspace honestly looks like, and the inflated card
+          reads as a large panel that failed to load rather than as a small
+          one with nothing in it yet. /retusz never did this, and the two
+          screens are meant to be the same screen.
+
+          Same classes as /retusz now, so the next person comparing them finds
+          them identical instead of nearly identical. */}
+      <div className="thin-scroll min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pb-4 lg:pr-1">
         {pending.length > 0 && (
           <div className="mb-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3" data-fashion-jobs>
             {pending.map((job) => (
@@ -517,7 +548,6 @@ export function FashionToolWorkspace({
           operation={config.operation}
           emptyTitle={t("fashion.emptyTitle")}
           emptyBody={t(`wf.moda.${config.key}.empty`)}
-          fillEmpty
         />
       </div>
     </div>
