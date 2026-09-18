@@ -274,8 +274,6 @@ export function FashionToolWorkspace({
   const canRun = available && !busy && !uploading && runCount > 0 && missing === 0;
   const pending = jobs.filter((j) => j.status !== "completed");
   const ctaLabel = t(`wf.moda.${config.key}.cta`);
-  /** Several photographs to supply in order → number the steps. */
-  const stepped = config.slots.length > 1;
 
   return (
     <div className={cn(
@@ -296,12 +294,25 @@ export function FashionToolWorkspace({
           {/* One block per pool. Only the first claims the paste shortcut:
               a single Ctrl+V must not land the same image in both pools.
 
-              A TOOL THAT TAKES SEVERAL PHOTOGRAPHS IS NUMBERED. With two pools
-              the seller has to supply them in order and know which is which,
-              so the heading carries the instruction ("2. Dodaj zdjęcie
-              modela") and the box below it just says Import. With one pool
-              there is no sequence to number, and the heading keeps its plain
-              "Dodaj zdjęcia (max. 200)" form. */}
+              THE HEADING NAMES THE POOL, THE BOX SAYS WHAT TO DO WITH IT, and
+              that split is what the two i18n keys were built for. This used to
+              be inverted for the two-pool tool: the heading carried the
+              instruction ("1. Dodaj zdjęcie referencyjne") and the box below
+              it fell back to a generic "Import", which left the only place the
+              CAPACITY is written — "(max. 10)" — off the screen entirely, and
+              the two boxes looked identical once the headings scrolled away.
+
+              NO STEP NUMBERS. They were meant to say "supply these in order",
+              but the order is already the order they are stacked in, and the
+              numbering pushed the heading wide enough to compete with the
+              pool's own name. Both pools are required and neither can be
+              filled before the other, so there is no sequence to teach.
+
+              `zoneDense` IS THE SLOT COUNT, not a per-tool flag: a panel that
+              stacks two dropzones cannot give each of them the room a panel
+              with one gives its only one. Deriving it from `config.slots`
+              means a tool that ever grows a third pool gets the right box
+              without anybody remembering to set a boolean. */}
           {config.slots.map((slot, index) => (
             <PhotoUploader
               key={slot.key}
@@ -312,12 +323,11 @@ export function FashionToolWorkspace({
               compact
               zone
               dropTarget={`fashion-${slot.key}`}
-              zoneLabel={stepped || !slot.zoneLabelKey ? undefined : t(slot.zoneLabelKey)}
+              zoneLabel={slot.zoneLabelKey ? t(slot.zoneLabelKey) : undefined}
+              zoneDense={config.slots.length > 1}
               onFiles={(files) => void upload(slot.key, files)}
               onRemove={(i) => removeAt(slot.key, i)}
-              label={stepped && slot.zoneLabelKey
-                ? `${index + 1}. ${t(slot.zoneLabelKey)}`
-                : t(slot.labelKey, { n: slot.max })}
+              label={t(slot.labelKey, { n: slot.max })}
             />
           ))}
 
@@ -352,7 +362,7 @@ export function FashionToolWorkspace({
                   <div className="rounded-xl border border-line bg-sunken/50 p-2">
                     <Dropdown
                       testId="resolution"
-                      label={stepped ? `${config.slots.length + 1}. ${t("genv3.resolution")}` : t("genv3.resolution")}
+                      label={t("genv3.resolution")}
                       value={resolution}
                       options={resolutions.map((r) => ({
                         value: r, label: r, meta: t("genv3.creditsShort", { n: pricing[r] ?? 0 }),
@@ -366,7 +376,7 @@ export function FashionToolWorkspace({
                   <div className="rounded-xl border border-line bg-sunken/50 p-2">
                     <Dropdown
                       testId="format"
-                      label={stepped ? `${config.slots.length + (config.showResolution ? 2 : 1)}. ${t("genv3.format")}` : t("genv3.format")}
+                      label={t("genv3.format")}
                       value={format}
                       options={[
                         {

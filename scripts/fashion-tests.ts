@@ -234,6 +234,97 @@ check("there is exactly one Moda panel component",
   readFileSync("components/fashion/tool-workspace.tsx", "utf8").length > 0
   && !existsSafe("components/fashion/dual-tool-workspace.tsx"));
 
+/* ── E4. ZMIANA POSTACI IS TWO UPLOADS AND ONE DROPDOWN ──────────────────── */
+//
+// This tool's whole panel is: a reference photo, a model photo, a format. No
+// resolution, no hint textarea, no "what the AI will do" card. Every one of
+// those was on the panel at some point — the hint and the resolution because
+// the three single-input tools spread one config object and it was easy to
+// spread it here too, the AI card because the tool briefly had numbered steps
+// and the card explained them. Each of them is a thing that comes back by
+// accident, so each is named here separately.
+
+console.log("\nE4. ZMIANA POSTACI: TWO POOLS, ONE CONTROL, NOTHING ELSE");
+
+const cp = FASHION_TOOLS.find((t) => t.key === "changePerson");
+check("Zmiana postaci exists", !!cp);
+check("…offers NO resolution", cp?.showResolution === false);
+check("…offers NO hint textarea", cp?.showHint === false);
+check("…offers NO 'what the AI will do' card", cp?.showAiNote === false);
+check("…offers a format, defaulting to Auto",
+  cp?.showFormat === true && cp?.defaultFormat === "auto");
+
+// The other three must not have picked any of this up. A flag flipped on the
+// shared SINGLE_INPUT object would silently change three tools at once.
+for (const key of ["ghostMannequin", "flatlay", "iron"] as const) {
+  const other = FASHION_TOOLS.find((t) => t.key === key);
+  check(`…and ${key} still has its resolution`, other?.showResolution === true);
+  check(`…and ${key} still has no AI card`, other?.showAiNote === false);
+}
+
+// TWO POOLS, IDENTICAL GEOMETRY. Section D pins that they never merge; this
+// pins that neither is the bigger or the more important of the two — the
+// brief's "both boxes look the same" is a property of the config, not of a
+// stylesheet.
+check("two pools, reference then model",
+  cp?.slots.length === 2 && cp?.slots[0]?.key === "reference" && cp?.slots[1]?.key === "model");
+check("…both take the same number of photographs",
+  cp?.slots[0]?.max === 10 && cp?.slots[1]?.max === 10);
+check("…both are required",
+  cp?.slots.every((s) => s.required) === true);
+check("…and each says inside its own box which one it is",
+  cp?.slots.every((s) => !!s.zoneLabelKey) === true,
+  "two identical 'Import' boxes are indistinguishable until something lands in the wrong one");
+
+// THE HEADING NAMES THE POOL AND ITS CAPACITY; THE BOX SAYS WHAT TO DO. These
+// were once the other way round, which left "(max. 10)" off the screen.
+const plJson = JSON.parse(readFileSync("lib/i18n/dictionaries/pl.json", "utf8"));
+const dict = plJson.fashion as Record<string, string>;
+for (const slot of cp?.slots ?? []) {
+  const heading = dict[slot.labelKey.replace(/^fashion\./, "")] as string;
+  const zone = dict[slot.zoneLabelKey!.replace(/^fashion\./, "")] as string;
+  check(`the ${slot.key} heading carries the capacity`, /\{n\}/.test(heading ?? ""));
+  check(`…and the ${slot.key} box carries the instruction, not the capacity`,
+    !!zone && !/\{n\}/.test(zone));
+  // NO STEP NUMBERS. "1. Dodaj zdjęcie referencyjne" competed with the pool's
+  // own name and taught an order that does not exist.
+  check(`…and neither is numbered (${slot.key})`,
+    !/^\s*\d+\s*[.)]/.test(heading ?? "") && !/^\s*\d+\s*[.)]/.test(zone));
+}
+check("the panel numbers nothing",
+  !/\{index \+ 1\}/.test(panel) && !/stepped/.test(panel));
+
+// A SINGLE CONTROL IS NEVER HALF A ROW. With no resolution to sit beside it,
+// `grid-cols-2` would leave Format in a half-width cell with empty space.
+check("the controls grid is two columns only when there are two controls",
+  /config\.showResolution && config\.showFormat\s*\n?\s*\?\s*"grid-cols-2 lg:grid-cols-1"\s*\n?\s*:\s*"grid-cols-1"/.test(panel),
+  "one dropdown must fill the row");
+
+// The three blocks stay behind their flags in the panel, and the wire stays
+// clean: a control that is off sends nothing rather than an empty value.
+check("the resolution block is behind the flag", /\{\(config\.showResolution \|\| config\.showFormat\) && \(/.test(panel));
+check("…the AI card is behind its own flag", /\{config\.showAiNote && \(/.test(panel));
+check("…and no resolution goes on the wire when it is off",
+  /resolution:\s*config\.showResolution \?/.test(panel));
+
+// THE BOX IS SIZED BY THE NUMBER OF POOLS, NOT BY THE TOOL'S NAME. A panel
+// that stacks two dropzones cannot give each the room a panel with one gives
+// its only one; deriving it from the slot count means a third pool would be
+// handled without anybody remembering a boolean.
+const uploaderSrc = stripComments(readFileSync("components/genv3/uploader.tsx", "utf8"));
+check("the dense box is derived from the slot count",
+  /zoneDense=\{config\.slots\.length > 1\}/.test(panel));
+check("…the single-pool tools keep the generous box",
+  /zoneDense && "lg:py-4"/.test(uploaderSrc) && /px-4 py-7/.test(uploaderSrc));
+check("…and the count line is dropped only where it repeats the heading",
+  /\{!zoneDense && \(/.test(uploaderSrc));
+
+// §13 of the brief: the reference screenshot carries Retusz's wording. The
+// screenshot decides the LOOK; this tool's own config decides the words.
+check("the action is this tool's own, not Retusz's",
+  !/retusz/i.test(plJson.wf.moda.changePerson.cta)
+  && !/retusz/i.test(plJson.wf.moda.changePerson.name));
+
 /* ── F. THE PRICE IS NEVER A LITERAL ─────────────────────────────────────── */
 console.log("\nF. CREDITS COME FROM CONFIGURATION, NOT FROM THE COMPONENT");
 
@@ -355,6 +446,10 @@ check("the uploader's new zone label is optional",
   /zoneLabel\?\s*:\s*string;/.test(uploader));
 check("and it falls back to the old wording",
   /zoneLabel \?\? t\("genv3\.uploadImport"\)/.test(uploader));
+// Same rule for the dense box: optional, so the generator's own upload blocks
+// and the three single-input tools render exactly as they did.
+check("the uploader's dense box is optional too",
+  /zoneDense\?\s*:\s*boolean;/.test(uploader));
 
 const categories = readFileSync("lib/categories.ts", "utf8");
 check("the four presets that were already in Moda are still there",

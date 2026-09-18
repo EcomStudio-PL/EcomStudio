@@ -145,7 +145,14 @@ export const FASHION_TOOLS: readonly FashionToolConfig[] = [
     showResolution: false,
     showFormat: true,
     showHint: false,
-    showAiNote: true,
+    // NO "WHAT THE AI WILL DO" CARD EITHER. It was added when this tool got
+    // numbered steps, and it repeated the tool's own description — a sentence
+    // the seller had already read on the card they clicked to get here. It
+    // also cost about 96px (the card plus the section gap above it) on a panel
+    // that had none to spare, so a paragraph explaining the tool was sitting
+    // where the tool's one CONTROL should be. The desktop reference shows the
+    // panel ending at Format, and so does this.
+    showAiNote: false,
     defaultFormat: "auto",
   },
 ] as const;

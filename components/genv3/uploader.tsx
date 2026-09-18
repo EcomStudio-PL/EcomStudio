@@ -84,7 +84,7 @@ export const DropOverlay = FileDropOverlay;
  */
 export function PhotoUploader({
   items, max, uploading, label, hint, counter = true, compact, capturePaste, dropTarget,
-  onFiles, onRemove, columns = 4, zone, zoneLabel,
+  onFiles, onRemove, columns = 4, zone, zoneLabel, zoneDense,
 }: {
   items: UploadedRef[];
   max: number;
@@ -110,6 +110,23 @@ export function PhotoUploader({
    *  needs each zone to say which one it is, or the two are indistinguishable
    *  until something has already been dropped in the wrong one. */
   zoneLabel?: string;
+  /** THE ZONE, SIZED FOR A PANEL THAT HOLDS TWO OF IT.
+   *
+   *  `py-7` and the "0 / 10 zdjęć" line are right for a screen with ONE upload
+   *  block: the box is the panel's centre of gravity and can afford to be an
+   *  invitation. A tool with two pools stacks two of them in the same column,
+   *  and on a desktop that column is viewport-locked — two boxes at the single
+   *  pool's generosity spend 292px of a 393px panel on emptiness and push the
+   *  tool's only control below the fold.
+   *
+   *  So a dense zone keeps the SAME composition — icon, wording, one tap
+   *  target — with desktop padding trimmed to 16px, and drops the count line,
+   *  which says "0 / 10" under a heading that already reads "(max. 10)" and
+   *  can say nothing else: this zone only exists while the pool is empty.
+   *
+   *  Off by default. The single-pool tools keep the box their own reference
+   *  shows, and the generator's blocks are untouched. */
+  zoneDense?: boolean;
   onFiles: (files: File[]) => void;
   onRemove: (index: number) => void;
   columns?: 4 | 5;
@@ -167,10 +184,14 @@ export function PhotoUploader({
 
       {bigZone ? (
         <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()}
-          data-upload-zone
+          data-upload-zone data-zone-dense={zoneDense ? "" : undefined}
           aria-label={t("genv3.addPhotos")}
           className={cn(
             "flex w-full flex-col items-center justify-center gap-1.5 rounded-2xl border border-dashed px-4 py-7 text-center transition-colors duration-200",
+            // Only from `lg`. Below it the panel is the whole page and scrolls
+            // like any other, so there is nothing to win by making the target
+            // smaller on the device with the least precise pointer.
+            zoneDense && "lg:py-4",
             "border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*3))] bg-sunken/50 text-faint",
             "hover:border-[rgb(var(--accent)/0.55)] hover:bg-accent-soft/25 hover:text-accent",
             "focus-visible:border-[rgb(var(--accent)/0.55)] disabled:cursor-wait disabled:opacity-60",
@@ -181,9 +202,11 @@ export function PhotoUploader({
               : <ImagePlus size={18} aria-hidden />}
           </span>
           <span className="text-[13px] font-semibold tracking-tight text-ink">{zoneLabel ?? t("genv3.uploadImport")}</span>
-          <span className="text-[11px] font-medium tabular-nums text-faint">
-            {t("genv3.uploadCount", { n: items.length, max })}
-          </span>
+          {!zoneDense && (
+            <span className="text-[11px] font-medium tabular-nums text-faint">
+              {t("genv3.uploadCount", { n: items.length, max })}
+            </span>
+          )}
         </button>
       ) : (
       <div className={cn("grid gap-2 [&>*]:min-w-0", columns === 5 ? "grid-cols-5" : "grid-cols-4 sm:grid-cols-5")}>
