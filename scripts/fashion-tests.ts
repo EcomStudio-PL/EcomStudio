@@ -42,8 +42,20 @@ const runtime = stripComments(readFileSync("components/category/workflow-runtime
 
 check("the runtime never calls router.push/replace",
   !/router\s*\.\s*(push|replace|refresh)\s*\(/.test(runtime));
+/*
+  THE CHIPS, not the file. This used to ban `next/link` anywhere in the
+  runtime, which was a proxy for the thing that matters and stopped being one
+  the moment the tool hero was replaced by a back button: that button is a
+  real <Link> to the category, and navigating is exactly what it is for. The
+  check now reads the switcher row itself, so it still fails if a chip is ever
+  turned into a <Link> — which would put a server round trip back on every
+  switch — and stays quiet about links that are not chips.
+*/
+const chipRow = runtime.slice(
+  runtime.indexOf("offered.filter("), runtime.indexOf("{tool && fashion"));
+check("the chip row was found", chipRow.length > 0);
 check("the chips are plain anchors, not next/link",
-  !/from\s+"next\/link"/.test(runtime));
+  /<a\s/.test(chipRow) && !/<Link\b/.test(chipRow));
 check("the switch still uses the History API",
   /window\.history\.pushState\(/.test(runtime));
 check("the selection is still local state",
@@ -115,13 +127,76 @@ console.log("\nE. ONE PANEL, NOT THREE NEAR-IDENTICAL ONES");
 
 const singles = FASHION_TOOLS.filter((tool) => tool.slots.length === 1);
 check("three tools take a single pool", singles.length === 3);
-check("and they are configured identically apart from identity",
+/*
+  THE PANEL'S SHAPE IS SHARED; THE HINT IS NOT, AND THAT IS DELIBERATE.
+
+  `showHint` was in this set until Wyprasuj dropped its textarea. Leaving it
+  in would have meant one of two bad outcomes: the test fails forever, or
+  somebody "fixes" it by putting the box back on a tool that has nothing to
+  say into it. What must not drift is the geometry — the pool, its size, the
+  two selects, the default framing — so that is what is compared, and the
+  hint gets its own explicit expectation below.
+*/
+check("and they share the panel's shape apart from identity",
   new Set(singles.map((t) => JSON.stringify({
-    slots: t.slots, r: t.showResolution, f: t.showFormat, h: t.showHint, d: t.defaultFormat,
+    slots: t.slots, r: t.showResolution, f: t.showFormat, d: t.defaultFormat,
   }))).size === 1);
 check("the single pool takes 200 photos, as the reference panel says",
   singles.every((t) => t.slots[0]!.max === 200));
 check("the hint ceiling matches the reference's 0 / 1000", FASHION_HINT_MAX === 1000);
+
+/* ── E2. WYPRASUJ ASKS FOR NO INSTRUCTION ────────────────────────────────── */
+//
+// One flag, three consequences to hold in place: the textarea is gone from
+// Wyprasuj, it is still there on the two tools that share its panel, and the
+// component reaches that outcome through configuration rather than through a
+// deletion that would have taken all three.
+
+const iron = FASHION_TOOLS.find((t) => t.key === "iron");
+check("Wyprasuj exists and offers no hint field", iron?.showHint === false);
+check("…while Niewidzialny manekin still offers one",
+  FASHION_TOOLS.find((t) => t.key === "ghostMannequin")?.showHint === true);
+check("…and Leżący produkt still offers one",
+  FASHION_TOOLS.find((t) => t.key === "flatlay")?.showHint === true);
+check("…and nothing else about Wyprasuj moved",
+  iron?.showResolution === true && iron?.showFormat === true
+  && iron?.defaultFormat === "1:1" && iron?.slots.length === 1
+  && iron?.toolKey === "fashion_iron" && iron?.operation === "fashion_iron");
+
+// The panel must stay driven by the flag. A hard-coded textarea would put the
+// field back on Wyprasuj; a deleted one would take it from the other two.
+check("the panel renders the hint block behind the flag",
+  /\{config\.showHint && \(/.test(panel));
+// An unconditional hint on the wire would send an empty string where the
+// server currently gets nothing at all.
+check("…and sends no hint when the flag is off",
+  /hint:\s*config\.showHint \?/.test(panel));
+
+/* ── E3. A TOOL PAGE OPENS ON THE TOOL ───────────────────────────────────── */
+//
+// The hero card — category overline, icon tile, tool name, description — used
+// to sit above the switcher on every category tool page. Everything it said
+// was already on screen, and it cost the fold. What replaces it is a link
+// back to the category and nothing else.
+
+check("the tool page renders no category hero",
+  !/<CategoryHeader/.test(runtime) && !/CategoryHeader/.test(runtime));
+check("…but it does offer a way back", /data-tool-back/.test(runtime));
+// A real href, not history.back(): a tool opened from a bookmark or a shared
+// URL has no history entry to return to.
+check("…which is a link to the category, not history.back()",
+  /href=\{`\/k\/\$\{category\.slug\}`\}/.test(runtime)
+  && !/history\.back\(\)/.test(runtime));
+check("…and the switcher chips survive", /aria-current=\{isActive/.test(runtime));
+
+// The CATEGORY page is a different screen and keeps its header: that is where
+// the wash and the icon are the subject, and it is where the back link goes.
+const categoryPage = readFileSync("app/(app)/k/[cat]/page.tsx", "utf8");
+check("the category page still has its header", /<CategoryHeader/.test(categoryPage));
+// With one caller gone, the compact variant had no caller at all.
+const header = readFileSync("components/category/category-header.tsx", "utf8");
+check("and CategoryHeader no longer carries a dead compact variant",
+  !/compact/.test(stripComments(header)));
 
 // One component file for all four — a second panel file would be the drift the
 // brief asked to avoid.

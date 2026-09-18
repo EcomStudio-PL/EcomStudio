@@ -114,6 +114,22 @@ export const FASHION_TOOLS: readonly FashionToolConfig[] = [
     toolKey: "fashion_iron",
     operation: "fashion_iron",
     ...SINGLE_INPUT,
+    // NO HINT FIELD, AND ONLY HERE.
+    //
+    // Ironing is the one job in this set that takes no direction. The other
+    // two ask the seller for something the photograph cannot say — which
+    // garment to keep, how to lay it out — while "remove the creases" is the
+    // whole instruction; an empty box above the CTA invited a sentence that
+    // changed nothing and made the panel look like it wanted one.
+    //
+    // This is a flag on THIS tool, not an edit to the shared panel. The three
+    // single-input tools deliberately spread one config object, so deleting
+    // the textarea from tool-workspace.tsx would have taken it from
+    // Niewidzialny manekin and Leżący produkt as well. The panel already
+    // renders the block behind `config.showHint` and already sends
+    // `hint: undefined` when it is off, so nothing downstream changes: the
+    // tool's own published prompt is what runs, exactly as before.
+    showHint: false,
   },
   {
     key: "changePerson",

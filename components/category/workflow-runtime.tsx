@@ -1,8 +1,9 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useI18n } from "@/lib/i18n/provider";
-import { CategoryHeader } from "@/components/category/category-header";
 import { GeneratorWorkspace } from "@/components/genv3/workspace";
 import { CATEGORY_VARIANT, DEFAULT_VARIANT, findCategory, offeredWorkflows } from "@/lib/categories";
 import { fashionTool } from "@/lib/fashion-tools";
@@ -150,14 +151,30 @@ export function WorkflowRuntime({
 
   return (
     <>
-      <CategoryHeader
-        compact
-        category={category}
-        backHref={`/k/${category.slug}`}
-        backLabel={t(`cats.${category.key}`)}
-        title={t(`wf.${category.key}.${workflow.key}.name`)}
-        lead={t(`wf.${category.key}.${workflow.key}.sub`)}
-      />
+      {/* A WAY BACK, AND NOTHING ELSE.
+          This used to be the category hero: a washed card with the category
+          overline, a 56px icon tile, the tool's name at clamp(1.35rem…2rem)
+          and its description. Every word of it was already on screen — the
+          name in the selected chip directly below, the description in the
+          panel — so it spent roughly 150px of phone height, and a comparable
+          band on desktop, restating the answer to a question nobody had. The
+          thing the seller opened the page for started below the fold.
+
+          A plain link is what is left, in the same idiom /tools/[slug] and
+          /prompts/[id] already use. It is a real <Link> to the category, not
+          history.back(): a tool reached from a bookmark, a shared URL or an
+          e-mail has no history to go back to, and "back" that lands outside
+          the app is worse than no button.
+
+          NOT REMOVED FROM THE CATEGORY PAGE. /k/[cat] keeps its full
+          CategoryHeader — there the wash and the icon ARE the screen's
+          subject, and it is the destination this link points at. */}
+      <Link href={`/k/${category.slug}`}
+        data-tool-back
+        className="mb-3 inline-flex items-center gap-1.5 self-start text-[13px] font-medium text-muted transition-colors hover:text-ink">
+        <ArrowLeft size={14} aria-hidden />
+        {t(`cats.${category.key}`)}
+      </Link>
 
       {/* SIBLING WORKFLOWS — switch without leaving the workspace.
           The row is what the category OFFERS: in Moda that is exactly the four

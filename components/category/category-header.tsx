@@ -4,7 +4,6 @@ import type { Category } from "@/lib/categories";
 import { categoryHeroKey } from "@/lib/media-slots";
 import type { SlotMap } from "@/lib/server/media-slots";
 import { SlotMedia } from "@/components/media/slot-media";
-import { cn } from "@/lib/utils";
 
 /**
  * CATEGORY HEADER — the wash that gives each workspace its own identity.
@@ -14,7 +13,7 @@ import { cn } from "@/lib/utils";
  * overline only. The primary CTA stays brand magenta everywhere, so the
  * accent reads as "which room am I in", not as six competing brands.
  */
-export function CategoryHeader({ category, title, lead, backLabel, backHref = "/home", children, compact, slots }: {
+export function CategoryHeader({ category, title, lead, backLabel, backHref = "/home", children, slots }: {
   category: Category;
   title: string;
   lead: string;
@@ -22,7 +21,6 @@ export function CategoryHeader({ category, title, lead, backLabel, backHref = "/
   backHref?: string;
   /** Actions rendered on the right at desktop widths. */
   children?: React.ReactNode;
-  compact?: boolean;
   /** An admin's picture for this header, when there is one. The gradient
    *  stays on top of it either way, so the text keeps its contrast. */
   slots?: SlotMap;
@@ -51,7 +49,11 @@ export function CategoryHeader({ category, title, lead, backLabel, backHref = "/
             `radial-gradient(26rem 16rem at 92% 120%, rgb(${rgb2} / 0.16), transparent 70%)`,
         }}
       />
-      <div className={cn("relative flex flex-col gap-3.5 p-4 sm:gap-4 sm:p-6 lg:flex-row lg:items-end lg:justify-between", compact ? "lg:p-6" : "lg:p-8")}>
+      {/* `compact` used to live here. It had exactly one caller — the tool
+          page — and that page now opens with a plain back link instead of a
+          header, so the flag could only ever be false. A prop nothing sets is
+          a second layout to keep in step with the first for no reason. */}
+      <div className="relative flex flex-col gap-3.5 p-4 sm:gap-4 sm:p-6 lg:flex-row lg:items-end lg:justify-between lg:p-8">
         <div className="min-w-0">
           <Link href={backHref}
             className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-[rgb(var(--cat))] transition-opacity duration-200 hover:opacity-75">
@@ -67,10 +69,7 @@ export function CategoryHeader({ category, title, lead, backLabel, backHref = "/
               <Icon size={24} strokeWidth={1.8} />
             </span>
             <div className="min-w-0">
-              <h1 className={cn(
-                "font-display font-semibold leading-[1.05] tracking-[-0.03em]",
-                compact ? "text-[clamp(1.35rem,1rem+0.9vw,2rem)]" : "text-[clamp(1.6rem,1rem+1.4vw,2.6rem)]",
-              )}>
+              <h1 className="font-display text-[clamp(1.6rem,1rem+1.4vw,2.6rem)] font-semibold leading-[1.05] tracking-[-0.03em]">
                 {title}
               </h1>
               <p className="mt-1 max-w-xl text-[12.5px] leading-relaxed text-muted sm:mt-1.5 sm:text-[13.5px]">{lead}</p>
