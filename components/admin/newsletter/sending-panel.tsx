@@ -1,6 +1,6 @@
 "use client";
 import { useState, useTransition } from "react";
-import { Loader2, Pause, Play, Send } from "lucide-react";
+import { AlertTriangle, Loader2, Pause, Play, Send } from "lucide-react";
 import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,21 @@ import { formatDate } from "@/lib/utils";
 import {
   runWorkerNowAction, setNewsletterPausedAction, setNewsletterRateAction,
 } from "@/app/actions/newsletter";
+import type { SchedulerStatus } from "@/lib/services/newsletter";
+
+/** The chain, in the order an operator should fix it: extensions first
+ *  (nothing else can be true without them), then the job, then the two
+ *  secrets. Only the FIRST broken link is named, because a list of five
+ *  problems where four are consequences of the first is not a list of five
+ *  problems. */
+function firstMissingLink(s: SchedulerStatus): string | null {
+  if (!s.pgCron) return "pgCron";
+  if (!s.pgNet) return "pgNet";
+  if (!s.jobScheduled) return "job";
+  if (!s.urlConfigured) return "url";
+  if (!s.tokenConfigured) return "token";
+  return null;
+}
 
 /**
  * THE SENDING PANEL — the kill switch, the rate dial, and what the worker did.
@@ -25,13 +40,16 @@ import {
  * sending too fast does not deliver sooner — it gets the identity throttled
  * and takes the inbox down with it. Hence the warning under the field.
  */
-export function SendingPanel({ queued, paused, ratePerHour, lastRunAt, lastRunSent, lastRunFailed }: {
+export function SendingPanel({
+  queued, paused, ratePerHour, lastRunAt, lastRunSent, lastRunFailed, scheduler,
+}: {
   queued: number;
   paused: boolean;
   ratePerHour: number;
   lastRunAt: string | null;
   lastRunSent: number;
   lastRunFailed: number;
+  scheduler: SchedulerStatus;
 }) {
   const { t, locale } = useI18n();
   const [pending, start] = useTransition();
@@ -53,6 +71,31 @@ export function SendingPanel({ queued, paused, ratePerHour, lastRunAt, lastRunSe
           {t("newsletter.worker.queue")}: <span className="tabular-nums font-semibold">{queued}</span>
         </span>
       </div>
+
+      {/* THE SCHEDULER, WHEN IT IS NOT ACTUALLY RUNNING.
+          Above the pause banner on purpose: pausing is a decision somebody
+          made, while this is a campaign scheduled for 18:00 that will sit at
+          "zaplanowana" forever because nothing is there to fire it. Without
+          this block the screen shows a queue, a rate and a working "Wyślij
+          teraz" button — every one of them true — and still sends nothing on
+          schedule. One line names the broken link so it can be fixed rather
+          than hunted for; "Wyślij teraz" keeps working meanwhile, which is
+          why the block informs instead of blocking. */}
+      {!scheduler.ready && (
+        <div className="mb-3 rounded-xl border border-[rgb(var(--danger)/0.4)] bg-[rgb(var(--danger)/0.08)] px-3.5 py-3"
+          data-scheduler-down>
+          <p className="flex items-center gap-2 text-[13px] font-semibold text-ink">
+            <AlertTriangle size={14} aria-hidden className="shrink-0 text-[rgb(var(--danger))]" />
+            {t("newsletter.scheduler.down")}
+          </p>
+          <p className="mt-1 text-[12px] leading-relaxed text-muted">
+            {t("newsletter.scheduler.downHint")}
+          </p>
+          <p className="mt-1.5 text-[12px] font-medium text-muted" data-scheduler-missing>
+            {t(`newsletter.scheduler.missing.${firstMissingLink(scheduler) ?? "token"}`)}
+          </p>
+        </div>
+      )}
 
       {paused && (
         <div className="mb-3 rounded-xl border border-[rgb(var(--caution)/0.4)] bg-[rgb(var(--caution)/0.08)] px-3.5 py-3"

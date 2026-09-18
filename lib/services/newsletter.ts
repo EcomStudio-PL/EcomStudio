@@ -1711,3 +1711,75 @@ export async function personalizationProgress(
   ]);
   return { queued: queued ?? 0, written: written ?? 0 };
 }
+
+/**
+ * WHETHER MINUTE-PRECISION SCHEDULING IS ACTUALLY LIVE.
+ *
+ * WHY THIS IS READ AT ALL. Scheduling a campaign for 18:00 writes a row and
+ * returns success whether or not anything will ever pick that row up: the
+ * queue, the pause switch and the rate dial all work perfectly while the
+ * thing that fires them is missing. The chain is pg_cron → pg_net → a job on
+ * the minute → a vault URL → a vault token → POST /api/newsletter/worker, and
+ * any one of those six being absent produces the same symptom — a campaign
+ * that sits at "scheduled" forever with nothing on screen to explain it.
+ *
+ * So the panel asks, every time it renders, instead of assuming that whoever
+ * applied the migration also set the secrets. `ready` is the whole chain; the
+ * flags say which link is open, because "scheduling is off" is a complaint
+ * and "the token secret is not set" is an instruction.
+ *
+ * NEVER THE VALUES. newsletter_scheduler_status() reports that a secret
+ * EXISTS and refuses to return it, which is the only reason this is safe to
+ * render in a page at all.
+ *
+ * A missing function (migration 0095 not applied) is not an error here: it
+ * returns everything false, which renders as "not live" — exactly the true
+ * answer for a database that has never been given a scheduler.
+ */
+export type SchedulerStatus = {
+  ready: boolean;
+  pgCron: boolean;
+  pgNet: boolean;
+  jobScheduled: boolean;
+  urlConfigured: boolean;
+  tokenConfigured: boolean;
+  lastRun: { status: string; at: string | null; message: string | null } | null;
+};
+
+export async function schedulerStatus(supabase: Client): Promise<SchedulerStatus> {
+  const off: SchedulerStatus = {
+    ready: false, pgCron: false, pgNet: false,
+    jobScheduled: false, urlConfigured: false, tokenConfigured: false, lastRun: null,
+  };
+
+  const { data, error } = await supabase.rpc("newsletter_scheduler_status");
+  if (error || !data || typeof data !== "object") return off;
+
+  const raw = data as Record<string, unknown>;
+  const flag = (key: string) => raw[key] === true;
+  const run = raw.lastRun && typeof raw.lastRun === "object"
+    ? (raw.lastRun as Record<string, unknown>)
+    : null;
+
+  const status: SchedulerStatus = {
+    ready: false,
+    pgCron: flag("pgCron"),
+    pgNet: flag("pgNet"),
+    jobScheduled: flag("jobScheduled"),
+    urlConfigured: flag("urlConfigured"),
+    tokenConfigured: flag("tokenConfigured"),
+    lastRun: run
+      ? {
+        status: typeof run.status === "string" ? run.status : "unknown",
+        at: typeof run.at === "string" ? run.at : null,
+        message: typeof run.message === "string" ? run.message : null,
+      }
+      : null,
+  };
+
+  // All six, not most of them. There is no partial credit: a job scheduled
+  // against a missing token posts nothing, on time, forever.
+  status.ready = status.pgCron && status.pgNet && status.jobScheduled
+    && status.urlConfigured && status.tokenConfigured;
+  return status;
+}

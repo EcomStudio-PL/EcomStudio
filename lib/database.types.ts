@@ -5227,6 +5227,10 @@ export type Database = {
         Returns: undefined
       }
       newsletter_start_due: { Args: { p_token: string }; Returns: number }
+      // Admin-only (0095). Json rather than a shape: the function reports that
+      // the two vault secrets EXIST and never returns them, and a narrower
+      // type here would invite a caller to expect fields it must not have.
+      newsletter_scheduler_status: { Args: Record<string, never>; Returns: Json }
     }
     Enums: {
       asset_type: "image" | "video" | "text"

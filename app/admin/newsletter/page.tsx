@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import {
-  campaignPerformance, dashboardTotals, listSources, queueDepth,
+  campaignPerformance, dashboardTotals, listSources, queueDepth, schedulerStatus,
 } from "@/lib/services/newsletter";
 import { readSettings } from "@/lib/server/newsletter/settings";
 import { formatWindow, resolveRange } from "@/lib/newsletter";
@@ -37,12 +37,13 @@ export default async function NewsletterDashboardPage({ searchParams }: {
   const { locale } = await getDictionary();
 
   const range = resolveRange(params);
-  const [totals, queued, settings, campaigns, sources] = await Promise.all([
+  const [totals, queued, settings, campaigns, sources, scheduler] = await Promise.all([
     dashboardTotals(supabase, range.since, range.until),
     queueDepth(supabase),
     readSettings(supabase),
     campaignPerformance(supabase, range.since, range.until),
     listSources(supabase),
+    schedulerStatus(supabase),
   ]);
 
   return (
@@ -51,6 +52,7 @@ export default async function NewsletterDashboardPage({ searchParams }: {
       totals={totals}
       queued={queued}
       settings={settings}
+      scheduler={scheduler}
       campaigns={campaigns.slice(0, TOP_CAMPAIGNS)}
       sources={sources}
     />

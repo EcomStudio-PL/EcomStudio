@@ -4,7 +4,9 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { Badge } from "@/components/ui/badge";
 import { formatRate, rate } from "@/lib/newsletter";
-import type { CampaignPerformance, DashboardTotals, SourceRow } from "@/lib/services/newsletter";
+import type {
+  CampaignPerformance, DashboardTotals, SchedulerStatus, SourceRow,
+} from "@/lib/services/newsletter";
 import type { NewsletterSettings } from "@/lib/server/newsletter/settings";
 import { RangePicker } from "@/components/admin/newsletter/range-picker";
 import { KpiRow, RevenuePanel, campaignStatusTone, numberFormat } from "@/components/admin/newsletter/kpi";
@@ -26,11 +28,14 @@ import { SendingPanel } from "@/components/admin/newsletter/sending-panel";
  * page, so the whole screen is one waterfall-free `Promise.all` up there
  * instead of six components each waiting on their own round trip.
  */
-export async function Dashboard({ effective, totals, queued, settings, campaigns, sources }: {
+export async function Dashboard({
+  effective, totals, queued, settings, scheduler, campaigns, sources,
+}: {
   effective: string;
   totals: DashboardTotals;
   queued: number;
   settings: NewsletterSettings;
+  scheduler: SchedulerStatus;
   campaigns: CampaignPerformance[];
   sources: SourceRow[];
 }) {
@@ -56,7 +61,7 @@ export async function Dashboard({ effective, totals, queued, settings, campaigns
         <Funnel totals={totals} />
         <SendingPanel queued={queued} paused={settings.paused} ratePerHour={settings.ratePerHour}
           lastRunAt={settings.lastRunAt} lastRunSent={settings.lastRunSent}
-          lastRunFailed={settings.lastRunFailed} />
+          lastRunFailed={settings.lastRunFailed} scheduler={scheduler} />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">

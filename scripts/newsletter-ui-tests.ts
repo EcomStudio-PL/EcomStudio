@@ -629,6 +629,85 @@ if (built) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
+console.log("\nI. A SCHEDULER THAT IS NOT RUNNING SAYS SO");
+
+/*
+  WHY THIS SECTION EXISTS.
+
+  Scheduling a campaign for 18:00 writes a row and reports success whether or
+  not anything will ever pick that row up. The chain is pg_cron → pg_net → a
+  job on the minute → a vault url → a vault token → the worker route, and any
+  one of those missing produces the identical symptom: a campaign stuck at
+  "zaplanowana" with a queue, a rate dial and a working "Wyślij teraz" button
+  all telling the operator that sending is fine.
+
+  Production has exactly this gap today — the two vault secrets are unset —
+  so this is not a hypothetical. These checks hold the panel to saying it.
+*/
+
+const PANEL_FILE = "components/admin/newsletter/sending-panel.tsx";
+const DASH_FILE = "components/admin/newsletter/dashboard.tsx";
+const DASH_PAGE = "app/admin/newsletter/page.tsx";
+const SERVICE_FILE = "lib/services/newsletter.ts";
+
+{
+  const panel = code(PANEL_FILE);
+  const service = code(SERVICE_FILE);
+
+  check("the service reads the scheduler's real state",
+    /export async function schedulerStatus\(/.test(service)
+    && /rpc\("newsletter_scheduler_status"\)/.test(service),
+    "the panel must not infer 'scheduled sending works' from anything else");
+
+  // Five links, one `ready`. A panel that ANDs four of them is a panel that
+  // stays silent for the fifth — which is the link production is missing.
+  for (const flag of ["pgCron", "pgNet", "jobScheduled", "urlConfigured", "tokenConfigured"]) {
+    check(`…and ready requires ${flag}`,
+      new RegExp(`status\\.ready\\s*=[\\s\\S]{0,240}status\\.${flag}\\b`).test(service));
+  }
+
+  check("a failed rpc reads as 'not live', never as live",
+    /if \(error \|\| !data[\s\S]{0,40}\) return off;/.test(service)
+    && /ready: false/.test(service),
+    "a database without migration 0095 must not render a working scheduler");
+
+  check("the page fetches it alongside everything else",
+    /schedulerStatus\(supabase\)/.test(code(DASH_PAGE)),
+    "one round trip for the screen, not a waterfall");
+  check("…and hands it to the sending panel",
+    /scheduler=\{scheduler\}/.test(code(DASH_FILE)));
+
+  check("the panel renders a block when it is not ready",
+    /!scheduler\.ready/.test(panel) && /data-scheduler-down/.test(panel));
+  check("…and names the first broken link rather than all five",
+    /function firstMissingLink/.test(panel) && /data-scheduler-missing/.test(panel));
+
+  // The banner informs; it must not disable the one button that still works.
+  check("…while leaving 'Wyślij teraz' usable",
+    /data-run-now[\s\S]{0,200}disabled=\{pending \|\| paused\}/.test(panel)
+    || /disabled=\{pending \|\| paused\}[\s\S]{0,200}data-run-now/.test(panel),
+    "manual draining is the workaround while the scheduler is being fixed");
+
+  // The banner outranks the pause banner: pausing is a choice somebody made,
+  // this is a thing that is broken.
+  check("…and sits above the pause banner",
+    panel.indexOf("data-scheduler-down") < panel.indexOf("data-sending-paused"));
+
+  // `newsletter.scheduler.missing.${…}` is a template literal, which
+  // scripts/i18n-check.mjs cannot see. Every branch is checked here instead.
+  for (const { name, dict } of DICTS) {
+    for (const key of [
+      "scheduler.down", "scheduler.downHint",
+      "scheduler.missing.pgCron", "scheduler.missing.pgNet", "scheduler.missing.job",
+      "scheduler.missing.url", "scheduler.missing.token",
+    ]) {
+      check(`${name}: newsletter.${key} is translated`, has(dict, `newsletter.${key}`),
+        "built from a template literal, so i18n:check cannot catch this one");
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
 console.log(failures === 0
   ? "\nAll newsletter UI tests passed."
   : `\n${failures} newsletter UI check(s) failed.`);
