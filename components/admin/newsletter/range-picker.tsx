@@ -36,8 +36,12 @@ export function RangePicker({ effective }: {
 
   // Selection follows the URL, not the resolved range: an operator who clicked
   // "Własny zakres" must keep seeing the date fields while they fill them in.
-  const current = params.get("range") === "7d" ? "7d"
-    : params.get("range") === "custom" ? "custom" : "30d";
+  // Mirrors resolveRange's own precedence, so the highlighted button and the
+  // window the queries used can never disagree.
+  const raw = params.get("range");
+  const current = raw === "7d" ? "7d"
+    : raw === "all" ? "all"
+    : raw === "custom" ? "custom" : "30d";
 
   const go = (next: Record<string, string | null>) => {
     const query = new URLSearchParams(params.toString());
@@ -62,6 +66,14 @@ export function RangePicker({ effective }: {
         <button type="button" className={btn(current === "30d")} data-range="30d"
           onClick={() => go({ range: "30d", from: null, to: null })}>
           {t("newsletter.range.30d")}
+        </button>
+        {/* CAŁY OKRES sits between the fixed windows and the custom one
+            because that is what it is: a window nobody has to type. It clears
+            from/to like the fixed ranges do — leaving them behind would show
+            a date pair the query did not use. */}
+        <button type="button" className={btn(current === "all")} data-range="all"
+          onClick={() => go({ range: "all", from: null, to: null })}>
+          {t("newsletter.range.all")}
         </button>
         <button type="button" className={btn(current === "custom")} data-range="custom"
           onClick={() => go({ range: "custom" })}>

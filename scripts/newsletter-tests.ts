@@ -19,6 +19,7 @@
  *
  * Run: npm run test:newsletter
  */
+import { readFileSync } from "node:fs";
 import {
   applyMerge, usedMergeFields, unknownMergeTags, toBlocks, toAudience, toUtm,
   toSegmentRules, rate, formatRate, BLOCK_TYPES, MERGE_FIELDS,
@@ -236,6 +237,100 @@ check("…and it prints as a dash, not 0 %", formatRate(rate(0, 0)) === "—");
 check("a real rate is a real number", Math.round(rate(19, 100) as number) === 19);
 check("zero of many is a genuine zero", rate(0, 100) === 0);
 check("a zero rate prints as 0,0%", formatRate(0) === "0,0%");
+
+/* ═══════════════════════════════════════════════════════════════════════ */
+console.log("\nZ. THE WAITLIST IS THE CONTACT LIST");
+
+/*
+  WHY THIS SECTION EXISTS, IN ONE SENTENCE: the newsletter shipped with 77
+  passing tests and showed "0 kontaktów" in production for two weeks, because
+  nothing asserted that the launch page and the newsletter were the same list.
+
+  Every check below pins one link in that chain. They read the migration and
+  the code rather than the database, because a test cannot reach production —
+  but each one names the production fact it stands for, and those facts were
+  verified by counting rows on PROD before this was written:
+  8 waitlist + 9 accounts - 3 overlapping = 14 contacts, 9 linked, 2 consented,
+  0 duplicates.
+*/
+
+const merge = readFileSync("supabase/migrations/0097_newsletter_contact_merge.sql", "utf8");
+const nav = readFileSync("lib/navigation.ts", "utf8");
+const navUi = readFileSync("components/admin/newsletter/nav.tsx", "utf8");
+const picker = readFileSync("components/admin/newsletter/range-picker.tsx", "utf8");
+const panel = readFileSync("components/admin/newsletter/sending-panel.tsx", "utf8");
+const actions = readFileSync("app/actions/newsletter.ts", "utf8");
+const waitlistPage = readFileSync("app/admin/waitlist/page.tsx", "utf8");
+
+// A. A launch-page signup becomes a newsletter contact.
+check("waitlist_subscribe feeds the newsletter",
+  /create or replace function public\.waitlist_subscribe[\s\S]*?newsletter_upsert_contact/.test(merge));
+// Before the early 'exists' return, or a repeat signup — which is every
+// address that predates this migration — would never become a contact.
+check("…before the 'exists' return, so a repeat signup still lands",
+  merge.indexOf("p_source_key := 'waitlist'") < merge.indexOf("jsonb_build_object('status', 'exists')"));
+// A fault in the contact write must not cost the lead already captured.
+check("…and a fault there cannot lose the signup",
+  /perform public\.newsletter_upsert_contact\([\s\S]{0,600}?exception when others then/.test(merge));
+
+// B. The rows that were already there.
+check("the existing waitlist is backfilled",
+  /from public\.waitlist_subscribers\s+order by created_at asc/.test(merge));
+check("…carrying the original date, not the migration's",
+  /p_created_at := r\.created_at/.test(merge));
+
+// C. One address, one contact.
+check("the normalised address is unique in the database",
+  /create unique index[\s\S]{0,120}newsletter_contacts \(lower\(email\)\)/.test(merge));
+check("…and the upsert looks a contact up that way",
+  /where lower\(email\) = v_email/.test(merge));
+
+// D. Waitlist then account is one contact with two sources.
+check("sources are recorded per contact, not overwritten",
+  /create table if not exists public\.newsletter_contact_sources/.test(merge)
+  && /on conflict \(contact_id, source_key\) do update/.test(merge));
+check("…and an account link never replaces an existing one",
+  /user_id\s*=\s*coalesce\(user_id, p_user_id\)/.test(merge));
+
+// E. THE RULE THAT MATTERS MOST. An account is not a consent.
+check("the account backfill passes no consent",
+  /p_source_key := 'account'[\s\S]{0,400}?p_created_at := r\.created_at/.test(merge)
+  && !/p_source_key := 'account'[\s\S]{0,400}?p_consent\s*:=\s*true/.test(merge));
+check("…and consent can only ever go up in the upsert",
+  /marketing_consent = marketing_consent or v_consent/.test(merge));
+
+// F. The old screen is gone from the menu but not from the web.
+check("Lista oczekujących is out of the admin menu",
+  !/"\/admin\/waitlist"/.test(nav));
+check("…and /admin/waitlist redirects into the contact list",
+  /redirect\("\/admin\/newsletter\/kontakty\?source=waitlist"\)/.test(waitlistPage));
+
+// G. THE ELLIPSIS. Four equal columns plus truncate is what produced "Pul…".
+check("the phone tabs are not forced into equal columns",
+  !/min-w-0 flex-1 justify-center/.test(navUi));
+check("…and their labels are never truncated",
+  !/<span className="truncate">\{t\(`newsletter\.nav/.test(navUi));
+check("…the row scrolls instead, with the selected tab pulled into view",
+  /overflow-x-auto/.test(navUi) && /scrollIntoView/.test(navUi));
+
+// H. All time means unbounded, not a made-up start date.
+check("the range picker offers Cały okres", /data-range="all"/.test(picker));
+check("…which resolves to no lower bound at all",
+  /key: "all", since: null/.test(readFileSync("lib/newsletter.ts", "utf8")));
+check("…and the query leaves the bound off rather than inventing one",
+  /sinceIso === null \? upper : upper\.gte/.test(readFileSync("lib/services/newsletter.ts", "utf8")));
+
+// I + J. The scheduler says what is wrong AND can fix it.
+check("an unconfigured scheduler still fails loudly", /data-scheduler-down/.test(panel));
+check("…and now offers the fix rather than only naming it",
+  /data-scheduler-fix/.test(panel) && /provisionSchedulerAction/.test(panel));
+check("…which derives both values server-side and returns neither",
+  /dispatchToken\(\)/.test(actions)
+  && /putSecret\(supabase, "grovbase\.newsletter\.worker_url"/.test(actions)
+  && /putSecret\(supabase, "grovbase\.newsletter\.worker_token"/.test(actions));
+// The token must never travel back to the browser.
+check("…and never hands the token to the client",
+  !/data:\s*\{[^}]*token/.test(actions.slice(actions.indexOf("provisionSchedulerAction"))));
 
 /* ═══════════════════════════════════════════════════════════════════════ */
 console.log(failures === 0 ? "\nAll newsletter tests passed." : `\n${failures} check(s) failed.`);

@@ -884,19 +884,35 @@ export type DashboardTotals = {
   hasSalesData: boolean;
 };
 
+/**
+ * THE RANGE, APPLIED TO A QUERY — with the lower bound only when there is one.
+ *
+ * "Cały okres" resolves to `since: null` (see lib/newsletter.ts) because the
+ * period has to start where the data starts, and no constant in the code knows
+ * that. A null therefore means "leave the lower bound off", and this is the one
+ * place that decision is turned into a filter, so the four screens sharing the
+ * range cannot each get it slightly wrong.
+ *
+ * The generic is structural rather than a PostgREST import: every filter
+ * builder returns itself from `gte`/`lte`, which is all this needs to know.
+ */
+function inWindow<Q extends {
+  gte(column: string, value: string): Q;
+  lte(column: string, value: string): Q;
+}>(query: Q, sinceIso: string | null, untilIso: string): Q {
+  const upper = query.lte("created_at", untilIso);
+  return sinceIso === null ? upper : upper.gte("created_at", sinceIso);
+}
+
 export async function dashboardTotals(
-  supabase: Client, sinceIso: string, untilIso: string,
+  supabase: Client, sinceIso: string | null, untilIso: string,
 ): Promise<DashboardTotals> {
   const [contacts, fresh, events, recipients, attributions, payments] = await Promise.all([
     supabase.from("newsletter_contacts").select("id", { count: "exact", head: true }),
-    supabase.from("newsletter_contacts").select("id", { count: "exact", head: true })
-      .gte("created_at", sinceIso).lte("created_at", untilIso),
-    supabase.from("newsletter_events").select("event_type, contact_id")
-      .gte("created_at", sinceIso).lte("created_at", untilIso).limit(500_000),
-    supabase.from("newsletter_recipients").select("status")
-      .gte("created_at", sinceIso).lte("created_at", untilIso).limit(500_000),
-    supabase.from("newsletter_attributions").select("amount_cents, converted_at")
-      .gte("created_at", sinceIso).lte("created_at", untilIso).limit(100_000),
+    inWindow(supabase.from("newsletter_contacts").select("id", { count: "exact", head: true }), sinceIso, untilIso),
+    inWindow(supabase.from("newsletter_events").select("event_type, contact_id"), sinceIso, untilIso).limit(500_000),
+    inWindow(supabase.from("newsletter_recipients").select("status"), sinceIso, untilIso).limit(500_000),
+    inWindow(supabase.from("newsletter_attributions").select("amount_cents, converted_at"), sinceIso, untilIso).limit(100_000),
     // THE HONESTY CHECK. Not "how much revenue" but "is there a payments
     // system at all" — the answer decides between a number and a sentence.
     supabase.from("payments").select("id", { count: "exact", head: true }),
@@ -1189,15 +1205,12 @@ export type CampaignPerformance = {
  * measured.
  */
 export async function campaignPerformance(
-  supabase: Client, sinceIso: string, untilIso: string,
+  supabase: Client, sinceIso: string | null, untilIso: string,
 ): Promise<CampaignPerformance[]> {
   const [recipients, events, attributions] = await Promise.all([
-    supabase.from("newsletter_recipients").select("campaign_id, status")
-      .gte("created_at", sinceIso).lte("created_at", untilIso).limit(500_000),
-    supabase.from("newsletter_events").select("campaign_id, event_type, contact_id")
-      .gte("created_at", sinceIso).lte("created_at", untilIso).limit(500_000),
-    supabase.from("newsletter_attributions").select("campaign_id, amount_cents, converted_at")
-      .gte("created_at", sinceIso).lte("created_at", untilIso).limit(100_000),
+    inWindow(supabase.from("newsletter_recipients").select("campaign_id, status"), sinceIso, untilIso).limit(500_000),
+    inWindow(supabase.from("newsletter_events").select("campaign_id, event_type, contact_id"), sinceIso, untilIso).limit(500_000),
+    inWindow(supabase.from("newsletter_attributions").select("campaign_id, amount_cents, converted_at"), sinceIso, untilIso).limit(100_000),
   ]);
 
   type Acc = {
@@ -1327,16 +1340,17 @@ export type SourcePerformance = {
  * rather than a bigger limit here.
  */
 export async function sourcePerformance(
-  supabase: Client, sinceIso: string, untilIso: string,
+  supabase: Client, sinceIso: string | null, untilIso: string,
 ): Promise<SourcePerformance[]> {
   const [sources, contacts, events, attributions] = await Promise.all([
     supabase.from("newsletter_sources").select("key, name").order("name"),
     supabase.from("newsletter_contacts").select("id, source_key").limit(100_000),
-    supabase.from("newsletter_events").select("event_type, contact_id")
-      .in("event_type", ["sent", "clicked"])
-      .gte("created_at", sinceIso).lte("created_at", untilIso).limit(500_000),
-    supabase.from("newsletter_attributions").select("contact_id, amount_cents, converted_at")
-      .gte("created_at", sinceIso).lte("created_at", untilIso).limit(100_000),
+    inWindow(
+      supabase.from("newsletter_events").select("event_type, contact_id")
+        .in("event_type", ["sent", "clicked"]),
+      sinceIso, untilIso,
+    ).limit(500_000),
+    inWindow(supabase.from("newsletter_attributions").select("contact_id, amount_cents, converted_at"), sinceIso, untilIso).limit(100_000),
   ]);
 
   const sourceOf = new Map<string, string>();

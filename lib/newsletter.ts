@@ -311,7 +311,21 @@ export function formatRate(value: number | null, locale = "pl"): string {
  * server-renderable at once, and one function decides the boundaries so the
  * control's caption and the query behind it can never disagree.
  */
-export type ResolvedRange = { key: "7d" | "30d" | "custom"; since: string; until: string };
+/**
+ * `since: null` MEANS UNBOUNDED, and it is null rather than an old date on
+ * purpose. "Cały okres" has to start where the DATA starts, and only the
+ * database knows that — the oldest contact in production predates the oldest
+ * waitlist row, which predates the newsletter module itself. Any constant
+ * picked here would be either a lie that hides rows older than it or a guess
+ * that makes every query scan from 1970. A null tells the service layer to
+ * leave the lower bound off the query entirely, which is the only version of
+ * "everything" that is actually true.
+ */
+export type ResolvedRange = {
+  key: "7d" | "30d" | "all" | "custom";
+  since: string | null;
+  until: string;
+};
 
 const DAY_MS = 86_400_000;
 
@@ -319,6 +333,9 @@ export function resolveRange(
   params: { range?: string; from?: string; to?: string },
   now = Date.now(),
 ): ResolvedRange {
+  if (params.range === "all") {
+    return { key: "all", since: null, until: new Date(now).toISOString() };
+  }
   if (params.range === "custom") {
     const from = Date.parse(params.from ?? "");
     const to = Date.parse(params.to ?? "");
@@ -359,5 +376,9 @@ export function formatWindow(range: ResolvedRange, locale = "pl"): string {
     locale === "pl" ? "pl-PL" : locale === "de" ? "de-DE" : "en-GB",
     { dateStyle: "medium", timeZone: "Europe/Warsaw" },
   );
+  // An unbounded range has no start to print. The caption becomes an open
+  // interval rather than an invented date, which is the same promise the null
+  // makes to the query.
+  if (range.since === null) return `… – ${fmt.format(new Date(range.until))}`;
   return `${fmt.format(new Date(range.since))} – ${fmt.format(new Date(range.until))}`;
 }

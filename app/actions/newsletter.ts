@@ -20,7 +20,8 @@ import {
 import { collectUrls, renderCampaign } from "@/lib/server/newsletter/render";
 import { writeSettings } from "@/lib/server/newsletter/settings";
 import { runWorkerBatch } from "@/lib/server/newsletter/worker";
-import { readIntegrationSecrets, type MailConfig } from "@/lib/server/integrations";
+import { readIntegrationSecrets, dispatchToken, type MailConfig } from "@/lib/server/integrations";
+import { putSecret } from "@/lib/server/secret-store";
 import { bulkMailer, type MailIdentity, type SmtpConfig } from "@/lib/server/mailer";
 
 /**
@@ -2222,4 +2223,62 @@ export async function previewCampaignAction(input: {
       },
     };
   } catch (e) { return { ok: false, error: message(e) }; }
+}
+
+/* ── THE SCHEDULER PROVISIONS ITSELF ─────────────────────────────────────── */
+
+/**
+ * PUT THE TWO SCHEDULER SECRETS WHERE pg_cron CAN READ THEM.
+ *
+ * The panel used to say "Nie ustawiono sekretu grovbase.newsletter.worker_url
+ * w Vault" and stop there, which is a true sentence and a dead end: the two
+ * values it names are not things an operator has. One is this deployment's own
+ * address and the other is a token derived from a server key nobody can read
+ * off a screen. Telling somebody to go and find them is telling them to fail.
+ *
+ * BOTH ARE ALREADY KNOWN TO THE SERVER, so the fix is a button rather than an
+ * instruction:
+ *
+ *   worker_url    SITE_URL + the worker's path. Not a secret at all — it is a
+ *                 public address — and it lives in the vault only because the
+ *                 cron tick reads both of its inputs from one place.
+ *   worker_token  dispatchToken(), the same value the worker route checks the
+ *                 `x-newsletter-token` header against. It is derived from
+ *                 GROVBASE_SERVER_KEY, never typed, never logged, and never
+ *                 leaves this process except into the vault.
+ *
+ * THE SECRET IS NEVER RETURNED. The action answers with words — ok, or which
+ * input was missing — and the panel re-reads the scheduler's status to find
+ * out whether it worked. An action that handed the token back so the client
+ * could "show" it would put it in a payload, a cache and a devtools tab.
+ */
+export async function provisionSchedulerAction(): Promise<Result> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+
+    const token = dispatchToken();
+    // No GROVBASE_SERVER_KEY means no token can exist, and writing half the
+    // configuration would leave the tick failing one step later with a less
+    // obvious message. Refuse with the name of the thing that is missing.
+    if (!token) return { ok: false, error: "noServerKey" };
+    if (!SITE_URL) return { ok: false, error: "noSiteUrl" };
+
+    const url = `${SITE_URL.replace(/\/+$/, "")}/api/newsletter/worker`;
+    const wroteUrl = await putSecret(supabase, "grovbase.newsletter.worker_url", url);
+    if (!wroteUrl.ok) return { ok: false, error: wroteUrl.error };
+    const wroteToken = await putSecret(supabase, "grovbase.newsletter.worker_token", token);
+    if (!wroteToken.ok) return { ok: false, error: wroteToken.error };
+
+    // The URL is safe to record; the token is referred to by name only.
+    await logAudit(supabase, {
+      actorId: adminId,
+      action: "newsletter.scheduler.provisioned",
+      entityType: "newsletter_scheduler",
+      after: { url },
+    });
+    revalidatePath(PATHS.dashboard);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
 }

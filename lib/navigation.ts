@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Package, Sparkles, PenLine, Images, History as HistoryIcon,
   Coins, Rocket, LifeBuoy, Settings, Shield, Users, Building2, Cpu, Wrench,
   ScrollText, SlidersHorizontal, Wand2, BarChart3, Layers, Globe,
-  FolderOpen, Lightbulb, MessageSquare, ListChecks, Mail, Send,
+  FolderOpen, Lightbulb, MessageSquare, Mail, Send,
   ToggleLeft, Gift, DoorOpen, ClipboardList,
 } from "lucide-react";
 
@@ -105,7 +105,12 @@ export const ADMIN_NAV: readonly NavGroup[] = [
     // an operator ends up sending a campaign from the mailbox screen.
     { href: "/admin/newsletter", key: "newsletter", icon: Send },
     { href: "/admin/media", key: "media", icon: FolderOpen },
-    { href: "/admin/waitlist", key: "waitlist", icon: ListChecks },
+    // "Lista oczekujących" stood here. It was a second contact list with its
+    // own screen, its own counters and its own idea of who the customers are,
+    // and it has been folded into the Newsletter: the launch page still writes
+    // waitlist_subscribers, but every signup is now also a newsletter contact
+    // with source = LP Powitalna (migration 0097). One list, one place to read
+    // it. /admin/waitlist redirects to that list, pre-filtered.
     { href: "/admin/inspirations", key: "inspirations", icon: Lightbulb },
   ]},
   { key: "system", items: [

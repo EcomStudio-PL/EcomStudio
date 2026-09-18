@@ -1,13 +1,14 @@
 "use client";
 import { useState, useTransition } from "react";
-import { AlertTriangle, Loader2, Pause, Play, Send } from "lucide-react";
+import { AlertTriangle, Loader2, Pause, Play, Send, Wrench } from "lucide-react";
 import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatDate } from "@/lib/utils";
 import {
-  runWorkerNowAction, setNewsletterPausedAction, setNewsletterRateAction,
+  provisionSchedulerAction, runWorkerNowAction,
+  setNewsletterPausedAction, setNewsletterRateAction,
 } from "@/app/actions/newsletter";
 import type { SchedulerStatus } from "@/lib/services/newsletter";
 
@@ -94,6 +95,22 @@ export function SendingPanel({
           <p className="mt-1.5 text-[12px] font-medium text-muted" data-scheduler-missing>
             {t(`newsletter.scheduler.missing.${firstMissingLink(scheduler) ?? "token"}`)}
           </p>
+
+          {/* A BUTTON, NOT AN INSTRUCTION. The two missing values are this
+              deployment's own address and a token derived from a server key —
+              neither is something an operator can go and look up, so naming
+              them and stopping was a dead end. Both are already known to the
+              server; this asks it to write them. Only offered for the two
+              vault links: missing extensions or an unscheduled job are a
+              database migration's job, not a button's. */}
+          {(firstMissingLink(scheduler) === "url" || firstMissingLink(scheduler) === "token") && (
+            <Button size="sm" variant="primary" className="mt-2.5" disabled={pending}
+              data-scheduler-fix
+              onClick={() => run(provisionSchedulerAction(), t("newsletter.scheduler.fixed"))}>
+              {pending ? <Loader2 size={14} aria-hidden className="animate-spin" /> : <Wrench size={14} aria-hidden />}
+              {t("newsletter.scheduler.fix")}
+            </Button>
+          )}
         </div>
       )}
 

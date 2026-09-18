@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -52,6 +52,20 @@ export function NewsletterNav() {
   const { t } = useI18n();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const activeRef = useRef<HTMLAnchorElement>(null);
+
+  /* THE SELECTED TAB HAS TO BE ON SCREEN.
+     A row that scrolls can open scrolled past the tab the operator is on —
+     land on Analityka from a link and the bar shows Pulpit with nothing
+     selected, which reads as a broken page. `nearest` rather than `center` so
+     a tab that is already visible does not jerk the row sideways for nothing;
+     `inline` only, so this never scrolls the PAGE to reach the bar. */
+  useEffect(() => {
+    const el = activeRef.current;
+    if (!el || !scrollerRef.current) return;
+    el.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" });
+  }, [pathname]);
 
   const overflow = TABS.filter((tab) => !tab.primary);
   const overflowActive = overflow.some((tab) => isOn(pathname, tab.href, tab.exact));
@@ -63,19 +77,42 @@ export function NewsletterNav() {
 
   return (
     <nav aria-label={t("newsletter.title")} data-newsletter-nav className="mb-4">
-      {/* ── PHONE AND TABLET ─────────────────────────────────────────────── */}
-      <div className="relative flex gap-1 lg:hidden">
-        {TABS.filter((tab) => tab.primary).map((tab) => {
-          const on = isOn(pathname, tab.href, tab.exact);
-          return (
-            <Link key={tab.href} href={tab.href} data-newsletter-tab={tab.key}
-              aria-current={on ? "page" : undefined}
-              className={cn(tabClass(on), "min-w-0 flex-1 justify-center")}>
-              <tab.icon size={14} aria-hidden />
-              <span className="truncate">{t(`newsletter.nav.${tab.key}`)}</span>
-            </Link>
-          );
-        })}
+      {/* ── PHONE AND TABLET ─────────────────────────────────────────────────
+          A SCROLLING ROW, NOT FOUR EQUAL COLUMNS.
+
+          This used to be `flex-1` on each of the four primary tabs plus a
+          "Więcej" button. On a 390px phone that is roughly 70px per tab, and
+          after a 14px icon and its gap the label had about 45px — so "Pulpit"
+          rendered as "Pul...", "Kontakty" as "Ko...". Four truncated words are
+          not a navigation bar; `truncate` was hiding a layout that did not fit
+          rather than making one that does.
+
+          Now the tabs keep their natural width (`shrink-0`, no truncate) and
+          the row scrolls. The scrollbar is hidden by `thin-scroll`, the active
+          tab is scrolled into view below so a deep link never opens with the
+          current tab off-screen, and the row is the only thing that scrolls
+          sideways — the page itself does not, because the overflow is bounded
+          by this element rather than by the body.
+
+          "Więcej" sits OUTSIDE the scroller on purpose: it is not one of the
+          nine destinations, it is the way to the other five, and a button that
+          scrolls away is a button an operator cannot find. */}
+      <div className="relative flex items-center gap-1 lg:hidden">
+        <div ref={scrollerRef}
+          className="thin-scroll -mx-1 flex min-w-0 flex-1 gap-1 overflow-x-auto scroll-smooth px-1 py-0.5">
+          {TABS.filter((tab) => tab.primary).map((tab) => {
+            const on = isOn(pathname, tab.href, tab.exact);
+            return (
+              <Link key={tab.href} href={tab.href} data-newsletter-tab={tab.key}
+                ref={on ? activeRef : undefined}
+                aria-current={on ? "page" : undefined}
+                className={cn(tabClass(on), "whitespace-nowrap")}>
+                <tab.icon size={14} aria-hidden className="shrink-0" />
+                {t(`newsletter.nav.${tab.key}`)}
+              </Link>
+            );
+          })}
+        </div>
 
         <button type="button" onClick={() => setOpen((v) => !v)}
           aria-expanded={open} data-newsletter-more
