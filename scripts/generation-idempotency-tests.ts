@@ -39,7 +39,9 @@ const BASE = {
   modelId: "m-1", prompt: "a red shoe on white", aspectRatio: "1:1",
   resolution: "1K" as string | null, quality: null as string | null,
   quantity: 2, cost: 6,
-  productId: "p-1" as string | null, conceptId: null as string | null,
+  productId: "p-1" as string | null,
+  productContext: "\n\nPRODUKT: Buty sportowe",
+  conceptId: null as string | null,
   promptId: null as string | null, parentJobId: null as string | null,
   operation: null as string | null,
   referencePaths: ["a/1.jpg", "a/2.jpg"], inspirationPaths: [] as string[],
@@ -68,6 +70,13 @@ const MUST_MATTER: Array<[string, Partial<typeof BASE>]> = [
   ["a different quantity", { quantity: 3 }],
   ["a different price", { cost: 9 }],
   ["a different product", { productId: "p-2" }],
+  // THE ONE THE FIRST VERSION MISSED. The generator's normal path carries no
+  // product row at all — the seller types free text, it is concatenated into
+  // the fidelity instructions and it changes the image. Without it, two
+  // requests describing DIFFERENT products derived the same key and the second
+  // was refused as a duplicate of a run the seller never made.
+  ["a different product description", { productContext: "\n\nPRODUKT: Kubek ceramiczny" }],
+  ["a description appearing where there was none", { productContext: "" }],
   ["a different concept", { conceptId: "c-1" }],
   ["a different source prompt", { promptId: "pr-1" }],
   ["a different parent job", { parentJobId: "j-9" }],
@@ -98,6 +107,22 @@ const gen = readFileSync(join(ROOT, "lib/server/generation.ts"), "utf8");
 check("the key is no longer built from the job row",
   !/idempotencyKey:\s*`job:\$\{/.test(gen),
   "`job:${job.id}` is unique per request — the ledger would have nothing to arbitrate");
+
+/*
+  AND THE CALL SITE ACTUALLY PASSES WHAT THE HELPER ASKS FOR.
+
+  The permutations above prove the helper is sensitive to each field. They
+  cannot prove the RUNNER hands that field over — a field dropped at the call
+  site never reaches the helper, so no permutation of the helper's own inputs
+  can turn red. That is precisely how `productDescription` went missing: it
+  reached the provider and changed the image, and was absent from the key.
+
+  So the resolved product text is checked where it is passed, not only where
+  it is hashed.
+*/
+check("the runner passes the resolved product text into the key",
+  /generationIdempotencyKey\([\s\S]{0,900}?\n\s*productContext,/.test(gen),
+  "free-text product context changes the image, so it has to change the key");
 check("startUsage is given the derived key",
   /generationJobId: job\.id, idempotencyKey,/.test(gen));
 check("the key is derived before the charge",

@@ -586,6 +586,104 @@ begin
 end $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
+-- P1-35d — "SOMETHING ARRIVED" IS NOT "EVERYTHING ARRIVED".
+--
+-- Found by the adversarial review of P1-35, not by writing this fix. The
+-- reconciler treated ANY delivered asset as full delivery and stamped the run
+-- `succeeded` at the full price. That state is reachable: runGeneration
+-- inserts the assets BEFORE it prices the shortfall and before completeUsage,
+-- so an invocation killed in between leaves a run charged for four images
+-- that produced one — closed as a success, so nothing ever flags it again.
+-- ───────────────────────────────────────────────────────────────────────────
+do $$
+declare
+  f record; v_job uuid; v_gen uuid; v_ev uuid; v_bal int; v_row record;
+  v_job2 uuid; v_gen2 uuid; v_ev2 uuid; v_bal2 int;
+  v_job3 uuid; v_gen3 uuid; v_ev3 uuid;
+begin
+  raise notice '';
+  raise notice 'P1-35d a partial delivery is closed at the price of what arrived';
+  select * into f from public.t_fixture;
+  perform set_config('app.current_user', f.user_id::text, false);
+  if to_regprocedure('public.usage_events_reconcile_stale(integer,integer)') is null then
+    perform public.t_check('usage_events_reconcile_stale exists', false, 'absent');
+    return;
+  end if;
+
+  -- Charged for four, one image on disk, the bookkeeping call never made.
+  update public.credit_wallets set balance = 10 where id = f.wallet_id;
+  insert into public.generation_jobs (workspace_id) values (f.workspace_id) returning id into v_job;
+  select event_id into v_ev from public.usage_event_start(
+    'test-server-token', f.user_id, f.workspace_id, f.wallet_id, 'test-tool',
+    4, null, null, v_job, 'short:1', jsonb_build_object('quantity', 4));
+  insert into public.generations (job_id) values (v_job) returning id into v_gen;
+  insert into public.generation_assets (generation_id) values (v_gen);
+  update public.usage_events set started_at = now() - interval '2 hours' where id = v_ev;
+
+  perform public.usage_events_reconcile_stale(50, 1800);
+  select balance into v_bal from public.credit_wallets where id = f.wallet_id;
+  select status, result_count, credits_charged into v_row
+    from public.usage_events where id = v_ev;
+
+  -- 10 − 4 charged + 3 returned = 9. The seller keeps paying for the one
+  -- image they actually received, and not for the three they did not.
+  perform public.t_check('the shortfall comes back', v_bal = 9,
+    format('balance is %s, expected 9 — four credits for one image', v_bal));
+  perform public.t_check('the run is still closed as delivered', v_row.status = 'succeeded',
+    format('status is %s', v_row.status));
+  perform public.t_check('the price becomes what arrived', v_row.credits_charged = 1,
+    format('credits_charged is %s, expected 1', v_row.credits_charged));
+  perform public.t_check('and it records how much that was', v_row.result_count = 1,
+    format('result_count is %s', v_row.result_count));
+
+  -- A second sweep must not pay again. The row has left 'pending', so it
+  -- cannot even be selected — this asserts the belt, not the theory.
+  perform public.usage_events_reconcile_stale(50, 1800);
+  select balance into v_bal2 from public.credit_wallets where id = f.wallet_id;
+  perform public.t_check('a second sweep returns nothing more', v_bal2 = 9,
+    format('balance moved to %s on the second pass', v_bal2));
+
+  -- A shortfall the APPLICATION already priced is not priced twice. The
+  -- marker is the same one usage_event_refund_partial writes.
+  update public.credit_wallets set balance = 10 where id = f.wallet_id;
+  insert into public.generation_jobs (workspace_id) values (f.workspace_id) returning id into v_job2;
+  select event_id into v_ev2 from public.usage_event_start(
+    'test-server-token', f.user_id, f.workspace_id, f.wallet_id, 'test-tool',
+    4, null, null, v_job2, 'short:2', jsonb_build_object('quantity', 4));
+  insert into public.generations (job_id) values (v_job2) returning id into v_gen2;
+  insert into public.generation_assets (generation_id) values (v_gen2);
+  update public.usage_events
+     set started_at = now() - interval '2 hours',
+         metadata = metadata || jsonb_build_object('partial_refund_tx', gen_random_uuid()::text)
+   where id = v_ev2;
+
+  perform public.usage_events_reconcile_stale(50, 1800);
+  select balance into v_bal2 from public.credit_wallets where id = f.wallet_id;
+  perform public.t_check('an already-priced shortfall is not refunded again', v_bal2 = 6,
+    format('balance is %s, expected 6 — the reconciler paid a second time', v_bal2));
+
+  -- And a run that delivered everything it was charged for is untouched.
+  update public.credit_wallets set balance = 10 where id = f.wallet_id;
+  insert into public.generation_jobs (workspace_id) values (f.workspace_id) returning id into v_job3;
+  select event_id into v_ev3 from public.usage_event_start(
+    'test-server-token', f.user_id, f.workspace_id, f.wallet_id, 'test-tool',
+    2, null, null, v_job3, 'short:3', jsonb_build_object('quantity', 2));
+  insert into public.generations (job_id) values (v_job3) returning id into v_gen3;
+  insert into public.generation_assets (generation_id) values (v_gen3), (v_gen3);
+  update public.usage_events set started_at = now() - interval '2 hours' where id = v_ev3;
+
+  perform public.usage_events_reconcile_stale(50, 1800);
+  perform public.t_check('a full delivery is not refunded at all',
+    (select balance from public.credit_wallets where id = f.wallet_id) = 8,
+    format('balance is %s, expected 8',
+           (select balance from public.credit_wallets where id = f.wallet_id)));
+  perform public.t_check('and keeps its full price',
+    (select credits_charged from public.usage_events where id = v_ev3) = 2,
+    format('credits_charged is %s',
+           (select credits_charged from public.usage_events where id = v_ev3)));
+end $$;
+
+-- ───────────────────────────────────────────────────────────────────────────
 -- P1-35c — AN UNCHARGED STALE EVENT IS CLOSED, NOT PAID.
 -- 0099's rule again: no receipt, no refund. Production carries two such rows
 -- from before 0100, so this is the case the first real sweep will meet.

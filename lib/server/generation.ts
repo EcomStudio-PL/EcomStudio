@@ -10,13 +10,14 @@ import { dispatchToken } from "@/lib/server/integrations";
 import { getAdapter } from "@/lib/ai/registry";
 import {
   ALL_ASPECT_RATIOS, ProviderError, effectiveQuality, modelQualities, priceFor, priceForResolution,
-  type AspectRatio, type ImageProviderAdapter, type Quality, type Resolution, type ReferenceImage,
+  type AspectRatio, type GeneratedImage, type ImageProviderAdapter, type Quality, type Resolution, type ReferenceImage,
 } from "@/lib/ai/types";
 import { buildFidelityInstructions } from "@/lib/ai/product-lock";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
 import {
-  GENERATION_BUDGET_MS, MAX_ATTEMPTS_PER_PROVIDER, fitsInBudget, getProviderHealth, providerBlocked,
+  GENERATION_BUDGET_MS, MAX_ATTEMPTS_PER_PROVIDER, PROVIDER_CALL_BUDGET_MS,
+  fitsInBudget, getProviderHealth, providerBlocked,
   recordProviderFailure, recordProviderSuccess, retryDelayMs, sleep, withProviderLimit,
 } from "@/lib/server/provider-router";
 
@@ -94,10 +95,19 @@ const MAX_REFERENCE_PATHS = 10;
 
 /** How long a run that ended in NEITHER success nor failure keeps blocking an
  *  identical request. The same contract, and the same tumbling-bucket trade,
- *  as app/api/tools/run/route.ts. It is not an expiry on the guard: migration
- *  0101 releases the key the moment a run reaches a terminal state, so a
- *  re-run after success or failure is allowed immediately. This window only
- *  bounds the invocation killed at its 300 s ceiling. */
+ *  as app/api/tools/run/route.ts.
+ *
+ *  ONCE MIGRATION 0101 IS APPLIED this is not an expiry on the guard: 0101
+ *  releases the key at every terminal state, so a re-run after success or
+ *  failure is allowed immediately and this window only bounds the invocation
+ *  killed at its ceiling.
+ *
+ *  BEFORE 0101 IS APPLIED — which is the case for the interval between this
+ *  build deploying and that migration running, and only that interval — a
+ *  completed run still carries its key, so a byte-identical re-submit inside
+ *  the window is refused as `already_running`. Bounded, self-healing, and
+ *  stated here rather than implied, because the comment used to describe the
+ *  post-0101 world as if it were already true. */
 const GENERATION_DEDUPE_WINDOW_MS = 5 * 60_000;
 
 /**
@@ -122,6 +132,23 @@ export function generationIdempotencyKey(
     productId: string | null; conceptId: string | null; promptId: string | null;
     parentJobId: string | null; operation: string | null;
     referencePaths: string[]; inspirationPaths: string[]; markedImagePath: string | null;
+    /**
+     * THE RESOLVED PRODUCT TEXT, not the field it came from.
+     *
+     * `productId` alone is not enough, and listing `productDescription` beside
+     * it would not be either. The generator's normal path carries NO product
+     * row: the seller types free text, it becomes part of the fidelity
+     * instructions and it changes the image. Two requests identical in every
+     * other way but describing different products would otherwise derive the
+     * same key, and the second would be refused as a duplicate of the first
+     * for the rest of the window — a run the seller never got, blocked by one
+     * they did not repeat.
+     *
+     * Hashing the RESOLVED string covers all three sources at once: the
+     * catalogue row, the ad-hoc `newProduct` (whose fresh product id is
+     * deliberately kept out of the key) and the free-text description.
+     */
+    productContext: string;
   },
   nowMs: number = Date.now(),
 ): string {
@@ -304,6 +331,10 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     // mints a fresh product row per request, which would make the key unique
     // again and silently undo this whole fix.
     productId: input.productId ?? null,
+    // Resolved above from the catalogue row, the ad-hoc product or the
+    // seller's free text — whichever this request actually carries. It is
+    // part of what the provider is asked for, so it is part of the key.
+    productContext,
     conceptId: input.conceptId ?? null,
     promptId: input.promptId ?? null,
     parentJobId: input.parentJobId ?? null,
@@ -453,6 +484,10 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   let result: Awaited<ReturnType<ImageProviderAdapter["generate"]>> | null = null;
   let served: { model: typeof model; providerSlug: string } | null = null;
   let lastError: ProviderError | null = null;
+  /** Images a provider already produced AND BILLED on a failed attempt. Held
+   *  across retries so a run that exhausts them still delivers what exists
+   *  rather than paying for it twice. */
+  let lastPartial: GeneratedImage[] | null = null;
 
   for (const candidateId of candidateIds) {
     if (outOfTime) break;
@@ -510,11 +545,38 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     const cFit = supportsRefs ? fitRefs(cModel.max_reference_images || 6) : fitRefs(0);
     const cFidelity = buildFidelity(cFit);
 
+    /*
+      HOW MUCH TIME ONE ATTEMPT NEEDS — asked, not assumed.
+
+      This used to be one flat constant for every provider, taken from the
+      OpenAI adapter's single 180 s request. The Google adapter does not make
+      one request: it makes `quantity` of them in sequence, so a four-image
+      attempt there can need four times as long. The flat number let such an
+      attempt start with nowhere near enough time, and an attempt that
+      overruns the route is killed with its charge already taken — exactly the
+      failure this deadline exists to prevent.
+
+      The gate asks for ONE image's worth rather than the whole attempt. An
+      adapter that produces images one at a time now carries the deadline into
+      its own loop and stops when there is no time for another, handing back
+      what it already produced through the partial path below; so "there is
+      time for at least one" is the honest precondition, and demanding the
+      absolute worst case would refuse four-image runs that almost always fit.
+    */
+    const cCallMs = cAdapter.worstCaseMs?.(1) ?? PROVIDER_CALL_BUDGET_MS;
+
     for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_PROVIDER; attempt++) {
-      // Fast failures are still retried; slow ones are not. That is the honest
-      // policy: a call that cannot finish before the route dies is not a retry,
-      // it is a charge with no way back.
-      if (!fitsInBudget(Date.now(), deadlineAt)) {
+      /*
+        Fast failures are still retried; slow ones are not. That is the honest
+        policy: a call that cannot finish before the route dies is not a retry,
+        it is a charge with no way back.
+
+        `?? ` and not `= `: an EARLIER attempt's error is the more useful one
+        to show. So running out of time is recorded in the attempts trail
+        below, but what the customer and the job row are told is whatever
+        actually went wrong first — "provider_timeout" only when nothing did.
+      */
+      if (!fitsInBudget(Date.now(), deadlineAt, cCallMs)) {
         outOfTime = true;
         lastError = lastError ?? new ProviderError("provider_timeout", false);
         attempts.push({
@@ -528,6 +590,10 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
           // A fallback engine only receives the quality if IT declares it.
           quality: quality && modelQualities(cModel).includes(quality) ? quality : undefined,
           quantity, referenceImages: cFit.list, productLock: { fidelityInstructions: cFidelity },
+          // The adapter cuts its own timeouts against this. A provider that
+          // goes quiet is abandoned before the platform kills the function,
+          // which is what keeps the refund below reachable.
+          deadlineAt,
         }, { apiKey: cApiKey, baseUrl: cBaseUrl }));
         served = { model: cModel, providerSlug: cProviderSlug };
         if (health.get(cProviderSlug) && health.get(cProviderSlug)!.state !== "healthy") {
@@ -548,15 +614,33 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         // completeUsage books the real cost of what actually arrived — so the
         // customer pays for three images instead of four, and GrovBase stops
         // paying twice for the three it already has.
-        if (pe.partial?.length) {
-          result = { images: pe.partial };
+        /*
+          KEEPING WHAT WAS BILLED IS NOT THE SAME AS GIVING UP.
+
+          This branch used to sit above the retry test, so ANY mid-batch
+          failure ended the attempt outright. A Google per-minute 429 on image
+          2 of 4 — the most ordinary retriable error there is — turned a run
+          that used to deliver four images after a short wait into one that
+          delivers one and refunds the rest. That traded a real regression for
+          the double-buy it was fixing.
+
+          The fix is to take the partial ONLY when there is no retry left to
+          take: a retriable failure with attempts remaining falls through to
+          the backoff below, exactly as it did before this work. The images
+          are still not discarded — `lastPartial` holds them, and if the retry
+          also fails they are delivered instead of thrown away.
+        */
+        if (pe.partial?.length) lastPartial = pe.partial;
+        const spent = !pe.retriable || attempt === MAX_ATTEMPTS_PER_PROVIDER;
+        if (spent && lastPartial?.length) {
+          result = { images: lastPartial };
           served = { model: cModel, providerSlug: cProviderSlug };
           break;
         }
-        if (!pe.retriable || attempt === MAX_ATTEMPTS_PER_PROVIDER) break; // next candidate
+        if (spent) break; // next candidate
         // Sleeping into the deadline wastes the time the refund needs.
         const delay = retryDelayMs(attempt, pe.upstream?.retryAfterMs);
-        if (!fitsInBudget(Date.now() + delay, deadlineAt)) { outOfTime = true; break; }
+        if (!fitsInBudget(Date.now() + delay, deadlineAt, cCallMs)) { outOfTime = true; break; }
         await sleep(delay);
       }
     }

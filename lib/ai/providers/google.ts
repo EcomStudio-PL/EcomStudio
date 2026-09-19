@@ -1,6 +1,6 @@
 import "server-only";
 import type { AiModelRecord, GenerationRequest, GenerationResult, ImageProviderAdapter, ProviderCredential } from "../types";
-import { ProviderError, sanitizeUpstreamMessage } from "../types";
+import { ProviderError, sanitizeUpstreamMessage, timeoutFor } from "../types";
 
 /**
  * Google's 429 body decides everything: a per-minute quota violation is a
@@ -66,6 +66,21 @@ export const googleAdapter: ImageProviderAdapter = {
     exactRatios: ["1:1", "3:4", "4:5", "16:9", "9:16"],
   },
 
+  /**
+   * N IMAGES IS N SEQUENTIAL CALLS HERE, so the worst case scales with the
+   * quantity — four images can take four times the per-call timeout below.
+   *
+   * The runner used to assume one flat ceiling for every provider, which was
+   * the OpenAI adapter's single 180 s request. On this adapter that assumption
+   * let a four-image attempt START with far less time left than it could need,
+   * and an attempt that overruns the route is killed with its charge already
+   * taken — precisely the failure the deadline exists to prevent. The adapter
+   * knows its own shape; the runner should not have to guess it.
+   */
+  worstCaseMs(quantity: number): number {
+    return Math.max(1, quantity) * 95_000; // the 90 s below, plus the round trip
+  },
+
   async generate(model: AiModelRecord, req: GenerationRequest, cred: ProviderCredential): Promise<GenerationResult> {
     const base = cred.baseUrl?.replace(/\/$/, "") || "https://generativelanguage.googleapis.com";
     const url = `${base}/v1beta/models/${model.model_identifier}:generateContent?key=${encodeURIComponent(cred.apiKey)}`;
@@ -90,6 +105,15 @@ export const googleAdapter: ImageProviderAdapter = {
     // images stop being discarded.
     const images: GenerationResult["images"] = [];
     for (let i = 0; i < req.quantity; i++) {
+      // THE DEADLINE IS CHECKED PER IMAGE, because each image is its own
+      // request. Stopping here hands back what was produced through the
+      // partial path below; running on would be killed by the platform with
+      // the charge already taken and nobody left to refund it.
+      const budget = timeoutFor(90_000, req.deadlineAt);
+      if (budget <= 0) {
+        if (images.length === 0) throw new ProviderError("provider_timeout", true);
+        throw new ProviderError("provider_timeout", true, undefined, undefined, images);
+      }
       try {
         const res = await fetch(url, {
           method: "POST",
@@ -101,7 +125,7 @@ export const googleAdapter: ImageProviderAdapter = {
               imageConfig,
             },
           }),
-          signal: AbortSignal.timeout(90_000),
+          signal: AbortSignal.timeout(budget),
         }).catch((e) => {
           throw new ProviderError(e?.name === "TimeoutError" ? "provider_timeout" : "provider_unreachable", true);
         });

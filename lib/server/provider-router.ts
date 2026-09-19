@@ -59,9 +59,17 @@ export async function withProviderLimit<T>(slug: string, fn: () => Promise<T>): 
 
 export const MAX_ATTEMPTS_PER_PROVIDER = 3;
 
-/** The slowest single provider call this codebase can make — the OpenAI image
- *  adapter's own AbortSignal.timeout (lib/ai/providers/openai.ts:68), plus a
- *  little for the round trip around it. */
+/**
+ * The default ceiling for ONE provider call: the OpenAI image adapter's own
+ * AbortSignal.timeout plus a little for the round trip around it.
+ *
+ * IT IS A DEFAULT, NOT A UNIVERSAL TRUTH, and the comment here used to claim
+ * otherwise — "the slowest single provider call this codebase can make". It
+ * is not: the Google adapter issues `quantity` requests in sequence, so its
+ * worst case scales with the quantity and can exceed this several times over.
+ * An adapter that does not fit this shape declares `worstCaseMs()` and the
+ * runner asks it instead.
+ */
 export const PROVIDER_CALL_BUDGET_MS = 185_000;
 
 /** What the provider loop may spend inside a 300 s route, leaving ~60 s for

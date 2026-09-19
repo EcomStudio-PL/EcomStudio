@@ -5,6 +5,21 @@
 -- policy the old build writes through, so applying it early breaks every paid
 -- run until the new build lands. Order: 0100 → deploy → 0101.
 --
+-- ── THE GAP BETWEEN THOSE TWO STEPS IS NOT EMPTY ───────────────────────────
+--
+-- Apply this PROMPTLY after the deploy, not at the next convenient moment,
+-- and know what the interval costs. The new build derives the generation key
+-- from the request instead of from the job row, and until this file lands a
+-- COMPLETED run still carries that key. So inside the window: a seller who
+-- presses "Generuj" twice with identical settings, or "Ponów" on the same
+-- photo, is told the run is already in progress — about a run that finished.
+--
+-- It is bounded and self-healing: at most the five-minute bucket in the
+-- derived key, only for a byte-identical re-submit, and gone the moment this
+-- migration is applied. Nothing is charged twice and nothing is lost. It is
+-- written down here because an operator watching the deploy should recognise
+-- it as the known cost of the ordering rather than as a new defect.
+--
 -- ── 1. The key is released when the run ends ────────────────────────────────
 --
 -- THE DEFECT THIS FIXES, which 0100 introduced. `usage_event_start` refuses a

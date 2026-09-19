@@ -125,6 +125,34 @@ export interface GenerationRequest {
     /** Instructions the provider MUST preserve: shape, proportions, colors, item count, buttons, ports, labels, accessories, materials, scale. */
     fidelityInstructions: string;
   };
+  /**
+   * EPOCH MS AFTER WHICH THE RUNNER MUST HAVE CONTROL BACK.
+   *
+   * An adapter's own timeouts are sized for the provider, not for the route
+   * that is hosting the request. A serverless function killed mid-call takes
+   * its charge with it and leaves nobody to refund it, so the adapter has to
+   * give up BEFORE that happens rather than after. Every adapter clamps its
+   * per-request timeout against this, and an adapter that produces images one
+   * at a time stops looping once there is no longer time for another.
+   *
+   * Absent = no deadline, which is the right default for a caller that is not
+   * inside a request (a script, a test).
+   */
+  deadlineAt?: number;
+}
+
+/**
+ * How long a single provider request may block, given the deadline.
+ *
+ * `cap` is the adapter's own ceiling — what it would use if it were the only
+ * thing running. The answer is never larger than that and never larger than
+ * the time actually left. A non-positive answer means there is no time left
+ * at all, and the caller must stop rather than issue a request that cannot
+ * come back in time.
+ */
+export function timeoutFor(cap: number, deadlineAt?: number, nowMs: number = Date.now()): number {
+  if (deadlineAt === undefined) return cap;
+  return Math.min(cap, deadlineAt - nowMs);
 }
 
 export type GeneratedImage = { base64?: string; url?: string; mime: string; width?: number; height?: number };
@@ -159,6 +187,21 @@ export interface ImageProviderAdapter {
      */
     exactRatios?: AspectRatio[];
   };
+  /**
+   * THE WORST CASE FOR ONE generate() CALL, IN MILLISECONDS.
+   *
+   * The runner refuses to START an attempt it cannot finish before the route
+   * is killed, and to do that it has to know how long an attempt can take.
+   * That number is NOT a property of the runner: an adapter that sends one
+   * request for `quantity` images is bounded by one timeout, and an adapter
+   * that sends `quantity` requests in sequence is bounded by `quantity` of
+   * them. Asking the adapter is the only way the runner can be right about
+   * both without knowing which vendor it is talking to.
+   *
+   * Absent = the flat default in lib/server/provider-router.ts, which is
+   * correct for any adapter that makes a single bounded call.
+   */
+  worstCaseMs?(quantity: number): number;
   generate(model: AiModelRecord, req: GenerationRequest, cred: ProviderCredential): Promise<GenerationResult>;
 }
 

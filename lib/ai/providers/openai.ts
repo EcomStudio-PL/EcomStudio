@@ -1,6 +1,6 @@
 import "server-only";
 import type { AiModelRecord, GenerationRequest, GenerationResult, ImageProviderAdapter, ProviderCredential } from "../types";
-import { ProviderError, sanitizeUpstreamMessage } from "../types";
+import { ProviderError, sanitizeUpstreamMessage, timeoutFor } from "../types";
 
 /**
  * OpenAI's image endpoint has exactly three shapes plus "auto": square,
@@ -65,7 +65,9 @@ export const openaiAdapter: ImageProviderAdapter = {
       body: refs.length > 0
         ? editForm(model.model_identifier, prompt, size, quality, req.quantity, refs, highFidelity)
         : JSON.stringify({ model: model.model_identifier, prompt, n: req.quantity, size, quality }),
-      signal: AbortSignal.timeout(180_000),
+      // Never past the runner's deadline: a request that outlives the route
+      // is killed with the charge already taken and nobody left to refund it.
+      signal: AbortSignal.timeout(Math.max(1, timeoutFor(180_000, req.deadlineAt))),
     }).catch((e) => {
       throw new ProviderError(e?.name === "TimeoutError" ? "provider_timeout" : "provider_unreachable", true);
     });

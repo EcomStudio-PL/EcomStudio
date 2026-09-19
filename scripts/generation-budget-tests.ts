@@ -34,6 +34,10 @@ import { join } from "path";
 import {
   GENERATION_BUDGET_MS, MAX_ATTEMPTS_PER_PROVIDER, PROVIDER_CALL_BUDGET_MS, fitsInBudget,
 } from "../lib/server/provider-router";
+import { timeoutFor } from "../lib/ai/types";
+import { googleAdapter } from "../lib/ai/providers/google";
+import { openaiAdapter } from "../lib/ai/providers/openai";
+import { falAdapter } from "../lib/ai/providers/fal";
 
 const ROOT = process.cwd();
 let failures = 0;
@@ -51,9 +55,66 @@ check("a call that would end exactly on the deadline is allowed",
 check("a call that would end one millisecond late is refused",
   !fitsInBudget(55_001, 240_000, 185_000));
 check("no time left means no attempt", !fitsInBudget(240_000, 240_000, 185_000));
-check("the default call length is the slowest adapter we have",
+check("the default call length covers a single bounded request",
   PROVIDER_CALL_BUDGET_MS >= 180_000,
   `${PROVIDER_CALL_BUDGET_MS}ms is below the 180s OpenAI image timeout`);
+
+/*
+  …AND THE DEFAULT IS NOT ASSUMED TO COVER EVERY ADAPTER.
+
+  This section used to assert one hardcoded number and stop, which is exactly
+  how the hole got through: the Google adapter issues `quantity` requests in
+  sequence, so four images there can need far longer than the OpenAI timeout
+  the constant was taken from. The flat number let such an attempt start with
+  nowhere near enough time, and an attempt that overruns the route is killed
+  with the charge already taken.
+
+  Two things now have to hold, and neither is a number written down here.
+*/
+const ADAPTERS: Array<[string, { worstCaseMs?: (q: number) => number }]> = [
+  ["google", googleAdapter], ["openai", openaiAdapter], ["fal", falAdapter],
+];
+for (const [name, adapter] of ADAPTERS) {
+  const worst = adapter.worstCaseMs?.(4) ?? PROVIDER_CALL_BUDGET_MS;
+  const one = adapter.worstCaseMs?.(1) ?? PROVIDER_CALL_BUDGET_MS;
+  // 1. An adapter whose worst case grows with the quantity must SAY SO, so the
+  //    runner can ask instead of assuming.
+  check(`${name} declares a per-image worst case if it has one`,
+    worst === one || adapter.worstCaseMs !== undefined,
+    "an adapter that loops per image and stays silent gets the flat default");
+  // 2. Whatever it declares for ONE image must fit, or the gate would refuse
+  //    every attempt on that provider and the feature would simply stop.
+  check(`${name} can always start at least one image`, one <= GENERATION_BUDGET_MS,
+    `${one}ms does not fit in the ${GENERATION_BUDGET_MS}ms budget`);
+}
+
+/*
+  THE OTHER HALF OF THE FIX, and the one that makes the gate honest: an
+  adapter carries the deadline into its own timeouts, so it gives up BEFORE
+  the platform kills the function rather than after. Without this, "there is
+  time for one image" would still let a four-image run overrun.
+*/
+check("a timeout is never longer than the time actually left",
+  timeoutFor(90_000, 1_000_000, 950_000) === 50_000,
+  "the adapter would block past the deadline");
+check("its own ceiling still wins when there is plenty of time",
+  timeoutFor(90_000, 1_000_000, 500_000) === 90_000);
+check("no deadline means the adapter's own ceiling",
+  timeoutFor(90_000, undefined, 500_000) === 90_000);
+check("no time left is reported as no time left",
+  timeoutFor(90_000, 1_000_000, 1_000_001) < 0,
+  "a caller must be able to tell that it has to stop");
+
+const genSrc = readFileSync(join(ROOT, "lib/server/generation.ts"), "utf8");
+check("the runner asks the adapter instead of assuming",
+  /cAdapter\.worstCaseMs\?\.\(1\)\s*\?\?\s*PROVIDER_CALL_BUDGET_MS/.test(genSrc));
+check("and hands the deadline to the adapter",
+  /\n\s*deadlineAt,\n/.test(genSrc),
+  "an adapter that cannot see the deadline cannot respect it");
+for (const p of ["google", "openai", "fal"]) {
+  check(`the ${p} adapter clamps against it`,
+    /timeoutFor\(/.test(readFileSync(join(ROOT, `lib/ai/providers/${p}.ts`), "utf8")));
+}
 
 /* ── B. the loop, simulated against the real routes ─────────────────────── */
 console.log("\nB. THE WORST CASE FITS INSIDE EVERY ROUTE THAT CAN REACH THE LOOP");
@@ -120,11 +181,14 @@ check("generation.ts imports the budget helpers",
 check("a deadline is derived from the invocation start",
   /const deadlineAt = invocationStartedAt \+ GENERATION_BUDGET_MS/.test(gen),
   "the deadline must cover the model resolve, the charge and the reference downloads too");
+// The third argument is the point: these used to match a two-argument call,
+// which is the flat default — the very assumption that let a per-image adapter
+// overrun. The gate must be asked with the length THIS adapter needs.
 check("the attempt loop refuses to start a call that cannot finish",
-  /for \(let attempt[\s\S]{0,400}?if \(!fitsInBudget\(Date\.now\(\), deadlineAt\)\)/.test(gen),
-  "the check must be the first thing inside the attempt loop");
+  /for \(let attempt[\s\S]{0,900}?if \(!fitsInBudget\(Date\.now\(\), deadlineAt, cCallMs\)\)/.test(gen),
+  "the check must open the attempt loop, and must use the adapter's own length");
 check("the backoff does not sleep past the deadline",
-  /if \(!fitsInBudget\(Date\.now\(\) \+ delay, deadlineAt\)\)/.test(gen));
+  /if \(!fitsInBudget\(Date\.now\(\) \+ delay, deadlineAt, cCallMs\)\)/.test(gen));
 check("running out of time leaves the loop through the existing refund path",
   /outOfTime = true/.test(gen) && /if \(outOfTime\) break;/.test(gen),
   "both the attempt loop and the candidate loop must give up");

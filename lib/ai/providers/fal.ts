@@ -1,6 +1,6 @@
 import "server-only";
 import type { AiModelRecord, GenerationRequest, GenerationResult, ImageProviderAdapter, ProviderCredential } from "../types";
-import { ProviderError, sanitizeUpstreamMessage } from "../types";
+import { ProviderError, sanitizeUpstreamMessage, timeoutFor } from "../types";
 
 const SIZE: Record<string, Record<string, { width: number; height: number }>> = {
   "1K": {
@@ -47,7 +47,9 @@ export const falAdapter: ImageProviderAdapter = {
         num_images: req.quantity,
         enable_safety_checker: true,
       }),
-      signal: AbortSignal.timeout(120_000),
+      // Never past the runner's deadline: a request that outlives the route
+      // is killed with the charge already taken and nobody left to refund it.
+      signal: AbortSignal.timeout(Math.max(1, timeoutFor(120_000, req.deadlineAt))),
     }).catch((e) => {
       throw new ProviderError(e?.name === "TimeoutError" ? "provider_timeout" : "provider_unreachable", true);
     });

@@ -14,10 +14,20 @@ import type { ToolSlug } from "@/lib/images/tools";
  *
  * TWO RULES SHAPE THIS FILE.
  *
- * The limit is counted and consumed in ONE database statement
+ * The limit is counted and consumed inside ONE database FUNCTION
  * (`claim_free_tool_run`), never read here and written there. A batch runs
- * three uploads at a time; two workers a millisecond apart would both read
- * "9 of 10 used" and both proceed, and the tenth image would be the twelfth.
+ * three uploads at a time, and the count and the insert must not be separated
+ * by a network round trip.
+ *
+ * BE PRECISE ABOUT WHAT THAT BUYS. The deployed body counts and then inserts,
+ * with no row lock and no unique constraint behind it, so at READ COMMITTED
+ * two claims arriving together can both pass the count and both be granted.
+ * One statement would be airtight; one function is merely much narrower than
+ * a round trip. The overrun is bounded by how many requests land in the same
+ * instant, the cost of one extra background removal is $0.02, and closing it
+ * properly means a constraint or an advisory lock on a path that is not in
+ * this stage's scope. Recorded here so the next reader does not inherit a
+ * guarantee that was never made.
  *
  * A grant is taken BEFORE the provider is called and is not handed back if the
  * PROVIDER fails. That is deliberate and it is the conservative choice:
@@ -109,12 +119,15 @@ export function planQualifies(rule: FreeToolRule, planSlug: string | null): bool
  */
 export async function claimFreeRun(
   supabase: Client, workspaceId: string, slug: ToolSlug, rule: FreeToolRule,
+  /** The window this claim belongs to. Passed in so the RELEASE can name the
+   *  same one — see releaseFreeRun. Defaults to the current window. */
+  windowStartIso: string = windowStart(rule.window).toISOString(),
 ): Promise<number | null> {
   const { data, error } = await supabase.rpc("claim_free_tool_run", {
     p_workspace_id: workspaceId,
     p_tool_slug: slug,
     p_limit: rule.limit,
-    p_window_start: windowStart(rule.window).toISOString(),
+    p_window_start: windowStartIso,
   });
   if (error) {
     // Worth a line in the log: an operator who switched the free tier on and
@@ -135,17 +148,25 @@ export async function claimFreeRun(
  * seller their run back. Returns whether one was returned; `false` is not an
  * error, it means there was nothing to return, which is exactly what a second
  * call looks like.
+ *
+ * THE WINDOW COMES FROM THE CLAIM, NOT FROM THE CLOCK. Recomputing it here
+ * looked equivalent and is not: a run claimed at 23:59:59 and refused a second
+ * later would look in the NEXT day's window, find nothing to hand back, and
+ * the seller would quietly lose the run. Rare, but it costs someone a free run
+ * for no reason, and passing the window the claim used removes the race
+ * entirely rather than narrowing it.
  */
 export async function releaseFreeRun(
   supabase: Client, serverToken: string | null,
   workspaceId: string, slug: ToolSlug, rule: FreeToolRule,
+  windowStartIso: string = windowStart(rule.window).toISOString(),
 ): Promise<boolean> {
   if (!serverToken) return false;
   const { data, error } = await supabase.rpc("release_free_tool_run", {
     p_token: serverToken,
     p_workspace_id: workspaceId,
     p_tool_slug: slug,
-    p_window_start: windowStart(rule.window).toISOString(),
+    p_window_start: windowStartIso,
   });
   if (error) {
     // Same reasoning as the claim: an operator whose sellers report losing

@@ -43,8 +43,15 @@
 --   concurrency-safe      `for update skip locked` — two runners never see the
 --                         same row, and the one that has it holds the lock for
 --                         the whole decision.
---   no free run           delivery outranks the clock; a delivered run is
---                         closed, not refunded.
+--   no free run           delivery outranks the clock: a run whose work is on
+--                         disk is closed, not refunded. What it is closed AT
+--                         is a second question — a run that delivered fewer
+--                         images than it was charged for is closed at the
+--                         price of what arrived, with the difference returned
+--                         once. "Something was delivered" is not "everything
+--                         was delivered", and treating the two as the same is
+--                         how a seller ends up paying four credits for one
+--                         image with nothing left to flag it.
 --   no double charge      it never debits. There is no code path here that
 --                         calls apply_credit_transaction with a negative amount.
 --   no double refund      the refund and the `refund_tx_id` stamp are one
@@ -77,6 +84,11 @@ declare
   v_delivered integer;
   v_session uuid;
   v_tx uuid;
+  -- How many the run was PAID for, and what a shortfall is worth. Zero means
+  -- the row does not say, and an unknown expectation is never guessed at.
+  v_expected integer;
+  v_keep integer;
+  v_short integer;
 begin
   for v_row in
     select e.id, e.workspace_id, e.credits_charged, e.credit_tx_id,
@@ -112,15 +124,83 @@ begin
     end if;
 
     if v_delivered > 0 then
+      /*
+        DELIVERED IS NOT THE SAME AS DELIVERED IN FULL.
+
+        This branch used to stamp any run with at least one asset as
+        `succeeded` at the full price. That state is reachable and expensive:
+        runGeneration inserts the assets BEFORE it prices the shortfall and
+        before completeUsage, so an invocation killed in between leaves a run
+        charged for four images that produced one — and closing it as a
+        success means nothing ever flags it again. The seller pays four
+        credits for one image, permanently.
+
+        The evidence needed to price it is already on the row: the ledger
+        records `quantity` in metadata, and `v_delivered` is counted above. So
+        the shortfall is returned here on exactly the terms the application
+        would have used, and only then is the run closed.
+
+        THREE THINGS KEEP THIS FROM PAYING TWICE. It is skipped when the
+        application already priced a shortfall (`partial_refund_tx`, the same
+        marker usage_event_refund_partial writes); it never runs on a row with
+        no receipt; and the row leaves `pending` in the same statement, so no
+        later sweep can select it again.
+
+        An unknown or nonsensical `quantity` refunds NOTHING. Guessing at the
+        price of a delivery is worse than leaving an operator a row to read.
+      */
+      begin
+        v_expected := greatest(coalesce(nullif(v_row.metadata->>'quantity', '')::integer, 0), 0);
+      exception when others then
+        v_expected := 0;
+      end;
+
+      v_short := 0;
+      if v_expected > 0 and v_delivered < v_expected
+         and v_row.credit_tx_id is not null and v_row.credits_charged > 0
+         and (v_row.metadata->>'partial_refund_tx') is null then
+        -- floor() on what is KEPT, so a rounding remainder falls to the
+        -- customer rather than to us.
+        v_keep := floor(v_row.credits_charged::numeric * v_delivered / v_expected);
+        v_short := greatest(v_row.credits_charged - v_keep, 0);
+      end if;
+
+      if v_short > 0 then
+        select id into v_wallet from public.credit_wallets
+         where workspace_id = v_row.workspace_id;
+        if v_wallet is null then
+          event_id := v_row.id; outcome := 'no_wallet'; return next;
+          continue;
+        end if;
+        v_tx := public.apply_credit_transaction(
+          v_wallet, v_short, 'refund', 'Refund: fewer images than the run was charged for',
+          v_row.id,
+          jsonb_build_object('reason', 'reconciled_shortfall', 'actor', 'system',
+                             'delivered', v_delivered, 'expected', v_expected),
+          null);
+      end if;
+
       update public.usage_events
          set status = 'succeeded',
              result_count = greatest(result_count, v_delivered),
+             -- The price becomes what was actually delivered, so no report
+             -- reads the difference as revenue.
+             credits_charged = credits_charged - v_short,
              finished_at = coalesce(finished_at, now()),
              idempotency_key = null,
              metadata = coalesce(metadata, '{}'::jsonb)
-               || jsonb_build_object('reconciled', 'delivered', 'reconciled_at', now())
+               || jsonb_build_object('reconciled',
+                    case when v_short > 0 then 'delivered_short' else 'delivered' end,
+                    'reconciled_at', now())
+               -- The application's own marker, so the two paths cannot both
+               -- price the same shortfall.
+               || case when v_short > 0
+                    then jsonb_build_object('partial_refund_tx', v_tx)
+                    else '{}'::jsonb end
        where id = v_row.id and status = 'pending';
-      event_id := v_row.id; outcome := 'closed_delivered'; return next;
+      event_id := v_row.id;
+      outcome := case when v_short > 0 then 'closed_short' else 'closed_delivered' end;
+      return next;
       continue;
     end if;
 
@@ -151,8 +231,15 @@ begin
     select id into v_wallet from public.credit_wallets
      where workspace_id = v_row.workspace_id;
     if v_wallet is null then
-      -- Reported, not swallowed: a charged event whose workspace has no wallet
-      -- is something an operator needs to see, not something to guess at.
+      -- Returned in the result set rather than guessed at. Be honest about
+      -- what that is worth: under pg_cron the rows are discarded, and the
+      -- event has already left 'pending' above, so no later sweep revisits
+      -- it. It is a diagnostic for a deliberate run, not an alert.
+      --
+      -- It is also close to unreachable: deleting a wallet cascades
+      -- credit_transactions, which nulls usage_events.credit_tx_id, so such a
+      -- row takes the 'closed_uncharged' branch above instead. Kept because a
+      -- branch that silently falls through is worse than one that says so.
       event_id := v_row.id; outcome := 'no_wallet'; return next;
       continue;
     end if;

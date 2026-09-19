@@ -19,7 +19,7 @@ import {
   MAX_INPUT_BYTES, type OutputFormat,
 } from "@/lib/images/local";
 import { clampEditorState } from "@/lib/images/editor-state";
-import { claimFreeRun, freeToolRules, planQualifies, releaseFreeRun } from "@/lib/server/free-tools";
+import { claimFreeRun, freeToolRules, planQualifies, releaseFreeRun, windowStart } from "@/lib/server/free-tools";
 
 /**
  * IMAGE TOOLS SERVICE — the single place a tool run happens.
@@ -607,8 +607,11 @@ async function runPaid(
   const rules = await freeToolRules(supabase);
   const rule = rules.get(slug);
   let freeRemaining: number | null = null;
-  if (rule && planQualifies(rule, await planSlugOf(supabase, workspaceId, rule))) {
-    freeRemaining = await claimFreeRun(supabase, workspaceId, slug, rule);
+  // Pinned once: the release below must hand the grant back to the window the
+  // claim took it from, not to whichever window the clock has moved on to.
+  const freeWindowIso = rule ? windowStart(rule.window).toISOString() : null;
+  if (rule && freeWindowIso && planQualifies(rule, await planSlugOf(supabase, workspaceId, rule))) {
+    freeRemaining = await claimFreeRun(supabase, workspaceId, slug, rule, freeWindowIso);
   }
   const price: PriceQuote = freeRemaining === null ? priced : { ...priced, credits: 0 };
 
@@ -618,7 +621,7 @@ async function runPaid(
   // nothing was delivered (migration 0103).
   const releaseFree = async () => {
     if (freeRemaining === null || !rule) return;
-    await releaseFreeRun(supabase, dispatchToken(), workspaceId, slug, rule);
+    await releaseFreeRun(supabase, dispatchToken(), workspaceId, slug, rule, freeWindowIso ?? undefined);
   };
 
   const { data: wallet } = await supabase

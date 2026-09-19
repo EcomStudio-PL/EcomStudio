@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { syncNowAction } from "@/app/actions/mail";
 import { runBudgetCheckAction } from "@/app/actions/ai-budgets";
 import { expireAccountBlocks } from "@/lib/server/account-blocks";
+import { reconcileStaleUsage } from "@/lib/services/usage";
+import { dispatchToken } from "@/lib/server/integrations";
 import { createClient } from "@/lib/supabase/server";
 import {
   popularityIsStale, readToolPopularity, refreshToolPopularity,
@@ -90,12 +92,29 @@ export async function GET() {
   */
   const blocks = await sweepExpiredBlocks().catch(() => ({ ok: false as const, error: "error" }));
 
+  /*
+    …and so is closing out charged runs that never came back.
+
+    pg_cron is the primary schedule for this — every ten minutes, inside the
+    database, where it does not depend on a deployment at all. This is the
+    BELT: the same reconciler reachable over HTTP, so the job still happens on
+    a deployment where pg_cron is unavailable, and so an operator can trigger
+    it deliberately. Migration 0102 describes it as existing; before this it
+    had no caller anywhere in the application, which meant a pg_cron schedule
+    that silently failed to install would have left nothing at all running.
+
+    It returns counts and never throws: the reconciler is idempotent, so a run
+    that overlaps the pg_cron one simply finds nothing left to do.
+  */
+  const reconciled = await reconcileStale().catch(() => null);
+
   if (!result.ok) {
     // A disabled or unconfigured integration is a state, not a server fault:
     // answering 500 would turn a normal "not set up yet" into a paging alert.
     return NextResponse.json({
       ok: false, reason: result.error, popularity,
       blocksLifted: blocks.ok ? blocks.lifted : null,
+      reconciled,
     }, { status: 200 });
   }
   /*
@@ -123,6 +142,7 @@ export async function GET() {
     ok: true, found: result.found, sent: result.sent, failed: result.failed,
     budgets: budgets.ok ? { checked: budgets.checked, alerted: budgets.alerted } : { ok: false },
     blocksLifted: blocks.ok ? blocks.lifted : null,
+    reconciled,
     popularity,
   });
 }
@@ -141,6 +161,12 @@ export async function GET() {
 async function sweepExpiredBlocks() {
   const supabase = await createClient();
   return expireAccountBlocks(supabase);
+}
+
+/** The reconciler's HTTP belt. Its own client, for the same reason as above. */
+async function reconcileStale() {
+  const supabase = await createClient();
+  return reconcileStaleUsage(supabase, dispatchToken());
 }
 
 /**

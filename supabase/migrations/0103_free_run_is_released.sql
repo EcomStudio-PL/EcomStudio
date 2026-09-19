@@ -37,10 +37,14 @@ begin
   if auth.uid() is null then raise exception 'unauthenticated'; end if;
   if not public.is_workspace_member(p_workspace_id) then raise exception 'not_authorized'; end if;
 
-  -- Grants are fungible counters — 0075 declares them per workspace and tool
-  -- with no reference to the run that took them — so handing one back means
-  -- deleting exactly ONE row inside the CURRENT window. Never more: the window
-  -- bound is what stops a release reaching into a previous period's allowance.
+  -- Grants are fungible counters in practice: 0075 does declare a
+  -- `usage_event_id` column, but nothing has ever written to it, so no row
+  -- can say which run took it. Nothing here can identify a grant — so it
+  -- deletes exactly ONE row inside the window it is given. Never more: that
+  -- bound is what stops a release reaching into a previous period's allowance,
+  -- and the caller passes the window its CLAIM used rather than the one the
+  -- clock is in now, so a run claimed just before midnight is handed back to
+  -- the allowance it actually came out of.
   --
   -- `for update skip locked` is what keeps two concurrent releases from
   -- selecting the same row, where one of them would delete it and the other
