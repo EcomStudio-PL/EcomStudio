@@ -105,7 +105,30 @@ check("no time left is reported as no time left",
   timeoutFor(90_000, 1_000_000, 1_000_001) < 0,
   "a caller must be able to tell that it has to stop");
 
+/*
+  EVERY PATH THAT GIVES UP MUST DELIVER WHAT WAS ALREADY BOUGHT.
+
+  The first version of this fix took the partial only when the ATTEMPTS ran
+  out. But the deadline error an adapter raises is RETRIABLE, so control fell
+  through to the backoff — where there is by definition no time left — and the
+  `outOfTime` break stepped straight over the delivery. Three images Google
+  had produced and billed were discarded on the one path the partial handling
+  exists for.
+*/
 const genSrc = readFileSync(join(ROOT, "lib/server/generation.ts"), "utf8");
+check("giving up on attempts delivers the partial",
+  /if \(spent\) \{ takePartial\(\); break; \}/.test(genSrc));
+check("and so does running out of time",
+  /outOfTime = true; takePartial\(\); break;/.test(genSrc),
+  "the deadline error is retriable, so this is the path that actually fires");
+check("the largest partial wins, not the latest",
+  /pe\.partial\.length > lastPartial\.length/.test(genSrc),
+  "a later, smaller partial must not shrink what an earlier attempt bought");
+check("an adapter does not fire a call it knows cannot return",
+  /budget <= MIN_USEFUL_CALL_MS/.test(
+    readFileSync(join(ROOT, "lib/ai/providers/google.ts"), "utf8")),
+  "a few seconds against a 90s endpoint is a guaranteed timeout, possibly billed");
+
 check("the runner asks the adapter instead of assuming",
   /cAdapter\.worstCaseMs\?\.\(1\)\s*\?\?\s*PROVIDER_CALL_BUDGET_MS/.test(genSrc));
 check("and hands the deadline to the adapter",

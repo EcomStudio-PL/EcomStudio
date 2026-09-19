@@ -626,21 +626,35 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
 
           The fix is to take the partial ONLY when there is no retry left to
           take: a retriable failure with attempts remaining falls through to
-          the backoff below, exactly as it did before this work. The images
-          are still not discarded — `lastPartial` holds them, and if the retry
-          also fails they are delivered instead of thrown away.
+          the backoff below, exactly as it did before this work.
+
+          AND RUNNING OUT OF TIME COUNTS AS "NO RETRY LEFT". That was the hole
+          in the first version of this fix. The deadline error an adapter
+          raises is RETRIABLE, so `spent` was false, and control fell to the
+          backoff — where there is by definition no time left, so `outOfTime`
+          broke the loop and stepped straight over the delivery. Three images
+          Google had produced and billed were thrown away on the one path the
+          partial handling was built for. `takePartial` is now used by every
+          exit that gives up, not just by the one that runs out of attempts.
         */
-        if (pe.partial?.length) lastPartial = pe.partial;
-        const spent = !pe.retriable || attempt === MAX_ATTEMPTS_PER_PROVIDER;
-        if (spent && lastPartial?.length) {
+        if (pe.partial?.length) {
+          // Keep the LARGEST partial this candidate produced. A second attempt
+          // that fails earlier must not shrink what the first already bought.
+          if (!lastPartial || pe.partial.length > lastPartial.length) lastPartial = pe.partial;
+        }
+        const takePartial = () => {
+          if (!lastPartial?.length) return false;
           result = { images: lastPartial };
           served = { model: cModel, providerSlug: cProviderSlug };
-          break;
-        }
-        if (spent) break; // next candidate
+          return true;
+        };
+        const spent = !pe.retriable || attempt === MAX_ATTEMPTS_PER_PROVIDER;
+        if (spent) { takePartial(); break; } // delivered, or on to the next candidate
         // Sleeping into the deadline wastes the time the refund needs.
         const delay = retryDelayMs(attempt, pe.upstream?.retryAfterMs);
-        if (!fitsInBudget(Date.now() + delay, deadlineAt, cCallMs)) { outOfTime = true; break; }
+        if (!fitsInBudget(Date.now() + delay, deadlineAt, cCallMs)) {
+          outOfTime = true; takePartial(); break;
+        }
         await sleep(delay);
       }
     }

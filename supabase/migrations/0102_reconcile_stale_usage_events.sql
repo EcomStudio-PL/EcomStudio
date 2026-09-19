@@ -159,9 +159,22 @@ begin
       if v_expected > 0 and v_delivered < v_expected
          and v_row.credit_tx_id is not null and v_row.credits_charged > 0
          and (v_row.metadata->>'partial_refund_tx') is null then
-        -- floor() on what is KEPT, so a rounding remainder falls to the
-        -- customer rather than to us.
-        v_keep := floor(v_row.credits_charged::numeric * v_delivered / v_expected);
+        /*
+          THE APPLICATION'S FORMULA, NOT A SECOND ONE.
+
+          lib/server/generation.ts prices a shortfall as
+          `floor(cost / quantity) * missing`, and this used to compute
+          `cost - floor(cost * delivered / quantity)` instead. Those agree
+          whenever the price divides evenly and disagree when it does not —
+          which `costOverride` makes reachable (retouch, Moda, concepts). At
+          quantity 4, cost 5, one delivered, the app keeps 2 and this kept 1.
+
+          The difference always favoured the customer, so nothing leaked; but
+          two prices for one event is how a refund becomes unexplainable. The
+          comment above claims the application's terms, so these are them.
+        */
+        v_keep := floor(v_row.credits_charged::numeric / v_expected)
+                  * v_delivered;
         v_short := greatest(v_row.credits_charged - v_keep, 0);
       end if;
 
@@ -169,6 +182,33 @@ begin
         select id into v_wallet from public.credit_wallets
          where workspace_id = v_row.workspace_id;
         if v_wallet is null then
+          /*
+            NO WALLET TO PAY INTO — BUT THE ROW STILL LEAVES `pending`.
+
+            It used to `continue` here without closing, which broke this
+            file's own guarantee that a row leaves pending in the same
+            statement. Two consequences, both silent: the idempotency key was
+            never released, so that exact input could never be re-submitted;
+            and because the sweep is `order by started_at limit 50`, stuck
+            rows are permanently the OLDEST — fifty of them would stop the
+            reconciler reconciling anything at all, forever.
+
+            So it closes as delivered at the full price and says so. Not
+            paying what we cannot pay is right; leaving a landmine in the
+            queue to remember it by is not. The `reconciled` marker records
+            that a shortfall was owed and could not be returned, which is what
+            an operator needs to find it.
+          */
+          update public.usage_events
+             set status = 'succeeded',
+                 result_count = greatest(result_count, v_delivered),
+                 finished_at = coalesce(finished_at, now()),
+                 idempotency_key = null,
+                 metadata = coalesce(metadata, '{}'::jsonb)
+                   || jsonb_build_object('reconciled', 'delivered_short_unpaid',
+                                         'reconciled_at', now(),
+                                         'shortfall_owed', v_short)
+           where id = v_row.id and status = 'pending';
           event_id := v_row.id; outcome := 'no_wallet'; return next;
           continue;
         end if;
@@ -279,25 +319,50 @@ create or replace function public.usage_events_reconcile(
 language plpgsql security definer set search_path = public as $$
 declare
   v_refunded integer; v_delivered integer; v_closed integer; v_stuck integer;
+  v_short integer; v_other integer;
 begin
   if not public.server_call_ok(p_token) then raise exception 'forbidden'; end if;
+  /*
+    EVERY OUTCOME IS COUNTED, INCLUDING ONES ADDED LATER.
+
+    `closed_short` was added to the sweep without being added here, so a run
+    that returned real credits reported all zeros — an operator triggering
+    this deliberately, which is its stated purpose, was told nothing had
+    happened while money moved. `v_other` is the guard against that repeating:
+    a future outcome nobody adds a column for still shows up as a non-zero
+    number that does not match anything, which is a question rather than a
+    silence.
+  */
   select count(*) filter (where outcome = 'refunded'),
          count(*) filter (where outcome = 'closed_delivered'),
+         count(*) filter (where outcome = 'closed_short'),
          count(*) filter (where outcome = 'closed_uncharged'),
-         count(*) filter (where outcome = 'no_wallet')
-    into v_refunded, v_delivered, v_closed, v_stuck
+         count(*) filter (where outcome = 'no_wallet'),
+         count(*) filter (where outcome not in
+           ('refunded','closed_delivered','closed_short','closed_uncharged','no_wallet'))
+    into v_refunded, v_delivered, v_short, v_closed, v_stuck, v_other
     from public.usage_events_reconcile_stale(p_limit);
   -- Counts only. No event id, no workspace id, nothing that identifies a
   -- customer travels back over HTTP.
   return jsonb_build_object(
     'refunded', coalesce(v_refunded, 0),
     'delivered', coalesce(v_delivered, 0),
+    'short_refunded', coalesce(v_short, 0),
     'closed', coalesce(v_closed, 0),
-    'no_wallet', coalesce(v_stuck, 0));
+    'no_wallet', coalesce(v_stuck, 0),
+    'unclassified', coalesce(v_other, 0));
 end $$;
 
-revoke all on function public.usage_events_reconcile(text, integer) from public, anon;
-grant execute on function public.usage_events_reconcile(text, integer) to authenticated;
+-- ANON IS ON THIS GRANT ON PURPOSE. The belt's whole reason to exist is the
+-- UNATTENDED caller: a platform cron arrives with a bearer secret and NO
+-- session, so its Postgres role is `anon`. EXECUTE is checked before the
+-- definer body runs, so granting only to `authenticated` does not make this
+-- stricter — it makes the gate unreachable, and the belt would have worked
+-- only when an admin pressed a button, which is the one case it was not for.
+-- `server_call_ok(p_token)` inside is the gate. Same shape as 0108, 0082,
+-- 0080 and 0079.
+revoke all on function public.usage_events_reconcile(text, integer) from public;
+grant execute on function public.usage_events_reconcile(text, integer) to anon, authenticated;
 
 comment on function public.usage_events_reconcile(text, integer) is
   'Server-token gated entry point for the stale-usage reconciler. Returns counts only.';

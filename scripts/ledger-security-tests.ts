@@ -178,6 +178,10 @@ const GATED = [
   // stops a browser is the token, so a call site that forgets to pass one is a
   // path that silently stops working for every visitor who is not an admin.
   "secret_read", "secret_read_many",
+  // Added after the adversarial review found the same one-word grant bug in
+  // two migrations at once (see section E).
+  "usage_events_reconcile", "waitlist_confirmation_payload",
+  "server_expire_account_blocks",
 ] as const;
 
 const tokenless: string[] = [];
@@ -192,6 +196,57 @@ for (const f of files) {
   }
 }
 check("no gated RPC is called without p_token", tokenless.length === 0, tokenless.join(", "));
+
+/* ── E. A token-gated RPC must be REACHABLE by the caller that needs it ───── */
+console.log("\nE. THE GATE IS THE TOKEN, SO THE GRANT MUST LET anon REACH IT");
+
+/*
+  THE BUG THIS EXISTS FOR, made twice in one stage and caught by neither the
+  suite nor the first review.
+
+  PostgreSQL checks EXECUTE *before* a SECURITY DEFINER body runs. So for a
+  function whose real gate is `server_call_ok(p_token)` inside, granting only
+  to `authenticated` does not make it stricter — it makes the gate
+  unreachable. And the callers that need these are anonymous by definition: a
+  visitor joining a waiting list has no session, and a platform cron arrives
+  with a bearer secret and no session either. Both failed silently: one
+  stopped sending confirmation mails, the other reconciled nothing.
+
+  Every suite passed throughout, because every test calls these from the
+  server side of the door. This asserts the door itself.
+*/
+const MUST_REACH_ANON: Array<[string, string]> = [
+  ["usage_events_reconcile", "0102_reconcile_stale_usage_events"],
+  ["waitlist_confirmation_payload", "0106_waitlist_confirmation_is_token_gated"],
+  ["server_expire_account_blocks", "0108_cron_can_expire_blocks"],
+];
+for (const [fn, file] of MUST_REACH_ANON) {
+  const sql = readFileSync(`supabase/migrations/${file}.sql`, "utf8");
+  const grant = new RegExp(`grant execute on function public\\.${fn}\\([^)]*\\) to ([^;]+);`).exec(sql)?.[1] ?? "";
+  check(`${fn} is reachable by anon`, /\banon\b/.test(grant),
+    `granted to "${grant.trim()}" — its unattended caller has no session, so the gate inside is never reached`);
+  // …and the token is still what actually decides.
+  check(`${fn} is still gated on the server token`,
+    new RegExp(`server_call_ok\\(p_token\\)`).test(sql),
+    "anon on the grant is only safe because the body refuses without the token");
+}
+
+/*
+  And the second factor's own off switch has to live where BOTH gates read it.
+  The layout gate returns "no gate" when all three controls are off; the
+  middleware gate cannot run server-only code, so if the database function did
+  not honour the switch, turning the feature off would 403 every /api/* call
+  for every customer while the panel still looked healthy.
+*/
+{
+  const sql = readFileSync("supabase/migrations/0104_login_security_reads_its_own_policy.sql", "utf8");
+  const off = sql.indexOf("not v_verify_device and not v_verify_ip and v_reverify_days = 0");
+  const emptyHash = sql.indexOf("coalesce(p_device_hash, '') = ''");
+  check("login_security_check honours the feature's off switch", off !== -1);
+  check("…and honours it BEFORE refusing an empty device hash",
+    off !== -1 && emptyHash !== -1 && off < emptyHash,
+    "the middleware sends an empty hash, so the order is what decides");
+}
 }
 
 function report() {
@@ -203,3 +258,4 @@ main().then(report).catch((e) => {
   console.error("ledger tests crashed:", e);
   process.exit(1);
 });
+

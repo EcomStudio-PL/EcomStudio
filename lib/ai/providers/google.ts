@@ -55,6 +55,12 @@ async function classifyGoogleError(res: Response): Promise<ProviderError> {
  *  REST generateContent endpoint. Reference images go inline as base64;
  *  the model returns inline base64 images. One image per call — quantity
  *  is handled by sequential calls so a partial failure can still refund. */
+/** Below this there is no realistic chance of an image coming back, so the
+ *  loop stops rather than spending a call it knows will time out. Generous
+ *  enough that a healthy call is never refused; small enough that it only
+ *  bites at the very end of a budget. */
+const MIN_USEFUL_CALL_MS = 15_000;
+
 export const googleAdapter: ImageProviderAdapter = {
   slug: "google",
   // Gemini takes the ratio verbatim, so everything it advertises is exact.
@@ -110,7 +116,17 @@ export const googleAdapter: ImageProviderAdapter = {
       // partial path below; running on would be killed by the platform with
       // the charge already taken and nobody left to refund it.
       const budget = timeoutFor(90_000, req.deadlineAt);
-      if (budget <= 0) {
+      /*
+        A FLOOR, NOT JUST A SIGN TEST.
+
+        `budget > 0` is not the same as "enough time to get an image back".
+        The runner starts an attempt when one image's worth remains, so after
+        the first image there can be a few seconds left — and firing a
+        five-second request at an endpoint that routinely takes tens of
+        seconds buys a guaranteed timeout that the provider may still bill.
+        Below this floor the honest move is to stop and hand back what exists.
+      */
+      if (budget <= MIN_USEFUL_CALL_MS) {
         if (images.length === 0) throw new ProviderError("provider_timeout", true);
         throw new ProviderError("provider_timeout", true, undefined, undefined, images);
       }

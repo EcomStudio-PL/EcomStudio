@@ -134,8 +134,24 @@ begin
 end
 $function$;
 
-revoke all on function public.waitlist_confirmation_payload(text) from public, anon;
-grant execute on function public.waitlist_confirmation_payload(text) to authenticated;
+-- ANON IS ON THIS GRANT ON PURPOSE, and leaving it off was a real bug.
+--
+-- The instinct is that a function holding an SMTP password must not be
+-- granted to `anon`. But EXECUTE is not the gate here — `server_call_ok()`
+-- inside the body is, and PostgreSQL checks EXECUTE *before* the definer body
+-- runs, so a missing grant means the gate is never even reached.
+--
+-- And the only caller is anonymous by definition: a visitor joining a waiting
+-- list has no session, so the route's request runs as `anon`. Granted only to
+-- `authenticated`, the route got "permission denied", read the answer as "no
+-- confirmation configured", and every confirmation mail silently stopped —
+-- the signup still succeeding, so nothing looked wrong.
+--
+-- Migration 0079 exists because this exact mistake was made once before, with
+-- `secret_read`. Same resolution, same reason: the token is the gate, the
+-- grant is only what lets the server's own client reach the door.
+revoke all on function public.waitlist_confirmation_payload(text) from public;
+grant execute on function public.waitlist_confirmation_payload(text) to anon, authenticated;
 
 comment on function public.waitlist_subscribe(text, text, text, jsonb) is
   'Joins the waiting list. Anon-callable by design. Answers with a status and whether a confirmation is due — never with the mailbox it would be sent through.';

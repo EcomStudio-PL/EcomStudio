@@ -45,7 +45,10 @@ export type MailConfig = {
   sent_folder: string;
   /** Where admin notifications go (0055). An address, never a credential — it
    *  lives beside the SMTP host that carries it because this row is admin-only
-   *  under RLS, while app_settings is world-readable. Empty means "nobody",
+   *  under RLS, while most of app_settings is readable by anyone. Migration
+   *  0107 has since made the `notifications` key private too, so the contrast
+   *  is narrower than it was — but the reason to keep an address out of a
+   *  mostly-public table has not changed. Empty means "nobody",
    *  and the dispatcher then skips the e-mail channel rather than guessing. */
   admin_notify_to: string;
 };

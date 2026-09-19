@@ -78,8 +78,12 @@ const nextConfig = {
     */
     remotePatterns: [{
       protocol: 'https',
+      // The fallback matches lib/supabase/config.ts's — the DEVELOPMENT
+      // project — so a bare local build allows the host the app would
+      // actually read from. Production sets the variable, so the derived
+      // value there is production's own host and nothing changes.
       hostname: new URL(process.env.NEXT_PUBLIC_SUPABASE_URL
-        ?? 'https://orjkxijqpecnbzhxhfct.supabase.co').hostname,
+        ?? 'https://ezyhwkcrrysanbcbkzsq.supabase.co').hostname,
     }],
   },
   // sharp ships prebuilt native binaries; bundling it breaks the .node loads.

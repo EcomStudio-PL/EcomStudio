@@ -19,7 +19,8 @@ import type { Client } from "@/lib/services/workspace";
  *   AGGREGATION          tool_usage_counts(), SECURITY DEFINER because RLS
  *                        (correctly) shows a client only its own workspace.
  *   RANKING              this file: usage tags → FEATURE_REGISTRY keys, ordered.
- *   FAST READ            one jsonb row in app_settings, world-readable, read
+ *   FAST READ            one jsonb row in app_settings, readable by anyone (it is not one
+ *                        of the three keys migration 0107 made private), read
  *                        by the customer layout inside a batch it already ran.
  *
  * SUCCESSFUL RUNS, NOT VISITS. `status = 'succeeded'` is the only thing
@@ -271,7 +272,9 @@ type StoredPopularity = {
 const SOURCES: readonly PopularitySource[] = ["weekly_usage", "previous_week", "fallback"];
 
 /**
- * ONE ROW, ONE ROUND TRIP. app_settings is world-readable (settings_select_all)
+ * ONE ROW, ONE ROUND TRIP. `tool_popularity` is readable by anyone —
+ * migration 0107 made three app_settings keys private and this is not one of
+ * them (settings_select_public)
  * and the customer layout already runs a batch of reads, so this rides along
  * with them: opening the search costs no request at all. Any shape it does not
  * recognise degrades to the fallback rather than throwing — a stale or

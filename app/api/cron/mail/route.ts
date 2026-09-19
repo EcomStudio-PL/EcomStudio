@@ -61,11 +61,29 @@ const UNAUTHORIZED: Record<string, string> = {
   not_admin: "unauthorized",
 };
 
+/*
+  "generic" IS ALSO NOT AN AUTHORISATION.
+
+  syncNowAction wraps the caller check in its own try/catch and reports any
+  throw inside it as `generic`. That code used to fall through to the jobs
+  below, so a request that never established WHO it was could still run the
+  ranking, the block sweep and the reconciler. Each of those needs the server
+  token, so nothing was actually reachable — but "the caller is authorised
+  from here on" was one catch short of true, and a comment that is nearly
+  true is the kind that stops being true later.
+*/
+const UNVERIFIED = new Set(["generic"]);
+
 export async function GET() {
   const result = await syncNowAction();
 
   if (!result.ok && UNAUTHORIZED[result.error]) {
     return NextResponse.json({ ok: false, reason: UNAUTHORIZED[result.error] }, { status: 401 });
+  }
+  if (!result.ok && UNVERIFIED.has(result.error)) {
+    // 503, not 401: we do not know that the caller is unauthorised, only that
+    // we could not establish that they are. A scheduler retries a 503.
+    return NextResponse.json({ ok: false, reason: "caller_unverified" }, { status: 503 });
   }
 
   /*

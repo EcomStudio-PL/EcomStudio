@@ -77,6 +77,27 @@ begin
           then least(365, (v_cfg ->> 'reverify_days')::int) end),
     7);
 
+  /*
+    THE FEATURE'S OWN OFF SWITCH, honoured here so both gates obey it.
+
+    lib/server/login-security.ts opens with exactly this test and returns "no
+    gate" — but that is the LAYOUT gate, and the middleware gate added for
+    P1-23 has no way to run server-only code. Without this branch, an operator
+    switching the second factor off in the admin panel would 403 every
+    /api/* call for every customer: the middleware sends an empty device hash
+    (the cookie is only ever issued BY the step-up page, which nobody now
+    reaches), the refusal below fires, and a 403 an API caller cannot follow
+    comes back from a product whose second factor is switched OFF. Pages would
+    keep rendering, so the panel would look healthy while every tool was dead.
+
+    Putting it in the function rather than in the middleware is what keeps the
+    two gates from drifting again: there is one policy and one place that
+    reads it.
+  */
+  if not v_verify_device and not v_verify_ip and v_reverify_days = 0 then
+    return jsonb_build_object('trusted', true, 'reason', 'disabled');
+  end if;
+
   if coalesce(p_device_hash, '') = '' then
     return jsonb_build_object('trusted', false, 'reason', 'new_device');
   end if;

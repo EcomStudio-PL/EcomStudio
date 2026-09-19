@@ -169,6 +169,31 @@ export async function updateSession(request: NextRequest) {
         // not a password to be stolen.
         console.warn("stepUp.undecided", error?.code ?? "no_verdict", pathname);
       } else {
+        /*
+          ONE PLACE THIS GATE IS DELIBERATELY STRICTER THAN THE LAYOUT GATE,
+          and it is a judgement, not an oversight.
+
+          enforceLoginSecurity FAILS OPEN when the mailbox cannot deliver a
+          code (lib/server/login-security.ts) — "locking everyone out over an
+          SMTP outage is the worse failure". This cannot see that: SMTP is not
+          visible from the edge, and the one thing that is — the policy — is
+          now read inside login_security_check, including its off switch
+          (migration 0104), so a deployment with the feature OFF is waved
+          through here exactly as it is there.
+
+          With the feature ON and the mail transport down, the two disagree:
+          the layout admits the customer, and this refuses their API calls.
+          That is left as the stricter behaviour ON PURPOSE. The fail-open was
+          written for a control that is working and momentarily cannot send;
+          what it actually does in that window is let a stolen password reach
+          the credits, which is the exact attack P1-23 is about. Matching it
+          here would mean re-opening that hole for as long as SMTP is down,
+          and an operator can see and fix a mail outage — nobody can see a
+          second factor that is quietly not applying.
+
+          Stated rather than silently diverging, so the next reader knows
+          which way this was decided.
+        */
         return NextResponse.json({ ok: false, error: "step_up_required" }, { status: 403 });
       }
     }
