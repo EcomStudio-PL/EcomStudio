@@ -4603,6 +4603,13 @@ export type Database = {
         Returns: string
       }
       claim_welcome_bonus: { Args: { p_answers: Json }; Returns: Json }
+      /* Hands back a free-tool grant when the run it paid for never started
+         (migration 0103). Server-token gated — a client cannot reset its own
+         allowance. */
+      release_free_tool_run: {
+        Args: { p_token: string | null; p_workspace_id: string; p_tool_slug: string; p_window_start: string }
+        Returns: boolean
+      }
       claim_free_tool_run: {
         Args: {
           p_workspace_id: string

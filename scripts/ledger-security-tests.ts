@@ -167,6 +167,9 @@ console.log("\nD. EVERY GATED RPC CALL PASSES A TOKEN");
 
 const GATED = [
   "usage_event_start", "usage_event_fail", "usage_event_complete", "usage_event_charge",
+  // Not a ledger RPC, but the same rule: it gives a customer something back,
+  // so a call site that forgets the token is a path that silently stops working.
+  "release_free_tool_run",
   "usage_event_refund_partial", "provider_credential_read", "engine_rules_read",
   "knowledge_match", "provider_health_set",
   // The secret store's two readers (0078, 0080). They are the only functions in

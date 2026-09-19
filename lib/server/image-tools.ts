@@ -19,7 +19,7 @@ import {
   MAX_INPUT_BYTES, type OutputFormat,
 } from "@/lib/images/local";
 import { clampEditorState } from "@/lib/images/editor-state";
-import { claimFreeRun, freeToolRules, planQualifies } from "@/lib/server/free-tools";
+import { claimFreeRun, freeToolRules, planQualifies, releaseFreeRun } from "@/lib/server/free-tools";
 
 /**
  * IMAGE TOOLS SERVICE — the single place a tool run happens.
@@ -612,10 +612,20 @@ async function runPaid(
   }
   const price: PriceQuote = freeRemaining === null ? priced : { ...priced, credits: 0 };
 
+  // The claim is taken above because the PRICE depends on it, which means
+  // every refusal between there and a run that actually started owes the
+  // seller their free run back. Nothing was called, nothing was billed,
+  // nothing was delivered (migration 0103).
+  const releaseFree = async () => {
+    if (freeRemaining === null || !rule) return;
+    await releaseFreeRun(supabase, dispatchToken(), workspaceId, slug, rule);
+  };
+
   const { data: wallet } = await supabase
     .from("credit_wallets").select("id, balance").eq("workspace_id", workspaceId).maybeSingle();
-  if (!wallet) return { ok: false, error: "no_wallet" };
+  if (!wallet) { await releaseFree(); return { ok: false, error: "no_wallet" }; }
   if (wallet.balance < price.credits) {
+    await releaseFree();
     return { ok: false, error: "insufficient_credits", missingCredits: price.credits - wallet.balance };
   }
 
@@ -637,7 +647,7 @@ async function runPaid(
       ...(freeRemaining === null ? {} : { free_grant: true, free_remaining: freeRemaining }),
     },
   });
-  if (!usage.ok) return { ok: false, error: usage.error };
+  if (!usage.ok) { await releaseFree(); return { ok: false, error: usage.error }; }
 
   try {
     const request = { bytes: input.file, mime: input.mime };

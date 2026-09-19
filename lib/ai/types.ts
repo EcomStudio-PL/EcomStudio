@@ -188,6 +188,11 @@ export class ProviderError extends Error {
     public retriable = false,
     public providerCode?: string,
     public upstream?: UpstreamError,
+    /** Images the provider ALREADY produced and billed before this error.
+     *  Carried out with the failure so the runner can deliver and price them
+     *  instead of throwing them away and paying for them again on the retry.
+     *  Appended last so no existing call site changes. */
+    public partial?: GeneratedImage[],
   ) {
     super(safeMessage);
   }

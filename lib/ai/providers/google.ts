@@ -82,29 +82,44 @@ export const googleAdapter: ImageProviderAdapter = {
       imageConfig.imageSize = req.resolution;
     }
 
+    // QUANTITY IS N SEPARATE PAID CALLS, so a failure at call 4 of 4 must not
+    // throw away — and make the runner buy again — the three images Google has
+    // already produced and billed. They are carried out WITH the error: the
+    // error still travels, so provider health still degrades, the attempt
+    // still lands in the job's trail and the operator is still told. Only the
+    // images stop being discarded.
     const images: GenerationResult["images"] = [];
     for (let i = 0; i < req.quantity; i++) {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts }],
-          generationConfig: {
-            responseModalities: ["IMAGE"],
-            imageConfig,
-          },
-        }),
-        signal: AbortSignal.timeout(90_000),
-      }).catch((e) => {
-        throw new ProviderError(e?.name === "TimeoutError" ? "provider_timeout" : "provider_unreachable", true);
-      });
-      if (!res.ok) throw await classifyGoogleError(res);
-      const json = (await res.json()) as {
-        candidates?: { content?: { parts?: { inlineData?: { mimeType: string; data: string } }[] } }[];
-      };
-      const inline = json.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData;
-      if (!inline?.data) throw new ProviderError("provider_empty_result");
-      images.push({ base64: inline.data, mime: inline.mimeType || "image/png" });
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts }],
+            generationConfig: {
+              responseModalities: ["IMAGE"],
+              imageConfig,
+            },
+          }),
+          signal: AbortSignal.timeout(90_000),
+        }).catch((e) => {
+          throw new ProviderError(e?.name === "TimeoutError" ? "provider_timeout" : "provider_unreachable", true);
+        });
+        if (!res.ok) throw await classifyGoogleError(res);
+        const json = (await res.json()) as {
+          candidates?: { content?: { parts?: { inlineData?: { mimeType: string; data: string } }[] } }[];
+        };
+        const inline = json.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData;
+        if (!inline?.data) throw new ProviderError("provider_empty_result");
+        images.push({ base64: inline.data, mime: inline.mimeType || "image/png" });
+      } catch (e) {
+        // The FIRST call failing means nothing was produced and nothing was
+        // billed, so it throws clean and the runner retries and falls back
+        // exactly as it does today.
+        if (images.length === 0) throw e;
+        if (e instanceof ProviderError) { e.partial = images; throw e; }
+        throw new ProviderError("provider_error", false, undefined, undefined, images);
+      }
     }
     return { images };
   },

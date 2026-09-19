@@ -207,18 +207,26 @@ export async function generateFromConcept(
     .eq("id", concept.session_id).maybeSingle();
   if (!session || session.workspace_id !== workspaceId) return { ok: false, error: "not_found" };
 
-  // DOUBLE-CLICK / REFRESH GUARD: one live job per concept. A repeat request
-  // while the last job is still running returns that job instead of paying
-  // for a second one.
-  if (concept.last_job_id) {
-    const { data: liveJob } = await supabase
-      .from("generation_jobs").select("id, status, created_at")
-      .eq("id", concept.last_job_id).maybeSingle();
-    if (liveJob && (liveJob.status === "processing" || liveJob.status === "queued")) {
-      const ageMs = Date.now() - new Date(liveJob.created_at).getTime();
-      if (ageMs < 5 * 60_000) return { ok: false, error: "already_running" };
-    }
-  }
+  // DOUBLE-CLICK / REFRESH GUARD: one live job per concept.
+  //
+  // Keyed on the job's own `prompt_id`, not on `concept.last_job_id`. That
+  // column is written only AFTER runGeneration returns, and only on success,
+  // so by the time it named a job that job had already finished — the
+  // "is it still running?" test could never be true and this guard never
+  // fired once. Same shape as the custom branch of /api/generations/regenerate.
+  //
+  // It is ADVISORY. What makes the money safe is the derived ledger key
+  // (lib/server/generation.ts) plus the unique index migration 0100
+  // arbitrates on; this only keeps the common double-click from writing a
+  // second job row, and reports it in the vocabulary the panels already speak.
+  const { data: liveJob } = await supabase
+    .from("generation_jobs").select("id")
+    .eq("workspace_id", workspaceId)
+    .eq("prompt_id", conceptId)
+    .in("status", ["queued", "processing"])
+    .gte("created_at", new Date(Date.now() - 5 * 60_000).toISOString())
+    .limit(1).maybeSingle();
+  if (liveJob) return { ok: false, error: "already_running" };
 
   const chain = await resolveConceptModels(supabase);
   if (chain.length === 0) return { ok: false, error: "model_unavailable" };

@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import {
   PREVIEW_EDGE, PREVIEW_QUALITY, THUMB_EDGE, THUMB_QUALITY, previewPathFor, thumbPathFor,
 } from "@/lib/thumbs";
@@ -90,6 +91,43 @@ const RATIOS = new Set<string>(ALL_ASPECT_RATIOS);
 /** Product photos a job may carry — the same ceiling the panel enforces
  *  ("Dodaj zdjęcia (max. 10)"). Providers still trim to their own limit. */
 const MAX_REFERENCE_PATHS = 10;
+
+/** How long a run that ended in NEITHER success nor failure keeps blocking an
+ *  identical request. The same contract, and the same tumbling-bucket trade,
+ *  as app/api/tools/run/route.ts. It is not an expiry on the guard: migration
+ *  0101 releases the key the moment a run reaches a terminal state, so a
+ *  re-run after success or failure is allowed immediately. This window only
+ *  bounds the invocation killed at its 300 s ceiling. */
+const GENERATION_DEDUPE_WINDOW_MS = 5 * 60_000;
+
+/**
+ * THE KEY IS DERIVED FROM WHAT THE REQUEST MEANS, not from a row the request
+ * just created.
+ *
+ * `job:${job.id}` was unique by construction — the job row is inserted one
+ * line above — so two identical POSTs produced two keys, two charges and two
+ * provider calls. The ledger's unique index had nothing to arbitrate.
+ *
+ * Being derived is not what makes it safe: the customer knows every input and
+ * can compute it. What makes it safe is that only the server can create the
+ * row it names (migration 0100).
+ *
+ * Exported so the rule can be tested without standing up a generation.
+ */
+export function generationIdempotencyKey(
+  workspaceId: string,
+  parts: {
+    modelId: string; prompt: string; aspectRatio: string;
+    resolution: string | null; quality: string | null; quantity: number; cost: number;
+    productId: string | null; conceptId: string | null; promptId: string | null;
+    parentJobId: string | null; operation: string | null;
+    referencePaths: string[]; inspirationPaths: string[]; markedImagePath: string | null;
+  },
+  nowMs: number = Date.now(),
+): string {
+  const digest = createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 40);
+  return `gen:${workspaceId}:${Math.floor(nowMs / GENERATION_DEDUPE_WINDOW_MS)}:${digest}`;
+}
 
 /** Longest edge of the gallery thumbnail derivative. Originals stay the
  *  source of truth; the thumb only spares the grid from full-size loads. */
@@ -254,12 +292,34 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   }).select("id").single();
   if (jobError || !job) return { ok: false, error: "job_create_failed" };
 
-  // Charge through the usage ledger (idempotent on job id)
+  const idempotencyKey = generationIdempotencyKey(workspaceId, {
+    modelId: input.modelId,
+    prompt: promptText,
+    aspectRatio,                        // resolved, not the raw request value
+    resolution: resolution ?? null,
+    quality: quality ?? null,
+    quantity,                           // clamped
+    cost,                               // the exact integer about to be charged
+    // input.productId, NOT the resolved `productId`: the ad-hoc creation path
+    // mints a fresh product row per request, which would make the key unique
+    // again and silently undo this whole fix.
+    productId: input.productId ?? null,
+    conceptId: input.conceptId ?? null,
+    promptId: input.promptId ?? null,
+    parentJobId: input.parentJobId ?? null,
+    operation: input.operation ?? null,
+    referencePaths: input.referencePaths.slice(0, MAX_REFERENCE_PATHS),
+    inspirationPaths: (input.inspirationPaths ?? []).slice(0, 5),
+    markedImagePath: input.markedImagePath ?? null,
+  });
+
+  // Charge through the usage ledger. The key is derived above; the ledger
+  // refuses a second request carrying it while the first is still running.
   const usage = await startUsage(supabase, {
     serverToken: dispatchToken(),
     userId, workspaceId, walletId: wallet.id, serviceSlug: "image_generation",
     providerSlug: provider.slug, modelSlug: model.model_identifier,
-    generationJobId: job.id, idempotencyKey: `job:${job.id}`,
+    generationJobId: job.id, idempotencyKey,
     // `operation` is carried onto the usage row as well as the job row. Every
     // tool that generates through this pipeline — Retusz, the Moda tools —
     // is charged as `image_generation`, so without this tag the ledger cannot
@@ -272,8 +332,15 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     creditsCharged: cost,
   });
   if (!usage.ok) {
+    // The ledger refused a second request for this exact input while the first
+    // is still running. The panels already speak `already_running` — it is in
+    // all three dictionaries and both callers render it as "still going"
+    // rather than as a failure — while `duplicate_request` is not, and would
+    // fall through to a generic error toast. The raw code stays on the job row
+    // for the operator; only what the customer sees is translated.
+    const error = usage.error === "duplicate_request" ? "already_running" : usage.error;
     await supabase.from("generation_jobs").update({ status: "failed", error_message: usage.error }).eq("id", job.id);
-    return { ok: false, error: usage.error };
+    return { ok: false, error };
   }
 
   /**
@@ -476,6 +543,16 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
           status: pe.upstream?.status, message: pe.upstream?.message,
         });
         await recordProviderFailure(supabase, cProviderSlug, pe);
+        // Images this provider already produced AND BILLED are delivered, not
+        // re-bought. The short-delivery path below prices the shortfall and
+        // completeUsage books the real cost of what actually arrived — so the
+        // customer pays for three images instead of four, and GrovBase stops
+        // paying twice for the three it already has.
+        if (pe.partial?.length) {
+          result = { images: pe.partial };
+          served = { model: cModel, providerSlug: cProviderSlug };
+          break;
+        }
         if (!pe.retriable || attempt === MAX_ATTEMPTS_PER_PROVIDER) break; // next candidate
         // Sleeping into the deadline wastes the time the refund needs.
         const delay = retryDelayMs(attempt, pe.upstream?.retryAfterMs);

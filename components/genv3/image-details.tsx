@@ -192,7 +192,19 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
       const save = new FormData();
       save.set("tool", slug);
       save.set("file", new File([out], "result", { type: out.type || "image/png" }));
-      await fetch("/api/tools/save", { method: "POST", body: save });
+      // THE RUN IS ALREADY CHARGED AND ITS BYTES LIVE ONLY IN THAT RESPONSE.
+      // This save is the only thing that persists them, so an unread answer
+      // meant a seller was billed, told "Gotowe · N kredytów", and given
+      // nothing that exists anywhere afterwards. Same shape the editor's own
+      // save already uses.
+      //
+      // Not retried on purpose: /api/tools/save mints a fresh id per call with
+      // upsert disabled, so a retry after a lost response writes a second
+      // object and a second row — the same "cannot tell my own lost response
+      // from a completed one" trap the ledger reconciler exists to avoid.
+      const saveRes = await fetch("/api/tools/save", { method: "POST", body: save });
+      const saveJson = await saveRes.json().catch(() => ({ ok: false })) as { ok?: boolean };
+      if (!saveRes.ok || !saveJson.ok) { toast.error(t("tools.saveFailed")); return; }
       toast.success(credits > 0 ? t("genv3.toolDoneCredits", { n: credits }) : t("genv3.toolDone"));
     } catch {
       toast.error(t("genv3.toolFailed"));

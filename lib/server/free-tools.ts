@@ -19,11 +19,15 @@ import type { ToolSlug } from "@/lib/images/tools";
  * three uploads at a time; two workers a millisecond apart would both read
  * "9 of 10 used" and both proceed, and the tenth image would be the twelfth.
  *
- * A grant is taken BEFORE the provider is called and is not handed back if
- * the provider fails. That is deliberate and it is the conservative choice:
+ * A grant is taken BEFORE the provider is called and is not handed back if the
+ * PROVIDER fails. That is deliberate and it is the conservative choice:
  * refunding a free run means a second statement that can itself fail, and the
  * failure mode of not refunding is that a seller loses one of ten free images
  * on a bad day. The failure mode of the alternative is an unbounded free tier.
+ *
+ * A run the LEDGER REFUSED TO START is a different case, and it is returned.
+ * Nothing was called, nothing was billed, nothing was delivered — see
+ * `releaseFreeRun` below and migration 0103.
  */
 
 export type FreeWindow = "day" | "week" | "month";
@@ -121,6 +125,35 @@ export async function claimFreeRun(
   }
   const remaining = typeof data === "number" ? data : -1;
   return remaining < 0 ? null : remaining;
+}
+
+/**
+ * Hands back a grant whose run never started.
+ *
+ * The claim has to happen before the billing event, because the price that
+ * event is opened with depends on it — so every refusal in between owes the
+ * seller their run back. Returns whether one was returned; `false` is not an
+ * error, it means there was nothing to return, which is exactly what a second
+ * call looks like.
+ */
+export async function releaseFreeRun(
+  supabase: Client, serverToken: string | null,
+  workspaceId: string, slug: ToolSlug, rule: FreeToolRule,
+): Promise<boolean> {
+  if (!serverToken) return false;
+  const { data, error } = await supabase.rpc("release_free_tool_run", {
+    p_token: serverToken,
+    p_workspace_id: workspaceId,
+    p_tool_slug: slug,
+    p_window_start: windowStart(rule.window).toISOString(),
+  });
+  if (error) {
+    // Same reasoning as the claim: an operator whose sellers report losing
+    // free runs needs to see that the release is failing.
+    console.error("free_tools.release", slug, error.code ?? error.message);
+    return false;
+  }
+  return data === true;
 }
 
 /** How many are left, without consuming one. For the badge on the tool card. */
