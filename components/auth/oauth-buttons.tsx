@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/provider";
@@ -57,7 +57,33 @@ export function OAuthButtons({ next, compact = false }: {
   const { t } = useI18n();
   const [busy, setBusy] = useState<string | null>(null);
   const active = PROVIDERS.filter((p) => ENABLED.includes(p.id));
-  if (active.length === 0) return null;
+
+  /*
+    WARMED WHEN THESE BUTTONS MOUNT, WHICH IS WHEN THE DIALOG OPENS.
+
+    Hover alone was not enough, and measurement said so. `pointerenter` fires
+    in the same gesture as the tap on a touch device, so a phone user got no
+    head start at all: on a providers-enabled build, a cold tap pulled three
+    extra chunks totalling ~68 KB arriving 138-146 ms after the tap over
+    LOOPBACK — realistically several hundred ms over mobile to a cold CDN edge,
+    shown as nothing but a spinner.
+
+    Mounting is the right moment. This component renders only inside the auth
+    dialog, so a visitor reading the terms still downloads none of it and the
+    whole 66 KB public-page saving stands — but by the time anyone can press a
+    provider button, the chunk is already on its way.
+
+    ABOVE the early return, because a hook after a conditional return is a
+    hook that sometimes does not run; and guarded INSIDE, because when no
+    provider is configured this component renders nothing and must fetch
+    nothing. That is the case in production today.
+  */
+  const hasProviders = active.length > 0;
+  useEffect(() => {
+    if (hasProviders) warm();
+  }, [hasProviders]);
+
+  if (!hasProviders) return null;
 
   /**
    * THE BROWSER SUPABASE CLIENT IS LOADED ON DEMAND, NOT IMPORTED (P1-27).
@@ -77,12 +103,12 @@ export function OAuthButtons({ next, compact = false }: {
     return (await import("@/lib/supabase/client")).createClient();
   }
 
-  /** Warm the chunk on intent, so deferring it does not cost a click.
-   *  Fire-and-forget: a failure here is retried by start(), which is the path
-   *  that actually reports it. */
+  /** Warm the chunk, so deferring it does not cost a click. Fire-and-forget:
+   *  a failure here is retried by start(), which is the path that reports it. */
   function warm() {
     void import("@/lib/supabase/client").catch(() => {});
   }
+
 
   async function start(provider: "google" | "apple") {
     setBusy(provider);

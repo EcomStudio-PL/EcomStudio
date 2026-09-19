@@ -42,6 +42,23 @@ const PUBLIC: Record<string, string> = {
   "/api/newsletter/unsubscribe/[token]": "one-click unsubscribe — the token IS the credential, and RFC 8058 forbids a login wall",
   "/api/public/contact": "contact form for people who do not have an account yet",
   "/api/public/newsletter": "subscribe form on the public site",
+  /*
+    ANONYMOUS, and it took an independent review to say so out loud.
+
+    This was first filed under SERVER-TOKEN with the note "server-to-server
+    token (server_call_ok)", which was exactly backwards. server_call_ok is
+    used OUTBOUND here: dispatchToken() authorises this route's own secret_read
+    when it fetches SMTP credentials. It authenticates US TO THE DATABASE, not
+    the caller to us. The only inbound header the route reads is user-agent,
+    for metadata.
+
+    So it is public, by design and by its own header comment ("the one thing an
+    anonymous visitor may write"). Recording it honestly matters more than it
+    sounds: the route writes a row and SENDS MAIL to an address taken from the
+    body, and its only brake is an in-memory per-instance rate limit. A matrix
+    that calls that token-protected is worse than no matrix.
+  */
+  "/api/waitlist": "public sign-up form — anonymous by design; rate-limited, and its token use is OUTBOUND only",
 };
 
 /** No session; a secret or signed token proves the caller instead. */
@@ -56,7 +73,10 @@ function routeFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) routeFiles(full, out);
-    else if (entry === "route.ts") out.push(full);
+    // Next accepts route.ts, route.tsx, route.js and route.mjs. Matching only
+    // route.ts would let an unguarded endpoint be added in any of the others
+    // and never appear in this matrix at all.
+    else if (/^route\.(ts|tsx|js|mjs)$/.test(entry)) out.push(full);
   }
   return out;
 }
@@ -75,7 +95,12 @@ const adminRoutes: string[] = [];
 const authedRoutes: string[] = [];
 for (const { route, src } of routes) {
   if (PUBLIC[route] || SERVER_TOKEN[route]) continue;
-  const checksUser = /auth\.getUser\(\)/.test(src);
+  // Calling getUser() is not a guard; ACTING on the answer is. A route that
+  // reads the user and never refuses anyone would otherwise classify as
+  // AUTHENTICATED on the strength of one function call.
+  const checksUser = /auth\.getUser\(\)/.test(src)
+    && /if\s*\(!\s*user\s*\)/.test(src)
+    && /status:\s*401/.test(src);
   // The role is re-read from profiles and compared; a route that merely
   // mentions the word "admin" does not count.
   const checksAdmin = /role\s*!==\s*"admin"|requireAdmin\(/.test(src);

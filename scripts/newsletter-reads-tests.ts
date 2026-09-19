@@ -20,7 +20,11 @@
  *
  * Run: npm run test:newsletterreads
  */
+import { readFileSync } from "fs";
+import { join } from "path";
 import { dashboardTotals, campaignPerformance, sourcePerformance } from "../lib/services/newsletter";
+
+const ROOT = process.cwd();
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string) {
@@ -111,11 +115,40 @@ async function main() {
     number on the analytics screen is computed from. That is not a smallest
     safe change, it is a rewrite of the admin's reporting, and it is recorded
     as deferred with this measurement attached rather than attempted here.
+
+    ONE CORRECTION TO THE ABOVE, and it narrows the claim.
+
+    "Three different projections no memo can merge" is too strong. Two of the
+    three newsletter_events reads have the IDENTICAL projection
+    `event_type, contact_id` over the identical window; sourcePerformance's
+    differs only by `.in("event_type", ["sent","clicked"])`, so its rows are a
+    strict SUBSET of dashboardTotals' (modulo the 500 000 limit). That one is
+    genuinely removable — sourcePerformance could derive from the wider read.
+
+    It is still not a cache() fix and still not done here, because the two
+    functions are also called separately (dashboardTotals runs alone on
+    /admin/newsletter), so merging them means restructuring who fetches what
+    rather than memoising a repeat call. But the honest disposition is "one
+    removable read, deferred", not "nothing to remove". Flagged by an
+    independent review after the first version of this file overstated it.
   */
-  const fnNames = new Set(["dashboardTotals", "campaignPerformance", "sourcePerformance"]);
-  check("the screen calls three distinct readers, each exactly once",
-    fnNames.size === 3,
-    "if one were ever called twice, cache() would become the right tool");
+  /*
+    ASKED OF THE PAGE, not of a literal.
+
+    This used to build a 3-element Set of function names and assert its size
+    was 3 — a statement about the literal, never about the screen. Two
+    independent reviews flagged it. It now reads the page and counts the call
+    sites, so deleting a reader or adding a fourth changes the answer.
+  */
+  const pageSrc = readFileSync(join(ROOT, "app/admin/newsletter/analityka/page.tsx"), "utf8");
+  const READERS = ["dashboardTotals", "campaignPerformance", "sourcePerformance"];
+  const callCounts = READERS.map((fn) => ({
+    fn, n: (pageSrc.match(new RegExp(`\\b${fn}\\(supabase`, "g")) ?? []).length,
+  }));
+  check("the analytics page calls exactly these three readers, once each",
+    callCounts.every((c) => c.n === 1),
+    callCounts.map((c) => `${c.fn} x${c.n}`).join(", ") +
+      " — if one were ever called twice, cache() would become the right tool");
   const eventReads = reads.filter((r) => r.table === "newsletter_events");
   check("the overlap is different PROJECTIONS of one table, not repeat calls",
     eventReads.length > 1 && new Set(eventReads.map((r) => r.columns)).size > 1,
@@ -143,10 +176,22 @@ async function main() {
     "an identical repeat is free to remove; these are not that");
 
   console.log("\nC. THE SHAPE A FUTURE CHANGE MUST NOT WORSEN");
-  // A ceiling, not a target. It is deliberately the measured number so that
-  // adding a fourth reader to this screen has to be a conscious edit here.
-  const CEILING = total;
-  check(`one render stays at ${CEILING} reads or fewer`, total <= CEILING);
+  /*
+    A HARDCODED ceiling. The previous line read `const CEILING = total`, i.e.
+    `total <= total`, and its comment claimed a fourth reader would have to be
+    a conscious edit here. It would not: the ceiling was recomputed from the
+    measurement on every run, so it could never fail. Proven by adding three
+    readers — reads went 13 -> 20 and the check still printed a tick.
+
+    THE NUMBER BELOW IS A FLOOR, NOT PRODUCTION'S COUNT. campaignPerformance
+    returns early on `ids.length === 0`, and the stub yields an empty result
+    set for every query, so its chunked newsletter_campaigns name lookup never
+    runs here. With N campaigns in the window the real figure is
+    13 + ceil(N / 200) >= 14. Quote it as "13 against an empty result set".
+  */
+  const CEILING = 13;
+  check(`one render stays at ${CEILING} reads or fewer (empty result set)`,
+    total <= CEILING, `measured ${total}`);
   check("newsletter_events is not read more than 3 times",
     eventReads.length <= 3, `read ${eventReads.length}x`);
 

@@ -158,21 +158,51 @@ than the one now on disk. `perf:capture` owns the whole sequence instead — sto
 the port, build, start a server from **that** build, measure, and assert that
 no request failed.
 
-That guard is not hypothetical. During Stage 3 an early run reported a 161 KB
-saving. It was false: `npm run build` had been run under a live `next start`,
-the server kept serving the previous build's HTML, and one renamed 46 KB shared
-chunk 404'd. A refused request transfers no bytes, so the page read as 46 KB
-lighter than it was — and the *request count was identical*, so nothing looked
-wrong. The real saving was 66 KB.
+That guard is not hypothetical. During Stage 3 an early run reported a **161 KB**
+saving on `/regulamin`. It was false: `npm run build` had been run under a live
+`next start`, the server kept serving the previous build's HTML, and the chunks
+whose content hashes had changed were no longer on disk. A refused request
+transfers no bytes, so the page read as far lighter than it was. The real
+saving is **66 KB**.
 
-Two things now make that mistake hard to publish:
+The numbers, from the artifacts (an earlier version of this page got them
+wrong, and the correction is the useful part):
 
-- `perf-baseline.mjs` records failed requests, prints `!! FAILED REQUESTS —
-  THIS ROW IS NOT USABLE`, and carries `failedRequests` into the JSON;
+| run | JS wire | requests | failed |
+| --- | --- | --- | --- |
+| baseline, static import | 281,733 B | 32 | — |
+| the bad run | 116,875 B | **30** | ~12 |
+| honest AFTER | 214,272 B | 32 | 0 |
+
+Two things follow. First, **it was not one 46 KB chunk** — a deliberate
+reproduction of the same state recorded *twelve* failed chunk requests, which
+is the only way a 165 KB apparent saving is arithmetically possible. Second,
+**the request count did drop**, 32 → 30, so a stable request count was never
+the reassurance to look for here. Both claims appeared in the original
+write-up and both were wrong; an independent review caught them.
+
+Three things now make the mistake hard to publish:
+
+- `perf-baseline.mjs` records failed requests — including transport-level ones
+  (reset, refused, empty, blocked) that never produce an HTTP status and so
+  fire no `response` event at all. Benign `ERR_ABORTED` cancellations, which
+  Next emits routinely when it tears down in-flight RSC prefetches, are
+  excluded: a request the page *stopped wanting* is not a request it failed to
+  get.
 - `perf-delta.mjs` **refuses** to difference a row where either side had a
-  failure, rather than quietly netting it out.
+  failure — or where either side predates the guard and therefore has no
+  `failedRequests` field at all. A missing field is treated as *unusable*, not
+  as zero failures; reading it as zero left the guard inert on the one file
+  that most needed it.
+- `perf-capture.sh` refuses to run when it cannot clear the port, kills the
+  server's whole process group rather than just the `npm` wrapper, and — the
+  step that actually ties it together — **checks that the served HTML carries
+  the `BUILD_ID` it just built**. A process starting and a port answering are
+  circumstantial; the build id is not.
 
-Both were mutation-tested by hiding a chunk on disk.
+All of these were mutation-tested: by hiding a chunk on disk, by destroying a
+chunk's socket at the transport level, and by pointing the delta tool at the
+pre-guard baseline.
 
 ## Comparing two runs
 

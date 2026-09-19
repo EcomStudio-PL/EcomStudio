@@ -64,10 +64,34 @@ for (const k of new Set([...bMap.keys(), ...aMap.keys()])) {
     mismatches.push(`${k} — present only in ${b ? "BEFORE" : "AFTER"}; not comparable`);
     continue;
   }
-  if ((b.failedRequests ?? 0) > 0 || (a.failedRequests ?? 0) > 0) {
+  /*
+    A MISSING failedRequests IS NOT ZERO FAILURES.
+
+    The first version of this check read `b.failedRequests ?? 0`, which treats
+    "this run predates the guard" as "this run had no failures" — and that is
+    precisely backwards, because the runs that predate the guard are the ones
+    nobody checked. The original BEFORE baseline was captured before the field
+    existed, so the guard was inert on the exact file the headline was computed
+    from, and `perf-delta` went on printing the bogus -161 KB it was written to
+    stop. An independent review reproduced that.
+
+    So an absent field is a REFUSAL, not a pass. Re-capture with perf:capture.
+  */
+  const missing = [];
+  if (typeof b.failedRequests !== "number") missing.push("BEFORE");
+  if (typeof a.failedRequests !== "number") missing.push("AFTER");
+  if (missing.length) {
+    mismatches.push(
+      `${k} — ${missing.join(" and ")} predate(s) the failed-request guard, so nothing ` +
+        `checked whether those totals were deflated by a refused request. Not comparable; ` +
+        `re-capture with 'npm run perf:capture'.`,
+    );
+    continue;
+  }
+  if (b.failedRequests > 0 || a.failedRequests > 0) {
     const where = [];
-    if ((b.failedRequests ?? 0) > 0) where.push(`BEFORE had ${b.failedRequests} (${(b.failedUrls ?? []).join(", ")})`);
-    if ((a.failedRequests ?? 0) > 0) where.push(`AFTER had ${a.failedRequests} (${(a.failedUrls ?? []).join(", ")})`);
+    if (b.failedRequests > 0) where.push(`BEFORE had ${b.failedRequests} (${(b.failedUrls ?? []).join(", ")})`);
+    if (a.failedRequests > 0) where.push(`AFTER had ${a.failedRequests} (${(a.failedUrls ?? []).join(", ")})`);
     mismatches.push(
       `${k} — a request FAILED, so the totals are understated: ${where.join("; ")}. ` +
         `Re-measure; do not net this out.`,

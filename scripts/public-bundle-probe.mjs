@@ -63,10 +63,13 @@ async function chunksWithAuthClient(page, route) {
   const onResponse = (res) => {
     const url = res.url();
     if (!url.includes("/_next/static/") || !url.endsWith(".js")) return;
+    // A body that cannot be read is UNKNOWN, not clean. Scoring it as
+    // `hit: null` would let a run where every read rejected report "fetched
+    // 20 chunks, none carrying the auth client" and pass.
     bodies.push(
       res.text().then(
-        (t) => ({ url, hit: MARKERS.find((m) => t.includes(m)) || null }),
-        () => ({ url, hit: null }),
+        (t) => ({ url, hit: MARKERS.find((m) => t.includes(m)) || null, unread: false }),
+        () => ({ url, hit: null, unread: true }),
       ),
     );
   };
@@ -74,7 +77,11 @@ async function chunksWithAuthClient(page, route) {
   await page.goto(`${BASE}${route}`, { waitUntil: "networkidle" });
   page.off("response", onResponse);
   const all = await Promise.all(bodies);
-  return { total: all.length, hits: all.filter((c) => c.hit) };
+  return {
+    total: all.length,
+    hits: all.filter((c) => c.hit),
+    unread: all.filter((c) => c.unread),
+  };
 }
 
 const browser = await chromium.launch(launchOptions());
@@ -83,13 +90,15 @@ try {
 
   console.log("A. PUBLIC PAGES DO NOT SHIP THE SUPABASE AUTH CLIENT");
   for (const route of PUBLIC_ROUTES) {
-    const { total, hits } = await chunksWithAuthClient(page, route);
+    const { total, hits, unread } = await chunksWithAuthClient(page, route);
     check(
       `${route} fetched ${total} JS chunk(s), none carrying the auth client`,
-      total > 0 && hits.length === 0,
+      total > 0 && hits.length === 0 && unread.length === 0,
       hits.length
         ? hits.map((h) => `${h.url.split("/").pop()} contains ${h.hit}`).join("; ")
-        : "no JS was fetched at all, which means this probe proved nothing",
+        : unread.length
+          ? `${unread.length} chunk body/bodies could not be read, so this route is UNVERIFIED`
+          : "no JS was fetched at all, which means this probe proved nothing",
     );
   }
 
@@ -107,8 +116,6 @@ try {
   console.log("\nB. AND THE DETECTOR ITSELF IS ALIVE");
   const page2 = await browser.newPage();
   const { hits: homeHits } = await chunksWithAuthClient(page2, "/");
-  // The landing page must also be clean, so instead of asserting a hit there,
-  // assert the markers match the source they were written for.
   const src = await (await fetch(`${BASE}/regulamin`)).text();
   check("the server is the one we think it is", src.includes("<html"), "no HTML came back");
   check(
@@ -116,14 +123,48 @@ try {
     homeHits.length === 0,
     homeHits.map((h) => `${h.url.split("/").pop()} contains ${h.hit}`).join("; "),
   );
-  const { readFileSync } = await import("node:fs");
-  const clientSrc = readFileSync(new URL("../lib/supabase/client.ts", import.meta.url), "utf8");
+
+  /*
+    THE MARKERS MUST STILL MATCH A BUILT CHUNK, NOT JUST THE SOURCE.
+
+    This check used to read lib/supabase/client.ts and assert a marker appeared
+    in it. That proves nothing about section A, which searches MINIFIED BUNDLE
+    OUTPUT: a name can be perfectly present in the .ts file and mangled out of
+    every chunk. Two independent reviews demonstrated the same false pass —
+    point the markers at a local identifier like `sessionOnly` or
+    `PERSIST_COOKIE`, restore the real defect, and section A reports every
+    public page clean while section B cheerfully confirms the detector is fine.
+
+    So the liveness check now asks the only question that matters: does at
+    least one marker actually appear in a chunk this build produced? The
+    deferred client still ships in a lazily-loaded chunk, so the answer must be
+    yes — and if a Supabase rename or a minifier change ever makes it no, this
+    fails loudly instead of going quietly green forever.
+  */
+  const { readdirSync, readFileSync, existsSync: exists } = await import("node:fs");
+  const { join } = await import("node:path");
+  const chunkDir = new URL("../.next/static/chunks/", import.meta.url).pathname;
+  let markerInBuild = null;
+  if (exists(chunkDir)) {
+    const walk = (dir) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, e.name);
+        if (e.isDirectory()) { walk(full); continue; }
+        if (!e.name.endsWith(".js") || markerInBuild) continue;
+        const body = readFileSync(full, "utf8");
+        const hit = MARKERS.find((m) => body.includes(m));
+        if (hit) markerInBuild = `${e.name} contains ${hit}`;
+      }
+    };
+    walk(chunkDir);
+  }
   check(
-    "the markers still describe the real client module",
-    MARKERS.some((m) => clientSrc.includes(m)),
-    `none of ${MARKERS.join(", ")} appear in lib/supabase/client.ts any more — ` +
-      `update them, because section A currently cannot detect anything`,
+    "at least one marker survives minification into a real chunk",
+    Boolean(markerInBuild),
+    `none of ${MARKERS.join(", ")} appears in any file under .next/static/chunks — ` +
+      `section A can no longer detect anything and is passing vacuously`,
   );
+  if (markerInBuild) console.log(`      (${markerInBuild})`);
 } finally {
   await browser.close();
 }

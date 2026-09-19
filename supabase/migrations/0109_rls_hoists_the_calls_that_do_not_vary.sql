@@ -53,6 +53,44 @@
 
 begin;
 
+-- ── WHAT THE POLICIES SAY BEFORE WE TOUCH THEM ──────────────────────────────
+--
+-- Captured first, because the only honest way to prove "the plan changed and
+-- the meaning did not" is to compare the meaning before against the meaning
+-- after. The verification at the bottom un-hoists each new expression and
+-- requires it to be CHARACTER-IDENTICAL to the one recorded here.
+--
+-- An earlier version of this file checked only that no bare call was left
+-- over. That is a much weaker statement than it sounds: it is satisfied by
+-- `... or true` and by `with check (true)`. An independent review demonstrated
+-- exactly that, with a doctored copy of this migration that widened write
+-- access to usage_events and two newsletter tables and committed cleanly.
+create temporary table _p0109_before on commit drop as
+select c.relname::text as tbl,
+       p.polname::text  as pol,
+       pg_get_expr(p.polqual, p.polrelid)      as qual,
+       pg_get_expr(p.polwithcheck, p.polrelid) as wcheck,
+       p.polcmd,
+       p.polroles
+  from pg_policy p
+  join pg_class c on c.oid = p.polrelid
+  join pg_namespace n on n.oid = c.relnamespace
+ where n.nspname = 'public'
+   and (c.relname, p.polname) in (
+     ('generations','gen_select'), ('generation_assets','ga_select'),
+     ('generation_jobs','gj_select'), ('generation_jobs','gj_update'),
+     ('generation_jobs','gj_insert'), ('product_images','pimg_select'),
+     ('credit_wallets','wallet_select'), ('credit_transactions','ctx_select'),
+     ('usage_events','usage_events_member_read'),
+     ('usage_events','usage_events_admin_update'),
+     ('notifications','notifications_own_read'),
+     ('notifications','notifications_own_update'),
+     ('notifications','notifications_insert'),
+     ('newsletter_contacts','newsletter_contacts_admin'),
+     ('newsletter_recipients','newsletter_recipients_admin'),
+     ('newsletter_events','newsletter_events_admin')
+   );
+
 -- ── generations, assets, jobs ───────────────────────────────────────────────
 
 alter policy gen_select on public.generations
@@ -141,12 +179,16 @@ alter policy newsletter_events_admin on public.newsletter_events
 --
 -- A policy rewrite that silently widened access would look exactly like a
 -- successful migration, so this refuses to commit unless the result is what it
--- claims. Three things are asserted, all read back from the catalog:
+-- claims. Four things are asserted, all read back from the catalog:
 --
 --   1. every policy named above still exists;
---   2. none of them has a BARE zero-argument call left in either expression —
+--   2. UN-HOISTING each new expression reproduces the OLD one character for
+--      character, and the command and roles are unchanged. This is the check
+--      that actually carries the safety claim: it is the difference between
+--      "no bare call is left" and "the meaning did not change";
+--   3. none of them has a BARE zero-argument call left in either expression —
 --      that is the change actually landing rather than being a no-op;
---   3. usage_events still has exactly its two policies, so this file cannot
+--   4. usage_events still has exactly its two policies, so this file cannot
 --      have resurrected the client write path 0101 removed.
 do $$
 declare
@@ -166,6 +208,14 @@ declare
   v_qual text;
   v_check text;
   v_count int;
+  v_before_qual text;
+  v_before_check text;
+  v_before_cmd "char";
+  v_before_roles oid[];
+  v_cmd "char";
+  v_roles oid[];
+  v_unhoisted_qual text;
+  v_unhoisted_check text;
 begin
   foreach v_name in array v_expected loop
     select pg_get_expr(p.polqual, p.polrelid), pg_get_expr(p.polwithcheck, p.polrelid)
@@ -179,6 +229,52 @@ begin
 
     if not found then
       raise exception '0109: policy % vanished', v_name;
+    end if;
+
+    /*
+      THE LOAD-BEARING CHECK: UN-HOIST AND COMPARE.
+
+      Strip the wrapper back off — the catalog prints a hoisted call as
+      "( SELECT is_admin() AS is_admin)", so turning that back into
+      "is_admin()" must reproduce the expression this file started from,
+      exactly. Any other edit — a dropped conjunct, a flipped operator, an
+      appended `or true`, a `with check (true)` — changes the text and is
+      refused here.
+    */
+    select b.qual, b.wcheck, b.polcmd, b.polroles
+      into v_before_qual, v_before_check, v_before_cmd, v_before_roles
+      from _p0109_before b
+     where b.tbl = split_part(v_name, '.', 1)
+       and b.pol = split_part(v_name, '.', 2);
+    if not found then
+      raise exception '0109: % was not captured before the change', v_name;
+    end if;
+
+    v_unhoisted_qual := regexp_replace(coalesce(v_qual, ''),
+      '\( SELECT ([a-z_.]+)\(\) AS [a-z_]+\)', '\1()', 'gi');
+    v_unhoisted_check := regexp_replace(coalesce(v_check, ''),
+      '\( SELECT ([a-z_.]+)\(\) AS [a-z_]+\)', '\1()', 'gi');
+
+    if v_unhoisted_qual is distinct from coalesce(v_before_qual, '') then
+      raise exception E'0109: % CHANGED MEANING, not just its plan.\n  before: %\n  after (un-hoisted): %',
+        v_name, coalesce(v_before_qual, '<null>'), v_unhoisted_qual;
+    end if;
+    if v_unhoisted_check is distinct from coalesce(v_before_check, '') then
+      raise exception E'0109: % WITH CHECK changed meaning.\n  before: %\n  after (un-hoisted): %',
+        v_name, coalesce(v_before_check, '<null>'), v_unhoisted_check;
+    end if;
+
+    -- ALTER POLICY is not supposed to be able to touch either of these, but
+    -- asserting it costs nothing and a silent role widening is unrecoverable.
+    select p.polcmd, p.polroles into v_cmd, v_roles
+      from pg_policy p
+      join pg_class c on c.oid = p.polrelid
+      join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'public'
+       and c.relname = split_part(v_name, '.', 1)
+       and p.polname = split_part(v_name, '.', 2);
+    if v_cmd is distinct from v_before_cmd or v_roles is distinct from v_before_roles then
+      raise exception '0109: % changed its command or its roles', v_name;
     end if;
 
     /*

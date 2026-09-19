@@ -1,0 +1,77 @@
+name: Guards
+
+# THE STAGE-3 GUARDS, RUN AUTOMATICALLY.
+#
+# Every one of these scripts was written to pin a property "so a future change
+# cannot undo it quietly". Two independent reviews made the same observation:
+# none of them ran anywhere except by hand, and a guard nobody runs is the same
+# failure as a guard that passes when it shouldn't — one layer further out.
+#
+# WHAT RUNS HERE AND WHY IT IS SAFE TO.
+# Only checks that need no database, no session and no network:
+#
+#   test:routematrix     reads app/api/**/route.* and middleware.ts
+#   test:newsletterreads counts reads through a stub client
+#   test:imagepipeline   drives Next's real getSharp() against sharp
+#   test:cronauth        a pure function of (header, configured secret)
+#
+# The AVIF guard matters most of the four. It is the only thing standing
+# between a routine Next bump and AVIF uploads silently breaking product-wide,
+# and the margin is zero: it needs libheif >= 1.23.2 and we ship exactly
+# 1.23.2.
+#
+# WHAT DELIBERATELY DOES NOT RUN HERE.
+#   test:publicbundle   needs a built app and a running server
+#   test:rls:initplan   needs a throwaway Postgres
+#   test:ledger:sql     same
+# Those belong in a job that provisions them; adding them here half-working
+# would be worse than leaving them out, because a skipped step reads as a pass.
+# Tracked rather than pretended away.
+#
+# Fork PRs are skipped for the same reason lighthouse.yml skips them: this repo
+# is public, and a job running repo code can reach the DEV project through the
+# fallback in lib/supabase/config.ts. None of the four jobs below actually
+# touches it, but the rule is kept uniform rather than argued case by case.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guards:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci`, never `npm install`: the lockfile is the point. The AVIF
+      # guard's whole premise is which sharp the tree resolves, and that is a
+      # property of the lockfile.
+      - run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: API route matrix (P1-28)
+        run: npm run test:routematrix
+
+      - name: Newsletter read shape (P1-34)
+        run: npm run test:newsletterreads
+
+      - name: Scheduler credential rule (NEW-BG-02)
+        run: npm run test:cronauth
+
+      # Last, because it is the one whose failure is most likely to be a real
+      # product regression rather than a test problem.
+      - name: Image pipeline — AVIF survives Next's sharp block
+        run: npm run test:imagepipeline

@@ -120,6 +120,43 @@ try {
       */
       const failed = [];
 
+      /*
+        AND THE FAILURES THAT NEVER BECOME A RESPONSE AT ALL.
+
+        A 4xx/5xx arrives as a `response` event and is caught below. A request
+        that is RESET, REFUSED, ABORTED or blocked never fires one — Playwright
+        emits `requestfailed` instead. Such a request is therefore absent from
+        the response handler entirely: it adds nothing to requestCount, nothing
+        to any byte total, and without this listener nothing to `failed`. A
+        50 KB script whose socket is destroyed simply vanishes, and the run
+        reports a smaller page with a clean bill of health.
+
+        Not hypothetical: an independent review reproduced it, and one capture
+        during this work died on ERR_CONNECTION_REFUSED — had that hit a
+        subresource rather than the document, the capture would have completed
+        and passed perf-capture.sh's zero-failure assertion.
+      */
+      /*
+        A CANCELLED REQUEST IS NOT A FAILED ONE, and conflating them makes this
+        guard useless in the other direction.
+
+        `net::ERR_ABORTED` is routine: Next cancels in-flight RSC prefetches
+        when a page is torn down, and a redirect aborts the navigation it
+        replaced. Measured on this app, every route reports two of them and
+        they are identical between runs. Treating those as failures voided a
+        perfectly good capture the first time this listener was added.
+
+        The distinction that matters: an aborted request is one the page
+        decided it no longer wanted. A refused, reset, empty or blocked one is
+        a request the page DID want and did not get — and those are the ones
+        that quietly remove bytes from the totals.
+      */
+      page.on("requestfailed", (req) => {
+        const err = req.failure()?.errorText ?? "request failed";
+        if (err.includes("ERR_ABORTED")) return;
+        failed.push({ url: req.url(), status: err });
+      });
+
       page.on("response", async (res) => {
         const url = res.url();
         const type = res.request().resourceType();

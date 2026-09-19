@@ -256,14 +256,40 @@ savepoint s3;
 insert into public.generation_jobs values ('33333333-0000-0000-0000-000000000003','bbbbbbbb-0000-0000-0000-000000000002','deadbeef-0000-0000-0000-000000000001');
 select 'write  memberA inserts into ANOTHER WORKSPACE: allowed <<< LEAK';
 rollback to savepoint s3;
+/*
+  THE UPDATE MUST REPORT HOW MANY ROWS IT TOUCHED.
+
+  This probe used to print a constant string -- 'rows touched' -- whichever
+  way the UPDATE went. An UPDATE refused by RLS touches 0 rows and does not
+  raise, so the line was identical in both snapshots and cancelled out in the
+  diff. It was decoration, and it sat in front of usage_events: the table the
+  credit ledger and the reconciler key off.
+*/
 savepoint s4;
-update public.usage_events set workspace_id = workspace_id where true;
-select 'write  memberA updates usage_events: ' || 'rows touched';
+with u as (update public.usage_events set workspace_id = workspace_id where true returning 1)
+select 'write  memberA UPDATEd usage_events rows: ' || count(*) from u;
 rollback to savepoint s4;
 savepoint s5;
 insert into public.newsletter_contacts values ('44444444-0000-0000-0000-000000000001');
 select 'write  memberA writes newsletter_contacts: allowed <<< LEAK';
 rollback to savepoint s5;
+/*
+  AND THE OTHER TWO OPERATOR-ONLY TABLES NEED THEIR OWN PROBES.
+
+  Read counts only exercise a FOR ALL policy's USING half. Its WITH CHECK half
+  -- the half that decides whether a customer may WRITE an admin row -- was
+  never touched, so a migration that set `with check (true)` on these passed.
+  newsletter_events is where opens and clicks are recorded, so a member able to
+  insert there can forge the analytics; newsletter_recipients is send state.
+*/
+savepoint s6;
+insert into public.newsletter_recipients values ('44444444-0000-0000-0000-000000000002');
+select 'write  memberA writes newsletter_recipients: allowed <<< LEAK';
+rollback to savepoint s6;
+savepoint s7;
+insert into public.newsletter_events values ('44444444-0000-0000-0000-000000000003');
+select 'write  memberA writes newsletter_events: allowed <<< LEAK';
+rollback to savepoint s7;
 -- Nothing the write probes did may survive into the next snapshot.
 rollback;
 SQL
@@ -338,7 +364,12 @@ echo "==> writes that must be refused"
 assert_absent "write  memberA inserts job AS ANOTHER USER: allowed <<< LEAK"
 assert_absent "write  memberA inserts into ANOTHER WORKSPACE: allowed <<< LEAK"
 assert_absent "write  memberA writes newsletter_contacts: allowed <<< LEAK"
+assert_absent "write  memberA writes newsletter_recipients: allowed <<< LEAK"
+assert_absent "write  memberA writes newsletter_events: allowed <<< LEAK"
 assert_line   "write  memberA inserts own job: allowed"
+# ZERO, asserted as a value rather than inferred from a constant string. A
+# customer must not be able to update a single usage_events row.
+assert_line   "write  memberA UPDATEd usage_events rows: 0"
 
 [ "$fail" -eq 0 ] || { echo; echo "isolation assertions FAILED" >&2; exit 1; }
 
@@ -358,8 +389,16 @@ HOISTED=$("${PSQL[@]}" -c "
       'usage_events_admin_update','notifications_own_read','notifications_own_update',
       'notifications_insert','newsletter_contacts_admin','newsletter_recipients_admin',
       'newsletter_events_admin')
-    and (coalesce(pg_get_expr(p.polqual,p.polrelid),'') like '%( SELECT %'
-      or coalesce(pg_get_expr(p.polwithcheck,p.polrelid),'') like '%( SELECT %');
+    -- MATCH THE HOISTED CALL, NOT ANY SUBQUERY.
+    --
+    -- This used to test for '%( SELECT %', which three of the sixteen satisfy
+    -- for free: pimg_select, ga_select and ctx_select contain
+    -- 'exists (select 1 from ...)', rendered by pg_get_expr as '( SELECT 1 ...'.
+    -- An independent review reverted all three to the bare per-row call and
+    -- this query still answered 16. The pattern now requires the shape the
+    -- catalog prints for a hoisted zero-argument call.
+    and (coalesce(pg_get_expr(p.polqual,p.polrelid),'') ~ '\( SELECT [a-z_.]+\(\) AS [a-z_]+\)'
+      or coalesce(pg_get_expr(p.polwithcheck,p.polrelid),'') ~ '\( SELECT [a-z_.]+\(\) AS [a-z_]+\)');
 ")
 echo "    policies now carrying a hoisted call: $HOISTED / 16"
 if [ "$HOISTED" -ne 16 ]; then
