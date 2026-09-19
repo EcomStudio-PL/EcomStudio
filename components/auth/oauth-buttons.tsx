@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/provider";
+import { safeReturnTo } from "@/lib/auth-routes";
 
 /**
  * Social login via Supabase OAuth (PKCE — the browser client generates the
@@ -62,7 +63,10 @@ export function OAuthButtons({ next, compact = false }: {
   async function start(provider: "google" | "apple") {
     setBusy(provider);
     const supabase = createClient();
-    const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "";
+    // The same guard as everywhere else, including the backslash and
+    // control-character checks this copy was missing — and this value becomes
+    // an OAuth redirectTo, so a lie here survives the whole round trip.
+    const safeNext = safeReturnTo(next);
     const callback = `${window.location.origin}/auth/callback${
       safeNext ? `?next=${encodeURIComponent(safeNext)}` : ""}`;
     const { error } = await supabase.auth.signInWithOAuth({

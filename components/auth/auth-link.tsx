@@ -1,6 +1,6 @@
 "use client";
 import { usePathname } from "next/navigation";
-import type { AuthMode } from "@/lib/auth-routes";
+import { safeReturnTo, type AuthMode } from "@/lib/auth-routes";
 import { useOptionalAuthDialog } from "@/components/auth/auth-dialog-context";
 
 /**
@@ -26,7 +26,10 @@ export function AuthLink({ mode, className, children, next, ...rest }: {
   // The href is the no-JS / new-tab fallback, and what a hover preview shows.
   const q = new URLSearchParams();
   q.set("auth", mode);
-  if (next && next.startsWith("/") && !next.startsWith("//")) q.set("next", next);
+  // Same guard as every other next= producer. A value that cannot be trusted
+  // is simply not carried, rather than carried in a tidied-up form.
+  const safeNext = safeReturnTo(next);
+  if (safeNext) q.set("next", safeNext);
   const href = `${pathname}?${q.toString()}`;
 
   return (

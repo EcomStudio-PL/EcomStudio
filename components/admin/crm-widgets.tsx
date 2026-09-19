@@ -5,7 +5,7 @@ import { toast } from "@/lib/notify";
 import { Pin, Trash2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import {
-  blockUserAction, assignManagerAction, saveCrmNoteAction, deleteCrmNoteAction,
+  assignManagerAction, saveCrmNoteAction, deleteCrmNoteAction,
 } from "@/app/actions/admin-b2b";
 import { Button } from "@/components/ui/button";
 import { Textarea, Select, Label, Input } from "@/components/ui/input";
@@ -25,25 +25,12 @@ function useRun() {
   return { pending, run };
 }
 
-export function BlockUserButton({ userId, blocked, isSelf }: { userId: string; blocked: boolean; isSelf: boolean }) {
-  const { t } = useI18n();
-  const { pending, run } = useRun();
-  const [confirming, setConfirming] = useState(false);
-  if (isSelf) return null;
-  return (
-    <>
-      <Button size="sm" variant={blocked ? "secondary" : "danger"} disabled={pending}
-        onClick={() => (blocked ? run(blockUserAction(userId, false)) : setConfirming(true))}>
-        {blocked ? t("crm.unblock") : t("crm.block")}
-      </Button>
-      <ConfirmModal
-        open={confirming} onClose={() => setConfirming(false)}
-        onConfirm={() => run(blockUserAction(userId, true), () => setConfirming(false))}
-        title={t("crm.block")} body={t("crm.blockBody")} confirmLabel={t("crm.block")} danger pending={pending}
-      />
-    </>
-  );
-}
+// BlockUserButton USED TO LIVE HERE. Nothing rendered it, and the action
+// behind it wrote a block that did not hold — see app/actions/admin-b2b.ts.
+// The block control customers actually see is in customer-actions.tsx, which
+// goes through admin_block_user(). No rendered markup changed with this
+// deletion, and no translation key was removed: crm.block / crm.unblock /
+// crm.blockBody are still used there.
 
 export function ManagerSelect({ userId, current, managers }: {
   userId: string; current: string | null; managers: { id: string; label: string }[];

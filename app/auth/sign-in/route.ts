@@ -4,6 +4,7 @@ import { createAuthRouteClient } from "@/lib/supabase/auth-route";
 import { authCookieOptions, PERSIST_COOKIE, SUPABASE_CONFIG_FROM_ENV } from "@/lib/supabase/config";
 import { rateLimit, clientIp } from "@/lib/server/rate-limit";
 import { loginAllowedFor } from "@/lib/server/platform-access";
+import { safeReturnTo } from "@/lib/auth-routes";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +59,7 @@ export async function POST(request: Request) {
   const password = String(form.get("password") ?? "");
   const remember = form.get("remember") != null;
   const nextRaw = String(form.get("next") ?? "");
-  const next = nextRaw.startsWith("/") && !nextRaw.startsWith("//") && !nextRaw.includes("\\") ? nextRaw : "/home";
+  const next = safeReturnTo(nextRaw) || "/home";
   const origin = new URL(request.url).origin;
 
   const redirectTo = (path: string) => {

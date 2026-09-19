@@ -522,33 +522,56 @@ export async function enforceLoginSecurity(supabase: Client): Promise<string | n
   const ipHash = hashIp(await callerIpRaw());
   const { trusted } = await evaluateRisk(supabase, settings, deviceHash, ipHash);
   if (trusted) return null;
-  // FAIL OPEN when we could not actually deliver a code. A security step-up
-  // whose email cannot be sent would lock every customer — and every admin —
-  // out of the whole app with no way back. Availability wins here: the device
-  // is let through and the gap is logged, rather than turning a mail outage
-  // into a total lockout. In production the mailbox is configured, so this
-  // path is the safety net, not the norm.
+  // TWO DIFFERENT QUESTIONS, AND THEY USED TO SHARE ONE ANSWER.
+  //
+  // "Is the mailbox reachable?" is an outage — outside our control, and
+  // locking every customer and every admin out of the product over it is the
+  // worse failure. That one still fails open.
+  //
+  // "Do we have the key this deployment needs?" is a deploy we got wrong. It
+  // used to fall into the same branch, so a missing, malformed or
+  // mid-rotation key silently switched the entire step-up off: every
+  // unrecognised device and every new IP waved through, with one console.warn
+  // as the only sign, while the admin panel still showed the feature as on.
+  // That is not availability, it is a security control that is off without
+  // anyone knowing.
+  if (!stepUpDispatchReady()) {
+    // FAIL CLOSED, deliberately. This is recoverable in minutes from the
+    // hosting dashboard WITHOUT access to the app; the silent bypass is not
+    // recoverable at all, because nobody can tell it is happening.
+    console.error(
+      "loginSecurity.misconfigured: no server key in this deployment — the step-up cannot issue or verify codes. " +
+      "Set GROVBASE_INTEGRATIONS_ENCRYPTION_KEY or APP_ENCRYPTION_KEY (64 hex) and redeploy.",
+    );
+    return "/auth/security-check";
+  }
   if (!(await canSendSecurityMail(supabase))) {
-    console.warn("loginSecurity.failOpen: step-up needed but security mail is not sendable");
+    console.warn("loginSecurity.failOpen: step-up needed but the mail transport is unavailable");
     return null;
   }
   return "/auth/security-check";
 }
 
+/** Whether this deployment can issue and verify a code AT ALL. The challenge
+ *  RPCs are token-gated (0057), so without the server key the step-up is not
+ *  degraded — it is inoperable. That is our misconfiguration, and it must
+ *  never read as "the mail is down". */
+export function stepUpDispatchReady(): boolean {
+  return loginSecurityToken() !== null;
+}
+
 /**
- * Can we actually email a code right now? The SMTP transport and the dispatch
- * token have to be in place, or a challenge is a dead end.
+ * Can we actually email a code right now? SMTP only — this answers exactly one
+ * question, and the caller decides what to do about it.
  *
- * IT NO LONGER ASKS FOR AN ENCRYPTION KEY. It used to, because the mailbox
- * password was AES ciphertext that only APP_ENCRYPTION_KEY could open — so a
- * missing deploy variable made this false, and enforceLoginSecurity FAILS OPEN
- * on false. A lost environment variable therefore silently switched the whole
- * step-up gate off. The password comes from Supabase Vault now (migration
- * 0078) and needs no key of ours, so that condition would only keep a gate
- * disabled for a reason that no longer exists.
+ * IT NO LONGER ASKS ABOUT KEYS, of any kind. It used to fold "do we have the
+ * server key" into the same boolean, and enforceLoginSecurity fails OPEN on
+ * false, so a missing or rotating key silently turned the whole step-up off
+ * while the admin panel still showed it enabled. Mixing a misconfiguration we
+ * caused with an outage we did not is what made that invisible. The key
+ * question now lives in stepUpDispatchReady() and fails CLOSED.
  */
 export async function canSendSecurityMail(supabase: Client): Promise<boolean> {
-  if (!loginSecurityToken()) return false;
   try {
     const { config, secrets } = await readIntegrationSecrets<MailConfig>(supabase, "mail");
     const password = secrets.smtp_password ?? (config.smtp_same_as_imap ? secrets.imap_password : undefined);

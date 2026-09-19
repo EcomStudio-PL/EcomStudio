@@ -17,20 +17,19 @@ async function requireAdmin() {
 
 // ---------- CRM ----------
 
-export async function blockUserAction(userId: string, blocked: boolean): Promise<Result> {
-  try {
-    const { supabase, adminId } = await requireAdmin();
-    if (userId === adminId) return { ok: false, error: "self" };
-    const { error } = await supabase.from("profiles").update({ blocked }).eq("id", userId);
-    if (error) return { ok: false, error: "generic" };
-    await logAudit(supabase, {
-      actorId: adminId, action: blocked ? "user.blocked" : "user.unblocked",
-      entityType: "profile", entityId: userId, after: { blocked },
-    });
-    revalidatePath(`/admin/users/${userId}`);
-    return { ok: true };
-  } catch { return { ok: false, error: "generic" }; }
-}
+// blockUserAction USED TO LIVE HERE and has been deleted, not repaired.
+//
+// It wrote only the boolean `blocked` and never `blocked_until`, so
+// lib/server/account-block.ts saw a stale expiry in the past and read the
+// account as free: a block an operator believed was in force was not, and the
+// account kept spending credits against paid providers. It was also dead —
+// its only caller was a BlockUserButton that nothing rendered.
+//
+// The live path is app/actions/admin-crm.ts → admin_block_user(), which writes
+// both columns. It is NOT a like-for-like replacement, so anything that wants
+// a block back must adapt to it rather than repoint at it: blockUserAction
+// takes an object ({ userId, until, reason, note }) and unblocking is a
+// separate unblockUserAction(userId).
 
 export async function assignManagerAction(userId: string, managerId: string | null): Promise<Result> {
   try {

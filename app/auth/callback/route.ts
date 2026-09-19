@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
 import { collectEventContext, contextRows, eventDataFrom, formatWarsaw } from "@/lib/server/event-context";
 import { loginAllowedFor, neutraliseAccount, signupAllowedNow } from "@/lib/server/platform-access";
+import { safeReturnTo } from "@/lib/auth-routes";
 
 export const dynamic = "force-dynamic";
 
@@ -44,9 +45,7 @@ export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
   const nextParam = searchParams.get("next");
-  const next = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") && !nextParam.includes("\\")
-    ? nextParam
-    : "/home";
+  const next = safeReturnTo(nextParam) || "/home";
 
   // Supabase-signalled failures (expired OTP, cancelled OAuth consent…)
   // arrive without a code but with error params.
@@ -90,15 +89,28 @@ export async function GET(request: Request) {
    *    account is untouched; only the session ends. Admins pass, because the
    *    panel that reopens the door must stay reachable.
    *
-   * A password-reset return (next=/reset-password) is neither: it is an
-   * existing customer proving they own the address, so it is left alone.
+   * A password recovery is neither: it is an existing customer proving they
+   * own the address. That exemption used to be keyed on `next`, which the
+   * caller supplies — so starting a social sign-in with next=/reset-password
+   * walked straight through the pre-launch gate. It is now derived from what
+   * GoTrue says the session was actually obtained with, the way /auth/confirm
+   * already keys on the OTP type.
    */
-  if (data.user && !next.startsWith("/reset-password")) {
+  if (data.user) {
     // The EXCHANGED client, not a fresh cookie-reading one: the response
     // cookies have not been written yet, so a new server client here would be
     // anonymous — it could not read the caller's role (locking an admin out of
     // the social path) and could not write the profile below.
     const fresh = isFreshSignup(data.user);
+    // WHAT THE SESSION WAS OBTAINED WITH, not what the caller asked for.
+    // Unreadable or absent means false, i.e. the gate applies — a recovery
+    // that cannot prove itself is treated as an ordinary login, which is the
+    // safe direction. The branded recovery mail links to
+    // /auth/confirm?type=recovery, which keeps its own correct exemption, so
+    // nothing real depends on this being generous.
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    const viaRecovery = (aal?.currentAuthenticationMethods ?? [])
+      .some((m) => (typeof m === "string" ? m : m.method) === "recovery");
     if (fresh && !(await signupAllowedNow(supabase))) {
       await neutraliseAccount(supabase, data.user.id);
       await supabase.auth.signOut();
@@ -107,7 +119,7 @@ export async function GET(request: Request) {
       denied.searchParams.set("blocked", "signup");
       return applyCookies(NextResponse.redirect(denied));
     }
-    if (!fresh && !(await loginAllowedFor(supabase, data.user.id))) {
+    if (!fresh && !viaRecovery && !(await loginAllowedFor(supabase, data.user.id))) {
       await supabase.auth.signOut();
       const denied = new URL("/", origin);
       denied.searchParams.set("auth", "login");
@@ -116,10 +128,13 @@ export async function GET(request: Request) {
     }
   }
 
-  // Announce a brand-new social signup, once, off the hot path. Recovery links
-  // (next=/reset-password) and returning logins are skipped. notify() swallows
-  // its own failures, and the dedupe key keeps a double-submit to one ping.
-  if (data.user?.email && !next.startsWith("/reset-password") && isFreshSignup(data.user)) {
+  // Announce a brand-new social signup, once, off the hot path. Returning
+  // logins are skipped by isFreshSignup, which is also false for any real
+  // recovery — GoTrue only issues recovery tokens for existing confirmed
+  // accounts — so the `next` test that used to be here was both redundant and
+  // built on a value the caller controls. notify() swallows its own failures,
+  // and the dedupe key keeps a double-submit to one ping.
+  if (data.user?.email && isFreshSignup(data.user)) {
     const email = data.user.email;
     const provider = data.user.app_metadata?.provider ?? "oauth";
     const fullName = (data.user.user_metadata?.full_name as string | undefined)?.trim() ?? "";

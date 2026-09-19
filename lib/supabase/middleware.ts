@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, authCookieOptions, PERSIST_COOKIE, stripPersistence } from "./config";
+import { safeReturnTo } from "@/lib/auth-routes";
+import { cachedPass, rememberPass, sha256Hex, stepUpAppliesTo } from "@/lib/server/step-up-edge";
 
 // `/podglad` is the CMS draft preview: an unpublished page rendered as a
 // visitor would see it. It is not under /admin because it must carry NO admin
@@ -28,6 +30,11 @@ export const ADMIN_LOGIN_PATH = "/admin/login";
 /** The dialog's own address. Kept as literals rather than imported from
  *  lib/auth-routes: this module runs in the edge runtime, where every import
  *  is bundled, and the two values are asserted equal by the test suite. */
+/** Same value as DEVICE_COOKIE in lib/server/login-security.ts, repeated for
+ *  the same reason AUTH_HOST is: that module is `server-only`. The test suite
+ *  asserts the two are equal. */
+const DEVICE_COOKIE = "grovbase_device";
+
 const AUTH_HOST = "/";
 const AUTH_PARAM = "auth";
 
@@ -98,9 +105,52 @@ export async function updateSession(request: NextRequest) {
   if (user && (dialogOpen || AUTH_PAGES.some((p) => pathname.startsWith(p)))) {
     const url = request.nextUrl.clone();
     const next = request.nextUrl.searchParams.get("next");
-    url.pathname = next && next.startsWith("/") && !next.startsWith("//") && !next.includes("\\") ? next : "/home";
+    url.pathname = safeReturnTo(next) || "/home";
     url.search = "";
     return redirectWithCookies(url);
+  }
+
+  // ── THE SECOND FACTOR, AT THE REQUEST LAYER ───────────────────────────────
+  //
+  // The emailed-code gate lives in the two protected LAYOUTS, and a layout
+  // only runs when a page renders. /auth/sign-in writes full session cookies
+  // the moment the password is right, so an attacker holding nothing but a
+  // stolen password has a valid session before any layout has had a say — and
+  // every API route is reachable in that state, including the ones that spend
+  // the customer's credits and the ones that hand back their work.
+  //
+  // Asked here, the question covers the request instead of the render.
+  if (user && stepUpAppliesTo(pathname)) {
+    const raw = request.cookies.get(DEVICE_COOKIE)?.value?.trim() ?? "";
+    const deviceHash = raw ? await sha256Hex(raw) : "";
+    const key = `${user.id}:${deviceHash}`;
+    if (!cachedPass(key)) {
+      // The policy arguments are inert after migration 0104 — the function
+      // reads verify_new_device / verify_new_ip / reverify_days from
+      // app_settings itself, because taking them from the caller was how the
+      // second factor could be waved away. They are still passed so the call
+      // matches the deployed signature.
+      const { data, error } = await supabase.rpc("login_security_check", {
+        p_device_hash: deviceHash,
+        p_ip_hash: "",
+        p_verify_device: true,
+        p_verify_ip: true,
+        p_reverify_days: 0,
+      });
+      const verdict = (data as { trusted?: boolean } | null)?.trusted;
+      if (verdict === true) {
+        rememberPass(key);
+      } else if (error || verdict === undefined) {
+        // COULD NOT DECIDE — not the same as "not trusted". Refusing every
+        // API call because one database read hiccuped would turn a blip into
+        // an outage, and the layout gate behind this still applies. The
+        // attacker cannot reach this branch: it needs the database to fail,
+        // not a password to be stolen.
+        console.warn("stepUp.undecided", error?.code ?? "no_verdict", pathname);
+      } else {
+        return NextResponse.json({ ok: false, error: "step_up_required" }, { status: 403 });
+      }
+    }
   }
 
   // Authenticated HTML and the login page must never be served from a cache.

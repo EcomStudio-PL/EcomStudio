@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { enforceLoginSecurity } from "@/lib/server/login-security";
 import { SecurityCheck } from "@/components/auth/security-check";
+import { safeReturnTo } from "@/lib/auth-routes";
 
 export const dynamic = "force-dynamic";
 
@@ -21,9 +22,11 @@ export default async function SecurityCheckPage({ searchParams }: {
   searchParams: Promise<{ next?: string }>;
 }) {
   const { next: nextRaw } = await searchParams;
-  const next = nextRaw && nextRaw.startsWith("/") && !nextRaw.startsWith("//") && !nextRaw.includes("\\")
-    ? nextRaw
-    : "/home";
+  // One implementation, imported. The copy that used to live here was the one
+  // an attacker could walk through: it accepted a value carrying a character
+  // the URL parser strips, so the redirect after a successful device check
+  // could land on another origin.
+  const next = safeReturnTo(nextRaw) || "/home";
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

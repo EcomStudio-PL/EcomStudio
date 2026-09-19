@@ -20,10 +20,24 @@ export const AUTH_HOST_PATH = "/";
  *  reflected back into a fresh one. */
 const CARRIED = ["next", "error", "email"] as const;
 
+/** Characters every URL parser — browsers and Node alike — REMOVES before it
+ *  parses. That is what makes them dangerous here: a value is inspected with
+ *  them present and resolved with them gone, so "/<TAB>/evil.com" passes a
+ *  "starts with / and not //" test and then resolves to //evil.com, which is
+ *  another origin. */
+const PARSER_STRIPPED = /[\u0000-\u001F\u007F]/;
+
 /** An internal path, or "" — never an absolute or protocol-relative value,
- *  which is what an open redirect is made of. */
+ *  which is what an open redirect is made of.
+ *
+ *  A value carrying a stripped character is REFUSED, not cleaned. Cleaning
+ *  would turn an attacker's string into a different string that looks
+ *  internal; refusing says what is true, which is that this value cannot be
+ *  trusted to mean what it appears to mean. `trim()` only ever removed the
+ *  outer ones, and the dangerous ones are interior. */
 export function safeReturnTo(value: string | null | undefined): string {
   const v = (value ?? "").trim();
+  if (PARSER_STRIPPED.test(v)) return "";
   return v.startsWith("/") && !v.startsWith("//") && !v.includes("\\") ? v : "";
 }
 
