@@ -1,0 +1,36 @@
+name: Dependency Review
+
+# Blocks a pull request that ADDS a vulnerable dependency. It compares the
+# dependency graph of the base and head refs, so it says nothing about what is
+# already installed — the existing npm audit findings (1 critical, 3 high as of
+# 2026-09-18) are a separate, deliberate task and are NOT this workflow's job.
+#
+# fail-on-severity is `high` on purpose. `moderate` on a 900-package Next.js
+# tree turns every routine dependency bump into an argument, and a gate people
+# route around is worse than no gate.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      # Versions per the 2026-09-19 GrovBase implementation guide; not
+      # verifiable from the build sandbox. If the first run cannot resolve an
+      # action, drop checkout to @v4 and dependency-review-action to @v4.
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+          # No licence policy yet. Deliberate: licences are a separate audit of
+          # what is already installed, and an allow-list bolted on here would
+          # fail PRs for reasons that have nothing to do with security.
