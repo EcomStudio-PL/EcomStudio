@@ -1,0 +1,23 @@
+# Gitleaks configuration for GrovBase.
+#
+# Extends the bundled default ruleset rather than replacing it — a hand-rolled
+# rule list goes stale the moment a provider changes its key format.
+[extend]
+useDefault = true
+
+# Known findings are NOT suppressed here. They are pinned by fingerprint in
+# .gitleaks-baseline.json and passed via --baseline-path, so gitleaks reports
+# only findings that are new relative to that file.
+#
+# The difference matters. A path- or regex-based allowlist would blind the
+# scanner to the whole file forever, including a real key added tomorrow. A
+# baseline suppresses exactly the six vetted findings and nothing else.
+#
+# See docs/tooling/gitleaks.md for what those six are and why each is benign.
+
+[allowlist]
+description = "Placeholders in the tracked .env.example — never real values."
+regexes = [
+  '''your-[a-z-]+-key''',
+  '''your-project-ref''',
+]
