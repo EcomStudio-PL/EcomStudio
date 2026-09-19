@@ -1,5 +1,5 @@
 "use server";
-import { createHash, randomUUID, timingSafeEqual } from "crypto";
+import { randomUUID } from "crypto";
 import { headers } from "next/headers";
 import nodemailer from "nodemailer";
 import MailComposer from "nodemailer/lib/mail-composer";
@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Client } from "@/lib/services/workspace";
 import { logAudit } from "@/lib/services/audit";
 import { readSecrets, secretName } from "@/lib/server/secret-store";
+import { cronTokenVerdict } from "@/lib/server/cron-auth";
 import {
   appendToSent,
   deleteMessage,
@@ -679,21 +680,6 @@ async function pollInbox(supabase: Client, token: string): Promise<{ found: numb
 
 type SyncCaller = "admin" | "cron" | "denied" | "cron_secret_missing";
 
-function bearerToken(value: string | null): string {
-  const header = (value ?? "").trim();
-  return /^Bearer\s+/i.test(header) ? header.replace(/^Bearer\s+/i, "").trim() : "";
-}
-
-/** Constant-time over the digests rather than the strings: comparing the raw
- *  values would need equal lengths, and refusing early on a length mismatch is
- *  itself a measurement. */
-function secretMatches(presented: string, expected: string): boolean {
-  return timingSafeEqual(
-    createHash("sha256").update(presented).digest(),
-    createHash("sha256").update(expected).digest(),
-  );
-}
-
 /**
  * Who is allowed to run a sync, in one place — the admin's button and the cron
  * route both go through it, so the rule cannot drift between them.
@@ -704,13 +690,13 @@ function secretMatches(presented: string, expected: string): boolean {
  * refused without leaving the endpoint open in the meantime.
  */
 async function syncCaller(supabase: Client): Promise<SyncCaller> {
-  const secret = process.env.CRON_SECRET?.trim() ?? "";
-  if (secret) {
-    const presented = bearerToken((await headers()).get("authorization"));
-    if (presented && secretMatches(presented, secret)) return "cron";
-  }
+  // The header half of the question lives in lib/server/cron-auth.ts, shared
+  // with the newsletter worker so the two cannot drift apart. The session half
+  // stays here, because only this route admits an admin as well.
+  const verdict = cronTokenVerdict((await headers()).get("authorization"), process.env.CRON_SECRET);
+  if (verdict === "cron") return "cron";
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return secret ? "denied" : "cron_secret_missing";
+  if (!user) return verdict === "secret_missing" ? "cron_secret_missing" : "denied";
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
   return profile?.role === "admin" ? "admin" : "denied";
 }

@@ -1,10 +1,10 @@
-import { timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { createClient as createAnonClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase/config";
 import { runWorkerBatch } from "@/lib/server/newsletter/worker";
 import { dispatchToken } from "@/lib/server/server-token";
+import { bearerToken, secretMatches } from "@/lib/server/cron-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,20 +45,13 @@ export const maxDuration = 60;
  * depend on whose cookie happened to arrive.
  */
 
-/** Constant-time compare. `timingSafeEqual` throws on a length mismatch, which
- *  would itself leak the length, so the lengths are checked first and the
- *  constant-time compare always runs. */
-function equal(a: string, b: string): boolean {
-  const x = Buffer.from(a);
-  const y = Buffer.from(b);
-  if (x.length !== y.length) return false;
-  return timingSafeEqual(x, y);
-}
-
-function bearer(header: string | null): string {
-  const match = /^Bearer\s+(.+)$/i.exec((header ?? "").trim());
-  return match ? match[1].trim() : "";
-}
+/*
+  THE COMPARISON AND THE PARSER NOW COME FROM lib/server/cron-auth.ts, shared
+  with the mailbox poll. They used to be a second copy here, and the two copies
+  did not agree: this one compared the raw bytes and returned early when the
+  lengths differed, which is the measurement the other file's comment says to
+  avoid. One rule, in one place, and it is the stronger of the two.
+*/
 
 type Verdict = { ok: true; via: "cron_secret" | "dispatch_token" } | { ok: false; reason: string };
 
@@ -72,13 +65,13 @@ function authorize(request: Request): Verdict {
   const cronSecret = process.env.CRON_SECRET?.trim() ?? "";
   const serverToken = dispatchToken();
 
-  const presented = bearer(request.headers.get("authorization"));
-  if (cronSecret && presented && equal(presented, cronSecret)) {
+  const presented = bearerToken(request.headers.get("authorization"));
+  if (cronSecret && secretMatches(presented, cronSecret)) {
     return { ok: true, via: "cron_secret" };
   }
 
   const header = request.headers.get("x-newsletter-token")?.trim() ?? "";
-  if (serverToken && header && equal(header, serverToken)) {
+  if (serverToken && secretMatches(header, serverToken)) {
     return { ok: true, via: "dispatch_token" };
   }
 

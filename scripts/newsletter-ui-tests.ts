@@ -537,7 +537,14 @@ check("…never touches cookies", !/\bcookies\(/.test(worker));
 check("…and does not fall back to an is_admin() probe", !/is_admin/.test(worker));
 check("the two credentials it does accept are server-held secrets",
   /CRON_SECRET/.test(worker) && /dispatchToken\(/.test(worker));
-check("…compared in constant time", /timingSafeEqual/.test(worker));
+// The constant-time comparison moved to lib/server/cron-auth.ts, shared with
+// the mailbox poll — this file used to hold its own copy, and the two copies
+// did not agree (this one returned early on a length mismatch, which the other
+// deliberately avoided). Asserting the import rather than the literal keeps
+// the property pinned without pinning WHERE it is implemented; the comparison
+// itself, including its shape, is proved by npm run test:cronauth.
+check("…compared in constant time, by the shared rule",
+  /from "@\/lib\/server\/cron-auth"/.test(worker) && /secretMatches\(/.test(worker));
 
 /**
  * AND THE MAIL CRON IS UNCHANGED WITH RESPECT TO THE NEWSLETTER.
