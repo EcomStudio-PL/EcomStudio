@@ -30,62 +30,85 @@ through the Playwright dependency that is already installed.
 ## Recorded baseline
 
 **Conditions: LOCAL / ESTIMATED.** Production build (`next start`) served from
-localhost, loopback network, no latency, no throttling, warm cache disabled per
-fresh context. Absolute timings are therefore optimistic and are **not**
-comparable to field data. The *byte counts* and *request counts* are real and
-are the numbers worth tracking.
+localhost, loopback network, no latency, no throttling. Absolute timings are
+therefore optimistic and are **not** comparable to field data.
 
-Commit `195728d`, 2026-09-19.
+### Wire bytes vs decoded bytes — read this before quoting a number
 
-| Route | Viewport | TTFB | LCP | CLS | HTML | Requests | Transfer |
-|---|---|---|---|---|---|---|---|
-| `/` | desktop 1280 | — | — | — | 294.6 KB | 28 | 1574.8 KB |
-| `/` | mobile 390 | 44 ms | 228 ms | 0.0007 | 294.6 KB | 28 | 1574.8 KB |
-| `/regulamin` | desktop 1280 | 108 ms | 276 ms | 0 | 248.2 KB | 26 | 1485.9 KB |
-| `/regulamin` | mobile 390 | 33 ms | 176 ms | 0 | 248.3 KB | 26 | 1485.9 KB |
+These are two different figures and they differ by roughly 3x, because the
+responses are gzipped (Lighthouse `uses-text-compression` scores 1).
 
-Transfer by type, `/` mobile:
+- **wire** — what the connection actually pays for, after compression.
+- **decoded** — what the parser and memory pay for, after decompression.
 
-```
-script      744.4 KB
-document    287.6 KB
-image       210.7 KB
-font        170.5 KB
-stylesheet  161.7 KB
-fetch         0.0 KB
-```
+An earlier version of this document printed the DECODED figure under the
+heading "Transfer" and claimed the pages "ship 294 KB of HTML". That was wrong:
+294 KB is the decoded size; the wire cost of that document is 89.5 KB. The
+script now reports both, labelled, and the numbers below are corrected.
 
-Largest chunks (identical across all four runs):
+Commit `d2a955f` + fixes, 2026-09-19.
+
+| Route | Viewport | TTFB | LCP | CLS | HTML wire | HTML decoded | Total wire | Total decoded | Reqs |
+|---|---|---|---|---|---|---|---|---|---|
+| `/` | desktop 1280 | 121 ms | 320 ms | 0.023 | **89.5 KB** | 294.5 KB | **749.3 KB** | 1575.0 KB | 28 |
+| `/regulamin` | desktop 1280 | 31 ms | 152 ms | 0.000 | **80.1 KB** | 248.3 KB | **710.2 KB** | 1485.8 KB | 26 |
+
+Wire bytes by type, `/`:
 
 ```
-188.4 KB  /_next/static/chunks/1336-6196dec0c548c4f2.js
-170.1 KB  /_next/static/chunks/1255-d3668eefd1b4a69b.js
-169.0 KB  /_next/static/chunks/4bd1b696-100b9d70ed4e49c1.js
- 62.4 KB  /_next/static/chunks/44530001-a26648c04669f22e.js
- 32.4 KB  /_next/static/chunks/8720-1a27e2f69afa3d88.js
- 30.8 KB  /_next/static/chunks/app/layout-defff713c92d7eca.js
+script      237.4 KB
+image       214.8 KB
+font        174.7 KB
+document     89.5 KB
+stylesheet   31.6 KB
+fetch         1.3 KB
 ```
 
-## What the numbers already say
+These match Lighthouse's own `resource-summary` for the same build
+(script 237.4 KB, document 89.5 KB), which is the cross-check that caught the
+original error.
 
-**The HTML floor corroborates P0-03 independently.** `/regulamin` is a static
-legal document — text, no product data, no personalisation — and it ships
-**248 KB of HTML**. `/` ships 294 KB. The difference between a marketing
-homepage and a page of terms is only ~46 KB, which means roughly **248 KB is
-constant per-page overhead**, not content. That is the shape you would expect if
-the full i18n dictionary is serialised into every response, which is exactly
-what the audit's P0-03 describes. Two independent measurements now agree:
-the production login page at 251,861 chars, and this.
+Largest chunks, wire / decoded:
 
-**Zero duplicate requests in the browser.** Worth stating plainly, because it
-narrows the search. The audit's duplicate-fetch findings (P1-34 on
-`/admin/newsletter`, P1-28 on middleware re-validating `/api/*`) are
-**server-side**; the public surface does not re-fetch anything client-side.
-Nobody should go looking for a client-side duplicate-request problem here.
+```
+54.4 KB /  188.4 KB  /_next/static/chunks/1336-…js
+54.3 KB /  169.0 KB  /_next/static/chunks/4bd1b696-…js
+46.3 KB /  170.1 KB  /_next/static/chunks/1255-…js
+14.7 KB /   62.4 KB  /_next/static/chunks/44530001-…js
+11.2 KB /   30.8 KB  /_next/static/chunks/app/layout-…js
+10.2 KB /   32.4 KB  /_next/static/chunks/8720-…js
+```
 
-**CLS is effectively zero and LCP is early** on these routes, under ideal
-conditions. If Lighthouse or field data later shows poor LCP, the cause is
-network and payload — not layout instability or a late-discovered hero.
+## What the numbers say about P0-03
+
+**The structural finding holds; the impact is smaller on the wire than first stated.**
+
+`/regulamin` is a static legal document — text, no product data, no
+personalisation. Decoded, it is 248.3 KB. `/` is 294.5 KB. The difference
+between a marketing homepage and a page of terms is only ~46 KB, so roughly
+**248 KB is constant per-page overhead rather than content**. `pl.json` is
+237,997 bytes. That is the shape P0-03 describes, and it is confirmed.
+
+But state the cost correctly in both currencies:
+
+- **Wire:** ~80 KB per page, compressed. Real, repeated on every navigation
+  that is not cached, and worth removing — but not the 248 KB it first looked
+  like. JSON with repetitive keys compresses very well.
+- **Decoded / parse / memory:** the full ~238 KB, on every page, on every
+  device. This is the cost that does not compress away, and on a low-end phone
+  it is the one that hurts.
+
+The earlier claim of "294 KB shipped" overstated the network cost by ~3.3x.
+The fix is still worth doing; the justification is parse and memory cost first,
+bandwidth second.
+
+**Zero duplicate requests in the browser.** The audit's duplicate-fetch
+findings (P1-34, P1-28) are **server-side**; the public surface does not
+re-fetch anything client-side.
+
+**CLS is effectively zero and LCP is early** under ideal conditions. If field
+data later shows poor LCP, the cause is network and payload — not layout
+instability.
 
 ## What this baseline cannot tell you
 

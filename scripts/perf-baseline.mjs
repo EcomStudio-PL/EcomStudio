@@ -59,23 +59,53 @@ try {
       const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
       const page = await ctx.newPage();
 
-      /** url -> { count, type, bytes } */
+      /**
+       * url -> { count, type, wire, decoded }
+       *
+       * TWO DIFFERENT NUMBERS, AND THE DIFFERENCE IS ~3x.
+       *   wire    = bytes actually sent, AFTER gzip/brotli (request.sizes()
+       *             responseBodySize + responseHeadersSize). This is what the
+       *             user's connection pays for.
+       *   decoded = bytes after decompression. This is what the parser and
+       *             memory pay for.
+       * An earlier version of this script read `res.body().length` — which is
+       * DECODED — and printed it under the heading "Transfer". That overstated
+       * the wire cost of this app by roughly 3.3x. Both are reported now, and
+       * each is labelled for what it is.
+       */
       const requests = new Map();
+      /** Total request COUNT including repeats, as opposed to unique URLs. */
+      let requestCount = 0;
+
       page.on("response", async (res) => {
         const url = res.url();
         const type = res.request().resourceType();
-        let bytes = 0;
+        requestCount += 1;
+
+        let wire = 0;
+        let decoded = 0;
         try {
-          const len = res.headers()["content-length"];
-          bytes = len ? Number(len) : (await res.body().catch(() => Buffer.alloc(0))).length;
+          const sizes = await res.request().sizes();
+          wire = (sizes.responseBodySize || 0) + (sizes.responseHeadersSize || 0);
         } catch {
-          bytes = 0;
+          wire = 0;
         }
+        try {
+          decoded = (await res.body().catch(() => Buffer.alloc(0))).length;
+        } catch {
+          decoded = 0;
+        }
+
         const prev = requests.get(url);
         if (prev) {
+          // A repeat costs real bytes again — count them, or a newly
+          // introduced duplicate fetch would add 0 KB to the totals and the
+          // script would miss exactly the regression it exists to catch.
           prev.count += 1;
+          prev.wire += wire;
+          prev.decoded += decoded;
         } else {
-          requests.set(url, { count: 1, type, bytes });
+          requests.set(url, { count: 1, type, wire, decoded });
         }
       });
 
@@ -117,14 +147,18 @@ try {
 
       const all = [...requests.entries()];
       const byType = {};
-      let total = 0;
+      let totalWire = 0;
+      let totalDecoded = 0;
       for (const [, r] of all) {
-        byType[r.type] = (byType[r.type] || 0) + r.bytes;
-        total += r.bytes;
+        byType[r.type] = byType[r.type] || { wire: 0, decoded: 0 };
+        byType[r.type].wire += r.wire;
+        byType[r.type].decoded += r.decoded;
+        totalWire += r.wire;
+        totalDecoded += r.decoded;
       }
       const scripts = all
         .filter(([, r]) => r.type === "script")
-        .sort((a, b) => b[1].bytes - a[1].bytes)
+        .sort((a, b) => b[1].wire - a[1].wire)
         .slice(0, 6);
       const dupes = all.filter(([, r]) => r.count > 1);
 
@@ -135,18 +169,23 @@ try {
         `  TTFB ${metrics.ttfb} ms | DCL ${metrics.dcl} ms | load ${metrics.load} ms` +
           ` | LCP ${metrics.lcp} ms | CLS ${metrics.cls}`,
       );
-      console.log(`  HTML document: ${kb(metrics.html)}`);
-      console.log(`  requests: ${all.length}   transfer: ${kb(total)}`);
+      console.log(`  HTML document (decoded, in-memory): ${kb(metrics.html)}`);
       console.log(
-        `  by type: ${Object.entries(byType)
-          .sort((a, b) => b[1] - a[1])
-          .map(([t, b]) => `${t} ${kb(b)}`)
+        `  requests: ${requestCount} (${all.length} unique)` +
+          `   wire: ${kb(totalWire)}   decoded: ${kb(totalDecoded)}`,
+      );
+      console.log(
+        `  by type (wire): ${Object.entries(byType)
+          .sort((a, b) => b[1].wire - a[1].wire)
+          .map(([t, b]) => `${t} ${kb(b.wire)}`)
           .join(", ")}`,
       );
       if (scripts.length) {
-        console.log(`  largest scripts:`);
+        console.log(`  largest scripts (wire / decoded):`);
         for (const [url, r] of scripts) {
-          console.log(`    ${kb(r.bytes).padStart(10)}  ${url.replace(BASE, "")}`);
+          console.log(
+            `    ${kb(r.wire).padStart(10)} / ${kb(r.decoded).padStart(10)}  ${url.replace(BASE, "")}`,
+          );
         }
       }
       console.log(`  duplicate requests: ${dupes.length}`);

@@ -18,6 +18,20 @@ permissions:
 
 jobs:
   lighthouse:
+    # FORK PRs ARE SKIPPED, DELIBERATELY.
+    #
+    # This job runs `next build` and `next start`, and lib/supabase/config.ts
+    # falls back to the hardcoded DEV project whenever NEXT_PUBLIC_SUPABASE_*
+    # is unset — the production guard only fires on VERCEL_ENV=production. So
+    # a run here reaches the live DEV database. On a PUBLIC repo that would
+    # mean arbitrary fork code touching our DEV project, which is not a trade
+    # worth making for a performance score.
+    #
+    # KNOWN CONSEQUENCE, stated rather than discovered later: even on internal
+    # PRs this job depends on DEV being reachable. If the DEV Supabase project
+    # is paused, this gate goes red for a reason that has nothing to do with
+    # the pull request. Re-run it after resuming DEV; do not "fix" the PR.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       # Versions per the 2026-09-19 GrovBase implementation guide; not

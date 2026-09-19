@@ -15,8 +15,17 @@ useDefault = true
 #
 # See docs/tooling/gitleaks.md for what those six are and why each is benign.
 
+# Scoped with matchCondition = "AND": a finding is suppressed only when it is
+# BOTH in .env.example AND matches a placeholder pattern.
+#
+# The regex list alone would apply to the ENTIRE history — any file, any
+# commit, forever — which is wider than the description implies and wider than
+# intended. A real credential that happened to contain "your-...-key" anywhere
+# in the repo would have been silently dropped.
 [allowlist]
 description = "Placeholders in the tracked .env.example — never real values."
+matchCondition = "AND"
+paths = ['''^\.env\.example$''']
 regexes = [
   '''your-[a-z-]+-key''',
   '''your-project-ref''',

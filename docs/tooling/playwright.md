@@ -9,7 +9,7 @@ tried and rejected, for a concrete reason rather than a stylistic one:
 
 ```
 next@15.5.23 declares  peerOptional @playwright/test@^1.51.1
-this repo has          playwright@1.49.1  (devDependency)
+this repo declares     playwright@^1.49.1 (devDependency; lockfile pins 1.49.1)
 ```
 
 Pinning `@playwright/test` to 1.49.1 fails peer resolution against Next.
@@ -35,17 +35,19 @@ uploads, spends a credit or calls an AI provider.
   console errors**, **no failed requests**
 - `/robots.txt` and `/sitemap.xml` → 200, non-empty, robots points at a sitemap
   and does not carry a bare `Disallow: /`
-- No horizontal overflow at 320 / 375 / 430 / 768 px
+- Layout fits at 320 / 375 / 430 / 768 px **with the CSS clip backstop neutralised** (see below)
 - A theme class resolves and the body background is not transparent
 - `/?auth=login` presents a password field and a `role="dialog"` — the dialog
   opens; nothing is typed into it
 
-Page weights are **recorded, not asserted**. Thresholds belong to Lighthouse CI.
+DOM sizes are **recorded, not asserted**, and they are DECODED sizes — not wire
+bytes. Thresholds belong to Lighthouse CI; real transfer sizes belong to
+`npm run perf:baseline`.
 
-## Two corrections worth keeping
+## Three corrections worth keeping
 
-Both assertions failed on first run, and in both cases the test was wrong, not
-the product. Recording them so nobody "fixes" the app to satisfy a bad check.
+All three were bugs in the TEST, not the product. Recorded so nobody "fixes"
+the app to satisfy a bad check.
 
 **1. The public surface is dark-only, on purpose.**
 Measured on 2026-09-19: `documentElement.className` is `"dark"` under *both*
@@ -58,7 +60,26 @@ that *a* theme resolves, which is what is actually true and still worth guarding
 **2. The auth dialog is client-mounted.**
 It does not exist at `waitUntil: "load"`. Asserting immediately reported "no
 password field" on a page that has one. The check now waits for the selector —
-waiting *is* the assertion.
+waiting *is* the assertion. The same fix was applied to the console-error and
+failed-request checks: those now settle on `networkidle` first, because React
+hydration mismatches — the most common console-error class in a Next app —
+are thrown after `load` and were being missed entirely.
+
+**3. The horizontal-overflow check could not fail.**
+The obvious assertion is `documentElement.scrollWidth <= clientWidth`. In this
+repo it is worthless: `app/globals.css` sets `overflow-x: clip` on both `html`
+and `body` (the "RESPONSIVE FLOOR" backstop), and `clip` removes the scrolling
+box, clamping `scrollWidth` to `clientWidth` no matter what overruns.
+
+Measured with this repo's own Chromium — a 3000px child in a 320px viewport
+reports `scrollWidth` 3008 without the rule and **320 with it**. Four of the
+advertised checks were passing unconditionally.
+
+The check now neutralises `overflow-x` and `max-width` for the duration of the
+measurement, which asks the question worth asking: does the layout *fit*, or is
+it merely being clipped? Clipped overflow is still broken — the content is cut
+off, just silently. Mutation-tested after the fix: injecting a 3000px element
+into the live page now fails the check.
 
 ## What is deliberately NOT covered — REQUIRED MANUAL STEP
 

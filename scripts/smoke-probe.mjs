@@ -56,7 +56,6 @@ function launchOptions() {
 
 let failures = 0;
 let checks = 0;
-const notes = [];
 
 function check(label, ok, detail = "") {
   checks += 1;
@@ -101,12 +100,25 @@ try {
     const res = await page.goto(`${BASE}${path}`, { waitUntil: "load", timeout: 45_000 });
     check(`${path} responds 200`, res?.status() === 200, `got ${res?.status()}`);
 
+    // Console errors must be collected AFTER hydration, not at `load`.
+    // React hydration mismatches — the most common console-error class in a
+    // Next app — are thrown by client code that has not run yet at `load`.
+    // Asserting there is the same mistake that made the auth-dialog check
+    // report "no password field" on a page that has one.
+    await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => {});
+    await page.waitForTimeout(1200);
+
     const html = await page.content();
     weights.push([path, html.length]);
 
-    check(`${path} renders a <body> with content`, html.length > 1000, `${html.length} chars`);
     check(`${path} has no console errors`, consoleErrors.length === 0, consoleErrors.slice(0, 2).join(" | "));
     check(`${path} has no failed requests`, failedRequests.length === 0, failedRequests.slice(0, 2).join(" | "));
+
+    // Something app-shaped rendered. A byte-length floor would also be
+    // cleared by a Next error page, so assert on a landmark the real shell
+    // has and an error page does not.
+    const landmarks = await page.locator("header, main, footer, [role=main]").count();
+    check(`${path} renders real page structure`, landmarks > 0, `found ${landmarks} landmark elements`);
 
     await ctx.close();
   }
@@ -128,19 +140,71 @@ try {
   );
 
   // -------------------------------------------------------------- viewport
-  console.log(`\nNO HORIZONTAL SCROLL`);
+  // HORIZONTAL OVERFLOW — and why the obvious check is worthless here.
+  //
+  // The obvious test is `documentElement.scrollWidth <= clientWidth`. In THIS
+  // repo that assertion can never fail: app/globals.css sets
+  // `overflow-x: clip` on both html and body (the "RESPONSIVE FLOOR"
+  // backstop), and `clip` removes the scrolling box entirely, so scrollWidth
+  // is clamped to clientWidth no matter how far content overruns.
+  //
+  // Verified empirically with this repo's own Chromium: a 3000px-wide child in
+  // a 320px viewport reports scrollWidth 3008 without the rule and 320 with
+  // it. The first version of this check shipped with that hole and reported
+  // four passes that could not fail.
+  //
+  // So the backstop is neutralised for the duration of the measurement. That
+  // asks the question worth asking — does the layout actually FIT, or is it
+  // merely being clipped? — because clipped overflow is still broken: the
+  // content is cut off, it is just cut off silently.
+  console.log(`\nNO HORIZONTAL OVERFLOW (CSS clip backstop neutralised)`);
   for (const width of WIDTHS) {
     const ctx = await browser.newContext({ viewport: { width, height: 900 } });
     const page = await ctx.newPage();
     await page.goto(`${BASE}/`, { waitUntil: "load", timeout: 45_000 });
+
     const overflow = await page.evaluate(() => {
-      const d = document.documentElement;
-      return { scroll: d.scrollWidth, client: d.clientWidth };
+      const html = document.documentElement;
+      const body = document.body;
+      const saved = [
+        [html, html.style.cssText],
+        [body, body.style.cssText],
+      ];
+      // !important, because the repo's rule is itself specific.
+      for (const el of [html, body]) {
+        el.style.setProperty("overflow-x", "visible", "important");
+        el.style.setProperty("max-width", "none", "important");
+      }
+      // Force layout before reading.
+      void html.offsetWidth;
+      const result = { scroll: html.scrollWidth, client: html.clientWidth, widest: null };
+
+      if (result.scroll > result.client + 1) {
+        // Name the culprit — "something overflows" is not actionable.
+        let worst = null;
+        for (const el of document.querySelectorAll("body *")) {
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 && r.height === 0) continue;
+          if (getComputedStyle(el).visibility === "hidden") continue;
+          if (!worst || r.right > worst.right) {
+            worst = { right: r.right, tag: el.tagName.toLowerCase(), cls: String(el.className).slice(0, 60) };
+          }
+        }
+        result.widest = worst;
+      }
+
+      for (const [el, css] of saved) el.style.cssText = css;
+      return result;
     });
+
     check(
-      `${width}px wide: no horizontal overflow`,
+      `${width}px wide: layout fits without the clip backstop`,
       overflow.scroll <= overflow.client + 1,
-      `scrollWidth ${overflow.scroll} > clientWidth ${overflow.client}`,
+      overflow.widest
+        ? `scrollWidth ${overflow.scroll} > ${overflow.client}; widest right edge ${Math.round(
+            overflow.widest.right,
+          )}px on <${overflow.widest.tag} class="${overflow.widest.cls}">`
+        : `scrollWidth ${overflow.scroll} > clientWidth ${overflow.client}`,
     );
     await ctx.close();
   }
@@ -183,7 +247,6 @@ try {
       !!info.bg && info.bg !== "rgba(0, 0, 0, 0)",
       info.bg,
     );
-    notes.push(`${scheme}: html="${info.htmlClass}" bg=${info.bg}`);
     await ctx.close();
   }
 
@@ -212,14 +275,19 @@ try {
     await ctx.close();
   }
 
-  // ----------------------------------------------------------------- notes
-  console.log(`\nPAGE WEIGHT (recorded, not asserted)`);
+  // ------------------------------------------------------------- page weight
+  console.log(`\nDOM SIZE — DECODED, NOT WIRE BYTES (recorded, not asserted)`);
   for (const [path, len] of weights) {
     console.log(`  ${String(Math.round(len / 1024)).padStart(5)} KB  ${path}`);
   }
   console.log(
-    `  context: the audit's P0-03 is the full i18n dictionary (~238 KB)\n` +
-      `  serialised into every page. These numbers are the before-picture.`,
+    `  These are serialised-DOM lengths after decompression, NOT transfer size.\n` +
+      `  The responses are gzipped: / measures ~288 KB decoded but ~90 KB on the\n` +
+      `  wire. Do not quote these as "bytes shipped" — an earlier version of the\n` +
+      `  docs did, and overstated the network cost by roughly 3.3x.\n` +
+      `  Context: lib/i18n/dictionaries/pl.json is 237,997 bytes, which is most\n` +
+      `  of that decoded figure — the shape the audit's P0-03 describes.\n` +
+      `  For real transfer sizes use: npm run perf:baseline -- <base-url>`,
   );
 
   console.log(`\nSKIPPED — REQUIRED MANUAL STEP`);

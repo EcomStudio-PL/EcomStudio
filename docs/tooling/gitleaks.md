@@ -28,11 +28,27 @@ fail the build.
 
 This was deliberately chosen over a path or regex allowlist. An allowlist on
 `scripts/comm-tests.ts` would blind the scanner to that file permanently,
-including a real key committed there next month. The baseline suppresses exactly
-six fingerprints (`commit:file:rule:line`) and nothing else.
+including a real key committed there next month. The baseline suppresses only
+the findings already in it — six report entries, which resolve to **four
+distinct fingerprints** (`commit:file:rule:line`); two of the four are recorded
+twice because the same line matches under more than one report entry. Nothing
+else is suppressed.
 
 The baseline file itself is safe to commit: it was generated with `--redact`, so
 every `Secret` field in it reads `REDACTED`.
+
+## The `.env.example` allowlist is scoped, not global
+
+`.gitleaks.toml` also allowlists the placeholder values in the tracked
+`.env.example`. It uses `matchCondition = "AND"` with a `paths` pattern, so a
+finding is dropped only when it is **both** in `.env.example` **and** matches a
+placeholder shape.
+
+The regex list on its own would have applied to the entire history — any file,
+any commit — which is wider than intended: a real credential that happened to
+contain `your-…-key` anywhere in the repo would have been silently dropped.
+Verified after narrowing: a Stripe-shaped key in a file outside `.env.example`
+with `// your-secret-key` alongside it is still caught (exit 1).
 
 ## The six known findings — all false positives
 

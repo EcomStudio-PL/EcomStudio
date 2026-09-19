@@ -15,9 +15,11 @@ Median of 3 runs, desktop preset, against a **production build** (`next start`),
 
 ## Do not trust that 0.99
 
-It is measured over loopback with no throttling. The same pages ship 294 KB of
-HTML and 744 KB of JavaScript (see `docs/tooling/perf-baseline.md`); on a real
-mobile connection the performance score will be materially lower.
+It is measured over loopback with no throttling. On the wire these pages carry
+~89.5 KB of HTML and ~237 KB of JavaScript, decompressing to ~294 KB and
+~744 KB respectively (see `docs/tooling/perf-baseline.md`); on a real mobile
+connection the performance score will be materially lower, driven as much by
+parse cost as by bytes.
 
 This is exactly the trap the guide warns about — "Lighthouse na dev serverze i
 traktowanie wyniku jako produkcyjnego". The build type is right here, but the
@@ -81,6 +83,23 @@ rather than measured unsafely.
 
 Reports upload to `filesystem` and then to a GitHub artifact, never to
 `temporary-public-storage`. `lhci_reports/` and `.lighthouseci/` are gitignored.
+
+## This job reaches the DEV Supabase project — deliberately, and it is fenced
+
+`lib/supabase/config.ts` falls back to the hardcoded DEV project whenever
+`NEXT_PUBLIC_SUPABASE_*` is unset, and its production guard only fires on
+`VERCEL_ENV === "production"`. A CI run therefore builds and serves the app
+against the live DEV database.
+
+Two consequences, both handled rather than discovered later:
+
+- **Fork PRs are skipped.** The job carries an `if:` that runs it only for
+  branches on this repository. On a public repo, letting arbitrary fork code
+  execute against our DEV project is not a trade worth making for a
+  performance score.
+- **This gate depends on DEV being up.** If the DEV Supabase project is paused,
+  the job goes red for a reason unrelated to the pull request. Resume DEV and
+  re-run; do not change the PR to satisfy it.
 
 ## One CI hazard worth knowing
 
