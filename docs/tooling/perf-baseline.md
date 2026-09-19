@@ -150,7 +150,54 @@ instability.
 
 ## Re-running after a change
 
-Same command, same base URL, same build type (`next start`, never `next dev` —
-dev server numbers are meaningless for this purpose). Compare byte counts and
-request counts first; treat timing deltas under ~20% as noise at this sample
-size (single run per cell).
+**Use `npm run perf:capture -- <out.json>`, not `perf:baseline` by hand.**
+
+`perf:baseline` points a browser at whatever is listening on the port, which is
+fine right up until the thing listening was started from a *different build*
+than the one now on disk. `perf:capture` owns the whole sequence instead — stop
+the port, build, start a server from **that** build, measure, and assert that
+no request failed.
+
+That guard is not hypothetical. During Stage 3 an early run reported a 161 KB
+saving. It was false: `npm run build` had been run under a live `next start`,
+the server kept serving the previous build's HTML, and one renamed 46 KB shared
+chunk 404'd. A refused request transfers no bytes, so the page read as 46 KB
+lighter than it was — and the *request count was identical*, so nothing looked
+wrong. The real saving was 66 KB.
+
+Two things now make that mistake hard to publish:
+
+- `perf-baseline.mjs` records failed requests, prints `!! FAILED REQUESTS —
+  THIS ROW IS NOT USABLE`, and carries `failedRequests` into the JSON;
+- `perf-delta.mjs` **refuses** to difference a row where either side had a
+  failure, rather than quietly netting it out.
+
+Both were mutation-tested by hiding a chunk on disk.
+
+## Comparing two runs
+
+```
+npm run perf:capture -- /tmp/before.json     # on the old code
+npm run perf:capture -- /tmp/after.json      # on the new code
+npm run perf:delta -- /tmp/before.json /tmp/after.json
+```
+
+`perf:delta` prints a per-metric delta for every route × viewport and excludes
+any row it cannot honestly compare: one present in only one run, one whose
+redirect status changed (an anonymous hit on a protected route measures the
+*redirect*, not the page), or one with a failed request. A mismatch is neither
+a pass nor a failure — it means the two runs describe different things.
+
+Compare byte counts and request counts first. Treat timing deltas under ~20% as
+noise at this sample size; LCP in particular moves in both directions between
+identical builds here, so it is reported and not claimed.
+
+## Guarding a specific payload
+
+`npm run test:publicbundle -- <base-url>` asserts that no JS chunk fetched by
+`/`, `/regulamin` or `/polityka-prywatnosci` contains the Supabase auth client
+(P1-27). It is a **browser** probe, not a build-manifest check, and that
+distinction is the point: a `next/dynamic` wrapper removes a module from the
+manifest while the browser still downloads it, so a manifest check goes green
+for a change that saves nothing. This one reads the contents of every chunk the
+page actually fetched, so it also survives content-hash renames.
