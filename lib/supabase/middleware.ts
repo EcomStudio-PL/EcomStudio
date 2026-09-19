@@ -12,6 +12,27 @@ const PROTECTED_PREFIXES = ["/home","/dashboard","/generator","/library","/promp
 const AUTH_PAGES = ["/login", "/register", "/forgot-password"];
 
 /**
+ * SEGMENT-WISE, NOT CHARACTER-WISE.
+ *
+ * `startsWith` on a one-letter prefix makes `/k` own every public slug that
+ * merely begins with a k — /kontakt, /kariera, /klauzula-rodo — and `/p` would
+ * own /plany. Those are CMS pages an admin publishes: treating them as
+ * protected hides them from logged-out visitors and from crawlers, which for a
+ * pricing or contact page is the whole point of the page.
+ *
+ * `/k` owns `/k` and `/k/<category>`. It does not own `/kontakt`.
+ */
+function isUnder(pathname: string, prefix: string): boolean {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
+export function isProtectedPath(pathname: string): boolean {
+  return PROTECTED_PREFIXES.some((p) => isUnder(pathname, p));
+}
+function isAuthPage(pathname: string): boolean {
+  return AUTH_PAGES.some((p) => isUnder(pathname, p));
+}
+
+/**
  * THE OPERATOR'S OWN DOOR.
  *
  * `/admin` is a protected prefix, so an unauthenticated visit to anything
@@ -82,7 +103,7 @@ export async function updateSession(request: NextRequest) {
   // OAuth callback both validate before honouring.
   const adminLogin = pathname === ADMIN_LOGIN_PATH;
 
-  if (!user && !adminLogin && PROTECTED_PREFIXES.some((p) => pathname.startsWith(p))) {
+  if (!user && !adminLogin && isProtectedPath(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = AUTH_HOST;
     url.search = "";
@@ -102,7 +123,7 @@ export async function updateSession(request: NextRequest) {
   // Already signed in? Neither the old auth routes nor the dialog have
   // anything to offer — go where they were headed, or home.
   const dialogOpen = pathname === AUTH_HOST && request.nextUrl.searchParams.has(AUTH_PARAM);
-  if (user && (dialogOpen || AUTH_PAGES.some((p) => pathname.startsWith(p)))) {
+  if (user && (dialogOpen || isAuthPage(pathname))) {
     const url = request.nextUrl.clone();
     const next = request.nextUrl.searchParams.get("next");
     url.pathname = safeReturnTo(next) || "/home";
@@ -156,7 +177,7 @@ export async function updateSession(request: NextRequest) {
   // Authenticated HTML and the login page must never be served from a cache.
   // A backgrounded PWA that resumes from a cached shell would otherwise show
   // a signed-out page (or someone else's) until the next hard reload.
-  if (PROTECTED_PREFIXES.some((p) => pathname.startsWith(p)) || AUTH_PAGES.some((p) => pathname.startsWith(p))) {
+  if (isProtectedPath(pathname) || isAuthPage(pathname)) {
     response.headers.set("Cache-Control", "no-store, must-revalidate");
   }
   return response;

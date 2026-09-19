@@ -202,7 +202,13 @@ export async function ensureLoginSecurityHash(supabase: Client): Promise<void> {
     { key: "login_security_dispatch", value: { ...current, hash }, updated_at: new Date().toISOString() },
     { onConflict: "key" },
   );
-  if (error) console.error("loginSecurity.hash", safeError(error));
+  // A NON-ADMIN CALLER IS EXPECTED TO BE REFUSED, and that is not a fault.
+  // This runs on the customer's own session when they open or verify a
+  // challenge, and migration 0107 stops non-admins reading or writing this
+  // row. The hash they would publish is already there — the token-gated
+  // functions read it as the owner — so the refusal costs nothing. Anything
+  // else is still reported.
+  if (error && error.code !== "42501") console.error("loginSecurity.hash", safeError(error));
 }
 
 /* ── the OTP ────────────────────────────────────────────────────────────────

@@ -5145,6 +5145,12 @@ export type Database = {
         Returns: undefined
       }
       trusted_device_revoke: { Args: { p_device_id: string }; Returns: boolean }
+      /* The confirmation mailbox and its sealed password (migration 0106).
+         Split out of waitlist_subscribe, which anon can call. */
+      waitlist_confirmation_payload: {
+        Args: { p_token: string | null }
+        Returns: Json
+      }
       waitlist_subscribe: {
         Args: {
           p_email: string

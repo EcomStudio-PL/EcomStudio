@@ -572,7 +572,11 @@ export async function ensureDispatchHash(supabase: Client): Promise<void> {
     { key: "notifications", value: { ...current, dispatch_hash: hash }, updated_at: new Date().toISOString() },
     { onConflict: "key" },
   );
-  if (error) console.error("integrations.dispatchHash", safeError(error));
+  // Same as ensureLoginSecurityHash: the auth-mail hook calls this with an
+  // anonymous client, which migration 0107 refuses. It could never have
+  // written the row anyway, and the value it would publish must already exist
+  // or its own token would not verify. A real failure still surfaces.
+  if (error && error.code !== "42501") console.error("integrations.dispatchHash", safeError(error));
 }
 
 /**

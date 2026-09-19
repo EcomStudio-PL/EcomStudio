@@ -95,13 +95,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "generic" }, { status: 500 });
   }
 
-  const result = (data ?? {}) as {
-    status?: string;
-    mail?: {
-      from_name: string; from_email: string; reply_to: string;
-      subject: string; body: string; smtp: SmtpConfig;
-    };
-  };
+  const result = (data ?? {}) as { status?: string; confirmation?: boolean };
   if (result.status === "invalid") {
     return NextResponse.json({ ok: false, error: "invalid_email" }, { status: 400 });
   }
@@ -119,8 +113,19 @@ export async function POST(request: Request) {
   // switched on. The old email_settings copy is the last fallback, so a
   // deployment whose template lookup is unavailable still sends what it always
   // sent rather than nothing.
-  if (result.mail) {
-    const { from_name, from_email, reply_to, subject, body, smtp } = result.mail;
+  // THE MAILBOX IS A SECOND CALL NOW. waitlist_subscribe is granted to anon so
+  // a visitor can join; it used to answer with the SMTP identity and the
+  // sealed password as well, and the grant — not the caller — is what defines
+  // that exposure. It now says only WHETHER a confirmation is due, and the
+  // payload is fetched behind the proof-of-server token (migration 0106).
+  const confirmation = result.confirmation
+    ? (await supabase.rpc("waitlist_confirmation_payload", { p_token: dispatchToken() })).data as {
+        from_name: string; from_email: string; reply_to: string;
+        subject: string; body: string; smtp: SmtpConfig;
+      } | null
+    : null;
+  if (confirmation) {
+    const { from_name, from_email, reply_to, subject, body, smtp } = confirmation;
     const identity = { from_name, from_email, reply_to };
     // THE PASSWORD, PREFERABLY FROM THE VAULT. waitlist_subscribe hands back
     // the email_settings copy, which is AES ciphertext sealed with
