@@ -29,10 +29,29 @@
 --
 --   · the admin's "wyślij teraz" button still sends, because it calls
 --     runWorkerBatch through a server action under the operator's own session;
---   · the once-a-day Vercel cron still drains the queue;
---   · a campaign scheduled for 18:00 still goes out — late, on the next
---     invocation, which is exactly the behaviour the product had before this
---     file existed and is why the settings screen must keep saying so.
+--   · a campaign scheduled for 18:00 goes out when an operator next presses
+--     that button.
+--
+-- ┌ CORRECTION, 2026-09-19 (P1-31) ──────────────────────────────────────────┐
+-- │ THIS FILE USED TO SAY, HERE AND IN FOUR NOTICES BELOW, that "the         │
+-- │ once-a-day Vercel cron still drains the queue". IT DOES NOT, and it      │
+-- │ never did. There is one cron entry in vercel.json, /api/cron/mail, and   │
+-- │ that route does not touch the newsletter queue at all;                   │
+-- │ /api/newsletter/worker has no cron entry and exports only POST, which a  │
+-- │ platform cron (a GET) could not reach even if one were added.            │
+-- │                                                                          │
+-- │ So there is exactly ONE unattended sender — the pg_cron tick below — and │
+-- │ one attended one, the admin button. On the deployment this was written   │
+-- │ for that tick is healthy (job 1, every minute, 180 of 180 runs succeeded │
+-- │ over three hours, both vault secrets present), so nothing is stuck       │
+-- │ today. What was wrong was the promise, and a promise of a fallback is    │
+-- │ worse than no fallback: it is what stops someone building one.           │
+-- │                                                                          │
+-- │ DELIBERATELY NOT FIXED BY ADDING ONE. A second scheduled path that SENDS │
+-- │ MAIL is a new outward-facing behaviour, not hardening, and it would need │
+-- │ its own GET handler, its own cron entry and its own pacing decisions.    │
+-- │ Recorded as an open item instead, with the truth written down here.      │
+-- └──────────────────────────────────────────────────────────────────────────┘
 --
 -- So: applying this improves the product, failing to apply it does not break
 -- it, and half-applying it is not a state this file can reach.
@@ -121,14 +140,14 @@ do $$
 begin
   execute 'create extension if not exists pg_cron';
 exception when others then
-  raise notice 'newsletter scheduler: pg_cron could not be created (%). Minute-precision scheduling is OFF; the admin button and the daily platform cron still send.', sqlerrm;
+  raise notice 'newsletter scheduler: pg_cron could not be created (%). Minute-precision scheduling is OFF. The admin button is then the ONLY sender — there is no platform-side cron for the worker (see the correction at the top of this file).', sqlerrm;
 end $$;
 
 do $$
 begin
   execute 'create extension if not exists pg_net';
 exception when others then
-  raise notice 'newsletter scheduler: pg_net could not be created (%). Minute-precision scheduling is OFF; the admin button and the daily platform cron still send.', sqlerrm;
+  raise notice 'newsletter scheduler: pg_net could not be created (%). Minute-precision scheduling is OFF. The admin button is then the ONLY sender — there is no platform-side cron for the worker (see the correction at the top of this file).', sqlerrm;
 end $$;
 
 -- pg_cron's own tables live in `cron` and are owned by the extension. The role
@@ -282,7 +301,7 @@ declare
   v_existing integer;
 begin
   if to_regprocedure('cron.schedule(text,text,text)') is null then
-    raise notice 'newsletter scheduler: pg_cron is not installed, so no minute-by-minute job was scheduled. The admin button and the once-a-day platform cron still send; a campaign scheduled for a particular hour will go out late. Install pg_cron and re-apply this migration to fix that.';
+    raise notice 'newsletter scheduler: pg_cron is not installed, so no minute-by-minute job was scheduled. The admin button is then the ONLY sender — there is no platform-side cron for the worker (see the correction at the top of this file); a campaign scheduled for a particular hour waits for an operator. Install pg_cron and re-apply this migration to fix that.';
     return;
   end if;
 
@@ -298,7 +317,7 @@ begin
 
   raise notice 'newsletter scheduler: job % scheduled every minute. It stays dormant until the vault holds grovbase.newsletter.worker_url and grovbase.newsletter.worker_token.', v_name;
 exception when others then
-  raise notice 'newsletter scheduler: the job could not be scheduled (%). Nothing was left half-configured; the admin button and the daily platform cron still send.', sqlerrm;
+  raise notice 'newsletter scheduler: the job could not be scheduled (%). Nothing was left half-configured, but the admin button is then the ONLY sender — there is no platform-side cron for the worker (see the correction at the top of this file).', sqlerrm;
 end $$;
 
 -- ── 1.4 Is it actually on? ─────────────────────────────────────────────────
