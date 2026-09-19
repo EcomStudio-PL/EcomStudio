@@ -1,0 +1,52 @@
+name: Lighthouse CI
+
+# Regression guard for the PUBLIC pages. It exists to catch "this update
+# doubled the JavaScript" or "this update broke SEO", not to chase a score.
+#
+# Thresholds are set from a measured baseline (docs/tooling/lighthouse.md).
+# Performance / accessibility / best-practices WARN; only SEO blocks. Turning
+# on a hard performance gate before the P0/P1 remediation would fail every PR
+# for a reason everyone already knows about, and a gate people route around
+# protects nothing.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      # Versions per the 2026-09-19 GrovBase implementation guide; not
+      # verifiable from the build sandbox. If the first run cannot resolve an
+      # action, drop checkout to @v4 / setup-node to @v4.
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # NOTE: `npm run lint` is deliberately NOT part of any workflow.
+      # It resolves to `next lint`, which in this repo is INTERACTIVE — it
+      # prompts to configure ESLint and would hang a runner until timeout.
+      - name: Build
+        run: npm run build
+
+      - name: Lighthouse
+        run: npx lhci autorun --config=lighthouserc.cjs
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-reports
+          path: lhci_reports/
+          if-no-files-found: ignore
+          retention-days: 14

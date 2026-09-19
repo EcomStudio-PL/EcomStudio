@@ -12,3 +12,7 @@ node_modules
 # `import { chromium } from "playwright"` resolves, and they are not part of
 # the product.
 .qa/
+
+# Lighthouse CI output — reports describe a pre-launch app, never committed
+lhci_reports/
+.lighthouseci/
