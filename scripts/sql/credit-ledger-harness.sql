@@ -12,9 +12,12 @@
 --   * auth.uid() is a settable stub, so a test can act as a given user.
 --   * server_call_ok() reads the same app_settings row, so the token gate is
 --     exercised rather than bypassed.
---   * RLS is not enabled. These tests attack the FUNCTIONS, which are
---     SECURITY DEFINER and therefore run with RLS bypassed in production too.
---     Policy behaviour is asserted separately against PROD, read-only.
+--   * RLS is enabled ONLY on usage_events, with the three production policies
+--     copied verbatim, and a non-owner role `app_user` stands in for
+--     `authenticated`. That is what makes "a customer can write the billing
+--     ledger" testable instead of merely arguable. The other tables are
+--     attacked through SECURITY DEFINER functions, which bypass RLS in
+--     production too, so policies on them would prove nothing here.
 --
 -- Usage:  npm run test:ledger:sql
 
@@ -255,6 +258,36 @@ begin
    where id = p_event_id;
   return v_tx;
 end $$;
+
+-- ── usage_events RLS, as it stands on PROD TODAY ────────────────────────────
+-- `app_user` is this harness's `authenticated`: an ordinary role that owns
+-- nothing, so policies actually apply to it. `usage_events_member_insert` is
+-- the policy the remediation drops; it is created here so the test can watch
+-- it let a customer write a billing row.
+-- `anon` and `authenticated` exist so the migrations' GRANT/REVOKE lines apply
+-- verbatim instead of having to be edited out — an edited migration is not the
+-- migration that ships.
+do $$
+declare r text;
+begin
+  foreach r in array array['app_user', 'anon', 'authenticated'] loop
+    if not exists (select 1 from pg_roles where rolname = r) then
+      execute format('create role %I nologin', r);
+    end if;
+  end loop;
+end $$;
+grant usage on schema public to app_user;
+grant select, insert on public.usage_events to app_user;
+grant select on public.credit_wallets, public.credit_transactions, public.service_catalog to app_user;
+
+alter table public.usage_events enable row level security;
+
+create policy usage_events_member_read on public.usage_events
+  for select using (public.is_workspace_member(workspace_id) or public.is_admin());
+create policy usage_events_member_insert on public.usage_events
+  for insert with check (public.is_workspace_member(workspace_id) and user_id = auth.uid());
+create policy usage_events_admin_update on public.usage_events
+  for update using (public.is_admin());
 
 -- ── fixture ─────────────────────────────────────────────────────────────────
 -- The dispatch token and its sha256, so server_call_ok() is exercised for real.

@@ -223,6 +223,172 @@ begin
     format('credits_charged is %s, expected 3', v_charged));
 end $$;
 
+-- ───────────────────────────────────────────────────────────────────────────
+-- P0-01 — A CUSTOMER MUST NOT BE ABLE TO WRITE THE BILLING LEDGER.
+--
+-- usage_events_member_insert let any workspace member INSERT. The idempotency
+-- key of the run they are about to make is derivable from values they choose,
+-- so writing that row first made the server believe the charge had happened.
+-- The primitive is the insert; deny it and the bypass has nowhere to stand.
+-- ───────────────────────────────────────────────────────────────────────────
+do $$
+declare
+  f record; v_denied boolean := false; v_rows int;
+begin
+  raise notice '';
+  raise notice 'P0-01  the ledger is not customer-writable';
+  select * into f from public.t_fixture;
+  perform set_config('app.current_user', f.user_id::text, false);
+
+  -- The suite runs twice against one database (before the fix, then after),
+  -- so clear the key first: otherwise the second pass would be asserting on
+  -- the row the first pass legitimately managed to write.
+  delete from public.usage_events where idempotency_key = 'tools:forged:attack';
+
+  begin
+    -- `app_user` is this harness's `authenticated`: an ordinary role, so the
+    -- policies apply to it exactly as they apply to a signed-in seller.
+    perform set_config('role', 'app_user', true);
+    insert into public.usage_events
+      (user_id, workspace_id, service_slug, credits_charged, status, idempotency_key)
+    values (f.user_id, f.workspace_id, 'test-tool', 0, 'pending', 'tools:forged:attack');
+  exception when insufficient_privilege then
+    v_denied := true;
+  end;
+  perform set_config('role', 'none', true);
+
+  select count(*) into v_rows from public.usage_events
+    where idempotency_key = 'tools:forged:attack';
+
+  perform public.t_check('a signed-in customer cannot insert a usage event', v_denied,
+    'the INSERT succeeded — the ledger is customer-writable');
+  perform public.t_check('no forged ledger row exists', v_rows = 0,
+    format('%s forged row(s) present', v_rows));
+end $$;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- P0-01b — usage_event_start: THE CHARGE AND THE ROW ARE ONE TRANSACTION.
+-- ───────────────────────────────────────────────────────────────────────────
+do $$
+declare
+  f record; r record; v_bal int; v_rows int; v_second record;
+begin
+  raise notice '';
+  raise notice 'P0-01b usage_event_start charges atomically';
+  select * into f from public.t_fixture;
+  perform set_config('app.current_user', f.user_id::text, false);
+
+  if to_regprocedure('public.usage_event_start(text,uuid,uuid,uuid,text,integer,text,text,uuid,text,jsonb)') is null then
+    perform public.t_check('usage_event_start exists', false,
+      'the function is absent — the ledger still has a customer-writable path');
+    return;
+  end if;
+
+  -- Same reason as above: the suite runs twice against one database.
+  delete from public.usage_events where idempotency_key in ('start:ok:1');
+
+  -- A paid run with the money for it.
+  update public.credit_wallets set balance = 10 where id = f.wallet_id;
+  select * into r from public.usage_event_start(
+    'test-server-token', f.user_id, f.workspace_id, f.wallet_id, 'test-tool',
+    5, 'test-provider', 'test-model', null, 'start:ok:1', '{}'::jsonb);
+  select balance into v_bal from public.credit_wallets where id = f.wallet_id;
+
+  perform public.t_check('a funded start succeeds', r.status = 'ok',
+    format('status is %s', r.status));
+  perform public.t_check('a funded start debits the wallet once', v_bal = 5,
+    format('balance is %s, expected 5', v_bal));
+  perform public.t_check('the event carries its receipt',
+    (select credit_tx_id is not null from public.usage_events where id = r.event_id));
+
+  -- The same key again: refused, and it costs nothing.
+  select * into v_second from public.usage_event_start(
+    'test-server-token', f.user_id, f.workspace_id, f.wallet_id, 'test-tool',
+    5, 'test-provider', 'test-model', null, 'start:ok:1', '{}'::jsonb);
+  select balance into v_bal from public.credit_wallets where id = f.wallet_id;
+  select count(*) into v_rows from public.usage_events where idempotency_key = 'start:ok:1';
+
+  perform public.t_check('a duplicate request is refused, not run for free',
+    v_second.status = 'duplicate_request' and v_second.event_id is null,
+    format('status is %s', v_second.status));
+  perform public.t_check('a duplicate request charges nothing', v_bal = 5,
+    format('balance is %s, expected 5', v_bal));
+  perform public.t_check('one key, one event', v_rows = 1,
+    format('%s events carry the key', v_rows));
+end $$;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- P0-01c — A START THAT CANNOT PAY LEAVES NOTHING BEHIND.
+--
+-- This is what made 0099 necessary in the first place: the old code wrote the
+-- row, failed to charge, and left a refundable ghost. Now neither happens.
+-- ───────────────────────────────────────────────────────────────────────────
+do $$
+declare
+  f record; r record; v_bal int; v_rows int;
+begin
+  raise notice '';
+  raise notice 'P0-01c an unpayable start leaves no row';
+  select * into f from public.t_fixture;
+  perform set_config('app.current_user', f.user_id::text, false);
+
+  if to_regprocedure('public.usage_event_start(text,uuid,uuid,uuid,text,integer,text,text,uuid,text,jsonb)') is null then
+    perform public.t_check('usage_event_start exists', false, 'the function is absent');
+    return;
+  end if;
+
+  delete from public.usage_events where idempotency_key in ('start:broke:1', 'start:free:1');
+
+  update public.credit_wallets set balance = 1 where id = f.wallet_id;
+  select * into r from public.usage_event_start(
+    'test-server-token', f.user_id, f.workspace_id, f.wallet_id, 'test-tool',
+    5, null, null, null, 'start:broke:1', '{}'::jsonb);
+  select balance into v_bal from public.credit_wallets where id = f.wallet_id;
+  select count(*) into v_rows from public.usage_events where idempotency_key = 'start:broke:1';
+
+  perform public.t_check('an unpayable start reports insufficient_credits',
+    r.status = 'insufficient_credits', format('status is %s', r.status));
+  perform public.t_check('an unpayable start writes no event', v_rows = 0,
+    format('%s row(s) written', v_rows));
+  perform public.t_check('an unpayable start leaves the balance alone', v_bal = 1,
+    format('balance is %s, expected 1', v_bal));
+
+  -- A free run still works, and needs no wallet at all.
+  select * into r from public.usage_event_start(
+    'test-server-token', f.user_id, f.workspace_id, null, 'test-tool',
+    0, 'local', 'sharp', null, 'start:free:1', '{}'::jsonb);
+  perform public.t_check('a zero-credit run needs no wallet', r.status = 'ok',
+    format('status is %s', r.status));
+end $$;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- P0-01d — THE TOKEN GATE IS THE WHOLE POINT.
+-- ───────────────────────────────────────────────────────────────────────────
+do $$
+declare
+  f record; v_refused boolean := false;
+begin
+  raise notice '';
+  raise notice 'P0-01d usage_event_start is server-only';
+  select * into f from public.t_fixture;
+  perform set_config('app.current_user', f.user_id::text, false);
+
+  if to_regprocedure('public.usage_event_start(text,uuid,uuid,uuid,text,integer,text,text,uuid,text,jsonb)') is null then
+    perform public.t_check('usage_event_start exists', false, 'the function is absent');
+    return;
+  end if;
+
+  begin
+    perform public.usage_event_start(
+      'not-the-server-token', f.user_id, f.workspace_id, f.wallet_id, 'test-tool',
+      5, null, null, null, 'start:notoken:1', '{}'::jsonb);
+  exception when others then
+    v_refused := sqlerrm = 'forbidden';
+  end;
+  perform public.t_check('a caller without the dispatch token is refused', v_refused,
+    'the function ran for a caller that could not prove it was the server');
+end $$;
+
 -- ── summary ────────────────────────────────────────────────────────────────
 do $$
 declare n int;

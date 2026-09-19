@@ -50,7 +50,18 @@ function recorder() {
       calls.push({ kind: "from", name: table });
       const chain = {
         select: () => chain, eq: () => chain, insert: () => chain, limit: () => chain,
-        maybeSingle: async () => ({ data: null, error: null }),
+        // service_catalog answers with a real-looking row ON PURPOSE. Answering
+        // null would make any caller bail out at "service_unavailable" before it
+        // reached the ledger, and every assertion below would pass for the wrong
+        // reason — the test has to be able to watch the write it forbids.
+        maybeSingle: async () => ({
+          data: table === "service_catalog"
+            ? { id: "svc-1", slug: "tool_remove_bg", name: "Remove background",
+                enabled: true, maintenance_mode: false, credits_cost: 1,
+                api_cost_usd_micros: 0, sale_value_cents: 0 }
+            : null,
+          error: null,
+        }),
         single: async () => ({ data: { id: "evt-1" }, error: null }),
       };
       return chain as never;
@@ -98,6 +109,19 @@ await failUsage(e.client, { serverToken: "tok", eventId: "evt-1", walletId: "wal
 check("failUsage calls usage_event_fail",
   e.calls.some((x) => x.kind === "rpc" && x.name === "usage_event_fail"), JSON.stringify(e.calls));
 
+// Opening a run is one RPC and nothing else. A `from("usage_events")` here
+// would mean the insert had crept back into application code, where RLS — and
+// not this function — would be the only thing deciding who may bill a customer.
+const f = recorder();
+await startUsage(f.client, {
+  serverToken: "tok", userId: "u1", workspaceId: "w1", walletId: "wal1",
+  serviceSlug: "tool_remove_bg", idempotencyKey: "k1",
+});
+check("startUsage calls usage_event_start",
+  f.calls.some((x) => x.kind === "rpc" && x.name === "usage_event_start"), JSON.stringify(f.calls));
+check("startUsage never touches usage_events directly",
+  !f.calls.some((x) => x.kind === "from" && x.name === "usage_events"), JSON.stringify(f.calls));
+
 /* ── C. The revoked RPC names must not reappear anywhere in the source ───── */
 console.log("\nC. THE UNGATED RPC NAMES STAY OUT OF THE SOURCE");
 
@@ -142,7 +166,7 @@ check(`no source file calls a revoked ledger/credential RPC (${files.length} fil
 console.log("\nD. EVERY GATED RPC CALL PASSES A TOKEN");
 
 const GATED = [
-  "usage_event_fail", "usage_event_complete", "usage_event_charge",
+  "usage_event_start", "usage_event_fail", "usage_event_complete", "usage_event_charge",
   "usage_event_refund_partial", "provider_credential_read", "engine_rules_read",
   "knowledge_match", "provider_health_set",
   // The secret store's two readers (0078, 0080). They are the only functions in

@@ -69,11 +69,15 @@ export async function POST(request: Request) {
     mime: file.type || "image/jpeg",
     logo: logo instanceof File ? Buffer.from(await logo.arrayBuffer()) : null,
     // The key is DERIVED, never accepted from the client: a hash of the
-    // tool, its settings and the exact file bytes. An identical retry (a
-    // refreshed page re-sending the same run) still dedupes to one charge,
-    // but a different tool or settings can no longer ride an earlier cheap
-    // charge for a free run — the old client-supplied key allowed exactly
-    // that billing bypass.
+    // tool, its settings and the exact file bytes, inside a five-minute
+    // window. An identical retry (a refreshed page re-sending the same run)
+    // still resolves to one charge and one run, but a different tool or
+    // settings can no longer ride an earlier cheap charge for a free run —
+    // the old client-supplied key allowed exactly that billing bypass.
+    //
+    // Being derived is not what makes it safe: the customer knows every
+    // input, so they can compute it. What makes it safe is that only the
+    // server can create the row it names (migration 0100).
     idempotencyKey: idempotency(workspace.id, tool.slug, settings, fileBytes),
   });
 
@@ -101,6 +105,15 @@ export async function POST(request: Request) {
   });
 }
 
+/** How long an identical request keeps counting as the SAME submit.
+ *
+ *  The ledger refuses a duplicate key outright now (migration 0100) instead of
+ *  quietly handing out a second run for one charge, so the key cannot be
+ *  permanent: without a window, a seller who ran a tool on a photo could never
+ *  run that same tool on that same photo again. Five minutes absorbs a refresh
+ *  or a double click; a run after that is a new run and is charged like one. */
+const DEDUPE_WINDOW_MS = 5 * 60_000;
+
 function idempotency(workspaceId: string, tool: string, settings: unknown, file: Buffer): string {
   const digest = createHash("sha256")
     .update(tool)
@@ -108,5 +121,5 @@ function idempotency(workspaceId: string, tool: string, settings: unknown, file:
     .update(file)
     .digest("hex")
     .slice(0, 40);
-  return `tools:${workspaceId}:${digest}`;
+  return `tools:${workspaceId}:${Math.floor(Date.now() / DEDUPE_WINDOW_MS)}:${digest}`;
 }

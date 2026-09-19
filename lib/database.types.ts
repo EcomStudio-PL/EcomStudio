@@ -4899,6 +4899,27 @@ export type Database = {
         Args: { p_token: string | null; p_event_id: string; p_amount: number }
         Returns: string
       }
+      /* Opening a billable run (migration 0100). The event row and the credit
+         debit happen in one transaction or not at all, and usage_events has no
+         customer-writable path any more, so this is the ONLY way a billing
+         record comes into existence. Business outcomes come back in `status`;
+         only authorization failures raise. */
+      usage_event_start: {
+        Args: {
+          p_token: string | null
+          p_user_id: string
+          p_workspace_id: string
+          p_wallet_id?: string | null
+          p_service_slug: string
+          p_credits?: number | null
+          p_provider_slug?: string | null
+          p_model_slug?: string | null
+          p_generation_job_id?: string | null
+          p_idempotency_key?: string | null
+          p_metadata?: Json
+        }
+        Returns: { event_id: string | null; status: string }[]
+      }
       /* The one secret store (migration 0078). Backed by Supabase Vault, so no
          encryption key of ours is involved; writing needs only an admin
          session, which is what makes a lost env var unable to lock an operator

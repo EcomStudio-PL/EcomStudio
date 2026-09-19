@@ -1,3 +1,4 @@
+import type { Json } from "@/lib/database.types";
 import type { Client } from "./workspace";
 
 /**
@@ -6,8 +7,9 @@ import type { Client } from "./workspace";
  * automatically, with price SNAPSHOTS taken at execution time.
  *
  * Flow:
- *   1. startUsage()   — snapshot pricing from service_catalog, charge
- *                       credits (single ledger writer), create the event.
+ *   1. startUsage()   — one server-gated RPC that snapshots the catalog price,
+ *                       creates the event and takes the credits in a single
+ *                       transaction. There is no other way into this table.
  *   2. completeUsage()— mark succeeded with result count.
  *   3. failUsage()    — mark failed and refund the charged credits ONCE
  *                       (idempotent: a second call cannot double-refund).
@@ -34,16 +36,6 @@ import type { Client } from "./workspace";
  * server cannot prove it is the server is worse than not charging them.
  */
 
-export async function getService(supabase: Client, slug: string) {
-  const { data } = await supabase
-    .from("service_catalog")
-    .select("*")
-    .eq("slug", slug)
-    .eq("enabled", true)
-    .maybeSingle();
-  return data;
-}
-
 export async function startUsage(supabase: Client, input: {
   /** Proof-of-server (dispatchToken()). Null means the master key is absent. */
   serverToken: string | null;
@@ -59,60 +51,50 @@ export async function startUsage(supabase: Client, input: {
   /** Override the catalog price (e.g. model credit_cost × quantity). */
   creditsCharged?: number;
 }): Promise<{ ok: true; eventId: string } | { ok: false; error: string }> {
-  // Before anything is written or charged: without the token the ledger RPCs
-  // will refuse us anyway, and finding that out AFTER inserting the event would
-  // leave a pending row that nothing can ever complete or refund.
+  // Without the token the ledger RPC refuses us anyway, and asking first keeps
+  // the failure free of side effects.
   if (!input.serverToken) return { ok: false, error: "server_unconfigured" };
-  const service = await getService(supabase, input.serviceSlug);
-  if (!service) return { ok: false, error: "service_unavailable" };
-  if (service.maintenance_mode) return { ok: false, error: "maintenance" };
 
-  // Idempotency: an existing event with the same key means the charge
-  // already happened — never charge twice.
-  if (input.idempotencyKey) {
-    const { data: existing } = await supabase
-      .from("usage_events").select("id").eq("idempotency_key", input.idempotencyKey).maybeSingle();
-    if (existing) return { ok: true, eventId: existing.id };
+  // ONE CALL DOES ALL OF IT: price lookup, the event row and the debit, inside
+  // a single database transaction (migration 0100).
+  //
+  // What used to be here — read the catalog, check for an existing event with
+  // this idempotency key, insert, then charge — had two holes that no ordering
+  // of those four steps could close. `usage_events` accepted customer INSERTs,
+  // and the key is derived from values the customer picks, so a seller could
+  // write the row for the run they were about to make and be handed it free.
+  // And between the insert and the charge the event existed unpaid, which is
+  // the state a refund could be claimed against.
+  //
+  // Both are gone by construction: the table no longer has a customer-writable
+  // path, and the row cannot outlive a charge that failed. The unique index on
+  // idempotency_key is now the arbiter of duplicates, so a double submit is one
+  // charge and one run rather than two runs and one charge.
+  const { data, error } = await supabase.rpc("usage_event_start", {
+    p_token: input.serverToken,
+    p_user_id: input.userId,
+    p_workspace_id: input.workspaceId,
+    // A free run has no wallet to name, and the RPC does not ask for one.
+    p_wallet_id: input.walletId || null,
+    p_service_slug: input.serviceSlug,
+    p_credits: input.creditsCharged ?? null,
+    p_provider_slug: input.providerSlug ?? null,
+    p_model_slug: input.modelSlug ?? null,
+    p_generation_job_id: input.generationJobId ?? null,
+    p_idempotency_key: input.idempotencyKey ?? null,
+    p_metadata: (input.metadata ?? {}) as Json,
+  });
+  if (error) return { ok: false, error: "event_failed" };
+
+  const row = data?.[0];
+  if (!row) return { ok: false, error: "event_failed" };
+  // `status` carries the business outcome — service_unavailable, maintenance,
+  // insufficient_credits, duplicate_request — in the same vocabulary the
+  // callers already translate. Anything unexpected is a failure to start.
+  if (row.status !== "ok" || !row.event_id) {
+    return { ok: false, error: row.status || "event_failed" };
   }
-
-  const credits = input.creditsCharged ?? service.credits_cost;
-  const { data: event, error } = await supabase.from("usage_events").insert({
-    user_id: input.userId,
-    workspace_id: input.workspaceId,
-    service_id: service.id,
-    service_slug: service.slug,
-    provider_slug: input.providerSlug ?? null,
-    model_slug: input.modelSlug ?? null,
-    credits_charged: credits,
-    api_cost_usd_micros_snapshot: service.api_cost_usd_micros,
-    sale_value_cents_snapshot: service.sale_value_cents,
-    generation_job_id: input.generationJobId ?? null,
-    idempotency_key: input.idempotencyKey ?? null,
-    metadata: (input.metadata ?? {}) as never,
-  }).select("id").single();
-  if (error || !event) return { ok: false, error: "event_failed" };
-
-  if (credits > 0) {
-    // SECURITY DEFINER RPC, server-gated: it proves the caller is GrovBase,
-    // then still checks that the wallet and the event belong to one workspace.
-    const { data: txId, error: txError } = await supabase.rpc("usage_event_charge", {
-      p_token: input.serverToken,
-      p_wallet_id: input.walletId,
-      p_amount: credits,
-      p_description: service.name,
-      p_reference_id: event.id,
-      p_metadata: { service: service.slug, ...(input.metadata ?? {}) } as never,
-    });
-    if (txError) {
-      await supabase.rpc("usage_event_fail", {
-        p_token: input.serverToken, p_event_id: event.id,
-        p_error: "insufficient_credits", p_api_cost_usd_micros: 0,
-      });
-      return { ok: false, error: "insufficient_credits" };
-    }
-    void txId; // linked onto the event inside the RPC
-  }
-  return { ok: true, eventId: event.id };
+  return { ok: true, eventId: row.event_id };
 }
 
 export async function completeUsage(

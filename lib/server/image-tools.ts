@@ -482,7 +482,10 @@ async function runLocal(
     userId, workspaceId, walletId: "",
     serviceSlug, providerSlug: "local", modelSlug: "sharp",
     creditsCharged: 0,
-    idempotencyKey: input.idempotencyKey,
+    // NO IDEMPOTENCY KEY HERE, deliberately. The key exists to stop one submit
+    // being charged or run twice; a local run costs nothing, so deduping it
+    // would only refuse a seller who legitimately wants to compress the same
+    // file again — and it would hide a real second run from the volume figures.
     metadata: { tool: slug, bytes_in: before.bytes, bytes_out: after.bytes },
   });
   if (usage.ok) await completeUsage(supabase, dispatchToken(), usage.eventId, 1, { apiCostUsdMicros: 0 });
