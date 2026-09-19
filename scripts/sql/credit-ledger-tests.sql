@@ -465,6 +465,165 @@ begin
     'the function ran for a caller that could not prove it was the server');
 end $$;
 
+-- ───────────────────────────────────────────────────────────────────────────
+-- P1-35 — A CHARGE WHOSE ANSWER WAS LOST MUST NOT STAY TAKEN FOREVER.
+--
+-- usage_event_start commits the event and the debit together. If the response
+-- never reaches the application it has no event id, and every door out of a
+-- usage event needs one — so the row sits 'pending' and charged with nobody to
+-- close it. The reconciler (0102) is the way back. These blocks are the five
+-- properties it was required to have, each one attacked rather than asserted.
+-- ───────────────────────────────────────────────────────────────────────────
+do $$
+declare
+  f record; v_lost uuid; v_tx uuid; v_bal int; v_row record; n int;
+begin
+  raise notice '';
+  raise notice 'P1-35  the reconciler returns a lost charge, exactly once';
+  select * into f from public.t_fixture;
+  perform set_config('app.current_user', f.user_id::text, false);
+
+  if to_regprocedure('public.usage_events_reconcile_stale(integer,integer)') is null then
+    perform public.t_check('usage_events_reconcile_stale exists', false,
+      'the reconciler is absent — a lost response leaves the charge stuck forever');
+    return;
+  end if;
+
+  -- A REAL charge, through the real RPC, then the response is "lost": nothing
+  -- ever calls complete or fail. Backdated past the grace.
+  update public.credit_wallets set balance = 10 where id = f.wallet_id;
+  select event_id into v_lost from public.usage_event_start(
+    'test-server-token', f.user_id, f.workspace_id, f.wallet_id, 'test-tool',
+    5, null, null, null, 'lost:response:1', '{}'::jsonb);
+  perform public.t_check('the lost run really was charged',
+    (select balance from public.credit_wallets where id = f.wallet_id) = 5);
+  update public.usage_events set started_at = now() - interval '2 hours' where id = v_lost;
+
+  -- A run that is still legitimately in flight must survive the same sweep.
+  perform public.usage_event_start(
+    'test-server-token', f.user_id, f.workspace_id, f.wallet_id, 'test-tool',
+    0, null, null, null, 'live:inflight:1', '{}'::jsonb);
+
+  perform public.usage_events_reconcile_stale(50, 1800);
+  select balance into v_bal from public.credit_wallets where id = f.wallet_id;
+  select status, refund_tx_id, idempotency_key into v_row
+    from public.usage_events where id = v_lost;
+
+  perform public.t_check('a lost charge is returned', v_bal = 10,
+    format('balance is %s, expected 10', v_bal));
+  perform public.t_check('the event is closed as refunded', v_row.status = 'refunded',
+    format('status is %s', v_row.status));
+  perform public.t_check('and its key is released', v_row.idempotency_key is null);
+  perform public.t_check('a run still in flight is left alone',
+    (select status from public.usage_events where idempotency_key = 'live:inflight:1') = 'pending',
+    'the reconciler reaped a live run');
+
+  -- IDEMPOTENT: sweeping again must not pay twice.
+  perform public.usage_events_reconcile_stale(50, 1800);
+  perform public.usage_events_reconcile_stale(50, 1800);
+  select balance into v_bal from public.credit_wallets where id = f.wallet_id;
+  select count(*) into n from public.credit_transactions
+   where reference_id = v_lost and type = 'refund';
+  perform public.t_check('sweeping three times refunds once', v_bal = 10,
+    format('balance is %s, expected 10', v_bal));
+  perform public.t_check('and writes exactly one refund transaction', n = 1,
+    format('%s refund rows', n));
+end $$;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- P1-35b — DELIVERY OUTRANKS THE CLOCK.
+--
+-- A run whose images are already in the library was delivered. Refunding it
+-- because the bookkeeping call was lost would be a free generation with extra
+-- steps — the exact hole P0-01 closed, re-opened from the other side.
+-- ───────────────────────────────────────────────────────────────────────────
+do $$
+declare
+  f record; v_job uuid; v_gen uuid; v_ev uuid; v_bal int; v_row record;
+  v_session uuid; v_ev2 uuid;
+begin
+  raise notice '';
+  raise notice 'P1-35b a delivered run is closed, not refunded';
+  select * into f from public.t_fixture;
+  perform set_config('app.current_user', f.user_id::text, false);
+  if to_regprocedure('public.usage_events_reconcile_stale(integer,integer)') is null then
+    perform public.t_check('usage_events_reconcile_stale exists', false, 'absent');
+    return;
+  end if;
+
+  -- A generation that stored its images and then died before completeUsage.
+  update public.credit_wallets set balance = 10 where id = f.wallet_id;
+  insert into public.generation_jobs (workspace_id) values (f.workspace_id) returning id into v_job;
+  select event_id into v_ev from public.usage_event_start(
+    'test-server-token', f.user_id, f.workspace_id, f.wallet_id, 'test-tool',
+    5, null, null, v_job, 'delivered:1', '{}'::jsonb);
+  insert into public.generations (job_id) values (v_job) returning id into v_gen;
+  insert into public.generation_assets (generation_id) values (v_gen), (v_gen);
+  update public.usage_events set started_at = now() - interval '2 hours' where id = v_ev;
+
+  -- A prompt session that wrote its prompts and then died the same way.
+  insert into public.prompt_sessions (workspace_id) values (f.workspace_id) returning id into v_session;
+  select event_id into v_ev2 from public.usage_event_start(
+    'test-server-token', f.user_id, f.workspace_id, f.wallet_id, 'test-tool',
+    0, null, null, null, 'delivered:2',
+    jsonb_build_object('session_id', v_session::text));
+  insert into public.generated_prompts (session_id) values (v_session);
+  update public.usage_events set started_at = now() - interval '2 hours' where id = v_ev2;
+
+  perform public.usage_events_reconcile_stale(50, 1800);
+  select balance into v_bal from public.credit_wallets where id = f.wallet_id;
+  select status, result_count into v_row from public.usage_events where id = v_ev;
+
+  perform public.t_check('a delivered generation is not refunded', v_bal = 5,
+    format('balance is %s, expected 5 — the reconciler paid for delivered work', v_bal));
+  perform public.t_check('it is closed as succeeded', v_row.status = 'succeeded',
+    format('status is %s', v_row.status));
+  perform public.t_check('and records what was delivered', v_row.result_count = 2,
+    format('result_count is %s, expected 2', v_row.result_count));
+  perform public.t_check('a delivered prompt session is closed too',
+    (select status from public.usage_events where id = v_ev2) = 'succeeded',
+    format('status is %s', (select status from public.usage_events where id = v_ev2)));
+end $$;
+
+-- ───────────────────────────────────────────────────────────────────────────
+-- P1-35c — AN UNCHARGED STALE EVENT IS CLOSED, NOT PAID.
+-- 0099's rule again: no receipt, no refund. Production carries two such rows
+-- from before 0100, so this is the case the first real sweep will meet.
+-- ───────────────────────────────────────────────────────────────────────────
+do $$
+declare f record; v_ev uuid; v_bal int; v_row record;
+begin
+  raise notice '';
+  raise notice 'P1-35c an uncharged stale event is closed without paying';
+  select * into f from public.t_fixture;
+  perform set_config('app.current_user', f.user_id::text, false);
+  if to_regprocedure('public.usage_events_reconcile_stale(integer,integer)') is null then
+    perform public.t_check('usage_events_reconcile_stale exists', false, 'absent');
+    return;
+  end if;
+
+  update public.credit_wallets set balance = 7 where id = f.wallet_id;
+  insert into public.usage_events
+    (user_id, workspace_id, service_slug, credits_charged, status, credit_tx_id,
+     started_at, idempotency_key)
+  values (f.user_id, f.workspace_id, 'test-tool', 5, 'pending', null,
+          now() - interval '3 hours', 'legacy:uncharged:1')
+  returning id into v_ev;
+
+  perform public.usage_events_reconcile_stale(50, 1800);
+  select balance into v_bal from public.credit_wallets where id = f.wallet_id;
+  select status, credits_charged, idempotency_key into v_row
+    from public.usage_events where id = v_ev;
+
+  perform public.t_check('no receipt, no refund', v_bal = 7,
+    format('balance moved to %s — credits were created from nothing', v_bal));
+  perform public.t_check('the row is closed as failed', v_row.status = 'failed',
+    format('status is %s', v_row.status));
+  perform public.t_check('and stops claiming a price nobody paid',
+    v_row.credits_charged = 0, format('credits_charged is %s', v_row.credits_charged));
+  perform public.t_check('its key is released', v_row.idempotency_key is null);
+end $$;
+
 -- ── summary ────────────────────────────────────────────────────────────────
 do $$
 declare n int;

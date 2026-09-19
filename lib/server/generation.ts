@@ -15,7 +15,7 @@ import { buildFidelityInstructions } from "@/lib/ai/product-lock";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
 import {
-  MAX_ATTEMPTS_PER_PROVIDER, getProviderHealth, providerBlocked,
+  GENERATION_BUDGET_MS, MAX_ATTEMPTS_PER_PROVIDER, fitsInBudget, getProviderHealth, providerBlocked,
   recordProviderFailure, recordProviderSuccess, retryDelayMs, sleep, withProviderLimit,
 } from "@/lib/server/provider-router";
 
@@ -103,6 +103,10 @@ const MAX_REFERENCE_PATHS = 10;
  * the authority for cost; the client only previews it.
  */
 export async function runGeneration(supabase: Client, userId: string, workspaceId: string, input: GenerateInput): Promise<GenerateOutput> {
+  // Started HERE, not at the provider loop: the model resolve, the job insert,
+  // the charge and the reference downloads all happen inside the same function
+  // ceiling, so the loop's deadline has to account for them.
+  const invocationStartedAt = Date.now();
   if (!input.prompt.trim() || !RATIOS.has(input.aspectRatio)) return { ok: false, error: "invalid_input" };
   const quantity = Math.min(Math.max(Math.trunc(input.quantity) || 1, 1), 4);
 
@@ -362,6 +366,14 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
    * never the prompt, never a key.
    */
   const startedAt = Date.now();
+  // THE LOOP MUST NOT OUTLIVE THE ROUTE. Three attempts against a 180 s
+  // provider timeout is 540 s of provider time alone, and every route that
+  // reaches here dies at 300 s. A function killed mid-loop never reaches the
+  // failUsage below, so the customer stays charged for a run that nobody can
+  // close — which is the expensive half of this defect. An attempt is
+  // therefore started only when the WHOLE of it still fits.
+  const deadlineAt = invocationStartedAt + GENERATION_BUDGET_MS;
+  let outOfTime = false;
   const health = await getProviderHealth(supabase);
   const candidateIds = [input.modelId, ...(input.fallbackModelIds ?? [])]
     .filter((id, i, arr) => arr.indexOf(id) === i);
@@ -376,6 +388,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   let lastError: ProviderError | null = null;
 
   for (const candidateId of candidateIds) {
+    if (outOfTime) break;
     // The primary is already resolved; fallbacks resolve on demand.
     let cModel = model, cProviderSlug = provider.slug, cAdapter = adapter;
     let cApiKey = apiKey, cBaseUrl: string | null = cred.base_url;
@@ -431,6 +444,17 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     const cFidelity = buildFidelity(cFit);
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_PROVIDER; attempt++) {
+      // Fast failures are still retried; slow ones are not. That is the honest
+      // policy: a call that cannot finish before the route dies is not a retry,
+      // it is a charge with no way back.
+      if (!fitsInBudget(Date.now(), deadlineAt)) {
+        outOfTime = true;
+        lastError = lastError ?? new ProviderError("provider_timeout", false);
+        attempts.push({
+          provider: cProviderSlug, model: cModel.model_identifier, attempt, error: "provider_timeout",
+        });
+        break;
+      }
       try {
         result = await withProviderLimit(cProviderSlug, () => cAdapter.generate(cModel, {
           prompt: promptText, aspectRatio, resolution: cResolution,
@@ -453,7 +477,10 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         });
         await recordProviderFailure(supabase, cProviderSlug, pe);
         if (!pe.retriable || attempt === MAX_ATTEMPTS_PER_PROVIDER) break; // next candidate
-        await sleep(retryDelayMs(attempt, pe.upstream?.retryAfterMs));
+        // Sleeping into the deadline wastes the time the refund needs.
+        const delay = retryDelayMs(attempt, pe.upstream?.retryAfterMs);
+        if (!fitsInBudget(Date.now() + delay, deadlineAt)) { outOfTime = true; break; }
+        await sleep(delay);
       }
     }
     if (result) break;

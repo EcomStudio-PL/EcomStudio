@@ -105,17 +105,53 @@ export async function completeUsage(
   },
 ) {
   if (!serverToken) return;
-  // Server-gated as well, and not merely for symmetry: apiCostUsdMicros is what
-  // every margin and profitability view is computed from. Left customer-
-  // callable, a seller could write an arbitrary provider cost onto their own
-  // event and make the economics report say whatever they liked.
-  await supabase.rpc("usage_event_complete", {
-    p_token: serverToken,
-    p_event_id: eventId,
-    p_result_count: resultCount,
-    p_api_cost_usd_micros: Math.max(0, Math.round(cost?.apiCostUsdMicros ?? 0)),
-    p_request_id: cost?.providerRequestId ?? null,
+  // TRIED TWICE, BECAUSE LOSING THIS CALL COSTS REAL MONEY.
+  //
+  // The image tools have no server-side evidence that they delivered: the
+  // output goes back in the HTTP response and saving it is a separate call the
+  // browser makes. So if this bookkeeping call is lost, the event stays
+  // `pending` with nothing to show for it, and the reconciler (migration 0102)
+  // will refund it half an hour later — a free run, for a customer who already
+  // has their image. A second attempt is free to make: usage_event_complete
+  // only touches rows that are still `pending`, so a retry after a lost
+  // response is a no-op rather than a second write.
+  //
+  // Server-gated, and not merely for symmetry: apiCostUsdMicros is what every
+  // margin and profitability view is computed from. Left customer-callable, a
+  // seller could write an arbitrary provider cost onto their own event and make
+  // the economics report say whatever they liked.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { error } = await supabase.rpc("usage_event_complete", {
+      p_token: serverToken,
+      p_event_id: eventId,
+      p_result_count: resultCount,
+      p_api_cost_usd_micros: Math.max(0, Math.round(cost?.apiCostUsdMicros ?? 0)),
+      p_request_id: cost?.providerRequestId ?? null,
+    });
+    if (!error) return;
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 250));
+  }
+}
+
+/**
+ * Closes usage events that were charged and then stranded — the invocation
+ * died, or the answer to `usage_event_start` never arrived, so no request ever
+ * learned the event id. Delivered work is closed as succeeded; work with
+ * nothing to show for it is refunded, exactly once (migration 0102).
+ *
+ * Deliberately NOT a lookup by idempotency key from inside the request: the key
+ * identifies an INPUT, not a request, so two submissions of the same photo
+ * share one, and a lookup could hand request B the event request A owns.
+ *
+ * Returns counts, or null when the migration is not applied yet — which is what
+ * lets the application deploy precede it.
+ */
+export async function reconcileStaleUsage(supabase: Client, serverToken: string | null) {
+  if (!serverToken) return null;
+  const { data, error } = await supabase.rpc("usage_events_reconcile", {
+    p_token: serverToken, p_limit: 50,
   });
+  return error ? null : ((data ?? null) as Json | null);
 }
 
 export async function failUsage(supabase: Client, input: {

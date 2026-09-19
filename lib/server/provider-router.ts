@@ -59,6 +59,26 @@ export async function withProviderLimit<T>(slug: string, fn: () => Promise<T>): 
 
 export const MAX_ATTEMPTS_PER_PROVIDER = 3;
 
+/** The slowest single provider call this codebase can make — the OpenAI image
+ *  adapter's own AbortSignal.timeout (lib/ai/providers/openai.ts:68), plus a
+ *  little for the round trip around it. */
+export const PROVIDER_CALL_BUDGET_MS = 185_000;
+
+/** What the provider loop may spend inside a 300 s route, leaving ~60 s for
+ *  storage, derivatives, bookkeeping — and, the point of the budget, the
+ *  refund. Three attempts × a 180 s timeout is 540 s, and no route that
+ *  reaches the loop survives past 300 s, so without a deadline the function
+ *  is killed mid-attempt and the charge it already took is left with nobody
+ *  to close it. */
+export const GENERATION_BUDGET_MS = 240_000;
+
+/** Does a WHOLE provider call still fit before the deadline? Starting an
+ *  attempt that cannot finish is how the budget gets overrun. Exported so the
+ *  rule can be tested without standing up a generation. */
+export function fitsInBudget(now: number, deadlineAt: number, callMs = PROVIDER_CALL_BUDGET_MS): boolean {
+  return now + callMs <= deadlineAt;
+}
+
 /** Exponential backoff with jitter; the provider's own Retry-After wins. */
 export function retryDelayMs(attempt: number, retryAfterMs?: number): number {
   if (retryAfterMs && retryAfterMs > 0) return Math.min(retryAfterMs, 30_000) + Math.random() * 500;

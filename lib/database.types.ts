@@ -4899,6 +4899,13 @@ export type Database = {
         Args: { p_token: string | null; p_event_id: string; p_amount: number }
         Returns: string
       }
+      /* Closing runs that were charged and then stranded (migration 0102). The
+         reconciler is owner-only; this is the server-token gated entry point,
+         and it returns counts only — no event id, no workspace. */
+      usage_events_reconcile: {
+        Args: { p_token: string | null; p_limit?: number }
+        Returns: Json
+      }
       /* Opening a billable run (migration 0100). The event row and the credit
          debit happen in one transaction or not at all, and usage_events has no
          customer-writable path any more, so this is the ONLY way a billing

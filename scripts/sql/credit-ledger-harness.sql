@@ -111,6 +111,34 @@ create table public.usage_events (
   provider_request_id text
 );
 
+-- Delivery evidence. The reconciler (0102) refuses to refund a run whose work
+-- is already in the customer's hands, so the tables that hold that proof have
+-- to exist here or the refuse-to-refund branch cannot be tested.
+create table public.generation_jobs (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid references public.workspaces(id) on delete cascade
+);
+
+create table public.generations (
+  id uuid primary key default gen_random_uuid(),
+  job_id uuid not null references public.generation_jobs(id) on delete cascade
+);
+
+create table public.generation_assets (
+  id uuid primary key default gen_random_uuid(),
+  generation_id uuid not null references public.generations(id) on delete cascade
+);
+
+create table public.prompt_sessions (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid references public.workspaces(id) on delete cascade
+);
+
+create table public.generated_prompts (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid references public.prompt_sessions(id) on delete cascade
+);
+
 create table public.app_settings (
   key text primary key,
   value jsonb not null default '{}'::jsonb
