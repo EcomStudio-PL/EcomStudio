@@ -11,6 +11,12 @@
  *   - a row whose REDIRECT status differs between runs (an anonymous hit on a
  *     protected route measures the redirect; if that changed, the two numbers
  *     are describing different pages and the delta is meaningless)
+ *   - a row where EITHER run had a FAILED request. This one is the reason the
+ *     check exists: a 404 transfers no body, so a page that failed to load a
+ *     chunk reads as smaller and the tool would report an improvement nobody
+ *     made. It happened here — rebuilding .next under a running `next start`
+ *     404'd one 46 KB shared chunk and produced a 46 KB "saving" out of thin
+ *     air. A run with a failed request is discarded, never netted out.
  * Either of those is reported as a MISMATCH and excluded from the totals,
  * because a comparison that silently compares two different things is worse
  * than no comparison.
@@ -56,6 +62,16 @@ for (const k of new Set([...bMap.keys(), ...aMap.keys()])) {
   const a = aMap.get(k);
   if (!b || !a) {
     mismatches.push(`${k} — present only in ${b ? "BEFORE" : "AFTER"}; not comparable`);
+    continue;
+  }
+  if ((b.failedRequests ?? 0) > 0 || (a.failedRequests ?? 0) > 0) {
+    const where = [];
+    if ((b.failedRequests ?? 0) > 0) where.push(`BEFORE had ${b.failedRequests} (${(b.failedUrls ?? []).join(", ")})`);
+    if ((a.failedRequests ?? 0) > 0) where.push(`AFTER had ${a.failedRequests} (${(a.failedUrls ?? []).join(", ")})`);
+    mismatches.push(
+      `${k} — a request FAILED, so the totals are understated: ${where.join("; ")}. ` +
+        `Re-measure; do not net this out.`,
+    );
     continue;
   }
   if (b.redirected !== a.redirected) {

@@ -103,11 +103,28 @@ try {
       const requests = new Map();
       /** Total request COUNT including repeats, as opposed to unique URLs. */
       let requestCount = 0;
+      /*
+        REQUESTS THE SERVER REFUSED, tracked because a failure makes a page
+        look FASTER here and that is the most dangerous way this script can
+        lie.
+
+        Measured the hard way: rebuilding .next underneath a running
+        `next start` leaves the server serving HTML from the old build while
+        the changed chunk filenames on disk no longer match. The browser still
+        issues the request, so the request COUNT is unchanged and nothing looks
+        wrong — but the 404 carries no body, and one missing 46 KB shared chunk
+        read as a 46 KB "improvement" that no code change had produced.
+
+        A run with any failed request is not a slower or faster run. It is not
+        a run at all, and the number must not be quoted.
+      */
+      const failed = [];
 
       page.on("response", async (res) => {
         const url = res.url();
         const type = res.request().resourceType();
         requestCount += 1;
+        if (res.status() >= 400) failed.push({ url, status: res.status() });
 
         let wire = 0;
         let decoded = 0;
@@ -238,6 +255,19 @@ try {
       for (const [url, r] of dupes.slice(0, 8)) {
         console.log(`    x${r.count}  ${r.type.padEnd(8)} ${url.replace(BASE, "")}`);
       }
+      if (failed.length) {
+        console.log(`  !! FAILED REQUESTS: ${failed.length} — THIS ROW IS NOT USABLE`);
+        for (const f of failed.slice(0, 8)) {
+          console.log(`     ${f.status}  ${f.url.replace(BASE, "")}`);
+        }
+        console.log(
+          `     A refused request costs no bytes, so this page reads as SMALLER`,
+        );
+        console.log(
+          `     than it is. Usually the build changed under a running server —`,
+        );
+        console.log(`     restart it, rebuild, and measure again.`);
+      }
 
       const jsWire = (byType.script || { wire: 0 }).wire;
       const jsDecoded = (byType.script || { decoded: 0 }).decoded;
@@ -248,6 +278,10 @@ try {
         redirected: (page.url().replace(BASE, "") || "/") !== route,
         requests: requestCount,
         uniqueRequests: all.length,
+        // Carried into the JSON so perf-delta.mjs can refuse the row rather
+        // than trusting a total that a 404 quietly deflated.
+        failedRequests: failed.length,
+        failedUrls: failed.slice(0, 8).map((f) => `${f.status} ${f.url.replace(BASE, "")}`),
         wireBytes: totalWire,
         decodedBytes: totalDecoded,
         jsWireBytes: jsWire,

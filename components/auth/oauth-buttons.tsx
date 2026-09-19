@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n/provider";
 import { safeReturnTo } from "@/lib/auth-routes";
@@ -60,21 +59,54 @@ export function OAuthButtons({ next, compact = false }: {
   const active = PROVIDERS.filter((p) => ENABLED.includes(p.id));
   if (active.length === 0) return null;
 
+  /**
+   * THE BROWSER SUPABASE CLIENT IS LOADED ON DEMAND, NOT IMPORTED (P1-27).
+   *
+   * This component is mounted by the auth dialog, which the root layout mounts
+   * on EVERY page. A static import therefore welded @supabase/ssr and its
+   * auth-js dependency into the shared chunk that /, /regulamin and
+   * /polityka-prywatnosci all download — ~65 KB over the wire, parsed and
+   * executed, to serve a visitor reading the terms of service who will never
+   * open the dialog, let alone press a social button.
+   *
+   * Nothing else in the dialog's tree touches the browser client: login-form,
+   * register-form, forgot-form and auth-modal all talk to server actions. This
+   * import was the whole reason Supabase shipped to static pages.
+   */
+  async function loadClient() {
+    return (await import("@/lib/supabase/client")).createClient();
+  }
+
+  /** Warm the chunk on intent, so deferring it does not cost a click.
+   *  Fire-and-forget: a failure here is retried by start(), which is the path
+   *  that actually reports it. */
+  function warm() {
+    void import("@/lib/supabase/client").catch(() => {});
+  }
+
   async function start(provider: "google" | "apple") {
     setBusy(provider);
-    const supabase = createClient();
     // The same guard as everywhere else, including the backslash and
     // control-character checks this copy was missing — and this value becomes
     // an OAuth redirectTo, so a lie here survives the whole round trip.
     const safeNext = safeReturnTo(next);
     const callback = `${window.location.origin}/auth/callback${
       safeNext ? `?next=${encodeURIComponent(safeNext)}` : ""}`;
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: callback },
-    });
-    // On success the browser navigates away; only a failure returns here.
-    if (error) setBusy(null);
+    try {
+      const supabase = await loadClient();
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: callback },
+      });
+      // On success the browser navigates away; only a failure returns here.
+      if (error) setBusy(null);
+    } catch {
+      // A chunk that cannot be fetched — offline, or a deploy that rotated the
+      // filename under an open tab — must leave the button pressable again
+      // rather than spinning forever. Same outcome as an OAuth error, which is
+      // the behaviour this button already had.
+      setBusy(null);
+    }
   }
 
   return (
@@ -86,6 +118,8 @@ export function OAuthButtons({ next, compact = false }: {
             type="button"
             disabled={busy !== null}
             onClick={() => start(p.id)}
+            onPointerEnter={warm}
+            onFocus={warm}
             // The full sentence is the accessible name either way, so a
             // compact button still announces "Kontynuuj z Google".
             aria-label={compact ? t(p.labelKey) : undefined}
