@@ -259,6 +259,27 @@ begin
   return v_tx;
 end $$;
 
+-- usage_event_complete as it stands on PROD TODAY — the success half of the
+-- lifecycle, needed to test what happens to a key once a run is over.
+create function public.usage_event_complete(
+  p_token text, p_event_id uuid, p_result_count integer,
+  p_api_cost_usd_micros bigint default 0, p_request_id text default null
+) returns void language plpgsql security definer set search_path = public as $$
+declare v_ws uuid;
+begin
+  if not public.server_call_ok(p_token) then raise exception 'forbidden'; end if;
+  if auth.uid() is null then raise exception 'unauthenticated'; end if;
+  select workspace_id into v_ws from public.usage_events where id = p_event_id;
+  if v_ws is null or not public.is_workspace_member(v_ws) then raise exception 'not_authorized'; end if;
+  update public.usage_events
+    set status = 'succeeded',
+        result_count = greatest(0, coalesce(p_result_count, 0)),
+        actual_api_cost_usd_micros = greatest(0, coalesce(p_api_cost_usd_micros, 0)),
+        provider_request_id = left(p_request_id, 200),
+        finished_at = now()
+    where id = p_event_id and status = 'pending';
+end $$;
+
 -- ── usage_events RLS, as it stands on PROD TODAY ────────────────────────────
 -- `app_user` is this harness's `authenticated`: an ordinary role that owns
 -- nothing, so policies actually apply to it. `usage_events_member_insert` is

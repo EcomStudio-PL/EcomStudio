@@ -68,17 +68,17 @@ export async function POST(request: Request) {
     file: fileBytes,
     mime: file.type || "image/jpeg",
     logo: logo instanceof File ? Buffer.from(await logo.arrayBuffer()) : null,
-    // The key is DERIVED, never accepted from the client: a hash of the
-    // tool, its settings and the exact file bytes, inside a five-minute
-    // window. An identical retry (a refreshed page re-sending the same run)
-    // still resolves to one charge and one run, but a different tool or
-    // settings can no longer ride an earlier cheap charge for a free run —
-    // the old client-supplied key allowed exactly that billing bypass.
+    // The key is DERIVED, never accepted from the client: a hash of the tool,
+    // its settings, the file's name and its exact bytes. Re-sending the same
+    // item while the first request is still running resolves to one charge and
+    // one run; a different tool or settings can no longer ride an earlier
+    // cheap charge for a free run — the old client-supplied key allowed
+    // exactly that billing bypass.
     //
     // Being derived is not what makes it safe: the customer knows every
     // input, so they can compute it. What makes it safe is that only the
     // server can create the row it names (migration 0100).
-    idempotencyKey: idempotency(workspace.id, tool.slug, settings, fileBytes),
+    idempotencyKey: idempotency(workspace.id, tool.slug, settings, fileBytes, file.name),
   });
 
   if (!result.ok) {
@@ -105,19 +105,38 @@ export async function POST(request: Request) {
   });
 }
 
-/** How long an identical request keeps counting as the SAME submit.
+/** How long a request that never finished keeps blocking an identical one.
  *
- *  The ledger refuses a duplicate key outright now (migration 0100) instead of
- *  quietly handing out a second run for one charge, so the key cannot be
- *  permanent: without a window, a seller who ran a tool on a photo could never
- *  run that same tool on that same photo again. Five minutes absorbs a refresh
- *  or a double click; a run after that is a new run and is charged like one. */
+ *  The ledger refuses a duplicate key outright (migration 0100) instead of
+ *  quietly handing out a second run for one charge, and releases the key as
+ *  soon as the run succeeds or fails (0101) — so in the normal case this window
+ *  does nothing at all: a retry after a failure, or a re-run after a success,
+ *  is allowed immediately.
+ *
+ *  It is here for the run that ends in neither state: this route has a 120 s
+ *  ceiling, and a request killed at it leaves a `pending` event still holding
+ *  its key. Without a window that one input would be blocked forever. Five
+ *  minutes is the bound on that.
+ *
+ *  It is a tumbling bucket, not a sliding one, so two submits milliseconds
+ *  apart that straddle a boundary get different keys and are both charged.
+ *  That is a genuine duplicate charge, at a rate of roughly (gap / 5 min) —
+ *  about one double-click in fifteen hundred. A sliding window needs state
+ *  this route does not have; the trade is recorded rather than hidden. */
 const DEDUPE_WINDOW_MS = 5 * 60_000;
 
-function idempotency(workspaceId: string, tool: string, settings: unknown, file: Buffer): string {
+function idempotency(
+  workspaceId: string, tool: string, settings: unknown, file: Buffer, filename: string,
+): string {
   const digest = createHash("sha256")
     .update(tool)
     .update(JSON.stringify(settings ?? {}))
+    // THE NAME, NOT ONLY THE BYTES. Two copies of one photo in a batch are two
+    // runs the seller asked for and expects two results from, and the bytes
+    // alone cannot tell them apart from one item submitted twice. A genuine
+    // re-send carries the same name, so deduplication still works where it
+    // should.
+    .update(filename)
     .update(file)
     .digest("hex")
     .slice(0, 40);

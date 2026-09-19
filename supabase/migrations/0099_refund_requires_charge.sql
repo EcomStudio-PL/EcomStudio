@@ -18,10 +18,20 @@
 -- raise — the handler calls `usage_event_fail` to close the row out. That row
 -- carries `credits_charged > 0` with `credit_tx_id` null, the guard above sees
 -- a positive price and no prior refund, and `apply_credit_transaction` adds
--- credits to a wallet that was never debited. Every failed charge therefore
--- MINTED the price of the event. A wallet at zero calling a paid tool in a loop
--- grows without limit, and the loop needs no special access at all: running out
--- of credits is the trigger.
+-- credits to a wallet that was never debited. Every charge that failed after
+-- the row was written therefore MINTED the price of the event.
+--
+-- HOW IT IS ACTUALLY REACHED, stated precisely because the first version of
+-- this comment got it wrong. Both paid callers read the balance and refuse
+-- before any row is written (lib/server/image-tools.ts:618, generation.ts:166),
+-- so a wallet at zero calling a paid tool in a loop is turned away and mints
+-- nothing. The mint needs the charge to fail AFTER that pre-check passes:
+-- concurrent requests reading the same stale balance (a batch of N photos
+-- against credits for fewer), a price above apply_credit_transaction's clamp,
+-- or a missing wallet. lib/server/prompt-engine.ts:427 has no pre-check at all
+-- and is safe today only because prompt_generation costs 0 credits in
+-- production. Narrower than "run out of credits and loop", and still a way for
+-- a customer to create credits out of nothing.
 --
 -- THE FIX. Read `credit_tx_id` — the old statement did not even SELECT the
 -- column it needed — and refuse to refund without it. The original guard set is
@@ -113,7 +123,11 @@ begin
     update public.usage_events
        set credits_charged = 0,
            api_cost_usd_micros_snapshot = 0,
-           sale_value_cents_snapshot = 0
+           sale_value_cents_snapshot = 0,
+           -- Set moments ago from p_api_cost_usd_micros. Every caller passes 0
+           -- on this path, but usageByService prefers this column over the
+           -- snapshot, so leaving it would contradict the two lines above.
+           actual_api_cost_usd_micros = 0
      where id = p_event_id;
     return null;
   end if;

@@ -133,8 +133,12 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
     form.append("settings", JSON.stringify(settings));
     form.append("file", item.file);
     if (logo) form.append("logo", logo.file);
-    // Stable per-item key: a refresh mid-batch re-sends the same key and the
-    // ledger recognises the run instead of charging for it twice.
+    // No key is sent. The route derives one from the tool, the settings and the
+    // file itself (app/api/tools/run/route.ts), because a key the browser picks
+    // is a key an attacker picks. A re-send of the same item while the first
+    // request is still in flight is refused rather than charged twice; once a
+    // run has finished or failed the ledger releases the key, which is what
+    // makes "Ponów nieudane" below work at all (migration 0101).
 
     const res = await fetch("/api/tools/run", { method: "POST", body: form });
     if (!res.ok) {

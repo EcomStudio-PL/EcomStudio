@@ -4909,7 +4909,9 @@ export type Database = {
           p_token: string | null
           p_user_id: string
           p_workspace_id: string
-          p_wallet_id?: string | null
+          // No SQL default: the function declares it before the parameters
+          // that have one, so every caller must pass it (null for a free run).
+          p_wallet_id: string | null
           p_service_slug: string
           p_credits?: number | null
           p_provider_slug?: string | null

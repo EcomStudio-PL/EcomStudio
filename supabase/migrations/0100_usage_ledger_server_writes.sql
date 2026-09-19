@@ -27,11 +27,27 @@
 --
 --   1. `usage_event_start` — a server-token-gated SECURITY DEFINER function
 --      that creates the event AND takes the credits in one transaction.
---   2. `usage_events_member_insert` is dropped. Reads are untouched: sellers
---      still see their own usage, admins still see everything.
+--   2. `usage_events_member_insert` is dropped — in 0101, NOT here. See below.
 --
 -- Only lib/services/usage.ts ever inserted into this table, so nothing else
 -- has to change to lose the policy.
+--
+-- WHY THE POLICY DROP IS A SEPARATE MIGRATION.
+--
+-- These writes go through the customer's own session client, so RLS applies to
+-- them. Dropping the policy in the same file that adds the function makes the
+-- two halves of the release mutually exclusive:
+--
+--   * migration first, deploy second — the running build still INSERTs, RLS
+--     now refuses it, and every paid run fails until the deploy lands;
+--   * deploy first, migration second — the new build calls a function that
+--     does not exist yet, and every paid run fails until the migration lands.
+--
+-- Both fail closed, so no money moves either way, but there is no ordering
+-- that avoids taking the product down. Adding the function is backwards
+-- compatible on its own: the old build keeps inserting under the policy that
+-- is still there. So this migration adds, 0101 removes, and the release order
+-- is 0100 → deploy → 0101.
 --
 -- THREE THINGS THIS BUYS BEYOND CLOSING THE BYPASS.
 --
@@ -101,7 +117,13 @@ begin
   -- The price: the caller's figure (a model's credit cost × quantity) or the
   -- catalog's. Clamped for the same reason usage_event_charge clamps.
   v_credits := greatest(0, coalesce(p_credits, v_service.credits_cost));
-  if v_credits > 10000 then raise exception 'invalid_amount'; end if;
+  -- A price this size is a bug in the caller, not an attack — p_credits is
+  -- computed server-side. Returned rather than raised, because the rule above
+  -- is that only authorization failures raise.
+  if v_credits > 10000 then
+    return query select null::uuid, 'invalid_amount'::text;
+    return;
+  end if;
 
   -- A free run needs no wallet; a paid one needs this workspace's wallet.
   if v_credits > 0 then
@@ -165,10 +187,5 @@ grant execute on function public.usage_event_start(
 
 comment on function public.usage_event_start(
   text, uuid, uuid, uuid, text, integer, text, text, uuid, text, jsonb) is
-  'Opens a billable run: creates the usage event and takes the credits in one transaction, or neither. Server-token gated — the usage ledger has no customer-writable path. Returns status ok / service_unavailable / maintenance / insufficient_credits / duplicate_request / event_failed.';
+  'Opens a billable run: creates the usage event and takes the credits in one transaction, or neither. Server-token gated — the usage ledger has no customer-writable path. Returns status ok / service_unavailable / maintenance / insufficient_credits / duplicate_request / invalid_amount / event_failed.';
 
--- ── The customer-writable path, closed ──────────────────────────────────────
--- Reads stay exactly as they were: usage_events_member_read (own workspace or
--- admin) and usage_events_admin_update are untouched. Only the ability to
--- CREATE a billing record goes away, and only the function above replaces it.
-drop policy if exists usage_events_member_insert on public.usage_events;

@@ -6,8 +6,9 @@
 #
 #   1. build the harness (PROD function bodies, defect included)
 #   2. run the suite            -> must report failures
-#   3. apply the remediation migration
+#   3. apply the remediation migrations
 #   4. run the suite again      -> must report none
+#   5. race ten real backends for one credit -> exactly one wins
 #
 # Step 2 failing is the evidence that step 4 passing means something. If a
 # later change makes step 2 pass, the tests stopped testing — fix the TEST.
@@ -25,9 +26,14 @@ export PGPORT="${PGPORT:-5433}"
 export PGUSER="${PGUSER:-postgres}"
 export PGDATABASE="${PGDATABASE:-postgres}"
 
+# In release order. 0100 only adds a function and is safe to apply before the
+# application deploy; 0101 removes the policy the old build writes through and
+# must come after it. Applied here back to back because the harness has no
+# deploy in between.
 MIGRATIONS=(
   supabase/migrations/0099_refund_requires_charge.sql
   supabase/migrations/0100_usage_ledger_server_writes.sql
+  supabase/migrations/0101_idempotency_key_is_released.sql
 )
 
 if ! psql -q -t -c 'select 1' >/dev/null 2>&1; then
@@ -42,7 +48,7 @@ failures() {
   psql -q -t -A -c 'select count(*) from public.t_failures'
 }
 
-echo "── 1/2  BEFORE the fix (the suite must fail here) ─────────────────────"
+echo "── 1/3  BEFORE the fix (the suite must fail here) ─────────────────────"
 psql -q -f scripts/sql/credit-ledger-harness.sql >/dev/null 2>&1
 run_suite
 before=$(failures)

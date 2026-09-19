@@ -362,6 +362,82 @@ begin
 end $$;
 
 -- ───────────────────────────────────────────────────────────────────────────
+-- P0-01e — A RUN THAT ENDED MUST NOT KEEP BLOCKING THE NEXT ONE.
+--
+-- Refusing a duplicate key is right while the first request is in flight. Held
+-- past the end of the run it broke the product's own "Ponów nieudane" button:
+-- the failed event still owned the key, so every retry was refused instantly
+-- and the customer was shown a processing error for a run the server declined
+-- to start. Migration 0101 releases the key on the terminal states.
+-- ───────────────────────────────────────────────────────────────────────────
+do $$
+declare
+  f record; r record; retry record; again record;
+begin
+  raise notice '';
+  raise notice 'P0-01e a finished run releases its key';
+  select * into f from public.t_fixture;
+  perform set_config('app.current_user', f.user_id::text, false);
+
+  if to_regprocedure('public.usage_event_start(text,uuid,uuid,uuid,text,integer,text,text,uuid,text,jsonb)') is null then
+    perform public.t_check('usage_event_start exists', false, 'the function is absent');
+    return;
+  end if;
+  delete from public.usage_events where idempotency_key in ('retry:after-fail', 'retry:after-ok');
+
+  -- 1. A run that FAILS. The customer gets the credits back and presses retry.
+  update public.credit_wallets set balance = 10 where id = f.wallet_id;
+  select * into r from public.usage_event_start(
+    'test-server-token', f.user_id, f.workspace_id, f.wallet_id, 'test-tool',
+    5, null, null, null, 'retry:after-fail', '{}'::jsonb);
+  perform public.usage_event_fail('test-server-token', r.event_id, 'provider_timeout', 0);
+  perform public.t_check('the failed run was refunded',
+    (select balance from public.credit_wallets where id = f.wallet_id) = 10,
+    'balance after the refund');
+
+  select * into retry from public.usage_event_start(
+    'test-server-token', f.user_id, f.workspace_id, f.wallet_id, 'test-tool',
+    5, null, null, null, 'retry:after-fail', '{}'::jsonb);
+  perform public.t_check('retrying a failed run is allowed', retry.status = 'ok',
+    format('status is %s — the retry button would show a processing error', retry.status));
+  perform public.t_check('the retry is charged like the real run it is',
+    (select balance from public.credit_wallets where id = f.wallet_id) = 5,
+    format('balance is %s, expected 5',
+      (select balance from public.credit_wallets where id = f.wallet_id)));
+
+  -- 2. A run that SUCCEEDS. Running the same photo again later is a new run.
+  update public.credit_wallets set balance = 10 where id = f.wallet_id;
+  select * into r from public.usage_event_start(
+    'test-server-token', f.user_id, f.workspace_id, f.wallet_id, 'test-tool',
+    5, null, null, null, 'retry:after-ok', '{}'::jsonb);
+  perform public.usage_event_complete('test-server-token', r.event_id, 1, 0, null);
+  select * into again from public.usage_event_start(
+    'test-server-token', f.user_id, f.workspace_id, f.wallet_id, 'test-tool',
+    5, null, null, null, 'retry:after-ok', '{}'::jsonb);
+  perform public.t_check('re-running a finished job is allowed', again.status = 'ok',
+    format('status is %s', again.status));
+  perform public.t_check('and it is a second charge, not a free ride',
+    (select balance from public.credit_wallets where id = f.wallet_id) = 0,
+    format('balance is %s, expected 0',
+      (select balance from public.credit_wallets where id = f.wallet_id)));
+
+  -- 3. But a request that is STILL RUNNING is still refused.
+  update public.credit_wallets set balance = 10 where id = f.wallet_id;
+  select * into r from public.usage_event_start(
+    'test-server-token', f.user_id, f.workspace_id, f.wallet_id, 'test-tool',
+    5, null, null, null, 'retry:in-flight', '{}'::jsonb);
+  select * into again from public.usage_event_start(
+    'test-server-token', f.user_id, f.workspace_id, f.wallet_id, 'test-tool',
+    5, null, null, null, 'retry:in-flight', '{}'::jsonb);
+  perform public.t_check('a duplicate of a run still in flight is refused',
+    again.status = 'duplicate_request', format('status is %s', again.status));
+  perform public.t_check('and the in-flight run was charged exactly once',
+    (select balance from public.credit_wallets where id = f.wallet_id) = 5,
+    format('balance is %s, expected 5',
+      (select balance from public.credit_wallets where id = f.wallet_id)));
+end $$;
+
+-- ───────────────────────────────────────────────────────────────────────────
 -- P0-01d — THE TOKEN GATE IS THE WHOLE POINT.
 -- ───────────────────────────────────────────────────────────────────────────
 do $$
