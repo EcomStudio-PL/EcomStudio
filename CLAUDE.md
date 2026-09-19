@@ -31,3 +31,13 @@ Next.js 15 (App Router) · TypeScript strict · Tailwind (CSS vars, dark via `.d
 
 ## Key data flow
 product → product_images (Storage `product-images/{workspace_id}/{product_id}/…`) → generated_prompts (templates now, AI analysis later) → generation_jobs → generations (+ match score) → generation_assets → export (later).
+
+## External documentation (Context7)
+When implementing or configuring external libraries/frameworks/APIs, use Context7 for current
+documentation when it is relevant. Prefer documentation matching the versions already installed in
+this repository — read them from `package.json`, do not assume latest.
+
+Do not upgrade a dependency only to match an example unless explicitly requested. A Context7 snippet
+that needs a newer major version is a reason to write the code the installed version supports, or to
+raise the upgrade as its own decision — never a reason to bump the version silently as a side effect
+of an unrelated task.
