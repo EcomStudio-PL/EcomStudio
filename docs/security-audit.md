@@ -1,5 +1,24 @@
 # Security audit — Stage 4
 
+> **This is a dated record, not a current posture.** It says what was true when
+> it was written, and it is kept that way on purpose — an audit rewritten after
+> the fact stops being evidence of anything. Several of the statements below
+> have since been superseded by the pre-launch remediation, which changed the
+> things they describe rather than disagreeing with them:
+>
+> - `app_settings` is no longer readable row-for-row by every client. Three
+>   rows — the two token verifiers and the internal hook address — are private,
+>   and the rest read exactly as before (migration 0107).
+> - The admin route guard is no longer the only step-up gate: the same check
+>   now runs in middleware for `/api/`, because a layout only runs when a page
+>   renders and a route handler does not render.
+> - `media_usage` and the waitlist confirmation payload have both been moved
+>   behind explicit gates (migrations 0105, 0106).
+> - `NEXT_PUBLIC_*` is unchanged and still carries no secret.
+>
+> The list of what the remediation changed, with its evidence, lives in the
+> project's remediation record rather than here.
+
 Scope: RLS and database privileges, admin authorization, secret exposure, the
 Supabase Send Email Hook, and Turnstile. Findings are ordered by severity, and
 each one says what was proven, not what looked suspicious.

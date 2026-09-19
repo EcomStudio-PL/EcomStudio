@@ -239,22 +239,26 @@ export async function blockUserAction(input: {
   } catch { return { ok: false, error: "generic" }; }
 }
 
-/**
- * The tidy-up sweep, run from the daily cron.
+/*
+ * THE TIDY-UP SWEEP USED TO LIVE HERE, and that was the bug (P1-05/08/29).
  *
- * NOT the mechanism: an expired block already stops being enforced the moment
- * it expires, because every gate reads `blocked_until` rather than trusting
- * the flag. This only clears the flag afterwards so the CRM does not keep
- * showing a customer as blocked until a date that has passed.
+ * It was a server action opening with requireAdmin(), called from
+ * /api/cron/mail — which Vercel Cron invokes with a bearer secret and no
+ * session. The guard threw on every scheduled run, the route caught it, and
+ * the sweep had never once executed. An unattended job cannot prove it is a
+ * person; it has to prove it is the server.
+ *
+ * It now lives in lib/server/account-blocks.ts behind the proof-of-server
+ * token (migration 0108), and this action is gone rather than left beside it:
+ * two doors into one sweep is how the two drift apart. `admin_expire_account_blocks()`
+ * is still in the database for an admin-session caller, should a "sweep now"
+ * button ever want one.
+ *
+ * NOT the mechanism, either way: an expired block stops being enforced the
+ * moment it expires, because every gate reads `blocked_until` rather than
+ * trusting the flag. The sweep only clears the flag afterwards, so the CRM
+ * does not keep showing a customer as blocked until a date that has passed.
  */
-export async function expireBlocksAction(): Promise<Result & { lifted?: number }> {
-  try {
-    const { supabase } = await requireAdmin();
-    const { data, error } = await supabase.rpc("admin_expire_account_blocks");
-    if (error) return { ok: false, error: "generic" };
-    return { ok: true, lifted: Number(data ?? 0) };
-  } catch { return { ok: false, error: "generic" }; }
-}
 
 /** Lift a block early. The internal note survives — why an account was paused
  *  is worth keeping after it is running again. */

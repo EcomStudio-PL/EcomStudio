@@ -61,6 +61,29 @@ Jeżeli kiedykolwiek zobaczysz błąd typów na Vercelu, którego nie ma lokalni
 `rm -rf node_modules .next && npm ci` — najpierw sprawdź pierwsze linie build logu i to,
 jaką komendą instalacyjną build się posłużył.
 
+## Zmienne środowiskowe — czego wymaga produkcja
+
+Ta sekcja istnieje, bo brak zmiennej **nie wygląda jak awaria**. Aplikacja
+wstaje, strony się renderują, build jest zielony — a zadanie, które od niej
+zależy, po prostu nigdy się nie wykonuje. Każdy wiersz mówi, co dokładnie
+milknie, żeby nie trzeba było tego odkrywać po miesiącu.
+
+| Zmienna | Bez niej |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Build produkcyjny celowo pada (`lib/supabase/config.ts`) zamiast wejść na bazę deweloperską. Ta sama wartość wyznacza projekt, do którego idzie synchronizacja Auth, i jedyny host dozwolony dla optymalizatora obrazów. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Jak wyżej — build pada. |
+| `GROVBASE_SERVER_KEY` | Wszystkie ścieżki bez sesji odmawiają: potwierdzenie zapisu na listę, hook pocztowy Supabase, captcha, klucze dostawców w generacji, rozliczanie porzuconych `usage_events`, sprzątanie wygasłych blokad. Panel admina działa dalej (te operacje autoryzuje `is_admin()`), więc objaw widać tylko u klienta i w harmonogramie. |
+| `CRON_SECRET` | **Cały dzienny harmonogram nie rusza.** `vercel.json` woła `/api/cron/mail`, planista nie ma sesji, a bez tej zmiennej trasa odpowiada 401, zanim dojdzie do jakiejkolwiek pracy — poczta, tygodniowy ranking narzędzi i sprzątanie blokad milkną razem. To poprawna odmowa, nie błąd do obejścia: bez sekretu nic nie odróżnia planisty od przypadkowego gościa. Nie ma na to obejścia w kodzie — zmienna musi być ustawiona. |
+| `SUPABASE_MANAGEMENT_TOKEN` | Synchronizacja ustawień Auth (Site URL, lista przekierowań, szablony, SMTP) zostaje ręczna. Panel mówi to wprost. |
+
+Dwie rzeczy warto sprawdzić po każdym deployu produkcyjnym, bo żadna nie
+zgłosi się sama:
+
+1. czy `/api/cron/mail` odpowiada 200 na żądanie planisty (a nie 401);
+2. czy `app_settings.tool_popularity` ma niepuste `computed_at` — dopóki jest
+   `null`, tygodniowy ranking nigdy nie policzył się w produkcji i wyszukiwarka
+   pokazuje kolejność z rejestru, oznaczoną jako `fallback`.
+
 ## Zasady
 
 - **Produkcja bierze kod wyłącznie z `main`.** Gałąź robocza daje preview, nie produkcję.

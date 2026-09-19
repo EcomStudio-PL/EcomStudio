@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { Enums } from "@/lib/database.types";
 import { logAudit } from "@/lib/services/audit";
+import { keepStructuredFields } from "@/lib/services/admin";
 
 type Result = { ok: boolean; error?: string };
 
@@ -305,8 +306,12 @@ export async function toggleTemplateAction(templateId: string, active: boolean):
 export async function saveSettingAction(key: string, value: Record<string, unknown>): Promise<Result> {
   try {
     const { supabase } = await requireAdmin();
+    const { data: existing } = await supabase.from("app_settings")
+      .select("value").eq("key", key).maybeSingle();
+    const stored = (existing?.value ?? {}) as Record<string, unknown>;
+    const next = keepStructuredFields(value ?? {}, stored);
     const { error } = await supabase.from("app_settings")
-      .update({ value: value as never, updated_at: new Date().toISOString() })
+      .update({ value: next as never, updated_at: new Date().toISOString() })
       .eq("key", key);
     if (error) return { ok: false, error: "generic" };
     revalidatePath("/admin/system");

@@ -4955,6 +4955,14 @@ export type Database = {
           updated_at: string | null
         }[]
       }
+      /* Clears the flag on account blocks that have already expired (migration
+         0108). The admin-session sibling admin_expire_account_blocks() stays
+         for a human caller; this one is for the daily schedule, which carries
+         a bearer secret and no session and so cannot pass an admin guard. */
+      server_expire_account_blocks: {
+        Args: { p_token: string | null }
+        Returns: number
+      }
       secret_read: {
         Args: { p_name: string; p_token?: string | null }
         Returns: string | null

@@ -48,3 +48,39 @@ export async function adminCounts(supabase: Client) {
     creditsUsed,
   };
 }
+
+/**
+ * A STRUCTURED SETTING MUST NOT COME BACK AS A SENTENCE (P1-07).
+ *
+ * /admin/system renders every field of a settings row as one input, and an
+ * input's value is a string: `String(val)` turns an array into "a,b,c" and an
+ * object into the literal "[object Object]". Whatever the operator then saves
+ * is what the row becomes.
+ *
+ * That is not cosmetic. Production holds five settings rows with structured
+ * fields, and two of them are read on the generation path —
+ * `generation.provider_priority` (which providers to try, in what order) and
+ * `free_tools.remove_bg` (the free-run allowance). A provider list written
+ * back as one comma-joined string leaves the router with no order to read.
+ *
+ * So the last word belongs to what is STORED, not to what the form sent: a
+ * field that is an object or an array in the database keeps its stored value
+ * unless the caller sends a matching shape. Every flat field — which is every
+ * field that editor can actually represent — is written exactly as before, so
+ * the screen behaves identically for everything it was designed to edit, and
+ * this is a guard rather than a redesign.
+ */
+export function keepStructuredFields(
+  incoming: Record<string, unknown>,
+  stored: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...incoming };
+  for (const [field, current] of Object.entries(stored)) {
+    if (current === null || typeof current !== "object") continue;
+    const sent = merged[field];
+    // A caller that genuinely sends structure is honoured; a flattened string,
+    // a number, null or a missing field falls back to what is already there.
+    if (sent === null || typeof sent !== "object") merged[field] = current;
+  }
+  return merged;
+}

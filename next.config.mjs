@@ -52,7 +52,35 @@ const securityHeaders = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
-    remotePatterns: [{ protocol: 'https', hostname: '*.supabase.co' }],
+    /*
+      THE OPTIMISER FETCHES WHATEVER THIS ALLOWS (P1-32).
+
+      `*.supabase.co` is every Supabase project in the world, not ours. Next's
+      image route takes an arbitrary `url` query parameter and fetches it
+      server-side, so a permissive pattern turns /_next/image into an open
+      proxy for that entire domain: anyone can have our deployment fetch and
+      cache a stranger's project, on our bandwidth and behind our IP.
+
+      Narrowed to the one project this deployment actually reads from, and
+      derived rather than written out, so a preview or a development
+      deployment allows ITS OWN project and no other. On production it
+      resolves to exactly the host the app already used, so no image that
+      renders today stops rendering.
+
+      THE PATH IS DELIBERATELY NOT PINNED. Pinning
+      /storage/v1/object/public/** would be tighter and is wrong here: most of
+      what this app renders is a SIGNED url under /storage/v1/object/sign/,
+      because generated work is private. The two prefixes would have to be
+      listed exactly, and a third one nobody remembered would break the
+      Library silently. Narrowing the host is what closes the finding — the
+      proxy could reach every Supabase project in the world; now it reaches
+      one, whose contents we serve anyway.
+    */
+    remotePatterns: [{
+      protocol: 'https',
+      hostname: new URL(process.env.NEXT_PUBLIC_SUPABASE_URL
+        ?? 'https://orjkxijqpecnbzhxhfct.supabase.co').hostname,
+    }],
   },
   // sharp ships prebuilt native binaries; bundling it breaks the .node loads.
   // imapflow and mailparser reach for their encodings and TLS pieces through

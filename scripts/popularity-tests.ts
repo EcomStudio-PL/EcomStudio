@@ -266,16 +266,42 @@ const LAST_WEEK = {
 
 {
   const { client, calls } = fakeClient({ counts: WEEK });
+  // Bracketing the call is what makes the window assertion below independent
+  // of the day it runs on.
+  const before = Date.now();
   const result = await refreshToolPopularity(client);
+  const after = Date.now();
   const stored = calls.stored[0];
   check("a week with enough tools ranks itself",
     result.ok && result.source === "weekly_usage",
     result.ok ? result.source : result.error);
   check("…over exactly one window", calls.since.length === 1, `${calls.since.length} queries`);
+  /*
+    AGAINST THE LIVE CLOCK, NEVER AGAINST THE FROZEN ONE.
+
+    `now` above is the staleness table's clock, and the module reads
+    Date.now(). Mixing the two made this assertion true only on the day it was
+    written: the difference shrinks by a day every day, and it went red on
+    2026-09-17 with no commit involved. Seven days was never in question —
+    WINDOW_DAYS is 7 and is the only value the module feeds to `p_since`.
+
+    The replacement is TIGHTER, not looser. `since` must be exactly seven days
+    before whatever instant the call happened at, so it has to land inside a
+    bracket only as wide as the call's own duration. The old form waved through
+    anything between six and 7.01 days.
+
+    AND IT IS THE LITERAL SEVEN, not WINDOW_DAYS. Writing the constant here
+    would make the assertion move with whatever the module was changed to — it
+    would prove `since = now − WINDOW_DAYS` and say nothing about the number,
+    which is the one thing this check is named after. Measured, not assumed:
+    with the constant in place, setting WINDOW_DAYS to 30 and to 6 both left
+    this line green. With the literal, both go red.
+  */
+  const since = Date.parse(calls.since[0]);
+  const SEVEN_DAYS = 7 * 86_400_000;
   check("…and that window is seven days",
-    Math.round((now - Date.parse(calls.since[0])) / 86_400_000) >= 6
-    && Date.now() - Date.parse(calls.since[0]) <= 7.01 * 86_400_000,
-    calls.since[0]);
+    since >= before - SEVEN_DAYS && since <= after - SEVEN_DAYS,
+    `${calls.since[0]} is not 7 days before ${new Date(before).toISOString()}`);
   check("…recorded as window_days 7", stored?.window_days === 7, String(stored?.window_days));
   check("…with compress first", (stored?.keys as string[])[0] === "compress",
     (stored?.keys as string[]).slice(0, 3).join(", "));

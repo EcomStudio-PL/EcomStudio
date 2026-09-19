@@ -30,18 +30,62 @@ import { AUTH_EMAIL_TEMPLATES } from "@/lib/server/auth-email-templates";
  * actually landed; anything less is "pending", "error" or "manual".
  */
 
-export const SUPABASE_PROJECT_REF = "orjkxijqpecnbzhxhfct";
+/**
+ * THE PROJECT THIS DEPLOYMENT BELONGS TO — read, not assumed (P1-12).
+ *
+ * This used to be the production ref as a literal, which meant the PATCH
+ * always went to production no matter which project the running deployment was
+ * actually talking to. An admin opening the panel on a preview or a
+ * development deployment would have rewritten PRODUCTION's Site URL, redirect
+ * allow-list and SMTP — the one control-plane surface with no migration, no
+ * review and no undo — while every screen around them said they were in dev.
+ *
+ * The deployment already knows which project it is: NEXT_PUBLIC_SUPABASE_URL
+ * is `https://<ref>.supabase.co`. Reading the ref from there makes the sync
+ * target whatever this deployment is connected to, which is the only target
+ * that can be correct. On production the derived value is byte-identical to
+ * the literal it replaces, so nothing about the live behaviour changes.
+ *
+ * It FAILS CLOSED. An unparseable or missing URL yields null and the sync
+ * refuses, because the alternative — falling back to the old literal — is
+ * exactly the bug: a deployment that cannot say who it is must not be allowed
+ * to guess "production".
+ */
+export function supabaseProjectRef(): string | null {
+  const raw = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  if (!raw) return null;
+  try {
+    const host = new URL(raw).hostname;
+    const ref = /^([a-z0-9]{20})\.supabase\.(co|in)$/.exec(host)?.[1];
+    return ref ?? null;
+  } catch { return null; }
+}
+
 const API_BASE = "https://api.supabase.com/v1";
 const SYNC_KEY = "supabase_auth_sync";
 const TIMEOUT_MS = 20_000;
 
-export const AUTH_SITE_URL = "https://grovbase.com";
+/**
+ * THE PRODUCTION PAIR, kept only to be COMPARED AGAINST — never used as a
+ * destination. The ref above is derived from the running deployment; these two
+ * exist so the PATCH guard can recognise "this deployment is about to write
+ * production's own addresses into a project that is not production".
+ */
+const PRODUCTION_REF = "orjkxijqpecnbzhxhfct";
+const PRODUCTION_SITE_URL = "https://grovbase.com";
+
+/**
+ * The addresses GoTrue should send people back to. NEXT_PUBLIC_SITE_URL when a
+ * deployment has been told its own origin, production's otherwise — which on
+ * production is the same string it has always been, so nothing there changes.
+ */
+export const AUTH_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim() || PRODUCTION_SITE_URL;
 export const AUTH_REDIRECT_ALLOW_LIST = [
-  "https://grovbase.com/auth/callback",
-  "https://grovbase.com/auth/confirm",
-  "https://grovbase.com/auth/verified",
-  "https://grovbase.com/reset-password",
-  "https://grovbase.com/**",
+  `${AUTH_SITE_URL}/auth/callback`,
+  `${AUTH_SITE_URL}/auth/confirm`,
+  `${AUTH_SITE_URL}/auth/verified`,
+  `${AUTH_SITE_URL}/reset-password`,
+  `${AUTH_SITE_URL}/**`,
 ].join(",");
 
 export function managementToken(): string | null {
@@ -124,8 +168,19 @@ export async function api(
   method: "GET" | "PATCH",
   body?: Record<string, unknown>,
 ): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; error: string }> {
+  const ref = supabaseProjectRef();
+  // Before the network, not after: a sync with no identifiable target is
+  // refused rather than sent somewhere plausible.
+  if (!ref) return { ok: false, error: "project_ref_unavailable" };
+  // A non-production deployment that has never been told its own origin would
+  // otherwise write production's Site URL and allow-list into its own project,
+  // which breaks every sign-in link there and looks like a dev bug for days.
+  // Reading (GET) stays allowed — only the write is refused.
+  if (method === "PATCH" && ref !== PRODUCTION_REF && AUTH_SITE_URL === PRODUCTION_SITE_URL) {
+    return { ok: false, error: "site_url_not_set_for_this_project" };
+  }
   try {
-    const res = await fetch(`${API_BASE}/projects/${SUPABASE_PROJECT_REF}/config/auth`, {
+    const res = await fetch(`${API_BASE}/projects/${ref}/config/auth`, {
       method,
       headers: {
         authorization: `Bearer ${token}`,

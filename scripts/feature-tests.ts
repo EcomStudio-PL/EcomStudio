@@ -14,8 +14,9 @@ import { authModalUrl, parseAuthMode, safeReturnTo } from "@/lib/auth-routes";
 import { effectiveState, type FeatureRow } from "@/lib/server/feature-availability";
 import { LOGIN_SECURITY_DEFAULTS, renderSecurityCodeEmail, toStoredSettings } from "@/lib/server/login-security";
 import {
-  AUTH_REDIRECT_ALLOW_LIST, AUTH_SITE_URL, desiredFingerprint,
+  AUTH_REDIRECT_ALLOW_LIST, AUTH_SITE_URL, desiredFingerprint, supabaseProjectRef,
 } from "@/lib/server/supabase-management";
+import { keepStructuredFields } from "@/lib/services/admin";
 
 let failures = 0;
 function check(name: string, cond: boolean, extra?: unknown) {
@@ -275,10 +276,85 @@ console.log("\nE. LOGIN SECURITY — Task 11 defaults in seconds");
   check("odd TTLs render in seconds", mail90.text.includes("Kod wygasa za 90 s."));
 }
 
+console.log("\nF0. A SETTINGS ROW SURVIVES THE GENERIC EDITOR");
+{
+  /*
+    P1-07. /admin/system prints every field through one text input, so an
+    array arrives back as "a,b,c" and an object as "[object Object]". Two of
+    the five structured rows in production are read on the generation path, so
+    this is a money-path config corruption reachable from a normal admin
+    screen — not a display bug.
+  */
+  const stored = {
+    provider_priority: ["google", "openai"],
+    remove_bg: { limit: 3, window: "day" },
+    default_model: "nano-banana-pro",
+    enabled: true,
+    retries: 2,
+  };
+  const flattened = {
+    provider_priority: "google,openai",
+    remove_bg: "[object Object]",
+    default_model: "nano-banana-pro",
+    enabled: true,
+    retries: 2,
+  };
+  const saved = keepStructuredFields(flattened, stored);
+  check("an array is not replaced by the string the input showed",
+    Array.isArray(saved.provider_priority)
+    && (saved.provider_priority as string[]).join() === "google,openai",
+    String(saved.provider_priority));
+  check("nor is a nested object", typeof saved.remove_bg === "object" && saved.remove_bg !== null,
+    String(saved.remove_bg));
+  check("every flat field still saves exactly as typed",
+    keepStructuredFields({ ...flattened, default_model: "seedream", retries: 5 }, stored)
+      .default_model === "seedream"
+    && keepStructuredFields({ ...flattened, retries: 5 }, stored).retries === 5,
+    "the guard must not turn the editor read-only");
+  check("a caller that really sends structure is honoured",
+    ((keepStructuredFields({ provider_priority: ["openai"] }, stored)
+      .provider_priority) as string[]).join() === "openai",
+    "a proper editor must still be able to change these");
+  check("a dropped field cannot delete stored structure",
+    Array.isArray(keepStructuredFields({}, stored).provider_priority));
+  check("and null cannot either",
+    Array.isArray(keepStructuredFields({ provider_priority: null }, stored).provider_priority));
+}
+
 console.log("\nF. AUTH SYNC — fingerprint covers the payload, never the secret");
 {
   check("site URL and confirm redirect are grovbase.com",
     AUTH_SITE_URL === "https://grovbase.com" && AUTH_REDIRECT_ALLOW_LIST.includes("https://grovbase.com/auth/confirm"));
+
+  /*
+    …AND THE PATCH GOES TO THE PROJECT THIS DEPLOYMENT IS TALKING TO (P1-12).
+
+    The target used to be production's ref as a literal, so an admin opening
+    the panel on a preview or a dev deployment rewrote PRODUCTION's Site URL,
+    redirect allow-list and SMTP — a control-plane surface with no migration,
+    no review and no undo. These pin the derived target and its fail-closed
+    behaviour, because a deployment that cannot say which project it is must
+    not fall back to guessing "production".
+  */
+  const REF_ENV = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const refFor = (url: string | undefined) => {
+    if (url === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    else process.env.NEXT_PUBLIC_SUPABASE_URL = url;
+    return supabaseProjectRef();
+  };
+  check("the ref is read from the deployment's own Supabase URL",
+    refFor("https://ezyhwkcrrysanbcbkzsq.supabase.co") === "ezyhwkcrrysanbcbkzsq",
+    "a dev deployment must target dev");
+  check("production resolves to exactly what the literal used to say",
+    refFor("https://orjkxijqpecnbzhxhfct.supabase.co") === "orjkxijqpecnbzhxhfct",
+    "the live behaviour must not change");
+  for (const bad of [undefined, "", "not a url", "https://evil.com", "https://grovbase.com"]) {
+    check(`refuses to guess from ${JSON.stringify(bad)}`, refFor(bad) === null,
+      "falling back to the production ref is the bug itself");
+  }
+  if (REF_ENV === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+  else process.env.NEXT_PUBLIC_SUPABASE_URL = REF_ENV;
+
   const base = { site_url: "https://grovbase.com", mailer_subjects_confirmation: "X" };
   const smtp = {
     smtp_admin_email: "contact@grovbase.com", smtp_host: "h", smtp_port: "587",

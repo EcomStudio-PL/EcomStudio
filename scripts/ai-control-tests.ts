@@ -7,7 +7,7 @@
  * feature registry has never heard of, or a retry policy that pays a provider
  * twice.
  */
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { AI_TOOL_KEYS, ENGINE_MODES, isAiToolKey, toolTabs } from "@/lib/services/ai-tools";
 import { costOf, summarise, groupBy, periodStart, monthStart, type UsageEventRow } from "@/lib/services/ai-economics";
 import { DEFAULT_BILLING } from "@/lib/images/pricing";
@@ -31,8 +31,24 @@ console.log("A. the registry is the feature registry, not a second list");
   // ai_save_tool_prompt (0071) answers `unknown_tool`, and ai_tool_prompts has a
   // foreign key onto ai_tools. So every listed tool must be seeded SOMEWHERE —
   // 0070 for the original ten, a later migration for anything added since.
-  const seeds = ["0070_ai_control_center", "0081_fashion_tools_registry"]
-    .map((f) => read(`supabase/migrations/${f}.sql`)).join("\n");
+  // EVERY migration, not a hand-kept list. The list said 0070 and 0081; the
+  // fifteenth tool was seeded in 0098 and this array had never heard of it, so
+  // the check reported an unconfigurable tool that production has held as a
+  // real row since 2026-09-18. The array was a maintenance trap, paid for in
+  // 0081 and unpaid in 0098 — a directory read cannot fall behind that way.
+  //
+  // Two details are load-bearing. Line comments are stripped first: one of
+  // 0070's contains a semicolon, which would truncate the statement and make
+  // ten tools read as unseeded. And only the text of an
+  // `insert into public.ai_tools` statement counts, cut at its first `;` — a
+  // key that happens to appear in some other table's insert is not a registry
+  // row.
+  const seeds = readdirSync("supabase/migrations")
+    .filter((f) => f.endsWith(".sql"))
+    .map((f) => read(`supabase/migrations/${f}`).replace(/--[^\n]*/g, ""))
+    .flatMap((sql) => sql.split(/insert\s+into\s+public\.ai_tools\b/i).slice(1)
+      .map((s) => s.split(";")[0]))
+    .join("\n");
   const unseeded = AI_TOOL_KEYS.filter((k) => !seeds.includes(`('${k}'`));
   check("the seed covers every listed tool", unseeded.length === 0, unseeded.join(", "));
 }
@@ -193,8 +209,28 @@ console.log("I. the budget is ours, and the panel says so");
     budgets.includes("buildDedupeKey") && budgets.includes("month.toISOString().slice(0, 7)"));
   check("a new month re-arms the alert", budgets.includes("stale"));
   check("thresholds must be in order", actions.includes("thresholds_out_of_order"));
-  check("the check runs from the schedule and the button",
-    read("app/api/cron/mail/route.ts").includes("runBudgetCheckAction"));
+  /*
+    THIS USED TO CLAIM THE CHECK RUNS FROM THE SCHEDULE. It does not, and a
+    green test saying it does is worse than no test.
+
+    runBudgetCheckAction() opens with requireAdmin(); the daily cron calls the
+    route with a bearer secret and no session, so on a scheduled run the action
+    throws, the route catches it, and the budgets are never read. The BUTTON
+    works — an admin pressing it has a session. Fixing the schedule half means
+    definer reads and writes across every provider's budget and its alert
+    markers, on a table that holds no rows yet; it is an open finding, not
+    something to paper over here.
+
+    So the assertion is split into what is true today: the wiring exists, and
+    the limitation is written down where the next reader will find it.
+  */
+  const cron = read("app/api/cron/mail/route.ts");
+  check("the check is wired into the daily route", cron.includes("runBudgetCheckAction"));
+  check("the button is the only caller that can actually run it",
+    read("app/actions/ai-budgets.ts").includes("const { supabase, adminId } = await requireAdmin()"));
+  check("and the route says so rather than reporting a silent false",
+    /KNOWN LIMITATION[\s\S]{0,600}requireAdmin\(\)/.test(cron),
+    "a job that never runs must not look like a job with nothing to do");
 }
 
 console.log("J. one menu entry highlights at a time");

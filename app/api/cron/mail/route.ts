@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { syncNowAction } from "@/app/actions/mail";
 import { runBudgetCheckAction } from "@/app/actions/ai-budgets";
-import { expireBlocksAction } from "@/app/actions/admin-crm";
+import { expireAccountBlocks } from "@/lib/server/account-blocks";
 import { createClient } from "@/lib/supabase/server";
 import {
   popularityIsStale, readToolPopularity, refreshToolPopularity,
@@ -25,6 +25,20 @@ export const maxDuration = 60;
  * which is what the "sync now" button uses — and refuses everyone else. It is
  * never open: an anonymous caller gets 401 either way, with a reason that says
  * which of the two situations it is rather than leaving an operator to guess.
+ *
+ * ┌ OPERATOR NOTE, AND IT IS THE WHOLE SCHEDULE ──────────────────────────────┐
+ * │ CRON_SECRET IS NOT AN OPTIONAL EXTRA. The platform scheduler arrives with │
+ * │ no session, so without that variable `syncCaller` answers                 │
+ * │ `cron_secret_missing`, this route answers 401 on the line below, and      │
+ * │ EVERY job hanging off this schedule — the mailbox, the weekly ranking,    │
+ * │ the block sweep — does not run. Not "runs and finds nothing": does not    │
+ * │ run.                                                                      │
+ * │                                                                           │
+ * │ That is the correct refusal, not a bug to design around: with no secret   │
+ * │ there is nothing that distinguishes the scheduler from a passer-by, and   │
+ * │ an endpoint that spends money must not guess. The fix is one variable in  │
+ * │ the deployment, never a weaker gate here.                                 │
+ * └───────────────────────────────────────────────────────────────────────────┘
  *
  * The work itself lives in `syncNowAction`, deliberately: the button and the
  * schedule must do the same thing, and the authorisation rule has to exist in
@@ -64,10 +78,25 @@ export async function GET() {
   */
   const popularity = await refreshPopularityIfDue().catch(() => ({ ok: false as const, reason: "error" }));
 
+  /*
+    …and so is clearing expired account blocks. Housekeeping, not enforcement:
+    a block that ended at 15:30 stopped applying at 15:30 whether or not this
+    ran. All this does is stop the CRM showing a stale "blocked until" on a
+    customer who is already working again.
+
+    IT RUNS ABOVE THE MAILBOX CHECK ON PURPOSE. It used to sit below the early
+    return, which meant an unconfigured inbox silently cancelled it — two
+    unrelated jobs sharing one schedule must not share one failure.
+  */
+  const blocks = await sweepExpiredBlocks().catch(() => ({ ok: false as const, error: "error" }));
+
   if (!result.ok) {
     // A disabled or unconfigured integration is a state, not a server fault:
     // answering 500 would turn a normal "not set up yet" into a paging alert.
-    return NextResponse.json({ ok: false, reason: result.error, popularity }, { status: 200 });
+    return NextResponse.json({
+      ok: false, reason: result.error, popularity,
+      blocksLifted: blocks.ok ? blocks.lifted : null,
+    }, { status: 200 });
   }
   /*
     The same run also checks the provider budgets.
@@ -76,16 +105,17 @@ export async function GET() {
     somewhere to live. It runs AFTER the mailbox so a budget read can never
     delay or fail the message sync, and its own failure is reported rather
     than thrown: the mail result is the reason this endpoint exists.
+
+    KNOWN LIMITATION, stated rather than hidden. This one still goes through a
+    server action that opens with requireAdmin(), so on a SCHEDULED run — which
+    carries a bearer secret and no session — it reports `{ ok: false }` and
+    checks nothing. The admin button works. Giving it the same proof-of-server
+    door the sweep above now has means definer reads and writes across every
+    provider's budget and its alert markers, which is a wider change than this
+    stage is for, on a table that currently holds no rows at all. It is
+    recorded as an open finding rather than half-done here.
   */
   const budgets = await runBudgetCheckAction().catch(() => ({ ok: false as const }));
-
-  /*
-    …and clears expired account blocks. Housekeeping, not enforcement: a block
-    that ended at 15:30 stopped applying at 15:30 whether or not this ran. All
-    this does is stop the CRM showing a stale "blocked until" on a customer who
-    is already working again.
-  */
-  const blocks = await expireBlocksAction().catch(() => ({ ok: false as const }));
 
   // Counts only. Nothing about the mailbox, the sender, or the credentials ever
   // belongs in a response a scheduler logs.
@@ -95,6 +125,22 @@ export async function GET() {
     blocksLifted: blocks.ok ? blocks.lifted : null,
     popularity,
   });
+}
+
+/**
+ * THE EXPIRED-BLOCK SWEEP.
+ *
+ * Its own client, for the same reason the ranking has one: this route reaches
+ * the database through two jobs that are unrelated to each other and to the
+ * mailbox, and neither should be able to fail because of the other.
+ *
+ * The authorisation lives in lib/server/account-blocks.ts, which proves it is
+ * the server instead of proving it is a person — an unattended schedule can
+ * never be the second thing.
+ */
+async function sweepExpiredBlocks() {
+  const supabase = await createClient();
+  return expireAccountBlocks(supabase);
 }
 
 /**

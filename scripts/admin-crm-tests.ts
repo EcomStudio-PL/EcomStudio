@@ -260,8 +260,26 @@ console.log("G. a temporary block is a pause, enforced where it counts");
   check("both admin writes are audited with who, whom and until",
     actions.includes('action: "user.blocked"') && actions.includes("expires_at")
     && actions.includes('action: "user.unblocked"'));
-  check("the expiry sweep rides the existing cron",
-    read("app/api/cron/mail/route.ts").includes("expireBlocksAction"));
+  /*
+    THE SWEEP RIDES THE EXISTING CRON — and used to ride it uselessly.
+    It was a server action opening with requireAdmin(); Vercel Cron carries a
+    bearer secret and no session, so the guard threw on every scheduled run and
+    the sweep had never once executed. These three pin the shape that fixes it
+    (P1-05/08/29), not just its presence.
+  */
+  const cron = read("app/api/cron/mail/route.ts");
+  check("the expiry sweep rides the existing cron", cron.includes("sweepExpiredBlocks"));
+  check("and proves it is the server rather than a person",
+    read("lib/server/account-blocks.ts").includes("dispatchToken")
+    && read("supabase/migrations/0108_cron_can_expire_blocks.sql")
+      .includes("public.server_call_ok(p_token)"),
+    "an unattended schedule can never be an admin session");
+  check("an unconfigured mailbox cannot cancel it",
+    cron.indexOf("sweepExpiredBlocks()") < cron.indexOf("if (!result.ok)"),
+    "two unrelated jobs sharing one schedule must not share one failure");
+  check("and the action it replaced is gone, not left beside it",
+    !actions.includes("export async function expireBlocksAction"),
+    "two doors into one sweep is how the two drift apart");
   check("the CRM can filter for exactly the paused accounts",
     read("lib/services/admin-crm.ts").includes('"temp"')
     && sql.includes("p_status = 'temp'"));
