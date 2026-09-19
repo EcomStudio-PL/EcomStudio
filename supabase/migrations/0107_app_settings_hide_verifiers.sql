@@ -34,6 +34,27 @@
 --                                        the admin screen that configures it
 -- and admins keep reading all of them: settings_admin_write is FOR ALL with
 -- USING (is_admin()), which covers SELECT.
+--
+-- WHAT THIS COSTS THE TWO hash-PUBLISHING PATHS, measured rather than assumed.
+-- `ensureDispatchHash` and `ensureLoginSecurityHash` run on a customer's own
+-- session. After this migration their SELECT returns NO ROW — RLS hides it
+-- silently — so they go on to upsert, and that upsert is refused with SQLSTATE
+-- 42501 (verified on PostgreSQL 16 against these exact policies; it is 42501
+-- and not a unique violation, and the stored value is left untouched). Both
+-- callers already silence exactly that code and report anything else. The cost
+-- is one wasted round trip; nothing breaks and nothing is logged.
+--
+-- THE ONE LATENT TRAP, stated because it is invisible otherwise. `activeSecret`
+-- in lib/server/auth-hook-secret.ts resolves env → vault → a PRE-MIGRATION AES
+-- envelope stored in this `auth_email_hook` row. The hook endpoint has no
+-- session, so after this migration it can no longer read that third fallback.
+-- On this deployment that does not matter — production's row carries only
+-- timestamps and the hook URI, with no `ciphertext`, so the live path is the
+-- vault (checked read-only before writing this). A deployment that never
+-- regenerated its hook secret would lose verification silently, and would have
+-- to regenerate it from the admin screen. Recorded rather than guarded,
+-- because guarding it would mean keeping the row readable, which is the whole
+-- point of this file.
 
 create or replace function public.app_setting_is_private(p_key text)
 returns boolean
