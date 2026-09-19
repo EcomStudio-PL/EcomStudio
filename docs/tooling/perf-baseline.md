@@ -102,6 +102,27 @@ The earlier claim of "294 KB shipped" overstated the network cost by ~3.3x.
 The fix is still worth doing; the justification is parse and memory cost first,
 bandwidth second.
 
+### Measured after the fix (2026-09-19, same production build, same machine)
+
+`lib/i18n/scopes.ts` splits the dictionary by surface, so a public page now
+carries the 13 namespaces it renders instead of all 87.
+
+| Route | wire before | wire after | decoded before | decoded after |
+|---|---|---|---|---|
+| `/` | 89.9 KB | **40.6 KB** | 294.5 KB | **142.0 KB** |
+| `/regulamin` | 80.5 KB | **31.2 KB** | 246.9 KB | **94.4 KB** |
+| `/polityka-prywatnosci` | 80.5 KB | **31.2 KB** | 247.1 KB | **94.6 KB** |
+
+Both currencies, stated separately on purpose: ~49 KB less transferred and
+~152 KB less to decode and parse on `/`; ~61% off both on the legal pages. The
+signed-in app and `/admin` keep about three quarters of the dictionary, because
+that is what those surfaces genuinely render — splitting them further means
+per-route providers, which is a larger change than this phase allows.
+
+Hydrated `document.body.innerText` is byte-identical before and after on all
+three routes, which is the check that matters: a missing namespace does not
+throw, it silently prints a humanised key.
+
 **Zero duplicate requests in the browser.** The audit's duplicate-fetch
 findings (P1-34, P1-28) are **server-side**; the public surface does not
 re-fetch anything client-side.

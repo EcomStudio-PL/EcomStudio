@@ -282,11 +282,13 @@ try {
   }
   console.log(
     `  These are serialised-DOM lengths after decompression, NOT transfer size.\n` +
-      `  The responses are gzipped: / measures ~288 KB decoded but ~90 KB on the\n` +
-      `  wire. Do not quote these as "bytes shipped" — an earlier version of the\n` +
-      `  docs did, and overstated the network cost by roughly 3.3x.\n` +
-      `  Context: lib/i18n/dictionaries/pl.json is 237,997 bytes, which is most\n` +
-      `  of that decoded figure — the shape the audit's P0-03 describes.\n` +
+      `  The responses are gzipped, so decoded is roughly 3.5x the wire cost.\n` +
+      `  Do not quote these as "bytes shipped" — an earlier version of the docs\n` +
+      `  did, and overstated the network cost by about that factor.\n` +
+      `  Measured on a production build, 2026-09-19, before and after the i18n\n` +
+      `  split (lib/i18n/scopes.ts): / went from 89.9 KB to 40.6 KB on the wire\n` +
+      `  and 294.5 KB to 142.0 KB decoded; /regulamin from 80.5 KB to 31.2 KB\n` +
+      `  wire. The whole dictionary used to be inlined into every document.\n` +
       `  For real transfer sizes use: npm run perf:baseline -- <base-url>`,
   );
 

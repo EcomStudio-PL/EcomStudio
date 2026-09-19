@@ -4,7 +4,7 @@ import "@fontsource-variable/space-grotesk";
 import { ThemeProvider } from "next-themes";
 import { AppToaster } from "@/components/ui/toaster";
 import { I18nProvider } from "@/lib/i18n/provider";
-import { getDictionary } from "@/lib/i18n/server";
+import { getScopedDictionary } from "@/lib/i18n/server";
 import { SITE_ORIGIN } from "@/lib/site";
 import { AuthModalMount } from "@/components/auth/auth-modal-mount";
 import { ViewportLock } from "@/components/layout/viewport-lock";
@@ -100,7 +100,12 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const { locale, dict } = await getDictionary();
+  // ONLY WHAT THE PUBLIC PAGES RENDER. This provider wraps every document
+  // GrovBase serves, so whatever it receives is inlined into the HTML of the
+  // landing page, the terms of service and the CMS pages alike. The signed-in
+  // app and /admin add their own namespaces from their own layouts — see
+  // lib/i18n/scopes.ts.
+  const { locale, dict } = await getScopedDictionary("root");
   return (
     <html lang={locale} suppressHydrationWarning>
       <body className="font-sans">

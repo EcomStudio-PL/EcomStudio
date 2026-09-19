@@ -12,7 +12,8 @@ import {
 } from "@/lib/server/welcome-bonus";
 import { renderPlaceholders } from "@/lib/welcome-bonus";
 import { WelcomeBonusMount } from "@/components/onboarding/welcome-bonus-mount";
-import { getDictionary } from "@/lib/i18n/server";
+import { getDictionary, getScopedDictionary } from "@/lib/i18n/server";
+import { I18nScope } from "@/lib/i18n/provider";
 import { blockStateOf } from "@/lib/server/account-block";
 import { formatInstant } from "@/lib/utils";
 import { makeT } from "@/lib/i18n/t";
@@ -122,10 +123,14 @@ export default async function AppLayout({ children, searchParams }: {
   // slowest member anyway — measurably free, and it keeps the bonus branch
   // below from re-introducing a serial await.
   const [
-    { dict: appDict }, wallet, { data: sub }, { data: freePlan }, { data: notifs },
+    { dict: appDict }, { dict: clientDict }, wallet, { data: sub }, { data: freePlan }, { data: notifs },
     availability, navAdmin, bonusConfig, campaignStart, popularity,
   ] = await Promise.all([
     getDictionary(),
+    // The customer app's own namespaces, on top of what the root layout already
+    // sent the public surface. Only this subtree receives them, and it rides in
+    // this batch rather than adding a serial await — see lib/i18n/scopes.ts.
+    getScopedDictionary("app"),
     getWallet(supabase, workspace.id),
     // The plan's own monthly grant rides along with its name: the mobile menu's
     // credit meter measures the wallet against THIS number, so a Pro account is
@@ -189,6 +194,7 @@ export default async function AppLayout({ children, searchParams }: {
   const isAdmin = profile.role === "admin";
   const displayName = profile.full_name ?? profile.email;
   return (
+    <I18nScope dict={clientDict}>
     <DrawerProvider>
       {/* Horizontal-navigation shell per the UX spec: no permanent left
           sidebar — the full width belongs to the work. */}
@@ -230,5 +236,6 @@ export default async function AppLayout({ children, searchParams }: {
         )}
       </div>
     </DrawerProvider>
+    </I18nScope>
   );
 }

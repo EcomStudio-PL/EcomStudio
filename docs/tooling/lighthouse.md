@@ -15,11 +15,12 @@ Median of 3 runs, desktop preset, against a **production build** (`next start`),
 
 ## Do not trust that 0.99
 
-It is measured over loopback with no throttling. On the wire these pages carry
-~89.5 KB of HTML and ~237 KB of JavaScript, decompressing to ~294 KB and
-~744 KB respectively (see `docs/tooling/perf-baseline.md`); on a real mobile
-connection the performance score will be materially lower, driven as much by
-parse cost as by bytes.
+It is measured over loopback with no throttling. When this baseline was taken,
+these pages carried ~89.5 KB of HTML and ~237 KB of JavaScript on the wire,
+decompressing to ~294 KB and ~744 KB (see `docs/tooling/perf-baseline.md`); the
+i18n split has since taken the HTML to ~40.6 KB wire / ~142 KB decoded on `/`.
+On a real mobile connection the performance score will still be materially
+lower than 0.99, driven as much by parse cost as by bytes.
 
 This is exactly the trap the guide warns about — "Lighthouse na dev serverze i
 traktowanie wyniku jako produkcyjnego". The build type is right here, but the
@@ -44,9 +45,9 @@ comfortably above the threshold, where regressions are silent, and where the
 cost of a regression is organic traffic this project depends on. 0.10 of
 headroom is enough to absorb run-to-run variance without flapping.
 
-Performance stays WARN on purpose until P0-03 is fixed. Setting a hard gate now
-would fail PRs for a defect that is already written down, scheduled, and
-deliberately not being fixed in this phase.
+Performance stays WARN. P0-03 is now fixed, but these thresholds were set
+against the pre-fix baseline and the right moment to tighten them is after the
+release gate, with a fresh measurement — not by guessing a new number here.
 
 ## Three accessibility findings this surfaced
 

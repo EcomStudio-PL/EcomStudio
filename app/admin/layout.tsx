@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/services/workspace";
-import { getDictionary } from "@/lib/i18n/server";
+import { getDictionary, getScopedDictionary } from "@/lib/i18n/server";
+import { I18nScope } from "@/lib/i18n/provider";
 import { makeT } from "@/lib/i18n/t";
 import { AdminShell } from "@/components/layout/admin-mobile";
 import { AdminSidebar } from "@/components/layout/admin-sidebar";
@@ -28,10 +29,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (gate) redirect(gate);
   if (profile?.role !== "admin") redirect("/dashboard");
 
-  const [{ dict }, stats] = await Promise.all([getDictionary(), adminBusinessStats(supabase)]);
+  const [{ dict }, { dict: adminDict }, stats] = await Promise.all([
+    getDictionary(), getScopedDictionary("admin"), adminBusinessStats(supabase),
+  ]);
   const t = makeT(dict);
 
   return (
+    // The admin panel's namespaces, added on top of the public ones the root
+    // layout sent. Nothing here reaches a customer page — lib/i18n/scopes.ts.
+    <I18nScope dict={adminDict}>
     <div className="flex min-h-dvh w-full min-w-0">
       <AdminSidebar name={profile.full_name ?? profile.email} email={profile.email} role={profile.role}
         stats={{ users: stats.users, usersToday: stats.usersToday, revenueTodayCents: stats.revenueTodayCents, revenue30dCents: stats.revenue30dCents }} />
@@ -43,5 +49,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </main>
       </div>
     </div>
+    </I18nScope>
   );
 }
