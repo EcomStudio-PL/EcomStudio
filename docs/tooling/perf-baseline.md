@@ -105,19 +105,25 @@ bandwidth second.
 ### Measured after the fix (2026-09-19, same production build, same machine)
 
 `lib/i18n/scopes.ts` splits the dictionary by surface, so a public page now
-carries the 13 namespaces it renders instead of all 87.
+carries the 21 namespaces it renders instead of all 87.
 
 | Route | wire before | wire after | decoded before | decoded after |
 |---|---|---|---|---|
-| `/` | 89.9 KB | **40.6 KB** | 294.5 KB | **142.0 KB** |
-| `/regulamin` | 80.5 KB | **31.2 KB** | 246.9 KB | **94.4 KB** |
-| `/polityka-prywatnosci` | 80.5 KB | **31.2 KB** | 247.1 KB | **94.6 KB** |
+| `/` | 89.9 KB | **48.9 KB** | 294.5 KB | **165.6 KB** |
+| `/regulamin` | 80.5 KB | **39.4 KB** | 246.9 KB | **118.0 KB** |
+| `/polityka-prywatnosci` | 80.5 KB | **39.4 KB** | 247.1 KB | **118.2 KB** |
 
-Both currencies, stated separately on purpose: ~49 KB less transferred and
-~152 KB less to decode and parse on `/`; ~61% off both on the legal pages. The
-signed-in app and `/admin` keep about three quarters of the dictionary, because
+Both currencies, stated separately on purpose: ~41 KB less transferred and
+~129 KB less to decode and parse on `/`; ~51% off both on the legal pages. The
+signed-in app and `/admin` keep about four fifths of the dictionary, because
 that is what those surfaces genuinely render — splitting them further means
 per-route providers, which is a larger change than this phase allows.
+
+An earlier revision of this table claimed 40.6 KB / 142.0 KB for `/`. Those
+figures were real, but they were measured against a manifest that was missing
+nine namespaces, so four screens rendered humanised English. The numbers above
+are from the corrected manifest. Bytes bought with a broken page are not a
+saving.
 
 Hydrated `document.body.innerText` is byte-identical before and after on all
 three routes, which is the check that matters: a missing namespace does not

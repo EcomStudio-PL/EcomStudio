@@ -286,8 +286,8 @@ try {
       `  Do not quote these as "bytes shipped" — an earlier version of the docs\n` +
       `  did, and overstated the network cost by about that factor.\n` +
       `  Measured on a production build, 2026-09-19, before and after the i18n\n` +
-      `  split (lib/i18n/scopes.ts): / went from 89.9 KB to 40.6 KB on the wire\n` +
-      `  and 294.5 KB to 142.0 KB decoded; /regulamin from 80.5 KB to 31.2 KB\n` +
+      `  split (lib/i18n/scopes.ts): / went from 89.9 KB to 48.9 KB on the wire\n` +
+      `  and 294.5 KB to 165.6 KB decoded; /regulamin from 80.5 KB to 39.4 KB\n` +
       `  wire. The whole dictionary used to be inlined into every document.\n` +
       `  For real transfer sizes use: npm run perf:baseline -- <base-url>`,
   );

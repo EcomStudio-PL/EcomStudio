@@ -18,7 +18,7 @@ Median of 3 runs, desktop preset, against a **production build** (`next start`),
 It is measured over loopback with no throttling. When this baseline was taken,
 these pages carried ~89.5 KB of HTML and ~237 KB of JavaScript on the wire,
 decompressing to ~294 KB and ~744 KB (see `docs/tooling/perf-baseline.md`); the
-i18n split has since taken the HTML to ~40.6 KB wire / ~142 KB decoded on `/`.
+i18n split has since taken the HTML to ~48.9 KB wire / ~166 KB decoded on `/`.
 On a real mobile connection the performance score will still be materially
 lower than 0.99, driven as much by parse cost as by bytes.
 
