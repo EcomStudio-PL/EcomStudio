@@ -15,6 +15,7 @@ name: Guards
 #   test:imagepipeline   drives Next's real getSharp() against sharp
 #   test:cronauth        a pure function of (header, configured secret)
 #   test:loginkey        runs the step-up chain against a fake database
+#   test:tilebytes       proves no tile surface can serve a full original
 #
 # test:loginkey is here because of the 2026-09-20 P0: the second factor could
 # not issue a code on production for six days — first silently, waving everyone
@@ -82,6 +83,11 @@ jobs:
       # configured secret is GROVBASE_SERVER_KEY. That is production.
       - name: Login step-up can issue a code (P0-04)
         run: npm run test:loginkey
+
+      # One missing column in a select cost 77x the bytes on /home. Types have
+      # no opinion about a select list, so this asserts the data flow instead.
+      - name: Tiles serve derivatives, never originals
+        run: npm run test:tilebytes
 
       # Last, because it is the one whose failure is most likely to be a real
       # product regression rather than a test problem.
