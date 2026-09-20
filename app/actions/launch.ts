@@ -6,7 +6,7 @@ import { encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { verifySmtp, type SmtpConfig } from "@/lib/server/mailer";
 import { readIntegrationSecrets, type MailConfig } from "@/lib/server/integrations";
 import {
-  cleanOverrides, type HomepageMode, type LaunchByLocale, type LaunchOverrides,
+  cleanOverrides, type LaunchByLocale, type LaunchOverrides,
 } from "@/lib/server/launch-page";
 import { LOCALES } from "@/lib/i18n/config";
 
@@ -28,28 +28,6 @@ async function requireAdmin() {
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
   if (profile?.role !== "admin") throw new Error("not_admin");
   return { supabase, adminId: user.id };
-}
-
-// ---------- HOMEPAGE SWITCH ----------
-
-export async function setHomepageModeAction(mode: HomepageMode): Promise<Result> {
-  try {
-    if (mode !== "full" && mode !== "waitlist") return { ok: false, error: "invalid" };
-    const { supabase, adminId } = await requireAdmin();
-    const { error } = await supabase.from("app_settings")
-      .upsert({ key: "homepage", value: { mode } as never }, { onConflict: "key" });
-    if (error) return { ok: false, error: "generic" };
-    await logAudit(supabase, {
-      actorId: adminId, action: "homepage.mode_changed", entityType: "app_settings",
-      entityId: "homepage", after: { mode },
-    });
-    // The landing is cached per-render, so the switch has to invalidate the
-    // route itself — otherwise the change is real in the database and
-    // invisible in the browser for five minutes.
-    revalidatePath("/", "layout");
-    revalidatePath("/admin/homepage");
-    return { ok: true };
-  } catch { return { ok: false, error: "generic" }; }
 }
 
 // ---------- LAUNCH PAGE CMS ----------

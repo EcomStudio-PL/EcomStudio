@@ -351,16 +351,77 @@ export async function savePageSettingsAction(input: {
   } catch (e) { return { ok: false, error: message(e) }; }
 }
 
+/* ── THE FRONT DOOR ──────────────────────────────────────────────────────── */
+
 /**
- * Copy a page: its sections, their styles, their code and its SEO, as a new
- * DRAFT with a new id. Nothing about the original changes, and the copy is not
- * published — duplicating a live page must never put a second live page up.
+ * MOVE THE HOMEPAGE TO THIS PAGE.
+ *
+ * The work is done by `cms_set_homepage()` (migration 0110) rather than here,
+ * and that is not an implementation detail. Clearing the old flag and setting
+ * the new one has to be ONE transaction: the partial unique index means the two
+ * updates cannot both be "true" for a moment, and PostgREST gives every call its
+ * own transaction — so doing it from here would leave "/" briefly belonging to
+ * nobody, and permanently so if the second call failed.
+ *
+ * The function re-checks `is_admin()` on the caller's own JWT and refuses a page
+ * that is not live. This wrapper adds nothing to that; it translates the result
+ * for the panel and clears the caches.
+ */
+export async function setHomepageAction(pageId: string): Promise<Result<{ slug: string }>> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    const { data, error } = await supabase.rpc("cms_set_homepage", { p_page_id: pageId });
+    if (error) {
+      // The function raises a bare word; anything else is a real fault.
+      const known = ["not_admin", "not_published", "missing"];
+      return { ok: false, error: known.find((k) => error.message?.includes(k)) ?? "generic" };
+    }
+    const slug = typeof data === "string" ? data : "";
+    await logAudit(supabase, {
+      actorId: adminId, action: "cms.homepage_set", entityType: "cms_page", entityId: slug,
+      after: { slug },
+    });
+    invalidate(slug);
+    return { ok: true, data: { slug } };
+  } catch (e) { return { ok: false, error: message(e) }; }
+}
+
+/** Is this page the one answering "/"? Asked before anything that would take it
+ *  off the air, so the panel can say why instead of surfacing a trigger. */
+async function isHomepage(
+  supabase: Awaited<ReturnType<typeof requireAdmin>>["supabase"],
+  pageId: string,
+): Promise<boolean> {
+  const { data } = await supabase.from("cms_pages")
+    .select("is_homepage").eq("id", pageId).maybeSingle();
+  return data?.is_homepage === true;
+}
+
+/**
+ * Copy a page: its sections, their styles, their code, its SEO and the options
+ * that decide how it is dressed and when it runs — as a new DRAFT with a new
+ * id. Nothing about the original changes, and the copy is not published —
+ * duplicating a live page must never put a second live page up.
+ *
+ * WHAT IS DELIBERATELY NOT COPIED, each for its own reason:
+ *   is_homepage    a second front door is not a thing that can exist
+ *   status         a copy is always a draft
+ *   kind           a copy of the launch page is an ordinary page
+ *   nav_group      two entries with the same name in one menu is a mistake
+ *   anchor         a #hash is a per-page identifier
+ *   analytics_id   so is an event name
+ *   version history the copy starts its own; the original's belongs to it
+ *   media files    the copy references the same library objects, it does not
+ *                  duplicate megabytes in storage
+ *   global sections they are the site's, not the page's — a copy links to the
+ *                  same ones rather than forking them
  */
 export async function duplicatePageAction(pageId: string): Promise<Result<{ slug: string }>> {
   try {
     const { supabase, adminId } = await requireAdmin();
     const { data: source } = await supabase.from("cms_pages")
-      .select("slug, title, kind, seo, nav_group").eq("id", pageId).maybeSingle();
+      .select("slug, title, kind, seo, nav_group, header_mode, footer_mode, promo, template")
+      .eq("id", pageId).maybeSingle();
     if (!source) return { ok: false, error: "missing" };
 
     // "kontakt" → "kontakt-kopia", then -kopia-2 … so duplicating twice works.
@@ -379,7 +440,18 @@ export async function duplicatePageAction(pageId: string): Promise<Result<{ slug
       // A copy of the launch page would be a second front door; a copy is
       // always an ordinary page.
       kind: "standard",
+      // Spelled out rather than left to the column default: "a copy is never
+      // the homepage" is a rule, and a rule nobody wrote down is a default
+      // somebody can change.
+      is_homepage: false,
       seo: (source.seo ?? {}) as never,
+      // The page's own options travel with it. A campaign landing copied to
+      // make next month's campaign must arrive wearing the same chrome and
+      // carrying the same offer window, or the copy is a different page.
+      header_mode: source.header_mode ?? "global",
+      footer_mode: source.footer_mode ?? "global",
+      promo: (source.promo ?? {}) as never,
+      template: source.template,
       // Deliberately NOT copied: two pages in the same menu slot with the same
       // name is a mistake every time.
       nav_group: null,
@@ -398,6 +470,14 @@ export async function duplicatePageAction(pageId: string): Promise<Result<{ slug
           content: b.content as never,
           style: (b.style ?? {}) as never,
           code: (b.code ?? {}) as never,
+          // The section's own schedule and audience are part of how it was
+          // configured. Leaving them behind turned a copy of a page with three
+          // time-boxed sections into a page that shows all three at once.
+          show_from: b.show_from,
+          show_until: b.show_until,
+          // The column is NOT NULL with a default; a block read back before
+          // the column existed reports it as null, which means "everyone".
+          audience: b.audience ?? "everyone",
           // An anchor and an analytics name are per-page identifiers; copying
           // them would give two pages the same event and the same #hash.
           analytics_id: null,
@@ -422,6 +502,10 @@ export async function duplicatePageAction(pageId: string): Promise<Result<{ slug
 export async function archivePageAction(pageId: string, archived: boolean): Promise<Result> {
   try {
     const { supabase, adminId } = await requireAdmin();
+    // Archiving the front door would put "/" on the built-in default while the
+    // panel still showed a homepage. The trigger in 0110 refuses it anyway;
+    // this is so the admin reads a sentence instead of a database error.
+    if (archived && await isHomepage(supabase, pageId)) return { ok: false, error: "homepage" };
     const { data: page, error } = await supabase.from("cms_pages")
       .update({
         status: archived ? "archived" : "draft",
@@ -452,8 +536,14 @@ export async function deletePageAction(pageId: string, confirmSlug: string): Pro
   try {
     const { supabase, adminId } = await requireAdmin();
     const { data: page } = await supabase.from("cms_pages")
-      .select("slug, kind").eq("id", pageId).maybeSingle();
+      .select("slug, kind, is_homepage").eq("id", pageId).maybeSingle();
     if (!page) return { ok: false, error: "missing" };
+    // The page answering "/" cannot be deleted while it is answering it —
+    // point the homepage somewhere else first. `home` and the launch page stay
+    // protected on top of that: both are seeded, both are addressed by name
+    // from the seed and the preview links, and neither is a page anybody meant
+    // to remove.
+    if (page.is_homepage) return { ok: false, error: "homepage" };
     if (page.slug === "home" || page.kind === "launch") return { ok: false, error: "protected" };
     if (confirmSlug.trim().toLowerCase() !== page.slug) return { ok: false, error: "confirm" };
 
@@ -678,6 +768,10 @@ export async function publishPageAction(pageId: string): Promise<Result> {
 export async function unpublishPageAction(pageId: string): Promise<Result> {
   try {
     const { supabase, adminId } = await requireAdmin();
+    // Same rule as archiving: the front door stays live until another page
+    // takes over. Otherwise the panel would badge a homepage that "/" is not
+    // serving, which is the whole failure this module was rebuilt to remove.
+    if (await isHomepage(supabase, pageId)) return { ok: false, error: "homepage" };
     const { data: page, error } = await supabase.from("cms_pages")
       .update({ status: "draft", updated_at: new Date().toISOString(), updated_by: adminId })
       .eq("id", pageId).select("slug").single();
@@ -711,6 +805,9 @@ export async function schedulePageAction(pageId: string, at: string): Promise<Re
     // A time in the past is a publish somebody typed wrong, and publishing on
     // their behalf is not this action's decision to make.
     if (when <= Date.now()) return { ok: false, error: "past" };
+    // Scheduling the homepage forward would take "/" off the air until the
+    // date arrives. Publish it, or move the homepage first.
+    if (await isHomepage(supabase, pageId)) return { ok: false, error: "homepage" };
 
     const blocks = await listBlocks(supabase, pageId);
     if (blocks.length === 0) return { ok: false, error: "noSections" };
@@ -749,6 +846,8 @@ export async function schedulePageAction(pageId: string, at: string): Promise<Re
 export async function cancelScheduleAction(pageId: string): Promise<Result> {
   try {
     const { supabase, adminId } = await requireAdmin();
+    // Cancelling drops the page back to draft, which the homepage may not be.
+    if (await isHomepage(supabase, pageId)) return { ok: false, error: "homepage" };
     const { data: page, error } = await supabase.from("cms_pages")
       .update({
         status: "draft", scheduled_at: null,

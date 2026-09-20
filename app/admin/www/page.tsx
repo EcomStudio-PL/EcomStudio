@@ -4,7 +4,6 @@ import { makeT } from "@/lib/i18n/t";
 import { PageHeader } from "@/components/ui/page-header";
 import { CmsNav } from "@/components/admin/cms/cms-nav";
 import { PageList } from "@/components/admin/cms/page-list";
-import { getHomepageMode } from "@/lib/server/launch-page";
 import { listPages } from "@/lib/services/cms";
 
 /**
@@ -19,10 +18,10 @@ export default async function AdminWww() {
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
 
-  const [pages, mode] = await Promise.all([
-    listPages(supabase),
-    getHomepageMode(supabase),
-  ]);
+  // Which page is the homepage travels ON the rows now — one boolean the
+  // database lets exactly one of them carry — so the list needs no second
+  // query and no second opinion about it.
+  const pages = await listPages(supabase);
 
   // "Autor zmian" is a name, not a uuid. One query for every editor on the
   // list rather than one per row.
@@ -47,7 +46,7 @@ export default async function AdminWww() {
           thing on this screen taking the most of it. */}
       <CmsNav />
 
-      <PageList pages={pages} editors={editors} mode={mode} locale={locale} />
+      <PageList pages={pages} editors={editors} locale={locale} />
     </div>
   );
 }

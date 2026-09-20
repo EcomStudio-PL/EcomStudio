@@ -42,6 +42,19 @@ function textFor(seo: PageSeo, locale: string): SeoText {
   return { ...pick(pl), ...pick(own) };
 }
 
+/**
+ * Did an admin actually write a title for this page, in this language?
+ *
+ * "/" needs the distinction. `pageMetadata` falls back to the page's own NAME
+ * when no SEO title is set, which is right for /cennik and wrong for the front
+ * door: the homepage would start announcing itself as "Strona główna" purely
+ * because it is now an ordinary CMS page. Where nothing was written, "/" keeps
+ * the site-wide default title it has always had.
+ */
+export function hasSeoTitle(seo: PageSeo, locale: string): boolean {
+  return Boolean(textFor(seo ?? {}, locale).title?.trim());
+}
+
 /** The metadata for one published page. */
 export function pageMetadata(page: PublicPage, locale: string, path: string): Metadata {
   const seo = page.seo ?? {};

@@ -16,6 +16,7 @@ name: Guards
 #   test:cronauth        a pure function of (header, configured secret)
 #   test:loginkey        runs the step-up chain against a fake database
 #   test:tilebytes       proves no tile surface can serve a full original
+#   test:homepage        proves "which page is the homepage" has one spelling
 #
 # test:loginkey is here because of the 2026-09-20 P0: the second factor could
 # not issue a code on production for six days — first silently, waving everyone
@@ -32,6 +33,8 @@ name: Guards
 #   test:publicbundle   needs a built app and a running server
 #   test:rls:initplan   needs a throwaway Postgres
 #   test:ledger:sql     same
+#   test:homepage:sql   same — it replays the real 0110 against real policies,
+#                       which is the half of that fix a source grep cannot see
 # Those belong in a job that provisions them; adding them here half-working
 # would be worse than leaving them out, because a skipped step reads as a pass.
 # Tracked rather than pretended away.
@@ -88,6 +91,13 @@ jobs:
       # no opinion about a select list, so this asserts the data flow instead.
       - name: Tiles serve derivatives, never originals
         run: npm run test:tilebytes
+
+      # The panel said the launch page was live at "/" while "/" served the
+      # other one, for every logged-out visitor, and nothing failed. That was
+      # possible because "which page is the homepage" was written down three
+      # times. This asserts it is written down once.
+      - name: The homepage has one source of truth
+        run: npm run test:homepage
 
       # Last, because it is the one whose failure is most likely to be a real
       # product regression rather than a test problem.

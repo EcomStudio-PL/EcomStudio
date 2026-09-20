@@ -44,7 +44,6 @@ export type LaunchOverrides = Partial<Record<LaunchField, string>>;
 /** One override map per locale, e.g. { pl: {...}, en: {...} }. */
 export type LaunchByLocale = Record<string, LaunchOverrides>;
 export type LaunchStore = { published: LaunchByLocale; draft: LaunchByLocale };
-export type HomepageMode = "full" | "waitlist";
 
 const FIELD_SET = new Set<string>(LAUNCH_FIELDS);
 
@@ -71,14 +70,23 @@ function cleanByLocale(input: unknown): LaunchByLocale {
   return out;
 }
 
-/** Which homepage is live. Anything unrecognised means the full landing —
- *  a broken setting must never hide the product behind a signup form. */
-export async function getHomepageMode(supabase: Client): Promise<HomepageMode> {
-  const { data } = await supabase
-    .from("app_settings").select("value").eq("key", "homepage").maybeSingle();
-  const mode = (data?.value as { mode?: unknown } | null)?.mode;
-  return mode === "waitlist" ? "waitlist" : "full";
-}
+/*
+  `getHomepageMode()` USED TO LIVE HERE, AND IT IS GONE ON PURPOSE.
+
+  It read app_settings.homepage and answered "full" | "waitlist". Two problems,
+  one of which took the site down for every logged-out visitor:
+
+  1. It could not read the row at all as an anonymous visitor — an unscoped
+     `for all ... using (is_admin())` policy made the SELECT raise rather than
+     filter (migration 0110 part 1) — and its "anything unrecognised means the
+     full landing" default then silently answered "full" for the whole public.
+  2. Even working, it named a MODE and not a PAGE, so the route had to map the
+     mode back onto hardcoded slugs. Which page is the homepage was written
+     down in two places that could disagree, and did.
+
+  lib/server/homepage.ts::getActiveHomepage() replaces it: one flag, on the row
+  itself, read through the anonymous client that a visitor would use.
+*/
 
 export async function getLaunchStore(supabase: Client): Promise<LaunchStore> {
   const { data } = await supabase

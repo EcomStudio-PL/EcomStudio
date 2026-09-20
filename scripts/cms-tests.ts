@@ -360,7 +360,22 @@ check("media policies are scoped to authenticated, never the public role",
 console.log("\nH. THE WAITING-LIST PAGE IS UNTOUCHED");
 
 const root = readFileSync("app/page.tsx", "utf8");
-check("the homepage switch still exists", /if \(mode === "waitlist"\)/.test(root));
+/*
+  THIS ASSERTION USED TO READ `if (mode === "waitlist")`.
+
+  It was pinning the IMPLEMENTATION of the homepage switch, not the property
+  that matters — and the implementation was the defect: "which page is the
+  homepage" lived in an app_settings enum that no anonymous visitor could read,
+  so "/" served the ordinary landing while the panel said otherwise. Migration
+  0110 moved the answer onto the page row.
+
+  What section H is actually for is that the LAUNCH PAGE still has a route to
+  "/" of its own and still renders through its own component. That is what is
+  checked now; scripts/homepage-tests.ts holds the single-source-of-truth
+  property, and scripts/homepage-sql-tests.sh holds the policy half.
+*/
+check("the launch page still has its own branch at \"/\"",
+  /kind === "launch"/.test(root) && /getActiveHomepage/.test(root));
 check("the launch page is still rendered by its own component",
   /<LaunchPage/.test(root) && /resolveLaunchContent\(/.test(root));
 check("the waiting-list branch still reads the registration config",

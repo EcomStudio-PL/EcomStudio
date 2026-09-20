@@ -848,6 +848,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_homepage: boolean
           kind: string
           nav_group: string | null
           nav_order: number
@@ -869,6 +870,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          is_homepage?: boolean
           kind?: string
           nav_group?: string | null
           nav_order?: number
@@ -890,6 +892,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          is_homepage?: boolean
           kind?: string
           nav_group?: string | null
           nav_order?: number
@@ -5224,6 +5227,7 @@ export type Database = {
           alt: string
         }[]
       }
+      cms_set_homepage: { Args: { p_page_id: string }; Returns: string }
       cms_slug_is_reserved: { Args: { p_slug: string }; Returns: boolean }
       newsletter_subscribe: {
         Args: {

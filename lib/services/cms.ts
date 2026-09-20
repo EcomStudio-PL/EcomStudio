@@ -37,6 +37,9 @@ export type PageRow = {
   footerMode: ChromeMode;
   promo: PagePromo;
   template: string | null;
+  /** The single page that answers "/". One row at most, enforced by the
+   *  partial unique index in 0110 — the list does not have to police it. */
+  isHomepage: boolean;
 };
 
 export type BlockRow = CmsBlock & { id: string };
@@ -54,7 +57,7 @@ const asCode = (value: unknown): CmsCode =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as CmsCode) : {};
 
 const PAGE_SELECT =
-  "id, slug, title, status, kind, sort_order, nav_group, nav_order, seo, published_at, updated_at, updated_by, scheduled_at, header_mode, footer_mode, promo, template";
+  "id, slug, title, status, kind, sort_order, nav_group, nav_order, seo, published_at, updated_at, updated_by, scheduled_at, header_mode, footer_mode, promo, template, is_homepage";
 
 type RawPage = {
   id: string; slug: string; title: string; status: string; kind: string;
@@ -63,6 +66,7 @@ type RawPage = {
   updated_by: string | null; scheduled_at: string | null;
   header_mode: string | null; footer_mode: string | null;
   promo: unknown; template: string | null;
+  is_homepage: boolean | null;
 };
 
 const toPage = (row: RawPage): PageRow => ({
@@ -83,6 +87,7 @@ const toPage = (row: RawPage): PageRow => ({
   footerMode: isChromeMode(row.footer_mode) ? row.footer_mode : "global",
   promo: asPromo(row.promo),
   template: row.template,
+  isHomepage: row.is_homepage === true,
 });
 
 export async function listPages(supabase: Client): Promise<PageRow[]> {
