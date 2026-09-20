@@ -95,7 +95,7 @@ export async function POST(request: Request) {
   // year. The `media` bucket is public, so this is the URL the browser keeps.
   const opts = {
     contentType: "image/webp", upsert: true,
-    cacheControl: "public, max-age=31536000, immutable",
+    cacheControl: "31536000, immutable",
   } as const;
 
   const variants: Record<string, string> = {};

@@ -89,7 +89,7 @@ export async function POST(request: Request) {
   // this is what the CDN and the browser cache the BYTES under.
   const opts = {
     contentType: "image/webp", upsert: true,
-    cacheControl: "public, max-age=31536000, immutable",
+    cacheControl: "31536000, immutable",
   } as const;
   const bucket = supabase.storage.from("generation-assets");
   const [upThumb, upPreview] = await Promise.all([

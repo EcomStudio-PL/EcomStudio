@@ -799,7 +799,15 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
             // the browser hold it. The original keeps the default.
             const opts = {
               contentType: "image/webp", upsert: true,
-              cacheControl: "public, max-age=31536000, immutable",
+              /* SECONDS ONLY — storage-js prepends "max-age=" itself.
+                 Passing "public, max-age=31536000, immutable" produced the
+                 header "max-age=public, max-age=31536000, immutable", whose
+                 first directive is unparseable; a conservative cache may fall
+                 back to max-age=0 and store nothing. Verified in
+                 @supabase/storage-js: o["cache-control"] = `max-age=${opts.cacheControl}`.
+                 "public" is dropped on purpose — these are per-token signed
+                 responses, not shared-cacheable ones. */
+              cacheControl: "31536000, immutable",
             } as const;
             const bucket = supabase.storage.from("generation-assets");
             const [tRes, pRes] = await Promise.all([
