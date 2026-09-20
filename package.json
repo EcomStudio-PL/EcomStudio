@@ -77,7 +77,8 @@
     "test:publicbundle": "node scripts/public-bundle-probe.mjs",
     "test:routematrix": "esbuild scripts/route-matrix-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/route-matrix-tests.cjs --log-level=silent && node .next/route-matrix-tests.cjs",
     "test:newsletterreads": "esbuild scripts/newsletter-reads-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/newsletter-reads-tests.cjs --log-level=silent && node .next/newsletter-reads-tests.cjs",
-    "test:rls:initplan": "bash scripts/rls-initplan-tests.sh"
+    "test:rls:initplan": "bash scripts/rls-initplan-tests.sh",
+    "test:loginkey": "esbuild scripts/login-security-key-tests.ts --bundle --platform=node --format=cjs --alias:@/lib/server/mailer=./scripts/stubs/login-security-mailer.ts --alias:@/lib/server/integrations=./scripts/stubs/login-security-integrations.ts --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/login-security-key-tests.cjs --log-level=silent && node .next/login-security-key-tests.cjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",

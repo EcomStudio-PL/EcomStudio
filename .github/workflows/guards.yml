@@ -14,6 +14,13 @@ name: Guards
 #   test:newsletterreads counts reads through a stub client
 #   test:imagepipeline   drives Next's real getSharp() against sharp
 #   test:cronauth        a pure function of (header, configured secret)
+#   test:loginkey        runs the step-up chain against a fake database
+#
+# test:loginkey is here because of the 2026-09-20 P0: the second factor could
+# not issue a code on production for six days — first silently, waving everyone
+# through, then as a total lockout including the admin — and every existing test
+# passed throughout. It needs no database and no network: the challenge RPCs and
+# the SMTP read are faked, the secret resolution and token derivation are real.
 #
 # The AVIF guard matters most of the four. It is the only thing standing
 # between a routine Next bump and AVIF uploads silently breaking product-wide,
@@ -70,6 +77,11 @@ jobs:
 
       - name: Scheduler credential rule (NEW-BG-02)
         run: npm run test:cronauth
+
+      # The step-up must be able to issue a code on a deployment whose only
+      # configured secret is GROVBASE_SERVER_KEY. That is production.
+      - name: Login step-up can issue a code (P0-04)
+        run: npm run test:loginkey
 
       # Last, because it is the one whose failure is most likely to be a real
       # product regression rather than a test problem.

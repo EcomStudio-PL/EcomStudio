@@ -3,7 +3,7 @@ import { cookies, headers } from "next/headers";
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "crypto";
 import type { Client } from "@/lib/services/workspace";
 import { describeUserAgent, formatWarsaw } from "@/lib/server/event-context";
-import { dispatchToken, readIntegrationSecrets, safeError, type MailConfig } from "@/lib/server/integrations";
+import { dispatchToken, readIntegrationSecrets, safeError, serverSecret, type MailConfig } from "@/lib/server/integrations";
 import { deliverHtml, type MailIdentity, type SmtpConfig } from "@/lib/server/mailer";
 import { fieldsFromData, lookupPublishedTemplate, renderTemplateEmail } from "@/lib/server/message-templates";
 
@@ -171,20 +171,40 @@ export function toStoredSettings(s: LoginSecuritySettings): Record<string, strin
 
 /* ── the dispatch token ─────────────────────────────────────────────────────
  * The anon-callable challenge functions (0057) authenticate the server the same
- * way the notification queue does: a token DERIVED from a key the server holds,
- * with only its hash in the database. Holding the anon key is not enough. */
-function keyHex(): string | null {
-  for (const candidate of [process.env.GROVBASE_INTEGRATIONS_ENCRYPTION_KEY, process.env.APP_ENCRYPTION_KEY]) {
-    const hex = candidate?.trim();
-    if (hex && hex.length === 64 && /^[0-9a-fA-F]+$/.test(hex)) return hex;
-  }
-  return null;
-}
-
+ * way the notification queue does: a token DERIVED from a secret the server
+ * holds, with only its hash in the database. Holding the anon key is not enough.
+ *
+ * IT MUST BE THE SAME SECRET THE REST OF THE SERVER USES, and for six days it
+ * was not. This is the P0 that locked everyone, including the admin, out of
+ * production on 2026-09-20.
+ *
+ * When the secrets moved into Supabase Vault (0078, commit 6d458f7 on
+ * 2026-09-12) the proof-of-server value stopped having to be a 64-hex
+ * encryption key and became any long random string, read by serverSecret() as
+ * GROVBASE_SERVER_KEY with the two old key names kept as fallbacks. Production
+ * was switched the next day: GROVBASE_SERVER_KEY was created 2026-09-13 03:37
+ * UTC and the legacy variables were removed.
+ *
+ * Every other server path moved with it. This one did not — it kept its own
+ * private resolver that read ONLY the two legacy names and additionally
+ * demanded 64 hex characters, so from 2026-09-13 loginSecurityToken() returned
+ * null on production. Nothing said so, because the missing key was folded into
+ * "can we send mail" and enforceLoginSecurity fails OPEN on that: the entire
+ * second factor was silently off for six days while the admin panel showed it
+ * enabled. When b094970 correctly split the two questions and made a missing
+ * key fail CLOSED, the same null turned into a lockout — the step-up page with
+ * no code behind it, because openOrReuseChallenge returns early on a null token
+ * before it ever opens a challenge or sends mail.
+ *
+ * So there is exactly one resolver now. A key rotation cannot leave this module
+ * behind again, and scripts/login-security-key-tests.ts fails if it tries.
+ */
 export function loginSecurityToken(): string | null {
-  const hex = keyHex();
-  if (!hex) return null;
-  return createHash("sha256").update(`grovbase-login-security:${hex}`).digest("hex");
+  const secret = serverSecret();
+  if (!secret) return null;
+  // The prefix is a domain separator: it keeps this token from colliding with
+  // the notification dispatch token derived from the very same secret.
+  return createHash("sha256").update(`grovbase-login-security:${secret}`).digest("hex");
 }
 
 /** Publish sha256(token) so the SECURITY DEFINER functions can verify it.
@@ -547,7 +567,8 @@ export async function enforceLoginSecurity(supabase: Client): Promise<string | n
     // recoverable at all, because nobody can tell it is happening.
     console.error(
       "loginSecurity.misconfigured: no server key in this deployment — the step-up cannot issue or verify codes. " +
-      "Set GROVBASE_INTEGRATIONS_ENCRYPTION_KEY or APP_ENCRYPTION_KEY (64 hex) and redeploy.",
+      "Set GROVBASE_SERVER_KEY (any random string of 32+ characters) and redeploy. " +
+      "The legacy 64-hex names GROVBASE_INTEGRATIONS_ENCRYPTION_KEY and APP_ENCRYPTION_KEY still work if one is already set.",
     );
     return "/auth/security-check";
   }
