@@ -11,9 +11,15 @@ useDefault = true
 #
 # The difference matters. A path- or regex-based allowlist would blind the
 # scanner to the whole file forever, including a real key added tomorrow. A
-# baseline suppresses exactly the six vetted findings and nothing else.
+# baseline suppresses exactly the four vetted findings and nothing else.
 #
-# See docs/tooling/gitleaks.md for what those six are and why each is benign.
+# A fingerprint is commit:file:rule:line, so the baseline is only valid for the
+# history it was generated from. Regenerating it in a SHALLOW clone pins commits
+# that do not exist upstream and leaves the real ones unsuppressed — that is what
+# turned this gate red from 2026-09-18 to 2026-09-20. Always `git fetch
+# --unshallow` first.
+#
+# See docs/tooling/gitleaks.md for what those four are and why each is benign.
 
 # Scoped with matchCondition = "AND": a finding is suppressed only when it is
 # BOTH in .env.example AND matches a placeholder pattern.
