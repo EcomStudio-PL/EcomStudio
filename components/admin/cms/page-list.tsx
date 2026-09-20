@@ -116,7 +116,10 @@ export function PageList({ pages, editors, locale }: Props) {
       </div>
 
       {/* ── DESKTOP: one row per page ──────────────────────────────────── */}
-      <div className="panel hidden rounded-2xl lg:block">
+      {/* `overflow-hidden` stays: it is what clips the table to the panel's
+          rounded corners. It would have clipped the row menu too — which is
+          why that menu is portalled to the body rather than drawn in place. */}
+      <div className="panel hidden overflow-hidden rounded-2xl lg:block">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-line text-[11.5px] uppercase tracking-[0.08em] text-faint">
