@@ -43,7 +43,13 @@ export default async function CategoryPage({ params }: { params: Promise<{ cat: 
 
   // Preview thumbnails come from the account's own work — never stock art.
   const recent = await listAssets(supabase, workspace.id, 12);
-  const paths = recent.flatMap((g) => g.generation_assets.map((a) => a.storage_path)).slice(0, 12);
+  // The 22KB derivative, not the multi-megabyte original: these are workflow
+  // card previews. Measured before this line existed: twelve cards pulled 22MB
+  // to paint twelve small pictures. Falls back to the original only for assets
+  // that predate derivatives, decided by the RECORDED path.
+  const paths = recent.flatMap((g) => g.generation_assets.map(
+    (a) => (a.metadata as { thumb?: string } | null)?.thumb ?? a.storage_path,
+  )).slice(0, 12);
   const urls = new Map<string, string>();
   if (paths.length > 0) {
     const { data: signed } = await supabase.storage.from("generation-assets").createSignedUrls(paths, 3600);

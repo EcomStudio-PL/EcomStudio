@@ -72,8 +72,23 @@ export default async function HomePage() {
   const continueHref = lastJob ? (lastCustom ? "/generator" : "/prompts") : null;
   const continueLabel = lastCustom ? t("mega.custom") : t("mega.engine");
 
+  /*
+    SIX TILES, NOT TWELVE MEGABYTES.
+
+    These are ~100px previews. They used to be signed from `storage_path` —
+    the customer's full render — so the home page pulled 12MB to paint six
+    thumbnails. Each asset already has a 22KB WebP derivative next to it
+    (lib/thumbs.ts); this asks for that one and keeps the original only as the
+    fallback for assets made before derivatives existed.
+
+    The recorded `metadata.thumb` is what decides, never a path derived here:
+    a derived guess would 404 for exactly those older assets.
+  */
   const genTiles = recentGens
-    .flatMap((g) => g.generation_assets.map((a) => ({ id: a.id, path: a.storage_path })))
+    .flatMap((g) => g.generation_assets.map((a) => ({
+      id: a.id,
+      path: (a.metadata as { thumb?: string } | null)?.thumb ?? a.storage_path,
+    })))
     .slice(0, 6);
   const genUrls = new Map<string, string>();
   if (genTiles.length > 0) {

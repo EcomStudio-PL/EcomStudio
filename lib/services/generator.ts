@@ -22,11 +22,22 @@ export async function listJobs(supabase: Client, workspaceId: string, limit = 50
 }
 
 export async function listAssets(supabase: Client, workspaceId: string, limit = 60) {
-  // Same idea: quality_check_data and per-asset metadata Json are never read
-  // by any gallery — only ids, paths and the favorite flag are.
+  /*
+    `metadata` IS READ, AND LEAVING IT OUT COST 77x THE BYTES.
+
+    The comment that used to sit here said per-asset metadata is never read by
+    any gallery. That was true when it was written and false by the time
+    derivatives existed: `metadata.thumb` is where the 22KB grid thumbnail's
+    path lives. Without this column the caller cannot know a thumbnail exists,
+    so /home and /k/[cat] signed the ORIGINAL and painted a 2MB render into a
+    210px tile — measured on production: six home tiles were 12MB instead of
+    159KB, twelve category tiles 22MB instead of 273KB.
+
+    quality_check_data stays out; that one really is unread here.
+  */
   const { data } = await supabase
     .from("generations")
-    .select("id, favorite, created_at, generation_assets(id, storage_path)")
+    .select("id, favorite, created_at, generation_assets(id, storage_path, metadata)")
     .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: false })
     .limit(limit);
