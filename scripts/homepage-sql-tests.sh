@@ -272,6 +272,15 @@ select public.t_raises(
   'D2  a signed-in customer is refused by the function''s own check',
   'authenticated', 'select public.cms_set_homepage((select id from public.cms_pages where slug = ''cennik''))',
   'not_admin');
+-- THE SECOND LOCK, asserted separately from the first. The is_admin() check
+-- inside the function is a readable error; cms_pages_admin_write is the
+-- security boundary. Deleting the check (mutation m5) leaves D2 red and THIS
+-- green, which is the whole point of the function not being SECURITY DEFINER:
+-- a customer who reached it anyway would still change nothing.
+select public.t_true(
+  'D2b and nothing moved — RLS is the lock, not the message',
+  'anon', 'select slug = ''premiera'' from public.cms_pages where is_homepage');
+
 select set_config('test.admin', '1', false);
 
 select public.t_raises(

@@ -145,16 +145,18 @@ where id = (
 -- left on the built-in default with no page flagged at all. One function, one
 -- transaction, and "/" is never briefly nobody's.
 --
--- SECURITY DEFINER is needed because the two UPDATEs must both land even though
--- the second momentarily competes with the index; the authorisation is not
--- weakened by it — is_admin() is checked INSIDE, on the caller's own JWT, and
--- EXECUTE is revoked from anon so an anonymous caller cannot reach the check at
--- all. This is the same shape as every other definer RPC in this schema.
+-- AND WHY IT IS *NOT* SECURITY DEFINER, which the first draft of this file made
+-- it. A function body is one transaction either way — atomicity is not what
+-- definer buys. All it would buy is a privileged function that has to be trusted
+-- never to be wrong. As an INVOKER function the existing `cms_pages_admin_write`
+-- policy still decides what the two UPDATEs may touch, exactly as it does for
+-- every other write the panel makes, so there are two independent locks and the
+-- one below is the readable error rather than the security boundary. EXECUTE is
+-- revoked from anon on top of both.
 
 create or replace function public.cms_set_homepage(p_page_id uuid)
 returns text
 language plpgsql
-security definer
 set search_path = public
 as $$
 declare
@@ -191,7 +193,7 @@ end;
 $$;
 
 comment on function public.cms_set_homepage(uuid) is
-  'Moves the single is_homepage flag to one page, atomically. Admin-only (checked inside on the caller''s JWT) and refuses a page that is not live.';
+  'Moves the single is_homepage flag to one page, atomically. Runs as the caller, so cms_pages_admin_write still applies; the is_admin() check inside is the readable error, not the lock. Refuses a page that is not live.';
 
 revoke execute on function public.cms_set_homepage(uuid) from public, anon;
 grant execute on function public.cms_set_homepage(uuid) to authenticated;
