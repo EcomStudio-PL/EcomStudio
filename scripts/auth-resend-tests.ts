@@ -175,10 +175,22 @@ console.log("\nE. COOLDOWN *IS* THE CODE LIFETIME");
   check("and the refusal is serialised, so two taps cannot both pass it",
     /pg_advisory_xact_lock/.test(await import("node:fs").then((fs) =>
       fs.readFileSync("supabase/migrations/0111_one_live_code_at_a_time.sql", "utf8"))));
-  check("a new code retires the live one in the DATABASE, not in the UI",
-    /update public\.login_security_challenges[\s\S]{0,200}?set used_at = now\(\)/
-      .test(await import("node:fs").then((fs) =>
-        fs.readFileSync("supabase/migrations/0057_login_security.sql", "utf8"))));
+  /*
+    THIS USED TO GREP 0057 for "a new code retires the live one". Two things
+    were wrong with it. 0057 is a historical migration that can never change,
+    so the assertion could never fail — and the sentence stopped being true:
+    login_challenge_start does not retire a live row, it REFUSES. What keeps
+    "only one code is ever valid" true is now the refusal plus the liveness
+    filter, and that is what is pinned, against the migration that says it.
+  */
+  {
+    const m0111 = await import("node:fs").then((fs) =>
+      fs.readFileSync("supabase/migrations/0111_one_live_code_at_a_time.sql", "utf8"));
+    check("a replacement is opened only when nothing is live",
+      /used_at is null\s*\n\s*and expires_at > now\(\)/.test(m0111));
+    check("and the refusal returns rather than inserting",
+      /if found then[\s\S]{0,400}?return jsonb_build_object\(\s*\n?\s*'status', 'live'/.test(m0111));
+  }
 
   const ui = await import("node:fs").then((fs) =>
     fs.readFileSync("components/auth/security-check.tsx", "utf8"));

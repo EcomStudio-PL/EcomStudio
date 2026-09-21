@@ -245,15 +245,32 @@ check "a challenge is open" "$(start "$A" dev-7 h2)" "live"
 check "abandoning it succeeds" \
   "$("${PSQL[@]}" -c "select public.login_challenge_abandon('right-token','$A','dev-7','$id')")" "t"
 check "and the slot is free again immediately" "$(start "$A" dev-7 h3)" "opened"
-check "abandon refuses a row that is not this user's" \
-  "$("${PSQL[@]}" -c "select public.login_challenge_abandon('right-token','$B','dev-7','$id')")" "f"
+
+# ── THE NEGATIVE CASES NEED A ROW THAT IS STILL ALIVE ────────────────────────
+#
+# These two assertions previously reused $id — the challenge abandoned three
+# lines above. A spent row is refused by the `used_at is null` predicate alone,
+# so BOTH passed without the guard they are named after ever being consulted:
+# delete `and user_id = p_user`, or the token check, and they still printed ✓.
+# A guard that cannot fail is decoration. Each negative case now runs against a
+# freshly opened, still-live challenge, and is followed by the positive control
+# proving the row was abandonable all along — so the refusal is attributable to
+# the predicate under test and nothing else.
+"${PSQL[@]}" -c "delete from public.login_security_challenges where user_id='$A' and device_hash='dev-7'" >/dev/null
+live_id=$("${PSQL[@]}" -c "select public.login_challenge_start('right-token','$A','dev-7','h','','Mac','new_device',120,5)->>'id'")
+check "abandon refuses a LIVE row that is not this user's" \
+  "$("${PSQL[@]}" -c "select public.login_challenge_abandon('right-token','$B','dev-7','$live_id')")" "f"
+check "abandon refuses a LIVE row on a different device" \
+  "$("${PSQL[@]}" -c "select public.login_challenge_abandon('right-token','$A','dev-OTHER','$live_id')")" "f"
+check "abandon refuses a LIVE row without the token" \
+  "$("${PSQL[@]}" -c "select public.login_challenge_abandon('wrong','$A','dev-7','$live_id')")" "f"
+check "...and that row was abandonable all along (the control)" \
+  "$("${PSQL[@]}" -c "select public.login_challenge_abandon('right-token','$A','dev-7','$live_id')")" "t"
 
 echo
 echo "G. THE TOKEN GATE AND THE ONE DOOR"
 check "a wrong token opens nothing" \
   "$("${PSQL[@]}" -c "select public.login_challenge_start('wrong','$A','dev-8','h','','Mac','new_device',120,5)->>'status'")" "forbidden"
-check "a wrong token cannot abandon either" \
-  "$("${PSQL[@]}" -c "select public.login_challenge_abandon('wrong','$A','dev-7','$id')")" "f"
 # The superseded function must be unreachable, or it is a second way to mint a
 # code that does not honour any of the above.
 check "login_challenge_open is revoked from anon" \

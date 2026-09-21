@@ -416,20 +416,66 @@ console.log("\nE. THE SCREEN STILL SAYS WHOSE ADDRESS IT IS");
   check("a code that has expired is refused with words, not a crash",
     /security\.expired/.test(ui) && /reason === "expired"/.test(ui));
   /*
-    THE SCREEN MUST NOT OFFER WHAT THE SERVER WILL REFUSE. "Too many attempts,
-    request a new code" was true while a 59 s cooldown existed; under the new
-    rule the button stays disabled until the code expires, so the old wording
-    sent people to press something that could not work. Checked in all three
-    languages, because one translated copy left behind is the same dead end.
+    THE DEAD END THIS ALMOST SHIPPED WITH.
+
+    login_challenge_verify (0057) spends the row on the LAST wrong attempt:
+
+      used_at = case when attempts + 1 >= max_attempts then now() else null end
+
+    so after a lockout the server holds no live challenge and would issue a
+    replacement immediately. The screen cleared its deadline only on
+    `expired`, so the countdown kept running after a lockout and — under the
+    one-live-code rule, where the button is disabled while the clock runs —
+    the only way forward was greyed out for up to the full TTL. Every ending
+    the DATABASE treats as final must end the clock here too.
   */
+  check("a lockout ends the clock, because the server ended the challenge",
+    /res\.reason === "locked" \|\| res\.reason === "expired" \|\| res\.reason === "not_found"[\s\S]{0,200}?setExpiresAt\(Date\.now\(\)\)/
+      .test(ui),
+    "leaving the countdown running after a lockout disables the only way out");
+  check("a spent-elsewhere challenge is not reported as a wrong code",
+    /not_found/.test(ui) && !/attemptsLeft[\s\S]{0,80}not_found/.test(ui));
+  check("a send that failed says so instead of claiming a code went out",
+    /res\.status === "error"\) setError/.test(ui),
+    "otherwise the page shows 'we sent a code to m***@…' after an SMTP throw");
+  /*
+    THE SCREEN MUST NOT OFFER WHAT THE SERVER WILL REFUSE — AND MUST NOT
+    WITHHOLD WHAT IT WOULD ACCEPT.
+
+    An earlier version of this change got that backwards. login_challenge_verify
+    SPENDS the row on the last wrong attempt, so after a lockout there is no
+    live challenge and a replacement can be issued at once; the copy had been
+    rewritten to say the opposite ("only once the current one expires"), which
+    invented a two-minute dead end the server never asked for.
+
+    Each language is checked against ITS OWN expected phrase rather than a
+    union of all three — a union passes when an untranslated English string is
+    sitting in pl.json, which is exactly the bug "checked in all three
+    languages" is supposed to catch.
+  */
+  const COPY: Record<string, { locked: RegExp; stillValid: RegExp }> = {
+    pl: { locked: /nowy kod/i, stillValid: /jeszcze ważny/i },
+    en: { locked: /new code/i, stillValid: /still valid/i },
+    de: { locked: /neuen code/i, stillValid: /noch gültig/i },
+  };
+  const seen: Record<string, string[]> = { locked: [], stillValid: [] };
   for (const lang of ["pl", "en", "de"] as const) {
     const dict = JSON.parse(read(`lib/i18n/dictionaries/${lang}.json`)) as
       { security: Record<string, string> };
-    check(`${lang}: the lockout message does not promise an immediate new code`,
-      /wygaśnię|wygaśnięciu|expires|Ablauf/i.test(dict.security.locked ?? ""),
-      dict.security.locked);
-    check(`${lang}: a refused resend explains that the current code still works`,
-      (dict.security.stillValid ?? "").length > 20, dict.security.stillValid);
+    const locked = dict.security.locked ?? "";
+    const stillValid = dict.security.stillValid ?? "";
+    check(`${lang}: the lockout message points at a NEW code, not at waiting`,
+      COPY[lang]!.locked.test(locked) && !/wygaśnię|expires|Ablauf/i.test(locked),
+      locked);
+    check(`${lang}: a refused resend says the current code is still valid`,
+      COPY[lang]!.stillValid.test(stillValid), stillValid);
+    seen.locked!.push(locked);
+    seen.stillValid!.push(stillValid);
+  }
+  // Three distinct strings, or one of them is an untranslated copy of another.
+  for (const key of ["locked", "stillValid"] as const) {
+    check(`security.${key} is genuinely translated three times`,
+      new Set(seen[key]).size === 3, JSON.stringify(seen[key]));
   }
   check("leaving the page un-cleared sends the person to login, not into the app",
     /window\.location\.assign\("\/login"\)/.test(ui));

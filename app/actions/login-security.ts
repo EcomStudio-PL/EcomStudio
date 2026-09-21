@@ -119,7 +119,17 @@ export async function resendCodeAction(): Promise<ResendState> {
   });
   return {
     ok: true,
-    status: result.status === "reused" ? "sent" : result.status,
+    /*
+      `reused` is unreachable with force: true — the service answers `cooldown`
+      for a live code. It is mapped anyway, and DELIBERATELY NOT to "sent".
+
+      That is what used to be here, and it was the wrong way to be wrong: both
+      outcomes mean a live code exists and no mail went out, so calling it
+      "sent" would show "Kod został wysłany", restart the clock and send the
+      person to an inbox with nothing new in it. Folded into `cooldown`, an
+      unreachable branch that somehow becomes reachable tells the truth.
+    */
+    status: result.status === "reused" ? "cooldown" : result.status,
     waitSeconds: result.waitSeconds,
     expiresInSeconds: result.expiresInSeconds,
   };

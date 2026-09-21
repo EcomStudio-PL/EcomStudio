@@ -83,6 +83,12 @@ export function SecurityCheck({ next }: { next: string }) {
       // code sent 40 s ago shows 80 s left — not a fresh window invented here.
       setExpiresAt(res.expiresInSeconds > 0 ? Date.now() + res.expiresInSeconds * 1000 : null);
       if (res.status === "not_configured") setNotConfigured(true);
+      // "error" was silently ignored, and the page went on saying "we sent a
+      // code to m***@…" with no countdown and nothing amiss — while the
+      // mailbox threw and the row was abandoned. Waiting for mail that never
+      // left is the worst thing this screen can ask of someone. The button is
+      // enabled (the slot was released), so say so and let them use it.
+      else if (res.status === "error") setError(t("security.resendFailed"));
     });
   }, [next]);
 
@@ -134,8 +140,33 @@ export function SecurityCheck({ next }: { next: string }) {
     // it says the server had the problem and leaves the digits alone.
     if (!res) { setError(t("security.serverError")); return; }
     setDigits("");
-    if (res.reason === "locked") setError(t("security.locked"));
-    else if (res.reason === "expired") { setExpiresAt(Date.now()); setError(t("security.expired")); }
+    /*
+      THE DEADLINE FOLLOWS THE ROW, AND THE DATABASE SPENDS THE ROW ON MORE
+      THAN EXPIRY.
+
+      login_challenge_verify (0057) sets used_at in three cases: the code
+      expired, the attempts were already exhausted, and — the one that is easy
+      to miss — the LAST wrong attempt:
+
+        set attempts = attempts + 1,
+            used_at = case when attempts + 1 >= max_attempts then now() else null end
+
+      So after a lockout there is no live challenge, and login_challenge_start
+      would issue a replacement straight away. Only clearing the deadline on
+      `expired` left the countdown running after a lockout, which under the
+      one-live-code rule disabled the ONLY way forward for up to the full TTL —
+      a dead end invented by the screen, not by the server.
+
+      `not_found` lands here too: the row was spent by another tab, or by the
+      abandon path after a failed send. It is not a wrong code and must not be
+      reported as "0 attempts left"; there is simply nothing to verify against.
+
+      Rule: if the server says this challenge is over, the clock is over.
+    */
+    if (res.reason === "locked" || res.reason === "expired" || res.reason === "not_found") {
+      setExpiresAt(Date.now());
+      setError(t(res.reason === "locked" ? "security.locked" : "security.expired"));
+    }
     else if (res.reason === "error" || res.reason === "no_session" || res.reason === "no_device") {
       setError(t("security.serverError"));
     }
