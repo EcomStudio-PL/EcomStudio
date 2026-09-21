@@ -1039,6 +1039,8 @@ export type Database = {
           name: string
           price_cents: number
           sort_order: number
+          stripe_price_id: string | null
+          stripe_product_id: string | null
         }
         Insert: {
           active?: boolean
@@ -1053,6 +1055,8 @@ export type Database = {
           name: string
           price_cents: number
           sort_order?: number
+          stripe_price_id?: string | null
+          stripe_product_id?: string | null
         }
         Update: {
           active?: boolean
@@ -1067,6 +1071,8 @@ export type Database = {
           name?: string
           price_cents?: number
           sort_order?: number
+          stripe_price_id?: string | null
+          stripe_product_id?: string | null
         }
         Relationships: []
       }
@@ -3020,34 +3026,52 @@ export type Database = {
         Row: {
           amount_cents: number
           created_at: string
+          credit_tx_id: string | null
+          credits_granted: number
           currency: string
           id: string
+          kind: string | null
           metadata: Json
+          package_id: string | null
+          plan_id: string | null
           provider: string | null
           provider_payment_id: string | null
           status: string
+          stripe_customer_id: string | null
           workspace_id: string
         }
         Insert: {
           amount_cents: number
           created_at?: string
+          credit_tx_id?: string | null
+          credits_granted?: number
           currency?: string
           id?: string
+          kind?: string | null
           metadata?: Json
+          package_id?: string | null
+          plan_id?: string | null
           provider?: string | null
           provider_payment_id?: string | null
           status?: string
+          stripe_customer_id?: string | null
           workspace_id: string
         }
         Update: {
           amount_cents?: number
           created_at?: string
+          credit_tx_id?: string | null
+          credits_granted?: number
           currency?: string
           id?: string
+          kind?: string | null
           metadata?: Json
+          package_id?: string | null
+          plan_id?: string | null
           provider?: string | null
           provider_payment_id?: string | null
           status?: string
+          stripe_customer_id?: string | null
           workspace_id?: string
         }
         Relationships: [
@@ -3223,6 +3247,44 @@ export type Database = {
           },
           {
             foreignKeyName: "products_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_events: {
+        Row: {
+          detail: Json
+          event_type: string
+          object_id: string | null
+          outcome: string
+          received_at: string
+          stripe_event_id: string
+          workspace_id: string | null
+        }
+        Insert: {
+          detail?: Json
+          event_type: string
+          object_id?: string | null
+          outcome: string
+          received_at?: string
+          stripe_event_id: string
+          workspace_id?: string | null
+        }
+        Update: {
+          detail?: Json
+          event_type?: string
+          object_id?: string | null
+          outcome?: string
+          received_at?: string
+          stripe_event_id?: string
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_events_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
@@ -3885,6 +3947,35 @@ export type Database = {
         }
         Relationships: []
       }
+      stripe_customers: {
+        Row: {
+          created_at: string
+          livemode: boolean
+          stripe_customer_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          livemode?: boolean
+          stripe_customer_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          livemode?: boolean
+          stripe_customer_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stripe_customers_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscription_plans: {
         Row: {
           active: boolean
@@ -3902,6 +3993,9 @@ export type Database = {
           price_cents: number
           slug: string
           sort_order: number
+          stripe_price_id_annual: string | null
+          stripe_price_id_monthly: string | null
+          stripe_product_id: string | null
         }
         Insert: {
           active?: boolean
@@ -3919,6 +4013,9 @@ export type Database = {
           price_cents?: number
           slug: string
           sort_order?: number
+          stripe_price_id_annual?: string | null
+          stripe_price_id_monthly?: string | null
+          stripe_product_id?: string | null
         }
         Update: {
           active?: boolean
@@ -3936,11 +4033,15 @@ export type Database = {
           price_cents?: number
           slug?: string
           sort_order?: number
+          stripe_price_id_annual?: string | null
+          stripe_price_id_monthly?: string | null
+          stripe_product_id?: string | null
         }
         Relationships: []
       }
       subscriptions: {
         Row: {
+          cancel_at_period_end: boolean
           created_at: string
           current_period_end: string | null
           current_period_start: string
@@ -3950,9 +4051,12 @@ export type Database = {
           provider: string | null
           provider_subscription_id: string | null
           status: string
+          stripe_customer_id: string | null
+          stripe_price_id: string | null
           workspace_id: string
         }
         Insert: {
+          cancel_at_period_end?: boolean
           created_at?: string
           current_period_end?: string | null
           current_period_start?: string
@@ -3962,9 +4066,12 @@ export type Database = {
           provider?: string | null
           provider_subscription_id?: string | null
           status?: string
+          stripe_customer_id?: string | null
+          stripe_price_id?: string | null
           workspace_id: string
         }
         Update: {
+          cancel_at_period_end?: boolean
           created_at?: string
           current_period_end?: string | null
           current_period_start?: string
@@ -3974,6 +4081,8 @@ export type Database = {
           provider?: string | null
           provider_subscription_id?: string | null
           status?: string
+          stripe_customer_id?: string | null
+          stripe_price_id?: string | null
           workspace_id?: string
         }
         Relationships: [
@@ -4555,6 +4664,69 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      stripe_settle_payment: {
+        Args: {
+          p_token: string | null
+          p_event_id: string
+          p_event_type: string
+          p_workspace_id: string
+          p_provider_payment_id: string
+          p_amount_cents: number
+          p_currency: string
+          p_kind: string
+          p_credits: number
+          p_credit_type: Database["public"]["Enums"]["credit_tx_type"]
+          p_description: string
+          p_package_id: string | null
+          p_plan_id: string | null
+          p_stripe_customer_id: string | null
+          p_metadata: Json
+        }
+        Returns: Json
+      }
+      stripe_sync_subscription: {
+        Args: {
+          p_token: string | null
+          p_event_id: string
+          p_event_type: string
+          p_workspace_id: string
+          p_provider_subscription_id: string
+          p_plan_id: string
+          p_status: string
+          p_current_period_start: string | null
+          p_current_period_end: string | null
+          p_cancel_at_period_end: boolean
+          p_stripe_price_id: string | null
+          p_stripe_customer_id: string | null
+          p_metadata: Json
+        }
+        Returns: Json
+      }
+      stripe_record_refund: {
+        Args: {
+          p_token: string | null
+          p_event_id: string
+          p_event_type: string
+          p_provider_payment_id: string
+          p_amount_cents: number
+          p_status: string
+          p_metadata: Json
+        }
+        Returns: Json
+      }
+      stripe_link_customer: {
+        Args: {
+          p_token: string | null
+          p_workspace_id: string
+          p_stripe_customer_id: string
+          p_livemode: boolean
+        }
+        Returns: string
+      }
+      stripe_customer_for: {
+        Args: { p_token: string | null; p_workspace_id: string }
+        Returns: string
+      }
       cms_redirects_active: {
         Args: Record<PropertyKey, never>
         Returns: {

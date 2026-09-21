@@ -7,6 +7,7 @@ import { Diamond } from "@/components/layout/credits-control";
 import { cn } from "@/lib/utils";
 import type { PlanCapabilities } from "@/lib/plans/capabilities";
 import { annualBillingAvailable, annualMonthlyCents, annualSavingPct } from "@/lib/plans/pricing";
+import { creditLadder, customCreditsRange, priceForCredits } from "@/lib/plans/credit-price";
 
 /**
  * CENNIK — plans, the comparison, the credit packs and a custom amount, on
@@ -483,22 +484,27 @@ function CustomAmount({ packs, base, currency, t, n, money }: {
   n: (v: number) => string;
   money: (cents: number, currency: string, digits?: number) => string;
 }) {
+  // THE SAME RATE CARD THE SERVER CHARGES AGAINST. This slider used to carry
+  // its own copy of the ladder, the bounds and the interpolation; a customer
+  // could then be quoted one price here and charged another by the checkout.
+  // Both sides now call lib/plans/credit-price.ts, so they cannot disagree.
   const ladder = useMemo(
-    () => [...packs]
-      .map((p) => ({ credits: p.credits + p.bonusCredits, cents: p.priceCents }))
-      .sort((a, b) => a.credits - b.credits),
+    () => creditLadder(packs.map((p) => ({
+      credits: p.credits, bonus_credits: p.bonusCredits, price_cents: p.priceCents,
+    }))),
     [packs],
   );
-  const min = ladder[0]?.credits ?? 0;
-  const max = ladder[ladder.length - 1]?.credits ?? 0;
-  const step = Math.max(50, Math.round((max - min) / 100 / 50) * 50);
+  const range = useMemo(() => customCreditsRange(ladder), [ladder]);
+  const min = range?.min ?? 0;
+  const max = range?.max ?? 0;
+  const step = range?.step ?? 50;
   const [credits, setCredits] = useState(() => {
     // Open on the featured pack when there is one — the amount most people take.
     const featured = packs.find((p) => p.featured);
     return featured ? featured.credits + featured.bonusCredits : Math.round((min + max) / 2);
   });
 
-  const cents = useMemo(() => priceFor(credits, ladder), [credits, ladder]);
+  const cents = useMemo(() => priceForCredits(credits, ladder), [credits, ladder]);
   const per = credits > 0 ? cents / credits : 0;
   const off = base > 0 && per > 0 ? Math.round((1 - per / base) * 100) : 0;
 
@@ -562,25 +568,4 @@ function CustomAmount({ packs, base, currency, t, n, money }: {
       </div>
     </div>
   );
-}
-
-/**
- * The price of an arbitrary credit amount, read off the real pack ladder:
- * linear interpolation between the two packs that bracket it, clamped to the
- * ends. Rounded to whole złoty so the figure looks like a price.
- */
-function priceFor(credits: number, ladder: { credits: number; cents: number }[]): number {
-  if (ladder.length === 0) return 0;
-  if (credits <= ladder[0].credits) return ladder[0].cents;
-  const last = ladder[ladder.length - 1];
-  if (credits >= last.credits) return last.cents;
-  for (let i = 1; i < ladder.length; i += 1) {
-    const lo = ladder[i - 1];
-    const hi = ladder[i];
-    if (credits <= hi.credits) {
-      const ratio = (credits - lo.credits) / (hi.credits - lo.credits);
-      return Math.round((lo.cents + (hi.cents - lo.cents) * ratio) / 100) * 100;
-    }
-  }
-  return last.cents;
 }
