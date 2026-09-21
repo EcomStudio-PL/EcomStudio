@@ -8,6 +8,10 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  parsePlanCapabilities, KNOWN_NUMERIC_CAPABILITIES, KNOWN_FLAG_CAPABILITIES,
+  UNLIMITED, type PlanCapabilities,
+} from "@/lib/plans/capabilities";
 
 export type PlanRow = {
   id?: string; slug?: string; name: string; price_cents: number; annual_price_cents: number;
@@ -18,23 +22,43 @@ export type PlanRow = {
 
 type Limits = { max_products?: number; max_generations_monthly?: number };
 
-function featuresToText(f: unknown): string {
-  return Array.isArray(f) ? f.filter((x) => typeof x === "string").join("\n") : "";
-}
+/** The i18n key for a capability's label, so the editor never hardcodes copy. */
+const CAPABILITY_LABEL: Record<string, string> = {
+  products: "admin.cap.products",
+  workspace_members: "admin.cap.members",
+  priority_queue: "plans.row.priority",
+  operator_mode: "plans.row.operator",
+};
 
 export function PlanManager({ plans }: { plans: PlanRow[] }) {
   const { t } = useI18n();
   const router = useRouter();
   const [pending, start] = useTransition();
   const [editing, setEditing] = useState<PlanRow | null>(null);
-  const [featuresText, setFeaturesText] = useState("");
+  // THE CAPABILITY BAG, EDITED AS A BAG. It used to be flattened into a
+  // textarea and re-serialised as string[] on save, which is what blanked
+  // /plan. Now every known capability is one typed field and every key the
+  // editor does not know about rides along untouched.
+  const [caps, setCaps] = useState<PlanCapabilities>({});
 
   const blank: PlanRow = {
     name: "", price_cents: 0, annual_price_cents: 0, monthly_credits: 0, bonus_credits: 0,
-    description: null, features: [], featured: false, active: true, sort_order: plans.length, limits: {},
+    description: null, features: {}, featured: false, active: true, sort_order: plans.length, limits: {},
   };
-  const open = (p: PlanRow) => { setEditing(p); setFeaturesText(featuresToText(p.features)); };
+  const open = (p: PlanRow) => { setEditing(p); setCaps(parsePlanCapabilities(p.features)); };
   const limits: Limits = (editing?.limits ?? {}) as Limits;
+
+  const capNumber = (key: string) => {
+    const v = caps[key];
+    return typeof v === "number" ? v : 0;
+  };
+  const setCap = (key: string, value: number | boolean) => setCaps((c) => ({ ...c, [key]: value }));
+  // Keys stored in the database that this editor has no field for. Shown so an
+  // operator can see they exist; never rewritten.
+  const extraCaps = Object.keys(caps).filter(
+    (k) => !(KNOWN_NUMERIC_CAPABILITIES as readonly string[]).includes(k)
+      && !(KNOWN_FLAG_CAPABILITIES as readonly string[]).includes(k),
+  );
 
   function save() {
     if (!editing) return;
@@ -47,7 +71,7 @@ export function PlanManager({ plans }: { plans: PlanRow[] }) {
         monthly_credits: editing.monthly_credits,
         bonus_credits: editing.bonus_credits,
         description: editing.description,
-        features: featuresText.split("\n").map((s) => s.trim()).filter(Boolean),
+        features: caps,
         featured: editing.featured,
         active: editing.active,
         sort_order: editing.sort_order,
@@ -139,8 +163,33 @@ export function PlanManager({ plans }: { plans: PlanRow[] }) {
             </div>
             <div>
               <Label>{t("admin.featuresLabel")}</Label>
-              <Textarea rows={4} value={featuresText} onChange={(e) => setFeaturesText(e.target.value)} />
               <p className="mt-1 text-xs text-muted">{t("admin.featuresHint")}</p>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                {KNOWN_NUMERIC_CAPABILITIES.map((key) => (
+                  <div key={key}>
+                    <Label>{t(CAPABILITY_LABEL[key])}</Label>
+                    <Input type="number" min={UNLIMITED} value={capNumber(key)}
+                      onChange={(e) => setCap(key, num(e.target.value))} />
+                    <p className="mt-1 text-xs text-muted">{t("admin.cap.unlimitedHint")}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-5">
+                {KNOWN_FLAG_CAPABILITIES.map((key) => (
+                  <label key={key} className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={caps[key] === true}
+                      className="h-4 w-4 accent-[rgb(var(--accent))]"
+                      onChange={(e) => setCap(key, e.target.checked)} />
+                    {t(CAPABILITY_LABEL[key])}
+                  </label>
+                ))}
+              </div>
+              {extraCaps.length > 0 && (
+                <p className="mt-2 text-xs text-muted">
+                  {t("admin.cap.extra")}{" "}
+                  {extraCaps.map((k) => `${k}=${String(caps[k])}`).join(", ")}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-5">
               <label className="flex items-center gap-2 text-sm">

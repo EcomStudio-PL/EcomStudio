@@ -5,6 +5,8 @@ import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Diamond } from "@/components/layout/credits-control";
 import { cn } from "@/lib/utils";
+import type { PlanCapabilities } from "@/lib/plans/capabilities";
+import { annualBillingAvailable, annualMonthlyCents, annualSavingPct } from "@/lib/plans/pricing";
 
 /**
  * CENNIK — plans, the comparison, the credit packs and a custom amount, on
@@ -29,11 +31,14 @@ export type PlanCard = {
   name: string;
   description: string | null;
   priceCents: number;
+  /** The YEARLY total as stored. 0 means this plan has no annual price and
+   *  annual billing is not on offer — see lib/plans/pricing.ts. */
+  annualPriceCents: number;
   currency: string;
   monthlyCredits: number;
   bonusCredits: number;
   /** The capability bag as stored: {workspace_members, priority_queue, …}. */
-  capabilities: Record<string, unknown>;
+  capabilities: PlanCapabilities;
   featured: boolean;
 };
 
@@ -47,11 +52,6 @@ export type PackCard = {
   featured: boolean;
   badge: string | null;
 };
-
-/** Annual billing is ten months for twelve — the shipped convention, and the
- *  only annual rule the data models. The badge shows what that really is. */
-const ANNUAL_MONTHS_PAID = 10;
-const ANNUAL_PCT = Math.round((1 - ANNUAL_MONTHS_PAID / 12) * 100);
 
 /** A visual step per tier so the row reads as a climb, not four copies. */
 const TIER_ICON: LucideIcon[] = [Sparkles, Zap, Crown, Rocket];
@@ -84,14 +84,23 @@ export function PricingBoard({ plans, packs, currentSlug }: {
   const { t, locale } = useI18n();
   const [annual, setAnnual] = useState(false);
 
+  // ANNUAL BILLING IS DATA, NOT A COEFFICIENT. The toggle appears only when
+  // every paid plan carries a real `annual_price_cents`; until then the page
+  // quotes monthly prices and says nothing about a year, because there is no
+  // yearly price to say. `annualOn` — not `annual` — drives the figures, so a
+  // stale state value can never quote a price that does not exist.
+  const annualAvailable = useMemo(() => annualBillingAvailable(plans), [plans]);
+  const annualPct = useMemo(() => annualSavingPct(plans), [plans]);
+  const annualOn = annual && annualAvailable;
+
   const n = (v: number) => new Intl.NumberFormat(locale).format(v);
   const money = (cents: number, currency: string, digits = 0) =>
     new Intl.NumberFormat(locale, { style: "currency", currency, maximumFractionDigits: digits }).format(cents / 100);
 
   return (
     <div className="space-y-6">
-      <PlanSection plans={plans} currentSlug={currentSlug} annual={annual} setAnnual={setAnnual}
-        t={t} n={n} money={money} />
+      <PlanSection plans={plans} currentSlug={currentSlug} annual={annualOn} setAnnual={setAnnual}
+        annualAvailable={annualAvailable} annualPct={annualPct} t={t} n={n} money={money} />
       <ComparisonSection plans={plans} t={t} n={n} />
       {packs.length > 0 && <TopUpSection packs={packs} t={t} n={n} money={money} />}
     </div>
@@ -100,8 +109,9 @@ export function PricingBoard({ plans, packs, currentSlug }: {
 
 /* ── 1. PLANS ─────────────────────────────────────────────────────────────*/
 
-function PlanSection({ plans, currentSlug, annual, setAnnual, t, n, money }: {
+function PlanSection({ plans, currentSlug, annual, setAnnual, annualAvailable, annualPct, t, n, money }: {
   plans: PlanCard[]; currentSlug: string; annual: boolean; setAnnual: (v: boolean) => void;
+  annualAvailable: boolean; annualPct: number;
   t: (k: string, v?: Record<string, string | number>) => string;
   n: (v: number) => string;
   money: (cents: number, currency: string, digits?: number) => string;
@@ -109,7 +119,12 @@ function PlanSection({ plans, currentSlug, annual, setAnnual, t, n, money }: {
   return (
     <section data-pricing-plans>
       {/* The toggle is centred above the row, as one control: the word, then
-          the two states, then what the annual one is worth. */}
+          the two states, then what the annual one is worth. It is rendered
+          ONLY when every paid plan has a stored annual price — an empty
+          `annual_price_cents` means the yearly offer has not been decided,
+          and a control for a price nobody set is a promise the checkout
+          cannot keep. */}
+      {annualAvailable && (
       <div className="mb-5 flex justify-center">
         <div className="flex items-center gap-1 rounded-2xl border border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*0.9))] bg-sunken/80 p-1">
           <span className="px-3 text-[12.5px] font-medium text-muted">{t("plans.billing")}</span>
@@ -121,18 +136,22 @@ function PlanSection({ plans, currentSlug, annual, setAnnual, t, n, money }: {
                 annual === v ? "bg-[rgb(var(--accent))] text-white shadow-[0_8px_20px_-10px_rgb(var(--accent))]" : "text-muted hover:text-ink",
               )}>
               {t(v ? "plans.annual" : "plans.monthly")}
-              {v && (
+              {v && annualPct > 0 && (
                 <span className={cn(
                   "rounded-md px-1.5 py-0.5 text-[10.5px] font-bold",
                   annual ? "bg-white/20 text-white" : "bg-[rgb(var(--success)/0.16)] text-success",
                 )}>
-                  {t("plans.annualOff", { n: ANNUAL_PCT })}
+                  {/* The SMALLEST real saving across the paid plans. One badge
+                      sits above four columns, so anything larger would
+                      overstate at least one of them. */}
+                  {t("plans.annualOff", { n: annualPct })}
                 </span>
               )}
             </button>
           ))}
         </div>
       </div>
+      )}
 
       <div className="grid gap-3.5 [&>*]:min-w-0 sm:grid-cols-2 xl:grid-cols-4">
         {plans.map((p, i) => (
@@ -152,7 +171,9 @@ function PlanColumn({ plan: p, index, annual, isCurrent, t, n, money }: {
 }) {
   const Icon = TIER_ICON[Math.min(index, TIER_ICON.length - 1)];
   const free = p.priceCents === 0;
-  const effective = annual ? Math.round(p.priceCents * ANNUAL_MONTHS_PAID / 12) : p.priceCents;
+  // The annual figure comes from the stored yearly total divided by twelve.
+  // It used to be `priceCents * 10 / 12` — a discount invented in the markup.
+  const effective = annual ? annualMonthlyCents(p) : p.priceCents;
   const total = p.monthlyCredits + p.bonusCredits;
   // What a credit costs on this plan — the number that actually compares two
   // plans, and it is division, not marketing.

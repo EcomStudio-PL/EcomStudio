@@ -742,8 +742,8 @@
     "annualPrice": "Annual price",
     "limitProducts": "Product limit",
     "limitGenerations": "Generation limit / mo",
-    "featuresLabel": "Plan features (one per line)",
-    "featuresHint": "Each line becomes a bullet on the plan card.",
+    "featuresLabel": "Plan capabilities",
+    "featuresHint": "The values the pricing page compares. -1 means unlimited.",
     "recommended": "Recommended",
     "blocksTitle": "Prompt blocks",
     "blocksSub": "Reusable sections appended to every prompt in a fixed order.",
@@ -888,7 +888,11 @@
     "quickActions": "Quick actions",
     "noPaymentsBody": "No payment has been recorded yet. It will show up here as soon as the first purchase lands.",
     "noRevenueInRange": "No revenue in this period.",
-    "secretWriteFailed": "The key could not be written to the vault. Try again."
+    "secretWriteFailed": "The key could not be written to the vault. Try again.",
+    "cap.products": "Products",
+    "cap.members": "Team seats",
+    "cap.unlimitedHint": "-1 = unlimited",
+    "cap.extra": "Extra capabilities stored in the database (not editable here):"
   },
   "support": {
     "title": "Support & messages",

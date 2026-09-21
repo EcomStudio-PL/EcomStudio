@@ -742,8 +742,8 @@
     "annualPrice": "Jahrespreis",
     "limitProducts": "Produkt-Limit",
     "limitGenerations": "Generierungs-Limit / Monat",
-    "featuresLabel": "Plan-Features (eins pro Zeile)",
-    "featuresHint": "Jede Zeile wird ein Punkt auf der Plankarte.",
+    "featuresLabel": "Plan-Leistungen",
+    "featuresHint": "Die Werte, die die Preisseite vergleicht. -1 bedeutet unbegrenzt.",
     "recommended": "Empfohlen",
     "blocksTitle": "Prompt-Bausteine",
     "blocksSub": "Wiederverwendbare Abschnitte, die jedem Prompt in fester Reihenfolge angehängt werden.",
@@ -888,7 +888,11 @@
     "quickActions": "Schnellaktionen",
     "noPaymentsBody": "Es wurde noch keine Zahlung verbucht. Sie erscheint hier, sobald der erste Kauf eingeht.",
     "noRevenueInRange": "Kein Umsatz in diesem Zeitraum.",
-    "secretWriteFailed": "Der Schlüssel konnte nicht im Tresor gespeichert werden. Versuchen Sie es erneut."
+    "secretWriteFailed": "Der Schlüssel konnte nicht im Tresor gespeichert werden. Versuchen Sie es erneut.",
+    "cap.products": "Produkte",
+    "cap.members": "Team-Plätze",
+    "cap.unlimitedHint": "-1 = unbegrenzt",
+    "cap.extra": "Weitere in der Datenbank gespeicherte Leistungen (hier nicht editierbar):"
   },
   "support": {
     "title": "Support & Nachrichten",

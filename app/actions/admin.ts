@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Enums } from "@/lib/database.types";
 import { logAudit } from "@/lib/services/audit";
 import { keepStructuredFields } from "@/lib/services/admin";
+import { writableCapabilities, type PlanCapabilities } from "@/lib/plans/capabilities";
 
 type Result = { ok: boolean; error?: string };
 
@@ -340,7 +341,7 @@ export async function toggleModelAction(modelId: string, active: boolean): Promi
 export async function savePlanFullAction(input: {
   id?: string; name: string; price_cents: number; annual_price_cents: number;
   monthly_credits: number; bonus_credits: number; description: string | null;
-  features: string[]; featured: boolean; active: boolean; sort_order: number;
+  features: PlanCapabilities; featured: boolean; active: boolean; sort_order: number;
   limits: { max_products?: number; max_generations_monthly?: number };
 }): Promise<Result> {
   try {
@@ -348,6 +349,19 @@ export async function savePlanFullAction(input: {
     if (!input.name.trim() || input.price_cents < 0 || input.monthly_credits < 0) {
       return { ok: false, error: "invalid" };
     }
+    if (input.annual_price_cents < 0) return { ok: false, error: "invalid" };
+
+    // CAPABILITIES ARE STRUCTURED, SO THE STORED ROW GETS THE LAST WORD.
+    // The editor used to send a string[] built from a textarea, which wiped
+    // the bag /plan reads. `writableCapabilities` answers null for anything
+    // that is not a bag — and for an empty bag over a non-empty stored one —
+    // and null here means the column is left exactly as it is. A save can
+    // never again blank a plan's capabilities as a side effect.
+    const { data: existing } = input.id
+      ? await supabase.from("subscription_plans").select("features").eq("id", input.id).maybeSingle()
+      : { data: null };
+    const features = writableCapabilities(input.features, existing?.features ?? null);
+
     const row = {
       name: input.name.trim(),
       price_cents: input.price_cents,
@@ -355,7 +369,7 @@ export async function savePlanFullAction(input: {
       monthly_credits: input.monthly_credits,
       bonus_credits: input.bonus_credits,
       description: input.description,
-      features: input.features as never,
+      ...(features === null ? {} : { features: features as never }),
       featured: input.featured,
       active: input.active,
       sort_order: input.sort_order,
@@ -365,6 +379,9 @@ export async function savePlanFullAction(input: {
       ? await supabase.from("subscription_plans").update(row).eq("id", input.id)
       : await supabase.from("subscription_plans").insert({
           ...row,
+          // An INSERT has nothing stored to fall back on, so a refused bag
+          // becomes an empty one rather than a missing NOT NULL column.
+          features: (features ?? {}) as never,
           slug: input.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `plan-${Date.now()}`,
         });
     if (error) return { ok: false, error: "generic" };

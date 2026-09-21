@@ -742,8 +742,8 @@
     "annualPrice": "Cena roczna",
     "limitProducts": "Limit produktów",
     "limitGenerations": "Limit generacji / mies.",
-    "featuresLabel": "Cechy planu (jedna na linię)",
-    "featuresHint": "Każda linia stanie się punktem na karcie planu.",
+    "featuresLabel": "Możliwości planu",
+    "featuresHint": "Wartości, które porównuje cennik. -1 oznacza bez limitu.",
     "recommended": "Polecany",
     "blocksTitle": "Bloki promptów",
     "blocksSub": "Reużywalne sekcje doklejane do każdego promptu w stałej kolejności.",
@@ -888,7 +888,11 @@
     "quickActions": "Szybkie akcje",
     "noPaymentsBody": "Żadna płatność nie została jeszcze zaksięgowana. Pojawi się tutaj natychmiast po pierwszym zakupie.",
     "noRevenueInRange": "Brak przychodu w tym okresie.",
-    "secretWriteFailed": "Nie udało się zapisać klucza w sejfie. Spróbuj ponownie."
+    "secretWriteFailed": "Nie udało się zapisać klucza w sejfie. Spróbuj ponownie.",
+    "cap.products": "Produkty",
+    "cap.members": "Miejsca w zespole",
+    "cap.unlimitedHint": "-1 = bez limitu",
+    "cap.extra": "Dodatkowe możliwości zapisane w bazie (bez edycji tutaj):"
   },
   "support": {
     "title": "Pomoc i wiadomości",

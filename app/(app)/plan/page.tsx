@@ -4,6 +4,7 @@ import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { PageHeader } from "@/components/ui/page-header";
 import { PricingBoard, type PackCard, type PlanCard } from "@/components/plan/pricing-board";
+import { parsePlanCapabilities } from "@/lib/plans/capabilities";
 
 export const dynamic = "force-dynamic";
 
@@ -40,15 +41,18 @@ export default async function PlanPage() {
     name: p.name,
     description: p.description,
     priceCents: p.price_cents,
+    // The stored yearly total. 0 on every production plan today, which is
+    // exactly why the annual toggle does not render — see lib/plans/pricing.ts.
+    annualPriceCents: p.annual_price_cents ?? 0,
     currency: p.currency,
     monthlyCredits: p.monthly_credits,
     bonusCredits: p.bonus_credits,
     // `features` is a capability BAG — {workspace_members: 5, priority_queue:
     // true} — not a list of sentences. It used to be read as an array, which
-    // is why the plan cards showed no capabilities at all.
-    capabilities: p.features && typeof p.features === "object" && !Array.isArray(p.features)
-      ? p.features as Record<string, unknown>
-      : {},
+    // is why the plan cards showed no capabilities at all. One parser, shared
+    // with the admin editor and the save path, so the two halves of the app
+    // cannot disagree about the shape again.
+    capabilities: parsePlanCapabilities(p.features),
     featured: p.featured,
   }));
 
