@@ -36,6 +36,11 @@ import { creditLadder, validateCustomCredits } from "@/lib/plans/credit-price";
  * because a customer can reach `success_url` by typing it.
  */
 
+/** No GROVBASE_SERVER_KEY: nothing can authenticate itself to the database. */
+export class ServerKeyMissingError extends Error {
+  constructor() { super("server_key_missing"); this.name = "ServerKeyMissingError"; }
+}
+
 export type CheckoutRefusal =
   | "payments_disabled" | "unknown_package" | "unknown_plan" | "plan_not_purchasable"
   | "not_mapped" | "no_customer" | "invalid_credits" | "no_server_key" | "stripe_error";
@@ -67,8 +72,13 @@ export async function resolveStripeCustomer(
   workspace: WorkspaceRef,
   email: string | null,
 ): Promise<string | null> {
+  // The dispatch token is what proves to Postgres that this is the server; a
+  // deployment without GROVBASE_SERVER_KEY cannot read or write the mapping at
+  // all. That is a MISCONFIGURATION, not a customer problem, and the callers
+  // report it as `no_server_key` rather than as a generic failure — otherwise
+  // the one thing an operator needs to know is the one thing nothing says.
   const token = dispatchToken();
-  if (!token) return null;
+  if (!token) throw new ServerKeyMissingError();
   const creds = stripeCredentials();
   if (!creds) return null;
 
@@ -169,6 +179,7 @@ export async function createPackageCheckout(
       ? { ok: true, url: session.url, sessionId: session.id }
       : { ok: false, reason: "stripe_error" };
   } catch (e) {
+    if (e instanceof ServerKeyMissingError) return { ok: false, reason: "no_server_key" };
     return { ok: false, reason: e instanceof StripeNotConfiguredError ? "payments_disabled" : "stripe_error" };
   }
 }
@@ -242,6 +253,7 @@ export async function createCustomCreditsCheckout(
       ? { ok: true, url: session.url, sessionId: session.id }
       : { ok: false, reason: "stripe_error" };
   } catch (e) {
+    if (e instanceof ServerKeyMissingError) return { ok: false, reason: "no_server_key" };
     return { ok: false, reason: e instanceof StripeNotConfiguredError ? "payments_disabled" : "stripe_error" };
   }
 }
@@ -308,6 +320,7 @@ export async function createPlanCheckout(
       ? { ok: true, url: session.url, sessionId: session.id }
       : { ok: false, reason: "stripe_error" };
   } catch (e) {
+    if (e instanceof ServerKeyMissingError) return { ok: false, reason: "no_server_key" };
     return { ok: false, reason: e instanceof StripeNotConfiguredError ? "payments_disabled" : "stripe_error" };
   }
 }
@@ -342,6 +355,7 @@ export async function createBillingPortalSession(
     }, `portal:${workspace.id}:${randomUUID()}`);
     return { ok: true, url: session.url, sessionId: session.id };
   } catch (e) {
+    if (e instanceof ServerKeyMissingError) return { ok: false, reason: "no_server_key" };
     return { ok: false, reason: e instanceof StripeNotConfiguredError ? "payments_disabled" : "stripe_error" };
   }
 }
