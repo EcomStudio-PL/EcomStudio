@@ -18,13 +18,20 @@ import type { LoginSecuritySettings } from "@/lib/server/login-security";
  * log records the values in the clear. A refused save puts the previous values
  * back; nothing is applied until the server accepts it.
  */
-type NumField = "reverifyDays" | "codeTtlSeconds" | "maxAttempts" | "resendSeconds";
+type NumField = "reverifyDays" | "codeTtlSeconds" | "maxAttempts";
 
+/**
+ * "Odstęp między wysyłkami" USED TO BE A FOURTH ROW HERE, and it is gone on
+ * purpose. A new code may now be asked for exactly when the current one
+ * expires (migration 0111), so the interval is the code's own lifetime — the
+ * row above it. Leaving the input in place would have shown an operator a
+ * control that no longer decides anything, which is worse than not offering
+ * it: the panel would say 30 seconds while the product waited 120.
+ */
 const NUM_ROWS: readonly { field: NumField; labelKey: string; hintKey: string; min: number; max: number }[] = [
   { field: "reverifyDays", labelKey: "loginSec.reverifyDays", hintKey: "loginSec.reverifyHint", min: 0, max: 365 },
   { field: "codeTtlSeconds", labelKey: "loginSec.codeTtl", hintKey: "loginSec.codeTtlHint", min: 30, max: 3600 },
   { field: "maxAttempts", labelKey: "loginSec.maxAttempts", hintKey: "loginSec.maxAttemptsHint", min: 1, max: 10 },
-  { field: "resendSeconds", labelKey: "loginSec.resend", hintKey: "loginSec.resendHint", min: 15, max: 600 },
 ];
 
 export function LoginSecuritySettingsForm({ settings }: { settings: LoginSecuritySettings }) {

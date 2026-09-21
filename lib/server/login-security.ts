@@ -101,19 +101,25 @@ export type LoginSecuritySettings = {
   reverifyDays: number;
   codeTtlSeconds: number;
   maxAttempts: number;
-  resendSeconds: number;
 };
 
+/**
+ * THERE IS NO `resendSeconds` HERE ANY MORE, AND THAT IS THE POINT.
+ *
+ * It used to be a second knob (59 s) running alongside the code's lifetime
+ * (120 s), which is what let the screen show two clocks that disagreed and let
+ * a person hold two valid-looking codes. The rule is now one clock: a
+ * replacement may be asked for exactly when the current code has expired, so
+ * the answer is DERIVED from expires_at and there is nothing left to set. A
+ * knob that no longer decides anything is worse than no knob — it reads as a
+ * control while the behaviour ignores it. See migration 0111.
+ */
 export const LOGIN_SECURITY_DEFAULTS: LoginSecuritySettings = {
   verifyNewDevice: true,
   verifyNewIp: true,
   reverifyDays: 7,
   codeTtlSeconds: 120,
   maxAttempts: 5,
-  // 59 s, so the first frame after a send reads 00:59 — the number the
-  // product asks for — while the code itself stays valid for 120 s. The two
-  // are separate settings and an operator can move either.
-  resendSeconds: 59,
 };
 
 export const LOGIN_SECURITY_KEY = "login_security";
@@ -149,7 +155,9 @@ export async function getLoginSecuritySettings(supabase: Client): Promise<LoginS
       reverifyDays: asInt(v.reverify_days, LOGIN_SECURITY_DEFAULTS.reverifyDays, 0, 365),
       codeTtlSeconds: ttlSeconds,
       maxAttempts: asInt(v.max_attempts, LOGIN_SECURITY_DEFAULTS.maxAttempts, 1, 10),
-      resendSeconds: asInt(v.resend_seconds, LOGIN_SECURITY_DEFAULTS.resendSeconds, 15, 600),
+      // `resend_seconds` may still sit in an old stored row. It is deliberately
+      // NOT read: the resend window is now the code's own lifetime (0111), and
+      // honouring a stale key would quietly reinstate the two-clock behaviour.
     };
   } catch {
     return LOGIN_SECURITY_DEFAULTS;
@@ -165,7 +173,8 @@ export function toStoredSettings(s: LoginSecuritySettings): Record<string, strin
     reverify_days: String(Math.min(365, Math.max(0, Math.trunc(s.reverifyDays)))),
     code_ttl_seconds: String(Math.min(3600, Math.max(30, Math.trunc(s.codeTtlSeconds)))),
     max_attempts: String(Math.min(10, Math.max(1, Math.trunc(s.maxAttempts)))),
-    resend_seconds: String(Math.min(600, Math.max(15, Math.trunc(s.resendSeconds)))),
+    // No resend_seconds: the upsert replaces the whole value object, so the
+    // first save after this change also drops the retired key from the row.
   };
 }
 
@@ -432,10 +441,18 @@ export async function evaluateRisk(
 }
 
 /**
- * Open a challenge and email the code — unless a fresh one is already
- * outstanding, in which case the reload/re-entry just reuses it. `force`
- * (the resend button) bypasses the reuse but still honours the cooldown.
- * Returns what happened so the caller can show the right toast.
+ * Open a challenge and email the code — unless one is still alive, in which
+ * case there is nothing to do: a reload reuses it, and the resend button is
+ * REFUSED. One live code at a time, and a replacement only once the current
+ * one has expired.
+ *
+ * `force` (the resend button) no longer buys anything while a code is alive.
+ * It is kept because the two callers mean different things by the same
+ * refusal: a page that just opened onto an existing code is not an error
+ * ("reused"), while a person who pressed "send a new code" was told no
+ * ("cooldown"). The decision itself is identical, and it is made by the
+ * database — see login_challenge_start in migration 0111, which takes an
+ * advisory lock so two taps cannot both find an empty table.
  */
 export async function openOrReuseChallenge(
   supabase: Client,
@@ -462,24 +479,18 @@ export async function openOrReuseChallenge(
   const token = loginSecurityToken();
   if (!token) return { status: "error" };
 
-  const { data: peek } = await supabase.rpc("login_challenge_peek", {
-    p_token: token, p_user: opts.userId, p_device_hash: opts.deviceHash,
-  });
-  const live = peek && typeof peek === "object"
-    ? peek as { age_seconds?: number; expires_in_seconds?: number } : null;
-  if (live) {
-    const age = typeof live.age_seconds === "number" ? live.age_seconds : 0;
-    const left = typeof live.expires_in_seconds === "number" ? live.expires_in_seconds : 0;
-    const wait = opts.settings.resendSeconds - age;
-    // `waitSeconds` travels with the REUSED code too: the page reopens onto a
-    // code that was already sent, and the resend button has to show what is
-    // actually left of the server's window instead of restarting a full one.
-    if (!opts.force) return { status: "reused", waitSeconds: Math.max(0, wait), expiresInSeconds: left };
-    if (wait > 0) return { status: "cooldown", waitSeconds: wait, expiresInSeconds: left };
-  }
-
   const code = generateCode();
-  const { data: id, error } = await supabase.rpc("login_challenge_open", {
+  /*
+    THE DECISION AND THE INSERT ARE ONE STATEMENT.
+
+    This used to be a peek, then a think, then an open — three round trips with
+    two gaps in them. Two taps that arrive together both peeked an empty table,
+    both opened, and both sent mail; the second insert merely spent the first
+    code, so the person got two e-mails and only the newer one worked. Asking
+    the database to decide closes that: login_challenge_start refuses under a
+    per-(user, device) lock, so the second caller is told 'live'.
+  */
+  const { data, error } = await supabase.rpc("login_challenge_start", {
     p_token: token,
     p_user: opts.userId,
     p_device_hash: opts.deviceHash,
@@ -490,13 +501,48 @@ export async function openOrReuseChallenge(
     p_ttl_seconds: opts.settings.codeTtlSeconds,
     p_max_attempts: opts.settings.maxAttempts,
   });
-  if (error || !id) {
-    console.error("loginSecurity.open", safeError(error));
+  if (error) {
+    console.error("loginSecurity.start", safeError(error));
     return { status: "error" };
   }
+  const row = (data && typeof data === "object" ? data : {}) as
+    { status?: string; id?: string; expires_in_seconds?: number };
+  const left = typeof row.expires_in_seconds === "number" ? row.expires_in_seconds : 0;
+
+  // A code is still alive. Nothing is sent, and the caller is told how long is
+  // left of it — which is BOTH clocks on the screen, because they are the same
+  // clock now.
+  if (row.status === "live") {
+    return {
+      status: opts.force ? "cooldown" : "reused",
+      waitSeconds: left,
+      expiresInSeconds: left,
+    };
+  }
+  if (row.status !== "opened" || !row.id) {
+    console.error("loginSecurity.start", row.status ?? "no_status");
+    return { status: "error" };
+  }
+
   const sent = await sendSecurityCode(supabase, opts.email, code, opts.label, opts.settings.codeTtlSeconds);
-  if (!sent.sent) return { status: sent.error === "not_configured" ? "not_configured" : "error" };
-  return { status: "sent", expiresInSeconds: opts.settings.codeTtlSeconds };
+  if (!sent.sent) {
+    /*
+      THE CODE EXISTS BUT NOBODY RECEIVED IT.
+
+      Under the old rule that cost the person 59 seconds; under "one live code
+      at a time" it would cost them the full TTL, holding a code that was never
+      delivered and unable to ask for another. So the row we just opened is
+      spent, and the button works again immediately. Best effort: if this call
+      also fails the person waits out the TTL, which is the old behaviour and
+      not worse than it.
+    */
+    const { error: abandonError } = await supabase.rpc("login_challenge_abandon", {
+      p_token: token, p_user: opts.userId, p_device_hash: opts.deviceHash, p_id: row.id,
+    });
+    if (abandonError) console.error("loginSecurity.abandon", safeError(abandonError));
+    return { status: sent.error === "not_configured" ? "not_configured" : "error" };
+  }
+  return { status: "sent", expiresInSeconds: left || opts.settings.codeTtlSeconds };
 }
 
 /** Verify a submitted code. Thin wrapper over the DB verdict; on success the

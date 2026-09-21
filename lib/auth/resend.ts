@@ -2,14 +2,21 @@
  * THE RESEND BUTTON'S STATE — one function, so the rule is readable and can be
  * tested without a browser.
  *
- * Four states, in priority order: a send in flight, a code that has already
- * expired (which may ALWAYS be replaced), a cooldown that is still running, and
- * a button that is simply ready.
+ * Four states, in priority order: a send in flight, a code that has expired
+ * (which may be replaced), a code still alive (which may NOT), and a button
+ * that is simply ready.
  *
- * The cooldown is not the code's lifetime. It is how long the SERVER refuses to
- * issue a new code — `resend_seconds` in the login-security settings, 60 s by
- * default — while the code itself lives for `code_ttl_seconds`. Rendering the
- * cooldown does not shorten either.
+ * THE COOLDOWN *IS* THE CODE'S LIFETIME NOW. It used to be a second, shorter
+ * setting — `resend_seconds`, 59 s, against a 120 s code — so the screen
+ * carried two clocks that disagreed and a person could hold a second code
+ * while the first still verified. Migration 0111 retired that knob: a
+ * replacement may be asked for exactly when the current code dies, so the
+ * caller passes the code's own remaining seconds as `cooldown` and the two
+ * lines on the screen cannot drift apart.
+ *
+ * This function only renders a decision. The refusal that matters is the
+ * database's (login_challenge_start), which answers the same way whether or
+ * not this button was ever drawn.
  */
 export type ResendView = {
   /** i18n key for the label. */

@@ -3,8 +3,8 @@
  * e-mails for one intent, exercised directly.
  *
  * What is NOT here: Supabase, SMTP, or the challenge row. Those are the
- * server's, and the server already refuses a second code inside its own window
- * (login_challenge_peek → status "cooldown"). What this file proves is the part
+ * server's, and the server refuses a second code while one is alive
+ * (login_challenge_start → status "live"). What this file proves is the part
  * that used to be wrong: the CLIENT sending more than once, and the button
  * telling the truth about what it is doing.
  */
@@ -76,15 +76,23 @@ console.log("\nC. WHAT THE BUTTON SAYS");
   check("sending: shows a spinner", sending.loading);
   check("sending: says so", t(sending.labelKey) === "Wysyłanie…", t(sending.labelKey));
 
-  const cooling = resendView({ sending: false, expired: false, cooldown: 59 });
-  check("cooldown: disabled", cooling.disabled);
-  check("cooldown: labelled with mm:ss",
-    t(cooling.labelKey, { time: cooling.time! }) === "Wyślij kod ponownie za 00:59",
+  // 114 s, not 59: the wait is now the live code's own remaining lifetime, and
+  // the screen shows the SAME number on both lines.
+  const cooling = resendView({ sending: false, expired: false, cooldown: 114 });
+  check("a live code: disabled", cooling.disabled);
+  check("a live code: labelled with mm:ss",
+    t(cooling.labelKey, { time: cooling.time! }) === "Wyślij kod ponownie za 01:54",
     t(cooling.labelKey, { time: cooling.time! }));
-  check("cooldown: no spinner", !cooling.loading);
+  check("and it reads exactly like the expiry line, because it is the same clock",
+    t("security.expiresIn", { time: mmss(114) }) === "Kod wygaśnie za 01:54"
+    && cooling.time === mmss(114), cooling.time);
+  check("a live code: no spinner", !cooling.loading);
 
+  // Expired wins over a leftover wait. In the app the two cannot disagree
+  // (cooldown is derived from the same deadline), but the priority order is
+  // what stops a stale number from disabling the only way forward.
   const expired = resendView({ sending: false, expired: true, cooldown: 45 });
-  check("an EXPIRED code can always be replaced, cooldown or not", !expired.disabled);
+  check("an EXPIRED code can be replaced even if a stale wait is passed in", !expired.disabled);
   check("...and the label changes to a new code",
     t(expired.labelKey) === "Wyślij nowy kod", t(expired.labelKey));
 
@@ -108,9 +116,8 @@ console.log("\nE1. THE CLOCKS ARE DEADLINES, NOT COUNTERS");
   const ui = await import("node:fs").then((fs) =>
     fs.readFileSync("components/auth/security-check.tsx", "utf8"));
 
-  check("both clocks are wall-clock instants",
-    /const \[resendAt, setResendAt\] = useState<number \| null>/.test(ui)
-    && /const \[expiresAt, setExpiresAt\] = useState<number \| null>/.test(ui));
+  check("the clock is a wall-clock instant",
+    /const \[expiresAt, setExpiresAt\] = useState<number \| null>/.test(ui));
   check("nothing decrements a counter any more",
     !/setCooldown\(\(n\) =>/.test(ui) && !/n - 1/.test(ui));
   check("the time left is read from the clock on every render",
@@ -127,26 +134,47 @@ console.log("\nE1. THE CLOCKS ARE DEADLINES, NOT COUNTERS");
     /if \(clean\.length === 6 && !busy\) void submit\(clean\);/.test(ui));
 }
 
-console.log("\nE. COOLDOWN ≠ CODE LIFETIME");
+console.log("\nE. COOLDOWN *IS* THE CODE LIFETIME");
 {
-  // The two numbers come from two different settings and neither is derived
-  // from the other. If a future edit ever ties them together, this fails.
+  /*
+    THIS SECTION USED TO ASSERT THE OPPOSITE, and it is rewritten rather than
+    deleted so the reversal is on the record.
+
+    It was headed "COOLDOWN ≠ CODE LIFETIME" and pinned exactly what has now
+    been retired: two settings (59 s against 120 s), neither derived from the
+    other, with a comment promising to fail "if a future edit ever ties them
+    together". That was a faithful guard for the old product decision — a
+    person could ask for a second code from 00:59 while the first still
+    verified. The decision changed deliberately (migration 0111): one code at
+    a time, and a replacement only once it has expired. So the guard now pins
+    the rule that replaced it, and the old assertions are quoted here so
+    nobody reading a green run mistakes this for the behaviour it used to
+    describe.
+  */
   const src = await import("node:fs").then((fs) =>
     fs.readFileSync("lib/server/login-security.ts", "utf8"));
   check("the code's TTL is what the challenge is opened with",
     /p_ttl_seconds:\s*opts\.settings\.codeTtlSeconds/.test(src));
-  check("the resend window is a separate setting",
-    /const wait = opts\.settings\.resendSeconds - age/.test(src));
-  check("defaults are 120 s of code life and a 59 s resend window",
-    /codeTtlSeconds:\s*120/.test(src) && /resendSeconds:\s*59/.test(src));
-  // The product rule, stated as arithmetic: a second code may be ASKED for
-  // before the first one dies, and the window is shorter than the lifetime.
-  check("the resend window is shorter than the code's life",
-    LOGIN_SECURITY_DEFAULTS.resendSeconds < LOGIN_SECURITY_DEFAULTS.codeTtlSeconds);
-  check("the first frame after a send reads 00:59",
-    mmss(LOGIN_SECURITY_DEFAULTS.resendSeconds) === "00:59");
+  // PROPERTY SHAPES, NOT THE WORD. A bare /resendSeconds/ over the file also
+  // matches the comment that explains why the setting was removed — prose
+  // failing a guard that the code passes is how a guard loses its meaning.
+  // What must not come back is a FIELD: `resendSeconds:` (declared) or
+  // `.resendSeconds` (read).
+  check("there is no separate resend window left to disagree with it",
+    !/resendSeconds\s*:/.test(src) && !/\.resendSeconds\b/.test(src),
+    "a second setting is what let two clocks drift apart");
+  check("the default code life is still 120 s", /codeTtlSeconds:\s*120/.test(src));
   check("and the code's own clock starts at 02:00",
     mmss(LOGIN_SECURITY_DEFAULTS.codeTtlSeconds) === "02:00");
+  check("the settings type no longer carries a resend knob",
+    !("resendSeconds" in LOGIN_SECURITY_DEFAULTS));
+  check("a live code is refused a replacement, by the DATABASE",
+    /status.*live[\s\S]{0,400}?expires_in_seconds/.test(
+      await import("node:fs").then((fs) =>
+        fs.readFileSync("supabase/migrations/0111_one_live_code_at_a_time.sql", "utf8"))));
+  check("and the refusal is serialised, so two taps cannot both pass it",
+    /pg_advisory_xact_lock/.test(await import("node:fs").then((fs) =>
+      fs.readFileSync("supabase/migrations/0111_one_live_code_at_a_time.sql", "utf8"))));
   check("a new code retires the live one in the DATABASE, not in the UI",
     /update public\.login_security_challenges[\s\S]{0,200}?set used_at = now\(\)/
       .test(await import("node:fs").then((fs) =>
@@ -156,10 +184,15 @@ console.log("\nE. COOLDOWN ≠ CODE LIFETIME");
     fs.readFileSync("components/auth/security-check.tsx", "utf8"));
   check("the expiry countdown still runs on the SERVER's expires_at",
     /setExpiresAt\(Date\.now\(\) \+ res\.expiresInSeconds \* 1000\)/.test(ui));
-  check("the cooldown never touches the code's deadline",
-    !/setExpiresAt\([^)]*resendWindow/.test(ui));
-  check("only a send the server CONFIRMS starts the cooldown",
-    /res\.status === "sent"[\s\S]{0,400}?setResendAt\(Date\.now\(\) \+ resendWindow \* 1000\)/.test(ui));
+  check("there is no second deadline in the component at all",
+    !/resendAt/.test(ui) && !/resendWindow/.test(ui),
+    "two useState deadlines are two clocks, and they drifted");
+  check("the resend countdown is DERIVED from the expiry, not stored",
+    /const cooldown = remaining \?\? 0;/.test(ui));
+  check("a server refusal adopts the server's own remaining time",
+    /res\.status === "cooldown"[\s\S]{0,300}?setExpiresAt\(Date\.now\(\) \+ res\.waitSeconds \* 1000\)/.test(ui));
+  check("and it tells the person why, instead of silently re-arming",
+    /security\.stillValid/.test(ui));
   check("every send goes through the gate",
     /await sendGate\.run\(/.test(ui) && (ui.match(/resendCodeAction\(\)/g) ?? []).length === 1);
   check("a verify goes through its own gate",

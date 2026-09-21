@@ -161,15 +161,21 @@ class FakeDb {
             error: null,
           };
         }
-        if (name === "login_challenge_open") {
-          // The real function returns NULL on a bad token, it does not raise.
-          if (!db.tokenOk(args.p_token)) return { data: null, error: null };
-          // Spend any live challenge so only one code is ever valid.
-          for (const c of db.challenges) {
-            if (c.user_id === args.p_user && c.device_hash === args.p_device_hash
-                && c.used_at === null && c.expires_at > db.now) {
-              c.used_at = db.now;
-            }
+        if (name === "login_challenge_start") {
+          // Mirrors migration 0111. The real function answers with a STATUS,
+          // never a bare uuid, because "a code is already alive" is a verdict
+          // and not an error — and it decides that under an advisory lock, so
+          // two concurrent callers cannot both find an empty table.
+          if (!db.tokenOk(args.p_token)) return { data: { status: "forbidden" }, error: null };
+          const alive = db.live(String(args.p_user), String(args.p_device_hash));
+          if (alive) {
+            return {
+              data: {
+                status: "live",
+                expires_in_seconds: Math.max(0, Math.floor((alive.expires_at - db.now) / 1000)),
+              },
+              error: null,
+            };
           }
           const ttl = Math.max(30, Number(args.p_ttl_seconds ?? 120));
           const row: ChallengeRow = {
@@ -184,7 +190,19 @@ class FakeDb {
             created_at: db.now,
           };
           db.challenges.push(row);
-          return { data: row.id, error: null };
+          return { data: { status: "opened", id: row.id, expires_in_seconds: ttl }, error: null };
+        }
+        if (name === "login_challenge_abandon") {
+          // Spends a row whose e-mail never went out, so an SMTP blip does not
+          // cost the person the whole TTL with no code in hand.
+          if (!db.tokenOk(args.p_token)) return { data: false, error: null };
+          const row = db.challenges.find((c) =>
+            c.id === args.p_id && c.user_id === args.p_user
+            && c.device_hash === args.p_device_hash
+            && c.used_at === null && c.expires_at > db.now);
+          if (!row) return { data: false, error: null };
+          row.used_at = db.now;
+          return { data: true, error: null };
         }
         if (name === "login_challenge_verify") {
           if (!db.tokenOk(args.p_token)) return { data: { ok: false, reason: "forbidden" }, error: null };
@@ -361,10 +379,23 @@ async function main() {
     __failNextWith("ECONNREFUSED");
     db = new FakeDb();
     db.settings.set("login_security_dispatch", { hash: "0".repeat(64) });
-    r = await openOrReuseChallenge(db.client() as unknown as Client, opts(db));
+    const failClient = db.client() as unknown as Client;
+    r = await openOrReuseChallenge(failClient, opts(db));
     check("transport refused → status 'error', not 'sent'", r.status === "error", JSON.stringify(r));
     check("transport refused → nothing was delivered", deliveries.length === 0);
+    /*
+      AND THE PERSON IS NOT LOCKED OUT BY OUR OWN FAILED SEND.
+
+      With one live code at a time, a challenge that was opened but never
+      delivered would block every retry for the full TTL — a two-minute
+      punishment for an SMTP hiccup. The sender spends that row, so the very
+      next attempt is allowed through instead of being told to wait.
+    */
     __failNextWith(null);
+    const retry = await openOrReuseChallenge(failClient, opts(db, true));
+    check("a send that failed does not hold the slot — the retry goes out",
+      retry.status === "sent", JSON.stringify(retry));
+    check("and it is a real delivery", deliveries.length === 1, `deliveries=${deliveries.length}`);
   }
 
   /* ══════════════════════════════════════════════════════════════════════ */
@@ -388,15 +419,34 @@ async function main() {
     check("the countdown keeps the server's remaining time",
       (again.expiresInSeconds ?? 0) > 0 && (again.expiresInSeconds ?? 0) <= SETTINGS.codeTtlSeconds);
 
-    // Resend inside the cooldown is refused.
-    const early = await openOrReuseChallenge(client, opts(db, true));
-    check("resend inside the cooldown is refused", early.status === "cooldown", JSON.stringify(early));
-    check("and still no second mail", deliveries.length === 1);
+    /*
+      A RESEND IS REFUSED FOR AS LONG AS THE CODE LIVES.
 
-    // Past the cooldown, a resend issues a NEW code and kills the old one.
-    db.now += (SETTINGS.resendSeconds + 1) * 1000;
+      This used to step forward by `resendSeconds + 1` — 60 s — and expect a
+      send, because the resend window was a separate, shorter setting. That is
+      the product decision migration 0111 replaced: the window IS the code's
+      lifetime now, so 60 s in the answer must still be "no".
+    */
+    const early = await openOrReuseChallenge(client, opts(db, true));
+    check("resend while the code is alive is refused", early.status === "cooldown", JSON.stringify(early));
+    check("and still no second mail", deliveries.length === 1);
+    check("the refusal reports the CODE's remaining life, not a shorter window",
+      (early.waitSeconds ?? 0) > 0 && (early.waitSeconds ?? 0) <= SETTINGS.codeTtlSeconds
+      && early.waitSeconds === early.expiresInSeconds,
+      JSON.stringify(early));
+
+    // Halfway through the code's life — the moment the OLD rule allowed a
+    // second code — is still a refusal.
+    db.now += 61 * 1000;
+    const midway = await openOrReuseChallenge(client, opts(db, true));
+    check("at 61 s (the old cooldown) it is STILL refused",
+      midway.status === "cooldown", JSON.stringify(midway));
+    check("and still no second mail", deliveries.length === 1, `deliveries=${deliveries.length}`);
+
+    // Only once the code has expired does a resend issue a new one.
+    db.now += (SETTINGS.codeTtlSeconds - 61 + 1) * 1000;
     const resent = await openOrReuseChallenge(client, opts(db, true));
-    check("past the cooldown a resend sends", resent.status === "sent", JSON.stringify(resent));
+    check("once the code has EXPIRED a resend sends", resent.status === "sent", JSON.stringify(resent));
     check("that is a second mail", deliveries.length === 2);
     const secondCode = codeFromLastMail()!;
     check("the new code differs from the old", secondCode !== firstCode);

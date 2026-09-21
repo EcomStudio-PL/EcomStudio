@@ -20,11 +20,17 @@ import {
  *
  * The countdown is SERVER time, not a client timer someone can restart: the
  * action returns how many seconds the LIVE challenge row has left
- * (expires_at − now(), via login_challenge_peek), the client only renders it
+ * (expires_at − now(), from login_challenge_start), the client only renders it
  * down. A page refresh re-reads the same row, so the clock keeps its place;
  * at 00:00 the form locks and only "send a new code" continues — which is
  * also what the database enforces, since an expired code verifies to
  * {reason:'expired'} regardless of what the UI shows.
+ *
+ * ONE CLOCK GOVERNS BOTH LINES. "Expires in" and "send again in" render the
+ * same number, because a replacement may be asked for exactly when the current
+ * code dies (migration 0111). Disabling the button is only the polite half —
+ * the server refuses a resend while a code is alive whether or not this screen
+ * is involved.
  */
 export function SecurityCheck({ next }: { next: string }) {
   const { t } = useI18n();
@@ -34,18 +40,24 @@ export function SecurityCheck({ next }: { next: string }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const [resendWindow, setResendWindow] = useState(59);
   /**
-   * BOTH CLOCKS ARE DEADLINES, NOT COUNTERS.
+   * ONE DEADLINE, NOT TWO COUNTERS.
    *
-   * The resend cooldown used to be a number decremented by a `setInterval`.
-   * A background tab throttles that interval to once a minute, so locking the
-   * phone for half a minute and coming back showed a clock that had barely
-   * moved — and a re-render could restart it. These are wall-clock instants
-   * (epoch ms) derived from what the SERVER said, and every render reads the
-   * time left from `now`; nothing accumulates and nothing can drift.
+   * There used to be a second clock here — a resend cooldown with its own
+   * setting — and the screen showed both: "expires in 01:54" next to "send
+   * again in 00:53". They disagreed by design, and the gap between them was
+   * the window in which a person could ask for a second code while the first
+   * still worked. There is now one instant: when the LIVE code expires. Both
+   * lines read it, so they cannot drift apart, and the button comes back at
+   * exactly the moment the server would start accepting a replacement.
+   *
+   * It is a wall-clock instant (epoch ms) derived from what the SERVER said,
+   * not a number decremented by an interval. A background tab throttles
+   * intervals to once a minute, so a decrementing counter showed a clock that
+   * had barely moved after locking the phone; every render here reads the time
+   * left from `now`, so nothing accumulates and nothing can be restarted by a
+   * re-render.
    */
-  const [resendAt, setResendAt] = useState<number | null>(null);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [notConfigured, setNotConfigured] = useState(false);
@@ -67,10 +79,8 @@ export function SecurityCheck({ next }: { next: string }) {
         return;
       }
       setMasked(res.masked);
-      setResendWindow(res.resendSeconds);
-      // What the SERVER would still refuse, not a fresh window invented here:
-      // reopening the page onto a code sent 40 s ago waits 19 s, not 59.
-      setResendAt(res.resendWaitSeconds > 0 ? Date.now() + res.resendWaitSeconds * 1000 : null);
+      // The live row's own remaining lifetime, so reopening the page onto a
+      // code sent 40 s ago shows 80 s left — not a fresh window invented here.
       setExpiresAt(res.expiresInSeconds > 0 ? Date.now() + res.expiresInSeconds * 1000 : null);
       if (res.status === "not_configured") setNotConfigured(true);
     });
@@ -83,7 +93,7 @@ export function SecurityCheck({ next }: { next: string }) {
    * tick, which is what makes "minimise Safari for 30 s" show the truth.
    */
   useEffect(() => {
-    if (resendAt === null && expiresAt === null) return;
+    if (expiresAt === null) return;
     const tick = () => setNow(Date.now());
     tick();
     const id = setInterval(tick, 500);
@@ -96,12 +106,15 @@ export function SecurityCheck({ next }: { next: string }) {
       window.removeEventListener("focus", tick);
       window.removeEventListener("pageshow", tick);
     };
-  }, [resendAt, expiresAt]);
+  }, [expiresAt]);
 
   const left = (at: number | null) => (at === null ? null : Math.max(0, Math.ceil((at - now) / 1000)));
-  const cooldown = left(resendAt) ?? 0;
   const remaining = left(expiresAt);
   const expired = expiresAt !== null && remaining === 0;
+  // THE SAME NUMBER, DELIBERATELY. "Send again in" and "expires in" are one
+  // clock; deriving the first from the second is what makes them impossible to
+  // drift apart, and it matches what the server will actually accept.
+  const cooldown = remaining ?? 0;
 
   const submit = useCallback(async (code: string) => {
     // The sixth digit and a tap on "Potwierdź" can land in the same frame, and
@@ -163,14 +176,19 @@ export function SecurityCheck({ next }: { next: string }) {
         if (res.status === "sent") {
           setNotice(t("security.resent"));
           setDigits("");
-          setResendAt(Date.now() + resendWindow * 1000);
+          // A fresh code restarts the one clock; the old code is already dead,
+          // because opening a new challenge spends the previous row.
           if (typeof res.expiresInSeconds === "number" && res.expiresInSeconds > 0) {
             setExpiresAt(Date.now() + res.expiresInSeconds * 1000);
           }
         } else if (res.status === "cooldown") {
-          // The server refused because a code is still fresh — show ITS clock.
-          const wait = res.waitSeconds && res.waitSeconds > 0 ? res.waitSeconds : resendWindow;
-          setResendAt(Date.now() + wait * 1000);
+          // The server refused: a code is still alive. Adopt ITS remaining
+          // lifetime — the screen was out of step with the server, and the
+          // server is the one that decides.
+          if (res.waitSeconds && res.waitSeconds > 0) {
+            setExpiresAt(Date.now() + res.waitSeconds * 1000);
+          }
+          setError(t("security.stillValid"));
         } else if (res.status === "not_configured") {
           setNotConfigured(true);
         } else setError(t("security.resendFailed"));
@@ -178,10 +196,10 @@ export function SecurityCheck({ next }: { next: string }) {
         setSending(false);
       }
     });
-  }, [resendWindow, sendGate, t]);
+  }, [sendGate, t]);
 
-  // An expired code can ALWAYS be replaced; otherwise the button waits out the
-  // server's own window. See lib/auth/resend.ts for the whole rule.
+  // An expired code can be replaced; a live one cannot, and the wait shown is
+  // the code's own lifetime. See lib/auth/resend.ts for the whole rule.
   const view = resendView({ sending, expired, cooldown });
 
   return (

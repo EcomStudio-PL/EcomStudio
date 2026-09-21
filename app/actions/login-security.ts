@@ -23,13 +23,15 @@ export type ChallengeState =
   | {
       ok: true;
       masked: string;
-      resendSeconds: number;
-      /** Seconds the caller must still wait before a resend would be accepted.
-       *  Equal to `resendSeconds` for a code just sent, and to whatever is left
-       *  of that window when the page reopens onto a code sent earlier. */
-      resendWaitSeconds: number;
-      /** Server-derived lifetime of the LIVE code (from the DB expires_at) —
-       *  the page countdown runs on this, so a refresh never resets it. */
+      /**
+       * ONE NUMBER, BECAUSE THERE IS ONE CLOCK.
+       *
+       * Seconds the LIVE code has left, taken from the row's expires_at. It is
+       * both "the code expires in" and "a new code can be asked for in" — the
+       * two used to be separate values that disagreed by design, and that gap
+       * was the window in which a person could hold two live-looking codes.
+       * A refresh re-reads the same row, so nothing restarts.
+       */
       expiresInSeconds: number;
       status: "sent" | "reused" | "not_configured" | "error";
     }
@@ -64,11 +66,6 @@ export async function ensureChallengeAction(): Promise<ChallengeState> {
   return {
     ok: true,
     masked: maskEmail(user.email),
-    resendSeconds: settings.resendSeconds,
-    resendWaitSeconds: Math.max(0, Math.min(
-      settings.resendSeconds,
-      result.waitSeconds ?? settings.resendSeconds,
-    )),
     expiresInSeconds: Math.max(0, result.expiresInSeconds ?? 0),
     status,
   };
@@ -94,10 +91,20 @@ export type ResendState =
   | {
       ok: true;
       status: "sent" | "cooldown" | "not_configured" | "error";
+      /** Only on "cooldown": seconds the live code still has. The button comes
+       *  back exactly then, because that is when a replacement may be issued. */
       waitSeconds?: number;
       expiresInSeconds?: number;
     };
 
+/**
+ * "SEND A NEW CODE" — refused while the current one is alive.
+ *
+ * The refusal is the DATABASE's, not this function's and certainly not the
+ * button's: login_challenge_start sees the live row and answers 'live'. A
+ * caller that skips the UI entirely and posts this action directly gets the
+ * same answer, which is the whole point of putting the rule down there.
+ */
 export async function resendCodeAction(): Promise<ResendState> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

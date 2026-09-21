@@ -1,7 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, authCookieOptions, PERSIST_COOKIE, stripPersistence } from "./config";
-import { safeReturnTo } from "@/lib/auth-routes";
 import { cachedPass, rememberPass, sha256Hex, stepUpAppliesTo } from "@/lib/server/step-up-edge";
 
 // `/podglad` is the CMS draft preview: an unpublished page rendered as a
@@ -111,25 +110,39 @@ export async function updateSession(request: NextRequest) {
     url.searchParams.set("next", pathname);
     return redirectWithCookies(url);
   }
-  // Signed in and standing on the operator's sign-in page: there is nothing
-  // to sign into. Straight to the panel, which does its own role check and
-  // sends a non-admin to the dashboard.
-  if (user && adminLogin) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/admin";
-    url.search = "";
-    return redirectWithCookies(url);
-  }
-  // Already signed in? Neither the old auth routes nor the dialog have
-  // anything to offer — go where they were headed, or home.
-  const dialogOpen = pathname === AUTH_HOST && request.nextUrl.searchParams.has(AUTH_PARAM);
-  if (user && (dialogOpen || isAuthPage(pathname))) {
-    const url = request.nextUrl.clone();
-    const next = request.nextUrl.searchParams.get("next");
-    url.pathname = safeReturnTo(next) || "/home";
-    url.search = "";
-    return redirectWithCookies(url);
-  }
+  /*
+    SIGNING IN STAYS REACHABLE WITH A SESSION ALREADY OPEN.
+
+    THE BUG THIS FIXES. These lines used to bounce an authenticated visitor off
+    every login door — /login, /admin/login, /?auth=login — to `next` or /home,
+    on the reasoning that someone already signed in has nothing to sign into.
+    That reasoning is wrong the moment a person wants a DIFFERENT account, and
+    what it produced was not merely an inconvenience:
+
+      A is signed in → opens the login door
+        → bounced to /home
+        → app/(app)/layout.tsx runs enforceLoginSecurity FOR A
+        → /auth/security-check
+        → ensureChallengeAction() reads A's session and emails A a code
+        → "Potwierdź, że to Ty"
+
+    The person never saw a form, never typed an address, never typed a
+    password — and a second factor fired for an account they were trying to
+    leave. A second factor must be the consequence of authenticating, never of
+    a cookie that happened to be lying around beforehand.
+
+    WHAT THIS IS NOT. It is not a 2FA bypass, and nothing below it moved. The
+    login door renders a form and posts to /auth/sign-in, which still checks
+    the password and the platform door. Protected paths are still refused to
+    strangers (the block above), the edge step-up still guards every /api call
+    (the block below), and both protected layouts still call the gate. What
+    changed is only this: AUTHENTICATING and ENTERING THE APP are separate
+    questions, and holding a session is no longer treated as an answer to the
+    first one.
+
+    A visitor who opens this door and changes their mind is not signed out —
+    their session is untouched, and the app is one click away.
+  */
 
   // ── THE SECOND FACTOR, AT THE REQUEST LAYER ───────────────────────────────
   //

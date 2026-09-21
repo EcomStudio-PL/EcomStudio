@@ -5037,8 +5037,26 @@ export type Database = {
         }
         Returns: string
       }
+      login_challenge_abandon: {
+        Args: { p_device_hash: string; p_id: string; p_token: string; p_user: string }
+        Returns: boolean
+      }
       login_challenge_peek: {
         Args: { p_device_hash: string; p_token: string; p_user: string }
+        Returns: Json
+      }
+      login_challenge_start: {
+        Args: {
+          p_code_hash: string
+          p_device_hash: string
+          p_device_label: string
+          p_ip_hash: string
+          p_max_attempts: number
+          p_reason: string
+          p_token: string
+          p_ttl_seconds: number
+          p_user: string
+        }
         Returns: Json
       }
       login_challenge_verify: {

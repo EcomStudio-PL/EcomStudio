@@ -18,6 +18,8 @@ name: Guards
 #   test:tilebytes       proves no tile surface can serve a full original
 #   test:homepage        proves "which page is the homepage" has one spelling
 #   test:analytics       proves GA4 sends one config and one page_view per visit
+#   test:loginflow       RUNS the middleware and proves a second factor never
+#                        fires before the target account has authenticated
 #
 # test:loginkey is here because of the 2026-09-20 P0: the second factor could
 # not issue a code on production for six days — first silently, waving everyone
@@ -36,6 +38,9 @@ name: Guards
 #   test:ledger:sql     same
 #   test:homepage:sql   same — it replays the real 0110 against real policies,
 #                       which is the half of that fix a source grep cannot see
+#   test:loginsec:sql   same — it replays 0111/0112 and holds two real
+#                       connections against each other, which is the only way
+#                       to show the advisory lock is what stops a double send
 #   test:analytics:browser  needs a built app, a running server and Chromium
 # Those belong in a job that provisions them; adding them here half-working
 # would be worse than leaving them out, because a skipped step reads as a pass.
@@ -106,6 +111,13 @@ jobs:
       # in this app includes recovery tokens and OAuth codes.
       - name: Analytics sends one event per visit, and nothing private
         run: npm run test:analytics
+
+      # The 2026-09-21 report: signing in while already signed in e-mailed a
+      # code to the OLD account before any address or password was typed. This
+      # runs the real middleware, so the regression shows up as a 307 rather
+      # than as a comment that stopped being true.
+      - name: Login flow — 2FA only after the target account authenticates
+        run: npm run test:loginflow
 
       # Last, because it is the one whose failure is most likely to be a real
       # product regression rather than a test problem.
