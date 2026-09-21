@@ -390,6 +390,29 @@ async function main() {
       checkoutEvent("evt_nows", { metadata: { type: "credit_package", grovbase_package_id: PACK.id }, customer: null }));
     check("an event naming no workspace grants nothing",
       noWsResult.outcome === "unresolved_workspace" && noWs.ledger === 0);
+    // AND IT LEAVES A TRACE. Answering 200 and writing nothing would make the
+    // event vanish: the money is in Stripe, the customer has nothing, and no
+    // row anywhere says so.
+    check("...but it IS recorded, so a human can find it",
+      noWs.callsTo("stripe_record_event").length === 1
+      && noWs.callsTo("stripe_record_event")[0].args.p_outcome === "unresolved_workspace");
+    check("...and recording it moved no payment",
+      noWs.callsTo("stripe_settle_payment").length === 0);
+
+    // Same for a subscription billed on a price no plan claims: somebody is
+    // being charged for something GrovBase does not recognise.
+    const unmapped = fakeDb({ priceToPlan: {} });
+    const unmappedResult = await handleStripeEvent(unmapped.client, "tok", {
+      id: "evt_unmapped", type: "customer.subscription.updated", data: { object: {
+        id: "sub_x", customer: "cus_1", status: "active",
+        metadata: { grovbase_workspace_id: WS },
+        items: { data: [{ price: "price_nobody_knows" }] },
+      } },
+    });
+    check("a subscription on an unmapped price is recorded, not silently skipped",
+      unmappedResult.outcome === "ignored"
+      && unmapped.callsTo("stripe_record_event").length === 1
+      && unmapped.callsTo("stripe_sync_subscription").length === 0);
 
     // The customer -> workspace fallback, for a subscription made in the
     // Stripe dashboard.

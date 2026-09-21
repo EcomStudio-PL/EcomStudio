@@ -306,6 +306,36 @@ async function settle(
   return { outcome: (status as HandledOutcome) ?? "applied" };
 }
 
+/**
+ * AN EVENT WE COULD NOT ACT ON MUST STILL LEAVE A TRACE.
+ *
+ * There are exactly two of those: a payment whose workspace cannot be
+ * resolved, and a subscription on a price no plan claims. Both mean money
+ * moved in Stripe and nothing moved here, and both need a human. Answering
+ * 200 and writing nothing would make them vanish — the money would be in
+ * Stripe, the customer would have nothing, and there would be no row anywhere
+ * saying so.
+ *
+ * `stripe_record_event` writes one payment_events row and cannot touch a
+ * payment, so recording this is never itself a financial act.
+ */
+async function recordUnactionable(
+  supabase: Client, token: string, event: StripeEvent,
+  objectId: string | null, outcome: HandledOutcome, detail: Record<string, unknown> = {},
+): Promise<HandleResult> {
+  const { error } = await supabase.rpc("stripe_record_event", {
+    p_token: token,
+    p_event_id: event.id,
+    p_event_type: event.type,
+    p_object_id: objectId ?? "",
+    p_workspace_id: null,
+    p_outcome: outcome,
+    p_detail: detail as Json,
+  });
+  if (error) throw new Error(`record_failed:${error.code ?? "unknown"}`);
+  return { outcome };
+}
+
 /* ── the handlers ──────────────────────────────────────────────────────────*/
 
 async function onCheckoutCompleted(
@@ -324,7 +354,10 @@ async function onCheckoutCompleted(
   if (str(session.payment_status) !== "paid") return { outcome: "ignored", detail: "unpaid" };
 
   const workspaceId = await resolveWorkspace(supabase, token, session);
-  if (!workspaceId) return { outcome: "unresolved_workspace" };
+  if (!workspaceId) {
+    return recordUnactionable(supabase, token, event, str(session.id), "unresolved_workspace",
+      { customer: idOf(session.customer), amount_total: int(session.amount_total) });
+  }
 
   // THE SAME KEY BOTH EVENTS USE. `payment_intent.succeeded` will arrive for
   // this payment too; keying both on the PaymentIntent is what makes the
@@ -355,7 +388,10 @@ async function onPaymentIntentSucceeded(
   if (metaOf(pi).type === "subscription") return { outcome: "ignored", detail: "subscription_invoice" };
 
   const workspaceId = await resolveWorkspace(supabase, token, pi);
-  if (!workspaceId) return { outcome: "unresolved_workspace" };
+  if (!workspaceId) {
+    return recordUnactionable(supabase, token, event, paymentId, "unresolved_workspace",
+      { customer: idOf(pi.customer), amount: int(pi.amount_received) ?? int(pi.amount) });
+  }
 
   const purchase = await purchaseFromMetadata(supabase, metaOf(pi));
   return settle(supabase, token, {
@@ -384,7 +420,10 @@ async function onInvoicePaid(
   if (!invoiceId) return { outcome: "ignored", detail: "no_id" };
 
   const workspaceId = await resolveWorkspace(supabase, token, invoice);
-  if (!workspaceId) return { outcome: "unresolved_workspace" };
+  if (!workspaceId) {
+    return recordUnactionable(supabase, token, event, invoiceId, "unresolved_workspace",
+      { customer: idOf(invoice.customer), amount_paid: int(invoice.amount_paid) });
+  }
 
   const lines = (invoice.lines as { data?: unknown[] } | undefined)?.data ?? [];
   const firstLine = (lines[0] ?? {}) as Record<string, unknown>;
@@ -420,15 +459,23 @@ async function onSubscriptionEvent(
   if (!subscriptionId) return { outcome: "ignored", detail: "no_id" };
 
   const workspaceId = await resolveWorkspace(supabase, token, sub);
-  if (!workspaceId) return { outcome: "unresolved_workspace" };
+  if (!workspaceId) {
+    return recordUnactionable(supabase, token, event, subscriptionId, "unresolved_workspace",
+      { customer: idOf(sub.customer) });
+  }
 
   const items = (sub.items as { data?: unknown[] } | undefined)?.data ?? [];
   const firstItem = (items[0] ?? {}) as Record<string, unknown>;
   const priceId = idOf(firstItem.price);
   const planId = await planForPrice(supabase, priceId) ?? metaOf(sub).grovbase_plan_id ?? null;
   // Without a plan there is no row to write: `subscriptions.plan_id` is NOT
-  // NULL, and inventing a plan would misreport what the customer is on.
-  if (!planId) return { outcome: "ignored", detail: "unmapped_price" };
+  // NULL, and inventing a plan would misreport what the customer is on. This
+  // is a real operational problem — somebody is being billed for something
+  // GrovBase does not recognise — so it is recorded, not merely skipped.
+  if (!planId) {
+    return recordUnactionable(supabase, token, event, subscriptionId, "ignored",
+      { reason: "unmapped_price", price: priceId, workspace_id: workspaceId });
+  }
 
   // `deleted` is a status, not a delete. The row stays so the history of what
   // was billed survives; `canceled` is what the app reads.
