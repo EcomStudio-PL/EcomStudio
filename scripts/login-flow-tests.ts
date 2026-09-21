@@ -382,6 +382,22 @@ console.log("\nE. THE SCREEN STILL SAYS WHOSE ADDRESS IT IS");
     /setMasked\(res\.masked\)/.test(ui) && !/maskEmail/.test(ui));
   check("a code that has expired is refused with words, not a crash",
     /security\.expired/.test(ui) && /reason === "expired"/.test(ui));
+  /*
+    THE SCREEN MUST NOT OFFER WHAT THE SERVER WILL REFUSE. "Too many attempts,
+    request a new code" was true while a 59 s cooldown existed; under the new
+    rule the button stays disabled until the code expires, so the old wording
+    sent people to press something that could not work. Checked in all three
+    languages, because one translated copy left behind is the same dead end.
+  */
+  for (const lang of ["pl", "en", "de"] as const) {
+    const dict = JSON.parse(read(`lib/i18n/dictionaries/${lang}.json`)) as
+      { security: Record<string, string> };
+    check(`${lang}: the lockout message does not promise an immediate new code`,
+      /wygaśnię|wygaśnięciu|expires|Ablauf/i.test(dict.security.locked ?? ""),
+      dict.security.locked);
+    check(`${lang}: a refused resend explains that the current code still works`,
+      (dict.security.stillValid ?? "").length > 20, dict.security.stillValid);
+  }
   check("leaving the page un-cleared sends the person to login, not into the app",
     /window\.location\.assign\("\/login"\)/.test(ui));
   check("and it only navigates on when the GATE would really pass",

@@ -3889,7 +3889,7 @@
     "resent": "The code has been sent.",
     "stillValid": "The current code is still valid. You can request a new one once it expires.",
     "wrongCode": "Wrong code. Attempts left: {n}.",
-    "locked": "Too many attempts. Request a new code.",
+    "locked": "Too many attempts. You can request a new code once the current one expires.",
     "expired": "The code expired. Request a new one.",
     "expiresIn": "Code expires in {time}",
     "expiredNow": "The code expired.",

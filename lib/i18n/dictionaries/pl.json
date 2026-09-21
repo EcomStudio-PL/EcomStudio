@@ -3889,7 +3889,7 @@
     "resent": "Kod został wysłany.",
     "stillValid": "Poprzedni kod jest jeszcze ważny. Nowy wyślesz po jego wygaśnięciu.",
     "wrongCode": "Nieprawidłowy kod. Pozostało prób: {n}.",
-    "locked": "Za dużo prób. Poproś o nowy kod.",
+    "locked": "Za dużo prób. Nowy kod wyślesz dopiero po wygaśnięciu obecnego.",
     "expired": "Kod wygasł. Poproś o nowy.",
     "expiresIn": "Kod wygaśnie za {time}",
     "expiredNow": "Kod wygasł.",
