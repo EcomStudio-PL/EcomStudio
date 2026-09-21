@@ -3108,7 +3108,17 @@
     "invoice": "Faktura VAT",
     "vsSmallest": "taniej za kredyt niż w najmniejszym pakiecie",
     "onPricing": "Pakiety kredytów i własna kwota są na stronie Cennik, razem z planami.",
-    "saveBasis": "Rabaty liczone względem ceny za kredyt w najmniejszym pakiecie."
+    "saveBasis": "Rabaty liczone względem ceny za kredyt w najmniejszym pakiecie.",
+    "redirecting": "Przekierowanie…",
+    "unavailable": "Niedostępne",
+    "checkoutFailed": "Nie udało się rozpocząć płatności. Spróbuj ponownie.",
+    "checkoutUnavailable": "Płatności nie są jeszcze dostępne dla tej pozycji.",
+    "checkoutInvalidCredits": "Wybrana liczba kredytów jest poza dostępnym zakresem.",
+    "checkoutSuccess": "Dziękujemy. Kredyty pojawią się na koncie, gdy Stripe potwierdzi płatność.",
+    "checkoutCancelled": "Płatność została przerwana. Nic nie zostało pobrane.",
+    "manageBilling": "Zarządzaj płatnościami",
+    "manageBillingSub": "Karty, faktury i subskrypcja — w panelu Stripe.",
+    "portalNoCustomer": "Ta przestrzeń nie ma jeszcze historii płatności."
   },
   "mobilenav": {
     "home": "Start",

@@ -1,10 +1,15 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import { Check, Crown, FileText, Minus, Rocket, ShieldCheck, Sparkles, Star, Users, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Diamond } from "@/components/layout/credits-control";
 import { cn } from "@/lib/utils";
+import { toast } from "@/lib/notify";
+import {
+  startPackageCheckoutAction, startCustomCreditsCheckoutAction, startPlanCheckoutAction,
+} from "@/app/actions/billing";
+import type { CheckoutResult } from "@/lib/server/billing";
 import type { PlanCapabilities } from "@/lib/plans/capabilities";
 import { annualBillingAvailable, annualMonthlyCents, annualSavingPct } from "@/lib/plans/pricing";
 import { creditLadder, customCreditsRange, priceForCredits } from "@/lib/plans/credit-price";
@@ -21,9 +26,11 @@ import { creditLadder, customCreditsRange, priceForCredits } from "@/lib/plans/c
  * because GrovBase does not store one, and a discount off a price that never
  * existed is a lie told in a currency.
  *
- * Checkout is not wired — no payment provider is connected — so every buy
- * button is disabled and says so. The layout is the finished one; the
- * transaction is the part that is honestly missing.
+ * CHECKOUT IS REAL, AND IT IS STILL HONEST WHEN IT IS NOT. Every buy button
+ * is driven by `paymentsEnabled` — whether this deployment actually holds
+ * both Stripe secrets — and by whether the row it sells is mapped to a Stripe
+ * price. A deployment that cannot take money says so on the button instead of
+ * offering one that fails at the till. Nothing here fakes a purchase.
  */
 
 export type PlanCard = {
@@ -41,6 +48,11 @@ export type PlanCard = {
   /** The capability bag as stored: {workspace_members, priority_queue, …}. */
   capabilities: PlanCapabilities;
   featured: boolean;
+  /** Whether a Stripe Price exists for each period. A plan with no price
+   *  cannot be sold, however enabled payments are — the checkout would refuse
+   *  it at the till, so the button says so here instead. */
+  monthlyMapped: boolean;
+  annualMapped: boolean;
 };
 
 export type PackCard = {
@@ -52,7 +64,49 @@ export type PackCard = {
   currency: string;
   featured: boolean;
   badge: string | null;
+  /** Whether this pack is mapped to a Stripe Price. */
+  mapped: boolean;
 };
+
+/**
+ * ONE PLACE WHERE A BUY BUTTON BECOMES A REDIRECT.
+ *
+ * Every button on this page goes through here, so the three of them cannot
+ * drift into three behaviours. The action returns a Stripe-hosted URL or a
+ * reason; there is no third outcome and nothing is granted client-side.
+ *
+ * `window.location.assign`, not the router: Stripe Checkout is another origin,
+ * and a client-side navigation cannot leave the app.
+ *
+ * The pending flag is UX, not protection — the server re-checks everything on
+ * every call, and a double click produces a second Checkout Session, never a
+ * second charge.
+ */
+function useCheckout(t: (k: string, v?: Record<string, string | number>) => string) {
+  const [pending, start] = useTransition();
+  const go = useCallback((run: () => Promise<CheckoutResult>) => {
+    start(async () => {
+      let res: CheckoutResult;
+      try {
+        res = await run();
+      } catch {
+        toast.error(t("packs.checkoutFailed"));
+        return;
+      }
+      if (res.ok) { window.location.assign(res.url); return; }
+      // Each refusal names something the customer can act on, or an honest
+      // "not available", rather than a generic error that hides a bug.
+      toast.error(t(
+        res.reason === "payments_disabled" || res.reason === "not_mapped"
+          ? "packs.checkoutUnavailable"
+          : res.reason === "invalid_credits"
+            ? "packs.checkoutInvalidCredits"
+            : "packs.checkoutFailed",
+      ));
+    });
+  }, [t]);
+  return { pending, go };
+}
 
 /** A visual step per tier so the row reads as a climb, not four copies. */
 const TIER_ICON: LucideIcon[] = [Sparkles, Zap, Crown, Rocket];
@@ -79,8 +133,10 @@ function seatLabel(
     : t("plans.seats", { n: seats });
 }
 
-export function PricingBoard({ plans, packs, currentSlug }: {
+export function PricingBoard({ plans, packs, currentSlug, paymentsEnabled = false }: {
   plans: PlanCard[]; packs: PackCard[]; currentSlug: string;
+  /** Whether this deployment can actually take a payment. Server-decided. */
+  paymentsEnabled?: boolean;
 }) {
   const { t, locale } = useI18n();
   const [annual, setAnnual] = useState(false);
@@ -101,18 +157,21 @@ export function PricingBoard({ plans, packs, currentSlug }: {
   return (
     <div className="space-y-6">
       <PlanSection plans={plans} currentSlug={currentSlug} annual={annualOn} setAnnual={setAnnual}
-        annualAvailable={annualAvailable} annualPct={annualPct} t={t} n={n} money={money} />
+        annualAvailable={annualAvailable} annualPct={annualPct} paymentsEnabled={paymentsEnabled}
+        t={t} n={n} money={money} />
       <ComparisonSection plans={plans} t={t} n={n} />
-      {packs.length > 0 && <TopUpSection packs={packs} t={t} n={n} money={money} />}
+      {packs.length > 0 && (
+        <TopUpSection packs={packs} paymentsEnabled={paymentsEnabled} t={t} n={n} money={money} />
+      )}
     </div>
   );
 }
 
 /* ── 1. PLANS ─────────────────────────────────────────────────────────────*/
 
-function PlanSection({ plans, currentSlug, annual, setAnnual, annualAvailable, annualPct, t, n, money }: {
+function PlanSection({ plans, currentSlug, annual, setAnnual, annualAvailable, annualPct, paymentsEnabled, t, n, money }: {
   plans: PlanCard[]; currentSlug: string; annual: boolean; setAnnual: (v: boolean) => void;
-  annualAvailable: boolean; annualPct: number;
+  annualAvailable: boolean; annualPct: number; paymentsEnabled: boolean;
   t: (k: string, v?: Record<string, string | number>) => string;
   n: (v: number) => string;
   money: (cents: number, currency: string, digits?: number) => string;
@@ -157,15 +216,16 @@ function PlanSection({ plans, currentSlug, annual, setAnnual, annualAvailable, a
       <div className="grid gap-3.5 [&>*]:min-w-0 sm:grid-cols-2 xl:grid-cols-4">
         {plans.map((p, i) => (
           <PlanColumn key={p.id} plan={p} index={i} annual={annual}
-            isCurrent={p.slug === currentSlug} t={t} n={n} money={money} />
+            isCurrent={p.slug === currentSlug} paymentsEnabled={paymentsEnabled}
+            t={t} n={n} money={money} />
         ))}
       </div>
     </section>
   );
 }
 
-function PlanColumn({ plan: p, index, annual, isCurrent, t, n, money }: {
-  plan: PlanCard; index: number; annual: boolean; isCurrent: boolean;
+function PlanColumn({ plan: p, index, annual, isCurrent, paymentsEnabled, t, n, money }: {
+  plan: PlanCard; index: number; annual: boolean; isCurrent: boolean; paymentsEnabled: boolean;
   t: (k: string, v?: Record<string, string | number>) => string;
   n: (v: number) => string;
   money: (cents: number, currency: string, digits?: number) => string;
@@ -180,6 +240,10 @@ function PlanColumn({ plan: p, index, annual, isCurrent, t, n, money }: {
   // plans, and it is division, not marketing.
   const perCredit = total > 0 && effective > 0 ? (effective / 100 / total).toFixed(2) : null;
   const rows = planRows(p, t, n);
+  const { pending, go } = useCheckout(t);
+  // Payable = this deployment can charge AND this period has a Stripe price.
+  const payable = paymentsEnabled && (annual ? p.annualMapped : p.monthlyMapped);
+  const canBuy = payable && !free && !isCurrent;
 
   return (
     <article data-plan={p.slug} className={cn(
@@ -226,13 +290,26 @@ function PlanColumn({ plan: p, index, annual, isCurrent, t, n, money }: {
       )}
 
       <div className="relative mt-4">
-        <button disabled data-plan-cta className={cn(
-          "h-11 w-full rounded-xl text-sm font-semibold opacity-70",
-          isCurrent
-            ? "bg-[rgb(var(--success)/0.14)] text-success ring-1 ring-[rgb(var(--success)/0.4)]"
-            : p.featured ? "cta" : "border border-line text-muted",
-        )}>
-          {isCurrent ? t("plans.current") : t("plans.choose")}
+        {/* The free tier is the ABSENCE of a subscription, not a 0 zł one, so
+            it is never for sale. A plan with no Stripe price is not for sale
+            either — the checkout would refuse it, and a button that fails at
+            the till is worse than one that says "not available". */}
+        <button
+          disabled={!canBuy || pending}
+          onClick={() => go(() => startPlanCheckoutAction(p.id, annual ? "annual" : "monthly"))}
+          data-plan-cta
+          className={cn(
+            "h-11 w-full rounded-xl text-sm font-semibold transition-opacity",
+            !canBuy || pending ? "opacity-70" : "",
+            isCurrent
+              ? "bg-[rgb(var(--success)/0.14)] text-success ring-1 ring-[rgb(var(--success)/0.4)]"
+              : p.featured ? "cta" : "border border-line text-muted",
+          )}>
+          {isCurrent
+            ? t("plans.current")
+            : pending ? t("packs.redirecting")
+              : !payable ? t("packs.unavailable")
+                : t("plans.choose")}
         </button>
       </div>
 
@@ -372,12 +449,13 @@ function ComparisonSection({ plans, t, n }: {
 
 /* ── 3. CREDIT PACKS + CUSTOM AMOUNT ──────────────────────────────────────*/
 
-function TopUpSection({ packs, t, n, money }: {
-  packs: PackCard[];
+function TopUpSection({ packs, paymentsEnabled, t, n, money }: {
+  packs: PackCard[]; paymentsEnabled: boolean;
   t: (k: string, v?: Record<string, string | number>) => string;
   n: (v: number) => string;
   money: (cents: number, currency: string, digits?: number) => string;
 }) {
+  const { pending, go } = useCheckout(t);
   // Largest first, the way a top-up list is read — you arrive knowing roughly
   // how much you need and scan down to it.
   const ladder = useMemo(
@@ -448,11 +526,18 @@ function TopUpSection({ packs, t, n, money }: {
                 <p className="shrink-0 font-display text-[17px] font-semibold tracking-tight">
                   {money(p.priceCents, p.currency)}
                 </p>
-                <button disabled data-pack-buy className={cn(
-                  "col-span-3 h-9 shrink-0 rounded-lg px-3.5 text-[12.5px] font-semibold opacity-70 sm:col-span-1",
-                  p.featured ? "cta" : "border border-line text-muted",
-                )}>
-                  {t("packs.buy")}
+                <button
+                  disabled={!paymentsEnabled || !p.mapped || pending}
+                  onClick={() => go(() => startPackageCheckoutAction(p.id))}
+                  data-pack-buy
+                  className={cn(
+                    "col-span-3 h-9 shrink-0 rounded-lg px-3.5 text-[12.5px] font-semibold transition-opacity sm:col-span-1",
+                    !paymentsEnabled || !p.mapped || pending ? "opacity-70" : "",
+                    p.featured ? "cta" : "border border-line text-muted",
+                  )}>
+                  {pending ? t("packs.redirecting")
+                    : !paymentsEnabled || !p.mapped ? t("packs.unavailable")
+                      : t("packs.buy")}
                 </button>
               </li>
             );
@@ -465,7 +550,8 @@ function TopUpSection({ packs, t, n, money }: {
         </ul>
 
         {/* RIGHT — any amount, priced off the same ladder. */}
-        <CustomAmount packs={packs} base={base} currency={currency} t={t} n={n} money={money} />
+        <CustomAmount packs={packs} base={base} currency={currency}
+          paymentsEnabled={paymentsEnabled} t={t} n={n} money={money} />
       </div>
     </section>
   );
@@ -478,8 +564,8 @@ function TopUpSection({ packs, t, n, money }: {
  * that bracket the chosen amount — so the curve a customer sees on the slider
  * is the same curve the fixed packs are on. Nothing here is a made-up rate.
  */
-function CustomAmount({ packs, base, currency, t, n, money }: {
-  packs: PackCard[]; base: number; currency: string;
+function CustomAmount({ packs, base, currency, paymentsEnabled, t, n, money }: {
+  packs: PackCard[]; base: number; currency: string; paymentsEnabled: boolean;
   t: (k: string, v?: Record<string, string | number>) => string;
   n: (v: number) => string;
   money: (cents: number, currency: string, digits?: number) => string;
@@ -504,6 +590,7 @@ function CustomAmount({ packs, base, currency, t, n, money }: {
     return featured ? featured.credits + featured.bonusCredits : Math.round((min + max) / 2);
   });
 
+  const { pending, go } = useCheckout(t);
   const cents = useMemo(() => priceForCredits(credits, ladder), [credits, ladder]);
   const per = credits > 0 ? cents / credits : 0;
   const off = base > 0 && per > 0 ? Math.round((1 - per / base) * 100) : 0;
@@ -560,11 +647,24 @@ function CustomAmount({ packs, base, currency, t, n, money }: {
       </ul>
 
       <div className="mt-auto pt-3">
-        <button disabled data-custom-buy
-          className="cta h-11 w-full rounded-xl text-sm font-semibold opacity-70">
-          {t("packs.buyN", { n: n(credits) })}
+        {/* A custom amount needs NO Stripe price — the line item is built
+            server-side from the same rate card this slider reads — so the only
+            question is whether this deployment can charge at all. */}
+        <button
+          disabled={!paymentsEnabled || pending}
+          onClick={() => go(() => startCustomCreditsCheckoutAction(credits))}
+          data-custom-buy
+          className={cn(
+            "cta h-11 w-full rounded-xl text-sm font-semibold transition-opacity",
+            !paymentsEnabled || pending ? "opacity-70" : "",
+          )}>
+          {pending ? t("packs.redirecting")
+            : !paymentsEnabled ? t("packs.unavailable")
+              : t("packs.buyN", { n: n(credits) })}
         </button>
-        <p className="mt-1.5 text-center text-[11px] text-faint">{t("packs.soon")}</p>
+        {!paymentsEnabled && (
+          <p className="mt-1.5 text-center text-[11px] text-faint">{t("packs.soon")}</p>
+        )}
       </div>
     </div>
   );

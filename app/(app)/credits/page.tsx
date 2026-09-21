@@ -14,10 +14,20 @@ import { Diamond } from "@/components/layout/credits-control";
 import { creditLevel, CREDIT_METER_CLASS, CREDIT_REFERENCE } from "@/lib/credit-level";
 import { formatCredits, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { paymentsEnabled } from "@/lib/stripe/config";
+import { CheckoutNotice } from "@/components/plan/checkout-notice";
+import { BillingPortalButton } from "@/components/plan/billing-portal-button";
 
 export const dynamic = "force-dynamic";
 
-export default async function CreditsPage() {
+export default async function CreditsPage({ searchParams }: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  // Stripe sends the customer back here with ?checkout=success|cancelled. It
+  // is a HINT for the copy and nothing else — see components/plan/checkout-notice.
+  const params = await searchParams;
+  const checkout = params.checkout === "success" ? "success"
+    : params.checkout === "cancelled" ? "cancelled" : null;
   const supabase = await createClient();
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
@@ -43,6 +53,7 @@ export default async function CreditsPage() {
   return (
     <div>
       <PageHeader overline={t("nav.groups.account")} title={t("credits.title")} sub={t("credits.sub")} />
+      {checkout && <CheckoutNotice status={checkout} />}
 
       {/* BALANCE — one wide panel with the meter, then the two usage facts. */}
       <div className="grid gap-3.5 [&>*]:min-w-0 lg:grid-cols-[1.6fr_1fr_1fr]">
@@ -91,11 +102,17 @@ export default async function CreditsPage() {
             <Diamond size={17} />
           </span>
           <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-muted">{t("packs.onPricing")}</p>
-          <Link href="/plan"
-            className="cta inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-[13.5px] font-semibold">
-            {t("packs.topUpTitle")}
-            <ArrowRight size={15} aria-hidden />
-          </Link>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Link href="/plan"
+              className="cta inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-[13.5px] font-semibold">
+              {t("packs.topUpTitle")}
+              <ArrowRight size={15} aria-hidden />
+            </Link>
+            {/* Stripe's own screen, and only once this deployment can charge
+                at all — a portal button on a site with no Stripe key opens
+                nothing. */}
+            {paymentsEnabled() && <BillingPortalButton />}
+          </div>
         </Card>
       </section>
 

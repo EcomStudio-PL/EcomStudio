@@ -4723,6 +4723,22 @@ export type Database = {
         }
         Returns: string
       }
+      stripe_workspace_for: {
+        Args: { p_token: string | null; p_stripe_customer_id: string }
+        Returns: string
+      }
+      stripe_record_event: {
+        Args: {
+          p_token: string | null
+          p_event_id: string
+          p_event_type: string
+          p_object_id: string
+          p_workspace_id: string | null
+          p_outcome: string
+          p_detail: Json
+        }
+        Returns: Json
+      }
       stripe_customer_for: {
         Args: { p_token: string | null; p_workspace_id: string }
         Returns: string

@@ -5,6 +5,7 @@ import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { PageHeader } from "@/components/ui/page-header";
 import { PricingBoard, type PackCard, type PlanCard } from "@/components/plan/pricing-board";
 import { parsePlanCapabilities } from "@/lib/plans/capabilities";
+import { paymentsEnabled } from "@/lib/stripe/config";
 
 export const dynamic = "force-dynamic";
 
@@ -54,11 +55,17 @@ export default async function PlanPage() {
     // cannot disagree about the shape again.
     capabilities: parsePlanCapabilities(p.features),
     featured: p.featured,
+    // A plan is only sellable once it has a Stripe Price. The flag is decided
+    // here, on the server, so the button never offers what the checkout would
+    // refuse. Annual is false on every plan today — see lib/plans/pricing.ts.
+    monthlyMapped: Boolean(p.stripe_price_id_monthly),
+    annualMapped: Boolean(p.stripe_price_id_annual),
   }));
 
   const packCards: PackCard[] = (packages ?? []).map((p) => ({
     id: p.id, name: p.name, credits: p.credits, bonusCredits: p.bonus_credits,
     priceCents: p.price_cents, currency: p.currency, featured: p.featured, badge: p.badge,
+    mapped: Boolean(p.stripe_price_id),
   }));
 
   // Without an active subscription the workspace is on the free tier.
@@ -67,8 +74,16 @@ export default async function PlanPage() {
   return (
     <div>
       <PageHeader overline={t("plans.overline")} title={t("plans.title")} sub={t("plans.sub")} />
-      <PricingBoard plans={planCards} packs={packCards} currentSlug={currentSlug} />
-      <p className="mt-4 text-[13px] text-muted">{t("plans.soon")}</p>
+      {/* Whether this deployment holds BOTH Stripe secrets. Read on the
+          server; a client cannot be asked whether payments work. */}
+      <PricingBoard plans={planCards} packs={packCards} currentSlug={currentSlug}
+        paymentsEnabled={paymentsEnabled()} />
+      {/* This line said "changing plan will be available once payments are
+          connected". Once they ARE connected it is false, and a page that
+          keeps apologising for a feature it now has is its own kind of bug. */}
+      {!paymentsEnabled() && (
+        <p className="mt-4 text-[13px] text-muted">{t("plans.soon")}</p>
+      )}
     </div>
   );
 }

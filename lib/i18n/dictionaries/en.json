@@ -3108,7 +3108,17 @@
     "invoice": "VAT invoice",
     "vsSmallest": "cheaper per credit than the smallest pack",
     "onPricing": "Credit packs and a custom amount live on the Pricing page, next to the plans.",
-    "saveBasis": "Discounts are measured against the per-credit price of the smallest pack."
+    "saveBasis": "Discounts are measured against the per-credit price of the smallest pack.",
+    "redirecting": "Redirecting…",
+    "unavailable": "Unavailable",
+    "checkoutFailed": "Could not start the payment. Please try again.",
+    "checkoutUnavailable": "Payments are not available for this item yet.",
+    "checkoutInvalidCredits": "That number of credits is outside the available range.",
+    "checkoutSuccess": "Thank you. Credits appear on your account once Stripe confirms the payment.",
+    "checkoutCancelled": "The payment was cancelled. Nothing was charged.",
+    "manageBilling": "Manage billing",
+    "manageBillingSub": "Cards, invoices and your subscription — in the Stripe portal.",
+    "portalNoCustomer": "This workspace has no billing history yet."
   },
   "mobilenav": {
     "home": "Home",
