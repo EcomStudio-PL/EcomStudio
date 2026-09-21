@@ -418,6 +418,42 @@ async function main() {
     check("keyed on the INVOICE, so each period grants once",
       inv.callsTo("stripe_settle_payment")[0].args.p_provider_payment_id === "in_1");
 
+    // THE SHAPE THIS ENDPOINT DOES NOT CHOOSE. A webhook created without an
+    // explicit api_version receives the ACCOUNT's default, and that moves when
+    // Stripe upgrades the account. Between 2024-06-20 and the Basil releases
+    // the price id, the subscription and the metadata all moved. Reading only
+    // one shape means a renewal that is paid and never credited.
+    const modern = fakeDb({ plans: { [PLAN.id]: PLAN }, priceToPlan: { price_pro: PLAN.id } });
+    const modernResult = await handleStripeEvent(modern.client, "tok", {
+      id: "evt_inv_modern", type: "invoice.paid", data: { object: {
+        id: "in_2", customer: "cus_1", amount_paid: 29900, currency: "pln",
+        // No invoice.metadata, no invoice.subscription — both moved.
+        parent: { subscription_details: {
+          subscription: "sub_1", metadata: { grovbase_workspace_id: WS },
+        } },
+        lines: { data: [{ pricing: { price_details: { price: "price_pro" } } }] },
+      } },
+    });
+    check("a Basil-shaped invoice still finds the workspace and the plan",
+      modernResult.outcome === "applied" && modern.ledger === 1200,
+      "lines[].pricing.price_details.price and parent.subscription_details.metadata");
+
+    // And a workspace known only through the customer, with the modern shape.
+    const modernViaCustomer = fakeDb({
+      plans: { [PLAN.id]: PLAN }, priceToPlan: { price_pro: PLAN.id },
+      customerToWorkspace: { cus_7: WS },
+    });
+    await handleStripeEvent(modernViaCustomer.client, "tok", {
+      id: "evt_inv_dash", type: "invoice.paid", data: { object: {
+        id: "in_3", customer: "cus_7", amount_paid: 29900, currency: "pln",
+        parent: { subscription_details: { subscription: "sub_2" } },
+        lines: { data: [{ pricing: { price_details: { price: "price_pro" } } }] },
+      } },
+    });
+    check("a subscription made in the Stripe dashboard still renews credits",
+      modernViaCustomer.ledger === 1200,
+      "no GrovBase metadata anywhere — only the customer id links it back");
+
     // subscription lifecycle — state only.
     const subSync = fakeDb({ priceToPlan: { price_pro: PLAN.id } });
     const syncResult = await handleStripeEvent(subSync.client, "tok", {

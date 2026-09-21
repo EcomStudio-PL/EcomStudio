@@ -98,6 +98,39 @@ function metaOf(obj: Record<string, unknown>): Record<string, string> {
   return out;
 }
 
+/**
+ * THE INVOICE SHAPE CHANGED, AND THIS ENDPOINT DOES NOT CHOOSE WHICH IT GETS.
+ *
+ * A webhook endpoint created without an explicit `api_version` receives
+ * payloads in the ACCOUNT's default version, and that version moves when
+ * Stripe upgrades the account. Between 2024-06-20 and the Basil releases the
+ * two fields this handler needs both moved:
+ *
+ *   price id       lines.data[].price          →  lines.data[].pricing.price_details.price
+ *   subscription   invoice.subscription        →  invoice.parent.subscription_details.subscription
+ *   metadata       invoice.metadata            →  …parent.subscription_details.metadata
+ *
+ * Reading only the old shape would mean a renewal that is paid and never
+ * credited — silently, because the payment still records. Reading only the new
+ * one breaks the moment an endpoint is pinned to an older version. So both are
+ * read, newest first, and neither is assumed.
+ */
+function invoicePriceId(line: Record<string, unknown>): string | null {
+  const modern = (line.pricing as Record<string, unknown> | undefined)?.price_details;
+  if (modern && typeof modern === "object") {
+    const id = str((modern as { price?: unknown }).price);
+    if (id) return id;
+  }
+  return idOf(line.price);
+}
+
+/** The subscription an invoice belongs to, in either shape. */
+function invoiceSubscription(invoice: Record<string, unknown>): string | null {
+  const parent = invoice.parent as Record<string, unknown> | undefined;
+  const details = parent?.subscription_details as Record<string, unknown> | undefined;
+  return idOf(details?.subscription) ?? idOf(invoice.subscription);
+}
+
 /** Epoch seconds → ISO, or null. Stripe sends seconds; Postgres wants a stamp. */
 function iso(v: unknown): string | null {
   const n = int(v);
@@ -122,6 +155,15 @@ async function resolveWorkspace(
   const meta = metaOf(obj);
   const fromMeta = meta.grovbase_workspace_id ?? str(obj.client_reference_id);
   if (fromMeta) return fromMeta;
+
+  // A modern invoice carries the SUBSCRIPTION's metadata here rather than on
+  // the invoice itself, and that is where GrovBase wrote the workspace.
+  const parent = obj.parent as Record<string, unknown> | undefined;
+  const details = parent?.subscription_details as Record<string, unknown> | undefined;
+  if (details) {
+    const fromParent = metaOf(details).grovbase_workspace_id;
+    if (fromParent) return fromParent;
+  }
 
   const customer = idOf(obj.customer);
   if (!customer) return null;
@@ -346,10 +388,13 @@ async function onInvoicePaid(
 
   const lines = (invoice.lines as { data?: unknown[] } | undefined)?.data ?? [];
   const firstLine = (lines[0] ?? {}) as Record<string, unknown>;
-  const priceId = idOf(firstLine.price) ?? idOf((firstLine.pricing as Record<string, unknown> | undefined)?.price_details);
+  const priceId = invoicePriceId(firstLine);
 
+  const parentDetails = (invoice.parent as Record<string, unknown> | undefined)
+    ?.subscription_details as Record<string, unknown> | undefined;
   const planId = await planForPrice(supabase, priceId)
     ?? metaOf(invoice).grovbase_plan_id
+    ?? (parentDetails ? metaOf(parentDetails).grovbase_plan_id : undefined)
     ?? null;
   const purchase = planId ? await purchaseFromPlan(supabase, planId) : null;
 
@@ -362,7 +407,7 @@ async function onInvoicePaid(
     currency: (str(invoice.currency) ?? "pln").toUpperCase(),
     purchase,
     stripeCustomerId: idOf(invoice.customer),
-    metadata: { source: "invoice", subscription: idOf(invoice.subscription) },
+    metadata: { source: "invoice", subscription: invoiceSubscription(invoice) },
   });
 }
 
