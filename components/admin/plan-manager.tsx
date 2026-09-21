@@ -22,12 +22,19 @@ export type PlanRow = {
 
 type Limits = { max_products?: number; max_generations_monthly?: number };
 
-/** The i18n key for a capability's label, so the editor never hardcodes copy. */
+/**
+ * The i18n key for a capability's label, so the editor never hardcodes copy.
+ *
+ * ALL FOUR LIVE IN THE `admin` NAMESPACE, including the two the cennik also
+ * names. /admin is served a SCOPED dictionary (P0-03) and `plans` is not in
+ * it — borrowing `plans.row.priority` here would have rendered a humanised
+ * fallback in the editor while looking correct in the source.
+ */
 const CAPABILITY_LABEL: Record<string, string> = {
   products: "admin.cap.products",
   workspace_members: "admin.cap.members",
-  priority_queue: "plans.row.priority",
-  operator_mode: "plans.row.operator",
+  priority_queue: "admin.cap.priority",
+  operator_mode: "admin.cap.operator",
 };
 
 export function PlanManager({ plans }: { plans: PlanRow[] }) {

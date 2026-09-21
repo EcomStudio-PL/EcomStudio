@@ -892,7 +892,9 @@
     "cap.products": "Produkte",
     "cap.members": "Team-Plätze",
     "cap.unlimitedHint": "-1 = unbegrenzt",
-    "cap.extra": "Weitere in der Datenbank gespeicherte Leistungen (hier nicht editierbar):"
+    "cap.extra": "Weitere in der Datenbank gespeicherte Leistungen (hier nicht editierbar):",
+    "cap.priority": "Warteschlangen-Priorität",
+    "cap.operator": "Operator-Modus"
   },
   "support": {
     "title": "Support & Nachrichten",

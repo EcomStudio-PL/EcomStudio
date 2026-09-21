@@ -178,6 +178,15 @@ async function main() {
     check("-1 is reachable from the number field", /min=\{UNLIMITED\}/.test(src),
       "a min of 0 would make 'unlimited' untypable");
 
+    // /admin is served a SCOPED dictionary (P0-03). An editor label borrowed
+    // from the `plans` namespace renders a humanised fallback there while
+    // looking perfectly correct in the source — so every label this editor
+    // names must be an `admin.` key.
+    const labels = src.match(/CAPABILITY_LABEL[\s\S]*?\};/)?.[0] ?? "";
+    check("every capability label lives in the admin namespace",
+      labels.includes("admin.cap.") && !/"(?!admin\.)[a-z]+\./.test(labels),
+      labels.replace(/\s+/g, " "));
+
     const action = codeOnly(read("app/actions/admin.ts"));
     check("the action types features as a bag, not string[]",
       /features:\s*PlanCapabilities/.test(action) && !/features:\s*string\[\]/.test(action));

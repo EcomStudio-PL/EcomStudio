@@ -123,3 +123,12 @@ jobs:
       # product regression rather than a test problem.
       - name: Image pipeline — AVIF survives Next's sharp block
         run: npm run test:imagepipeline
+
+      # THE MONEY PATH. A forged signature, a replayed event, a metadata
+      # figure claiming a million credits — each of these is one mistake away
+      # from a ledger that does not match what anyone paid.
+      - name: Stripe — signature, exactly-once, and where credits come from
+        run: npm run test:stripe
+
+      - name: Plans — a save must never blank the cennik
+        run: npm run test:plancaps

@@ -892,7 +892,9 @@
     "cap.products": "Products",
     "cap.members": "Team seats",
     "cap.unlimitedHint": "-1 = unlimited",
-    "cap.extra": "Extra capabilities stored in the database (not editable here):"
+    "cap.extra": "Extra capabilities stored in the database (not editable here):",
+    "cap.priority": "Queue priority",
+    "cap.operator": "Operator mode"
   },
   "support": {
     "title": "Support & messages",

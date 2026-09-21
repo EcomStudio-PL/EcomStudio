@@ -66,6 +66,18 @@ const SERVER_TOKEN: Record<string, string> = {
   "/api/cron/mail": "platform scheduler (CRON_SECRET) or an admin",
   "/api/newsletter/worker": "the sending belt, driven by the same secret",
   "/api/hooks/supabase/send-email": "Supabase auth hook, verified by its own signing secret",
+  /*
+    THE ONE ROUTE THAT TURNS MONEY INTO CREDITS, and it is anonymous by
+    necessity: Stripe cannot hold a GrovBase session. What stands in for one is
+    an HMAC over the RAW request body, keyed by STRIPE_WEBHOOK_SECRET, checked
+    before anything parses the payload — and then a second proof, the dispatch
+    token, because the ledger functions refuse a caller that cannot present it.
+
+    Worth stating plainly in this table: an unauthenticated POST endpoint that
+    can grant credits is exactly the shape of route this matrix exists to keep
+    honest. It holds NO service-role client for that reason.
+  */
+  "/api/hooks/stripe": "Stripe webhook, verified by an HMAC over the raw body (STRIPE_WEBHOOK_SECRET), then gated again by the dispatch token inside every ledger function",
   "/api/waitlist": "server-to-server token (server_call_ok)",
 };
 

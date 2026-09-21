@@ -892,7 +892,9 @@
     "cap.products": "Produkty",
     "cap.members": "Miejsca w zespole",
     "cap.unlimitedHint": "-1 = bez limitu",
-    "cap.extra": "Dodatkowe możliwości zapisane w bazie (bez edycji tutaj):"
+    "cap.extra": "Dodatkowe możliwości zapisane w bazie (bez edycji tutaj):",
+    "cap.priority": "Priorytet w kolejce",
+    "cap.operator": "Tryb operatora"
   },
   "support": {
     "title": "Pomoc i wiadomości",

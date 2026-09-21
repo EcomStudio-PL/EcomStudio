@@ -35,6 +35,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # broken 0113 and the run must go red.
 MIGRATION="${MIGRATION:-$ROOT/supabase/migrations/0113_stripe_mapping_and_idempotency.sql}"
 [ -f "$MIGRATION" ] || { echo "stripe-sql: $MIGRATION not found" >&2; exit 2; }
+MIGRATION2="${MIGRATION2:-$ROOT/supabase/migrations/0114_stripe_customer_reverse_lookup.sql}"
+[ -f "$MIGRATION2" ] || { echo "stripe-sql: $MIGRATION2 not found" >&2; exit 2; }
 
 fails=0
 check() { # name, actual, expected
@@ -165,7 +167,8 @@ insert into public.credit_packages (name, credits, price_cents) values ('Standar
 insert into public.subscription_plans (slug, name, monthly_credits, price_cents) values ('pro','Pro',1200,29900);
 SQL
 
-"${PSQL[@]}" -f "$MIGRATION" >/dev/null
+"${PSQL[@]}" -f "$MIGRATION"  >/dev/null
+"${PSQL[@]}" -f "$MIGRATION2" >/dev/null
 
 W1='11111111-1111-1111-1111-111111111111'
 W2='22222222-2222-2222-2222-222222222222'
@@ -293,6 +296,50 @@ check "credit_wallets still refuses to go negative" \
   "$("${PSQL[@]}" -c "select count(*) from pg_constraint where conrelid='public.credit_wallets'::regclass and pg_get_constraintdef(oid) like '%balance >= 0%'")" "1"
 check "payments cannot hold an invented status" \
   "$("${PSQL[@]}" -c "update public.payments set status='totally_paid_trust_me' where provider_payment_id='pi_2'" 2>&1 | grep -c 'violates check' || true)" "1"
+
+echo
+echo "L. 0114 — THE REVERSE LOOKUP AND THE RECORD-ONLY DOOR"
+# A subscription created in the Stripe DASHBOARD carries no GrovBase metadata.
+# Its only link back to a workspace is the Customer id, so this lookup is what
+# stands between a paid renewal and credits that never arrive.
+check "a linked customer resolves to its workspace" \
+  "$("${PSQL[@]}" -c "select public.stripe_workspace_for('$TOKEN','cus_first')")" "$W1"
+check "an unknown customer resolves to nothing, rather than guessing" \
+  "$("${PSQL[@]}" -c "select coalesce(public.stripe_workspace_for('$TOKEN','cus_nobody')::text,'null')")" "null"
+check "an empty customer id is answered, not queried" \
+  "$("${PSQL[@]}" -c "select coalesce(public.stripe_workspace_for('$TOKEN','')::text,'null')")" "null"
+check "the wrong token cannot read the mapping" \
+  "$("${PSQL[@]}" -c "select public.stripe_workspace_for('not-the-token','cus_first')" 2>&1 | grep -c 'forbidden' || true)" "1"
+
+# THE RECORD-ONLY FUNCTION. A failed payment must leave a trace and must NEVER
+# be able to touch a payments row — the first draft reused the refund function,
+# which writes payments.status, so a stray failure could have flipped a settled
+# payment to 'failed'.
+SETTLED_STATUS=$("${PSQL[@]}" -c "select status from public.payments where provider_payment_id='pi_1'")
+check "a failure is recorded" \
+  "$("${PSQL[@]}" -c "select public.stripe_record_event('$TOKEN','evt_f1','payment_intent.payment_failed','pi_1','$W1','failed','{}'::jsonb)->>'status'")" "recorded"
+check "...and the settled payment it names is UNCHANGED" \
+  "$("${PSQL[@]}" -c "select status from public.payments where provider_payment_id='pi_1'")" "$SETTLED_STATUS"
+check "...and the balance did not move" "$(balance)" "850"
+check "the same failure event twice is a duplicate, not a second row" \
+  "$("${PSQL[@]}" -c "select public.stripe_record_event('$TOKEN','evt_f1','payment_intent.payment_failed','pi_1','$W1','failed','{}'::jsonb)->>'status'")" "duplicate_event"
+check "exactly one event row exists for it" \
+  "$("${PSQL[@]}" -c "select count(*) from public.payment_events where stripe_event_id='evt_f1'")" "1"
+check "an event id already used by a SETTLEMENT cannot be re-recorded" \
+  "$("${PSQL[@]}" -c "select public.stripe_record_event('$TOKEN','evt_1','payment_intent.payment_failed','pi_1','$W1','failed','{}'::jsonb)->>'status'")" "duplicate_event"
+check "the wrong token records nothing" \
+  "$("${PSQL[@]}" -c "select public.stripe_record_event('not-the-token','evt_f9','x','pi_1','$W1','failed','{}'::jsonb)" 2>&1 | grep -c 'forbidden' || true)" "1"
+check "...and left no row behind" \
+  "$("${PSQL[@]}" -c "select count(*) from public.payment_events where stripe_event_id='evt_f9'")" "0"
+
+echo
+echo "M. THE NEW FUNCTIONS ARE GATED THE SAME WAY AS THE OLD ONES"
+for f in stripe_workspace_for stripe_record_event; do
+  check "$f is SECURITY DEFINER" \
+    "$("${PSQL[@]}" -c "select prosecdef from pg_proc where proname='$f'")" "t"
+  check "$f pins its search_path" \
+    "$("${PSQL[@]}" -c "select count(*) from pg_proc where proname='$f' and 'search_path=public, extensions' = any(proconfig)")" "1"
+done
 
 echo
 if [ "$fails" = "0" ]; then echo "All Stripe SQL tests passed."; else echo "$fails FAILED"; fi
