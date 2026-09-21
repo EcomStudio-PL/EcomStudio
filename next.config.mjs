@@ -13,16 +13,28 @@
  *  - challenges.cloudflare.com: Turnstile on /register — its api.js
  *                 (script-src), the challenge iframe it opens (frame-src)
  *                 and the widget's own verification calls (connect-src).
+ *  - Google Analytics 4: gtag.js is fetched from www.googletagmanager.com
+ *                 (script-src) and reports to the google-analytics.com
+ *                 collectors (connect-src). Those are the two additions and
+ *                 nothing else — in particular stats.g.doubleclick.net is NOT
+ *                 listed, because it is only needed with Google Signals /
+ *                 Ads linking, which this property does not use. If Signals
+ *                 is ever switched on in GA, this is the line that has to
+ *                 change and the symptom will be blocked requests, not
+ *                 silence. `*.google-analytics.com` covers the regional
+ *                 collector (region1.…) that an EU property is routed to;
+ *                 `*.analytics.google.com` is the measurement-protocol
+ *                 endpoint gtag.js falls back to.
  * Realtime websockets are not used (no .channel() anywhere), so no wss:.
  */
 const csp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com",
+  "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://www.googletagmanager.com",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "media-src 'self' blob: https:",
   "font-src 'self' data:",
-  "connect-src 'self' https://*.supabase.co https://challenges.cloudflare.com",
+  "connect-src 'self' https://*.supabase.co https://challenges.cloudflare.com https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com",
   // 'self' is here for the CMS builder: the page preview is this app's own
   // preview route in an iframe, which is the only way a preview can answer a
   // media query the way a real 375px phone does. A container scaled with a

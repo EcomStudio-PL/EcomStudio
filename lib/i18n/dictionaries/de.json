@@ -1418,6 +1418,7 @@
     "activeHome": "Aktive Startseite",
     "homepageBadge": "Startseite",
     "setHomepage": "Als Startseite festlegen",
+    "isHomepage": "✓ Das ist die Startseite",
     "setHomepageNeedsPublish": "Seite zuerst veröffentlichen",
     "homepageSet": "Als Startseite festgelegt.",
     "homepageLocked": "Das ist die Startseite",

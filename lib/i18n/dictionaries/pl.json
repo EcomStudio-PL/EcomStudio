@@ -1418,6 +1418,7 @@
     "activeHome": "Aktywna strona główna",
     "homepageBadge": "Strona główna",
     "setHomepage": "Ustaw jako stronę główną",
+    "isHomepage": "✓ To jest strona główna",
     "setHomepageNeedsPublish": "Najpierw opublikuj tę stronę",
     "homepageSet": "Ustawiono jako stronę główną.",
     "homepageLocked": "To jest strona główna",

@@ -169,24 +169,59 @@ async function main() {
       /homepageTitle/.test(settings));
 
     /*
-      "USTAW JAKO STRONĘ GŁÓWNĄ" IS NOT A SECONDARY ACTION.
+      WHERE "USTAW JAKO STRONĘ GŁÓWNĄ" LIVES — AND WHY THIS ASSERTION FLIPPED.
 
-      It spent one revision behind the "•••" — one press further away than
-      Duplikuj, on the screen whose entire job is choosing the front door. The
-      first version of this module hid the choice on a separate settings screen
-      and that is how the panel and the public site came to disagree; burying it
-      in a menu is the same instinct with better manners.
+      An earlier revision of this guard pinned the OPPOSITE: a bordered button
+      on the card surface. That was built to the brief of the day and it was
+      wrong on the screen — a third control competing with Edytuj and Podgląd
+      made every row read like a form. The action moved into the "•••" as its
+      FIRST entry.
+
+      Recorded rather than quietly rewritten, because a guard that changes its
+      mind without saying so is a guard nobody can trust. What has NOT changed,
+      and is asserted below, is the part that actually matters: there is exactly
+      one place that can set the homepage, the current one cannot be re-set,
+      and a draft is refused with a reason.
     */
-    check("the row itself carries a visible «Ustaw jako stronę główną»",
-      /data-set-homepage=/.test(list) && /\{t\("cms\.setHomepage"\)\}/.test(list),
-      "it must be a control in the row, not a line in the overflow menu");
-    check("and it is not ALSO in the menu, which would be the duplication again",
+    check("the homepage action is in the menu, not on the card surface",
+      !/data-set-homepage=/.test(list) && /key:\s*"homepage"/.test(list),
+      "no bordered button competing with Edytuj and Podgląd");
+    check("and it is the FIRST entry, ahead of Duplikuj",
+      list.indexOf('key: "homepage"') < list.indexOf('key: "duplicate"')
+      && list.indexOf('key: "homepage"') > 0);
+    check("exactly one place can set the homepage",
       (list.match(/setHomepageAction\(page\.id\)/g) ?? []).length === 1);
-    check("the page that already is the homepage is offered nothing",
-      /!page\.isHomepage\s*&&/.test(list));
-    check("a draft says why in words, not only in a tooltip",
-      /\{t\("cms\.setHomepageNeedsPublish"\)\}/.test(list),
-      "a disabled button with a title attribute is a dead end on a phone");
+    check("the current homepage shows «To jest strona główna», disabled",
+      /page\.isHomepage[\s\S]{0,200}cms\.isHomepage[\s\S]{0,80}disabled:\s*true/.test(list),
+      "re-setting the page that already is the homepage must not look available");
+    check("a draft is refused with a reason, not a silent error",
+      /hint:\s*live\s*\?\s*undefined\s*:\s*t\("cms\.setHomepageNeedsPublish"\)/.test(list)
+      && /disabled:\s*pending\s*\|\|\s*!live/.test(list));
+
+    // The surface itself: two actions and the menu, nothing more.
+    const surface = list.slice(list.indexOf("return (\n    <div className=\"flex flex-wrap items-center justify-end"));
+    check("the card surface offers exactly Edytuj, Podgląd and the menu",
+      /common\.edit/.test(surface) && /cms\.preview/.test(surface) && /<RowMenu/.test(surface)
+      && !/cms\.setHomepage/.test(surface));
+  }
+
+  console.log("\nD3. THE MENU BEHAVES LIKE A MENU, INCLUDING ON A PHONE");
+  {
+    const list = codeOnly(read(LIST));
+    check("it is measured against the viewport and scrolls when it cannot fit",
+      /maxHeight/.test(list) && /overflow-y-auto/.test(list) && /overscroll-contain/.test(list),
+      "a fixed, portalled panel cannot be reached by scrolling the page behind it");
+    check("it flips to whichever side has room",
+      /roomBelow/.test(list) && /roomAbove/.test(list));
+    check("its width is clamped to a 320px screen",
+      /Math\.min\(MENU_WIDTH,\s*window\.innerWidth/.test(list));
+    check("a tap outside closes it, not just a mouse click",
+      /touchstart/.test(list) && /mousedown/.test(list));
+    check("role=menu is honoured with arrow keys, Home and End",
+      /ArrowDown/.test(list) && /ArrowUp/.test(list) && /"Home"/.test(list) && /"End"/.test(list),
+      "announcing role=menu and answering only Tab is worse than a plain list");
+    check("Escape closes it and returns focus to the trigger",
+      /"Escape"/.test(list) && /triggerRef\.current\?\.focus\(\)/.test(list));
   }
 
   console.log("\nD2. ONE «PODGLĄD», IN THE LIST AND IN THE EDITOR");

@@ -8,6 +8,7 @@ import { getScopedDictionary } from "@/lib/i18n/server";
 import { SITE_ORIGIN } from "@/lib/site";
 import { AuthModalMount } from "@/components/auth/auth-modal-mount";
 import { ViewportLock } from "@/components/layout/viewport-lock";
+import { GoogleAnalytics } from "@/components/analytics/google-analytics";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -123,6 +124,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {/* One toaster for the whole app. Bottom-centred and, on a phone,
                 lifted clear of the dock — see components/ui/toaster.tsx. */}
             <AppToaster />
+            {/* GA4. Renders nothing and, without
+                NEXT_PUBLIC_GOOGLE_ANALYTICS_ID, emits nothing either — so a
+                local build and an unconfigured preview carry no tag at all.
+                Last in the tree because it is the only child here that is
+                purely a side effect. */}
+            <GoogleAnalytics />
           </I18nProvider>
         </ThemeProvider>
       </body>

@@ -1418,6 +1418,7 @@
     "activeHome": "Active homepage",
     "homepageBadge": "Homepage",
     "setHomepage": "Set as homepage",
+    "isHomepage": "✓ This is the homepage",
     "setHomepageNeedsPublish": "Publish this page first",
     "homepageSet": "Set as the homepage.",
     "homepageLocked": "This is the homepage",

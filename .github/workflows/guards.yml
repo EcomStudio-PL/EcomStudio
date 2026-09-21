@@ -17,6 +17,7 @@ name: Guards
 #   test:loginkey        runs the step-up chain against a fake database
 #   test:tilebytes       proves no tile surface can serve a full original
 #   test:homepage        proves "which page is the homepage" has one spelling
+#   test:analytics       proves GA4 sends one config and one page_view per visit
 #
 # test:loginkey is here because of the 2026-09-20 P0: the second factor could
 # not issue a code on production for six days — first silently, waving everyone
@@ -35,6 +36,7 @@ name: Guards
 #   test:ledger:sql     same
 #   test:homepage:sql   same — it replays the real 0110 against real policies,
 #                       which is the half of that fix a source grep cannot see
+#   test:analytics:browser  needs a built app, a running server and Chromium
 # Those belong in a job that provisions them; adding them here half-working
 # would be worse than leaving them out, because a skipped step reads as a pass.
 # Tracked rather than pretended away.
@@ -98,6 +100,12 @@ jobs:
       # times. This asserts it is written down once.
       - name: The homepage has one source of truth
         run: npm run test:homepage
+
+      # A double page_view is invisible in the browser and permanent in the
+      # reports, and a page_location carries whatever the URL carries — which
+      # in this app includes recovery tokens and OAuth codes.
+      - name: Analytics sends one event per visit, and nothing private
+        run: npm run test:analytics
 
       # Last, because it is the one whose failure is most likely to be a real
       # product regression rather than a test problem.

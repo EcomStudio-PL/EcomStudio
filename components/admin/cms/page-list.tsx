@@ -41,9 +41,15 @@ import { PAGE_TEMPLATES } from "@/lib/cms-templates";
  *
  * TWO TIERS OF ACTION, because a row with eight equal buttons has none.
  * "Edytuj" and "Podgląd" are what an admin came for and are spelled out in
- * words; everything that changes the site — making a page the homepage,
- * publishing, duplicating, archiving, deleting — is one press away behind a
- * 44px "•••" and then a 44px labelled row. No 15px icon decides anything.
+ * words on the surface; everything that CHANGES the site — making a page the
+ * homepage, publishing, duplicating, archiving, deleting — is one press away
+ * behind a 44px "•••" and then a 44px labelled row. No 15px icon decides
+ * anything, and nothing competes with the two actions that are used daily.
+ *
+ * "Ustaw jako stronę główną" briefly sat on the card as a third bordered
+ * button. It made every row read like a form, so it moved into the menu as
+ * its FIRST entry — the most consequential action in the list, one press from
+ * the surface rather than occupying it.
  */
 
 type Props = {
@@ -320,6 +326,43 @@ function RowActions({ page, t, pending, run, onDelete }: {
 
   const items: MenuItem[] = [];
 
+  /*
+    THE HOMEPAGE ACTION LIVES IN THE MENU, FIRST.
+
+    It spent one revision as a bordered button on the card, which is not where
+    it belongs: the card's surface is for the two things an admin does dozens
+    of times a day — open the editor, look at the page — and a third control
+    competing with them made every row read like a form. Everything that
+    CHANGES the site sits behind the "•••", and choosing the front door is
+    exactly that.
+
+    It is the first entry rather than buried among Duplikuj/Usuń because it is
+    the most consequential one in the list.
+
+    THREE STATES, AND NONE OF THEM IS SILENT:
+      already the homepage → disabled, "✓ To jest strona główna"
+      a draft              → disabled, "Najpierw opublikuj tę stronę"
+      live and not current → the action
+    The middle one matters: `cms_set_homepage()` refuses a page that is not
+    live, so an enabled control there would be a button that produces an error
+    toast. Saying why up front is the same information, one step earlier.
+  */
+  items.push(page.isHomepage
+    ? {
+      key: "homepage",
+      icon: <Check size={15} strokeWidth={3} />,
+      label: t("cms.isHomepage"),
+      disabled: true,
+    }
+    : {
+      key: "homepage",
+      icon: <Home size={15} />,
+      label: t("cms.setHomepage"),
+      hint: live ? undefined : t("cms.setHomepageNeedsPublish"),
+      disabled: pending || !live,
+      onClick: () => run(setHomepageAction(page.id), "cms.homepageSet"),
+    });
+
   if (publicUrl) {
     items.push({
       key: "open",
@@ -400,41 +443,18 @@ function RowActions({ page, t, pending, run, onDelete }: {
         {t("cms.preview")}<ExternalLink size={12} aria-hidden />
       </a>
 
-      {/* MAKING A PAGE THE HOMEPAGE IS NOT A SECONDARY ACTION, so it is not
-          behind the "•••". It is the thing this screen exists to let an admin
-          do, and burying it is how the panel ended up with a separate settings
-          switch that disagreed with the public site. Every page that is not
-          already the homepage offers it, in words.
-          The page that IS the homepage offers nothing — it wears the badge
-          next to its name instead. */}
-      {!page.isHomepage && (
-        <span className="inline-flex flex-col items-end">
-          <button type="button" data-set-homepage={page.slug}
-            disabled={pending || !live}
-            title={live ? t("cms.setHomepage") : t("cms.setHomepageNeedsPublish")}
-            aria-label={live ? t("cms.setHomepage") : `${t("cms.setHomepage")} — ${t("cms.setHomepageNeedsPublish")}`}
-            onClick={() => run(setHomepageAction(page.id), "cms.homepageSet")}
-            className={cn(
-              "inline-flex h-11 items-center gap-1.5 rounded-lg border border-line px-3 text-[12.5px] font-semibold transition-colors",
-              live ? "text-ink hover:bg-raised" : "cursor-not-allowed text-muted opacity-50",
-            )}>
-            <Home size={14} aria-hidden />
-            {t("cms.setHomepage")}
-          </button>
-          {/* A disabled button with only a tooltip is a dead end on a phone,
-              so the reason is written out where a thumb can read it. */}
-          {!live && (
-            <span className="mt-0.5 px-1 text-[11px] leading-snug text-faint">
-              {t("cms.setHomepageNeedsPublish")}
-            </span>
-          )}
-        </span>
-      )}
-
+      {/* Edytuj · Podgląd · "•••" — and nothing else on the surface. The
+          homepage action is the first entry inside the menu. */}
       <RowMenu label={t("cms.moreActions", { page: page.title })} items={items} />
     </div>
   );
 }
+
+type Box = { top: number; left: number; width: number; maxHeight: number };
+
+/** Wide enough for the longest label ("Ustaw jako stronę główną") on one line,
+ *  and clamped to the viewport at placement time for a 320px phone. */
+const MENU_WIDTH = 248;
 
 type MenuItem = {
   key: string;
@@ -456,40 +476,83 @@ type MenuItem = {
  */
 function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [box, setBox] = useState<Box | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const WIDTH = 248;
 
   useEffect(() => {
     if (!open) return;
+
+    /*
+      THE PANEL IS MEASURED AGAINST THE VIEWPORT, NOT HOPED ABOUT.
+
+      The first version picked a side and trusted a 420px cap. On a phone in
+      landscape, or with six entries on a short screen, that put the last
+      items under the fold with no way to reach them — the menu is portalled
+      and fixed, so the page scrolling behind it does not help. Now the
+      available space on each side is measured, the roomier side wins when
+      neither fits, and whatever is left becomes a real max-height that the
+      panel scrolls inside.
+    */
     const place = () => {
       const r = triggerRef.current?.getBoundingClientRect();
       if (!r) return;
       const margin = 8;
-      const height = Math.min(items.length * 48 + 12, 420);
-      const below = window.innerHeight - r.bottom;
-      setPos({
-        top: below < height + margin && r.top > below ? Math.max(margin, r.top - 6 - height) : r.bottom + 6,
-        left: Math.min(Math.max(margin, r.right - WIDTH), window.innerWidth - WIDTH - margin),
+      const gap = 6;
+      const width = Math.min(MENU_WIDTH, window.innerWidth - margin * 2);
+      const desired = items.length * 52 + 8;
+      const roomBelow = window.innerHeight - r.bottom - gap - margin;
+      const roomAbove = r.top - gap - margin;
+      const below = roomBelow >= desired || roomBelow >= roomAbove;
+      const room = below ? roomBelow : roomAbove;
+      const maxHeight = Math.max(
+        // Never collapse to a sliver: below this it scrolls instead.
+        Math.min(160, window.innerHeight - margin * 2),
+        Math.min(desired, room),
+      );
+      setBox({
+        top: below ? r.bottom + gap : Math.max(margin, r.top - gap - maxHeight),
+        left: Math.min(Math.max(margin, r.right - width), window.innerWidth - width - margin),
+        width,
+        maxHeight,
       });
     };
     place();
+
+    const close = () => { setOpen(false); triggerRef.current?.focus(); };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setOpen(false); triggerRef.current?.focus(); }
+      if (e.key === "Escape") { e.stopPropagation(); close(); return; }
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+      // `role="menu"` promises arrow keys. A menu that announces itself as one
+      // and then only answers Tab is worse than a plain list of buttons.
+      const focusable = Array.from(
+        panelRef.current?.querySelectorAll<HTMLElement>("[role='menuitem']:not([disabled])") ?? [],
+      );
+      if (focusable.length === 0) return;
+      e.preventDefault();
+      const here = focusable.indexOf(document.activeElement as HTMLElement);
+      const next = e.key === "Home" ? 0
+        : e.key === "End" ? focusable.length - 1
+        : e.key === "ArrowDown" ? (here + 1) % focusable.length
+        : (here - 1 + focusable.length) % focusable.length;
+      focusable[next]?.focus();
     };
-    const onDown = (e: MouseEvent) => {
+    // `mousedown` misses a tap that never becomes a click (a scroll gesture
+    // started outside the panel), so the touch event is listened for too.
+    const onOutside = (e: Event) => {
       const target = e.target as Node;
       if (panelRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
       setOpen(false);
     };
     window.addEventListener("keydown", onKey);
-    window.addEventListener("mousedown", onDown);
+    window.addEventListener("mousedown", onOutside);
+    window.addEventListener("touchstart", onOutside, { passive: true });
     window.addEventListener("scroll", place, true);
     window.addEventListener("resize", place);
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("mousedown", onOutside);
+      window.removeEventListener("touchstart", onOutside);
       window.removeEventListener("scroll", place, true);
       window.removeEventListener("resize", place);
     };
@@ -507,10 +570,13 @@ function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
         <MoreHorizontal size={16} aria-hidden />
       </button>
 
-      {open && pos && createPortal(
+      {open && box && createPortal(
         <div ref={panelRef} role="menu" aria-label={label} data-row-menu-panel
-          style={{ position: "fixed", top: pos.top, left: pos.left, width: WIDTH }}
-          className="workspace overlay animate-pop z-[80] rounded-xl p-1">
+          style={{
+            position: "fixed", top: box.top, left: box.left,
+            width: box.width, maxHeight: box.maxHeight,
+          }}
+          className="workspace overlay animate-pop thin-scroll z-[80] overflow-y-auto overscroll-contain rounded-xl p-1">
           {items.map((item) => {
             const body = (
               <>
