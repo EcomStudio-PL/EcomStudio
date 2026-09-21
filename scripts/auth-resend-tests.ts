@@ -182,13 +182,49 @@ console.log("\nE. COOLDOWN *IS* THE CODE LIFETIME");
 
   const ui = await import("node:fs").then((fs) =>
     fs.readFileSync("components/auth/security-check.tsx", "utf8"));
-  check("the expiry countdown still runs on the SERVER's expires_at",
-    /setExpiresAt\(Date\.now\(\) \+ res\.expiresInSeconds \* 1000\)/.test(ui));
+  // The DEADLINE'S SOURCE, not one spelling of it. This used to pin the exact
+  // literal `setExpiresAt(Date.now() + res.expiresInSeconds * 1000)`, which
+  // broke the moment the assignment grew a ternary — while the property it
+  // cared about was still true. What matters is that every deadline is built
+  // from the server's number and from nothing the client invented.
+  {
+    const assignments = [...ui.matchAll(/setExpiresAt\(([\s\S]*?)\);/g)].map((m) => m[1]!);
+    /*
+      Three shapes are legitimate, and only three:
+        · derived from the server's own number (expiresInSeconds / waitSeconds)
+        · exactly `Date.now()` — the server answered {reason:'expired'} on a
+          verify, so the deadline IS now; zero is a verdict, not an invention
+        · `null` — unknown, which unlocks the field rather than locking it
+      Anything else is the client deciding how long a code lives.
+    */
+    check("every deadline is computed from the SERVER's expires_at",
+      assignments.length > 0
+      && assignments.every((a) =>
+        /res\.(expiresInSeconds|waitSeconds)/.test(a)
+        || /^\s*Date\.now\(\)\s*$/.test(a)
+        || /^\s*null\s*$/.test(a)),
+      JSON.stringify(assignments.map((a) => a.replace(/\s+/g, " ").slice(0, 70))));
+    check("and none of them invents a duration in the client",
+      !assignments.some((a) => /\b(30|59|60|120|300)\b/.test(a)),
+      "a hardcoded number here is a second clock by another name");
+  }
   check("there is no second deadline in the component at all",
     !/resendAt/.test(ui) && !/resendWindow/.test(ui),
     "two useState deadlines are two clocks, and they drifted");
   check("the resend countdown is DERIVED from the expiry, not stored",
     /const cooldown = remaining \?\? 0;/.test(ui));
+  /*
+    THE STUCK-STATE GUARD. The deadline a successful resend replaces is in the
+    PAST — that is precisely why the server allowed the resend. So a branch
+    that skips the update leaves `expired` true: the input stays disabled and
+    the person cannot type the code that has just landed in their inbox. The
+    assignment must be unconditional, degrading to null (no countdown, field
+    unlocked) rather than to a stale deadline (field locked).
+  */
+  check("a successful resend never leaves the OLD, already-passed deadline",
+    /res\.status === "sent"[\s\S]{0,1200}?setExpiresAt\(\s*\n?\s*typeof res\.expiresInSeconds === "number" && res\.expiresInSeconds > 0/.test(ui)
+    && /\?\s*Date\.now\(\) \+ res\.expiresInSeconds \* 1000\s*\n?\s*:\s*null,/.test(ui),
+    "keeping a past deadline locks the input against the code that just arrived");
   check("a server refusal adopts the server's own remaining time",
     /res\.status === "cooldown"[\s\S]{0,300}?setExpiresAt\(Date\.now\(\) \+ res\.waitSeconds \* 1000\)/.test(ui));
   check("and it tells the person why, instead of silently re-arming",

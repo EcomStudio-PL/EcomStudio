@@ -176,11 +176,22 @@ export function SecurityCheck({ next }: { next: string }) {
         if (res.status === "sent") {
           setNotice(t("security.resent"));
           setDigits("");
-          // A fresh code restarts the one clock; the old code is already dead,
-          // because opening a new challenge spends the previous row.
-          if (typeof res.expiresInSeconds === "number" && res.expiresInSeconds > 0) {
-            setExpiresAt(Date.now() + res.expiresInSeconds * 1000);
-          }
+          /*
+            A FRESH CODE RESTARTS THE ONE CLOCK — AND NEVER LEAVES THE OLD ONE.
+
+            The deadline being replaced is in the PAST: that is why the server
+            allowed a resend at all. So an early return here, or a guard that
+            silently skips the update, would leave `expired` true — the input
+            stays disabled and the person cannot type the code that has just
+            arrived in their inbox. Being stuck is the worst outcome this
+            screen has, so a missing number degrades to "no countdown" (null),
+            which unlocks the field, rather than to a stale one that locks it.
+          */
+          setExpiresAt(
+            typeof res.expiresInSeconds === "number" && res.expiresInSeconds > 0
+              ? Date.now() + res.expiresInSeconds * 1000
+              : null,
+          );
         } else if (res.status === "cooldown") {
           // The server refused: a code is still alive. Adopt ITS remaining
           // lifetime — the screen was out of step with the server, and the
