@@ -171,10 +171,43 @@ console.log("\nA. TEST 1 — A SESSION DOES NOT CLOSE THE LOGIN DOOR");
     check(`${p} still calls the gate`, /enforceLoginSecurity\(supabase\)/.test(read(p)));
   }
 
-  // And the login page itself must never be the thing that starts a challenge.
-  const loginPage = read("app/(auth)/login/page.tsx");
-  check("the login page opens no challenge of its own",
-    !/ensureChallenge|login_challenge|security-check/.test(loginPage));
+  /*
+    THE MIDDLEWARE IS NOT THE ONLY PLACE THAT CAN BOUNCE A SIGNED-IN VISITOR.
+
+    This check exists because the first version of this suite did not have it,
+    and it reported /admin/login as fixed while it was not. A0 runs
+    updateSession(), which is the middleware — but app/(auth)/admin/login
+    carried its own `if (user) redirect("/admin")`, justified by a comment
+    saying the middleware already did it. Removing the middleware redirect left
+    the page's copy behind, and the whole chain still completed:
+
+      /admin/login → redirect("/admin") → app/admin/layout.tsx runs
+      enforceLoginSecurity for the OLD session → /auth/security-check → a code
+      is e-mailed to the account the operator was trying to leave.
+
+    So the rule is asserted over EVERY auth door as a class, not at the one
+    address somebody remembered. A door that reads the session and redirects on
+    it is the defect, wherever it is written.
+  */
+  const AUTH_DOORS = [
+    "app/(auth)/login/page.tsx",
+    "app/(auth)/register/page.tsx",
+    "app/(auth)/forgot-password/page.tsx",
+    "app/(auth)/reset-password/page.tsx",
+    "app/(auth)/admin/login/page.tsx",
+    "app/(auth)/layout.tsx",
+  ];
+  for (const door of AUTH_DOORS) {
+    const src = read(door);
+    // Comments are stripped first: these files EXPLAIN the removed redirect,
+    // and prose must not be able to fail — or pass — a guard about code.
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    check(`${door} does not redirect on the presence of a session`,
+      !(/getUser\(\)/.test(code) && /redirect\(/.test(code)),
+      "reading the session and bouncing on it is the defect, wherever it lives");
+    check(`${door} opens no challenge of its own`,
+      !/ensureChallenge|login_challenge|security-check/.test(code));
+  }
   const signIn = read("app/auth/sign-in/route.ts");
   check("the sign-in route opens no challenge either — the gate does that",
     !/ensureChallenge|login_challenge/.test(signIn));

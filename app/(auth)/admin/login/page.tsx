@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
 import { ShieldCheck } from "lucide-react";
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { LoginForm } from "@/components/auth/login-form";
@@ -57,12 +55,29 @@ export default async function AdminLoginPage({ searchParams }: {
     return typeof value === "string" ? value : undefined;
   };
 
-  // The middleware already forwards a signed-in visitor to /admin. This is the
-  // same answer computed where it cannot be skipped — a request that reaches
-  // the page with a session should never be shown a login form.
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) redirect("/admin");
+  /*
+    A SESSION DOES NOT CLOSE THIS DOOR EITHER.
+
+    This is where "if (user) redirect('/admin')" used to be, and it reproduced
+    the whole defect on its own — the middleware redirect could be removed and
+    the operator's door stayed broken, because /admin/login is exempt from the
+    protected-path block and so the request reaches this page:
+
+      admin A signed in → /admin/login → redirect('/admin')
+        → app/admin/layout.tsx runs enforceLoginSecurity FOR A (before the
+          role check)
+        → /auth/security-check
+        → a code is e-mailed to A
+
+    which is a second factor fired by navigation, for the account the operator
+    was trying to leave, with no address and no password typed. The comment
+    that used to sit here — "the middleware already forwards a signed-in
+    visitor" — is what made it read as harmless duplication.
+
+    Removing it grants nothing. The form posts to /auth/sign-in, which still
+    checks the password and the platform door, and app/admin/layout.tsx still
+    refuses to render for an account whose profiles row is not an admin.
+  */
 
   return (
     <div className="mx-auto w-full max-w-[440px]">
