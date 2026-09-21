@@ -34,6 +34,45 @@ export const APP_LINKS: readonly { path: string; key: string }[] = [
 
 export type LinkPage = { slug: string; title: string; status: string; kind?: string };
 
+/* ── WHERE A PAGE LIVES ────────────────────────────────────────────────── */
+
+export type Addressable = {
+  slug: string;
+  status: string;
+  kind?: string;
+  /** The single page that answers "/" (cms_pages.is_homepage). */
+  isHomepage?: boolean;
+  scheduledAt?: string | null;
+};
+
+/** Published, or scheduled for a moment that has already passed — the same
+ *  rule lib/server/public-site.ts enforces on the read. */
+export function pageIsLive(page: Addressable, now: number = Date.now()): boolean {
+  if (page.status === "published") return true;
+  if (page.status !== "scheduled") return false;
+  const at = page.scheduledAt ? Date.parse(page.scheduledAt) : NaN;
+  return Number.isFinite(at) && now >= at;
+}
+
+/**
+ * THE ADDRESS A VISITOR WOULD TYPE, or null when the page has none.
+ *
+ * ONE FUNCTION, because two of them drifted. The page list and the builder each
+ * decided this for themselves, and each decided it slightly differently — the
+ * list printed "/" for any launch page whether or not it was live, while the
+ * builder linked "Podgląd" at a draft route and called it the public page.
+ *
+ * Two pages never have an address of their own:
+ *   a launch page, which only ever answers "/" and has no /premiera URL
+ *   `home`, whose slug is the SIGNED-IN dashboard route, so the CMS never
+ *          serves it and printing "/home" would be a link to someone else's page
+ */
+export function publicPathFor(page: Addressable, now: number = Date.now()): string | null {
+  if (page.isHomepage && pageIsLive(page, now)) return "/";
+  if (page.kind === "launch" || page.slug === "home") return null;
+  return pageIsLive(page, now) ? `/${page.slug}` : null;
+}
+
 export function buildLinkTargets(
   pages: readonly LinkPage[],
   anchors: readonly { anchor: string; label: string }[],

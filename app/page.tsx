@@ -136,15 +136,28 @@ export default async function LandingPage({ searchParams }: {
 
   // ── AN ORDINARY CMS PAGE AS THE FRONT DOOR ─────────────────────────────
   // The same builder, header and footer as every other public page, so what an
-  // admin arranges in the editor is exactly what ships. With nothing flagged —
-  // or a flagged page that has never been published — the curated defaults
-  // render, so "/" is never empty.
+  // admin arranges in the editor is exactly what ships.
   const [page, pageDraft] = await Promise.all([
     target ? getPublishedPage(supabase, target.slug) : Promise.resolve(null),
     target && which === "draft" ? getDraftBlocks(supabase, target.slug) : Promise.resolve([]),
   ]);
   const authored = which === "draft" ? pageDraft : (page?.blocks ?? []);
-  const blocks = (authored.length > 0 ? authored : DEFAULT_HOME_BLOCKS).filter((b) => b.visible);
+
+  /*
+    A FLAGGED PAGE RENDERS ITS OWN CONTENT. FULL STOP.
+
+    This used to read `authored.length > 0 ? authored : DEFAULT_HOME_BLOCKS`,
+    which sounds like a safety net and is actually the old bug wearing a
+    different hat: an admin who points "/" at "O nas" and gets the built-in
+    marketing landing has been overruled by a fallback, silently, with the panel
+    still claiming "O nas" is the homepage. The same disagreement, one layer in.
+
+    So the defaults are reached only when NOTHING is flagged at all — a fresh
+    install, or a database where the homepage was cleared. Then "/" is nobody's
+    page and a curated default beats a blank screen. Once a page owns "/", what
+    it contains is what ships, including nothing.
+  */
+  const blocks = (target ? authored : DEFAULT_HOME_BLOCKS).filter((b) => b.visible);
 
   const [media, data, global, nav, site] = await Promise.all([
     loadMediaIndex(supabase, collectMediaUrls(blocks)),

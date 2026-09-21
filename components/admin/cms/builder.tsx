@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Modal, ConfirmModal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { buildLinkTargets, type LinkPage } from "@/lib/cms-links";
+import { buildLinkTargets, publicPathFor, type LinkPage } from "@/lib/cms-links";
 import { Field, LinkTargetsProvider, LocaleTabs, type Locale } from "./fields";
 import { StylePanel, ResponsivePanel } from "./style-panel";
 import { CodePanel } from "./code-panel";
@@ -413,6 +413,10 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
 
   const published = page.status === "published";
   const previewSrc = `${previewPath}?v=${previewNonce}`;
+  // The real address, from the one helper that knows it. `null` means this
+  // page has none yet — a draft, or the launch page while another page is the
+  // homepage — and then no link is drawn rather than a link to nowhere.
+  const publicUrl = publicPathFor(page);
   const widths = DEVICE_PRESETS[device];
 
   useEffect(() => { setWidth(DEVICE_PRESETS[device][0]); }, [device]);
@@ -502,10 +506,21 @@ export function Builder({ page, blocks: initial, templates = [], pages = [], pre
             className="flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-ink">
             <History size={15} aria-hidden />
           </Link>
-          <a href={previewPath} target="_blank" rel="noreferrer" data-page-preview
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] font-medium transition-colors hover:bg-raised">
-            {t("cms.preview")}<ExternalLink size={12} aria-hidden />
-          </a>
+          {/* ONE PODGLĄD, AND THIS IS NOT IT.
+              A link labelled "Podgląd" used to sit here, opening /podglad/<slug>
+              in a new tab — the same route the preview PANE below already shows
+              in an iframe, with a device switcher and a fullscreen button. Two
+              controls with one name doing one job, and on a phone the second of
+              them sat directly under a tab also called "Podgląd".
+              The pane is the preview. This is the other thing an admin
+              sometimes wants — the real public address — so it says so, and it
+              only appears when the page actually has one. */}
+          {publicUrl && (
+            <a href={publicUrl} target="_blank" rel="noreferrer" data-page-open-public
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] font-medium transition-colors hover:bg-raised">
+              {t("cms.openPublic")}<ExternalLink size={12} aria-hidden />
+            </a>
+          )}
           <Button size="sm" disabled={pending} onClick={publish} data-page-publish>
             {pending ? <Loader2 size={14} aria-hidden className="animate-spin" /> : null}
             {t("cms.publish")}

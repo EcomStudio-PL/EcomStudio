@@ -14,6 +14,7 @@ import {
   publishPageAction, unpublishPageAction, setHomepageAction, seedPublicPagesAction,
 } from "@/app/actions/cms";
 import { slugify, slugProblem, type PageRow } from "@/lib/services/cms";
+import { publicPathFor } from "@/lib/cms-links";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Input, Label, Select } from "@/components/ui/input";
@@ -142,7 +143,7 @@ export function PageList({ pages, editors, locale }: Props) {
                   </Link>
                   {p.isHomepage && <HomeBadge t={t} />}
                 </td>
-                <td className="px-4 py-3"><code className="text-[12px] text-faint">{publicPath(p)}</code></td>
+                <td className="px-4 py-3"><Address page={p} /></td>
                 <td className="px-4 py-3 text-[12.5px] text-muted">{t(`cms.kind.${p.kind}`)}</td>
                 {/* Every page holds all three languages in the same sections —
                     there is no per-language copy of a page to list. */}
@@ -171,7 +172,7 @@ export function PageList({ pages, editors, locale }: Props) {
                 <Link href={`/admin/www/${p.slug}`} className="block truncate text-sm font-semibold">
                   {p.title}
                 </Link>
-                <code className="text-[11.5px] text-faint">{publicPath(p)}</code>
+                <Address page={p} small />
               </div>
               <StatusBadge status={p.status} t={t} />
             </div>
@@ -313,33 +314,18 @@ function RowActions({ page, t, pending, run, onDelete }: {
   const archived = page.status === "archived";
   const live = page.status === "published"
     || (page.status === "scheduled" && !!page.scheduledAt && Date.parse(page.scheduledAt) <= Date.now());
-  // The launch page has no URL of its own — it answers "/" when it is the
-  // active homepage and is unreachable otherwise.
-  const hasPublicUrl = page.kind === "launch" ? page.isHomepage : live;
+  // One helper decides where a page lives; `null` means it has no address yet.
+  const publicUrl = publicPathFor(page);
   const seeded = page.slug === "home" || page.kind === "launch";
 
   const items: MenuItem[] = [];
 
-  // MAKING A PAGE THE HOMEPAGE. Offered only where it can actually work: the
-  // page that already is one has nothing to do, and an unpublished page is
-  // refused by the server anyway — saying so here beats an error toast.
-  if (!page.isHomepage) {
-    items.push({
-      key: "home",
-      icon: <Home size={15} />,
-      label: t("cms.setHomepage"),
-      hint: live ? undefined : t("cms.setHomepageNeedsPublish"),
-      disabled: pending || !live,
-      onClick: () => run(setHomepageAction(page.id), "cms.homepageSet"),
-    });
-  }
-
-  if (hasPublicUrl) {
+  if (publicUrl) {
     items.push({
       key: "open",
       icon: <ExternalLink size={15} />,
       label: t("cms.openPublic"),
-      href: publicPath(page),
+      href: publicUrl,
       external: true,
     });
   }
@@ -399,15 +385,52 @@ function RowActions({ page, t, pending, run, onDelete }: {
   });
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-1">
+    <div className="flex flex-wrap items-center justify-end gap-x-1 gap-y-1">
       <Link href={`/admin/www/${page.slug}`}
         className="inline-flex h-11 items-center rounded-lg px-3 text-[13px] font-semibold text-accent transition-colors hover:bg-raised">
         {t("common.edit")}
       </Link>
+      {/* ONE PODGLĄD. The row used to carry this link AND a second bare
+          external-link icon pointing at the live URL — two adjacent icons, one
+          of them unlabelled, both opening a page. The live URL is now a named
+          entry ("Otwórz stronę") in the menu, where it cannot be mistaken for
+          this. */}
       <a href={`/podglad/${page.slug}`} target="_blank" rel="noreferrer"
         className="inline-flex h-11 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium text-muted transition-colors hover:bg-raised hover:text-ink">
         {t("cms.preview")}<ExternalLink size={12} aria-hidden />
       </a>
+
+      {/* MAKING A PAGE THE HOMEPAGE IS NOT A SECONDARY ACTION, so it is not
+          behind the "•••". It is the thing this screen exists to let an admin
+          do, and burying it is how the panel ended up with a separate settings
+          switch that disagreed with the public site. Every page that is not
+          already the homepage offers it, in words.
+          The page that IS the homepage offers nothing — it wears the badge
+          next to its name instead. */}
+      {!page.isHomepage && (
+        <span className="inline-flex flex-col items-end">
+          <button type="button" data-set-homepage={page.slug}
+            disabled={pending || !live}
+            title={live ? t("cms.setHomepage") : t("cms.setHomepageNeedsPublish")}
+            aria-label={live ? t("cms.setHomepage") : `${t("cms.setHomepage")} — ${t("cms.setHomepageNeedsPublish")}`}
+            onClick={() => run(setHomepageAction(page.id), "cms.homepageSet")}
+            className={cn(
+              "inline-flex h-11 items-center gap-1.5 rounded-lg border border-line px-3 text-[12.5px] font-semibold transition-colors",
+              live ? "text-ink hover:bg-raised" : "cursor-not-allowed text-muted opacity-50",
+            )}>
+            <Home size={14} aria-hidden />
+            {t("cms.setHomepage")}
+          </button>
+          {/* A disabled button with only a tooltip is a dead end on a phone,
+              so the reason is written out where a thumb can read it. */}
+          {!live && (
+            <span className="mt-0.5 px-1 text-[11px] leading-snug text-faint">
+              {t("cms.setHomepageNeedsPublish")}
+            </span>
+          )}
+        </span>
+      )}
+
       <RowMenu label={t("cms.moreActions", { page: page.title })} items={items} />
     </div>
   );
@@ -547,6 +570,16 @@ function HomeBadge({ t, inline }: { t: T; inline?: boolean }) {
   );
 }
 
+function Address({ page, small }: { page: PageRow; small?: boolean }) {
+  const { text, live } = addressLabel(page);
+  return (
+    <code data-page-address={page.slug}
+      className={cn(small ? "text-[11.5px]" : "text-[12px]", live ? "text-faint" : "text-faint/60")}>
+      {text}
+    </code>
+  );
+}
+
 function StatusBadge({ status, t }: { status: string; t: (k: string) => string }) {
   const tone = status === "published" ? "success"
     : status === "scheduled" ? "info"
@@ -555,16 +588,17 @@ function StatusBadge({ status, t }: { status: string; t: (k: string) => string }
 }
 
 /**
- * The address a visitor would type. "/" belongs to whichever page carries the
- * flag — not to a slug.
+ * What the address column prints.
  *
- * Two pages have no address of their own: the launch page, which only ever
- * answers "/", and `home`, whose slug collides with the signed-in dashboard
- * route and is therefore never served from the CMS. Printing "/home" for the
- * second one would be a link to somebody else's page.
+ * The live address comes from `publicPathFor` — the one helper the builder
+ * uses too, so the two screens cannot disagree about where a page lives. A page
+ * that is not live yet still shows the address it WILL have, dimmed, because
+ * "—" on every draft would make the column useless; and the two pages that
+ * never get an address of their own say so.
  */
-function publicPath(page: PageRow): string {
-  if (page.isHomepage) return "/";
-  if (page.kind === "launch" || page.slug === "home") return "—";
-  return `/${page.slug}`;
+function addressLabel(page: PageRow): { text: string; live: boolean } {
+  const live = publicPathFor(page);
+  if (live) return { text: live, live: true };
+  if (page.kind === "launch" || page.slug === "home") return { text: "—", live: false };
+  return { text: `/${page.slug}`, live: false };
 }

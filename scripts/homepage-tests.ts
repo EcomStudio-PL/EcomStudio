@@ -52,6 +52,8 @@ const ACTIONS = "app/actions/cms.ts";
 const LIST = "components/admin/cms/page-list.tsx";
 const SETTINGS = "components/admin/site-settings.tsx";
 const SERVICE = "lib/services/cms.ts";
+const BUILDER = "components/admin/cms/builder.tsx";
+const LINKS = "lib/cms-links.ts";
 
 async function main() {
   console.log("A. ONE RESOLVER, AND IT READS THE FLAG ON THE PAGE");
@@ -119,6 +121,20 @@ async function main() {
     check("nothing that is not flagged and live falls through to a blank page",
       /DEFAULT_HOME_BLOCKS/.test(route));
 
+    /*
+      THE FALLBACK MAY NOT OVERRULE THE FLAG.
+
+      `authored.length > 0 ? authored : DEFAULT_HOME_BLOCKS` reads as a safety
+      net and is the original bug in a new place: point "/" at "O nas", get the
+      built-in landing, and the panel still says "O nas". The defaults are for
+      the case where NO page is flagged at all.
+    */
+    check("a flagged page renders its own content, never the built-in default",
+      /\btarget\s*\?\s*authored\s*:\s*DEFAULT_HOME_BLOCKS/.test(route),
+      "the choice must be on whether a page is flagged, not on whether it has blocks");
+    check("and the old length-based fallback is gone",
+      !/authored\.length\s*>\s*0\s*\?/.test(route));
+
     // THE LAUNCH PAGE IS APPROVED AND MUST RENDER EXACTLY AS IT DID. The route
     // may decide WHETHER to render it; it may not change WHAT it renders with.
     const props = [...route.matchAll(/<LaunchPage([\s\S]*?)\/>/g)]
@@ -151,6 +167,57 @@ async function main() {
       !/setHomepageModeAction/.test(settings) && !/data-home-mode/.test(settings));
     check("it reports the homepage instead of setting it",
       /homepageTitle/.test(settings));
+
+    /*
+      "USTAW JAKO STRONĘ GŁÓWNĄ" IS NOT A SECONDARY ACTION.
+
+      It spent one revision behind the "•••" — one press further away than
+      Duplikuj, on the screen whose entire job is choosing the front door. The
+      first version of this module hid the choice on a separate settings screen
+      and that is how the panel and the public site came to disagree; burying it
+      in a menu is the same instinct with better manners.
+    */
+    check("the row itself carries a visible «Ustaw jako stronę główną»",
+      /data-set-homepage=/.test(list) && /\{t\("cms\.setHomepage"\)\}/.test(list),
+      "it must be a control in the row, not a line in the overflow menu");
+    check("and it is not ALSO in the menu, which would be the duplication again",
+      (list.match(/setHomepageAction\(page\.id\)/g) ?? []).length === 1);
+    check("the page that already is the homepage is offered nothing",
+      /!page\.isHomepage\s*&&/.test(list));
+    check("a draft says why in words, not only in a tooltip",
+      /\{t\("cms\.setHomepageNeedsPublish"\)\}/.test(list),
+      "a disabled button with a title attribute is a dead end on a phone");
+  }
+
+  console.log("\nD2. ONE «PODGLĄD», IN THE LIST AND IN THE EDITOR");
+  {
+    const list = codeOnly(read(LIST));
+    const builder = codeOnly(read(BUILDER));
+
+    // The list used to draw "Podgląd" and, next to it, a bare external-link
+    // icon opening the live URL — two adjacent controls, one unlabelled.
+    check("the list has exactly one control named Podgląd",
+      (list.match(/t\("cms\.preview"\)/g) ?? []).length === 1,
+      "the live URL belongs in the menu as «Otwórz stronę»");
+    check("and the live address comes from the shared helper",
+      /publicPathFor\(/.test(list) && !/function publicPath\(/.test(list));
+    const links = codeOnly(read(LINKS));
+    check("which lives in one place both screens import",
+      /export function publicPathFor/.test(links) && /export function pageIsLive/.test(links),
+      "the list and the builder each had their own idea of where a page lives, and they differed");
+
+    // The editor had a toolbar link named "Podgląd" sitting above a PANE named
+    // "Podgląd" showing the same route in an iframe — and below xl the two were
+    // stacked on top of each other.
+    check("the editor's toolbar no longer repeats the preview pane",
+      !/href=\{previewPath\}/.test(builder),
+      "the pane IS the preview; a second link to /podglad is the duplicate");
+    check("what it offers instead is named «Otwórz stronę»",
+      /data-page-open-public/.test(builder) && /t\("cms\.openPublic"\)/.test(builder));
+    check("and it only appears when the page really has an address",
+      /publicUrl\s*&&/.test(builder) && /publicPathFor\(page\)/.test(builder));
+    check("the preview pane and its fullscreen view are untouched",
+      /data-cms-frame/.test(builder) && /data-close-fullscreen/.test(builder));
   }
 
   console.log("\nE. EVERY MUTATION IS ADMIN-ONLY, SERVER-SIDE, AND ATOMIC");
@@ -202,8 +269,25 @@ async function main() {
       check(`the copy carries ${column}`,
         new RegExp(`select\\("[^"]*\\b${column}\\b`).test(body) && new RegExp(`\\b${column}:`).test(body));
     }
+    /*
+      A FIELD THE COPY WRITES MUST BE A FIELD THE READ BROUGHT BACK.
+
+      This is the listAssets/metadata bug in another table: the insert names
+      `audience: b.audience`, the projection forgets to select it, and the copy
+      is written with `undefined` — silently, with types perfectly happy,
+      because `b` is typed from a select list that a type checker has no opinion
+      about. So the two lists are compared rather than each asserted alone.
+    */
+    const service = codeOnly(read(SERVICE));
+    const blockSelect = service.match(/BLOCK_SELECT\s*=\s*"([^"]+)"/)?.[1] ?? "";
+    check("the block projection is findable at all", blockSelect.length > 0,
+      "if this is empty every comparison below is vacuous");
+
     for (const field of ["content", "style", "code", "show_from", "show_until", "audience"]) {
       check(`and every section's ${field}`, new RegExp(`\\b${field}:`).test(body));
+      check(`  …which listBlocks actually selects`,
+        new RegExp(`\\b${field}\\b`).test(blockSelect),
+        `BLOCK_SELECT = "${blockSelect}"`);
     }
 
     check("the copy is a draft", /status:\s*"draft"/.test(body));
