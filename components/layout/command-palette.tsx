@@ -74,8 +74,18 @@ const POPULAR_COUNT = 6;
  */
 export function CommandPalette({
   isAdmin, navAdmin, availability, popular: popularKeys, wide = false, iconOnly = false,
+  localOnly = false,
 }: {
   isAdmin: boolean; wide?: boolean;
+  /**
+   * Search the TOOL INDEX only, and never the account's own content.
+   *
+   * The public product page mounts this for visitors who have no account for
+   * /api/search to search. The local half — every tool, category and page, by
+   * name — is exactly what they came for and needs no session; the network
+   * half would ask a question whose only possible answer is 401.
+   */
+  localOnly?: boolean;
   /**
    * The same map the menus read. Search is a menu too: a module the drawer
    * hides must not stay reachable through a tab and a row here.
@@ -267,6 +277,12 @@ export function CommandPalette({
    */
   useEffect(() => {
     const term = q.trim();
+    // NOBODY TO SEARCH FOR. /api/search answers 401 with an empty list when
+    // there is no session, so on the public product page this request would
+    // fire on every second keystroke to be told, correctly, nothing. The tool
+    // index above it is local and works for everyone, which is the half a
+    // visitor came for.
+    if (localOnly) { setHits([]); setLoading(false); return; }
     if (term.length < 2) { setHits([]); setLoading(false); return; }
     setLoading(true);
     const ctrl = new AbortController();
@@ -279,7 +295,7 @@ export function CommandPalette({
       finally { setLoading(false); }
     }, 220);
     return () => { clearTimeout(id); ctrl.abort(); };
-  }, [q]);
+  }, [q, localOnly]);
 
   function rememberQuery(term: string) {
     if (term.trim().length < 2) return;

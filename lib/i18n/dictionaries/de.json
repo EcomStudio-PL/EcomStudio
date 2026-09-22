@@ -5222,5 +5222,24 @@
     "sequence.offsetMinutes": "+{n} Min.",
     "sequence.stepN": "Nachricht {n}",
     "form.suppressed": "Diese Adresse wurde von unserer Liste abgemeldet, deshalb tragen wir sie nicht automatisch wieder ein. Nutze den Link „Doch wieder anmelden\" aus der Abmeldebestätigung oder schreib uns."
+  },
+  "home2": {
+    "startLead": "Lade ein Produktfoto hoch und beschreibe, was entstehen soll",
+    "startCta": "Erstellen",
+    "startHint": "Der Button öffnet Generator Grovshot — dort lädst du Fotos hoch und wählst den Stil.",
+    "noPhoto": "Noch kein Foto? Probiere ein Beispiel:",
+    "sample": "Beispiel {n}",
+    "tryFree": "Alle ansehen",
+    "sec.effects": "Effekt wählen",
+    "sec.effectsSub": "Fertige Stile, die dein Produkt hervorheben.",
+    "sec.workshop": "Foto-Werkstatt",
+    "sec.workshopSub": "Hintergrund, Schatten, Ausschnitt und Dateigröße — an deinen eigenen Fotos.",
+    "bannerTag": "Generator",
+    "bannerLead": "Produktfotos in mehreren Stilen auf einmal, aus einer einzigen Handyaufnahme. Bildausschnitt, Format und Anzahl bestimmst du.",
+    "bannerCta": "Am eigenen Produkt testen",
+    "shot1": "Studio",
+    "shot2": "Set",
+    "shot3": "Licht",
+    "sec.soon": "Diese Werkzeuge sind fertig und warten darauf, dass ihre KI-Anweisungen veröffentlicht werden. Wir schalten sie frei, wenn sie ein Ergebnis liefern — nicht früher."
   }
 }

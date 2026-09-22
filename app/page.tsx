@@ -7,6 +7,7 @@ import {
   AnnouncementBar, MinimalFooter, MinimalHeader, SiteHeader, SiteFooter,
 } from "@/components/cms/site-shell";
 import { LaunchPage } from "@/components/launch/launch-page";
+import { ProductSurface } from "@/components/home/product-surface";
 import { getLaunchStore, resolveLaunchContent, launchFieldsFromBlocks } from "@/lib/server/launch-page";
 import { getActiveHomepage, type ActiveHomepage } from "@/lib/server/homepage";
 import {
@@ -133,6 +134,20 @@ export default async function LandingPage({ searchParams }: {
       />
     );
   }
+
+  // ── THE PRODUCT ITSELF AS THE FRONT DOOR ───────────────────────────────
+  //
+  // The third kind, added in migration 0116. It renders no authored blocks and
+  // wears no marketing chrome: it IS the application's catalogue, assembled
+  // from lib/features.ts, lib/categories.ts and lib/tool-cards.ts, in the
+  // application's own top bar. A visitor sees everything and can start
+  // nothing; a customer sees the same screen with the actions live.
+  //
+  // It sits here, inside the same resolver, for the same reason the launch
+  // page does: "/" has exactly one answer, `is_homepage` gives it, and a
+  // second way to decide what the front door is would be the bug 0104 already
+  // fixed once.
+  if (target?.kind === "app") return <ProductSurface />;
 
   // ── AN ORDINARY CMS PAGE AS THE FRONT DOOR ─────────────────────────────
   // The same builder, header and footer as every other public page, so what an

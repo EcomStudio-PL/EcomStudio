@@ -5222,5 +5222,24 @@
     "sequence.offsetMinutes": "+{n} min",
     "sequence.stepN": "Wiadomość {n}",
     "form.suppressed": "Ten adres został wcześniej wypisany z naszej listy, więc nie zapiszemy go z powrotem automatycznie. Użyj linku „zapisz mnie z powrotem\" z wiadomości o wypisaniu albo napisz do nas."
+  },
+  "home2": {
+    "startLead": "Wrzuć zdjęcie produktu i opisz, co chcesz stworzyć",
+    "startCta": "Utwórz",
+    "startHint": "Przycisk otwiera Generator Grovshot — tam wgrywasz zdjęcia i wybierasz styl.",
+    "noPhoto": "Nie masz zdjęcia? Wypróbuj na przykładzie:",
+    "sample": "Przykład {n}",
+    "tryFree": "Zobacz wszystkie",
+    "sec.effects": "Wybierz efekt",
+    "sec.effectsSub": "Gotowe style, które podkreślą Twój produkt.",
+    "sec.workshop": "Warsztat zdjęć",
+    "sec.workshopSub": "Tło, cień, kadr i waga pliku — na Twoich własnych zdjęciach.",
+    "bannerTag": "Generator",
+    "bannerLead": "Zdjęcia produktowe w kilku stylach naraz — z jednego zdjęcia z telefonu. Ty wybierasz kadr, format i liczbę ujęć.",
+    "bannerCta": "Wypróbuj na swoim produkcie",
+    "shot1": "Studio",
+    "shot2": "Zestaw",
+    "shot3": "Światło",
+    "sec.soon": "Te narzędzia są już zbudowane, ale czekają na opublikowanie instrukcji AI. Włączymy je, gdy będą dowozić wynik — nie wcześniej."
   }
 }

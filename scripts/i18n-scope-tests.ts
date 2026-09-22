@@ -160,14 +160,26 @@ function scan(file: string): Scanned {
   return out;
 }
 
-function closure(entries: string[]): { namespaces: Set<string>; files: Set<string>; interpolated: string[] } {
+function closure(
+  entries: string[],
+  /**
+   * Files the walk must NOT enter.
+   *
+   * A subtree that serves a different scope than the route that renders it is
+   * not part of that route's payload — it wraps itself in <I18nScope> and asks
+   * for its own dictionary. Walking into it anyway would charge the public
+   * surface for namespaces only that subtree receives, which is how a correct
+   * page ends up demanding seventeen namespaces on every other page.
+   */
+  stopAt: ReadonlySet<string> = new Set(),
+): { namespaces: Set<string>; files: Set<string>; interpolated: string[] } {
   const files = new Set<string>();
   const namespaces = new Set<string>();
   const interpolated: string[] = [];
   const stack = [...entries];
   while (stack.length) {
     const f = stack.pop()!;
-    if (files.has(f)) continue;
+    if (files.has(f) || stopAt.has(f)) continue;
     files.add(f);
     const s = scan(f);
     for (const n of s.namespaces) namespaces.add(n);
@@ -217,8 +229,26 @@ const rootEntries = all.filter((f) => !isAdmin(f) && !isApp(f));
 const appEntries = all.filter(isApp);
 const adminEntries = all.filter(isAdmin);
 
-const rootClosure = closure(rootEntries);
-const appClosure = closure([...appEntries, join(ROOT, "app/layout.tsx")]);
+/**
+ * APP-SCOPED SUBTREES RENDERED FROM A PUBLIC ROUTE.
+ *
+ * "/" can be the product itself (cms_pages.kind = 'app', migration 0116), and
+ * the product wears the application's own top bar. That bar speaks the `app`
+ * scope, so the subtree asks for it with <I18nScope> exactly the way
+ * app/(app)/layout.tsx does — and therefore belongs to the APP surface for
+ * accounting, even though a public route file imports it.
+ *
+ * Each entry is a boundary in both directions: the root walk stops there, and
+ * the app walk starts there. Miss the first half and every public page pays
+ * for the bar; miss the second and the namespaces it needs are in no scope at
+ * all, which renders humanised English keys into the product's front door.
+ *
+ * Section D below proves each one really does wrap itself.
+ */
+const APP_SCOPED_SUBTREES = [join(ROOT, "components/home/product-surface.tsx")];
+
+const rootClosure = closure(rootEntries, new Set(APP_SCOPED_SUBTREES));
+const appClosure = closure([...appEntries, ...APP_SCOPED_SUBTREES, join(ROOT, "app/layout.tsx")]);
 const adminClosure = closure([...adminEntries, join(ROOT, "app/layout.tsx")]);
 
 const needRoot = [...rootClosure.namespaces].sort();
@@ -311,6 +341,14 @@ const WIRING: Array<[string, string, string]> = [
   ["app/layout.tsx", "root", "I18nProvider"],
   ["app/(app)/layout.tsx", "app", "I18nScope"],
   ["app/admin/layout.tsx", "admin", "I18nScope"],
+  // THE OTHER HALF OF APP_SCOPED_SUBTREES. The accounting above stops the root
+  // walk at this file on the strength of a promise that it serves the `app`
+  // scope itself. If that promise is ever broken — the wrapper deleted, the
+  // scope name changed — the namespaces it needs would be in NO scope and the
+  // product's front door would render humanised English keys, silently. This
+  // is the check that makes the promise enforceable.
+  ...APP_SCOPED_SUBTREES.map((f): [string, string, string] =>
+    [relative(ROOT, f), "app", "I18nScope"]),
 ];
 for (const [file, scope, component] of WIRING) {
   let src = "";

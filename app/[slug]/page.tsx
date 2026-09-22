@@ -16,6 +16,7 @@ import { collectMediaUrls, loadMediaIndex } from "@/lib/server/cms-media";
 import { loadLiveData } from "@/lib/server/cms-data";
 import { getPlatformAccess } from "@/lib/server/platform-access";
 import { pageMetadata, RESERVED_SLUGS } from "@/lib/server/cms-page";
+import { ProductSurface } from "@/components/home/product-surface";
 
 /**
  * EVERY OTHER PUBLIC PAGE.
@@ -54,6 +55,15 @@ export default async function CmsPage({ params }: Params) {
     getPlatformAccess(supabase),
     supabase.auth.getUser(),
   ]);
+
+  // THE PRODUCT SURFACE, AT ITS OWN SLUG.
+  //
+  // An `app` page has no authored blocks — its content is the tool registry —
+  // so the "no blocks is a 404" rule below would delete it. It renders here as
+  // well as at "/" for one reason: an operator has to be able to LOOK at it
+  // before deciding to make it the front door, and a preview that only exists
+  // behind a flag you have to flip first is not a preview.
+  if (page?.kind === "app") return <ProductSurface />;
 
   const visible = page?.blocks.filter((b) => b.visible) ?? [];
   // Nothing to show is a 404, not an empty shell with a header and a footer.

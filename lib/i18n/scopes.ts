@@ -72,6 +72,7 @@ const app = [
   "gtb",
   "history",
   "home",
+  "home2",
   "hub",
   "insp",
   "library",

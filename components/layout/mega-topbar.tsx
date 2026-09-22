@@ -18,6 +18,7 @@ import { AccountMenu } from "./account-menu";
 import { MenuVeil } from "./menu-veil";
 import { useDrawer } from "./shell-context";
 import { NotificationsBell, type NotificationItem } from "./notifications-bell";
+import { AuthLink } from "@/components/auth/auth-link";
 
 /**
  * MEGA TOPBAR — the customer app's ONLY chrome. Left to right:
@@ -34,8 +35,31 @@ import { NotificationsBell, type NotificationItem } from "./notifications-bell";
  * belongs to the hover target, not empty page. Opening is instant on hover
  * and on click; closing waits 200 ms so the pointer can travel.
  */
-export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdmin, notifications = [], unread = 0, availability, popularTools }: {
+export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdmin, notifications = [], unread = 0, availability, popularTools, guest = false, menu: hasMenu = true, brandHref = "/home" }: {
   name: string; email?: string; credits: number; plan: string; isAdmin?: boolean;
+  /**
+   * NOBODY IS SIGNED IN.
+   *
+   * The product homepage shows the whole catalogue to visitors, and it wears
+   * THIS bar rather than a second one built for the occasion — one header, two
+   * states, so the thing a stranger evaluates is the thing they would use.
+   *
+   * What changes is only the right-hand cluster: a wallet, a bell and an
+   * avatar are three statements about an account that does not exist. They are
+   * replaced by the two doors in. The menus, the search and "Plany" are
+   * identical, because they are identical facts about the product.
+   */
+  guest?: boolean;
+  /**
+   * Whether the hamburger is rendered. It opens the customer drawer, which
+   * lives in the (app) layout; a surface without that drawer must not show a
+   * control that would silently do nothing (useDrawer's default setter is a
+   * no-op outside DrawerProvider).
+   */
+  menu?: boolean;
+  /** Where the logo goes. The app sends you to your dashboard; the public
+   *  product page sends you to the top of itself. */
+  brandHref?: string;
   /** What the MENU should treat as admin. Same as `isAdmin` normally, but an
    *  admin previewing the app as a customer gets `false` here while keeping
    *  the admin affordances (the admin link, the wide palette) intact. */
@@ -105,15 +129,18 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
           `--header-h` follows in globals.css, so the search overlay, the sheet
           cap and the viewport-locked generator keep measuring the real bar. */}
       <div className="mx-auto flex h-[52px] w-full min-w-0 max-w-[var(--content-max)] items-center gap-1 px-2.5 sm:h-[54px] sm:gap-1.5 sm:px-4 lg:h-16 lg:gap-2 lg:px-6 xl:px-8">
-        {/* Mobile: hamburger opens the drawer (full hierarchy inside). */}
-        <button
-          type="button"
-          onClick={() => setDrawerOpen(true)}
-          aria-label={t("nav.menu")}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted transition-colors duration-200 hover:bg-raised hover:text-ink lg:hidden"
-        >
-          <Menu aria-hidden size={20} />
-        </button>
+        {/* Mobile: hamburger opens the drawer (full hierarchy inside). Not
+            rendered where there is no drawer to open — see `menu`. */}
+        {hasMenu && (
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            aria-label={t("nav.menu")}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted transition-colors duration-200 hover:bg-raised hover:text-ink lg:hidden"
+          >
+            <Menu aria-hidden size={20} />
+          </button>
+        )}
 
         {/* THE FULL LOCKUP ON A PHONE, not just the symbol.
             The wordmark used to collapse below `sm`, so every phone showed a
@@ -130,7 +157,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
             Width is overridden alongside height because the box is
             `object-contain` and would otherwise keep reserving the wide one. */}
         <Brand
-          href="/home"
+          href={brandHref}
           className="shrink-0"
           wordmarkClassName="hidden min-[360px]:inline-flex"
           markClassName="min-[360px]:hidden"
@@ -170,7 +197,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
               )}
             </div>
           ))}
-          <div className="ml-1.5"><CommandPalette isAdmin={isAdmin} navAdmin={seesRestricted} availability={avail} popular={popularTools} wide /></div>
+          <div className="ml-1.5"><CommandPalette isAdmin={isAdmin} navAdmin={seesRestricted} availability={avail} popular={popularTools} localOnly={guest} wide /></div>
         </nav>
 
         <div className="min-w-0 flex-1" />
@@ -192,9 +219,9 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
           </Link>
         )}
 
-        <CreditsControl credits={credits} />
+        {!guest && <CreditsControl credits={credits} />}
 
-        {menuVisible(avail, "/library", seesRestricted) && (
+        {!guest && menuVisible(avail, "/library", seesRestricted) && (
           <Link href="/library"
             className={cn(
               "hidden h-9 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition-colors duration-200 lg:inline-flex",
@@ -207,18 +234,39 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
         )}
 
         {/* Mobile search icon — the palette opens as a full overlay. */}
-        <div className="lg:hidden"><CommandPalette isAdmin={isAdmin} navAdmin={seesRestricted} availability={avail} popular={popularTools} iconOnly /></div>
+        <div className="lg:hidden"><CommandPalette isAdmin={isAdmin} navAdmin={seesRestricted} availability={avail} popular={popularTools} localOnly={guest} iconOnly /></div>
 
         <div className="hidden sm:block"><ThemeToggle /></div>
-        <NotificationsBell items={notifications} unread={unread} />
 
-        {/* ONE avatar treatment at every width: the picture and a caret. The
-            name was on the bar only past 2xl, so the trigger changed shape
-            between laptop and monitor — and the name is the first line inside
-            the popover anyway. */}
-        <div className="hidden lg:block">
-          <AccountMenu name={name} email={email} credits={credits} plan={plan} isAdmin={isAdmin} />
-        </div>
+        {guest ? (
+          /* THE TWO DOORS IN.
+             "Zaloguj się" is quiet and "Załóż konto" carries the CTA, because
+             a stranger reading this page is far more likely to be new than
+             returning — and the returning half knows where their own login is.
+             Below `sm` only the primary survives: at 320px the pair costs the
+             whole flexible gap this row has. */
+          <>
+            <AuthLink mode="login"
+              className="hidden h-9 items-center rounded-xl px-3 text-sm font-semibold text-muted transition-colors duration-200 hover:bg-raised hover:text-ink sm:inline-flex">
+              {t("auth.signIn")}
+            </AuthLink>
+            <AuthLink mode="register"
+              className="cta inline-flex h-9 shrink-0 items-center rounded-xl px-3.5 text-[13px] font-semibold sm:text-sm">
+              {t("auth.signUp")}
+            </AuthLink>
+          </>
+        ) : (
+          <>
+            <NotificationsBell items={notifications} unread={unread} />
+            {/* ONE avatar treatment at every width: the picture and a caret.
+                The name was on the bar only past 2xl, so the trigger changed
+                shape between laptop and monitor — and the name is the first
+                line inside the popover anyway. */}
+            <div className="hidden lg:block">
+              <AccountMenu name={name} email={email} credits={credits} plan={plan} isAdmin={isAdmin} />
+            </div>
+          </>
+        )}
         {/* No avatar button on phones: the hamburger on the left and the
             account slot in the bottom navigation already open the same
             drawer, and a third trigger is what pushed this bar past 320px. */}

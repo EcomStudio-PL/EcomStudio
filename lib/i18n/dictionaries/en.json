@@ -5222,5 +5222,24 @@
     "sequence.offsetMinutes": "+{n} min",
     "sequence.stepN": "Message {n}",
     "form.suppressed": "This address was unsubscribed from our list, so we will not put it back automatically. Use the \"subscribe me again\" link from the unsubscribe confirmation, or write to us."
+  },
+  "home2": {
+    "startLead": "Drop in a product photo and describe what you want to create",
+    "startCta": "Create",
+    "startHint": "The button opens Generator Grovshot — that is where you upload photos and pick a style.",
+    "noPhoto": "No photo yet? Try one of these:",
+    "sample": "Example {n}",
+    "tryFree": "See all",
+    "sec.effects": "Pick an effect",
+    "sec.effectsSub": "Ready-made styles that show your product off.",
+    "sec.workshop": "Photo workshop",
+    "sec.workshopSub": "Background, shadow, crop and file size — on your own photos.",
+    "bannerTag": "Generator",
+    "bannerLead": "Product photos in several styles at once, from one phone shot. You choose the framing, the format and how many shots.",
+    "bannerCta": "Try it on your product",
+    "shot1": "Studio",
+    "shot2": "Set",
+    "shot3": "Light",
+    "sec.soon": "These tools are built and waiting for their AI instructions to be published. We switch them on when they deliver a result, not before."
   }
 }

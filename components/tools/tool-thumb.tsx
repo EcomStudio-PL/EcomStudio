@@ -38,19 +38,30 @@ const TONE: Record<ToolMotif, { from: string; to: string }> = {
   video: { from: "var(--violet)", to: "var(--accent)" },
 };
 
-export function ToolThumb({ motif, icon: Icon, dimmed = false }: {
+export function ToolThumb({ motif, icon: Icon, dimmed = false, ratio = "16/10" }: {
   motif: ToolMotif;
   icon: LucideIcon;
   /** A tool that cannot be opened yet reads quieter, so the row's live tools
    *  keep the eye. */
   dimmed?: boolean;
+  /**
+   * The shape to paint in. 16/10 is the catalogue's own and stays the default.
+   *
+   * The homepage needs 4/5 because it puts DRAWN and PHOTOGRAPHED cards in one
+   * row, and a row where half the tiles are 16/10 and half are 4/5 does not
+   * read as two kinds of art — it reads as a broken grid, with every label on
+   * a different line. One shape per row, whatever is inside it.
+   */
+  ratio?: "16/10" | "4/5";
 }) {
   const tone = TONE[motif];
   return (
-    <span aria-hidden className={cn(
-      "relative block aspect-[16/10] w-full overflow-hidden rounded-xl bg-sunken",
-      dimmed && "opacity-55 saturate-50",
-    )}>
+    <span aria-hidden
+      style={{ aspectRatio: ratio }}
+      className={cn(
+        "relative block w-full overflow-hidden rounded-xl bg-sunken",
+        dimmed && "opacity-55 saturate-50",
+      )}>
       {/* The ground: a soft brand wash, brightest where the motif sits. */}
       <span className="absolute inset-0" style={{
         background:
