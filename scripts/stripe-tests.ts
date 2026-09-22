@@ -810,10 +810,10 @@ async function main() {
       else process.env.GROVBASE_SERVER_KEY = before.server;
     }
 
-    // The GET body is the whole public surface of this. It must carry the two
+    // The GET body is the whole public surface of this. It must carry the
     // booleans and NOTHING derived from a secret's content.
     const route = codeOnly(read("app/api/hooks/stripe/route.ts"));
-    const getBody = route.slice(route.indexOf("export function GET"));
+    const getBody = route.slice(route.indexOf("async function grantsAccepted"));
     check("the readiness response reports ready and mode",
       /ready: paymentsEnabled\(\)/.test(getBody) && /mode: creds\?\.mode/.test(getBody));
     check("and nothing else — no value, length, prefix or gap list",
@@ -822,6 +822,23 @@ async function main() {
       && !/process\.env/.test(getBody));
     check("GET is still a status check, never a delivery",
       !/handleStripeEvent/.test(getBody) && !/verifyStripeSignature/.test(getBody));
+
+    // AND IT MUST PROVE THE GRANT, NOT ONLY THE VARIABLE.
+    //
+    // `ready` says GROVBASE_SERVER_KEY is set and long enough. It cannot say
+    // the key is the RIGHT one: the database holds sha256 of the derived
+    // token, published when an admin saves an integration, so a rotated or
+    // newly-set key is well-formed and refused by every function on the money
+    // path. That deployment would take the payment and fail every grant —
+    // which is the same shape of lie `ready: true` told before the server key
+    // was added to it, one level deeper.
+    check("readiness also asks the database whether the token is accepted",
+      /grants: await grantsAccepted\(\)/.test(getBody));
+    check("...through the same door the webhook uses, reading no row",
+      /rpc\("stripe_catalogue"/.test(getBody)
+      && /p_package_id: null, p_plan_id: null, p_price_id: null/.test(getBody));
+    check("...and answers one boolean, never the error",
+      /return !error;/.test(getBody) && !/error\.message/.test(getBody));
   }
 
   console.log("\nJ. THE CATALOGUE READ — THE BUG FOUND BEFORE THE FIRST PAYMENT");

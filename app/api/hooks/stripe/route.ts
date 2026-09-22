@@ -129,33 +129,59 @@ export async function POST(request: Request) {
  *
  * WHY IT REPORTS READINESS, AND WHY THAT IS NOT A LEAK.
  *
- * Whether this deployment can take money is decided by two environment
- * variables that nothing outside the server can see. Before this existed, the
- * only way to find out was to try to buy something — which is a terrible way
- * to discover that a deploy dropped a secret, because the person who finds out
- * is a customer at the till. "Payments are configured" is also not a secret:
- * any signed-in visitor already learns it from whether the buy button works.
+ * Whether this deployment can take money is decided by environment variables
+ * that nothing outside the server can see. Before this existed, the only way to
+ * find out was to try to buy something — which is a terrible way to discover
+ * that a deploy dropped a secret, because the person who finds out is a
+ * customer at the till. "Payments are configured" is also not a secret: any
+ * signed-in visitor already learns it from whether the buy button works.
  *
  * WHAT IS REPORTED, and nothing else:
  *
- *   ready  both secrets present and well-formed. A key WITHOUT a webhook
- *          secret is false, because such a deployment can start a checkout and
- *          can never confirm it — the customer would pay and receive nothing.
- *   mode   "live" or "test", derived from the key's own prefix. The single
- *          fact that matters most before a first real payment, and the one
- *          thing no dashboard screenshot can settle: is the code that is
- *          RUNNING holding a live key, or a test one?
+ *   ready   all three secrets present and well-formed — see paymentsEnabled().
+ *   mode    "live" or "test", derived from the key's own prefix. The single
+ *           fact that matters most before a first real payment, and the one
+ *           thing no dashboard screenshot can settle: is the code that is
+ *           RUNNING holding a live key, or a test one?
+ *   grants  whether Postgres ACCEPTS this server's dispatch token.
  *
- * No value, no length, no prefix, no gap names, no error text. `mode` is null
- * when there is no usable key at all, which is the same information `ready`
- * already gives.
+ * WHY `grants` IS SEPARATE FROM `ready`, AND WHY IT HAD TO EXIST.
+ *
+ * `ready` is a statement about environment variables: GROVBASE_SERVER_KEY is
+ * set and long enough. That is NOT the same as the key being the right one.
+ * The database does not hold the key; it holds sha256 of the token derived
+ * from it, published into app_settings when an admin saves an integration. A
+ * deployment whose key was rotated — or set for the first time after that hash
+ * was published — has a perfectly well-formed key that every function on the
+ * money path REFUSES. The checkout would work, the payment would be taken, and
+ * every grant would fail with `forbidden`.
+ *
+ * So this asks the database directly, through the same door the webhook uses:
+ * stripe_catalogue with every id null. It reads no row and returns no data —
+ * the only thing it can fail on is the token check. Nothing about the key
+ * reaches the response; the answer is one boolean.
  */
-export function GET() {
+async function grantsAccepted(): Promise<boolean> {
+  const token = dispatchToken();
+  if (!token) return false;
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.rpc("stripe_catalogue", {
+      p_token: token, p_package_id: null, p_plan_id: null, p_price_id: null,
+    });
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+export async function GET() {
   const creds = stripeCredentials();
   return NextResponse.json({
     endpoint: "stripe",
     ok: true,
     ready: paymentsEnabled(),
     mode: creds?.mode ?? null,
+    grants: await grantsAccepted(),
   });
 }
