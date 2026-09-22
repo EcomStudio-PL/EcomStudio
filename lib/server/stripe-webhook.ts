@@ -193,16 +193,48 @@ type Purchase = {
  * GrovBase wrote, bounded by a sanity check, because a session this deployment
  * did not create has no business granting anything.
  */
+/**
+ * THE CATALOGUE, READ THROUGH THE ONE DOOR.
+ *
+ * Not `supabase.from("credit_packages")`. The webhook holds the ANON key — it
+ * has no user session — and the RLS policy on the catalogue tables calls
+ * `is_admin()`, which anon may not execute. That does not hide rows; because
+ * `is_admin()` takes no arguments the planner hoists it into an InitPlan and
+ * evaluates it once, so the whole query raises
+ * `permission denied for function is_admin`. See migration 0115.
+ *
+ * AND A FAILED READ MUST NEVER LOOK LIKE "NO SUCH PACKAGE". That was the shape
+ * of the bug: the call site read only `data`, so the error arrived as null,
+ * null meant no package, and no package meant ZERO CREDITS against a payment
+ * that had already been taken — with a 200 back to Stripe, so no retry. A read
+ * that fails now throws, the route answers 500, and Stripe retries until it
+ * works.
+ */
+type CataloguePackage = { id: string; name: string; credits: number; bonus_credits: number };
+type CataloguePlan = { id: string; name: string; monthly_credits: number; bonus_credits: number };
+
+async function catalogue(
+  supabase: Client, token: string,
+  args: { packageId?: string | null; planId?: string | null; priceId?: string | null },
+): Promise<{ package: CataloguePackage | null; plan: CataloguePlan | null }> {
+  const { data, error } = await supabase.rpc("stripe_catalogue", {
+    p_token: token,
+    p_package_id: args.packageId ?? null,
+    p_plan_id: args.planId ?? null,
+    p_price_id: args.priceId ?? null,
+  });
+  if (error) throw new Error(`catalogue_failed:${error.code ?? "unknown"}`);
+  const row = (data ?? {}) as { package?: CataloguePackage | null; plan?: CataloguePlan | null };
+  return { package: row.package ?? null, plan: row.plan ?? null };
+}
+
 async function purchaseFromMetadata(
-  supabase: Client, meta: Record<string, string>,
+  supabase: Client, token: string, meta: Record<string, string>,
 ): Promise<Purchase | null> {
   const type = meta.type;
 
   if (type === "credit_package" && meta.grovbase_package_id) {
-    const { data: pack } = await supabase
-      .from("credit_packages")
-      .select("id, name, credits, bonus_credits")
-      .eq("id", meta.grovbase_package_id).maybeSingle();
+    const { package: pack } = await catalogue(supabase, token, { packageId: meta.grovbase_package_id });
     if (!pack) return null;
     return {
       kind: "credit_pack",
@@ -233,11 +265,10 @@ async function purchaseFromMetadata(
 }
 
 /** The credits one billing period of a plan is worth — from the plan row. */
-async function purchaseFromPlan(supabase: Client, planId: string): Promise<Purchase | null> {
-  const { data: plan } = await supabase
-    .from("subscription_plans")
-    .select("id, name, monthly_credits, bonus_credits")
-    .eq("id", planId).maybeSingle();
+async function purchaseFromPlan(
+  supabase: Client, token: string, planId: string,
+): Promise<Purchase | null> {
+  const { plan } = await catalogue(supabase, token, { planId });
   if (!plan) return null;
   return {
     kind: "subscription",
@@ -250,22 +281,17 @@ async function purchaseFromPlan(supabase: Client, planId: string): Promise<Purch
 }
 
 /**
- * Which plan a Stripe price belongs to. The mapping column is the authority.
- *
- * TWO `.eq` QUERIES, NOT ONE `.or()`. A PostgREST `or` filter is a STRING —
- * `or(a.eq.${x},b.eq.${x})` — so the value is spliced into a filter grammar
- * where a comma, a parenthesis or a dot changes what is being asked. The id
- * comes from a signed Stripe payload and is almost certainly harmless; "almost
- * certainly" is not a reason to build a query by concatenation.
+ * Which plan a Stripe price belongs to. The mapping column is the authority,
+ * and it is resolved through the same function for the same reason — and with
+ * no filter string built by concatenation, which a PostgREST `.or()` would
+ * have required.
  */
-async function planForPrice(supabase: Client, priceId: string | null): Promise<string | null> {
+async function planForPrice(
+  supabase: Client, token: string, priceId: string | null,
+): Promise<string | null> {
   if (!priceId) return null;
-  const monthly = await supabase
-    .from("subscription_plans").select("id").eq("stripe_price_id_monthly", priceId).maybeSingle();
-  if (monthly.data?.id) return monthly.data.id;
-  const annual = await supabase
-    .from("subscription_plans").select("id").eq("stripe_price_id_annual", priceId).maybeSingle();
-  return annual.data?.id ?? null;
+  const { plan } = await catalogue(supabase, token, { priceId });
+  return plan?.id ?? null;
 }
 
 /* ── the settlement call ───────────────────────────────────────────────────*/
@@ -365,7 +391,7 @@ async function onCheckoutCompleted(
   const paymentId = idOf(session.payment_intent);
   if (!paymentId) return { outcome: "ignored", detail: "no_payment_intent" };
 
-  const purchase = await purchaseFromMetadata(supabase, metaOf(session));
+  const purchase = await purchaseFromMetadata(supabase, token, metaOf(session));
   return settle(supabase, token, {
     event, workspaceId, paymentId,
     amountCents: int(session.amount_total) ?? 0,
@@ -393,7 +419,7 @@ async function onPaymentIntentSucceeded(
       { customer: idOf(pi.customer), amount: int(pi.amount_received) ?? int(pi.amount) });
   }
 
-  const purchase = await purchaseFromMetadata(supabase, metaOf(pi));
+  const purchase = await purchaseFromMetadata(supabase, token, metaOf(pi));
   return settle(supabase, token, {
     event, workspaceId, paymentId,
     amountCents: int(pi.amount_received) ?? int(pi.amount) ?? 0,
@@ -431,11 +457,11 @@ async function onInvoicePaid(
 
   const parentDetails = (invoice.parent as Record<string, unknown> | undefined)
     ?.subscription_details as Record<string, unknown> | undefined;
-  const planId = await planForPrice(supabase, priceId)
+  const planId = await planForPrice(supabase, token, priceId)
     ?? metaOf(invoice).grovbase_plan_id
     ?? (parentDetails ? metaOf(parentDetails).grovbase_plan_id : undefined)
     ?? null;
-  const purchase = planId ? await purchaseFromPlan(supabase, planId) : null;
+  const purchase = planId ? await purchaseFromPlan(supabase, token, planId) : null;
 
   return settle(supabase, token, {
     event, workspaceId,
@@ -467,7 +493,7 @@ async function onSubscriptionEvent(
   const items = (sub.items as { data?: unknown[] } | undefined)?.data ?? [];
   const firstItem = (items[0] ?? {}) as Record<string, unknown>;
   const priceId = idOf(firstItem.price);
-  const planId = await planForPrice(supabase, priceId) ?? metaOf(sub).grovbase_plan_id ?? null;
+  const planId = await planForPrice(supabase, token, priceId) ?? metaOf(sub).grovbase_plan_id ?? null;
   // Without a plan there is no row to write: `subscriptions.plan_id` is NOT
   // NULL, and inventing a plan would misreport what the customer is on. This
   // is a real operational problem — somebody is being billed for something

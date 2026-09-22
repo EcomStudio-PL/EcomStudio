@@ -16,6 +16,7 @@
  *   G. credits come from the database, never from metadata
  *   H. secrets — where they may and may not appear in the repo
  *   I. the readiness signal — true about the running code, and still silent
+ *   J. the catalogue read — a failed read must never mean "zero credits"
  *
  * Run: npm run test:stripe
  */
@@ -69,11 +70,11 @@ type RpcCall = { fn: string; args: Record<string, unknown> };
  * which is what "granted once" means.
  */
 function fakeDb(rows: {
-  packages?: Record<string, { id: string; name: string; credits: number; bonus_credits: number }>;
+  packages?: Record<string, { id: string; name: string; credits: number; bonus_credits: number; stripe_price_id?: string }>;
   plans?: Record<string, { id: string; name: string; monthly_credits: number; bonus_credits: number }>;
   priceToPlan?: Record<string, string>;
   customerToWorkspace?: Record<string, string>;
-} = {}) {
+} = {}, catalogueFails = false) {
   const seenEvents = new Set<string>();
   const settledPayments = new Set<string>();
   const calls: RpcCall[] = [];
@@ -87,6 +88,23 @@ function fakeDb(rows: {
     if (fn === "stripe_workspace_for") {
       const id = String(args.p_stripe_customer_id ?? "");
       return { data: rows.customerToWorkspace?.[id] ?? null, error: null };
+    }
+    if (fn === "stripe_catalogue") {
+      // Mirrors 0115: resolve by explicit id first, then by Stripe price id,
+      // and NEVER filter on `active` — a purchase in flight when a package is
+      // withdrawn must still credit what was paid for.
+      if (catalogueFails) return { data: null, error: { code: "42501" } };
+      const pkgId = args.p_package_id as string | null;
+      const planId = args.p_plan_id as string | null;
+      const priceId = args.p_price_id as string | null;
+      const pack = pkgId ? rows.packages?.[pkgId] ?? null
+        : priceId ? Object.values(rows.packages ?? {}).find((x) => x.stripe_price_id === priceId) ?? null
+        : null;
+      const plan = planId ? rows.plans?.[planId] ?? null
+        : priceId && rows.priceToPlan?.[priceId] ? rows.plans?.[rows.priceToPlan[priceId]]
+            ?? { id: rows.priceToPlan[priceId], name: "?", monthly_credits: 0, bonus_credits: 0 }
+        : null;
+      return { data: { package: pack, plan }, error: null };
     }
     if (fn === "stripe_settle_payment") {
       if (seenEvents.has(eventId)) return { data: { status: "duplicate_event" }, error: null };
@@ -113,25 +131,13 @@ function fakeDb(rows: {
     return { data: null, error: null };
   };
 
+  // THE WEBHOOK MUST NOT TOUCH THESE TABLES DIRECTLY. As anon it cannot: the
+  // RLS policy calls is_admin(), which anon may not execute, so the query
+  // raises rather than returning no rows. This fake therefore THROWS on any
+  // direct table read, so a regression that reintroduces one fails loudly here
+  // instead of quietly granting zero credits in production.
   const from = (table: string) => {
-    const filters: Record<string, string> = {};
-    const builder = {
-      select: () => builder,
-      eq: (col: string, val: string) => { filters[col] = val; return builder; },
-      maybeSingle: async () => {
-        if (table === "credit_packages") {
-          return { data: rows.packages?.[filters.id] ?? null, error: null };
-        }
-        if (table === "subscription_plans") {
-          if (filters.id) return { data: rows.plans?.[filters.id] ?? null, error: null };
-          const priceCol = filters.stripe_price_id_monthly ?? filters.stripe_price_id_annual;
-          const planId = priceCol ? rows.priceToPlan?.[priceCol] : undefined;
-          return { data: planId ? { id: planId } : null, error: null };
-        }
-        return { data: null, error: null };
-      },
-    };
-    return builder;
+    throw new Error(`webhook read table directly: ${table} — must go through stripe_catalogue (0115)`);
   };
 
   return {
@@ -797,6 +803,53 @@ async function main() {
       && !/process\.env/.test(getBody));
     check("GET is still a status check, never a delivery",
       !/handleStripeEvent/.test(getBody) && !/verifyStripeSignature/.test(getBody));
+  }
+
+  console.log("\nJ. THE CATALOGUE READ — THE BUG FOUND BEFORE THE FIRST PAYMENT");
+  {
+    // WHAT WENT WRONG. The webhook read credit_packages directly, with the
+    // ANON key, and the RLS policy on that table is `active = true OR
+    // is_admin()`. anon may not execute is_admin(), and because is_admin()
+    // takes no arguments the planner hoists it into an InitPlan and evaluates
+    // it once — so the query does not return zero rows, it RAISES. The call
+    // site destructured only `data`, so the error arrived as null, null meant
+    // "no such package", and no package meant ZERO CREDITS against a payment
+    // already taken — with a 200 back to Stripe, so no retry, ever.
+    const hook = codeOnly(read("lib/server/stripe-webhook.ts"));
+    check("the webhook never reads the catalogue tables directly",
+      !/from\("credit_packages"\)/.test(hook) && !/from\("subscription_plans"\)/.test(hook),
+      "as anon those reads raise; they must go through stripe_catalogue");
+    check("it goes through the token-gated function instead",
+      /rpc\("stripe_catalogue"/.test(hook) && /p_token: token/.test(hook));
+
+    // A FAILED READ IS NOT AN ANSWER. This is the assertion that makes the
+    // original bug impossible: an error must propagate, not become 0 credits.
+    const broken = fakeDb({ packages: { [PACK.id]: PACK } }, true);
+    let threw = false;
+    try {
+      await handleStripeEvent(broken.client, "tok", checkoutEvent("evt_dbfail"));
+    } catch { threw = true; }
+    check("a catalogue read failure THROWS rather than granting zero", threw);
+    check("...and no payment was settled on the way", broken.ledger === 0
+      && broken.callsTo("stripe_settle_payment").length === 0,
+      "the route answers 500 and Stripe retries until the read works");
+    check("the error carries a code, never a row or a token",
+      /catalogue_failed:\$\{error\.code/.test(hook));
+
+    // A WITHDRAWN PACKAGE STILL CREDITS. A purchase can be in flight when an
+    // admin deactivates a pack; the customer's money is already gone. 0115
+    // therefore ignores `active` on purpose, and this pins that.
+    const withdrawn = fakeDb({ packages: { [PACK.id]: { ...PACK } } });
+    await handleStripeEvent(withdrawn.client, "tok", checkoutEvent("evt_withdrawn"));
+    check("a package withdrawn mid-purchase still credits what was bought",
+      withdrawn.ledger === 550);
+    const sql = read("supabase/migrations/0115_stripe_catalogue_for_the_webhook.sql");
+    check("and the migration says so, rather than filtering on active",
+      !/where[\s\S]*active = true/.test(sql) && /Deliberately ignores `active`/.test(sql));
+    check("the function is token-gated like every other money-path function",
+      /server_call_ok\(p_token\)/.test(sql) && /raise exception 'forbidden'/.test(sql));
+    check("and is not granted to the world",
+      /revoke execute on function public\.stripe_catalogue/.test(sql));
   }
 
   console.log(failures === 0

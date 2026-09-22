@@ -4739,6 +4739,15 @@ export type Database = {
         }
         Returns: Json
       }
+      stripe_catalogue: {
+        Args: {
+          p_token: string | null
+          p_package_id: string | null
+          p_plan_id: string | null
+          p_price_id: string | null
+        }
+        Returns: Json
+      }
       stripe_customer_for: {
         Args: { p_token: string | null; p_workspace_id: string }
         Returns: string

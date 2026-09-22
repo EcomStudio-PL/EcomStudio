@@ -37,6 +37,8 @@ MIGRATION="${MIGRATION:-$ROOT/supabase/migrations/0113_stripe_mapping_and_idempo
 [ -f "$MIGRATION" ] || { echo "stripe-sql: $MIGRATION not found" >&2; exit 2; }
 MIGRATION2="${MIGRATION2:-$ROOT/supabase/migrations/0114_stripe_customer_reverse_lookup.sql}"
 [ -f "$MIGRATION2" ] || { echo "stripe-sql: $MIGRATION2 not found" >&2; exit 2; }
+MIGRATION3="${MIGRATION3:-$ROOT/supabase/migrations/0115_stripe_catalogue_for_the_webhook.sql}"
+[ -f "$MIGRATION3" ] || { echo "stripe-sql: $MIGRATION3 not found" >&2; exit 2; }
 
 fails=0
 check() { # name, actual, expected
@@ -103,6 +105,30 @@ create table public.subscription_plans (
   featured boolean not null default false, bonus_credits integer not null default 0,
   limits jsonb not null default '{}'::jsonb
 );
+
+-- THE POLICY THAT CAUSED THE BUG, REPRODUCED EXACTLY.
+--
+-- Production guards both catalogue tables with `active = true OR is_admin()`,
+-- and `is_admin()` is SECURITY DEFINER and NOT executable by anon. Because it
+-- takes no arguments the planner hoists it into an InitPlan and evaluates it
+-- once per query, so anon does not see "no rows" — the query RAISES
+-- `permission denied for function is_admin`.
+--
+-- The webhook holds the anon key. Without this reproduced here, a test could
+-- pass against a convenient replica while the real thing granted zero credits
+-- to a customer who had already paid.
+create or replace function public.is_admin() returns boolean
+language sql security definer stable set search_path = public as $$ select false $$;
+revoke execute on function public.is_admin() from public, anon;
+grant  execute on function public.is_admin() to authenticated;
+
+alter table public.credit_packages   enable row level security;
+alter table public.subscription_plans enable row level security;
+create policy pkg_select_active on public.credit_packages
+  for select using (active = true or public.is_admin());
+create policy plans_select on public.subscription_plans
+  for select using (active = true or public.is_admin());
+grant select on public.credit_packages, public.subscription_plans to anon, authenticated;
 -- LIVE SHAPE: workspace_id nullable, ON DELETE SET NULL (post hard-delete tombstones).
 create table public.payments (
   id uuid primary key default gen_random_uuid(),
@@ -169,6 +195,7 @@ SQL
 
 "${PSQL[@]}" -f "$MIGRATION"  >/dev/null
 "${PSQL[@]}" -f "$MIGRATION2" >/dev/null
+"${PSQL[@]}" -f "$MIGRATION3" >/dev/null
 
 W1='11111111-1111-1111-1111-111111111111'
 W2='22222222-2222-2222-2222-222222222222'
@@ -340,6 +367,50 @@ for f in stripe_workspace_for stripe_record_event; do
   check "$f pins its search_path" \
     "$("${PSQL[@]}" -c "select count(*) from pg_proc where proname='$f' and 'search_path=public, extensions' = any(proconfig)")" "1"
 done
+
+echo
+echo "N. 0115 — THE WEBHOOK CAN READ WHAT IT IS CREDITING"
+# FIRST, THE FAILURE ITSELF. If this stops reproducing, the test below stops
+# testing anything, so it is asserted rather than assumed.
+check "as anon, a direct read of credit_packages RAISES (this is the bug)" \
+  "$("${PSQL[@]}" -c "begin; set local role anon; select count(*) from public.credit_packages; rollback" 2>&1 | grep -c 'permission denied for function is_admin' || true)" "1"
+check "as anon, a direct read of subscription_plans raises too" \
+  "$("${PSQL[@]}" -c "begin; set local role anon; select count(*) from public.subscription_plans; rollback" 2>&1 | grep -c 'permission denied for function is_admin' || true)" "1"
+check "and it raises even for a row that IS active" \
+  "$("${PSQL[@]}" -c "begin; set local role anon; select name from public.credit_packages where id='$PKG'; rollback" 2>&1 | grep -c 'permission denied' || true)" "1"
+
+# NOW THE FIX. The same read, through the token-gated function, as anon.
+check "through stripe_catalogue, anon CAN read the package" \
+  "$("${PSQL[@]}" -c "begin; set local role anon; select public.stripe_catalogue('$TOKEN','$PKG',null,null)->'package'->>'name'; rollback")" "Standard"
+check "with the credits the ledger will grant" \
+  "$("${PSQL[@]}" -c "begin; set local role anon; select (public.stripe_catalogue('$TOKEN','$PKG',null,null)->'package'->>'credits'); rollback")" "500"
+check "and the plan, by id" \
+  "$("${PSQL[@]}" -c "begin; set local role anon; select public.stripe_catalogue('$TOKEN',null,'$PLAN',null)->'plan'->>'slug'; rollback")" "pro"
+
+# RESOLUTION BY PRICE, which is how a renewal finds its plan.
+"${PSQL[@]}" >/dev/null -c "update public.subscription_plans set stripe_price_id_monthly='price_pro_live' where id='$PLAN';
+                            update public.credit_packages set stripe_price_id='price_pack_live' where id='$PKG'"
+check "a plan resolves from the Stripe price that was billed" \
+  "$("${PSQL[@]}" -c "select public.stripe_catalogue('$TOKEN',null,null,'price_pro_live')->'plan'->>'slug'")" "pro"
+check "a package resolves from its price too" \
+  "$("${PSQL[@]}" -c "select public.stripe_catalogue('$TOKEN',null,null,'price_pack_live')->'package'->>'name'")" "Standard"
+check "an unknown price resolves to nothing, rather than guessing" \
+  "$("${PSQL[@]}" -c "select coalesce((public.stripe_catalogue('$TOKEN',null,null,'price_nobody')->'plan')::text,'null')")" "null"
+
+# A WITHDRAWN PACKAGE STILL CREDITS. The customer's money is already gone.
+"${PSQL[@]}" >/dev/null -c "update public.credit_packages set active=false where id='$PKG'"
+check "a package deactivated mid-purchase is still readable" \
+  "$("${PSQL[@]}" -c "begin; set local role anon; select public.stripe_catalogue('$TOKEN','$PKG',null,null)->'package'->>'name'; rollback")" "Standard"
+check "...and reports that it is no longer on sale" \
+  "$("${PSQL[@]}" -c "select public.stripe_catalogue('$TOKEN','$PKG',null,null)->'package'->>'active'")" "false"
+"${PSQL[@]}" >/dev/null -c "update public.credit_packages set active=true where id='$PKG'"
+
+check "the wrong token reads nothing" \
+  "$("${PSQL[@]}" -c "select public.stripe_catalogue('not-the-token','$PKG',null,null)" 2>&1 | grep -c 'forbidden' || true)" "1"
+check "stripe_catalogue is SECURITY DEFINER" \
+  "$("${PSQL[@]}" -c "select prosecdef from pg_proc where proname='stripe_catalogue'")" "t"
+check "stripe_catalogue pins its search_path" \
+  "$("${PSQL[@]}" -c "select count(*) from pg_proc where proname='stripe_catalogue' and 'search_path=public, extensions' = any(proconfig)")" "1"
 
 echo
 if [ "$fails" = "0" ]; then echo "All Stripe SQL tests passed."; else echo "$fails FAILED"; fi
