@@ -72,11 +72,23 @@ console.log("\nA. REGISTRY — every real module is covered, the untouchable one
   // and do nothing. Publishing a prompt and flipping the status is an
   // operator action, not a deploy — when all four are live this list should
   // shrink back to three.
+  //
+  // image_social, image_mailing and image_inne are a fifth kind, and the reason
+  // they are here is a divergence that was live and invisible. The operator row
+  // in feature_availability has said COMING_SOON for all three for months; the
+  // registry said nothing, so `defaultStatusFor` answered ACTIVE. Those two
+  // only disagree when the table cannot be read — and on that path every menu,
+  // the tool catalogue and the home screen would have shown three unreleased
+  // categories as ready. Nobody would have seen it in testing, because the read
+  // succeeds. The compiled-in default now matches what operators actually
+  // shipped, which is the only way the fallback is a fact rather than a guess.
+  // When a category is genuinely released, the row and this list move together.
   const off = FEATURE_KEYS.filter((k) => defaultStatusFor(k) !== "ACTIVE");
   const expected = [
     "image_matching", "video",
     "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person",
     "fashion_change_face",
+    "image_social", "image_mailing", "image_inne",
   ];
   check("a feature defaults to ACTIVE unless it is deliberately listed as off",
     off.length === expected.length && expected.every((k) => off.includes(k as never)), off.join(","));

@@ -131,9 +131,17 @@ export const FEATURE_REGISTRY: readonly FeatureDescriptor[] = [
   { key: "fashion_change_person", nameKey: "wf.moda.changePerson.name", path: "/k/moda/changePerson", group: "image", defaultStatus: "COMING_SOON" },
   { key: "fashion_change_face", nameKey: "wf.moda.changeFace.name", path: "/k/moda/changeFace", group: "image", defaultStatus: "COMING_SOON" },
   { key: "image_ecommerce", nameKey: "cats.ecommerce", path: "/k/ecommerce", group: "image" },
-  { key: "image_social", nameKey: "cats.social", path: "/k/social", group: "image" },
-  { key: "image_mailing", nameKey: "cats.mailing", path: "/k/mailing", group: "image" },
-  { key: "image_inne", nameKey: "cats.inne", path: "/k/inne", group: "image" },
+  // COMING_SOON in the registry because that is what they are. The operator
+  // row in feature_availability already says so and wins whenever it is read —
+  // so this changes nothing in normal operation. It changes the ONE case that
+  // matters: when the read fails, `defaultStatusFor` is what every menu, the
+  // tool catalogue and the home screen fall back to, and an unqualified default
+  // of ACTIVE would advertise three unreleased categories as ready to whoever
+  // happened to load the page during the outage. The compiled-in default has to
+  // agree with the shipped truth, or the fallback is a claim nobody checked.
+  { key: "image_social", nameKey: "cats.social", path: "/k/social", group: "image", defaultStatus: "COMING_SOON" },
+  { key: "image_mailing", nameKey: "cats.mailing", path: "/k/mailing", group: "image", defaultStatus: "COMING_SOON" },
+  { key: "image_inne", nameKey: "cats.inne", path: "/k/inne", group: "image", defaultStatus: "COMING_SOON" },
   // No engine behind it yet — the registry says so, rather than the menu
   // hard-coding a badge next to a link that leads nowhere.
   { key: "image_matching", nameKey: "cats.matching", path: "/k/matching", group: "image", defaultStatus: "COMING_SOON" },
