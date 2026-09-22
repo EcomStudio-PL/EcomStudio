@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PricingBoard, type PackCard, type PlanCard } from "@/components/plan/pricing-board";
 import { parsePlanCapabilities } from "@/lib/plans/capabilities";
 import { paymentsEnabled } from "@/lib/stripe/config";
+import { CheckoutNotice } from "@/components/plan/checkout-notice";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,18 @@ export const dynamic = "force-dynamic";
  * Every figure is a database row: subscription_plans and credit_packages.
  * Nothing on this page is typed into the markup.
  */
-export default async function PlanPage() {
+export default async function PlanPage({ searchParams }: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  // A PLAN CHECKOUT COMES BACK HERE, and until now this page said nothing.
+  // `planSuccessUrl()` returns the customer to /plan?checkout=success, but only
+  // /credits rendered the notice — so someone who had just paid 299 zł landed
+  // on a page byte-identical to the one they left, with the same buy button
+  // still live. The obvious next move is to click it again, and Stripe would
+  // have created a SECOND subscription.
+  const params = await searchParams;
+  const checkout = params.checkout === "success" ? "success"
+    : params.checkout === "cancelled" ? "cancelled" : null;
   const supabase = await createClient();
   const { dict } = await getDictionary();
   const t = makeT(dict);
@@ -74,6 +86,7 @@ export default async function PlanPage() {
   return (
     <div>
       <PageHeader overline={t("plans.overline")} title={t("plans.title")} sub={t("plans.sub")} />
+      {checkout && <CheckoutNotice status={checkout} />}
       {/* Whether this deployment holds BOTH Stripe secrets. Read on the
           server; a client cannot be asked whether payments work. */}
       <PricingBoard plans={planCards} packs={packCards} currentSlug={currentSlug}

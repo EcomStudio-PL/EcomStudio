@@ -17,6 +17,7 @@
  *   H. secrets — where they may and may not appear in the repo
  *   I. the readiness signal — true about the running code, and still silent
  *   J. the catalogue read — a failed read must never mean "zero credits"
+ *   K. what the adversarial audit found, and what now holds
  *
  * Run: npm run test:stripe
  */
@@ -850,6 +851,82 @@ async function main() {
       /server_call_ok\(p_token\)/.test(sql) && /raise exception 'forbidden'/.test(sql));
     check("and is not granted to the world",
       /revoke execute on function public\.stripe_catalogue/.test(sql));
+  }
+
+  console.log("\nK. WHAT THE ADVERSARIAL AUDIT FOUND, AND WHAT NOW HOLDS");
+  {
+    // K1 — A SUBSCRIPTION'S PAYMENTINTENT MUST NOT SETTLE A SECOND PAYMENT.
+    //
+    // Stripe rejects `payment_intent_data` in mode:subscription and does not
+    // copy a Subscription's metadata onto the invoice's PaymentIntent. The old
+    // guard looked for `metadata.type === "subscription"` on the PI, which is
+    // never there — so every subscription payment wrote a SECOND `payments`
+    // row beside the one invoice.paid writes. Not a double credit, but the
+    // same 299 zł counted twice in every revenue figure, from payment one.
+    const subPi = fakeDb({ customerToWorkspace: { cus_1: WS } });
+    const subPiResult = await handleStripeEvent(subPi.client, "tok", {
+      id: "evt_subpi", type: "payment_intent.succeeded", data: { object: {
+        id: "pi_sub_1", customer: "cus_1", amount_received: 29900, currency: "pln",
+        metadata: {},   // exactly what Stripe sends for a subscription invoice
+      } },
+    });
+    check("a subscription's PaymentIntent settles nothing",
+      subPiResult.outcome === "ignored" && subPi.callsTo("stripe_settle_payment").length === 0);
+    check("...and no second payments row is written", subPi.ledger === 0);
+    check("...but it is recorded, so the event is not simply lost",
+      subPi.callsTo("stripe_record_event").length === 1);
+
+    // The backstop still works for what it is FOR: a one-off purchase whose
+    // checkout.session.completed was missed.
+    const backstop = fakeDb({ packages: { [PACK.id]: PACK } });
+    const backstopResult = await handleStripeEvent(backstop.client, "tok", {
+      id: "evt_backstop", type: "payment_intent.succeeded", data: { object: {
+        id: "pi_lone", customer: "cus_1", amount_received: 7900, currency: "pln",
+        metadata: { grovbase_workspace_id: WS, type: "credit_package", grovbase_package_id: PACK.id },
+      } },
+    });
+    check("a one-off purchase still settles from payment_intent.succeeded alone",
+      backstopResult.outcome === "applied" && backstop.ledger === 550);
+
+    const hook = codeOnly(read("lib/server/stripe-webhook.ts"));
+    check("the guard asks a POSITIVE question, not an exclusion",
+      /kind !== "credit_package" && kind !== "custom_credits"/.test(hook)
+      && !/metaOf\(pi\)\.type === "subscription"/.test(hook));
+
+    // K2 — A SECOND SUBSCRIPTION CANNOT BE BOUGHT.
+    const billing = codeOnly(read("lib/server/billing.ts"));
+    check("a plan checkout refuses when one is already live",
+      /\.in\("status", \["active", "trialing", "past_due"\]\)/.test(billing)
+      && /reason: "already_subscribed"/.test(billing),
+      "Stripe does not replace a subscription — it adds one, and both bill monthly");
+    check("and that read's failure is not treated as 'no subscription'",
+      /if \(subError\) return \{ ok: false, reason: "stripe_error" \}/.test(billing));
+    const board = codeOnly(read("components/plan/pricing-board.tsx"));
+    check("the customer is told, rather than shown a generic error",
+      /already_subscribed[\s\S]{0,120}packs\.alreadySubscribed/.test(board));
+
+    // K3 — THE PLAN PAGE SAYS WHAT HAPPENED.
+    const planPage = codeOnly(read("app/(app)/plan/page.tsx"));
+    check("/plan renders the checkout notice it is the success_url for",
+      /CheckoutNotice status=\{checkout\}/.test(planPage) && /searchParams/.test(planPage),
+      "paying 299 zl and landing on an identical page is how a second click happens");
+
+    // K4 — A FAILURE AT THE TILL IS WRITTEN DOWN.
+    check("every checkout entry point logs its Stripe failure",
+      (billing.match(/logStripeFailure\(/g) ?? []).length >= 5);
+    check("the log carries Stripe's own code and type",
+      /console\.error\("billing\.stripe"[\s\S]{0,120}e\.type[\s\S]{0,40}e\.code/.test(billing));
+    check("and never the key, the body or the customer",
+      !/secretKey/.test(billing) && !/STRIPE_SECRET_KEY/.test(billing));
+
+    // K5 — A FAILED RPC IS NOT "NO CUSTOMER YET".
+    check("a failed customer lookup throws instead of creating a live Customer",
+      /if \(readError\) throw new Error\(`customer_lookup_failed/.test(billing),
+      "supabase-js returns a raised exception as {data:null,error} — it does not throw");
+    check("and a failed link throws rather than returning an orphan",
+      /if \(linkError\) throw new Error\(`customer_link_failed/.test(billing));
+    check("the Customer POST happens only after the lookup succeeded",
+      billing.indexOf("customer_lookup_failed") < billing.indexOf('stripePost<StripeCustomer>'));
   }
 
   console.log(failures === 0

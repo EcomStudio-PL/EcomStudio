@@ -3120,7 +3120,9 @@
     "checkoutCancelled": "Płatność została przerwana. Nic nie zostało pobrane.",
     "manageBilling": "Zarządzaj płatnościami",
     "manageBillingSub": "Karty, faktury i subskrypcja — w panelu Stripe.",
-    "portalNoCustomer": "Ta przestrzeń nie ma jeszcze historii płatności."
+    "portalNoCustomer": "Ta przestrzeń nie ma jeszcze historii płatności.",
+    "alreadySubscribed": "Ta przestrzeń ma już aktywną subskrypcję. Zmień plan w panelu płatności.",
+    "planNotPurchasable": "Tego planu nie można kupić."
   },
   "mobilenav": {
     "home": "Start",

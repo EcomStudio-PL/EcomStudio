@@ -409,9 +409,28 @@ async function onPaymentIntentSucceeded(
   const paymentId = str(pi.id);
   if (!paymentId) return { outcome: "ignored", detail: "no_id" };
 
-  // A subscription invoice's PaymentIntent is settled by `invoice.paid`, which
-  // knows the plan and the period. Settling it here too would double-grant.
-  if (metaOf(pi).type === "subscription") return { outcome: "ignored", detail: "subscription_invoice" };
+  // ONLY A PAYMENTINTENT THIS APPLICATION STARTED FOR A ONE-OFF PURCHASE.
+  //
+  // This handler is a BACKSTOP: `checkout.session.completed` normally settles a
+  // pack, and this catches the case where that event is missed. So it asks a
+  // POSITIVE question — is this one of ours, and is it one-time — rather than
+  // trying to exclude everything else.
+  //
+  // The previous version excluded subscriptions by looking for
+  // `metadata.type === "subscription"` on the PaymentIntent, and that metadata
+  // is never there. Stripe rejects `payment_intent_data` in `mode: subscription`
+  // (see createPlanCheckout), and it does not copy a Subscription's metadata
+  // onto the invoice's PaymentIntent — that metadata surfaces on the invoice,
+  // under `parent.subscription_details.metadata`. So every subscription payment
+  // fell through this guard and settled a SECOND `payments` row beside the one
+  // `invoice.paid` writes: no double credit, because the credits come from the
+  // plan row, but the same 299 zł counted twice in every revenue figure, from
+  // the very first subscription.
+  const kind = metaOf(pi).type;
+  if (kind !== "credit_package" && kind !== "custom_credits") {
+    return recordUnactionable(supabase, token, event, paymentId, "ignored",
+      { reason: "not_a_one_off_purchase", type: kind ?? null });
+  }
 
   const workspaceId = await resolveWorkspace(supabase, token, pi);
   if (!workspaceId) {

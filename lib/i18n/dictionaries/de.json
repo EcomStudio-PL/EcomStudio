@@ -3120,7 +3120,9 @@
     "checkoutCancelled": "Die Zahlung wurde abgebrochen. Es wurde nichts belastet.",
     "manageBilling": "Zahlungen verwalten",
     "manageBillingSub": "Karten, Rechnungen und Abo — im Stripe-Portal.",
-    "portalNoCustomer": "Dieser Workspace hat noch keine Zahlungshistorie."
+    "portalNoCustomer": "Dieser Workspace hat noch keine Zahlungshistorie.",
+    "alreadySubscribed": "Dieser Workspace hat bereits ein aktives Abo. Ändere den Plan im Zahlungsportal.",
+    "planNotPurchasable": "Dieser Plan kann nicht gekauft werden."
   },
   "mobilenav": {
     "home": "Start",

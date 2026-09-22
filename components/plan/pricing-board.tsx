@@ -96,12 +96,19 @@ function useCheckout(t: (k: string, v?: Record<string, string | number>) => stri
       if (res.ok) { window.location.assign(res.url); return; }
       // Each refusal names something the customer can act on, or an honest
       // "not available", rather than a generic error that hides a bug.
+      // Each refusal that a customer can DO something about says so. The rest
+      // collapse into one honest "try again" — but they are logged server-side
+      // with Stripe's own code, so "try again" is never the end of the trail.
       toast.error(t(
         res.reason === "payments_disabled" || res.reason === "not_mapped"
           ? "packs.checkoutUnavailable"
           : res.reason === "invalid_credits"
             ? "packs.checkoutInvalidCredits"
-            : "packs.checkoutFailed",
+            : res.reason === "already_subscribed"
+              ? "packs.alreadySubscribed"
+              : res.reason === "plan_not_purchasable"
+                ? "packs.planNotPurchasable"
+                : "packs.checkoutFailed",
       ));
     });
   }, [t]);

@@ -5,7 +5,7 @@ import { absoluteUrl } from "@/lib/site";
 import { dispatchToken } from "@/lib/server/server-token";
 import { stripeCredentials, paymentsEnabled } from "@/lib/stripe/config";
 import {
-  stripePost, StripeNotConfiguredError,
+  stripePost, StripeNotConfiguredError, StripeApiError,
   type StripeCheckoutSession, type StripeCustomer, type StripeBillingPortalSession,
 } from "@/lib/stripe/client";
 import { creditLadder, validateCustomCredits } from "@/lib/plans/credit-price";
@@ -36,6 +36,31 @@ import { creditLadder, validateCustomCredits } from "@/lib/plans/credit-price";
  * because a customer can reach `success_url` by typing it.
  */
 
+/**
+ * WHAT WENT WRONG AT THE TILL, WRITTEN DOWN.
+ *
+ * Every entry point below used to end in a catch that mapped everything to one
+ * refusal and logged nothing at all. A customer saw "could not start the
+ * payment", and there was no record anywhere of why — which makes the first
+ * real payment undebuggable at exactly the moment it matters most.
+ *
+ * Stripe's own `message`, `type` and `code` describe the refusal and contain no
+ * credential; the key lives only in an Authorization header this never touches.
+ * So those three are logged, and nothing else — no request body, no customer
+ * email, no key.
+ */
+function logStripeFailure(where: string, e: unknown): void {
+  if (e instanceof StripeApiError) {
+    console.error("billing.stripe", where, e.status, e.type ?? "-", e.code ?? "-", e.message);
+    return;
+  }
+  if (e instanceof StripeNotConfiguredError || e instanceof ServerKeyMissingError) {
+    console.error("billing.misconfigured", where, e.name);
+    return;
+  }
+  console.error("billing.failed", where, e instanceof Error ? e.message : "unknown");
+}
+
 /** No GROVBASE_SERVER_KEY: nothing can authenticate itself to the database. */
 export class ServerKeyMissingError extends Error {
   constructor() { super("server_key_missing"); this.name = "ServerKeyMissingError"; }
@@ -43,7 +68,8 @@ export class ServerKeyMissingError extends Error {
 
 export type CheckoutRefusal =
   | "payments_disabled" | "unknown_package" | "unknown_plan" | "plan_not_purchasable"
-  | "not_mapped" | "no_customer" | "invalid_credits" | "no_server_key" | "stripe_error";
+  | "not_mapped" | "no_customer" | "invalid_credits" | "no_server_key"
+  | "already_subscribed" | "stripe_error";
 
 export type CheckoutResult =
   | { ok: true; url: string; sessionId: string }
@@ -82,9 +108,16 @@ export async function resolveStripeCustomer(
   const creds = stripeCredentials();
   if (!creds) return null;
 
-  const { data: existing } = await supabase.rpc("stripe_customer_for", {
+  // AN ERROR HERE IS NOT "NO CUSTOMER YET". supabase-js surfaces a raised
+  // exception as `{ data: null, error }` rather than throwing, so a dispatch
+  // token mismatch — which makes stripe_customer_for raise `forbidden` — used
+  // to look identical to a workspace that has never paid. The code would then
+  // create a real Customer on the LIVE account and fail to persist it, leaving
+  // an orphan behind on every attempt.
+  const { data: existing, error: readError } = await supabase.rpc("stripe_customer_for", {
     p_token: token, p_workspace_id: workspace.id,
   });
+  if (readError) throw new Error(`customer_lookup_failed:${readError.code ?? "unknown"}`);
   if (typeof existing === "string" && existing) return existing;
 
   const customer = await stripePost<StripeCustomer>("/customers", {
@@ -96,12 +129,17 @@ export async function resolveStripeCustomer(
     },
   }, `customer:${workspace.id}`);
 
-  const { data: linked } = await supabase.rpc("stripe_link_customer", {
+  const { data: linked, error: linkError } = await supabase.rpc("stripe_link_customer", {
     p_token: token,
     p_workspace_id: workspace.id,
     p_stripe_customer_id: customer.id,
     p_livemode: creds.livemode,
   });
+  // The Customer now exists in Stripe. If we cannot record which workspace it
+  // belongs to, saying so loudly is the only safe answer: a checkout attached
+  // to a customer the database does not know about would settle against no
+  // workspace at all.
+  if (linkError) throw new Error(`customer_link_failed:${linkError.code ?? "unknown"}`);
   return typeof linked === "string" && linked ? linked : null;
 }
 
@@ -179,6 +217,7 @@ export async function createPackageCheckout(
       ? { ok: true, url: session.url, sessionId: session.id }
       : { ok: false, reason: "stripe_error" };
   } catch (e) {
+    logStripeFailure("checkout:package", e);
     if (e instanceof ServerKeyMissingError) return { ok: false, reason: "no_server_key" };
     return { ok: false, reason: e instanceof StripeNotConfiguredError ? "payments_disabled" : "stripe_error" };
   }
@@ -253,6 +292,7 @@ export async function createCustomCreditsCheckout(
       ? { ok: true, url: session.url, sessionId: session.id }
       : { ok: false, reason: "stripe_error" };
   } catch (e) {
+    logStripeFailure("checkout:custom_credits", e);
     if (e instanceof ServerKeyMissingError) return { ok: false, reason: "no_server_key" };
     return { ok: false, reason: e instanceof StripeNotConfiguredError ? "payments_disabled" : "stripe_error" };
   }
@@ -287,6 +327,26 @@ export async function createPlanCheckout(
   const priceId = billing === "annual" ? plan.stripe_price_id_annual : plan.stripe_price_id_monthly;
   if (!priceId) return { ok: false, reason: "not_mapped" };
 
+  // ONE LIVE SUBSCRIPTION PER WORKSPACE.
+  //
+  // Stripe Checkout in `mode: subscription` does not replace or merge: it
+  // creates ANOTHER Subscription on the same Customer, and both then bill every
+  // month, forever. Nothing in the flow warns anyone — least of all a customer
+  // who has just paid, landed back on the pricing page, and clicked the same
+  // button again because they were not sure it worked.
+  //
+  // Changing plan is a real need and it has a real home: the Stripe Billing
+  // Portal, which prorates and cancels the old one. So this refuses, and the UI
+  // points there.
+  const { data: active, error: subError } = await supabase
+    .from("subscriptions")
+    .select("id")
+    .eq("workspace_id", workspace.id)
+    .in("status", ["active", "trialing", "past_due"])
+    .limit(1);
+  if (subError) return { ok: false, reason: "stripe_error" };
+  if (active && active.length > 0) return { ok: false, reason: "already_subscribed" };
+
   try {
     const customer = await resolveStripeCustomer(supabase, workspace, email);
     if (!customer) return { ok: false, reason: "no_customer" };
@@ -320,6 +380,7 @@ export async function createPlanCheckout(
       ? { ok: true, url: session.url, sessionId: session.id }
       : { ok: false, reason: "stripe_error" };
   } catch (e) {
+    logStripeFailure("checkout:plan", e);
     if (e instanceof ServerKeyMissingError) return { ok: false, reason: "no_server_key" };
     return { ok: false, reason: e instanceof StripeNotConfiguredError ? "payments_disabled" : "stripe_error" };
   }
@@ -355,6 +416,7 @@ export async function createBillingPortalSession(
     }, `portal:${workspace.id}:${randomUUID()}`);
     return { ok: true, url: session.url, sessionId: session.id };
   } catch (e) {
+    logStripeFailure("portal", e);
     if (e instanceof ServerKeyMissingError) return { ok: false, reason: "no_server_key" };
     return { ok: false, reason: e instanceof StripeNotConfiguredError ? "payments_disabled" : "stripe_error" };
   }

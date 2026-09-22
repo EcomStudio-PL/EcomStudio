@@ -3120,7 +3120,9 @@
     "checkoutCancelled": "The payment was cancelled. Nothing was charged.",
     "manageBilling": "Manage billing",
     "manageBillingSub": "Cards, invoices and your subscription — in the Stripe portal.",
-    "portalNoCustomer": "This workspace has no billing history yet."
+    "portalNoCustomer": "This workspace has no billing history yet.",
+    "alreadySubscribed": "This workspace already has an active subscription. Change the plan in the billing portal.",
+    "planNotPurchasable": "This plan cannot be purchased."
   },
   "mobilenav": {
     "home": "Home",
