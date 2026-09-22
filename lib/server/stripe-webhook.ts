@@ -167,9 +167,16 @@ async function resolveWorkspace(
 
   const customer = idOf(obj.customer);
   if (!customer) return null;
-  const { data } = await supabase.rpc("stripe_workspace_for", {
+  // SAME TRAP AS THE CATALOGUE READ. A raised exception arrives from
+  // supabase-js as `{ data: null, error }`, and null here used to mean "this
+  // customer belongs to no workspace" — which is recorded, answered 200, and
+  // never retried. A transport blip or a token mismatch would have quietly
+  // buried a paid order. An error is an error: throw, answer 500, let Stripe
+  // deliver it again.
+  const { data, error } = await supabase.rpc("stripe_workspace_for", {
     p_token: token, p_stripe_customer_id: customer,
   });
+  if (error) throw new Error(`workspace_lookup_failed:${error.code ?? "unknown"}`);
   return typeof data === "string" && data ? data : null;
 }
 
@@ -391,14 +398,30 @@ async function onCheckoutCompleted(
   const paymentId = idOf(session.payment_intent);
   if (!paymentId) return { outcome: "ignored", detail: "no_payment_intent" };
 
-  const purchase = await purchaseFromMetadata(supabase, token, metaOf(session));
+  const meta = metaOf(session);
+  const purchase = await purchaseFromMetadata(supabase, token, meta);
+  // MONEY MOVED, SO THE PAYMENT IS RECORDED EITHER WAY. But a session that
+  // DECLARED what it was buying and whose row cannot be found is an anomaly,
+  // not a normal zero-credit payment — it is the difference between "somebody
+  // paid us through a channel we do not credit" and "we lost the row for a
+  // purchase we sold". The distinction is written onto the payment so a human
+  // can find it; retrying would not help, so it is not a 500.
+  const declared = meta.type === "credit_package" || meta.type === "custom_credits";
+  const unresolved = declared && purchase === null;
+  if (unresolved) {
+    console.error("stripe.webhook.purchase_unresolved", event.id, meta.type,
+      meta.grovbase_package_id ?? "-");
+  }
   return settle(supabase, token, {
     event, workspaceId, paymentId,
     amountCents: int(session.amount_total) ?? 0,
     currency: (str(session.currency) ?? "pln").toUpperCase(),
     purchase,
     stripeCustomerId: idOf(session.customer),
-    metadata: { source: "checkout.session", session_id: str(session.id) },
+    metadata: {
+      source: "checkout.session", session_id: str(session.id),
+      ...(unresolved ? { anomaly: "purchase_unresolved", declared_type: meta.type } : {}),
+    },
   });
 }
 

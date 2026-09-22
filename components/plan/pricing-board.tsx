@@ -158,8 +158,20 @@ export function PricingBoard({ plans, packs, currentSlug, paymentsEnabled = fals
   const annualOn = annual && annualAvailable;
 
   const n = (v: number) => new Intl.NumberFormat(locale).format(v);
-  const money = (cents: number, currency: string, digits = 0) =>
-    new Intl.NumberFormat(locale, { style: "currency", currency, maximumFractionDigits: digits }).format(cents / 100);
+  // THE PRICE SHOWN MUST BE THE PRICE CHARGED, TO THE GROSZ.
+  //
+  // This rounded to whole units unconditionally, so a package priced at 79,49
+  // displayed as "79 zł" while Stripe charged 79,49 — a quote the checkout
+  // does not honour, which is precisely what the whole rate-card design exists
+  // to prevent. Whole amounts still render without a decimal tail; anything
+  // with grosze shows them.
+  const money = (cents: number, currency: string, digits?: number) => {
+    const fraction = digits ?? (cents % 100 === 0 ? 0 : 2);
+    return new Intl.NumberFormat(locale, {
+      style: "currency", currency,
+      minimumFractionDigits: fraction, maximumFractionDigits: fraction,
+    }).format(cents / 100);
+  };
 
   return (
     <div className="space-y-6">

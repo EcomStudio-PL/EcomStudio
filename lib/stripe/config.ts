@@ -1,4 +1,5 @@
 import "server-only";
+import { serverTokenAvailable } from "@/lib/server/server-token";
 
 /**
  * STRIPE CREDENTIALS — server-side, and nowhere else.
@@ -54,16 +55,31 @@ export function stripeWebhookSecret(): string | null {
 }
 
 /**
- * CAN THIS DEPLOYMENT TAKE MONEY?
+ * CAN THIS DEPLOYMENT TAKE MONEY **AND DELIVER WHAT WAS PAID FOR**?
  *
- * Both halves are required, and this is the honest answer the UI renders. A
- * deployment with a secret key but no webhook secret can CREATE a checkout and
- * can never confirm it — the customer would pay and receive nothing, because
- * credits are granted by the verified webhook and by nothing else. That state
- * must read as "payments unavailable", not as a working buy button.
+ * THREE things are required, not two, and the third was missing from this
+ * answer until an audit pointed at it.
+ *
+ *   STRIPE_SECRET_KEY      creates the checkout.
+ *   STRIPE_WEBHOOK_SECRET  proves the payment happened. Without it a checkout
+ *                          can be started and never confirmed — the customer
+ *                          pays and receives nothing, because credits come
+ *                          from the verified webhook and from nothing else.
+ *   GROVBASE_SERVER_KEY    is what the webhook presents to Postgres. Every
+ *                          function on the money path — stripe_settle_payment,
+ *                          stripe_catalogue, stripe_workspace_for — refuses a
+ *                          caller that cannot produce the dispatch token
+ *                          derived from it.
+ *
+ * Leaving the third out made `ready: true` a claim this code could not keep: a
+ * deployment holding both Stripe secrets and no server key takes the money and
+ * then fails at every single grant. A readiness signal that can be true while
+ * nothing can be credited is worse than no signal, because someone acts on it.
  */
 export function paymentsEnabled(): boolean {
-  return stripeCredentials() !== null && stripeWebhookSecret() !== null;
+  return stripeCredentials() !== null
+    && stripeWebhookSecret() !== null
+    && serverTokenAvailable();
 }
 
 /**
@@ -75,5 +91,6 @@ export function stripeConfigGaps(): string[] {
   const gaps: string[] = [];
   if (!stripeCredentials()) gaps.push("STRIPE_SECRET_KEY");
   if (!stripeWebhookSecret()) gaps.push("STRIPE_WEBHOOK_SECRET");
+  if (!serverTokenAvailable()) gaps.push("GROVBASE_SERVER_KEY");
   return gaps;
 }

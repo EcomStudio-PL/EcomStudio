@@ -3107,7 +3107,7 @@
     "buyN": "Buy {n} credits",
     "instant": "Instant top-up",
     "secure": "Secure payment",
-    "invoice": "VAT invoice",
+    "invoice": "Purchase confirmation by e-mail",
     "vsSmallest": "cheaper per credit than the smallest pack",
     "onPricing": "Credit packs and a custom amount live on the Pricing page, next to the plans.",
     "saveBasis": "Discounts are measured against the per-credit price of the smallest pack.",

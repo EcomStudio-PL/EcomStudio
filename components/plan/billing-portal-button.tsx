@@ -31,7 +31,18 @@ export function BillingPortalButton() {
       data-billing-portal
       disabled={pending}
       onClick={() => start(async () => {
-        const res = await openBillingPortalAction();
+        // A SERVER ACTION CAN THROW, and the money path now deliberately does
+        // — a failed customer lookup raises rather than pretending there is no
+        // customer. Without this catch the rejection is unhandled and the
+        // button simply does nothing, which is the one outcome a person cannot
+        // act on.
+        let res;
+        try {
+          res = await openBillingPortalAction();
+        } catch {
+          toast.error(t("packs.checkoutFailed"));
+          return;
+        }
         if (res.ok) { window.location.assign(res.url); return; }
         toast.error(t(
           res.reason === "no_customer" ? "packs.portalNoCustomer" : "packs.checkoutFailed",

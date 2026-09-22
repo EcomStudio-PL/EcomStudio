@@ -404,9 +404,16 @@ export async function createBillingPortalSession(
   const token = dispatchToken();
   if (!token) return { ok: false, reason: "no_server_key" };
 
-  const { data: customer } = await supabase.rpc("stripe_customer_for", {
+  // "No billing history yet" is what a workspace that has never paid is told.
+  // A FAILED LOOKUP IS NOT THAT. Telling a paying customer they have no
+  // billing history because an RPC errored is worse than an error message.
+  const { data: customer, error: lookupError } = await supabase.rpc("stripe_customer_for", {
     p_token: token, p_workspace_id: workspace.id,
   });
+  if (lookupError) {
+    logStripeFailure("portal:lookup", new Error(lookupError.code ?? "unknown"));
+    return { ok: false, reason: "stripe_error" };
+  }
   if (typeof customer !== "string" || !customer) return { ok: false, reason: "no_customer" };
 
   try {

@@ -18,6 +18,7 @@
  *   I. the readiness signal — true about the running code, and still silent
  *   J. the catalogue read — a failed read must never mean "zero credits"
  *   K. what the adversarial audit found, and what now holds
+ *   L. the second audit round — readiness, buried orders, displayed vs charged
  *
  * Run: npm run test:stripe
  */
@@ -31,7 +32,9 @@ import {
   creditLadder, customCreditsRange, priceForCredits, validateCustomCredits,
 } from "../lib/plans/credit-price";
 import { encodeForm } from "../lib/stripe/client";
-import { stripeCredentials, stripeWebhookSecret, paymentsEnabled } from "../lib/stripe/config";
+import {
+  stripeCredentials, stripeWebhookSecret, paymentsEnabled, stripeConfigGaps,
+} from "../lib/stripe/config";
 import { handleStripeEvent, HANDLED_EVENT_TYPES, type StripeEvent } from "../lib/server/stripe-webhook";
 
 let failures = 0;
@@ -688,9 +691,17 @@ async function main() {
       !/NEXT_PUBLIC_STRIPE/.test(cfg));
     check("the config is server-only, so a client import fails the build",
       /^import "server-only";/m.test(cfg));
-    check("paymentsEnabled requires BOTH secrets",
-      /stripeCredentials\(\) !== null && stripeWebhookSecret\(\) !== null/.test(cfg),
-      "a key without a webhook secret can charge and never confirm");
+    // SUPERSEDED, AND DELIBERATELY NOT DELETED. This asserted "BOTH secrets",
+    // which is what the function checked and what section I still pins in
+    // behaviour. An audit showed two was the wrong number: GROVBASE_SERVER_KEY
+    // is what the webhook presents to Postgres, and without it the checkout
+    // works and every single credit grant is refused. The rule is now THREE.
+    check("paymentsEnabled requires all three secrets",
+      /stripeCredentials\(\) !== null/.test(cfg)
+      && /stripeWebhookSecret\(\) !== null/.test(cfg)
+      && /serverTokenAvailable\(\)/.test(cfg),
+      "a key without a webhook secret can charge and never confirm; "
+      + "either without a server key can charge and never credit");
     check("the gap report names variables, never values",
       /gaps\.push\("STRIPE_SECRET_KEY"\)/.test(cfg) && !/slice\(/.test(cfg));
 
@@ -750,6 +761,7 @@ async function main() {
     const before = {
       key: process.env.STRIPE_SECRET_KEY,
       secret: process.env.STRIPE_WEBHOOK_SECRET,
+      server: process.env.GROVBASE_SERVER_KEY,
     };
     const set = (key?: string, secret?: string) => {
       if (key === undefined) delete process.env.STRIPE_SECRET_KEY;
@@ -765,7 +777,11 @@ async function main() {
       set(FAKE_LIVE, FAKE_WHSEC);
       check("a live-shaped key reports mode 'live'", stripeCredentials()?.mode === "live");
       check("...and livemode is derived, not configured", stripeCredentials()?.livemode === true);
-      check("both secrets present means ready", paymentsEnabled());
+      // The server key is the third requirement — section L owns that rule and
+      // exercises it with the key absent. Here it is simply present, so this
+      // stays a statement about the two STRIPE secrets.
+      process.env.GROVBASE_SERVER_KEY = "x".repeat(40);
+      check("both Stripe secrets plus the server key means ready", paymentsEnabled());
 
       set(FAKE_TEST, FAKE_WHSEC);
       check("a test-shaped key reports mode 'test'", stripeCredentials()?.mode === "test");
@@ -790,6 +806,8 @@ async function main() {
       check("nothing configured is not ready", !paymentsEnabled());
     } finally {
       set(before.key, before.secret);
+      if (before.server === undefined) delete process.env.GROVBASE_SERVER_KEY;
+      else process.env.GROVBASE_SERVER_KEY = before.server;
     }
 
     // The GET body is the whole public surface of this. It must carry the two
@@ -927,6 +945,86 @@ async function main() {
       /if \(linkError\) throw new Error\(`customer_link_failed/.test(billing));
     check("the Customer POST happens only after the lookup succeeded",
       billing.indexOf("customer_lookup_failed") < billing.indexOf('stripePost<StripeCustomer>'));
+  }
+
+  console.log("\nL. THE SECOND AUDIT ROUND — WHAT THE VERIFY PASS STILL LEFT STANDING");
+  {
+    // L1 — READINESS MUST INCLUDE THE KEY THE GRANTS DEPEND ON.
+    //
+    // paymentsEnabled() checked the two Stripe secrets and not
+    // GROVBASE_SERVER_KEY. Every function on the money path refuses a caller
+    // that cannot produce the dispatch token derived from it, so `ready: true`
+    // could be true while NOTHING could be credited — a readiness signal that
+    // lies is worse than none, because someone acts on it.
+    const FAKE_LIVE = ["sk", "live", "0000000000000000000000"].join("_");
+    const FAKE_WHSEC = "whsec_" + "0".repeat(32);
+    const before = {
+      k: process.env.STRIPE_SECRET_KEY, w: process.env.STRIPE_WEBHOOK_SECRET,
+      g: process.env.GROVBASE_SERVER_KEY,
+      l1: process.env.GROVBASE_INTEGRATIONS_ENCRYPTION_KEY, l2: process.env.APP_ENCRYPTION_KEY,
+    };
+    const restore = () => {
+      for (const [k, v] of [["STRIPE_SECRET_KEY", before.k], ["STRIPE_WEBHOOK_SECRET", before.w],
+                            ["GROVBASE_SERVER_KEY", before.g],
+                            ["GROVBASE_INTEGRATIONS_ENCRYPTION_KEY", before.l1],
+                            ["APP_ENCRYPTION_KEY", before.l2]] as [string, string | undefined][]) {
+        if (v === undefined) delete process.env[k]; else process.env[k] = v;
+      }
+    };
+    try {
+      process.env.STRIPE_SECRET_KEY = FAKE_LIVE;
+      process.env.STRIPE_WEBHOOK_SECRET = FAKE_WHSEC;
+      process.env.GROVBASE_SERVER_KEY = "x".repeat(40);
+      check("all three secrets present means ready", paymentsEnabled());
+
+      delete process.env.GROVBASE_SERVER_KEY;
+      delete process.env.GROVBASE_INTEGRATIONS_ENCRYPTION_KEY;
+      delete process.env.APP_ENCRYPTION_KEY;
+      check("BOTH Stripe secrets and no server key is NOT ready", !paymentsEnabled(),
+        "the checkout would work and every single credit grant would be refused");
+      check("and the gap report names the missing one",
+        stripeConfigGaps().includes("GROVBASE_SERVER_KEY"));
+    } finally { restore(); }
+
+    // L2 — THE WORKSPACE LOOKUP MUST NOT BURY A PAID ORDER.
+    const hook = codeOnly(read("lib/server/stripe-webhook.ts"));
+    check("a failed workspace lookup throws rather than reading as 'no workspace'",
+      /workspace_lookup_failed/.test(hook),
+      "null meant unresolved_workspace, which is recorded, answered 200 and never retried");
+    check("every rpc on the webhook path inspects its error",
+      (hook.match(/const \{ data[^}]*, error \} = await supabase\.rpc/g) ?? []).length >= 2);
+
+    // L3 — A DECLARED PURCHASE WHOSE ROW IS GONE IS AN ANOMALY, NOT A ZERO.
+    check("an unresolvable declared purchase is marked on the payment",
+      /anomaly: "purchase_unresolved"/.test(hook) && /declared_type: meta\.type/.test(hook));
+    const missing = fakeDb({ packages: {} });
+    await handleStripeEvent(missing.client, "tok", checkoutEvent("evt_anomaly"));
+    const settled = missing.callsTo("stripe_settle_payment")[0];
+    check("...while the payment itself is still recorded", settled !== undefined);
+    check("...with zero credits, because none could be established",
+      settled.args.p_credits === 0 && missing.ledger === 0);
+
+    // L4 — THE PORTAL DOES NOT CALL A FAILURE "no billing history".
+    const billing = codeOnly(read("lib/server/billing.ts"));
+    check("a failed portal lookup is an error, not 'no customer'",
+      /if \(lookupError\)[\s\S]{0,160}reason: "stripe_error"/.test(billing));
+    const portalBtn = codeOnly(read("components/plan/billing-portal-button.tsx"));
+    check("and the button survives a thrown server action",
+      /try \{[\s\S]{0,120}openBillingPortalAction\(\)[\s\S]{0,120}\} catch/.test(portalBtn),
+      "an unhandled rejection shows nothing at all, which nobody can act on");
+
+    // L5 — DISPLAYED PRICE == CHARGED PRICE, TO THE GROSZ.
+    const board = codeOnly(read("components/plan/pricing-board.tsx"));
+    check("the formatter shows grosze when there are grosze",
+      /cents % 100 === 0 \? 0 : 2/.test(board),
+      "79,49 rendered as '79 zl' is a quote the checkout does not honour");
+
+    // L6 — NO PROMISE NOTHING KEEPS.
+    for (const locale of ["pl", "en", "de"] as const) {
+      const packs = JSON.parse(read(`lib/i18n/dictionaries/${locale}.json`)).packs as Record<string, string>;
+      check(`${locale}: no VAT-invoice promise beside a checkout that issues none`,
+        !/faktur|VAT|invoice|Rechnung/i.test(packs.invoice ?? ""), packs.invoice);
+    }
   }
 
   console.log(failures === 0
