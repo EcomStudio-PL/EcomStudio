@@ -407,6 +407,22 @@ check "...and reports that it is no longer on sale" \
 
 check "the wrong token reads nothing" \
   "$("${PSQL[@]}" -c "select public.stripe_catalogue('not-the-token','$PKG',null,null)" 2>&1 | grep -c 'forbidden' || true)" "1"
+
+# THE READINESS PROBE. GET /api/hooks/stripe asks this exact question — every
+# id null — to find out whether Postgres ACCEPTS this deployment's dispatch
+# token. A well-formed GROVBASE_SERVER_KEY that does not match the published
+# hash is refused by every function on the money path, so `ready: true` alone
+# could still mean the payment is taken and no credit is ever granted.
+#
+# For that probe to mean anything, two things must hold: with the right token
+# it must SUCCEED and read nothing, and with a wrong one it must RAISE. If the
+# all-null call errored for some unrelated reason, the endpoint would report
+# `grants: false` on a perfectly healthy deployment and nobody would trust it.
+check "the readiness probe — every id null — succeeds and reads nothing" \
+  "$("${PSQL[@]}" -c "begin; set local role anon; select public.stripe_catalogue('$TOKEN',null,null,null)::text; rollback")" \
+  '{"plan": null, "package": null}'
+check "...and the same call with a wrong token is refused" \
+  "$("${PSQL[@]}" -c "select public.stripe_catalogue('not-the-token',null,null,null)" 2>&1 | grep -c 'forbidden' || true)" "1"
 check "stripe_catalogue is SECURITY DEFINER" \
   "$("${PSQL[@]}" -c "select prosecdef from pg_proc where proname='stripe_catalogue'")" "t"
 check "stripe_catalogue pins its search_path" \
