@@ -187,7 +187,7 @@ function workflowCard(c: Category, w: { key: string; icon: LucideIcon; tool?: bo
     icon: w.icon,
     titleKey: `wf.${c.key}.${w.key}.name`,
     subKey: `wf.${c.key}.${w.key}.sub`,
-    art: art(id, motifForCategory(c.key), badge),
+    art: art(id, WORKFLOW_MOTIF[id] ?? motifForCategory(c.key), badge),
     badge,
     gated: true,
   };
@@ -210,8 +210,66 @@ function toolCardOf(card: ToolCardDef, avail: AvailabilityMap): HomeCard {
   };
 }
 
-/** One motif per category, so a row of workflow cards without photographs
- *  still reads as six different things rather than one thing six times. */
+/**
+ * ONE MOTIF PER WORKFLOW, chosen for what that workflow DOES.
+ *
+ * The motif is the floor a card falls to when no photograph exists for it, and
+ * most cards on this page are on that floor — seven example files cover seven
+ * cards out of forty-odd. So the floor has to carry a whole section on its own,
+ * and a section where every tile is the same drawing does not read as "art we
+ * have not shot yet". It reads as one tile that failed to load, repeated.
+ *
+ * Picking per CATEGORY (what this did before) is right for the six category
+ * chips, where six motifs mean six categories. It is wrong inside a section,
+ * where the reader is choosing BETWEEN the cards and every one of them is
+ * identical.
+ *
+ * The vocabulary in tool-thumb.tsx already states operations — a diagonal wipe
+ * for a before/after, a checker for a cut-out, a swatch row for a colour
+ * change — so each workflow takes the one that describes it, and neighbours
+ * take different ones. Keys are `<category>.<workflow>` from lib/categories.ts;
+ * a workflow added there and not here falls back to its category's motif rather
+ * than to nothing.
+ */
+const WORKFLOW_MOTIF: Readonly<Record<string, ToolMotif>> = {
+  // Moda — a garment lifted off its background, laid flat, de-creased, reworn.
+  "moda.ghostMannequin": "cutout",
+  "moda.flatlay": "grid",
+  "moda.iron": "wipe",
+  "moda.changePerson": "spark",
+  "moda.changeFace": "stamp",
+  // E-commerce — the marketplace shapes. Three of these carry photographs.
+  "ecommerce.packshot": "cutout",
+  "ecommerce.thumbnail": "frame",
+  "ecommerce.context": "wipe",
+  "ecommerce.set": "grid",
+  "ecommerce.scale": "scale",
+  // Social — vertical video first, then the feed shapes.
+  "social.reels": "video",
+  "social.feed": "grid",
+  "social.ads": "spark",
+  "social.ugc": "stamp",
+  "social.carousel": "frame",
+  // Mailing — a banner, an offer, a block, a season.
+  "mailing.header": "frame",
+  "mailing.promo": "spark",
+  "mailing.newsletter": "grid",
+  "mailing.seasonal": "swatch",
+  // Inne — print and packaging.
+  "inne.label": "stamp",
+  "inne.packaging": "cutout",
+  "inne.leaflet": "frame",
+  "inne.icons": "grid",
+  "inne.free": "swatch",
+  // Matching — style taken from a reference.
+  "matching.fromInspiration": "spark",
+  "matching.brandStyle": "swatch",
+  "matching.series": "grid",
+};
+
+/** One motif per category. Still the right answer for the six CATEGORY cards,
+ *  where six motifs read as six categories — and the fallback for a workflow
+ *  that has not been given its own above. */
 function motifForCategory(categoryKey: string): ToolMotif {
   switch (categoryKey) {
     case "moda": return "grid";
