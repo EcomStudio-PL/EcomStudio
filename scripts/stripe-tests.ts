@@ -15,6 +15,7 @@
  *   F. exactly once — 1×, 3×, 10×, and two DIFFERENT events for one payment
  *   G. credits come from the database, never from metadata
  *   H. secrets — where they may and may not appear in the repo
+ *   I. the readiness signal — true about the running code, and still silent
  *
  * Run: npm run test:stripe
  */
@@ -28,6 +29,7 @@ import {
   creditLadder, customCreditsRange, priceForCredits, validateCustomCredits,
 } from "../lib/plans/credit-price";
 import { encodeForm } from "../lib/stripe/client";
+import { stripeCredentials, stripeWebhookSecret, paymentsEnabled } from "../lib/stripe/config";
 import { handleStripeEvent, HANDLED_EVENT_TYPES, type StripeEvent } from "../lib/server/stripe-webhook";
 
 let failures = 0;
@@ -729,6 +731,72 @@ async function main() {
 
     check("every handled event type is one the endpoint subscribes to",
       HANDLED_EVENT_TYPES.length === 9);
+  }
+
+  console.log("\nI. THE READINESS SIGNAL — TRUE, AND STILL SILENT");
+  {
+    // Assembled rather than written out, so no secret-shaped literal sits in
+    // the repository for a scanner to find and a human to wonder about.
+    const FAKE_LIVE = ["sk", "live", "0000000000000000000000"].join("_");
+    const FAKE_TEST = ["sk", "test", "0000000000000000000000"].join("_");
+    const FAKE_WHSEC = "whsec_" + "0".repeat(32);
+    const before = {
+      key: process.env.STRIPE_SECRET_KEY,
+      secret: process.env.STRIPE_WEBHOOK_SECRET,
+    };
+    const set = (key?: string, secret?: string) => {
+      if (key === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = key;
+      if (secret === undefined) delete process.env.STRIPE_WEBHOOK_SECRET;
+      else process.env.STRIPE_WEBHOOK_SECRET = secret;
+    };
+
+    try {
+      // THE QUESTION A DASHBOARD SCREENSHOT CANNOT SETTLE: is the code that is
+      // RUNNING holding a live key or a test one? It is read off the key's own
+      // prefix, so no second switch can disagree with the key in use.
+      set(FAKE_LIVE, FAKE_WHSEC);
+      check("a live-shaped key reports mode 'live'", stripeCredentials()?.mode === "live");
+      check("...and livemode is derived, not configured", stripeCredentials()?.livemode === true);
+      check("both secrets present means ready", paymentsEnabled());
+
+      set(FAKE_TEST, FAKE_WHSEC);
+      check("a test-shaped key reports mode 'test'", stripeCredentials()?.mode === "test");
+      check("...and livemode false", stripeCredentials()?.livemode === false);
+
+      // A KEY WITHOUT A WEBHOOK SECRET IS NOT READY. Such a deployment can
+      // start a checkout and can never confirm it: the customer pays and
+      // receives nothing, because credits come from the signed webhook alone.
+      set(FAKE_LIVE, undefined);
+      check("a key with no webhook secret is NOT ready", !paymentsEnabled());
+      check("...though the key itself still reads", stripeCredentials()?.mode === "live");
+
+      set(undefined, FAKE_WHSEC);
+      check("a webhook secret with no key is NOT ready", !paymentsEnabled());
+      check("...and there is no mode to report", stripeCredentials() === null);
+
+      set("not-a-stripe-key", FAKE_WHSEC);
+      check("a malformed key is refused, not half-trusted", stripeCredentials() === null);
+      set(FAKE_LIVE, "not-a-whsec");
+      check("a malformed webhook secret is refused", stripeWebhookSecret() === null);
+      set(undefined, undefined);
+      check("nothing configured is not ready", !paymentsEnabled());
+    } finally {
+      set(before.key, before.secret);
+    }
+
+    // The GET body is the whole public surface of this. It must carry the two
+    // booleans and NOTHING derived from a secret's content.
+    const route = codeOnly(read("app/api/hooks/stripe/route.ts"));
+    const getBody = route.slice(route.indexOf("export function GET"));
+    check("the readiness response reports ready and mode",
+      /ready: paymentsEnabled\(\)/.test(getBody) && /mode: creds\?\.mode/.test(getBody));
+    check("and nothing else — no value, length, prefix or gap list",
+      !/secretKey/.test(getBody) && !/slice\(/.test(getBody)
+      && !/length/.test(getBody) && !/stripeConfigGaps/.test(getBody)
+      && !/process\.env/.test(getBody));
+    check("GET is still a status check, never a delivery",
+      !/handleStripeEvent/.test(getBody) && !/verifyStripeSignature/.test(getBody));
   }
 
   console.log(failures === 0

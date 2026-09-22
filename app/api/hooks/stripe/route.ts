@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { dispatchToken } from "@/lib/server/server-token";
-import { stripeWebhookSecret } from "@/lib/stripe/config";
+import { stripeWebhookSecret, stripeCredentials, paymentsEnabled } from "@/lib/stripe/config";
 import { verifyStripeSignature } from "@/lib/stripe/signature";
 import { handleStripeEvent, type StripeEvent } from "@/lib/server/stripe-webhook";
 
@@ -123,8 +123,39 @@ export async function POST(request: Request) {
   }
 }
 
-/** A GET is a human or a monitor checking the endpoint exists. It is not a
- *  delivery, and it must never be treated as one. */
+/**
+ * A GET is a human or a monitor checking the endpoint. It is not a delivery,
+ * and it must never be treated as one.
+ *
+ * WHY IT REPORTS READINESS, AND WHY THAT IS NOT A LEAK.
+ *
+ * Whether this deployment can take money is decided by two environment
+ * variables that nothing outside the server can see. Before this existed, the
+ * only way to find out was to try to buy something — which is a terrible way
+ * to discover that a deploy dropped a secret, because the person who finds out
+ * is a customer at the till. "Payments are configured" is also not a secret:
+ * any signed-in visitor already learns it from whether the buy button works.
+ *
+ * WHAT IS REPORTED, and nothing else:
+ *
+ *   ready  both secrets present and well-formed. A key WITHOUT a webhook
+ *          secret is false, because such a deployment can start a checkout and
+ *          can never confirm it — the customer would pay and receive nothing.
+ *   mode   "live" or "test", derived from the key's own prefix. The single
+ *          fact that matters most before a first real payment, and the one
+ *          thing no dashboard screenshot can settle: is the code that is
+ *          RUNNING holding a live key, or a test one?
+ *
+ * No value, no length, no prefix, no gap names, no error text. `mode` is null
+ * when there is no usable key at all, which is the same information `ready`
+ * already gives.
+ */
 export function GET() {
-  return NextResponse.json({ endpoint: "stripe", ok: true });
+  const creds = stripeCredentials();
+  return NextResponse.json({
+    endpoint: "stripe",
+    ok: true,
+    ready: paymentsEnabled(),
+    mode: creds?.mode ?? null,
+  });
 }
