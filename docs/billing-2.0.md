@@ -284,3 +284,87 @@ Dla subskrypcji Stripe sam zawęził listę do `card, klarna, link, revolut_pay`
 PaymentIntent faktury ma `setup_future_usage: off_session`, a BLIK cykliczny to osobna funkcja
 (changelog Stripe 2026-04-22), wymagająca włączenia na koncie przez Stripe Support, wersji API
 `2026-04-22.preview` i `mandate_options`. Repozytorium jest przypięte do `2024-06-20`. Nie wymuszamy.
+
+---
+
+## 12. Incydent 2026-09-24 (II) — BLIK był na każdym intencie, ukrywał go układ zakładek
+
+### Objaw
+
+Na produkcyjnym `/checkout` Payment Element pokazywał Card, Link, Klarna, Revolut Pay
+(+ Google Pay z Express Checkout Element). **BLIK nie był widoczny** przy jednorazowym zakupie
+kredytów, mimo że w Stripe Dashboard jest ENABLED.
+
+### Przyczyna — backend był poprawny od początku
+
+Dwa PaymentIntenty utworzone przez **produkcyjną ścieżkę GrovBase**:
+
+| PaymentIntent | Kwota | Rodzaj | `payment_method_types` |
+| --- | --- | --- | --- |
+| `pi_3UJGJfPOBRMZKbwY1LQd9XNT` | 7900 pln | `credit_package` Standard | `card, blik, link, klarna, revolut_pay` |
+| `pi_3UJGK2POBRMZKbwY0kQmDQUh` | 17800 pln | `custom_credits` 1600 | `card, blik, link, klarna, revolut_pay` |
+
+Oba: `automatic_payment_methods: {enabled: true, allow_redirects: "always"}`,
+`payment_method_configuration_details.id = pmc_1UIBdUPOBRMZKbwY1IXD2gfh`,
+`setup_future_usage: null`, `excluded_payment_method_types: null`,
+`allowed_payment_method_types: null`, `payment_method_options.blik: {}`.
+
+**BLIK był kwalifikowalny, wyceniony i zaoferowany.** Nic w GrovBase go nie filtrowało.
+
+Ukrywał go **układ Payment Element ustawiony na `tabs`**. Zakładki układają się poziomo, a to,
+co się nie mieści, ląduje pod kontrolką „More". Pięć metod nie mieści się w wąskiej kolumnie
+checkoutu (ani na telefonie), a na końcu ogona wylądował BLIK — akurat ta metoda, której polski
+klient chce najbardziej.
+
+To najgorszy możliwy kształt brakującej funkcji: **każdy sygnał serwerowy mówi „jest", a klient
+jej nie widzi.**
+
+### Naprawa
+
+`components/checkout/checkout-view.tsx` — jedna opcja:
+
+```
+layout: { type: "accordion", defaultCollapsed: false, radios: true }
+```
+
+Akordeon układa metody **pionowo**, więc szerokość kolumny przestaje decydować o tym, co istnieje.
+Jest też domyślnym układem Stripe od 2025-03-31. `defaultCollapsed: false` zostawia formularz karty
+otwarty po wejściu (najczęstszy przypadek nadal jednym kliknięciem), a pozostałe kwalifikujące się
+metody są widocznymi wierszami pod nim zamiast pozycjami w menu.
+
+**Nadal zero nazw metod w kodzie** — ani w widoku, ani w serwisie tworzącym intent. Decyduje Stripe
+na podstawie Payment Method Configuration, waluty, kwoty, kraju i urządzenia.
+
+`wallets: {applePay: "never", googlePay: "never"}` zostaje, ale warto wiedzieć, że to pas i szelki:
+Stripe **sam** tłumi portfele w Payment Element, gdy w tej samej grupie `Elements` jest Express
+Checkout Element. To ukrywa duplikat, nigdy metodę.
+
+### Subskrypcje — bez zmian, świadomie
+
+`pi_3UJGJDPOBRMZKbwY0qnNO63M` (29900 pln, „Subscription creation"):
+`payment_method_types: ["card","klarna","link","revolut_pay"]`, `setup_future_usage: "off_session"`.
+
+Brak BLIK jest poprawny: PaymentIntent faktury musi zapisać metodę do przyszłych obciążeń, a BLIK
+cykliczny to osobna funkcja Stripe (changelog 2026-04-22) wymagająca włączenia na koncie przez
+Stripe Support, wersji API `2026-04-22.preview` i `mandate_options`. Repo jest przypięte do
+`2024-06-20`. **Nie wymuszamy.**
+
+### Przelewy24 — niedostępne po stronie konta, nie kodu
+
+`pmc_1UIBdUPOBRMZKbwY1IXD2gfh`: `p24.display_preference = {preference: "on", value: "on"}`,
+ale `p24.available = false`.
+
+Sprzedawca metodę **włączył**; Stripe jej **nie udostępnia**. Dlatego `p24` nie pojawia się w
+`payment_method_types` żadnego intentu — i nie powinien. GrovBase nie robi tu nic złego i nic tu
+nie obchodzi. API nie zwraca pola z powodem; powód widać wyłącznie w Dashboardzie.
+
+### Ograniczenie weryfikacji
+
+`js.stripe.com` jest zablokowany przez proxy środowiska (`CONNECT tunnel failed, 403`), więc
+**nie dało się wyrenderować Payment Element z tego kontenera**. Dowodem jest zawartość
+PaymentIntentów oraz to, że po zmianie układu żadna kwalifikująca się metoda nie ma już gdzie się
+schować. Wizualne potwierdzenie BLIK na `/checkout` należy do właściciela konta.
+
+### Regresja
+
+`test:billingsync` §M3: powrót do `layout: "tabs"` wywala dwie asercje. Zweryfikowane mutacją.
