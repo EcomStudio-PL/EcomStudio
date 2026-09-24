@@ -25,21 +25,38 @@
  *                 collector (region1.…) that an EU property is routed to;
  *                 `*.analytics.google.com` is the measurement-protocol
  *                 endpoint gtag.js falls back to.
+ *  - Stripe: the embedded checkout. js.stripe.com serves the SDK (script-src)
+ *                 AND the iframes that hold the card fields (frame-src);
+ *                 api.stripe.com is what the SDK talks to (connect-src);
+ *                 hooks.stripe.com is where 3-D Secure and redirect methods
+ *                 such as BLIK and Przelewy24 open their challenge (frame-src).
+ *
+ *                 WITHOUT THESE FOUR THE PAYMENT SHEET DOES NOT RENDER. Not
+ *                 slowly, not degraded — the browser refuses the script and the
+ *                 customer sees a loading skeleton forever, with the only
+ *                 evidence in a console nobody is looking at. That is precisely
+ *                 what production did between the publishable key landing and
+ *                 this line: every server-side signal said "ready", and the
+ *                 page could not have worked.
+ *
+ *                 Card data never touches this origin either way — it goes from
+ *                 Stripe's iframe to Stripe. Allowing these hosts does not widen
+ *                 what GrovBase can read; it lets Stripe's own frame exist.
  * Realtime websockets are not used (no .channel() anywhere), so no wss:.
  */
 const csp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://www.googletagmanager.com",
+  "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://www.googletagmanager.com https://js.stripe.com",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "media-src 'self' blob: https:",
   "font-src 'self' data:",
-  "connect-src 'self' https://*.supabase.co https://challenges.cloudflare.com https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com",
+  "connect-src 'self' https://*.supabase.co https://challenges.cloudflare.com https://www.googletagmanager.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://api.stripe.com",
   // 'self' is here for the CMS builder: the page preview is this app's own
   // preview route in an iframe, which is the only way a preview can answer a
   // media query the way a real 375px phone does. A container scaled with a
   // transform looks right and lies — it still reports the desktop viewport.
-  "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://challenges.cloudflare.com",
+  "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://challenges.cloudflare.com https://js.stripe.com https://hooks.stripe.com",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",

@@ -504,6 +504,42 @@ async function main() {
     }
   }
 
+  console.log("\nK2. THE CONTENT SECURITY POLICY LETS THE PAYMENT SHEET EXIST");
+  {
+    // THE FAILURE THIS CATCHES IS INVISIBLE FROM THE SERVER.
+    //
+    // Production had the publishable key, `ready: true`, `grants: true` and a
+    // correct catalogue — and the Payment Element still could not have
+    // rendered, because the CSP did not allow js.stripe.com. The browser
+    // refuses the script, the customer watches a skeleton forever, and the only
+    // evidence is a console nobody is reading.
+    //
+    // Every server-side signal was green. This is the assertion that is not.
+    const cfg = read("next.config.mjs");
+    const directive = (name: string) => {
+      const m = cfg.match(new RegExp(`"${name} ([^"]*)"`));
+      return m ? m[1] : "";
+    };
+    check("script-src allows the Stripe SDK",
+      directive("script-src").includes("https://js.stripe.com"),
+      "without it loadStripe() is blocked and the sheet never mounts");
+    check("frame-src allows the card-field iframes",
+      directive("frame-src").includes("https://js.stripe.com"));
+    check("frame-src allows the 3-D Secure / redirect challenge",
+      directive("frame-src").includes("https://hooks.stripe.com"),
+      "BLIK and Przelewy24 open their challenge there");
+    check("connect-src allows the Stripe API",
+      directive("connect-src").includes("https://api.stripe.com"));
+
+    // And the policy stays narrow: allowing Stripe must not become allowing
+    // anything. A wildcard here would quietly undo the whole header.
+    for (const name of ["script-src", "frame-src", "connect-src"]) {
+      check(`${name} is not a wildcard`,
+        !/(^|\s)\*(\s|$)/.test(directive(name)) && !directive(name).includes("https:*"),
+        "a blanket host defeats the point of having a CSP at all");
+    }
+  }
+
   console.log("\nL. THE WEBHOOK IS STILL THE ONLY THING THAT GRANTS");
   {
     const co = codeOnly(read("lib/server/checkout.ts"));
