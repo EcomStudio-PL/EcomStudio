@@ -193,3 +193,94 @@ jedynym źródłem przyznania.
 - Renderu Payment Element z prawdziwym `client_secret` — wymaga klucza publikowalnego i zalogowanej
   sesji przeglądarkowej.
 - Faktycznej listy metod w arkuszu — to wybiera Stripe w czasie wykonania.
+
+---
+
+## 11. Incydent 2026-09-24 — klucz z ograniczeniami sprzedawał plany i odmawiał każdego pakietu
+
+### Objaw
+
+Zakup planu działał od początku do końca: `/checkout` otwierał się, Payment Element się
+inicjalizował, formularz karty działał. Zakup pakietu kredytów (550 kredytów / 79 zł, Pro / 139 zł)
+kończył się w sekcji „METODA PŁATNOŚCI" komunikatem *„Nie udało się rozpocząć płatności. Spróbuj
+ponownie."* i Payment Element nigdy się nie pojawiał.
+
+### Przyczyna — dokładna, z produkcyjnego loga
+
+`STRIPE_SECRET_KEY` na produkcji był kluczem **z ograniczeniami** (`rk_live_…`) z prawem zapisu do
+Subscriptions i Customers, ale **bez prawa zapisu do PaymentIntents**. Stripe odpowiadał 403:
+
+> The provided key 'rk_live_*****QHJ7kw' does not have the required permissions for this endpoint on
+> account 'acct_1UIBczPOBRMZKbwY'. This is a restricted API key, but the required permissions are not
+> available for use by restricted keys.
+
+4 wystąpienia, 1 użytkownik, trasa `/checkout`, 13:27–13:28 UTC.
+
+**Dlaczego dokładnie jedna połowa działała.** Ścieżka subskrypcji nie tworzy PaymentIntentu sama —
+`POST /v1/subscriptions` z `payment_behavior: default_incomplete` sprawia, że **Stripe** tworzy
+PaymentIntent dla pierwszej faktury, pod własnym uprawnieniem. Ścieżka jednorazowa woła
+`POST /v1/payment_intents` bezpośrednio, i to było odrzucane. Potwierdzone w danych konta: dwie
+subskrypcje (`sub_1UJCgk…` Starter 9900, `sub_1UJC9D…` Pro 29900, obie `incomplete`) istnieją, a
+jedyne PaymentIntenty na koncie mają `description: "Subscription creation"` — **żadnego** utworzonego
+przez nasz kod.
+
+**Naprawa samego klucza jest w Dashboardzie Stripe, nie w repozytorium.** Nie ma API do zmiany
+uprawnień klucza.
+
+### Co naprawiono w kodzie — czyli wszystko, co pozwoliło temu pozostać niewidocznym
+
+| Wada | Stan przed | Stan po |
+| --- | --- | --- |
+| 403 zwijane do `stripe_error` | UI: „Spróbuj ponownie" — rada, która nigdy nie zadziała | nowa odmowa `stripe_unauthorized` → „chwilowo niedostępne" |
+| log `checkout.stripe begin 403 …` | jeden literał „begin" dla czterech różnych wywołań | etap, rodzaj zakupu, workspace, pakiet/plan, Stripe Price, kwota, typ/kod/param + **Request-Id** |
+| odmowa na etapie wyceny | nie logowała nic — `unknown_package` nie do odróżnienia od `price_out_of_sync` | `checkout.refused` z powodem i identyfikatorem |
+| `/api/hooks/stripe` | raportował **obecność** sekretów | raportuje też **uprawnienie**: `one_off` |
+
+`one_off` sonduje `POST /v1/payment_intents` z **pustym ciałem**: 403 → `forbidden`, 400 → `ok`.
+Stripe sprawdza uprawnienie przed walidacją parametrów, a PaymentIntent bez kwoty i waluty nie może
+powstać — sonda niczego nie tworzy i nie dotyka pieniędzy. Wynik jest cache'owany 5 minut na
+instancję, żeby publiczny endpoint nie zamieniał odświeżenia strony w wywołanie API Stripe.
+
+**Czego log nie zawiera i zawierać nie może:** `client_secret`, klucza tajnego ani z ograniczeniami,
+sekretu webhooka, danych karty, adresu e-mail. Asercje w §M sprawdzają to na **każdej** linii, którą
+testy wyemitują, nie tylko na tej jednej.
+
+### Dwie rzeczy znalezione przy okazji
+
+1. **Apple Pay i Google Pay renderowały się dwa razy** — jako przyciski Express Checkout Element i
+   ponownie jako zakładki Payment Element, dokładnie na urządzeniach, które je obsługują. Payment
+   Element ma teraz `wallets: { applePay: "never", googlePay: "never" }`. To ukrywa **kopię**, nie
+   metodę: przyciski powyżej nadal pochodzą z własnego sprawdzenia dostępności przez Stripe. Link
+   celowo zostawiony — nie ma dla niego takiego przełącznika i nie duplikuje się w ten sposób (wyżej
+   przycisk, niżej pole e-mail w formularzu karty).
+2. **Przycisk płatności na telefonie chował się pod dokiem.** Był `sticky bottom-0`, a nawigacja
+   klienta to `fixed bottom-0 z-40` poniżej `lg`. Teraz przykleja się nad nią, licząc od wspólnego
+   `--dock-h` plus `env(safe-area-inset-bottom)`.
+
+### Test regresji — `test:billingsync` §M
+
+Nie „PaymentIntent się tworzy" (to przechodziłoby na atrapie zawsze), tylko **kształt asymetrii**:
+gdy Stripe odmawia klucza wyłącznie dla PaymentIntents, plan musi nadal się sprzedać, a pakiet i
+custom credits muszą odmówić z `stripe_unauthorized`, a linia loga musi wystarczyć do diagnozy bez
+powtarzania zakupu.
+
+Zweryfikowane mutacją: usunięcie mapowania 403, usunięcie `Request-Id` i usunięcie tłumienia
+portfeli — każde z osobna wywala §M.
+
+### Metody płatności — stan konta, nie założenia
+
+Z domyślnej konfiguracji `pmc_1UIBdUPOBRMZKbwY1IXD2gfh` (`is_default: true`):
+
+| Metoda | `available` | Preferencja |
+| --- | --- | --- |
+| card, apple_pay, google_pay, link, blik, klarna, revolut_pay | `true` | `on` |
+| **p24** | **`false`** | `on` |
+
+`p24.available: false` przy `preference: on` to maszynowe potwierdzenie „INELIGIBLE": metoda jest
+włączona przez sprzedawcę, a Stripe jej nie udostępnia. **Nie obchodzimy tego.** Odblokowanie leży
+po stronie właściciela konta w Stripe (weryfikacja działalności / wniosek do Stripe Support).
+
+Dla subskrypcji Stripe sam zawęził listę do `card, klarna, link, revolut_pay` — BLIK odpadł, bo
+PaymentIntent faktury ma `setup_future_usage: off_session`, a BLIK cykliczny to osobna funkcja
+(changelog Stripe 2026-04-22), wymagająca włączenia na koncie przez Stripe Support, wersji API
+`2026-04-22.preview` i `mandate_options`. Repozytorium jest przypięte do `2024-06-20`. Nie wymuszamy.
