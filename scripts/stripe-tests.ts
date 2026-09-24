@@ -936,9 +936,23 @@ async function main() {
       "Stripe does not replace a subscription — it adds one, and both bill monthly");
     check("and that read's failure is not treated as 'no subscription'",
       /if \(subError\) return \{ ok: false, reason: "stripe_error" \}/.test(billing));
-    const board = codeOnly(read("components/plan/pricing-board.tsx"));
-    check("the customer is told, rather than shown a generic error",
-      /already_subscribed[\s\S]{0,120}packs\.alreadySubscribed/.test(board));
+    // SUPERSEDED LOCATION, SAME INVARIANT. This used to read pricing-board.tsx,
+    // where a buy button called a server action and mapped the refusal to a
+    // toast. The payment sheet moved inside GrovBase (Billing 2.0): a buy
+    // button now navigates to /checkout, which prices the order server-side and
+    // bounces back to /plan?checkout=<reason> when the answer is no.
+    //
+    // So the mapping lives in two places now, and BOTH are asserted — a refusal
+    // that reaches neither is a customer sent back to the pricing page with no
+    // idea why, which is how a second click happens.
+    const notice = codeOnly(read("components/plan/checkout-notice.tsx"));
+    check("the bounce-back names the reason, rather than showing a generic error",
+      /already_subscribed:\s*"packs\.alreadySubscribed"/.test(notice));
+    check("an unverified price reads as temporarily unavailable, not as an error",
+      /price_out_of_sync:\s*"packs\.checkoutUnavailable"/.test(notice));
+    const view = codeOnly(read("components/checkout/checkout-view.tsx"));
+    check("and the checkout itself explains a refusal in place",
+      /already_subscribed[\s\S]{0,160}packs\.alreadySubscribed/.test(view));
 
     // K3 — THE PLAN PAGE SAYS WHAT HAPPENED.
     const planPage = codeOnly(read("app/(app)/plan/page.tsx"));

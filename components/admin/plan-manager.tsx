@@ -3,6 +3,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
+import { StripeSyncBadge } from "@/components/admin/stripe-sync-badge";
 import { savePlanFullAction } from "@/app/actions/admin";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,9 @@ export type PlanRow = {
   monthly_credits: number; bonus_credits: number; description: string | null;
   features: unknown; featured: boolean; active: boolean; sort_order: number; limits: unknown;
   currency?: string;
+  /** Written by the price sync. Absent on a blank (unsaved) plan. */
+  stripe_sync_status?: string | null;
+  stripe_synced_at?: string | null;
 };
 
 type Limits = { max_products?: number; max_generations_monthly?: number };
@@ -122,6 +126,14 @@ export function PlanManager({ plans }: { plans: PlanRow[] }) {
       <Modal open={!!editing} onClose={() => setEditing(null)} title={editing?.id ? t("common.edit") : t("admin.newPlan")} wide>
         {editing && (
           <div className="space-y-4">
+            {/* WHETHER THIS PLAN'S PRICE IS THE PRICE STRIPE WOULD CHARGE.
+                A plan carries two prices and one status: it reads 'synced'
+                only when BOTH the monthly and the annual figure agree with
+                Stripe. Retry re-sends whichever amount is on screen now. */}
+            {editing.id && (
+              <StripeSyncBadge entity="plan" entityId={editing.id}
+                status={editing.stripe_sync_status} syncedAt={editing.stripe_synced_at} />
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <Label>{t("common.name")}</Label>

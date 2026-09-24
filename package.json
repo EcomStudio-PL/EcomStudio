@@ -88,11 +88,14 @@
     "test:analytics": "esbuild scripts/analytics-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/analytics-tests.cjs --log-level=silent && node .next/analytics-tests.cjs",
     "test:analytics:browser": "node scripts/analytics-browser-probe.mjs",
     "test:plancaps": "esbuild scripts/plan-capability-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/plan-capability-tests.cjs --log-level=silent && node .next/plan-capability-tests.cjs",
-    "test:stripe": "esbuild scripts/stripe-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/stripe-tests.cjs --log-level=silent && node .next/stripe-tests.cjs"
+    "test:stripe": "esbuild scripts/stripe-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/stripe-tests.cjs --log-level=silent && node .next/stripe-tests.cjs",
+    "test:billingsync": "esbuild scripts/billing-sync-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/billing-sync-tests.cjs --log-level=silent && node .next/billing-sync-tests.cjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource-variable/space-grotesk": "^5.3.0",
+    "@stripe/react-stripe-js": "^3.11.0",
+    "@stripe/stripe-js": "^5.10.0",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.47.10",
     "@types/nodemailer": "^8.0.1",

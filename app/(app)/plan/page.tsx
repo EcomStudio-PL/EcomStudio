@@ -31,8 +31,12 @@ export default async function PlanPage({ searchParams }: {
   // still live. The obvious next move is to click it again, and Stripe would
   // have created a SECOND subscription.
   const params = await searchParams;
-  const checkout = params.checkout === "success" ? "success"
-    : params.checkout === "cancelled" ? "cancelled" : null;
+  // success / cancelled from Stripe's own return, plus every refusal
+  // /checkout can bounce back with. CheckoutNotice renders null for anything
+  // it does not recognise, so an invented value shows nothing rather than a
+  // humanised key.
+  const raw = typeof params.checkout === "string" ? params.checkout : null;
+  const checkout = raw && /^[a-z_]{1,32}$/.test(raw) ? raw : null;
   const supabase = await createClient();
   const { dict } = await getDictionary();
   const t = makeT(dict);

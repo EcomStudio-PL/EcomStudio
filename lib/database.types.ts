@@ -1041,7 +1041,11 @@ export type Database = {
           sort_order: number
           stripe_price_id: string | null
           stripe_product_id: string | null
-        }
+                  stripe_price_cents: number | null
+          stripe_sync_error: string | null
+          stripe_sync_status: string
+          stripe_synced_at: string | null
+}
         Insert: {
           active?: boolean
           badge?: string | null
@@ -1057,7 +1061,11 @@ export type Database = {
           sort_order?: number
           stripe_price_id?: string | null
           stripe_product_id?: string | null
-        }
+                  stripe_price_cents?: number | null
+          stripe_sync_error?: string | null
+          stripe_sync_status?: string
+          stripe_synced_at?: string | null
+}
         Update: {
           active?: boolean
           badge?: string | null
@@ -1073,7 +1081,11 @@ export type Database = {
           sort_order?: number
           stripe_price_id?: string | null
           stripe_product_id?: string | null
-        }
+                  stripe_price_cents?: number | null
+          stripe_sync_error?: string | null
+          stripe_sync_status?: string
+          stripe_synced_at?: string | null
+}
         Relationships: []
       }
       credit_transactions: {
@@ -3996,7 +4008,12 @@ export type Database = {
           stripe_price_id_annual: string | null
           stripe_price_id_monthly: string | null
           stripe_product_id: string | null
-        }
+                  stripe_price_annual_cents: number | null
+          stripe_price_monthly_cents: number | null
+          stripe_sync_error: string | null
+          stripe_sync_status: string
+          stripe_synced_at: string | null
+}
         Insert: {
           active?: boolean
           annual_price_cents?: number
@@ -4016,7 +4033,12 @@ export type Database = {
           stripe_price_id_annual?: string | null
           stripe_price_id_monthly?: string | null
           stripe_product_id?: string | null
-        }
+                  stripe_price_annual_cents?: number | null
+          stripe_price_monthly_cents?: number | null
+          stripe_sync_error?: string | null
+          stripe_sync_status?: string
+          stripe_synced_at?: string | null
+}
         Update: {
           active?: boolean
           annual_price_cents?: number
@@ -4036,7 +4058,12 @@ export type Database = {
           stripe_price_id_annual?: string | null
           stripe_price_id_monthly?: string | null
           stripe_product_id?: string | null
-        }
+                  stripe_price_annual_cents?: number | null
+          stripe_price_monthly_cents?: number | null
+          stripe_sync_error?: string | null
+          stripe_sync_status?: string
+          stripe_synced_at?: string | null
+}
         Relationships: []
       }
       subscriptions: {
@@ -4736,6 +4763,37 @@ export type Database = {
           p_workspace_id: string | null
           p_outcome: string
           p_detail: Json
+        }
+        Returns: Json
+      }
+      stripe_apply_price: {
+        Args: {
+          p_token: string | null
+          p_entity: string
+          p_entity_id: string
+          p_period: string | null
+          p_price_cents: number
+          p_currency: string | null
+          p_stripe_product_id: string | null
+          p_stripe_price_id: string | null
+        }
+        Returns: Json
+      }
+      stripe_mark_price_sync: {
+        Args: {
+          p_token: string | null
+          p_entity: string
+          p_entity_id: string
+          p_status: string
+          p_error: string | null
+        }
+        Returns: Json
+      }
+      stripe_payment_status: {
+        Args: {
+          p_token: string | null
+          p_workspace_id: string
+          p_reference: string
         }
         Returns: Json
       }

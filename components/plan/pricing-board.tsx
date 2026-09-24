@@ -1,15 +1,11 @@
 "use client";
 import { useCallback, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Check, Crown, FileText, Minus, Rocket, ShieldCheck, Sparkles, Star, Users, Zap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Diamond } from "@/components/layout/credits-control";
 import { cn } from "@/lib/utils";
-import { toast } from "@/lib/notify";
-import {
-  startPackageCheckoutAction, startCustomCreditsCheckoutAction, startPlanCheckoutAction,
-} from "@/app/actions/billing";
-import type { CheckoutResult } from "@/lib/server/billing";
 import type { PlanCapabilities } from "@/lib/plans/capabilities";
 import { annualBillingAvailable, annualMonthlyCents, annualSavingPct } from "@/lib/plans/pricing";
 import { creditLadder, customCreditsRange, priceForCredits } from "@/lib/plans/credit-price";
@@ -69,49 +65,30 @@ export type PackCard = {
 };
 
 /**
- * ONE PLACE WHERE A BUY BUTTON BECOMES A REDIRECT.
+ * ONE PLACE WHERE A BUY BUTTON BECOMES A NAVIGATION.
  *
- * Every button on this page goes through here, so the three of them cannot
- * drift into three behaviours. The action returns a Stripe-hosted URL or a
- * reason; there is no third outcome and nothing is granted client-side.
+ * It used to call a server action, receive a stripe.com URL and hand the
+ * customer to another origin with `window.location.assign`. The payment sheet
+ * now lives inside GrovBase, so a buy button does the ordinary thing a link
+ * does: it goes to /checkout, in the same app, with the app's own chrome.
  *
- * `window.location.assign`, not the router: Stripe Checkout is another origin,
- * and a client-side navigation cannot leave the app.
+ * THE URL CARRIES AN INTENT, NEVER A PRICE. A plan id, a pack id, or a number
+ * of credits — all three name something the server looks up. A customer who
+ * edits the address bar can change what they are buying to another real,
+ * active, correctly priced thing, and can never change what it costs.
  *
- * The pending flag is UX, not protection — the server re-checks everything on
- * every call, and a double click produces a second Checkout Session, never a
- * second charge.
+ * REFUSALS MOVED WITH IT. /checkout prices the order before it renders and
+ * bounces back to /plan?checkout=<reason> when the answer is no, so the
+ * refusal is read where the alternatives are, rather than as a toast on a page
+ * the customer is about to leave. `router.push` rather than a hard assign:
+ * this is the same origin now, and a client navigation keeps the shell.
  */
-function useCheckout(t: (k: string, v?: Record<string, string | number>) => string) {
+function useCheckout() {
+  const router = useRouter();
   const [pending, start] = useTransition();
-  const go = useCallback((run: () => Promise<CheckoutResult>) => {
-    start(async () => {
-      let res: CheckoutResult;
-      try {
-        res = await run();
-      } catch {
-        toast.error(t("packs.checkoutFailed"));
-        return;
-      }
-      if (res.ok) { window.location.assign(res.url); return; }
-      // Each refusal names something the customer can act on, or an honest
-      // "not available", rather than a generic error that hides a bug.
-      // Each refusal that a customer can DO something about says so. The rest
-      // collapse into one honest "try again" — but they are logged server-side
-      // with Stripe's own code, so "try again" is never the end of the trail.
-      toast.error(t(
-        res.reason === "payments_disabled" || res.reason === "not_mapped"
-          ? "packs.checkoutUnavailable"
-          : res.reason === "invalid_credits"
-            ? "packs.checkoutInvalidCredits"
-            : res.reason === "already_subscribed"
-              ? "packs.alreadySubscribed"
-              : res.reason === "plan_not_purchasable"
-                ? "packs.planNotPurchasable"
-                : "packs.checkoutFailed",
-      ));
-    });
-  }, [t]);
+  const go = useCallback((href: string) => {
+    start(() => { router.push(href); });
+  }, [router]);
   return { pending, go };
 }
 
@@ -259,7 +236,7 @@ function PlanColumn({ plan: p, index, annual, isCurrent, paymentsEnabled, t, n, 
   // plans, and it is division, not marketing.
   const perCredit = total > 0 && effective > 0 ? (effective / 100 / total).toFixed(2) : null;
   const rows = planRows(p, t, n);
-  const { pending, go } = useCheckout(t);
+  const { pending, go } = useCheckout();
   // Payable = this deployment can charge AND this period has a Stripe price.
   const payable = paymentsEnabled && (annual ? p.annualMapped : p.monthlyMapped);
   const canBuy = payable && !free && !isCurrent;
@@ -315,7 +292,7 @@ function PlanColumn({ plan: p, index, annual, isCurrent, paymentsEnabled, t, n, 
             the till is worse than one that says "not available". */}
         <button
           disabled={!canBuy || pending}
-          onClick={() => go(() => startPlanCheckoutAction(p.id, annual ? "annual" : "monthly"))}
+          onClick={() => go(`/checkout?kind=subscription&plan=${p.id}&period=${annual ? "annual" : "monthly"}`)}
           data-plan-cta
           className={cn(
             "h-11 w-full rounded-xl text-sm font-semibold transition-opacity",
@@ -474,7 +451,7 @@ function TopUpSection({ packs, paymentsEnabled, t, n, money }: {
   n: (v: number) => string;
   money: (cents: number, currency: string, digits?: number) => string;
 }) {
-  const { pending, go } = useCheckout(t);
+  const { pending, go } = useCheckout();
   // Largest first, the way a top-up list is read — you arrive knowing roughly
   // how much you need and scan down to it.
   const ladder = useMemo(
@@ -547,7 +524,7 @@ function TopUpSection({ packs, paymentsEnabled, t, n, money }: {
                 </p>
                 <button
                   disabled={!paymentsEnabled || !p.mapped || pending}
-                  onClick={() => go(() => startPackageCheckoutAction(p.id))}
+                  onClick={() => go(`/checkout?kind=package&pack=${p.id}`)}
                   data-pack-buy
                   className={cn(
                     "col-span-3 h-9 shrink-0 rounded-lg px-3.5 text-[12.5px] font-semibold transition-opacity sm:col-span-1",
@@ -609,7 +586,7 @@ function CustomAmount({ packs, base, currency, paymentsEnabled, t, n, money }: {
     return featured ? featured.credits + featured.bonusCredits : Math.round((min + max) / 2);
   });
 
-  const { pending, go } = useCheckout(t);
+  const { pending, go } = useCheckout();
   const cents = useMemo(() => priceForCredits(credits, ladder), [credits, ladder]);
   const per = credits > 0 ? cents / credits : 0;
   const off = base > 0 && per > 0 ? Math.round((1 - per / base) * 100) : 0;
@@ -671,7 +648,7 @@ function CustomAmount({ packs, base, currency, paymentsEnabled, t, n, money }: {
             question is whether this deployment can charge at all. */}
         <button
           disabled={!paymentsEnabled || pending}
-          onClick={() => go(() => startCustomCreditsCheckoutAction(credits))}
+          onClick={() => go(`/checkout?kind=credits&n=${credits}`)}
           data-custom-buy
           className={cn(
             "cta h-11 w-full rounded-xl text-sm font-semibold transition-opacity",

@@ -8,10 +8,14 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { StripeSyncBadge } from "@/components/admin/stripe-sync-badge";
 
 export type Pkg = {
   id?: string; name: string; credits: number; bonus_credits: number;
   price_cents: number; active: boolean; featured: boolean; sort_order: number; badge: string | null;
+  /** Written by the price sync. Absent on a blank (unsaved) package. */
+  stripe_sync_status?: string | null;
+  stripe_synced_at?: string | null;
 };
 
 export function PackageManager({ packages }: { packages: Pkg[] }) {
@@ -49,7 +53,11 @@ export function PackageManager({ packages }: { packages: Pkg[] }) {
               <p className="mt-2 font-display text-xl font-semibold text-accent">
                 {p.credits}{p.bonus_credits > 0 && <span className="text-sm"> +{p.bonus_credits}</span>}
               </p>
-              <p className="text-xs text-faint">{(p.price_cents / 100).toFixed(2)} PLN</p>
+              <p className="flex items-center gap-1.5 text-xs text-faint">
+                {(p.price_cents / 100).toFixed(2)} PLN
+                <StripeSyncBadge entity="package" status={p.stripe_sync_status}
+                  syncedAt={p.stripe_synced_at} compact />
+              </p>
             </button>
           </li>
         ))}
@@ -57,6 +65,10 @@ export function PackageManager({ packages }: { packages: Pkg[] }) {
       <Modal open={!!editing} onClose={() => setEditing(null)} title={editing?.id ? t("common.edit") : t("admin.newPackage")}>
         {editing && (
           <div className="space-y-4">
+            {editing.id && (
+              <StripeSyncBadge entity="package" entityId={editing.id}
+                status={editing.stripe_sync_status} syncedAt={editing.stripe_synced_at} />
+            )}
             <div>
               <Label>{t("common.name")}</Label>
               <Input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />

@@ -57,6 +57,7 @@ const app = [
   "branding",
   "catpage",
   "chat",
+  "checkout",
   "company",
   "compress",
   "concepts",

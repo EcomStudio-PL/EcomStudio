@@ -5,6 +5,7 @@ import type { Enums } from "@/lib/database.types";
 import { logAudit } from "@/lib/services/audit";
 import { keepStructuredFields } from "@/lib/services/admin";
 import { writableCapabilities, type PlanCapabilities } from "@/lib/plans/capabilities";
+import { syncPrice } from "@/lib/server/stripe-pricing";
 
 type Result = { ok: boolean; error?: string };
 
@@ -168,6 +169,24 @@ export async function updateModelFullAction(modelId: string, patch: {
   }
 }
 
+/**
+ * SAVE A CREDIT PACKAGE — AND TELL STRIPE WHAT IT COSTS.
+ *
+ * This used to write `price_cents` straight to Postgres. Stripe kept charging
+ * whatever its Price object said, and nothing compared the two. See
+ * supabase/migrations/0117 for the whole shape of that bug.
+ *
+ * THE PRICE IS NO LONGER WRITTEN HERE. `syncPrice` owns it: it creates the new
+ * Stripe Price first, and only then writes the displayed amount, the Stripe id
+ * and the confirmed amount in one statement. Which is why the update below
+ * sets everything EXCEPT the price.
+ *
+ * The order matters. Stripe is attempted BEFORE the price moves locally, so a
+ * Stripe failure leaves the old price live and correct and the admin sees why.
+ * A brand-new row is the one exception — there is no old price to protect, so
+ * it is inserted with the requested amount and is simply not sellable
+ * (`sellable()` refuses anything not marked 'synced') until Stripe confirms.
+ */
 export async function savePackageAction(input: {
   id?: string; name: string; credits: number; bonus_credits: number;
   price_cents: number; active: boolean; featured: boolean; sort_order: number;
@@ -175,14 +194,47 @@ export async function savePackageAction(input: {
 }): Promise<Result> {
   try {
     const { supabase } = await requireAdmin();
-    if (!input.name.trim() || input.credits <= 0 || input.price_cents < 0) return { ok: false, error: "invalid" };
-    const row = { ...input, name: input.name.trim(), id: undefined };
-    const { error } = input.id
-      ? await supabase.from("credit_packages").update(row).eq("id", input.id)
-      : await supabase.from("credit_packages").insert(row);
-    if (error) return { ok: false, error: "generic" };
+    const name = input.name.trim();
+    if (!name || input.credits <= 0 || !Number.isSafeInteger(input.price_cents) || input.price_cents < 0) {
+      return { ok: false, error: "invalid" };
+    }
+
+    const common = {
+      name,
+      credits: input.credits,
+      bonus_credits: input.bonus_credits,
+      active: input.active,
+      featured: input.featured,
+      sort_order: input.sort_order,
+      badge: input.badge,
+    };
+
+    let id = input.id;
+    if (id) {
+      const { error } = await supabase.from("credit_packages").update(common).eq("id", id);
+      if (error) return { ok: false, error: "generic" };
+    } else {
+      const { data, error } = await supabase
+        .from("credit_packages")
+        .insert({ ...common, price_cents: input.price_cents })
+        .select("id").single();
+      if (error || !data) return { ok: false, error: "generic" };
+      id = data.id;
+    }
+
+    const sync = await syncPrice(supabase, {
+      entity: "package", entityId: id,
+      amountCents: input.price_cents, currency: "PLN", productName: name,
+    });
+
     revalidatePath("/admin/credits");
     revalidatePath("/credits");
+    revalidatePath("/plan");
+    // The row saved; the PRICE did not reach Stripe. Reported as its own
+    // failure rather than a generic one, because the two need different
+    // actions from the admin — and because "saved" on its own would be a lie
+    // about the number customers will be charged.
+    if (!sync.ok) return { ok: false, error: `stripe_${sync.reason}` };
     return { ok: true };
   } catch {
     return { ok: false, error: "generic" };
@@ -249,13 +301,49 @@ export async function updateModelCostAction(modelId: string, creditCost: number)
   }
 }
 
+/**
+ * The quick inline plan edit. Same rule as the package: a price change goes
+ * through Stripe, everything else is an ordinary column write.
+ *
+ * `price_cents` is stripped out of the patch rather than passed along, so
+ * there is no path through this function that can move a displayed price
+ * without moving the Stripe Price with it.
+ */
 export async function updatePlanAction(planId: string, patch: {
   name?: string; price_cents?: number; monthly_credits?: number; sort_order?: number; active?: boolean;
 }): Promise<Result> {
   try {
     const { supabase } = await requireAdmin();
-    const { error } = await supabase.from("subscription_plans").update(patch).eq("id", planId);
-    if (error) return { ok: false, error: "generic" };
+    const { price_cents, ...rest } = patch;
+
+    if (Object.keys(rest).length > 0) {
+      const { error } = await supabase.from("subscription_plans").update(rest).eq("id", planId);
+      if (error) return { ok: false, error: "generic" };
+    }
+
+    if (price_cents !== undefined) {
+      if (!Number.isSafeInteger(price_cents) || price_cents < 0) return { ok: false, error: "invalid" };
+      const { data: plan } = await supabase
+        .from("subscription_plans").select("name").eq("id", planId).maybeSingle();
+      // A FREE PLAN HAS NO STRIPE PRICE AND MUST NOT GET ONE. 0 zł is the
+      // absence of a subscription, not a subscription that bills nothing.
+      if (price_cents > 0) {
+        const sync = await syncPrice(supabase, {
+          entity: "plan", entityId: planId, period: "monthly",
+          amountCents: price_cents, currency: "PLN",
+          productName: patch.name ?? plan?.name ?? "GrovBase",
+        });
+        if (!sync.ok) {
+          revalidatePath("/admin/plans");
+          return { ok: false, error: `stripe_${sync.reason}` };
+        }
+      } else {
+        const { error } = await supabase
+          .from("subscription_plans").update({ price_cents: 0 }).eq("id", planId);
+        if (error) return { ok: false, error: "generic" };
+      }
+    }
+
     revalidatePath("/admin/plans");
     revalidatePath("/plan");
     return { ok: true };
@@ -362,10 +450,11 @@ export async function savePlanFullAction(input: {
       : { data: null };
     const features = writableCapabilities(input.features, existing?.features ?? null);
 
+    // PRICES ARE ABSENT FROM THIS ROW ON PURPOSE. They are written by
+    // `syncPrice` below, in the same statement that records the Stripe Price
+    // id and the amount Stripe confirmed, so the three can never disagree.
     const row = {
       name: input.name.trim(),
-      price_cents: input.price_cents,
-      annual_price_cents: input.annual_price_cents,
       monthly_credits: input.monthly_credits,
       bonus_credits: input.bonus_credits,
       description: input.description,
@@ -375,18 +464,54 @@ export async function savePlanFullAction(input: {
       sort_order: input.sort_order,
       limits: input.limits as never,
     };
-    const { error } = input.id
-      ? await supabase.from("subscription_plans").update(row).eq("id", input.id)
-      : await supabase.from("subscription_plans").insert({
-          ...row,
-          // An INSERT has nothing stored to fall back on, so a refused bag
-          // becomes an empty one rather than a missing NOT NULL column.
-          features: (features ?? {}) as never,
-          slug: input.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `plan-${Date.now()}`,
-        });
-    if (error) return { ok: false, error: "generic" };
+    let planId = input.id;
+    if (planId) {
+      const { error } = await supabase.from("subscription_plans").update(row).eq("id", planId);
+      if (error) return { ok: false, error: "generic" };
+    } else {
+      const { data, error } = await supabase.from("subscription_plans").insert({
+        ...row,
+        // An INSERT has nothing stored to fall back on, so a refused bag
+        // becomes an empty one rather than a missing NOT NULL column.
+        features: (features ?? {}) as never,
+        // A new plan is inserted at the requested price so the editor shows
+        // what was typed. It is NOT sellable until the sync below confirms it,
+        // because `sellable()` refuses anything not marked 'synced'.
+        price_cents: input.price_cents,
+        annual_price_cents: input.annual_price_cents,
+        slug: input.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `plan-${Date.now()}`,
+      }).select("id").single();
+      if (error || !data) return { ok: false, error: "generic" };
+      planId = data.id;
+    }
+
+    // BOTH PERIODS, EACH THROUGH STRIPE. `syncPrice` does nothing when the
+    // amount already matches what Stripe confirmed, so saving a plan to change
+    // only its credits or its description makes no Stripe call at all and
+    // creates no redundant Price.
+    //
+    // A 0 zł period means "not sold in this period": the sync archives whatever
+    // Price was there and clears the mapping, rather than creating a recurring
+    // Price that bills nothing forever.
+    const name = input.name.trim();
+    if (input.price_cents > 0) {
+      const monthly = await syncPrice(supabase, {
+        entity: "plan", entityId: planId, period: "monthly",
+        amountCents: input.price_cents, currency: "PLN", productName: name,
+      });
+      if (!monthly.ok) {
+        revalidatePath("/admin/plans");
+        return { ok: false, error: `stripe_${monthly.reason}` };
+      }
+    }
+    const annual = await syncPrice(supabase, {
+      entity: "plan", entityId: planId, period: "annual",
+      amountCents: input.annual_price_cents, currency: "PLN", productName: name,
+    });
+
     revalidatePath("/admin/plans");
     revalidatePath("/plan");
+    if (!annual.ok) return { ok: false, error: `stripe_${annual.reason}` };
     return { ok: true };
   } catch {
     return { ok: false, error: "generic" };
