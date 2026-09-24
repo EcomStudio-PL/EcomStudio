@@ -592,6 +592,282 @@ async function main() {
     check("every payment carries the workspace", /grovbase_workspace_id/.test(co));
   }
 
+  /* ───────────────────────────────────────────────────────────────────────
+     M. THE 2026-09-24 PRODUCTION BUG, NAILED DOWN.
+
+     WHAT HAPPENED. Plans sold. Credit packages did not. Every server-side
+     signal said the deployment was healthy — `ready: true`, `grants: true`,
+     `checkout: live`, all seven catalogue prices matching Stripe to the grosz —
+     and the customer got "Nie udało się rozpocząć płatności. Spróbuj ponownie."
+
+     THE CAUSE. STRIPE_SECRET_KEY was a RESTRICTED key (`rk_live_…`) holding
+     write access to Subscriptions and Customers but NOT to PaymentIntents. The
+     subscription path never creates a PaymentIntent itself — Stripe makes one
+     for the invoice, under Stripe's own authority — so it worked perfectly.
+     The one-off path creates one directly, and Stripe answered 403 to every
+     single attempt.
+
+     WHY IT HID SO WELL. The 403 was collapsed into `stripe_error`, which the
+     UI renders as "try again" — advice that could never work. And the log line
+     said `checkout.stripe begin 403 …`: one literal string, "begin", for four
+     different calls.
+
+     WHAT THIS SECTION LOCKS IN. Not "a PaymentIntent gets created" — that would
+     pass against a fake forever. It locks in the SHAPE OF THE ASYMMETRY: when
+     Stripe refuses the key for PaymentIntents only, subscriptions must still
+     sell, one-off purchases must refuse with a reason that says the key is not
+     permitted, and the log line must be enough to find it without a rerun.
+     ─────────────────────────────────────────────────────────────────────── */
+  console.log("\nM. SUBSCRIPTION SELLS, ONE-OFF CANNOT CREATE A PAYMENTINTENT");
+  {
+    const { beginCheckout } = await import("../lib/server/checkout");
+
+    // Stripe's real refusal, verbatim from the production error group — key
+    // masked by Stripe itself, which is why it is safe to keep here.
+    const FORBIDDEN = {
+      error: {
+        message: "The provided key 'rk_live_*****QHJ7kw' does not have the required "
+          + "permissions for this endpoint on account 'acct_stub'. This is a restricted "
+          + "API key, but the required permissions are not available for use by restricted keys.",
+        type: "invalid_request_error",
+      },
+    };
+    const REQUEST_ID = "req_stub_0000";
+    const SUB_SECRET = "pi_stub_secret_do_not_log";
+
+    /** Stripe as the production account behaved: subscriptions yes, intents no. */
+    function installSplitStripe() {
+      const seen: Call[] = [];
+      globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
+        const path = String(url).replace("https://api.stripe.com/v1", "").split("?")[0];
+        const method = init?.method ?? "GET";
+        const body: Record<string, string> = {};
+        if (typeof init?.body === "string") {
+          for (const pair of init.body.split("&")) {
+            if (!pair) continue;
+            const [k, v] = pair.split("=");
+            body[decodeURIComponent(k)] = decodeURIComponent(v ?? "");
+          }
+        }
+        seen.push({ method, path, body, idem: null });
+
+        if (method === "POST" && path === "/payment_intents") {
+          return new Response(JSON.stringify(FORBIDDEN), {
+            status: 403, headers: { "Request-Id": REQUEST_ID },
+          });
+        }
+        if (method === "GET" && path === "/subscriptions") {
+          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        }
+        if (method === "POST" && path === "/subscriptions") {
+          return new Response(JSON.stringify({
+            id: "sub_stub", status: "incomplete",
+            latest_invoice: { id: "in_stub", payment_intent: { id: "pi_stub", client_secret: SUB_SECRET, status: "requires_payment_method", amount: 9900, currency: "pln" } },
+          }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ id: "cus_stub" }), { status: 200 });
+      }) as typeof fetch;
+      return seen;
+    }
+
+    const PACKS = [
+      { id: "pack-small", name: "Start", description: null, credits: 200, bonus_credits: 0,
+        price_cents: 3900, currency: "PLN", stripe_price_id: "price_pack_small",
+        stripe_price_cents: 3900, stripe_sync_status: "synced" },
+      { id: "pack-550", name: "Standard", description: null, credits: 550, bonus_credits: 0,
+        price_cents: 7900, currency: "PLN", stripe_price_id: "price_pack_550",
+        stripe_price_cents: 7900, stripe_sync_status: "synced" },
+    ];
+    const PLANS = [
+      { id: "plan-starter", name: "Starter", description: null, price_cents: 9900,
+        annual_price_cents: 0, currency: "PLN", monthly_credits: 500, bonus_credits: 0,
+        features: {}, stripe_price_id_monthly: "price_plan_starter", stripe_price_id_annual: null,
+        stripe_price_monthly_cents: 9900, stripe_price_annual_cents: null,
+        stripe_sync_status: "synced" },
+    ];
+
+    /** Answers the four reads beginCheckout makes, the way Postgres would. */
+    function checkoutDb() {
+      const build = (rows: Row[]) => {
+        const filters: Record<string, unknown> = {};
+        const matching = () => rows.filter((r) =>
+          Object.entries(filters).every(([k, v]) => k === "active" || r[k] === v));
+        const q = {
+          select: () => q,
+          eq: (col: string, val: unknown) => { filters[col] = val; return q; },
+          in: () => q,
+          limit: () => Promise.resolve({ data: matching(), error: null }),
+          maybeSingle: () => Promise.resolve({ data: matching()[0] ?? null, error: null }),
+          // `custom_credits` awaits the builder itself rather than calling a
+          // terminal method, so it has to be thenable.
+          then: (res: (v: { data: Row[]; error: null }) => unknown) =>
+            Promise.resolve({ data: matching(), error: null }).then(res),
+        };
+        return q;
+      };
+      return {
+        from: (name: string) => build(
+          name === "credit_packages" ? PACKS
+          : name === "subscription_plans" ? PLANS
+          : [],
+        ),
+        rpc: async (fn: string) =>
+          fn === "stripe_customer_for" ? { data: "cus_stub", error: null } : { data: null, error: null },
+      } as never;
+    }
+
+    const WS = { id: "ws-0000", name: "Test Workspace" };
+
+    /** Run one checkout with console.error captured. */
+    async function attempt(req: Parameters<typeof beginCheckout>[3]) {
+      const logged: string[] = [];
+      const original = console.error;
+      console.error = (...args: unknown[]) => { logged.push(args.map(String).join(" ")); };
+      try {
+        const res = await beginCheckout(checkoutDb(), WS, "buyer@example.test", req);
+        return { res, logged };
+      } finally { console.error = original; }
+    }
+
+    // 1. THE REFERENCE PATH. If this ever breaks, the fix broke plans.
+    installSplitStripe();
+    const sub = await attempt({ kind: "subscription", planId: "plan-starter", period: "monthly" });
+    check("a plan subscription still succeeds", sub.res.ok === true,
+      sub.res.ok ? "" : `refused: ${sub.res.reason}`);
+    check("and hands back the invoice's client secret",
+      sub.res.ok && sub.res.clientSecret === SUB_SECRET);
+
+    // 2. THE BROKEN PATH — a fixed credit package.
+    const seen = installSplitStripe();
+    const pack = await attempt({ kind: "credit_package", packageId: "pack-550" });
+    check("a credit package is refused", pack.res.ok === false);
+    check("with stripe_unauthorized, NOT the generic stripe_error",
+      !pack.res.ok && pack.res.reason === "stripe_unauthorized",
+      !pack.res.ok ? `got ${pack.res.reason} — "try again" for a permission the key will never have`
+        : "it succeeded, which the fake cannot do");
+    check("it did reach Stripe — this is not an earlier refusal in disguise",
+      seen.some((c) => c.method === "POST" && c.path === "/payment_intents"));
+    check("the intent asked Stripe to choose the methods",
+      seen.find((c) => c.path === "/payment_intents")?.body["automatic_payment_methods[enabled]"] === "true");
+
+    // 3. AND CUSTOM CREDITS, which take the same branch.
+    installSplitStripe();
+    const custom = await attempt({ kind: "custom_credits", credits: 400 });
+    check("custom credits are refused the same way",
+      !custom.res.ok && custom.res.reason === "stripe_unauthorized",
+      custom.res.ok ? "succeeded" : custom.res.reason);
+
+    // 4. THE LOG LINE HAS TO BE ENOUGH. This is the half that turns a
+    //    three-hour investigation into a one-line answer.
+    const line = pack.logged.find((l) => l.startsWith("checkout.stripe")) ?? "";
+    check("a checkout.stripe line was emitted", line.length > 0);
+    for (const [what, needle] of [
+      ["the failing stage, not a catch-all label", `"stage":"payment_intent"`],
+      ["which kind of purchase", `"kind":"credit_package"`],
+      ["the workspace", `"workspace":"ws-0000"`],
+      ["the internal package id", `"package":"pack-550"`],
+      ["the Stripe Price the row maps to", `"price":"price_pack_550"`],
+      ["the amount that would have been charged", `"amount":7900`],
+      ["Stripe's status", `"status":403`],
+      ["Stripe's error type", `"type":"invalid_request_error"`],
+      ["Stripe's Request-Id, to find it in the dashboard", `"request":"${REQUEST_ID}"`],
+      ["and that this is a permission problem, said outright", `"unauthorized":true`],
+    ] as const) {
+      check(`the log carries ${what}`, line.includes(needle), line.slice(0, 400));
+    }
+    check("'begin' is no longer used as the stage for everything",
+      !/"stage":"begin"/.test(line));
+
+    // 5. AND IT LEAKS NOTHING. The prohibition is absolute, so it is asserted
+    //    over EVERY line the attempt produced, not just the one above.
+    const all = [...pack.logged, ...sub.logged, ...custom.logged].join("\n");
+    check("no client secret is ever logged", !all.includes(SUB_SECRET) && !/_secret_/.test(all));
+    check("no secret or restricted key is ever logged",
+      !/\b(sk|rk)_(live|test)_[A-Za-z0-9]{6,}/.test(all));
+    check("no webhook signing secret is ever logged", !/whsec_/.test(all));
+    check("the customer's email is not logged", !all.includes("buyer@example.test"));
+  }
+
+  console.log("\nM2. THE READINESS PROBE TELLS PRESENCE FROM PERMISSION");
+  {
+    const { paymentIntentWriteCapability, resetCapabilityCache } =
+      await import("../lib/stripe/capabilities");
+
+    const answer = (status: number, body: unknown) => {
+      const seen: Call[] = [];
+      globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
+        seen.push({ method: init?.method ?? "GET", path: String(url), body: {}, idem: null });
+        return new Response(JSON.stringify(body), { status });
+      }) as typeof fetch;
+      return seen;
+    };
+
+    resetCapabilityCache();
+    const forbidden = answer(403, { error: { message: "not permitted", type: "invalid_request_error" } });
+    check("a key Stripe refuses reads as forbidden",
+      await paymentIntentWriteCapability(true) === "forbidden");
+    check("the probe posts to /payment_intents and nowhere else",
+      forbidden.length === 1 && forbidden[0].path.endsWith("/payment_intents"));
+    check("the probe sends no amount, so it can never create anything",
+      forbidden[0].method === "POST");
+
+    resetCapabilityCache();
+    answer(400, { error: { message: "Missing required param: amount.", type: "invalid_request_error", param: "amount" } });
+    check("a key that reaches parameter validation reads as ok",
+      await paymentIntentWriteCapability(true) === "ok",
+      "400 means the permission check already passed");
+
+    resetCapabilityCache();
+    answer(500, { error: { message: "boom" } });
+    check("a Stripe outage is not reported as a permission problem",
+      await paymentIntentWriteCapability(true) === "unknown");
+
+    // The endpoint has to actually surface it, or the probe helps nobody.
+    const route = codeOnly(read("app/api/hooks/stripe/route.ts"));
+    check("the readiness endpoint reports one_off", /one_off:\s*await paymentIntentWriteCapability/.test(route));
+    check("it still reports nothing about the key itself",
+      !/secretKey/.test(route) && !/STRIPE_SECRET_KEY/.test(route));
+  }
+
+  console.log("\nM3. THE UI TELLS THE TRUTH ABOUT A KEY IT CANNOT FIX");
+  {
+    const view = codeOnly(read("components/checkout/checkout-view.tsx"));
+    check("stripe_unauthorized reads as unavailable, not as 'try again'",
+      /stripe_unauthorized/.test(view) && /stripe_unauthorized[\s\S]{0,80}checkoutUnavailable/.test(view),
+      "checkoutFailed invites a retry that cannot succeed");
+
+    const notice = codeOnly(read("components/plan/checkout-notice.tsx"));
+    check("the /plan bounce says the same thing",
+      /stripe_unauthorized:\s*"packs\.checkoutUnavailable"/.test(notice));
+
+    // PROBLEM #2: the method list stays Stripe's to decide.
+    const co = codeOnly(read("lib/server/checkout.ts"));
+    check("no hardcoded payment_method_types on the one-off intent",
+      !/payment_method_types/.test(co),
+      "Stripe decides per currency, country, device and amount");
+    check("p24 is never named in code", !/p24|przelewy/i.test(co));
+    check("blik is never named in code", !/\bblik\b/i.test(co));
+
+    // Wallets appear once. The Express Checkout Element renders them above, so
+    // the Payment Element must not render them again below.
+    check("the Payment Element suppresses the wallets the express element owns",
+      /wallets:\s*\{\s*applePay:\s*"never",\s*googlePay:\s*"never"\s*\}/.test(view));
+    check("the express element is still what shows them",
+      /ExpressCheckoutElement/.test(view));
+    check("and it only appears when the device actually has one",
+      /availablePaymentMethods/.test(view));
+
+    // MOBILE: the customer navigation is `fixed bottom-0 z-40` below `lg`, so a
+    // pay button that sticks to `bottom-0` is a pay button behind the dock.
+    check("the sticky pay button clears the bottom navigation",
+      /bottom-\[calc\(var\(--dock-h\)/.test(view),
+      "sticky bottom-0 puts the one button that completes a purchase under the dock");
+    check("it clears the home indicator as well as the dock",
+      /--dock-h\)_\+_env\(safe-area-inset-bottom\)/.test(view));
+    check("and it returns to the flow once the dock is not in the way",
+      /sm:static/.test(view));
+  }
+
   console.log(
     failures === 0
       ? "\nAll billing sync tests passed."

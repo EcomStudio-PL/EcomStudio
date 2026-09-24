@@ -43,6 +43,11 @@ const REFUSAL_COPY: Record<string, string> = {
   unknown_package: "packs.checkoutFailed",
   unknown_plan: "packs.checkoutFailed",
   no_server_key: "packs.checkoutUnavailable",
+  // The deployment's Stripe key is not permitted to create this payment. Like
+  // `no_server_key` above, it is a configuration state rather than a bad
+  // moment, so it reads as "unavailable" and never as "try again" — which is
+  // advice that cannot work until somebody changes the key.
+  stripe_unauthorized: "packs.checkoutUnavailable",
 };
 
 export type CheckoutStatus = "success" | "cancelled" | keyof typeof REFUSAL_COPY;

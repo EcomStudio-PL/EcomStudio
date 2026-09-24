@@ -31,16 +31,56 @@ const API = "https://api.stripe.com/v1";
 /** Stripe's version pinning: responses keep the shape this code was written for. */
 const API_VERSION = "2024-06-20";
 
+/**
+ * A Stripe refusal, with everything needed to find it again in the dashboard —
+ * and nothing that could not be written into a log.
+ *
+ * `requestId` is the one field that is not in the response BODY: Stripe puts it
+ * in the `Request-Id` header of every reply, and it is the only handle that
+ * matches a line in an application log to an entry in the account's own request
+ * log. Without it, diagnosing a refusal means guessing from timestamps. It
+ * identifies a request, not a credential, and is safe to print.
+ *
+ * `param` names the field Stripe objected to, which is what separates "you sent
+ * this wrong" from "you are not allowed to do this at all".
+ */
 export class StripeApiError extends Error {
   readonly status: number;
   readonly type: string | undefined;
   readonly code: string | undefined;
-  constructor(status: number, body: { error?: { message?: string; type?: string; code?: string } }) {
+  readonly param: string | undefined;
+  readonly requestId: string | undefined;
+  constructor(
+    status: number,
+    body: { error?: { message?: string; type?: string; code?: string; param?: string } },
+    requestId?: string | null,
+  ) {
     super(body.error?.message ?? `Stripe request failed with ${status}`);
     this.name = "StripeApiError";
     this.status = status;
     this.type = body.error?.type;
     this.code = body.error?.code;
+    this.param = body.error?.param;
+    this.requestId = requestId ?? undefined;
+  }
+
+  /**
+   * THE KEY IS NOT ALLOWED TO DO THIS — as opposed to "this request was wrong"
+   * or "the card was declined".
+   *
+   * Stripe answers 401 for a key it does not recognise and 403 for a key it
+   * recognises but which lacks the permission for the endpoint. A RESTRICTED
+   * key (`rk_…`) is granted resource by resource, so it can be entirely valid
+   * for one endpoint and refused at the next one — which is exactly how a
+   * deployment ends up creating Subscriptions happily while every PaymentIntent
+   * is turned away.
+   *
+   * That is an OPERATOR problem, never a customer problem, and it never gets
+   * better by trying again. Callers use this to say so instead of offering a
+   * retry that cannot succeed.
+   */
+  get unauthorized(): boolean {
+    return this.status === 401 || this.status === 403;
   }
 }
 
@@ -97,7 +137,13 @@ async function call<T>(
   let parsed: unknown = {};
   try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = {}; }
 
-  if (!res.ok) throw new StripeApiError(res.status, parsed as { error?: { message?: string } });
+  if (!res.ok) {
+    throw new StripeApiError(
+      res.status,
+      parsed as { error?: { message?: string } },
+      res.headers.get("request-id"),
+    );
+  }
   return parsed as T;
 }
 

@@ -106,6 +106,13 @@ export type Quote = {
   recurring: boolean;
   planId: string | null;
   packageId: string | null;
+  /**
+   * The Stripe Price this order is mapped to, or null for custom credits which
+   * have no Price of their own. DIAGNOSTIC AND SUBSCRIPTION USE ONLY — the
+   * amount charged comes from the catalogue row, never from here, and a Price
+   * id is not a secret (Stripe's own integrations put them in the browser).
+   */
+  stripePriceId: string | null;
   /** Plan selling points, for the summary panel. Never used for pricing. */
   highlights: string[];
 };
@@ -160,6 +167,7 @@ export async function quoteCheckout(
         recurring: false,
         planId: null,
         packageId: pack.id,
+        stripePriceId: pack.stripe_price_id,
         highlights: [],
       },
     };
@@ -199,6 +207,9 @@ export async function quoteCheckout(
         recurring: false,
         planId: null,
         packageId: null,
+        // Custom credits are priced from the pack ladder and charged as a bare
+        // amount; there is no Price object to name.
+        stripePriceId: null,
         highlights: [],
       },
     };
@@ -235,6 +246,7 @@ export async function quoteCheckout(
       recurring: true,
       planId: plan.id,
       packageId: null,
+      stripePriceId: priceId,
       highlights: highlightsOf(plan.features),
     },
   };
@@ -255,7 +267,27 @@ function highlightsOf(features: unknown): string[] {
 
 /* ── 2. STARTING THE PAYMENT ───────────────────────────────────────────────*/
 
-export type BeginRefusal = QuoteRefusal | "no_customer" | "stripe_error";
+export type BeginRefusal =
+  | QuoteRefusal
+  | "no_customer"
+  /**
+   * STRIPE REFUSED THE KEY, NOT THE PAYMENT.
+   *
+   * Separate from `stripe_error` because the two need opposite handling. A
+   * `stripe_error` is a bad moment — retrying is reasonable. This is a
+   * deployment whose credential is not allowed to do what the checkout needs,
+   * and it will answer exactly the same way on the thousandth attempt. Telling
+   * a customer to "try again" would be a lie, and telling an operator nothing
+   * is how a restricted key without PaymentIntents access stays undiagnosed
+   * while subscriptions keep selling.
+   */
+  | "stripe_unauthorized"
+  | "stripe_error";
+
+/** Where in the sequence it went wrong. Logged; never shown to a customer. */
+type Stage =
+  | "quote" | "customer" | "payment_intent" | "subscription"
+  | "incomplete_lookup" | "status";
 
 export type BeginResult =
   | {
@@ -280,25 +312,54 @@ export async function beginCheckout(
   supabase: Client, workspace: WorkspaceRef, email: string | null, req: CheckoutRequest,
 ): Promise<BeginResult> {
   const priced = await quoteCheckout(supabase, workspace, req);
-  if (!priced.ok) return priced;
+  if (!priced.ok) {
+    // A REFUSED QUOTE USED TO LEAVE NO TRACE AT ALL. `unknown_package` and
+    // `price_out_of_sync` are decisions this server makes about its own data,
+    // and both end as the same shrug on the customer's screen — so without this
+    // line the only way to tell them apart was to guess.
+    console.error("checkout.refused", JSON.stringify({
+      stage: "quote" satisfies Stage,
+      kind: req.kind,
+      workspace: workspace.id,
+      target: targetOf(req),
+      reason: priced.reason,
+    }));
+    return priced;
+  }
   const quote = priced.quote;
 
   const creds = stripeCredentials();
   if (!creds) return { ok: false, reason: "payments_disabled" };
 
+  // The stage is tracked rather than inferred, because the failing call and the
+  // catch block are several frames apart and "begin" told nobody anything.
+  let stage: Stage = "customer";
   try {
     const customer = await resolveStripeCustomer(supabase, workspace, email);
     if (!customer) return { ok: false, reason: "no_customer" };
 
+    stage = quote.kind === "subscription" ? "subscription" : "payment_intent";
     return quote.kind === "subscription"
       ? await beginSubscription(supabase, workspace, customer, quote, creds.livemode)
       : await beginOneOff(workspace, customer, quote, creds.livemode);
   } catch (e) {
-    logFailure("begin", e);
+    logFailure(stage, e, { workspaceId: workspace.id, quote });
     if (e instanceof ServerKeyMissingError) return { ok: false, reason: "no_server_key" };
     if (e instanceof StripeNotConfiguredError) return { ok: false, reason: "payments_disabled" };
+    // A key that may not do this is not a transient error, and must not be
+    // reported as one. See BeginRefusal.stripe_unauthorized.
+    if (e instanceof StripeApiError && e.unauthorized) {
+      return { ok: false, reason: "stripe_unauthorized" };
+    }
     return { ok: false, reason: "stripe_error" };
   }
+}
+
+/** The internal id this request names — a package, a plan, or a credit count. */
+function targetOf(req: CheckoutRequest): string {
+  return req.kind === "credit_package" ? req.packageId
+    : req.kind === "subscription" ? req.planId
+    : `credits:${req.credits}`;
 }
 
 /** The marks the webhook already knows how to read. */
@@ -357,11 +418,25 @@ async function beginOneOff(
   // exactly once no matter how many events describe it.
   }, `pi:${workspace.id}:${randomUUID()}`);
 
-  if (!intent.client_secret) return { ok: false, reason: "stripe_error" };
+  // THE INTENT ID IS SAFE TO LOG AND THE SECRET IS NOT. `pi_…` names a payment
+  // for support to look up; `pi_…_secret_…` is the token that CONFIRMS it. Only
+  // the first ever appears here.
+  if (!intent.client_secret) {
+    console.error("checkout.no_client_secret", JSON.stringify({
+      stage: "payment_intent" satisfies Stage,
+      kind: quote.kind, workspace: workspace.id,
+      package: quote.packageId, intent: intent.id, status: intent.status,
+    }));
+    return { ok: false, reason: "stripe_error" };
+  }
   // The same assertion the price sync makes, for the same reason: this is the
   // seam where a displayed total and a charged total could come apart.
   if (intent.amount !== quote.amountCents) {
-    console.error("checkout.amount_mismatch", intent.id, intent.amount, quote.amountCents);
+    console.error("checkout.amount_mismatch", JSON.stringify({
+      stage: "payment_intent" satisfies Stage,
+      kind: quote.kind, workspace: workspace.id, package: quote.packageId,
+      intent: intent.id, charged: intent.amount, quoted: quote.amountCents,
+    }));
     return { ok: false, reason: "stripe_error" };
   }
 
@@ -605,10 +680,78 @@ function mapIntentStatus(status: string | null): SettlementState {
   }
 }
 
-function logFailure(where: string, e: unknown): void {
+/**
+ * THE LINE THAT HAS TO BE ENOUGH, because nobody gets a second run at a
+ * customer's failed purchase.
+ *
+ * ─── WHAT IT CARRIES ────────────────────────────────────────────────────────
+ *
+ *   stage       which call failed — quote, customer, payment_intent,
+ *               subscription. The previous version logged the literal string
+ *               "begin" for all four, which is how a 403 on PaymentIntents
+ *               looked identical to a database problem.
+ *   kind        subscription / credit_package / custom_credits — the single
+ *               fact that separates the path that works from the one that does
+ *               not.
+ *   workspace   the internal id, so the attempt can be found again.
+ *   package /
+ *   plan /
+ *   price       the internal row and the Stripe Price it is mapped to.
+ *   amount      what would have been charged, in the smallest unit.
+ *   status /
+ *   type /
+ *   code /
+ *   param       Stripe's own classification of the refusal.
+ *   request     Stripe's Request-Id, which is the ONE value that ties this line
+ *               to the matching entry in the account's request log.
+ *
+ * ─── WHAT IT MUST NEVER CARRY, AND DOES NOT ─────────────────────────────────
+ *
+ * No client secret. No secret or restricted key — `StripeApiError` is built
+ * from the response body and never holds the credential, and nothing here
+ * reads process.env. No webhook signing secret. No card details, which this
+ * process has never had and cannot obtain: they go from Stripe's iframe to
+ * Stripe. No customer email.
+ *
+ * `e.message` is Stripe's own text. Stripe masks the key inside it — the
+ * production line read `rk_live_****…QHJ7kw` — so the identifiable part is the
+ * account, not the credential.
+ *
+ * It is one JSON object rather than positional arguments so that a log search
+ * can match on a field instead of on word order.
+ */
+function logFailure(
+  stage: Stage, e: unknown, ctx?: { workspaceId: string; quote: Quote },
+): void {
+  const where = {
+    stage,
+    kind: ctx?.quote.kind ?? null,
+    workspace: ctx?.workspaceId ?? null,
+    package: ctx?.quote.packageId ?? null,
+    plan: ctx?.quote.planId ?? null,
+    price: ctx?.quote.stripePriceId ?? null,
+    amount: ctx?.quote.amountCents ?? null,
+    currency: ctx?.quote.currency ?? null,
+  };
+
   if (e instanceof StripeApiError) {
-    console.error("checkout.stripe", where, e.status, e.type ?? "-", e.code ?? "-", e.message);
+    console.error("checkout.stripe", JSON.stringify({
+      ...where,
+      status: e.status,
+      type: e.type ?? null,
+      code: e.code ?? null,
+      param: e.param ?? null,
+      request: e.requestId ?? null,
+      // Named explicitly rather than left to be inferred from the status, so an
+      // operator scanning for the cause does not have to know that 403 means
+      // "the key is not allowed to" rather than "the payment was rejected".
+      unauthorized: e.unauthorized,
+      message: e.message,
+    }));
     return;
   }
-  console.error("checkout.failed", where, e instanceof Error ? e.message : "unknown");
+  console.error("checkout.failed", JSON.stringify({
+    ...where,
+    message: e instanceof Error ? e.message : "unknown",
+  }));
 }

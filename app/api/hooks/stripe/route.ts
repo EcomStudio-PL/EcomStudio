@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { dispatchToken } from "@/lib/server/server-token";
 import { stripeWebhookSecret, stripeCredentials, paymentsEnabled } from "@/lib/stripe/config";
 import { stripePublishableKey as publishableKey } from "@/lib/stripe/publishable";
+import { paymentIntentWriteCapability } from "@/lib/stripe/capabilities";
 import { verifyStripeSignature } from "@/lib/stripe/signature";
 import { handleStripeEvent, type StripeEvent } from "@/lib/server/stripe-webhook";
 
@@ -201,5 +202,18 @@ export async function GET() {
     checkout: publishableKey() !== null,
     checkout_mode: publishableKey()?.includes("_live_") ? "live"
       : publishableKey() ? "test" : null,
+    // MAY THE KEY CREATE A ONE-OFF PAYMENT?
+    //
+    // `ready` says the secrets are PRESENT. This says one of them is PERMITTED
+    // to do the thing a credit-package purchase needs, and the two came apart
+    // in production on 2026-09-24: a restricted key with Subscriptions but not
+    // PaymentIntents sold plans perfectly and refused every pack, while every
+    // field above this line read true.
+    //
+    // "forbidden" here means one-off purchases CANNOT work, whatever the rest
+    // of the endpoint says, and the fix is in the Stripe dashboard rather than
+    // in this deployment. See lib/stripe/capabilities.ts for why probing costs
+    // nothing and creates nothing.
+    one_off: await paymentIntentWriteCapability(),
   });
 }

@@ -530,20 +530,54 @@ function PaymentPanel({ quote, returnUrl, reference }: {
         </div>
       </div>
 
+      {/* EVERYTHING ELSE STRIPE OFFERS FOR THIS PAYMENT — card, BLIK, Revolut
+          Pay, Klarna, whatever else the account has enabled and the transaction
+          is eligible for. The list is still Stripe's to decide.
+
+          `wallets: never` IS NOT A HARDCODED METHOD LIST. Apple Pay and Google
+          Pay are already rendered by the Express Checkout Element directly
+          above, and the Payment Element would otherwise offer them a second
+          time as tabs — the same two buttons twice on exactly the devices that
+          support them, which is the worst place for a duplicate to appear.
+          This suppresses the COPY, not the method: turn a wallet off in the
+          Stripe dashboard and it vanishes from the element above too, because
+          that one asks Stripe.
+
+          Link is deliberately left alone. It has no such switch on the Payment
+          Element, and it does not duplicate the way the wallets do: above it is
+          a button, here it is an inline email prompt on the card form. */}
       <PaymentElement
         onReady={() => setReady(true)}
-        options={{ layout: "tabs" }}
+        options={{
+          layout: "tabs",
+          wallets: { applePay: "never", googlePay: "never" },
+        }}
       />
 
       {!ready && <FormSkeleton label={t("checkout.preparing")} />}
 
       {/* STICKY ON A PHONE. The form is long once an invoice section is open,
           and a pay button that scrolls away is a button people hunt for.
-          `pb-[env(safe-area-inset-bottom)]` keeps it clear of the iOS home
-          indicator, which otherwise sits on top of it. */}
+
+          IT STICKS ABOVE THE DOCK, NOT AT THE BOTTOM OF THE WINDOW. The
+          customer navigation is `fixed bottom-0 z-40` on everything below
+          `lg`, so `bottom-0` here put the one button that completes a purchase
+          underneath it — still there, still tappable in its top few pixels,
+          and visually buried behind the navigation on every phone.
+
+          `--dock-h` is the same variable the dock sets its own height from and
+          that `--page-bottom` and `--toast-bottom` are derived from, so the bar
+          and everything that has to clear it cannot drift apart. The safe-area
+          inset is added on top because the dock sits ABOVE the home indicator
+          while this has to clear both — the rule written at the variable's
+          definition in globals.css.
+
+          From `sm` up the button returns to the flow, where <main>'s own
+          `pb-[var(--page-bottom)]` already reserves the room. */}
       <div className={cn(
-        "sticky bottom-0 -mx-4 mt-4 border-t border-line bg-surface/95 px-4 pt-3 backdrop-blur",
-        "pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-0 sm:backdrop-blur-none",
+        "sticky -mx-4 mt-4 border-t border-line bg-surface/95 px-4 pb-3 pt-3 backdrop-blur",
+        "bottom-[calc(var(--dock-h)_+_env(safe-area-inset-bottom))]",
+        "sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-0 sm:backdrop-blur-none",
       )}>
         <button
           type="button"
@@ -588,7 +622,15 @@ function Refusal({ reason }: { reason: string }) {
     reason === "already_subscribed" ? "packs.alreadySubscribed"
     : reason === "invalid_credits" ? "packs.checkoutInvalidCredits"
     : reason === "plan_not_purchasable" ? "packs.planNotPurchasable"
-    : reason === "price_out_of_sync" || reason === "not_mapped" || reason === "payments_disabled"
+    // `stripe_unauthorized` belongs in THIS group, not in "try again", and the
+    // distinction is the whole point of it existing. It means this deployment's
+    // Stripe key is not permitted to create the payment — the till really is
+    // shut, and "spróbuj ponownie" would send somebody round a loop that cannot
+    // end. The real cause goes to the server log and to /api/hooks/stripe,
+    // where an operator can act on it; the customer gets the truth at their
+    // level of it.
+    : reason === "price_out_of_sync" || reason === "not_mapped"
+      || reason === "payments_disabled" || reason === "stripe_unauthorized"
       ? "packs.checkoutUnavailable"
       : "packs.checkoutFailed";
   return (
