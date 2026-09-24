@@ -259,10 +259,13 @@ async function main() {
   check("an empty row never reaches the card", !mail.html.includes("Telefon") && !mail.text.includes("Telefon"));
   check("a hostile name cannot inject markup",
     mail.html.includes("&lt;img") && !mail.html.includes('onerror="alert(1)"')
-    // The ONLY real <img> allowed is the brand logo from our own origin.
-    && (mail.html.match(/<img/g) ?? []).every(() => true)
-    && /<img src="https:\/\/grovbase\.com\/brand\//.test(mail.html)
-    && (mail.html.match(/<img/g) ?? []).length === 1);
+    // The only real <img> tags are the brand mark, in its light and dark
+    // variants — the card ships both and the dark media query hides one,
+    // because no mail client honours <picture> or srcset. Both come from our
+    // own origin, which is the property that actually matters.
+    && (mail.html.match(/<img\b/gi) ?? []).length === 2
+    && (mail.html.match(/<img\b[^>]*>/gi) ?? [])
+        .every((tag) => /src="https:\/\/grovbase\.com\/brand\//.test(tag)));
   check("the plain-text alternative is always emitted",
     mail.text.includes("NOWA REJESTRACJA") && mail.text.includes("Użytkownik:")
     && mail.text.endsWith("grovbase.com · © GrovBase"), mail.text.slice(-60));
@@ -277,10 +280,17 @@ async function main() {
   // nothing to load from anywhere and nothing to measure.
   // No <script>, no stylesheet; the one image is our own logo (the shared card
   // shows it by design since the light layout), and nothing else loads.
+  // No <script>, no external stylesheet, no third-party image. The one inline
+  // <style> is the dark-mode block and loads nothing.
   check("the card carries no script, no stylesheet and no foreign image",
     !/<script|<link/i.test(mail.html)
-    && (mail.html.match(/<img\b/gi) ?? []).length === 1
-    && mail.html.includes('src="https://grovbase.com/brand/'));
+    && (mail.html.match(/<img\b/gi) ?? []).length === 2
+    && !/src="(?!https:\/\/grovbase\.com\/brand\/)/.test(mail.html));
+  check("the dark theme ships inline, behind the standard media query",
+    mail.html.includes("@media (prefers-color-scheme: dark)")
+    && mail.html.includes('name="color-scheme" content="light dark"'));
+  check("no technical event key is printed on an admin card",
+    !/USER\.REGISTERED|>\s*[A-Z_]+\.[A-Z_]+\s*</.test(mail.html));
   check("the brand gradient keeps a solid bgcolor for Outlook",
     mail.html.includes('bgcolor="#D628CF"') && /linear-gradient\((?:90deg|135deg),#D628CF,#F950E1\)/.test(mail.html), mail.html.match(/linear[^)]*\)/)?.[0]);
 

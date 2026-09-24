@@ -6,6 +6,7 @@ import {
   BadgeCheck, ClipboardCopy, Loader2, Mail, MessageCircle, PencilLine, RefreshCw, RotateCcw, Send, TriangleAlert,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
+import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -297,6 +298,9 @@ function TemplateEditor({ entry, onBack }: { entry: TemplateListEntry; onBack: (
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState<"save" | "publish" | "reset" | null>(null);
   const [preview, setPreview] = useState<TemplatePreview | null>(null);
+  /** Which of the mail's two themes the preview is showing. Preview only —
+   *  there is one template and it carries both. */
+  const [scheme, setScheme] = useState<"light" | "dark">("light");
   const [showPreview, setShowPreview] = useState(true);
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
@@ -492,14 +496,39 @@ function TemplateEditor({ entry, onBack }: { entry: TemplateListEntry; onBack: (
         {/* RIGHT — live preview */}
         <div className={showPreview ? "" : "hidden lg:block"}>
           <Card className="overflow-hidden p-0">
-            <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
-              <p className="text-[12px] font-semibold text-muted">{t("tpl.preview")}</p>
+            {/* THE SUBJECT GETS ITS OWN LINE.
+                It used to sit opposite the "Podgląd" label at `max-w-[60%]`,
+                which turned every real subject into "Potwierdź swój adres
+                e-mail — GrovB…". A subject line is the one string in this
+                panel that must be readable in full — it is what the customer
+                sees before they open anything. The row above now holds only
+                the label and the theme switch; the subject spans the width
+                underneath and wraps if it must. */}
+            <div className="border-b border-line px-4 py-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[12px] font-semibold text-muted">{t("tpl.preview")}</p>
+                {preview?.ok && preview.channel === "email" && (
+                  <div className="flex shrink-0 items-center gap-0.5 rounded-lg bg-sunken p-0.5">
+                    {(["light", "dark"] as const).map((m) => (
+                      <button key={m} type="button" onClick={() => setScheme(m)}
+                        aria-pressed={scheme === m}
+                        className={cn(
+                          "rounded-md px-2 py-1 text-[11px] font-semibold transition-colors",
+                          scheme === m ? "bg-raised text-ink shadow-e1" : "text-faint hover:text-muted",
+                        )}>
+                        {m === "light" ? `☀️ ${t("tpl.previewLight")}` : `🌙 ${t("tpl.previewDark")}`}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               {preview?.ok && preview.channel === "email" && (
-                <p className="max-w-[60%] truncate text-[12px] text-faint">{preview.subject}</p>
+                <p className="mt-1 break-words text-[12px] leading-snug text-faint">{preview.subject}</p>
               )}
             </div>
             {preview?.ok && preview.channel === "email" ? (
-              <iframe title="preview" sandbox="" srcDoc={preview.html} className="h-[560px] w-full bg-white" />
+              <iframe title="preview" sandbox="" srcDoc={forceScheme(preview.html, scheme)}
+                className={cn("h-[560px] w-full", scheme === "dark" ? "bg-[#0B0712]" : "bg-white")} />
             ) : preview?.ok && preview.channel === "telegram" ? (
               <iframe title="preview" sandbox="" srcDoc={telegramPreviewDoc(preview.text, preview.buttons)} className="h-[420px] w-full" />
             ) : (
@@ -532,6 +561,31 @@ function TemplateEditor({ entry, onBack }: { entry: TemplateListEntry; onBack: (
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * SHOW ONE OF THE MAIL'S TWO THEMES, WITHOUT A SECOND TEMPLATE.
+ *
+ * The message already carries its dark rules, inside
+ * `@media (prefers-color-scheme: dark)`. An iframe would otherwise just follow
+ * the admin's operating system, so the switch would do nothing on a light Mac
+ * and nothing on a dark one.
+ *
+ * So the media CONDITION is rewritten and the rules are left untouched:
+ *
+ *   dark  → `@media all` — the shipped dark rules, always on
+ *   light → a condition that can never match, so the inline light values stand
+ *
+ * Nothing is duplicated and nothing is re-styled: what the preview paints is
+ * the exact CSS in the outgoing message. If the dark theme is wrong here, it
+ * is wrong in the inbox too — which is the only thing that makes a preview
+ * worth having.
+ */
+function forceScheme(html: string, scheme: "light" | "dark"): string {
+  return html.replace(
+    /@media\s*\(prefers-color-scheme:\s*dark\)/g,
+    scheme === "dark" ? "@media all" : "@media (prefers-color-scheme: dark) and (min-width:999999px)",
   );
 }
 

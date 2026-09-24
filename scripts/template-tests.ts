@@ -80,7 +80,7 @@ console.log("\nC. EMAIL RENDERER — the shared card, escaped, with a safe CTA")
   const def = defaultTemplate("login.security_code:email")!;
   if (def.channel !== "email") throw new Error("wrong channel");
   const data = { code: "482 193", device: "iPhone · Safari", date: "06.09.2026", time: "04:46" };
-  const out = renderTemplateEmail(def.email, data, { badge: "TEST", fields: fieldsFromData(data) });
+  const out = renderTemplateEmail(def.email, data, { fields: fieldsFromData(data) });
   check("subject renders", out.subject === "Kod bezpieczeństwa logowania — GrovBase", out.subject);
   check("the field table carries the code", out.html.includes("482 193") && out.text.includes("482 193"));
   check("no Supabase anywhere", !/supabase/i.test(out.html) && !/supabase/i.test(out.text));
@@ -139,16 +139,33 @@ console.log("\nE. AUTH TEMPLATES — the rich HTML GrovBase renders itself, stil
     check(`${key} embedded HTML matches ${file}`, AUTH_EMAIL_TEMPLATES[key]!.html === disk);
   }
   const confirm = AUTH_EMAIL_TEMPLATES["auth.confirm_signup"]!.html;
+  // `&` is `&amp;` in an href — that is correct HTML, and the browser hands
+  // GoTrue back a plain `&`. Asserting the raw ampersand would be asserting a
+  // bug, so the two halves are checked either side of the entity.
   check("confirm links grovbase.com/auth/confirm with the TokenHash",
-    confirm.includes("https://grovbase.com/auth/confirm?token_hash={{ .TokenHash }}&type=email"));
+    confirm.includes("https://grovbase.com/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email"));
   check("confirm greets by first name when metadata has one",
     confirm.includes("{{ if .Data.first_name }}") && confirm.includes("{{ .Data.first_name }}"));
   check("no user-visible Supabase branding in the auth mails",
     !/powered by|supabase auth/i.test(confirm));
-  check("light canvas, benefits box, brand gradient",
-    confirm.includes("#F4EFF9") && confirm.includes("generatora zdjęć produktowych") && confirm.includes("#F950E1"));
+  // THE AUTH MAILS ARE NOT A SEPARATE DESIGN ANY MORE. They are composed by
+  // renderEmailTemplate, so they must carry the shared card's fingerprints:
+  // the light canvas as the inline fallback, the dark override behind the
+  // media query, and the brand gradient on the CTA.
+  check("light canvas is still the inline fallback", confirm.includes("#F4EFF9"));
+  check("brand gradient on the CTA", confirm.includes("#F950E1"));
+  check("dark mode ships with it", confirm.includes("prefers-color-scheme: dark")
+    && confirm.includes('content="light dark"'));
+  check("both themes are declared, so no client invents its own inversion",
+    confirm.includes('name="color-scheme" content="light dark"')
+    && confirm.includes('name="supported-color-schemes" content="light dark"'));
+  check("the paste-able link survived the redesign",
+    confirm.includes("Jeśli przycisk nie działa"));
+  check("no technical event key is visible to the customer",
+    !/AUTH\.CONFIRM_SIGNUP|USER\.REGISTERED|auth\.confirm_signup/.test(confirm));
   const reset = AUTH_EMAIL_TEMPLATES["auth.reset_password"]!.html;
   check("reset links type=recovery", reset.includes("type=recovery") && !reset.includes("type=email"));
+  check("reset carries the same shared card", reset.includes("prefers-color-scheme: dark"));
 }
 
 console.log(failures === 0 ? "\nAll template tests passed.\n" : `\n${failures} template test(s) FAILED.\n`);

@@ -182,13 +182,20 @@ export function renderAdminNotification(payload: AdminEventPayload): { subject: 
     return { label: words, value, mono };
   });
 
+  // NO EVENT KEY IN THE HEADER. This used to pass
+  // `badge: payload.eventType.toUpperCase()`, which printed USER.REGISTERED
+  // in a chip above the title — a database identifier presented as the most
+  // prominent thing in the message. `payload.title` already says "Nowa
+  // rejestracja" in words. The event type is still on the payload, still in
+  // the notification log and still in Telegram's routing; it is simply not
+  // the headline of an e-mail any more.
   const { html, text } = renderEmailTemplate({
-    badge: clean(payload.eventType, LABEL_MAX).toUpperCase(),
     title: [collapse(payload.icon ?? ""), title].filter(Boolean).join(" "),
     fields,
     cta: cta ? { label: cta.label, url: cta.href } : undefined,
     footer: "GrovBase Admin",
     timestamp: when,
+    preheader: fields.length ? `${fields[0].label}: ${fields[0].value}` : undefined,
   });
   return { subject, html, text };
 }

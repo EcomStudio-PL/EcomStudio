@@ -527,7 +527,6 @@ async function dispatchAdminEmail(
   // renderer stays the single fallback.
   const rendered = row.template?.channel === "email" && row.message.data
     ? renderTemplateEmail(row.template.email, row.message.data, {
-        badge: row.eventType.toUpperCase(),
         fields: fieldsFromData(row.message.data),
         timestamp: stampPL(row.createdAt),
       })

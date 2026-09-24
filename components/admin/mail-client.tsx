@@ -536,9 +536,29 @@ export function MailClient({ address }: {
       {/* Desktop: folders | list | body, each pane scrolling on its own inside a
           height derived from the viewport so the page itself never scrolls.
           The split engages at xl, not lg: the admin rail is a hard 208px plus
-          48px of page padding, and the two fixed tracks eat another 616px, so
-          at 1024px the body pane would be a ~112px text column. */}
-      <div className="hidden xl:grid xl:h-[calc(100dvh-19rem)] xl:min-h-[26rem] xl:grid-cols-[13.5rem_23rem_minmax(0,1fr)] xl:gap-4">
+          48px of page padding, so at 1024px the body pane would be a sliver.
+
+          ─── THE READING PANE IS THE POINT OF THIS SCREEN ──────────────────
+
+          The tracks used to be `13.5rem 23rem 1fr`: two HARD columns, 616px of
+          them, taken off the top before the message got anything. At 1280px
+          that left the mail itself about 400px — narrower than the 600px the
+          message was authored at, so every wide mail arrived pre-squashed and
+          the operator read GrovBase's own newsletter through a letterbox.
+
+          Now only the folder rail is fixed, and the list is a RANGE rather
+          than a constant: it may not drop under 16rem (the subject line stops
+          being scannable) and may not grow past 21rem (past that it is just
+          taking width from the message). Everything left over goes to the
+          reader, so widening the window widens the thing being read:
+
+            1280px →  list 21rem / reader ~30rem   (was ~25rem)
+            1536px →  list 21rem / reader ~41rem
+            1920px →  list 21rem / reader ~57rem
+
+          The `2xl` step gives the rail its old width back once there is room
+          to spare, and nothing else moves. */}
+      <div className="hidden xl:grid xl:h-[calc(100dvh-19rem)] xl:min-h-[26rem] xl:grid-cols-[11.5rem_minmax(16rem,21rem)_minmax(0,1fr)] xl:gap-4 2xl:grid-cols-[13.5rem_minmax(18rem,21rem)_minmax(0,1fr)]">
         <Card className="min-h-0 overflow-hidden">
           <nav className="thin-scroll h-full overflow-y-auto p-2" aria-label={t("comm.folders")}>
             <ul className="space-y-0.5">

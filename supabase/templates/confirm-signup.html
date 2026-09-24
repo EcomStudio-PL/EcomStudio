@@ -1,166 +1,88 @@
-<!-- Temat: Potwierdź swój adres e-mail — GrovBase -->
-<!--
-  GrovBase — szablon e-maila potwierdzajacego rejestracje (wariant JASNY, premium).
-  Wklej do: Supabase Dashboard -> Authentication -> Emails -> Templates -> Confirm signup.
-
-  Zmienne szablonu: {{ .TokenHash }} (link) oraz {{ .Data.first_name }} (imie z
-  metadanych rejestracji; formularz GrovBase zawsze je przekazuje, a gdy pole
-  jest ukryte w konfiguracji, warunek {{ if }} po prostu opuszcza imie).
-
-  Origin grovbase.com jest celowo zapisany NA SZTYWNO: bledny Site URL w
-  dashboardzie nigdy nie skieruje tego linku na localhost.
-
-  Zasady zgodnosci: tabele + inline CSS + bgcolor na kazdym elemencie,
-  zadnych flexow/gridow, zadnych zewnetrznych styli, zero JS, zero pixela
-  sledzacego. Dziala w Gmail / Apple Mail / Outlook, responsywny przez
-  max-width + width:100%.
--->
 <!DOCTYPE html>
-<html lang="pl" xmlns="http://www.w3.org/1999/xhtml">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="color-scheme" content="light">
-  <meta name="supported-color-schemes" content="light">
-  <title>Potwierdź swój adres e-mail</title>
+<html lang="pl" xmlns="http://www.w3.org/1999/xhtml"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">
+<title>Potwierdź swój adres e-mail</title>
+<style>
+    :root { color-scheme: light dark; supported-color-schemes: light dark; }
+    @media (prefers-color-scheme: dark) {
+      [data-gb="bg"] { background-color: #0B0712 !important; }
+      [data-gb="card"] { background-color: #17121F !important; border-color: #2E2440 !important; }
+      [data-gb="title"], [data-gb="strong"] { color: #F5F2FA !important; }
+      [data-gb="body"] { color: #C6BAD6 !important; }
+      [data-gb="faint"] { color: #9689A8 !important; }
+      [data-gb="panel"] { background-color: #100C19 !important; border-color: #2A2038 !important; }
+      [data-gb="rule"] { border-color: #2A2038 !important; }
+      [data-gb="hr"] { background-color: #2A2038 !important; }
+      [data-gb="link"] { color: #BCB1CC !important; }
+      [data-gb="accent"] { color: #F468E4 !important; }
+      [data-gb="code"] { color: #F5F2FA !important; }
+      /* THE MARK SWAPS, IT DOES NOT GET INVERTED.
+         icon-on-light is drawn for a white card; left alone on a dark canvas
+         it either disappears or keeps a white plate around it. Both variants
+         ship in the message and the media query hides the wrong one, which is
+         the only image swap mail clients reliably honour — there is no
+         srcset, no <picture>, no JS. A client without the media query shows
+         the light mark on the light canvas it is also still rendering, so the
+         pairing can never come apart. */
+      [data-gb="logo-light"] { display: none !important; }
+      [data-gb="logo-dark"] { display: inline-block !important; width: 24px !important; height: 19px !important; overflow: visible !important; }
+    }
+    @media only screen and (max-width:620px) {
+      [data-gb="card"] { padding:26px 22px 24px 22px !important; }
+      [data-gb="pad"] { padding:24px 14px !important; }
+    }
+</style>
 </head>
-<body style="margin:0; padding:0; background-color:#F4EFF9;" bgcolor="#F4EFF9">
+<body data-gb="bg" style="margin:0; padding:0; background-color:#F4EFF9;" bgcolor="#F4EFF9">
+<div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F4EFF9;">Potwierdź adres e-mail i aktywuj swoje konto GrovBase.&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" data-gb="bg" bgcolor="#F4EFF9" style="background-color:#F4EFF9;">
+<tr><td align="center" data-gb="pad" style="padding:36px 16px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px;">
 
-  <!-- Preheader: widoczny tylko na liscie wiadomosci -->
-  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F4EFF9;">
-    Potwierdź adres e-mail i aktywuj swoje konto GrovBase.&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
-  </div>
-
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F4EFF9" style="background-color:#F4EFF9;">
-    <tr>
-      <td align="center" bgcolor="#F4EFF9" style="background-color:#F4EFF9; padding:40px 16px;">
-
-        <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:560px;">
-
-          <!-- Naglowek: logo + wordmark -->
-          <tr>
-            <td align="center" style="padding:0 0 26px 0;">
-              <img src="https://grovbase.com/brand/icon-on-light.png" width="42" height="32" alt="GrovBase" style="display:block; margin:0 auto 10px auto; width:42px; height:32px; border:0; outline:none;">
-              <span style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:26px; line-height:32px; font-weight:800; letter-spacing:-0.5px; color:#1A1127;">Grov<span style="color:#D628CF;">Base</span></span>
-            </td>
-          </tr>
-
-          <!-- Pasek gradientu na szczycie karty -->
-          <tr>
-            <td style="border-radius:14px 14px 0 0; overflow:hidden;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td height="5" bgcolor="#D628CF" style="background-color:#D628CF; background-image:linear-gradient(90deg, #D628CF 0%, #F950E1 100%); height:5px; line-height:5px; font-size:5px; border-radius:14px 14px 0 0;">&nbsp;</td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Karta -->
-          <tr>
-            <td bgcolor="#FFFFFF" style="background-color:#FFFFFF; border:1px solid #EBE2F3; border-top:0; border-radius:0 0 14px 14px; padding:42px 44px 36px 44px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-
-                <!-- Powitanie: imie tylko gdy rejestracja je przekazala -->
-                <tr>
-                  <td align="center" style="padding:0 0 8px 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:15px; line-height:22px; color:#6F6382;">
-                    {{ if .Data.first_name }}Cześć {{ .Data.first_name }},{{ else }}Cześć,{{ end }}
-                  </td>
-                </tr>
-
-                <tr>
-                  <td align="center" style="padding:0 0 14px 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:24px; line-height:32px; font-weight:800; letter-spacing:-0.4px; color:#1A1127;">
-                    Potwierdź swój adres e-mail
-                  </td>
-                </tr>
-
-                <tr>
-                  <td align="center" style="padding:0 8px 28px 8px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:15px; line-height:24px; color:#4A4058;">
-                    Twoje konto GrovBase jest prawie gotowe.<br>
-                    Kliknij przycisk poniżej, aby potwierdzić adres e-mail i&nbsp;aktywować konto.
-                  </td>
-                </tr>
-
-                <!-- CTA (bgcolor = fallback dla Outlooka, gradient dla reszty) -->
-                <tr>
-                  <td align="center" style="padding:0 0 26px 0;">
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                      <tr>
-                        <td align="center" bgcolor="#D628CF" style="background-color:#D628CF; background-image:linear-gradient(135deg, #D628CF 0%, #F950E1 100%); border-radius:10px;">
-                          <a href="https://grovbase.com/auth/confirm?token_hash={{ .TokenHash }}&type=email" target="_blank" style="display:inline-block; padding:16px 40px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:14px; line-height:18px; font-weight:700; letter-spacing:0.6px; color:#FFFFFF; text-decoration:none; border-radius:10px;">POTWIERDŹ ADRES E-MAIL</a>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-
-                <!-- Box korzysci -->
-                <tr>
-                  <td bgcolor="#FAF5FE" style="background-color:#FAF5FE; border:1px solid #F0E3F8; border-radius:12px; padding:18px 22px;">
-                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                      <tr>
-                        <td style="padding:0 0 8px 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:19px; font-weight:700; color:#1A1127;">
-                          Po aktywacji konta możesz korzystać z:
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:13px; line-height:22px; color:#4A4058;">
-                          <span style="color:#D628CF;">•</span>&nbsp; generatora zdjęć produktowych<br>
-                          <span style="color:#D628CF;">•</span>&nbsp; Product Lock<br>
-                          <span style="color:#D628CF;">•</span>&nbsp; narzędzi edycji<br>
-                          <span style="color:#D628CF;">•</span>&nbsp; biblioteki GrovBase
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-
-                <!-- Awaryjny link tekstowy -->
-                <tr>
-                  <td align="center" style="padding:24px 8px 0 8px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:19px; color:#8A7E99;">
-                    Jeśli przycisk nie działa, skopiuj i wklej ten adres do przeglądarki:<br>
-                    <a href="https://grovbase.com/auth/confirm?token_hash={{ .TokenHash }}&type=email" target="_blank" style="color:#D628CF; text-decoration:underline; word-break:break-all;">https://grovbase.com/auth/confirm?token_hash={{ .TokenHash }}&type=email</a>
-                  </td>
-                </tr>
-
-                <!-- Wlosowa linia -->
-                <tr>
-                  <td style="padding:24px 0 20px 0;">
-                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                      <tr>
-                        <td height="1" bgcolor="#EFE8F6" style="background-color:#EFE8F6; height:1px; line-height:1px; font-size:1px;">&nbsp;</td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-
-                <tr>
-                  <td align="center" style="padding:0 8px 6px 8px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12.5px; line-height:19px; color:#6F6382;">
-                    Link jest ważny przez 24 godziny.
-                  </td>
-                </tr>
-                <tr>
-                  <td align="center" style="padding:0 8px 0 8px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:19px; color:#8A7E99;">
-                    Jeżeli to nie Ty tworzyłeś konto, możesz zignorować tę wiadomość.
-                  </td>
-                </tr>
-
-              </table>
-            </td>
-          </tr>
-
-          <!-- Stopka poza karta -->
-          <tr>
-            <td align="center" style="padding:26px 0 0 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:19px; color:#8A7E99;">
-              <a href="https://grovbase.com" target="_blank" style="color:#6F6382; text-decoration:none; font-weight:600;">grovbase.com</a>
-              <br>© GrovBase
-            </td>
-          </tr>
-
-        </table>
+  <tr><td style="padding:0 4px 16px 4px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td align="left" data-gb="title" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:18px; line-height:24px; font-weight:800; letter-spacing:-0.4px; color:#1A1127;">
+        <img data-gb="logo-light" src="https://grovbase.com/brand/icon-on-light.png" width="24" height="19" alt="" style="vertical-align:-3px; border:0; margin-right:7px;"><img data-gb="logo-dark" src="https://grovbase.com/brand/icon-on-dark.png" width="0" height="0" alt="" style="display:none; width:0; height:0; max-height:0; overflow:hidden; vertical-align:-3px; border:0; margin-right:7px; mso-hide:all;">Grov<span data-gb="accent" style="color:#D628CF;">Base</span>
       </td>
-    </tr>
-  </table>
-</body>
-</html>
+      <td align="right" data-gb="faint" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:18px; color:#8A7E99;"></td>
+    </tr></table>
+  </td></tr>
+
+  <tr><td>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr><td height="4" bgcolor="#D628CF" style="background-color:#D628CF; background-image:linear-gradient(90deg,#D628CF,#F950E1); height:4px; line-height:4px; font-size:4px; border-radius:14px 14px 0 0;">&nbsp;</td></tr>
+    </table>
+  </td></tr>
+
+  <tr><td data-gb="card" bgcolor="#FFFFFF" style="background-color:#FFFFFF; border:1px solid #EBE2F3; border-top:0; border-radius:0 0 14px 14px; padding:30px 32px 28px 32px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr><td data-gb="title" style="padding:0 0 10px 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:21px; line-height:28px; font-weight:800; letter-spacing:-0.4px; color:#1A1127;">Potwierdź swój adres e-mail</td></tr>
+      <tr><td data-gb="body" style="padding:0 0 18px 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:15px; line-height:23px; color:#4A4058;">{{ if .Data.first_name }}Cześć {{ .Data.first_name }}! {{ else }}{{ end }}Potwierdź adres, aby aktywować konto GrovBase.</td></tr>
+      
+      
+      
+      <tr><td align="center" style="padding:24px 0 4px 0;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td align="center" bgcolor="#D628CF" style="background-color:#D628CF; background-image:linear-gradient(135deg,#D628CF,#F950E1); border-radius:10px;">
+            <a href="https://grovbase.com/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email" target="_blank" style="display:inline-block; min-height:20px; padding:15px 34px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:14px; line-height:20px; font-weight:700; letter-spacing:0.4px; color:#FFFFFF; text-decoration:none; border-radius:10px;">Potwierdź adres e-mail</a>
+          </td>
+        </tr></table>
+      </td></tr>
+      <tr><td align="center" data-gb="faint" style="padding:20px 0 0 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:19px; color:#8A7E99;">
+        Jeśli przycisk nie działa, skopiuj i wklej ten adres do przeglądarki:<br>
+        <a href="https://grovbase.com/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email" target="_blank" data-gb="accent" style="color:#D628CF; text-decoration:underline; word-break:break-all;">https://grovbase.com/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email</a>
+      </td></tr>
+      <tr><td data-gb="hr" height="1" bgcolor="#F0E9F7" style="background-color:#F0E9F7; height:1px; line-height:1px; font-size:1px; padding:0;">&nbsp;</td></tr>
+      <tr><td data-gb="faint" style="padding:18px 0 0 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12.5px; line-height:20px; color:#8A7E99;">Link jest ważny przez 24 godziny.<br>Jeśli to nie Ty zakładałeś konto, możesz zignorować tę wiadomość.</td></tr>
+    </table>
+  </td></tr>
+
+  <tr><td align="center" data-gb="faint" style="padding:22px 0 0 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; line-height:19px; color:#8A7E99;">
+    <a href="https://grovbase.com" target="_blank" data-gb="link" style="color:#6F6382; text-decoration:none; font-weight:600;">grovbase.com</a> · © GrovBase
+  </td></tr>
+
+</table>
+</td></tr></table>
+</body></html>

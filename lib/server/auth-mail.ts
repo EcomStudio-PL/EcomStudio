@@ -335,7 +335,6 @@ export async function renderAuthMail(
           ctaLabel: def.email.ctaLabel.trim() || builtin.cta },
         data,
         {
-          badge: "GROVBASE",
           fields: mail.action === "reauthentication" && mail.token
             ? [{ label: "Kod", value: mail.token, mono: true }]
             : [],
@@ -364,7 +363,6 @@ export async function renderAuthMail(
 
   const { renderEmailTemplate } = await import("@/lib/server/email-template");
   const { html, text } = renderEmailTemplate({
-    badge: "GROVBASE",
     title: builtin.heading,
     intro: firstName ? `Cześć ${firstName}! ${builtin.body}` : builtin.body,
     fields: mail.action === "reauthentication" && mail.token

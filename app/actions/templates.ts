@@ -169,7 +169,6 @@ export async function previewTemplateAction(key: string, def: TemplateDef): Prom
       return { ok: true, channel: "telegram", text, unknown, buttons };
     }
     const rendered = renderTemplateEmail(def.email, data, {
-      badge: entry.event.toUpperCase(),
       fields: fieldsFromData(data),
       timestamp: `${SAMPLE_DATA.date} • ${SAMPLE_DATA.time}`,
     });

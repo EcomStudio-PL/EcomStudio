@@ -4096,6 +4096,8 @@
     "publish": "Publikuj",
     "reset": "Przywróć domyślny",
     "preview": "Podgląd",
+    "previewLight": "Jasny",
+    "previewDark": "Ciemny",
     "hidePreview": "Ukryj podgląd",
     "showPreview": "Pokaż podgląd",
     "draftSaved": "Szkic zapisany. Produkcja bez zmian.",

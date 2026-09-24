@@ -4096,6 +4096,8 @@
     "publish": "Publish",
     "reset": "Restore default",
     "preview": "Preview",
+    "previewLight": "Light",
+    "previewDark": "Dark",
     "hidePreview": "Hide preview",
     "showPreview": "Show preview",
     "draftSaved": "Draft saved. Production unchanged.",

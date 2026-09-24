@@ -6,6 +6,7 @@ import { describeUserAgent, formatWarsaw } from "@/lib/server/event-context";
 import { dispatchToken, readIntegrationSecrets, safeError, serverSecret, type MailConfig } from "@/lib/server/integrations";
 import { deliverHtml, type MailIdentity, type SmtpConfig } from "@/lib/server/mailer";
 import { fieldsFromData, lookupPublishedTemplate, renderTemplateEmail } from "@/lib/server/message-templates";
+import { renderEmailTemplate } from "@/lib/server/email-template";
 
 /**
  * APP-LEVEL LOGIN SECURITY — the second factor that sits on top of Supabase
@@ -271,7 +272,8 @@ export async function deviceLabel(): Promise<string> {
 
 /* ── the security-code email ────────────────────────────────────────────────
  * Sent through the GrovBase transport the caller supplies (the same SMTP the
- * mailbox uses), never through Supabase. Dark, branded, inline-CSS. */
+ * mailbox uses), never through Supabase. Rendered by the shared GrovBase card,
+ * so it is light/dark like every other message rather than a black outlier. */
 export function renderSecurityCodeEmail(input: {
   code: string;
   deviceLabel: string;
@@ -285,8 +287,6 @@ export function renderSecurityCodeEmail(input: {
   const ttl = Math.max(30, Math.trunc(input.ttlSeconds ?? 120));
   const ttlText = ttl % 60 === 0 ? `${ttl / 60} min` : `${ttl} s`;
   const expiresLine = `Kod wygasa za ${ttlText}.`;
-  const esc = (s: string) => s.replace(/[&<>"]/g, (c) => (
-    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
 
   const text = [
     "Nowe logowanie do GrovBase",
@@ -303,40 +303,28 @@ export function renderSecurityCodeEmail(input: {
     "grovbase.com",
   ].join("\n");
 
-  const html = `<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(subject)}</title></head>
-<body style="margin:0;padding:0;background:#0b0710;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0b0710;padding:32px 12px;">
-<tr><td align="center">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:440px;background:#141019;border:1px solid #2a2033;border-radius:16px;overflow:hidden;">
-<tr><td style="padding:28px 32px 8px;">
-<span style="font:700 20px/1 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#ffffff;letter-spacing:-0.02em;">Grov<span style="color:#F950E1;">Base</span></span>
-</td></tr>
-<tr><td style="padding:8px 32px 0;">
-<h1 style="margin:0;font:600 18px/1.35 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#ffffff;">Nowe logowanie do GrovBase</h1>
-<p style="margin:12px 0 0;font:400 14px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#b9adc7;">Otrzymaliśmy próbę logowania na Twoje konto. Podaj poniższy kod, aby ją potwierdzić.</p>
-</td></tr>
-<tr><td style="padding:20px 32px 0;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0f0b16;border:1px solid #2a2033;border-radius:12px;">
-<tr><td style="padding:14px 18px;font:400 13px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#9a8ea8;">Urządzenie<br><span style="color:#e9e2f0;font-weight:600;">${esc(input.deviceLabel)}</span></td></tr>
-<tr><td style="padding:0 18px 14px;font:400 13px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#9a8ea8;">Czas<br><span style="color:#e9e2f0;font-weight:600;">${esc(when)}</span></td></tr>
-</table>
-</td></tr>
-<tr><td align="center" style="padding:24px 32px 4px;">
-<div style="display:inline-block;background:linear-gradient(135deg,#D628CF,#F950E1);border-radius:12px;padding:16px 28px;">
-<span style="font:700 30px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:#ffffff;letter-spacing:8px;">${esc(spaced)}</span>
-</div>
-</td></tr>
-<tr><td align="center" style="padding:12px 32px 0;">
-<p style="margin:0;font:400 13px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#9a8ea8;">${esc(expiresLine)}</p>
-</td></tr>
-<tr><td style="padding:20px 32px 28px;">
-<p style="margin:0;font:400 12px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#7d7188;">Jeżeli to nie Ty próbowałeś się zalogować, nie udostępniaj tego kodu nikomu i jak najszybciej zmień hasło.</p>
-<p style="margin:14px 0 0;font:400 12px/1.6 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#5f5569;">grovbase.com · © GrovBase</p>
-</td></tr>
-</table>
-</td></tr>
-</table>
-</body></html>`;
+  // ONE SYSTEM, NOT A SECOND ONE. This mail used to build its own document
+  // with a hardcoded #0b0710 canvas, which is why a customer could receive a
+  // black security code and a white confirmation minutes apart. It now renders
+  // through the shared GrovBase card, so it inherits the same header, footer,
+  // spacing, CTA treatment and — the point of the exercise — the same light
+  // AND dark behaviour as every other GrovBase message.
+  //
+  // `code` is a first-class block in that renderer: large, letter-spaced, on a
+  // tinted panel, as TEXT so it stays selectable and survives a client with
+  // images turned off.
+  const { html, text: cardText } = renderEmailTemplate({
+    title: "Twój kod bezpieczeństwa",
+    intro: "Użyj tego kodu, aby dokończyć logowanie do GrovBase.",
+    code: spaced,
+    fields: [
+      { label: "Urządzenie", value: input.deviceLabel },
+      { label: "Czas", value: when },
+    ],
+    note: `${expiresLine}\nJeżeli to nie Ty próbowałeś się zalogować, nie udostępniaj tego kodu nikomu i jak najszybciej zmień hasło.`,
+    preheader: `Kod bezpieczeństwa GrovBase. ${expiresLine}`,
+  });
+  void cardText;
 
   return { subject, html, text };
 }
@@ -395,7 +383,6 @@ async function securityCodeTemplate(
   const spaced = `${code.slice(0, 3)} ${code.slice(3)}`;
   const data = { code: spaced, device: label, date, time };
   const rendered = renderTemplateEmail(def.email, data, {
-    badge: "BEZPIECZEŃSTWO",
     fields: fieldsFromData(data),
     timestamp: stamp,
   });

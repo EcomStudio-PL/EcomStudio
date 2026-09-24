@@ -403,7 +403,7 @@ export function renderTemplateTelegram(
 export function renderTemplateEmail(
   def: EmailTemplateDef,
   data: Record<string, string>,
-  opts: { badge?: string; fields?: EmailField[]; timestamp?: string },
+  opts: { fields?: EmailField[]; timestamp?: string },
 ): { subject: string; html: string; text: string; unknown: string[] } {
   const unknownAll: string[] = [];
   const roll = (text: string) => {
@@ -418,7 +418,6 @@ export function renderTemplateEmail(
     : undefined;
 
   const { html, text } = renderEmailTemplate({
-    badge: opts.badge,
     title: roll(def.heading) || subject,
     intro: roll(def.body),
     fields: def.showFields ? opts.fields ?? [] : [],

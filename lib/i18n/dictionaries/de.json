@@ -4096,6 +4096,8 @@
     "publish": "Veröffentlichen",
     "reset": "Standard wiederherstellen",
     "preview": "Vorschau",
+    "previewLight": "Hell",
+    "previewDark": "Dunkel",
     "hidePreview": "Vorschau ausblenden",
     "showPreview": "Vorschau zeigen",
     "draftSaved": "Entwurf gespeichert. Produktion unverändert.",
