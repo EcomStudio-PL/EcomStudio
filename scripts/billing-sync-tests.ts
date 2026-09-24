@@ -848,6 +848,20 @@ async function main() {
     check("p24 is never named in code", !/p24|przelewy/i.test(co));
     check("blik is never named in code", !/\bblik\b/i.test(co));
 
+    // THE LAYOUT MUST NOT BE ABLE TO BURY AN ELIGIBLE METHOD.
+    //
+    // `tabs` lays methods out horizontally and puts whatever does not fit
+    // behind a "More" control. A one-off PLN payment on this account is
+    // eligible for five (card, BLIK, Link, Klarna, Revolut Pay) and the
+    // checkout column is narrow, so BLIK was pushed into the overflow — while
+    // every server-side signal correctly said it was on the PaymentIntent.
+    // The accordion is vertical, so width stops deciding what is visible.
+    check("the Payment Element lays methods out vertically, not as tabs",
+      /type:\s*"accordion"/.test(view) && !/layout:\s*"tabs"/.test(view),
+      "horizontal tabs hide the tail behind More, and BLIK was in the tail");
+    check("the card form is still open on arrival",
+      /defaultCollapsed:\s*false/.test(view));
+
     // Wallets appear once. The Express Checkout Element renders them above, so
     // the Payment Element must not render them again below.
     check("the Payment Element suppresses the wallets the express element owns",

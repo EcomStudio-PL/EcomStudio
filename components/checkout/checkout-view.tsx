@@ -532,24 +532,46 @@ function PaymentPanel({ quote, returnUrl, reference }: {
 
       {/* EVERYTHING ELSE STRIPE OFFERS FOR THIS PAYMENT — card, BLIK, Revolut
           Pay, Klarna, whatever else the account has enabled and the transaction
-          is eligible for. The list is still Stripe's to decide.
+          is eligible for. The list is, and stays, Stripe's to decide: there is
+          no method named anywhere in this file or in the server that creates
+          the intent.
 
-          `wallets: never` IS NOT A HARDCODED METHOD LIST. Apple Pay and Google
-          Pay are already rendered by the Express Checkout Element directly
-          above, and the Payment Element would otherwise offer them a second
-          time as tabs — the same two buttons twice on exactly the devices that
-          support them, which is the worst place for a duplicate to appear.
-          This suppresses the COPY, not the method: turn a wallet off in the
-          Stripe dashboard and it vanishes from the element above too, because
-          that one asks Stripe.
+          ─── WHY THIS IS AN ACCORDION AND NOT TABS ──────────────────────────
 
-          Link is deliberately left alone. It has no such switch on the Payment
-          Element, and it does not duplicate the way the wallets do: above it is
-          a button, here it is an inline email prompt on the card form. */}
+          `tabs` lays the methods out HORIZONTALLY, so how many a customer can
+          see depends on how wide the column happens to be. Whatever does not
+          fit goes behind a "More" control. On this page the payment form sits
+          in the narrow left column on a desktop and in a phone's full width
+          otherwise — and a one-off PLN payment on this account is eligible for
+          five methods (card, BLIK, Link, Klarna, Revolut Pay). Five tabs do not
+          fit, so the tail was being collapsed, and BLIK — the one method here
+          that a Polish customer is most likely to want — was in the tail.
+
+          Nothing was disabled and nothing was filtered: the PaymentIntent
+          carried `blik` the whole time. It was a LAYOUT deciding what got a
+          visible slot, which is the worst kind of missing feature, because
+          every server-side check says it is present.
+
+          The accordion lists methods VERTICALLY, so width stops deciding.
+          It is also Stripe's own default since 2025-03-31. `defaultCollapsed:
+          false` keeps the card form open on arrival — the common case stays a
+          single tap — while every other eligible method is a visible row
+          beneath it rather than an item behind a menu.
+
+          `wallets: never`: Apple Pay and Google Pay are rendered by the
+          Express Checkout Element above. Stripe already suppresses them in the
+          Payment Element when both elements share an Elements group, so this
+          is belt-and-braces rather than the thing doing the work — and it
+          suppresses a DUPLICATE, never a method. Turn a wallet off in the
+          dashboard and it disappears from the element above too, because that
+          one asks Stripe.
+
+          Link is deliberately left alone: above it is a button, here an inline
+          email prompt on the card form, so it does not duplicate. */}
       <PaymentElement
         onReady={() => setReady(true)}
         options={{
-          layout: "tabs",
+          layout: { type: "accordion", defaultCollapsed: false, radios: true },
           wallets: { applePay: "never", googlePay: "never" },
         }}
       />
