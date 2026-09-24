@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { PenLine, Sparkles } from "lucide-react";
-import { CATEGORIES, VIDEO_ICON, categoryHref, type CategoryAccent } from "./categories";
-import { IMAGE_CREATE, IMAGE_EDIT, IMAGE_EDIT_MORE, editLabelKey } from "./topnav";
+import { CATEGORIES, VIDEO_ICON, categoryPath, workflowHref, type CategoryAccent } from "./categories";
+import { IMAGE_EDIT, IMAGE_EDIT_MORE, editLabelKey } from "./topnav";
 import { TOOLS } from "./images/tools";
 import {
   FEATURE_REGISTRY, featureForHref, featureForToolSlug, menuVisible,
@@ -21,7 +21,7 @@ import {
  * FEATURE_REGISTRY, and the extras are resolved out of the structures that
  * already hold them:
  *
- *   icon + accent   the mega-menu (IMAGE_CREATE / IMAGE_EDIT / …) and the
+ *   icon + accent   the categories, the mega-menu (IMAGE_EDIT / …) and the
  *                   category workflows, matched to a feature THROUGH the
  *                   registry's own route table (featureForHref), so an entry
  *                   that moves keeps its icon without anything being edited.
@@ -69,16 +69,18 @@ type Visual = { icon: LucideIcon; accent?: CategoryAccent };
 
 /**
  * Every place in the app that already pairs a ROUTE with an ICON. Order is
- * first-wins, which is why the mega-menu comes before the deeper category
- * workflows: /k/moda should be the category's own icon, not its first tool's.
+ * first-wins, which is why the categories come before their deeper workflows:
+ * /k/moda should be the category's own icon, not its first tool's.
  */
 const VISUAL_SOURCES: readonly { href: string; icon: LucideIcon; accent?: CategoryAccent }[] = [
-  ...IMAGE_CREATE.map((e) => ({ href: e.href, icon: e.icon, accent: e.accent })),
+  // The categories by their PATH: their menu link is a section of /tools,
+  // which the route table would read as the hub rather than the category.
+  ...CATEGORIES.map((c) => ({ href: categoryPath(c), icon: c.icon, accent: c.accent })),
   ...IMAGE_EDIT.map((e) => ({ href: e.href, icon: e.icon })),
   ...IMAGE_EDIT_MORE.map((e) => ({ href: e.href, icon: e.icon })),
   // The Moda tools live inside the category, so their icons do too.
   ...CATEGORIES.flatMap((c) =>
-    c.workflows.map((w) => ({ href: `${categoryHref(c)}/${w.key}`, icon: w.icon, accent: c.accent }))),
+    c.workflows.map((w) => ({ href: workflowHref(c, w), icon: w.icon, accent: c.accent }))),
   { href: "/prompts", icon: Sparkles },
   { href: "/generator", icon: PenLine },
   { href: "/wideo", icon: VIDEO_ICON },

@@ -10,10 +10,11 @@ import {
  * CATEGORY MODEL — the six customer workspaces (Moda, E-commerce, Social
  * Media, Mailing, Inne, Matching) and the video section.
  *
- * Each category is a REAL destination (`/k/{slug}`) with its own accent, its
- * own set of sub-workflows and its own generator defaults — ratio, shot count
- * and a style directive. Two categories must never open the same form with
- * the same defaults, which is the whole point of having categories at all.
+ * Each category is a SECTION of the /tools hub (`/tools?category={slug}`) with
+ * its own accent, its own set of sub-workflows (`/k/{slug}/{workflow}`) and its
+ * own generator defaults — ratio, shot count and a style directive. Two
+ * categories must never open the same form with the same defaults, which is the
+ * whole point of having categories at all.
  *
  * Accents are deliberately a narrow family around the brand: violet for
  * fashion, magenta for commerce, coral for social, indigo for mailing, cyan
@@ -58,7 +59,7 @@ export type Workflow = {
    * KEPT, BUT NOT OFFERED.
    *
    * A workflow the category no longer presents as one of its jobs: it is
-   * absent from the catalogue on /k/{cat} and from the switcher inside a
+   * absent from the category's section of /tools and from the switcher inside a
    * workspace. Everything else about it still works — its dictionary entries,
    * its style directive and its route — so an old bookmark lands on a working
    * screen instead of a 404, and nothing that referenced the key has to be
@@ -167,7 +168,7 @@ export const CATEGORIES: readonly Category[] = [
 export const CATEGORY_BY_SLUG = new Map(CATEGORIES.map((c) => [c.slug, c]));
 
 /**
- * The workflows a category OFFERS — the catalogue on /k/{cat} and the switcher
+ * The workflows a category OFFERS — its section of /tools and the switcher
  * inside a workspace read this, never `category.workflows`.
  *
  * One list, one place: a card grid that showed a retired preset the switcher
@@ -183,7 +184,35 @@ export function findCategory(slug: string | undefined | null): Category | null {
   return CATEGORY_BY_SLUG.get(slug) ?? null;
 }
 
-export function categoryHref(c: Category) { return `/k/${c.slug}`; }
+/**
+ * THREE ADDRESSES, NOT ONE — and they used to be the same string.
+ *
+ * A category is no longer a page of its own. It is a SECTION of the /tools
+ * hub, which holds every tool the product has; the category's old landing page
+ * (`/k/{slug}`) forwards there. What stays under `/k/{slug}` is what always
+ * lived there: the workflows themselves (`/k/{slug}/{workflow}`), and the
+ * availability switch, whose route table still keys the category on that path.
+ *
+ *   categoryHref   where a LINK to the category goes: its hub section.
+ *   categoryPath   the category's route namespace — its workflows live under
+ *                  it, and `featureForHref` resolves the category's own switch
+ *                  from it. Never a link target on its own any more.
+ *   categoryGates  every switch that decides whether a link to the category may
+ *                  be shown: the hub it opens AND the category itself. A link to
+ *                  a section of a page that is switched off would be a dead
+ *                  door, and a category switched off must not reappear just
+ *                  because its link now points somewhere else.
+ */
+export const CATEGORY_PARAM = "category";
+
+export function categoryHref(c: Category) { return `/tools?${CATEGORY_PARAM}=${c.slug}`; }
+
+export function categoryPath(c: Category) { return `/k/${c.slug}`; }
+
+export function categoryGates(c: Category): readonly string[] { return ["/tools", categoryPath(c)]; }
+
+/** One workflow's own screen — a Moda tool or a category preset. */
+export function workflowHref(c: Category, w: Workflow) { return `${categoryPath(c)}/${w.key}`; }
 
 /** CSS custom properties a category surface sets once at its root, so every
  *  child can reference rgb(var(--cat)) without prop drilling. */

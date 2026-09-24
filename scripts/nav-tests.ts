@@ -29,7 +29,7 @@ import path from "node:path";
 import { isNavActive, sectionOwnsRoute, navPath, NAV_REGISTRY } from "@/lib/nav-active";
 import { ADMIN_NAV, CLIENT_NAV } from "@/lib/navigation";
 import { IMAGE_EDIT, IMAGE_MODES, IMAGE_EDIT_MORE } from "@/lib/topnav";
-import { CATEGORIES, categoryHref } from "@/lib/categories";
+import { CATEGORIES, categoryHref, categoryPath } from "@/lib/categories";
 
 let failed = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -54,9 +54,13 @@ const EDIT_ROWS = IMAGE_EDIT.filter((e) => !e.soon).map((e) => e.href);
  *  „Tworzenie" used to hold, kept here only to assert its absence. */
 const CREATE_ROWS = IMAGE_MODES.map((e) => e.href).filter((h) => !EDIT_ROWS.includes(h));
 
+/* A row is modelled by what it is MATCHED on. For almost every row that is
+   its href; a category's row links to its section of /tools
+   (`/tools?category=moda`) and is matched on its path (`/k/moda`), which is
+   what the drawer's Tile passes as `match`. */
 const DRAWER: readonly { title: string; rows: readonly string[] }[] = [
   { title: "GŁÓWNE", rows: ["/home", "/library", "/support", "/settings"] },
-  { title: "OBRAZY", rows: CATEGORIES.map(categoryHref) },
+  { title: "OBRAZY", rows: CATEGORIES.map(categoryPath) },
   { title: "NARZĘDZIA", rows: EDIT_ROWS },
   { title: "WIDEO", rows: ["/wideo"] },
 ];
@@ -234,9 +238,16 @@ check("…so /library lights Biblioteka alone",
   `got: ${litRows("/library").join(" + ")}`);
 
 for (const c of CATEGORIES) {
-  const href = categoryHref(c);
-  check(`${href} lights its own category alone`, litRows(href).join() === href,
-    `got: ${litRows(href).join(" + ") || "nothing"}`);
+  const own = categoryPath(c);
+  const wf = `${own}/${c.workflows[0].key}`;
+  check(`${wf} (a workflow screen) lights its own category alone`, litRows(wf).join() === own,
+    `got: ${litRows(wf).join(" + ") || "nothing"}`);
+  // The category's LINK is a section of the hub. usePathname() sees /tools,
+  // so the hub row is the lit one there — never the category and the hub
+  // together, which would be the two-highlights bug again.
+  const hub = navPath(categoryHref(c));
+  check(`${categoryHref(c)} lights „Wszystkie narzędzia” alone`, litRows(hub).join() === "/tools",
+    `got: ${litRows(hub).join(" + ") || "nothing"}`);
 }
 
 /* ── F. the route is the only input ──────────────────────────────────────── */

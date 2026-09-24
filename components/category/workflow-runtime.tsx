@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { GeneratorWorkspace } from "@/components/genv3/workspace";
-import { CATEGORY_VARIANT, DEFAULT_VARIANT, findCategory } from "@/lib/categories";
+import { CATEGORY_VARIANT, DEFAULT_VARIANT, categoryHref, findCategory } from "@/lib/categories";
 import { fashionTool } from "@/lib/fashion-tools";
 import { FashionToolWorkspace } from "@/components/fashion/tool-workspace";
 import type { GalleryItem, GenModel } from "@/components/genv3/types";
@@ -21,7 +21,8 @@ import type { SessionPreviewMap } from "@/components/genv3/sections";
  * on every screen where the seller had already decided. In Moda that was four
  * chips; in E-commerce five. On a phone the row wrapped to two lines and the
  * panel started that much further down. Choosing a tool is now one place —
- * /k/{cat} — instead of two places that had to be kept in step.
+ * the category's section of /tools — instead of two places that had to be
+ * kept in step.
  *
  * WHAT WENT WITH THEM, AND WHY THAT IS NOT OVER-REMOVAL. This component used
  * to hold local `active` state, a History pushState, a popstate listener and a
@@ -115,10 +116,10 @@ export function WorkflowRuntime({
           e-mail has no history to go back to, and "back" that lands outside
           the app is worse than no button.
 
-          NOT REMOVED FROM THE CATEGORY PAGE. /k/[cat] keeps its full
-          CategoryHeader — there the wash and the icon ARE the screen's
-          subject, and it is the destination this link points at. */}
-      <Link href={`/k/${category.slug}`}
+          It leads to the category's section of /tools, which is where the
+          category lives now; its old page only forwards there, so linking to
+          the section directly saves the detour. */}
+      <Link href={categoryHref(category)}
         data-tool-back
         className="mb-3 inline-flex items-center gap-1.5 self-start text-[13px] font-medium text-muted transition-colors hover:text-ink">
         <ArrowLeft size={14} aria-hidden />

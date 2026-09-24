@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { ChevronDown, Images, Menu, Sparkles } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import {
-  IMAGE_CREATE, IMAGE_EDIT, IMAGE_MODES, VIDEO_CREATE, VIDEO_EDIT, editLabelKey, type MegaEntry,
+  IMAGE_CREATE, IMAGE_EDIT, IMAGE_MODES, VIDEO_CREATE, VIDEO_EDIT, editLabelKey, entryGate, type MegaEntry,
 } from "@/lib/topnav";
 import { allDefaults, menuBadge, menuVisible, type AvailabilityMap, type FeatureKey, type MenuBadge } from "@/lib/features";
 import { isNavActive } from "@/lib/nav-active";
@@ -192,7 +192,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
                   plus `pt-2` keeps the bridge hoverable. */}
               {menu === which && (
                 <div className="absolute left-0 top-full z-50 pt-2">
-                  <MegaPanel which={which} t={t} avail={avail} isAdmin={seesRestricted} />
+                  <MegaPanel which={which} t={t} avail={avail} isAdmin={seesRestricted} onNavigate={close} />
                 </div>
               )}
             </div>
@@ -277,16 +277,22 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
 
 /** The panel body: TWÓRZ (categories, each in its own accent) and EDYTUJ
  *  (the toolbox), plus a footer of secondary destinations. */
-function MegaPanel({ which, t, avail, isAdmin }: {
+function MegaPanel({ which, t, avail, isAdmin, onNavigate }: {
   which: "image" | "video";
   t: (k: string, v?: Record<string, string | number>) => string;
   avail: AvailabilityMap;
   isAdmin: boolean;
+  /** Close the panel once one of its links is followed. The bar also closes
+   *  it when the path changes, but a category link can keep the path — Moda
+   *  and E-commerce are two sections of the same /tools — and the panel must
+   *  not stay open over the section it just opened. */
+  onNavigate: () => void;
 }) {
   // Availability first: a DISABLED (or menu-hidden) module simply is not
-  // listed for customers; admins keep every entry, badged.
+  // listed for customers; admins keep every entry, badged. A category entry is
+  // asked about through `entryGate` — its hub AND the category itself.
   const create = (which === "image" ? IMAGE_CREATE : VIDEO_CREATE)
-    .filter((e) => menuVisible(avail, e.href, isAdmin));
+    .filter((e) => menuVisible(avail, entryGate(e), isAdmin));
   // The image list is five entries now, and the last of them IS the hub, so
   // nothing is trimmed and no separate "all tools" link is needed underneath.
   const edit = (which === "image" ? IMAGE_EDIT : VIDEO_EDIT)
@@ -304,7 +310,9 @@ function MegaPanel({ which, t, avail, isAdmin }: {
   const promo = which === "image" && menuVisible(avail, PROMO_HREF, isAdmin);
 
   return (
-    <div role="menu" className={cn(
+    <div role="menu"
+      onClick={(e) => { if (e.target instanceof Element && e.target.closest("a[href]")) onNavigate(); }}
+      className={cn(
       "overlay animate-pop rounded-2xl p-5 shadow-e4",
       promo ? "w-[min(66rem,calc(100vw-3rem))]" : "w-[min(56rem,calc(100vw-3rem))]",
     )}>
@@ -318,7 +326,7 @@ function MegaPanel({ which, t, avail, isAdmin }: {
           <div className="grid grid-cols-2 gap-1">
             {create.map((e) => (
               <MegaLink key={e.key} entry={e} label={label(e)} sub={sub(e)} soonLabel={t("common.soon")}
-                dynBadge={dynBadgeLabel(menuBadge(avail, e.href), t)} />
+                dynBadge={dynBadgeLabel(menuBadge(avail, entryGate(e)), t)} />
             ))}
           </div>
           {which === "image" && modes.length > 0 && (
@@ -505,7 +513,10 @@ function MegaLink({ entry, label, sub, soonLabel, compact, dynBadge }: {
     // same effect.
     inert ? "cursor-default opacity-60" : "snake hover:bg-[rgb(var(--accent)/0.09)]",
   );
+  // A category opens a SECTION of /tools, which scrolls itself into view
+  // (components/tools/tools-deep-link.tsx). Letting the router also reset the
+  // page to its top first made a change of section jump up, then glide down.
   return inert
     ? <div className={cls} aria-disabled>{body}</div>
-    : <Link role="menuitem" href={entry.href} className={cls}>{body}</Link>;
+    : <Link role="menuitem" href={entry.href} scroll={entry.match ? false : undefined} className={cls}>{body}</Link>;
 }

@@ -16,7 +16,7 @@
  *   so the frame's ratio is measured before and independently of the file.
  *   VIDEO COSTS NOTHING UNTIL IT IS NEEDED. A clip far below the fold must
  *   still be `preload="none"` with no src attached.
- *   NOTHING OVERFLOWS. Six tiles and a dozen tool cards at 320px.
+ *   NOTHING OVERFLOWS. Six workflow cards and a dozen tool cards at 320px.
  *
  *   node scripts/media-probe.mjs --harness
  *   npm run build && npx next start -p 3121 &
@@ -49,18 +49,18 @@ const base = (key: string): ResolvedSlot => ({
 
 export const SLOTS: SlotMap = new Map<string, ResolvedSlot>([
   // Moda: a plain image, no overrides. Ecommerce: all three widths.
-  ["dashboard.category.moda.card", base("dashboard.category.moda.card")],
-  ["dashboard.category.ecommerce.card", {
-    ...base("dashboard.category.ecommerce.card"), tablet: TABLET, mobile: MOBILE,
+  ["category.moda.workflow.ghostMannequin.card", base("category.moda.workflow.ghostMannequin.card")],
+  ["category.ecommerce.workflow.packshot.card", {
+    ...base("category.ecommerce.workflow.packshot.card"), tablet: TABLET, mobile: MOBILE,
   }],
   // Social: a video, far below the fold on purpose.
-  ["dashboard.category.social.card", {
-    ...base("dashboard.category.social.card"), mediaType: "video",
+  ["category.social.workflow.reels.card", {
+    ...base("category.social.workflow.reels.card"), mediaType: "video",
     desktop: "/probe-clip.mp4", poster: DESKTOP,
   }],
   // Mailing: contain + a corner, to prove both reach the element's style.
-  ["dashboard.category.mailing.card", {
-    ...base("dashboard.category.mailing.card"), fit: "contain", position: "right bottom",
+  ["category.mailing.workflow.header.card", {
+    ...base("category.mailing.workflow.header.card"), fit: "contain", position: "right bottom",
     alt: "Opis kafelka",
   }],
   // Two tool cards: one filled, the rest fall back to their drawn motifs.
@@ -72,10 +72,11 @@ export const SLOTS: SlotMap = new Map<string, ResolvedSlot>([
 export const EMPTY: SlotMap = new Map();
 `;
 
-const PAGE_SRC = `import { CategoryGrid } from "@/components/home/category-grid";
-import { ToolsCatalogue } from "@/components/tools/tools-catalogue";
+const PAGE_SRC = `import { ToolsCatalogue, type CatalogueCard } from "@/components/tools/tools-catalogue";
 import { Wrench } from "lucide-react";
 import { FEATURE_KEYS, type AvailabilityMap } from "@/lib/features";
+import { CATEGORY_SECTIONS } from "@/lib/tool-cards";
+import { workflowSlotKey } from "@/lib/media-slots";
 import { SLOTS, EMPTY } from "@/app/probe-tmp/media/fixture";
 
 export const dynamic = "force-static";
@@ -95,19 +96,28 @@ const CARDS = [
     title: "Format", body: "Zmiana rozmiaru", slotKey: "tools.resize.card" },
 ];
 
+/** The first workflow of each of the six categories — the cards /tools now
+ *  paints in the category sections, under the slot keys they always had. (The
+ *  dashboard's category grid used to be this probe's surface; the categories
+ *  are sections of /tools now.) */
+const WORKFLOWS = CATEGORY_SECTIONS.map((s) => {
+  const c = s.cards[0];
+  return { key: c.key, href: c.href, icon: c.icon, motif: c.motif, title: c.titleKey,
+    body: c.bodyKey, slotKey: workflowSlotKey(c.workflow!.category, c.workflow!.key) };
+});
+const SECTION = (cards: CatalogueCard[]) => [{ key: "cats", icon: Wrench, title: "Kategorie", cards }];
+
 /** The REAL components, with a fixture slot map instead of a database — the
  *  renderer only ever sees a SlotMap, so this exercises production exactly. */
 export default function Page() {
   return (
     <div className="min-h-dvh bg-bg p-4">
       <section data-probe="filled">
-        <CategoryGrid t={(k) => k} slots={SLOTS}
-          previews={["/fallback-a.png", null, null, null, null, null]} />
+        <ToolsCatalogue t={(k) => k} isAdmin avail={AVAIL} slots={SLOTS} sections={SECTION(WORKFLOWS)} />
       </section>
 
       <section data-probe="empty" className="mt-6">
-        <CategoryGrid t={(k) => k}
-          previews={["/fallback-a.png", null, null, null, null, null]} />
+        <ToolsCatalogue t={(k) => k} isAdmin avail={AVAIL} slots={EMPTY} sections={SECTION(WORKFLOWS)} />
       </section>
 
       <section data-probe="tools" className="mt-6">
@@ -120,12 +130,12 @@ export default function Page() {
           sections={[{ key: "edit", icon: Wrench, title: "Edytuj", cards: CARDS }]} />
       </section>
 
-      {/* Three screens of nothing, so the grid below is genuinely out of
+      {/* Three screens of nothing, so the cards below are genuinely out of
           reach of the observer's one-screen margin — the case the lazy video
           exists for. */}
       <div aria-hidden style={{ height: "3000px" }} />
       <section data-probe="below">
-        <CategoryGrid t={(k) => k} slots={SLOTS} />
+        <ToolsCatalogue t={(k) => k} isAdmin avail={AVAIL} slots={SLOTS} sections={SECTION(WORKFLOWS)} />
       </section>
     </div>
   );
@@ -155,7 +165,7 @@ const LIBRARY: LibraryItem[] = [
 ];
 
 const CONFIGURED: SlotRow = {
-  slotKey: "dashboard.category.moda.card", mediaType: "image", mediaId: "a1",
+  slotKey: "category.moda.workflow.ghostMannequin.card", mediaType: "image", mediaId: "a1",
   tabletMediaId: null, mobileMediaId: null, posterMediaId: null,
   altText: "Kafelek Moda", objectFit: "cover", objectPosition: "right bottom",
   autoplay: true, muted: true, loop: true, controls: false, enabled: true,
@@ -164,7 +174,7 @@ const CONFIGURED: SlotRow = {
 
 const GROUPS = ["moda", "ecommerce", "social", "mailing", "inne", "matching", "x1", "x2"]
   .map((id, i) => ({
-    id, name: i < 6 ? "Kategoria " + id : "Dodatkowa " + id, sub: "/k/" + id,
+    id, name: i < 6 ? "Kategoria " + id : "Dodatkowa " + id, sub: "/tools?category=" + id,
     slots: MEDIA_SLOTS.filter((s) => s.entityType === "category" && s.entityId === id)
       .map((def) => ({ def, row: def.slotName === "card" ? CONFIGURED : null })),
   }))
@@ -264,18 +274,18 @@ for (const theme of ["light", "dark"]) {
         docScroll: document.documentElement.scrollWidth,
         clientW: document.documentElement.clientWidth,
         // FILLED: four configured tiles.
-        moda: slotBox(filled, "dashboard.category.moda.card"),
-        ecom: slotBox(filled, "dashboard.category.ecommerce.card"),
-        social: slotBox(filled, "dashboard.category.social.card"),
-        socialBelow: slotBox(below, "dashboard.category.social.card"),
-        mailing: slotBox(filled, "dashboard.category.mailing.card"),
+        moda: slotBox(filled, "category.moda.workflow.ghostMannequin.card"),
+        ecom: slotBox(filled, "category.ecommerce.workflow.packshot.card"),
+        social: slotBox(filled, "category.social.workflow.reels.card"),
+        socialBelow: slotBox(below, "category.social.workflow.reels.card"),
+        mailing: slotBox(filled, "category.mailing.workflow.header.card"),
         // The two tiles with nothing configured must fall through.
-        inneFilled: Boolean(filled.querySelector('[data-slot="dashboard.category.inne.card"]')),
+        inneFilled: Boolean(filled.querySelector('[data-slot="category.inne.workflow.label.card"]')),
         filledFrames: q(".media-frame", filled).length,
-        // EMPTY: no slot markup at all, and the shared <Media> frames instead.
+        // EMPTY: no slot markup at all, and every card's drawn motif instead.
         emptySlots: q("[data-slot]", empty).length,
-        emptyFrames: q(".media-frame", empty).length,
-        emptyFirstSrc: (empty.querySelector(".media-frame img") || {}).src ?? null,
+        emptyMotifs: q("[data-tool-card] svg", empty).length,
+        emptyCards: q("[data-tool-card]", empty).length,
         // TOOLS: one filled, one with a mobile override, one falling back.
         retouch: slotBox(tools, "tools.retouch.card"),
         compress: slotBox(tools, "tools.compress.card"),
@@ -291,12 +301,12 @@ for (const theme of ["light", "dark"]) {
       r.docScroll <= r.clientW + 1, `${r.docScroll} > ${r.clientW}`);
 
     /* ── THE FALLBACK IS REAL ────────────────────────────────────────── */
-    check(`${label}: an unconfigured grid renders no slot markup`,
+    check(`${label}: an unconfigured section renders no slot markup`,
       r.emptySlots === 0, `${r.emptySlots}`);
-    check(`${label}: an unconfigured grid still renders six frames`,
-      r.emptyFrames === 6, `${r.emptyFrames}`);
-    check(`${label}: the unconfigured tile keeps the account's own preview`,
-      String(r.emptyFirstSrc).includes("/fallback-a.png"), `${r.emptyFirstSrc}`);
+    check(`${label}: an unconfigured section still renders all six workflow cards`,
+      r.emptyCards === 6, `${r.emptyCards}`);
+    check(`${label}: every unconfigured workflow card keeps its drawn motif`,
+      r.emptyMotifs >= 6, `${r.emptyMotifs}`);
     check(`${label}: an unconfigured tile inside a configured grid falls back`,
       r.inneFilled === false);
     check(`${label}: every unconfigured tool card keeps its drawn motif`,
@@ -370,7 +380,7 @@ for (const theme of ["light", "dark"]) {
 {
   const page = await browser.newPage({ viewport: { width: 390, height: 700 } });
   await page.goto(`${BASE}/probe-tmp/media`, { waitUntil: "networkidle" });
-  const sel = '[data-probe="below"] [data-slot="dashboard.category.social.card"] video';
+  const sel = '[data-probe="below"] [data-slot="category.social.workflow.reels.card"] video';
   await page.locator(sel).scrollIntoViewIfNeeded();
   await page.waitForTimeout(500);
   const after = await page.evaluate((s) => {
@@ -387,7 +397,7 @@ for (const theme of ["light", "dark"]) {
     viewport: { width: 1280, height: 900 }, reducedMotion: "reduce",
   });
   await page.goto(`${BASE}/probe-tmp/media`, { waitUntil: "networkidle" });
-  const sel = '[data-probe="below"] [data-slot="dashboard.category.social.card"] video';
+  const sel = '[data-probe="below"] [data-slot="category.social.workflow.reels.card"] video';
   await page.locator(sel).scrollIntoViewIfNeeded();
   await page.waitForTimeout(500);
   const calm = await page.evaluate((s) => {

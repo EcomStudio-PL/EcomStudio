@@ -20,7 +20,9 @@ process.env.APP_ENCRYPTION_KEY = "e".repeat(64); // throwaway, never a real one
 
 import { readFileSync } from "fs";
 import { FASHION_TOOLS, FASHION_HINT_MAX, fashionTool } from "../lib/fashion-tools";
-import { CATEGORIES, offeredWorkflows } from "../lib/categories";
+import { CATEGORIES, categoryHref, offeredWorkflows } from "../lib/categories";
+import { CATEGORY_SECTIONS } from "../lib/tool-cards";
+import { MEDIA_SLOTS, workflowSlotKey } from "../lib/media-slots";
 import { FEATURE_REGISTRY, defaultStatusFor } from "../lib/features";
 import { AI_TOOL_KEYS, toolTabs } from "../lib/services/ai-tools";
 
@@ -212,8 +214,11 @@ check("the tool page renders no category hero",
 check("…but it does offer a way back", /data-tool-back/.test(runtime));
 // A real href, not history.back(): a tool opened from a bookmark or a shared
 // URL has no history entry to return to.
-check("…which is a link to the category, not history.back()",
-  /href=\{`\/k\/\$\{category\.slug\}`\}/.test(runtime)
+// The category lives as a section of /tools now; the link goes there directly
+// rather than through the old page's forward.
+check("…which is a link to the category's section of /tools, not history.back()",
+  /href=\{categoryHref\(category\)\}/.test(runtime)
+  && categoryHref(CATEGORIES.find((c) => c.key === "moda")!) === "/tools?category=moda"
   && !/history\.back\(\)/.test(runtime));
 // The back link is now the ONLY thing above the panel. Section A pins the
 // absence of the chips; this pins that nothing else crept in to replace them.
@@ -221,14 +226,14 @@ check("…and the back link is the only band above the panel",
   runtime.indexOf("data-tool-back") < runtime.indexOf("{tool && fashion")
   && !/<nav\b/.test(runtime) && !/<header\b/.test(runtime));
 
-// The CATEGORY page is a different screen and keeps its header: that is where
-// the wash and the icon are the subject, and it is where the back link goes.
-const categoryPage = readFileSync("app/(app)/k/[cat]/page.tsx", "utf8");
-check("the category page still has its header", /<CategoryHeader/.test(categoryPage));
-// With one caller gone, the compact variant had no caller at all.
-const header = readFileSync("components/category/category-header.tsx", "utf8");
-check("and CategoryHeader no longer carries a dead compact variant",
-  !/compact/.test(stripComments(header)));
+// The CATEGORY page no longer exists as a screen: /k/<slug> forwards to the
+// category's section of /tools, which holds these tools as cards. Its header
+// component went with it — nothing is left to render it.
+const categoryPage = stripComments(readFileSync("app/(app)/k/[cat]/page.tsx", "utf8"));
+check("the category page forwards to its section of /tools",
+  /redirect\(categoryHref\(category\)\)/.test(categoryPage) && !/<CategoryHeader/.test(categoryPage));
+check("…and CategoryHeader is gone rather than left unreachable",
+  !existsSafe("components/category/category-header.tsx"));
 
 // One component file for all four — a second panel file would be the drift the
 // brief asked to avoid.
@@ -662,19 +667,23 @@ check("the retired presets are hidden, not deleted and not faked as 'soon'",
 check("no other category hides anything",
   CATEGORIES.filter((c) => c.key !== "moda").every((c) => c.workflows.every((w) => !w.hidden)));
 
-const cards = stripComments(readFileSync("components/category/workflow-cards.tsx", "utf8"));
+// The catalogue is the category's section of /tools now (lib/tool-cards.ts).
+const hub = stripComments(readFileSync("lib/tool-cards.ts", "utf8"));
 check("the catalogue renders the offered list, not the whole registry",
-  /offeredWorkflows\(category\)\.map\(/.test(cards) && !/category\.workflows\.map\(/.test(cards));
+  /offeredWorkflows\(c\)\.map\(/.test(hub) && !/c\.workflows\.map\(/.test(hub));
+check("…and the hub's Moda section is exactly the offered Moda tools",
+  (CATEGORY_SECTIONS.find((s) => s.category === "moda")?.cards ?? []).map((c) => c.workflow?.key).join()
+    === offered.map((w) => w.key).join());
 // The runtime used to render the offered list as chips; it renders no list at
 // all now, so the only consumers left are the catalogue, the category page and
 // the media-slot keys — and those three must keep agreeing with each other.
 check("the runtime lists no workflows at all",
   !/offeredWorkflows\(/.test(runtime) && !/category\.workflows\.filter\(/.test(runtime));
-// Indexing previews off a different list than the grid renders would hand card
-// n the thumbnail of card n+1 the moment anything is hidden.
-const catPage = stripComments(readFileSync("app/(app)/k/[cat]/page.tsx", "utf8"));
-check("the card thumbnails are indexed off the same offered list",
-  /offeredWorkflows\(category\)/.test(catPage) && !/category\.workflows\.map\(/.test(catPage));
+// The card pictures are the workflow media slots, declared off the same
+// offered list the hub draws — so no card can end up with another's picture.
+check("every hub workflow card has exactly the slot the registry declares for it",
+  CATEGORY_SECTIONS.flatMap((s) => s.cards).every((c) =>
+    c.workflow && MEDIA_SLOTS.some((d) => d.key === workflowSlotKey(c.workflow!.category, c.workflow!.key))));
 
 /* Copy: the four descriptions are the seller's only explanation of what a tool
  * does, and a missing key renders as the key itself. */

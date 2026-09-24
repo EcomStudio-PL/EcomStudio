@@ -3,16 +3,22 @@ import {
   Crop, Gauge, Maximize2, Scaling, Scissors, SlidersHorizontal, Square, Stamp,
   Sun, Sparkles, WandSparkles, Wrench,
 } from "lucide-react";
-import { CATEGORIES, VIDEO_CREATE_WF, VIDEO_EDIT_WF, VIDEO_ICON, categoryHref, type CategoryAccent } from "./categories";
+import {
+  CATEGORIES, VIDEO_CREATE_WF, VIDEO_EDIT_WF, VIDEO_ICON, categoryGates, categoryHref, categoryPath,
+  type CategoryAccent,
+} from "./categories";
+import type { MenuGate } from "./features";
 
 /**
  * TOP NAVIGATION TREE — the customer app's information architecture: a
  * horizontal bar with two mega-menus (Image / Video), each split into TWÓRZ
  * (generation categories) and EDYTUJ (operations on an existing asset).
  *
- * Categories resolve to their own workspace pages (`/k/{slug}`), not to a
- * query string on one shared form. Anything without a working backend is
- * marked `soon` and rendered disabled — never as a dead link.
+ * Categories resolve to their own SECTION of the /tools hub
+ * (`/tools?category={slug}`), which holds every tool the product has — the
+ * categories are how that page is organised, not pages of their own. Anything
+ * without a working backend is marked `soon` and rendered disabled — never as
+ * a dead link.
  */
 
 export type MegaEntry = {
@@ -32,10 +38,26 @@ export type MegaEntry = {
   subKey?: string;
   /** No backend yet — rendered with a "Wkrótce" badge, not clickable. */
   soon?: boolean;
+  /**
+   * The routes whose switches govern this entry, when `href` alone cannot say
+   * — a category's link opens a section of /tools, and the query string that
+   * names the section never decides anything in the feature table. Read it
+   * through `entryGate`, never `href`, wherever availability is asked.
+   */
+  gates?: readonly string[];
+  /** The path whose screens count as "here" for this entry, when `href` is a
+   *  view rather than a path: a category's row is the current one on every
+   *  screen of its workflows (/k/moda/…). */
+  match?: string;
 };
 
+/** What to ask the availability switchboard about an entry. */
+export function entryGate(e: MegaEntry): MenuGate {
+  return e.gates ?? e.href;
+}
+
 /**
- * TWÓRZ — the six category workspaces.
+ * TWÓRZ — the six categories, each a link into its section of /tools.
  *
  * "Własny prompt" is NOT a tile here. It is a MODE of the generator, not a
  * separate product: `GeneratorModeSwitch` sits at the top of both `/prompts`
@@ -48,6 +70,8 @@ export const IMAGE_CREATE: readonly MegaEntry[] = [
   ...CATEGORIES.map((c) => ({
     key: c.key,
     href: categoryHref(c),
+    gates: categoryGates(c),
+    match: categoryPath(c),
     icon: c.icon,
     accent: c.accent,
     soon: c.soon,
@@ -123,5 +147,3 @@ export const VIDEO_EDIT: readonly MegaEntry[] = VIDEO_EDIT_WF.map((w) => ({
 
 export { VIDEO_ICON };
 
-/** Homepage category tiles — the same six categories as the Image mega-menu. */
-export const HOME_CATEGORIES = IMAGE_CREATE;

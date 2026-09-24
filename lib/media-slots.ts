@@ -67,12 +67,25 @@ const slot = (
 
 /* ── CATEGORIES ──────────────────────────────────────────────────────────
  *
- * The six tiles on the dashboard, and the header of each category's own
- * workspace. Today the tile shows one of the ACCOUNT'S OWN recent generations
- * (app/(app)/home/page.tsx builds `categoryPreviews` from listAssets) — which
- * is a good default and stays the fallback. A slot lets an operator put a
- * deliberate showcase there instead, which is what a brand-new account with
- * an empty library needs.
+ * A category's own pictures: its card, and its hero. These are the ONLY slots
+ * the admin's Kategorie tab lists — a category is not a tool, and its tools'
+ * pictures are on the Narzędzia tab.
+ *
+ * The keys are the ones they always had, including `dashboard.` on the card:
+ * a key is an identifier, not a description, and renaming it would orphan
+ * whatever an operator already put there.
+ *
+ * WHERE THEY ARE PAINTED NOW — stated plainly, because it changed. The card
+ * used to be the dashboard's category tile and the hero the header of the
+ * category's own page (/k/<key>). Both surfaces were retired when the
+ * categories became sections of /tools: the dashboard lost its category grid
+ * and /k/<key> forwards to the hub. Today the card is painted only by the
+ * public product homepage's discovery rail (components/home/product-cards.tsx,
+ * when that page is the active homepage), and the hero by nothing. The slots
+ * are KEPT regardless — they are the category's pictures, an operator may
+ * already have set them, and dropping a declared slot would hide its row from
+ * the admin. Where a category's picture should appear inside the hub is a
+ * design decision of its own, not something this registry should guess.
  */
 const CATEGORY_SLOTS: SlotDef[] = CATEGORIES.flatMap((c) => [
   slot(categorySlotKey(c.key), "category", c.key, "card",
@@ -81,9 +94,8 @@ const CATEGORY_SLOTS: SlotDef[] = CATEGORIES.flatMap((c) => [
     "media.slot.categoryHero", "21/9", true, "media.fb.gradient"),
 ]);
 
-/** The dashboard tile, and the header of the category's own workspace. Both
- *  exported so the surfaces ask for the keys this file declares rather than
- *  spelling them out and drifting. */
+/** The category's card and its hero. Both exported so the surfaces ask for
+ *  the keys this file declares rather than spelling them out and drifting. */
 export function categorySlotKey(categoryKey: string): string {
   return `dashboard.category.${categoryKey}.card`;
 }
@@ -97,14 +109,22 @@ export function categoryHeroKey(categoryKey: string): string {
  * Only the ones the category actually OFFERS. `offeredWorkflows` already
  * filters the hidden ones — a workflow kept in the file but withdrawn from the
  * product must not acquire an admin screen.
+ *
+ * A workflow is a TOOL — Niewidzialny manekin, Packshot — that happens to
+ * belong to a category. Its slot is therefore listed on the admin's Narzędzia
+ * tab, next to the other tools, and never on Kategorie. The `workflow` entity
+ * type and the key shape stay exactly as they were: rows already written under
+ * these keys keep their pictures, and nothing has to be migrated.
  */
 const WORKFLOW_SLOTS: SlotDef[] = CATEGORIES.flatMap((c) =>
   offeredWorkflows(c).map((w) =>
-    // 4/3, because that is the shape the card's frame actually paints — the
-    // workflow's own ratio chip says what the OUTPUT will be, which is a
-    // different thing from the size of the thumbnail.
+    // 16/10, because the card is now a /tools catalogue card and that is the
+    // shape its frame paints — the same as every other tool's. (It was 4/3
+    // while the card lived on the category's own page, which now forwards to
+    // /tools.) The workflow's own ratio chip says what the OUTPUT will be,
+    // which is a different thing from the size of the thumbnail.
     slot(workflowSlotKey(c.key, w.key), "workflow", `${c.key}.${w.key}`, "card",
-      "media.slot.workflowCard", "4/3", false, "media.fb.motif")));
+      "media.slot.workflowCard", "16/10", false, "media.fb.motif")));
 
 export function workflowSlotKey(categoryKey: string, workflowKey: string): string {
   return `category.${categoryKey}.workflow.${workflowKey}.card`;
@@ -128,9 +148,6 @@ export function workflowSlotKey(categoryKey: string, workflowKey: string): strin
  * having it.
  */
 const TOOL_SLOTS: SlotDef[] = TOOL_CARDS
-  // The category entry points are already covered as categories above; listing
-  // them again as tools would give one thing two admin screens.
-  .filter((c) => !c.category)
   .map((c) => slot(toolSlotKey(c.key), "tool", c.key, "card",
     "media.slot.toolCard", "16/10", false, "media.fb.motif"));
 

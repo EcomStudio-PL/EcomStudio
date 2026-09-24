@@ -1,6 +1,6 @@
 import { ADMIN_NAV, CLIENT_NAV } from "./navigation";
 import { IMAGE_EDIT, IMAGE_MODES } from "./topnav";
-import { CATEGORIES, categoryHref } from "./categories";
+import { CATEGORIES, categoryPath } from "./categories";
 
 /**
  * WHICH MENU ROW IS "YOU ARE HERE" — one answer, for every menu.
@@ -59,7 +59,9 @@ export const NAV_REGISTRY: readonly string[] = Array.from(new Set([
   ...[...CLIENT_NAV, ...ADMIN_NAV].flatMap((g) => g.items.map((i) => i.href)),
   ...IMAGE_EDIT.map((e) => e.href),
   ...IMAGE_MODES.map((e) => e.href),
-  ...CATEGORIES.map((c) => categoryHref(c)),
+  // A category's row links to a section of /tools, but it is the current row
+  // on the screens of its workflows — so its PATH is what is registered.
+  ...CATEGORIES.map((c) => categoryPath(c)),
   "/retusz", "/home", "/library", "/settings", "/support", "/inspirations", "/wideo",
 ].map(navPath)));
 

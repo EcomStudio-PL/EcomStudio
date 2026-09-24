@@ -8,11 +8,11 @@ import {
   LogOut, Plus, Settings, Shield,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
-import { CATEGORIES, VIDEO_ICON as VideoIcon } from "@/lib/categories";
+import { CATEGORIES, VIDEO_ICON as VideoIcon, categoryGates, categoryHref, categoryPath } from "@/lib/categories";
 import { IMAGE_EDIT, editLabelKey } from "@/lib/topnav";
 import {
   allDefaults, menuBadge, menuVisible,
-  type AvailabilityMap, type MenuBadge,
+  type AvailabilityMap, type MenuBadge, type MenuGate,
 } from "@/lib/features";
 import { isNavActive } from "@/lib/nav-active";
 import { creditUsage, USAGE_BAR, USAGE_TEXT } from "@/lib/credit-usage";
@@ -69,8 +69,8 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
   const { open, setOpen } = useDrawer();
   const avail = availability ?? allDefaults();
   const seesRestricted = navAdmin ?? isAdmin;
-  const show = (href: string) => menuVisible(avail, href, seesRestricted);
-  const badge = (href: string) => badgeLabel(menuBadge(avail, href), t);
+  const show = (gate: MenuGate) => menuVisible(avail, gate, seesRestricted);
+  const badge = (gate: MenuGate) => badgeLabel(menuBadge(avail, gate), t);
   const who = firstName(name, email) || name;
   const initial = (who || "?").trim().charAt(0).toUpperCase();
   const tone = planTone(plan);
@@ -80,8 +80,10 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
   // is no reference constant here and nothing is assumed about the tier.
   const usage = creditUsage(credits, creditsTotal);
 
-  /** Each section's rows, resolved once, from the availability map. */
-  const categories = CATEGORIES.filter((c) => show(`/k/${c.slug}`));
+  /** Each section's rows, resolved once, from the availability map. A
+   *  category row opens its section of /tools, so it answers to the hub AND
+   *  to the category's own switch (`categoryGates`). */
+  const categories = CATEGORIES.filter((c) => show(categoryGates(c)));
   /**
    * NARZĘDZIA — the section formerly called EDYTUJ, with the same five rows.
    *
@@ -229,10 +231,13 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
       {/* ── THE WORKSHOPS ────────────────────────────────────────────────── */}
       {categories.length > 0 && (
         <Section title={t("topnav.image")}>
+          {/* Each category opens its section of /tools. The tile closes the
+              drawer, the link navigates, and the hub opens and scrolls to the
+              section named in the URL — see components/tools/tools-deep-link.tsx. */}
           {categories.map((c) => (
-            <Tile key={c.key} href={`/k/${c.slug}`} label={t(`cats.${c.key}`)} icon={c.icon}
+            <Tile key={c.key} href={categoryHref(c)} match={categoryPath(c)} scroll={false} label={t(`cats.${c.key}`)} icon={c.icon}
               onNavigate={closeNav} rgb={c.accent.rgb}
-              badge={badge(`/k/${c.slug}`) ?? (c.soon ? t("common.soon") : null)} />
+              badge={badge(categoryGates(c)) ?? (c.soon ? t("common.soon") : null)} />
           ))}
         </Section>
       )}
@@ -317,8 +322,15 @@ function badgeLabel(kind: MenuBadge, t: (k: string) => string): string | null {
  * with the icon plate filled. `isNavActive` decides that — the same rule every
  * other menu in the product uses — so at most one tile can ever claim it.
  */
-function Tile({ href, label, icon: Icon, onNavigate, badge, rgb = "var(--accent)", tinted = false }: {
+function Tile({ href, match, scroll, label, icon: Icon, onNavigate, badge, rgb = "var(--accent)", tinted = false }: {
   href: string;
+  /** The path whose screens make this tile the current one, when `href` is a
+   *  view rather than a path — a category's tile opens a section of /tools but
+   *  is "here" on the screens of its own workflows. */
+  match?: string;
+  /** `false` for a link into a section that scrolls itself into view, so the
+   *  router does not first reset the page to its top. */
+  scroll?: boolean;
   label: string;
   icon: LucideIcon;
   onNavigate?: () => void;
@@ -331,11 +343,12 @@ function Tile({ href, label, icon: Icon, onNavigate, badge, rgb = "var(--accent)
   tinted?: boolean;
 }) {
   const pathname = usePathname();
-  const active = isNavActive(pathname, href);
+  const active = isNavActive(pathname, match ?? href);
   return (
     <Link
       href={href}
       prefetch
+      scroll={scroll}
       onClick={onNavigate}
       aria-current={active ? "page" : undefined}
       style={{ ["--tile" as string]: rgb }}

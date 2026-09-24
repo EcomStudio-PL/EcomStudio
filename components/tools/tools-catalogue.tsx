@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { ToolThumb, type ToolMotif } from "@/components/tools/tool-thumb";
 import { SlotMedia } from "@/components/media/slot-media";
 import type { SlotMap } from "@/lib/server/media-slots";
-import { menuBadge, type AvailabilityMap } from "@/lib/features";
+import { menuBadge, type AvailabilityMap, type MenuGate } from "@/lib/features";
 import { cn } from "@/lib/utils";
 
 /**
@@ -36,6 +36,9 @@ export type CatalogueCard = {
   /** The tool catalogue's verdict: null when this card is a place rather than
    *  a priced operation. */
   state?: { available: boolean; credits: number; reason: string | null } | null;
+  /** Every route whose switch governs this card, when that is more than its
+   *  own href — a category's workflow answers to the category AND to itself. */
+  gates?: readonly string[];
 };
 
 export type CatalogueSection = {
@@ -46,6 +49,14 @@ export type CatalogueSection = {
    *  everything it has — a link back to the same six cards does nothing. */
   seeAll?: string;
   cards: CatalogueCard[];
+  /** The section `?category=` names. Rendered on the server from the URL, so
+   *  a refreshed or pasted link paints the same state as a menu click. */
+  active?: boolean;
+  /** What an operator wrote on a restricted category's switch — its title,
+   *  message or reopening time — which the category's own page used to show
+   *  on its "Wkrótce" screen. Null when they wrote nothing: the cards' badges
+   *  already say "Wkrótce", and a default sentence would only repeat them. */
+  note?: string | null;
 };
 
 type T = (key: string, vars?: Record<string, string | number>) => string;
@@ -64,8 +75,17 @@ export function ToolsCatalogue({ sections, avail, isAdmin, t, slots }: {
       {sections.map((s) => {
         if (s.cards.length === 0) return null;
         return (
-          <section key={s.key} data-tools-section={s.key}>
-            <SectionHead icon={s.icon} title={s.title} seeAll={s.seeAll} t={t} />
+          // `id` is the section's key, so `?category=<key>` and `#<key>` both
+          // address it. The scroll margin clears the sticky bar — the heading
+          // lands under it, not behind it. `tabIndex={-1}` lets the deep link
+          // move focus here without making the section a tab stop.
+          <section key={s.key} id={s.key} tabIndex={-1} data-tools-section={s.key}
+            data-active={s.active ? "true" : undefined}
+            className="scroll-mt-[calc(var(--header-h)+env(safe-area-inset-top)+1rem)] outline-none">
+            <SectionHead icon={s.icon} title={s.title} seeAll={s.seeAll} t={t} active={s.active} />
+            {s.note && (
+              <p data-tools-note className="-mt-1 mb-2.5 text-[12px] leading-relaxed text-muted">{s.note}</p>
+            )}
             <div className="stagger grid grid-cols-2 gap-2.5 [&>*]:min-w-0 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
               {s.cards.map((c) => (
                 <ToolCard key={c.key} card={c} avail={avail} isAdmin={isAdmin} t={t} slots={slots} />
@@ -98,17 +118,20 @@ export function ToolsCatalogue({ sections, avail, isAdmin, t, slots }: {
   );
 }
 
-/** Section name on the left, the way into the rest on the right. */
-function SectionHead({ icon: Icon, title, seeAll, t }: {
-  icon: LucideIcon; title: string; seeAll?: string; t: T;
+/** Section name on the left, the way into the rest on the right. The section
+ *  a deep link opened says so in its name's colour and in `aria-current` —
+ *  the same accent the heading's icon already wears, nothing new drawn. */
+function SectionHead({ icon: Icon, title, seeAll, t, active }: {
+  icon: LucideIcon; title: string; seeAll?: string; t: T; active?: boolean;
 }) {
   return (
     <div className="mb-2.5 flex items-center justify-between gap-3">
-      <h2 className="flex min-w-0 items-center gap-2 font-display text-[13.5px] font-semibold tracking-tight sm:text-[16px]">
+      <h2 aria-current={active ? "true" : undefined}
+        className="flex min-w-0 items-center gap-2 font-display text-[13.5px] font-semibold tracking-tight sm:text-[16px]">
         <span aria-hidden className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[rgb(var(--accent)/0.16)] text-accent">
           <Icon size={14} />
         </span>
-        <span className="truncate">{title}</span>
+        <span className={cn("truncate", active && "text-accent")}>{title}</span>
       </h2>
       {seeAll && (
         <Link href={seeAll} data-tools-seeall
@@ -132,7 +155,8 @@ function ToolCard({ card, avail, isAdmin, t, slots }: {
   // Three things can close a card: the module switchboard, the tool catalogue
   // (no provider / maintenance), or the module having no backend at all.
   // Admins keep every card open — they are the ones who switch modules back on.
-  const moduleBadge = isAdmin ? null : menuBadge(avail, card.href);
+  const gate: MenuGate = card.gates ?? card.href;
+  const moduleBadge = isAdmin ? null : menuBadge(avail, gate);
   const blocked = Boolean(card.soon)
     || moduleBadge === "disabled" || moduleBadge === "soon" || moduleBadge === "maintenance"
     || (card.state ? !card.state.available : false);

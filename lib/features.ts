@@ -239,9 +239,38 @@ export function featureForToolSlug(slug: string): FeatureKey {
 
 /* ── menu rules ─────────────────────────────────────────────────────────────*/
 
+/**
+ * WHAT GOVERNS A MENU ENTRY — one route, or several.
+ *
+ * Almost every entry is governed by the one route it opens. A category is the
+ * exception: its link opens a SECTION of /tools (`/tools?category=moda`), and
+ * a query string never decides anything in `featureForHref`, so that href alone
+ * would be judged as "tools" and the category's own switch would be skipped.
+ * Such an entry passes every route that governs it instead, OUTER FIRST and
+ * its OWN LAST — the hub, then the category (lib/categories.ts
+ * `categoryGates`); a category's workflow, then the workflow.
+ *
+ * The rules then read them as what they are:
+ *   · every OUTER route must be reachable — a DISABLED hub or category is a
+ *     dead door, so nothing behind it is offered;
+ *   · the entry's OWN route must be visible in the menu — "hidden from the
+ *     menu" hides the row it was set on, not everything that lives behind it
+ *     (hiding „Wszystkie narzędzia" must not take six categories with it);
+ *   · the badge is the most closed status among all of them.
+ */
+export type MenuGate = string | readonly string[];
+
+const gateList = (gate: MenuGate): readonly string[] =>
+  typeof gate === "string" ? [gate] : gate;
+
 /** Menu visibility: DISABLED and "hidden from menu" disappear for customers;
  *  admins keep seeing everything (with a badge) so they can operate it. */
-export function menuVisible(map: AvailabilityMap, href: string, isAdmin: boolean): boolean {
+export function menuVisible(map: AvailabilityMap, href: MenuGate, isAdmin: boolean): boolean {
+  if (typeof href !== "string") {
+    if (href.length === 0) return true;
+    const own = href[href.length - 1];
+    return routeReachable(map, href.slice(0, -1), isAdmin) && menuVisible(map, own, isAdmin);
+  }
   const key = featureForHref(href);
   if (!key) return true;
   const state = map[key] ?? ACTIVE_STATE;
@@ -249,11 +278,35 @@ export function menuVisible(map: AvailabilityMap, href: string, isAdmin: boolean
   return state.status !== "DISABLED" && !state.hiddenFromMenu;
 }
 
+/** Can the route be opened at all? Only DISABLED shuts a door for a customer
+ *  (the gate 404s); "Wkrótce" and maintenance open onto their own screen, and
+ *  "hidden from the menu" is about menus, not about the page. */
+export function routeReachable(map: AvailabilityMap, href: MenuGate, isAdmin: boolean): boolean {
+  if (isAdmin) return true;
+  return gateList(href).every((h) => {
+    const key = featureForHref(h);
+    return !key || (map[key] ?? ACTIVE_STATE).status !== "DISABLED";
+  });
+}
+
 export type MenuBadge = "soon" | "maintenance" | "disabled" | null;
+
+/** How closed each badge says a module is — the MOST closed one wins when an
+ *  entry has more than one governing route. */
+const BADGE_RANK: Record<Exclude<MenuBadge, null>, number> = { soon: 1, maintenance: 2, disabled: 3 };
 
 /** The badge a menu entry carries: Wkrótce / Prace techniczne, and for admins
  *  also "wyłączony" on entries customers cannot see. */
-export function menuBadge(map: AvailabilityMap, href: string): MenuBadge {
+export function menuBadge(map: AvailabilityMap, href: MenuGate): MenuBadge {
+  let worst: MenuBadge = null;
+  for (const h of gateList(href)) {
+    const badge = singleBadge(map, h);
+    if (badge && (!worst || BADGE_RANK[badge] > BADGE_RANK[worst])) worst = badge;
+  }
+  return worst;
+}
+
+function singleBadge(map: AvailabilityMap, href: string): MenuBadge {
   const key = featureForHref(href);
   if (!key) return null;
   const status = (map[key] ?? ACTIVE_STATE).status;

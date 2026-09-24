@@ -1129,7 +1129,7 @@
   },
   "media": {
     "title": "Media",
-    "sub": "Every image and video in GrovBase — the library, category tiles, tools, sections and banners.",
+    "sub": "Every image and video in GrovBase — the library, categories, tools, sections and banners.",
     "upload": "Upload files",
     "external": "External URL",
     "poster": "Poster",
@@ -1170,7 +1170,7 @@
       "bannery": "Banners"
     },
     "slot": {
-      "categoryCard": "Dashboard tile",
+      "categoryCard": "Category card",
       "categoryHero": "Category header",
       "workflowCard": "Workflow card",
       "toolCard": "Card in the tool catalogue",
@@ -1184,7 +1184,7 @@
       "bannerMedia": "Banner picture"
     },
     "fb": {
-      "ownWork": "the account's most recent generation",
+      "ownWork": "the card's built-in art",
       "gradient": "a gradient in the category's colour",
       "motif": "the tool's drawn motif",
       "emptyState": "an empty-state icon",
@@ -1231,6 +1231,7 @@
     "altPlaceholder": "What the picture shows",
     "findEntity": "Find…",
     "noSlots": "Nothing to set in this section.",
+    "categoriesNote": "Categories are now sections of the Tools page: the dashboard no longer has category tiles and the old category pages redirect to Tools. Pictures set here are kept, but the app does not currently show them anywhere.",
     "slotsIntro": "Set: {filled} of {total} places. An empty place is not a gap — the interface draws its built-in art there.",
     "toolSub": "Tool",
     "usedIn": "Used in {n} places",

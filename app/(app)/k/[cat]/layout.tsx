@@ -1,21 +1,21 @@
 import { notFound } from "next/navigation";
-import { FeatureGate } from "@/components/feature-gate";
 import { isFeatureKey } from "@/lib/features";
 
 /**
- * Each image category is its own switchable module — Moda, E-commerce, Social
- * Media, Mailing, Inne and Matching can be taken down (or announced as coming
- * soon) one at a time, which is exactly what the admin panel offers.
+ * Only real categories live under /k — a slug with no feature key is not a
+ * category, and gets the 404 it always got.
  *
- * The key is derived from the slug, so adding a category to lib/categories.ts
- * and to the registry is all it takes; a slug with no key is not a category.
+ * The availability gate that used to sit here is one level down now, in
+ * ./[wf]/layout.tsx, around the workflows it actually protects. The category
+ * page itself only forwards to its section of /tools (see ./page.tsx), and a
+ * gate in front of a forwarding address showed the old "Wkrótce" screen at an
+ * address that no longer has a screen of its own.
  */
 export default async function CategoryLayout({ children, params }: {
   children: React.ReactNode;
   params: Promise<{ cat: string }>;
 }) {
   const { cat } = await params;
-  const key = `image_${cat}`;
-  if (!isFeatureKey(key)) notFound();
-  return <FeatureGate feature={key}>{children}</FeatureGate>;
+  if (!isFeatureKey(`image_${cat}`)) notFound();
+  return <>{children}</>;
 }

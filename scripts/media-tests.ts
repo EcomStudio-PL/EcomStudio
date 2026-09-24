@@ -25,7 +25,7 @@ import {
   isObjectPosition, isSlotMediaType, slotDef, slotsFor, toolSlotKey, workflowSlotKey,
 } from "../lib/media-slots";
 import { CATEGORIES, offeredWorkflows } from "../lib/categories";
-import { TOOL_CARDS, TOOL_SECTIONS, toolCard } from "../lib/tool-cards";
+import { CATEGORY_SECTIONS, HUB_SECTIONS, TOOL_CARDS, TOOL_SECTIONS, toolCard } from "../lib/tool-cards";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string) {
@@ -55,7 +55,11 @@ check("a key round-trips to the registry key it was built from",
   CATEGORIES.every((c) => offeredWorkflows(c).every((w) =>
     workflowSlotKey(c.key, w.key).split(".").includes(w.key))));
 
-check("every category has a dashboard tile and a header",
+// Kept, keys unchanged, even though the surfaces that painted them (the
+// dashboard grid, the category page's header) were retired: they are the
+// category's pictures and an operator may already have set them. See the
+// note in lib/media-slots.ts.
+check("every category keeps its card and its hero",
   CATEGORIES.every((c) => keys.includes(categorySlotKey(c.key))
     && keys.includes(categoryHeroKey(c.key))));
 
@@ -73,13 +77,15 @@ check("no HIDDEN workflow has one",
 // The reason this file exists: deriving tool slots from FEATURE_REGISTRY gave
 // six tools no slot at all and invented slots for module keys the catalogue
 // never draws.
-const cardKeys = TOOL_CARDS.filter((c) => !c.category).map((c) => toolSlotKey(c.key));
-check("every catalogue card that is not a category has a slot",
+const cardKeys = TOOL_CARDS.map((c) => toolSlotKey(c.key));
+check("every catalogue card has a slot",
   cardKeys.every((k) => keys.includes(k)),
   `${cardKeys.filter((k) => !keys.includes(k))}`);
 check("no tool slot exists for a card the catalogue does not draw",
   MEDIA_SLOTS.filter((s) => s.entityType === "tool")
-    .every((s) => TOOL_CARDS.some((c) => c.key === s.entityId && !c.category)));
+    .every((s) => TOOL_CARDS.some((c) => c.key === s.entityId)));
+check("the catalogue has no category-shaped cards any more — categories are sections",
+  TOOL_CARDS.every((c) => !c.href.startsWith("/k/") && !CATEGORIES.some((k) => k.key === c.key)));
 check("the six generative tools are covered",
   ["ai_background", "relight", "ai_shadow", "beautify", "uncrop", "ghost_mannequin"]
     .every((k) => keys.includes(toolSlotKey(k))));
@@ -93,21 +99,22 @@ check("card keys are unique across the whole catalogue",
 console.log("\nB. EVERY DECLARED SLOT IS RENDERED BY A REAL SURFACE");
 
 const SOURCES: Record<string, string> = {
-  grid: read("components/home/category-grid.tsx"),
-  header: read("components/category/category-header.tsx"),
-  workflow: read("components/category/workflow-cards.tsx"),
+  // The category card: the public product homepage's category chips.
+  chips: read("components/home/product-cards.tsx"),
+  cardArt: read("components/home/card-art.tsx"),
   catalogue: read("components/tools/tools-catalogue.tsx"),
   home: read("app/(app)/home/page.tsx"),
-  cat: read("app/(app)/k/[cat]/page.tsx"),
   tools: read("app/(app)/tools/page.tsx"),
   generator: read("lib/server/generator-ui.ts"),
   banner: read("components/dashboard/banner.tsx"),
 };
 const all = Object.values(SOURCES).join("\n");
 
-check("the dashboard tile is rendered", SOURCES.grid.includes("categorySlotKey"));
-check("the category header is rendered", SOURCES.header.includes("categoryHeroKey"));
-check("the workflow card is rendered", SOURCES.workflow.includes("workflowSlotKey"));
+check("the category card is rendered", SOURCES.chips.includes("categorySlotKey"));
+// A workflow's card is a /tools catalogue card now, painted by the same
+// SlotMedia as every other tool, under the slot key it always had.
+check("the workflow card is rendered", SOURCES.tools.includes("workflowSlotKey")
+  && SOURCES.catalogue.includes("SlotMedia"));
 check("the tool card is rendered", SOURCES.catalogue.includes("SlotMedia")
   && SOURCES.tools.includes("toolSlotKey"));
 check("the dashboard hero is rendered", SOURCES.home.includes('"dashboard.hero.art"'));
@@ -131,7 +138,7 @@ for (const [name, src] of Object.entries(SOURCES)) {
 }
 
 check("every surface renders a fallback rather than an empty box",
-  [SOURCES.grid, SOURCES.workflow, SOURCES.catalogue]
+  [SOURCES.cardArt, SOURCES.catalogue]
     .every((s) => /fallback=\{[^}]/.test(s)));
 
 /* ═══════════════════════════════════════════════════════════════════════ */
@@ -270,7 +277,7 @@ check("slotsFor on something that is not an entity returns nothing",
 check("entitiesOf lists each entity once",
   new Set(entitiesOf("tool")).size === entitiesOf("tool").length);
 check("entitiesOf('tool') matches the catalogue",
-  entitiesOf("tool").length === TOOL_CARDS.filter((c) => !c.category).length);
+  entitiesOf("tool").length === TOOL_CARDS.length);
 check("toolCard finds a card by key",
   toolCard("retouch")?.href === "/retusz" && toolCard("nope") === undefined);
 

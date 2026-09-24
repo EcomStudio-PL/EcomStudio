@@ -91,12 +91,10 @@ const SURFACES: readonly Surface[] = [
     feeds: "lib/services/generator.ts",
     cssPx: 100,
   },
-  {
-    label: "/k/[cat] — workflow card previews",
-    file: "app/(app)/k/[cat]/page.tsx",
-    feeds: "lib/services/generator.ts",
-    cssPx: 210,
-  },
+  // "/k/[cat] — workflow card previews" was the third surface. That page now
+  // forwards to the category's section of /tools, whose cards draw the tool's
+  // motif or an admin's picture — nothing of the account's own work — so it
+  // no longer signs anything and is not a tile surface any more.
   {
     label: "Library grid",
     file: "lib/server/gallery.ts",

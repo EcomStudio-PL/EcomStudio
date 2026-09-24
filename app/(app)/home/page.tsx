@@ -6,17 +6,17 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace, getProfile } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
+import { getAvailabilityMap, viewerIsAdmin } from "@/lib/server/feature-availability";
+import { ACTIVE_STATE } from "@/lib/features";
 import { listAssets } from "@/lib/services/generator";
 import { Panel } from "@/components/ui/surface";
-import { PanelHeader, SectionHeader } from "@/components/ui/section-header";
+import { PanelHeader } from "@/components/ui/section-header";
 import { HeroArt } from "@/components/dashboard/hero-art";
 import { SlotMedia, hasSlot } from "@/components/media/slot-media";
-import { CATEGORIES } from "@/lib/categories";
-import { bannerSlotKey, categorySlotKey } from "@/lib/media-slots";
+import { bannerSlotKey } from "@/lib/media-slots";
 import { loadSlots, loadBanners } from "@/lib/server/media-slots";
 import { DashboardBanner } from "@/components/dashboard/banner";
 import { TipBanner } from "@/components/dashboard/tip-banner";
-import { CategoryGrid } from "@/components/home/category-grid";
 import { Media } from "@/components/mobile/media";
 import { creditLevel, CREDIT_METER_CLASS, CREDIT_REFERENCE } from "@/lib/credit-level";
 import { firstName } from "@/lib/plan-tone";
@@ -27,10 +27,17 @@ export const dynamic = "force-dynamic";
 
 /**
  * HOMEPAGE — replaces the old Pulpit, built top-to-bottom per the UX spec:
- * 1) headline + "Zacznij generować" (leads to the category grid) and
- *    "Kontynuuj: [last generator]", 2) a COMPACT stats strip, 3) the category
- *    grid, 4) one dismissible AI suggestion, 5) recent activity → Library.
+ * 1) headline + "Zacznij generować" (leads to the tools) and
+ *    "Kontynuuj: [last generator]", 2) a COMPACT stats strip, 3) one
+ *    dismissible AI suggestion, 4) recent activity → Library.
  * Generation is the product; analytics stays a strip, not the hero.
+ *
+ * NO CATEGORY TILES. Moda, E-commerce, Social Media and the rest used to be a
+ * grid of six tiles here, each opening a page of its own. The categories are
+ * sections of /tools now — the one place holding every tool — and the menu
+ * still names each of them, so a second set of doors on this screen would lead
+ * to the same place twice. The sections below close up on the `space-y`
+ * rhythm of the column; nothing is left reserved where the grid stood.
  */
 export default async function HomePage() {
   const supabase = await createClient();
@@ -50,7 +57,7 @@ export default async function HomePage() {
   weekStart.setHours(0, 0, 0, 0);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const [wallet, recentGens, weekCount, monthCount, { data: lastJob }] = await Promise.all([
+  const [wallet, recentGens, weekCount, monthCount, { data: lastJob }, avail, isAdmin] = await Promise.all([
     getWallet(supabase, workspace.id),
     listAssets(supabase, workspace.id, 8),
     supabase.from("generations").select("id", { count: "exact", head: true })
@@ -60,7 +67,14 @@ export default async function HomePage() {
     supabase.from("generation_jobs").select("prompt_origin")
       .eq("workspace_id", workspace.id).order("created_at", { ascending: false })
       .limit(1).maybeSingle(),
+    // Both React-cached: the layout's FeatureGate already read them this request.
+    getAvailabilityMap(supabase),
+    viewerIsAdmin(supabase),
   ]);
+  // "Zacznij generować" opens the tools — where the categories live now — as
+  // long as the hub is open; a hub an operator took down would turn the page's
+  // primary button into a dead end, so it falls back to the generator itself.
+  const hubOpen = isAdmin || (avail.tools ?? ACTIVE_STATE).status === "ACTIVE";
 
   // A real name if the profile has one; otherwise the email local part,
   // capitalised — never the raw handle the screenshots exposed.
@@ -98,28 +112,14 @@ export default async function HomePage() {
     signed?.forEach((s) => { if (s.signedUrl && s.path) genUrls.set(s.path, s.signedUrl); });
   }
 
-  // Category tiles preview the account's own work rather than stock art.
-  const categoryPreviews = Array.from({ length: 6 }, (_, i) => {
-    const tile = genTiles[i];
-    return tile ? genUrls.get(tile.path) ?? null : null;
-  });
-
   // Which banner is live decides which banner picture to ask for, so the
   // banners are read first and everything else resolves in ONE round trip:
-  // six tiles, the hero and the banner together, cached until an admin
-  // changes something.
+  // the hero and the banner together, cached until an admin changes something.
   const banners = await loadBanners(supabase, "dashboard");
   const slots = await loadSlots(supabase, [
-    ...CATEGORIES.map((c) => categorySlotKey(c.key)),
     "dashboard.hero.art",
     ...banners.map((b) => bannerSlotKey(b.key)),
   ]);
-
-  // Three recent images shown on desktop hover over a category tile.
-  const hoverStrip = genTiles
-    .map((g) => genUrls.get(g.path))
-    .filter((u): u is string => Boolean(u))
-    .slice(0, 3);
 
   // Two labels per stat: the phone gets a short one that FITS at 320px, the
   // desktop keeps the full wording. Ellipsising "Generacje w tym tygodniu"
@@ -159,8 +159,7 @@ export default async function HomePage() {
         )}
         {/* The hero states who you are and where to start, then gets out of
             the way: on a phone it occupies roughly a third of the first
-            screen instead of all of it, so the categories are visible without
-            scrolling. */}
+            screen instead of all of it. */}
         <div className="relative p-4 sm:p-6 lg:max-w-[56%] lg:py-7 xl:px-8 xl:py-8">
           <p className="overline">{t("dashboard.welcomeBack")}</p>
           <h1 className="mt-2 font-display font-semibold leading-[1.04] tracking-[-0.035em] text-[clamp(1.35rem,0.95rem+1.5vw,2.6rem)]">
@@ -171,11 +170,13 @@ export default async function HomePage() {
           {/* One primary action, one secondary, one quiet tertiary — and the
               primary owns a full line on a phone so its label cannot wrap. */}
           <div className="mt-4 flex flex-col gap-2 sm:mt-5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2.5">
-            <a href="#kategorie"
+            {/* Into the tools — where the category grid this button used to
+                scroll to now lives, as sections of /tools. */}
+            <Link href={hubOpen ? "/tools" : "/prompts"}
               className="cta inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-5 text-sm font-semibold">
               <Sparkles size={16} aria-hidden />
               {t("home.startCta")}
-            </a>
+            </Link>
             {continueHref && (
               <Link href={continueHref}
                 className="plate inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold text-ink transition-colors duration-200 hover:border-[rgb(var(--accent)/0.45)] hover:bg-raised">
@@ -221,13 +222,7 @@ export default async function HomePage() {
         ))}
       </div>
 
-      {/* 3 — CATEGORY GRID */}
-      <section>
-        <SectionHeader overline={t("mega.create")} title={t("home.categoriesTitle")} className="mb-3.5 mt-1" />
-        <CategoryGrid t={t} previews={categoryPreviews} hoverStrip={hoverStrip} slots={slots} />
-      </section>
-
-      {/* 4 — ONE AI SUGGESTION, dismissible, never a modal */}
+      {/* 3 — ONE AI SUGGESTION, dismissible, never a modal */}
       <TipBanner
         id="open-prompts-v2"
         text={t("dashboard.tipBody")}
@@ -235,7 +230,7 @@ export default async function HomePage() {
         ctaHref="/prompts"
       />
 
-      {/* 5 — RECENT ACTIVITY */}
+      {/* 4 — RECENT ACTIVITY */}
       {genTiles.length > 0 && (
         <Panel>
           <PanelHeader

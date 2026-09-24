@@ -2,9 +2,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
-import { CATEGORIES } from "@/lib/categories";
-import { MEDIA_SLOTS, bannerSlotKey, type SlotDef, type SlotEntity } from "@/lib/media-slots";
-import { TOOL_SECTIONS } from "@/lib/tool-cards";
+import { MEDIA_SLOTS, bannerSlotKey } from "@/lib/media-slots";
+import { categoryGroups, slotsOf, toolGroups } from "@/lib/media-groups";
 import {
   listBanners, listConfiguredSlots, listLibrary, usageCounts, type SlotRow,
 } from "@/lib/services/media-slots";
@@ -20,16 +19,16 @@ export const dynamic = "force-dynamic";
  * MEDIA — ONE SCREEN FOR EVERY PICTURE IN GROVBASE.
  *
  * Five tabs over ONE library. "Biblioteka" is the pool of files; the other
- * four are places those files can go — the dashboard's category tiles, the
- * tools, the application's own sections, and the banners. Nothing here holds
+ * four are places those files can go — the categories, the tools, the
+ * application's own sections, and the banners. Nothing here holds
  * its own private uploader or its own private list of images: a file uploaded
  * from a banner is in the library a second later, and a file in the library can
  * be put in any slot without being copied.
  *
  * WHAT IS NOT HERE: a list of slots typed by hand. The categories come from
- * lib/categories.ts and the tools from FEATURE_REGISTRY — the same registries
- * the product runs on — so this screen cannot drift out of step with what
- * GrovBase actually ships.
+ * lib/categories.ts and the tools from the /tools hub (lib/tool-cards.ts) —
+ * the same registries the product runs on — so this screen cannot drift out of
+ * step with what GrovBase actually ships.
  */
 
 const TABS = ["biblioteka", "kategorie", "narzedzia", "sekcje", "bannery"] as const;
@@ -87,8 +86,18 @@ export default async function AdminMedia({ searchParams }: {
       {tab === "biblioteka" && <LibraryTab supabase={supabase} library={library} />}
 
       {tab === "kategorie" && (
-        <SlotsPanel library={library} emptyLabel={t("media.noSlots")}
-          groups={categoryGroups(configured, t)} />
+        <>
+          {/* Said plainly, because it changed: the surfaces these pictures
+              were painted on (the dashboard's category tiles, the category
+              pages) are gone — the categories are sections of /tools now. The
+              slots stay so nothing already set is lost. */}
+          <p data-media-categories-note
+            className="mb-4 rounded-xl bg-[rgb(var(--warning)/0.10)] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-warning">
+            {t("media.categoriesNote")}
+          </p>
+          <SlotsPanel library={library} emptyLabel={t("media.noSlots")}
+            groups={categoryGroups(configured, t)} />
+        </>
       )}
 
       {tab === "narzedzia" && (
@@ -135,64 +144,11 @@ async function LibraryTab({ supabase, library }: {
 
 /* ── GROUPING ────────────────────────────────────────────────────────────── */
 
+// Kategorie and Narzędzia are grouped by lib/media-groups.ts — pure functions
+// of the registries and the configured rows, so the split is testable without
+// rendering this page.
+
 type T = (key: string, values?: Record<string, string | number>) => string;
-
-/** The slots of one entity, in declaration order, with whatever is configured
- *  merged in. A slot with no row is not missing — it is using its fallback. */
-function slotsOf(
-  configured: Map<string, SlotRow>, entityType: SlotEntity, entityId: string,
-): { def: SlotDef; row: SlotRow | null }[] {
-  return MEDIA_SLOTS
-    .filter((d) => d.entityType === entityType && d.entityId === entityId)
-    .map((def) => ({ def, row: configured.get(def.key) ?? null }));
-}
-
-/**
- * KATEGORIE — the six dashboard tiles and their workspaces, each followed by
- * the workflows it offers. One group per thing an operator thinks of as a
- * thing, which is a category, not a slot.
- */
-function categoryGroups(configured: Map<string, SlotRow>, t: T): SlotGroupView[] {
-  const groups: SlotGroupView[] = [];
-  for (const c of CATEGORIES) {
-    groups.push({
-      id: c.key, name: t(`cats.${c.key}`), sub: `/k/${c.slug}`,
-      slots: slotsOf(configured, "category", c.key),
-    });
-    for (const def of MEDIA_SLOTS.filter((d) => d.entityType === "workflow"
-      && d.entityId.startsWith(`${c.key}.`))) {
-      const wf = def.entityId.slice(c.key.length + 1);
-      groups.push({
-        id: def.entityId,
-        name: t(`wf.${c.key}.${wf}.name`),
-        sub: t(`cats.${c.key}`),
-        slots: slotsOf(configured, "workflow", def.entityId),
-      });
-    }
-  }
-  return groups;
-}
-
-/**
- * NARZĘDZIA — the catalogue's own cards, in the catalogue's own order and
- * under the catalogue's own names. Not a second list: lib/tool-cards.ts is
- * what /tools renders from, and what this screen enumerates.
- */
-function toolGroups(configured: Map<string, SlotRow>, t: T): SlotGroupView[] {
-  const groups: SlotGroupView[] = [];
-  for (const section of TOOL_SECTIONS) {
-    for (const card of section.cards) {
-      const slots = slotsOf(configured, "tool", card.key);
-      // A category entry point has no tool slot of its own; its picture is on
-      // the Kategorie tab.
-      if (slots.length === 0) continue;
-      groups.push({
-        id: card.key, name: t(card.titleKey), sub: t(section.titleKey), slots,
-      });
-    }
-  }
-  return groups;
-}
 
 /** SEKCJE APLIKACJI — the named places that belong to no single tool. */
 function sectionGroups(configured: Map<string, SlotRow>, t: T): SlotGroupView[] {

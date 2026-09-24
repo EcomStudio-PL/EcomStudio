@@ -1129,7 +1129,7 @@
   },
   "media": {
     "title": "Medien",
-    "sub": "Jedes Bild und Video in GrovBase — Mediathek, Kategoriekacheln, Werkzeuge, Bereiche und Banner.",
+    "sub": "Jedes Bild und Video in GrovBase — Mediathek, Kategorien, Werkzeuge, Bereiche und Banner.",
     "upload": "Dateien hochladen",
     "external": "Externe URL",
     "poster": "Poster",
@@ -1170,7 +1170,7 @@
       "bannery": "Banner"
     },
     "slot": {
-      "categoryCard": "Kachel auf dem Dashboard",
+      "categoryCard": "Kategoriekarte",
       "categoryHero": "Kategorie-Kopfbereich",
       "workflowCard": "Workflow-Karte",
       "toolCard": "Karte im Werkzeugkatalog",
@@ -1184,7 +1184,7 @@
       "bannerMedia": "Bannerbild"
     },
     "fb": {
-      "ownWork": "die letzte Generierung des Kontos",
+      "ownWork": "die eingebaute Grafik der Karte",
       "gradient": "ein Verlauf in der Farbe der Kategorie",
       "motif": "das gezeichnete Motiv des Werkzeugs",
       "emptyState": "ein Symbol für den leeren Zustand",
@@ -1231,6 +1231,7 @@
     "altPlaceholder": "Was auf dem Bild zu sehen ist",
     "findEntity": "Suchen…",
     "noSlots": "In diesem Bereich gibt es nichts einzustellen.",
+    "categoriesNote": "Kategorien sind jetzt Bereiche der Werkzeug-Seite: Das Dashboard hat keine Kategoriekacheln mehr, und die alten Kategorieseiten leiten zu den Werkzeugen weiter. Hier gesetzte Bilder bleiben erhalten, werden in der App derzeit aber nirgends angezeigt.",
     "slotsIntro": "Eingestellt: {filled} von {total} Stellen. Eine leere Stelle ist kein Fehler — die Oberfläche zeichnet dort ihre eigene Grafik.",
     "toolSub": "Werkzeug",
     "usedIn": "An {n} Stellen verwendet",
