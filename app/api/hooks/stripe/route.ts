@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { dispatchToken } from "@/lib/server/server-token";
 import { stripeWebhookSecret, stripeCredentials, paymentsEnabled } from "@/lib/stripe/config";
+import { stripePublishableKey as publishableKey } from "@/lib/stripe/publishable";
 import { verifyStripeSignature } from "@/lib/stripe/signature";
 import { handleStripeEvent, type StripeEvent } from "@/lib/server/stripe-webhook";
 
@@ -183,5 +184,22 @@ export async function GET() {
     ready: paymentsEnabled(),
     mode: creds?.mode ?? null,
     grants: await grantsAccepted(),
+    // CAN THE PAYMENT SHEET MOUNT IN A BROWSER?
+    //
+    // `ready` answers "can this deployment take money and deliver it" — three
+    // SERVER secrets. It says nothing about the browser half, and after the
+    // embedded checkout shipped that became a real gap: a deployment can be
+    // fully `ready` and still fall back to the hosted flow, because
+    // NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is missing or misspelled. That is a
+    // silent, invisible difference — the customer still pays, just not here —
+    // and the only way to find out was to open the page as a logged-in user.
+    //
+    // A BOOLEAN AND A MODE, NEVER THE KEY. The publishable key is safe to
+    // publish, but an endpoint that echoes credentials is a habit worth not
+    // starting, and `checkout_mode` is derived from the prefix so a test key
+    // left in a production deployment is visible without printing anything.
+    checkout: publishableKey() !== null,
+    checkout_mode: publishableKey()?.includes("_live_") ? "live"
+      : publishableKey() ? "test" : null,
   });
 }
