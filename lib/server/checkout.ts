@@ -141,6 +141,28 @@ type WorkspaceRef = { id: string; name?: string | null };
 export async function quoteCheckout(
   supabase: Client, workspace: WorkspaceRef, req: CheckoutRequest,
 ): Promise<QuoteResult> {
+  const result = await priceOrder(supabase, workspace, req);
+  // A REFUSED QUOTE USED TO LEAVE NO TRACE AT ALL, from either caller — the
+  // page that renders the checkout, or the begin that re-prices it a moment
+  // later. `unknown_package` and `price_out_of_sync` are decisions this server
+  // makes about its own data and both end as the same shrug on the customer's
+  // screen, so without this line there was no way to tell them apart.
+  if (!result.ok) {
+    console.error("checkout.refused", JSON.stringify({
+      stage: "quote" satisfies Stage,
+      kind: req.kind,
+      workspace: workspace.id,
+      target: targetOf(req),
+      reason: result.reason,
+    }));
+  }
+  return result;
+}
+
+/** The pricing itself. Wrapped above only so every refusal is recorded once. */
+async function priceOrder(
+  supabase: Client, workspace: WorkspaceRef, req: CheckoutRequest,
+): Promise<QuoteResult> {
   if (!paymentsEnabled()) return { ok: false, reason: "payments_disabled" };
 
   if (req.kind === "credit_package") {
@@ -311,21 +333,9 @@ export type BeginResult =
 export async function beginCheckout(
   supabase: Client, workspace: WorkspaceRef, email: string | null, req: CheckoutRequest,
 ): Promise<BeginResult> {
+  // quoteCheckout records its own refusals, for both of its callers.
   const priced = await quoteCheckout(supabase, workspace, req);
-  if (!priced.ok) {
-    // A REFUSED QUOTE USED TO LEAVE NO TRACE AT ALL. `unknown_package` and
-    // `price_out_of_sync` are decisions this server makes about its own data,
-    // and both end as the same shrug on the customer's screen — so without this
-    // line the only way to tell them apart was to guess.
-    console.error("checkout.refused", JSON.stringify({
-      stage: "quote" satisfies Stage,
-      kind: req.kind,
-      workspace: workspace.id,
-      target: targetOf(req),
-      reason: priced.reason,
-    }));
-    return priced;
-  }
+  if (!priced.ok) return priced;
   const quote = priced.quote;
 
   const creds = stripeCredentials();
