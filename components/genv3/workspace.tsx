@@ -9,6 +9,7 @@ import {
   PromptSection, SessionTypeSection, SettingsSection, ShotBriefsSection, VariantChips,
 } from "@/components/genv3/sections";
 import { ModelSelect } from "@/components/genv3/model-select";
+import { InspirationLibraryModal } from "@/components/genv3/inspiration-library";
 import { DropOverlay, useFileDrop } from "@/components/genv3/uploader";
 import { cn } from "@/lib/utils";
 import {
@@ -74,6 +75,8 @@ export function GeneratorWorkspace({
   // ── Configuration state ────────────────────────────────────────────────
   const [refs, setRefs] = useState<UploadedRef[]>([]);
   const [insp, setInsp] = useState<UploadedRef[]>([]);
+  /** The GrovBase inspiration library, opened from the second tile. */
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [sessionType, setSessionType] = useState<"advertising" | "lifestyle">("advertising");
   const [prompt, setPrompt] = useState(initialPrompt);
   const [modelId, setModelId] = useState(firstModel?.id ?? "");
@@ -163,6 +166,44 @@ export function GeneratorWorkspace({
       inFlight.current -= 1;
       if (inFlight.current === 0) setUploading(false);
     }
+  }
+
+  /**
+   * A PICK FROM THE GROVBASE LIBRARY, TURNED INTO AN ORDINARY UPLOAD.
+   *
+   * The library image is fetched in the browser and handed to `upload` above
+   * as a plain File — the same function the picker, a drag and a paste all end
+   * in. Nothing downstream learns that this one came from the library: same
+   * storage folder, same cap, same reservation, same `UploadedRef`, same
+   * `inspirationPaths`.
+   *
+   * That is deliberate rather than lazy. `/api/generate` keeps only the
+   * inspiration paths that start with this workspace's id, which is what stops
+   * one workspace aiming the generator at another's files. A library URL sent
+   * straight through would be dropped by that filter without a word, and the
+   * seller would watch a picture they chose quietly do nothing.
+   */
+  async function addFromLibrary(urls: string[]) {
+    const files: File[] = [];
+    for (const url of urls) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const blob = await res.blob();
+        // Some storage origins answer without a usable content-type; the
+        // extension is the fallback, because `upload` validates the MIME and
+        // would otherwise reject a perfectly good library image.
+        const ext = (url.split("?")[0].split(".").pop() || "jpg").toLowerCase();
+        const type = blob.type && blob.type.startsWith("image/")
+          ? blob.type
+          : `image/${ext === "jpg" ? "jpeg" : ext}`;
+        files.push(new File([blob], `inspiration.${ext}`, { type }));
+      } catch {
+        // One unreachable image must not lose the rest of the selection.
+      }
+    }
+    if (files.length === 0) { toast.error(t("common.error")); return; }
+    await upload(files, "insp");
   }
 
   /** Remove one reference photo AND keep every shot row pointing at the photo
@@ -379,6 +420,16 @@ export function GeneratorWorkspace({
       "lg:grid-cols-[clamp(420px,29vw,470px)_minmax(0,1fr)] lg:items-stretch lg:gap-6 lg:overflow-hidden lg:pb-0",
     )}>
       <DropOverlay show={dragging} title={t("genv3.dropTitle")} sub={t("genv3.dropSub")} />
+      {/* Mounted beside the overlay rather than inside the scrolling panel:
+          the modal is fixed-position and must not be clipped by the column's
+          `overflow: hidden`. `room` is what is left of the cap right now, so
+          the picker cannot offer a selection the upload would trim. */}
+      <InspirationLibraryModal
+        open={libraryOpen}
+        onClose={() => setLibraryOpen(false)}
+        room={Math.max(0, 5 - insp.length)}
+        onPick={(urls) => { void addFromLibrary(urls); }}
+      />
       {/* ── LEFT: configuration ─────────────────────────────────────────── */}
       {/* Two physical parts, per spec: a bounded scrolling body and a footer
           that is a SIBLING of it, not a sticky element inside it. The
@@ -432,6 +483,7 @@ export function GeneratorWorkspace({
                 disabled={!model?.supportsRefs}
                 onUpload={(files) => upload(files, "insp")}
                 onRemove={(i) => setInsp((prev) => prev.filter((_, j) => j !== i))}
+                onOpenLibrary={() => setLibraryOpen(true)}
               />
               <PromptSection value={prompt} onChange={setPrompt} max={PROMPT_MAX} />
             </>

@@ -3,7 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
-  Check, ChevronDown, HelpCircle, ImageOff, Loader2, Megaphone, Minus, PenLine, Plus, Sparkles, Sun, X,
+  Check, ChevronDown, HelpCircle, ImageOff, Images, Loader2, Megaphone, Minus, PenLine,
+  Plus, Sparkles, Sun, Upload, X,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Label, Textarea } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { InfoHint } from "@/components/ui/hint";
 import { RatioValue, ratioOptions } from "@/components/genv3/ratio-options";
 import { Switch } from "@/components/ui/record";
-import { PhotoUploader } from "@/components/genv3/uploader";
+import { PhotoUploader, UPLOAD_ACCEPT, normalizeFiles } from "@/components/genv3/uploader";
 import { cn } from "@/lib/utils";
 import type { BriefState, GenModel, UploadedRef } from "@/components/genv3/types";
 import type { CategoryVariant } from "@/lib/categories";
@@ -733,14 +734,47 @@ export function ShotBriefsSection({ count, refs, briefs, onChange }: {
 
 /* ── Inspiracja (custom) ──────────────────────────────────────────────── */
 
-export function InspirationSection({ items, uploading, disabled, onUpload, onRemove }: {
+/** The cap this section has always had, named so the tiles, the counter and
+ *  the library picker cannot drift apart. The workspace enforces the same
+ *  number again on upload — this one only shapes what the panel offers. */
+const INSP_MAX = 5;
+
+/**
+ * TWO WAYS IN, ONE POOL.
+ *
+ * The section used to be a bare thumbnail grid whose only affordance was a
+ * small "Import" tile, which made the GrovBase library invisible — there was
+ * nowhere for it to be. It is now the two tiles the rest of the app already
+ * speaks in (see `SessionTypeSection` above: 2-up grid, `gap-2`, `rounded-xl`,
+ * `border-line`, a quiet `hover:bg-raised`):
+ *
+ *     [ Własna inspiracja ]   [ Wybierz inspirację ]
+ *        the file picker         the curated library
+ *
+ * BOTH END IN THE SAME PLACE. The left one opens the file input; the right one
+ * hands URLs back to the workspace, which fetches them and sends them through
+ * the SAME upload. One `UploadedRef[]`, one cap, one `inspirationPaths` — the
+ * generator cannot tell the two apart and does not have to.
+ *
+ * The header, the counter and the thumbnail grid keep the markup and the
+ * classes they had, so the only thing that changed on screen is that there are
+ * now two tiles where there was one.
+ */
+export function InspirationSection({
+  items, uploading, disabled, onUpload, onRemove, onOpenLibrary,
+}: {
   items: UploadedRef[];
   uploading: boolean;
   disabled?: boolean;
   onUpload: (files: File[]) => void;
   onRemove: (index: number) => void;
+  /** Opens the GrovBase library. Omitted → only the upload tile is offered. */
+  onOpenLibrary?: () => void;
 }) {
   const { t } = useI18n();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const full = items.length >= INSP_MAX;
+
   if (disabled) {
     return (
       <section>
@@ -749,27 +783,93 @@ export function InspirationSection({ items, uploading, disabled, onUpload, onRem
       </section>
     );
   }
+
+  const take = (list: FileList | null) => {
+    const { files } = normalizeFiles(list);
+    if (files.length > 0) onUpload(files);
+  };
+
   return (
-    <PhotoUploader
-      items={items}
-      max={5}
-      columns={5}
-      uploading={uploading}
-      compact
-      dropTarget="insp"
-      onFiles={onUpload}
-      onRemove={onRemove}
-      // No standing "upload surroundings, style or mood" line: what
-      // inspiration photos do belongs in the hint, one tap away, not
-      // permanently under the tiles.
-      label={
-        <>
+    // `data-drop-target` is what routes a drag landing here to the inspiration
+    // pool rather than to product photos. It stays on the section, so dropping
+    // anywhere in the block — over either tile or the thumbnails — still works
+    // exactly as it did.
+    <section data-drop-target="insp">
+      {/* Unchanged from the uploader's own header: same spacing, same sizes,
+          same counter. */}
+      <div className="mb-2 flex items-baseline justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-[13.5px] font-semibold tracking-tight">
           {t("genv3.insp")}
           <span className="font-normal text-faint">({t("genv3.optional")})</span>
           <InfoHint text={t("genv3.inspHint")} />
-        </>
-      }
-    />
+        </p>
+        <span className="shrink-0 text-[11.5px] font-semibold tabular-nums text-faint">
+          {items.length}/{INSP_MAX}
+        </span>
+      </div>
+
+      <input ref={fileRef} type="file" multiple accept={UPLOAD_ACCEPT} className="hidden"
+        onChange={(e) => { take(e.target.files); e.target.value = ""; }} />
+
+      {/* 50/50, and it stays 50/50 all the way down. Two tiles carrying one
+          short line each still read at 320px — the panel is the full width of
+          the phone there, which is wider than the desktop column they already
+          share. Stacking them would be a rule with nothing to fix. */}
+      <div className="grid grid-cols-2 gap-2 [&>*]:min-w-0">
+        <InspTile
+          icon={Upload}
+          label={t("genv3.inspOwn")}
+          busy={uploading}
+          disabled={full || uploading}
+          onClick={() => fileRef.current?.click()}
+        />
+        {onOpenLibrary && (
+          <InspTile
+            icon={Images}
+            label={t("genv3.inspPick")}
+            disabled={full}
+            onClick={onOpenLibrary}
+          />
+        )}
+      </div>
+
+      {items.length > 0 && (
+        <div className="mt-2 grid grid-cols-5 gap-2 [&>*]:min-w-0">
+          {items.map((r, i) => (
+            <div key={r.key} className="group relative aspect-square overflow-hidden rounded-xl ring-1 ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={r.url} alt="" className="h-full w-full object-cover" loading="lazy" />
+              <button type="button" aria-label={t("common.delete")}
+                onClick={() => onRemove(i)}
+                className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white opacity-0 transition-opacity duration-200 focus-visible:opacity-100 group-hover:opacity-100">
+                <X size={10} aria-hidden />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** One of the two. Sized for the side panel — a row of content, not a card. */
+function InspTile({ icon: Icon, label, onClick, disabled, busy }: {
+  icon: typeof Upload; label: string; onClick: () => void;
+  disabled?: boolean; busy?: boolean;
+}) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled}
+      className={cn(
+        "flex flex-col items-center justify-center gap-1.5 rounded-xl border px-2 py-3.5 text-center transition-colors duration-200",
+        "border-line hover:border-[rgb(var(--accent)/0.55)] hover:bg-accent-soft/25",
+        "focus-visible:border-[rgb(var(--accent)/0.55)]",
+        "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-line disabled:hover:bg-transparent",
+      )}>
+      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgb(var(--accent)/0.1)] text-accent">
+        {busy ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Icon size={15} aria-hidden />}
+      </span>
+      <span className="text-[12px] font-semibold leading-tight text-ink">{label}</span>
+    </button>
   );
 }
 
