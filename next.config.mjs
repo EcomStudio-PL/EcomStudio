@@ -73,7 +73,20 @@ const securityHeaders = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   // Paired with frame-ancestors above: third-party framing stays refused.
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+  // `payment=()` USED TO BE HERE, AND IT WOULD HAVE KILLED THE WALLETS.
+  //
+  // That directive switches off the Payment Request API for every origin
+  // INCLUDING this one — and the Payment Request API is exactly what Apple Pay
+  // and Google Pay run on inside Stripe's Express Checkout Element. Cards would
+  // have carried on working, so nothing would have looked broken; the wallet
+  // buttons would simply never have appeared, on every device, forever, with no
+  // error anywhere. Apple Pay is switched ON in the Stripe account, so this was
+  // a paid-for feature disabled by a header.
+  //
+  // It is now granted to this origin and to Stripe's frame, and to nothing
+  // else. That is narrower than the common `payment=*` and it is the whole of
+  // what the checkout needs. camera, microphone and geolocation stay fully off.
+  { key: "Permissions-Policy", value: 'camera=(), microphone=(), geolocation=(), payment=(self "https://js.stripe.com")' },
   { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
   { key: "Content-Security-Policy", value: csp },
 ];

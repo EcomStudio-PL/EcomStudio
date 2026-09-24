@@ -531,6 +531,30 @@ async function main() {
     check("connect-src allows the Stripe API",
       directive("connect-src").includes("https://api.stripe.com"));
 
+    // THE WALLETS RUN ON A FEATURE A HEADER CAN SWITCH OFF.
+    //
+    // `payment=()` disables the Payment Request API for every origin including
+    // this one, and that API is what Apple Pay and Google Pay use inside the
+    // Express Checkout Element. Cards keep working, so nothing looks broken —
+    // the wallet buttons just never appear, on every device, with no error.
+    // READ THE HEADER'S OWN VALUE, not the file. The comment above that header
+    // explains why `payment=()` was removed, and a file-wide search finds that
+    // explanation and fails on it — the first version of this test did exactly
+    // that. Matching the literal is both narrower and the actual subject.
+    // Single-quoted on purpose: the value itself contains the double quotes
+    // Permissions-Policy requires around an origin, so the outer quote has to
+    // be the other kind and the capture must not stop at the inner ones.
+    const permissions = cfg.match(/"Permissions-Policy",\s*value:\s*'([^']*)'/)?.[1] ?? "";
+    check("Permissions-Policy does not disable the Payment Request API",
+      permissions !== "" && !/payment=\(\)/.test(permissions),
+      "payment=() silently removes Apple Pay and Google Pay");
+    check("the payment feature is granted to this origin and Stripe's frame",
+      permissions.includes('payment=(self "https://js.stripe.com")'));
+    check("camera, microphone and geolocation stay fully off",
+      /camera=\(\)/.test(permissions) && /microphone=\(\)/.test(permissions)
+      && /geolocation=\(\)/.test(permissions),
+      "widening one feature must not widen the others");
+
     // And the policy stays narrow: allowing Stripe must not become allowing
     // anything. A wildcard here would quietly undo the whole header.
     for (const name of ["script-src", "frame-src", "connect-src"]) {
