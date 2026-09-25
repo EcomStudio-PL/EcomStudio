@@ -1,10 +1,10 @@
-import Image from "next/image";
 import { ArrowRight } from "lucide-react";
 import { GROVSHOT_SHOTS } from "@/lib/home-sections";
 import { HOME_SLOT } from "@/lib/media-slots";
 import type { SlotMap } from "@/lib/server/media-slots";
 import { SlotMedia } from "@/components/media/slot-media";
-import { TOOL_THUMB_RATIO } from "@/components/tools/tool-thumb";
+import { PHOTO_THUMB_RATIO } from "@/components/tools/tool-thumb";
+import { WholeImage } from "./card-art";
 import { Gate } from "./gate";
 import { cn } from "@/lib/utils";
 
@@ -113,12 +113,12 @@ export function GrovshotBanner({ signedIn, href, examplesHref, slots, t }: {
 }
 
 /** One shipped example, tilted, with the finish it shows named under it —
- *  in the same 5:4 frame as every other picture on the Start. */
+ *  in the same photo frame as every other picture on the Start, shown whole. */
 function Frame({ src, label, className }: { src: string; label: string; className?: string }) {
   return (
     <span className={cn("relative block w-[6.5rem] shrink-0 overflow-hidden rounded-xl shadow-[0_18px_36px_-18px_rgb(0_0_0/0.7)] ring-1 ring-[rgb(var(--glass-border)/0.28)] xl:w-[7.5rem]", className)}
-      style={{ aspectRatio: TOOL_THUMB_RATIO }}>
-      <Image src={src} alt="" fill sizes="120px" loading="lazy" className="object-cover" />
+      style={{ aspectRatio: PHOTO_THUMB_RATIO }}>
+      <WholeImage src={src} sizes="120px" />
       <span className="absolute bottom-1.5 left-1.5 rounded-md bg-[rgb(var(--bg)/0.72)] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ink backdrop-blur-sm">
         {label}
       </span>

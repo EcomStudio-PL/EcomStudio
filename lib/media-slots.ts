@@ -1,5 +1,5 @@
 import { CATEGORIES, offeredWorkflows } from "./categories";
-import { TOOL_CARDS } from "./tool-cards";
+import { TOOL_CARDS, isVideoCard } from "./tool-cards";
 
 /**
  * EVERY PLACE IN GROVBASE WHERE AN ADMIN MAY PUT A PICTURE.
@@ -42,7 +42,15 @@ export type SlotEntity = "category" | "workflow" | "tool" | "banner" | "section"
 
 /** Which shape the slot is painted in, so the admin preview and the renderer
  *  agree without either guessing. */
-export type SlotRatio = "5/4" | "16/10" | "16/9" | "4/3" | "4/5" | "1/1" | "3/1" | "21/9";
+export type SlotRatio = "2336/1744" | "9/16" | "5/4" | "16/10" | "16/9" | "4/3" | "4/5" | "1/1" | "3/1" | "21/9";
+
+/** The two thumbnail frames on Start and /tools — PHOTO_THUMB_RATIO and
+ *  VIDEO_THUMB_RATIO in components/tools/tool-thumb.tsx (the tests hold these
+ *  equal). Every card and gallery slot declares one of them, so the admin
+ *  preview is the frame the customer sees: the pictures made for the cards
+ *  are exactly 2336×1744; a video tool's clip is vertical 9:16. */
+const PHOTO_FRAME = "2336/1744" satisfies SlotRatio;
+const VIDEO_FRAME = "9/16" satisfies SlotRatio;
 
 export type SlotDef = {
   key: string;
@@ -98,7 +106,7 @@ const slot = (
  */
 const CATEGORY_SLOTS: SlotDef[] = CATEGORIES.flatMap((c) => [
   slot(categorySlotKey(c.key), "category", c.key, "card",
-    "media.slot.categoryCard", "5/4", true, "media.fb.ownWork"),
+    "media.slot.categoryCard", PHOTO_FRAME, true, "media.fb.ownWork"),
   slot(categoryHeroKey(c.key), "category", c.key, "hero",
     "media.slot.categoryHero", "21/9", true, "media.fb.gradient"),
 ]);
@@ -127,12 +135,11 @@ export function categoryHeroKey(categoryKey: string): string {
  */
 const WORKFLOW_SLOTS: SlotDef[] = CATEGORIES.flatMap((c) =>
   offeredWorkflows(c).map((w) =>
-    // 5/4, the shape every tool thumbnail is painted at (TOOL_THUMB_RATIO in
-    // components/tools/tool-thumb.tsx) — the same as every other tool's. The
-    // workflow's own ratio chip says what the OUTPUT will be, which is a
-    // different thing from the size of the thumbnail.
+    // The photo frame, like every other tool's thumbnail. The workflow's own
+    // ratio chip says what the OUTPUT will be (a reel cover is 9:16), which is
+    // a different thing from the shape of the thumbnail.
     slot(workflowSlotKey(c.key, w.key), "workflow", `${c.key}.${w.key}`, "card",
-      "media.slot.workflowCard", "5/4", false, "media.fb.motif")));
+      "media.slot.workflowCard", PHOTO_FRAME, false, "media.fb.motif")));
 
 export function workflowSlotKey(categoryKey: string, workflowKey: string): string {
   return `category.${categoryKey}.workflow.${workflowKey}.card`;
@@ -157,7 +164,7 @@ export function workflowSlotKey(categoryKey: string, workflowKey: string): strin
  */
 const TOOL_SLOTS: SlotDef[] = TOOL_CARDS
   .map((c) => slot(toolSlotKey(c.key), "tool", c.key, "card",
-    "media.slot.toolCard", "5/4", false, "media.fb.motif"));
+    "media.slot.toolCard", isVideoCard(c.key) ? VIDEO_FRAME : PHOTO_FRAME, false, "media.fb.motif"));
 
 /** The key of a catalogue card's picture. Exported so the catalogue asks for
  *  exactly the keys this file declares, rather than spelling them itself. */
@@ -180,9 +187,9 @@ export function toolSlotKey(cardKey: string): string {
  * output, and these galleries exist to show output.
  *
  * The gallery shapes are the shapes the page paints, so the admin crop preview
- * and the live tile agree: every gallery tile — packshots, UGC clips, adverts —
- * is 5:4, the same frame as every tool card (TOOL_THUMB_RATIO in
- * components/tools/tool-thumb.tsx). The two BANNER ARTS are the exception
+ * and the live tile agree: the packshot and advert tiles are the photo frame
+ * (2336×1744) and the UGC clips the video frame (9:16) — the same two frames
+ * as the tool cards. The two BANNER ARTS are the exception
  * because they are not tiles but backgrounds, cover-cropped to a band whose
  * height follows its copy: very wide on a desktop (about 6:1), close to square
  * on a phone. 3/1 is the middle of that range; a picture meant for phones
@@ -200,12 +207,12 @@ export const HOME_SLOT = {
  *  numbers, so a tile can never exist without a slot or the other way round. */
 export const HOME_GALLERY = {
   /** Two rows of packshot tiles (the names are the keys' history: the first
-   *  row used to be square, the second wide; both are 5:4 now). */
+   *  row used to be square, the second wide; both are photo tiles now). */
   packshotSquares: 6,
   packshotWide: 6,
   ugcClips: 3,
   /** Advert tiles: the first five, then two more (once a wide pair; all
-   *  seven are 5:4 tiles now). */
+   *  seven are photo tiles now). */
   adsTall: 5,
   adsWide: 2,
 } as const;
@@ -217,17 +224,17 @@ function homeSlots(): SlotDef[] {
     slot(HOME_SLOT.grovshotArt, "section", "home", "grovshot",
       "media.slot.homeGrovshotArt", "3/1", true, "media.fb.homeBanner"),
     ...range(1, g.packshotSquares).map((n) => slot(HOME_SLOT.packshot(n), "section", "home",
-      `packshot${n}`, "media.slot.homePackshot", "5/4", true, "media.fb.motif", { n })),
+      `packshot${n}`, "media.slot.homePackshot", PHOTO_FRAME, true, "media.fb.motif", { n })),
     ...range(g.packshotSquares + 1, g.packshotWide).map((n) => slot(HOME_SLOT.packshot(n), "section", "home",
-      `packshot${n}`, "media.slot.homePackshot", "5/4", true, "media.fb.motif", { n })),
+      `packshot${n}`, "media.slot.homePackshot", PHOTO_FRAME, true, "media.fb.motif", { n })),
     slot(HOME_SLOT.ugcArt, "section", "home", "ugc",
       "media.slot.homeUgcArt", "3/1", true, "media.fb.homeBanner"),
     ...range(1, g.ugcClips).map((n) => slot(HOME_SLOT.ugc(n), "section", "home",
-      `ugc${n}`, "media.slot.homeUgcClip", "5/4", true, "media.fb.motif", { n })),
+      `ugc${n}`, "media.slot.homeUgcClip", VIDEO_FRAME, true, "media.fb.motif", { n })),
     ...range(1, g.adsTall).map((n) => slot(HOME_SLOT.ad(n), "section", "home",
-      `ad${n}`, "media.slot.homeAd", "5/4", true, "media.fb.motif", { n })),
+      `ad${n}`, "media.slot.homeAd", PHOTO_FRAME, true, "media.fb.motif", { n })),
     ...range(g.adsTall + 1, g.adsWide).map((n) => slot(HOME_SLOT.ad(n), "section", "home",
-      `ad${n}`, "media.slot.homeAd", "5/4", true, "media.fb.motif", { n })),
+      `ad${n}`, "media.slot.homeAd", PHOTO_FRAME, true, "media.fb.motif", { n })),
   ];
 }
 

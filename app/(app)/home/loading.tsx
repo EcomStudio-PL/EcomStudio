@@ -11,7 +11,7 @@ export default function HomeLoading() {
       <div className="flex gap-2.5 overflow-hidden sm:grid sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
         {[0, 1, 2, 3, 4, 5].map((i) => (
           <div key={i} className="w-[56vw] max-w-[16rem] shrink-0 sm:w-auto sm:max-w-none">
-            <div className="aspect-[5/4] rounded-xl bg-raised/70" />
+            <div className="aspect-[2336/1744] rounded-xl bg-raised/70" />
             <div className="mt-2 h-3 w-2/3 rounded bg-raised/60" />
           </div>
         ))}
@@ -35,7 +35,7 @@ export default function HomeLoading() {
         </div>
         <div className="flex gap-2.5 overflow-hidden sm:grid sm:grid-cols-4 lg:grid-cols-8">
           {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-            <div key={i} className="aspect-[5/4] w-[40vw] max-w-[11rem] shrink-0 rounded-xl bg-raised/60 sm:w-auto sm:max-w-none" />
+            <div key={i} className="aspect-[2336/1744] w-[40vw] max-w-[11rem] shrink-0 rounded-xl bg-raised/60 sm:w-auto sm:max-w-none" />
           ))}
         </div>
       </div>

@@ -26,7 +26,9 @@ import {
   type FeatureState,
 } from "@/lib/features";
 import { CATEGORIES, categoryPath, offeredWorkflows } from "@/lib/categories";
-import { CATALOG_ITEMS, TOOL_SECTIONS, catalogItem } from "@/lib/tool-cards";
+import { CATALOG_ITEMS, TOOL_SECTIONS, catalogItem, isVideoCard, majorityVideo } from "@/lib/tool-cards";
+import { MEDIA_SLOTS, toolSlotKey } from "@/lib/media-slots";
+import { PHOTO_THUMB_RATIO, VIDEO_THUMB_RATIO, thumbRatio } from "@/components/tools/tool-thumb";
 import {
   DEFAULT_LAYOUT, HUB_SECTIONS, LAYOUT_SECTIONS, MENU_DEFAULT, hubSectionsFor, itemBadge, itemLabelKey,
   menuItemKeys, normalizeLayout, placementsOf, sectionKeyFor, startExtras, unplacedItems,
@@ -328,41 +330,77 @@ console.log("\nJ. the storage contract");
 }
 
 /* ── K ─────────────────────────────────────────────────────────────────── */
-console.log("\nK. one thumbnail shape: every thumbnail on Start and /tools is 5:4");
+console.log("\nK. two thumbnail frames on Start and /tools: the 2336×1744 photo, 9:16 video — asset always whole");
 {
   const thumb = read("components/tools/tool-thumb.tsx");
   const art = read("components/home/card-art.tsx");
   const cards = read("components/home/product-cards.tsx");
   const home = read("components/home/product-home.tsx");
   const catalogue = read("components/tools/tools-catalogue.tsx");
-  const slotsSrc = read("lib/media-slots.ts");
   const gallery = read("components/home/home-gallery.tsx");
   const banner = read("components/home/grovshot-banner.tsx");
   const skeleton = read("app/(app)/home/loading.tsx");
-  check("the one constant is 5/4, and ToolThumb paints it with no way to ask for another",
-    thumb.includes('export const TOOL_THUMB_RATIO = "5/4";') && thumb.includes("aspectRatio: TOOL_THUMB_RATIO")
-    && !/ratio\??:/.test(thumb));
-  check("CardArt, GalleryArt and the shipped photo paint only that constant",
-    (art.match(/TOOL_THUMB_RATIO/g) ?? []).length >= 4 && !/ratio\??:/.test(art) && !/ratio=\{ratio\}/.test(art)
-    && !/<CardArt[^>]*ratio=/.test(cards) && !/<EffectCard[^>]*ratio=/.test(home));
-  check("no Start gallery tile (Packshoty, UGC clips, Reklamy) picks a shape of its own",
-    !/<GalleryArt[^>]*ratio=/.test(gallery) && !/\bfill\b/.test(gallery.replace(/\/\*[\s\S]*?\*\//g, "")));
-  check("the GrovShot banner's example frames are 5:4 too",
-    banner.includes("aspectRatio: TOOL_THUMB_RATIO") && !banner.includes('"4/5"'));
-  check("the Start skeleton reserves 5:4 tiles (no 16/9 or 4/5 placeholders)",
-    !/aspect-\[(16\/9|4\/5|1\/1|16\/10)\]/.test(skeleton) && skeleton.includes("aspect-[5/4]"));
-  check("no 1/1, 4/5, 16/9 or 16/10 is left anywhere on Start or /tools",
-    ![art, cards, home, catalogue, gallery, banner, skeleton, thumb].some((src) => /["\[](1\/1|4\/5|16\/9|16\/10)["\]]/.test(src)));
-  check("no tall (4/5) or wide (16/9, 16/10) override is left on a tool card",
-    !/ratio="(4\/5|16\/9|16\/10)"/.test(cards) && !/EffectCard[\s\S]{0,200}ratio="/.test(home));
-  check("/tools paints its admin picture in the same frame",
-    catalogue.includes("ratio={TOOL_THUMB_RATIO}") && !catalogue.includes('ratio="16/10"'));
-  check("the admin upload frame of every tool, workflow and category card is 5/4",
-    /"media\.slot\.toolCard", "5\/4"/.test(slotsSrc) && /"media\.slot\.workflowCard", "5\/4"/.test(slotsSrc)
-    && /"media\.slot\.categoryCard", "5\/4"/.test(slotsSrc));
-  check("the admin upload frame of every Start gallery tile is 5/4",
-    ["homePackshot", "homeUgcClip", "homeAd"].every((k) => new RegExp(`"media\\.slot\\.${k}", "5\\/4"`).test(slotsSrc))
-    && !/"media\.slot\.home(Packshot|UgcClip|Ad)", "(?!5\/4)/.test(slotsSrc));
+  const slotMedia = read("components/media/slot-media.tsx");
+  const code = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+
+  check("the photo frame is exactly the assets' 2336×1744, the video frame 9:16",
+    PHOTO_THUMB_RATIO === "2336/1744" && VIDEO_THUMB_RATIO === "9/16"
+    && thumbRatio(false) === PHOTO_THUMB_RATIO && thumbRatio(true) === VIDEO_THUMB_RATIO);
+  check("ToolThumb (every placeholder) paints thumbRatio(video) and takes no free ratio",
+    thumb.includes("aspectRatio: thumbRatio(video)") && !/\bratio\??:/.test(code(thumb)));
+  check("CardArt and its shipped photo paint the row's frame; GalleryArt its own (video = UGC)",
+    (code(art).match(/thumbRatio\(vertical\)/g) ?? []).length === 2 && (code(art).match(/thumbRatio\(video\)/g) ?? []).length === 1
+    && /ToolThumb[^>]*video=\{vertical\}/.test(code(art)) && !/\bratio\??:/.test(code(art))
+    && !/<CardArt[^>]*ratio=/.test(cards) && !/<EffectCard[^>]*ratio=/.test(home)
+    && !/<GalleryArt[^>]*ratio=/.test(gallery));
+  check("a row has ONE shape — its majority's: majorityVideo",
+    majorityVideo([true, true, true]) && majorityVideo([true, true, false]) && !majorityVideo([true, false, false, false, false, false])
+    && !majorityVideo([true, false]) && !majorityVideo([]));
+  check("each Start row (rail, Wybierz efekt, Wideo) passes its majority to every card",
+    /vertical=\{majorityVideo\(rail\.map/.test(home) && /vertical=\{majorityVideo\(effects\.map/.test(home)
+    && /vertical=\{majorityVideo\(video\.map/.test(home) && /vertical=\{vertical\}/.test(cards));
+  check("with the shipped layout: the rail and Wybierz efekt are photo rows, the Wideo row is vertical",
+    (() => { const m = homeModel(allDefaults(), false);
+      return !majorityVideo(m.rail.map((c) => c.video)) && !majorityVideo(m.effects.map((c) => c.video))
+        && m.video.length > 0 && majorityVideo(m.video.map((c) => c.video)); })());
+  check("/tools: each section passes its majority; picture and placeholder paint it",
+    catalogue.includes("vertical={majorityVideo(s.cards.map((x) => isVideoCard(x.key)))}")
+    && catalogue.includes("ratio={thumbRatio(vertical)}")
+    && (code(catalogue).match(/<ToolThumb[^>]*video=\{vertical\}/g) ?? []).length === 2);
+  check("with the shipped layout only /tools → Wideo AI is vertical",
+    hubSectionsFor(allDefaults(), false).every((sec) => majorityVideo(sec.cards.map((c) => isVideoCard(c.key))) === (sec.key === "video")));
+  check("a video tool is a `video_` card, and only those: exactly the Wideo AI section",
+    TOOL_SECTIONS.flatMap((sec) => sec.cards).every((c) => isVideoCard(c.key) === (TOOL_SECTIONS.find((sec) => sec.key === "video")?.cards.includes(c) ?? false))
+    && (TOOL_SECTIONS.find((sec) => sec.key === "video")?.cards.length ?? 0) > 0);
+  check("the Start marks video cards with the same test",
+    read("lib/home-sections.ts").includes("video: isVideoCard(c.key)"));
+  check("the Wideo UGC clips are video tiles; Packshoty and Reklamy are photo tiles",
+    /<GalleryArt slot=\{HOME_SLOT\.ugc\(n\)\}[^>]*\bvideo\b/.test(gallery)
+    && !/<GalleryArt slot=\{HOME_SLOT\.(packshot|ad)\(n\)\}[^>]*\bvideo\b/.test(gallery));
+
+  check("every picture is shown WHOLE: each SlotMedia on Start and /tools passes `whole`",
+    [art, catalogue].every((src) => (code(src).match(/<SlotMedia\b[^>]*>/g) ?? []).every((tag) => /\bwhole\b/.test(tag)))
+    && (code(art).match(/<SlotMedia\b/g) ?? []).length === 2 && (code(catalogue).match(/<SlotMedia\b/g) ?? []).length === 1);
+  check("`whole` contains the picture (never cover/crop) over a blurred copy of it",
+    /whole\s*\?\s*\{ objectFit: "contain", objectPosition: "center" \}/.test(slotMedia)
+    && /fit=\{whole \? "contain" : config\.fit\}/.test(slotMedia) && slotMedia.includes("blur-xl"));
+  check("without `whole` every other surface renders as before (the slot's own fit)",
+    slotMedia.includes("whole = false") && slotMedia.includes("{ objectFit: config.fit, objectPosition: config.position }"));
+  check("the shipped example photos are contained too (card tiles and the GrovShot frames)",
+    art.includes('className="object-contain"') && !/className="object-cover"\s*\/>/.test(code(art).replace(/blur-xl[^"]*"/g, ""))
+    && banner.includes("aspectRatio: PHOTO_THUMB_RATIO") && banner.includes("<WholeImage"));
+  check("the Start skeleton reserves photo frames (2336/1744)",
+    skeleton.includes("aspect-[2336/1744]") && !/aspect-\[(5\/4|16\/9|4\/5|1\/1|16\/10)\]/.test(skeleton));
+  check("no other shape is left on a Start or /tools thumbnail",
+    ![art, cards, home, catalogue, gallery, banner, skeleton, thumb].some((src) => /["\[](5\/4|1\/1|4\/5|16\/9|16\/10)["\]]/.test(code(src))));
+
+  const cardSlots = MEDIA_SLOTS.filter((d) => d.slotName === "card" && d.entityType !== "section");
+  check("every tool / workflow / category card's admin frame is its card's frame",
+    cardSlots.length > 30 && cardSlots.every((d) =>
+      d.ratio === (d.entityType === "tool" && isVideoCard(d.entityId) ? VIDEO_THUMB_RATIO : PHOTO_THUMB_RATIO)),
+    cardSlots.filter((d) => d.ratio !== PHOTO_THUMB_RATIO && !(d.entityType === "tool" && isVideoCard(d.entityId))).map((d) => d.key).join(", "));
+  check("every video tool's admin frame is 9:16",
+    TOOL_SECTIONS.find((sec) => sec.key === "video")!.cards.every((c) => MEDIA_SLOTS.find((d) => d.key === toolSlotKey(c.key))?.ratio === VIDEO_THUMB_RATIO));
 }
 
 console.log(failed ? `\n${failed} tool-layout test(s) failed.` : "\nAll tool-layout tests passed.");

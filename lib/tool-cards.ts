@@ -156,6 +156,21 @@ export function toolCard(key: string): ToolCardDef | undefined {
   return TOOL_CARDS.find((c) => c.key === key);
 }
 
+/** A VIDEO tool: the video module's cards, keyed `video_<workflow>` (see the
+ *  "video" section above). Their thumbnails are vertical 9:16 on Start and in
+ *  /tools; every other card's is a photo frame. The one test both ask. */
+export function isVideoCard(key: string): boolean {
+  return key.startsWith("video_");
+}
+
+/** A ROW's frame: vertical 9:16 when most of its cards are video tools (the
+ *  Start's video row, /tools → Wideo AI), the photo frame otherwise. So a row
+ *  is always level: a video tool placed among photo tools (the rail, "Wybierz
+ *  efekt") takes the photo frame, keeps its play mark and is shown whole. */
+export function majorityVideo(flags: readonly boolean[]): boolean {
+  return flags.filter(Boolean).length * 2 > flags.length;
+}
+
 /* ── THE HUB: THE CATALOGUE PLUS EVERY CATEGORY ──────────────────────────── */
 
 /** One card of the hub: a catalogue tool, or one workflow of a category. */

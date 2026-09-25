@@ -39,15 +39,33 @@ const TONE: Record<ToolMotif, { from: string; to: string }> = {
 };
 
 /**
- * THE ONE SHAPE OF EVERY THUMBNAIL ON START AND /tools — 5:4: every card in
- * /tools, the Start rail, "Wybierz efekt", the video row, and the Start's
- * galleries (Packshoty, the Wideo UGC clips, Reklamy i Social). The pictures
- * are drawn at 5:4; a frame of any other shape crops them (a tall one cuts
- * their sides off). There is deliberately no way to ask for another shape.
+ * THE TWO SHAPES OF A THUMBNAIL ON START AND /tools — and the only two.
+ *
+ *   PHOTO — the exact frame of the pictures made for the cards: 2336×1744 px
+ *   (146:109, about 1.339). NOT 5:4 (1.25): a 5:4 frame cut ~7% off the sides
+ *   of every one of them. Every tool, workflow and category card, the rail,
+ *   "Wybierz efekt", Packshoty and Reklamy.
+ *
+ *   VIDEO — vertical 9:16, the shape of a reel: rows made of video tools
+ *   (`majorityVideo` in lib/tool-cards.ts — the Start's video row, /tools →
+ *   Wideo AI) and the Wideo UGC clips.
+ *
+ * A ROW HAS ONE SHAPE: its majority's. A video tool placed in a photo row
+ * takes the photo frame (with its play mark), so no row is ever uneven.
+ *
+ * A picture of the frame's own shape fills it exactly; any other shape is shown
+ * WHOLE (contain) over a blurred copy of itself — never cropped, never
+ * stretched. The drawn placeholder takes the same frame as the picture that
+ * will replace it.
  */
-export const TOOL_THUMB_RATIO = "5/4";
+export const PHOTO_THUMB_RATIO = "2336/1744";
+export const VIDEO_THUMB_RATIO = "9/16";
 
-export function ToolThumb({ motif, icon: Icon, dimmed = false }: {
+export function thumbRatio(video = false): typeof PHOTO_THUMB_RATIO | typeof VIDEO_THUMB_RATIO {
+  return video ? VIDEO_THUMB_RATIO : PHOTO_THUMB_RATIO;
+}
+
+export function ToolThumb({ motif, icon: Icon, dimmed = false, video = false }: {
   motif: ToolMotif;
   /** The operation's icon, bottom-left. Omitted by a gallery tile on the Home,
    *  where the motif stands in for a picture that has not been put there yet
@@ -56,11 +74,13 @@ export function ToolThumb({ motif, icon: Icon, dimmed = false }: {
   /** A tool that cannot be opened yet reads quieter, so the row's live tools
    *  keep the eye. */
   dimmed?: boolean;
+  /** The vertical 9:16 frame (a video row's placeholder). */
+  video?: boolean;
 }) {
   const tone = TONE[motif];
   return (
     <span aria-hidden
-      style={{ aspectRatio: TOOL_THUMB_RATIO }}
+      style={{ aspectRatio: thumbRatio(video) }}
       className={cn(
         "relative block w-full overflow-hidden rounded-xl bg-sunken",
         dimmed && "opacity-55 saturate-50",

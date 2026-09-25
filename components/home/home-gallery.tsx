@@ -20,9 +20,10 @@ type T = (key: string, vars?: Record<string, string | number>) => string;
  * DENSE ON PURPOSE. The reference is a creative marketplace, not a card grid:
  * small gutters, no captions, rows that fill the width.
  *
- * ONE SHAPE. Every tile is 5:4 — GalleryArt paints TOOL_THUMB_RATIO and takes
- * no ratio of its own — the same frame as every tool card on the Start and in
- * /tools. (Vertical video tiles are a later, separate change.)
+ * TWO SHAPES, THE TOOL CARDS' OWN (components/tools/tool-thumb.tsx): every
+ * picture tile is the 2336×1744 photo frame, the UGC clips are vertical 9:16.
+ * GalleryArt takes no ratio of its own, only `video`, and shows its asset
+ * whole.
  */
 
 const range = (from: number, count: number) => Array.from({ length: count }, (_, i) => from + i);
@@ -33,7 +34,7 @@ const PACKSHOT_MOTIFS: readonly ToolMotif[] = ["cutout", "shadow", "frame", "spa
 const AD_MOTIFS: readonly ToolMotif[] = ["spark", "stamp", "swatch", "grid", "wipe", "frame", "cutout"];
 
 /**
- * PACKSHOTY — two rows of six 5:4 tiles. Two columns on a phone, three on a
+ * PACKSHOTY — two rows of six photo tiles. Two columns on a phone, three on a
  * tablet, six across from `lg`.
  */
 export function PackshotGallery({ slots }: { slots: SlotMap }) {
@@ -61,8 +62,8 @@ export function PackshotGallery({ slots }: { slots: SlotMap }) {
 
 /**
  * THE WIDEO UGC BANNER — a wide cyan band with the promise on the left and
- * three 5:4 clips on the right; on a phone the clips sit in a row under the
- * copy.
+ * three vertical 9:16 clips on the right; on a phone the clips sit in a row
+ * under the copy.
  *
  * It carries the video module's OWN state, from the switchboard: "Wkrótce"
  * today, since video has no engine, and no button — it shows what the module
@@ -119,7 +120,7 @@ export function UgcBanner({ slots, badge, t }: { slots: SlotMap; badge: MenuBadg
           {range(1, HOME_GALLERY.ugcClips).map((n, i) => (
             <span key={n} className={i === 1 ? "sm:translate-y-2" : undefined}>
               <span className="block rounded-xl ring-2 ring-[rgb(255_255_255/0.55)] sm:w-[6.5rem] lg:w-[7.25rem]">
-                <GalleryArt slot={HOME_SLOT.ugc(n)} slots={slots} motif="video"
+                <GalleryArt slot={HOME_SLOT.ugc(n)} slots={slots} motif="video" video
                   sizes="(max-width: 639px) 30vw, 8rem" />
               </span>
             </span>
@@ -131,10 +132,10 @@ export function UgcBanner({ slots, badge, t }: { slots: SlotMap; badge: MenuBadg
 }
 
 /**
- * REKLAMY I SOCIAL — seven 5:4 creatives in one grid: two columns on a phone,
+ * REKLAMY I SOCIAL — seven photo tiles in one grid: two columns on a phone,
  * four on a tablet, all seven in a row from `lg`. (The two slots after the
  * first five used to be a wide pair stacked beside them; they keep their keys
- * and their pictures, and are now tiles like the rest.)
+ * and their pictures, and are tiles like the rest.)
  */
 export function AdsGallery({ slots }: { slots: SlotMap }) {
   const g = HOME_GALLERY;

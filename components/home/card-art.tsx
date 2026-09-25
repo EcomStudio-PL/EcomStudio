@@ -2,7 +2,7 @@ import Image from "next/image";
 import type { LucideIcon } from "lucide-react";
 import { Play } from "lucide-react";
 import type { CardArt } from "@/lib/home-sections";
-import { TOOL_THUMB_RATIO, ToolThumb, type ToolMotif } from "@/components/tools/tool-thumb";
+import { ToolThumb, thumbRatio, type ToolMotif } from "@/components/tools/tool-thumb";
 import { SlotMedia } from "@/components/media/slot-media";
 import type { SlotMap } from "@/lib/server/media-slots";
 import { cn } from "@/lib/utils";
@@ -24,11 +24,13 @@ import { cn } from "@/lib/utils";
  * photograph pretending to be a result.
  *
  * NO LAYOUT SHIFT. Every branch owns its aspect ratio before a byte arrives,
- * so nothing on the page moves when a picture does. That ratio is always
- * TOOL_THUMB_RATIO (5:4): no card on the Start picks a shape of its own.
+ * so nothing on the page moves when a picture does. That ratio is one of the
+ * two in components/tools/tool-thumb.tsx — the 2336×1744 photo frame, or 9:16
+ * in a row of video tools (`vertical`, decided by the row) — and every branch
+ * shows its asset WHOLE: never cropped, never stretched.
  */
 export function CardArt({
-  art, icon, slot, slots, dimmed = false, sizes, priority = false, video = false,
+  art, icon, slot, slots, dimmed = false, sizes, priority = false, video = false, vertical = false,
 }: {
   art: CardArt;
   /** The operation's icon on the drawn floor. Omitted on gallery tiles. */
@@ -45,13 +47,16 @@ export function CardArt({
   /** A video tool. The play mark is drawn for it, and for any tile whose slot
    *  an operator filled with a clip. */
   video?: boolean;
+  /** The row's frame is vertical 9:16 (a row of video tools). Decided by the
+   *  row, not the card, so a row is always level — see `majorityVideo`. */
+  vertical?: boolean;
 }) {
   const fallback = art.kind === "photo"
-    ? <Photo src={art.src} dimmed={dimmed} sizes={sizes} priority={priority} />
-    : <ToolThumb motif={art.motif} icon={icon} dimmed={dimmed} />;
+    ? <Photo src={art.src} vertical={vertical} dimmed={dimmed} sizes={sizes} priority={priority} />
+    : <ToolThumb motif={art.motif} icon={icon} dimmed={dimmed} video={vertical} />;
 
   const body = (
-    <SlotMedia slot={slot} slots={slots} ratio={TOOL_THUMB_RATIO} sizes={sizes} priority={priority}
+    <SlotMedia slot={slot} slots={slots} ratio={thumbRatio(vertical)} sizes={sizes} priority={priority} whole
       className={cn("rounded-xl", dimmed && "opacity-55 saturate-50")} fallback={fallback} />
   );
 
@@ -93,20 +98,23 @@ export function PlayMark({ className }: { className?: string }) {
  * made of nothing BUT media slots. An empty one draws the motif with no icon:
  * a quiet brand surface in the right shape, so the geometry of the section is
  * finished while its pictures are still to come — and nothing on it claims to
- * be a creative GrovBase made. Every tile is 5:4 (TOOL_THUMB_RATIO), the same
- * frame as a tool card.
+ * be a creative GrovBase made. A tile is the 2336×1744 photo frame, or 9:16
+ * where it previews a video (the Wideo UGC clips) — the same two frames as
+ * the tool cards — and shows its asset whole.
  */
-export function GalleryArt({ slot, slots, motif, sizes }: {
+export function GalleryArt({ slot, slots, motif, sizes, video = false }: {
   slot: string;
   slots: SlotMap;
   motif: ToolMotif;
   sizes: string;
+  /** A video preview: the vertical 9:16 frame. */
+  video?: boolean;
 }) {
   const isVideo = slots.get(slot)?.mediaType === "video";
-  const floor = <ToolThumb motif={motif} />;
+  const floor = <ToolThumb motif={motif} video={video} />;
   return (
     <span className="relative block">
-      <SlotMedia slot={slot} slots={slots} ratio={TOOL_THUMB_RATIO} sizes={sizes}
+      <SlotMedia slot={slot} slots={slots} ratio={thumbRatio(video)} sizes={sizes} whole
         className="rounded-xl" fallback={floor} />
       {isVideo && <PlayMark />}
     </span>
@@ -114,13 +122,15 @@ export function GalleryArt({ slot, slots, motif, sizes }: {
 }
 
 /**
- * A shipped example.
+ * A shipped example, in the card's own frame and shown whole: the file is
+ * contained, and a blurred copy of the same file (same `src` and `sizes`, so
+ * the same optimised URL — one download) fills whatever the frame has left.
  *
  * `sizes` is mandatory: these are 150–300px tiles and the source files are
  * 340px wide, so without it Next would serve a far larger variant to a phone.
  */
-function Photo({ src, dimmed, sizes, priority }: {
-  src: string; dimmed: boolean; sizes: string; priority: boolean;
+function Photo({ src, vertical, dimmed, sizes, priority }: {
+  src: string; vertical: boolean; dimmed: boolean; sizes: string; priority: boolean;
 }) {
   return (
     <span
@@ -129,17 +139,27 @@ function Photo({ src, dimmed, sizes, priority }: {
         "relative block w-full overflow-hidden rounded-xl bg-sunken ring-1 ring-inset ring-[rgb(var(--glass-border)/0.14)]",
         dimmed && "opacity-55 saturate-50",
       )}
-      style={{ aspectRatio: TOOL_THUMB_RATIO }}
+      style={{ aspectRatio: thumbRatio(vertical) }}
     >
-      <Image
-        src={src}
-        alt=""
-        fill
-        sizes={sizes}
-        priority={priority}
-        loading={priority ? undefined : "lazy"}
-        className="object-cover"
-      />
+      <WholeImage src={src} sizes={sizes} priority={priority} />
     </span>
+  );
+}
+
+/**
+ * A next/image shown WHOLE inside a frame that owns its ratio: contained over
+ * a blurred copy of itself. Shared by the shipped examples on the cards and in
+ * the GrovShot banner.
+ */
+export function WholeImage({ src, sizes, priority = false }: { src: string; sizes: string; priority?: boolean }) {
+  // Only the picture itself is preloaded; the backdrop asks for the same URL
+  // and is served from that one download.
+  return (
+    <>
+      <Image src={src} alt="" fill sizes={sizes} loading="lazy" aria-hidden
+        className="pointer-events-none scale-110 object-cover opacity-60 blur-xl" />
+      <Image src={src} alt="" fill sizes={sizes} priority={priority} loading={priority ? undefined : "lazy"}
+        className="object-contain" />
+    </>
   );
 }

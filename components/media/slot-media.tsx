@@ -23,10 +23,17 @@ import { SlotVideo } from "./slot-video";
  * NO LAYOUT SHIFT. The frame owns the aspect ratio before anything loads, the
  * same rule components/mobile/media.tsx already follows, so a card never grows
  * when its picture arrives.
+ *
+ * `whole` — THE WHOLE ASSET, ALWAYS (the thumbnails on Start and /tools). The
+ * picture is contained, never cropped or stretched, whatever fit the slot was
+ * saved with; where its shape differs from the frame's, the rest of the frame
+ * is a blurred copy of the same picture (the same file, so no second download)
+ * rather than an empty band. A picture of the frame's own shape fills it
+ * edge to edge. Without `whole` nothing changes for any other surface.
  */
 
 export function SlotMedia({
-  slot, slots, ratio, className, priority = false, sizes = "100vw", fallback,
+  slot, slots, ratio, className, priority = false, sizes = "100vw", fallback, whole = false,
 }: {
   /** The slot key, e.g. "dashboard.category.moda.card". */
   slot: string;
@@ -41,6 +48,8 @@ export function SlotMedia({
   /** What to render when the slot is empty — the art this surface drew
    *  before, passed by the caller so this component never has to know it. */
   fallback: React.ReactNode;
+  /** Show the whole asset: contained, over a blurred copy of itself. */
+  whole?: boolean;
 }) {
   const config = slots.get(slot);
   if (!config) return <>{fallback}</>;
@@ -50,7 +59,11 @@ export function SlotMedia({
 
   if (config.mediaType === "video") {
     return (
-      <span className={frame} style={style} data-slot={slot} data-slot-kind="video">
+      <span className={whole ? `${frame} bg-sunken` : frame} style={style} data-slot={slot} data-slot-kind="video">
+        {whole && config.poster && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={config.poster} alt="" aria-hidden loading="lazy" decoding="async" className={BACKDROP} />
+        )}
         <SlotVideo
           desktop={config.desktop}
           mobile={config.mobile}
@@ -60,26 +73,38 @@ export function SlotMedia({
           muted={config.muted}
           loop={config.loop}
           controls={config.controls}
-          fit={config.fit}
-          position={config.position}
+          fit={whole ? "contain" : config.fit}
+          position={whole ? "center" : config.position}
           label={config.alt}
         />
       </span>
     );
   }
 
+  // Narrowest first: the browser takes the first source whose media query
+  // matches, so a mobile override must be offered before the tablet one.
+  const picture = (img: React.ReactNode) => (
+    <picture>
+      {config.mobile && <source media="(max-width: 639px)" srcSet={config.mobile} />}
+      {config.tablet && <source media="(max-width: 1023px)" srcSet={config.tablet} />}
+      {img}
+    </picture>
+  );
+  const srcSet = srcSetOf(config);
+  const sources = { src: config.desktop, ...(srcSet ? { srcSet, sizes } : {}) };
+
   return (
     <span className={frame} style={style} data-slot={slot} data-slot-kind="image">
-      <picture>
-        {/* Narrowest first: the browser takes the first source whose media
-            query matches, so a mobile override must be offered before the
-            tablet one. */}
-        {config.mobile && <source media="(max-width: 639px)" srcSet={config.mobile} />}
-        {config.tablet && <source media="(max-width: 1023px)" srcSet={config.tablet} />}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
+      {/* The backdrop: the same <picture>, so the browser picks the same file. */}
+      {whole && picture(
+        // eslint-disable-next-line @next/next/no-img-element
+        <img {...sources} alt="" aria-hidden loading={priority ? "eager" : "lazy"} decoding="async"
+          className={BACKDROP} />,
+      )}
+      {picture(
+        // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={config.desktop}
-          {...(srcSetOf(config) ? { srcSet: srcSetOf(config)!, sizes } : {})}
+          {...sources}
           {...(config.desktopWidth && config.desktopHeight
             ? { width: config.desktopWidth, height: config.desktopHeight }
             : {})}
@@ -88,12 +113,19 @@ export function SlotMedia({
           fetchPriority={priority ? "high" : "auto"}
           decoding={priority ? "sync" : "async"}
           className="absolute inset-0 h-full w-full"
-          style={{ objectFit: config.fit, objectPosition: config.position }}
-        />
-      </picture>
+          style={whole
+            ? { objectFit: "contain", objectPosition: "center" }
+            : { objectFit: config.fit, objectPosition: config.position }}
+        />,
+      )}
     </span>
   );
 }
+
+/** The blurred copy behind a contained picture: covers the frame, scaled a
+ *  little so the blur has no soft transparent edge, dimmed so the picture on
+ *  top stays the subject. */
+const BACKDROP = "pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-60 blur-xl";
 
 /** `url 640w, url 1280w, …` from the derivatives the media table recorded.
  *  Null when there are none, so no srcset attribute is printed rather than

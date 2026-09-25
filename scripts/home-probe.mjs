@@ -4,8 +4,8 @@
  * `npm run test:home` proves the lists, the routes, the slots and the wiring.
  * This proves what only a browser can: that no width scrolls sideways, that
  * the rail and the chips are carousels on a phone and grids above it, that a
- * desktop row really is one row, that the seven Reklamy tiles are equal 5:4
- * tiles in their rows, that nothing shifts once it has painted, that a
+ * desktop row really is one row, that the seven Reklamy tiles are equal
+ * photo tiles in their rows, that nothing shifts once it has painted, that a
  * visitor's press opens the existing sign-in dialog instead of navigating, and
  * that in the signed-in shell the bottom navigation neither covers the page
  * nor lights up twice.

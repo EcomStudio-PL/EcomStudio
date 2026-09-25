@@ -1,6 +1,7 @@
 import type { HomeModel } from "@/lib/home-sections";
 import { HOME_ROUTES } from "@/lib/home-sections";
 import { HOME_GALLERY, HOME_SLOT } from "@/lib/media-slots";
+import { majorityVideo } from "@/lib/tool-cards";
 import type { LiveBanner, SlotMap } from "@/lib/server/media-slots";
 import { DashboardBanner } from "@/components/dashboard/banner";
 import { RailTile, EffectCard, SectionHead, TryPill, Badge } from "./product-cards";
@@ -76,7 +77,7 @@ export function ProductHome({ signedIn, model, slots, t, banners = [], locale = 
           <div className="rail-x-sm sm:grid sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
             {rail.map((c, i) => (
               <RailTile key={c.key} card={c} signedIn={signedIn} slots={slots} t={t}
-                priority={banners.length === 0 && i < 2} />
+                priority={banners.length === 0 && i < 2} vertical={majorityVideo(rail.map((r) => r.video))} />
             ))}
           </div>
         </section>
@@ -93,6 +94,7 @@ export function ProductHome({ signedIn, model, slots, t, banners = [], locale = 
           <div className="rail-x-sm sm:grid sm:grid-cols-4 sm:gap-2.5 lg:grid-cols-8">
             {effects.map((c) => (
               <EffectCard key={c.key} card={c} signedIn={signedIn} slots={slots} t={t}
+                vertical={majorityVideo(effects.map((e) => e.video))}
                 sizes="(max-width: 639px) 46vw, (max-width: 1023px) 24vw, 12vw" />
             ))}
           </div>
@@ -134,6 +136,7 @@ export function ProductHome({ signedIn, model, slots, t, banners = [], locale = 
           <div className="rail-x-sm sm:grid sm:grid-cols-3 sm:gap-2.5 lg:grid-cols-6">
             {video.map((c) => (
               <EffectCard key={c.key} card={c} signedIn={signedIn} slots={slots} t={t}
+                vertical={majorityVideo(video.map((v) => v.video))}
                 sizes="(max-width: 639px) 46vw, (max-width: 1023px) 32vw, 16vw" />
             ))}
           </div>

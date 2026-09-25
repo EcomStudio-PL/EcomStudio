@@ -52,18 +52,21 @@ function Card({ card, signedIn, t, className, children }: {
 }
 
 /**
- * THE TOP RAIL TILE — the tool's 5:4 picture with the name under it in small caps.
+ * THE TOP RAIL TILE — the tool's picture (the row's frame: 2336×1744, or 9:16
+ * in a row of video tools) with the name under it in small caps.
  * On a phone the rail is a carousel (`rail-x-sm`), so the tile has a width of
  * its own there; from `sm` up it is a grid cell.
  */
-export function RailTile({ card, signedIn, slots, t, priority }: {
+export function RailTile({ card, signedIn, slots, t, priority, vertical = false }: {
   card: HomeCard; signedIn: boolean; slots: SlotMap; t: T; priority?: boolean;
+  /** The row's frame is 9:16 (a row of video tools). */
+  vertical?: boolean;
 }) {
   return (
     <Card card={card} signedIn={signedIn} t={t} className="w-[56vw] max-w-[16rem] sm:w-auto sm:max-w-none">
       <span className="relative block rounded-xl transition-shadow duration-200 group-hover:shadow-[0_10px_28px_-14px_rgb(var(--accent)/0.55)]">
         <CardArt art={card.art} icon={card.icon} slot={card.slot} slots={slots}
-          dimmed={card.badge !== null} priority={priority} video={card.video}
+          dimmed={card.badge !== null} priority={priority} video={card.video} vertical={vertical}
           sizes="(max-width: 639px) 56vw, (max-width: 1023px) 32vw, 17vw" />
       </span>
       <span className="mt-2 flex min-w-0 items-center gap-1.5">
@@ -77,18 +80,20 @@ export function RailTile({ card, signedIn, slots, t, priority }: {
 }
 
 /**
- * THE EFFECT CARD — the tool's 5:4 picture and a name. The one-liner lives in
- * the title attribute: at this density a second line of prose turns a
- * catalogue into a document.
+ * THE EFFECT CARD — the tool's picture (the row's frame: 2336×1744, or 9:16 in
+ * a row of video tools) and a name. The one-liner lives in the title attribute: at this density a
+ * second line of prose turns a catalogue into a document.
  */
-export function EffectCard({ card, signedIn, slots, t, sizes }: {
+export function EffectCard({ card, signedIn, slots, t, sizes, vertical = false }: {
   card: HomeCard; signedIn: boolean; slots: SlotMap; t: T; sizes: string;
+  /** The row's frame is 9:16 (a row of video tools). */
+  vertical?: boolean;
 }) {
   // The slide width in the phone carousel; from `sm` up the grid decides.
   return (
     <Card card={card} signedIn={signedIn} t={t} className="w-[46vw] max-w-[13rem] sm:w-auto sm:max-w-none">
       <CardArt art={card.art} icon={card.icon} slot={card.slot} slots={slots}
-        dimmed={card.badge !== null} video={card.video} sizes={sizes} />
+        dimmed={card.badge !== null} video={card.video} vertical={vertical} sizes={sizes} />
       <span className="mt-2 flex min-w-0 items-center gap-1.5 px-0.5">
         <span className="truncate text-[12px] font-semibold leading-tight text-ink">{t(card.titleKey)}</span>
         {card.badge && <Badge kind={card.badge} t={t} />}

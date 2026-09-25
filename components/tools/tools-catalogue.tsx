@@ -2,10 +2,11 @@ import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { ArrowRight, Lightbulb, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { TOOL_THUMB_RATIO, ToolThumb, type ToolMotif } from "@/components/tools/tool-thumb";
+import { ToolThumb, thumbRatio, type ToolMotif } from "@/components/tools/tool-thumb";
 import { SlotMedia } from "@/components/media/slot-media";
 import type { SlotMap } from "@/lib/server/media-slots";
 import { menuBadge, type AvailabilityMap, type MenuGate } from "@/lib/features";
+import { isVideoCard, majorityVideo } from "@/lib/tool-cards";
 import { cn } from "@/lib/utils";
 
 /**
@@ -88,7 +89,8 @@ export function ToolsCatalogue({ sections, avail, isAdmin, t, slots }: {
             )}
             <div className="stagger grid grid-cols-2 gap-2.5 [&>*]:min-w-0 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
               {s.cards.map((c) => (
-                <ToolCard key={c.key} card={c} avail={avail} isAdmin={isAdmin} t={t} slots={slots} />
+                <ToolCard key={c.key} card={c} avail={avail} isAdmin={isAdmin} t={t} slots={slots}
+                  vertical={majorityVideo(s.cards.map((x) => isVideoCard(x.key)))} />
               ))}
             </div>
           </section>
@@ -148,9 +150,11 @@ function SectionHead({ icon: Icon, title, seeAll, t, active }: {
  * One catalogue card: the preview, then the name, then one line about it.
  * Compact on purpose — six fit a desktop row, two a phone.
  */
-function ToolCard({ card, avail, isAdmin, t, slots }: {
+function ToolCard({ card, avail, isAdmin, t, slots, vertical }: {
   card: CatalogueCard; avail: AvailabilityMap; isAdmin: boolean; t: T;
   slots?: SlotMap;
+  /** The section's frame is 9:16 (a section of video tools, see majorityVideo). */
+  vertical: boolean;
 }) {
   // Three things can close a card: the module switchboard, the tool catalogue
   // (no provider / maintenance), or the module having no backend at all.
@@ -182,13 +186,16 @@ function ToolCard({ card, avail, isAdmin, t, slots }: {
         {/* The drawn motif is the DEFAULT, not a placeholder: it states the
             operation, which a stock photo cannot. A picture appears here only
             where an admin deliberately put one. */}
+        {/* The section's frame — 2336×1744, or 9:16 in a section of video
+            tools — the picture shown whole (never cropped), the motif in the
+            same frame. */}
         {slots && card.slotKey ? (
-          <SlotMedia slot={card.slotKey} slots={slots} ratio={TOOL_THUMB_RATIO}
+          <SlotMedia slot={card.slotKey} slots={slots} ratio={thumbRatio(vertical)} whole
             className="rounded-xl"
             sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 16vw"
-            fallback={<ToolThumb motif={card.motif} icon={card.icon} dimmed={blocked} />} />
+            fallback={<ToolThumb motif={card.motif} icon={card.icon} dimmed={blocked} video={vertical} />} />
         ) : (
-          <ToolThumb motif={card.motif} icon={card.icon} dimmed={blocked} />
+          <ToolThumb motif={card.motif} icon={card.icon} dimmed={blocked} video={vertical} />
         )}
         {badge && <span className="absolute right-1.5 top-1.5">{badge}</span>}
       </span>

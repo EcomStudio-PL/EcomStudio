@@ -147,8 +147,10 @@ const homeSlots = MEDIA_SLOTS.filter((s) => s.entityType === "section" && s.enti
 const g = HOME_GALLERY;
 check("the Home declares exactly its banner art and every gallery tile",
   homeSlots.length === 2 + g.packshotSquares + g.packshotWide + g.ugcClips + g.adsTall + g.adsWide, `${homeSlots.length}`);
-check("every gallery tile's admin frame is 5:4 (only the two banner backgrounds are wide)",
-  homeSlots.filter((s) => s.key !== HOME_SLOT.grovshotArt && s.key !== HOME_SLOT.ugcArt).every((s) => s.ratio === "5/4")
+check("gallery admin frames: packshots and adverts 2336×1744, UGC clips 9:16, banner grounds 3/1",
+  Array.from({ length: g.packshotSquares + g.packshotWide }, (_, i) => slotDef(HOME_SLOT.packshot(i + 1))?.ratio).every((r) => r === "2336/1744")
+  && Array.from({ length: g.adsTall + g.adsWide }, (_, i) => slotDef(HOME_SLOT.ad(i + 1))?.ratio).every((r) => r === "2336/1744")
+  && Array.from({ length: g.ugcClips }, (_, i) => slotDef(HOME_SLOT.ugc(i + 1))?.ratio).every((r) => r === "9/16")
   && slotDef(HOME_SLOT.grovshotArt)?.ratio === "3/1" && slotDef(HOME_SLOT.ugcArt)?.ratio === "3/1");
 check("every gallery tile takes a clip as well as a picture", homeSlots.every((s) => s.video));
 check("each numbered tile is named with its number in the admin",

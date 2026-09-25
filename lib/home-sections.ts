@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { CATEGORIES, categoryGates, categoryPath, type Category } from "./categories";
-import { HUB_CARDS, motifForCategory, type HubCardDef } from "./tool-cards";
+import { HUB_CARDS, isVideoCard, motifForCategory, type HubCardDef } from "./tool-cards";
 import {
   menuBadge, menuVisible, routeReachable, allDefaults, featureForHref,
   type AvailabilityMap, type MenuBadge,
@@ -69,7 +69,7 @@ export type HomeCard = {
   /** null = open. Anything else is drawn as a pill and makes the card inert:
    *  a visitor may look at it and may not open it. */
   badge: MenuBadge;
-  /** A video tool — the tile carries the play mark. */
+  /** A video tool — the tile carries the play mark and a vertical 9:16 frame. */
   video: boolean;
 };
 
@@ -167,7 +167,7 @@ function hubCard(c: HubCardDef, avail: AvailabilityMap, isAdmin: boolean, layout
     art: art(c.key, c.motif, badge),
     slot: c.workflow ? workflowSlotKey(c.workflow.category, c.workflow.key) : toolSlotKey(c.key),
     badge,
-    video: c.key.startsWith("video_"),
+    video: isVideoCard(c.key),
   };
 }
 
