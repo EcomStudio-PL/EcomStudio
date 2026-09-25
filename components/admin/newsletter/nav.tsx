@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  BarChart3, Boxes, ChevronDown, LayoutDashboard, Layers, Send, Sparkles,
+  BarChart3, Boxes, ChevronDown, LayoutDashboard, Layers, Newspaper, Send, Sparkles,
   Users, Workflow, UserX,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
@@ -43,6 +43,9 @@ const TABS: readonly Tab[] = [
   { href: "/admin/newsletter/ai", key: "ai", icon: Sparkles },
   { href: "/admin/newsletter/analityka", key: "analytics", icon: BarChart3, primary: true },
   { href: "/admin/newsletter/wypisani", key: "suppressions", icon: UserX },
+  // GrovNews — its own module (posts, categories, subscribers) living under
+  // the newsletter; behind "Więcej" on a phone like the other secondary tabs.
+  { href: "/admin/newsletter/grovnews", key: "grovnews", icon: Newspaper },
 ];
 
 const isOn = (pathname: string, href: string, exact?: boolean) =>

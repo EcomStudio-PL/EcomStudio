@@ -7,7 +7,7 @@ import { cachedPass, rememberPass, sha256Hex, stepUpAppliesTo } from "@/lib/serv
 // visitor would see it. It is not under /admin because it must carry NO admin
 // chrome — the builder loads it in an iframe to judge a real layout — so it
 // needs its own entry here, and the route checks the admin role itself.
-const PROTECTED_PREFIXES = ["/home","/dashboard","/generator","/library","/prompts","/history","/credits","/plan","/settings","/admin","/podglad","/tools","/inspirations","/support","/k","/retusz","/wideo"];
+const PROTECTED_PREFIXES = ["/home","/dashboard","/generator","/library","/prompts","/history","/credits","/plan","/settings","/admin","/podglad","/tools","/inspirations","/support","/k","/retusz","/wideo","/grovnews"];
 const AUTH_PAGES = ["/login", "/register", "/forgot-password"];
 
 /**

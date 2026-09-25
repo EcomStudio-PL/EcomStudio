@@ -1882,6 +1882,160 @@ export type Database = {
         }
         Relationships: []
       }
+      grovnews_categories: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          slug: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          slug: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          slug?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      grovnews_entitlements: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          granted_by: string | null
+          id: string
+          internal_note: string | null
+          source: string
+          starts_at: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          granted_by?: string | null
+          id?: string
+          internal_note?: string | null
+          source?: string
+          starts_at?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          granted_by?: string | null
+          id?: string
+          internal_note?: string | null
+          source?: string
+          starts_at?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grovnews_entitlements_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grovnews_posts: {
+        Row: {
+          category_id: string | null
+          content: string
+          cover_url: string | null
+          created_at: string
+          created_by: string | null
+          email_summary: string | null
+          estimated_read_minutes: number
+          excerpt: string
+          id: string
+          language: string
+          metadata: Json
+          published_at: string | null
+          seo_description: string | null
+          seo_title: string | null
+          slug: string
+          sources: Json
+          status: string
+          tags: string[]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category_id?: string | null
+          content?: string
+          cover_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          email_summary?: string | null
+          estimated_read_minutes?: number
+          excerpt?: string
+          id?: string
+          language?: string
+          metadata?: Json
+          published_at?: string | null
+          seo_description?: string | null
+          seo_title?: string | null
+          slug: string
+          sources?: Json
+          status?: string
+          tags?: string[]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category_id?: string | null
+          content?: string
+          cover_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          email_summary?: string | null
+          estimated_read_minutes?: number
+          excerpt?: string
+          id?: string
+          language?: string
+          metadata?: Json
+          published_at?: string | null
+          seo_description?: string | null
+          seo_title?: string | null
+          slug?: string
+          sources?: Json
+          status?: string
+          tags?: string[]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grovnews_posts_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "grovnews_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_settings: {
         Row: {
           config: Json
@@ -5258,6 +5412,7 @@ export type Database = {
         }[]
       }
       get_welcome_credits: { Args: never; Returns: number }
+      grovnews_has_access: { Args: never; Returns: boolean }
       is_admin: { Args: { uid?: string }; Returns: boolean }
       is_workspace_manager: {
         Args: { uid?: string; ws_id: string }

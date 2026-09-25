@@ -62,7 +62,7 @@ export const NAV_REGISTRY: readonly string[] = Array.from(new Set([
   // A category's row links to a section of /tools, but it is the current row
   // on the screens of its workflows — so its PATH is what is registered.
   ...CATEGORIES.map((c) => categoryPath(c)),
-  "/retusz", "/home", "/library", "/settings", "/support", "/inspirations", "/wideo",
+  "/retusz", "/home", "/library", "/settings", "/support", "/inspirations", "/wideo", "/grovnews",
 ].map(navPath)));
 
 /**

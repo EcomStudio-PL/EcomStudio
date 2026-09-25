@@ -41,6 +41,8 @@ console.log("\nA. REGISTRY — every real module is covered, the untouchable one
     "prompts", "generator",
     "retouch", "editor", "resize", "compress", "tools", "tool_upscale", "tool_expand", "tool_watermark",
     "video", "inspirations", "credits", "support",
+    // GrovNews — its own drawer row, so the switchboard owns it too.
+    "grovnews",
   ];
   check(`all ${mustHave.length} real user-facing modules have a key`,
     mustHave.every((k) => (FEATURE_KEYS as readonly string[]).includes(k)),

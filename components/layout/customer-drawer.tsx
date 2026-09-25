@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
-  ArrowUpRight, ChevronLeft, ChevronRight, Images, LifeBuoy, LogOut, Plus, Settings, Shield,
+  ArrowUpRight, ChevronLeft, ChevronRight, Images, LifeBuoy, LogOut, Newspaper, Plus, Settings, Shield,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import {
@@ -37,8 +37,11 @@ import { cn } from "@/lib/utils";
  * phrased, and the card itself never changes colour — nearly out of credits is
  * not an error state.
  *
- * FOUR ROWS AND NOTHING ELSE. Under the wallet: Biblioteka, Pomoc, Ustawienia
- * and — for staff only — Panel admina, each its own directly pressable tile.
+ * DIRECT ROWS AND NOTHING ELSE. Under the wallet: Biblioteka, GrovNews, Pomoc,
+ * Ustawienia and — for staff only — Panel admina, each its own directly
+ * pressable tile. GrovNews is listed for everyone the switchboard shows it
+ * to; whether its content opens is the module's own server-side entitlement
+ * check, never this menu.
  * The menu used to fold these into a "GŁÓWNE" group and carry three more
  * groups (OBRAZY, NARZĘDZIA, WIDEO); the tools, categories and video live on
  * the Narzędzia tab, the bottom bar and the search, so the drawer no longer
@@ -186,10 +189,13 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
         </div>
       </div>
 
-      {/* ── FOUR DIRECT ROWS ─────────────────────────────────────────────── */}
+      {/* ── DIRECT ROWS ──────────────────────────────────────────────────── */}
       <div className="mt-3 space-y-1">
         {show("/library") && (
           <Tile href="/library" label={t("topnav.library")} icon={Images} onNavigate={closeNav} badge={badge("/library")} />
+        )}
+        {show("/grovnews") && (
+          <Tile href="/grovnews" label={t("grovnews.title")} icon={Newspaper} onNavigate={closeNav} badge={badge("/grovnews")} />
         )}
         <Tile href="/support" label={t("nav.help")} icon={LifeBuoy} onNavigate={closeNav} />
         <Tile href="/settings" label={t("nav.settings")} icon={Settings} onNavigate={closeNav} />

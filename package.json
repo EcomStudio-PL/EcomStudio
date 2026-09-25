@@ -51,6 +51,7 @@
     "test:searchmobile": "node scripts/search-mobile-probe.mjs",
     "test:chrome": "node scripts/chrome-probe.mjs",
     "test:credits": "esbuild scripts/credit-usage-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/credit-usage-tests.cjs --log-level=silent && node .next/credit-usage-tests.cjs",
+    "test:grovnews": "esbuild scripts/grovnews-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/grovnews-tests.cjs --log-level=silent && node .next/grovnews-tests.cjs",
     "test:nav": "esbuild scripts/nav-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/nav-tests.cjs --log-level=silent && node .next/nav-tests.cjs",
     "test:home": "esbuild scripts/home-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/home-tests.cjs --log-level=silent && node .next/home-tests.cjs",
     "test:homeprobe": "node scripts/home-probe.mjs",

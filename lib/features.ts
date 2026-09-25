@@ -59,6 +59,9 @@ export const FEATURE_KEYS = [
   "inspirations",
   "credits",
   "support",
+  // GrovNews — the premium newsletter module. Availability here; WHO may read
+  // it is a separate question (an entitlement, see lib/grovnews.ts).
+  "grovnews",
 ] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
@@ -169,6 +172,12 @@ export const FEATURE_REGISTRY: readonly FeatureDescriptor[] = [
   { key: "inspirations", nameKey: "nav.inspirations", path: "/inspirations", group: "account" },
   { key: "credits", nameKey: "nav.credits", path: "/credits", group: "account" },
   { key: "support", nameKey: "nav.help", path: "/support", group: "account" },
+  // GROVNEWS. The switch decides whether the module exists for customers;
+  // reading it additionally takes an active GrovNews entitlement, checked on
+  // the server and in RLS (migration 0119). Group "account" keeps it out of the
+  // tool search, the tool ranking and the public tool list, which are about
+  // tools; the mobile drawer lists it on its own row.
+  { key: "grovnews", nameKey: "grovnews.title", path: "/grovnews", group: "account" },
 ] as const;
 
 export function isFeatureKey(value: string): value is FeatureKey {

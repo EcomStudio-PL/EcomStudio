@@ -55,7 +55,7 @@ const EDIT_ROWS = IMAGE_EDIT.filter((e) => !e.soon).map((e) => e.href);
 /** The generator entry of the header panel — never a row of the tool column. */
 const CREATE_ROWS = IMAGE_MODES.map((e) => e.href).filter((h) => !EDIT_ROWS.includes(h));
 
-const DRAWER_ROWS: readonly string[] = ["/library", "/support", "/settings", "/admin"];
+const DRAWER_ROWS: readonly string[] = ["/library", "/grovnews", "/support", "/settings", "/admin"];
 /** The header panel's TWÓRZ column: each category, matched on its path. */
 const CAT_ROWS: readonly string[] = CATEGORIES.map(categoryPath);
 /** Groups whose rows must never light twice: the drawer and the header column. */
@@ -151,7 +151,7 @@ check("…and TWORZENIE still has the generator", CREATE_ROWS.includes("/prompts
 
 /* ── C. the drawer is four direct rows ───────────────────────────────────── */
 
-section("C. THE DRAWER: FOUR DIRECT ROWS, NO GROUPS");
+section("C. THE DRAWER: DIRECT ROWS, NO GROUPS");
 
 const DRAWER_SRC = fs.readFileSync("components/layout/customer-drawer.tsx", "utf8");
 /* Code only: the comments explain what used to be here. */
@@ -163,14 +163,16 @@ check("no GŁÓWNE / OBRAZY / NARZĘDZIA / WIDEO heading",
   !/nav\.groups\.main|topnav\.image|nav\.groups\.tools|topnav\.video/.test(DRAWER_CODE));
 check("no category, tool or video rows in the drawer",
   !/CATEGORIES|categoryHref|editEntriesFor|toolEntries|"\/wideo"|"\/home"/.test(DRAWER_CODE));
-const order = ['href="/library"', 'href="/support"', 'href="/settings"', 'href="/admin"'].map((h) => DRAWER_CODE.indexOf(h));
-check("Biblioteka → Pomoc → Ustawienia → Panel admina, in that order",
+const order = ['href="/library"', 'href="/grovnews"', 'href="/support"', 'href="/settings"', 'href="/admin"'].map((h) => DRAWER_CODE.indexOf(h));
+check("Biblioteka → GrovNews → Pomoc → Ustawienia → Panel admina, in that order",
   order.every((i) => i > 0) && order.every((i, k) => k === 0 || i > order[k - 1]!), order.join(","));
 check("no „Pulpit” row", !/nav\.pulpit/.test(DRAWER_CODE));
 check("„Panel admina” is shown only for the real admin role",
   /\{isAdmin && \(\s*<Tile href="\/admin"/.test(DRAWER_CODE));
 check("„Biblioteka” keeps its availability gate and badge",
   /show\("\/library"\) && \(\s*<Tile href="\/library"[^>]*badge=\{badge\("\/library"\)\}/.test(DRAWER_CODE));
+check("„GrovNews” is gated by the switchboard and carries its badge (access itself is the page's server check)",
+  /show\("\/grovnews"\) && \(\s*<Tile href="\/grovnews"[^>]*badge=\{badge\("\/grovnews"\)\}/.test(DRAWER_CODE));
 check("the wallet card keeps „Ulepsz plan” (/plan) and „Doładuj kredyty” (/credits)",
   /href="\/plan"/.test(DRAWER_CODE) && /href="\/credits"/.test(DRAWER_CODE));
 check("the account card still links to the profile (/settings) and the back arrow closes",
@@ -183,7 +185,7 @@ check("the footer is unchanged: sign-out, language, theme — in that order",
     return a > 0 && a < b && b < c && /footer=\{/.test(DRAWER_CODE);
   })());
 check("every row closes the drawer as it navigates",
-  (DRAWER_CODE.match(/<Tile [^>]*onNavigate=\{closeNav\}/g) ?? []).length === 4);
+  (DRAWER_CODE.match(/<Tile [^>]*onNavigate=\{closeNav\}/g) ?? []).length === 5);
 
 // `sectionOwnsRoute` itself stays correct for anything that may use it:
 // it must never claim a group that does not hold the lit row.

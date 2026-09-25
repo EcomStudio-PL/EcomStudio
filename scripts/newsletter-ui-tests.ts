@@ -202,7 +202,7 @@ const navHrefs = [...navSource.matchAll(/href[:=]\s*"(\/[^"]*)"/g)].map((m) => m
 
 check("the sub-nav declares its destinations as literals", navHrefs.length > 0,
   "no href: \"…\" found — the extraction below would pass by finding nothing");
-check("nine tabs, the nine screens the brief asked for", navHrefs.length === 9,
+check("ten tabs: the nine newsletter screens plus GrovNews", navHrefs.length === 10 && navHrefs.includes("/admin/newsletter/grovnews"),
   String(navHrefs.length));
 check("no tab is declared twice", new Set(navHrefs).size === navHrefs.length, navHrefs.join(" "));
 
