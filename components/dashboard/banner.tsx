@@ -17,10 +17,13 @@ import { SlotMedia } from "@/components/media/slot-media";
  * same crop controls and the same responsive overrides — a banner is not a
  * second media system with its own uploader.
  */
-export function DashboardBanner({ banners, slots, locale }: {
+export function DashboardBanner({ banners, slots, locale, priority = false }: {
   banners: LiveBanner[];
   slots: SlotMap;
   locale: string;
+  /** The banner leads the page (the Home's Start): its picture is the first
+   *  thing painted, so it is fetched eagerly rather than lazily. */
+  priority?: boolean;
 }) {
   if (banners.length === 0) return null;
   // One at a time. A stack of promos is an advert break, not a dashboard.
@@ -36,7 +39,7 @@ export function DashboardBanner({ banners, slots, locale }: {
 
   const inner = (
     <>
-      <SlotMedia slot={slotKey} slots={slots} ratio="3/1" sizes="100vw"
+      <SlotMedia slot={slotKey} slots={slots} ratio="3/1" sizes="100vw" priority={priority}
         className="rounded-xl" fallback={null} />
       {(label || body || cta) && (
         <div className="flex flex-col gap-1 p-4 sm:flex-row sm:items-center sm:gap-4 sm:p-5">

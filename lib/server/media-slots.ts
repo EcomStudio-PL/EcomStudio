@@ -192,19 +192,31 @@ export type LiveBanner = {
 };
 
 /**
- * The banners live on one surface right now. Read with the CALLER'S client so
- * the `active` + date-window policy decides — an expired campaign is not
- * something the application should have to remember to filter.
+ * The LIVE banners of one placement. Read with the CALLER'S client, so the
+ * `active` + date-window policy (app_banners_read_live) decides for a customer
+ * and a visitor never gets a row at all.
+ *
+ * AND THE SAME RULE IS APPLIED HERE, because RLS alone does not give an ADMIN
+ * that answer: `app_banners_admin` (FOR ALL, is_admin()) is OR-ed with the
+ * live policy, so an admin's read returned drafts, scheduled and expired rows
+ * too — and the first of them (often the seeded, empty, inactive
+ * `dashboard.promo`) won the one banner slot, so the admin saw a campaign no
+ * customer saw, or none while customers saw one. Filtering to exactly the
+ * policy's predicate makes every viewer get what a customer gets.
  */
 export async function loadBanners(supabase: Client, placement: string): Promise<LiveBanner[]> {
   const { data } = await supabase.from("app_banners")
-    .select("banner_key, placement, label, body, cta_label, cta_url, sort_order")
+    .select("banner_key, placement, label, body, cta_label, cta_url, sort_order, active, starts_at, ends_at")
     .eq("placement", placement)
-    .order("sort_order")
-    .limit(3);
+    .eq("active", true)
+    .order("sort_order");
+  const now = Date.now();
+  const live = (data ?? []).filter((b) =>
+    (!b.starts_at || Date.parse(b.starts_at) <= now) && (!b.ends_at || Date.parse(b.ends_at) > now))
+    .slice(0, 3);
   const localized = (v: unknown): Record<string, string> =>
     v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, string>) : {};
-  return (data ?? []).map((b) => ({
+  return live.map((b) => ({
     key: b.banner_key,
     placement: b.placement,
     label: localized(b.label),

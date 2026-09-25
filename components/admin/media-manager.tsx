@@ -405,7 +405,7 @@ export function MediaManager({ assets, usage, library }: {
                     return (
                       <li key={`${u.kind}:${u.key}:${u.label}`} className="text-[12.5px]">
                         <span className="text-faint">{t(`media.usage.${u.kind}`)} · </span>
-                        {def ? t(def.labelKey) : u.key}
+                        {def ? t(def.labelKey, def.labelVars) : u.key}
                         <span className="text-faint"> · {u.label}</span>
                       </li>
                     );

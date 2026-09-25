@@ -140,7 +140,7 @@ export function SlotEditor({ def, row, library, entityName }: {
       {/* ── WHAT THIS IS ────────────────────────────────────────────────── */}
       <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <h4 className="text-[13.5px] font-semibold">{t(def.labelKey)}</h4>
+          <h4 className="text-[13.5px] font-semibold">{t(def.labelKey, def.labelVars)}</h4>
           <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">
             {main
               ? t("media.slotFilledHint")
@@ -210,7 +210,7 @@ export function SlotEditor({ def, row, library, entityName }: {
               )}
             </div>
             <p className="mt-1.5 truncate text-[11.5px] font-semibold">{entityName}</p>
-            <p className="truncate text-[10.5px] text-muted">{t(def.labelKey)}</p>
+            <p className="truncate text-[10.5px] text-muted">{t(def.labelKey, def.labelVars)}</p>
           </div>
 
           {/* Which file the previewed device is actually being served. Without

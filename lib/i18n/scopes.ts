@@ -71,7 +71,6 @@ const app = [
   "greet",
   "gtb",
   "history",
-  "home",
   "home2",
   "hub",
   "insp",

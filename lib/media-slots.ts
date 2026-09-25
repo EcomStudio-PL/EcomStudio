@@ -51,6 +51,10 @@ export type SlotDef = {
   slotName: string;
   /** i18n key of the human name shown in the admin. */
   labelKey: string;
+  /** Values for the label's placeholders — the tile number in a gallery, so
+   *  twelve slots of one gallery read as twelve places rather than one name
+   *  repeated. Absent for every slot that is the only one of its kind. */
+  labelVars?: Record<string, string | number>;
   /** The aspect ratio the surface actually paints it at. */
   ratio: SlotRatio;
   /** Whether a video makes sense here. A 96px avatar does not want one. */
@@ -63,7 +67,11 @@ export type SlotDef = {
 const slot = (
   key: string, entityType: SlotEntity, entityId: string, slotName: string,
   labelKey: string, ratio: SlotRatio, video: boolean, fallbackKey: string,
-): SlotDef => ({ key, entityType, entityId, slotName, labelKey, ratio, video, fallbackKey });
+  labelVars?: Record<string, string | number>,
+): SlotDef => ({
+  key, entityType, entityId, slotName, labelKey, ratio, video, fallbackKey,
+  ...(labelVars ? { labelVars } : {}),
+});
 
 /* ── CATEGORIES ──────────────────────────────────────────────────────────
  *
@@ -79,9 +87,10 @@ const slot = (
  * used to be the dashboard's category tile and the hero the header of the
  * category's own page (/k/<key>). Both surfaces were retired when the
  * categories became sections of /tools: the dashboard lost its category grid
- * and /k/<key> forwards to the hub. Today the card is painted only by the
- * public product homepage's discovery rail (components/home/product-cards.tsx,
- * when that page is the active homepage), and the hero by nothing. The slots
+ * and /k/<key> forwards to the hub. Today the card is painted by the Home /
+ * Start (components/home/product-home.tsx — /home, /start, and "/" when the
+ * CMS flags it) wherever a category is one of its cards: the top rail and
+ * "Wybierz efekt". The hero is painted by nothing. The slots
  * are KEPT regardless — they are the category's pictures, an operator may
  * already have set them, and dropping a declared slot would hide its row from
  * the admin. Where a category's picture should appear inside the hub is a
@@ -157,6 +166,72 @@ export function toolSlotKey(cardKey: string): string {
   return `tools.${cardKey}.card`;
 }
 
+/* ── THE HOME / START PAGE ───────────────────────────────────────────────
+ *
+ * The showcase parts of the shared Home (components/home/product-home.tsx):
+ * the GrovShot banner's art, the Packshoty gallery, the Wideo UGC banner and
+ * its three clips, and the Reklamy i Social gallery. Its CARDS — the rail,
+ * the chips, "Wybierz efekt" — are not here: each of those is a tool, a
+ * workflow or a category, and wears that thing's own slot, so one picture
+ * dresses it on the Home and in /tools alike.
+ *
+ * Every one of these starts EMPTY and stays empty until an operator fills it.
+ * The page draws the neutral motif in the meantime — never a borrowed photo —
+ * because a gallery of pictures GrovBase did not make would be a claim about
+ * output, and these galleries exist to show output.
+ *
+ * The gallery shapes are the shapes the page paints, so the admin crop preview
+ * and the live tile agree: square packshots over wide ones, tall adverts, and
+ * portrait clips in the UGC banner. Two are approximate by nature, and the
+ * admin is told so by nothing better than this note — so, plainly:
+ *   · the two BANNER ARTS are backgrounds, cover-cropped to a band whose
+ *     height follows its copy: very wide on a desktop (about 6:1), close to
+ *     square on a phone. 3/1 is the middle of that range; a picture meant for
+ *     phones belongs in the slot's own mobile override.
+ *   · the two stacked Reklamy cards take their height from the creatives
+ *     beside them — about 2:1 on a desktop, 5:3 below it. 16/9 is between.
+ */
+export const HOME_SLOT = {
+  grovshotArt: "home.grovshot.art",
+  ugcArt: "home.ugc.art",
+  packshot: (n: number) => `home.packshots.${n}.media`,
+  ugc: (n: number) => `home.ugc.${n}.media`,
+  ad: (n: number) => `home.ads.${n}.media`,
+} as const;
+
+/** How many tiles each gallery has. The page and the registry read the same
+ *  numbers, so a tile can never exist without a slot or the other way round. */
+export const HOME_GALLERY = {
+  /** Squares, then the same number of wide frames under them. */
+  packshotSquares: 6,
+  packshotWide: 6,
+  ugcClips: 3,
+  /** Tall creatives, then the two wide cards stacked beside them. */
+  adsTall: 5,
+  adsWide: 2,
+} as const;
+
+function homeSlots(): SlotDef[] {
+  const range = (from: number, count: number) => Array.from({ length: count }, (_, i) => from + i);
+  const g = HOME_GALLERY;
+  return [
+    slot(HOME_SLOT.grovshotArt, "section", "home", "grovshot",
+      "media.slot.homeGrovshotArt", "3/1", true, "media.fb.homeBanner"),
+    ...range(1, g.packshotSquares).map((n) => slot(HOME_SLOT.packshot(n), "section", "home",
+      `packshot${n}`, "media.slot.homePackshot", "1/1", true, "media.fb.motif", { n })),
+    ...range(g.packshotSquares + 1, g.packshotWide).map((n) => slot(HOME_SLOT.packshot(n), "section", "home",
+      `packshot${n}`, "media.slot.homePackshot", "16/10", true, "media.fb.motif", { n })),
+    slot(HOME_SLOT.ugcArt, "section", "home", "ugc",
+      "media.slot.homeUgcArt", "3/1", true, "media.fb.homeBanner"),
+    ...range(1, g.ugcClips).map((n) => slot(HOME_SLOT.ugc(n), "section", "home",
+      `ugc${n}`, "media.slot.homeUgcClip", "4/5", true, "media.fb.motif", { n })),
+    ...range(1, g.adsTall).map((n) => slot(HOME_SLOT.ad(n), "section", "home",
+      `ad${n}`, "media.slot.homeAd", "4/5", true, "media.fb.motif", { n })),
+    ...range(g.adsTall + 1, g.adsWide).map((n) => slot(HOME_SLOT.ad(n), "section", "home",
+      `ad${n}`, "media.slot.homeAd", "16/9", true, "media.fb.motif", { n })),
+  ];
+}
+
 /* ── APPLICATION SECTIONS ────────────────────────────────────────────────
  *
  * Named places that belong to no single tool. The generator's two session
@@ -167,8 +242,12 @@ export function toolSlotKey(cardKey: string): string {
  * day this ships and nothing has to be migrated by hand.
  */
 const SECTION_SLOTS: SlotDef[] = [
-  slot("dashboard.hero.art", "section", "dashboard", "hero",
-    "media.slot.dashboardHero", "16/9", true, "media.fb.heroArt"),
+  // `dashboard.hero.art` USED TO BE FIRST HERE: the illustration beside the
+  // old dashboard's greeting. That dashboard is gone — the signed-in Start is
+  // the shared Home now (components/home/product-home.tsx) — so nothing paints
+  // the slot, and a slot nothing paints is a control that silently does
+  // nothing. No row was ever written under it (neither database has one), so
+  // retiring it loses no picture.
   slot("generator.session.advertising.preview", "section", "generator", "advertising",
     "media.slot.sessionAdvertising", "16/10", true, "media.fb.generatorUi"),
   slot("generator.session.lifestyle.preview", "section", "generator", "lifestyle",
@@ -181,6 +260,7 @@ const SECTION_SLOTS: SlotDef[] = [
   //   · the LIBRARY's empty shelf is three different sentences about three
   //     different situations (no work yet, no favourites, no videos) and has
   //     no picture to replace. One slot could not tell them apart.
+  ...homeSlots(),
 ];
 
 /* ── BANNERS ─────────────────────────────────────────────────────────────

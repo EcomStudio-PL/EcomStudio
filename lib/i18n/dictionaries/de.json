@@ -248,7 +248,6 @@
     "emailDidYouMean": "Meintest du"
   },
   "dashboard": {
-    "welcome": "Hallo, {name}! 👋",
     "sub": "Der aktuelle Stand deines Studios.",
     "statProducts": "Produkte",
     "statGenerations": "Generierte Assets",
@@ -264,14 +263,10 @@
     "onb3": "Marktplatz wählen",
     "onb4": "Erstes Content-Pack vorbereiten",
     "onbCta": "Erstes Produkt erstellen",
-    "welcomeBack": "Willkommen zurück",
     "statProductsSub": "Insgesamt erstellt",
     "statGenerationsSub": "Erfolgreich generiert",
     "statCreditsSub": "Credits auf dem Konto",
-    "statPlanSub": "Dein aktueller Plan",
-    "tipTitle": "Tipp 💡",
-    "tipBody": "Nutze den Aufnahmen-Generator — füge Produktfotos hinzu und die GrovBase-Engine erstellt in Minuten eine komplette Verkaufssession.",
-    "tipCta": "Aufnahmen-Generator öffnen"
+    "statPlanSub": "Dein aktueller Plan"
   },
   "products": {
     "title": "Produkte",
@@ -1176,27 +1171,31 @@
       "toolCard": "Karte im Werkzeugkatalog",
       "toolHero": "Werkzeug-Kopfbereich",
       "toolEmpty": "Leerer Zustand des Werkzeugs",
-      "dashboardHero": "Begrüßungsgrafik des Dashboards",
       "sessionAdvertising": "Sessionvorschau: Werbung",
       "sessionLifestyle": "Sessionvorschau: Lifestyle",
       "libraryEmpty": "Leere Mediathek",
       "onboarding": "Begrüßungsgrafik",
-      "bannerMedia": "Bannerbild"
+      "bannerMedia": "Bannerbild",
+      "homeGrovshotArt": "Startseite: Hintergrund des GrovShot-Banners",
+      "homePackshot": "Packshots: Kachel {n}",
+      "homeUgcArt": "Startseite: Hintergrund des UGC-Video-Banners",
+      "homeUgcClip": "UGC-Video: Clip {n}",
+      "homeAd": "Werbung und Social: Kachel {n}"
     },
     "fb": {
       "ownWork": "die eingebaute Grafik der Karte",
       "gradient": "ein Verlauf in der Farbe der Kategorie",
       "motif": "das gezeichnete Motiv des Werkzeugs",
       "emptyState": "ein Symbol für den leeren Zustand",
-      "heroArt": "gezeichnete SVG-Grafik",
       "generatorUi": "das Bild aus den Generator-Einstellungen",
-      "none": "nichts"
+      "none": "nichts",
+      "homeBanner": "gemalter Hintergrund in Markenfarben"
     },
     "section": {
-      "dashboard": "Dashboard",
       "generator": "Generator",
       "library": "Mediathek des Kunden",
-      "onboarding": "Begrüßung"
+      "onboarding": "Begrüßung",
+      "home": "Startseite / Start"
     },
     "typeImage": "Bild",
     "typeVideo": "Video",
@@ -1231,7 +1230,7 @@
     "altPlaceholder": "Was auf dem Bild zu sehen ist",
     "findEntity": "Suchen…",
     "noSlots": "In diesem Bereich gibt es nichts einzustellen.",
-    "categoriesNote": "Kategorien sind jetzt Bereiche der Werkzeug-Seite: Das Dashboard hat keine Kategoriekacheln mehr, und die alten Kategorieseiten leiten zu den Werkzeugen weiter. Hier gesetzte Bilder bleiben erhalten, werden in der App derzeit aber nirgends angezeigt.",
+    "categoriesNote": "Kategorien sind jetzt Bereiche der Werkzeug-Seite, und die alten Kategorieseiten leiten zu den Werkzeugen weiter. Die Kategoriekarte erscheint auf der Startseite (Start): in der oberen Reihe und unter „Effekt wählen“, wo die Kategorie vorkommt. Der Kategorie-Header wird derzeit nirgends angezeigt — hier gesetzte Bilder bleiben erhalten.",
     "slotsIntro": "Eingestellt: {filled} von {total} Stellen. Eine leere Stelle ist kein Fehler — die Oberfläche zeichnet dort ihre eigene Grafik.",
     "toolSub": "Werkzeug",
     "usedIn": "An {n} Stellen verwendet",
@@ -1510,6 +1509,7 @@
     "status.archived": "Archiviert",
     "kind.standard": "Seite",
     "kind.launch": "Launch-Seite",
+    "kind.app": "App-Startseite (Home / Start)",
     "sections": "Abschnitte",
     "selectSection": "Wähle links einen Abschnitt.",
     "noContentFields": "Dieser Abschnitt hat keinen Text — stelle ihn im Tab „Stil“ ein.",
@@ -2755,19 +2755,6 @@
   "gen": {
     "title": "Generator",
     "customSub": "Erweiterter Modus: volle Kontrolle über Prompt, Referenzen und Parameter."
-  },
-  "home": {
-    "sub": "Vom Produktfoto zur fertigen Verkaufssession — in Minuten.",
-    "startCta": "Jetzt generieren",
-    "continue": "Fortsetzen: {name}",
-    "statCredits": "Verfügbare Credits",
-    "statWeek": "Generierungen diese Woche",
-    "statMonth": "Generierungen diesen Monat",
-    "recentTitle": "Letzte Aktivität",
-    "statCreditsShort": "Credits",
-    "statWeekShort": "Diese Woche",
-    "statMonthShort": "Dieser Monat",
-    "continueShort": "Sitzung fortsetzen"
   },
   "wf": {
     "moda": {
@@ -5204,21 +5191,29 @@
   "home2": {
     "startLead": "Lade ein Produktfoto hoch und beschreibe, was entstehen soll",
     "startCta": "Erstellen",
-    "startHint": "Der Button öffnet Generator Grovshot — dort lädst du Fotos hoch und wählst den Stil.",
     "noPhoto": "Noch kein Foto? Probiere ein Beispiel:",
     "sample": "Beispiel {n}",
-    "tryFree": "Alle ansehen",
+    "tryFree": "Kostenlos testen",
+    "tryIt": "Ausprobieren",
     "sec.effects": "Effekt wählen",
     "sec.effectsSub": "Fertige Stile, die dein Produkt hervorheben.",
-    "sec.workshop": "Foto-Werkstatt",
-    "sec.workshopSub": "Hintergrund, Schatten, Ausschnitt und Dateigröße — an deinen eigenen Fotos.",
-    "bannerTag": "Generator",
-    "bannerLead": "Produktfotos in mehreren Stilen auf einmal, aus einer einzigen Handyaufnahme. Bildausschnitt, Format und Anzahl bestimmst du.",
     "bannerCta": "Am eigenen Produkt testen",
     "shot1": "Studio",
     "shot2": "Set",
     "shot3": "Licht",
-    "sec.soon": "Diese Werkzeuge sind fertig und warten darauf, dass ihre KI-Anweisungen veröffentlicht werden. Wir schalten sie frei, wenn sie ein Ergebnis liefern — nicht früher."
+    "railLabel": "Am beliebtesten",
+    "grovshotMark": "GrovShot",
+    "grovshotFrom": "Ein Handyfoto",
+    "grovshotTo": "eine fertige Kampagne",
+    "seeExamples": "Beispiele ansehen",
+    "sec.packshots": "Packshots",
+    "sec.packshotsSub": "Weißer Hintergrund, farbiger Hintergrund und Schatten. Fertig fürs Listing.",
+    "ugcTitle": "UGC-Video",
+    "ugcLead": "Natürliche Videos mit echten Menschen, ganz ohne Filmset.",
+    "sec.ads": "Werbung und Social",
+    "sec.adsSub": "Motive für Instagram, TikTok, Mailings und Listing-Thumbnails.",
+    "sec.video": "Video",
+    "sec.videoSub": "Produktfilme, UGC und Social-Clips — aus einem einzigen Foto."
   },
   "checkout": {
     "title": "Prüfen und bezahlen",

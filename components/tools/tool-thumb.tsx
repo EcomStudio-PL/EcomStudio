@@ -40,7 +40,10 @@ const TONE: Record<ToolMotif, { from: string; to: string }> = {
 
 export function ToolThumb({ motif, icon: Icon, dimmed = false, ratio = "16/10" }: {
   motif: ToolMotif;
-  icon: LucideIcon;
+  /** The operation's icon, bottom-left. Omitted by a gallery tile on the Home,
+   *  where the motif stands in for a picture that has not been put there yet
+   *  and a tool icon would name a tool the tile is not. */
+  icon?: LucideIcon;
   /** A tool that cannot be opened yet reads quieter, so the row's live tools
    *  keep the eye. */
   dimmed?: boolean;
@@ -50,9 +53,10 @@ export function ToolThumb({ motif, icon: Icon, dimmed = false, ratio = "16/10" }
    * The homepage needs 4/5 because it puts DRAWN and PHOTOGRAPHED cards in one
    * row, and a row where half the tiles are 16/10 and half are 4/5 does not
    * read as two kinds of art — it reads as a broken grid, with every label on
-   * a different line. One shape per row, whatever is inside it.
+   * a different line. One shape per row, whatever is inside it. The Home's
+   * rail and galleries paint squares and wide frames for the same reason.
    */
-  ratio?: "16/10" | "4/5";
+  ratio?: "16/10" | "4/5" | "16/9" | "1/1";
 }) {
   const tone = TONE[motif];
   return (
@@ -72,9 +76,11 @@ export function ToolThumb({ motif, icon: Icon, dimmed = false, ratio = "16/10" }
       <Motif motif={motif} />
       {/* The icon anchors the card and names the operation for anyone who does
           not read the geometry. */}
-      <span className="absolute bottom-2 left-2 flex h-7 w-7 items-center justify-center rounded-lg bg-[rgb(var(--bg)/0.62)] text-ink backdrop-blur-sm ring-1 ring-[rgb(var(--glass-border)/0.22)]">
-        <Icon size={14} />
-      </span>
+      {Icon && (
+        <span className="absolute bottom-2 left-2 flex h-7 w-7 items-center justify-center rounded-lg bg-[rgb(var(--bg)/0.62)] text-ink backdrop-blur-sm ring-1 ring-[rgb(var(--glass-border)/0.22)]">
+          <Icon size={14} />
+        </span>
+      )}
       {/* A hairline lift so the thumb reads as a surface, not a hole. */}
       <span className="absolute inset-0 rounded-xl ring-1 ring-inset ring-[rgb(var(--glass-border)/0.14)]" />
     </span>

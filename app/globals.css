@@ -33,6 +33,11 @@
   --violet: 147 51 234;
   --purple: 124 58 237;
   --pink: 219 39 176;
+  /* The Home's Wideo UGC band. Theme-independent: white copy sits on it in
+     both themes, so the deep end must stay deep. The bright end is the same
+     cyan the "Inne" category already uses (lib/categories.ts). */
+  --cyan: 34 211 238;
+  --cyan-deep: 21 94 117;
   /* SECONDARY ACCENT — brand magenta, #D628CF.
      This slot used to hold an amber (#BE6006) inherited from the first admin
      panel, and it is why "draft", "inactive", "featured" and half the admin
@@ -1159,6 +1164,9 @@ h2 { letter-spacing: -0.022em; line-height: 1.15; }
     scroll-padding-left: var(--page-x);
     margin-inline: calc(var(--page-x) * -1);
     padding-inline: var(--page-x);
+    /* Room above as well as below: `overflow-x: auto` clips vertically too, and
+       the global focus ring sits 4px outside the element it marks. */
+    padding-top: 0.25rem;
     padding-bottom: 0.25rem;
     -webkit-overflow-scrolling: touch;
   }

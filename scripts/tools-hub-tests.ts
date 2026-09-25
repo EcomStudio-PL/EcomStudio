@@ -42,8 +42,9 @@ import {
 } from "@/lib/features";
 import { IMAGE_CREATE, IMAGE_EDIT, IMAGE_EDIT_MORE, entryGate } from "@/lib/topnav";
 import { TOOL_SLUGS } from "@/lib/images/tools";
-import { MEDIA_SLOTS, isKnownSlot, toolSlotKey, workflowSlotKey } from "@/lib/media-slots";
+import { MEDIA_SLOTS, categorySlotKey, isKnownSlot, toolSlotKey, workflowSlotKey } from "@/lib/media-slots";
 import { categoryGroups, toolGroups } from "@/lib/media-groups";
+import { homeModel } from "@/lib/home-sections";
 import type { SlotRow } from "@/lib/services/media-slots";
 
 let failed = 0;
@@ -327,13 +328,23 @@ check("the forward never turns an in-app link into a 404 when only the hub is of
   /if \(!routeReachable\(avail, "\/tools", isAdmin\)\) redirect\("\/home"\)/.test(catPage)
   && catPage.indexOf('routeReachable(avail, "/tools"') < catPage.indexOf("redirect(categoryHref"));
 
-section("DASHBOARD: NO CATEGORY TILES LEFT");
+section("THE START: THE SHARED HOME, ITS CATEGORY DOORS THROUGH THE FORWARD");
+// The dashboard (and its category grid) is gone: the signed-in Start renders
+// the shared Home (components/home/product-home.tsx). That page DOES show
+// category cards — the rail's Moda tile, the chips — so what matters now is
+// that each opens through the forward that asks the switchboard, and wears the
+// category's own card slot.
 const home = code(`${APP}/home/page.tsx`);
-check("the dashboard renders no category grid and loads no category slots",
-  !/CategoryGrid|categorySlotKey|CATEGORIES/.test(home));
-check("the dashboard links to no category page", !/\/k\//.test(home) && !/cats\./.test(home));
-check("the start button goes to the tools, not to an anchor that no longer exists",
-  /hubOpen \? "\/tools" : "\/prompts"/.test(home) && !/#kategorie/.test(home));
+check("the Start renders the shared Home, not a dashboard of its own",
+  /<ProductSurface scope="shell" \/>/.test(home) && !/CategoryGrid|#kategorie/.test(home));
+{
+  const model = homeModel(ALL_ACTIVE);
+  const categoryCards = [...model.rail, ...model.chips, ...model.effects].filter((c) => c.key.startsWith("cat:"));
+  check("the Home shows category cards, each opening through /k/<slug>",
+    categoryCards.length > 0 && categoryCards.every((c) => CATEGORIES.some((k) => c.href === categoryPath(k))));
+  check("…each wearing the category's own card slot",
+    categoryCards.every((c) => CATEGORIES.some((k) => c.slot === categorySlotKey(k.key))));
+}
 
 /* ── 14–18 ─────────────────────────────────────────────────────────────── */
 section("14–18. ADMIN → MEDIA: CATEGORIES ON ONE TAB, TOOLS ON THE OTHER");

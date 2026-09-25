@@ -19,6 +19,7 @@ import { MenuVeil } from "./menu-veil";
 import { useDrawer } from "./shell-context";
 import { NotificationsBell, type NotificationItem } from "./notifications-bell";
 import { AuthLink } from "@/components/auth/auth-link";
+import { useOptionalAuthDialog } from "@/components/auth/auth-dialog-context";
 
 /**
  * MEGA TOPBAR — the customer app's ONLY chrome. Left to right:
@@ -192,7 +193,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
                   plus `pt-2` keeps the bridge hoverable. */}
               {menu === which && (
                 <div className="absolute left-0 top-full z-50 pt-2">
-                  <MegaPanel which={which} t={t} avail={avail} isAdmin={seesRestricted} onNavigate={close} />
+                  <MegaPanel which={which} t={t} avail={avail} isAdmin={seesRestricted} onNavigate={close} guest={guest} />
                 </div>
               )}
             </div>
@@ -277,7 +278,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
 
 /** The panel body: TWÓRZ (categories, each in its own accent) and EDYTUJ
  *  (the toolbox), plus a footer of secondary destinations. */
-function MegaPanel({ which, t, avail, isAdmin, onNavigate }: {
+function MegaPanel({ which, t, avail, isAdmin, onNavigate, guest = false }: {
   which: "image" | "video";
   t: (k: string, v?: Record<string, string | number>) => string;
   avail: AvailabilityMap;
@@ -287,7 +288,16 @@ function MegaPanel({ which, t, avail, isAdmin, onNavigate }: {
    *  and E-commerce are two sections of the same /tools — and the panel must
    *  not stay open over the section it just opened. */
   onNavigate: () => void;
+  /** The signed-out bar (the public Home). Every entry here is a tool behind
+   *  sign-in, so a visitor's press opens the existing sign-in dialog IN PLACE,
+   *  with the tool as `next` — the same thing every card on the Home does
+   *  (components/home/gate.tsx) — instead of following the link into the
+   *  middleware's bounce, which would land them on whatever "/" is today and
+   *  lose the page they were exploring. The server still refuses the route to
+   *  a visitor either way; this only decides where they are asked. */
+  guest?: boolean;
 }) {
+  const auth = useOptionalAuthDialog();
   // Availability first: a DISABLED (or menu-hidden) module simply is not
   // listed for customers; admins keep every entry, badged. A category entry is
   // asked about through `entryGate` — its hub AND the category itself.
@@ -312,6 +322,18 @@ function MegaPanel({ which, t, avail, isAdmin, onNavigate }: {
   return (
     <div role="menu"
       onClick={(e) => { if (e.target instanceof Element && e.target.closest("a[href]")) onNavigate(); }}
+      // CAPTURE, so it runs before next/link's own handler starts a navigation
+      // (Link honours `defaultPrevented`). A modified click — new tab, new
+      // window — is the browser's business and is left alone.
+      onClickCapture={(e) => {
+        if (!guest || !auth || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+        const a = e.target instanceof Element ? e.target.closest("a[href]") : null;
+        const href = a?.getAttribute("href");
+        if (!href || !href.startsWith("/")) return;
+        e.preventDefault();
+        onNavigate();
+        auth.open("login", href);
+      }}
       className={cn(
       "overlay animate-pop rounded-2xl p-5 shadow-e4",
       promo ? "w-[min(66rem,calc(100vw-3rem))]" : "w-[min(56rem,calc(100vw-3rem))]",

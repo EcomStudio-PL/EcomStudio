@@ -1,121 +1,147 @@
-import type { AvailabilityMap } from "@/lib/features";
-import type { SlotMap } from "@/lib/server/media-slots";
-import {
-  railCards, categoryChips, effectCards, homeSections,
-} from "@/lib/home-sections";
-import { RailTile, CardRow, SectionHead } from "./product-cards";
+import type { HomeModel } from "@/lib/home-sections";
+import { HOME_ROUTES } from "@/lib/home-sections";
+import { HOME_GALLERY, HOME_SLOT } from "@/lib/media-slots";
+import type { LiveBanner, SlotMap } from "@/lib/server/media-slots";
+import { DashboardBanner } from "@/components/dashboard/banner";
+import { RailTile, EffectCard, SectionHead, TryPill, Badge } from "./product-cards";
 import { StartBox } from "./start-box";
 import { GrovshotBanner } from "./grovshot-banner";
+import { PackshotGallery, UgcBanner, AdsGallery } from "./home-gallery";
 
 type T = (key: string, vars?: Record<string, string | number>) => string;
 
-/** The generator's own route. One constant, used by the start box, the banner
- *  and the effect section, so all three lead to the same door. */
-const GENERATOR_HREF = "/prompts";
-
 /**
- * "/" — THE PRODUCT, FOR EVERYBODY.
+ * THE HOME / START — ONE BODY, EVERY ADDRESS.
  *
- * One screen, two states. A visitor who has never signed up sees the whole
- * catalogue: every category, every tool, every example, the same names and the
- * same "Wkrótce" badges a paying customer sees. A signed-in customer sees the
- * identical layout with the actions live. There is no separate marketing page
- * and no separate dashboard — the difference between the two states is whether
- * a press starts work or opens the sign-in dialog, and nothing else moves.
+ * This is the canonical page body. It is rendered, unchanged, by:
  *
- * WHY THAT IS WORTH THE TROUBLE. The alternative — a landing page that
- * describes the product and a dashboard that is the product — means the thing
- * a stranger evaluates is never the thing they would buy. It also means two
- * surfaces to keep in step, and they never are: the landing page still
- * advertises a tool the registry switched off six weeks ago.
+ *   /start         app/[slug]/page.tsx — the CMS page of kind `app`, public,
+ *                  in its own chrome (components/home/product-surface.tsx)
+ *   /home          app/(app)/home/page.tsx — the signed-in "Start" of the
+ *                  bottom navigation, inside the application's own shell
+ *   /              app/page.tsx — once Admin → Strony WWW flags the `app`
+ *                  page as the homepage (cms_pages.is_homepage); /start then
+ *                  forwards to "/" so the two never compete
  *
- * EVERYTHING HERE COMES FROM THE REGISTRIES. lib/home-sections.ts assembles
- * the cards from lib/features.ts, lib/categories.ts and lib/tool-cards.ts,
- * filtered by the live availability map. This component arranges them and owns
- * no list of its own — which is the only reason it cannot advertise something
- * that does not exist.
+ * A visitor and a customer see the same sections in the same order. What
+ * differs is what a press does — a customer opens the tool, a visitor gets
+ * the existing sign-in dialog pointed at it (`Gate`) — and the header around
+ * it, which is the application's own in whichever state applies. The real
+ * gate is on the server: every tool route is protected by the middleware and
+ * the (app) layout, and every endpoint that spends a credit or writes a file
+ * answers 401 without a session.
+ *
+ * THE ORDER IS THE REFERENCE LAYOUT'S: rail → upload box, chips, samples →
+ * Wybierz efekt → GrovShot → Packshoty → Wideo UGC → Reklamy i Social → the
+ * video row. Every card comes from lib/home-sections.ts, which resolves it
+ * through the registries; every gallery tile is a media slot.
  */
-export function ProductHome({ signedIn, availability, slots, t, isAdmin = false }: {
+export function ProductHome({ signedIn, model, slots, t, banners = [], locale = "pl" }: {
   signedIn: boolean;
-  /** Read from feature_availability on the server. A logged-out visitor gets
-   *  the same map a customer does — see migration 0116 for why that needed a
-   *  policy change, and what it was showing before. */
-  availability: AvailabilityMap;
-  /** Whatever an admin has dressed the cards with. Empty is normal. */
+  /** lib/home-sections.ts `homeModel()` — the cards, resolved for this viewer. */
+  model: HomeModel;
+  /** Whatever an operator has dressed the page with. Empty is normal. */
   slots: SlotMap;
   t: T;
-  /** An admin sees modules customers cannot, badged. Same rule as the menus. */
-  isAdmin?: boolean;
+  /** Campaigns an admin scheduled for the Start ("dashboard" placement). The
+   *  read is signed-in only (RLS), so a visitor never has any. */
+  banners?: LiveBanner[];
+  locale?: string;
 }) {
-  const rail = railCards(availability, isAdmin);
-  const chips = categoryChips(availability, isAdmin);
-  const effects = effectCards(availability, isAdmin, 14);
-  const sections = homeSections(availability, isAdmin);
+  const { rail, chips, effects, video, ugc, startHref, packshotHref } = model;
+  // "Za darmo" is true for a visitor — an account starts with free credits —
+  // and not for a customer, whose generations cost credits. Same button,
+  // honest words for each.
+  const tryLabel = signedIn ? t("home2.tryIt") : t("home2.tryFree");
+  const tryPill = (href: string | null) =>
+    href ? <TryPill href={href} signedIn={signedIn} label={tryLabel} /> : undefined;
+  const videoSoon = video.length > 0 && video.every((c) => c.badge !== null);
+  // "Zobacz przykłady" leads to Packshoty — only worth a button once an
+  // operator has put at least one example there.
+  const hasExamples = Array.from({ length: HOME_GALLERY.packshotSquares + HOME_GALLERY.packshotWide },
+    (_, i) => HOME_SLOT.packshot(i + 1)).some((k) => slots.has(k));
 
   return (
-    <div className="space-y-8 sm:space-y-10">
-      {/* 1 — DISCOVERY RAIL. The first thing under the header, before any
-          heading: a seller should see what this place makes before they are
-          told anything about it. */}
+    <div className="space-y-9 sm:space-y-11">
+      {/* 0 — A CAMPAIGN, when an admin scheduled one for the Start. Nothing is
+          reserved for it otherwise. */}
+      {banners.length > 0 && <DashboardBanner banners={banners} slots={slots} locale={locale} priority />}
+
+      {/* 1 — THE RAIL. Pictures first: a seller should see what this place
+          makes before being told anything about it. A carousel on a phone,
+          three across on a tablet, six on a desktop — one DOM, so nothing is
+          fetched twice. */}
       {rail.length > 0 && (
-        <section>
-          <div className="rail-x sm:hidden">
+        <section aria-label={t("home2.railLabel")}>
+          <div className="rail-x-sm sm:grid sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
             {rail.map((c, i) => (
-              <RailTile key={c.key} card={c} signedIn={signedIn} slots={slots} t={t} priority={i < 3} />
-            ))}
-          </div>
-          <div className="hidden gap-2.5 sm:grid sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7">
-            {rail.map((c, i) => (
-              <RailTile key={c.key} card={c} signedIn={signedIn} slots={slots} t={t} priority={i < 4} />
+              <RailTile key={c.key} card={c} signedIn={signedIn} slots={slots} t={t}
+                priority={banners.length === 0 && i < 2} />
             ))}
           </div>
         </section>
       )}
 
-      {/* 2 — THE START BOX and the six categories. */}
-      <StartBox signedIn={signedIn} chips={chips} href={GENERATOR_HREF} t={t} />
+      {/* 2–4 — THE UPLOAD BOX, the quick chips and the samples. */}
+      <StartBox signedIn={signedIn} chips={chips} href={startHref} t={t} />
 
-      {/* 3 — WYBIERZ EFEKT. What a photograph can be turned into, live
-          workflows first. */}
+      {/* 5 — WYBIERZ EFEKT. */}
       {effects.length > 0 && (
-        <section>
-          <SectionHead
-            title={t("home2.sec.effects")} sub={t("home2.sec.effectsSub")}
-            seeAll={GENERATOR_HREF} signedIn={signedIn} t={t} soon={false}
-          />
-          <CardRow cards={effects} signedIn={signedIn} slots={slots} t={t} />
+        <section aria-labelledby="home-effects">
+          <SectionHead id="home-effects" title={t("home2.sec.effects")} sub={t("home2.sec.effectsSub")}
+            action={tryPill(startHref)} />
+          <div className="rail-x-sm sm:grid sm:grid-cols-4 sm:gap-2.5 lg:grid-cols-8">
+            {effects.map((c) => (
+              <EffectCard key={c.key} card={c} signedIn={signedIn} slots={slots} t={t}
+                sizes="(max-width: 639px) 40vw, (max-width: 1023px) 24vw, 12vw" />
+            ))}
+          </div>
         </section>
       )}
 
-      {/* 4 — THE BANNER. */}
-      <GrovshotBanner signedIn={signedIn} href={GENERATOR_HREF} t={t} />
+      {/* 6 — GROVSHOT. */}
+      <GrovshotBanner signedIn={signedIn} href={startHref}
+        examplesHref={hasExamples ? HOME_ROUTES.examples : null} slots={slots} t={t} />
 
-      {/* 5 — ONE SECTION PER REAL PART OF THE PRODUCT. A section whose every
-          card is inert renders quieter and without a "see all" link; a section
-          with no visible cards at all was already dropped upstream. */}
-      {sections.map((s) => (
-        <section key={s.key}>
-          <SectionHead
-            title={t(s.titleKey)} sub={t(s.subKey)} seeAll={s.seeAll}
-            signedIn={signedIn} t={t} soon={s.soon}
-          />
-          <CardRow cards={s.cards} signedIn={signedIn} slots={slots} t={t} video={s.key === "video"} />
-          {/* A ROW OF BADGES IS NOT AN EXPLANATION, so a section where nothing
-              can be opened says why in one line.
-              TWO DIFFERENT SENTENCES, because these are two different facts.
-              Video has no engine at all and the product already has careful
-              words for that (video.notReadyBody, which promises no credits are
-              spent on something that cannot be made). A category whose tools
-              are merely unpublished is not in that situation, and borrowing the
-              video copy would tell a seller that Moda has no engine — which is
-              false, and would be the page lying in the other direction. */}
-          {s.soon && (
-            <p className="mt-3 max-w-2xl text-[12px] leading-relaxed text-faint">
-              {s.key === "video" ? t("video.notReadyBody") : t("home2.sec.soon")}
-            </p>
+      {/* 7 — PACKSHOTY. `scroll-mt` so "Zobacz przykłady" lands with the
+          heading clear of the sticky header. */}
+      <section id="packshoty" aria-labelledby="home-packshots" className="scroll-mt-[calc(var(--header-h)+1rem)]">
+        <SectionHead id="home-packshots" title={t("home2.sec.packshots")} sub={t("home2.sec.packshotsSub")}
+          action={tryPill(packshotHref)} />
+        <PackshotGallery slots={slots} />
+      </section>
+
+      {/* 8 — WIDEO UGC, while the switchboard lists the video module at all,
+          badged with the module's own state. */}
+      {ugc && <UgcBanner slots={slots} badge={ugc.badge} t={t} />}
+
+      {/* 9 — REKLAMY I SOCIAL. The generator's advertising session is what
+          makes these today, so that is where the button goes. */}
+      <section aria-labelledby="home-ads">
+        <SectionHead id="home-ads" title={t("home2.sec.ads")} sub={t("home2.sec.adsSub")}
+          action={tryPill(startHref)} />
+        <AdsGallery slots={slots} />
+      </section>
+
+      {/* 10 — THE VIDEO ROW: the video workflows the menu and /wideo list. No
+          engine exists, so the cards are badged, the heading carries the badge
+          and there is no "see all" into a door that is shut; the one line
+          under it is the product's own careful sentence about why. */}
+      {video.length > 0 && (
+        <section aria-labelledby="home-video">
+          <SectionHead id="home-video" title={t("home2.sec.video")} sub={t("home2.sec.videoSub")}
+            action={videoSoon ? <Badge kind="soon" t={t} /> : undefined} />
+          <div className="rail-x-sm sm:grid sm:grid-cols-3 sm:gap-2.5 lg:grid-cols-6">
+            {video.map((c) => (
+              <EffectCard key={c.key} card={c} signedIn={signedIn} slots={slots} t={t} ratio="16/10"
+                sizes="(max-width: 639px) 60vw, (max-width: 1023px) 32vw, 16vw" />
+            ))}
+          </div>
+          {videoSoon && (
+            <p className="mt-3 max-w-2xl text-[12px] leading-relaxed text-faint">{t("video.notReadyBody")}</p>
           )}
         </section>
-      ))}
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { absoluteUrl } from "@/lib/site";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveHomepage } from "@/lib/server/homepage";
 
 /**
  * Only what a signed-out visitor can actually open. GrovBase is a workspace
@@ -32,14 +33,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // find is barely published. Drafts are excluded by RLS as well as by the
   // filter, and the launch page has no URL of its own.
   const supabase = await createClient();
-  const { data } = await supabase.from("cms_pages")
-    .select("slug, published_at, kind, status, seo")
-    .eq("status", "published");
+  const [{ data }, home] = await Promise.all([
+    supabase.from("cms_pages")
+      .select("slug, published_at, kind, status, seo")
+      .eq("status", "published"),
+    getActiveHomepage(),
+  ]);
+  // The product Home (kind `app`) that currently answers "/" forwards its own
+  // slug there (app/[slug]/page.tsx), so it is "/" above and not a page of its
+  // own here. Asked through getActiveHomepage() — the one resolver "/" and the
+  // redirect use — rather than read off the column a second way.
+  const forwarded = home?.kind === "app" ? home.slug : null;
   const managed = (data ?? [])
     // A page an admin marked "nie indeksuj" must not be advertised here
     // either. Both read the same column, so the sitemap and the page's own
     // robots meta can never disagree — see lib/server/cms-page.ts.
-    .filter((p) => p.kind !== "launch" && !RESERVED_SLUGS.has(p.slug) && !isNoindex(p.seo))
+    .filter((p) => p.kind !== "launch" && p.slug !== forwarded && !RESERVED_SLUGS.has(p.slug) && !isNoindex(p.seo))
     .map((p) => ({
       url: absoluteUrl(p.slug === "home" ? "/" : `/${p.slug}`),
       lastModified: p.published_at ? new Date(p.published_at) : now,

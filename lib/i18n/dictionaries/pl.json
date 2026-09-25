@@ -248,7 +248,6 @@
     "emailDidYouMean": "Czy chodziło o"
   },
   "dashboard": {
-    "welcome": "Cześć, {name}! 👋",
     "sub": "Oto stan Twojego studia.",
     "statProducts": "Produkty",
     "statGenerations": "Wygenerowane materiały",
@@ -264,14 +263,10 @@
     "onb3": "Wybierz marketplace",
     "onb4": "Przygotuj pierwszy content pack",
     "onbCta": "Stwórz pierwszy produkt",
-    "welcomeBack": "Witaj ponownie",
     "statProductsSub": "Łącznie utworzonych",
     "statGenerationsSub": "Pomyślnie wygenerowanych",
     "statCreditsSub": "Kredyty na koncie",
-    "statPlanSub": "Twój obecny plan",
-    "tipTitle": "Wskazówka 💡",
-    "tipBody": "Użyj Generatora ujęć — dodaj zdjęcia produktu, a silnik GrovBase przygotuje całą sesję sprzedażową w kilka minut.",
-    "tipCta": "Otwórz Generator ujęć"
+    "statPlanSub": "Twój obecny plan"
   },
   "products": {
     "title": "Produkty",
@@ -1176,27 +1171,31 @@
       "toolCard": "Karta w katalogu narzędzi",
       "toolHero": "Nagłówek narzędzia",
       "toolEmpty": "Pusty stan narzędzia",
-      "dashboardHero": "Grafika powitalna pulpitu",
       "sessionAdvertising": "Podgląd sesji: reklama",
       "sessionLifestyle": "Podgląd sesji: lifestyle",
       "libraryEmpty": "Pusta biblioteka",
       "onboarding": "Grafika powitalna",
-      "bannerMedia": "Grafika bannera"
+      "bannerMedia": "Grafika bannera",
+      "homeGrovshotArt": "Strona główna: tło bannera GrovShot",
+      "homePackshot": "Packshoty: kafel {n}",
+      "homeUgcArt": "Strona główna: tło bannera Wideo UGC",
+      "homeUgcClip": "Wideo UGC: materiał {n}",
+      "homeAd": "Reklamy i social: kafel {n}"
     },
     "fb": {
       "ownWork": "domyślna grafika karty",
       "gradient": "gradient w kolorze kategorii",
       "motif": "rysowany motyw narzędzia",
       "emptyState": "ikona pustego stanu",
-      "heroArt": "rysowana grafika SVG",
       "generatorUi": "zdjęcie z ustawień generatora",
-      "none": "puste miejsce"
+      "none": "puste miejsce",
+      "homeBanner": "malowane tło w kolorach marki"
     },
     "section": {
-      "dashboard": "Pulpit",
       "generator": "Generator",
       "library": "Biblioteka klienta",
-      "onboarding": "Powitanie"
+      "onboarding": "Powitanie",
+      "home": "Strona główna / Start"
     },
     "typeImage": "Zdjęcie",
     "typeVideo": "Wideo",
@@ -1231,7 +1230,7 @@
     "altPlaceholder": "Co widać na zdjęciu",
     "findEntity": "Znajdź…",
     "noSlots": "Brak miejsc do ustawienia w tej sekcji.",
-    "categoriesNote": "Kategorie są teraz sekcjami strony Narzędzia: pulpit nie ma już kafelków kategorii, a dawne strony kategorii przekierowują do Narzędzi. Grafiki ustawione tutaj są zachowane, ale aplikacja obecnie ich nigdzie nie wyświetla.",
+    "categoriesNote": "Kategorie są teraz sekcjami strony Narzędzia, a dawne strony kategorii przekierowują do Narzędzi. Karta kategorii wyświetla się na stronie głównej (Start): w górnym rzędzie i w „Wybierz efekt”, gdy dana kategoria tam występuje. Nagłówek kategorii nie jest obecnie nigdzie wyświetlany — ustawione grafiki są zachowane.",
     "slotsIntro": "Ustawione: {filled} z {total} miejsc. Puste miejsce nie jest błędem — interfejs rysuje wtedy swoją grafikę domyślną.",
     "toolSub": "Narzędzie",
     "usedIn": "Używany w {n} miejscach",
@@ -1510,6 +1509,7 @@
     "status.archived": "Zarchiwizowana",
     "kind.standard": "Strona",
     "kind.launch": "Strona premiery",
+    "kind.app": "Strona główna aplikacji (Home / Start)",
     "sections": "Sekcje",
     "selectSection": "Wybierz sekcję z listy po lewej.",
     "noContentFields": "Ta sekcja nie ma treści do wpisania — ustaw ją na zakładce Styl.",
@@ -2755,19 +2755,6 @@
   "gen": {
     "title": "Generator",
     "customSub": "Tryb zaawansowany: pełna kontrola nad promptem, referencjami i parametrami."
-  },
-  "home": {
-    "sub": "Od zdjęcia produktu do gotowej sesji sprzedażowej — w kilka minut.",
-    "startCta": "Zacznij generować",
-    "continue": "Kontynuuj: {name}",
-    "statCredits": "Dostępne kredyty",
-    "statWeek": "Generacje w tym tygodniu",
-    "statMonth": "Generacje w tym miesiącu",
-    "recentTitle": "Ostatnia aktywność",
-    "statCreditsShort": "Kredyty",
-    "statWeekShort": "Ten tydzień",
-    "statMonthShort": "Ten miesiąc",
-    "continueShort": "Kontynuuj sesję"
   },
   "wf": {
     "moda": {
@@ -5204,21 +5191,29 @@
   "home2": {
     "startLead": "Wrzuć zdjęcie produktu i opisz, co chcesz stworzyć",
     "startCta": "Utwórz",
-    "startHint": "Przycisk otwiera Generator Grovshot — tam wgrywasz zdjęcia i wybierasz styl.",
     "noPhoto": "Nie masz zdjęcia? Wypróbuj na przykładzie:",
     "sample": "Przykład {n}",
-    "tryFree": "Zobacz wszystkie",
+    "tryFree": "Wypróbuj za darmo",
+    "tryIt": "Wypróbuj",
     "sec.effects": "Wybierz efekt",
     "sec.effectsSub": "Gotowe style, które podkreślą Twój produkt.",
-    "sec.workshop": "Warsztat zdjęć",
-    "sec.workshopSub": "Tło, cień, kadr i waga pliku — na Twoich własnych zdjęciach.",
-    "bannerTag": "Generator",
-    "bannerLead": "Zdjęcia produktowe w kilku stylach naraz — z jednego zdjęcia z telefonu. Ty wybierasz kadr, format i liczbę ujęć.",
     "bannerCta": "Wypróbuj na swoim produkcie",
     "shot1": "Studio",
     "shot2": "Zestaw",
     "shot3": "Światło",
-    "sec.soon": "Te narzędzia są już zbudowane, ale czekają na opublikowanie instrukcji AI. Włączymy je, gdy będą dowozić wynik — nie wcześniej."
+    "railLabel": "Najczęściej wybierane",
+    "grovshotMark": "GrovShot",
+    "grovshotFrom": "Zdjęcie z telefonu",
+    "grovshotTo": "gotowa kampania",
+    "seeExamples": "Zobacz przykłady",
+    "sec.packshots": "Packshoty",
+    "sec.packshotsSub": "Białe tło, kolorowe tło i cień. Gotowe pod listing.",
+    "ugcTitle": "Wideo UGC",
+    "ugcLead": "Naturalne filmy z ludźmi, bez planu zdjęciowego.",
+    "sec.ads": "Reklamy i social",
+    "sec.adsSub": "Kreacje pod Instagram, TikTok, mailing i miniatury na listingi.",
+    "sec.video": "Wideo",
+    "sec.videoSub": "Film produktowy, UGC i klipy pod social — z jednego zdjęcia."
   },
   "checkout": {
     "title": "Podsumowanie i płatność",

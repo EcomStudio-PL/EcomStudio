@@ -48,6 +48,11 @@ export default async function CmsPreview({ params }: { params: Promise<{ slug: s
   // The launch page is not a stack of blocks — previewing it means seeing the
   // real page, so send the admin to the draft view of "/" itself.
   if (page.kind === "launch") redirect("/?preview=waitlist&draft=1");
+  // Nor is the product Home (kind `app`): it has no blocks — its content is
+  // the tool registry — so rendering its blocks here would show an empty page.
+  // Its honest preview is "/" answered by it, which the homepage route already
+  // offers an admin (?preview=<slug>) without flagging anything.
+  if (page.kind === "app") redirect(`/?preview=${encodeURIComponent(slug)}`);
 
   const blocks = (await getDraftBlocks(supabase, slug)).filter((b) => b.visible);
   const [media, data, global, nav, site] = await Promise.all([

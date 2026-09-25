@@ -248,7 +248,6 @@
     "emailDidYouMean": "Did you mean"
   },
   "dashboard": {
-    "welcome": "Hi, {name}! 👋",
     "sub": "Here's the state of your studio.",
     "statProducts": "Products",
     "statGenerations": "Generated assets",
@@ -264,14 +263,10 @@
     "onb3": "Pick a marketplace",
     "onb4": "Prepare your first content pack",
     "onbCta": "Create first product",
-    "welcomeBack": "Welcome back",
     "statProductsSub": "Created in total",
     "statGenerationsSub": "Successfully generated",
     "statCreditsSub": "Credits on account",
-    "statPlanSub": "Your current plan",
-    "tipTitle": "Tip 💡",
-    "tipBody": "Use the Shot Generator — add product photos and the GrovBase engine will prepare a full sales session in minutes.",
-    "tipCta": "Open Shot Generator"
+    "statPlanSub": "Your current plan"
   },
   "products": {
     "title": "Products",
@@ -1176,27 +1171,31 @@
       "toolCard": "Card in the tool catalogue",
       "toolHero": "Tool header",
       "toolEmpty": "Tool empty state",
-      "dashboardHero": "Dashboard welcome art",
       "sessionAdvertising": "Session preview: advertising",
       "sessionLifestyle": "Session preview: lifestyle",
       "libraryEmpty": "Empty library",
       "onboarding": "Welcome art",
-      "bannerMedia": "Banner picture"
+      "bannerMedia": "Banner picture",
+      "homeGrovshotArt": "Home: GrovShot banner background",
+      "homePackshot": "Packshots: tile {n}",
+      "homeUgcArt": "Home: UGC video banner background",
+      "homeUgcClip": "UGC video: clip {n}",
+      "homeAd": "Ads and social: tile {n}"
     },
     "fb": {
       "ownWork": "the card's built-in art",
       "gradient": "a gradient in the category's colour",
       "motif": "the tool's drawn motif",
       "emptyState": "an empty-state icon",
-      "heroArt": "drawn SVG art",
       "generatorUi": "the picture from the generator settings",
-      "none": "nothing"
+      "none": "nothing",
+      "homeBanner": "painted background in brand colours"
     },
     "section": {
-      "dashboard": "Dashboard",
       "generator": "Generator",
       "library": "Customer library",
-      "onboarding": "Welcome"
+      "onboarding": "Welcome",
+      "home": "Home / Start"
     },
     "typeImage": "Image",
     "typeVideo": "Video",
@@ -1231,7 +1230,7 @@
     "altPlaceholder": "What the picture shows",
     "findEntity": "Find…",
     "noSlots": "Nothing to set in this section.",
-    "categoriesNote": "Categories are now sections of the Tools page: the dashboard no longer has category tiles and the old category pages redirect to Tools. Pictures set here are kept, but the app does not currently show them anywhere.",
+    "categoriesNote": "Categories are now sections of the Tools page, and the old category pages redirect to Tools. A category's card is shown on the Home (Start): in the top row and in “Choose an effect”, wherever that category appears. The category header is not shown anywhere at the moment — pictures set here are kept.",
     "slotsIntro": "Set: {filled} of {total} places. An empty place is not a gap — the interface draws its built-in art there.",
     "toolSub": "Tool",
     "usedIn": "Used in {n} places",
@@ -1510,6 +1509,7 @@
     "status.archived": "Archived",
     "kind.standard": "Page",
     "kind.launch": "Launch page",
+    "kind.app": "App home (Home / Start)",
     "sections": "Sections",
     "selectSection": "Pick a section from the list on the left.",
     "noContentFields": "This section has no content to type — set it up on the Style tab.",
@@ -2755,19 +2755,6 @@
   "gen": {
     "title": "Generator",
     "customSub": "Advanced mode: full control over the prompt, references and parameters."
-  },
-  "home": {
-    "sub": "From a product photo to a ready sales session — in minutes.",
-    "startCta": "Start generating",
-    "continue": "Continue: {name}",
-    "statCredits": "Available credits",
-    "statWeek": "Generations this week",
-    "statMonth": "Generations this month",
-    "recentTitle": "Recent activity",
-    "statCreditsShort": "Credits",
-    "statWeekShort": "This week",
-    "statMonthShort": "This month",
-    "continueShort": "Continue session"
   },
   "wf": {
     "moda": {
@@ -5204,21 +5191,29 @@
   "home2": {
     "startLead": "Drop in a product photo and describe what you want to create",
     "startCta": "Create",
-    "startHint": "The button opens Generator Grovshot — that is where you upload photos and pick a style.",
     "noPhoto": "No photo yet? Try one of these:",
     "sample": "Example {n}",
-    "tryFree": "See all",
+    "tryFree": "Try it free",
+    "tryIt": "Try it",
     "sec.effects": "Pick an effect",
     "sec.effectsSub": "Ready-made styles that show your product off.",
-    "sec.workshop": "Photo workshop",
-    "sec.workshopSub": "Background, shadow, crop and file size — on your own photos.",
-    "bannerTag": "Generator",
-    "bannerLead": "Product photos in several styles at once, from one phone shot. You choose the framing, the format and how many shots.",
     "bannerCta": "Try it on your product",
     "shot1": "Studio",
     "shot2": "Set",
     "shot3": "Light",
-    "sec.soon": "These tools are built and waiting for their AI instructions to be published. We switch them on when they deliver a result, not before."
+    "railLabel": "Most popular",
+    "grovshotMark": "GrovShot",
+    "grovshotFrom": "A phone photo",
+    "grovshotTo": "a finished campaign",
+    "seeExamples": "See examples",
+    "sec.packshots": "Packshots",
+    "sec.packshotsSub": "White background, colour background and shadow. Ready for the listing.",
+    "ugcTitle": "UGC video",
+    "ugcLead": "Natural videos with real people, no film set needed.",
+    "sec.ads": "Ads and social",
+    "sec.adsSub": "Creatives for Instagram, TikTok, email and listing thumbnails.",
+    "sec.video": "Video",
+    "sec.videoSub": "Product films, UGC and social clips — from a single photo."
   },
   "checkout": {
     "title": "Review and pay",

@@ -17,6 +17,7 @@ import { loadLiveData } from "@/lib/server/cms-data";
 import { getPlatformAccess } from "@/lib/server/platform-access";
 import { pageMetadata, RESERVED_SLUGS } from "@/lib/server/cms-page";
 import { ProductSurface } from "@/components/home/product-surface";
+import { getActiveHomepage } from "@/lib/server/homepage";
 
 /**
  * EVERY OTHER PUBLIC PAGE.
@@ -32,6 +33,7 @@ import { ProductSurface } from "@/components/home/product-surface";
  */
 
 type Params = { params: Promise<{ slug: string }> };
+type PageProps = Params & { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
@@ -41,11 +43,16 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   // A launch page answers "/" through the homepage switch and 404s here, so
   // it must not advertise a title or a canonical for a URL that does not exist.
   if (!page || page.kind === "launch") return {};
+  // The flagged `app` page forwards to "/" (below). Its metadata, if a crawler
+  // ever reads it before the redirect, names "/" as the one address.
+  if (page.kind === "app" && (await getActiveHomepage())?.slug === slug) {
+    return { alternates: { canonical: "/" } };
+  }
   const { locale } = await getDictionary();
   return pageMetadata(page, locale, `/${slug}`);
 }
 
-export default async function CmsPage({ params }: Params) {
+export default async function CmsPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   if (RESERVED_SLUGS.has(slug)) notFound();
 
@@ -56,14 +63,28 @@ export default async function CmsPage({ params }: Params) {
     supabase.auth.getUser(),
   ]);
 
-  // THE PRODUCT SURFACE, AT ITS OWN SLUG.
+  // THE HOME / START, AT ITS OWN SLUG.
   //
   // An `app` page has no authored blocks — its content is the tool registry —
   // so the "no blocks is a 404" rule below would delete it. It renders here as
   // well as at "/" for one reason: an operator has to be able to LOOK at it
   // before deciding to make it the front door, and a preview that only exists
   // behind a flag you have to flip first is not a preview.
-  if (page?.kind === "app") return <ProductSurface />;
+  //
+  // ONCE IT IS THE FRONT DOOR, THIS ADDRESS FORWARDS THERE. Admin → Strony WWW
+  // flags the page (cms_pages.is_homepage) and "/" starts rendering it; from
+  // that moment /start would be a second URL serving the identical page, which
+  // is exactly the duplicate a search engine should never be shown. The answer
+  // comes from getActiveHomepage() — the one resolver "/" itself uses, cleared
+  // by the same cache tag when the flag moves — so the two can never disagree.
+  // 307, not 308: the flag can move back (to the launch page, say), and a
+  // browser that cached a permanent redirect would keep sending people to "/".
+  // The query string travels with it — a campaign's utm_* and the sign-in
+  // dialog's own ?auth=…&next=… must not be dropped on the way.
+  if (page?.kind === "app") {
+    if ((await getActiveHomepage())?.slug === slug) redirect(withQuery("/", await searchParams));
+    return <ProductSurface />;
+  }
 
   const visible = page?.blocks.filter((b) => b.visible) ?? [];
   // Nothing to show is a 404, not an empty shell with a header and a footer.
@@ -116,4 +137,14 @@ export default async function CmsPage({ params }: Params) {
       {page.footerMode === "minimal" && <MinimalFooter t={t} />}
     </div>
   );
+}
+
+/** `path` with the request's query string carried over, verbatim and in order. */
+function withQuery(path: string, query: Record<string, string | string[] | undefined>): string {
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    for (const v of Array.isArray(value) ? value : value === undefined ? [] : [value]) qs.append(key, v);
+  }
+  const s = qs.toString();
+  return s ? `${path}?${s}` : path;
 }

@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useAuthDialog } from "@/components/auth/auth-dialog-context";
+import type { AuthMode } from "@/lib/auth-routes";
 
 /**
  * THE ONE PLACE A STRANGER IS ASKED TO SIGN IN.
@@ -33,7 +34,7 @@ import { useAuthDialog } from "@/components/auth/auth-dialog-context";
  * the product legible to somebody who has not signed up yet.
  */
 export function Gate({
-  href, signedIn, children, className, ariaLabel, onGated,
+  href, signedIn, children, className, ariaLabel, onGated, mode = "login",
 }: {
   href: string;
   signedIn: boolean;
@@ -42,6 +43,10 @@ export function Gate({
   ariaLabel?: string;
   /** Extra work on the gated click — analytics, closing a sheet. Optional. */
   onGated?: () => void;
+  /** Which side of the SAME dialog a visitor lands on. "Wypróbuj za darmo" is
+   *  an invitation to open an account, so it opens on registration; opening a
+   *  tool asks a returning customer to sign in. */
+  mode?: AuthMode;
 }) {
   const auth = useAuthDialog();
 
@@ -63,7 +68,7 @@ export function Gate({
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
         e.preventDefault();
         onGated?.();
-        auth.open("login", href);
+        auth.open(mode, href);
       }}
     >
       {children}

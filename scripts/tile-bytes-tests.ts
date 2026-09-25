@@ -85,12 +85,11 @@ type Surface = {
 };
 
 const SURFACES: readonly Surface[] = [
-  {
-    label: "/home — recent work tiles",
-    file: "app/(app)/home/page.tsx",
-    feeds: "lib/services/generator.ts",
-    cssPx: 100,
-  },
+  // "/home — recent work tiles" was the first surface. The signed-in Start is
+  // the shared Home now (components/home/product-home.tsx): the product's
+  // catalogue and an operator's media slots, nothing of the account's own
+  // work — so it signs no generation-assets path and is not a tile surface.
+  // The account's results live in the Library, listed below.
   // "/k/[cat] — workflow card previews" was the third surface. That page now
   // forwards to the category's section of /tools, whose cards draw the tool's
   // motif or an admin's picture — nothing of the account's own work — so it

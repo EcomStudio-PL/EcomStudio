@@ -95,6 +95,22 @@ export function SlotVideo({
   // the two travel together.
   const plays = autoplay && near && !calm;
 
+  // ONLY WHILE IT IS SEEN. A page with several clips (the Home's galleries)
+  // would otherwise keep every one it ever scrolled past looping for the rest
+  // of the visit — data, battery and motion nobody is watching. So a playing
+  // clip pauses when it leaves the viewport and resumes when it comes back;
+  // the "near" observer above only decides when the bytes may be fetched.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !plays || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) void el.play().catch(() => {});
+      else el.pause();
+    }, { threshold: 0.1 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [plays, src]);
+
   return (
     <video
       ref={ref}
