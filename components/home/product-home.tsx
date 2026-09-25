@@ -93,7 +93,7 @@ export function ProductHome({ signedIn, model, slots, t, banners = [], locale = 
           <div className="rail-x-sm sm:grid sm:grid-cols-4 sm:gap-2.5 lg:grid-cols-8">
             {effects.map((c) => (
               <EffectCard key={c.key} card={c} signedIn={signedIn} slots={slots} t={t}
-                sizes="(max-width: 639px) 40vw, (max-width: 1023px) 24vw, 12vw" />
+                sizes="(max-width: 639px) 46vw, (max-width: 1023px) 24vw, 12vw" />
             ))}
           </div>
         </section>
@@ -133,8 +133,8 @@ export function ProductHome({ signedIn, model, slots, t, banners = [], locale = 
             action={videoSoon ? <Badge kind="soon" t={t} /> : undefined} />
           <div className="rail-x-sm sm:grid sm:grid-cols-3 sm:gap-2.5 lg:grid-cols-6">
             {video.map((c) => (
-              <EffectCard key={c.key} card={c} signedIn={signedIn} slots={slots} t={t} ratio="16/10"
-                sizes="(max-width: 639px) 60vw, (max-width: 1023px) 32vw, 16vw" />
+              <EffectCard key={c.key} card={c} signedIn={signedIn} slots={slots} t={t}
+                sizes="(max-width: 639px) 46vw, (max-width: 1023px) 32vw, 16vw" />
             ))}
           </div>
           {videoSoon && (

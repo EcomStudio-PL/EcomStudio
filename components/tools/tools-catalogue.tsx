@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { ArrowRight, Lightbulb, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { ToolThumb, type ToolMotif } from "@/components/tools/tool-thumb";
+import { TOOL_THUMB_RATIO, ToolThumb, type ToolMotif } from "@/components/tools/tool-thumb";
 import { SlotMedia } from "@/components/media/slot-media";
 import type { SlotMap } from "@/lib/server/media-slots";
 import { menuBadge, type AvailabilityMap, type MenuGate } from "@/lib/features";
@@ -183,7 +183,7 @@ function ToolCard({ card, avail, isAdmin, t, slots }: {
             operation, which a stock photo cannot. A picture appears here only
             where an admin deliberately put one. */}
         {slots && card.slotKey ? (
-          <SlotMedia slot={card.slotKey} slots={slots} ratio="16/10"
+          <SlotMedia slot={card.slotKey} slots={slots} ratio={TOOL_THUMB_RATIO}
             className="rounded-xl"
             sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 16vw"
             fallback={<ToolThumb motif={card.motif} icon={card.icon} dimmed={blocked} />} />

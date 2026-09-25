@@ -327,5 +327,27 @@ console.log("\nJ. the storage contract");
       + read("components/layout/mega-topbar.tsx") + read("components/layout/customer-drawer.tsx")));
 }
 
+/* ── K ─────────────────────────────────────────────────────────────────── */
+console.log("\nK. one thumbnail shape: every tool thumbnail is 5:4");
+{
+  const thumb = read("components/tools/tool-thumb.tsx");
+  const art = read("components/home/card-art.tsx");
+  const cards = read("components/home/product-cards.tsx");
+  const home = read("components/home/product-home.tsx");
+  const catalogue = read("components/tools/tools-catalogue.tsx");
+  const slotsSrc = read("lib/media-slots.ts");
+  check("the one constant is 5/4, and ToolThumb paints it by default",
+    thumb.includes('export const TOOL_THUMB_RATIO = "5/4";') && thumb.includes("ratio = TOOL_THUMB_RATIO"));
+  check("a Home card defaults to it (rail, Wybierz efekt, video row)",
+    art.includes("ratio = TOOL_THUMB_RATIO") && !/<CardArt[^>]*ratio=/.test(cards) && !/<EffectCard[^>]*ratio=/.test(home));
+  check("no tall (4/5) or wide (16/9, 16/10) override is left on a tool card",
+    !/ratio="(4\/5|16\/9|16\/10)"/.test(cards) && !/EffectCard[\s\S]{0,200}ratio="/.test(home));
+  check("/tools paints its admin picture in the same frame",
+    catalogue.includes("ratio={TOOL_THUMB_RATIO}") && !catalogue.includes('ratio="16/10"'));
+  check("the admin upload frame of every tool, workflow and category card is 5/4",
+    /"media\.slot\.toolCard", "5\/4"/.test(slotsSrc) && /"media\.slot\.workflowCard", "5\/4"/.test(slotsSrc)
+    && /"media\.slot\.categoryCard", "5\/4"/.test(slotsSrc));
+}
+
 console.log(failed ? `\n${failed} tool-layout test(s) failed.` : "\nAll tool-layout tests passed.");
 process.exit(failed ? 1 : 0);

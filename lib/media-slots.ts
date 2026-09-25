@@ -42,7 +42,7 @@ export type SlotEntity = "category" | "workflow" | "tool" | "banner" | "section"
 
 /** Which shape the slot is painted in, so the admin preview and the renderer
  *  agree without either guessing. */
-export type SlotRatio = "16/10" | "16/9" | "4/3" | "4/5" | "1/1" | "3/1" | "21/9";
+export type SlotRatio = "5/4" | "16/10" | "16/9" | "4/3" | "4/5" | "1/1" | "3/1" | "21/9";
 
 export type SlotDef = {
   key: string;
@@ -98,7 +98,7 @@ const slot = (
  */
 const CATEGORY_SLOTS: SlotDef[] = CATEGORIES.flatMap((c) => [
   slot(categorySlotKey(c.key), "category", c.key, "card",
-    "media.slot.categoryCard", "16/10", true, "media.fb.ownWork"),
+    "media.slot.categoryCard", "5/4", true, "media.fb.ownWork"),
   slot(categoryHeroKey(c.key), "category", c.key, "hero",
     "media.slot.categoryHero", "21/9", true, "media.fb.gradient"),
 ]);
@@ -127,13 +127,12 @@ export function categoryHeroKey(categoryKey: string): string {
  */
 const WORKFLOW_SLOTS: SlotDef[] = CATEGORIES.flatMap((c) =>
   offeredWorkflows(c).map((w) =>
-    // 16/10, because the card is now a /tools catalogue card and that is the
-    // shape its frame paints — the same as every other tool's. (It was 4/3
-    // while the card lived on the category's own page, which now forwards to
-    // /tools.) The workflow's own ratio chip says what the OUTPUT will be,
-    // which is a different thing from the size of the thumbnail.
+    // 5/4, the shape every tool thumbnail is painted at (TOOL_THUMB_RATIO in
+    // components/tools/tool-thumb.tsx) — the same as every other tool's. The
+    // workflow's own ratio chip says what the OUTPUT will be, which is a
+    // different thing from the size of the thumbnail.
     slot(workflowSlotKey(c.key, w.key), "workflow", `${c.key}.${w.key}`, "card",
-      "media.slot.workflowCard", "16/10", false, "media.fb.motif")));
+      "media.slot.workflowCard", "5/4", false, "media.fb.motif")));
 
 export function workflowSlotKey(categoryKey: string, workflowKey: string): string {
   return `category.${categoryKey}.workflow.${workflowKey}.card`;
@@ -158,7 +157,7 @@ export function workflowSlotKey(categoryKey: string, workflowKey: string): strin
  */
 const TOOL_SLOTS: SlotDef[] = TOOL_CARDS
   .map((c) => slot(toolSlotKey(c.key), "tool", c.key, "card",
-    "media.slot.toolCard", "16/10", false, "media.fb.motif"));
+    "media.slot.toolCard", "5/4", false, "media.fb.motif"));
 
 /** The key of a catalogue card's picture. Exported so the catalogue asks for
  *  exactly the keys this file declares, rather than spelling them itself. */

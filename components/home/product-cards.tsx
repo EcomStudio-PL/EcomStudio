@@ -2,7 +2,7 @@ import { ArrowRight } from "lucide-react";
 import type { HomeCard } from "@/lib/home-sections";
 import type { SlotMap } from "@/lib/server/media-slots";
 import type { AuthMode } from "@/lib/auth-routes";
-import { CardArt, type ArtRatio } from "./card-art";
+import { CardArt } from "./card-art";
 import { Gate } from "./gate";
 import { cn } from "@/lib/utils";
 
@@ -52,7 +52,7 @@ function Card({ card, signedIn, t, className, children }: {
 }
 
 /**
- * THE TOP RAIL TILE — a wide picture with the name under it in small caps.
+ * THE TOP RAIL TILE — the tool's 5:4 picture with the name under it in small caps.
  * On a phone the rail is a carousel (`rail-x-sm`), so the tile has a width of
  * its own there; from `sm` up it is a grid cell.
  */
@@ -63,7 +63,7 @@ export function RailTile({ card, signedIn, slots, t, priority }: {
     <Card card={card} signedIn={signedIn} t={t} className="w-[56vw] max-w-[16rem] sm:w-auto sm:max-w-none">
       <span className="relative block rounded-xl transition-shadow duration-200 group-hover:shadow-[0_10px_28px_-14px_rgb(var(--accent)/0.55)]">
         <CardArt art={card.art} icon={card.icon} slot={card.slot} slots={slots}
-          ratio="16/9" dimmed={card.badge !== null} priority={priority} video={card.video}
+          dimmed={card.badge !== null} priority={priority} video={card.video}
           sizes="(max-width: 639px) 56vw, (max-width: 1023px) 32vw, 17vw" />
       </span>
       <span className="mt-2 flex min-w-0 items-center gap-1.5">
@@ -77,20 +77,18 @@ export function RailTile({ card, signedIn, slots, t, priority }: {
 }
 
 /**
- * THE EFFECT CARD — a tall picture and a name. The one-liner lives in the
- * title attribute: at this density a second line of prose turns a catalogue
- * into a document.
+ * THE EFFECT CARD — the tool's 5:4 picture and a name. The one-liner lives in
+ * the title attribute: at this density a second line of prose turns a
+ * catalogue into a document.
  */
-export function EffectCard({ card, signedIn, slots, t, ratio = "4/5", sizes }: {
-  card: HomeCard; signedIn: boolean; slots: SlotMap; t: T; ratio?: ArtRatio; sizes: string;
+export function EffectCard({ card, signedIn, slots, t, sizes }: {
+  card: HomeCard; signedIn: boolean; slots: SlotMap; t: T; sizes: string;
 }) {
-  // A wide card needs a wider slide in the phone carousel, or it would be a
-  // strip; from `sm` up the grid decides.
-  const slide = ratio === "4/5" ? "w-[40vw] max-w-[11rem]" : "w-[62vw] max-w-[16rem]";
+  // The slide width in the phone carousel; from `sm` up the grid decides.
   return (
-    <Card card={card} signedIn={signedIn} t={t} className={cn(slide, "sm:w-auto sm:max-w-none")}>
+    <Card card={card} signedIn={signedIn} t={t} className="w-[46vw] max-w-[13rem] sm:w-auto sm:max-w-none">
       <CardArt art={card.art} icon={card.icon} slot={card.slot} slots={slots}
-        ratio={ratio} dimmed={card.badge !== null} video={card.video} sizes={sizes} />
+        dimmed={card.badge !== null} video={card.video} sizes={sizes} />
       <span className="mt-2 flex min-w-0 items-center gap-1.5 px-0.5">
         <span className="truncate text-[12px] font-semibold leading-tight text-ink">{t(card.titleKey)}</span>
         {card.badge && <Badge kind={card.badge} t={t} />}

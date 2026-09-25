@@ -2,12 +2,12 @@ import Image from "next/image";
 import type { LucideIcon } from "lucide-react";
 import { Play } from "lucide-react";
 import type { CardArt } from "@/lib/home-sections";
-import { ToolThumb, type ToolMotif } from "@/components/tools/tool-thumb";
+import { TOOL_THUMB_RATIO, ToolThumb, type ToolMotif } from "@/components/tools/tool-thumb";
 import { SlotMedia } from "@/components/media/slot-media";
 import type { SlotMap } from "@/lib/server/media-slots";
 import { cn } from "@/lib/utils";
 
-export type ArtRatio = "4/5" | "16/9" | "16/10" | "1/1";
+export type ArtRatio = "5/4" | "4/5" | "16/9" | "16/10" | "1/1";
 
 /**
  * THE PICTURE ON A HOME CARD OR TILE, in strict order of authority:
@@ -29,7 +29,7 @@ export type ArtRatio = "4/5" | "16/9" | "16/10" | "1/1";
  * so nothing on the page moves when a picture does.
  */
 export function CardArt({
-  art, icon, slot, slots, ratio = "4/5", dimmed = false, sizes, priority = false, video = false,
+  art, icon, slot, slots, ratio = TOOL_THUMB_RATIO, dimmed = false, sizes, priority = false, video = false,
 }: {
   art: CardArt;
   /** The operation's icon on the drawn floor. Omitted on gallery tiles. */

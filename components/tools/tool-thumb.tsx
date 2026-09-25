@@ -38,7 +38,16 @@ const TONE: Record<ToolMotif, { from: string; to: string }> = {
   video: { from: "var(--violet)", to: "var(--accent)" },
 };
 
-export function ToolThumb({ motif, icon: Icon, dimmed = false, ratio = "16/10" }: {
+/**
+ * THE ONE SHAPE OF A TOOL THUMBNAIL — 5:4, everywhere a customer meets a tool:
+ * /tools, the Start rail, "Wybierz efekt", the video row. The pictures made for
+ * the tools are drawn at 5:4; a frame of any other shape crops them (a tall
+ * one cuts their sides off). Gallery tiles of EXAMPLE OUTPUTS are not tool
+ * thumbnails and keep their own shapes.
+ */
+export const TOOL_THUMB_RATIO = "5/4";
+
+export function ToolThumb({ motif, icon: Icon, dimmed = false, ratio = TOOL_THUMB_RATIO }: {
   motif: ToolMotif;
   /** The operation's icon, bottom-left. Omitted by a gallery tile on the Home,
    *  where the motif stands in for a picture that has not been put there yet
@@ -48,15 +57,12 @@ export function ToolThumb({ motif, icon: Icon, dimmed = false, ratio = "16/10" }
    *  keep the eye. */
   dimmed?: boolean;
   /**
-   * The shape to paint in. 16/10 is the catalogue's own and stays the default.
-   *
-   * The homepage needs 4/5 because it puts DRAWN and PHOTOGRAPHED cards in one
-   * row, and a row where half the tiles are 16/10 and half are 4/5 does not
-   * read as two kinds of art — it reads as a broken grid, with every label on
-   * a different line. One shape per row, whatever is inside it. The Home's
-   * rail and galleries paint squares and wide frames for the same reason.
+   * The shape to paint in. A tool thumbnail is always 5:4 (the default); the
+   * other shapes are for the Home's gallery tiles, where the motif stands in
+   * for an example picture of that gallery's own shape. One shape per row,
+   * whatever is inside it.
    */
-  ratio?: "16/10" | "4/5" | "16/9" | "1/1";
+  ratio?: "5/4" | "16/10" | "4/5" | "16/9" | "1/1";
 }) {
   const tone = TONE[motif];
   return (
