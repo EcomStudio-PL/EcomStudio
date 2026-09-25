@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { GeneratorWorkspace } from "@/components/genv3/workspace";
-import { CATEGORY_VARIANT, DEFAULT_VARIANT, categoryHref, findCategory } from "@/lib/categories";
+import { CATEGORY_VARIANT, DEFAULT_VARIANT, categoryPath, findCategory } from "@/lib/categories";
 import { fashionTool } from "@/lib/fashion-tools";
 import { FashionToolWorkspace } from "@/components/fashion/tool-workspace";
 import type { GalleryItem, GenModel } from "@/components/genv3/types";
@@ -117,9 +117,11 @@ export function WorkflowRuntime({
           the app is worse than no button.
 
           It leads to the category's section of /tools, which is where the
-          category lives now; its old page only forwards there, so linking to
-          the section directly saves the detour. */}
-      <Link href={categoryHref(category)}
+          category lives now — THROUGH the category's own address, which
+          forwards there. This screen cannot see the switchboard, and the
+          forward can: should an operator take the whole hub down while the
+          category stays live, "back" lands on a live screen, not a 404. */}
+      <Link href={categoryPath(category)}
         data-tool-back
         className="mb-3 inline-flex items-center gap-1.5 self-start text-[13px] font-medium text-muted transition-colors hover:text-ink">
         <ArrowLeft size={14} aria-hidden />

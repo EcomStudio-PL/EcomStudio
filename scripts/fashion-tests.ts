@@ -20,7 +20,7 @@ process.env.APP_ENCRYPTION_KEY = "e".repeat(64); // throwaway, never a real one
 
 import { readFileSync } from "fs";
 import { FASHION_TOOLS, FASHION_HINT_MAX, fashionTool } from "../lib/fashion-tools";
-import { CATEGORIES, categoryHref, offeredWorkflows } from "../lib/categories";
+import { CATEGORIES, categoryHref, categoryPath, offeredWorkflows } from "../lib/categories";
 import { CATEGORY_SECTIONS } from "../lib/tool-cards";
 import { MEDIA_SLOTS, workflowSlotKey } from "../lib/media-slots";
 import { FEATURE_REGISTRY, defaultStatusFor } from "../lib/features";
@@ -214,10 +214,12 @@ check("the tool page renders no category hero",
 check("…but it does offer a way back", /data-tool-back/.test(runtime));
 // A real href, not history.back(): a tool opened from a bookmark or a shared
 // URL has no history entry to return to.
-// The category lives as a section of /tools now; the link goes there directly
-// rather than through the old page's forward.
-check("…which is a link to the category's section of /tools, not history.back()",
-  /href=\{categoryHref\(category\)\}/.test(runtime)
+// The category lives as a section of /tools now; the link goes through the
+// category's own address, which forwards there (and decides when the hub is
+// switched off — this client screen cannot see the switchboard).
+check("…which is a link to the category (forwarded to its section of /tools), not history.back()",
+  /href=\{categoryPath\(category\)\}/.test(runtime)
+  && categoryPath(CATEGORIES.find((c) => c.key === "moda")!) === "/k/moda"
   && categoryHref(CATEGORIES.find((c) => c.key === "moda")!) === "/tools?category=moda"
   && !/history\.back\(\)/.test(runtime));
 // The back link is now the ONLY thing above the panel. Section A pins the

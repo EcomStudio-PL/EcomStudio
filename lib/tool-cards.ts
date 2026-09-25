@@ -321,9 +321,11 @@ export function hubSection(key: string | null | undefined): HubSectionDef | null
  * governed by the very switch its section answers to (a category's preset)
  * follows the section's decision rather than repeating it. A section left
  * with no cards is dropped rather than shown as an empty heading. What is
- * merely restricted — "Wkrótce", maintenance — stays, and carries its badge.
- * Admins see everything, badged, because they are the ones who switch modules
- * back on.
+ * merely restricted — "Wkrótce", maintenance — stays, and carries its badge
+ * for customers. Admins are shown everything, open, as the catalogue has always
+ * shown them (tools-catalogue.tsx gives admins no module badge): they are the
+ * ones who switch modules back on, and the page itself tells them what a
+ * customer gets (FeatureGate's preview strip on the module they open).
  */
 export function hubSectionsFor(avail: AvailabilityMap, isAdmin: boolean, requested?: string | null): HubSectionDef[] {
   return HUB_SECTIONS

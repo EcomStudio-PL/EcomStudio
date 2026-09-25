@@ -25,7 +25,7 @@ export const FEATURE_KEYS = [
   "home",
   "library",
   "history",
-  // Obraz — the six category workspaces, each its own /k/<slug>
+  // Obraz — the six categories: each a section of /tools, its workflows under /k/<slug>
   "image_moda",
   "image_ecommerce",
   "image_social",

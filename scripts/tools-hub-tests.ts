@@ -303,6 +303,12 @@ section("13. AN OLD CATEGORY ADDRESS FORWARDS — NEVER A DEAD SCREEN");
 const catPage = code(`${APP}/k/[cat]/page.tsx`);
 check("/k/<slug> forwards to its section", /redirect\(categoryHref\(category\)\)/.test(catPage));
 check("…an unknown slug is still a 404, not a forward to nowhere", /if \(!category\) notFound\(\)/.test(catPage));
+check("…and a DISABLED category's old address still 404s for a customer (admins are forwarded)",
+  /if \(!routeReachable\(avail, categoryPath\(category\), isAdmin\)\) notFound\(\)/.test(catPage)
+  && catPage.indexOf("routeReachable(") < catPage.indexOf("redirect(categoryHref"));
+check("the old page's copy is gone with it (no orphaned catpage / match namespaces)",
+  ["pl", "en", "de"].every((l) => { const d = JSON.parse(read(`lib/i18n/dictionaries/${l}.json`));
+    return !("catpage" in d) && !("match" in d) && !("categoriesTitle" in (d.home ?? {})); }));
 check("the category segment's layout no longer shows a gate screen in front of the forward",
   !/FeatureGate/.test(code(`${APP}/k/[cat]/layout.tsx`)));
 check("…the gate moved to the workflow screens, on the same key",
@@ -315,8 +321,11 @@ check("the workflow screens are untouched and still resolve",
 check("the old landing's components are gone, not left reachable",
   ["components/category/category-header.tsx", "components/category/workflow-cards.tsx",
     "components/category/matching-workspace.tsx", "components/home/category-grid.tsx"].every((f) => !fs.existsSync(f)));
-check("a workflow's way back leads to the category's section",
-  /href=\{categoryHref\(category\)\}/.test(code("components/category/workflow-runtime.tsx")));
+check("a workflow's way back goes through the category's forwarding address",
+  /href=\{categoryPath\(category\)\}/.test(code("components/category/workflow-runtime.tsx")));
+check("the forward never turns an in-app link into a 404 when only the hub is off",
+  /if \(!routeReachable\(avail, "\/tools", isAdmin\)\) redirect\("\/home"\)/.test(catPage)
+  && catPage.indexOf('routeReachable(avail, "/tools"') < catPage.indexOf("redirect(categoryHref"));
 
 section("DASHBOARD: NO CATEGORY TILES LEFT");
 const home = code(`${APP}/home/page.tsx`);
