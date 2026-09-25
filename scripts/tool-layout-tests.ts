@@ -221,7 +221,7 @@ console.log("\nF. three independent switches — each moves only its own surface
   check("an item switched onto Start that no curated row names joins „Wybierz efekt”",
     startExtras(arranged((l) => { l.flags.expand.start = true; })).join() === "expand"
     && homeModel(LIVE, false, arranged((l) => { l.flags.expand.start = true; })).effects.some((c) => c.key === "expand"));
-  check("the drawer's tool list never carries the generator (it is the panel's button)",
+  check("the menu's tool column never carries the generator (it is the panel's button)",
     !editEntriesFor(menuItemKeys(DEFAULT_LAYOUT)).some((e) => e.key === "generator"));
 }
 

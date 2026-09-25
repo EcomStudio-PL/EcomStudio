@@ -16,7 +16,9 @@
  *   4–6  Moda / E-commerce / Social in the menu → /tools?category=<slug>
  *   7  the section is opened from the URL on the server (survives refresh)
  *   8  the client follows the URL (Back/Forward)
- *   9  the drawer closes, navigates and lands on the section
+ *   9  the desktop panel closes, navigates and lands on the section (the
+ *      mobile drawer no longer lists categories — Biblioteka, Pomoc,
+ *      Ustawienia and Panel admina only)
  *   10 "Wkrótce" still badges
  *   11 hidden / disabled still hides — a category's link and its section obey
  *      the category's own switch as well as the hub's
@@ -190,8 +192,8 @@ for (const slug of ["moda", "ecommerce", "social"]) {
 check("every category in the desktop menu links to its section",
   CATEGORIES.every((c) => IMAGE_CREATE.find((e) => e.key === c.key)?.href === categoryHref(c)));
 const drawer = code("components/layout/customer-drawer.tsx");
-check("the mobile drawer links each category to its section, not to /k/",
-  /href=\{categoryHref\(c\)\}/.test(drawer) && !/href=\{`\/k\//.test(drawer));
+check("the mobile drawer carries no category rows (and so no /k/ link)",
+  !/categoryHref|CATEGORIES/.test(drawer) && !/href=\{`\/k\//.test(drawer));
 check("the menus keep the category entries (the menu itself did not lose them)",
   IMAGE_CREATE.length === CATEGORIES.length);
 // The signed-in application and its menus. The PUBLIC product homepage
@@ -221,11 +223,8 @@ check("8: no timers — the reveal runs off the committed page, not a delay",
   !/setTimeout|setInterval/.test(deep));
 check("8: a link to the section you are already on is answered too — before the router",
   /addEventListener\("click", onClick, true\)/.test(deep) && /e\.preventDefault\(\);\s*reveal\(wanted/.test(deep));
-check("9: a drawer category tile closes the drawer as it navigates",
-  /href=\{categoryHref\(c\)\}[\s\S]{0,200}onNavigate=\{closeNav\}/.test(drawer));
 check("9: a category link does not let the router jump to the page top first",
-  /scroll=\{false\} label=\{t\(`cats\./.test(drawer)
-  && /scroll=\{entry\.match \? false : undefined\}/.test(code("components/layout/mega-topbar.tsx"))
+  /scroll=\{entry\.match \? false : undefined\}/.test(code("components/layout/mega-topbar.tsx"))
   && IMAGE_CREATE.every((e) => e.match === categoryPath(CATEGORIES.find((c) => c.key === e.key)!)));
 check("9: the desktop panel closes when one of its links is followed",
   /onNavigate=\{close\}/.test(code("components/layout/mega-topbar.tsx")));
@@ -314,7 +313,6 @@ check("with everything live, a customer sees every section",
   hubSectionsFor(ALL_ACTIVE, false).length === HUB_SECTIONS.length);
 check("the menus ask through the gates, never the bare href, for categories",
   /menuVisible\(avail, entryGate\(e\), isAdmin\)/.test(code("components/layout/mega-topbar.tsx"))
-  && /show\(categoryGates\(c\)\)/.test(drawer)
   && IMAGE_CREATE.every((e) => Array.isArray(entryGate(e))));
 
 /* ── 12 ────────────────────────────────────────────────────────────────── */

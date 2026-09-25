@@ -4,10 +4,9 @@
  * `npm run test:toolshub` proves the registry, the gates and the source. This
  * proves the parts only a browser can: that `?category=` really scrolls the
  * section into view on a fresh load and on a refresh, that Back/Forward really
- * moves the view, that the mobile drawer really closes, navigates and lands on
- * the section, that the desktop panel closes behind its own click, that a
- * click on the section you are already on brings it back, and that no width
- * overflows.
+ * moves the view, that the mobile drawer carries no category groups any more,
+ * that the desktop panel closes behind its own click and lands on the section,
+ * and that no width overflows.
  *
  * THE HARNESS. /tools sits behind sign-in, and this probe runs against a local
  * production build with no account. So the harness mounts the REAL pieces —
@@ -212,70 +211,44 @@ for (const width of [390, 1440]) {
   await ctx.close();
 }
 
-/* ── 4–6 + 9. THE MOBILE DRAWER ─────────────────────────────────────────── */
-console.log("\n4–6, 9. MOBILE DRAWER → SECTION");
+/* ── THE MOBILE DRAWER CARRIES NO CATEGORIES ────────────────────────────── */
+console.log("\nMOBILE DRAWER: NO CATEGORY / TOOL / VIDEO GROUPS");
 for (const width of [320, 390, 768]) {
   const { ctx, page } = await open(width, 800);
   await page.goto(`${BASE}/tools`, { waitUntil: "networkidle" });
-  for (const [key, label] of [["moda", "Moda"], ["ecommerce", "E-commerce"], ["social", "Social Media"]]) {
-    await page.getByRole("button", { name: "Menu" }).first().click();
-    const drawer = page.locator('[role="dialog"]');
-    await drawer.getByRole("button", { name: /OBRAZY|Obraz/i }).click();
-    const tile = drawer.getByRole("link", { name: new RegExp(`^${label}`) });
-    const href = await tile.getAttribute("href");
-    await tile.click();
-    await page.waitForURL((u) => u.search === `?category=${key}`);
-    await settle(page);
-    const open = await page.locator('[role="dialog"]').count();
-    const w = await where(page, key);
-    check(`${width}px: drawer „${label}” → ${href}, drawer closed, section in view and active`,
-      href === `/tools?category=${key}` && open === 0 && w?.inView && w.active && w.path === `/tools?category=${key}`,
-      JSON.stringify({ href, open, ...w }));
-  }
+  await page.getByRole("button", { name: "Menu" }).first().click();
+  const drawer = page.locator('[role="dialog"]');
+  await drawer.waitFor();
+  const r = await drawer.evaluate((d) => ({
+    // The list only: the footer's language button is a dropdown, not a group.
+    groups: [...(d.querySelector("nav")?.querySelectorAll("button[aria-expanded]") ?? [])].map((b) => b.textContent.trim()),
+    hrefs: [...d.querySelectorAll("a")].map((a) => a.getAttribute("href")),
+  }));
+  check(`${width}px: the drawer has no accordion and no category, tool or video link`,
+    r.groups.length === 0 && !r.hrefs.some((h) => /category=|^\/k\/|^\/tools|^\/retusz|^\/wideo/.test(h ?? "")),
+    JSON.stringify(r));
   await ctx.close();
 }
 
 /* ── 8. BACK / FORWARD ──────────────────────────────────────────────────── */
 console.log("\n8. BACK / FORWARD");
 {
+  // Addresses typed or pasted one after another, then the browser's own
+  // history buttons: the URL alone must decide the open section each time.
   const { ctx, page } = await open(390, 800);
-  await page.goto(`${BASE}/tools?category=moda`, { waitUntil: "networkidle" });
-  await settle(page);
-  for (const [key, label] of [["ecommerce", "E-commerce"], ["social", "Social Media"]]) {
-    await page.getByRole("button", { name: "Menu" }).first().click();
-    const drawer = page.locator('[role="dialog"]');
-    await drawer.getByRole("button", { name: /OBRAZY|Obraz/i }).click();
-    await drawer.getByRole("link", { name: new RegExp(`^${label}`) }).click();
-    await page.waitForURL((u) => u.search === `?category=${key}`);
+  for (const key of ["moda", "ecommerce", "social"]) {
+    await page.goto(`${BASE}/tools?category=${key}`, { waitUntil: "networkidle" });
     await settle(page);
   }
-  await page.goBack(); await page.waitForURL((u) => u.search === "?category=ecommerce"); await settle(page);
+  await page.goBack({ waitUntil: "networkidle" }); await settle(page);
   let w = await where(page, "ecommerce");
   check("Back → ?category=ecommerce, its section in view", w?.inView && w.active, JSON.stringify(w));
-  await page.goBack(); await page.waitForURL((u) => u.search === "?category=moda"); await settle(page);
+  await page.goBack({ waitUntil: "networkidle" }); await settle(page);
   w = await where(page, "moda");
   check("Back again → ?category=moda, its section in view", w?.inView && w.active, JSON.stringify(w));
-  await page.goForward(); await page.waitForURL((u) => u.search === "?category=ecommerce"); await settle(page);
+  await page.goForward({ waitUntil: "networkidle" }); await settle(page);
   w = await where(page, "ecommerce");
   check("Forward → ?category=ecommerce again", w?.inView && w.active, JSON.stringify(w));
-  await ctx.close();
-}
-
-/* ── ALREADY ON THE SECTION: THE SAME LINK BRINGS IT BACK ───────────────── */
-console.log("\nSAME SECTION, CLICKED AGAIN");
-{
-  const { ctx, page } = await open(390, 800);
-  await page.goto(`${BASE}/tools?category=moda`, { waitUntil: "networkidle" });
-  await settle(page);
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  await settle(page);
-  await page.getByRole("button", { name: "Menu" }).first().click();
-  const drawer = page.locator('[role="dialog"]');
-  await drawer.getByRole("button", { name: /OBRAZY|Obraz/i }).click();
-  await drawer.getByRole("link", { name: /^Moda/ }).click();
-  await settle(page);
-  const w = await where(page, "moda");
-  check("on /tools?category=moda, scrolled away, „Moda” brings the section back", w?.inView && w.active, JSON.stringify(w));
   await ctx.close();
 }
 

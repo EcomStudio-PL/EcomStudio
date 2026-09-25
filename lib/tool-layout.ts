@@ -44,7 +44,7 @@ import { START_PICKED_ITEMS } from "./home-picks";
 export type LayoutFlags = {
   /** Listed on /tools, in every section it is placed in. */
   tools: boolean;
-  /** Listed in the header menu's tool column and the drawer's "Narzędzia". */
+  /** Listed in the header menu's tool column. */
   menu: boolean;
   /** Promoted on the Start page. */
   start: boolean;

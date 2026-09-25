@@ -228,7 +228,7 @@ export default async function AppLayout({ children, searchParams }: {
           <FeedbackCTA />
         </main>
         <CustomerBottomNav availability={availability} isAdmin={navAdmin} />
-        <CustomerDrawer name={displayName} email={profile.email} credits={wallet?.balance ?? 0} creditsTotal={planCredits} plan={planName} isAdmin={isAdmin} navAdmin={navAdmin} availability={availability} menuItems={menuItems} />
+        <CustomerDrawer name={displayName} email={profile.email} credits={wallet?.balance ?? 0} creditsTotal={planCredits} plan={planName} isAdmin={isAdmin} navAdmin={navAdmin} availability={availability} />
         {bonusView?.status === "ELIGIBLE" && (
           <WelcomeBonusMount
             offer={bonusView}

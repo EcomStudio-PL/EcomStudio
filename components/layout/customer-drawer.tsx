@@ -1,17 +1,13 @@
 "use client";
-import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
-  ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, Home, Images, LifeBuoy,
-  LogOut, Plus, Settings, Shield,
+  ArrowUpRight, ChevronLeft, ChevronRight, Images, LifeBuoy, LogOut, Plus, Settings, Shield,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
-import { CATEGORIES, VIDEO_ICON as VideoIcon, categoryGates, categoryHref, categoryPath } from "@/lib/categories";
-import { editEntriesFor, editLabelKey, entryGate } from "@/lib/topnav";
 import {
-  allDefaults, menuBadge, menuVisible, routeReachable,
+  allDefaults, menuBadge, menuVisible,
   type AvailabilityMap, type MenuBadge, type MenuGate,
 } from "@/lib/features";
 import { isNavActive } from "@/lib/nav-active";
@@ -41,19 +37,15 @@ import { cn } from "@/lib/utils";
  * phrased, and the card itself never changes colour — nearly out of credits is
  * not an error state.
  *
- * FOUR GROUPS, AND NOTHING OUTSIDE THEM. GŁÓWNE, OBRAZY, NARZĘDZIA, WIDEO —
- * every destination belongs to one of them, and every one of them is SHUT when
- * the menu opens. No exception, including the group holding the page you are
- * standing on: the panel looks the same every time, and where you are shows up
- * as the pink row inside once you open the group yourself.
- *
- * A HEADING OUTRANKS ITS ROWS. It is taller, it sits on glass with a real
- * border, and its label is set in small caps; the rows are shorter, indented,
- * less rounded and quieter. The two used to be the same tile in two tints,
- * which made a group heading look like one more thing to press through on the
- * way to something else.
+ * FOUR ROWS AND NOTHING ELSE. Under the wallet: Biblioteka, Pomoc, Ustawienia
+ * and — for staff only — Panel admina, each its own directly pressable tile.
+ * The menu used to fold these into a "GŁÓWNE" group and carry three more
+ * groups (OBRAZY, NARZĘDZIA, WIDEO); the tools, categories and video live on
+ * the Narzędzia tab, the bottom bar and the search, so the drawer no longer
+ * repeats them. The account card on top and the sign-out / language / theme
+ * row pinned at the bottom are unchanged.
  */
-export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdmin, navAdmin, availability, menuItems }: {
+export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdmin, navAdmin, availability }: {
   name: string; email?: string; credits: number;
   /** The plan's monthly grant — `subscription_plans.monthly_credits` — which
    *  the meter measures the balance against. Null when the plan has none. */
@@ -64,9 +56,6 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
    *  role, so the preview is never a trap. */
   navAdmin?: boolean;
   availability?: AvailabilityMap;
-  /** The catalogue items the menu lists (lib/tool-layout.ts `menuItemKeys`).
-   *  Absent = the shipped menu. */
-  menuItems?: readonly string[];
 }) {
   const { t, locale } = useI18n();
   const { open, setOpen } = useDrawer();
@@ -82,31 +71,6 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
   // Both numbers come from the account: the wallet row and the plan row. There
   // is no reference constant here and nothing is assumed about the tier.
   const usage = creditUsage(credits, creditsTotal);
-
-  /** Each section's rows, resolved once, from the availability map. A
-   *  category row opens its section of /tools, so it answers to the hub AND
-   *  to the category's own switch (`categoryGates`). */
-  const categories = CATEGORIES.filter((c) => show(categoryGates(c)));
-  /**
-   * NARZĘDZIA — the section formerly called EDYTUJ, with the same five rows.
-   *
-   * The name changed because the column stopped being only about editing when
-   * the hub moved into it: "Wszystkie narzędzia" is not an edit, it is the
-   * toolbox. The desktop mega panel keeps EDYTUJ as a COLUMN heading opposite
-   * TWÓRZ, where the contrast is the whole point; the drawer has no such pair.
-   */
-  //
-  // The rows are the items whose "menu" switch is on (the same list the header
-  // panel draws — never the generator, which the drawer does not carry), and
-  // the status still decides whether each may be shown. The hub row answers to
-  // its own module switch.
-  // An item with no engine yet (Matching, the video ones) is listed badged,
-  // exactly as the header panel lists it.
-  const toolEntries = editEntriesFor(menuItems).filter((e) => (e.key === "allTools"
-    ? show(e.href)
-    : routeReachable(avail, entryGate(e), seesRestricted)));
-  /* GŁÓWNE holds the places that are not a workshop: the dashboard, what you
-     have made, help, settings, and the staff entrance last. */
 
   return (
     <Drawer
@@ -222,9 +186,8 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
         </div>
       </div>
 
-      {/* ── FOUR GROUPS, AND NOTHING OUTSIDE THEM ────────────────────────── */}
-      <Section title={t("nav.groups.main")}>
-        <Tile href="/home" label={t("nav.pulpit")} icon={Home} onNavigate={closeNav} badge={badge("/home")} />
+      {/* ── FOUR DIRECT ROWS ─────────────────────────────────────────────── */}
+      <div className="mt-3 space-y-1">
         {show("/library") && (
           <Tile href="/library" label={t("topnav.library")} icon={Images} onNavigate={closeNav} badge={badge("/library")} />
         )}
@@ -238,39 +201,7 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
           <Tile href="/admin" label={t("nav.admin")} icon={Shield} onNavigate={closeNav}
             rgb="var(--accent2)" tinted />
         )}
-      </Section>
-
-      {/* ── THE WORKSHOPS ────────────────────────────────────────────────── */}
-      {categories.length > 0 && (
-        <Section title={t("topnav.image")}>
-          {/* Each category opens its section of /tools. The tile closes the
-              drawer, the link navigates, and the hub opens and scrolls to the
-              section named in the URL — see components/tools/tools-deep-link.tsx. */}
-          {categories.map((c) => (
-            <Tile key={c.key} href={categoryHref(c)} match={categoryPath(c)} scroll={false} label={t(`cats.${c.key}`)} icon={c.icon}
-              onNavigate={closeNav} rgb={c.accent.rgb}
-              badge={badge(categoryGates(c)) ?? (c.soon ? t("common.soon") : null)} />
-          ))}
-        </Section>
-      )}
-
-      {toolEntries.length > 0 && (
-        <Section title={t("nav.groups.tools")}>
-          {/* The hub is the last of these five entries, so it is not appended a
-              second time underneath them. */}
-          {toolEntries.map((e) => (
-            <Tile key={e.key} href={e.href} label={t(editLabelKey(e))} icon={e.icon}
-              onNavigate={closeNav} badge={badge(entryGate(e)) ?? (e.soon ? t("common.soon") : undefined)} />
-          ))}
-        </Section>
-      )}
-
-      {show("/wideo") && (
-        <Section title={t("topnav.video")}>
-          <Tile href="/wideo" label={t("video.title")} icon={VideoIcon} onNavigate={closeNav}
-            rgb="var(--violet)" badge={badge("/wideo") ?? t("common.soon")} />
-        </Section>
-      )}
+      </div>
     </Drawer>
   );
 }
@@ -397,71 +328,5 @@ function Tile({ href, match, scroll, label, icon: Icon, onNavigate, badge, rgb =
         </span>
       )}
     </Link>
-  );
-}
-
-/**
- * Collapsible group — four of them, and every one of them opens SHUT.
- *
- * NOTHING BUT A CLICK OPENS A SECTION. This used to derive its open state from
- * the route: the group holding the current page expanded itself, on the theory
- * that a menu should not hide where you already are. In use that is not what it
- * reads as. The menu is how you go SOMEWHERE ELSE, and a group that unfolds by
- * itself means the panel looks different every time you open it — on /retusz
- * you get a list, on /credits you get four headings — so there is no shape to
- * learn. Four shut headings is the shape; opening one is the seller's decision,
- * and where they are shows up as the pink row inside once they get there.
- *
- * The state therefore lives for exactly as long as the menu is on screen. The
- * drawer unmounts its contents when it closes (`drawer.tsx`, `if (!open)
- * return null`), so the next open starts from `false` again with nothing to
- * reset and no effect to run. That is deliberate, not a side effect: "every
- * section shut on every open" and "this component has no memory" are the same
- * sentence.
- */
-function Section({ title, children }: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="mt-3">
-      {/* THE HEADING OUTRANKS ITS ROWS, VISIBLY. It is taller, it sits on
-          glass with a real border, and its label is set in small caps — three
-          differences, not one, because a single tint made a group heading look
-          like one more thing to press through. */}
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className={cn(
-          "flex min-h-[56px] w-full items-center justify-between gap-2 rounded-2xl border px-4 py-3 backdrop-blur-[2px] transition-colors duration-200",
-          open
-            ? "border-[rgb(var(--accent)/0.26)] bg-[rgb(var(--ink)/0.08)] shadow-e1"
-            : "border-[rgb(var(--line)/0.20)] bg-[rgb(var(--ink)/0.06)] hover:bg-[rgb(var(--ink)/0.085)]",
-        )}
-      >
-        <span className="truncate text-[11.5px] font-bold uppercase leading-none tracking-[0.17em] text-ink">
-          {title}
-        </span>
-        <span aria-hidden className={cn(
-          "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all duration-200",
-          open ? "rotate-180 bg-[rgb(var(--accent)/0.16)] text-accent" : "bg-[rgb(var(--ink)/0.08)] text-muted",
-        )}>
-          <ChevronDown size={15} />
-        </span>
-      </button>
-      {/* The rows hang off a hairline, indented — the one piece of structure
-          that says "these belong to the heading above" without a second box. */}
-      {/* Indented, and nothing else. A hairline ran down the left of an open
-          group as a connector; at this scale it read as a stray border on the
-          rows rather than as structure, and the indent already says whose
-          rows these are. */}
-      {open && (
-        <div className="animate-fade mt-1.5 space-y-1 pl-3">
-          {children}
-        </div>
-      )}
-    </div>
   );
 }
