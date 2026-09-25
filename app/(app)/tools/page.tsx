@@ -8,7 +8,7 @@ import { toolCatalogue, type ToolAvailability } from "@/lib/server/image-tools";
 import { getAvailabilityMap, viewerIsAdmin } from "@/lib/server/feature-availability";
 import { CATEGORIES, CATEGORY_PARAM } from "@/lib/categories";
 import { ACTIVE_STATE, featureForHref } from "@/lib/features";
-import type { HubCardDef } from "@/lib/tool-cards";
+import type { HubCardDef, HubSectionDef } from "@/lib/tool-cards";
 import { hubSectionsFor, sectionKeyFor } from "@/lib/tool-layout";
 import { getToolsLayout } from "@/lib/server/tool-layout";
 import { bannerSlotKey, categorySlotKey, toolSlotKey, workflowSlotKey } from "@/lib/media-slots";
@@ -114,6 +114,15 @@ export default async function ToolsPage({ searchParams }: {
     return parts.length > 0 ? parts.join(" · ") : null;
   };
 
+  // Only when the category's switch governs every card of the section: one
+  // that also holds tools of their own (E-commerce) must not wear a
+  // "Wkrótce" note above cards that are live.
+  const categoryNote = (s: HubSectionDef): string | null => {
+    const gate = s.gates?.[0];
+    if (!s.category || !gate || !s.cards.every((c) => c.gates?.includes(gate))) return null;
+    return noteFor(s.gates);
+  };
+
   // A shortcut into the editor is only as open as the editor itself.
   const stateFor = (slug: ToolSlug | undefined, href: string): ToolAvailability | null => {
     if (href.startsWith("/tools/editor") && editor && !editor.available) return editor;
@@ -131,7 +140,7 @@ export default async function ToolsPage({ searchParams }: {
         sections={visible.map((s) => ({
           key: s.key, icon: s.icon, title: t(s.titleKey), seeAll: s.seeAll,
           active: s.key === active,
-          note: s.category ? noteFor(s.gates) : null,
+          note: categoryNote(s),
           cards: s.cards.map((c) => ({
             key: c.key, href: c.href, icon: c.icon, motif: c.motif,
             title: t(c.titleKey), body: t(c.bodyKey), soon: c.soon,

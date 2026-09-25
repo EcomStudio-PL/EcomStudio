@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -115,14 +115,20 @@ export function ToolRegistry({ entries, availability, toolsLayout, models, servi
 
   // The item switches save one at a time and show at once: the local copy
   // takes the change straight away (every row's readout re-runs with it),
-  // and a failed save puts the stored value back.
+  // and a failed save puts the stored value back. A refresh that lands while
+  // another switch is still saving keeps that switch as the admin set it.
   const router = useRouter();
+  const pending = useRef(new Map<string, LayoutFlags>());
+  const withPending = (l: ToolsLayout): ToolsLayout =>
+    pending.current.size === 0 ? l : { ...l, flags: { ...l.flags, ...Object.fromEntries(pending.current) } };
   const [layout, setLayout] = useState<ToolsLayout>(toolsLayout);
-  useEffect(() => setLayout(toolsLayout), [toolsLayout]);
+  useEffect(() => setLayout(withPending(toolsLayout)), [toolsLayout]);
   const setFlags = async (itemKey: string, flags: LayoutFlags): Promise<boolean> => {
-    const before = layout.flags[itemKey];
+    const before = toolsLayout.flags[itemKey];
+    pending.current.set(itemKey, flags);
     setLayout((l) => ({ ...l, flags: { ...l.flags, [itemKey]: flags } }));
     const res = await setItemFlagsAction(itemKey, flags);
+    if (pending.current.get(itemKey) === flags) pending.current.delete(itemKey);
     if (!res.ok) {
       setLayout((l) => ({ ...l, flags: { ...l.flags, [itemKey]: before } }));
       return false;

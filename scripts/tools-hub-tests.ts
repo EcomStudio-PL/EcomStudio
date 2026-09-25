@@ -257,7 +257,7 @@ check("matching (no engine) is badged wherever it is placed, whatever the switch
   HUB_SECTIONS.flatMap((x) => x.cards).filter((x) => x.key === "matching").every((x) => x.soon));
 const toolsPage = code(`${APP}/tools/page.tsx`);
 check("an operator's own words on a restricted category travel to its section",
-  /note: s\.category \? noteFor\(s\.gates\) : null/.test(toolsPage)
+  /note: categoryNote\(s\)/.test(toolsPage) && /s\.cards\.every\(\(c\) => c\.gates\?\.includes\(gate\)\)/.test(toolsPage)
   && /state\.customTitle, state\.customMessage, reopens/.test(toolsPage)
   && /data-tools-note/.test(catalogue));
 check("the catalogue card reads the badge through the card's gates",

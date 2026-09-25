@@ -195,13 +195,12 @@ function toolsRow(key: FeatureKey, map: AvailabilityMap, layout: ToolsLayout): E
   }
   const found: { badge: MenuBadge; where: string }[] = [];
   for (const s of hubSectionsFor(map, false, layout)) {
-    // A category's own section counts as the category being listed.
-    if (cat && s.category === cat.key) {
-      const open = s.cards.some((c) => cardBadge(map, c) === null);
-      found.push({ badge: open ? null : cardBadge(map, s.cards[0]), where: s.titleKey });
-    }
     for (const c of s.cards) {
-      if (governs(key, ownGate(c))) found.push({ badge: cardBadge(map, c), where: s.titleKey });
+      // A category is listed through every card behind its door (its
+      // workflows, the Moda tools, Matching); anything else through the cards
+      // whose own route it governs.
+      const behind = cat ? (c.gates ?? []).includes(categoryPath(cat)) : governs(key, ownGate(c));
+      if (behind) found.push({ badge: cardBadge(map, c), where: s.titleKey });
     }
   }
   return fold("tools", found, inUniverse);

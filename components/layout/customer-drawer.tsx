@@ -100,7 +100,9 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
   // panel draws — never the generator, which the drawer does not carry), and
   // the status still decides whether each may be shown. The hub row answers to
   // its own module switch.
-  const toolEntries = editEntriesFor(menuItems).filter((e) => !e.soon && (e.key === "allTools"
+  // An item with no engine yet (Matching, the video ones) is listed badged,
+  // exactly as the header panel lists it.
+  const toolEntries = editEntriesFor(menuItems).filter((e) => (e.key === "allTools"
     ? show(e.href)
     : routeReachable(avail, entryGate(e), seesRestricted)));
   /* GŁÓWNE holds the places that are not a workshop: the dashboard, what you
@@ -258,7 +260,7 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
               second time underneath them. */}
           {toolEntries.map((e) => (
             <Tile key={e.key} href={e.href} label={t(editLabelKey(e))} icon={e.icon}
-              onNavigate={closeNav} badge={badge(entryGate(e))} />
+              onNavigate={closeNav} badge={badge(entryGate(e)) ?? (e.soon ? t("common.soon") : undefined)} />
           ))}
         </Section>
       )}

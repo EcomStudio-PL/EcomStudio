@@ -184,7 +184,9 @@ console.log("\nB. the six scenarios, read with the rules the customer side rende
   const off = board({ image_ecommerce: { status: "DISABLED" }, tool_upscale: { status: "DISABLED" } });
   check("Wyłączony category: gone everywhere, its door shut, even when asked for by URL",
     state("image_ecommerce", off, "tools") === "hidden" && !routeReachable(off, categoryPath(eCat), false)
-    && !hubSectionsFor(off, false).some((s) => s.key === "ecommerce"));
+    && !hubSectionsFor(off, false).some((s) => s.cards.some((c) => c.gates?.includes(categoryPath(eCat)))));
+  check("…while the editing tools that share its section stay (they never answered to it)",
+    state("retouch", off, "tools") === "shown");
   check("Wyłączony tool: gone from every list and its route closed",
     state("tool_upscale", off, "tools") === "hidden" && state("tool_upscale", off, "menu") !== "shown"
     && !routeReachable(off, "/tools/upscale", false));

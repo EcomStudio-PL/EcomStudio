@@ -15,9 +15,10 @@
  *      column, the generator button and the Start page are as before
  *   J  the storage contract: admin-only writes, conflict check, no second list
  *
- * The browser half (every width, no overflow) is scripts/tool-layout-probe.mjs.
+ * The browser half (every width, no overflow) is scripts/tools-hub-probe.mjs
+ * (/tools) and scripts/tools-panel-probe.mjs (the admin screens).
  *
- * Run: npm run test:toollayout
+ * Run: npm run test:catalogue
  */
 import fs from "node:fs";
 import {
@@ -241,6 +242,10 @@ console.log("\nG. „Wkrótce” is shown with its badge; DISABLED still hides")
   check("a DISABLED category takes its section; „Wkrótce” keeps it, badged",
     !hubSectionsFor(board({ image_social: { status: "DISABLED" } }), false).some((s) => s.key === "social")
     && hubSectionsFor(board({ image_social: { status: "COMING_SOON" } }), false).some((s) => s.key === "social"));
+  const noEco = hubSectionsFor(board({ image_ecommerce: { status: "DISABLED" } }), false)
+    .find((s) => s.key === "ecommerce")?.cards.map((c) => c.key) ?? [];
+  check("…but only what it governs: E-commerce switched off keeps the editing tools placed there",
+    noEco.join() === "retouch,remove_bg,background,ai_background,shadow,matching", noEco.join());
   const gate = read("components/feature-gate.tsx");
   check("FeatureGate is untouched by the layout (it never reads it)", !/tool-layout|tools_layout/.test(gate));
 }
@@ -298,8 +303,11 @@ console.log("\nJ. the storage contract");
   const actions = read("app/actions/tool-layout.ts");
   check("every write is admin-checked and normalised",
     actions.includes('profile?.role !== "admin"') && (actions.match(/normalizeLayout\(/g) ?? []).length >= 2);
-  check("a save refuses to overwrite a newer stored version",
-    /row\?\.updated_at \?\? null\) !== baseUpdatedAt\) return \{ ok: false, error: "conflict" \}/.test(actions));
+  check("a save refuses to overwrite a newer stored version — in the write itself, not a check before it",
+    /\.eq\("updated_at", base\)/.test(actions) && /error\.code === "23505" \? "conflict"/.test(actions)
+    && /writeIf\(supabase, layout, baseUpdatedAt\)/.test(actions));
+  check("a failed read is a failure, never the default written over the stored layout",
+    /if \(!current\.ok\) return \{ ok: false, error: "generic" \}/.test(actions));
   check("each write is audited", ["tools_layout.saved", "tools_layout.flags", "tools_layout.reset"].every((a) => actions.includes(a)));
   // Code only — the comments name those things to say they are not touched.
   const code = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");

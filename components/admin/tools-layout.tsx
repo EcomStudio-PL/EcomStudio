@@ -238,8 +238,10 @@ export function ToolsLayoutEditor({ initial, updatedAt, availability }: {
   const save = async () => {
     setBusy(true);
     const res = await saveToolsLayoutAction(draft, updatedAt);
-    setBusy(false);
+    // On success the editor stays busy until the refresh remounts it with the
+    // stored version: a second click must not send the old one again.
     if (res.ok) { toast.success(t("aicc.layout.saved")); router.refresh(); return; }
+    setBusy(false);
     if (res.error === "conflict") { setConflict(true); return; }
     toast.error(t("common.error"));
   };
@@ -248,9 +250,9 @@ export function ToolsLayoutEditor({ initial, updatedAt, availability }: {
     setConfirmReset(false);
     setBusy(true);
     const res = await resetToolsLayoutAction();
+    if (res.ok) { toast.success(t("aicc.layout.saved")); router.refresh(); return; }
     setBusy(false);
-    if (res.ok) { toast.success(t("aicc.layout.saved")); router.refresh(); }
-    else toast.error(t("common.error"));
+    toast.error(t("common.error"));
   };
 
   return (

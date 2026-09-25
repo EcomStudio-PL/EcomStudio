@@ -29,19 +29,34 @@ async function requireAdmin() {
 
 type Supa = Awaited<ReturnType<typeof requireAdmin>>["supabase"];
 
-async function currentRow(supabase: Supa) {
-  const { data } = await supabase
+/** The stored row, or `null` when there is none. A failed read is NOT "no
+ *  row": treating it so would write the default over an admin's layout. */
+async function currentRow(supabase: Supa): Promise<{ ok: true; row: { value: unknown; updated_at: string } | null } | { ok: false }> {
+  const { data, error } = await supabase
     .from("app_settings").select("value, updated_at").eq("key", TOOLS_LAYOUT_KEY).maybeSingle();
-  return data;
+  return error ? { ok: false } : { ok: true, row: data };
 }
 
-async function write(supabase: Supa, layout: ToolsLayout): Promise<string | null> {
+/**
+ * Write the layout only if the stored version is still `base` (null: no row
+ * yet). The check and the write are one statement — an insert that a second
+ * insert cannot pass, or an update conditioned on `updated_at` — so two saves
+ * racing each other cannot both succeed.
+ */
+async function writeIf(supabase: Supa, layout: ToolsLayout, base: string | null): Promise<string | "conflict" | null> {
   const updatedAt = new Date().toISOString();
-  const { error } = await supabase.from("app_settings").upsert(
-    { key: TOOLS_LAYOUT_KEY, value: layout, updated_at: updatedAt },
-    { onConflict: "key" },
-  );
-  if (error) return null;
+  if (base === null) {
+    const { error } = await supabase.from("app_settings")
+      .insert({ key: TOOLS_LAYOUT_KEY, value: layout, updated_at: updatedAt });
+    if (error) return error.code === "23505" ? "conflict" : null;
+  } else {
+    const { data, error } = await supabase.from("app_settings")
+      .update({ value: layout, updated_at: updatedAt })
+      .eq("key", TOOLS_LAYOUT_KEY).eq("updated_at", base)
+      .select("key");
+    if (error) return null;
+    if (!data || data.length === 0) return "conflict";
+  }
   // /tools, the menus in every layout and the Start page all read it.
   revalidatePath("/", "layout");
   return updatedAt;
@@ -56,10 +71,9 @@ async function write(supabase: Supa, layout: ToolsLayout): Promise<string | null
 export async function saveToolsLayoutAction(input: unknown, baseUpdatedAt: string | null): Promise<Result> {
   try {
     const { supabase, adminId } = await requireAdmin();
-    const row = await currentRow(supabase);
-    if ((row?.updated_at ?? null) !== baseUpdatedAt) return { ok: false, error: "conflict" };
     const layout = normalizeLayout(input);
-    const updatedAt = await write(supabase, layout);
+    const updatedAt = await writeIf(supabase, layout, baseUpdatedAt);
+    if (updatedAt === "conflict") return { ok: false, error: "conflict" };
     if (!updatedAt) return { ok: false, error: "generic" };
     await logAudit(supabase, {
       actorId: adminId, action: "tools_layout.saved", entityType: "app_settings", entityId: TOOLS_LAYOUT_KEY,
@@ -82,16 +96,23 @@ export async function setItemFlagsAction(itemKey: string, flags: LayoutFlags): P
   try {
     if (!catalogItem(itemKey)) return { ok: false, error: "invalid" };
     const { supabase, adminId } = await requireAdmin();
-    const row = await currentRow(supabase);
-    const layout = normalizeLayout(row?.value);
-    layout.flags[itemKey] = { tools: flags.tools === true, menu: flags.menu === true, start: flags.start === true };
-    const updatedAt = await write(supabase, layout);
-    if (!updatedAt) return { ok: false, error: "generic" };
-    await logAudit(supabase, {
-      actorId: adminId, action: "tools_layout.flags", entityType: "catalog_item", entityId: itemKey,
-      after: layout.flags[itemKey],
-    });
-    return { ok: true, updatedAt };
+    const next: LayoutFlags = { tools: flags.tools === true, menu: flags.menu === true, start: flags.start === true };
+    // Read, change this one entry, write if nobody wrote in between — and if
+    // somebody did, start again from what they stored, so neither change is lost.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const current = await currentRow(supabase);
+      if (!current.ok) return { ok: false, error: "generic" };
+      const layout = normalizeLayout(current.row?.value);
+      layout.flags[itemKey] = next;
+      const updatedAt = await writeIf(supabase, layout, current.row?.updated_at ?? null);
+      if (updatedAt === "conflict") continue;
+      if (!updatedAt) return { ok: false, error: "generic" };
+      await logAudit(supabase, {
+        actorId: adminId, action: "tools_layout.flags", entityType: "catalog_item", entityId: itemKey, after: next,
+      });
+      return { ok: true, updatedAt };
+    }
+    return { ok: false, error: "conflict" };
   } catch {
     return { ok: false, error: "forbidden" };
   }

@@ -279,14 +279,12 @@ export function hubSectionsFor(
   isAdmin: boolean,
   layout: ToolsLayout = DEFAULT_LAYOUT,
 ): HubSectionDef[] {
+  // Each item answers to its own gates — a category's workflow to the
+  // category's switch as well — so a category switched OFF empties what it
+  // governs (and a section left empty is not drawn) without taking along the
+  // editing tools that merely share its section.
   return layout.sections
     .filter((s) => s.visible)
-    // A category switched OFF takes its section with it, as it always has —
-    // "Wkrótce" and maintenance keep it, badged.
-    .filter((s) => {
-      const cat = CATEGORIES.find((c) => c.key === SECTION_BY_KEY.get(s.key)?.category);
-      return !cat || routeReachable(avail, categoryPath(cat), isAdmin);
-    })
     .map((s) => toSection(s, s.items
       .map((k) => catalogItem(k))
       .filter((c): c is HubCardDef => Boolean(c))
