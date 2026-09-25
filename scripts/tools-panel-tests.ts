@@ -33,11 +33,11 @@ import { CATEGORIES, categoryGates, categoryPath, offeredWorkflows } from "@/lib
 import { hubSectionsFor } from "@/lib/tool-cards";
 import { homeModel } from "@/lib/home-sections";
 import {
-  AI_TOOL_KEYS, mergeToolConfig, toolTabs, type ToolConfigValues,
+  AI_TOOL_KEYS, MODEL_PRICED, mergeToolConfig, toolTabs, type ToolConfigValues,
 } from "@/lib/services/ai-tools";
 import {
   PANEL_GROUPS, categoryOf, coveredCards, customerExposure, panelGroupOf, panelKind,
-  parentCategory, withDraft, type ExposureRow, type Surface,
+  parentCategory, staticallySoon, withDraft, type ExposureRow, type Surface,
 } from "@/lib/tool-panel";
 import { ADMIN_NAV } from "@/lib/navigation";
 import OldAvailabilityPage from "@/app/admin/settings/features/page";
@@ -140,8 +140,11 @@ console.log("\nB. the six scenarios, read with the rules the customer side rende
 
   // 4 — hidden tool
   const hid = board({ tool_upscale: { hiddenFromMenu: true } });
-  check("4 hidden tool: gone from /tools and the menu",
-    state("tool_upscale", hid, "tools") === "hidden" && state("tool_upscale", hid, "menu") === "hidden");
+  check("4 hidden tool: gone from /tools (and it has no menu entry to hide — the readout says so)",
+    state("tool_upscale", hid, "tools") === "hidden" && state("tool_upscale", hid, "menu") === "na");
+  const hidCompress = board({ compress: { hiddenFromMenu: true } });
+  check("4 …a hidden tool that HAS a menu entry leaves the menu too",
+    state("compress", hidCompress, "tools") === "hidden" && state("compress", hidCompress, "menu") === "hidden");
   check("4 …but not switched off: its address still opens", routeReachable(hid, "/tools/upscale", false)
     && hid.tool_upscale.status === "ACTIVE");
   check("4 …and nothing else lost its place", state("compress", hid, "tools") === "shown");
@@ -169,7 +172,7 @@ console.log("\nB. the six scenarios, read with the rules the customer side rende
     state("image_ecommerce", off, "tools") === "hidden" && !routeReachable(off, categoryPath(eCat), false)
     && !hubSectionsFor(off, false, "ecommerce").some((s) => s.key === "ecommerce"));
   check("Wyłączony tool: gone from every list and its route closed",
-    state("tool_upscale", off, "tools") === "hidden" && state("tool_upscale", off, "menu") === "hidden"
+    state("tool_upscale", off, "tools") === "hidden" && state("tool_upscale", off, "menu") !== "shown"
     && !routeReachable(off, "/tools/upscale", false));
   check("…while an admin still sees both to switch them back on",
     menuVisible(off, "/tools/upscale", true) && routeReachable(off, categoryGates(eCat), true));
@@ -196,7 +199,9 @@ console.log("\nC. status ≠ visibility, and the readout IS the customer's rules
     ["everything active", board(Object.fromEntries(FEATURE_KEYS.map((k) => [k, { status: "ACTIVE" as const }])))],
   ];
   for (const [name, map] of boards) {
-    const hubKeys = new Set(hubSectionsFor(map, false).flatMap((s) =>
+    // /tools is FeatureGate("tools"): unless it is ACTIVE, no card is drawn.
+    const hubOpen = map.tools.status === "ACTIVE";
+    const hubKeys = new Set(!hubOpen ? [] : hubSectionsFor(map, false).flatMap((s) =>
       [s.gates ? featureForHref(s.gates[s.gates.length - 1]) : null,
         ...s.cards.map((c) => featureForHref(c.gates ? c.gates[c.gates.length - 1] : c.href))]));
     const m = homeModel(map, false);
@@ -204,14 +209,50 @@ console.log("\nC. status ≠ visibility, and the readout IS the customer's rules
     const bad = FEATURE_KEYS.filter((k) => {
       const t = state(k, map, "tools");
       const h = state(k, map, "home");
-      const onHub = t === "shown" || t === "badged";
+      const onHub = k === "tools" ? hubKeys.has(k) : t === "shown" || t === "badged";
       const onHome = h === "shown" || h === "badged";
-      return onHub !== hubKeys.has(k) || onHome !== homeKeys.has(k);
+      if (k === "home") return false; // the Start page itself, checked below
+      return (k !== "tools" && onHub !== hubKeys.has(k)) || onHome !== homeKeys.has(k);
     });
     check(`the readout matches /tools and Start exactly — ${name}`, bad.length === 0, bad.join(","));
   }
-  check("everything hidden → nothing listed anywhere for a customer",
-    FEATURE_KEYS.every((k) => customerExposure(k, boards[1][1]).every((r) => r.state === "hidden" || r.state === "na")));
+  // Hiding unlists; it never closes a page. Start and /tools themselves
+  // still open — the readout says exactly that and nothing more.
+  check("everything hidden → nothing listed anywhere for a customer (the two pages themselves still open)",
+    FEATURE_KEYS.every((k) => customerExposure(k, boards[1][1]).every((r) => r.state === "hidden" || r.state === "na"
+      || (k === "home" && r.surface === "home") || (k === "tools" && r.surface === "tools"))));
+}
+
+/* ── C2 ────────────────────────────────────────────────────────────────── */
+console.log("\nC2. the readout follows the switches the review found it ignoring");
+{
+  const off = board({ tools: { status: "DISABLED" } });
+  check("/tools switched off → every tool on it reads hidden, not 'Widoczne'",
+    ["resize", "retouch", "tool_upscale", "image_ecommerce", "fashion_iron"].every((k) =>
+      state(k as FeatureKey, off, "tools") === "hidden"));
+  check("…and the Moda tools' category row with it", state("fashion_iron", off, "category") === "hidden");
+  const soonHub = board({ tools: { status: "COMING_SOON" } });
+  const r = row(customerExposure("resize", soonHub), "tools")!;
+  check("/tools in Wkrótce → its tools read as behind the Wkrótce screen", r.state === "badged" && r.badge === "soon");
+  check("the hub's own entry describes the whole tab",
+    row(customerExposure("tools", board()), "tools")?.where.includes("aicc.panel.tools.whole") === true);
+
+  check("Start's own switch governs the whole Start page",
+    state("home", board(), "home") === "shown" && state("home", board({ home: { status: "MAINTENANCE" } }), "home") === "badged"
+    && state("home", board({ home: { status: "DISABLED" } }), "home") === "hidden");
+
+  // The menu row reads the menus' real lists.
+  check("no menu entry is claimed for Historia, Pomoc, Kredyty or Własny prompt",
+    (["history", "support", "credits", "generator"] as FeatureKey[]).every((k) => state(k, board(), "menu") === "na"));
+  check("…while the entries the menus DO gate are read", state("library", board(), "menu") === "shown"
+    && state("library", board({ library: { hiddenFromMenu: true } }), "menu") === "hidden"
+    && state("compress", board(), "menu") === "shown");
+  check("an ACTIVE Matching still reads 'Wkrótce' in the menu, as customers see it",
+    row(customerExposure("image_matching", board({ image_matching: { status: "ACTIVE" } })), "menu")?.badge === "soon");
+  check("…and so does an ACTIVE Wideo",
+    row(customerExposure("video", board({ video: { status: "ACTIVE" } })), "menu")?.state === "badged");
+  check("the panel flags both as having no engine yet", staticallySoon("image_matching") && staticallySoon("video")
+    && !staticallySoon("image_ecommerce") && !staticallySoon("retouch"));
 }
 
 /* ── D ─────────────────────────────────────────────────────────────────── */
@@ -307,7 +348,24 @@ console.log("\nF. two forms on one screen cannot overwrite each other");
     JSON.stringify(mergeToolConfig("billing", saved, saved)) === JSON.stringify(saved)
     && JSON.stringify(mergeToolConfig("billing", saved, { ...saved, engineMode: "off", notes: "x" })) === JSON.stringify(saved)
     && JSON.stringify(mergeToolConfig("engine", saved, { ...saved, serviceSlug: null })) === JSON.stringify(saved));
+  const actions = read("app/actions/ai-tools.ts");
+  check("the server writes only the saving section's columns",
+    /engine: \["engine_mode", "timeout_ms", "max_attempts"\]/.test(actions)
+    && /billing: \["service_slug"\]/.test(actions) && /models: \["allow_model_choice", "fallback_enabled"\]/.test(actions)
+    && actions.includes("...owned,"));
+  check("…and the forms say which section they are",
+    read("components/admin/tool-basics.tsx").includes("saveToolConfigAction(payload, section)")
+    && read("components/admin/tool-models.tsx").includes('}, "models");'));
+  check("a save without a section still writes the whole row (the old callers)",
+    actions.includes("!section || SECTION_COLUMNS[section].includes(col)"));
   const panel = read("components/admin/tool-registry.tsx");
+  check("model-priced tools are the ones that reach runGeneration",
+    ["generator", "retouch", "prompts", "fashion_iron"].every((k) => MODEL_PRICED.includes(k as (typeof MODEL_PRICED)[number]))
+    && !MODEL_PRICED.includes("compress" as (typeof MODEL_PRICED)[number])
+    && /costOverride: retouchPrice/.test(read("lib/server/retouch.ts"))
+    && /costOverride: fashionPrice/.test(read("lib/server/fashion.ts")));
+  check("…and the panel never shows them a catalogue number as their price",
+    panel.includes("if (MODEL_PRICED.includes(r.key)) return t(\"aicc.panel.byModel\")") && panel.includes("modelPriced ?"));
   check("the forms get the STORED policy, not defaults",
     panel.includes("timeoutMs: tool.timeoutMs") && panel.includes("maxAttempts: tool.maxAttempts") && panel.includes("notes: tool.notes"));
   check("the availability editor remounts when its saved record changes",
@@ -329,7 +387,16 @@ console.log("\nG. the layout contract");
     read("app/admin/layout.tsx").includes("pb-[calc(var(--dock-h)+2rem+env(safe-area-inset-bottom))]"));
   check("the quick filter scrolls inside itself, not the page",
     panel.includes('role="group" aria-label={t("aicc.panel.quick.label")}') && panel.includes("overflow-x-auto"));
-  check("one row open at a time", panel.includes("setOpen((cur) => (cur === entry.admin.key ? null : entry.admin.key))"));
+  check("a collapsed row keeps its configuration mounted (drafts survive)",
+    panel.includes("hidden={!open}") && panel.includes("mounted && ("));
+  check("the status badge and filters read the status in force",
+    panel.includes("STATUS_TONE[live]") && panel.includes("if (status && live !== status) return false;"));
+  check("each Konfiguruj button names its row", panel.includes("aria-describedby={nameId}"));
+  check("the published prompt version is on the row again", panel.includes("v{tool.promptVersion}"));
+  const palette = read("components/layout/command-palette.tsx");
+  check("the admin search still finds the panel by its old name",
+    ADMIN_NAV.find((g) => g.key === "ai")!.items.find((i) => i.href === "/admin/ai")?.aliasKeys?.includes("features") === true
+    && palette.includes("r.alias"));
 }
 
 /* ── H ─────────────────────────────────────────────────────────────────── */
@@ -350,6 +417,8 @@ console.log("\nH. every new string in PL, EN and DE");
     "na.tools", "na.home", "na.category", "na.menu",
     "home.rail", "home.chips", "home.effects", "home.video",
     "windowPreview", "inCategory", "categoryNote", "covers", "coversNote", "saveAvailability", "categoryLine",
+    "tools.whole", "home.page", "creditsN", "byModel", "modelBase", "modelPriced", "modelsLink", "staticSoon",
+    "storedStatus",
   ].map((k) => `panel.${k}`);
   const missing = dicts.flatMap((d, i) => keys.filter((k) => typeof d.aicc[k] !== "string" || !d.aicc[k].trim())
     .map((k) => `${["pl", "en", "de"][i]}:${k}`));

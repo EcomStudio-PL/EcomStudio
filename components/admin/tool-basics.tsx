@@ -41,7 +41,8 @@ export function ToolConfigForm({ initial, services, section }: {
 
   function save() {
     start(async () => {
-      const res = await saveToolConfigAction(payload);
+      // The server writes only this section's columns, whatever else is in flight.
+      const res = await saveToolConfigAction(payload, section);
       if (res.ok) { toast.success(t("common.saved")); router.refresh(); }
       else toast.error(res.error === "unknown_service" ? t("aicc.err.unknownService") : t("common.error"));
     });

@@ -4523,7 +4523,7 @@
     "panel.na.tools": "The Tools tab has no card of its own for this module.",
     "panel.na.home": "The Start page shows a curated set of cards — this is not one of them.",
     "panel.na.category": "Not part of any category.",
-    "panel.na.menu": "No menu entry of its own.",
+    "panel.na.menu": "The menus have no switchable entry for this module — its links, if any, are always shown.",
     "panel.home.rail": "Top rail",
     "panel.home.chips": "Quick picks",
     "panel.home.effects": "Effects",
@@ -4534,7 +4534,16 @@
     "panel.covers": "Covers ({n})",
     "panel.coversNote": "These tools have no switch of their own — they inherit this entry's status and visibility.",
     "panel.saveAvailability": "Save status and visibility",
-    "panel.categoryLine": "Category · tools: {n}"
+    "panel.categoryLine": "Category · tools: {n}",
+    "panel.tools.whole": "The whole /tools tab",
+    "panel.home.page": "The whole Start page (/home)",
+    "panel.creditsN": "{n} cr.",
+    "panel.byModel": "by model",
+    "panel.modelBase": "base price of {model}",
+    "panel.modelPriced": "This tool's images are charged by the model's price list (per resolution), not by the service row below.",
+    "panel.modelsLink": "Model prices: Models, API and costs",
+    "panel.staticSoon": "This entry has no engine yet — customers see it as “Coming soon” whatever the status.",
+    "panel.storedStatus": "scheduled: {status}"
   },
   "batch": {
     "viewLabel": "View",

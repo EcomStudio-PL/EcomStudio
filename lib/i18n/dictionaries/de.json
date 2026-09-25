@@ -4523,7 +4523,7 @@
     "panel.na.tools": "Der Werkzeuge-Tab hat keine eigene Karte für dieses Modul.",
     "panel.na.home": "Die Startseite zeigt eine kuratierte Auswahl — dieses ist nicht dabei.",
     "panel.na.category": "Gehört zu keiner Kategorie.",
-    "panel.na.menu": "Kein eigener Menüeintrag.",
+    "panel.na.menu": "Die Menüs haben keinen schaltbaren Eintrag für dieses Modul — seine Links, falls vorhanden, werden immer angezeigt.",
     "panel.home.rail": "Leiste oben",
     "panel.home.chips": "Schnellauswahl",
     "panel.home.effects": "Effekte",
@@ -4534,7 +4534,16 @@
     "panel.covers": "Umfasst ({n})",
     "panel.coversNote": "Diese Werkzeuge haben keinen eigenen Schalter — sie übernehmen Status und Sichtbarkeit dieses Eintrags.",
     "panel.saveAvailability": "Status und Sichtbarkeit speichern",
-    "panel.categoryLine": "Kategorie · Werkzeuge: {n}"
+    "panel.categoryLine": "Kategorie · Werkzeuge: {n}",
+    "panel.tools.whole": "Der gesamte /tools-Tab",
+    "panel.home.page": "Die gesamte Startseite (/home)",
+    "panel.creditsN": "{n} Cr.",
+    "panel.byModel": "nach Modell",
+    "panel.modelBase": "Grundpreis von {model}",
+    "panel.modelPriced": "Die Bilder dieses Werkzeugs rechnet die Preisliste des Modells ab (je nach Auflösung), nicht die Leistungszeile unten.",
+    "panel.modelsLink": "Modellpreise: Modelle, API und Kosten",
+    "panel.staticSoon": "Dieser Eintrag hat noch keine Engine — Kunden sehen ihn unabhängig vom Status als „Bald“.",
+    "panel.storedStatus": "geplant: {status}"
   },
   "batch": {
     "viewLabel": "Ansicht",

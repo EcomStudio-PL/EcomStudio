@@ -55,9 +55,11 @@ export function ToolModelPicker({ toolKey, models, initial, config }: {
         toast.error(models.error === "same_model" ? t("aicc.err.sameModel") : t("common.error"));
         return;
       }
+      // Only the two flags this picker owns — never the engine or billing
+      // values from `config`, which another form may be saving right now.
       const cfg = await saveToolConfigAction({
         ...config, allowModelChoice: choice, fallbackEnabled: fallbackOn,
-      });
+      }, "models");
       if (!cfg.ok) { toast.error(t("common.error")); return; }
       toast.success(t("common.saved"));
       router.refresh();

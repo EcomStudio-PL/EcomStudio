@@ -238,8 +238,16 @@ for (const width of WIDTHS) {
   check(`${tag}: Wkrótce + visible reads as badged`, (await toolsRow.getAttribute("data-state")) === "badged");
 
   // A local tool without an engine, a Wkrótce tool, a hidden tool, categories.
+  // Collapsing keeps the unsaved draft (the prompts row is now Wkrótce, unsaved).
+  await page.locator('[data-entry="prompts"] button[aria-expanded]').click();
+  check(`${tag}: a collapsed row hides its configuration`, await page.locator("#cfg-prompts").isHidden());
+  await page.locator('[data-entry="prompts"] button[aria-expanded]').click();
+  check(`${tag}: …and reopening it keeps the unsaved draft`,
+    (await page.locator('#cfg-prompts button[aria-pressed="true"]', { hasText: /Wkrótce/ }).count()) === 1);
+  check(`${tag}: a model-priced tool says its images follow the model's price list`,
+    /cennik modelu/i.test(await page.locator("#cfg-prompts").innerText()));
+  await page.locator('[data-entry="prompts"] button[aria-expanded]').click();
   await page.locator('[data-entry="compress"] button[aria-expanded]').click();
-  check(`${tag}: one row open at a time`, (await page.locator("#cfg-prompts").count()) === 0);
   const compressText = await page.locator("#cfg-compress").innerText();
   check(`${tag}: local tool says local processing, offers no model`, /Przetwarzanie lokalne/.test(compressText)
     && (await page.locator("#cfg-compress select").count()) === 1);

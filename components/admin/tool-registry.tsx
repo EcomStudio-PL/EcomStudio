@@ -5,11 +5,11 @@ import {
   ChevronDown, Cpu, ExternalLink, EyeOff, History, Search, Settings2, X,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
-import { toolTabs, type EngineMode, type ToolRow } from "@/lib/services/ai-tools";
+import { MODEL_PRICED, toolTabs, type EngineMode, type ToolRow } from "@/lib/services/ai-tools";
 import { FEATURE_STATUSES, type AvailabilityMap, type FeatureKey, type FeatureStatus } from "@/lib/features";
 import type { FeatureAdminRow } from "@/app/actions/features";
 import {
-  PANEL_GROUPS, coveredCards, panelGroupOf, panelKind, type PanelKind,
+  PANEL_GROUPS, coveredCards, panelGroupOf, panelKind, staticallySoon, type PanelKind,
 } from "@/lib/tool-panel";
 import { STATUS_TONE } from "@/lib/status-tone";
 import { Badge } from "@/components/ui/badge";
@@ -40,8 +40,10 @@ import { cn } from "@/lib/utils";
  * — so this is a screen merge, not a data merge: no row is copied, no table
  * was added, and the customer side reads exactly what it read before.
  *
- * A compact row per entry, one open at a time: opening one closes the last,
- * which keeps the page short enough to scan and every form's ids unique.
+ * A compact row per entry. Opening a row mounts its configuration and keeps
+ * it mounted — collapsing only hides it — so an unsaved draft survives
+ * opening another row or collapsing this one; every form's ids are unique
+ * (useId), so any number can be open together.
  */
 
 export type PanelEntry = {
@@ -58,14 +60,21 @@ const ENGINE_TONE: Record<EngineMode, "neutral" | "info" | "accent"> = {
 type Quick = "all" | "active" | "soon" | "hidden";
 const QUICK: Quick[] = ["all", "active", "soon", "hidden"];
 
-/** "Ukryte" is what a customer cannot find: taken off the lists, or off. */
-const isHidden = (r: FeatureAdminRow) => r.hiddenFromMenu || r.status === "DISABLED";
+/**
+ * THE STATUS IN FORCE — what customers get right now, after the time window.
+ * The badge and every filter read this, exactly as the tool workspace does; a
+ * stored status that differs (a window not started yet, or one that reopened
+ * the module on its own) is shown beside it as the scheduled one.
+ */
+const liveStatus = (e: PanelEntry, availability: AvailabilityMap): FeatureStatus =>
+  availability[e.admin.key]?.status ?? e.admin.status;
 
-function quickMatch(q: Quick, r: FeatureAdminRow): boolean {
+/** "Ukryte" is what a customer cannot find: taken off the lists, or off. */
+function quickMatch(q: Quick, status: FeatureStatus, hidden: boolean): boolean {
   switch (q) {
-    case "active": return r.status === "ACTIVE";
-    case "soon": return r.status === "COMING_SOON";
-    case "hidden": return isHidden(r);
+    case "active": return status === "ACTIVE";
+    case "soon": return status === "COMING_SOON";
+    case "hidden": return hidden || status === "DISABLED";
     default: return true;
   }
 }
@@ -85,7 +94,17 @@ export function ToolRegistry({ entries, availability, models, services, previewi
   const [group, setGroup] = useState("");
   const [status, setStatus] = useState<FeatureStatus | "">("");
   const [quick, setQuick] = useState<Quick>("all");
-  const [open, setOpen] = useState<FeatureKey | null>(openKey);
+  const [open, setOpen] = useState<Set<FeatureKey>>(() => new Set(openKey ? [openKey] : []));
+  // Rows whose configuration has been opened at least once stay mounted.
+  const [mounted, setMounted] = useState<Set<FeatureKey>>(() => new Set(openKey ? [openKey] : []));
+  const toggleOpen = (key: FeatureKey) => {
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+    setMounted((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+  };
   const [selected, setSelected] = useState<Set<FeatureKey>>(new Set());
 
   // A deep link lands on its row, not on the top of a long page.
@@ -97,13 +116,14 @@ export function ToolRegistry({ entries, availability, models, services, previewi
     const needle = q.trim().toLowerCase();
     return entries.filter(({ admin, tool }) => {
       if (group && panelGroupOf(admin.key) !== group) return false;
-      if (status && admin.status !== status) return false;
-      if (!quickMatch(quick, admin)) return false;
+      const live = availability[admin.key]?.status ?? admin.status;
+      if (status && live !== status) return false;
+      if (!quickMatch(quick, live, admin.hiddenFromMenu)) return false;
       if (!needle) return true;
       const models = tool ? tool.models.map((m) => m.name).join(" ") : "";
       return `${t(admin.nameKey)} ${admin.key} ${admin.path} ${models}`.toLowerCase().includes(needle);
     });
-  }, [entries, q, group, status, quick, t]);
+  }, [entries, availability, q, group, status, quick, t]);
 
   const byKey = useMemo(() => new Map(visible.map((e) => [e.admin.key, e])), [visible]);
   const groups = useMemo(() => PANEL_GROUPS
@@ -111,8 +131,8 @@ export function ToolRegistry({ entries, availability, models, services, previewi
     .filter((g) => g.items.length > 0), [byKey]);
 
   const counts = useMemo(() => Object.fromEntries(
-    QUICK.map((k) => [k, entries.filter((e) => quickMatch(k, e.admin)).length]),
-  ) as Record<Quick, number>, [entries]);
+    QUICK.map((k) => [k, entries.filter((e) => quickMatch(k, liveStatus(e, availability), e.admin.hiddenFromMenu)).length]),
+  ) as Record<Quick, number>, [entries, availability]);
 
   const setMany = (keys: FeatureKey[], on: boolean) => setSelected((prev) => {
     const next = new Set(prev);
@@ -207,8 +227,8 @@ export function ToolRegistry({ entries, availability, models, services, previewi
               {g.items.map((entry) => (
                 <EntryRow key={entry.admin.key} entry={entry} locale={locale}
                   availability={availability} models={models} services={services}
-                  open={open === entry.admin.key}
-                  onOpen={() => setOpen((cur) => (cur === entry.admin.key ? null : entry.admin.key))}
+                  open={open.has(entry.admin.key)} mounted={mounted.has(entry.admin.key)}
+                  onOpen={() => toggleOpen(entry.admin.key)}
                   selected={selected.has(entry.admin.key)}
                   onSelect={(on) => setMany([entry.admin.key], on)} />
               ))}
@@ -229,9 +249,12 @@ export function ToolRegistry({ entries, availability, models, services, previewi
 
 type T = (key: string, values?: Record<string, string | number>) => string;
 
-function EntryRow({ entry, open, onOpen, selected, onSelect, availability, models, services, locale }: {
+function EntryRow({ entry, open, mounted, onOpen, selected, onSelect, availability, models, services, locale }: {
   entry: PanelEntry;
   open: boolean;
+  /** Opened at least once: the configuration stays in the DOM, hidden, so
+   *  its drafts survive a collapse. */
+  mounted: boolean;
   onOpen: () => void;
   selected: boolean;
   onSelect: (on: boolean) => void;
@@ -245,7 +268,9 @@ function EntryRow({ entry, open, onOpen, selected, onSelect, availability, model
   const kind: PanelKind = panelKind(admin.key);
   const covered = coveredCards(admin.key);
   const scheduled = admin.status !== "ACTIVE" && Boolean(admin.startsAt || admin.endsAt);
+  const live = liveStatus(entry, availability);
   const panelId = `cfg-${admin.key}`;
+  const nameId = `name-${admin.key}`;
 
   return (
     <div id={`tool-${admin.key}`} data-entry={admin.key} data-kind={kind}
@@ -259,11 +284,11 @@ function EntryRow({ entry, open, onOpen, selected, onSelect, availability, model
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="truncate text-[14px] font-semibold text-ink">{t(admin.nameKey)}</p>
+              <p id={nameId} className="truncate text-[14px] font-semibold text-ink">{t(admin.nameKey)}</p>
               <p className="truncate text-[12px] text-muted">{subLine(entry, kind, covered.length, t)}</p>
             </div>
-            <Badge tone={STATUS_TONE[admin.status]} dot className="shrink-0">
-              {t(`featAdm.status.${admin.status}`)}
+            <Badge tone={STATUS_TONE[live]} dot className="shrink-0">
+              {t(`featAdm.status.${live}`)}
             </Badge>
           </div>
 
@@ -273,6 +298,7 @@ function EntryRow({ entry, open, onOpen, selected, onSelect, availability, model
                 {kind === "tool" && tool ? t(`aicc.category.${tool.category}`) : t(`aicc.panel.kind.${kind}`)}
               </Badge>
               {tool && <Badge tone={ENGINE_TONE[tool.engineMode]}>{t(`aicc.engine.${tool.engineMode}`)}</Badge>}
+              {tool && tool.promptVersion !== null && <Badge tone="neutral">v{tool.promptVersion}</Badge>}
               {tool && <span className="text-[12px] font-semibold tabular-nums text-muted">{creditsLabel(tool, t)}</span>}
               {admin.hiddenFromMenu && admin.status !== "DISABLED" && (
                 <span className="inline-flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wide text-faint">
@@ -280,7 +306,11 @@ function EntryRow({ entry, open, onOpen, selected, onSelect, availability, model
                 </span>
               )}
               {scheduled && (
-                <span className="text-[10.5px] font-bold uppercase tracking-wide text-faint">{t("featAdm.scheduledChip")}</span>
+                <span className="text-[10.5px] font-bold uppercase tracking-wide text-faint">
+                  {live !== admin.status
+                    ? t("aicc.panel.storedStatus", { status: t(`featAdm.status.${admin.status}`) })
+                    : t("featAdm.scheduledChip")}
+                </span>
               )}
               {tool?.serviceMaintenance && <Badge tone="warning">{t("aicc.tools.serviceMaintenance")}</Badge>}
               {tool && (
@@ -296,6 +326,7 @@ function EntryRow({ entry, open, onOpen, selected, onSelect, availability, model
               )}
             </div>
             <button type="button" onClick={onOpen} aria-expanded={open} aria-controls={panelId}
+              aria-describedby={nameId}
               className="inline-flex min-h-[36px] shrink-0 items-center gap-1.5 rounded-lg bg-accent2-soft px-3 text-[13px] font-semibold text-accent2 transition-[filter] hover:brightness-110">
               <Settings2 size={14} aria-hidden />
               {t("aicc.tools.configure")}
@@ -308,8 +339,8 @@ function EntryRow({ entry, open, onOpen, selected, onSelect, availability, model
 
       {/* EXPANDED — the four sections. Two columns from `lg` (what it runs on
           and costs | whether and where it is live), one on anything smaller. */}
-      {open && (
-        <div id={panelId} className="animate-fade border-t border-line bg-raised/40 px-3 py-3.5 sm:px-4 sm:py-4">
+      {mounted && (
+        <div id={panelId} hidden={!open} className="animate-fade border-t border-line bg-raised/40 px-3 py-3.5 sm:px-4 sm:py-4">
           {kind === "tool" && tool ? (
             <div className="grid gap-3.5 lg:grid-cols-2 [&>*]:min-w-0">
               <div className="space-y-3.5">
@@ -317,15 +348,17 @@ function EntryRow({ entry, open, onOpen, selected, onSelect, availability, model
                   <ModelSection tool={tool} models={models} />
                 </ConfigSection>
                 <ConfigSection n={2} title={t("aicc.panel.sec.credits")}>
-                  <CreditsSection tool={tool} services={services} />
+                  <CreditsSection tool={tool} services={services} models={models} />
                 </ConfigSection>
               </div>
               <AvailabilityEditor key={savedKey(admin)} row={admin} availability={availability}
-                first={3} layout="stack" extra={<Covered keys={covered.map((c) => c.titleKey)} kind={kind} />} />
+                first={3} layout="stack" staticSoon={staticallySoon(admin.key)}
+                extra={<Covered keys={covered.map((c) => c.titleKey)} kind={kind} />} />
             </div>
           ) : (
             <AvailabilityEditor key={savedKey(admin)} row={admin} availability={availability}
-              first={1} layout="split" extra={<Covered keys={covered.map((c) => c.titleKey)} kind={kind} />} />
+              first={1} layout="split" staticSoon={staticallySoon(admin.key)}
+              extra={<Covered keys={covered.map((c) => c.titleKey)} kind={kind} />} />
           )}
           {kind === "tool" && (
             <Link href={`/admin/ai/${admin.key}`}
@@ -451,24 +484,50 @@ function ModelSection({ tool, models }: { tool: ToolRow; models: PickableModel[]
 
 /* ── 2 · kredyty ────────────────────────────────────────────────────────────*/
 
-function CreditsSection({ tool, services }: {
+function CreditsSection({ tool, services, models }: {
   tool: ToolRow;
   services: { slug: string; name: string; credits: number }[];
+  models: PickableModel[];
 }) {
   const { t } = useI18n();
+  // Model-priced tools bill their images by the model's own price list
+  // (MODEL_PRICED in lib/services/ai-tools.ts); their catalogue row is not
+  // their price, so it is not shown as one.
+  const modelPriced = MODEL_PRICED.includes(tool.key);
+  const primary = tool.models.find((m) => m.role === "primary");
+  const primaryPrice = primary ? models.find((m) => m.id === primary.id)?.credits ?? null : null;
+
   return (
     <div className="space-y-3.5">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p className="text-[13px] text-muted">
-          <span className="text-[20px] font-bold tabular-nums text-ink">{creditsLabel(tool, t)}</span>
-          {tool.credits !== null && tool.credits > 0 && <span className="ml-1.5">{t("aicc.panel.perRun")}</span>}
-        </p>
-        <p className="text-[11.5px] text-faint">
-          {t("aicc.panel.usage30d", { runs: tool.runs30d, failures: tool.failures30d })}
-        </p>
+      {modelPriced ? (
+        <div className="space-y-1.5">
+          {primary && primaryPrice !== null && (
+            <p className="text-[13px] text-muted">
+              <span className="text-[20px] font-bold tabular-nums text-ink">{creditsText(primaryPrice, t)}</span>
+              <span className="ml-1.5">{t("aicc.panel.modelBase", { model: primary.name })}</span>
+            </p>
+          )}
+          <p className="text-[12.5px] leading-relaxed text-muted">{t("aicc.panel.modelPriced")}</p>
+          <Link href="/admin/ai/modele?tab=modele"
+            className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent hover:opacity-80">
+            {t("aicc.panel.modelsLink")} <ExternalLink size={13} aria-hidden />
+          </Link>
+        </div>
+      ) : (
+        <>
+          <p className="text-[13px] text-muted">
+            <span className="text-[20px] font-bold tabular-nums text-ink">{creditsLabel(tool, t)}</span>
+            {tool.credits !== null && tool.credits > 0 && <span className="ml-1.5">{t("aicc.panel.perRun")}</span>}
+          </p>
+          {tool.credits === null && <p className="text-[12px] text-faint">{t("aicc.panel.noBilling")}</p>}
+        </>
+      )}
+      <p className="text-[11.5px] text-faint">
+        {t("aicc.panel.usage30d", { runs: tool.runs30d, failures: tool.failures30d })}
+      </p>
+      <div className="border-t border-line pt-3.5">
+        <ToolConfigForm section="billing" initial={configOf(tool)} services={services} />
       </div>
-      {tool.credits === null && <p className="text-[12px] text-faint">{t("aicc.panel.noBilling")}</p>}
-      <ToolConfigForm section="billing" initial={configOf(tool)} services={services} />
       <Link href="/admin/services"
         className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent hover:opacity-80">
         {t("aicc.panel.priceLink")} <ExternalLink size={13} aria-hidden />
@@ -496,7 +555,14 @@ function modelLine(r: ToolRow, t: T): string {
   return t("aicc.tools.noModel");
 }
 
+function creditsText(n: number, t: T): string {
+  return n === 0 ? t("tools.free") : t("aicc.panel.creditsN", { n });
+}
+
+/** What the collapsed row says a run costs. A model-priced tool's catalogue
+ *  row is not its price, so the row says "według modelu" instead. */
 function creditsLabel(r: ToolRow, t: T): string {
+  if (MODEL_PRICED.includes(r.key)) return t("aicc.panel.byModel");
   if (r.credits === null) return "—";
-  return r.credits === 0 ? t("tools.free") : `${r.credits} kr.`;
+  return creditsText(r.credits, t);
 }

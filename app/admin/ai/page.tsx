@@ -31,14 +31,17 @@ export default async function AdminAiToolsPage({ searchParams }: {
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
 
-  const [availability, adminRows, previewing, models, services] = await Promise.all([
-    getAvailabilityMap(supabase),
+  // The registry needs the switchboard; everything else is independent, so
+  // it all runs at once rather than the registry waiting behind the rest.
+  const availP = getAvailabilityMap(supabase);
+  const [availability, tools, adminRows, previewing, models, services] = await Promise.all([
+    availP,
+    availP.then((a) => readToolRegistry(supabase, a)),
     listFeatureAvailabilityAction(),
     clientPreviewStateAction(),
     readPickableModels(supabase),
     readBillingServices(supabase),
   ]);
-  const tools = await readToolRegistry(supabase, availability);
   const toolByKey = new Map<string, (typeof tools)[number]>(tools.map((r) => [r.key, r]));
 
   const entries: PanelEntry[] = (adminRows ?? []).map((admin) => ({

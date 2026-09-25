@@ -104,6 +104,21 @@ export function mergeToolConfig(
   }
 }
 
+/**
+ * Tools whose IMAGES are charged by the model's own price list, not by their
+ * service_catalog row: every one of them reaches `runGeneration`, which bills
+ * `priceFor(model, resolution)` (lib/server/generation.ts), and Retusz and the
+ * Moda tools pass the model's per-size price as `costOverride`
+ * (lib/server/retouch.ts, lib/server/fashion.ts). GrovShot's images go the same
+ * way through lib/server/concept-generation.ts. The admin panel must not show
+ * a catalogue number as their price.
+ */
+export const MODEL_PRICED: readonly AiToolKey[] = [
+  "prompts", "generator", "retouch",
+  "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person",
+  "fashion_change_face",
+];
+
 export const TOOL_TABS = ["basics", "engine", "models", "knowledge", "economics", "history"] as const;
 export type ToolTab = (typeof TOOL_TABS)[number];
 

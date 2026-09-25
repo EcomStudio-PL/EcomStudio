@@ -2,9 +2,12 @@ import { CATEGORIES, categoryGates, categoryPath, type Category } from "./catego
 import { HUB_SECTIONS, hubSectionsFor, type HubCardDef, type HubSectionDef } from "./tool-cards";
 import { homeModel, type HomeCard } from "./home-sections";
 import {
-  ACTIVE_STATE, FEATURE_REGISTRY, allDefaults, featureForHref, menuBadge, menuVisible,
+  ACTIVE_STATE, FEATURE_REGISTRY, allDefaults, featureForHref, menuBadge, menuVisible, routeReachable,
   type AvailabilityMap, type FeatureDescriptor, type FeatureKey, type FeatureStatus, type MenuBadge,
+  type MenuGate,
 } from "./features";
+import { IMAGE_CREATE, IMAGE_EDIT, IMAGE_MODES, VIDEO_CREATE, VIDEO_EDIT, entryGate } from "./topnav";
+import { DOCK_SLOTS } from "./bottom-nav";
 import { isAiToolKey } from "./services/ai-tools";
 
 /**
@@ -161,9 +164,30 @@ function fold(surface: Surface, found: { badge: MenuBadge; where: string }[], in
   };
 }
 
+/** What the /tools page itself is for a customer: open, a "Wkrótce" or
+ *  maintenance screen (FeatureGate), or gone (DISABLED → 404). */
+function hubState(map: AvailabilityMap): { open: boolean; reachable: boolean; badge: MenuBadge } {
+  const reachable = routeReachable(map, "/tools", false);
+  const badge = menuBadge(map, "/tools");
+  return { reachable, badge, open: reachable && badge === null };
+}
+
 function toolsRow(key: FeatureKey, map: AvailabilityMap): ExposureRow {
+  const hub = hubState(map);
+  // The hub's own entry: the whole tab, whatever it lists.
+  if (key === "tools") {
+    if (!hub.reachable) return { surface: "tools", state: "hidden", badge: null, where: [] };
+    return { surface: "tools", state: hub.open ? "shown" : "badged", badge: hub.badge, where: ["aicc.panel.tools.whole"] };
+  }
   const inUniverse = HUB_SECTIONS.some((s) =>
     sectionGoverned(s, key) || s.cards.some((c) => governs(key, ownGate(c))));
+  // /tools is wrapped in FeatureGate("tools"): switched off it is a 404, and
+  // restricted it is the Wkrótce / maintenance screen — no card is drawn.
+  if (inUniverse && !hub.open) {
+    return hub.reachable
+      ? { surface: "tools", state: "badged", badge: hub.badge, where: ["aicc.panel.tools.whole"] }
+      : { surface: "tools", state: "hidden", badge: null, where: [] };
+  }
   const found: { badge: MenuBadge; where: string }[] = [];
   for (const s of hubSectionsFor(map, false)) {
     if (sectionGoverned(s, key)) {
@@ -190,6 +214,13 @@ function homeCards(map: AvailabilityMap, isAdmin: boolean): { row: (typeof HOME_
 const HOME_UNIVERSE: readonly { row: (typeof HOME_ROWS)[number]; card: HomeCard }[] = homeCards(allDefaults(), true);
 
 function homeRow(key: FeatureKey, map: AvailabilityMap): ExposureRow {
+  // The signed-in Start itself (/home, FeatureGate("home")): this switch
+  // governs the whole page, not a card on it.
+  if (key === "home") {
+    if (!routeReachable(map, "/home", false)) return { surface: "home", state: "hidden", badge: null, where: [] };
+    const badge = menuBadge(map, "/home");
+    return { surface: "home", state: badge ? "badged" : "shown", badge, where: ["aicc.panel.home.page"] };
+  }
   const inUniverse = HOME_UNIVERSE.some(({ card }) => governs(key, card.href));
   const found = homeCards(map, false)
     .filter(({ card }) => governs(key, card.href))
@@ -198,6 +229,13 @@ function homeRow(key: FeatureKey, map: AvailabilityMap): ExposureRow {
 }
 
 function categoryRow(key: FeatureKey, parent: Category, map: AvailabilityMap): ExposureRow {
+  // The category's section lives on /tools, so it shares the hub's fate.
+  const hub = hubState(map);
+  if (!hub.open) {
+    return hub.reachable
+      ? { surface: "category", state: "badged", badge: hub.badge, where: [`cats.${parent.key}`] }
+      : { surface: "category", state: "hidden", badge: null, where: [] };
+  }
   const section = hubSectionsFor(map, false).find((s) => s.category === parent.key);
   const found = (section?.cards ?? [])
     .filter((c) => governs(key, ownGate(c)))
@@ -205,13 +243,47 @@ function categoryRow(key: FeatureKey, parent: Category, map: AvailabilityMap): E
   return fold("category", found, true);
 }
 
+/**
+ * EVERY MENU ENTRY THE SWITCHBOARD GATES — read from the lists the menus are
+ * drawn from (lib/topnav.ts: the mega panel and the drawer; lib/bottom-nav.ts:
+ * the dock), with the static "Wkrótce" those menus add for things that have
+ * no backend yet. A link the menus draw unconditionally (Pomoc, Kredyty, the
+ * drawer's Start tile) is not here: no switch hides it, so none is claimed.
+ */
+const MENU_ENTRIES: readonly { gate: MenuGate; soon: boolean }[] = [
+  ...IMAGE_CREATE.map((e) => ({ gate: entryGate(e), soon: Boolean(e.soon) })),
+  ...IMAGE_MODES.map((e) => ({ gate: entryGate(e), soon: Boolean(e.soon) })),
+  ...IMAGE_EDIT.map((e) => ({ gate: entryGate(e), soon: Boolean(e.soon) })),
+  ...VIDEO_CREATE.map((e) => ({ gate: entryGate(e), soon: true })),
+  ...VIDEO_EDIT.map((e) => ({ gate: entryGate(e), soon: true })),
+  // The drawer's and the mega panel's own gated rows.
+  { gate: "/library", soon: false },
+  { gate: "/inspirations", soon: false },
+  { gate: "/wideo", soon: true },
+  ...DOCK_SLOTS.map((d) => ({ gate: d.href, soon: false })),
+];
+
+const ownOf = (gate: MenuGate): string => (typeof gate === "string" ? gate : gate[gate.length - 1]);
+
 function menuRow(key: FeatureKey, map: AvailabilityMap): ExposureRow {
-  const cat = categoryOf(key);
-  const gate = cat ? categoryGates(cat) : descriptor(key)?.path;
-  if (!gate) return { surface: "menu", state: "na", badge: null, where: [] };
-  if (!menuVisible(map, gate, false)) return { surface: "menu", state: "hidden", badge: null, where: [] };
-  const badge = menuBadge(map, gate);
-  return { surface: "menu", state: badge ? "badged" : "shown", badge, where: [] };
+  const entries = MENU_ENTRIES.filter((e) => governs(key, ownOf(e.gate)));
+  if (entries.length === 0) return { surface: "menu", state: "na", badge: null, where: [] };
+  const found = entries
+    .filter((e) => menuVisible(map, e.gate, false))
+    .map((e) => ({ badge: menuBadge(map, e.gate) ?? (e.soon ? ("soon" as const) : null), where: "" }));
+  const row = fold("menu", found, true);
+  return { ...row, where: [] };
+}
+
+/**
+ * Has this entry no backend yet, whatever its status? A category flagged
+ * `soon`, or a switch whose every card is (Wideo): customers see "Wkrótce"
+ * on it even when the status is Aktywny, and the panel must say so.
+ */
+export function staticallySoon(key: FeatureKey): boolean {
+  if (categoryOf(key)?.soon) return true;
+  const cards = coveredCards(key);
+  return cards.length > 0 && cards.every((c) => c.soon);
 }
 
 /**

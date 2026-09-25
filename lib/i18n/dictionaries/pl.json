@@ -4523,7 +4523,7 @@
     "panel.na.tools": "Zakładka Narzędzia nie ma osobnej karty tego modułu.",
     "panel.na.home": "Strona Start pokazuje wybrany zestaw kart — tego w nim nie ma.",
     "panel.na.category": "Nie należy do żadnej kategorii.",
-    "panel.na.menu": "Brak osobnej pozycji w menu.",
+    "panel.na.menu": "Menu nie ma przełączanej pozycji tego modułu — jego linki (jeśli są) pokazują się zawsze.",
     "panel.home.rail": "Pasek u góry",
     "panel.home.chips": "Szybkie wybory",
     "panel.home.effects": "Efekty",
@@ -4534,7 +4534,16 @@
     "panel.covers": "Obejmuje ({n})",
     "panel.coversNote": "Te narzędzia nie mają osobnego przełącznika — dziedziczą status i widoczność tej pozycji.",
     "panel.saveAvailability": "Zapisz status i widoczność",
-    "panel.categoryLine": "Kategoria · narzędzia: {n}"
+    "panel.categoryLine": "Kategoria · narzędzia: {n}",
+    "panel.tools.whole": "Cała zakładka /tools",
+    "panel.home.page": "Cała strona Start (/home)",
+    "panel.creditsN": "{n} kr.",
+    "panel.byModel": "według modelu",
+    "panel.modelBase": "cena bazowa modelu {model}",
+    "panel.modelPriced": "Obrazy tego narzędzia rozlicza cennik modelu (zależnie od rozdzielczości), nie wiersz cennika usług poniżej.",
+    "panel.modelsLink": "Ceny modeli: Modele, API i koszty",
+    "panel.staticSoon": "Ta pozycja nie ma jeszcze silnika — klienci widzą ją jako „Wkrótce” niezależnie od statusu.",
+    "panel.storedStatus": "zaplanowane: {status}"
   },
   "batch": {
     "viewLabel": "Widok",

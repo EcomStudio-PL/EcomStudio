@@ -18,7 +18,7 @@ import {
   setClientPreviewAction, type FeatureAdminRow,
 } from "@/app/actions/features";
 import { customerExposure, withDraft, type ExposureRow } from "@/lib/tool-panel";
-import { cn } from "@/lib/utils";
+import { cn, formatInstant } from "@/lib/utils";
 
 /**
  * AVAILABILITY — status and visibility, the half of "Narzędzia i silniki"
@@ -232,7 +232,7 @@ const INPUT_CLS = "mt-1.5 h-10 w-full min-w-0 rounded-xl border border-line bg-s
  * save elsewhere remounts it with the new values instead of leaving a stale
  * draft on screen.
  */
-export function AvailabilityEditor({ row, availability, first, layout, extra }: {
+export function AvailabilityEditor({ row, availability, first, layout, extra, staticSoon }: {
   row: FeatureAdminRow;
   /** The live switchboard — what every OTHER module is set to right now. */
   availability: AvailabilityMap;
@@ -242,6 +242,8 @@ export function AvailabilityEditor({ row, availability, first, layout, extra }: 
   layout: "stack" | "split";
   /** What this switch covers, shown under the visibility readout. */
   extra?: React.ReactNode;
+  /** No backend yet: customers see "Wkrótce" whatever the status says. */
+  staticSoon?: boolean;
 }) {
   const { t, locale } = useI18n();
   const router = useRouter();
@@ -300,6 +302,9 @@ export function AvailabilityEditor({ row, availability, first, layout, extra }: 
             ))}
           </div>
           <p className="mt-2 text-[12px] leading-relaxed text-muted">{t(`aicc.panel.statusHint.${value.status}`)}</p>
+          {staticSoon && value.status !== "DISABLED" && (
+            <p className="mt-1.5 text-[12px] leading-relaxed text-accent2">{t("aicc.panel.staticSoon")}</p>
+          )}
 
           {restricted && (
             <div className="mt-3.5 space-y-3.5 border-t border-line pt-3.5">
@@ -372,7 +377,7 @@ export function AvailabilityEditor({ row, availability, first, layout, extra }: 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="min-w-0 text-[11px] text-faint">
           {row.updatedAt
-            ? `${t("featAdm.updated")}: ${new Date(row.updatedAt).toLocaleString(locale, { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Warsaw" })}`
+            ? `${t("featAdm.updated")}: ${formatInstant(row.updatedAt, locale)}`
             : t("featAdm.neverChanged")}
         </p>
         <Button size="sm" onClick={() => void save()} disabled={busy || !dirty}>

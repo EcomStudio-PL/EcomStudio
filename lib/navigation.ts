@@ -18,6 +18,9 @@ export type NavItem = {
   icon: LucideIcon;
   /** Short label key for the mobile bottom bar, where one line must fit. */
   shortKey?: string;
+  /** Former names (keys under `admin.nav`) the search still answers to — a
+   *  screen merged into this one stays findable by what it used to be called. */
+  aliasKeys?: readonly string[];
 };
 export type NavGroup = { key: string; items: readonly NavItem[] };
 
@@ -87,7 +90,8 @@ export const ADMIN_NAV: readonly NavGroup[] = [
   // docs/ai-control-center.md). Generacje stays: it is the output log, not
   // configuration.
   { key: "ai", items: [
-    { href: "/admin/ai", key: "aiTools", icon: Sparkles },
+    // "Dostępność funkcji" lives here now; its old name still finds it.
+    { href: "/admin/ai", key: "aiTools", icon: Sparkles, aliasKeys: ["features"] },
     { href: "/admin/ai/modele", key: "aiModels", icon: Cpu },
     { href: "/admin/generations", key: "generations", icon: Wand2 },
   ]},

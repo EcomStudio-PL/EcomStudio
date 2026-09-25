@@ -35,6 +35,8 @@ type Row = {
   facets: Facet[];
   accent?: string;
   section: "tools" | "yours" | "pages";
+  /** Extra text the search matches without showing it (a former name). */
+  alias?: string;
 };
 
 const RECENT_KEY = "ecs_recent_search";
@@ -351,6 +353,8 @@ export function CommandPalette({
           rows.push({
             key: `adm:${i.href}`, label: `${t("admin.title")} · ${t(`admin.nav.${i.key}`)}`,
             sub: null, href: i.href, icon: i.icon, section: "pages", facets: [],
+            // A merged screen's former name, matched but not shown.
+            ...(i.aliasKeys ? { alias: i.aliasKeys.map((k) => t(`admin.nav.${k}`)).join(" ") } : {}),
           });
         }
       }
@@ -365,7 +369,7 @@ export function CommandPalette({
     const inTab = (r: Row) => tab === "all" || r.facets.includes(tab);
 
     const tools = matchTools(toolIndex, term).map(entryRow);
-    const pages = pageRows.filter((r) => r.label.toLowerCase().includes(term.toLowerCase())).slice(0, 5);
+    const pages = pageRows.filter((r) => `${r.label} ${r.alias ?? ""}`.toLowerCase().includes(term.toLowerCase())).slice(0, 5);
     const yours: Row[] = hits.map((h) => ({
       key: `${h.kind}:${h.id}`, label: h.title, sub: h.sub, href: h.href,
       icon: KIND_ICON[h.kind], section: "yours", facets: ["image"],

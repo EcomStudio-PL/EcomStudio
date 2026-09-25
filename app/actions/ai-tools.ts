@@ -4,7 +4,28 @@ import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/services/audit";
 import { encryptionAvailable } from "@/lib/server/crypto";
 import { openPrompt, sealPrompt } from "@/lib/server/ai-engine";
-import { ENGINE_MODES, isAiToolKey, type EngineMode } from "@/lib/services/ai-tools";
+import {
+  ENGINE_MODES, isAiToolKey, type EngineMode, type ToolConfigSection,
+} from "@/lib/services/ai-tools";
+
+/** Every `ai_tools` column a config save can write, typed once. */
+const ALL_COLUMNS = {
+  engine_mode: "off" as string,
+  service_slug: null as string | null,
+  allow_model_choice: false,
+  fallback_enabled: false,
+  timeout_ms: 120000,
+  max_attempts: 1,
+  notes: null as string | null,
+};
+
+/** The columns each form section owns — and nothing else. */
+const SECTION_COLUMNS: Record<ToolConfigSection | "models", (keyof typeof ALL_COLUMNS)[]> = {
+  basics: ["service_slug", "notes"],
+  billing: ["service_slug"],
+  engine: ["engine_mode", "timeout_ms", "max_attempts"],
+  models: ["allow_model_choice", "fallback_enabled"],
+};
 
 /**
  * AI CONTROL CENTER — the writes.
@@ -48,23 +69,28 @@ export async function saveToolConfigAction(input: {
   timeoutMs: number;
   maxAttempts: number;
   notes: string | null;
-}): Promise<Result> {
+}, section?: ToolConfigSection | "models"): Promise<Result> {
   try {
     const { supabase, adminId } = await requireAdmin();
     if (!isAiToolKey(input.toolKey)) return { ok: false, error: "unknown_tool" };
-    if (!(ENGINE_MODES as readonly string[]).includes(input.engineMode)) {
+    // WHICH COLUMNS THIS SAVE OWNS. Without a section (the original callers)
+    // it is the whole row, exactly as before. With one, only that section's
+    // columns travel: the Narzędzia i silniki screen shows a tool's engine,
+    // billing and model forms side by side, and a save sent while another is
+    // still in flight must not carry the other's stale values back.
+    const owns = (col: keyof typeof ALL_COLUMNS) => !section || SECTION_COLUMNS[section].includes(col);
+    if (owns("engine_mode") && !(ENGINE_MODES as readonly string[]).includes(input.engineMode)) {
       return { ok: false, error: "invalid_mode" };
     }
     // The catalogue is the price list; a tool may only point at a row that is
     // actually in it, never invent a slug.
-    if (input.serviceSlug) {
+    if (owns("service_slug") && input.serviceSlug) {
       const { data: service } = await supabase
         .from("service_catalog").select("slug").eq("slug", input.serviceSlug).maybeSingle();
       if (!service) return { ok: false, error: "unknown_service" };
     }
 
-    const { error } = await supabase.from("ai_tools").upsert({
-      tool_key: input.toolKey,
+    const columns: typeof ALL_COLUMNS = {
       engine_mode: input.engineMode,
       service_slug: input.serviceSlug,
       allow_model_choice: input.allowModelChoice,
@@ -74,6 +100,16 @@ export async function saveToolConfigAction(input: {
       timeout_ms: Math.min(Math.max(Math.trunc(input.timeoutMs) || 120000, 5000), 600000),
       max_attempts: Math.min(Math.max(Math.trunc(input.maxAttempts) || 1, 1), 3),
       notes: input.notes?.trim() || null,
+    };
+    // An upsert writes only the columns it is given; on a first save the rest
+    // take the table's own defaults (0070), which are the values the panel
+    // shows for a tool that was never configured.
+    const owned = Object.fromEntries(
+      (Object.keys(columns) as (keyof typeof ALL_COLUMNS)[]).filter(owns).map((k) => [k, columns[k]]),
+    ) as Partial<typeof ALL_COLUMNS>;
+    const { error } = await supabase.from("ai_tools").upsert({
+      tool_key: input.toolKey,
+      ...owned,
       updated_at: new Date().toISOString(),
       updated_by: adminId,
     });
@@ -82,7 +118,8 @@ export async function saveToolConfigAction(input: {
     await logAudit(supabase, {
       actorId: adminId, action: "ai_tool.config_saved",
       entityType: "ai_tool", entityId: input.toolKey,
-      after: { engine_mode: input.engineMode, service_slug: input.serviceSlug },
+      after: { section: section ?? "all", ...(owns("engine_mode") ? { engine_mode: input.engineMode } : {}),
+        ...(owns("service_slug") ? { service_slug: input.serviceSlug } : {}) },
     });
     refresh(input.toolKey);
     return { ok: true };
