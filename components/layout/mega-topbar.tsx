@@ -5,9 +5,12 @@ import { usePathname } from "next/navigation";
 import { ChevronDown, Images, Menu, Sparkles } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import {
-  IMAGE_CREATE, IMAGE_EDIT, IMAGE_MODES, VIDEO_CREATE, VIDEO_EDIT, editLabelKey, entryGate, type MegaEntry,
+  IMAGE_CREATE, IMAGE_MODES, VIDEO_CREATE, VIDEO_EDIT, editEntriesFor, editLabelKey, entryGate, menuShowsGenerator,
+  type MegaEntry,
 } from "@/lib/topnav";
-import { allDefaults, menuBadge, menuVisible, type AvailabilityMap, type FeatureKey, type MenuBadge } from "@/lib/features";
+import {
+  allDefaults, menuBadge, menuVisible, routeReachable, type AvailabilityMap, type FeatureKey, type MenuBadge,
+} from "@/lib/features";
 import { isNavActive } from "@/lib/nav-active";
 import { cn } from "@/lib/utils";
 import { Brand } from "./brand";
@@ -36,7 +39,7 @@ import { useOptionalAuthDialog } from "@/components/auth/auth-dialog-context";
  * belongs to the hover target, not empty page. Opening is instant on hover
  * and on click; closing waits 200 ms so the pointer can travel.
  */
-export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdmin, notifications = [], unread = 0, availability, popularTools, guest = false, menu: hasMenu = true, brandHref = "/home" }: {
+export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdmin, notifications = [], unread = 0, availability, menuItems, popularTools, guest = false, menu: hasMenu = true, brandHref = "/home" }: {
   name: string; email?: string; credits: number; plan: string; isAdmin?: boolean;
   /**
    * NOBODY IS SIGNED IN.
@@ -69,6 +72,9 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
   /** Feature availability from the server layout — filters and badges the
    *  menus. Absent (other shells) means everything active. */
   availability?: AvailabilityMap;
+  /** The catalogue items the menu lists (lib/tool-layout.ts `menuItemKeys`):
+   *  the tool column and the generator button. Absent = the shipped menu. */
+  menuItems?: readonly string[];
   /** The weekly tool-usage ranking, handed straight to the search overlay so
    *  pressing the magnifier fetches nothing. See lib/server/tool-popularity.ts. */
   popularTools?: readonly FeatureKey[];
@@ -193,7 +199,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
                   plus `pt-2` keeps the bridge hoverable. */}
               {menu === which && (
                 <div className="absolute left-0 top-full z-50 pt-2">
-                  <MegaPanel which={which} t={t} avail={avail} isAdmin={seesRestricted} onNavigate={close} guest={guest} />
+                  <MegaPanel which={which} t={t} avail={avail} isAdmin={seesRestricted} onNavigate={close} guest={guest} menuItems={menuItems} />
                 </div>
               )}
             </div>
@@ -278,8 +284,10 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
 
 /** The panel body: TWÓRZ (categories, each in its own accent) and EDYTUJ
  *  (the toolbox), plus a footer of secondary destinations. */
-function MegaPanel({ which, t, avail, isAdmin, onNavigate, guest = false }: {
+function MegaPanel({ which, t, avail, isAdmin, onNavigate, guest = false, menuItems }: {
   which: "image" | "video";
+  /** The items the tool column lists — see MegaTopbar. */
+  menuItems?: readonly string[];
   t: (k: string, v?: Record<string, string | number>) => string;
   avail: AvailabilityMap;
   isAdmin: boolean;
@@ -305,9 +313,22 @@ function MegaPanel({ which, t, avail, isAdmin, onNavigate, guest = false }: {
     .filter((e) => menuVisible(avail, entryGate(e), isAdmin));
   // The image list is five entries now, and the last of them IS the hub, so
   // nothing is trimmed and no separate "all tools" link is needed underneath.
-  const edit = (which === "image" ? IMAGE_EDIT : VIDEO_EDIT)
-    .filter((e) => menuVisible(avail, e.href, isAdmin));
-  const modes = IMAGE_MODES.filter((e) => menuVisible(avail, e.href, isAdmin));
+  //
+  // The tool column is the items whose "menu" switch is on (the layout); the
+  // status still decides whether one may be shown — a DISABLED module is gone
+  // for customers, "Wkrótce" stays badged. The hub row answers to its own
+  // switch, as every module entry does.
+  const listed = (e: MegaEntry) => e.key === "allTools"
+    ? menuVisible(avail, e.href, isAdmin)
+    : routeReachable(avail, entryGate(e), isAdmin);
+  const edit = which === "image"
+    ? editEntriesFor(menuItems).filter(listed)
+    : VIDEO_EDIT.filter((e) => menuVisible(avail, e.href, isAdmin));
+  // The generator's button follows its item's "menu" switch; the hub button
+  // its module's.
+  const modes = IMAGE_MODES.filter((e) => e.key === "engine"
+    ? menuShowsGenerator(menuItems) && routeReachable(avail, e.href, isAdmin)
+    : menuVisible(avail, e.href, isAdmin));
   // An entry that is not a category names itself; the categories keep taking
   // their label and one-liner from the category dictionary.
   const label = (e: MegaEntry) =>
@@ -379,7 +400,7 @@ function MegaPanel({ which, t, avail, isAdmin, onNavigate, guest = false }: {
                 // read as a list of settings, not as places to go.
                 sub={which === "image" ? (e.subKey ? t(e.subKey) : undefined) : t(`video.wf.${e.key}.sub`)}
                 soonLabel={t("common.soon")}
-                dynBadge={dynBadgeLabel(menuBadge(avail, e.href), t)} />
+                dynBadge={dynBadgeLabel(menuBadge(avail, entryGate(e)), t)} />
             ))}
             {which === "video" && (
               <p className="mt-3 text-[12px] leading-relaxed text-faint">{t("mega.videoSoon")}</p>

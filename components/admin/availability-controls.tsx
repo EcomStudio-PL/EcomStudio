@@ -17,7 +17,8 @@ import {
   batchFeatureStatusAction, batchMenuVisibilityAction, saveFeatureAvailabilityAction,
   setClientPreviewAction, type FeatureAdminRow,
 } from "@/app/actions/features";
-import { customerExposure, withDraft, type ExposureRow } from "@/lib/tool-panel";
+import { customerExposure, panelKind, withDraft, type ExposureRow } from "@/lib/tool-panel";
+import { DEFAULT_LAYOUT, type ToolsLayout } from "@/lib/tool-layout";
 import { cn, formatInstant } from "@/lib/utils";
 
 /**
@@ -31,10 +32,13 @@ import { cn, formatInstant } from "@/lib/utils";
  *
  * STATUS IS NOT VISIBILITY. The status decides whether a customer can USE a
  * module (Wkrótce and maintenance open onto their own screen, Wyłączony is
- * gone). Visibility decides whether it is LISTED — in the menu, on /tools, on
- * Start, in its category, which all read the one `hidden_from_menu` switch.
- * A "Wkrótce" tool can be listed with its badge; a live one can be unlisted
- * while it is piloted.
+ * gone). Visibility decides whether it is LISTED. Two switches do that, each
+ * for its own surfaces: the catalogue items' three layout switches (/tools,
+ * the menu's tool column, Start — lib/tool-layout.ts), and `hidden_from_menu`
+ * for the navigation the switchboard has always driven (module and category
+ * links in the menus and the dock, category tiles, the search). A "Wkrótce"
+ * tool can be listed with its badge; a live one can be unlisted while it is
+ * piloted.
  */
 
 function toLocalInput(iso: string | null): string {
@@ -232,14 +236,16 @@ const INPUT_CLS = "mt-1.5 h-10 w-full min-w-0 rounded-xl border border-line bg-s
  * save elsewhere remounts it with the new values instead of leaving a stale
  * draft on screen.
  */
-export function AvailabilityEditor({ row, availability, first, layout, extra, staticSoon }: {
+export function AvailabilityEditor({ row, availability, toolsLayout = DEFAULT_LAYOUT, first, arrangement, extra, staticSoon }: {
   row: FeatureAdminRow;
   /** The live switchboard — what every OTHER module is set to right now. */
   availability: AvailabilityMap;
+  /** The catalogue layout in force — its item switches feed the readout. */
+  toolsLayout?: ToolsLayout;
   /** The number of the Status section (3 for a tool, 1 otherwise). */
   first: number;
   /** "stack" in a tool's right column; "split" side by side for the rest. */
-  layout: "stack" | "split";
+  arrangement: "stack" | "split";
   /** What this switch covers, shown under the visibility readout. */
   extra?: React.ReactNode;
   /** No backend yet: customers see "Wkrótce" whatever the status says. */
@@ -257,8 +263,8 @@ export function AvailabilityEditor({ row, availability, first, layout, extra, st
   // Start and the menus render with, fed the switchboard with this one entry
   // replaced by the draft.
   const exposure = useMemo(
-    () => customerExposure(row.key, withDraft(availability, row.key, value)),
-    [availability, row.key, value],
+    () => customerExposure(row.key, withDraft(availability, row.key, value), toolsLayout),
+    [availability, row.key, value, toolsLayout],
   );
 
   const save = async () => {
@@ -287,7 +293,7 @@ export function AvailabilityEditor({ row, availability, first, layout, extra, st
 
   return (
     <div className="min-w-0 space-y-3.5">
-      <div className={cn("grid gap-3.5 [&>*]:min-w-0", layout === "split" && "lg:grid-cols-2")}>
+      <div className={cn("grid gap-3.5 [&>*]:min-w-0", arrangement === "split" && "lg:grid-cols-2")}>
         <ConfigSection n={first} title={t("aicc.panel.sec.status")}>
           <div role="group" aria-label={t("aicc.panel.sec.status")} className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
             {FEATURE_STATUSES.map((s) => (
@@ -359,11 +365,11 @@ export function AvailabilityEditor({ row, availability, first, layout, extra, st
           ) : (
             <>
               <label className="flex items-center justify-between gap-4">
-                <span className="text-[13px] font-semibold text-ink">{t("aicc.panel.visible")}</span>
+                <span className="text-[13px] font-semibold text-ink">{t("aicc.panel.nav")}</span>
                 <Switch checked={!value.hiddenFromMenu} onChange={(v) => patch({ hiddenFromMenu: !v })}
-                  label={t("aicc.panel.visible")} />
+                  label={t("aicc.panel.nav")} />
               </label>
-              <p className="mt-1 text-[11.5px] leading-relaxed text-faint">{t("aicc.panel.visibleHint")}</p>
+              <p className="mt-1 text-[11.5px] leading-relaxed text-faint">{t(`aicc.panel.navHint.${panelKind(row.key)}`)}</p>
             </>
           )}
 

@@ -33,13 +33,19 @@ import { CATEGORY_PARAM } from "@/lib/categories";
  * close. It reads the link's own href, not a copy of the menu, so any link to
  * a section of this page behaves the same.
  */
-export function ToolsDeepLink({ sections }: {
+export function ToolsDeepLink({ sections, aliases = {} }: {
   /** The sections this viewer can actually see. A `?category=` naming one
    *  that is hidden from them (or not a section at all) opens nothing. */
   sections: readonly string[];
+  /** A category that is not a section of its own → the section holding it. */
+  aliases?: Readonly<Record<string, string>>;
 }) {
-  const target = useSearchParams().get(CATEGORY_PARAM);
+  const asked = useSearchParams().get(CATEGORY_PARAM);
+  const target = asked ? aliases[asked] ?? asked : null;
   const known = sections.join(" ");
+  // Compared by content, not identity: a fresh object each render must not
+  // re-subscribe the click listener.
+  const aliasList = JSON.stringify(aliases);
   // The first reveal is part of loading the page: it jumps. Later ones happen
   // on a page the seller is already looking at: they glide, unless the system
   // asks for reduced motion.
@@ -61,8 +67,10 @@ export function ToolsDeepLink({ sections }: {
       const url = new URL(link.href, window.location.href);
       const here = new URL(window.location.href);
       if (url.origin !== here.origin || url.pathname !== here.pathname) return;
-      const wanted = url.searchParams.get(CATEGORY_PARAM);
-      if (!wanted || wanted !== here.searchParams.get(CATEGORY_PARAM)) return;
+      const param = url.searchParams.get(CATEGORY_PARAM);
+      if (!param || param !== here.searchParams.get(CATEGORY_PARAM)) return;
+      const map = JSON.parse(aliasList) as Record<string, string>;
+      const wanted = map[param] ?? param;
       if (!known.split(" ").includes(wanted)) return;
       e.preventDefault();
       reveal(wanted, "smooth");
@@ -71,7 +79,7 @@ export function ToolsDeepLink({ sections }: {
     // navigate, which is what makes `preventDefault` stop the router.
     document.addEventListener("click", onClick, true);
     return () => document.removeEventListener("click", onClick, true);
-  }, [known]);
+  }, [known, aliasList]);
 
   return null;
 }

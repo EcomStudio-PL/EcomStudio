@@ -7,9 +7,12 @@
  * the scroll, Back/Forward, the drawer closing — is proved by
  * scripts/tools-hub-probe.mjs against a production build.
  *
- *   1  every tool the product has is on /tools
- *   2  no tool twice (canonical key, route — never the display name)
- *   3  each category is a section holding exactly the workflows it offers
+ *   1  every tool the product has is in the catalogue (placed on /tools, or
+ *      kept aside by the layout with its route intact)
+ *   2  no tool twice (canonical key, route — never the display name); only
+ *      Matching is placed in two sections, as one item
+ *   3  the sections and what they hold are exactly the layout the brief set
+ *      (lib/tool-layout.ts — tested in depth by scripts/tool-layout-tests.ts)
  *   4–6  Moda / E-commerce / Social in the menu → /tools?category=<slug>
  *   7  the section is opened from the URL on the server (survives refresh)
  *   8  the client follows the URL (Back/Forward)
@@ -33,9 +36,10 @@ import {
   CATEGORIES, CATEGORY_PARAM, categoryGates, categoryHref, categoryPath, offeredWorkflows,
   VIDEO_CREATE_WF, VIDEO_EDIT_WF,
 } from "@/lib/categories";
+import { CATEGORY_SECTIONS, HUB_CARDS, TOOL_CARDS, catalogItem, type HubSectionDef } from "@/lib/tool-cards";
 import {
-  CATEGORY_SECTIONS, HUB_CARDS, HUB_SECTIONS, TOOL_CARDS, hubSection, hubSectionsFor,
-} from "@/lib/tool-cards";
+  DEFAULT_LAYOUT, HUB_SECTIONS, hubSectionsFor, sectionKeyFor, type ToolsLayout,
+} from "@/lib/tool-layout";
 import {
   FEATURE_REGISTRY, allDefaults, featureForHref, menuBadge, menuVisible,
   type AvailabilityMap, type FeatureKey, type FeatureStatus,
@@ -87,17 +91,26 @@ const withStatus = (over: Partial<Record<FeatureKey, FeatureStatus | "HIDDEN">>)
   return map;
 };
 const ALL_ACTIVE = withStatus({});
+/** The section `?category=<slug>` opens on the shipped layout, or null. */
+const hubSection = (slug: string | null): HubSectionDef | null => {
+  const key = sectionKeyFor(slug, HUB_SECTIONS);
+  return HUB_SECTIONS.find((x) => x.key === key) ?? null;
+};
+const PLACED = new Set(HUB_SECTIONS.flatMap((x) => x.cards.map((c) => c.key)));
 const keysOf = (secs: { cards: readonly { key: string }[] }[]) => secs.flatMap((s) => s.cards.map((c) => c.key));
 
 /* ── 1 ─────────────────────────────────────────────────────────────────── */
-section("1. EVERY TOOL THE PRODUCT HAS IS ON /tools");
+section("1. EVERY TOOL THE PRODUCT HAS IS IN THE CATALOGUE");
 
 const hubKeys = new Set(HUB_CARDS.map((c) => c.key));
 const hubHrefs = new Set(HUB_CARDS.map((c) => c.href));
 check("every catalogue tool is a card", TOOL_CARDS.every((c) => hubKeys.has(c.key)));
-const offeredIds = CATEGORIES.flatMap((c) => offeredWorkflows(c).map((w) => `${c.key}.${w.key}`));
-check("every workflow any category offers is a card",
+const offeredIds = CATEGORIES.filter((c) => !c.soon).flatMap((c) => offeredWorkflows(c).map((w) => `${c.key}.${w.key}`));
+check("every workflow a working category offers is a card",
   offeredIds.every((id) => hubKeys.has(id)), offeredIds.filter((id) => !hubKeys.has(id)).join(", "));
+check("a category with no engine yet (Matching) is ONE card — its door — not a card per planned workflow",
+  CATEGORIES.filter((c) => c.soon).every((c) => catalogItem(c.key)?.href === categoryPath(c) && catalogItem(c.key)?.soon === true
+    && !HUB_CARDS.some((x) => x.workflow?.category === c.key)));
 check("every image-tool slug the server runs has a card",
   TOOL_SLUGS.every((slug) => HUB_CARDS.some((c) => c.slug === slug
     || (slug === "editor" && c.href === "/tools/editor")
@@ -119,7 +132,12 @@ const reached = new Set(HUB_CARDS.map((c) => featureForHref(c.href)));
 check("every tool module in the switchboard is reachable from a card",
   toolModules.every((f) => reached.has(f.key)),
   toolModules.filter((f) => !reached.has(f.key)).map((f) => f.key).join(", "));
-check("every category has a section", CATEGORIES.every((c) => hubSection(c.slug)?.category === c.key));
+check("every category's link opens a section: its own, or the one holding its item (Matching)",
+  CATEGORIES.every((c) => hubSection(c.slug) !== null)
+  && CATEGORIES.filter((c) => c.key !== "matching").every((c) => hubSection(c.slug)?.category === c.key)
+  && hubSection("matching")?.cards.some((x) => x.key === "matching") === true);
+check("an item the layout keeps off /tools is still a catalogue item with its route",
+  HUB_CARDS.filter((c) => !PLACED.has(c.key)).every((c) => catalogItem(c.key)?.href === c.href && c.href.startsWith("/")));
 
 /* ── 2 ─────────────────────────────────────────────────────────────────── */
 section("2. NO TOOL TWICE — BY KEY AND BY ROUTE");
@@ -130,29 +148,36 @@ const liveHrefs = HUB_CARDS.filter((c) => !c.soon).map((c) => c.href);
 check("no two openable cards lead to the same screen", new Set(liveHrefs).size === liveHrefs.length,
   liveHrefs.filter((h, i, a) => a.indexOf(h) !== i).join(", "));
 check("section keys are unique", new Set(HUB_SECTIONS.map((s) => s.key)).size === HUB_SECTIONS.length);
-check("a tool sits in exactly one section",
-  HUB_CARDS.every((c) => HUB_SECTIONS.filter((s) => s.cards.some((x) => x.key === c.key)).length === 1));
+check("only Matching sits in two sections — E-commerce and Moda — one item, one route",
+  HUB_CARDS.every((c) => {
+    const n = HUB_SECTIONS.filter((s) => s.cards.some((x) => x.key === c.key)).length;
+    return c.key === "matching" ? n === 2 : n <= 1;
+  })
+  && HUB_SECTIONS.filter((s) => s.cards.some((x) => x.key === "matching")).map((s) => s.key).join() === "ecommerce,moda");
 check("a workflow's card key IS its media-slot entity id (one identity, not two)",
   CATEGORY_SECTIONS.flatMap((s) => s.cards).every((c) =>
     c.workflow && c.key === `${c.workflow.category}.${c.workflow.key}`
     && MEDIA_SLOTS.some((d) => d.entityType === "workflow" && d.entityId === c.key)));
 
 /* ── 3 ─────────────────────────────────────────────────────────────────── */
-section("3. EACH CATEGORY IS A SECTION OF EXACTLY ITS OFFERED WORKFLOWS");
+section("3. THE SECTIONS ARE THE ONES THE BRIEF SET, IN ITS ORDER");
 
-for (const c of CATEGORIES) {
-  const s = hubSection(c.slug);
-  check(`${c.slug}: titled by the category, holding exactly what it offers, in order`,
-    !!s && s.titleKey === `cats.${c.key}`
-    && s.cards.map((x) => x.workflow?.key).join() === offeredWorkflows(c).map((w) => w.key).join());
+check("eight sections: Generowanie, E-commerce, Moda, Przygotowanie, Inne, Social, Mailing, Wideo",
+  HUB_SECTIONS.map((s) => s.key).join() === "generate,ecommerce,moda,prepare,inne,social,mailing,video");
+for (const c of CATEGORIES.filter((k) => ["ecommerce", "moda", "inne", "social", "mailing"].includes(k.key))) {
+  check(`${c.slug}: titled by the category and addressed by its slug`,
+    hubSection(c.slug)?.key === c.slug && hubSection(c.slug)?.titleKey === `cats.${c.key}`);
 }
-check("no category is a CARD anywhere — categories are sections, not tools",
-  HUB_CARDS.every((c) => !CATEGORIES.some((k) => c.href === categoryPath(k) || c.key === k.key)));
-check("the retired Moda presets are not offered (hidden stays hidden)",
-  ["onModel", "street", "editorial", "detail"].every((k) => !hubKeys.has(`moda.${k}`)));
-check("the categories sit together, straight after the generator",
-  HUB_SECTIONS.map((s) => s.key).join() ===
-    ["edit", "create", ...CATEGORIES.map((c) => c.slug), "prepare", "video"].join());
+check("Mailing still holds exactly what its category offers, in order",
+  hubSection("mailing")!.cards.map((x) => x.workflow?.key).join()
+    === offeredWorkflows(CATEGORIES.find((c) => c.key === "mailing")!).map((w) => w.key).join());
+check("Matching is the only category that is a CARD (it has no workflows, only a door)",
+  HUB_CARDS.filter((c) => CATEGORIES.some((k) => c.href === categoryPath(k) || c.key === k.key)).map((c) => c.key).join() === "matching");
+check("the retired Moda presets stay off /tools, except the one the brief named (Sesja zewnątrz)",
+  ["onModel", "editorial", "detail"].every((k) => !PLACED.has(`moda.${k}`)) && PLACED.has("moda.street"));
+check("the old groupings are gone: no „Edycja obrazu” / „Kompozycja i generowanie” / Matching section",
+  !HUB_SECTIONS.some((s) => ["edit", "create", "matching"].includes(s.key)
+    || ["hub.sec.edit", "hub.sec.create", "cats.matching"].includes(s.titleKey)));
 
 /* ── 4–6 ───────────────────────────────────────────────────────────────── */
 section("4–6. THE MENU'S CATEGORIES OPEN THEIR SECTION OF /tools");
@@ -184,7 +209,8 @@ section("7–9. THE URL IS THE STATE: REFRESH, BACK/FORWARD, DRAWER");
 
 const page = code(`${APP}/tools/page.tsx`);
 check("7: the server reads ?category= and renders that section active",
-  /query\[CATEGORY_PARAM\]/.test(page) && /active:\s*s\.key === wanted/.test(page));
+  /query\[CATEGORY_PARAM\]/.test(page) && /sectionKeyFor\(wanted, visible\)/.test(page)
+  && /active:\s*s\.key === active/.test(page));
 const catalogue = code("components/tools/tools-catalogue.tsx");
 check("7: every section carries its key as its anchor, clear of the sticky bar",
   /id=\{s\.key\}/.test(catalogue) && /scroll-mt-\[calc\(var\(--header-h\)/.test(catalogue));
@@ -213,8 +239,12 @@ const DEFAULTS = allDefaults();
 for (const c of CATEGORIES.filter((k) => ["social", "mailing", "inne", "matching"].includes(k.key))) {
   check(`${c.slug}: its menu link carries the "soon" badge by default`,
     menuBadge(DEFAULTS, categoryGates(c)) === "soon");
-  check(`${c.slug}: every card in its section is badged "soon" by default`,
-    (hubSection(c.slug)?.cards ?? []).every((x) => x.soon || menuBadge(DEFAULTS, x.gates ?? x.href) === "soon"));
+  // Matching lives inside E-commerce and Moda now: its own card is what is badged.
+  const cards = c.key === "matching"
+    ? HUB_SECTIONS.flatMap((x) => x.cards).filter((x) => x.key === "matching")
+    : hubSection(c.slug)?.cards ?? [];
+  check(`${c.slug}: every card of it on /tools is badged "soon" by default`,
+    cards.length > 0 && cards.every((x) => x.soon || menuBadge(DEFAULTS, x.gates ?? x.href) === "soon"));
 }
 check("a Moda tool still answers to its OWN switch ('Wkrótce' while Moda is live)",
   menuBadge(withStatus({ fashion_iron: "COMING_SOON" }), hubSection("moda")!.cards.find((x) => x.key === "moda.iron")!.gates!) === "soon"
@@ -223,8 +253,8 @@ check("…and to its category's (a Moda tool under a 'Wkrótce' Moda is 'Wkrótc
   menuBadge(withStatus({ image_moda: "COMING_SOON" }), hubSection("moda")!.cards[0].gates!) === "soon");
 check("the most closed switch wins the badge",
   menuBadge(withStatus({ image_moda: "MAINTENANCE", fashion_iron: "COMING_SOON" }), ["/k/moda", "/k/moda/iron"]) === "maintenance");
-check("matching (no engine) is badged on every card whatever the switch says",
-  hubSection("matching")!.cards.every((x) => x.soon));
+check("matching (no engine) is badged wherever it is placed, whatever the switch says",
+  HUB_SECTIONS.flatMap((x) => x.cards).filter((x) => x.key === "matching").every((x) => x.soon));
 const toolsPage = code(`${APP}/tools/page.tsx`);
 check("an operator's own words on a restricted category travel to its section",
   /note: s\.category \? noteFor\(s\.gates\) : null/.test(toolsPage)
@@ -244,8 +274,11 @@ check("…while an admin keeps both, to operate it",
   hubSectionsFor(noSocial, true).some((s) => s.key === "social")
   && menuVisible(noSocial, categoryGates(CATEGORIES.find((c) => c.key === "social")!), true));
 const hidden = withStatus({ image_ecommerce: "HIDDEN" });
-check("a category hidden from the menu is hidden from the hub too",
-  !hubSectionsFor(hidden, false).some((s) => s.key === "ecommerce"));
+const layoutWith = (fn: (l: ToolsLayout) => void): ToolsLayout => {
+  const l: ToolsLayout = JSON.parse(JSON.stringify(DEFAULT_LAYOUT));
+  fn(l);
+  return l;
+};
 const noHub = withStatus({ tools: "DISABLED" });
 check("a category link is not offered when the hub it opens is switched off",
   CATEGORIES.every((c) => !menuVisible(noHub, categoryGates(c), false)));
@@ -264,15 +297,19 @@ check("hiding „Wszystkie narzędzia” from the menu does not take the categor
   CATEGORIES.every((c) => menuVisible(hubHidden, categoryGates(c), false)));
 check("…a 'Wkrótce' hub badges every category link (it leads to the hub's screen)",
   CATEGORIES.every((c) => menuBadge(withStatus({ tools: "COMING_SOON" }), categoryGates(c)) === "soon"));
-check("a category hidden from the menu is not LISTED on the hub…",
-  !hubSectionsFor(hidden, false).some((s) => s.key === "ecommerce"));
-check("…but its own address still opens it, with all its workflows (hidden ≠ unreachable)",
-  (hubSectionsFor(hidden, false, "ecommerce").find((s) => s.key === "ecommerce")?.cards.length ?? 0)
-    === offeredWorkflows(CATEGORIES.find((c) => c.key === "ecommerce")!).length);
-check("a DISABLED category does not open even by its own address",
-  !hubSectionsFor(noSocial, false, "social").some((s) => s.key === "social"));
-check("a Moda tool hidden from the menu leaves the Moda section",
-  !keysOf(hubSectionsFor(withStatus({ fashion_iron: "HIDDEN" }), false)).includes("moda.iron"));
+// What /tools LISTS is the layout's now (Option R): a category's navigation
+// switch governs its menu link and tiles, the layout its section and items.
+check("a category's navigation switch no longer takes its /tools section with it",
+  hubSectionsFor(hidden, false).some((s) => s.key === "ecommerce"));
+check("…the layout's section switch does — and the items stay in the layout",
+  !hubSectionsFor(ALL_ACTIVE, false, layoutWith((l) => { l.sections.find((x) => x.key === "ecommerce")!.visible = false; }))
+    .some((s) => s.key === "ecommerce")
+  && layoutWith((l) => { l.sections.find((x) => x.key === "ecommerce")!.visible = false; })
+    .sections.find((x) => x.key === "ecommerce")!.items.length === DEFAULT_LAYOUT.sections.find((x) => x.key === "ecommerce")!.items.length);
+check("an item's /tools switch off takes it out of every section it is placed in",
+  !keysOf(hubSectionsFor(ALL_ACTIVE, false, layoutWith((l) => { l.flags.matching.tools = false; }))).includes("matching"));
+check("a DISABLED category's items stay off /tools whatever the layout says",
+  !keysOf(hubSectionsFor(noSocial, false)).some((k) => k.startsWith("social.")));
 check("with everything live, a customer sees every section",
   hubSectionsFor(ALL_ACTIVE, false).length === HUB_SECTIONS.length);
 check("the menus ask through the gates, never the bare href, for categories",
@@ -283,6 +320,8 @@ check("the menus ask through the gates, never the bare href, for categories",
 /* ── 12 ────────────────────────────────────────────────────────────────── */
 section("12. EVERY CARD OPENS A REAL, EXISTING SCREEN");
 
+// Every openable catalogue item — placed or kept aside — so an admin can put
+// any of them back without landing a customer on a dead screen.
 for (const c of HUB_CARDS.filter((x) => !x.soon)) {
   let ok = routeExists(c.href);
   if (c.workflow) {
@@ -378,8 +417,11 @@ check("15: …and every one of them — no tool slot left off the tab",
   toolish.every((d) => slotsIn(tools).some((s) => s.def.key === d.key)),
   toolish.filter((d) => !slotsIn(tools).some((s) => s.def.key === d.key)).map((d) => d.key).join(", "));
 check("15: …each listed once", new Set(slotsIn(tools).map((s) => s.def.key)).size === slotsIn(tools).length);
-check("15: …in the order /tools shows them",
-  tools.filter((g) => hubKeys.has(g.id)).map((g) => g.id).join() === HUB_CARDS.filter((c) => tools.some((g) => g.id === c.key)).map((c) => c.key).join());
+{
+  const shownOrder = [...new Set(HUB_SECTIONS.flatMap((x) => x.cards.map((c) => c.key)))].filter((k) => tools.some((g) => g.id === k));
+  check("15: …in the order /tools shows them",
+    tools.slice(0, shownOrder.length).map((g) => g.id).join() === shownOrder.join());
+}
 
 check("16: every picture production holds is still a declared slot, key unchanged",
   PROD_ROWS.every((k) => isKnownSlot(k)));

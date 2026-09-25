@@ -203,7 +203,7 @@ check("\"/\" renders the same surface when the app page is the homepage",
   /target\?\.kind === "app"\) return <ProductSurface \/>/.test(rootPage));
 const surface = code("components/home/product-surface.tsx");
 check("one loader, one body: both scopes render ProductHome from homeModel",
-  (surface.match(/<ProductHome /g) ?? []).length === 1 && /homeModel\(availability, isAdmin\)/.test(surface));
+  (surface.match(/<ProductHome /g) ?? []).length === 1 && /homeModel\(availability, isAdmin, layout\)/.test(surface));
 check("the shell scope draws no second bar, drawer or <main>",
   surface.indexOf('if (!chrome) return body;') < surface.indexOf("<MegaTopbar"));
 check("the loader resolves every slot in one read", (surface.match(/loadSlots\(/g) ?? []).length === 1);

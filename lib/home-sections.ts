@@ -1,11 +1,13 @@
 import type { LucideIcon } from "lucide-react";
-import { CATEGORIES, VIDEO_CREATE_WF, categoryGates, categoryPath, type Category } from "./categories";
+import { CATEGORIES, categoryGates, categoryPath, type Category } from "./categories";
 import { HUB_CARDS, motifForCategory, type HubCardDef } from "./tool-cards";
 import {
-  menuBadge, menuVisible, allDefaults, featureForHref,
+  menuBadge, menuVisible, routeReachable, allDefaults, featureForHref,
   type AvailabilityMap, type MenuBadge,
 } from "./features";
 import { MEDIA_SLOTS, categorySlotKey, toolSlotKey, workflowSlotKey } from "./media-slots";
+import { CHIPS, EFFECTS, RAIL, VIDEO_ROW, type Pick } from "./home-picks";
+import { DEFAULT_LAYOUT, startExtras, startOn, type ToolsLayout } from "./tool-layout";
 import type { ToolMotif } from "@/components/tools/tool-thumb";
 
 /**
@@ -126,8 +128,6 @@ export const SAMPLE_PRODUCTS = [
  *     category's workflow ("ecommerce.packshot");
  *   · a CATEGORY by its key, prefixed "cat:" ("cat:moda").
  */
-type Pick = string;
-
 const HUB_BY_KEY = new Map(HUB_CARDS.map((c) => [c.key, c]));
 
 function art(key: string, motif: ToolMotif, badge: MenuBadge): CardArt {
@@ -138,9 +138,22 @@ function art(key: string, motif: ToolMotif, badge: MenuBadge): CardArt {
   return PHOTO[key] ?? { kind: "motif", motif };
 }
 
-function hubCard(c: HubCardDef, avail: AvailabilityMap, isAdmin: boolean): HomeCard | null {
+/**
+ * An item's card, when this viewer may be shown it here.
+ *
+ * With a LAYOUT (what the page draws), the item's own "show on Start" switch
+ * decides whether it is promoted at all, and the status decides whether it may
+ * be shown: a DISABLED module is gone, "Wkrótce" stays badged. Without one (the
+ * page's primary action, which only asks where a door is open), the
+ * switchboard alone decides, as it always has.
+ */
+function hubCard(c: HubCardDef, avail: AvailabilityMap, isAdmin: boolean, layout?: ToolsLayout): HomeCard | null {
   const gates = c.gates ?? c.href;
-  if (!menuVisible(avail, gates, isAdmin)) return null;
+  if (layout) {
+    if (!startOn(layout, c.key) || !routeReachable(avail, gates, isAdmin)) return null;
+  } else if (!menuVisible(avail, gates, isAdmin)) {
+    return null;
+  }
   // `soon` on the catalogue row and the switchboard's own state are two
   // different facts and BOTH make a card inert: the row says "there is no
   // backend", the switchboard says "an operator switched it off".
@@ -181,7 +194,7 @@ function categoryCard(c: Category, avail: AvailabilityMap, isAdmin: boolean): Ho
   };
 }
 
-function resolve(picks: readonly Pick[], avail: AvailabilityMap, isAdmin: boolean): HomeCard[] {
+function resolve(picks: readonly Pick[], avail: AvailabilityMap, isAdmin: boolean, layout?: ToolsLayout): HomeCard[] {
   return picks
     .map((p) => {
       if (p.startsWith("cat:")) {
@@ -189,58 +202,38 @@ function resolve(picks: readonly Pick[], avail: AvailabilityMap, isAdmin: boolea
         return c ? categoryCard(c, avail, isAdmin) : null;
       }
       const card = HUB_BY_KEY.get(p);
-      return card ? hubCard(card, avail, isAdmin) : null;
+      return card ? hubCard(card, avail, isAdmin, layout) : null;
     })
     .filter((c): c is HomeCard => c !== null);
 }
 
 /* ── THE LISTS ────────────────────────────────────────────────────────────── */
 
+// The curated picks live in lib/home-picks.ts (lib/tool-layout.ts derives
+// each item's default "show on Start" switch from them); re-exported so the
+// page and the tests keep one import.
+export { RAIL, CHIPS, EFFECTS, VIDEO_ROW };
+
+export function railCards(avail: AvailabilityMap, isAdmin = false, layout: ToolsLayout = DEFAULT_LAYOUT): HomeCard[] {
+  return resolve(RAIL, avail, isAdmin, layout);
+}
+
+export function chipCards(avail: AvailabilityMap, isAdmin = false, layout: ToolsLayout = DEFAULT_LAYOUT): HomeCard[] {
+  return resolve(CHIPS, avail, isAdmin, layout);
+}
+
 /**
- * THE TOP RAIL — six destinations a seller should see before they scroll.
- * Wideo UGC leads, as the reference layout has it; it has no engine yet, so it
- * leads badged and inert rather than being dropped or faked. "Niewidzialny
- * manekin" is the running edit tool, not the Moda workflow of the same name
- * that is still "Wkrótce".
+ * "Wybierz efekt": the curated finishes, then every item an admin switched
+ * onto Start that no curated row names — appended here, in /tools order, so
+ * that switch always puts the item somewhere real. The row is a carousel on a
+ * phone and wraps on a wider screen, so a longer list never overflows.
  */
-export const RAIL: readonly Pick[] = [
-  "video_ugc", "generator", "ghost_mannequin", "ecommerce.thumbnail", "ai_shadow", "cat:moda",
-];
-
-/**
- * THE QUICK CHIPS under the upload box. "Lifestyle" in the reference is the
- * E-commerce workflow that puts a product in its natural surroundings, and it
- * keeps its own name ("W kontekście") — a chip must say what it opens.
- */
-export const CHIPS: readonly Pick[] = [
-  "white_bg", "ecommerce.packshot", "ecommerce.context", "ecommerce.thumbnail",
-  "video_ugc", "cat:social", "cat:moda", "cat:mailing",
-];
-
-/** "WYBIERZ EFEKT" — eight finishes, one row on a desktop. */
-export const EFFECTS: readonly Pick[] = [
-  "white_bg", "ai_background", "ai_shadow", "ecommerce.context",
-  "ghost_mannequin", "cat:moda", "video_ugc", "social.ads",
-];
-
-/** The last row: the video workflows, exactly the making half the video menu
- *  and /wideo list. No engine exists, so every card is badged. */
-export const VIDEO_ROW: readonly Pick[] = VIDEO_CREATE_WF.map((w) => `video_${w.key}`);
-
-export function railCards(avail: AvailabilityMap, isAdmin = false): HomeCard[] {
-  return resolve(RAIL, avail, isAdmin);
+export function effectCards(avail: AvailabilityMap, isAdmin = false, layout: ToolsLayout = DEFAULT_LAYOUT): HomeCard[] {
+  return resolve([...EFFECTS, ...startExtras(layout)], avail, isAdmin, layout);
 }
 
-export function chipCards(avail: AvailabilityMap, isAdmin = false): HomeCard[] {
-  return resolve(CHIPS, avail, isAdmin);
-}
-
-export function effectCards(avail: AvailabilityMap, isAdmin = false): HomeCard[] {
-  return resolve(EFFECTS, avail, isAdmin);
-}
-
-export function videoCards(avail: AvailabilityMap, isAdmin = false): HomeCard[] {
-  return resolve(VIDEO_ROW, avail, isAdmin);
+export function videoCards(avail: AvailabilityMap, isAdmin = false, layout: ToolsLayout = DEFAULT_LAYOUT): HomeCard[] {
+  return resolve(VIDEO_ROW, avail, isAdmin, layout);
 }
 
 /**
@@ -298,15 +291,15 @@ export type HomeModel = {
   slotKeys: string[];
 };
 
-export function homeModel(avail: AvailabilityMap, isAdmin = false): HomeModel {
-  const rail = railCards(avail, isAdmin);
-  const chips = chipCards(avail, isAdmin);
-  const effects = effectCards(avail, isAdmin);
-  const video = videoCards(avail, isAdmin);
+export function homeModel(avail: AvailabilityMap, isAdmin = false, layout: ToolsLayout = DEFAULT_LAYOUT): HomeModel {
+  const rail = railCards(avail, isAdmin, layout);
+  const chips = chipCards(avail, isAdmin, layout);
+  const effects = effectCards(avail, isAdmin, layout);
+  const video = videoCards(avail, isAdmin, layout);
   const gallery = MEDIA_SLOTS.filter((s) => s.entityType === "section" && s.entityId === "home").map((s) => s.key);
   return {
     rail, chips, effects, video,
-    ugc: resolve(["video_ugc"], avail, isAdmin)[0] ?? null,
+    ugc: resolve(["video_ugc"], avail, isAdmin, layout)[0] ?? null,
     startHref: startHref(avail, isAdmin),
     packshotHref: openHref("ecommerce.packshot", avail, isAdmin),
     slotKeys: [...new Set([...rail, ...effects, ...video].map((c) => c.slot).concat(gallery))],

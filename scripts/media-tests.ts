@@ -25,7 +25,7 @@ import {
   isObjectPosition, isSlotMediaType, slotDef, slotsFor, toolSlotKey, workflowSlotKey,
 } from "../lib/media-slots";
 import { CATEGORIES, offeredWorkflows } from "../lib/categories";
-import { CATEGORY_SECTIONS, HUB_SECTIONS, TOOL_CARDS, TOOL_SECTIONS, toolCard } from "../lib/tool-cards";
+import { CATEGORY_SECTIONS, TOOL_CARDS, TOOL_SECTIONS, toolCard } from "../lib/tool-cards";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string) {

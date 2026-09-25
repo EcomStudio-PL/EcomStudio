@@ -12,7 +12,7 @@
  * THE HARNESS. /tools sits behind sign-in, and this probe runs against a local
  * production build with no account. So the harness mounts the REAL pieces —
  * MegaTopbar, CustomerDrawer, CustomerBottomNav, ToolsCatalogue, ToolsDeepLink,
- * fed by `hubSectionsFor` and the real dictionary — at /probe-tmp/tools, in the
+ * fed by `hubSectionsFor` over the shipped catalogue layout and the real dictionary — at /probe-tmp/tools, in the
  * same <main> the app layout uses. The browser is then told that /tools IS
  * that page (a Playwright route that fetches /probe-tmp/tools for any request
  * to /tools, document and RSC alike), so every link the menus render —
@@ -33,9 +33,10 @@ const PAGE_SRC = `import { Suspense } from "react";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { allDefaults } from "@/lib/features";
-import { CATEGORY_PARAM } from "@/lib/categories";
-import { hubSectionsFor, type HubCardDef } from "@/lib/tool-cards";
-import { toolSlotKey, workflowSlotKey } from "@/lib/media-slots";
+import { CATEGORIES, CATEGORY_PARAM } from "@/lib/categories";
+import type { HubCardDef } from "@/lib/tool-cards";
+import { hubSectionsFor, sectionKeyFor } from "@/lib/tool-layout";
+import { categorySlotKey, toolSlotKey, workflowSlotKey } from "@/lib/media-slots";
 import { ToolsCatalogue } from "@/components/tools/tools-catalogue";
 import { ToolsDeepLink } from "@/components/tools/tools-deep-link";
 import { ProbeShell } from "./shell";
@@ -54,14 +55,19 @@ export default async function Page({ searchParams }: {
   const t = makeT(dict);
   const avail = allDefaults();
   const visible = hubSectionsFor(avail, false);
+  const active = sectionKeyFor(wanted, visible);
+  const aliases = Object.fromEntries(CATEGORIES
+    .map((c) => [c.slug, sectionKeyFor(c.slug, visible)] as const)
+    .filter((e): e is readonly [string, string] => e[1] !== null && e[1] !== e[0]));
   const slotKeyOf = (c: HubCardDef) =>
-    c.workflow ? workflowSlotKey(c.workflow.category, c.workflow.key) : toolSlotKey(c.key);
+    c.workflow ? workflowSlotKey(c.workflow.category, c.workflow.key)
+      : CATEGORIES.some((k) => k.key === c.key) ? categorySlotKey(c.key) : toolSlotKey(c.key);
   return (
     <ProbeShell dict={dict} avail={avail}>
       <ToolsCatalogue t={t} avail={avail} isAdmin={false} slots={new Map()}
         sections={visible.map((s) => ({
           key: s.key, icon: s.icon, title: t(s.titleKey), seeAll: s.seeAll,
-          active: s.key === wanted,
+          active: s.key === active,
           cards: s.cards.map((c) => ({
             key: c.key, href: c.href, icon: c.icon, motif: c.motif,
             title: t(c.titleKey), body: t(c.bodyKey), soon: c.soon,
@@ -69,7 +75,7 @@ export default async function Page({ searchParams }: {
           })),
         }))} />
       <Suspense fallback={null}>
-        <ToolsDeepLink sections={visible.map((s) => s.key)} />
+        <ToolsDeepLink sections={visible.map((s) => s.key)} aliases={aliases} />
       </Suspense>
     </ProbeShell>
   );
@@ -140,8 +146,14 @@ async function open(width, height = 900, opts = {}) {
   await page.route((url) => url.pathname === "/tools", async (route) => {
     const url = new URL(route.request().url());
     url.pathname = "/probe-tmp/tools";
-    const response = await route.fetch({ url: url.toString() });
-    await route.fulfill({ response });
+    // A prefetch still in flight when its context closes is not a failure of
+    // the page: let it go instead of crashing the probe.
+    try {
+      const response = await route.fetch({ url: url.toString() });
+      await route.fulfill({ response });
+    } catch {
+      await route.abort().catch(() => {});
+    }
   });
   return { ctx, page };
 }
@@ -302,18 +314,44 @@ console.log("\n10. BADGES AND INERT CARDS");
       links: cards.filter((c) => c.tagName === "A").length,
       badged: cards.filter((c) => /Wkrótce/i.test(c.textContent ?? "")).length,
       ecomLinks: [...document.getElementById("ecommerce").querySelectorAll("a[data-tool-card]")].map((a) => a.getAttribute("href")),
+      matching: ["ecommerce", "moda"].map((k) => {
+        const c = document.getElementById(k).querySelector('[data-tool-card="matching"]');
+        return { text: c?.textContent ?? "", link: c?.tagName === "A", blocked: c?.getAttribute("data-blocked") };
+      }),
+      order: [...document.querySelectorAll("[data-tools-section]")].map((x) => x.id).join(),
+      titles: [...document.querySelectorAll("[data-tools-section] h2")].map((h) => h.textContent.trim()),
     };
   });
-  check("Social (Wkrótce by default): every card badged and inert, none a link",
-    r.cards === 5 && r.blocked === 5 && r.links === 0 && r.badged === 5, JSON.stringify(r));
-  check("E-commerce (live): every card opens its own workflow screen",
-    r.ecomLinks.length === 5 && r.ecomLinks.every((h) => /^\/k\/ecommerce\/[a-zA-Z]+$/.test(h)), JSON.stringify(r.ecomLinks));
+  check("Social (Wkrótce by default): its four cards badged and inert, none a link",
+    r.cards === 4 && r.blocked === 4 && r.links === 0 && r.badged === 4, JSON.stringify(r));
+  check("E-commerce: six cards open their own screens, as before",
+    JSON.stringify(r.ecomLinks) === JSON.stringify(["/retusz", "/tools/editor?tool=remove-background",
+      "/tools/editor?tool=background", "/tools/ai_background", "/tools/editor?tool=shadow", "/k/ecommerce/thumbnail"]),
+    JSON.stringify(r.ecomLinks));
+  check("Matching closes E-commerce AND Moda — the same card, badged „Wkrótce” and inert in both",
+    r.matching.every((m) => /Matching/.test(m.text) && /Wkrótce/.test(m.text) && !m.link && m.blocked === "true"),
+    JSON.stringify(r.matching));
+  check("the sections are drawn in the brief's order",
+    r.order === "generate,ecommerce,moda,prepare,inne,social,mailing,video", r.order);
+  check("no „Edycja obrazu”, „Kompozycja i generowanie” or „Matching” section heading",
+    !r.titles.some((x) => /^(Edycja obrazu|Kompozycja i generowanie|Matching)/.test(x)), r.titles.join(" | "));
+  await ctx.close();
+}
+
+/* ── MATCHING'S OLD LINK ────────────────────────────────────────────────── */
+console.log("\nOLD ?category=matching LINK");
+for (const width of [390, 1440]) {
+  const { ctx, page } = await open(width);
+  await page.goto(`${BASE}/tools?category=matching`, { waitUntil: "networkidle" });
+  await settle(page);
+  const w = await where(page, "ecommerce");
+  check(`${width}px: ?category=matching lands on E-commerce, which holds Matching`, w?.inView && w.active, JSON.stringify(w));
   await ctx.close();
 }
 
 /* ── 18. RESPONSIVE: NO HORIZONTAL OVERFLOW ─────────────────────────────── */
 console.log("\nRESPONSIVE — ZERO HORIZONTAL OVERFLOW");
-const WIDTHS = [320, 360, 375, 390, 414, 430, 768, 810, 834, 1024, 1280, 1366, 1440, 1536, 1920];
+const WIDTHS = [320, 360, 375, 390, 414, 430, 768, 810, 820, 834, 1024, 1280, 1366, 1440, 1536, 1920];
 for (const width of WIDTHS) {
   const { ctx, page } = await open(width, 900);
   await page.goto(`${BASE}/tools?category=moda`, { waitUntil: "networkidle" });
@@ -334,7 +372,7 @@ for (const width of WIDTHS) {
   });
   const w = await where(page, "moda");
   check(`${width}px: no horizontal overflow, ${r.sections} sections / ${r.cards} cards, ${r.cols} columns, Moda in view`,
-    r.scrollW <= r.cw + 1 && r.over.length === 0 && w?.inView,
+    r.scrollW <= r.cw + 1 && r.over.length === 0 && w?.inView && r.sections === 8 && (width >= 768 || r.cols === 2),
     JSON.stringify({ ...r, w }));
   await ctx.close();
 }

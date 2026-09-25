@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/services/audit";
 import { keepStructuredFields } from "@/lib/services/admin";
 import { writableCapabilities, type PlanCapabilities } from "@/lib/plans/capabilities";
 import { syncPrice } from "@/lib/server/stripe-pricing";
+import { TOOLS_LAYOUT_KEY } from "@/lib/server/tool-layout";
 
 type Result = { ok: boolean; error?: string };
 
@@ -394,6 +395,9 @@ export async function toggleTemplateAction(templateId: string, active: boolean):
 
 export async function saveSettingAction(key: string, value: Record<string, unknown>): Promise<Result> {
   try {
+    // The catalogue layout is written only through its own validated actions
+    // (app/actions/tool-layout.ts), never as a raw settings blob.
+    if (key === TOOLS_LAYOUT_KEY) return { ok: false, error: "generic" };
     const { supabase } = await requireAdmin();
     const { data: existing } = await supabase.from("app_settings")
       .select("value").eq("key", key).maybeSingle();

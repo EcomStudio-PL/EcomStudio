@@ -1,18 +1,17 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  Contrast, Crop, Gauge, Lightbulb, Maximize2, Palette,
+  Contrast, Crop, Gauge, Lightbulb, Maximize2, Palette, PenLine,
   PencilRuler, Scaling, Scissors, Shirt, SlidersHorizontal, Sparkles,
   Square, Stamp, Sun, Video, Wand2, WandSparkles,
 } from "lucide-react";
 import {
   CATEGORIES, VIDEO_CREATE_WF, VIDEO_EDIT_WF, categoryPath, offeredWorkflows, workflowHref,
-  type Category,
+  type Category, type Workflow,
 } from "./categories";
 // Type-only, so nothing of the component reaches this module at runtime; the
 // motif names belong with the thing that draws them.
 import type { ToolMotif } from "@/components/tools/tool-thumb";
 import type { ToolSlug } from "./images/tools";
-import { featureForHref, menuVisible, routeReachable, type AvailabilityMap } from "./features";
 
 /**
  * THE TOOL CATALOGUE — every card on /tools, as data.
@@ -108,6 +107,11 @@ export const TOOL_SECTIONS: readonly ToolSectionDef[] = [
     cards: [
       { key: "generator", href: "/prompts", icon: Sparkles, motif: "spark",
         titleKey: "mega.createImage", bodyKey: "hub.card.generator" },
+      // The custom-prompt mode of the same generator, at its own existing
+      // address (/generator). A card, not a new tool: the catalogue lists it
+      // so the layout can place it — see lib/tool-layout.ts.
+      { key: "custom", href: "/generator", icon: PenLine, motif: "spark",
+        titleKey: "mega.custom", bodyKey: "mega.customSub" },
     ],
   },
   {
@@ -247,12 +251,29 @@ export function motifForCategory(categoryKey: string): ToolMotif {
   }
 }
 
+/** One workflow of a category, as a card: the route, the art, the badge. */
+function workflowCard(c: Category, w: Workflow): HubCardDef {
+  const id = `${c.key}.${w.key}`;
+  const href = workflowHref(c, w);
+  return {
+    key: id,
+    href,
+    icon: w.icon,
+    motif: WORKFLOW_MOTIF[id] ?? motifForCategory(c.key),
+    titleKey: `wf.${c.key}.${w.key}.name`,
+    bodyKey: `wf.${c.key}.${w.key}.sub`,
+    soon: Boolean(w.soon || c.soon),
+    workflow: { category: c.key, key: w.key },
+    gates: [categoryPath(c), href],
+  };
+}
+
 /**
- * A category as a section of the hub: the workflows it OFFERS, in its own
- * order. `offeredWorkflows` is what keeps the retired Moda presets out — they
- * still resolve at their old URLs, they are just not offered. A workflow that
- * has no engine yet (or a category that has none) is a card with a "Wkrótce"
- * badge, never a link.
+ * A category as a section: the workflows it OFFERS, in its own order.
+ * `offeredWorkflows` is what keeps the retired Moda presets out of the
+ * category's own switcher. The /tools page no longer draws these sections
+ * directly — lib/tool-layout.ts decides what /tools shows — but the category's
+ * own set of jobs is still a fact other screens ask for.
  */
 function categorySection(c: Category): HubSectionDef {
   return {
@@ -261,21 +282,7 @@ function categorySection(c: Category): HubSectionDef {
     titleKey: `cats.${c.key}`,
     category: c.key,
     gates: [categoryPath(c)],
-    cards: offeredWorkflows(c).map((w) => {
-      const id = `${c.key}.${w.key}`;
-      const href = workflowHref(c, w);
-      return {
-        key: id,
-        href,
-        icon: w.icon,
-        motif: WORKFLOW_MOTIF[id] ?? motifForCategory(c.key),
-        titleKey: `wf.${c.key}.${w.key}.name`,
-        bodyKey: `wf.${c.key}.${w.key}.sub`,
-        soon: Boolean(w.soon || c.soon),
-        workflow: { category: c.key, key: w.key },
-        gates: [categoryPath(c), href],
-      };
-    }),
+    cards: offeredWorkflows(c).map((w) => workflowCard(c, w)),
   };
 }
 
@@ -283,64 +290,48 @@ function categorySection(c: Category): HubSectionDef {
 export const CATEGORY_SECTIONS: readonly HubSectionDef[] = CATEGORIES.map(categorySection);
 
 /**
- * EVERYTHING /tools DRAWS, IN THE ORDER IT DRAWS IT.
- *
- * The categories take the place their entry cards used to hold — straight
- * after the generator — so the page reads: edit a photo, make one, make one
- * for a purpose, prepare the files, video.
+ * A category with no engine at all ("Matching") is ONE item — the category
+ * itself, at its own address, badged "Wkrótce" — rather than three cards for
+ * workflows none of which can run. Its workflows keep their definitions in
+ * lib/categories.ts; they are simply not offered as separate tools.
  */
-export const HUB_SECTIONS: readonly HubSectionDef[] = (() => {
-  const own = TOOL_SECTIONS.map((s): HubSectionDef => ({ ...s }));
-  const at = own.findIndex((s) => s.key === "create") + 1;
-  return [...own.slice(0, at), ...CATEGORY_SECTIONS, ...own.slice(at)];
-})();
-
-/** Every card the hub draws, flat — catalogue tools and workflows alike. */
-export const HUB_CARDS: readonly HubCardDef[] = HUB_SECTIONS.flatMap((s) => s.cards);
-
-/** The section a `?category=` value opens, when it names one. Unknown values
- *  open nothing: a stale or mistyped link lands on the top of the hub. */
-export function hubSection(key: string | null | undefined): HubSectionDef | null {
-  if (!key) return null;
-  return HUB_SECTIONS.find((s) => s.key === key) ?? null;
+function categoryItem(c: Category): HubCardDef {
+  return {
+    key: c.key,
+    href: categoryPath(c),
+    icon: c.icon,
+    motif: motifForCategory(c.key),
+    titleKey: `cats.${c.key}`,
+    bodyKey: `cats.${c.key}Sub`,
+    soon: true,
+    gates: [categoryPath(c)],
+  };
 }
 
 /**
- * The hub as ONE viewer may see it — the availability switchboard applied,
- * exactly as the menus apply it.
- *
- * A category's section is LISTED when its category is visible in the menu —
- * the same rule its entry card on this page always had. A category that is
- * merely hidden from the menu is not listed, but the section still opens when
- * the URL asks for it (`?category=<slug>`, which is also where its old
- * /k/<slug> address forwards): hidden-from-the-menu has always meant "not
- * advertised", never "unreachable". A DISABLED category opens for nobody but
- * an admin.
- *
- * A card is drawn when its OWN switch allows it; a card whose route is
- * governed by the very switch its section answers to (a category's preset)
- * follows the section's decision rather than repeating it. A section left
- * with no cards is dropped rather than shown as an empty heading. What is
- * merely restricted — "Wkrótce", maintenance — stays, and carries its badge
- * for customers. Admins are shown everything, open, as the catalogue has always
- * shown them (tools-catalogue.tsx gives admins no module badge): they are the
- * ones who switch modules back on, and the page itself tells them what a
- * customer gets (FeatureGate's preview strip on the module they open).
+ * EVERY ITEM THE CATALOGUE CAN SHOW — the tools' own cards, every workflow of
+ * every category (the retired Moda presets included: they are real, working
+ * routes an operator may place again), and one item per category that has no
+ * engine yet. One entry per existing destination, keyed by the key its media
+ * slot already uses. Which of them /tools actually shows, where and in what
+ * order is not decided here: that is the layout (lib/tool-layout.ts).
  */
-export function hubSectionsFor(avail: AvailabilityMap, isAdmin: boolean, requested?: string | null): HubSectionDef[] {
-  return HUB_SECTIONS
-    .filter((s) => !s.gates || menuVisible(avail, s.gates, isAdmin)
-      || (s.key === requested && routeReachable(avail, s.gates, isAdmin)))
-    .map((s) => {
-      const sectionFeature = s.gates ? featureForHref(s.gates[s.gates.length - 1]) : null;
-      return {
-        ...s,
-        cards: s.cards.filter((c) => {
-          const own = c.gates ? c.gates[c.gates.length - 1] : c.href;
-          if (sectionFeature && featureForHref(own) === sectionFeature) return true;
-          return menuVisible(avail, c.gates ?? c.href, isAdmin);
-        }),
-      };
-    })
-    .filter((s) => s.cards.length > 0);
+export const CATALOG_ITEMS: readonly HubCardDef[] = (() => {
+  const items: HubCardDef[] = [...TOOL_CARDS];
+  for (const c of CATEGORIES) {
+    if (c.soon) items.push(categoryItem(c));
+    else for (const w of c.workflows) items.push(workflowCard(c, w));
+  }
+  const seen = new Set<string>();
+  return items.filter((i) => (seen.has(i.key) ? false : (seen.add(i.key), true)));
+})();
+
+/** Every item, flat — what the Start page and the search resolve keys against. */
+export const HUB_CARDS: readonly HubCardDef[] = CATALOG_ITEMS;
+
+const ITEM_BY_KEY = new Map(CATALOG_ITEMS.map((c) => [c.key, c]));
+
+/** One catalogue item by key, or undefined for a key nothing defines. */
+export function catalogItem(key: string): HubCardDef | undefined {
+  return ITEM_BY_KEY.get(key);
 }

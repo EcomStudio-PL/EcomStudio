@@ -35,6 +35,8 @@ import { AdminShell } from "@/components/layout/admin-mobile";
 import { AdminSidebar } from "@/components/layout/admin-sidebar";
 import { PageHeader } from "@/components/ui/page-header";
 import { ToolRegistry, type PanelEntry } from "@/components/admin/tool-registry";
+import { ToolsViewTabs } from "@/components/admin/tools-layout";
+import { DEFAULT_LAYOUT } from "@/lib/tool-layout";
 import {
   FEATURE_REGISTRY, allDefaults, isFeatureKey, type FeatureKey, type FeatureStatus,
 } from "@/lib/features";
@@ -130,7 +132,8 @@ export default async function Probe({ searchParams }: { searchParams: Promise<Re
           <AdminShell name="Probe Admin" email="probe@grovbase.test" role="admin" stats={stats} />
           <main className="mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-4 pb-[calc(var(--dock-h)+2rem+env(safe-area-inset-bottom))] pt-5 sm:px-5 lg:px-6 lg:pb-12 lg:pt-6 xl:px-7">
             <PageHeader overline={t("admin.navGroups.ai")} title={t("aicc.tools.title")} sub={t("aicc.tools.sub")} />
-            <ToolRegistry entries={entries} availability={availability} models={models} services={services}
+            <ToolsViewTabs />
+            <ToolRegistry entries={entries} availability={availability} toolsLayout={DEFAULT_LAYOUT} models={models} services={services}
               previewing={false} locale={locale} openKey={open} />
           </main>
         </div>
@@ -140,9 +143,47 @@ export default async function Probe({ searchParams }: { searchParams: Promise<Re
 }
 `;
 
+/** "Układ dla klientów", in the same admin chrome, fed the shipped layout. */
+const LAYOUT_SRC = `import { getScopedDictionary, getDictionary } from "@/lib/i18n/server";
+import { makeT } from "@/lib/i18n/t";
+import { I18nScope } from "@/lib/i18n/provider";
+import { AdminShell } from "@/components/layout/admin-mobile";
+import { AdminSidebar } from "@/components/layout/admin-sidebar";
+import { PageHeader } from "@/components/ui/page-header";
+import { ToolsLayoutEditor, ToolsViewTabs } from "@/components/admin/tools-layout";
+import { allDefaults } from "@/lib/features";
+import { DEFAULT_LAYOUT } from "@/lib/tool-layout";
+
+export const dynamic = "force-dynamic";
+
+export default async function Probe() {
+  const { dict } = await getDictionary();
+  const { dict: adminDict } = await getScopedDictionary("admin");
+  const t = makeT(dict);
+  const stats = { users: 12, usersToday: 1, revenueTodayCents: 0, revenue30dCents: 0 };
+  return (
+    <I18nScope dict={adminDict}>
+      <div className="flex min-h-dvh w-full min-w-0">
+        <AdminSidebar name="Probe Admin" email="probe@grovbase.test" role="admin" stats={stats} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <AdminShell name="Probe Admin" email="probe@grovbase.test" role="admin" stats={stats} />
+          <main className="mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-4 pb-[calc(var(--dock-h)+2rem+env(safe-area-inset-bottom))] pt-5 sm:px-5 lg:px-6 lg:pb-12 lg:pt-6 xl:px-7">
+            <PageHeader overline={t("admin.navGroups.ai")} title={t("aicc.tools.title")} sub={t("aicc.layout.sub")} />
+            <ToolsViewTabs />
+            <h2 className="mb-3 text-[15px] font-semibold text-ink">{t("aicc.layout.title")}</h2>
+            <ToolsLayoutEditor initial={DEFAULT_LAYOUT} updatedAt={null} availability={allDefaults()} />
+          </main>
+        </div>
+      </div>
+    </I18nScope>
+  );
+}
+`;
+
 if (process.argv.includes("--harness")) {
-  fs.mkdirSync(DIR, { recursive: true });
+  fs.mkdirSync(`${DIR}/uklad`, { recursive: true });
   fs.writeFileSync(`${DIR}/page.tsx`, PAGE_SRC);
+  fs.writeFileSync(`${DIR}/uklad/page.tsx`, LAYOUT_SRC);
   console.log(`harness written to ${DIR}`);
   process.exit(0);
 }
@@ -156,7 +197,7 @@ if (process.argv.includes("--clean")) {
 const BASE = process.argv[2] ?? "http://127.0.0.1:3121";
 const URL = `${BASE}/probe-tmp/tools-panel`;
 const SHOTS = process.env.SHOTS ?? "";
-const WIDTHS = [320, 360, 375, 390, 414, 430, 768, 810, 834, 1024, 1280, 1440, 1920];
+const WIDTHS = [320, 360, 375, 390, 414, 430, 768, 810, 820, 834, 1024, 1280, 1440, 1920];
 const LG = 1024;
 
 let failed = 0;
@@ -227,13 +268,13 @@ for (const width of WIDTHS) {
   check(`${tag}: no sideways scroll (tool open)`, o.doc <= 0 && o.bad.length === 0, JSON.stringify(o));
   if (SHOTS && (width === 390 || width === 1440)) await page.screenshot({ path: `${SHOTS}/tools-${width}-open.png`, fullPage: false });
 
-  // The readout follows the switch before Save.
+  // The readout follows the status before Save; the item's three switches sit under it.
   const toolsRow = page.locator('#cfg-prompts [data-surface="tools"]');
   check(`${tag}: active generator reads as visible on /tools`, (await toolsRow.getAttribute("data-state")) === "shown");
-  await page.locator('#cfg-prompts [role="switch"]').first().click();
-  check(`${tag}: hiding it (unsaved) takes it off /tools in the readout`, (await toolsRow.getAttribute("data-state")) === "hidden");
-  check(`${tag}: …and off Start`, (await page.locator('#cfg-prompts [data-surface="home"]').getAttribute("data-state")) === "hidden");
-  await page.locator('#cfg-prompts [role="switch"]').first().click();
+  const genFlags = page.locator('#cfg-prompts [data-placements] [data-item="generator"] [data-flag]');
+  check(`${tag}: the generator's row carries its three switches, all on (Narzędzia · Menu · Start)`,
+    (await genFlags.count()) === 3
+    && (await genFlags.evaluateAll((els) => els.map((e) => e.getAttribute("data-flag") + e.getAttribute("data-on")).join())) === "tools1,menu1,start1");
   await page.locator('#cfg-prompts button[aria-pressed]', { hasText: /Wkrótce/ }).click();
   check(`${tag}: Wkrótce + visible reads as badged`, (await toolsRow.getAttribute("data-state")) === "badged");
 
@@ -251,26 +292,35 @@ for (const width of WIDTHS) {
   const compressText = await page.locator("#cfg-compress").innerText();
   check(`${tag}: local tool says local processing, offers no model`, /Przetwarzanie lokalne/.test(compressText)
     && (await page.locator("#cfg-compress select").count()) === 1);
-  check(`${tag}: local tool honestly absent from Start`, (await page.locator('#cfg-compress [data-surface="home"]').getAttribute("data-state")) === "na");
+  check(`${tag}: local tool not on Start by default (its Start switch is off)`,
+    (await page.locator('#cfg-compress [data-surface="home"]').getAttribute("data-state")) === "hidden"
+    && (await page.locator('#cfg-compress [data-item="compress"] [data-flag="start"]').getAttribute("data-on")) === "0");
+  const flagBoxes = await page.locator('#cfg-compress [data-item="compress"] [data-flag]').evaluateAll((els) =>
+    els.map((e) => { const b = e.getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width) }; }));
+  check(`${tag}: the three switches never squeeze below a readable width`,
+    flagBoxes.length === 3 && flagBoxes.every((b) => b.w >= 130), JSON.stringify(flagBoxes));
 
   await page.locator('[data-entry="fashion_ghost_mannequin"] button[aria-expanded]').click();
   check(`${tag}: Wkrótce tool listed with its badge`,
     (await page.locator('#cfg-fashion_ghost_mannequin [data-surface="tools"]').getAttribute("data-state")) === "badged");
 
   await page.locator('[data-entry="tool_watermark"] button[aria-expanded]').click();
-  check(`${tag}: hidden tool reads hidden on /tools`,
-    (await page.locator('#cfg-tool_watermark [data-surface="tools"]').getAttribute("data-state")) === "hidden");
-  check(`${tag}: hidden tool's switch is off`,
+  check(`${tag}: a tool hidden from navigation keeps its /tools card (its layout switch decides that)`,
+    (await page.locator('#cfg-tool_watermark [data-surface="tools"]').getAttribute("data-state")) === "shown");
+  check(`${tag}: its navigation switch is off`,
     (await page.locator('#cfg-tool_watermark [role="switch"]').first().getAttribute("aria-checked")) === "false");
 
   await page.locator('[data-entry="image_ecommerce"] button[aria-expanded]').click();
   check(`${tag}: a category opens status + visibility only`, (await page.locator("#cfg-image_ecommerce section").count()) === 2);
   check(`${tag}: active category visible on /tools`,
     (await page.locator('#cfg-image_ecommerce [data-surface="tools"]').getAttribute("data-state")) === "shown");
-  check(`${tag}: its tools are listed under it`, /Narzędzia w kategorii \(5\)/i.test(await page.locator("#cfg-image_ecommerce").innerText()));
+  check(`${tag}: its items are listed under it, each with its switches`,
+    /Pozycje w katalogu \(\d+\)/i.test(await page.locator("#cfg-image_ecommerce").innerText())
+    && (await page.locator('#cfg-image_ecommerce [data-placements] [data-item]').count()) >= 5);
   await page.locator('#cfg-image_ecommerce [role="switch"]').first().click();
-  check(`${tag}: hiding the category (unsaved) takes it off /tools`,
-    (await page.locator('#cfg-image_ecommerce [data-surface="tools"]').getAttribute("data-state")) === "hidden");
+  check(`${tag}: hiding the category from navigation (unsaved) takes it off the menu, not off /tools`,
+    (await page.locator('#cfg-image_ecommerce [data-surface="menu"]').getAttribute("data-state")) === "hidden"
+    && (await page.locator('#cfg-image_ecommerce [data-surface="tools"]').getAttribute("data-state")) === "shown");
   o = await overflow(page);
   check(`${tag}: no sideways scroll (category open)`, o.doc <= 0 && o.bad.length === 0, JSON.stringify(o));
 
@@ -312,6 +362,73 @@ for (const width of WIDTHS) {
   check(`${tag}: no runtime errors`, errors.length === 0, errors.slice(0, 2).join(" | "));
   await ctx.close();
   console.log(`  ${tag} done`);
+}
+
+// "Układ dla klientów".
+const LAYOUT_URL = `${URL}/uklad`;
+for (const width of WIDTHS) {
+  const ctx = await browser.newContext({ viewport: { width, height: width < 768 ? 800 : 900 }, deviceScaleFactor: 1 });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+  await page.goto(LAYOUT_URL, { waitUntil: "networkidle" });
+  const tag = `${width}px układ`;
+  const order = () => page.locator("[data-section]").evaluateAll((els) => els.map((e) => e.getAttribute("data-section")).join());
+  check(`${tag}: eight sections in the brief's order`,
+    (await order()) === "generate,ecommerce,moda,prepare,inne,social,mailing,video", await order());
+  // (Which tab is current follows the real /admin/ai/uklad path, which the
+  // harness does not live at; here the two doors themselves are checked.)
+  check(`${tag}: the view tabs lead to Konfiguracja and Układ dla klientów`,
+    (await page.locator('nav a[href="/admin/ai"]').filter({ hasText: /Konfiguracja/ }).count()) === 1
+    && (await page.locator('nav a[href="/admin/ai/uklad"]').filter({ hasText: /Układ dla klientów/ }).count()) === 1);
+  let o = await overflow(page);
+  check(`${tag}: no sideways scroll (collapsed)`, o.doc <= 0 && o.bad.length === 0, JSON.stringify(o));
+
+  await page.locator('[data-section="ecommerce"] button[aria-expanded]').click();
+  const eco = page.locator('[data-section="ecommerce"] [data-item]');
+  check(`${tag}: E-commerce holds its seven items`, (await eco.count()) === 7, String(await eco.count()));
+  check(`${tag}: Matching says it is also in Moda`,
+    /Także w: Moda/.test(await page.locator('[data-section="ecommerce"] [data-item="matching"]').innerText()));
+  check(`${tag}: Matching carries its Wkrótce badge`,
+    /Wkrótce/.test(await page.locator('[data-section="ecommerce"] [data-item="matching"]').innerText()));
+  o = await overflow(page);
+  check(`${tag}: no sideways scroll (section open)`, o.doc <= 0 && o.bad.length === 0, JSON.stringify(o));
+  const boxes = await page.locator('[data-section="ecommerce"] [data-item="retouch"] [data-flag]').evaluateAll((els) =>
+    els.map((e) => Math.round(e.getBoundingClientRect().width)));
+  check(`${tag}: an item's three switches stay readable (never squeezed onto one cramped line)`,
+    boxes.length === 3 && boxes.every((w) => w >= 130), JSON.stringify(boxes));
+
+  // One switch moves only itself.
+  const flag = (item, f) => page.locator(`[data-section="ecommerce"] [data-item="${item}"] [data-flag="${f}"]`);
+  const before = await Promise.all(["tools", "menu", "start"].map((f) => flag("retouch", f).getAttribute("data-on")));
+  await flag("retouch", "start").locator('[role="switch"]').click();
+  const after = await Promise.all(["tools", "menu", "start"].map((f) => flag("retouch", f).getAttribute("data-on")));
+  check(`${tag}: flipping „Start” changes Start only`,
+    before[0] === after[0] && before[1] === after[1] && before[2] !== after[2], JSON.stringify({ before, after }));
+  const bar = page.locator("[data-savebar]");
+  check(`${tag}: an unsaved change raises the save bar`, (await bar.count()) === 1);
+  const barBox = await bar.boundingBox();
+  check(`${tag}: …above the admin dock`, barBox && barBox.y + barBox.height <= (await dockTop(page)) + 0.5, JSON.stringify(barBox));
+
+  // Reorder a section, hide one, then discard.
+  await page.locator('[data-section="moda"] button[aria-label^="Przesuń wyżej"]').click();
+  check(`${tag}: „Przesuń wyżej” moves Moda above E-commerce`, (await order()).startsWith("generate,moda,ecommerce"), await order());
+  await page.locator('[data-section="social"] [role="switch"]').first().click();
+  check(`${tag}: hiding a section keeps it (and its items) in the editor`,
+    (await page.locator('[data-section="social"]').getAttribute("data-visible")) === "0"
+    && /Pozycje: 4/.test(await page.locator('[data-section="social"]').innerText()));
+  o = await overflow(page);
+  check(`${tag}: no sideways scroll (save bar up)`, o.doc <= 0 && o.bad.length === 0, JSON.stringify(o));
+  await bar.getByRole("button", { name: /Odrzuć/ }).click();
+  check(`${tag}: „Odrzuć zmiany” restores the stored layout`,
+    (await order()) === "generate,ecommerce,moda,prepare,inne,social,mailing,video" && (await bar.count()) === 0);
+
+  check(`${tag}: the items kept aside are listed, so none is lost`,
+    /Poza układem \(18\)/.test(await page.locator("[data-unplaced]").innerText()));
+  if (SHOTS && (width === 390 || width === 1440)) await page.screenshot({ path: `${SHOTS}/uklad-${width}.png`, fullPage: false });
+  check(`${tag}: no runtime errors`, errors.length === 0, errors.slice(0, 2).join(" | "));
+  await ctx.close();
 }
 
 // Deep link.

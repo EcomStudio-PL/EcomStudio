@@ -10,6 +10,8 @@ import { readToolPopularity } from "@/lib/server/tool-popularity";
 import { loadSlots, loadBanners } from "@/lib/server/media-slots";
 import { bannerSlotKey } from "@/lib/media-slots";
 import { homeModel } from "@/lib/home-sections";
+import { menuItemKeys } from "@/lib/tool-layout";
+import { getToolsLayout } from "@/lib/server/tool-layout";
 import { MegaTopbar } from "@/components/layout/mega-topbar";
 import { DrawerProvider } from "@/components/layout/shell-context";
 import { ProductHome } from "./product-home";
@@ -69,12 +71,15 @@ export async function ProductSurface({ scope = "page" }: {
 
   // The availability map is React-cached and public; the admin check and the
   // Start's campaigns are asked for only when somebody is signed in.
-  const [availability, isAdmin, banners] = await Promise.all([
+  // The catalogue layout is public too: it decides which items Start promotes
+  // and which the header menu lists.
+  const [availability, isAdmin, banners, layout] = await Promise.all([
     getAvailabilityMap(supabase),
     user ? viewerIsAdmin(supabase) : Promise.resolve(false),
     user ? loadBanners(supabase, "dashboard") : Promise.resolve([]),
+    getToolsLayout(supabase),
   ]);
-  const model = homeModel(availability, isAdmin);
+  const model = homeModel(availability, isAdmin, layout);
   // Exactly the slots this page can paint — its cards, its galleries and a
   // scheduled campaign — in one read, rather than every slot the product has.
   const slots = await loadSlots(supabase, [...model.slotKeys, ...banners.map((b) => bannerSlotKey(b.key))]);
@@ -104,6 +109,7 @@ export async function ProductSurface({ scope = "page" }: {
           plan={member?.plan ?? "Free"}
           isAdmin={isAdmin}
           availability={availability}
+          menuItems={menuItemKeys(layout)}
           popularTools={popularity.keys}
         />
 

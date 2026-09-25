@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ChevronDown, Cpu, ExternalLink, EyeOff, History, Search, Settings2, X,
 } from "lucide-react";
@@ -9,8 +10,10 @@ import { MODEL_PRICED, toolTabs, type EngineMode, type ToolRow } from "@/lib/ser
 import { FEATURE_STATUSES, type AvailabilityMap, type FeatureKey, type FeatureStatus } from "@/lib/features";
 import type { FeatureAdminRow } from "@/app/actions/features";
 import {
-  PANEL_GROUPS, coveredCards, panelGroupOf, panelKind, staticallySoon, type PanelKind,
+  PANEL_GROUPS, coveredCards, governedItems, panelGroupOf, panelKind, staticallySoon, type PanelKind,
 } from "@/lib/tool-panel";
+import type { LayoutFlags, ToolsLayout } from "@/lib/tool-layout";
+import { setItemFlagsAction } from "@/app/actions/tool-layout";
 import { STATUS_TONE } from "@/lib/status-tone";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -22,6 +25,7 @@ import { ToolModelPicker, type PickableModel } from "@/components/admin/tool-mod
 import {
   AvailabilityEditor, BulkBar, ConfigSection, PreviewToggle,
 } from "@/components/admin/availability-controls";
+import { ItemPlacements } from "@/components/admin/tools-layout";
 import { cn } from "@/lib/utils";
 
 /**
@@ -79,9 +83,11 @@ function quickMatch(q: Quick, status: FeatureStatus, hidden: boolean): boolean {
   }
 }
 
-export function ToolRegistry({ entries, availability, models, services, previewing, locale, openKey }: {
+export function ToolRegistry({ entries, availability, toolsLayout, models, services, previewing, locale, openKey }: {
   entries: PanelEntry[];
   availability: AvailabilityMap;
+  /** The catalogue layout in force (lib/tool-layout.ts). */
+  toolsLayout: ToolsLayout;
   models: PickableModel[];
   services: { slug: string; name: string; credits: number }[];
   previewing: boolean;
@@ -106,6 +112,24 @@ export function ToolRegistry({ entries, availability, models, services, previewi
     setMounted((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
   };
   const [selected, setSelected] = useState<Set<FeatureKey>>(new Set());
+
+  // The item switches save one at a time and show at once: the local copy
+  // takes the change straight away (every row's readout re-runs with it),
+  // and a failed save puts the stored value back.
+  const router = useRouter();
+  const [layout, setLayout] = useState<ToolsLayout>(toolsLayout);
+  useEffect(() => setLayout(toolsLayout), [toolsLayout]);
+  const setFlags = async (itemKey: string, flags: LayoutFlags): Promise<boolean> => {
+    const before = layout.flags[itemKey];
+    setLayout((l) => ({ ...l, flags: { ...l.flags, [itemKey]: flags } }));
+    const res = await setItemFlagsAction(itemKey, flags);
+    if (!res.ok) {
+      setLayout((l) => ({ ...l, flags: { ...l.flags, [itemKey]: before } }));
+      return false;
+    }
+    router.refresh();
+    return true;
+  };
 
   // A deep link lands on its row, not on the top of a long page.
   useEffect(() => {
@@ -227,6 +251,7 @@ export function ToolRegistry({ entries, availability, models, services, previewi
               {g.items.map((entry) => (
                 <EntryRow key={entry.admin.key} entry={entry} locale={locale}
                   availability={availability} models={models} services={services}
+                  toolsLayout={layout} onFlags={setFlags}
                   open={open.has(entry.admin.key)} mounted={mounted.has(entry.admin.key)}
                   onOpen={() => toggleOpen(entry.admin.key)}
                   selected={selected.has(entry.admin.key)}
@@ -249,7 +274,7 @@ export function ToolRegistry({ entries, availability, models, services, previewi
 
 type T = (key: string, values?: Record<string, string | number>) => string;
 
-function EntryRow({ entry, open, mounted, onOpen, selected, onSelect, availability, models, services, locale }: {
+function EntryRow({ entry, open, mounted, onOpen, selected, onSelect, availability, toolsLayout, onFlags, models, services, locale }: {
   entry: PanelEntry;
   open: boolean;
   /** Opened at least once: the configuration stays in the DOM, hidden, so
@@ -259,6 +284,8 @@ function EntryRow({ entry, open, mounted, onOpen, selected, onSelect, availabili
   selected: boolean;
   onSelect: (on: boolean) => void;
   availability: AvailabilityMap;
+  toolsLayout: ToolsLayout;
+  onFlags: (itemKey: string, flags: LayoutFlags) => Promise<boolean>;
   models: PickableModel[];
   services: { slug: string; name: string; credits: number }[];
   locale: string;
@@ -270,6 +297,13 @@ function EntryRow({ entry, open, mounted, onOpen, selected, onSelect, availabili
   const scheduled = admin.status !== "ACTIVE" && Boolean(admin.startsAt || admin.endsAt);
   const live = liveStatus(entry, availability);
   const panelId = `cfg-${admin.key}`;
+  // Every catalogue item this switch governs, with its three layout switches.
+  const items = governedItems(admin.key);
+  const placements = (
+    <ItemPlacements items={items} layout={toolsLayout} availability={availability} onFlags={onFlags}
+      note={kind === "category" ? t("aicc.panel.categoryNote")
+        : items.length > 1 ? t("aicc.panel.coversNote") : undefined} />
+  );
   const nameId = `name-${admin.key}`;
 
   return (
@@ -352,13 +386,13 @@ function EntryRow({ entry, open, mounted, onOpen, selected, onSelect, availabili
                 </ConfigSection>
               </div>
               <AvailabilityEditor key={savedKey(admin)} row={admin} availability={availability}
-                first={3} layout="stack" staticSoon={staticallySoon(admin.key)}
-                extra={<Covered keys={covered.map((c) => c.titleKey)} kind={kind} />} />
+                toolsLayout={toolsLayout} first={3} arrangement="stack" staticSoon={staticallySoon(admin.key)}
+                extra={placements} />
             </div>
           ) : (
             <AvailabilityEditor key={savedKey(admin)} row={admin} availability={availability}
-              first={1} layout="split" staticSoon={staticallySoon(admin.key)}
-              extra={<Covered keys={covered.map((c) => c.titleKey)} kind={kind} />} />
+              toolsLayout={toolsLayout} first={1} arrangement="split" staticSoon={staticallySoon(admin.key)}
+              extra={placements} />
           )}
           {kind === "tool" && (
             <Link href={`/admin/ai/${admin.key}`}
@@ -380,31 +414,6 @@ function subLine(entry: PanelEntry, kind: PanelKind, covered: number, t: T): str
   if (entry.tool) return modelLine(entry.tool, t);
   if (kind === "category") return t("aicc.panel.categoryLine", { n: covered });
   return entry.admin.path;
-}
-
-/** The tools a switch covers without having one of their own. */
-function Covered({ keys, kind }: { keys: string[]; kind: PanelKind }) {
-  const { t } = useI18n();
-  // A single card is the entry itself under another name — nothing to explain.
-  if (kind !== "category" && keys.length < 2) return null;
-  if (keys.length === 0) return null;
-  return (
-    <div className="mt-3.5 border-t border-line pt-3">
-      <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-faint">
-        {t(kind === "category" ? "aicc.panel.inCategory" : "aicc.panel.covers", { n: keys.length })}
-      </p>
-      <ul className="mt-2 flex flex-wrap gap-1.5">
-        {keys.map((k) => (
-          <li key={k} className="max-w-full truncate rounded-full bg-raised px-2.5 py-1 text-[11.5px] font-medium text-muted">
-            {t(k)}
-          </li>
-        ))}
-      </ul>
-      <p className="mt-2 text-[11.5px] leading-relaxed text-faint">
-        {t(kind === "category" ? "aicc.panel.categoryNote" : "aicc.panel.coversNote")}
-      </p>
-    </div>
-  );
 }
 
 /* ── 1 · model i silnik ─────────────────────────────────────────────────────*/

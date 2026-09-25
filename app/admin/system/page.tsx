@@ -5,6 +5,7 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { SUPABASE_URL } from "@/lib/supabase/config";
 import { REGISTRATION_SETTINGS_KEY } from "@/lib/server/registration-config";
+import { TOOLS_LAYOUT_KEY } from "@/lib/server/tool-layout";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -32,7 +33,9 @@ export default async function AdminSystem() {
     // it would arrive as seven raw text inputs holding the words "hidden" /
     // "optional" / "required" — the same setting, spelled worse, and typo-able
     // into a value the forms would silently ignore.
-    .filter((s) => s.key !== REGISTRATION_SETTINGS_KEY)
+    // The catalogue layout likewise has its own editor (Narzędzia i silniki →
+    // Układ dla klientów); as raw fields it would be one unreadable blob.
+    .filter((s) => s.key !== REGISTRATION_SETTINGS_KEY && s.key !== TOOLS_LAYOUT_KEY)
     .sort((a, b) => SECTION_ORDER.indexOf(a.key) - SECTION_ORDER.indexOf(b.key))
     .map((s) => ({ key: s.key, value: (s.value ?? {}) as Record<string, unknown> }));
   const isDev = SUPABASE_URL.includes("ezyhwkcrrysanbcbkzsq");

@@ -1,13 +1,16 @@
-import { CATEGORIES, categoryGates, categoryPath, type Category } from "./categories";
-import { HUB_SECTIONS, hubSectionsFor, type HubCardDef, type HubSectionDef } from "./tool-cards";
+import { CATEGORIES, categoryPath, type Category } from "./categories";
+import { CATALOG_ITEMS, type HubCardDef } from "./tool-cards";
 import { homeModel, type HomeCard } from "./home-sections";
 import {
   ACTIVE_STATE, FEATURE_REGISTRY, allDefaults, featureForHref, menuBadge, menuVisible, routeReachable,
   type AvailabilityMap, type FeatureDescriptor, type FeatureKey, type FeatureStatus, type MenuBadge,
   type MenuGate,
 } from "./features";
-import { IMAGE_CREATE, IMAGE_EDIT, IMAGE_MODES, VIDEO_CREATE, VIDEO_EDIT, entryGate } from "./topnav";
+import {
+  IMAGE_CREATE, IMAGE_MODES, VIDEO_CREATE, VIDEO_EDIT, editEntriesFor, entryGate, menuShowsGenerator,
+} from "./topnav";
 import { DOCK_SLOTS } from "./bottom-nav";
+import { DEFAULT_LAYOUT, hubSectionsFor, menuItemKeys, type ToolsLayout } from "./tool-layout";
 import { isAiToolKey } from "./services/ai-tools";
 
 /**
@@ -27,7 +30,8 @@ import { isAiToolKey } from "./services/ai-tools";
  *                      menu groups, and each category of lib/categories.ts
  *                      with the tools whose route lives under it.
  *   WHAT A CUSTOMER    computed with the functions the customer app renders
- *   SEES               with — `hubSectionsFor` (/tools), `homeModel` (Start),
+ *   SEES               with, fed the catalogue layout (lib/tool-layout.ts)
+ *                      — `hubSectionsFor` (/tools), `homeModel` (Start),
  *                      `menuVisible` / `menuBadge` (the menus). Not a copy of
  *                      their rules: the rules themselves, asked.
  *
@@ -107,21 +111,22 @@ export function panelGroupOf(key: FeatureKey): string {
 
 const ownGate = (c: HubCardDef): string => (c.gates ? c.gates[c.gates.length - 1] : c.href);
 const governs = (key: FeatureKey, href: string): boolean => featureForHref(href) === key;
-const sectionGoverned = (s: HubSectionDef, key: FeatureKey): boolean =>
-  Boolean(s.gates && governs(key, s.gates[s.gates.length - 1]));
 
 /**
- * The /tools cards that have no switch of their own and answer to this one —
- * "AI tło", "Relight"… all live behind the hub module, "Usuń tło" behind the
- * editor. For a category: every card of its section. The entry's own card
+ * The catalogue items that have no switch of their own and answer to this one
+ * — "Tło AI", "Relight"… all live behind the hub module, "Usuń tło" behind
+ * the editor, a category's presets behind the category. The entry's own card
  * (the editor's "Edytor obrazu") is not listed under itself.
  */
 export function coveredCards(key: FeatureKey): HubCardDef[] {
-  const cat = categoryOf(key);
-  if (cat) return [...(HUB_SECTIONS.find((s) => s.category === cat.key)?.cards ?? [])];
   const nameKey = descriptor(key)?.nameKey;
-  return HUB_SECTIONS.flatMap((s) => s.cards)
-    .filter((c) => governs(key, ownGate(c)) && c.titleKey !== nameKey);
+  return CATALOG_ITEMS.filter((c) => governs(key, ownGate(c)) && c.titleKey !== nameKey);
+}
+
+/** Every catalogue item this switch governs, its own card included — the
+ *  items whose three layout switches a tool's row shows. */
+export function governedItems(key: FeatureKey): HubCardDef[] {
+  return CATALOG_ITEMS.filter((c) => governs(key, ownGate(c)));
 }
 
 /* ── what a customer gets ─────────────────────────────────────────────────── */
@@ -134,7 +139,7 @@ export type ExposureRow = {
   state: ExposureState;
   /** The badge a customer sees when the state is "badged". */
   badge: MenuBadge;
-  /** Full i18n keys of where it shows: section titles, Start rows, a category. */
+  /** Full i18n keys of where it shows: section titles, Start rows. */
   where: string[];
 };
 
@@ -160,7 +165,7 @@ function fold(surface: Surface, found: { badge: MenuBadge; where: string }[], in
     surface,
     state: open ? "shown" : "badged",
     badge: open ? null : found[0].badge,
-    where: [...new Set(found.map((f) => f.where))],
+    where: [...new Set(found.map((f) => f.where).filter(Boolean))],
   };
 }
 
@@ -172,15 +177,15 @@ function hubState(map: AvailabilityMap): { open: boolean; reachable: boolean; ba
   return { reachable, badge, open: reachable && badge === null };
 }
 
-function toolsRow(key: FeatureKey, map: AvailabilityMap): ExposureRow {
+function toolsRow(key: FeatureKey, map: AvailabilityMap, layout: ToolsLayout): ExposureRow {
   const hub = hubState(map);
   // The hub's own entry: the whole tab, whatever it lists.
   if (key === "tools") {
     if (!hub.reachable) return { surface: "tools", state: "hidden", badge: null, where: [] };
     return { surface: "tools", state: hub.open ? "shown" : "badged", badge: hub.badge, where: ["aicc.panel.tools.whole"] };
   }
-  const inUniverse = HUB_SECTIONS.some((s) =>
-    sectionGoverned(s, key) || s.cards.some((c) => governs(key, ownGate(c))));
+  const cat = categoryOf(key);
+  const inUniverse = Boolean(cat) || CATALOG_ITEMS.some((c) => governs(key, ownGate(c)));
   // /tools is wrapped in FeatureGate("tools"): switched off it is a 404, and
   // restricted it is the Wkrótce / maintenance screen — no card is drawn.
   if (inUniverse && !hub.open) {
@@ -189,12 +194,11 @@ function toolsRow(key: FeatureKey, map: AvailabilityMap): ExposureRow {
       : { surface: "tools", state: "hidden", badge: null, where: [] };
   }
   const found: { badge: MenuBadge; where: string }[] = [];
-  for (const s of hubSectionsFor(map, false)) {
-    if (sectionGoverned(s, key)) {
-      // A category's section: it is listed, and its cards carry their badges.
+  for (const s of hubSectionsFor(map, false, layout)) {
+    // A category's own section counts as the category being listed.
+    if (cat && s.category === cat.key) {
       const open = s.cards.some((c) => cardBadge(map, c) === null);
       found.push({ badge: open ? null : cardBadge(map, s.cards[0]), where: s.titleKey });
-      continue;
     }
     for (const c of s.cards) {
       if (governs(key, ownGate(c))) found.push({ badge: cardBadge(map, c), where: s.titleKey });
@@ -205,15 +209,16 @@ function toolsRow(key: FeatureKey, map: AvailabilityMap): ExposureRow {
 
 const HOME_ROWS = ["rail", "chips", "effects", "video"] as const;
 
-function homeCards(map: AvailabilityMap, isAdmin: boolean): { row: (typeof HOME_ROWS)[number]; card: HomeCard }[] {
-  const model = homeModel(map, isAdmin);
+function homeCards(map: AvailabilityMap, isAdmin: boolean, layout: ToolsLayout): { row: (typeof HOME_ROWS)[number]; card: HomeCard }[] {
+  const model = homeModel(map, isAdmin, layout);
   return HOME_ROWS.flatMap((row) => model[row].map((card) => ({ row, card })));
 }
 
-/** Every card Start can show, for anyone — computed once. */
-const HOME_UNIVERSE: readonly { row: (typeof HOME_ROWS)[number]; card: HomeCard }[] = homeCards(allDefaults(), true);
+/** Every card the curated Start rows can show, for anyone — computed once. */
+const HOME_UNIVERSE: readonly { row: (typeof HOME_ROWS)[number]; card: HomeCard }[] =
+  homeCards(allDefaults(), true, DEFAULT_LAYOUT);
 
-function homeRow(key: FeatureKey, map: AvailabilityMap): ExposureRow {
+function homeRow(key: FeatureKey, map: AvailabilityMap, layout: ToolsLayout): ExposureRow {
   // The signed-in Start itself (/home, FeatureGate("home")): this switch
   // governs the whole page, not a card on it.
   if (key === "home") {
@@ -221,58 +226,64 @@ function homeRow(key: FeatureKey, map: AvailabilityMap): ExposureRow {
     const badge = menuBadge(map, "/home");
     return { surface: "home", state: badge ? "badged" : "shown", badge, where: ["aicc.panel.home.page"] };
   }
-  const inUniverse = HOME_UNIVERSE.some(({ card }) => governs(key, card.href));
-  const found = homeCards(map, false)
+  // Any catalogue item can be switched onto Start (it joins "Wybierz efekt"),
+  // so every switch that governs one has a place there.
+  const inUniverse = HOME_UNIVERSE.some(({ card }) => governs(key, card.href))
+    || CATALOG_ITEMS.some((c) => governs(key, ownGate(c)));
+  const found = homeCards(map, false, layout)
     .filter(({ card }) => governs(key, card.href))
     .map(({ row, card }) => ({ badge: card.badge, where: `aicc.panel.home.${row}` }));
   return fold("home", found, inUniverse);
 }
 
-function categoryRow(key: FeatureKey, parent: Category, map: AvailabilityMap): ExposureRow {
-  // The category's section lives on /tools, so it shares the hub's fate.
-  const hub = hubState(map);
-  if (!hub.open) {
-    return hub.reachable
-      ? { surface: "category", state: "badged", badge: hub.badge, where: [`cats.${parent.key}`] }
-      : { surface: "category", state: "hidden", badge: null, where: [] };
-  }
-  const section = hubSectionsFor(map, false).find((s) => s.category === parent.key);
-  const found = (section?.cards ?? [])
-    .filter((c) => governs(key, ownGate(c)))
-    .map((c) => ({ badge: cardBadge(map, c), where: `cats.${parent.key}` }));
-  return fold("category", found, true);
-}
+type MenuEntry = { gate: MenuGate; soon: boolean; kind: "module" | "item" };
 
 /**
- * EVERY MENU ENTRY THE SWITCHBOARD GATES — read from the lists the menus are
- * drawn from (lib/topnav.ts: the mega panel and the drawer; lib/bottom-nav.ts:
- * the dock), with the static "Wkrótce" those menus add for things that have
- * no backend yet. A link the menus draw unconditionally (Pomoc, Kredyty, the
- * drawer's Start tile) is not here: no switch hides it, so none is claimed.
+ * EVERY MENU ENTRY — read from the lists the menus are drawn from
+ * (lib/topnav.ts: the mega panel and the drawer; lib/bottom-nav.ts: the dock).
+ * Module and category entries answer to the switchboard, as they always have;
+ * the tool column and the generator button are the layout's "menu" switches
+ * (`editEntriesFor`, `menuShowsGenerator`), so an item switched out of the menu
+ * is simply not in this list. A link the menus draw unconditionally (Pomoc,
+ * Kredyty, the drawer's Start tile) is not here: no switch hides it.
  */
-const MENU_ENTRIES: readonly { gate: MenuGate; soon: boolean }[] = [
-  ...IMAGE_CREATE.map((e) => ({ gate: entryGate(e), soon: Boolean(e.soon) })),
-  ...IMAGE_MODES.map((e) => ({ gate: entryGate(e), soon: Boolean(e.soon) })),
-  ...IMAGE_EDIT.map((e) => ({ gate: entryGate(e), soon: Boolean(e.soon) })),
-  ...VIDEO_CREATE.map((e) => ({ gate: entryGate(e), soon: true })),
-  ...VIDEO_EDIT.map((e) => ({ gate: entryGate(e), soon: true })),
-  // The drawer's and the mega panel's own gated rows.
-  { gate: "/library", soon: false },
-  { gate: "/inspirations", soon: false },
-  { gate: "/wideo", soon: true },
-  ...DOCK_SLOTS.map((d) => ({ gate: d.href, soon: false })),
-];
+function menuEntries(layout: ToolsLayout): MenuEntry[] {
+  const items = menuItemKeys(layout);
+  return [
+    ...IMAGE_CREATE.map((e): MenuEntry => ({ gate: entryGate(e), soon: Boolean(e.soon), kind: "module" })),
+    ...IMAGE_MODES
+      .filter((e) => e.key !== "engine" || menuShowsGenerator(items))
+      .map((e): MenuEntry => ({ gate: entryGate(e), soon: false, kind: e.key === "engine" ? "item" : "module" })),
+    ...editEntriesFor(items)
+      .map((e): MenuEntry => ({ gate: entryGate(e), soon: Boolean(e.soon), kind: e.key === "allTools" ? "module" : "item" })),
+    ...VIDEO_CREATE.map((e): MenuEntry => ({ gate: entryGate(e), soon: true, kind: "module" })),
+    ...VIDEO_EDIT.map((e): MenuEntry => ({ gate: entryGate(e), soon: true, kind: "module" })),
+    // The drawer's and the mega panel's own gated rows.
+    { gate: "/library", soon: false, kind: "module" },
+    { gate: "/inspirations", soon: false, kind: "module" },
+    { gate: "/wideo", soon: true, kind: "module" },
+    ...DOCK_SLOTS.map((d): MenuEntry => ({ gate: d.href, soon: false, kind: "module" })),
+  ];
+}
+
+/** Every module entry the menus could ever show, whatever the layout. */
+const MODULE_MENU_UNIVERSE = menuEntries({
+  ...DEFAULT_LAYOUT,
+  flags: Object.fromEntries(Object.entries(DEFAULT_LAYOUT.flags).map(([k, f]) => [k, { ...f, menu: false }])),
+}).filter((e) => e.kind === "module");
 
 const ownOf = (gate: MenuGate): string => (typeof gate === "string" ? gate : gate[gate.length - 1]);
 
-function menuRow(key: FeatureKey, map: AvailabilityMap): ExposureRow {
-  const entries = MENU_ENTRIES.filter((e) => governs(key, ownOf(e.gate)));
-  if (entries.length === 0) return { surface: "menu", state: "na", badge: null, where: [] };
-  const found = entries
-    .filter((e) => menuVisible(map, e.gate, false))
+function menuRow(key: FeatureKey, map: AvailabilityMap, layout: ToolsLayout): ExposureRow {
+  // In the universe when a module entry is governed by this switch, or when an
+  // item it governs could be switched into the tool column.
+  const inUniverse = MODULE_MENU_UNIVERSE.some((e) => governs(key, ownOf(e.gate)))
+    || CATALOG_ITEMS.some((c) => governs(key, ownGate(c)));
+  const found = menuEntries(layout)
+    .filter((e) => governs(key, ownOf(e.gate)))
+    .filter((e) => (e.kind === "module" ? menuVisible(map, e.gate, false) : routeReachable(map, e.gate, false)))
     .map((e) => ({ badge: menuBadge(map, e.gate) ?? (e.soon ? ("soon" as const) : null), where: "" }));
-  const row = fold("menu", found, true);
-  return { ...row, where: [] };
+  return fold("menu", found, inUniverse);
 }
 
 /**
@@ -282,23 +293,21 @@ function menuRow(key: FeatureKey, map: AvailabilityMap): ExposureRow {
  */
 export function staticallySoon(key: FeatureKey): boolean {
   if (categoryOf(key)?.soon) return true;
-  const cards = coveredCards(key);
+  const cards = governedItems(key);
   return cards.length > 0 && cards.every((c) => c.soon);
 }
 
 /**
- * WHERE A CUSTOMER MEETS THIS ENTRY, under the given switchboard.
+ * WHERE A CUSTOMER MEETS THIS ENTRY, under the given switchboard and layout.
  *
- * Three rows, always in the same order: the Narzędzia tab, the Start page,
- * and — for a tool that lives in a category — that category's section, else
- * the menu. "na" is an honest "this surface has no place for it" (Start shows
- * a curated set, not every tool), never a guess.
+ * Three rows, always in the same order: the Narzędzia tab, the Start page and
+ * the menu. "na" is an honest "this surface has no place for it", never a
+ * guess.
  */
-export function customerExposure(key: FeatureKey, map: AvailabilityMap): ExposureRow[] {
-  const parent = parentCategory(key);
+export function customerExposure(key: FeatureKey, map: AvailabilityMap, layout: ToolsLayout = DEFAULT_LAYOUT): ExposureRow[] {
   return [
-    toolsRow(key, map),
-    homeRow(key, map),
-    parent ? categoryRow(key, parent, map) : menuRow(key, map),
+    toolsRow(key, map, layout),
+    homeRow(key, map, layout),
+    menuRow(key, map, layout),
   ];
 }

@@ -8,6 +8,8 @@ import {
   type CategoryAccent,
 } from "./categories";
 import type { MenuGate } from "./features";
+import { catalogItem } from "./tool-cards";
+import { DEFAULT_LAYOUT, MENU_CTA_ITEM, itemLabelKey, menuItemKeys } from "./tool-layout";
 
 /**
  * TOP NAVIGATION TREE — the customer app's information architecture: a
@@ -127,6 +129,41 @@ export const IMAGE_EDIT_MORE: readonly MegaEntry[] = [
   { key: "white_bg", href: "/tools/editor?tool=white-background", icon: Square },
   { key: "shadow", href: "/tools/editor?tool=shadow", icon: Sun },
 ] as const;
+
+/**
+ * THE TOOL COLUMN FOR A GIVEN MENU — built from the items whose "menu" switch
+ * is on (lib/tool-layout.ts `menuItemKeys`), in that order, with the hub last.
+ *
+ * The four entries the column has always had keep their own rows above
+ * (label, one-liner, icon), so with the shipped switches this returns exactly
+ * IMAGE_EDIT. Any other item an admin switches on is drawn from the catalogue:
+ * its route, its icon, the name /tools gives it and its one-liner. The
+ * generator is never a row here — its menu entry is the panel's primary button
+ * (see IMAGE_MODES), and the drawer deliberately has no generator entry.
+ */
+export function editEntriesFor(menuItems: readonly string[] = menuItemKeys(DEFAULT_LAYOUT)): MegaEntry[] {
+  const own = new Map(IMAGE_EDIT.map((e) => [e.key, e]));
+  const out: MegaEntry[] = [];
+  for (const key of menuItems) {
+    if (key === MENU_CTA_ITEM || key === "allTools") continue;
+    const entry = own.get(key);
+    if (entry) { out.push(entry); continue; }
+    const item = catalogItem(key);
+    if (!item) continue;
+    out.push({
+      key, href: item.href, icon: item.icon,
+      labelKey: itemLabelKey(item), subKey: item.bodyKey,
+      soon: item.soon, gates: item.gates,
+    });
+  }
+  const hub = own.get("allTools");
+  return hub ? [...out, hub] : out;
+}
+
+/** Whether the panel shows the generator's primary button. */
+export function menuShowsGenerator(menuItems: readonly string[] = menuItemKeys(DEFAULT_LAYOUT)): boolean {
+  return menuItems.includes(MENU_CTA_ITEM);
+}
 
 /** Where an EDYTUJ entry takes its label from: its own key when it is a
  *  destination, the tool catalogue when it is one of the tools. */

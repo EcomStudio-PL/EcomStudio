@@ -6,6 +6,8 @@ import {
 import { getWallet } from "@/lib/services/credits";
 import { enforceLoginSecurity } from "@/lib/server/login-security";
 import { getAvailabilityMap, viewerIsAdmin } from "@/lib/server/feature-availability";
+import { getToolsLayout } from "@/lib/server/tool-layout";
+import { menuItemKeys } from "@/lib/tool-layout";
 import { readToolPopularity } from "@/lib/server/tool-popularity";
 import {
   copyFor, ensureBonusNotification, ensureOffer, getBonusConfig, getCampaignStart, toView,
@@ -124,7 +126,7 @@ export default async function AppLayout({ children, searchParams }: {
   // below from re-introducing a serial await.
   const [
     { dict: appDict }, { dict: clientDict }, wallet, { data: sub }, { data: freePlan }, { data: notifs },
-    availability, navAdmin, bonusConfig, campaignStart, popularity,
+    availability, navAdmin, bonusConfig, campaignStart, popularity, toolsLayout,
   ] = await Promise.all([
     getDictionary(),
     // The customer app's own namespaces, on top of what the root layout already
@@ -154,7 +156,11 @@ export default async function AppLayout({ children, searchParams }: {
     // joined to a batch that was already waiting on its slowest member, so the
     // search costs nothing to open and nothing extra to render the page.
     readToolPopularity(supabase),
+    // The catalogue layout decides which tools the menu lists. Same settings
+    // table, same batch; an unreadable row is the shipped default.
+    getToolsLayout(supabase),
   ]);
+  const menuItems = menuItemKeys(toolsLayout);
   const t0 = makeT(appDict);
   const unread = (notifs ?? []).filter((n) => !n.read_at).length;
 
@@ -203,7 +209,7 @@ export default async function AppLayout({ children, searchParams }: {
           itself stops scrolling. Every other page keeps min-h-dvh and
           scrolls normally. */}
       <div className="app-shell flex min-h-dvh w-full min-w-0 flex-col">
-        <MegaTopbar name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} notifications={notifs ?? []} unread={unread} availability={availability} navAdmin={navAdmin} popularTools={popularity.keys} />
+        <MegaTopbar name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} notifications={notifs ?? []} unread={unread} availability={availability} navAdmin={navAdmin} menuItems={menuItems} popularTools={popularity.keys} />
         {/* Full-width work surface. The bottom padding is DERIVED from the
             chrome tokens, so the fixed navigation can never cover the last
             element on the page — the defect that showed up on every phone
@@ -222,7 +228,7 @@ export default async function AppLayout({ children, searchParams }: {
           <FeedbackCTA />
         </main>
         <CustomerBottomNav availability={availability} isAdmin={navAdmin} />
-        <CustomerDrawer name={displayName} email={profile.email} credits={wallet?.balance ?? 0} creditsTotal={planCredits} plan={planName} isAdmin={isAdmin} navAdmin={navAdmin} availability={availability} />
+        <CustomerDrawer name={displayName} email={profile.email} credits={wallet?.balance ?? 0} creditsTotal={planCredits} plan={planName} isAdmin={isAdmin} navAdmin={navAdmin} availability={availability} menuItems={menuItems} />
         {bonusView?.status === "ELIGIBLE" && (
           <WelcomeBonusMount
             offer={bonusView}

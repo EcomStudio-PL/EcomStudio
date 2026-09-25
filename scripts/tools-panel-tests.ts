@@ -13,6 +13,8 @@
  *        active generator · local tool without an engine · "Wkrótce" tool ·
  *        hidden tool · active category · hidden category (+ disabled)
  *   C  status ≠ visibility, and the readout is the customer rules, not a copy
+ *      (fed the catalogue layout: /tools, menu and Start listing of an item
+ *      are its three layout switches; `hidden_from_menu` is navigation)
  *   D  one source of truth: no new table, no new write path, no parallel list
  *   E  the menu entry is gone and its route redirects, never a 404
  *   F  two forms on one screen cannot overwrite each other
@@ -30,7 +32,7 @@ import {
   routeReachable, type AvailabilityMap, type FeatureKey, type FeatureState,
 } from "@/lib/features";
 import { CATEGORIES, categoryGates, categoryPath, offeredWorkflows } from "@/lib/categories";
-import { hubSectionsFor } from "@/lib/tool-cards";
+import { DEFAULT_LAYOUT, hubSectionsFor, type ToolsLayout } from "@/lib/tool-layout";
 import { homeModel } from "@/lib/home-sections";
 import {
   AI_TOOL_KEYS, MODEL_PRICED, mergeToolConfig, toolTabs, type ToolConfigValues,
@@ -58,7 +60,14 @@ function board(over: Partial<Record<FeatureKey, Partial<FeatureState>>> = {}): A
   return map;
 }
 const row = (rows: ExposureRow[], s: Surface) => rows.find((r) => r.surface === s);
-const state = (key: FeatureKey, map: AvailabilityMap, s: Surface) => row(customerExposure(key, map), s)?.state;
+const state = (key: FeatureKey, map: AvailabilityMap, s: Surface, layout: ToolsLayout = DEFAULT_LAYOUT) =>
+  row(customerExposure(key, map, layout), s)?.state;
+/** The shipped layout with some change an admin made in "Układ dla klientów". */
+function arranged(fn: (l: ToolsLayout) => void): ToolsLayout {
+  const l: ToolsLayout = JSON.parse(JSON.stringify(DEFAULT_LAYOUT));
+  fn(l);
+  return l;
+}
 
 /* ── A ─────────────────────────────────────────────────────────────────── */
 console.log("A. every entry the switchboard governs is listed, once, grouped by the registries");
@@ -116,7 +125,7 @@ console.log("\nB. the six scenarios, read with the rules the customer side rende
   check("1 active generator: on /tools, on Start, in the menu",
     row(gen, "tools")?.state === "shown" && row(gen, "home")?.state === "shown" && row(gen, "menu")?.state === "shown",
     JSON.stringify(gen));
-  check("1 …in the section the hub really draws it in", row(gen, "tools")!.where.includes("hub.sec.create"));
+  check("1 …in the section the hub really draws it in", row(gen, "tools")!.where.includes("hub.sec.generate"));
   check("1 …on the row of Start it really sits in", row(gen, "home")!.where.includes("aicc.panel.home.rail"));
   check("1 …and the same generator is what Start's primary action opens",
     homeModel(live, false).startHref === "/prompts");
@@ -126,28 +135,31 @@ console.log("\nB. the six scenarios, read with the rules the customer side rende
     !toolTabs({ key: "compress", engineMode: "off", serviceSlug: "tool_compress" }).some((t) => t === "engine" || t === "models"));
   check("2 …the panel says 'local processing' for exactly that case",
     read("components/admin/tool-registry.tsx").includes('tool.category === "local" ? "aicc.panel.localNote"'));
-  check("2 …listed on /tools, honestly absent from Start (Start is a curated set)",
-    state("compress", live, "tools") === "shown" && state("compress", live, "home") === "na");
+  check("2 …listed on /tools, not on Start by default (Start is a curated set — its switch can add it)",
+    state("compress", live, "tools") === "shown" && state("compress", live, "home") === "hidden");
 
   // 3 — "Wkrótce" tool
   const soon = customerExposure("fashion_ghost_mannequin", live);
   check("3 Wkrótce tool: still listed, with its badge",
-    row(soon, "tools")?.state === "badged" && row(soon, "tools")?.badge === "soon"
-    && row(soon, "category")?.state === "badged", JSON.stringify(soon));
+    row(soon, "tools")?.state === "badged" && row(soon, "tools")?.badge === "soon", JSON.stringify(soon));
   check("3 …the customer menu badges it too", menuBadge(live, ["/k/moda", "/k/moda/ghostMannequin"]) === "soon");
   check("3 …and its route opens onto the Wkrótce screen, not a 404",
     routeReachable(live, "/k/moda/ghostMannequin", false) && live.fashion_ghost_mannequin.status === "COMING_SOON");
 
-  // 4 — hidden tool
-  const hid = board({ tool_upscale: { hiddenFromMenu: true } });
-  check("4 hidden tool: gone from /tools (and it has no menu entry to hide — the readout says so)",
-    state("tool_upscale", hid, "tools") === "hidden" && state("tool_upscale", hid, "menu") === "na");
-  const hidCompress = board({ compress: { hiddenFromMenu: true } });
-  check("4 …a hidden tool that HAS a menu entry leaves the menu too",
-    state("compress", hidCompress, "tools") === "hidden" && state("compress", hidCompress, "menu") === "hidden");
-  check("4 …but not switched off: its address still opens", routeReachable(hid, "/tools/upscale", false)
-    && hid.tool_upscale.status === "ACTIVE");
-  check("4 …and nothing else lost its place", state("compress", hid, "tools") === "shown");
+  // 4 — hidden tool: its layout switches, one surface at a time
+  const offTools = arranged((l) => { l.flags.compress.tools = false; });
+  check("4 hidden tool: its /tools switch off → gone from /tools, still in the menu",
+    state("compress", live, "tools", offTools) === "hidden" && state("compress", live, "menu", offTools) === "shown");
+  const offMenu = arranged((l) => { l.flags.compress.menu = false; });
+  check("4 …its menu switch off → gone from the menu, still on /tools",
+    state("compress", live, "menu", offMenu) === "hidden" && state("compress", live, "tools", offMenu) === "shown");
+  const onStart = arranged((l) => { l.flags.compress.start = true; });
+  check("4 …its Start switch on → on Start, nothing else moved",
+    state("compress", live, "home", onStart) === "shown" && state("compress", live, "tools", onStart) === "shown"
+    && state("compress", live, "menu", onStart) === "shown");
+  check("4 …but not switched off: its address still opens", routeReachable(live, "/tools/compress", false)
+    && live.compress.status === "ACTIVE");
+  check("4 …and nothing else lost its place", state("resize", live, "tools", offTools) === "shown");
 
   // 5 — active category
   const eco = customerExposure("image_ecommerce", live);
@@ -155,22 +167,24 @@ console.log("\nB. the six scenarios, read with the rules the customer side rende
     row(eco, "tools")?.state === "shown" && row(eco, "home")?.state === "shown" && row(eco, "menu")?.state === "shown",
     JSON.stringify(eco));
 
-  // 6 — hidden category
+  // 6 — hidden category: its navigation switch (menu link) and, separately,
+  // its /tools section switch in the layout
   const hc = board({ image_ecommerce: { hiddenFromMenu: true } });
-  check("6 hidden category: off /tools, off Start, off the menu",
-    state("image_ecommerce", hc, "tools") === "hidden" && state("image_ecommerce", hc, "home") === "hidden"
-    && state("image_ecommerce", hc, "menu") === "hidden");
-  check("6 …its section still opens from its own link (hidden ≠ unreachable)",
-    hubSectionsFor(hc, false, "ecommerce").some((s) => s.key === "ecommerce"));
+  check("6 category hidden from navigation: off the menu, its /tools section untouched",
+    state("image_ecommerce", hc, "menu") === "hidden" && state("image_ecommerce", hc, "tools") === "shown");
+  const hiddenSection = arranged((l) => { l.sections.find((x) => x.key === "ecommerce")!.visible = false; });
+  check("6 …its /tools section hidden in the layout: gone from /tools, the items stay placed",
+    !hubSectionsFor(live, false, hiddenSection).some((s) => s.key === "ecommerce")
+    && hiddenSection.sections.find((x) => x.key === "ecommerce")!.items.length > 0);
   const eCat = CATEGORIES.find((c) => c.key === "ecommerce")!;
   check("6 …and hiding it deleted none of its tools",
-    coveredCards("image_ecommerce").length === offeredWorkflows(eCat).length && offeredWorkflows(eCat).length > 0);
+    coveredCards("image_ecommerce").length === eCat.workflows.length && offeredWorkflows(eCat).length > 0);
 
   // + disabled, which must still work exactly as before
   const off = board({ image_ecommerce: { status: "DISABLED" }, tool_upscale: { status: "DISABLED" } });
   check("Wyłączony category: gone everywhere, its door shut, even when asked for by URL",
     state("image_ecommerce", off, "tools") === "hidden" && !routeReachable(off, categoryPath(eCat), false)
-    && !hubSectionsFor(off, false, "ecommerce").some((s) => s.key === "ecommerce"));
+    && !hubSectionsFor(off, false).some((s) => s.key === "ecommerce"));
   check("Wyłączony tool: gone from every list and its route closed",
     state("tool_upscale", off, "tools") === "hidden" && state("tool_upscale", off, "menu") !== "shown"
     && !routeReachable(off, "/tools/upscale", false));
@@ -187,28 +201,41 @@ console.log("\nC. status ≠ visibility, and the readout IS the customer's rules
     k === "retouch" || JSON.stringify(draft[k]) === JSON.stringify(base[k])));
   check("…and never mutates the live board", base.retouch.status === "ACTIVE");
   check("Wkrótce + visible → listed with the badge", state("retouch", draft, "tools") === "badged");
-  const hidden = withDraft(base, "retouch", { status: "ACTIVE", hiddenFromMenu: true });
-  check("Aktywny + hidden → unlisted, still usable",
-    state("retouch", hidden, "tools") === "hidden" && routeReachable(hidden, "/retusz", false));
+  const unlisted = arranged((l) => { l.flags.retouch.tools = false; });
+  check("Aktywny + switched off /tools → unlisted, still usable",
+    state("retouch", base, "tools", unlisted) === "hidden" && routeReachable(base, "/retusz", false));
+  check("Wkrótce + switched off /tools → unlisted (visibility never shows what the switch hid)",
+    state("retouch", draft, "tools", unlisted) === "hidden");
 
   // The readout must agree with the functions /tools and Start render with,
   // for every entry, under a few boards — it is those functions, asked.
-  const boards: [string, AvailabilityMap][] = [
-    ["defaults", base],
-    ["everything hidden", board(Object.fromEntries(FEATURE_KEYS.map((k) => [k, { hiddenFromMenu: true }])))],
-    ["everything active", board(Object.fromEntries(FEATURE_KEYS.map((k) => [k, { status: "ACTIVE" as const }])))],
+  const allOff = arranged((l) => {
+    for (const k of Object.keys(l.flags)) l.flags[k] = { tools: false, menu: false, start: false };
+  });
+  const boards: [string, AvailabilityMap, ToolsLayout][] = [
+    ["defaults", base, DEFAULT_LAYOUT],
+    ["everything hidden from navigation", board(Object.fromEntries(FEATURE_KEYS.map((k) => [k, { hiddenFromMenu: true }]))), DEFAULT_LAYOUT],
+    ["everything active", board(Object.fromEntries(FEATURE_KEYS.map((k) => [k, { status: "ACTIVE" as const }]))), DEFAULT_LAYOUT],
+    ["every item switched off everywhere", base, allOff],
+    ["a rearranged layout", base, arranged((l) => {
+      l.sections.reverse();
+      l.sections[0].visible = false;
+      l.flags.compress.tools = false;
+      l.flags.white_bg.start = false;
+      l.flags.expand.start = true;
+    })],
   ];
-  for (const [name, map] of boards) {
+  for (const [name, map, layout] of boards) {
     // /tools is FeatureGate("tools"): unless it is ACTIVE, no card is drawn.
     const hubOpen = map.tools.status === "ACTIVE";
-    const hubKeys = new Set(!hubOpen ? [] : hubSectionsFor(map, false).flatMap((s) =>
+    const hubKeys = new Set(!hubOpen ? [] : hubSectionsFor(map, false, layout).flatMap((s) =>
       [s.gates ? featureForHref(s.gates[s.gates.length - 1]) : null,
         ...s.cards.map((c) => featureForHref(c.gates ? c.gates[c.gates.length - 1] : c.href))]));
-    const m = homeModel(map, false);
+    const m = homeModel(map, false, layout);
     const homeKeys = new Set([...m.rail, ...m.chips, ...m.effects, ...m.video].map((c) => featureForHref(c.href)));
     const bad = FEATURE_KEYS.filter((k) => {
-      const t = state(k, map, "tools");
-      const h = state(k, map, "home");
+      const t = state(k, map, "tools", layout);
+      const h = state(k, map, "home", layout);
       const onHub = k === "tools" ? hubKeys.has(k) : t === "shown" || t === "badged";
       const onHome = h === "shown" || h === "badged";
       if (k === "home") return false; // the Start page itself, checked below
@@ -218,9 +245,15 @@ console.log("\nC. status ≠ visibility, and the readout IS the customer's rules
   }
   // Hiding unlists; it never closes a page. Start and /tools themselves
   // still open — the readout says exactly that and nothing more.
-  check("everything hidden → nothing listed anywhere for a customer (the two pages themselves still open)",
-    FEATURE_KEYS.every((k) => customerExposure(k, boards[1][1]).every((r) => r.state === "hidden" || r.state === "na"
-      || (k === "home" && r.surface === "home") || (k === "tools" && r.surface === "tools"))));
+  check("every item switched off → nothing listed on /tools or Start for a customer (the two pages themselves still open)",
+    FEATURE_KEYS.every((k) => customerExposure(k, base, allOff).filter((r) => r.surface !== "menu")
+      .every((r) => r.state === "hidden" || r.state === "na"
+        || (k === "home" && r.surface === "home") || (k === "tools" && r.surface === "tools")
+        // Category tiles on Start are the category's navigation, not an item.
+        || (r.surface === "home" && categoryOf(k) !== null))));
+  check("everything hidden from navigation → no module or category link in the menus",
+    FEATURE_KEYS.filter((k) => panelKind(k) !== "tool").every((k) =>
+      state(k, boards[1][1], "menu") === "hidden" || state(k, boards[1][1], "menu") === "na"));
 }
 
 /* ── C2 ────────────────────────────────────────────────────────────────── */
@@ -230,7 +263,6 @@ console.log("\nC2. the readout follows the switches the review found it ignoring
   check("/tools switched off → every tool on it reads hidden, not 'Widoczne'",
     ["resize", "retouch", "tool_upscale", "image_ecommerce", "fashion_iron"].every((k) =>
       state(k as FeatureKey, off, "tools") === "hidden"));
-  check("…and the Moda tools' category row with it", state("fashion_iron", off, "category") === "hidden");
   const soonHub = board({ tools: { status: "COMING_SOON" } });
   const r = row(customerExposure("resize", soonHub), "tools")!;
   check("/tools in Wkrótce → its tools read as behind the Wkrótce screen", r.state === "badged" && r.badge === "soon");
@@ -242,8 +274,11 @@ console.log("\nC2. the readout follows the switches the review found it ignoring
     && state("home", board({ home: { status: "DISABLED" } }), "home") === "hidden");
 
   // The menu row reads the menus' real lists.
-  check("no menu entry is claimed for Historia, Pomoc, Kredyty or Własny prompt",
-    (["history", "support", "credits", "generator"] as FeatureKey[]).every((k) => state(k, board(), "menu") === "na"));
+  check("no menu entry is claimed for Historia, Pomoc or Kredyty",
+    (["history", "support", "credits"] as FeatureKey[]).every((k) => state(k, board(), "menu") === "na"));
+  check("Własny prompt is off the menu by default, and its switch puts it there",
+    state("generator", board(), "menu") === "hidden"
+    && state("generator", board(), "menu", arranged((l) => { l.flags.custom.menu = true; })) === "shown");
   check("…while the entries the menus DO gate are read", state("library", board(), "menu") === "shown"
     && state("library", board({ library: { hiddenFromMenu: true } }), "menu") === "hidden"
     && state("compress", board(), "menu") === "shown");
@@ -279,10 +314,11 @@ console.log("\nD. one source of truth: no new table, no new write path, no paral
   const pure = read("lib/tool-panel.ts");
   check("the derivation module is client-safe and stores nothing",
     !pure.includes("server-only") && !pure.includes("supabase") && !/useState|"use server"/.test(pure));
-  check("hidden_from_menu is still the ONE visibility switch (no second flag was invented)",
+  check("the availability row gained no per-surface column — the item switches live in the layout document only",
     read("lib/features.ts").includes("hiddenFromMenu: boolean;")
     && !/hidden_from_(home|tools|category)|show_on_home|showOnHome/.test(
-      [...panelFiles, "lib/features.ts", "lib/server/feature-availability.ts", "app/actions/features.ts"].map(read).join("\n")));
+      [...panelFiles, "lib/features.ts", "lib/server/feature-availability.ts", "app/actions/features.ts"].map(read).join("\n"))
+    && read("app/actions/tool-layout.ts").includes("normalizeLayout(") && read("lib/server/tool-layout.ts").includes('"tools_layout"'));
   const migrations = fs.readdirSync("supabase/migrations");
   check("no migration mentions a per-surface visibility column",
     !migrations.some((m) => /hidden_from_(home|tools|category)/.test(read(path.join("supabase/migrations", m)))));
@@ -411,12 +447,12 @@ console.log("\nH. every new string in PL, EN and DE");
     "sec.model", "sec.credits", "sec.status", "sec.visibility", "provider", "localNote", "capabilityNote",
     "providersLink", "fullConfig", "perRun", "noBilling", "priceLink", "usage30d",
     "statusHint.ACTIVE", "statusHint.COMING_SOON", "statusHint.MAINTENANCE", "statusHint.DISABLED",
-    "visible", "visibleHint", "whereTitle",
-    "surface.tools", "surface.home", "surface.category", "surface.menu",
+    "nav", "navHint.tool", "navHint.category", "navHint.module", "whereTitle",
+    "surface.tools", "surface.home", "surface.menu",
     "state.shown", "state.badged", "state.hidden", "state.na",
-    "na.tools", "na.home", "na.category", "na.menu",
+    "na.tools", "na.home", "na.menu",
     "home.rail", "home.chips", "home.effects", "home.video",
-    "windowPreview", "inCategory", "categoryNote", "covers", "coversNote", "saveAvailability", "categoryLine",
+    "windowPreview", "categoryNote", "coversNote", "saveAvailability", "categoryLine",
     "tools.whole", "home.page", "creditsN", "byModel", "modelBase", "modelPriced", "modelsLink", "staticSoon",
     "storedStatus",
   ].map((k) => `panel.${k}`);

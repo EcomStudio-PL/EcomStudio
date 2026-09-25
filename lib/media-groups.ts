@@ -1,6 +1,7 @@
 import { CATEGORIES, categoryHref } from "./categories";
 import { MEDIA_SLOTS, type SlotDef, type SlotEntity } from "./media-slots";
-import { HUB_SECTIONS, toolCard } from "./tool-cards";
+import { toolCard } from "./tool-cards";
+import { HUB_SECTIONS } from "./tool-layout";
 import type { SlotRow } from "./services/media-slots";
 import type { SlotGroupView } from "@/components/admin/media/slots-panel";
 
@@ -50,8 +51,8 @@ export function categoryGroups(configured: Map<string, SlotRow>, t: T): SlotGrou
  * NARZĘDZIA — every tool that has a slot, in the order /tools shows them and
  * under the section /tools shows them in.
  *
- * Not a second list: HUB_SECTIONS (lib/tool-cards.ts) is what /tools renders
- * from, and what this enumerates — the catalogue's own tools and every
+ * Not a second list: HUB_SECTIONS (lib/tool-layout.ts — the shipped layout of
+ * /tools) is what this enumerates — the catalogue's own tools and every
  * category's workflows alike. A workflow's slot is the `workflow` entity it
  * always was; only the tab it is listed on moved.
  *

@@ -6,10 +6,12 @@ import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { toolCatalogue, type ToolAvailability } from "@/lib/server/image-tools";
 import { getAvailabilityMap, viewerIsAdmin } from "@/lib/server/feature-availability";
-import { CATEGORY_PARAM } from "@/lib/categories";
+import { CATEGORIES, CATEGORY_PARAM } from "@/lib/categories";
 import { ACTIVE_STATE, featureForHref } from "@/lib/features";
-import { hubSectionsFor, type HubCardDef } from "@/lib/tool-cards";
-import { bannerSlotKey, toolSlotKey, workflowSlotKey } from "@/lib/media-slots";
+import type { HubCardDef } from "@/lib/tool-cards";
+import { hubSectionsFor, sectionKeyFor } from "@/lib/tool-layout";
+import { getToolsLayout } from "@/lib/server/tool-layout";
+import { bannerSlotKey, categorySlotKey, toolSlotKey, workflowSlotKey } from "@/lib/media-slots";
 import { loadSlots, loadBanners } from "@/lib/server/media-slots";
 import { DashboardBanner } from "@/components/dashboard/banner";
 import { FeatureGate } from "@/components/feature-gate";
@@ -27,11 +29,12 @@ export const dynamic = "force-dynamic";
  * seller came for is the catalogue, so the catalogue starts in the fold and
  * as much of it as possible is visible without scrolling.
  *
- * THE CATEGORIES ARE SECTIONS HERE. Moda, E-commerce, Social Media and the rest
- * used to be pages of their own; each is now a section of this one, holding
- * the workflows it offers, and `?category=<slug>` opens it (see
- * components/tools/tools-deep-link.tsx). The menu's category links point here,
- * and the old /k/<slug> pages forward here.
+ * WHAT IS LISTED, WHERE AND IN WHAT ORDER is the catalogue layout
+ * (lib/tool-layout.ts — the shipped default, or what an admin arranged in
+ * "Narzędzia i silniki → Układ dla klientów"). Sections are keyed by the
+ * category slug where they are a category's, so `?category=<slug>` still opens
+ * them (see components/tools/tools-deep-link.tsx); a category that is no
+ * longer a section of its own (Matching) opens the section that holds it.
  *
  * Everything listed is a real destination. A module the availability
  * switchboard has taken down is either hidden or carries its own badge — the
@@ -55,24 +58,35 @@ export default async function ToolsPage({ searchParams }: {
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) redirect("/home");
 
-  const [catalogue, avail, isAdmin] = await Promise.all([
+  const [catalogue, avail, isAdmin, layout] = await Promise.all([
     toolCatalogue(supabase),
     getAvailabilityMap(supabase),
     viewerIsAdmin(supabase),
+    getToolsLayout(supabase),
   ]);
   const row = (slug: ToolSlug): ToolAvailability | null =>
     catalogue.find((c) => c.slug === slug) ?? null;
   const editor = row("editor");
 
   // A card's picture: a catalogue tool's own slot, or — for a category's
-  // workflow — the slot it has always had, under its unchanged key.
+  // workflow — the slot it has always had, under its unchanged key; a
+  // category that is one card (Matching) wears the category's own card slot.
   const slotKeyOf = (c: HubCardDef): string =>
-    c.workflow ? workflowSlotKey(c.workflow.category, c.workflow.key) : toolSlotKey(c.key);
+    c.workflow ? workflowSlotKey(c.workflow.category, c.workflow.key)
+      : CATEGORIES.some((k) => k.key === c.key) ? categorySlotKey(c.key)
+        : toolSlotKey(c.key);
 
-  // Availability first: a section whose category is switched off for this
-  // viewer is not drawn, and neither is a card whose own switch is. What is
-  // merely restricted stays, with its badge.
-  const visible = hubSectionsFor(avail, isAdmin, wanted);
+  // The layout first (which sections, which items, in what order, which are
+  // switched off /tools), then the status: a card whose module is switched
+  // off for this viewer is not drawn. What is merely restricted stays, with
+  // its badge.
+  const visible = hubSectionsFor(avail, isAdmin, layout);
+  const active = sectionKeyFor(wanted, visible);
+  // Old category links that no longer name a section of their own land where
+  // that category's tool now lives.
+  const aliases = Object.fromEntries(CATEGORIES
+    .map((c) => [c.slug, sectionKeyFor(c.slug, visible)] as const)
+    .filter((e): e is readonly [string, string] => e[1] !== null && e[1] !== e[0]));
 
   // The catalogue's own cards and any live banner, in ONE resolve for the
   // whole page — not one per card.
@@ -116,7 +130,7 @@ export default async function ToolsPage({ searchParams }: {
       <ToolsCatalogue t={t} avail={avail} isAdmin={isAdmin} slots={slots}
         sections={visible.map((s) => ({
           key: s.key, icon: s.icon, title: t(s.titleKey), seeAll: s.seeAll,
-          active: s.key === wanted,
+          active: s.key === active,
           note: s.category ? noteFor(s.gates) : null,
           cards: s.cards.map((c) => ({
             key: c.key, href: c.href, icon: c.icon, motif: c.motif,
@@ -129,7 +143,7 @@ export default async function ToolsPage({ searchParams }: {
       {/* Reads the same `?category=` on the client, to bring the section into
           view; Suspense because it reads search params. */}
       <Suspense fallback={null}>
-        <ToolsDeepLink sections={visible.map((s) => s.key)} />
+        <ToolsDeepLink sections={visible.map((s) => s.key)} aliases={aliases} />
       </Suspense>
     </FeatureGate>
   );

@@ -9,9 +9,9 @@ import {
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { CATEGORIES, VIDEO_ICON as VideoIcon, categoryGates, categoryHref, categoryPath } from "@/lib/categories";
-import { IMAGE_EDIT, editLabelKey } from "@/lib/topnav";
+import { editEntriesFor, editLabelKey, entryGate } from "@/lib/topnav";
 import {
-  allDefaults, menuBadge, menuVisible,
+  allDefaults, menuBadge, menuVisible, routeReachable,
   type AvailabilityMap, type MenuBadge, type MenuGate,
 } from "@/lib/features";
 import { isNavActive } from "@/lib/nav-active";
@@ -53,7 +53,7 @@ import { cn } from "@/lib/utils";
  * which made a group heading look like one more thing to press through on the
  * way to something else.
  */
-export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdmin, navAdmin, availability }: {
+export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdmin, navAdmin, availability, menuItems }: {
   name: string; email?: string; credits: number;
   /** The plan's monthly grant — `subscription_plans.monthly_credits` — which
    *  the meter measures the balance against. Null when the plan has none. */
@@ -64,6 +64,9 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
    *  role, so the preview is never a trap. */
   navAdmin?: boolean;
   availability?: AvailabilityMap;
+  /** The catalogue items the menu lists (lib/tool-layout.ts `menuItemKeys`).
+   *  Absent = the shipped menu. */
+  menuItems?: readonly string[];
 }) {
   const { t, locale } = useI18n();
   const { open, setOpen } = useDrawer();
@@ -92,7 +95,14 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
    * toolbox. The desktop mega panel keeps EDYTUJ as a COLUMN heading opposite
    * TWÓRZ, where the contrast is the whole point; the drawer has no such pair.
    */
-  const toolEntries = IMAGE_EDIT.filter((e) => !e.soon && show(e.href));
+  //
+  // The rows are the items whose "menu" switch is on (the same list the header
+  // panel draws — never the generator, which the drawer does not carry), and
+  // the status still decides whether each may be shown. The hub row answers to
+  // its own module switch.
+  const toolEntries = editEntriesFor(menuItems).filter((e) => !e.soon && (e.key === "allTools"
+    ? show(e.href)
+    : routeReachable(avail, entryGate(e), seesRestricted)));
   /* GŁÓWNE holds the places that are not a workshop: the dashboard, what you
      have made, help, settings, and the staff entrance last. */
 
@@ -248,7 +258,7 @@ export function CustomerDrawer({ name, email, credits, creditsTotal, plan, isAdm
               second time underneath them. */}
           {toolEntries.map((e) => (
             <Tile key={e.key} href={e.href} label={t(editLabelKey(e))} icon={e.icon}
-              onNavigate={closeNav} badge={badge(e.href)} />
+              onNavigate={closeNav} badge={badge(entryGate(e))} />
           ))}
         </Section>
       )}
