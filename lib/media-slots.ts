@@ -180,15 +180,13 @@ export function toolSlotKey(cardKey: string): string {
  * output, and these galleries exist to show output.
  *
  * The gallery shapes are the shapes the page paints, so the admin crop preview
- * and the live tile agree: square packshots over wide ones, tall adverts, and
- * portrait clips in the UGC banner. Two are approximate by nature, and the
- * admin is told so by nothing better than this note — so, plainly:
- *   · the two BANNER ARTS are backgrounds, cover-cropped to a band whose
- *     height follows its copy: very wide on a desktop (about 6:1), close to
- *     square on a phone. 3/1 is the middle of that range; a picture meant for
- *     phones belongs in the slot's own mobile override.
- *   · the two stacked Reklamy cards take their height from the creatives
- *     beside them — about 2:1 on a desktop, 5:3 below it. 16/9 is between.
+ * and the live tile agree: every gallery tile — packshots, UGC clips, adverts —
+ * is 5:4, the same frame as every tool card (TOOL_THUMB_RATIO in
+ * components/tools/tool-thumb.tsx). The two BANNER ARTS are the exception
+ * because they are not tiles but backgrounds, cover-cropped to a band whose
+ * height follows its copy: very wide on a desktop (about 6:1), close to square
+ * on a phone. 3/1 is the middle of that range; a picture meant for phones
+ * belongs in the slot's own mobile override.
  */
 export const HOME_SLOT = {
   grovshotArt: "home.grovshot.art",
@@ -201,11 +199,13 @@ export const HOME_SLOT = {
 /** How many tiles each gallery has. The page and the registry read the same
  *  numbers, so a tile can never exist without a slot or the other way round. */
 export const HOME_GALLERY = {
-  /** Squares, then the same number of wide frames under them. */
+  /** Two rows of packshot tiles (the names are the keys' history: the first
+   *  row used to be square, the second wide; both are 5:4 now). */
   packshotSquares: 6,
   packshotWide: 6,
   ugcClips: 3,
-  /** Tall creatives, then the two wide cards stacked beside them. */
+  /** Advert tiles: the first five, then two more (once a wide pair; all
+   *  seven are 5:4 tiles now). */
   adsTall: 5,
   adsWide: 2,
 } as const;
@@ -217,17 +217,17 @@ function homeSlots(): SlotDef[] {
     slot(HOME_SLOT.grovshotArt, "section", "home", "grovshot",
       "media.slot.homeGrovshotArt", "3/1", true, "media.fb.homeBanner"),
     ...range(1, g.packshotSquares).map((n) => slot(HOME_SLOT.packshot(n), "section", "home",
-      `packshot${n}`, "media.slot.homePackshot", "1/1", true, "media.fb.motif", { n })),
+      `packshot${n}`, "media.slot.homePackshot", "5/4", true, "media.fb.motif", { n })),
     ...range(g.packshotSquares + 1, g.packshotWide).map((n) => slot(HOME_SLOT.packshot(n), "section", "home",
-      `packshot${n}`, "media.slot.homePackshot", "16/10", true, "media.fb.motif", { n })),
+      `packshot${n}`, "media.slot.homePackshot", "5/4", true, "media.fb.motif", { n })),
     slot(HOME_SLOT.ugcArt, "section", "home", "ugc",
       "media.slot.homeUgcArt", "3/1", true, "media.fb.homeBanner"),
     ...range(1, g.ugcClips).map((n) => slot(HOME_SLOT.ugc(n), "section", "home",
-      `ugc${n}`, "media.slot.homeUgcClip", "4/5", true, "media.fb.motif", { n })),
+      `ugc${n}`, "media.slot.homeUgcClip", "5/4", true, "media.fb.motif", { n })),
     ...range(1, g.adsTall).map((n) => slot(HOME_SLOT.ad(n), "section", "home",
-      `ad${n}`, "media.slot.homeAd", "4/5", true, "media.fb.motif", { n })),
+      `ad${n}`, "media.slot.homeAd", "5/4", true, "media.fb.motif", { n })),
     ...range(g.adsTall + 1, g.adsWide).map((n) => slot(HOME_SLOT.ad(n), "section", "home",
-      `ad${n}`, "media.slot.homeAd", "16/9", true, "media.fb.motif", { n })),
+      `ad${n}`, "media.slot.homeAd", "5/4", true, "media.fb.motif", { n })),
   ];
 }
 

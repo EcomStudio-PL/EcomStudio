@@ -328,7 +328,7 @@ console.log("\nJ. the storage contract");
 }
 
 /* ── K ─────────────────────────────────────────────────────────────────── */
-console.log("\nK. one thumbnail shape: every tool thumbnail is 5:4");
+console.log("\nK. one thumbnail shape: every thumbnail on Start and /tools is 5:4");
 {
   const thumb = read("components/tools/tool-thumb.tsx");
   const art = read("components/home/card-art.tsx");
@@ -336,10 +336,23 @@ console.log("\nK. one thumbnail shape: every tool thumbnail is 5:4");
   const home = read("components/home/product-home.tsx");
   const catalogue = read("components/tools/tools-catalogue.tsx");
   const slotsSrc = read("lib/media-slots.ts");
-  check("the one constant is 5/4, and ToolThumb paints it by default",
-    thumb.includes('export const TOOL_THUMB_RATIO = "5/4";') && thumb.includes("ratio = TOOL_THUMB_RATIO"));
-  check("a Home card defaults to it (rail, Wybierz efekt, video row)",
-    art.includes("ratio = TOOL_THUMB_RATIO") && !/<CardArt[^>]*ratio=/.test(cards) && !/<EffectCard[^>]*ratio=/.test(home));
+  const gallery = read("components/home/home-gallery.tsx");
+  const banner = read("components/home/grovshot-banner.tsx");
+  const skeleton = read("app/(app)/home/loading.tsx");
+  check("the one constant is 5/4, and ToolThumb paints it with no way to ask for another",
+    thumb.includes('export const TOOL_THUMB_RATIO = "5/4";') && thumb.includes("aspectRatio: TOOL_THUMB_RATIO")
+    && !/ratio\??:/.test(thumb));
+  check("CardArt, GalleryArt and the shipped photo paint only that constant",
+    (art.match(/TOOL_THUMB_RATIO/g) ?? []).length >= 4 && !/ratio\??:/.test(art) && !/ratio=\{ratio\}/.test(art)
+    && !/<CardArt[^>]*ratio=/.test(cards) && !/<EffectCard[^>]*ratio=/.test(home));
+  check("no Start gallery tile (Packshoty, UGC clips, Reklamy) picks a shape of its own",
+    !/<GalleryArt[^>]*ratio=/.test(gallery) && !/\bfill\b/.test(gallery.replace(/\/\*[\s\S]*?\*\//g, "")));
+  check("the GrovShot banner's example frames are 5:4 too",
+    banner.includes("aspectRatio: TOOL_THUMB_RATIO") && !banner.includes('"4/5"'));
+  check("the Start skeleton reserves 5:4 tiles (no 16/9 or 4/5 placeholders)",
+    !/aspect-\[(16\/9|4\/5|1\/1|16\/10)\]/.test(skeleton) && skeleton.includes("aspect-[5/4]"));
+  check("no 1/1, 4/5, 16/9 or 16/10 is left anywhere on Start or /tools",
+    ![art, cards, home, catalogue, gallery, banner, skeleton, thumb].some((src) => /["\[](1\/1|4\/5|16\/9|16\/10)["\]]/.test(src)));
   check("no tall (4/5) or wide (16/9, 16/10) override is left on a tool card",
     !/ratio="(4\/5|16\/9|16\/10)"/.test(cards) && !/EffectCard[\s\S]{0,200}ratio="/.test(home));
   check("/tools paints its admin picture in the same frame",
@@ -347,6 +360,9 @@ console.log("\nK. one thumbnail shape: every tool thumbnail is 5:4");
   check("the admin upload frame of every tool, workflow and category card is 5/4",
     /"media\.slot\.toolCard", "5\/4"/.test(slotsSrc) && /"media\.slot\.workflowCard", "5\/4"/.test(slotsSrc)
     && /"media\.slot\.categoryCard", "5\/4"/.test(slotsSrc));
+  check("the admin upload frame of every Start gallery tile is 5/4",
+    ["homePackshot", "homeUgcClip", "homeAd"].every((k) => new RegExp(`"media\\.slot\\.${k}", "5\\/4"`).test(slotsSrc))
+    && !/"media\.slot\.home(Packshot|UgcClip|Ad)", "(?!5\/4)/.test(slotsSrc));
 }
 
 console.log(failed ? `\n${failed} tool-layout test(s) failed.` : "\nAll tool-layout tests passed.");

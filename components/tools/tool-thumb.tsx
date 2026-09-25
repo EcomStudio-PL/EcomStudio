@@ -39,15 +39,15 @@ const TONE: Record<ToolMotif, { from: string; to: string }> = {
 };
 
 /**
- * THE ONE SHAPE OF A TOOL THUMBNAIL — 5:4, everywhere a customer meets a tool:
- * /tools, the Start rail, "Wybierz efekt", the video row. The pictures made for
- * the tools are drawn at 5:4; a frame of any other shape crops them (a tall
- * one cuts their sides off). Gallery tiles of EXAMPLE OUTPUTS are not tool
- * thumbnails and keep their own shapes.
+ * THE ONE SHAPE OF EVERY THUMBNAIL ON START AND /tools — 5:4: every card in
+ * /tools, the Start rail, "Wybierz efekt", the video row, and the Start's
+ * galleries (Packshoty, the Wideo UGC clips, Reklamy i Social). The pictures
+ * are drawn at 5:4; a frame of any other shape crops them (a tall one cuts
+ * their sides off). There is deliberately no way to ask for another shape.
  */
 export const TOOL_THUMB_RATIO = "5/4";
 
-export function ToolThumb({ motif, icon: Icon, dimmed = false, ratio = TOOL_THUMB_RATIO }: {
+export function ToolThumb({ motif, icon: Icon, dimmed = false }: {
   motif: ToolMotif;
   /** The operation's icon, bottom-left. Omitted by a gallery tile on the Home,
    *  where the motif stands in for a picture that has not been put there yet
@@ -56,18 +56,11 @@ export function ToolThumb({ motif, icon: Icon, dimmed = false, ratio = TOOL_THUM
   /** A tool that cannot be opened yet reads quieter, so the row's live tools
    *  keep the eye. */
   dimmed?: boolean;
-  /**
-   * The shape to paint in. A tool thumbnail is always 5:4 (the default); the
-   * other shapes are for the Home's gallery tiles, where the motif stands in
-   * for an example picture of that gallery's own shape. One shape per row,
-   * whatever is inside it.
-   */
-  ratio?: "5/4" | "16/10" | "4/5" | "16/9" | "1/1";
 }) {
   const tone = TONE[motif];
   return (
     <span aria-hidden
-      style={{ aspectRatio: ratio }}
+      style={{ aspectRatio: TOOL_THUMB_RATIO }}
       className={cn(
         "relative block w-full overflow-hidden rounded-xl bg-sunken",
         dimmed && "opacity-55 saturate-50",

@@ -7,8 +7,6 @@ import { SlotMedia } from "@/components/media/slot-media";
 import type { SlotMap } from "@/lib/server/media-slots";
 import { cn } from "@/lib/utils";
 
-export type ArtRatio = "5/4" | "4/5" | "16/9" | "16/10" | "1/1";
-
 /**
  * THE PICTURE ON A HOME CARD OR TILE, in strict order of authority:
  *
@@ -26,10 +24,11 @@ export type ArtRatio = "5/4" | "4/5" | "16/9" | "16/10" | "1/1";
  * photograph pretending to be a result.
  *
  * NO LAYOUT SHIFT. Every branch owns its aspect ratio before a byte arrives,
- * so nothing on the page moves when a picture does.
+ * so nothing on the page moves when a picture does. That ratio is always
+ * TOOL_THUMB_RATIO (5:4): no card on the Start picks a shape of its own.
  */
 export function CardArt({
-  art, icon, slot, slots, ratio = TOOL_THUMB_RATIO, dimmed = false, sizes, priority = false, video = false,
+  art, icon, slot, slots, dimmed = false, sizes, priority = false, video = false,
 }: {
   art: CardArt;
   /** The operation's icon on the drawn floor. Omitted on gallery tiles. */
@@ -37,7 +36,6 @@ export function CardArt({
   /** The media-slot key an admin can fill for this card. */
   slot: string;
   slots: SlotMap;
-  ratio?: ArtRatio;
   /** A card whose tool cannot be opened reads quieter, so the live ones keep
    *  the eye. Matches the tool catalogue's own treatment. */
   dimmed?: boolean;
@@ -49,11 +47,11 @@ export function CardArt({
   video?: boolean;
 }) {
   const fallback = art.kind === "photo"
-    ? <Photo src={art.src} ratio={ratio} dimmed={dimmed} sizes={sizes} priority={priority} />
-    : <ToolThumb motif={art.motif} icon={icon} dimmed={dimmed} ratio={ratio} />;
+    ? <Photo src={art.src} dimmed={dimmed} sizes={sizes} priority={priority} />
+    : <ToolThumb motif={art.motif} icon={icon} dimmed={dimmed} />;
 
   const body = (
-    <SlotMedia slot={slot} slots={slots} ratio={ratio} sizes={sizes} priority={priority}
+    <SlotMedia slot={slot} slots={slots} ratio={TOOL_THUMB_RATIO} sizes={sizes} priority={priority}
       className={cn("rounded-xl", dimmed && "opacity-55 saturate-50")} fallback={fallback} />
   );
 
@@ -95,27 +93,21 @@ export function PlayMark({ className }: { className?: string }) {
  * made of nothing BUT media slots. An empty one draws the motif with no icon:
  * a quiet brand surface in the right shape, so the geometry of the section is
  * finished while its pictures are still to come — and nothing on it claims to
- * be a creative GrovBase made.
+ * be a creative GrovBase made. Every tile is 5:4 (TOOL_THUMB_RATIO), the same
+ * frame as a tool card.
  */
-export function GalleryArt({ slot, slots, ratio, motif, sizes, fill = false }: {
+export function GalleryArt({ slot, slots, motif, sizes }: {
   slot: string;
   slots: SlotMap;
-  ratio: ArtRatio;
   motif: ToolMotif;
   sizes: string;
-  /** Fill the parent's height instead of owning a ratio — the two stacked
-   *  cards in the Reklamy column take the height of the tall tiles beside
-   *  them. The parent then owns the geometry. */
-  fill?: boolean;
 }) {
   const isVideo = slots.get(slot)?.mediaType === "video";
-  const floor = fill
-    ? <span aria-hidden className="block h-full [&>span]:h-full"><ToolThumb motif={motif} ratio={ratio} /></span>
-    : <ToolThumb motif={motif} ratio={ratio} />;
+  const floor = <ToolThumb motif={motif} />;
   return (
-    <span className={cn("relative block", fill && "h-full")}>
-      <SlotMedia slot={slot} slots={slots} ratio={ratio} sizes={sizes}
-        className={cn("rounded-xl", fill && "h-full")} fallback={floor} />
+    <span className="relative block">
+      <SlotMedia slot={slot} slots={slots} ratio={TOOL_THUMB_RATIO} sizes={sizes}
+        className="rounded-xl" fallback={floor} />
       {isVideo && <PlayMark />}
     </span>
   );
@@ -127,8 +119,8 @@ export function GalleryArt({ slot, slots, ratio, motif, sizes, fill = false }: {
  * `sizes` is mandatory: these are 150–300px tiles and the source files are
  * 340px wide, so without it Next would serve a far larger variant to a phone.
  */
-function Photo({ src, ratio, dimmed, sizes, priority }: {
-  src: string; ratio: string; dimmed: boolean; sizes: string; priority: boolean;
+function Photo({ src, dimmed, sizes, priority }: {
+  src: string; dimmed: boolean; sizes: string; priority: boolean;
 }) {
   return (
     <span
@@ -137,7 +129,7 @@ function Photo({ src, ratio, dimmed, sizes, priority }: {
         "relative block w-full overflow-hidden rounded-xl bg-sunken ring-1 ring-inset ring-[rgb(var(--glass-border)/0.14)]",
         dimmed && "opacity-55 saturate-50",
       )}
-      style={{ aspectRatio: ratio }}
+      style={{ aspectRatio: TOOL_THUMB_RATIO }}
     >
       <Image
         src={src}

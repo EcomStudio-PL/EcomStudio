@@ -19,6 +19,10 @@ type T = (key: string, vars?: Record<string, string | number>) => string;
  *
  * DENSE ON PURPOSE. The reference is a creative marketplace, not a card grid:
  * small gutters, no captions, rows that fill the width.
+ *
+ * ONE SHAPE. Every tile is 5:4 — GalleryArt paints TOOL_THUMB_RATIO and takes
+ * no ratio of its own — the same frame as every tool card on the Start and in
+ * /tools. (Vertical video tiles are a later, separate change.)
  */
 
 const range = (from: number, count: number) => Array.from({ length: count }, (_, i) => from + i);
@@ -29,8 +33,8 @@ const PACKSHOT_MOTIFS: readonly ToolMotif[] = ["cutout", "shadow", "frame", "spa
 const AD_MOTIFS: readonly ToolMotif[] = ["spark", "stamp", "swatch", "grid", "wipe", "frame", "cutout"];
 
 /**
- * PACKSHOTY — six squares over six wide frames. Two columns on a phone, three
- * on a tablet, six across from `lg`.
+ * PACKSHOTY — two rows of six 5:4 tiles. Two columns on a phone, three on a
+ * tablet, six across from `lg`.
  */
 export function PackshotGallery({ slots }: { slots: SlotMap }) {
   const g = HOME_GALLERY;
@@ -39,14 +43,14 @@ export function PackshotGallery({ slots }: { slots: SlotMap }) {
     <div className="space-y-2 sm:space-y-2.5">
       <div className={grid}>
         {range(1, g.packshotSquares).map((n, i) => (
-          <GalleryArt key={n} slot={HOME_SLOT.packshot(n)} slots={slots} ratio="1/1"
+          <GalleryArt key={n} slot={HOME_SLOT.packshot(n)} slots={slots}
             motif={PACKSHOT_MOTIFS[i % PACKSHOT_MOTIFS.length]}
             sizes="(max-width: 639px) 48vw, (max-width: 1023px) 32vw, 16vw" />
         ))}
       </div>
       <div className={grid}>
         {range(g.packshotSquares + 1, g.packshotWide).map((n, i) => (
-          <GalleryArt key={n} slot={HOME_SLOT.packshot(n)} slots={slots} ratio="16/10"
+          <GalleryArt key={n} slot={HOME_SLOT.packshot(n)} slots={slots}
             motif={PACKSHOT_MOTIFS[(i + 3) % PACKSHOT_MOTIFS.length]}
             sizes="(max-width: 639px) 48vw, (max-width: 1023px) 32vw, 16vw" />
         ))}
@@ -57,8 +61,8 @@ export function PackshotGallery({ slots }: { slots: SlotMap }) {
 
 /**
  * THE WIDEO UGC BANNER — a wide cyan band with the promise on the left and
- * three portrait clips on the right; on a phone the clips sit in a row under
- * the copy.
+ * three 5:4 clips on the right; on a phone the clips sit in a row under the
+ * copy.
  *
  * It carries the video module's OWN state, from the switchboard: "Wkrótce"
  * today, since video has no engine, and no button — it shows what the module
@@ -115,7 +119,7 @@ export function UgcBanner({ slots, badge, t }: { slots: SlotMap; badge: MenuBadg
           {range(1, HOME_GALLERY.ugcClips).map((n, i) => (
             <span key={n} className={i === 1 ? "sm:translate-y-2" : undefined}>
               <span className="block rounded-xl ring-2 ring-[rgb(255_255_255/0.55)] sm:w-[6.5rem] lg:w-[7.25rem]">
-                <GalleryArt slot={HOME_SLOT.ugc(n)} slots={slots} ratio="4/5" motif="video"
+                <GalleryArt slot={HOME_SLOT.ugc(n)} slots={slots} motif="video"
                   sizes="(max-width: 639px) 30vw, 8rem" />
               </span>
             </span>
@@ -127,37 +131,20 @@ export function UgcBanner({ slots, badge, t }: { slots: SlotMap; badge: MenuBadg
 }
 
 /**
- * REKLAMY I SOCIAL — five tall creatives and, beside them, two wide cards
- * stacked to the same height. On a phone: two columns, the pair taking the
- * cell beside the fifth creative at that creative's shape.
+ * REKLAMY I SOCIAL — seven 5:4 creatives in one grid: two columns on a phone,
+ * four on a tablet, all seven in a row from `lg`. (The two slots after the
+ * first five used to be a wide pair stacked beside them; they keep their keys
+ * and their pictures, and are now tiles like the rest.)
  */
 export function AdsGallery({ slots }: { slots: SlotMap }) {
   const g = HOME_GALLERY;
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 lg:grid-cols-[repeat(5,minmax(0,1fr))_minmax(0,1.35fr)]">
-      {range(1, g.adsTall).map((n, i) => (
-        <GalleryArt key={n} slot={HOME_SLOT.ad(n)} slots={slots} ratio="4/5"
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-2.5 lg:grid-cols-7">
+      {range(1, g.adsTall + g.adsWide).map((n, i) => (
+        <GalleryArt key={n} slot={HOME_SLOT.ad(n)} slots={slots}
           motif={AD_MOTIFS[i % AD_MOTIFS.length]}
-          sizes="(max-width: 639px) 48vw, (max-width: 1023px) 32vw, 15vw" />
+          sizes="(max-width: 639px) 48vw, (max-width: 1023px) 24vw, 14vw" />
       ))}
-      {/* THE PAIR TAKES THE ROW'S HEIGHT, IT NEVER SETS IT. Its two cards sit
-          in an absolutely positioned grid, so they contribute nothing to the
-          row's sizing: below `lg` the pair owns a creative's shape itself
-          (4/5, same column width, same height), and from `lg` — where its
-          column is wider — it stretches to whatever height the tall creatives
-          give the row. In the flow, the cards' own 16/9 would push the row
-          taller than the creatives beside them. */}
-      <div className="relative aspect-[4/5] min-w-0 lg:aspect-auto">
-        <div className="absolute inset-0 grid grid-rows-2 gap-2 sm:gap-2.5">
-          {range(g.adsTall + 1, g.adsWide).map((n, i) => (
-            <div key={n} className="min-h-0 min-w-0">
-              <GalleryArt slot={HOME_SLOT.ad(n)} slots={slots} ratio="16/9" fill
-                motif={AD_MOTIFS[(g.adsTall + i) % AD_MOTIFS.length]}
-                sizes="(max-width: 639px) 48vw, (max-width: 1023px) 32vw, 20vw" />
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

@@ -4,8 +4,8 @@
  * `npm run test:home` proves the lists, the routes, the slots and the wiring.
  * This proves what only a browser can: that no width scrolls sideways, that
  * the rail and the chips are carousels on a phone and grids above it, that a
- * desktop row really is one row, that the Reklamy pair really is as tall as
- * the creatives beside it, that nothing shifts once it has painted, that a
+ * desktop row really is one row, that the seven Reklamy tiles are equal 5:4
+ * tiles in their rows, that nothing shifts once it has painted, that a
  * visitor's press opens the existing sign-in dialog instead of navigating, and
  * that in the signed-in shell the bottom navigation neither covers the page
  * nor lights up twice.
@@ -187,10 +187,7 @@ const measure = (page) => page.evaluate(() => {
   const ads = document.querySelector("#home-ads")?.closest("section")?.querySelector(":scope > div.grid");
   // The VISIBLE art, not the grid cell: a cell is stretched to the row, so
   // measuring cells would call a row equal even when the art inside is not.
-  const adEls = ads ? [...ads.children] : [];
-  const adKids = adEls.map((c, i) => (i < adEls.length - 1 ? c.firstElementChild ?? c : c).getBoundingClientRect());
-  const pairEl = adEls.at(-1);
-  const pairArtBottom = pairEl ? Math.max(...[...pairEl.querySelectorAll("span")].map((e) => e.getBoundingClientRect().bottom)) : 0;
+  const adKids = ads ? [...ads.children].map((c) => (c.firstElementChild ?? c).getBoundingClientRect()) : [];
   const imgs = [...document.querySelectorAll("main img")];
   const nav = document.querySelector("nav.fixed, [data-bottom-nav], nav[class*='bottom-0']");
   return {
@@ -206,10 +203,8 @@ const measure = (page) => page.evaluate(() => {
       rights: [...chips.children].map((c) => Math.round(c.getBoundingClientRect().right)),
     } : null,
     packs: { n: packKids.length, tops: packKids.map((r) => Math.round(r.top)) },
-    ads: { n: adKids.length, tall: adKids[0] ? Math.round(adKids[0].height) : 0, pair: adKids.at(-1) ? Math.round(adKids.at(-1).height) : 0,
-      pairRight: adKids.at(-1) ? Math.round(adKids.at(-1).right) : 0, pairLeft: adKids.at(-1) ? Math.round(adKids.at(-1).left) : 0,
-      tallTop: adKids[0] ? Math.round(adKids[0].top) : 0, pairTop: adKids.at(-1) ? Math.round(adKids.at(-1).top) : 0,
-      tallBottom: adKids[0] ? Math.round(adKids[0].bottom) : 0, pairArtBottom: Math.round(pairArtBottom) },
+    ads: { n: adKids.length, tops: adKids.map((r) => Math.round(r.top)), heights: adKids.map((r) => Math.round(r.height)),
+      maxRight: adKids.length ? Math.round(Math.max(...adKids.map((r) => r.right))) : 0 },
     broken: imgs.filter((i) => i.complete && i.naturalWidth === 0).map((i) => i.currentSrc || i.src).slice(0, 3),
     preloads: document.querySelectorAll('link[rel="preload"][as="image"]').length,
     eager: imgs.filter((i) => i.loading !== "lazy").length,
@@ -270,12 +265,14 @@ for (const vp of [...PHONES, ...TABLETS, ...DESKTOPS]) {
       check(`${tag}: the six rail tiles are one row`, m.rail.n === 6 && new Set(m.rail.tops).size === 1, JSON.stringify(m.rail.tops));
       check(`${tag}: the eight effects are one row`, m.effects.n === 8 && new Set(m.effects.tops).size === 1, JSON.stringify(m.effects.tops));
       check(`${tag}: six packshots to a row`, m.packs.n === 6 && new Set(m.packs.tops).size === 1, JSON.stringify(m.packs.tops));
-      check(`${tag}: the Reklamy pair is exactly as tall as the creatives`,
-        Math.abs(m.ads.tall - m.ads.pair) <= 1 && m.ads.pairTop === m.ads.tallTop
-        && m.ads.pairArtBottom <= m.ads.tallBottom + 1, JSON.stringify(m.ads));
+      check(`${tag}: the seven Reklamy tiles are one row of equal tiles`,
+        m.ads.n === 7 && new Set(m.ads.tops).size === 1 && Math.max(...m.ads.heights) - Math.min(...m.ads.heights) <= 1, JSON.stringify(m.ads));
     } else {
-      check(`${tag}: the Reklamy pair keeps a creative's shape`,
-        m.ads.pair > 0 && m.ads.pairRight <= m.vw && m.ads.pairArtBottom <= m.ads.pairTop + m.ads.pair + 1, JSON.stringify(m.ads));
+      // Two to a row on a phone, four on a tablet; the seventh starts a row.
+      const perRow = m.ads.tops.filter((t) => t === m.ads.tops[0]).length;
+      check(`${tag}: Reklamy is ${phone ? "two" : "four"} equal tiles to a row, inside the page`,
+        m.ads.n === 7 && perRow === (phone ? 2 : 4) && Math.max(...m.ads.heights) - Math.min(...m.ads.heights) <= 1
+        && m.ads.maxRight <= m.vw, JSON.stringify(m.ads));
     }
     if (who === "home" && vp.w < 1024) {
       // The harness answers from /probe-tmp/home, which is the path the
