@@ -28,7 +28,9 @@ async function requireAdmin() {
   return { supabase, adminId: user.id };
 }
 
-const PAGE = "/admin/settings/features";
+// The screen these writes are made from: "Narzędzia i silniki". The old
+// /admin/settings/features address only redirects there now.
+const PAGE = "/admin/ai";
 
 export type FeatureSaveInput = {
   key: string;

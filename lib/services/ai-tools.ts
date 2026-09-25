@@ -11,14 +11,15 @@ type Client = SupabaseClient<Database>;
  * systems that already own each fact.
  *
  *   identity, route, name .......... lib/features.ts (the feature registry)
- *   status ......................... feature_availability
+ *   status, menu visibility ........ feature_availability (written only by
+ *                                    app/actions/features.ts)
  *   credits, API cost .............. service_catalog
  *   engine mode, models, prompt .... ai_tools / ai_tool_models / ai_tool_prompts
  *   last run, failures ............. usage_events
  *
- * Nothing here is a second source of truth. If a tool's status looks wrong,
- * the answer is on the availability screen; if its price looks wrong, in the
- * catalogue. This module only joins.
+ * Nothing here is a second source of truth. A status is changed through the
+ * availability actions, a price in the service catalogue (Admin → Usługi);
+ * this module only joins.
  */
 
 /** The tools an operator configures. Category workspaces (/k/moda …) are entry
@@ -62,6 +63,46 @@ const MODEL_DRIVEN: readonly AiToolKey[] = [
   "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person",
   "fashion_change_face",
 ];
+
+/** One tool's `ai_tools` row as the admin forms edit it. */
+export type ToolConfigValues = {
+  toolKey: string;
+  engineMode: EngineMode;
+  serviceSlug: string | null;
+  allowModelChoice: boolean;
+  fallbackEnabled: boolean;
+  timeoutMs: number;
+  maxAttempts: number;
+  notes: string | null;
+};
+
+/** The form sections that write `ai_tools`: the workspace's "Podstawowe"
+ *  (service + note), the panel's "Kredyty" (service only) and "Silnik". */
+export type ToolConfigSection = "basics" | "billing" | "engine";
+
+/**
+ * WHAT ONE SECTION SAVES: its own fields, laid over the row as it was last
+ * saved (`initial`, which the server refreshes after every save).
+ *
+ * `saveToolConfigAction` writes the whole row, and the Narzędzia i silniki
+ * screen shows a tool's engine and billing sections side by side. If each
+ * saved its whole local copy, saving one would quietly write back the other's
+ * stale values — an engine change reverted by a price-list change.
+ */
+export function mergeToolConfig(
+  section: ToolConfigSection,
+  initial: ToolConfigValues,
+  form: ToolConfigValues,
+): ToolConfigValues {
+  switch (section) {
+    case "engine":
+      return { ...initial, engineMode: form.engineMode, timeoutMs: form.timeoutMs, maxAttempts: form.maxAttempts };
+    case "billing":
+      return { ...initial, serviceSlug: form.serviceSlug };
+    default:
+      return { ...initial, serviceSlug: form.serviceSlug, notes: form.notes };
+  }
+}
 
 export const TOOL_TABS = ["basics", "engine", "models", "knowledge", "economics", "history"] as const;
 export type ToolTab = (typeof TOOL_TABS)[number];
@@ -112,6 +153,14 @@ export type ToolRow = {
   models: ToolModel[];
   allowModelChoice: boolean;
   fallbackEnabled: boolean;
+  /**
+   * The stored request policy and note. Every save of `ai_tools` writes the
+   * whole row, so a form that edits one part must be handed the real values of
+   * the rest — the defaults here are the table's own, for a tool never saved.
+   */
+  timeoutMs: number;
+  maxAttempts: number;
+  notes: string | null;
   knowledgeSets: number;
   /** Newest usage event for this tool's service, and how the last 30 days went. */
   lastRunAt: string | null;
@@ -216,6 +265,9 @@ export async function readToolRegistry(
       models: modelsByTool.get(key) ?? [],
       allowModelChoice: row?.allow_model_choice ?? false,
       fallbackEnabled: row?.fallback_enabled ?? false,
+      timeoutMs: row?.timeout_ms ?? 120000,
+      maxAttempts: row?.max_attempts ?? 1,
+      notes: row?.notes ?? null,
       knowledgeSets: knowledgeCount.get(key) ?? 0,
       lastRunAt: stats?.last ?? null,
       runs30d: stats?.runs ?? 0,
@@ -223,6 +275,40 @@ export async function readToolRegistry(
       unconfigured: !row,
     };
   });
+}
+
+/** A model an operator can assign to a tool, as the model picker lists it. */
+export type PickableModelRow = {
+  id: string;
+  name: string;
+  providerName: string;
+  active: boolean;
+  credits: number;
+};
+
+/** Every model in the catalogue, in its own order — the model picker's list. */
+export async function readPickableModels(supabase: Client): Promise<PickableModelRow[]> {
+  const { data } = await supabase
+    .from("ai_models")
+    .select("id, name, display_name, active, credit_cost, ai_providers(name)")
+    .order("sort_order", { ascending: true });
+  return ((data ?? []) as unknown as {
+    id: string; name: string; display_name: string | null; active: boolean;
+    credit_cost: number; ai_providers: { name: string } | null;
+  }[]).map((m) => ({
+    id: m.id,
+    name: m.display_name || m.name,
+    providerName: m.ai_providers?.name ?? "—",
+    active: m.active,
+    credits: m.credit_cost,
+  }));
+}
+
+/** The price list rows a tool may be billed through. Read, never written. */
+export async function readBillingServices(supabase: Client): Promise<{ slug: string; name: string; credits: number }[]> {
+  const { data } = await supabase
+    .from("service_catalog").select("slug, name, credits_cost").order("category").order("name");
+  return (data ?? []).map((s) => ({ slug: s.slug, name: s.name, credits: s.credits_cost }));
 }
 
 /** The prompt history for one tool. The BODY is deliberately not selected —

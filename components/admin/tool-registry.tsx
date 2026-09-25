@@ -1,182 +1,483 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, History, Search, Settings2 } from "lucide-react";
+import {
+  ChevronDown, Cpu, ExternalLink, EyeOff, History, Search, Settings2, X,
+} from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
-import type { ToolRow, ToolCategory, EngineMode } from "@/lib/services/ai-tools";
-import type { FeatureStatus } from "@/lib/features";
+import { toolTabs, type EngineMode, type ToolRow } from "@/lib/services/ai-tools";
+import { FEATURE_STATUSES, type AvailabilityMap, type FeatureKey, type FeatureStatus } from "@/lib/features";
+import type { FeatureAdminRow } from "@/app/actions/features";
+import {
+  PANEL_GROUPS, coveredCards, panelGroupOf, panelKind, type PanelKind,
+} from "@/lib/tool-panel";
 import { STATUS_TONE } from "@/lib/status-tone";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Chip } from "@/components/ui/chip";
 import { Input, Select } from "@/components/ui/input";
 import { RelativeTime } from "@/components/ui/relative-time";
+import { ToolConfigForm, type ToolConfigValues } from "@/components/admin/tool-basics";
+import { ToolModelPicker, type PickableModel } from "@/components/admin/tool-models";
+import {
+  AvailabilityEditor, BulkBar, ConfigSection, PreviewToggle,
+} from "@/components/admin/availability-controls";
 import { cn } from "@/lib/utils";
 
 /**
- * THE TOOL REGISTRY.
+ * NARZĘDZIA I SILNIKI — every tool, category and module GrovBase has, on one
+ * screen: what it runs on, what it costs, whether it is live, and where a
+ * customer meets it.
  *
- * A dense table on desktop — the operator has 1400px, so a row per tool beats
- * a card the height of a phone — and one compact card per tool below `lg`.
- * Filtering is client-side because there are ten tools: a URL round trip to
- * narrow ten rows would be slower than reading them.
+ * Two screens used to split this: this one (engine, model, credits) and
+ * "Dostępność funkcji" (status, visibility). Each fact still lives where it
+ * always did and is written by the action that always wrote it —
+ *
+ *   model, engine ........ ai_tools / ai_tool_models   app/actions/ai-tools.ts
+ *   credits .............. service_catalog, pointed at  app/actions/ai-tools.ts
+ *   status, visibility ... feature_availability         app/actions/features.ts
+ *
+ * — so this is a screen merge, not a data merge: no row is copied, no table
+ * was added, and the customer side reads exactly what it read before.
+ *
+ * A compact row per entry, one open at a time: opening one closes the last,
+ * which keeps the page short enough to scan and every form's ids unique.
  */
+
+export type PanelEntry = {
+  /** The stored availability record (status as SET, not as in force). */
+  admin: FeatureAdminRow;
+  /** The engine registry row — tools only. */
+  tool: ToolRow | null;
+};
 
 const ENGINE_TONE: Record<EngineMode, "neutral" | "info" | "accent"> = {
   off: "neutral", user: "info", grovbase: "accent", hybrid: "accent",
 };
 
-const CATEGORIES: ToolCategory[] = ["generation", "editing", "local", "video"];
-const STATUSES: FeatureStatus[] = ["ACTIVE", "COMING_SOON", "MAINTENANCE", "DISABLED"];
+type Quick = "all" | "active" | "soon" | "hidden";
+const QUICK: Quick[] = ["all", "active", "soon", "hidden"];
 
-export function ToolRegistry({ rows, locale }: { rows: ToolRow[]; locale: string }) {
+/** "Ukryte" is what a customer cannot find: taken off the lists, or off. */
+const isHidden = (r: FeatureAdminRow) => r.hiddenFromMenu || r.status === "DISABLED";
+
+function quickMatch(q: Quick, r: FeatureAdminRow): boolean {
+  switch (q) {
+    case "active": return r.status === "ACTIVE";
+    case "soon": return r.status === "COMING_SOON";
+    case "hidden": return isHidden(r);
+    default: return true;
+  }
+}
+
+export function ToolRegistry({ entries, availability, models, services, previewing, locale, openKey }: {
+  entries: PanelEntry[];
+  availability: AvailabilityMap;
+  models: PickableModel[];
+  services: { slug: string; name: string; credits: number }[];
+  previewing: boolean;
+  locale: string;
+  /** Opened on arrival — `/admin/ai?tool=<key>`. */
+  openKey: FeatureKey | null;
+}) {
   const { t } = useI18n();
   const [q, setQ] = useState("");
-  const [category, setCategory] = useState("");
-  const [status, setStatus] = useState("");
+  const [group, setGroup] = useState("");
+  const [status, setStatus] = useState<FeatureStatus | "">("");
+  const [quick, setQuick] = useState<Quick>("all");
+  const [open, setOpen] = useState<FeatureKey | null>(openKey);
+  const [selected, setSelected] = useState<Set<FeatureKey>>(new Set());
+
+  // A deep link lands on its row, not on the top of a long page.
+  useEffect(() => {
+    if (openKey) document.getElementById(`tool-${openKey}`)?.scrollIntoView({ block: "start" });
+  }, [openKey]);
 
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (category && r.category !== category) return false;
-      if (status && r.status !== status) return false;
+    return entries.filter(({ admin, tool }) => {
+      if (group && panelGroupOf(admin.key) !== group) return false;
+      if (status && admin.status !== status) return false;
+      if (!quickMatch(quick, admin)) return false;
       if (!needle) return true;
-      return `${t(r.nameKey)} ${r.key} ${r.path}`.toLowerCase().includes(needle);
+      const models = tool ? tool.models.map((m) => m.name).join(" ") : "";
+      return `${t(admin.nameKey)} ${admin.key} ${admin.path} ${models}`.toLowerCase().includes(needle);
     });
-  }, [rows, q, category, status, t]);
+  }, [entries, q, group, status, quick, t]);
+
+  const byKey = useMemo(() => new Map(visible.map((e) => [e.admin.key, e])), [visible]);
+  const groups = useMemo(() => PANEL_GROUPS
+    .map((g) => ({ ...g, items: g.keys.map((k) => byKey.get(k)).filter((e): e is PanelEntry => Boolean(e)) }))
+    .filter((g) => g.items.length > 0), [byKey]);
+
+  const counts = useMemo(() => Object.fromEntries(
+    QUICK.map((k) => [k, entries.filter((e) => quickMatch(k, e.admin)).length]),
+  ) as Record<Quick, number>, [entries]);
+
+  const setMany = (keys: FeatureKey[], on: boolean) => setSelected((prev) => {
+    const next = new Set(prev);
+    for (const k of keys) { if (on) next.add(k); else next.delete(k); }
+    return next;
+  });
+  const visibleKeys = visible.map((e) => e.admin.key);
+  const allVisibleSelected = visibleKeys.length > 0 && visibleKeys.every((k) => selected.has(k));
+  const filtered = q.trim() !== "" || group !== "" || status !== "" || quick !== "all";
 
   return (
-    <div>
-      <div className="mb-4 grid gap-2 sm:flex sm:flex-wrap sm:items-center">
-        <div className="relative min-w-0 sm:w-64">
-          <Search size={14} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} className="pl-8"
-            placeholder={t("common.search")} aria-label={t("common.search")} />
-        </div>
-        <div className="min-w-0 sm:w-44">
-          <Select value={category} onChange={(e) => setCategory(e.target.value)} aria-label={t("common.category")}>
-            <option value="">{t("common.category")}</option>
-            {CATEGORIES.map((c) => <option key={c} value={c}>{t(`aicc.category.${c}`)}</option>)}
+    <div className="min-w-0 space-y-4">
+      <PreviewToggle previewing={previewing} />
+
+      {/* FILTERS — stacked on a phone, one row from `lg`; nothing here ever
+          scrolls the page sideways. */}
+      <Card className="p-3.5 sm:p-4">
+        <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_12rem_11rem] [&>*]:min-w-0">
+          <div className="relative sm:col-span-2 lg:col-span-1">
+            <Search size={14} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} className="pl-8 pr-9"
+              placeholder={t("featAdm.searchPlaceholder")} aria-label={t("common.search")} />
+            {q && (
+              <button type="button" onClick={() => setQ("")} aria-label={t("common.clear")}
+                className="absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-lg text-faint hover:text-ink">
+                <X size={14} aria-hidden />
+              </button>
+            )}
+          </div>
+          <Select value={group} onChange={(e) => setGroup(e.target.value)} aria-label={t("common.category")}>
+            <option value="">{t("aicc.panel.allGroups")}</option>
+            {PANEL_GROUPS.map((g) => <option key={g.key} value={g.key}>{t(g.titleKey)}</option>)}
+          </Select>
+          <Select value={status} onChange={(e) => setStatus(e.target.value as FeatureStatus | "")} aria-label={t("common.status")}>
+            <option value="">{t("featAdm.anyStatus")}</option>
+            {FEATURE_STATUSES.map((s) => <option key={s} value={s}>{t(`featAdm.status.${s}`)}</option>)}
           </Select>
         </div>
-        <div className="min-w-0 sm:w-44">
-          <Select value={status} onChange={(e) => setStatus(e.target.value)} aria-label={t("common.status")}>
-            <option value="">{t("common.status")}</option>
-            {STATUSES.map((s) => <option key={s} value={s}>{t(`featAdm.status.${s}`)}</option>)}
-          </Select>
+
+        {/* QUICK FILTER — the four questions an operator actually asks. On a
+            phone the row scrolls inside itself, never the page. */}
+        <div role="group" aria-label={t("aicc.panel.quick.label")}
+          className="-mx-3.5 mt-3 overflow-x-auto px-3.5 [scrollbar-width:none] sm:-mx-4 sm:px-4 [&::-webkit-scrollbar]:hidden">
+          <div className="flex w-max gap-2">
+            {QUICK.map((k) => (
+              <Chip key={k} active={quick === k} count={counts[k]} onClick={() => setQuick(k)}
+                className="min-h-[36px] px-3.5 py-1.5">
+                {t(`aicc.panel.quick.${k}`)}
+              </Chip>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-line pt-3 text-[12.5px] text-muted">
+          <label className="flex items-center gap-2 font-medium text-ink">
+            <input type="checkbox" checked={allVisibleSelected}
+              onChange={(e) => setMany(visibleKeys, e.target.checked)}
+              className="size-4 rounded border-line accent-[rgb(var(--accent))]" />
+            {t("featAdm.selectAllVisible")}
+          </label>
+          <span>{t("featAdm.showing", { n: visible.length, total: entries.length })}</span>
+          {filtered && (
+            <button type="button"
+              onClick={() => { setQ(""); setGroup(""); setStatus(""); setQuick("all"); }}
+              className="font-semibold text-accent hover:underline">
+              {t("featAdm.clearFilters")}
+            </button>
+          )}
+        </div>
+      </Card>
+
+      {groups.length === 0 && (
+        <div className="panel rounded-2xl px-5 py-12 text-center text-sm text-muted">{t("aicc.tools.noMatches")}</div>
+      )}
+
+      {groups.map((g) => {
+        const keys = g.items.map((e) => e.admin.key);
+        const allSelected = keys.every((k) => selected.has(k));
+        return (
+          <section key={g.key} aria-labelledby={`grp-${g.key}`} data-group={g.key}>
+            <div className="mb-1.5 flex items-center gap-2 px-1">
+              <input type="checkbox" checked={allSelected}
+                onChange={(e) => setMany(keys, e.target.checked)}
+                aria-label={t("featAdm.selectGroup", { group: t(g.titleKey) })}
+                className="size-4 rounded border-line accent-[rgb(var(--accent))]" />
+              <h2 id={`grp-${g.key}`} className="text-[12px] font-bold uppercase tracking-[0.08em] text-faint">
+                {t(g.titleKey)}
+              </h2>
+              <span className="text-[11px] text-faint">({g.items.length})</span>
+            </div>
+            <Card className="divide-y divide-line overflow-hidden p-0">
+              {g.items.map((entry) => (
+                <EntryRow key={entry.admin.key} entry={entry} locale={locale}
+                  availability={availability} models={models} services={services}
+                  open={open === entry.admin.key}
+                  onOpen={() => setOpen((cur) => (cur === entry.admin.key ? null : entry.admin.key))}
+                  selected={selected.has(entry.admin.key)}
+                  onSelect={(on) => setMany([entry.admin.key], on)} />
+              ))}
+            </Card>
+          </section>
+        );
+      })}
+
+      {/* The bulk bar only exists while something is selected — it is an
+          action on a selection, not permanent chrome. */}
+      <BulkBar keys={[...selected]} onDone={() => setSelected(new Set())}
+        onClear={() => setSelected(new Set())} />
+    </div>
+  );
+}
+
+/* ── one entry ──────────────────────────────────────────────────────────────*/
+
+type T = (key: string, values?: Record<string, string | number>) => string;
+
+function EntryRow({ entry, open, onOpen, selected, onSelect, availability, models, services, locale }: {
+  entry: PanelEntry;
+  open: boolean;
+  onOpen: () => void;
+  selected: boolean;
+  onSelect: (on: boolean) => void;
+  availability: AvailabilityMap;
+  models: PickableModel[];
+  services: { slug: string; name: string; credits: number }[];
+  locale: string;
+}) {
+  const { t } = useI18n();
+  const { admin, tool } = entry;
+  const kind: PanelKind = panelKind(admin.key);
+  const covered = coveredCards(admin.key);
+  const scheduled = admin.status !== "ACTIVE" && Boolean(admin.startsAt || admin.endsAt);
+  const panelId = `cfg-${admin.key}`;
+
+  return (
+    <div id={`tool-${admin.key}`} data-entry={admin.key} data-kind={kind}
+      className={cn("scroll-mt-24", selected && "bg-[rgb(var(--accent)/0.05)]")}>
+      {/* COLLAPSED — name, what it runs on, type, price, status, last run,
+          and one button. Wraps on a phone instead of scrolling sideways. */}
+      <div className="flex gap-2.5 px-3 py-3 sm:px-4">
+        <input type="checkbox" checked={selected} onChange={(e) => onSelect(e.target.checked)}
+          aria-label={t(admin.nameKey)}
+          className="mt-0.5 size-4 shrink-0 rounded border-line accent-[rgb(var(--accent))]" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-[14px] font-semibold text-ink">{t(admin.nameKey)}</p>
+              <p className="truncate text-[12px] text-muted">{subLine(entry, kind, covered.length, t)}</p>
+            </div>
+            <Badge tone={STATUS_TONE[admin.status]} dot className="shrink-0">
+              {t(`featAdm.status.${admin.status}`)}
+            </Badge>
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <Badge tone="neutral">
+                {kind === "tool" && tool ? t(`aicc.category.${tool.category}`) : t(`aicc.panel.kind.${kind}`)}
+              </Badge>
+              {tool && <Badge tone={ENGINE_TONE[tool.engineMode]}>{t(`aicc.engine.${tool.engineMode}`)}</Badge>}
+              {tool && <span className="text-[12px] font-semibold tabular-nums text-muted">{creditsLabel(tool, t)}</span>}
+              {admin.hiddenFromMenu && admin.status !== "DISABLED" && (
+                <span className="inline-flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wide text-faint">
+                  <EyeOff size={11} aria-hidden /> {t("featAdm.hiddenChip")}
+                </span>
+              )}
+              {scheduled && (
+                <span className="text-[10.5px] font-bold uppercase tracking-wide text-faint">{t("featAdm.scheduledChip")}</span>
+              )}
+              {tool?.serviceMaintenance && <Badge tone="warning">{t("aicc.tools.serviceMaintenance")}</Badge>}
+              {tool && (
+                <span className="inline-flex min-w-0 items-center gap-1 text-[11.5px] text-faint" title={t("aicc.col.lastRun")}>
+                  <History size={12} aria-hidden className="shrink-0" />
+                  {tool.lastRunAt
+                    ? <RelativeTime at={tool.lastRunAt} locale={locale} t={t} />
+                    : t("aicc.tools.neverRun")}
+                  {tool.failures30d > 0 && (
+                    <span className="text-danger">· {t("aicc.tools.failures", { n: tool.failures30d })}</span>
+                  )}
+                </span>
+              )}
+            </div>
+            <button type="button" onClick={onOpen} aria-expanded={open} aria-controls={panelId}
+              className="inline-flex min-h-[36px] shrink-0 items-center gap-1.5 rounded-lg bg-accent2-soft px-3 text-[13px] font-semibold text-accent2 transition-[filter] hover:brightness-110">
+              <Settings2 size={14} aria-hidden />
+              {t("aicc.tools.configure")}
+              <ChevronDown size={14} aria-hidden
+                className={cn("transition-transform duration-200", open && "rotate-180")} />
+            </button>
+          </div>
         </div>
       </div>
 
-      {visible.length === 0 ? (
-        <div className="panel rounded-2xl px-5 py-12 text-center text-sm text-muted">{t("aicc.tools.noMatches")}</div>
-      ) : (
-        <>
-          {/* PHONE — the compact card from the brief: name, what it runs on,
-              engine, status, one action. Everything else is one tap away. */}
-          <ul className="space-y-2.5 lg:hidden">
-            {visible.map((r) => (
-              <li key={r.key} className="panel rounded-2xl p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{t(r.nameKey)}</p>
-                    <p className="truncate text-xs text-muted">{modelLine(r, t)}</p>
-                  </div>
-                  <Badge tone={STATUS_TONE[r.status]} dot>{t(`featAdm.status.${r.status}`)}</Badge>
-                </div>
-                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                  <Badge tone={ENGINE_TONE[r.engineMode]}>{t(`aicc.engine.${r.engineMode}`)}</Badge>
-                  {r.promptVersion !== null && <Badge tone="neutral">v{r.promptVersion}</Badge>}
-                  {r.serviceMaintenance && <Badge tone="warning">{t("aicc.tools.serviceMaintenance")}</Badge>}
-                  <span className="text-xs text-faint">{creditsLabel(r, t)}</span>
-                </div>
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  {/* The clock replaces "Ostatnie uruchomienie:" — the label
-                      was longer than the value it introduced and truncated it
-                      away on a 390px card. */}
-                  <span className="flex min-w-0 items-center gap-1.5 truncate text-xs text-faint"
-                    title={t("aicc.col.lastRun")}>
-                    <History size={12} aria-hidden className="shrink-0" />
-                    {r.lastRunAt
-                      ? <RelativeTime at={r.lastRunAt} locale={locale} t={t} />
-                      : t("aicc.tools.neverRun")}
-                  </span>
-                  <Link href={`/admin/ai/${r.key}`}
-                    className="inline-flex min-h-[36px] shrink-0 items-center gap-1.5 rounded-lg bg-accent2-soft px-3 text-[13px] font-semibold text-accent2 transition-[filter] hover:brightness-110">
-                    <Settings2 size={14} aria-hidden />
-                    {t("aicc.tools.configure")}
-                  </Link>
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          {/* DESKTOP — one row per tool. */}
-          <div className="panel hidden overflow-hidden rounded-2xl lg:block">
-            <div className="table-scroll thin-scroll overflow-y-auto">
-              <table className="w-full min-w-[960px] text-sm">
-                <thead>
-                  <tr className="bg-surface/95 text-left text-[11px] uppercase tracking-[0.08em] text-faint">
-                    {[t("aicc.col.tool"), t("aicc.col.category"), t("aicc.col.engine"), t("aicc.col.model"),
-                      t("aicc.col.credits"), t("common.status"), t("aicc.col.lastRun"), ""].map((h, i) => (
-                      <th key={i} className="whitespace-nowrap px-4 py-3 font-semibold">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.map((r) => (
-                    <tr key={r.key} className="border-t border-line transition-colors hover:bg-raised/50">
-                      <td className="px-4 py-2.5">
-                        <Link href={`/admin/ai/${r.key}`} className="font-medium hover:text-accent">
-                          {t(r.nameKey)}
-                        </Link>
-                        <p className="truncate font-mono text-[11px] text-faint">{r.path || r.key}</p>
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2.5 text-muted">{t(`aicc.category.${r.category}`)}</td>
-                      <td className="px-4 py-2.5">
-                        <span className="flex flex-wrap items-center gap-1.5">
-                          <Badge tone={ENGINE_TONE[r.engineMode]}>{t(`aicc.engine.${r.engineMode}`)}</Badge>
-                          {r.promptVersion !== null && (
-                            <span className="text-[11px] font-semibold text-faint">v{r.promptVersion}</span>
-                          )}
-                        </span>
-                      </td>
-                      <td className="max-w-[220px] px-4 py-2.5 text-muted">
-                        <span className="block truncate">{modelLine(r, t)}</span>
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2.5 tabular-nums">{creditsLabel(r, t)}</td>
-                      <td className="px-4 py-2.5">
-                        <span className="flex flex-wrap gap-1">
-                          <Badge tone={STATUS_TONE[r.status]} dot>{t(`featAdm.status.${r.status}`)}</Badge>
-                          {r.serviceMaintenance && <Badge tone="warning">{t("aicc.tools.serviceMaintenance")}</Badge>}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-2.5 text-muted">
-                        {r.lastRunAt
-                          ? <RelativeTime at={r.lastRunAt} locale={locale} t={t} />
-                          : <span className="text-faint">{t("aicc.tools.neverRun")}</span>}
-                        {r.failures30d > 0 && (
-                          <span className="ml-2 text-[11px] text-danger">
-                            {t("aicc.tools.failures", { n: r.failures30d })}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5 text-right">
-                        <Link href={`/admin/ai/${r.key}`} aria-label={t("aicc.tools.configure")}
-                          className="inline-grid size-9 place-items-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-accent">
-                          <ChevronRight size={16} aria-hidden />
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {/* EXPANDED — the four sections. Two columns from `lg` (what it runs on
+          and costs | whether and where it is live), one on anything smaller. */}
+      {open && (
+        <div id={panelId} className="animate-fade border-t border-line bg-raised/40 px-3 py-3.5 sm:px-4 sm:py-4">
+          {kind === "tool" && tool ? (
+            <div className="grid gap-3.5 lg:grid-cols-2 [&>*]:min-w-0">
+              <div className="space-y-3.5">
+                <ConfigSection n={1} title={t("aicc.panel.sec.model")}>
+                  <ModelSection tool={tool} models={models} />
+                </ConfigSection>
+                <ConfigSection n={2} title={t("aicc.panel.sec.credits")}>
+                  <CreditsSection tool={tool} services={services} />
+                </ConfigSection>
+              </div>
+              <AvailabilityEditor key={savedKey(admin)} row={admin} availability={availability}
+                first={3} layout="stack" extra={<Covered keys={covered.map((c) => c.titleKey)} kind={kind} />} />
             </div>
-          </div>
-        </>
+          ) : (
+            <AvailabilityEditor key={savedKey(admin)} row={admin} availability={availability}
+              first={1} layout="split" extra={<Covered keys={covered.map((c) => c.titleKey)} kind={kind} />} />
+          )}
+          {kind === "tool" && (
+            <Link href={`/admin/ai/${admin.key}`}
+              className="mt-3.5 inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent hover:opacity-80">
+              {t("aicc.panel.fullConfig")} <ExternalLink size={13} aria-hidden />
+            </Link>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
-type T = (key: string, values?: Record<string, string | number>) => string;
+/** Remounts the editor whenever the SAVED record changes underneath it. */
+const savedKey = (r: FeatureAdminRow) =>
+  [r.status, r.hiddenFromMenu, r.startsAt, r.endsAt, r.autoReenable, r.customTitle, r.customMessage, r.updatedAt].join("|");
+
+function subLine(entry: PanelEntry, kind: PanelKind, covered: number, t: T): string {
+  if (entry.tool) return modelLine(entry.tool, t);
+  if (kind === "category") return t("aicc.panel.categoryLine", { n: covered });
+  return entry.admin.path;
+}
+
+/** The tools a switch covers without having one of their own. */
+function Covered({ keys, kind }: { keys: string[]; kind: PanelKind }) {
+  const { t } = useI18n();
+  // A single card is the entry itself under another name — nothing to explain.
+  if (kind !== "category" && keys.length < 2) return null;
+  if (keys.length === 0) return null;
+  return (
+    <div className="mt-3.5 border-t border-line pt-3">
+      <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-faint">
+        {t(kind === "category" ? "aicc.panel.inCategory" : "aicc.panel.covers", { n: keys.length })}
+      </p>
+      <ul className="mt-2 flex flex-wrap gap-1.5">
+        {keys.map((k) => (
+          <li key={k} className="max-w-full truncate rounded-full bg-raised px-2.5 py-1 text-[11.5px] font-medium text-muted">
+            {t(k)}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-[11.5px] leading-relaxed text-faint">
+        {t(kind === "category" ? "aicc.panel.categoryNote" : "aicc.panel.coversNote")}
+      </p>
+    </div>
+  );
+}
+
+/* ── 1 · model i silnik ─────────────────────────────────────────────────────*/
+
+function configOf(tool: ToolRow): ToolConfigValues {
+  return {
+    toolKey: tool.key,
+    engineMode: tool.engineMode,
+    serviceSlug: tool.serviceSlug,
+    allowModelChoice: tool.allowModelChoice,
+    fallbackEnabled: tool.fallbackEnabled,
+    timeoutMs: tool.timeoutMs,
+    maxAttempts: tool.maxAttempts,
+    notes: tool.notes,
+  };
+}
+
+function ModelSection({ tool, models }: { tool: ToolRow; models: PickableModel[] }) {
+  const { t } = useI18n();
+  // The tabs the tool workspace offers are the controls this tool HAS: a
+  // sharp tool has no engine and no model, and pretending otherwise would be
+  // a control that decides nothing.
+  const tabs = toolTabs(tool);
+  const config = configOf(tool);
+  const providers = [...new Set(tool.models
+    .filter((m) => m.role !== "allowed").map((m) => m.providerName).filter(Boolean))];
+
+  return (
+    <div className="space-y-4">
+      <dl className="grid gap-x-4 gap-y-2 text-[13px] sm:grid-cols-[auto_minmax(0,1fr)]">
+        <dt className="text-muted">{t("aicc.col.model")}</dt>
+        <dd className="min-w-0 font-medium text-ink">{modelLine(tool, t)}</dd>
+        {providers.length > 0 && (
+          <>
+            <dt className="text-muted">{t("aicc.panel.provider")}</dt>
+            <dd className="min-w-0 font-medium text-ink">{providers.join(", ")}</dd>
+          </>
+        )}
+        <dt className="text-muted">{t("aicc.col.engine")}</dt>
+        <dd className="min-w-0"><Badge tone={ENGINE_TONE[tool.engineMode]}>{t(`aicc.engine.${tool.engineMode}`)}</Badge></dd>
+      </dl>
+
+      {tabs.includes("engine") && (
+        <div className="border-t border-line pt-3.5">
+          <ToolConfigForm section="engine" initial={config} services={[]} />
+        </div>
+      )}
+      {tabs.includes("models") && (
+        <div className="border-t border-line pt-3.5">
+          <ToolModelPicker toolKey={tool.key} models={models} config={config}
+            initial={{
+              primaryId: tool.models.find((m) => m.role === "primary")?.id ?? null,
+              fallbackId: tool.models.find((m) => m.role === "fallback")?.id ?? null,
+              allowedIds: tool.models.filter((m) => m.role === "allowed").map((m) => m.id),
+            }} />
+        </div>
+      )}
+      {!tabs.includes("engine") && !tabs.includes("models") && (
+        <p className="flex items-start gap-2 rounded-xl bg-raised px-3 py-2.5 text-[12.5px] leading-relaxed text-muted">
+          <Cpu size={14} aria-hidden className="mt-0.5 shrink-0 text-faint" />
+          <span className="min-w-0">
+            {t(tool.category === "local" ? "aicc.panel.localNote" : "aicc.panel.capabilityNote")}
+            {tool.category !== "local" && (
+              <>
+                {" "}
+                <Link href="/admin/ai/modele?tab=dostawcy" className="font-semibold text-accent hover:opacity-80">
+                  {t("aicc.panel.providersLink")}
+                </Link>
+              </>
+            )}
+          </span>
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* ── 2 · kredyty ────────────────────────────────────────────────────────────*/
+
+function CreditsSection({ tool, services }: {
+  tool: ToolRow;
+  services: { slug: string; name: string; credits: number }[];
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="space-y-3.5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <p className="text-[13px] text-muted">
+          <span className="text-[20px] font-bold tabular-nums text-ink">{creditsLabel(tool, t)}</span>
+          {tool.credits !== null && tool.credits > 0 && <span className="ml-1.5">{t("aicc.panel.perRun")}</span>}
+        </p>
+        <p className="text-[11.5px] text-faint">
+          {t("aicc.panel.usage30d", { runs: tool.runs30d, failures: tool.failures30d })}
+        </p>
+      </div>
+      {tool.credits === null && <p className="text-[12px] text-faint">{t("aicc.panel.noBilling")}</p>}
+      <ToolConfigForm section="billing" initial={configOf(tool)} services={services} />
+      <Link href="/admin/services"
+        className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent hover:opacity-80">
+        {t("aicc.panel.priceLink")} <ExternalLink size={13} aria-hidden />
+      </Link>
+    </div>
+  );
+}
+
+/* ── labels ─────────────────────────────────────────────────────────────────*/
 
 /**
  * What this tool runs on, in one line.

@@ -379,7 +379,7 @@ const VALUE_KEYS: Array<[string, "root" | "app" | "admin", string, string]> = [
   ["toolsearch.image_moda.words", "app", "lib/tool-search.ts -> command-palette", "what the search matches Polish queries against"],
   ["models.badge.recommended", "app", "lib/model-badge.ts -> model-select", "the badge on an AI model chip"],
   ["cats.moda", "app", "lib/features.ts -> feature gates", "category names"],
-  ["topnav.home", "admin", "lib/features.ts -> feature-availability-panel", "tile names in Ustawienia → Funkcje"],
+  ["topnav.home", "admin", "lib/features.ts -> tool-registry", "module names in Admin → Narzędzia i silniki"],
   ["mega.engine", "admin", "lib/features.ts -> tool-registry", "tool names in Admin → AI"],
   ["video.title", "admin", "lib/features.ts -> tool-registry", "the Wideo row"],
   ["time.minutes", "admin", "lib/relative-time.ts -> RelativeTime", "every relative timestamp in /admin"],

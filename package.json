@@ -54,6 +54,8 @@
     "test:nav": "esbuild scripts/nav-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/nav-tests.cjs --log-level=silent && node .next/nav-tests.cjs",
     "test:home": "esbuild scripts/home-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/home-tests.cjs --log-level=silent && node .next/home-tests.cjs",
     "test:homeprobe": "node scripts/home-probe.mjs",
+    "test:toolspanel": "esbuild scripts/tools-panel-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/tools-panel-tests.cjs --log-level=silent && node .next/tools-panel-tests.cjs",
+    "test:toolspanelprobe": "node scripts/tools-panel-probe.mjs",
     "test:toolshub": "esbuild scripts/tools-hub-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/tools-hub-tests.cjs --log-level=silent && node .next/tools-hub-tests.cjs",
     "test:download": "esbuild scripts/download-tests.ts --bundle --platform=node --format=esm --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/download-tests.mjs --log-level=silent && node .next/download-tests.mjs",
     "test:cms": "esbuild scripts/cms-tests.ts --bundle --platform=node --format=esm --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/cms-tests.mjs --log-level=silent && node .next/cms-tests.mjs",

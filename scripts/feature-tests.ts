@@ -63,7 +63,7 @@ console.log("\nA. REGISTRY — every real module is covered, the untouchable one
   // The exceptions are named one by one on purpose: two have no engine behind
   // them yet (image_matching, video) and one is a product decision — GrovBase
   // does not keep product catalogues, so `products` ships off and an operator
-  // turns it back on from /admin/settings/features if that ever changes.
+  // turns it back on from Admin → Narzędzia i silniki if that ever changes.
   //
   // The four Moda tools are a fourth kind of exception and a temporary one:
   // everything about them is built, but each runs on an instruction an

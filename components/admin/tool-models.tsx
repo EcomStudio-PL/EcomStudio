@@ -1,5 +1,5 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
@@ -34,6 +34,8 @@ export function ToolModelPicker({ toolKey, models, initial, config }: {
 }) {
   const { t } = useI18n();
   const router = useRouter();
+  // Unique per picker: the Narzędzia i silniki screen can hold more than one.
+  const id = useId();
   const [pending, start] = useTransition();
   const [primaryId, setPrimary] = useState(initial.primaryId ?? "");
   const [fallbackId, setFallback] = useState(initial.fallbackId ?? "");
@@ -72,8 +74,8 @@ export function ToolModelPicker({ toolKey, models, initial, config }: {
     <div className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <Label htmlFor="primary">{t("aicc.models.primary")}</Label>
-          <Select id="primary" value={primaryId} onChange={(e) => setPrimary(e.target.value)}>
+          <Label htmlFor={`${id}-primary`}>{t("aicc.models.primary")}</Label>
+          <Select id={`${id}-primary`} value={primaryId} onChange={(e) => setPrimary(e.target.value)}>
             <option value="">{t("aicc.models.none")}</option>
             {options}
           </Select>
@@ -81,14 +83,14 @@ export function ToolModelPicker({ toolKey, models, initial, config }: {
         </div>
         <div>
           <div className="flex items-center justify-between gap-2">
-            <Label htmlFor="fallback">{t("aicc.models.fallback")}</Label>
+            <Label htmlFor={`${id}-fallback`}>{t("aicc.models.fallback")}</Label>
             <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-muted">
               <input type="checkbox" checked={fallbackOn} onChange={(e) => setFallbackOn(e.target.checked)}
                 className="size-3.5 accent-[rgb(var(--accent))]" />
               {t("aicc.models.fallbackEnable")}
             </label>
           </div>
-          <Select id="fallback" value={fallbackId} disabled={!fallbackOn}
+          <Select id={`${id}-fallback`} value={fallbackId} disabled={!fallbackOn}
             onChange={(e) => setFallback(e.target.value)}>
             <option value="">{t("aicc.models.none")}</option>
             {options}

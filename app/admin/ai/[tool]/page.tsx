@@ -6,7 +6,8 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getAvailabilityMap } from "@/lib/server/feature-availability";
 import {
-  isAiToolKey, readPromptHistory, readToolRegistry, toolTabs, type ToolTab,
+  isAiToolKey, readBillingServices, readPickableModels, readPromptHistory, readToolRegistry,
+  toolTabs, type ToolTab,
 } from "@/lib/services/ai-tools";
 import { billingFrom } from "@/lib/images/pricing";
 import { STATUS_TONE } from "@/lib/status-tone";
@@ -53,25 +54,18 @@ export default async function ToolWorkspace({ params, searchParams }: {
   const tabs = toolTabs(row);
   const tab: ToolTab = (tabs as string[]).includes(tabParam ?? "") ? (tabParam as ToolTab) : tabs[0];
 
+  // The stored values are what the form must round-trip — the registry row
+  // carries them, so no second read of `ai_tools` is needed.
   const config = {
     toolKey: row.key,
     engineMode: row.engineMode,
     serviceSlug: row.serviceSlug,
     allowModelChoice: row.allowModelChoice,
     fallbackEnabled: row.fallbackEnabled,
-    // The stored values are what the form must round-trip; the registry row
-    // does not carry them because the list has no use for them.
-    timeoutMs: 120000,
-    maxAttempts: 1,
-    notes: null as string | null,
+    timeoutMs: row.timeoutMs,
+    maxAttempts: row.maxAttempts,
+    notes: row.notes,
   };
-  const { data: stored } = await supabase
-    .from("ai_tools").select("timeout_ms, max_attempts, notes").eq("tool_key", row.key).maybeSingle();
-  if (stored) {
-    config.timeoutMs = stored.timeout_ms;
-    config.maxAttempts = stored.max_attempts;
-    config.notes = stored.notes;
-  }
 
   return (
     <div>
@@ -131,14 +125,12 @@ type WithConfig = Ctx & { config: Parameters<typeof ToolConfigForm>[0]["initial"
 /* ── PODSTAWOWE ───────────────────────────────────────────────────────────*/
 
 async function BasicsTab({ supabase, t, row, config }: WithConfig) {
-  const { data: services } = await supabase
-    .from("service_catalog").select("slug, name, credits_cost").order("category").order("name");
+  const services = await readBillingServices(supabase);
 
   return (
     <div className="grid gap-4 [&>*]:min-w-0 lg:grid-cols-[1fr_320px]">
       <Card className="p-5">
-        <ToolConfigForm section="basics" initial={config}
-          services={(services ?? []).map((s) => ({ slug: s.slug, name: s.name, credits: s.credits_cost }))} />
+        <ToolConfigForm section="basics" initial={config} services={services} />
       </Card>
 
       <Card className="p-5">
@@ -152,12 +144,13 @@ async function BasicsTab({ supabase, t, row, config }: WithConfig) {
             value={row.hiddenFromMenu ? t("aicc.basics.hidden") : t("aicc.basics.visible")} />
         </dl>
         {/*
-          Status and menu visibility are NOT edited here. They belong to the
+          Status and visibility are NOT edited here. They belong to the
           availability switchboard that the customer menu and the route guards
-          read; a second switch would be a way for two screens to disagree
-          about whether a tool is live.
+          read, and it is edited in one place — this tool's row on the
+          Narzędzia i silniki screen, opened by this link. A second switch
+          would be a way for two screens to disagree about whether a tool is live.
         */}
-        <Link href="/admin/settings/features"
+        <Link href={`/admin/ai?tool=${row.key}`}
           className="mt-4 inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent hover:opacity-75">
           {t("aicc.basics.editStatus")} <ExternalLink size={13} aria-hidden />
         </Link>
@@ -196,21 +189,7 @@ async function EngineTab({ supabase, t, row, config, locale }: WithConfig & { lo
 /* ── MODELE ───────────────────────────────────────────────────────────────*/
 
 async function ModelsTab({ supabase, t, row, config }: WithConfig) {
-  const { data: models } = await supabase
-    .from("ai_models")
-    .select("id, name, display_name, active, credit_cost, ai_providers(name)")
-    .order("sort_order", { ascending: true });
-
-  const pickable = ((models ?? []) as unknown as {
-    id: string; name: string; display_name: string | null; active: boolean;
-    credit_cost: number; ai_providers: { name: string } | null;
-  }[]).map((m) => ({
-    id: m.id,
-    name: m.display_name || m.name,
-    providerName: m.ai_providers?.name ?? "—",
-    active: m.active,
-    credits: m.credit_cost,
-  }));
+  const pickable = await readPickableModels(supabase);
 
   return (
     <Card className="p-5">

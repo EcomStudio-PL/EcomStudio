@@ -99,7 +99,11 @@ console.log("D. one source of truth per fact");
   const page = read("app/admin/ai/[tool]/page.tsx");
   check("the tool config never writes feature_availability",
     !actions.includes("feature_availability"));
-  check("status is edited where it lives", page.includes("/admin/settings/features"));
+  // Status lives in feature_availability and is edited on that tool's row of
+  // Narzędzia i silniki — the workspace links there rather than growing a
+  // second switch of its own.
+  check("status is edited where it lives", page.includes("/admin/ai?tool=")
+    && !page.includes("saveFeatureAvailabilityAction"));
   check("the price comes from the catalogue, and is only pointed at",
     actions.includes('from("service_catalog")') && !actions.includes("credits_cost:"));
   check("no wallet write anywhere in this surface",
@@ -274,8 +278,7 @@ console.log("K. four status colours, and each one means what it says");
   check("a module switched off on purpose is not an error",
     /DISABLED: "neutral"/.test(tones) && /DISABLED: "bg-muted"/.test(tones));
   check("every screen that shows a status reads the same map",
-    ["components/admin/tool-registry.tsx", "components/admin/feature-availability-panel.tsx",
-      "app/admin/ai/[tool]/page.tsx"]
+    ["components/admin/tool-registry.tsx", "app/admin/ai/[tool]/page.tsx"]
       .every((f) => read(f).includes('from "@/lib/status-tone"')));
   check("a budget over its warn threshold reads as a warning",
     budgets.includes('"warn" ? "warning"') && budgets.includes('"warn" ? "bg-warning"'));

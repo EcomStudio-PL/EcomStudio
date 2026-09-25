@@ -1,35 +1,12 @@
-import { getDictionary } from "@/lib/i18n/server";
-import { makeT } from "@/lib/i18n/t";
-import { PageHeader } from "@/components/ui/page-header";
-import { FeatureAvailabilityPanel } from "@/components/admin/feature-availability-panel";
-import { clientPreviewStateAction, listFeatureAvailabilityAction } from "@/app/actions/features";
-
-export const dynamic = "force-dynamic";
+import { redirect } from "next/navigation";
 
 /**
- * DOSTĘPNOŚĆ FUNKCJI — the switchboard for real product modules. The admin
- * layout above gates on role; every write re-checks it. Login, auth confirm,
- * the security challenge, settings and billing have no tile here on purpose
- * (C11) — the registry does not know them.
+ * DOSTĘPNOŚĆ FUNKCJI moved into Narzędzia i silniki (/admin/ai): every tool,
+ * category and module now has its status and visibility on the same row as
+ * its model and credits. The table, the server actions and the rules the
+ * customer side reads are unchanged — only the screen moved — so a bookmark
+ * lands on the screen that took the job over, never on a 404.
  */
-export default async function AdminFeatureAvailability() {
-  const { dict } = await getDictionary();
-  const t = makeT(dict);
-  const [rows, previewing] = await Promise.all([
-    listFeatureAvailabilityAction(),
-    clientPreviewStateAction(),
-  ]);
-
-  return (
-    <div>
-      <PageHeader
-        overline={t("admin.navGroups.system")}
-        title={t("featAdm.title")}
-        sub={t("featAdm.sub")}
-      />
-      {rows
-        ? <FeatureAvailabilityPanel rows={rows} previewing={previewing} />
-        : <p className="text-sm text-muted">{t("common.error")}</p>}
-    </div>
-  );
+export default function AdminFeatureAvailability() {
+  redirect("/admin/ai");
 }

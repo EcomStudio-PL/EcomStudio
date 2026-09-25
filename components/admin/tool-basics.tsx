@@ -1,10 +1,12 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { saveToolConfigAction } from "@/app/actions/ai-tools";
-import { ENGINE_MODES, type EngineMode } from "@/lib/services/ai-tools";
+import {
+  ENGINE_MODES, mergeToolConfig, type ToolConfigSection, type ToolConfigValues,
+} from "@/lib/services/ai-tools";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -15,35 +17,31 @@ import { cn } from "@/lib/utils";
  * They share one save action because they are one row; which fields are shown
  * is the caller's decision, so the engine tab does not repeat the service
  * picker and the basics tab does not repeat the engine modes.
+ *
+ * Each section saves only its own fields, laid over the row as last saved —
+ * see `mergeToolConfig`.
  */
 
-export type ToolConfigValues = {
-  toolKey: string;
-  engineMode: EngineMode;
-  serviceSlug: string | null;
-  allowModelChoice: boolean;
-  fallbackEnabled: boolean;
-  timeoutMs: number;
-  maxAttempts: number;
-  notes: string | null;
-};
+export type { ToolConfigValues };
 
 export function ToolConfigForm({ initial, services, section }: {
   initial: ToolConfigValues;
   services: { slug: string; name: string; credits: number }[];
-  /** "basics" shows the catalogue link and the note; "engine" shows the mode
-   *  and the request policy. */
-  section: "basics" | "engine";
+  /** "basics" shows the catalogue link and the note; "billing" only the
+   *  catalogue link; "engine" the mode and the request policy. */
+  section: ToolConfigSection;
 }) {
   const { t } = useI18n();
   const router = useRouter();
+  const id = useId();
   const [pending, start] = useTransition();
   const [form, setForm] = useState(initial);
-  const dirty = JSON.stringify(form) !== JSON.stringify(initial);
+  const payload = mergeToolConfig(section, initial, form);
+  const dirty = JSON.stringify(payload) !== JSON.stringify(initial);
 
   function save() {
     start(async () => {
-      const res = await saveToolConfigAction(form);
+      const res = await saveToolConfigAction(payload);
       if (res.ok) { toast.success(t("common.saved")); router.refresh(); }
       else toast.error(res.error === "unknown_service" ? t("aicc.err.unknownService") : t("common.error"));
     });
@@ -51,11 +49,11 @@ export function ToolConfigForm({ initial, services, section }: {
 
   return (
     <div className="space-y-5">
-      {section === "basics" ? (
+      {section !== "engine" ? (
         <>
           <div>
-            <Label htmlFor="svc">{t("aicc.basics.service")}</Label>
-            <Select id="svc" value={form.serviceSlug ?? ""}
+            <Label htmlFor={`${id}-svc`}>{t("aicc.basics.service")}</Label>
+            <Select id={`${id}-svc`} value={form.serviceSlug ?? ""}
               onChange={(e) => setForm({ ...form, serviceSlug: e.target.value || null })}>
               <option value="">{t("aicc.basics.noService")}</option>
               {services.map((s) => (
@@ -66,12 +64,14 @@ export function ToolConfigForm({ initial, services, section }: {
             </Select>
             <p className="mt-1 text-xs text-faint">{t("aicc.basics.serviceHint")}</p>
           </div>
-          <div>
-            <Label htmlFor="notes">{t("aicc.basics.notes")}</Label>
-            <Textarea id="notes" rows={3} value={form.notes ?? ""}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-            <p className="mt-1 text-xs text-faint">{t("aicc.basics.notesHint")}</p>
-          </div>
+          {section === "basics" && (
+            <div>
+              <Label htmlFor={`${id}-notes`}>{t("aicc.basics.notes")}</Label>
+              <Textarea id={`${id}-notes`} rows={3} value={form.notes ?? ""}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+              <p className="mt-1 text-xs text-faint">{t("aicc.basics.notesHint")}</p>
+            </div>
+          )}
         </>
       ) : (
         <>
@@ -86,7 +86,7 @@ export function ToolConfigForm({ initial, services, section }: {
                       ? "border-accent bg-accent-soft/40"
                       : "border-line hover:border-accent/50",
                   )}>
-                  <input type="radio" name="engine-mode" value={mode} checked={form.engineMode === mode}
+                  <input type="radio" name={`${id}-engine-mode`} value={mode} checked={form.engineMode === mode}
                     onChange={() => setForm({ ...form, engineMode: mode })}
                     className="mt-0.5 size-4 shrink-0 accent-[rgb(var(--accent))]" />
                   <span className="min-w-0">
@@ -102,13 +102,13 @@ export function ToolConfigForm({ initial, services, section }: {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <Label htmlFor="timeout">{t("aicc.engine.timeout")}</Label>
-              <Input id="timeout" type="number" min={5} max={600} value={Math.round(form.timeoutMs / 1000)}
+              <Label htmlFor={`${id}-timeout`}>{t("aicc.engine.timeout")}</Label>
+              <Input id={`${id}-timeout`} type="number" min={5} max={600} value={Math.round(form.timeoutMs / 1000)}
                 onChange={(e) => setForm({ ...form, timeoutMs: (Number(e.target.value) || 120) * 1000 })} />
             </div>
             <div>
-              <Label htmlFor="attempts">{t("aicc.engine.attempts")}</Label>
-              <Input id="attempts" type="number" min={1} max={3} value={form.maxAttempts}
+              <Label htmlFor={`${id}-attempts`}>{t("aicc.engine.attempts")}</Label>
+              <Input id={`${id}-attempts`} type="number" min={1} max={3} value={form.maxAttempts}
                 onChange={(e) => setForm({ ...form, maxAttempts: Number(e.target.value) || 1 })} />
               {/* An extra attempt is an extra invoice from the provider. */}
               <p className="mt-1 text-xs text-faint">{t("aicc.engine.attemptsHint")}</p>

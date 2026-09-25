@@ -46,7 +46,7 @@ export async function FeatureGate({ feature, children }: {
   if (admin) {
     return (
       <>
-        <AdminPreviewStrip state={state} />
+        <AdminPreviewStrip state={state} feature={feature} />
         {children}
       </>
     );
@@ -109,8 +109,9 @@ async function FeatureBlockedScreen({ state, feature, previewing }: {
 }
 
 /** What an admin sees on a restricted module: the page itself, plus an honest
- *  strip saying what customers get instead — with the switch one click away. */
-async function AdminPreviewStrip({ state }: { state: FeatureState }) {
+ *  strip saying what customers get instead — with the switch one click away,
+ *  on this module's own row of Admin → Narzędzia i silniki. */
+async function AdminPreviewStrip({ state, feature }: { state: FeatureState; feature: FeatureKey }) {
   const { dict } = await getDictionary();
   const t = makeT(dict);
   const statusLabel = t(
@@ -124,7 +125,7 @@ async function AdminPreviewStrip({ state }: { state: FeatureState }) {
         <ShieldAlert size={15} aria-hidden className="shrink-0" />
         {t("features.adminPreview", { status: statusLabel })}
       </span>
-      <Link href="/admin/settings/features" className="font-semibold underline underline-offset-2 hover:opacity-80">
+      <Link href={`/admin/ai?tool=${feature}`} className="font-semibold underline underline-offset-2 hover:opacity-80">
         {t("features.manage")}
       </Link>
     </div>

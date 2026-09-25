@@ -4,7 +4,7 @@ import {
   Coins, Rocket, LifeBuoy, Settings, Shield, Users, Building2, Cpu, Wrench,
   ScrollText, SlidersHorizontal, Wand2, BarChart3, Layers, Globe,
   FolderOpen, Lightbulb, MessageSquare, Mail, Send,
-  ToggleLeft, Gift, DoorOpen, ClipboardList,
+  Gift, DoorOpen, ClipboardList,
 } from "lucide-react";
 
 /** Single source of truth for app navigation. Client drawer, desktop
@@ -115,7 +115,10 @@ export const ADMIN_NAV: readonly NavGroup[] = [
   ]},
   { key: "system", items: [
     { href: "/admin/settings/access", key: "access", icon: DoorOpen },
-    { href: "/admin/settings/features", key: "features", icon: ToggleLeft },
+    // "Dostępność funkcji" stood here. Status and visibility are now edited on
+    // the same row as each tool's model and credits — AI i generowanie →
+    // Narzędzia i silniki — and /admin/settings/features redirects there. The
+    // table and its actions are unchanged; only the screen moved.
     { href: "/admin/settings/security", key: "loginSecurity", icon: Shield },
     { href: "/admin/settings/onboarding", key: "onboarding", icon: Gift },
     // Reachable at last: this page has existed and worked since 0055, and no
