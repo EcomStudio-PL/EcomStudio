@@ -44,6 +44,15 @@ import type { Database } from "@/lib/database.types";
  *    non-2xx makes Stripe retry, and retrying a duplicate forever is noise. A
  *    genuine failure — the database is down — answers 500 so the retry is the
  *    useful one.
+ *
+ * 6. GROVNEWS IS NOT A PLAN AND BUYS NO CREDITS (migration 0123). Its invoices
+ *    and subscription events are recognised FIRST — by the subscription's own
+ *    `type: grovnews_subscription` metadata, or by stable ids (any GrovNews
+ *    Price ever created, a subscription already recorded as GrovNews) — and go
+ *    to their own token-gated functions, which extend paid access and never
+ *    reach `stripe_settle_payment`, `payments`, `subscriptions` or the ledger.
+ *    A plan subscription this app created says `type: subscription` and skips
+ *    the question entirely.
  */
 
 type Json = Database["public"]["Tables"]["payments"]["Row"]["metadata"];
@@ -53,6 +62,8 @@ export type StripeEvent = {
   id: string;
   type: string;
   livemode?: boolean;
+  /** Epoch seconds. Orders subscription events that arrive out of order. */
+  created?: number;
   data: { object: Record<string, unknown> };
 };
 
@@ -129,6 +140,16 @@ function invoiceSubscription(invoice: Record<string, unknown>): string | null {
   const parent = invoice.parent as Record<string, unknown> | undefined;
   const details = parent?.subscription_details as Record<string, unknown> | undefined;
   return idOf(details?.subscription) ?? idOf(invoice.subscription);
+}
+
+/** The SUBSCRIPTION's metadata as an invoice carries it — modern shape
+ *  (`parent.subscription_details`) first, then the 2024-06-20 one. */
+function invoiceSubscriptionMeta(invoice: Record<string, unknown>): Record<string, string> {
+  const parent = invoice.parent as Record<string, unknown> | undefined;
+  const modern = parent?.subscription_details as Record<string, unknown> | undefined;
+  if (modern && Object.keys(metaOf(modern)).length > 0) return metaOf(modern);
+  const legacy = invoice.subscription_details as Record<string, unknown> | undefined;
+  return legacy ? metaOf(legacy) : {};
 }
 
 /** Epoch seconds → ISO, or null. Stripe sends seconds; Postgres wants a stamp. */
@@ -369,6 +390,124 @@ async function recordUnactionable(
   return { outcome };
 }
 
+/* ── GrovNews (migration 0123) ─────────────────────────────────────────────*/
+
+const GROVNEWS_TYPE = "grovnews_subscription";
+
+/**
+ * Is this a GrovNews object? The app's own metadata answers for everything it
+ * created; only an object without it (made in the dashboard, or an older
+ * payload shape) costs a lookup by stable id. A failed lookup is an error, not
+ * a "no": treating it as a plan would bill a GrovNews renewal as a plan.
+ */
+async function isGrovNews(
+  supabase: Client, token: string, meta: Record<string, string>,
+  subscriptionId: string | null, priceId: string | null,
+): Promise<boolean> {
+  if (meta.type === GROVNEWS_TYPE) return true;
+  if (meta.type === "subscription") return false;
+  if (!subscriptionId && !priceId) return false;
+  const { data, error } = await supabase.rpc("grovnews_is_billing_object", {
+    p_token: token, p_subscription_id: subscriptionId, p_price_id: priceId,
+  });
+  if (error) throw new Error(`grovnews_classify_failed:${error.code ?? "unknown"}`);
+  return data === true;
+}
+
+function outcomeOf(data: unknown): HandledOutcome {
+  const s = (data as { status?: string } | null)?.status;
+  return s === "duplicate_event" || s === "already_settled" || s === "unresolved_workspace" ? s : "applied";
+}
+
+/**
+ * A PAID GrovNews period: access is extended to the end of the period this
+ * invoice paid for. Keyed on the event AND the invoice, so any number of
+ * deliveries extend it once. No credits, no `payments` row.
+ */
+async function onGrovNewsInvoicePaid(
+  supabase: Client, token: string, event: StripeEvent, invoiceId: string,
+  line: Record<string, unknown>, priceId: string | null, subscriptionId: string | null,
+  meta: Record<string, string>,
+): Promise<HandleResult> {
+  const invoice = event.data.object;
+  const workspaceId = meta.grovbase_workspace_id ?? await resolveWorkspace(supabase, token, invoice);
+  const period = (line.period ?? {}) as Record<string, unknown>;
+  const { data, error } = await supabase.rpc("grovnews_invoice_paid", {
+    p_token: token,
+    p_event_id: event.id,
+    p_event_type: event.type,
+    p_invoice_id: invoiceId,
+    p_subscription_id: subscriptionId,
+    p_user_id: meta.grovbase_user_id ?? null,
+    p_workspace_id: workspaceId,
+    p_customer_id: idOf(invoice.customer),
+    p_price_id: priceId,
+    p_amount_paid: int(invoice.amount_paid) ?? 0,
+    p_currency: (str(invoice.currency) ?? "pln").toUpperCase(),
+    p_period_start: iso(period.start),
+    p_period_end: iso(period.end),
+  });
+  if (error) throw new Error(`grovnews_invoice_failed:${error.code ?? "unknown"}`);
+  return { outcome: outcomeOf(data), detail: "grovnews" };
+}
+
+/** GrovNews subscription state — created, renewed, set to cancel, ended. */
+async function onGrovNewsSubscription(
+  supabase: Client, token: string, event: StripeEvent, subscriptionId: string,
+  item: Record<string, unknown>, priceId: string | null,
+): Promise<HandleResult> {
+  const sub = event.data.object;
+  const meta = metaOf(sub);
+  const workspaceId = meta.grovbase_workspace_id ?? await resolveWorkspace(supabase, token, sub);
+  const deleted = event.type === "customer.subscription.deleted";
+  const period = (item.current_period_start || item.current_period_end) ? item : sub;
+  const price = (item.price ?? {}) as Record<string, unknown>;
+  const { data, error } = await supabase.rpc("grovnews_sync_subscription", {
+    p_token: token,
+    p_event_id: event.id,
+    p_event_type: event.type,
+    p_event_created: iso(event.created),
+    p_subscription_id: subscriptionId,
+    p_user_id: meta.grovbase_user_id ?? null,
+    p_workspace_id: workspaceId,
+    p_customer_id: idOf(sub.customer),
+    p_price_id: priceId,
+    p_unit_amount: int(price.unit_amount),
+    p_currency: (str(price.currency) ?? str(sub.currency) ?? "pln").toUpperCase(),
+    p_status: str(sub.status) ?? "incomplete",
+    p_period_start: iso(period.current_period_start),
+    p_period_end: iso(period.current_period_end),
+    // A cancellation scheduled from the Billing Portal may arrive as `cancel_at`
+    // rather than the flag; both mean "will not renew".
+    p_cancel_at_period_end: !deleted && (sub.cancel_at_period_end === true || int(sub.cancel_at) !== null),
+    p_canceled_at: iso(sub.canceled_at),
+    p_ended_at: iso(sub.ended_at),
+    p_deleted: deleted,
+  });
+  if (error) throw new Error(`grovnews_sync_failed:${error.code ?? "unknown"}`);
+  return { outcome: outcomeOf(data), detail: "grovnews" };
+}
+
+/**
+ * A launch discount code rides on a PLAN subscription's metadata. Its first
+ * PAID invoice is the moment it is used — an abandoned checkout never gets
+ * here, and the database makes a retried event a no-op.
+ */
+async function redeemLaunchCode(
+  supabase: Client, token: string, codeId: string, subscriptionId: string,
+): Promise<void> {
+  const { data, error } = await supabase.rpc("grovnews_launch_code_redeem", {
+    p_token: token, p_code_id: codeId, p_subscription_id: subscriptionId,
+  });
+  if (error) throw new Error(`code_redeem_failed:${error.code ?? "unknown"}`);
+  const s = (data as { status?: string } | null)?.status;
+  if (s === "redeemed_elsewhere" || s === "unknown_code") {
+    // Two subscriptions paid with one code (two tabs), or a code that no longer
+    // exists. The payment itself is fine; a human should look.
+    console.error("stripe.webhook.launch_code_anomaly", s, codeId, subscriptionId);
+  }
+}
+
 /* ── the handlers ──────────────────────────────────────────────────────────*/
 
 async function onCheckoutCompleted(
@@ -487,15 +626,23 @@ async function onInvoicePaid(
   const invoiceId = str(invoice.id);
   if (!invoiceId) return { outcome: "ignored", detail: "no_id" };
 
+  const lines = (invoice.lines as { data?: unknown[] } | undefined)?.data ?? [];
+  const firstLine = (lines[0] ?? {}) as Record<string, unknown>;
+  const priceId = invoicePriceId(firstLine);
+  const subscriptionId = invoiceSubscription(invoice);
+  const subscriptionMeta = invoiceSubscriptionMeta(invoice);
+
+  // GrovNews first: it never reaches the settlement below.
+  if (await isGrovNews(supabase, token, subscriptionMeta, subscriptionId, priceId)) {
+    return onGrovNewsInvoicePaid(supabase, token, event, invoiceId, firstLine, priceId,
+      subscriptionId, subscriptionMeta);
+  }
+
   const workspaceId = await resolveWorkspace(supabase, token, invoice);
   if (!workspaceId) {
     return recordUnactionable(supabase, token, event, invoiceId, "unresolved_workspace",
       { customer: idOf(invoice.customer), amount_paid: int(invoice.amount_paid) });
   }
-
-  const lines = (invoice.lines as { data?: unknown[] } | undefined)?.data ?? [];
-  const firstLine = (lines[0] ?? {}) as Record<string, unknown>;
-  const priceId = invoicePriceId(firstLine);
 
   const parentDetails = (invoice.parent as Record<string, unknown> | undefined)
     ?.subscription_details as Record<string, unknown> | undefined;
@@ -505,7 +652,7 @@ async function onInvoicePaid(
     ?? null;
   const purchase = planId ? await purchaseFromPlan(supabase, token, planId) : null;
 
-  return settle(supabase, token, {
+  const result = await settle(supabase, token, {
     event, workspaceId,
     // Keyed on the INVOICE. Each renewal is its own invoice, so every period
     // grants once and no period grants twice.
@@ -514,8 +661,15 @@ async function onInvoicePaid(
     currency: (str(invoice.currency) ?? "pln").toUpperCase(),
     purchase,
     stripeCustomerId: idOf(invoice.customer),
-    metadata: { source: "invoice", subscription: invoiceSubscription(invoice) },
+    metadata: { source: "invoice", subscription: subscriptionId },
   });
+  // After settlement, whatever its outcome — a retry of an event that settled
+  // but crashed before this line must still mark the code used.
+  const codeId = subscriptionMeta.grovbase_launch_code_id;
+  if (codeId && subscriptionId && purchase?.kind === "subscription") {
+    await redeemLaunchCode(supabase, token, codeId, subscriptionId);
+  }
+  return result;
 }
 
 /** State only. Credits for a renewal come from invoice.paid and nowhere else. */
@@ -526,15 +680,20 @@ async function onSubscriptionEvent(
   const subscriptionId = str(sub.id);
   if (!subscriptionId) return { outcome: "ignored", detail: "no_id" };
 
+  const items = (sub.items as { data?: unknown[] } | undefined)?.data ?? [];
+  const firstItem = (items[0] ?? {}) as Record<string, unknown>;
+  const priceId = idOf(firstItem.price);
+
+  // GrovNews first: it is not a plan and must never be written as one.
+  if (await isGrovNews(supabase, token, metaOf(sub), subscriptionId, priceId)) {
+    return onGrovNewsSubscription(supabase, token, event, subscriptionId, firstItem, priceId);
+  }
+
   const workspaceId = await resolveWorkspace(supabase, token, sub);
   if (!workspaceId) {
     return recordUnactionable(supabase, token, event, subscriptionId, "unresolved_workspace",
       { customer: idOf(sub.customer) });
   }
-
-  const items = (sub.items as { data?: unknown[] } | undefined)?.data ?? [];
-  const firstItem = (items[0] ?? {}) as Record<string, unknown>;
-  const priceId = idOf(firstItem.price);
   const planId = await planForPrice(supabase, token, priceId) ?? metaOf(sub).grovbase_plan_id ?? null;
   // Without a plan there is no row to write: `subscriptions.plan_id` is NOT
   // NULL, and inventing a plan would misreport what the customer is on. This

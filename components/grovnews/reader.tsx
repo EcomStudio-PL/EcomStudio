@@ -232,8 +232,10 @@ export function GrovNewsArticle({ article, locale, t, backHref = "/grovnews" }: 
 /* ── no access ─────────────────────────────────────────────────────────────── */
 
 /** What a customer without an active entitlement sees — and ALL they see:
- *  no title, no excerpt, no count of what is behind the door. */
-export function GrovNewsLocked({ t }: { t: T }) {
+ *  no title, no excerpt, no count of what is behind the door. With GrovNews
+ *  Premium on sale, the price (formatted on the server from the admin-set,
+ *  Stripe-confirmed amount) and the way in. */
+export function GrovNewsLocked({ t, offer = null }: { t: T; offer?: { price: string } | null }) {
   const topics = ["allegro", "marketplace", "ai", "law", "logistics"] as const;
   return (
     <div className="flex min-h-[60vh] items-center justify-center py-6" data-grovnews-locked>
@@ -251,10 +253,29 @@ export function GrovNewsLocked({ t }: { t: T }) {
             <li key={k} className="rounded-full border border-line px-2.5 py-1 text-[12px] text-muted">{t(`grovnews.topics.${k}`)}</li>
           ))}
         </ul>
-        <p className="relative mt-5 text-[12.5px] text-faint">{t("grovnews.lockedSoon")}</p>
-        <Link href="/home" className="relative mt-6 inline-flex min-h-11 items-center justify-center rounded-xl border border-line px-5 text-sm font-semibold text-ink transition-colors hover:bg-raised">
-          {t("grovnews.lockedBack")}
-        </Link>
+        {offer ? (
+          <div className="relative mt-6" data-grovnews-offer>
+            <p className="font-display text-[15px] font-semibold text-ink">
+              {t("grovnews.premiumPrice", { price: offer.price })}
+            </p>
+            <div className="mt-4 flex flex-col items-stretch justify-center gap-2 sm:flex-row sm:items-center">
+              <Link href="/checkout?kind=grovnews" className="cta inline-flex min-h-11 items-center justify-center rounded-xl px-6 text-sm font-semibold">
+                {t("grovnews.activate")}
+              </Link>
+              <Link href="/home" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-line px-5 text-sm font-semibold text-ink transition-colors hover:bg-raised">
+                {t("grovnews.lockedBack")}
+              </Link>
+            </div>
+            <p className="mt-3 text-[12px] text-faint">{t("grovnews.cancelAnytime")}</p>
+          </div>
+        ) : (
+          <>
+            <p className="relative mt-5 text-[12.5px] text-faint">{t("grovnews.lockedSoon")}</p>
+            <Link href="/home" className="relative mt-6 inline-flex min-h-11 items-center justify-center rounded-xl border border-line px-5 text-sm font-semibold text-ink transition-colors hover:bg-raised">
+              {t("grovnews.lockedBack")}
+            </Link>
+          </>
+        )}
       </div>
     </div>
   );

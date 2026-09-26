@@ -74,6 +74,13 @@ export function StatusView({ reference }: { reference: string | null }) {
   const state = status?.state ?? "processing";
   const exhausted = tries >= SCHEDULE.length;
 
+  if (state === "credited" && status?.kind === "grovnews") {
+    return (
+      <Shell tone="ok" title={t("checkout.statusDoneTitle")} body={t("checkout.statusGrovNewsActive")}
+        cta={{ href: "/grovnews", label: t("checkout.statusGoGrovNews") }} />
+    );
+  }
+
   if (state === "credited") {
     const credits = status?.credits ?? 0;
     return (

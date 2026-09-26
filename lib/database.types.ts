@@ -1882,6 +1882,413 @@ export type Database = {
         }
         Relationships: []
       }
+      grovnews_billing: {
+        Row: {
+          currency: string
+          id: boolean
+          price_cents: number | null
+          price_changed_at: string | null
+          sales_enabled: boolean
+          stripe_price_cents: number | null
+          stripe_price_id: string | null
+          stripe_product_id: string | null
+          sync_error: string | null
+          sync_status: string
+          synced_at: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          currency?: string
+          id?: boolean
+          price_cents?: number | null
+          price_changed_at?: string | null
+          sales_enabled?: boolean
+          stripe_price_cents?: number | null
+          stripe_price_id?: string | null
+          stripe_product_id?: string | null
+          sync_error?: string | null
+          sync_status?: string
+          synced_at?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          currency?: string
+          id?: boolean
+          price_cents?: number | null
+          price_changed_at?: string | null
+          sales_enabled?: boolean
+          stripe_price_cents?: number | null
+          stripe_price_id?: string | null
+          stripe_product_id?: string | null
+          sync_error?: string | null
+          sync_status?: string
+          synced_at?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      grovnews_checkout_locks: {
+        Row: {
+          attempt_id: string
+          locked_until: string
+          stripe_subscription_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attempt_id: string
+          locked_until: string
+          stripe_subscription_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attempt_id?: string
+          locked_until?: string
+          stripe_subscription_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grovnews_checkout_locks_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grovnews_invoices: {
+        Row: {
+          amount_paid_cents: number
+          currency: string
+          paid_at: string
+          period_end: string | null
+          period_start: string | null
+          stripe_event_id: string
+          stripe_invoice_id: string
+          stripe_subscription_id: string
+          user_id: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          amount_paid_cents: number
+          currency: string
+          paid_at?: string
+          period_end?: string | null
+          period_start?: string | null
+          stripe_event_id: string
+          stripe_invoice_id: string
+          stripe_subscription_id: string
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          amount_paid_cents?: number
+          currency?: string
+          paid_at?: string
+          period_end?: string | null
+          period_start?: string | null
+          stripe_event_id?: string
+          stripe_invoice_id?: string
+          stripe_subscription_id?: string
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grovnews_invoices_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "grovnews_invoices_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grovnews_launch_campaigns: {
+        Row: {
+          access_days: number | null
+          access_mode: string
+          access_until: string | null
+          activated_at: string | null
+          code_valid_days: number | null
+          created_at: string
+          created_by: string | null
+          discount_duration: string | null
+          discount_enabled: boolean
+          discount_months: number | null
+          discount_type: string | null
+          discount_value: number | null
+          eligible_plan_ids: string[]
+          ended_at: string | null
+          id: string
+          name: string
+          status: string
+          stripe_coupon_id: string | null
+          updated_at: string
+          updated_by: string | null
+          window_end: string
+          window_start: string
+        }
+        Insert: {
+          access_days?: number | null
+          access_mode: string
+          access_until?: string | null
+          activated_at?: string | null
+          code_valid_days?: number | null
+          created_at?: string
+          created_by?: string | null
+          discount_duration?: string | null
+          discount_enabled?: boolean
+          discount_months?: number | null
+          discount_type?: string | null
+          discount_value?: number | null
+          eligible_plan_ids?: string[]
+          ended_at?: string | null
+          id?: string
+          name: string
+          status?: string
+          stripe_coupon_id?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          window_end: string
+          window_start: string
+        }
+        Update: {
+          access_days?: number | null
+          access_mode?: string
+          access_until?: string | null
+          activated_at?: string | null
+          code_valid_days?: number | null
+          created_at?: string
+          created_by?: string | null
+          discount_duration?: string | null
+          discount_enabled?: boolean
+          discount_months?: number | null
+          discount_type?: string | null
+          discount_value?: number | null
+          eligible_plan_ids?: string[]
+          ended_at?: string | null
+          id?: string
+          name?: string
+          status?: string
+          stripe_coupon_id?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          window_end?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
+      grovnews_launch_claims: {
+        Row: {
+          access_expires_at: string | null
+          access_granted: boolean
+          campaign_id: string
+          claimed_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          access_expires_at?: string | null
+          access_granted?: boolean
+          campaign_id: string
+          claimed_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          access_expires_at?: string | null
+          access_granted?: boolean
+          campaign_id?: string
+          claimed_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grovnews_launch_claims_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "grovnews_launch_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "grovnews_launch_claims_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grovnews_launch_codes: {
+        Row: {
+          campaign_id: string
+          code: string
+          created_at: string
+          expires_at: string
+          id: string
+          redeemed_at: string | null
+          redeemed_subscription_id: string | null
+          user_id: string
+        }
+        Insert: {
+          campaign_id: string
+          code: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          redeemed_at?: string | null
+          redeemed_subscription_id?: string | null
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string
+          code?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          redeemed_at?: string | null
+          redeemed_subscription_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grovnews_launch_codes_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "grovnews_launch_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "grovnews_launch_codes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grovnews_prices: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          stripe_price_id: string
+          stripe_product_id: string
+          unit_amount: number
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency: string
+          stripe_price_id: string
+          stripe_product_id: string
+          unit_amount: number
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          stripe_price_id?: string
+          stripe_product_id?: string
+          unit_amount?: number
+        }
+        Relationships: []
+      }
+      grovnews_subscriptions: {
+        Row: {
+          cancel_at_period_end: boolean
+          canceled_at: string | null
+          created_at: string
+          currency: string
+          current_period_end: string | null
+          current_period_start: string | null
+          ended_at: string | null
+          id: string
+          last_event_at: string | null
+          paid_through: string | null
+          status: string
+          stripe_customer_id: string | null
+          stripe_price_id: string | null
+          stripe_subscription_id: string
+          unit_amount_cents: number | null
+          updated_at: string
+          user_id: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          cancel_at_period_end?: boolean
+          canceled_at?: string | null
+          created_at?: string
+          currency?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          ended_at?: string | null
+          id?: string
+          last_event_at?: string | null
+          paid_through?: string | null
+          status: string
+          stripe_customer_id?: string | null
+          stripe_price_id?: string | null
+          stripe_subscription_id: string
+          unit_amount_cents?: number | null
+          updated_at?: string
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          cancel_at_period_end?: boolean
+          canceled_at?: string | null
+          created_at?: string
+          currency?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          ended_at?: string | null
+          id?: string
+          last_event_at?: string | null
+          paid_through?: string | null
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_price_id?: string | null
+          stripe_subscription_id?: string
+          unit_amount_cents?: number | null
+          updated_at?: string
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grovnews_subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "grovnews_subscriptions_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       grovnews_categories: {
         Row: {
           created_at: string
@@ -5812,6 +6219,42 @@ export type Database = {
         Args: { p_token: string }
         Returns: { id: string; slug: string }[]
       }
+      grovnews_billing_apply_price: {
+        Args: {
+          p_actor: string | null
+          p_amount: number
+          p_currency: string
+          p_expected_previous: string | null
+          p_price_id: string
+          p_product_id: string
+          p_token: string
+        }
+        Returns: Json
+      }
+      grovnews_billing_mark: {
+        Args: {
+          p_error: string | null
+          p_product_id: string | null
+          p_status: string
+          p_token: string
+        }
+        Returns: undefined
+      }
+      grovnews_billing_set_sales: { Args: { p_enabled: boolean }; Returns: Json }
+      grovnews_billing_state: { Args: { p_token: string }; Returns: Json }
+      grovnews_checkout_attach: {
+        Args: {
+          p_attempt: string
+          p_subscription_id: string | null
+          p_token: string
+          p_user_id: string
+        }
+        Returns: undefined
+      }
+      grovnews_checkout_begin: {
+        Args: { p_attempt: string; p_token: string; p_user_id: string }
+        Returns: Json
+      }
       grovnews_build_edition: {
         Args: { p_date: string; p_published_only: boolean; p_token: string }
         Returns: Json
@@ -5844,6 +6287,67 @@ export type Database = {
       grovnews_editions_sync: { Args: { p_token: string }; Returns: number }
       grovnews_group_sync: { Args: { p_token: string }; Returns: Json }
       grovnews_has_access: { Args: never; Returns: boolean }
+      grovnews_invoice_paid: {
+        Args: {
+          p_amount_paid: number
+          p_currency: string
+          p_customer_id: string | null
+          p_event_id: string
+          p_event_type: string
+          p_invoice_id: string
+          p_period_end: string | null
+          p_period_start: string | null
+          p_price_id: string | null
+          p_subscription_id: string | null
+          p_token: string
+          p_user_id: string | null
+          p_workspace_id: string | null
+        }
+        Returns: Json
+      }
+      grovnews_is_billing_object: {
+        Args: {
+          p_price_id: string | null
+          p_subscription_id: string | null
+          p_token: string
+        }
+        Returns: boolean
+      }
+      grovnews_launch_activate: {
+        Args: {
+          p_actor: string | null
+          p_coupon_id: string | null
+          p_expected_updated_at: string
+          p_id: string
+          p_token: string
+        }
+        Returns: Json
+      }
+      grovnews_launch_code_redeem: {
+        Args: { p_code_id: string; p_subscription_id: string; p_token: string }
+        Returns: Json
+      }
+      grovnews_launch_code_resolve: {
+        Args: {
+          p_code: string
+          p_period: string
+          p_plan_id: string
+          p_token: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      grovnews_launch_ensure: { Args: never; Returns: Json }
+      grovnews_launch_save: {
+        Args: { p_config: Json; p_id: string | null }
+        Returns: Json
+      }
+      grovnews_launch_set_status: {
+        Args: { p_id: string; p_status: string }
+        Returns: Json
+      }
+      grovnews_my_state: { Args: never; Returns: Json }
+      grovnews_offer: { Args: never; Returns: Json }
       grovnews_ingest: {
         Args: {
           p_error: string
@@ -5874,6 +6378,42 @@ export type Database = {
       }
       grovnews_scheduler_status: { Args: never; Returns: Json }
       grovnews_select_top: { Args: { p_token: string }; Returns: number }
+      grovnews_subscription_for: {
+        Args: { p_token: string; p_user_id: string }
+        Returns: Json
+      }
+      grovnews_subscription_set_cancel: {
+        Args: {
+          p_cancel: boolean
+          p_subscription_id: string
+          p_token: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      grovnews_sync_subscription: {
+        Args: {
+          p_cancel_at_period_end: boolean
+          p_canceled_at: string | null
+          p_currency: string
+          p_customer_id: string | null
+          p_deleted: boolean
+          p_ended_at: string | null
+          p_event_created: string | null
+          p_event_id: string
+          p_event_type: string
+          p_period_end: string | null
+          p_period_start: string | null
+          p_price_id: string | null
+          p_status: string
+          p_subscription_id: string
+          p_token: string
+          p_unit_amount: number | null
+          p_user_id: string | null
+          p_workspace_id: string | null
+        }
+        Returns: Json
+      }
       grovnews_work_items: {
         Args: { p_kind: string; p_limit: number; p_token: string }
         Returns: Json

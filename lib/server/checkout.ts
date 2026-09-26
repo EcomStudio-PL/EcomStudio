@@ -9,6 +9,10 @@ import {
 import { creditLadder, validateCustomCredits } from "@/lib/plans/credit-price";
 import { resolveStripeCustomer, ServerKeyMissingError } from "@/lib/server/billing";
 import { sellable } from "@/lib/server/stripe-pricing";
+import {
+  beginGrovNewsSubscription, grovNewsPaidFor, grovNewsSellable, readGrovNewsBilling, resolveLaunchCode,
+  type CodeRefusal, type ResolvedCode,
+} from "@/lib/server/grovnews-billing";
 
 /**
  * THE TILL, INSIDE GROVBASE.
@@ -72,20 +76,38 @@ type StripeSubscription = {
     payment_intent: StripePaymentIntent | string | null;
   } | string | null;
   items?: { data?: { price?: { id?: string } }[] };
+  metadata?: Record<string, string> | null;
 };
 
 type StripeList<T> = { data: T[] };
 
 /* ── what a customer is about to buy ───────────────────────────────────────*/
 
-export type CheckoutKind = "credit_package" | "custom_credits" | "subscription";
+export type CheckoutKind = "credit_package" | "custom_credits" | "subscription" | "grovnews";
 export type BillingPeriod = "monthly" | "annual";
 
 /** What the browser is allowed to ask for. */
 export type CheckoutRequest =
   | { kind: "credit_package"; packageId: string }
   | { kind: "custom_credits"; credits: number }
-  | { kind: "subscription"; planId: string; period?: BillingPeriod };
+  | { kind: "subscription"; planId: string; period?: BillingPeriod;
+      /** A launch discount code, as typed. The ONLY discount input: the coupon,
+       *  the amount and whether it applies are resolved on the server. */
+      code?: string }
+  /** GrovNews Premium, the monthly add-on. No parameters: its price is the
+   *  admin-set one, resolved from the database. */
+  | { kind: "grovnews" };
+
+/** A launch discount as the summary displays it. Computed on the server; the
+ *  first charge is replaced by Stripe's own figure once the invoice exists. */
+export type QuoteDiscount = {
+  code: string;
+  type: "PERCENT" | "AMOUNT";
+  value: number;
+  duration: "ONCE" | "REPEATING";
+  months: number | null;
+  firstChargeCents: number;
+};
 
 /**
  * The server's description of the order — the ONLY thing the summary panel is
@@ -115,13 +137,20 @@ export type Quote = {
   stripePriceId: string | null;
   /** Plan selling points, for the summary panel. Never used for pricing. */
   highlights: string[];
+  /** Present only when a valid launch code applies to this order. */
+  discount?: QuoteDiscount;
+  /** Present only when a code was given and does not apply — the order is
+   *  then priced exactly as without one. */
+  codeRefusal?: CodeRefusal;
 };
 
 export type QuoteRefusal =
   | "payments_disabled" | "unknown_package" | "unknown_plan" | "plan_not_purchasable"
   | "not_mapped" | "invalid_credits" | "no_server_key" | "already_subscribed"
   /** The displayed price is not provably what Stripe would charge. */
-  | "price_out_of_sync";
+  | "price_out_of_sync"
+  /** GrovNews Premium is not on sale right now (sales off, or no confirmed Price). */
+  | "grovnews_unavailable";
 
 export type QuoteResult = { ok: true; quote: Quote } | { ok: false; reason: QuoteRefusal };
 
@@ -141,6 +170,17 @@ type WorkspaceRef = { id: string; name?: string | null };
 export async function quoteCheckout(
   supabase: Client, workspace: WorkspaceRef, req: CheckoutRequest,
 ): Promise<QuoteResult> {
+  const result = await pricedOrder(supabase, workspace, req);
+  // The resolved code (its coupon) stays on the server.
+  return result.ok ? { ok: true, quote: result.quote } : result;
+}
+
+/** A priced order plus what only the server may hold: the resolved code. */
+type Priced = { ok: true; quote: Quote; code: ResolvedCode | null } | { ok: false; reason: QuoteRefusal };
+
+async function pricedOrder(
+  supabase: Client, workspace: WorkspaceRef, req: CheckoutRequest,
+): Promise<Priced> {
   const result = await priceOrder(supabase, workspace, req);
   // A REFUSED QUOTE USED TO LEAVE NO TRACE AT ALL, from either caller — the
   // page that renders the checkout, or the begin that re-prices it a moment
@@ -162,8 +202,10 @@ export async function quoteCheckout(
 /** The pricing itself. Wrapped above only so every refusal is recorded once. */
 async function priceOrder(
   supabase: Client, workspace: WorkspaceRef, req: CheckoutRequest,
-): Promise<QuoteResult> {
+): Promise<Priced> {
   if (!paymentsEnabled()) return { ok: false, reason: "payments_disabled" };
+
+  if (req.kind === "grovnews") return priceGrovNews(supabase);
 
   if (req.kind === "credit_package") {
     const { data: pack } = await supabase
@@ -192,6 +234,7 @@ async function priceOrder(
         stripePriceId: pack.stripe_price_id,
         highlights: [],
       },
+      code: null,
     };
   }
 
@@ -234,6 +277,7 @@ async function priceOrder(
         stripePriceId: null,
         highlights: [],
       },
+      code: null,
     };
   }
 
@@ -253,24 +297,91 @@ async function priceOrder(
 
   const amountCents = period === "annual" ? plan.annual_price_cents : plan.price_cents;
 
+  const quote: Quote = {
+    kind: "subscription",
+    title: plan.name,
+    subtitle: plan.description,
+    credits: plan.monthly_credits + plan.bonus_credits,
+    baseCredits: plan.monthly_credits,
+    bonusCredits: plan.bonus_credits,
+    amountCents,
+    currency: plan.currency,
+    period,
+    recurring: true,
+    planId: plan.id,
+    packageId: null,
+    stripePriceId: priceId,
+    highlights: highlightsOf(plan.features),
+  };
+
+  // WITHOUT A CODE, NOTHING BELOW RUNS and the order is exactly what it was.
+  if (!req.code) return { ok: true, quote, code: null };
+  const { data: { user } } = await supabase.auth.getUser();
+  const resolved = user
+    ? await resolveLaunchCode(supabase, user.id, req.code, plan.id, period)
+    : { ok: false as const, reason: "code_invalid" as const };
+  if (!resolved.ok) return { ok: true, quote: { ...quote, codeRefusal: resolved.reason }, code: null };
   return {
     ok: true,
     quote: {
-      kind: "subscription",
-      title: plan.name,
-      subtitle: plan.description,
-      credits: plan.monthly_credits + plan.bonus_credits,
-      baseCredits: plan.monthly_credits,
-      bonusCredits: plan.bonus_credits,
-      amountCents,
-      currency: plan.currency,
-      period,
-      recurring: true,
-      planId: plan.id,
-      packageId: null,
-      stripePriceId: priceId,
-      highlights: highlightsOf(plan.features),
+      ...quote,
+      discount: {
+        code: req.code,
+        type: resolved.code.discountType,
+        value: resolved.code.discountValue,
+        duration: resolved.code.duration,
+        months: resolved.code.months,
+        firstChargeCents: resolved.code.firstChargeCents,
+      },
     },
+    code: resolved.code,
+  };
+}
+
+/**
+ * GROVNEWS PREMIUM — one monthly Price, set by an admin, sold only while sales
+ * are on and Stripe has confirmed that Price is the displayed amount. A person
+ * who already holds a live GrovNews subscription is not sold a second one.
+ */
+async function priceGrovNews(supabase: Client): Promise<Priced> {
+  const token = dispatchToken();
+  if (!token) return { ok: false, reason: "no_server_key" };
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, reason: "grovnews_unavailable" };
+
+  let billing;
+  try {
+    billing = await readGrovNewsBilling(supabase, token);
+  } catch {
+    return { ok: false, reason: "grovnews_unavailable" };
+  }
+  if (!grovNewsSellable(billing)) return { ok: false, reason: "grovnews_unavailable" };
+
+  const { data: current, error } = await supabase.rpc("grovnews_subscription_for", {
+    p_token: token, p_user_id: user.id,
+  });
+  if (error) return { ok: false, reason: "grovnews_unavailable" };
+  if ((current as { live?: boolean } | null)?.live) return { ok: false, reason: "already_subscribed" };
+
+  return {
+    ok: true,
+    quote: {
+      kind: "grovnews",
+      title: "GrovNews Premium",
+      subtitle: null,
+      credits: 0,
+      baseCredits: 0,
+      bonusCredits: 0,
+      amountCents: billing.price_cents,
+      currency: billing.currency,
+      period: "monthly",
+      recurring: true,
+      planId: null,
+      packageId: null,
+      stripePriceId: billing.stripe_price_id,
+      highlights: [],
+    },
+    code: null,
   };
 }
 
@@ -304,7 +415,11 @@ export type BeginRefusal =
    * while subscriptions keep selling.
    */
   | "stripe_unauthorized"
-  | "stripe_error";
+  | "stripe_error"
+  /** A GrovNews checkout for this person is being started in another request. */
+  | "in_progress"
+  /** The launch code on this order no longer applies. */
+  | CodeRefusal;
 
 /** Where in the sequence it went wrong. Logged; never shown to a customer. */
 type Stage =
@@ -333,10 +448,16 @@ export type BeginResult =
 export async function beginCheckout(
   supabase: Client, workspace: WorkspaceRef, email: string | null, req: CheckoutRequest,
 ): Promise<BeginResult> {
-  // quoteCheckout records its own refusals, for both of its callers.
-  const priced = await quoteCheckout(supabase, workspace, req);
+  // pricedOrder records its own refusals, for both of its callers.
+  const priced = await pricedOrder(supabase, workspace, req);
   if (!priced.ok) return priced;
   const quote = priced.quote;
+  // A CODE THAT STOPPED APPLYING BETWEEN THE PAGE AND THE PAYMENT (used in
+  // another tab, expired, campaign disabled, a failed lookup) is a refusal,
+  // never a silent full-price charge under a discounted summary.
+  if (req.kind === "subscription" && req.code && !priced.code) {
+    return { ok: false, reason: quote.codeRefusal ?? "code_invalid" };
+  }
 
   const creds = stripeCredentials();
   if (!creds) return { ok: false, reason: "payments_disabled" };
@@ -348,9 +469,13 @@ export async function beginCheckout(
     const customer = await resolveStripeCustomer(supabase, workspace, email);
     if (!customer) return { ok: false, reason: "no_customer" };
 
+    if (quote.kind === "grovnews") {
+      stage = "subscription";
+      return await beginGrovNews(supabase, workspace, customer, quote, creds.livemode);
+    }
     stage = quote.kind === "subscription" ? "subscription" : "payment_intent";
     return quote.kind === "subscription"
-      ? await beginSubscription(supabase, workspace, customer, quote, creds.livemode)
+      ? await beginSubscription(supabase, workspace, customer, quote, creds.livemode, priced.code)
       : await beginOneOff(workspace, customer, quote, creds.livemode);
   } catch (e) {
     logFailure(stage, e, { workspaceId: workspace.id, quote });
@@ -369,6 +494,7 @@ export async function beginCheckout(
 function targetOf(req: CheckoutRequest): string {
   return req.kind === "credit_package" ? req.packageId
     : req.kind === "subscription" ? req.planId
+    : req.kind === "grovnews" ? "grovnews"
     : `credits:${req.credits}`;
 }
 
@@ -469,6 +595,7 @@ async function beginOneOff(
  */
 async function beginSubscription(
   supabase: Client, workspace: WorkspaceRef, customer: string, quote: Quote, livemode: boolean,
+  code: ResolvedCode | null,
 ): Promise<BeginResult> {
   // ONE LIVE SUBSCRIPTION PER WORKSPACE. Stripe does not replace or merge:
   // subscribing twice bills twice, forever, and nothing warns anyone.
@@ -495,10 +622,14 @@ async function beginSubscription(
   // So: an existing incomplete subscription on the SAME price is resumed by
   // handing back its own client secret. The customer finishes the attempt they
   // started instead of starting a parallel one.
-  const existing = await incompleteSubscriptionFor(customer, priceId);
+  // An attempt is resumed only if it carries the SAME code (or, like every
+  // attempt before codes existed, none): resuming an undiscounted attempt
+  // would drop the discount, and resuming a discounted one would spend a code
+  // the customer did not enter this time.
+  const existing = await incompleteSubscriptionFor(customer, priceId, code?.codeId ?? null);
   if (existing) {
     const secret = clientSecretOf(existing);
-    if (secret) return { ok: true, clientSecret: secret, quote, reference: existing.id };
+    if (secret) return { ok: true, clientSecret: secret, quote: withCharge(quote, existing), reference: existing.id };
   }
 
   const metadata: Record<string, string> = {
@@ -506,6 +637,8 @@ async function beginSubscription(
     type: "subscription",
     grovbase_plan_id: quote.planId ?? "",
     billing_period: quote.period ?? "monthly",
+    // The webhook marks this code used when the first invoice is PAID.
+    ...(code ? { grovbase_launch_code_id: code.codeId } : {}),
   };
 
   const sub = await stripePost<StripeSubscription>("/subscriptions", {
@@ -517,6 +650,9 @@ async function beginSubscription(
     // Copied onto the Subscription so `customer.subscription.*` — which carry
     // no session and no invoice — can still name the workspace and the plan.
     metadata,
+    // The campaign's coupon, resolved on the server from the code. Never a
+    // coupon, percentage or amount from the request.
+    ...(code ? { discounts: [{ coupon: code.couponId }] } : {}),
   } as Record<string, FormValue>, `sub:${workspace.id}:${priceId}:${randomUUID()}`);
 
   const secret = clientSecretOf(sub);
@@ -524,7 +660,38 @@ async function beginSubscription(
     console.error("checkout.subscription_without_secret", sub.id, sub.status);
     return { ok: false, reason: "stripe_error" };
   }
-  return { ok: true, clientSecret: secret, quote, reference: sub.id };
+  return { ok: true, clientSecret: secret, quote: withCharge(quote, sub), reference: sub.id };
+}
+
+/**
+ * WITH A DISCOUNT, THE FIRST CHARGE IS STRIPE'S FIGURE. The summary was priced
+ * from the campaign's terms; the invoice Stripe just created is what the card
+ * will actually be charged, so that is what the pay button shows. Without a
+ * discount the quote is returned untouched.
+ */
+function withCharge(quote: Quote, sub: StripeSubscription): Quote {
+  if (!quote.discount) return quote;
+  const invoice = typeof sub.latest_invoice === "object" ? sub.latest_invoice : null;
+  const pi = invoice && typeof invoice.payment_intent === "object" ? invoice.payment_intent : null;
+  if (!pi || pi.amount === quote.discount.firstChargeCents) return quote;
+  console.error("checkout.discount_amount_differs", JSON.stringify({
+    subscription: sub.id, charged: pi.amount, estimated: quote.discount.firstChargeCents,
+  }));
+  return { ...quote, discount: { ...quote.discount, firstChargeCents: pi.amount } };
+}
+
+/** GrovNews Premium: its own module, its own guard, the same payment sheet. */
+async function beginGrovNews(
+  supabase: Client, workspace: WorkspaceRef, customer: string, quote: Quote, livemode: boolean,
+): Promise<BeginResult> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user || !quote.stripePriceId) return { ok: false, reason: "grovnews_unavailable" };
+  const res = await beginGrovNewsSubscription(supabase, {
+    userId: user.id, workspaceId: workspace.id, customer, priceId: quote.stripePriceId,
+    amountCents: quote.amountCents, livemode,
+  });
+  if (!res.ok) return { ok: false, reason: res.reason };
+  return { ok: true, clientSecret: res.clientSecret, quote: { ...quote, amountCents: res.amountCents }, reference: res.reference };
 }
 
 /** The mapping column for the period being bought. Never a price from a client. */
@@ -539,14 +706,15 @@ async function priceIdFor(supabase: Client, quote: Quote): Promise<string | null
 }
 
 async function incompleteSubscriptionFor(
-  customer: string, priceId: string,
+  customer: string, priceId: string, codeId: string | null,
 ): Promise<StripeSubscription | null> {
   try {
     const list = await stripeGet<StripeList<StripeSubscription>>("/subscriptions", {
       customer, status: "incomplete", limit: 10,
       expand: ["data.latest_invoice.payment_intent"],
     });
-    return list.data.find((s) => s.items?.data?.[0]?.price?.id === priceId) ?? null;
+    return list.data.find((s) => s.items?.data?.[0]?.price?.id === priceId
+      && (s.metadata?.grovbase_launch_code_id ?? null) === codeId) ?? null;
   } catch (e) {
     // Not being able to look is not a reason to refuse the sale; it only means
     // this optimisation is skipped for this attempt.
@@ -626,6 +794,21 @@ export async function checkoutStatus(
       });
       const invoice = typeof sub.latest_invoice === "object" ? sub.latest_invoice : null;
       const pi = invoice && typeof invoice.payment_intent === "object" ? invoice.payment_intent : null;
+      if (sub.metadata?.type === "grovnews_subscription") {
+        // GrovNews is "done" only when the WEBHOOK recorded the paid period for
+        // the signed-in user — the same rule as credits, a different table.
+        const { data: { user } } = await supabase.auth.getUser();
+        const owned = Boolean(user) && sub.metadata?.grovbase_user_id === user?.id;
+        const recorded = owned && user ? await grovNewsPaidFor(supabase, user.id, reference) : false;
+        return {
+          state: recorded ? "credited" : !owned ? "unknown"
+            : sub.status === "active" || sub.status === "trialing" ? "paid" : mapIntentStatus(pi?.status ?? null),
+          amountCents: owned ? pi?.amount ?? null : null,
+          currency: owned ? pi?.currency?.toUpperCase() ?? null : null,
+          credits: null,
+          kind: "grovnews",
+        };
+      }
       return {
         state: sub.status === "active" || sub.status === "trialing"
           ? "paid"

@@ -3,9 +3,11 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
+import { formatMoney } from "@/lib/grovnews-billing";
+import { ensureLaunchBonus } from "@/lib/server/grovnews-billing";
 import { viewerIsAdmin } from "@/lib/server/feature-availability";
 import { SLUG_RE } from "@/lib/grovnews";
-import { getPublishedArticle, hasActiveGrovNewsAccess } from "@/lib/services/grovnews";
+import { getGrovNewsOffer, getPublishedArticle, hasActiveGrovNewsAccess } from "@/lib/services/grovnews";
 import { GrovNewsArticle, GrovNewsLocked } from "@/components/grovnews/reader";
 
 export const dynamic = "force-dynamic";
@@ -24,13 +26,22 @@ export default async function GrovNewsArticlePage({ params }: { params: Promise<
   const { slug } = await params;
   if (!SLUG_RE.test(slug)) notFound();
   const supabase = await createClient();
+  // A launch-campaign claim that is due (survey done before the campaign went
+  // live) lands before access is asked; after the first claim this is a no-op.
+  await ensureLaunchBonus(supabase);
   const [{ dict, locale }, access, admin] = await Promise.all([
     getDictionary(), hasActiveGrovNewsAccess(supabase), viewerIsAdmin(supabase),
   ]);
   const t = makeT(dict);
-  if (!access && !admin) return <GrovNewsLocked t={t} />;
+  if (!access && !admin) return <GrovNewsLocked t={t} offer={await lockedOffer(supabase, locale)} />;
 
   const article = await getPublishedArticle(supabase, slug);
   if (!article) notFound();
   return <GrovNewsArticle article={article} locale={locale} t={t} />;
+}
+
+/** The price on the locked screen — only when GrovNews Premium is on sale. */
+async function lockedOffer(supabase: Awaited<ReturnType<typeof createClient>>, locale: string) {
+  const offer = await getGrovNewsOffer(supabase);
+  return offer ? { price: formatMoney(offer.priceCents, offer.currency, locale) } : null;
 }

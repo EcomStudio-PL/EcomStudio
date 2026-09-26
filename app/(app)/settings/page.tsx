@@ -10,6 +10,11 @@ import { BillingProfileForm, BrandingForm } from "@/components/settings/company-
 import { TrustedDevices, type TrustedDeviceView } from "@/components/settings/trusted-devices";
 import { readDeviceHash } from "@/lib/server/login-security";
 import { formatWarsaw } from "@/lib/server/event-context";
+import { getAvailabilityMap } from "@/lib/server/feature-availability";
+import { ensureLaunchBonus } from "@/lib/server/grovnews-billing";
+import { defaultStateFor } from "@/lib/features";
+import { parseGrovNewsState } from "@/lib/grovnews-billing";
+import { GrovNewsBillingCard } from "@/components/grovnews/billing-card";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -35,6 +40,16 @@ export default async function SettingsPage() {
     .select("id, device_hash, device_label, last_seen_at")
     .is("revoked_at", null)
     .order("last_seen_at", { ascending: false });
+  // GROVNEWS — shown while the module is live, or whenever there is a paid
+  // subscription to manage. A due launch claim lands first (no-op after that).
+  await ensureLaunchBonus(supabase);
+  const [{ data: gnRaw }, availability] = await Promise.all([
+    supabase.rpc("grovnews_my_state"), getAvailabilityMap(supabase),
+  ]);
+  const grovnews = parseGrovNewsState(gnRaw);
+  const grovnewsLive = (availability.grovnews ?? defaultStateFor("grovnews")).status === "ACTIVE";
+  const showGrovNews = grovnews !== null && (grovnewsLive || grovnews.paid !== null);
+
   const devices: TrustedDeviceView[] = (deviceRows ?? []).map((d) => ({
     id: d.id,
     label: d.device_label || t("loginSec.thisDevice"),
@@ -67,6 +82,14 @@ export default async function SettingsPage() {
             </div>
           </Card>
         </>
+      )}
+      {showGrovNews && grovnews && (
+        <Card className="mt-5" id="grovnews">
+          <CardHeader title="GrovNews" sub={t("grovnews.billing.sub")} />
+          <div className="p-6">
+            <GrovNewsBillingCard state={grovnews} onSale={grovnewsLive} />
+          </div>
+        </Card>
       )}
       <Card className="mt-5">
         <CardHeader title={t("loginSec.devicesTitle")} sub={t("loginSec.devicesSub")} />

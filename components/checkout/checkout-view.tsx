@@ -62,6 +62,8 @@ export type CheckoutViewProps = {
   invoice: InvoiceDetails | null;
   customerEmail: string | null;
   customerName: string | null;
+  /** The customer's own launch code, offered on a monthly plan checkout. */
+  launchCode?: string | null;
 };
 
 export function CheckoutView(props: CheckoutViewProps) {
@@ -138,11 +140,14 @@ function HostedFallback({ request, quote }: { request: Record<string, unknown>; 
 }
 
 function Ready({
-  quote, request, publishableKey, returnUrl, invoice, customerEmail, customerName,
+  quote: pageQuote, request, publishableKey, returnUrl, invoice, customerEmail, customerName, launchCode,
 }: CheckoutViewProps & { publishableKey: string }) {
   const { t, locale } = useI18n();
   const { resolvedTheme } = useTheme();
 
+  // With a launch discount the first charge becomes Stripe's own figure once
+  // the invoice exists; without one this is the page's quote, untouched.
+  const [quote, setQuote] = useState<Quote>(pageQuote);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [reference, setReference] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -161,6 +166,7 @@ function Ready({
       if (res.ok) {
         setClientSecret(res.clientSecret);
         setReference(res.reference);
+        if (res.quote.discount) setQuote(res.quote);
       } else {
         setFailure(res.reason);
       }
@@ -204,6 +210,9 @@ function Ready({
       <OrderSummary
         quote={quote}
         className="lg:order-2 lg:sticky lg:top-[5.5rem]"
+        codeSlot={quote.kind === "subscription" && quote.period === "monthly"
+          ? <LaunchCode quote={quote} request={request} launchCode={launchCode ?? null} />
+          : null}
       />
 
       <div className="space-y-4 lg:order-1">
@@ -224,7 +233,7 @@ function Ready({
             </span>
           </header>
 
-          {failure && <Refusal reason={failure} />}
+          {failure && <Refusal reason={failure} kind={quote.kind} />}
 
           {!failure && !options && <FormSkeleton label={t("checkout.preparing")} />}
 
@@ -245,7 +254,9 @@ function Ready({
 
 /* ── the order, as the server priced it ────────────────────────────────────*/
 
-export function OrderSummary({ quote, className }: { quote: Quote; className?: string }) {
+export function OrderSummary({ quote, className, codeSlot }: {
+  quote: Quote; className?: string; codeSlot?: React.ReactNode;
+}) {
   const { t, locale } = useI18n();
   const [open, setOpen] = useState(false);
 
@@ -253,6 +264,9 @@ export function OrderSummary({ quote, className }: { quote: Quote; className?: s
     new Intl.NumberFormat(locale === "en" ? "en-GB" : locale === "de" ? "de-DE" : "pl-PL", {
       style: "currency", currency: quote.currency, minimumFractionDigits: 2,
     }).format(cents / 100);
+  // What the card is charged NOW: the discounted first payment when a launch
+  // code applies, the list price otherwise. Server figures, never summed here.
+  const dueNow = quote.discount?.firstChargeCents ?? quote.amountCents;
 
   const rows = (
     <>
@@ -280,19 +294,37 @@ export function OrderSummary({ quote, className }: { quote: Quote; className?: s
             }
           />
         )}
+        {quote.discount && (
+          <Row
+            label={t("checkout.discount")}
+            value={
+              <span className="rounded-md bg-[rgb(var(--success)/0.16)] px-1.5 py-0.5 font-semibold tabular-nums text-success">
+                −{money(quote.amountCents - quote.discount.firstChargeCents)}
+              </span>
+            }
+          />
+        )}
       </dl>
 
       <div className="mt-3.5 flex items-baseline justify-between gap-3 border-t border-line pt-3.5">
         <span className="text-[13px] font-semibold text-muted">{t("packs.toPay")}</span>
         <span className="font-display text-[19px] font-semibold tracking-tight tabular-nums text-ink">
-          {money(quote.amountCents)}
+          {money(dueNow)}
         </span>
       </div>
+      {quote.discount && (
+        <p className="mt-2 text-[11.5px] leading-snug text-success">
+          {quote.discount.duration === "REPEATING" && quote.discount.months
+            ? t("checkout.discountMonths", { n: quote.discount.months, price: money(quote.amountCents) })
+            : t("checkout.discountOnce", { price: money(quote.amountCents) })}
+        </p>
+      )}
       {quote.recurring && (
         <p className="mt-2 text-[11.5px] leading-snug text-faint">
           {quote.period === "annual" ? t("checkout.renewsYearly") : t("checkout.renewsMonthly")}
         </p>
       )}
+      {codeSlot}
     </>
   );
 
@@ -314,7 +346,7 @@ export function OrderSummary({ quote, className }: { quote: Quote; className?: s
         </span>
         <span className="flex shrink-0 items-center gap-2">
           <span className="font-display text-[16px] font-semibold tabular-nums text-ink">
-            {money(quote.amountCents)}
+            {money(dueNow)}
           </span>
           <ChevronDown size={15} aria-hidden className={cn("text-faint transition-transform", open && "rotate-180")} />
         </span>
@@ -481,7 +513,7 @@ function PaymentPanel({ quote, returnUrl, reference }: {
   const money = new Intl.NumberFormat(
     locale === "en" ? "en-GB" : locale === "de" ? "de-DE" : "pl-PL",
     { style: "currency", currency: quote.currency, minimumFractionDigits: 2 },
-  ).format(quote.amountCents / 100);
+  ).format((quote.discount?.firstChargeCents ?? quote.amountCents) / 100);
 
   /**
    * Confirm, and go to the screen that asks the SERVER what happened.
@@ -619,6 +651,68 @@ function PaymentPanel({ quote, returnUrl, reference }: {
   );
 }
 
+/**
+ * THE LAUNCH CODE, ON A MONTHLY PLAN ONLY.
+ *
+ * A plain GET form back to this page: the server re-prices the order with the
+ * code and decides — the browser sends the code and nothing else. Shown only
+ * when a code is already in play or the customer has one of their own (codes
+ * are personal; nobody else has one to type), so a checkout without a code
+ * looks exactly as it always did.
+ */
+function LaunchCode({ quote, request, launchCode }: {
+  quote: Quote; request: Record<string, unknown>; launchCode: string | null;
+}) {
+  const { t } = useI18n();
+  const typed = typeof request.code === "string" ? request.code : null;
+  if (!typed && !launchCode) return null;
+  const hidden = (
+    <>
+      <input type="hidden" name="kind" value="subscription" />
+      <input type="hidden" name="plan" value={String(request.planId ?? "")} />
+      <input type="hidden" name="period" value="monthly" />
+    </>
+  );
+
+  if (quote.discount) {
+    return (
+      <form method="get" action="/checkout" className="mt-3.5 flex items-center justify-between gap-2 border-t border-line pt-3.5 text-[12.5px]">
+        {hidden}
+        <span className="min-w-0 truncate text-muted">
+          {t("checkout.codeApplied")} <span className="font-mono font-semibold text-ink">{quote.discount.code}</span>
+        </span>
+        <button type="submit" className="shrink-0 text-[12px] font-semibold text-muted underline-offset-2 hover:text-ink hover:underline">
+          {t("checkout.codeRemove")}
+        </button>
+      </form>
+    );
+  }
+
+  return (
+    <form method="get" action="/checkout" className="mt-3.5 border-t border-line pt-3.5">
+      {hidden}
+      <label htmlFor="launch-code" className="block text-[12px] font-semibold text-muted">
+        {launchCode ? t("checkout.codeYours") : t("checkout.codeLabel")}
+      </label>
+      <div className="mt-1.5 flex gap-2">
+        <input
+          id="launch-code" name="code" defaultValue={typed ?? launchCode ?? ""} maxLength={32}
+          autoComplete="off" spellCheck={false}
+          className="h-10 min-w-0 flex-1 rounded-xl border border-line bg-sunken px-3 font-mono text-[13px] uppercase text-ink outline-none focus:border-accent"
+        />
+        <button type="submit" className="h-10 shrink-0 rounded-xl border border-line px-3.5 text-[12.5px] font-semibold text-ink transition-colors hover:bg-raised">
+          {t("checkout.codeApply")}
+        </button>
+      </div>
+      {quote.codeRefusal && (
+        <p className="mt-1.5 text-[11.5px] leading-snug text-warning" role="status">
+          {t(`checkout.codeRefused.${quote.codeRefusal}`)}
+        </p>
+      )}
+    </form>
+  );
+}
+
 function FormSkeleton({ label }: { label: string }) {
   return (
     <div className="space-y-2.5" role="status" aria-label={label}>
@@ -638,10 +732,13 @@ function FormSkeleton({ label }: { label: string }) {
  * told it is temporarily unavailable — which is true — and not given a
  * diagnostic they cannot act on.
  */
-function Refusal({ reason }: { reason: string }) {
+function Refusal({ reason, kind }: { reason: string; kind: Quote["kind"] }) {
   const { t } = useI18n();
   const key =
-    reason === "already_subscribed" ? "packs.alreadySubscribed"
+    kind === "grovnews" && reason === "already_subscribed" ? "checkout.grovnewsAlreadyActive"
+    : reason === "in_progress" ? "checkout.grovnewsInProgress"
+    : reason.startsWith("code_") ? `checkout.codeRefused.${reason}`
+    : reason === "already_subscribed" ? "packs.alreadySubscribed"
     : reason === "invalid_credits" ? "packs.checkoutInvalidCredits"
     : reason === "plan_not_purchasable" ? "packs.planNotPurchasable"
     // `stripe_unauthorized` belongs in THIS group, not in "try again", and the
@@ -651,7 +748,7 @@ function Refusal({ reason }: { reason: string }) {
     // end. The real cause goes to the server log and to /api/hooks/stripe,
     // where an operator can act on it; the customer gets the truth at their
     // level of it.
-    : reason === "price_out_of_sync" || reason === "not_mapped"
+    : reason === "price_out_of_sync" || reason === "not_mapped" || reason === "grovnews_unavailable"
       || reason === "payments_disabled" || reason === "stripe_unauthorized"
       ? "packs.checkoutUnavailable"
       : "packs.checkoutFailed";

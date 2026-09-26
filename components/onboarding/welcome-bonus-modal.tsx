@@ -10,6 +10,7 @@ import {
   type BonusCopy, type OfferView, type SurveyQuestion,
 } from "@/lib/welcome-bonus";
 import { cn } from "@/lib/utils";
+import { formatWarsawDate, type LaunchView } from "@/lib/grovnews-billing";
 
 /**
  * WELCOME BONUS — the claim.
@@ -50,7 +51,7 @@ export function WelcomeBonusModal(props: BonusModalProps) {
   const [busy, setBusy] = useState(false);
   /** An empty box only turns red after a submit attempt — not while typing. */
   const [submitted, setSubmitted] = useState(false);
-  const [claimed, setClaimed] = useState<{ amount: number; balance: number } | null>(null);
+  const [claimed, setClaimed] = useState<{ amount: number; balance: number; launch: LaunchView | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -156,7 +157,7 @@ export function WelcomeBonusModal(props: BonusModalProps) {
     const res = await claimWelcomeBonusAction(answers, details);
     setBusy(false);
     if (res.ok) {
-      setClaimed({ amount: res.amount, balance: res.balance });
+      setClaimed({ amount: res.amount, balance: res.balance, launch: res.launch ?? null });
       // The credit counter in the chrome is server-rendered.
       router.refresh();
       return;
@@ -201,7 +202,7 @@ export function WelcomeBonusModal(props: BonusModalProps) {
         <span aria-hidden className="auth-orbit" />
 
         {claimed ? (
-          <ClaimedState amount={claimed.amount} balance={claimed.balance}
+          <ClaimedState amount={claimed.amount} balance={claimed.balance} launch={claimed.launch}
             copy={props.copy} icon={props.icon} onDone={close} values={values} />
         ) : (
           <>
@@ -323,8 +324,8 @@ export function WelcomeBonusModal(props: BonusModalProps) {
 
 /** The reward landing. A brief sparkle, a real number, and a way into the
  *  product — not ten seconds of confetti. */
-function ClaimedState({ amount, balance, copy, icon, onDone, values }: {
-  amount: number; balance: number; copy: BonusCopy; icon: string;
+function ClaimedState({ amount, balance, launch, copy, icon, onDone, values }: {
+  amount: number; balance: number; launch: LaunchView | null; copy: BonusCopy; icon: string;
   onDone: () => void; values: Record<string, string | number>;
 }) {
   const { t, locale } = useI18n();
@@ -348,6 +349,28 @@ function ClaimedState({ amount, balance, copy, icon, onDone, values }: {
         {t("bonus.newBalance")}{" "}
         <span className="metric text-ink">{new Intl.NumberFormat(locale).format(balance)}</span>
       </p>
+      {/* THE GROVNEWS LAUNCH BONUS — only when the server granted one. */}
+      {launch && (
+        <div className="relative mx-auto mt-5 max-w-sm rounded-2xl border border-line bg-sunken px-4 py-3 text-left">
+          <p className="text-[12.5px] font-semibold text-ink">{t("bonus.launchTitle")}</p>
+          <ul className="mt-2 space-y-1.5 text-[12.5px] text-muted">
+            <li className="flex items-start gap-2"><Check size={14} aria-hidden className="mt-0.5 shrink-0 text-success" />{t("bonus.launchCredits")}</li>
+            {launch.accessGranted && (
+              <li className="flex items-start gap-2"><Check size={14} aria-hidden className="mt-0.5 shrink-0 text-success" />
+                {launch.forever || !launch.accessUntil
+                  ? t("bonus.launchGrovNewsForever")
+                  : t("bonus.launchGrovNewsUntil", { date: formatWarsawDate(launch.accessUntil, locale) })}
+              </li>
+            )}
+            {launch.code && (
+              <li className="flex min-w-0 items-start gap-2"><Check size={14} aria-hidden className="mt-0.5 shrink-0 text-success" />
+                <span className="min-w-0">{t("bonus.launchCode")}{" "}
+                  <span className="break-all font-mono font-semibold text-ink">{launch.code}</span></span>
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
       <button type="button" onClick={onDone}
         className="cta relative mt-7 inline-flex h-12 items-center justify-center rounded-xl px-7 text-sm font-semibold">
         {t("bonus.startCreating")}

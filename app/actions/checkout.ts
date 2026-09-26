@@ -6,6 +6,7 @@ import {
   quoteCheckout, beginCheckout, checkoutStatus,
   type CheckoutRequest, type QuoteResult, type BeginResult, type StatusResult,
 } from "@/lib/server/checkout";
+import { normaliseCode } from "@/lib/server/grovnews-billing";
 
 /**
  * THE FOUR THINGS THE CHECKOUT PAGE MAY ASK THE SERVER FOR.
@@ -59,12 +60,17 @@ function sanitise(input: unknown): CheckoutRequest | null {
   }
   if (raw.kind === "subscription") {
     if (typeof raw.planId !== "string" || !raw.planId) return null;
+    // A code is a string and nothing else: no coupon, percentage or amount is
+    // ever read from the request.
+    const code = normaliseCode(raw.code);
     return {
       kind: "subscription",
       planId: raw.planId,
       period: raw.period === "annual" ? "annual" : "monthly",
+      ...(code ? { code } : {}),
     };
   }
+  if (raw.kind === "grovnews") return { kind: "grovnews" };
   return null;
 }
 

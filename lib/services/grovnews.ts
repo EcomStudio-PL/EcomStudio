@@ -49,6 +49,16 @@ export async function hasActiveGrovNewsAccess(supabase: Client): Promise<boolean
   return !error && data === true;
 }
 
+/** GrovNews Premium on sale right now, and for how much — or null. The
+ *  database answers only with a Price Stripe has confirmed (0123). */
+export async function getGrovNewsOffer(supabase: Client): Promise<{ priceCents: number; currency: string } | null> {
+  const { data, error } = await supabase.rpc("grovnews_offer");
+  if (error || !data) return null;
+  const o = data as { available?: boolean; price_cents?: number | null; currency?: string };
+  return o.available === true && typeof o.price_cents === "number"
+    ? { priceCents: o.price_cents, currency: o.currency ?? "PLN" } : null;
+}
+
 /** Newest first. */
 export async function listFeed(supabase: Client, limit = 60): Promise<FeedPost[]> {
   const { data, error } = await supabase

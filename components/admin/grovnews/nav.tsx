@@ -2,13 +2,13 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, CalendarDays, FileText, Inbox, LayoutDashboard, Rss, Tags, UserCheck } from "lucide-react";
+import { Bot, CalendarDays, FileText, Inbox, LayoutDashboard, Rss, Tags, UserCheck, Wallet } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 
-/** GrovNews' own eight places, under the newsletter's navigation, in the
+/** GrovNews' own nine places, under the newsletter's navigation, in the
  *  order the work flows: research → posts → editions, then the setup
- *  (sources, categories, subscribers, automation). One row at every width;
+ *  (sources, categories, subscribers, monetisation, automation). One row at every width;
  *  on a phone it scrolls sideways INSIDE itself, never the page. */
 const TABS = [
   { href: "/admin/newsletter/grovnews", key: "dashboard", icon: LayoutDashboard, exact: true },
@@ -18,6 +18,7 @@ const TABS = [
   { href: "/admin/newsletter/grovnews/zrodla", key: "sources", icon: Rss },
   { href: "/admin/newsletter/grovnews/kategorie", key: "categories", icon: Tags },
   { href: "/admin/newsletter/grovnews/subskrybenci", key: "subscribers", icon: UserCheck },
+  { href: "/admin/newsletter/grovnews/monetyzacja", key: "monetization", icon: Wallet },
   { href: "/admin/newsletter/grovnews/automatyzacja", key: "automation", icon: Bot },
 ] as const;
 
@@ -26,7 +27,7 @@ export function GrovNewsAdminNav() {
   const pathname = usePathname();
   const scroller = useRef<HTMLElement>(null);
 
-  // Eight tabs do not fit a phone: bring the current one into the row's view
+  // Nine tabs do not fit a phone: bring the current one into the row's view
   // (horizontally only — the page itself must not jump).
   useEffect(() => {
     const row = scroller.current;

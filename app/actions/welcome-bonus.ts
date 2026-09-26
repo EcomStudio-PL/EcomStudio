@@ -9,6 +9,9 @@ import {
   clearBonusNotification, getBonusConfig, readOffer, toView,
 } from "@/lib/server/welcome-bonus";
 import { validateAnswers, type OfferView } from "@/lib/welcome-bonus";
+import { ensureLaunchBonus } from "@/lib/server/grovnews-billing";
+import { parseGrovNewsState, type LaunchView } from "@/lib/grovnews-billing";
+import type { Client } from "@/lib/services/workspace";
 
 /**
  * CLAIMING THE WELCOME BONUS.
@@ -25,7 +28,7 @@ import { validateAnswers, type OfferView } from "@/lib/welcome-bonus";
  */
 
 export type ClaimResult =
-  | { ok: true; amount: number; balance: number }
+  | { ok: true; amount: number; balance: number; launch?: LaunchView | null }
   | { ok: false; error: "expired" | "no_offer" | "missing_answer" | "generic"; missing?: string };
 
 export async function claimWelcomeBonusAction(
@@ -62,7 +65,7 @@ export async function claimWelcomeBonusAction(
         const workspace = await getCurrentWorkspace(supabase, user.id);
         const wallet = workspace ? await getWallet(supabase, workspace.id) : null;
         after(() => clearBonusNotification(supabase, user.id));
-        return { ok: true, amount: result.amount ?? 0, balance: wallet?.balance ?? 0 };
+        return { ok: true, amount: result.amount ?? 0, balance: wallet?.balance ?? 0, launch: await launchAfterSurvey(supabase) };
       }
       if (result.error === "expired") return { ok: false, error: "expired" };
       if (result.error === "no_offer") return { ok: false, error: "no_offer" };
@@ -103,13 +106,31 @@ export async function claimWelcomeBonusAction(
       });
     });
 
+    // The survey is now complete — the one condition the launch campaign was
+    // waiting for. The credit bonus above is untouched by this.
+    const launch = await launchAfterSurvey(supabase);
+
     // The balance in the chrome is server-rendered, so the layout has to be
     // told it changed — otherwise the header still shows the old number.
     revalidatePath("/", "layout");
-    return { ok: true, amount: result.amount ?? 0, balance: result.balance ?? 0 };
+    return { ok: true, amount: result.amount ?? 0, balance: result.balance ?? 0, launch };
   } catch {
     return { ok: false, error: "generic" };
   }
+}
+
+/**
+ * THE GROVNEWS LAUNCH BONUS, if this person qualifies (registered inside an
+ * active campaign's window — the database decides, for the session user only).
+ * Never fails the survey: a bonus that cannot be checked now is checked again
+ * on the next GrovNews or settings visit.
+ */
+async function launchAfterSurvey(supabase: Client): Promise<LaunchView | null> {
+  await ensureLaunchBonus(supabase);
+  const { data, error } = await supabase.rpc("grovnews_my_state");
+  if (error) return null;
+  const launch = parseGrovNewsState(data)?.launch ?? null;
+  return launch && (launch.accessGranted || launch.code) ? launch : null;
 }
 
 /** Re-read the offer from the server — used when the modal reopens, so the

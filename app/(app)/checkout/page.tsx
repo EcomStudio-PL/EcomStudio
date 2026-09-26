@@ -7,6 +7,7 @@ import { absoluteUrl } from "@/lib/site";
 import { PageHeader } from "@/components/ui/page-header";
 import { quoteCheckout, type CheckoutRequest } from "@/lib/server/checkout";
 import { stripePublishableKey } from "@/lib/stripe/publishable";
+import { normaliseCode } from "@/lib/server/grovnews-billing";
 import { CheckoutView } from "@/components/checkout/checkout-view";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +24,8 @@ export const dynamic = "force-dynamic";
  *     /checkout?kind=subscription&plan=<uuid>&period=monthly
  *     /checkout?kind=package&pack=<uuid>
  *     /checkout?kind=credits&n=2500
+ *     /checkout?kind=subscription&plan=<uuid>&period=monthly&code=GROV-XXXX-XXXX
+ *     /checkout?kind=grovnews
  *
  * THE QUERY STRING IS AN INTENT, NOT A PRICE. Every parameter above names a
  * row or a quantity. There is no amount in the URL, and none is accepted — a
@@ -50,8 +53,18 @@ export default async function CheckoutPage({ searchParams }: {
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) redirect("/plan");
 
-  const request = parseRequest(one);
-  if (!request) redirect("/plan");
+  const parsed = parseRequest(one);
+  if (!parsed) redirect("/plan");
+
+  // THE HOSTED FALLBACK (no publishable key) sells what it always sold, and
+  // only that: a plan without a code, a pack, credits. GrovNews and a launch
+  // code need the embedded sheet, so without the key they are not offered —
+  // rather than shown at one price and charged at another.
+  const publishableKey = stripePublishableKey();
+  if (!publishableKey && parsed.kind === "grovnews") redirect("/settings");
+  const request: CheckoutRequest = !publishableKey && parsed.kind === "subscription"
+    ? { kind: "subscription", planId: parsed.planId, period: parsed.period }
+    : parsed;
 
   const priced = await quoteCheckout(supabase, workspace, request);
   const { dict } = await getDictionary();
@@ -60,8 +73,22 @@ export default async function CheckoutPage({ searchParams }: {
   // A REFUSAL IS NOT A CHECKOUT. Sending someone to a payment form for
   // something that cannot be sold — a withdrawn pack, a plan whose price has
   // not proved it reached Stripe — and only then telling them, wastes the one
-  // moment they had decided to pay. Back to /plan with the reason.
-  if (!priced.ok) redirect(`/plan?checkout=${encodeURIComponent(priced.reason)}`);
+  // moment they had decided to pay. Back to /plan with the reason (GrovNews:
+  // back to its card in the settings).
+  if (!priced.ok) {
+    redirect(request.kind === "grovnews"
+      ? "/settings"
+      : `/plan?checkout=${encodeURIComponent(priced.reason)}`);
+  }
+
+  // The customer's OWN launch code, offered on a monthly plan checkout. Read
+  // through grovnews_my_state(), which answers for the session user only.
+  let launchCode: string | null = null;
+  if (publishableKey && request.kind === "subscription" && request.period !== "annual" && !request.code) {
+    const { data: gn } = await supabase.rpc("grovnews_my_state");
+    const code = (gn as { launch?: { code?: string | null } | null } | null)?.launch?.code;
+    launchCode = typeof code === "string" ? code : null;
+  }
 
   const { data: invoice } = await supabase
     .from("billing_profiles")
@@ -79,7 +106,8 @@ export default async function CheckoutPage({ searchParams }: {
       <CheckoutView
         quote={priced.quote}
         request={request as unknown as Record<string, unknown>}
-        publishableKey={stripePublishableKey()}
+        publishableKey={publishableKey}
+        launchCode={launchCode}
         // CANONICAL, ALWAYS. A redirect method sends the customer back to
         // whatever this says, and a Vercel deployment hostname would drop them
         // on a URL that is not the product, with a cookie domain that is not
@@ -110,7 +138,12 @@ function parseRequest(one: (k: string) => string | undefined): CheckoutRequest |
   if (kind === "subscription") {
     const planId = one("plan");
     if (!planId) return null;
-    return { kind: "subscription", planId, period: one("period") === "annual" ? "annual" : "monthly" };
+    const code = normaliseCode(one("code"));
+    return {
+      kind: "subscription", planId, period: one("period") === "annual" ? "annual" : "monthly",
+      ...(code ? { code } : {}),
+    };
   }
+  if (kind === "grovnews") return { kind: "grovnews" };
   return null;
 }
