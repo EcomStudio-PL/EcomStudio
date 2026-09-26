@@ -13,6 +13,7 @@ import { MediaPicker } from "@/components/admin/media-picker";
 import { savePostAction } from "@/app/actions/grovnews";
 import { LANGUAGES, estimateReadMinutes, slugify, sourcesToText, type PostSource } from "@/lib/grovnews";
 import { PostRowActions } from "./post-actions";
+import { PublicVersionButton } from "./blog-actions";
 
 export type EditorPost = {
   id: string | null;
@@ -40,9 +41,11 @@ const ERROR_KEY: Record<string, string> = {
  * regenerated behind their back. Read time is estimated from the text unless
  * an admin sets it.
  */
-export function PostEditor({ post, categories }: {
+export function PostEditor({ post, categories, publicId = null }: {
   post: EditorPost;
   categories: { id: string; name: string; is_active: boolean }[];
+  /** The post's public SEO version (Blog / SEO), if one was made. */
+  publicId?: string | null;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -122,6 +125,12 @@ export function PostEditor({ post, categories }: {
                 className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-accent hover:underline">
                 <Eye size={14} aria-hidden />{t("grovnewsAdm.openPreview")}
               </Link>
+              {/* A public version is made from an approved (published) post only. */}
+              {(post.status === "PUBLISHED" || publicId) && (
+                <div className="border-t border-line pt-2">
+                  <PublicVersionButton postId={post.id} publicId={publicId} />
+                </div>
+              )}
             </>
           )}
         </Card>

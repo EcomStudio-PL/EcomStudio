@@ -2,6 +2,8 @@ import type { MetadataRoute } from "next";
 import { absoluteUrl } from "@/lib/site";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveHomepage } from "@/lib/server/homepage";
+import { getBlogSitemap } from "@/lib/server/grovnews-blog";
+import { blogPath } from "@/lib/grovnews-blog";
 
 /**
  * Only what a signed-out visitor can actually open. GrovBase is a workspace
@@ -33,11 +35,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // find is barely published. Drafts are excluded by RLS as well as by the
   // filter, and the launch page has no URL of its own.
   const supabase = await createClient();
-  const [{ data }, home] = await Promise.all([
+  const [{ data }, home, blog] = await Promise.all([
     supabase.from("cms_pages")
       .select("slug, published_at, kind, status, seo")
       .eq("status", "published"),
     getActiveHomepage(),
+    getBlogSitemap(),
   ]);
   // The product Home (kind `app`) that currently answers "/" forwards its own
   // slug there (app/[slug]/page.tsx), so it is "/" above and not a page of its
@@ -56,9 +59,30 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.5,
     }));
 
+  // GrovNews' PUBLIC articles (/blog): published and indexable only, read
+  // through the same public function the pages use — never a premium post, a
+  // draft or an archived one. An article whose canonical names another
+  // address is not listed as itself.
+  const articles = blog
+    .filter((a) => !a.canonicalUrl || a.canonicalUrl === absoluteUrl(blogPath(a.slug)))
+    .map((a) => ({
+      url: absoluteUrl(blogPath(a.slug)),
+      lastModified: a.lastModified ? new Date(a.lastModified) : now,
+      changeFrequency: "monthly" as const,
+      priority: 0.6,
+    }));
+  const blogIndex = articles.length > 0
+    ? [{
+      url: absoluteUrl("/blog"),
+      lastModified: new Date(Math.max(...articles.map((a) => a.lastModified.getTime()))),
+      changeFrequency: "daily" as const,
+      priority: 0.7,
+    }]
+    : [];
+
   // The fixed list wins on collisions (home and the two legal pages).
   const seen = new Set(fixed.map((e) => e.url));
-  return [...fixed, ...managed.filter((e) => !seen.has(e.url))];
+  return [...fixed, ...managed.filter((e) => !seen.has(e.url)), ...blogIndex, ...articles];
 }
 
 function isNoindex(seo: unknown): boolean {

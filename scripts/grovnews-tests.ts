@@ -156,7 +156,7 @@ section("D. SERVER — admin first, access before content");
 }
 
 /* ── E ─────────────────────────────────────────────────────────────────────── */
-section("E. NAVIGATION — drawer yes, bottom bar and desktop untouched");
+section("E. NAVIGATION — drawer yes, one desktop entry (Stage 4), bottom bar untouched");
 {
   check("a registered, switchable feature: /grovnews in group account",
     (FEATURE_KEYS as readonly string[]).includes("grovnews") && featureDescriptor("grovnews")?.path === "/grovnews"
@@ -167,7 +167,16 @@ section("E. NAVIGATION — drawer yes, bottom bar and desktop untouched");
   check("bottom navigation unchanged: Start, Biblioteka, Generuj, Narzędzia, Profil",
     DOCK_SLOTS.map((s) => s.key).join() === "home,library,generate,tools,profile" && !DOCK_SLOTS.some((s) => s.href.includes("grovnews")),
     DOCK_SLOTS.map((s) => s.key).join());
-  check("desktop navigation unchanged: no GrovNews in the header", !/grovnews/i.test(read("components/layout/mega-topbar.tsx")) && !/grovnews/i.test(read("components/layout/topbar.tsx")));
+  // Stage 4 adds exactly ONE desktop entry, on purpose: in the account
+  // popover (the drawer row's twin, present at every desktop width — the bar
+  // itself has no room at lg), behind the same switchboard gate, signed-in
+  // only. The bar gets no link of its own; the dock stays as it is.
+  const topbar = read("components/layout/mega-topbar.tsx");
+  const account = read("components/layout/account-menu.tsx");
+  check("desktop navigation: exactly one GrovNews entry (account popover), gated like the drawer row; none in the bar",
+    !/href="\/grovnews"/.test(topbar) && /grovnews=\{menuVisible\(avail, "\/grovnews", seesRestricted\)\}/.test(topbar)
+    && (account.match(/href="\/grovnews"/g) ?? []).length === 1 && /\{grovnews && <Item href="\/grovnews"/.test(account)
+    && !/grovnews/i.test(read("components/layout/topbar.tsx")));
   check("not in the tool search (GrovNews is not a tool)", !SEARCH_CARDS.some((c) => c.key === "grovnews"));
   check("the newsletter admin nav has a GrovNews tab", /href: "\/admin\/newsletter\/grovnews"/.test(read("components/admin/newsletter/nav.tsx")));
 }

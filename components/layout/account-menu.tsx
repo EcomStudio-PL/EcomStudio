@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowUpRight, ChevronDown, CreditCard, LifeBuoy, LogOut, Plus, Settings, Shield, User } from "lucide-react";
+import { ArrowUpRight, ChevronDown, CreditCard, LifeBuoy, LogOut, Newspaper, Plus, Settings, Shield, User } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { creditLevel, CREDIT_METER_CLASS, CREDIT_REFERENCE } from "@/lib/credit-level";
@@ -24,10 +24,14 @@ import { Flag } from "./flag";
  * wallet with a meter, then buying, then the account links, then sign out.
  * The plan lives here and only here — the top bar shows credits, not tiers.
  */
-export function AccountMenu({ name, email, credits, plan, isAdmin, showName }: {
+export function AccountMenu({ name, email, credits, plan, isAdmin, showName, grovnews = false }: {
   name: string; email?: string; credits: number; plan: string; isAdmin: boolean;
   /** Wide desktops get the name next to the avatar as a clearer trigger. */
   showName?: boolean;
+  /** GrovNews' desktop entry — the drawer row's twin, behind the same
+   *  switchboard gate (the caller asks menuVisible). Access itself is the
+   *  /grovnews page's question, not the menu's. */
+  grovnews?: boolean;
 }) {
   const { t, locale } = useI18n();
   const [open, setOpen] = useState(false);
@@ -214,6 +218,7 @@ export function AccountMenu({ name, email, credits, plan, isAdmin, showName }: {
 
               {/* LINKS */}
               <div className="p-1.5 pt-2">
+                {grovnews && <Item href="/grovnews" icon={Newspaper} label={t("grovnews.title")} />}
                 <Item href="/settings" icon={User} label={t("account.profile")} />
                 <Item href="/settings" icon={Settings} label={t("account.settings")} />
                 <Item href="/plan" icon={CreditCard} label={t("nav.plan")} />

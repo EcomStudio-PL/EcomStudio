@@ -57,6 +57,8 @@
     "test:grovnews21:sql": "bash scripts/grovnews21-sql-tests.sh",
     "test:grovnews3": "esbuild scripts/grovnews3-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/grovnews3-tests.cjs --log-level=silent && node .next/grovnews3-tests.cjs",
     "test:grovnews3:sql": "bash scripts/grovnews3-sql-tests.sh",
+    "test:grovnews4": "esbuild scripts/grovnews4-tests.ts --bundle --platform=node --format=cjs --jsx=automatic --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/grovnews4-tests.cjs --log-level=silent && node .next/grovnews4-tests.cjs",
+    "test:grovnews4:sql": "bash scripts/grovnews4-sql-tests.sh",
     "test:nav": "esbuild scripts/nav-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/nav-tests.cjs --log-level=silent && node .next/nav-tests.cjs",
     "test:home": "esbuild scripts/home-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/home-tests.cjs --log-level=silent && node .next/home-tests.cjs",
     "test:homeprobe": "node scripts/home-probe.mjs",

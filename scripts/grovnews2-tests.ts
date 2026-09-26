@@ -1026,8 +1026,9 @@ const NEW_TABLES = ["grovnews_settings", "grovnews_sources", "grovnews_research_
     check("no 'grovnewsAdm.' in the subscriber-facing files (the admin namespace stays out of the public payload)", leaking.length === 0, leaking.join(", "));
 
     const navKeys = [...read("components/admin/grovnews/nav.tsx").matchAll(/\bkey: "(\w+)"/g)].map((m) => m[1]);
-    // Stage 3 adds exactly one tab — Monetyzacja — and moves nothing else.
-    check("the admin nav has the 9 tabs", navKeys.join() === "dashboard,research,posts,editions,sources,categories,subscribers,monetization,automation", navKeys.join());
+    // Stage 3 added Monetyzacja; Stage 4 adds exactly one tab — Blog / SEO,
+    // after the posts it is made from — and moves nothing else.
+    check("the admin nav has the 10 tabs", navKeys.join() === "dashboard,research,posts,blog,editions,sources,categories,subscribers,monetization,automation", navKeys.join());
     const FAMILIES: Record<string, readonly string[]> = {
       "grovnewsAdm.itemStatus.": ITEM_STATUSES,
       "grovnewsAdm.editionStatus.": EDITION_STATUSES,

@@ -12,6 +12,8 @@ const PRIVATE = [
   "/prompts", "/history", "/credits", "/plan", "/settings",
   "/tools", "/inspirations", "/support", "/retusz", "/wideo", "/k/",
   "/reset-password",
+  // GrovNews Premium is subscriber content; its public face is /blog.
+  "/grovnews",
 ];
 
 export default function robots(): MetadataRoute.Robots {

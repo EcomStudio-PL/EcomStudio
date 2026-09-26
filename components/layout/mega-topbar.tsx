@@ -270,7 +270,8 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
                 shape between laptop and monitor — and the name is the first
                 line inside the popover anyway. */}
             <div className="hidden lg:block">
-              <AccountMenu name={name} email={email} credits={credits} plan={plan} isAdmin={isAdmin} />
+              <AccountMenu name={name} email={email} credits={credits} plan={plan} isAdmin={isAdmin}
+                grovnews={menuVisible(avail, "/grovnews", seesRestricted)} />
             </div>
           </>
         )}

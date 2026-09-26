@@ -2443,6 +2443,114 @@ export type Database = {
           },
         ]
       }
+      grovnews_public_articles: {
+        Row: {
+          canonical_url: string | null
+          category_id: string | null
+          content: string
+          cover_alt: string | null
+          cover_url: string | null
+          created_at: string
+          created_by: string | null
+          estimated_read_minutes: number
+          excerpt: string
+          faq: Json
+          id: string
+          internal_note: string | null
+          language: string
+          noindex: boolean
+          og_description: string | null
+          og_title: string | null
+          published_at: string | null
+          related_slugs: string[]
+          schema_type: string
+          seo_description: string | null
+          seo_title: string | null
+          slug: string
+          source_grovnews_post_id: string | null
+          sources: Json
+          status: string
+          tags: string[]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          canonical_url?: string | null
+          category_id?: string | null
+          content?: string
+          cover_alt?: string | null
+          cover_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          estimated_read_minutes?: number
+          excerpt?: string
+          faq?: Json
+          id?: string
+          internal_note?: string | null
+          language?: string
+          noindex?: boolean
+          og_description?: string | null
+          og_title?: string | null
+          published_at?: string | null
+          related_slugs?: string[]
+          schema_type?: string
+          seo_description?: string | null
+          seo_title?: string | null
+          slug: string
+          source_grovnews_post_id?: string | null
+          sources?: Json
+          status?: string
+          tags?: string[]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          canonical_url?: string | null
+          category_id?: string | null
+          content?: string
+          cover_alt?: string | null
+          cover_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          estimated_read_minutes?: number
+          excerpt?: string
+          faq?: Json
+          id?: string
+          internal_note?: string | null
+          language?: string
+          noindex?: boolean
+          og_description?: string | null
+          og_title?: string | null
+          published_at?: string | null
+          related_slugs?: string[]
+          schema_type?: string
+          seo_description?: string | null
+          seo_title?: string | null
+          slug?: string
+          source_grovnews_post_id?: string | null
+          sources?: Json
+          status?: string
+          tags?: string[]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grovnews_public_articles_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "grovnews_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "grovnews_public_articles_source_grovnews_post_id_fkey"
+            columns: ["source_grovnews_post_id"]
+            isOneToOne: true
+            referencedRelation: "grovnews_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       grovnews_edition_posts: {
         Row: {
           created_at: string
@@ -6348,6 +6456,19 @@ export type Database = {
       }
       grovnews_my_state: { Args: never; Returns: Json }
       grovnews_offer: { Args: never; Returns: Json }
+      grovnews_public_article: { Args: { p_slug: string }; Returns: Json }
+      grovnews_public_feed: {
+        Args: { p_category?: string | null; p_limit?: number }
+        Returns: Json
+      }
+      grovnews_public_sitemap: {
+        Args: never
+        Returns: {
+          canonical_url: string | null
+          last_modified: string
+          slug: string
+        }[]
+      }
       grovnews_ingest: {
         Args: {
           p_error: string
