@@ -171,14 +171,20 @@ begin
       v_count := v_count + 1;
 
       -- The provider's live status comes from production traffic. A provider
-      -- test is an admin probe and updates its own columns instead.
+      -- test is an admin probe and updates its own columns instead. Only a
+      -- failure that says something about the PROVIDER (key, quota, rate
+      -- limit, outage, timeout, unknown) marks it as erroring: a customer's
+      -- refused prompt or oversized image is recorded above, but it must not
+      -- turn a healthy provider red in the admin panel.
       if coalesce(v_row->>'consumer', '') <> 'provider_test' then
         if v_status = 'succeeded' then
           update public.ai_provider_credentials c
              set last_success_at = now()
             from public.ai_providers p
            where p.id = c.provider_id and p.slug = v_provider;
-        else
+        elsif v_error ~ ('^(provider_(auth_failed|quota|out_of_credit|rate_limited|timeout|error|download_failed)'
+                         || '|model_unavailable|analysis_(unavailable|timeout|overloaded|model_missing|error)'
+                         || '|network|http_(401|402|403|408|429|5[0-9][0-9]))$') then
           update public.ai_provider_credentials c
              set last_error_at = now(), last_error_code = v_error
             from public.ai_providers p

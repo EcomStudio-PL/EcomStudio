@@ -439,6 +439,13 @@ export function sourceMethod(type: SourceType): SourceMethod {
   return "RSS";
 }
 
+/** The scheme + host + port a source URL points at; null when it does not
+ *  parse. An API source's key belongs to one origin and does not follow the
+ *  source to another. */
+export function urlOrigin(url: string | null | undefined): string | null {
+  try { return url ? new URL(url).origin : null; } catch { return null; }
+}
+
 export const SOURCE_ERROR_KINDS = ["timeout", "auth", "http", "invalid_feed", "other"] as const;
 export type SourceErrorKind = (typeof SOURCE_ERROR_KINDS)[number];
 

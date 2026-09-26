@@ -102,15 +102,21 @@ check "unknown cost is stored as NULL, never the number sent" "$(q "select coale
 check "error codes are sanitised to a code" "$(q "select error_code from public.ai_provider_calls where provider_slug='openai'")" "analysis_rate_limited_"
 check "estimated cost kept with its basis" "$(q "select cost_basis||':'||cost_usd_micros from public.ai_provider_calls where tool_key='retouch'")" "estimated:39000"
 check "a success updates the provider's last successful request" "$(q "select (c.last_success_at is not null)::text from public.ai_provider_credentials c join public.ai_providers p on p.id=c.provider_id where p.slug='google'")" "true"
-check "a failure updates last error + code, not last success" \
+check "an unrecognised failure code is recorded but does not mark the provider" \
+  "$(q "select (c.last_error_at is null)::text from public.ai_provider_credentials c join public.ai_providers p on p.id=c.provider_id where p.slug='openai'")" "true"
+q "select public.ai_provider_call_record('$TOKEN', '[{\"actor_kind\":\"customer\",\"consumer\":\"generation\",\"provider_slug\":\"google\",\"status\":\"failed\",\"error_code\":\"content_policy\",\"cost_basis\":\"unknown\"}]'::jsonb)" >/dev/null
+check "a customer's refused prompt does NOT turn the provider red" \
+  "$(q "select (c.last_error_at is null)::text from public.ai_provider_credentials c join public.ai_providers p on p.id=c.provider_id where p.slug='google'")" "true"
+q "select public.ai_provider_call_record('$TOKEN', '[{\"actor_kind\":\"customer\",\"consumer\":\"generation\",\"provider_slug\":\"openai\",\"status\":\"failed\",\"error_code\":\"provider_auth_failed\",\"cost_basis\":\"unknown\"}]'::jsonb)" >/dev/null
+check "a provider-side failure updates last error + code, not last success" \
   "$(q "select (c.last_error_at is not null)::text||':'||c.last_error_code||':'||(c.last_success_at is null)::text from public.ai_provider_credentials c join public.ai_providers p on p.id=c.provider_id where p.slug='openai'")" \
-  "true:analysis_rate_limited_:true"
+  "true:provider_auth_failed:true"
 q "select public.ai_provider_call_record('$TOKEN', '[{\"actor_kind\":\"admin\",\"consumer\":\"provider_test\",\"provider_slug\":\"openai\",\"status\":\"succeeded\",\"cost_basis\":\"estimated\",\"cost_usd_micros\":0}]'::jsonb)" >/dev/null
 check "an admin provider test does NOT count as production traffic" "$(q "select (c.last_success_at is null)::text from public.ai_provider_credentials c join public.ai_providers p on p.id=c.provider_id where p.slug='openai'")" "true"
 check "the basis/cost pair is enforced by a constraint" \
   "$(err "insert into public.ai_provider_calls (actor_kind, consumer, provider_slug, status, cost_basis, cost_usd_micros) values ('system','grovnews','google','succeeded','unknown', 5)")" \
   'new row for relation "ai_provider_calls" violates check constraint "ai_provider_calls_cost_known"'
-check "admin reads the trace" "$(as_user $ADMIN "select count(*) from public.ai_provider_calls")" "3"
+check "admin reads the trace" "$(as_user $ADMIN "select count(*) from public.ai_provider_calls")" "5"
 check "a customer reads NOTHING of the trace (RLS)" "$(as_user $USER1 "select count(*) from public.ai_provider_calls")" "0"
 check "a customer cannot insert directly" "$(err "insert into public.ai_provider_calls (actor_kind, consumer, provider_slug, status, cost_basis) values ('customer','generation','google','succeeded','unknown')" authenticated $USER1)" "permission denied for table ai_provider_calls"
 check "anon cannot read the trace" "$(err "select count(*) from public.ai_provider_calls" anon)" "permission denied for table ai_provider_calls"

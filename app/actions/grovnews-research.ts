@@ -18,7 +18,7 @@ import { clearSecret, putSecret, secretStatuses } from "@/lib/server/secret-stor
 import { digestUtm } from "@/lib/server/grovnews/compose";
 import { composeDailyMail, mailBodyDaily } from "@/lib/server/grovnews/daily";
 import { healthFromProbe, probeSource } from "@/lib/server/grovnews/probe";
-import { readDailyRecord } from "@/lib/grovnews-research";
+import { readDailyRecord, urlOrigin } from "@/lib/grovnews-research";
 import type { ProbeSummary } from "@/lib/grovnews-import";
 import {
   createCampaignAction, deleteCampaignAction, saveCampaignAction, saveStepAction, scheduleCampaignAction,
@@ -91,13 +91,20 @@ export async function saveSourceAction(id: string | null, raw: unknown):
       priority: v.priority, official_source: v.official, language: v.language,
       auth_kind: v.authKind, auth_header: v.authHeader,
     };
+    // The key was entered for one host: if the source now points somewhere
+    // else (a typo, a lapsed domain), it must not travel there with it.
+    const before = id
+      ? (await supabase.from("grovnews_sources").select("url").eq("id", id).maybeSingle()).data
+      : null;
+    const hostChanged = before != null && urlOrigin(before.url) !== urlOrigin(v.url);
     const res = id
       ? await supabase.from("grovnews_sources").update(row).eq("id", id).select("id").maybeSingle()
       : await supabase.from("grovnews_sources").insert({ ...row, created_by: adminId }).select("id").single();
     if (res.error) return { ok: false, error: res.error.code === "23505" ? "urlTaken" : res.error.code === "23503" ? "category" : "generic" };
     if (!res.data) return { ok: false, error: "invalid" };
-    // A source that no longer sends a key keeps none: its stored secret goes.
-    if (id && v.authKind === "none") await clearSecret(supabase, sourceSecretName(res.data.id));
+    // A source that no longer sends a key keeps none, and a source that moved
+    // to another host needs its key entered again: the stored secret goes.
+    if (id && (v.authKind === "none" || hostChanged)) await clearSecret(supabase, sourceSecretName(res.data.id));
     await logAudit(supabase, {
       actorId: adminId, action: id ? "grovnews.source_updated" : "grovnews.source_created",
       entityType: "grovnews_source", entityId: res.data.id,

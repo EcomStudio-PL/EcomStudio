@@ -24,7 +24,7 @@ import { Readable } from "node:stream";
 import type { Client } from "@/lib/services/workspace";
 import { parseContent } from "@/lib/grovnews";
 import {
-  DEFAULT_SETTINGS, detectLanguage, itemLanguage, originalExcerpt, parseOperatorEmails, sourceErrorKind, sourceMethod, sourceState,
+  DEFAULT_SETTINGS, detectLanguage, itemLanguage, originalExcerpt, parseOperatorEmails, sourceErrorKind, sourceMethod, sourceState, urlOrigin,
   validateSettingsInput, validateSourceInput, type DailyRecord, type GrovNewsSettings,
 } from "@/lib/grovnews-research";
 import { fetchWith, type Transport } from "@/lib/server/grovnews/fetch";
@@ -689,6 +689,14 @@ function fakeMailer() {
       /lower\(c\.email\) = lower\(u\.email\)/.test(mig) && /select distinct on \(u\.id\) c\.id/.test(mig) && /u\.email_confirmed_at is not null/.test(mig));
     check("P3 the cron route is unchanged in shape: POST, token only, runDaily(supabase, \"CRON\", …)",
       /runDaily\(supabase, "CRON", RUN_BUDGET_MS\)/.test(read("app/api/cron/grovnews/route.ts")));
+    const action = read("app/actions/grovnews-research.ts");
+    check("P5 an API key does not follow its source to another host: an origin change on save clears the stored secret",
+      urlOrigin("https://api.example.com/v1/feed?x=1") === urlOrigin("https://api.example.com/v2/other")
+      && urlOrigin("https://api.example.com/v1") !== urlOrigin("https://api.example.org/v1")
+      && urlOrigin("https://api.example.com/v1") !== urlOrigin("https://api.example.com:8443/v1")
+      && urlOrigin("not a url") === null && urlOrigin(null) === null
+      && /hostChanged = before != null && urlOrigin\(before\.url\) !== urlOrigin\(v\.url\)/.test(action)
+      && /v\.authKind === "none" \|\| hostChanged\)\) await clearSecret\(supabase, sourceSecretName\(res\.data\.id\)\)/.test(action));
     check("P4 no second mailer / worker / AI stack: operators use bulkMailer + renderCampaign; the engine uses textCapableBackends + callVisionJson",
       /bulkMailer\(/.test(read("lib/server/grovnews/operators.ts")) && /renderCampaign\(/.test(read("lib/server/grovnews/operators.ts"))
       && /textCapableBackends\(db, known\)/.test(read("lib/server/grovnews/ai.ts")) && !/nodemailer/.test(read("lib/server/grovnews/operators.ts")));
