@@ -12,7 +12,7 @@ import { Modal, ConfirmModal, SecretInput } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import type { ProviderState } from "@/lib/provider-status";
+import { validateProviderBaseUrl, type ProviderState } from "@/lib/provider-status";
 
 export type ProviderView = {
   id: string; slug: string; name: string; active: boolean;
@@ -49,7 +49,36 @@ export function ProviderCard({ p, locale }: { p: ProviderView; locale: string })
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [key, setKey] = useState("");
   const [baseUrl, setBaseUrl] = useState(p.credential?.baseUrl ?? "");
+  const [saving, setSaving] = useState(false);
   const c = p.credential;
+  const baseUrlOk = validateProviderBaseUrl(baseUrl).ok;
+  // Only the key's own length and the URL gate the button. A test running in
+  // the background (useTransition's `pending`) no longer freezes the form.
+  const canSave = !saving && key.trim().length >= 8 && baseUrlOk;
+
+  /**
+   * Save, then PROVE: the new key is tested through the same runtime door a
+   * customer's run uses, so the card turns "Połączono" only when the provider
+   * really accepted it — a key that is merely stored stays "untested".
+   */
+  async function save() {
+    setSaving(true);
+    try {
+      const res = await saveProviderCredentialAction(p.id, key, baseUrl);
+      if (!res.ok) {
+        toast.error(res.error === "secret_write_failed" ? t("admin.secretWriteFailed")
+          : res.error === "base_url_invalid" ? t("aicc.providers.baseUrlInvalid")
+          : `${t("common.error")}${res.error ? ` (${res.error})` : ""}`);
+        return;
+      }
+      toast.success(t("admin.credentialSaved"));
+      setKey("");
+      setConfigOpen(false);
+      testToast(await testProviderConnectionAction(p.id));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function run(action: Promise<ActionResult>, onDone: (r: ActionResult) => void) {
     start(async () => { onDone(await action); });
@@ -169,10 +198,10 @@ export function ProviderCard({ p, locale }: { p: ProviderView; locale: string })
       )}
 
       <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
-        <Button size="sm" onClick={() => { setKey(""); setConfigOpen(true); }}>
+        <Button size="sm" onClick={() => { setKey(""); setBaseUrl(p.credential?.baseUrl ?? ""); setConfigOpen(true); }}>
           {c ? t("aicc.providers.changeKey") : t("admin.saveCredential")}
         </Button>
-        <Button size="sm" variant="secondary" disabled={pending || !c}
+        <Button size="sm" variant="secondary" disabled={pending || saving || !c}
           onClick={() => run(testProviderConnectionAction(p.id), testToast)}>
           {t("admin.testConnection")}
         </Button>
@@ -198,35 +227,39 @@ export function ProviderCard({ p, locale }: { p: ProviderView; locale: string })
         </Button>
       </div>
 
-      <Modal open={configOpen} onClose={() => setConfigOpen(false)} title={`${p.name} — ${c ? t("aicc.providers.changeKey") : t("admin.saveCredential")}`}>
-        <div className="space-y-4">
+      {/*
+        Rendered through a PORTAL (components/ui/modal.tsx): this card is a
+        `.panel` (backdrop-filter) with a hover transform, and a fixed dialog
+        inside it was clipped to the card and painted under its neighbours.
+      */}
+      <Modal portal open={configOpen} onClose={() => setConfigOpen(false)} title={`${p.name} — ${c ? t("aicc.providers.changeKey") : t("admin.saveCredential")}`}>
+        <form className="space-y-4" data-provider-key-form={p.slug}
+          onSubmit={(e) => { e.preventDefault(); if (canSave) save(); }}>
           <div>
             <Label htmlFor={`key-${p.id}`}>{t("admin.apiKey")}</Label>
-            <SecretInput id={`key-${p.id}`} value={key} onChange={setKey}
+            <SecretInput id={`key-${p.id}`} value={key} onChange={setKey} autoFocus
               placeholder={c ? `${c.masked} — ${t("admin.replaceHint")}` : "sk-..."} />
             <p className="mt-1.5 text-xs text-faint">{t("admin.secretHint")}</p>
           </div>
           <div>
             <Label htmlFor={`url-${p.id}`}>{t("admin.baseUrl")}</Label>
-            <Input id={`url-${p.id}`} value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://" />
+            <Input id={`url-${p.id}`} name={`url-${p.id}`} type="url" inputMode="url" autoComplete="off"
+              autoCapitalize="off" spellCheck={false} value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://" aria-invalid={!baseUrlOk || undefined} />
+            <p className={`mt-1.5 text-xs ${baseUrlOk ? "text-faint" : "text-danger"}`}>
+              {baseUrlOk ? t("aicc.providers.baseUrlHint") : t("aicc.providers.baseUrlInvalid")}
+            </p>
           </div>
           <div className="flex justify-end gap-2 pt-1">
-            <Button variant="ghost" onClick={() => setConfigOpen(false)}>{t("common.cancel")}</Button>
-            {/* Nothing about the server can disable this. Saving a provider key
-                needs an admin session and a vault, both of which are present
-                whenever this modal is open. */}
-            <Button disabled={pending || key.trim().length < 8}
-              onClick={() => run(saveProviderCredentialAction(p.id, key, baseUrl), (res) => {
-                if (res.ok) { toast.success(t("admin.credentialSaved")); setKey(""); setConfigOpen(false); router.refresh(); }
-                else toast.error(res.error === "secret_write_failed" ? t("admin.secretWriteFailed") : `${t("common.error")}${res.error ? ` (${res.error})` : ""}`);
-              })}>
-              {c ? t("admin.replaceCredential") : t("admin.saveCredential")}
+            <Button type="button" variant="ghost" onClick={() => setConfigOpen(false)}>{t("common.cancel")}</Button>
+            <Button type="submit" disabled={!canSave}>
+              {saving ? t("common.saving") : c ? t("admin.replaceCredential") : t("admin.saveCredential")}
             </Button>
           </div>
-        </div>
+        </form>
       </Modal>
 
-      <ConfirmModal open={deleteOpen} onClose={() => setDeleteOpen(false)} danger pending={pending}
+      <ConfirmModal portal open={deleteOpen} onClose={() => setDeleteOpen(false)} danger pending={pending}
         title={t("admin.deleteCredential")} body={t("admin.deleteCredentialBody", { provider: p.name })}
         confirmLabel={t("common.delete")}
         onConfirm={() => run(deleteProviderCredentialAction(p.id), (res) => {

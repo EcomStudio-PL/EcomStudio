@@ -227,7 +227,7 @@ export function ToolPromptEditor({ toolKey, versions, locale, hasEngine }: {
 export function CompilePreviewModal({ preview, onClose }: { preview: CompilePreview | null; onClose: () => void }) {
   const { t } = useI18n();
   return (
-    <Modal open={preview !== null} onClose={onClose} title={t("aicc.prompt.previewTitle")} wide>
+    <Modal portal open={preview !== null} onClose={onClose} title={t("aicc.prompt.previewTitle")} wide>
       {preview && (
         <div className="space-y-3" data-compile-preview>
           <p className="text-xs text-muted">{t("aicc.prompt.previewNote")}</p>
@@ -361,7 +361,7 @@ export function ToolPromptHistory({ versions, locale }: { versions: PromptVersio
       )}
 
       {/* Reading a version: the body arrives only for this dialog. */}
-      <Modal open={loaded !== null} onClose={() => setLoaded(null)}
+      <Modal portal open={loaded !== null} onClose={() => setLoaded(null)}
         title={t("aicc.prompt.viewTitle", { n: loaded?.version ?? 0 })} wide>
         <pre className={cn(
           "thin-scroll max-h-[60dvh] overflow-auto rounded-xl bg-sunken p-4",
@@ -371,7 +371,7 @@ export function ToolPromptHistory({ versions, locale }: { versions: PromptVersio
         </pre>
       </Modal>
 
-      <Modal open={confirm !== null} onClose={() => setConfirm(null)}
+      <Modal portal open={confirm !== null} onClose={() => setConfirm(null)}
         title={confirm?.kind === "restore" ? t("aicc.prompt.restore") : t("aicc.prompt.publish")}>
         <div className="space-y-4">
           <p className="text-sm text-muted">

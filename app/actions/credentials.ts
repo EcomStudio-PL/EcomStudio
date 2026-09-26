@@ -12,6 +12,7 @@ import { recordProviderCalls } from "@/lib/server/ai-usage";
 import { imageCost } from "@/lib/ai/usage-cost";
 import { getAdapter } from "@/lib/ai/registry";
 import { ProviderError } from "@/lib/ai/types";
+import { validateProviderBaseUrl } from "@/lib/provider-status";
 
 /**
  * `status` is a verdict code and `detail` a short code (http_401, sandbox…);
@@ -65,6 +66,10 @@ export async function saveProviderCredentialAction(
     const { supabase, adminId } = await requireAdmin();
     const key = apiKey.trim();
     if (key.length < 8) return { ok: false, error: "invalid" };
+    // The key is sent to this host on every call: validated BEFORE the key is
+    // stored, so a bad URL never leaves a fresh secret pointed at it.
+    const host = validateProviderBaseUrl(baseUrl);
+    if (!host.ok) return { ok: false, error: host.error };
     const sealed = await writeProviderKey(supabase, providerId, key);
     if (!sealed.ok) {
       return { ok: false, error: sealed.error === "forbidden" ? "forbidden" : "secret_write_failed" };
@@ -74,7 +79,7 @@ export async function saveProviderCredentialAction(
       credential_name: "api_key",
       ...vaultPlaceholderColumns(),
       last_four: key.slice(-4),
-      base_url: baseUrl?.trim() || null,
+      base_url: host.value,
       active: true,
       last_tested_at: null,
       last_test_status: null,

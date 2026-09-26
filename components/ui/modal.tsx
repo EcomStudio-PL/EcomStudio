@@ -1,13 +1,27 @@
 "use client";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import { Button } from "./button";
 import { Input } from "./input";
 
-export function Modal({ open, onClose, title, children, wide }: {
-  open: boolean; onClose: () => void; title: string; children: React.ReactNode; wide?: boolean;
+/**
+ * `portal` renders the dialog into document.body instead of in place.
+ *
+ * A `position: fixed` element is fixed to the VIEWPORT only while no ancestor
+ * has a transform, filter or backdrop-filter. `.panel` carries a
+ * backdrop-filter and `.panel-interactive` a hover/active transform, so a
+ * dialog rendered inside such a card is fixed to the CARD: it is squeezed into
+ * the card's box, painted under the next card in the grid (the filter also
+ * makes each card its own stacking context, so `z-50` only counts inside it)
+ * and moved by the hover transform while it is being clicked. The provider
+ * key modal lived inside exactly such a card, which is why its input could not
+ * be typed into or pasted into. Rendering at the body escapes every ancestor.
+ */
+export function Modal({ open, onClose, title, children, wide, portal }: {
+  open: boolean; onClose: () => void; title: string; children: React.ReactNode; wide?: boolean; portal?: boolean;
 }) {
   const { t } = useI18n();
   useEffect(() => {
@@ -18,7 +32,7 @@ export function Modal({ open, onClose, title, children, wide }: {
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
   }, [open, onClose]);
   if (!open) return null;
-  return (
+  const dialog = (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-label={title}>
       <div className="scrim animate-fade absolute inset-0 backdrop-blur-[2px]" onClick={onClose} />
       <div className={cn(
@@ -37,15 +51,18 @@ export function Modal({ open, onClose, title, children, wide }: {
       </div>
     </div>
   );
+  // `open` only ever turns true on the client (an interaction), so document
+  // exists whenever a portal is asked for; the guard keeps SSR honest anyway.
+  return portal && typeof document !== "undefined" ? createPortal(dialog, document.body) : dialog;
 }
 
-export function ConfirmModal({ open, onClose, onConfirm, title, body, confirmLabel, danger, pending }: {
+export function ConfirmModal({ open, onClose, onConfirm, title, body, confirmLabel, danger, pending, portal }: {
   open: boolean; onClose: () => void; onConfirm: () => void;
-  title: string; body: string; confirmLabel: string; danger?: boolean; pending?: boolean;
+  title: string; body: string; confirmLabel: string; danger?: boolean; pending?: boolean; portal?: boolean;
 }) {
   const { t } = useI18n();
   return (
-    <Modal open={open} onClose={onClose} title={title}>
+    <Modal open={open} onClose={onClose} title={title} portal={portal}>
       <p className="text-sm text-muted">{body}</p>
       <div className="mt-6 flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button>
@@ -59,22 +76,34 @@ export function ConfirmModal({ open, onClose, onConfirm, title, body, confirmLab
 
 /** Password-style secret input. Reveal shows only what was typed in this session —
  *  stored secrets are never fetched back from the server. */
-export function SecretInput({ value, onChange, placeholder, id }: {
-  value: string; onChange: (v: string) => void; placeholder?: string; id?: string;
+export function SecretInput({ value, onChange, placeholder, id, autoFocus }: {
+  value: string; onChange: (v: string) => void; placeholder?: string; id?: string; autoFocus?: boolean;
 }) {
   const { t } = useI18n();
   const [show, setShow] = useState(false);
   return (
     <div className="relative">
+      {/*
+        16 px on touch screens: iOS Safari zooms the page into any focused
+        field smaller than that, which on a bottom-sheet dialog reads as a
+        frozen screen. `new-password` + the manager opt-outs stop a saved
+        LOGIN password being autofilled into an API-key field.
+      */}
       <Input
         id={id}
+        name={id}
         type={show ? "text" : "password"}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        autoComplete="off"
+        autoComplete="new-password"
+        autoCapitalize="off"
+        autoCorrect="off"
         spellCheck={false}
-        className="pr-16 font-mono text-xs"
+        autoFocus={autoFocus}
+        data-1p-ignore=""
+        data-lpignore="true"
+        className="pr-16 font-mono text-base sm:text-xs"
       />
       <button type="button" onClick={() => setShow(!show)}
         className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-xs text-muted hover:bg-raised hover:text-ink">

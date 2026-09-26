@@ -151,7 +151,7 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
           )}
       </button>
 
-      <Modal open={open} onClose={() => setOpen(false)} title={m.display_name ?? m.name} wide>
+      <Modal portal open={open} onClose={() => setOpen(false)} title={m.display_name ?? m.name} wide>
         {m.unavailableNote && (
           <p className="mb-4 rounded-xl bg-accent2-soft px-4 py-3 text-xs text-accent2">{m.unavailableNote}</p>
         )}

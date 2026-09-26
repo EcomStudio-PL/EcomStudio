@@ -56,3 +56,36 @@ export function maskKey(lastFour: string | null): string | null {
   if (!lastFour) return null;
   return `•••• ${lastFour.slice(-4)}`;
 }
+
+/**
+ * A provider's optional Base URL — the host the stored key is sent to on every
+ * call, so it is a security setting, not a cosmetic one.
+ *
+ *   empty            → null (the adapter's own official endpoint)
+ *   https, no userinfo, no query/fragment, a real public-looking host
+ *                    → normalised, without a trailing slash
+ *   anything else    → refused: plain http (the key would travel in clear),
+ *                      credentials in the URL, localhost, a raw IP address
+ *                      (private ranges and metadata endpoints are reachable
+ *                      that way), or an unparseable value
+ *
+ * Pure and client-safe: the modal shows the same verdict the server enforces.
+ */
+export function validateProviderBaseUrl(raw: string | null | undefined):
+  { ok: true; value: string | null } | { ok: false; error: "base_url_invalid" } {
+  const text = (raw ?? "").trim();
+  if (!text) return { ok: true, value: null };
+  if (text.length > 300) return { ok: false, error: "base_url_invalid" };
+  let url: URL;
+  try { url = new URL(text); } catch { return { ok: false, error: "base_url_invalid" }; }
+  if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) {
+    return { ok: false, error: "base_url_invalid" };
+  }
+  const host = url.hostname.toLowerCase();
+  const ipLiteral = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.startsWith("[") || host.includes(":");
+  if (ipLiteral || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".internal")
+    || host.endsWith(".local") || !host.includes(".")) {
+    return { ok: false, error: "base_url_invalid" };
+  }
+  return { ok: true, value: `${url.origin}${url.pathname}`.replace(/\/+$/, "") };
+}

@@ -4994,7 +4994,9 @@
     "apiPath.defaultShort": "Standardmodell des Tools",
     "apiPath.conceptShort": "GrovShot-Konzeptmodellkette",
     "apiPath.fixedShort": "Gemeinsames Modell des Moda-Moduls",
-    "apiPath.capabilityShort": "Anbieter nach Fähigkeit und Schlüssel"
+    "apiPath.capabilityShort": "Anbieter nach Fähigkeit und Schlüssel",
+    "providers.baseUrlHint": "Optional. Nur https:// — der Schlüssel wird ausschließlich an diese Adresse gesendet.",
+    "providers.baseUrlInvalid": "Ungültige Base-URL: erforderlich ist eine https://-Adresse mit Domainnamen (ohne Zugangsdaten, Parameter, localhost oder IP-Adresse)."
   },
   "batch": {
     "viewLabel": "Ansicht",
