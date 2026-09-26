@@ -37,6 +37,9 @@ export type VisionAttempt = {
   error?: string;
   inputTokens?: number;
   outputTokens?: number;
+  /** Of inputTokens, how many the provider served from its prompt cache
+   *  (billed at a lower rate by some providers). Reported, never estimated. */
+  cachedInputTokens?: number;
 };
 
 /** One configured backend the chain may use. */
@@ -53,7 +56,7 @@ export type VisionBackend = {
   meter?: (attempt: VisionAttempt) => void;
 };
 
-type Usage = { inputTokens?: number; outputTokens?: number };
+type Usage = { inputTokens?: number; outputTokens?: number; cachedInputTokens?: number };
 
 export type VisionRequest = {
   images: ReferenceImage[];
@@ -242,11 +245,12 @@ async function callGemini<T>(cred: VisionCredential, req: VisionRequest, model: 
 
   const json = (await res.json()) as {
     candidates?: { content?: { parts?: { text?: string }[] } }[];
-    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number };
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number; cachedContentTokenCount?: number };
   };
   // Billed output includes the model's thinking tokens where it reports them.
   const meta = json.usageMetadata;
   usage.inputTokens = tokenCount(meta?.promptTokenCount);
+  usage.cachedInputTokens = tokenCount(meta?.cachedContentTokenCount);
   const out = tokenCount(meta?.candidatesTokenCount);
   const thoughts = tokenCount(meta?.thoughtsTokenCount);
   usage.outputTokens = out === undefined && thoughts === undefined ? undefined : (out ?? 0) + (thoughts ?? 0);
@@ -299,10 +303,11 @@ ${JSON.stringify(req.schema)}`;
 
   const json = (await res.json()) as {
     choices?: { message?: { content?: string } }[];
-    usage?: { prompt_tokens?: number; completion_tokens?: number };
+    usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
   };
   usage.inputTokens = tokenCount(json.usage?.prompt_tokens);
   usage.outputTokens = tokenCount(json.usage?.completion_tokens);
+  usage.cachedInputTokens = tokenCount(json.usage?.prompt_tokens_details?.cached_tokens);
   return parseJson<T>(json.choices?.[0]?.message?.content ?? "");
 }
 

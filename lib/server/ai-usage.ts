@@ -2,7 +2,7 @@ import "server-only";
 import type { Json } from "@/lib/database.types";
 import type { Client } from "@/lib/services/workspace";
 import type { VisionAttempt, VisionBackend } from "@/lib/ai/engine/vision";
-import { tokenCost, type Cost, type TokenPrice } from "@/lib/ai/usage-cost";
+import { tokenCost, type Cost, type TokenPrice, type UnitPrice } from "@/lib/ai/usage-cost";
 import { dispatchToken } from "@/lib/server/server-token";
 
 /**
@@ -23,7 +23,7 @@ import { dispatchToken } from "@/lib/server/server-token";
 
 export type Consumer =
   | "generation" | "image_tool" | "prompt_engine" | "workflow" | "embeddings"
-  | "grovnews" | "provider_test";
+  | "grovnews" | "provider_test" | "workflow_test";
 
 export type ProviderCall = {
   actorKind: "customer" | "system" | "admin";
@@ -41,6 +41,7 @@ export type ProviderCall = {
   requestCount?: number;
   inputTokens?: number | null;
   outputTokens?: number | null;
+  cachedInputTokens?: number | null;
   units?: number | null;
   unitKind?: "image" | "second" | "request" | "page" | null;
   cost: Cost;
@@ -65,6 +66,7 @@ export function toRow(c: ProviderCall): { [key: string]: Json } {
     request_count: c.requestCount ?? 1,
     input_tokens: c.inputTokens ?? null,
     output_tokens: c.outputTokens ?? null,
+    cached_input_tokens: c.cachedInputTokens ?? null,
     units: c.units ?? null,
     unit_kind: c.units == null ? null : (c.unitKind ?? null),
     cost_basis: c.cost.basis,
@@ -102,9 +104,30 @@ export async function readTokenPrices(db: Client): Promise<TokenPrice[]> {
     return (data as {
       provider_slug: string; model: string;
       input_usd_micros_per_mtok: number; output_usd_micros_per_mtok: number;
+      cached_input_usd_micros_per_mtok?: number | null;
     }[]).map((r) => ({
       providerSlug: r.provider_slug, model: r.model,
       inputPerMTok: Number(r.input_usd_micros_per_mtok), outputPerMTok: Number(r.output_usd_micros_per_mtok),
+      cachedInputPerMTok: r.cached_input_usd_micros_per_mtok == null ? null : Number(r.cached_input_usd_micros_per_mtok),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** The admin-entered per-unit price list (images by size/quality, seconds,
+ *  requests, pages). Empty on any failure — costs then fall back to the model's
+ *  flat per-image cost, or stay unknown. */
+export async function readUnitPrices(db: Client): Promise<UnitPrice[]> {
+  try {
+    const { data, error } = await db.rpc("ai_unit_prices_read", { p_token: dispatchToken() ?? "" });
+    if (error || !data) return [];
+    return (data as {
+      provider_slug: string; model: string; unit_kind: string; resolution: string; quality: string;
+      usd_micros_per_unit: number;
+    }[]).filter((r) => ["image", "second", "request", "page"].includes(r.unit_kind)).map((r) => ({
+      providerSlug: r.provider_slug, model: r.model, unitKind: r.unit_kind as UnitPrice["unitKind"],
+      resolution: r.resolution, quality: r.quality, usdMicrosPerUnit: Number(r.usd_micros_per_unit),
     }));
   } catch {
     return [];
@@ -155,7 +178,8 @@ export function textMeter(db: Client, ctx: Omit<ProviderCall,
         errorCode: a.ok ? null : (a.error ?? "analysis_error"),
         inputTokens: a.inputTokens ?? null,
         outputTokens: a.outputTokens ?? null,
-        cost: tokenCost(list, a.provider, a.model, a.inputTokens, a.outputTokens),
+        cachedInputTokens: a.cachedInputTokens ?? null,
+        cost: tokenCost(list, a.provider, a.model, a.inputTokens, a.outputTokens, a.cachedInputTokens),
         durationMs: a.durationMs,
       })));
     },

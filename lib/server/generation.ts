@@ -949,7 +949,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
 
 /** Resolve one fallback candidate: active model + active provider + adapter
  *  + decrypted credential. A candidate missing any of those is skipped. */
-async function resolveModelCandidate(supabase: Client, modelId: string) {
+export async function resolveModelCandidate(supabase: Client, modelId: string) {
   const { data: model } = await supabase
     .from("ai_models")
     .select("*, ai_providers!inner(id, slug, active)")

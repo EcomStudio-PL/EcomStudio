@@ -133,6 +133,7 @@ export type Database = {
           updated_at: string
           updated_by: string | null
           knowledge_strategy: string
+          workflow_enabled: boolean
         }
         Insert: {
           tool_key: string
@@ -146,6 +147,7 @@ export type Database = {
           notes?: string | null
           updated_at?: string
           updated_by?: string | null
+          workflow_enabled?: boolean
         }
         Update: {
           tool_key?: string
@@ -159,6 +161,7 @@ export type Database = {
           notes?: string | null
           updated_at?: string
           updated_by?: string | null
+          workflow_enabled?: boolean
         }
         Relationships: []
       }
@@ -173,6 +176,8 @@ export type Database = {
           created_by: string | null
           created_at: string
           published_at: string | null
+          max_outputs: number | null
+          concurrency: number
         }
         Insert: {
           id?: string
@@ -184,6 +189,8 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           published_at?: string | null
+          max_outputs?: number | null
+          concurrency?: number
         }
         Update: {
           id?: string
@@ -195,6 +202,8 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           published_at?: string | null
+          max_outputs?: number | null
+          concurrency?: number
         }
         Relationships: []
       }
@@ -216,6 +225,16 @@ export type Database = {
           prompt_encrypted: string
           prompt_iv: string
           prompt_tag: string
+          output_name: string | null
+          input_image: string | null
+          for_each: string | null
+          item_name: string | null
+          max_items: number | null
+          text_model: string | null
+          fallback_model_id: string | null
+          tool_slug: string | null
+          on_error: string
+          on_item_error: string
         }
         Insert: {
           id?: string
@@ -234,6 +253,16 @@ export type Database = {
           prompt_encrypted: string
           prompt_iv: string
           prompt_tag: string
+          output_name?: string | null
+          input_image?: string | null
+          for_each?: string | null
+          item_name?: string | null
+          max_items?: number | null
+          text_model?: string | null
+          fallback_model_id?: string | null
+          tool_slug?: string | null
+          on_error?: string
+          on_item_error?: string
         }
         Update: {
           id?: string
@@ -252,6 +281,16 @@ export type Database = {
           prompt_encrypted?: string
           prompt_iv?: string
           prompt_tag?: string
+          output_name?: string | null
+          input_image?: string | null
+          for_each?: string | null
+          item_name?: string | null
+          max_items?: number | null
+          text_model?: string | null
+          fallback_model_id?: string | null
+          tool_slug?: string | null
+          on_error?: string
+          on_item_error?: string
         }
         Relationships: [
           {
@@ -287,6 +326,19 @@ export type Database = {
           credits: number | null
           api_cost_usd_micros: number | null
           duration_ms: number | null
+          run_kind: string
+          idempotency_key: string | null
+          usage_event_id: string | null
+          input: Json
+          outputs: Json
+          progress: Json
+          expected_outputs: number | null
+          locked_until: string | null
+          lease_owner: string | null
+          invocations: number
+          cost_unknown: number
+          updated_at: string
+          finished_at: string | null
         }
         Insert: {
           id?: string
@@ -311,6 +363,19 @@ export type Database = {
           credits?: number | null
           api_cost_usd_micros?: number | null
           duration_ms?: number | null
+          run_kind?: string
+          idempotency_key?: string | null
+          usage_event_id?: string | null
+          input?: Json
+          outputs?: Json
+          progress?: Json
+          expected_outputs?: number | null
+          locked_until?: string | null
+          lease_owner?: string | null
+          invocations?: number
+          cost_unknown?: number
+          updated_at?: string
+          finished_at?: string | null
         }
         Update: {
           id?: string
@@ -335,6 +400,19 @@ export type Database = {
           credits?: number | null
           api_cost_usd_micros?: number | null
           duration_ms?: number | null
+          run_kind?: string
+          idempotency_key?: string | null
+          usage_event_id?: string | null
+          input?: Json
+          outputs?: Json
+          progress?: Json
+          expected_outputs?: number | null
+          locked_until?: string | null
+          lease_owner?: string | null
+          invocations?: number
+          cost_unknown?: number
+          updated_at?: string
+          finished_at?: string | null
         }
         Relationships: []
       }
@@ -392,6 +470,117 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_engine_step_runs: {
+        Row: {
+          id: string
+          run_id: string
+          position: number
+          item_index: number
+          step_name: string | null
+          operation: string
+          status: string
+          attempts: number
+          provider_slug: string | null
+          model: string | null
+          input_tokens: number | null
+          output_tokens: number | null
+          units: number | null
+          unit_kind: string | null
+          cost_usd_micros: number | null
+          cost_basis: string
+          error_code: string | null
+          output: Json | null
+          locked_until: string | null
+          started_at: string | null
+          finished_at: string | null
+          duration_ms: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          run_id: string
+          position: number
+          item_index?: number
+          step_name?: string | null
+          operation: string
+          status?: string
+          attempts?: number
+          provider_slug?: string | null
+          model?: string | null
+          input_tokens?: number | null
+          output_tokens?: number | null
+          units?: number | null
+          unit_kind?: string | null
+          cost_usd_micros?: number | null
+          cost_basis?: string
+          error_code?: string | null
+          output?: Json | null
+          locked_until?: string | null
+          started_at?: string | null
+          finished_at?: string | null
+          duration_ms?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          run_id?: string
+          position?: number
+          item_index?: number
+          step_name?: string | null
+          operation?: string
+          status?: string
+          attempts?: number
+          provider_slug?: string | null
+          model?: string | null
+          input_tokens?: number | null
+          output_tokens?: number | null
+          units?: number | null
+          unit_kind?: string | null
+          cost_usd_micros?: number | null
+          cost_basis?: string
+          error_code?: string | null
+          output?: Json | null
+          locked_until?: string | null
+          started_at?: string | null
+          finished_at?: string | null
+          duration_ms?: number | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      ai_unit_prices: {
+        Row: {
+          provider_slug: string
+          model: string
+          unit_kind: string
+          resolution: string
+          quality: string
+          usd_micros_per_unit: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          provider_slug: string
+          model: string
+          unit_kind: string
+          resolution?: string
+          quality?: string
+          usd_micros_per_unit: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          provider_slug?: string
+          model?: string
+          unit_kind?: string
+          resolution?: string
+          quality?: string
+          usd_micros_per_unit?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       ai_token_prices: {
         Row: {
           input_usd_micros_per_mtok: number
@@ -400,6 +589,7 @@ export type Database = {
           provider_slug: string
           updated_at: string
           updated_by: string | null
+          cached_input_usd_micros_per_mtok: number | null
         }
         Insert: {
           input_usd_micros_per_mtok: number
@@ -408,6 +598,7 @@ export type Database = {
           provider_slug: string
           updated_at?: string
           updated_by?: string | null
+          cached_input_usd_micros_per_mtok?: number | null
         }
         Update: {
           input_usd_micros_per_mtok?: number
@@ -416,6 +607,7 @@ export type Database = {
           provider_slug?: string
           updated_at?: string
           updated_by?: string | null
+          cached_input_usd_micros_per_mtok?: number | null
         }
         Relationships: []
       }
@@ -602,6 +794,7 @@ export type Database = {
           usage_event_id: string | null
           user_id: string | null
           workspace_id: string | null
+          cached_input_tokens: number | null
         }
         Insert: {
           actor_kind: string
@@ -627,6 +820,7 @@ export type Database = {
           usage_event_id?: string | null
           user_id?: string | null
           workspace_id?: string | null
+          cached_input_tokens?: number | null
         }
         Update: {
           actor_kind?: string
@@ -652,6 +846,7 @@ export type Database = {
           usage_event_id?: string | null
           user_id?: string | null
           workspace_id?: string | null
+          cached_input_tokens?: number | null
         }
         Relationships: []
       }
@@ -1859,6 +2054,12 @@ export type Database = {
           verdict: string
           workspace_id: string
           updated_at: string | null
+          engine_run_id: string | null
+          tool_key: string | null
+          workflow_version: number | null
+          prompt_version: number | null
+          model_label: string | null
+          provider_slug: string | null
         }
         Insert: {
           asset_path?: string | null
@@ -1871,6 +2072,12 @@ export type Database = {
           verdict: string
           workspace_id: string
           updated_at?: string | null
+          engine_run_id?: string | null
+          tool_key?: string | null
+          workflow_version?: number | null
+          prompt_version?: number | null
+          model_label?: string | null
+          provider_slug?: string | null
         }
         Update: {
           asset_path?: string | null
@@ -1883,6 +2090,12 @@ export type Database = {
           verdict?: string
           workspace_id?: string
           updated_at?: string | null
+          engine_run_id?: string | null
+          tool_key?: string | null
+          workflow_version?: number | null
+          prompt_version?: number | null
+          model_label?: string | null
+          provider_slug?: string | null
         }
         Relationships: [
           {
@@ -6534,6 +6747,7 @@ export type Database = {
           prompt_tag: string | null
           prompt_version: number | null
           knowledge_strategy: string
+          workflow_enabled: boolean
         }[]
       }
       ai_tool_workflow_runtime: {
@@ -6558,7 +6772,7 @@ export type Database = {
         }[]
       }
       ai_save_tool_workflow: {
-        Args: { p_tool_key: string; p_steps: Json; p_summary?: string | null; p_reason?: string | null; p_publish?: boolean }
+        Args: { p_tool_key: string; p_steps: Json; p_summary?: string | null; p_reason?: string | null; p_publish?: boolean; p_concurrency?: number }
         Returns: Json
       }
       ai_publish_tool_workflow: { Args: { p_id: string; p_reason?: string | null }; Returns: Json }
@@ -6593,7 +6807,82 @@ export type Database = {
           model: string
           output_usd_micros_per_mtok: number
           provider_slug: string
+          cached_input_usd_micros_per_mtok: number | null
         }[]
+      }
+      ai_unit_prices_read: {
+        Args: { p_token: string | null }
+        Returns: {
+          provider_slug: string
+          model: string
+          unit_kind: string
+          resolution: string
+          quality: string
+          usd_micros_per_unit: number
+        }[]
+      }
+      ai_tool_workflow_read: {
+        Args: { p_token: string | null; p_tool_key: string; p_workflow_id?: string | null }
+        Returns: {
+          workflow_id: string
+          version: number
+          status: string
+          max_outputs: number | null
+          concurrency: number
+          position: number
+          name: string
+          enabled: boolean
+          operation: string
+          output_kind: string
+          use_images: boolean
+          model_id: string | null
+          fallback_model_id: string | null
+          text_provider: string | null
+          text_model: string | null
+          timeout_ms: number
+          max_attempts: number
+          condition: string
+          output_name: string | null
+          input_image: string | null
+          for_each: string | null
+          item_name: string | null
+          max_items: number | null
+          tool_slug: string | null
+          on_error: string
+          on_item_error: string
+          prompt_encrypted: string
+          prompt_iv: string
+          prompt_tag: string
+        }[]
+      }
+      ai_engine_run_create: { Args: { p_token: string | null; p_run: Json }; Returns: Json }
+      ai_engine_run_claim: {
+        Args: { p_token: string | null; p_run_id: string; p_owner: string; p_lease_seconds: number }
+        Returns: Json
+      }
+      ai_engine_run_patch: {
+        Args: { p_token: string | null; p_run_id: string; p_owner: string; p_patch: Json }
+        Returns: boolean
+      }
+      ai_engine_step_begin: {
+        Args: {
+          p_token: string | null; p_run_id: string; p_owner: string; p_position: number; p_item: number
+          p_name: string; p_operation: string; p_lease_seconds: number
+        }
+        Returns: Json
+      }
+      ai_engine_step_finish: {
+        Args: { p_token: string | null; p_run_id: string; p_owner: string; p_position: number; p_item: number; p_result: Json }
+        Returns: boolean
+      }
+      ai_engine_run_status: { Args: { p_run_id: string }; Returns: Json }
+      ai_engine_run_read: {
+        Args: { p_token: string | null; p_run_id: string }
+        Returns: Database["public"]["Tables"]["ai_engine_runs"]["Row"][]
+      }
+      ai_engine_step_runs_read: {
+        Args: { p_token: string | null; p_run_id: string }
+        Returns: Database["public"]["Tables"]["ai_engine_step_runs"]["Row"][]
       }
       generation_feedback_submit: {
         Args: { p_generation_id: string; p_verdict: string | null; p_reasons?: string[] }
@@ -6676,16 +6965,29 @@ export type Database = {
         }
         Returns: string
       }
-      usage_event_complete: {
-        Args: {
-          p_token: string | null
-          p_event_id: string
-          p_result_count: number
-          p_api_cost_usd_micros?: number
-          p_request_id?: string | null
-        }
-        Returns: undefined
-      }
+      usage_event_complete:
+        | {
+            Args: {
+              p_token: string | null
+              p_event_id: string
+              p_result_count: number
+              p_api_cost_usd_micros?: number
+              p_request_id?: string | null
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_token: string | null
+              p_event_id: string
+              p_result_count: number
+              p_api_cost_usd_micros: number
+              p_request_id: string | null
+              p_provider_slug: string | null
+              p_model_slug: string | null
+            }
+            Returns: undefined
+          }
       usage_event_fail: {
         Args: {
           p_token: string | null
