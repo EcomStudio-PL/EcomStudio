@@ -17,7 +17,8 @@ export function PostRowActions({ id, status }: { id: string; status: string }) {
   const move = (next: PostStatus, okKey: string) => start(async () => {
     const res = await setPostStatusAction(id, next);
     if (res.ok) { toast.success(t(okKey)); router.refresh(); }
-    else toast.error(t(res.error === "forbidden" ? "grovnewsAdm.errForbidden" : "common.error"));
+    else toast.error(t(res.error === "forbidden" ? "grovnewsAdm.errForbidden"
+      : res.error === "in_edition" ? "grovnewsAdm.errInEdition" : "common.error"));
   });
   const btn = "inline-flex h-8 items-center gap-1 rounded-lg px-2 text-[12px] font-semibold transition-colors disabled:opacity-50";
   return (

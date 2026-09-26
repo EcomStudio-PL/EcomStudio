@@ -2036,6 +2036,402 @@ export type Database = {
           },
         ]
       }
+      grovnews_edition_posts: {
+        Row: {
+          created_at: string
+          edition_id: string
+          email_blurb: string | null
+          featured: boolean
+          position: number
+          post_id: string
+        }
+        Insert: {
+          created_at?: string
+          edition_id: string
+          email_blurb?: string | null
+          featured?: boolean
+          position: number
+          post_id: string
+        }
+        Update: {
+          created_at?: string
+          edition_id?: string
+          email_blurb?: string | null
+          featured?: boolean
+          position?: number
+          post_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grovnews_edition_posts_edition_id_fkey"
+            columns: ["edition_id"]
+            isOneToOne: false
+            referencedRelation: "grovnews_editions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "grovnews_edition_posts_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "grovnews_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grovnews_editions: {
+        Row: {
+          auto_generated: boolean
+          campaign_id: string | null
+          created_at: string
+          created_by: string | null
+          edition_date: string
+          email_body: string | null
+          email_prepared_at: string | null
+          email_preview: string | null
+          email_recipients: number | null
+          email_subject: string | null
+          failure_reason: string | null
+          generated_at: string | null
+          id: string
+          intro: string
+          published_at: string | null
+          queued_at: string | null
+          sent_at: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          auto_generated?: boolean
+          campaign_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          edition_date: string
+          email_body?: string | null
+          email_prepared_at?: string | null
+          email_preview?: string | null
+          email_recipients?: number | null
+          email_subject?: string | null
+          failure_reason?: string | null
+          generated_at?: string | null
+          id?: string
+          intro?: string
+          published_at?: string | null
+          queued_at?: string | null
+          sent_at?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          auto_generated?: boolean
+          campaign_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          edition_date?: string
+          email_body?: string | null
+          email_prepared_at?: string | null
+          email_preview?: string | null
+          email_recipients?: number | null
+          email_subject?: string | null
+          failure_reason?: string | null
+          generated_at?: string | null
+          id?: string
+          intro?: string
+          published_at?: string | null
+          queued_at?: string | null
+          sent_at?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grovnews_editions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: true
+            referencedRelation: "newsletter_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grovnews_research_items: {
+        Row: {
+          ai_reason: string | null
+          ai_summary: string | null
+          ai_title: string | null
+          analysis_attempts: number
+          analysis_error: string | null
+          analyzed_at: string | null
+          canonical_url: string
+          category_id: string | null
+          content_hash: string
+          created_at: string
+          discovered_at: string
+          duplicate_of: string | null
+          id: string
+          importance_score: number | null
+          metadata: Json
+          normalized_url: string
+          post_id: string | null
+          relevance_score: number | null
+          review_reason: string | null
+          review_required: boolean
+          selected_at: string | null
+          sensitive: boolean
+          source_excerpt: string
+          source_id: string | null
+          source_published_at: string | null
+          source_title: string
+          status: string
+          title_norm: string
+          updated_at: string
+        }
+        Insert: {
+          ai_reason?: string | null
+          ai_summary?: string | null
+          ai_title?: string | null
+          analysis_attempts?: number
+          analysis_error?: string | null
+          analyzed_at?: string | null
+          canonical_url: string
+          category_id?: string | null
+          content_hash: string
+          created_at?: string
+          discovered_at?: string
+          duplicate_of?: string | null
+          id?: string
+          importance_score?: number | null
+          metadata?: Json
+          normalized_url: string
+          post_id?: string | null
+          relevance_score?: number | null
+          review_reason?: string | null
+          review_required?: boolean
+          selected_at?: string | null
+          sensitive?: boolean
+          source_excerpt?: string
+          source_id?: string | null
+          source_published_at?: string | null
+          source_title: string
+          status?: string
+          title_norm?: string
+          updated_at?: string
+        }
+        Update: {
+          ai_reason?: string | null
+          ai_summary?: string | null
+          ai_title?: string | null
+          analysis_attempts?: number
+          analysis_error?: string | null
+          analyzed_at?: string | null
+          canonical_url?: string
+          category_id?: string | null
+          content_hash?: string
+          created_at?: string
+          discovered_at?: string
+          duplicate_of?: string | null
+          id?: string
+          importance_score?: number | null
+          metadata?: Json
+          normalized_url?: string
+          post_id?: string | null
+          relevance_score?: number | null
+          review_reason?: string | null
+          review_required?: boolean
+          selected_at?: string | null
+          sensitive?: boolean
+          source_excerpt?: string
+          source_id?: string | null
+          source_published_at?: string | null
+          source_title?: string
+          status?: string
+          title_norm?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grovnews_research_items_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "grovnews_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "grovnews_research_items_duplicate_of_fkey"
+            columns: ["duplicate_of"]
+            isOneToOne: false
+            referencedRelation: "grovnews_research_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "grovnews_research_items_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "grovnews_posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "grovnews_research_items_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "grovnews_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grovnews_runs: {
+        Row: {
+          error: string | null
+          finished_at: string | null
+          id: string
+          invocations: number
+          kind: string
+          locked_until: string | null
+          run_date: string
+          stage: string
+          started_at: string
+          stats: Json
+          status: string
+          trigger: string
+          updated_at: string
+        }
+        Insert: {
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          invocations?: number
+          kind?: string
+          locked_until?: string | null
+          run_date: string
+          stage?: string
+          started_at?: string
+          stats?: Json
+          status?: string
+          trigger?: string
+          updated_at?: string
+        }
+        Update: {
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          invocations?: number
+          kind?: string
+          locked_until?: string | null
+          run_date?: string
+          stage?: string
+          started_at?: string
+          stats?: Json
+          status?: string
+          trigger?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      grovnews_settings: {
+        Row: {
+          auto_publish_official_sensitive: boolean
+          daily_enabled: boolean
+          id: boolean
+          max_topics: number
+          min_importance: number
+          min_relevance: number
+          mode: string
+          run_hour: number
+          timezone: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          auto_publish_official_sensitive?: boolean
+          daily_enabled?: boolean
+          id?: boolean
+          max_topics?: number
+          min_importance?: number
+          min_relevance?: number
+          mode?: string
+          run_hour?: number
+          timezone?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          auto_publish_official_sensitive?: boolean
+          daily_enabled?: boolean
+          id?: boolean
+          max_topics?: number
+          min_importance?: number
+          min_relevance?: number
+          mode?: string
+          run_hour?: number
+          timezone?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      grovnews_sources: {
+        Row: {
+          category_id: string | null
+          created_at: string
+          created_by: string | null
+          enabled: boolean
+          id: string
+          language: string
+          last_checked_at: string | null
+          last_error: string | null
+          last_success_at: string | null
+          name: string
+          official_source: boolean
+          priority: number
+          source_type: string
+          updated_at: string
+          url: string | null
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          id?: string
+          language?: string
+          last_checked_at?: string | null
+          last_error?: string | null
+          last_success_at?: string | null
+          name: string
+          official_source?: boolean
+          priority?: number
+          source_type: string
+          updated_at?: string
+          url?: string | null
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          enabled?: boolean
+          id?: string
+          language?: string
+          last_checked_at?: string | null
+          last_error?: string | null
+          last_success_at?: string | null
+          name?: string
+          official_source?: boolean
+          priority?: number
+          source_type?: string
+          updated_at?: string
+          url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grovnews_sources_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "grovnews_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_settings: {
         Row: {
           config: Json
@@ -5412,7 +5808,76 @@ export type Database = {
         }[]
       }
       get_welcome_credits: { Args: never; Returns: number }
+      grovnews_ai_providers: {
+        Args: { p_token: string }
+        Returns: { id: string; slug: string }[]
+      }
+      grovnews_build_edition: {
+        Args: { p_date: string; p_published_only: boolean; p_token: string }
+        Returns: Json
+      }
+      grovnews_create_post: {
+        Args: { p_item_id: string; p_post: Json; p_publish: boolean; p_token: string }
+        Returns: Json
+      }
+      grovnews_current_edition: { Args: never; Returns: Json }
+      grovnews_edition_send: {
+        Args: {
+          p_body: string
+          p_edition_id: string
+          p_links: string[]
+          p_preview: string
+          p_subject: string
+          p_token: string
+          p_utm: Json
+        }
+        Returns: Json
+      }
+      grovnews_edition_arrange: {
+        Args: { p_edition_id: string; p_featured: string | null; p_post_ids: string[] }
+        Returns: undefined
+      }
+      grovnews_edition_mail_source: {
+        Args: { p_edition_id: string; p_token: string }
+        Returns: Json
+      }
+      grovnews_editions_sync: { Args: { p_token: string }; Returns: number }
+      grovnews_group_sync: { Args: { p_token: string }; Returns: Json }
       grovnews_has_access: { Args: never; Returns: boolean }
+      grovnews_ingest: {
+        Args: {
+          p_error: string
+          p_items: Json
+          p_ok: boolean
+          p_source_id: string
+          p_token: string
+        }
+        Returns: Json
+      }
+      grovnews_job_context: { Args: { p_token: string }; Returns: Json }
+      grovnews_run_claim: { Args: { p_token: string; p_trigger: string }; Returns: Json }
+      grovnews_run_update: {
+        Args: {
+          p_error: string | null
+          p_release: boolean
+          p_run_id: string
+          p_stage: string | null
+          p_stats: Json
+          p_status: string | null
+          p_token: string
+        }
+        Returns: undefined
+      }
+      grovnews_save_analysis: {
+        Args: { p_item_id: string; p_result: Json; p_token: string }
+        Returns: string
+      }
+      grovnews_scheduler_status: { Args: never; Returns: Json }
+      grovnews_select_top: { Args: { p_token: string }; Returns: number }
+      grovnews_work_items: {
+        Args: { p_kind: string; p_limit: number; p_token: string }
+        Returns: Json
+      }
       is_admin: { Args: { uid?: string }; Returns: boolean }
       is_workspace_manager: {
         Args: { uid?: string; ws_id: string }

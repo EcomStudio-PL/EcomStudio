@@ -3,9 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { viewerIsAdmin } from "@/lib/server/feature-availability";
-import { hasActiveGrovNewsAccess, listFeed } from "@/lib/services/grovnews";
+import { getCurrentEdition, hasActiveGrovNewsAccess, listFeed } from "@/lib/services/grovnews";
 import { PageHeader } from "@/components/ui/page-header";
-import { GrovNewsFeed, GrovNewsLocked } from "@/components/grovnews/reader";
+import { GrovNewsEditionBox, GrovNewsFeed, GrovNewsLocked } from "@/components/grovnews/reader";
 
 export const dynamic = "force-dynamic";
 
@@ -25,10 +25,11 @@ export default async function GrovNewsPage() {
   const t = makeT(dict);
   if (!access && !admin) return <GrovNewsLocked t={t} />;
 
-  const posts = await listFeed(supabase);
+  const [posts, edition] = await Promise.all([listFeed(supabase), getCurrentEdition(supabase)]);
   return (
     <div data-grovnews>
       <PageHeader overline={t("grovnews.overline")} title={t("grovnews.title")} sub={t("grovnews.sub")} />
+      {edition && <GrovNewsEditionBox edition={edition} locale={locale} t={t} />}
       <GrovNewsFeed posts={posts} locale={locale} t={t} />
     </div>
   );

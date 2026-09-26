@@ -26,6 +26,7 @@ const ERROR_KEY: Record<string, string> = {
   title: "grovnewsAdm.errTitle", slug: "grovnewsAdm.errSlug", slug_taken: "grovnewsAdm.errSlugTaken",
   excerpt: "grovnewsAdm.errExcerpt", content: "grovnewsAdm.errContent", cover: "grovnewsAdm.errCover",
   readMinutes: "grovnewsAdm.errReadMinutes", forbidden: "grovnewsAdm.errForbidden",
+  in_edition: "grovnewsAdm.errInEdition",
 };
 
 /**

@@ -70,6 +70,30 @@ export async function getPublishedArticle(supabase: Client, slug: string): Promi
   return { ...toFeedPost(row), content: row.content, sources: readSources(row.sources), tags: row.tags ?? [] };
 }
 
+/* ── the day's edition (Stage 2) ───────────────────────────────────────────── */
+
+export type CurrentEdition = {
+  date: string;
+  title: string;
+  intro: string;
+  posts: { id: string; slug: string; title: string; excerpt: string; featured: boolean; readMinutes: number }[];
+};
+
+/** The latest published edition (last three days), published posts only —
+ *  answered by the database under the same access rule as the posts. */
+export async function getCurrentEdition(supabase: Client): Promise<CurrentEdition | null> {
+  const { data, error } = await supabase.rpc("grovnews_current_edition");
+  if (error || !data || typeof data !== "object" || Array.isArray(data)) return null;
+  const d = data as {
+    date: string; title: string; intro: string | null;
+    posts: { id: string; slug: string; title: string; excerpt: string; featured: boolean; read_minutes: number }[] | null;
+  };
+  const posts = (d.posts ?? []).map((p) => ({
+    id: p.id, slug: p.slug, title: p.title, excerpt: p.excerpt, featured: p.featured, readMinutes: p.read_minutes,
+  }));
+  return posts.length ? { date: d.date, title: d.title, intro: d.intro ?? "", posts } : null;
+}
+
 export async function listCategories(supabase: Client): Promise<CategoryRow[]> {
   const { data } = await supabase
     .from("grovnews_categories").select("id, slug, name, sort_order, is_active")

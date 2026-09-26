@@ -30,6 +30,10 @@ async function requireAdmin() {
 
 const forbidden = (e: unknown) => e instanceof Error && e.message === "forbidden";
 
+/** A post an edition waiting to be sent relies on cannot be unpublished or
+ *  renamed (trigger in migration 0121) — said as such, not as "error". */
+const inEdition = (e: { message?: string }) => (e.message ?? "").includes("grovnews_post_in_edition");
+
 function revalidateAll() {
   revalidatePath("/admin/newsletter/grovnews", "layout");
   revalidatePath("/grovnews", "layout");
@@ -38,7 +42,7 @@ function revalidateAll() {
 /* ── posts ─────────────────────────────────────────────────────────────────── */
 
 export async function savePostAction(id: string | null, raw: unknown):
-  Promise<{ ok: true; id: string; slug: string } | Fail<PostInputError | "slug_taken">> {
+  Promise<{ ok: true; id: string; slug: string } | Fail<PostInputError | "slug_taken" | "in_edition">> {
   try {
     const { supabase, adminId } = await requireAdmin();
     if (id !== null && !isUuid(id)) return { ok: false, error: "invalid" };
@@ -53,7 +57,7 @@ export async function savePostAction(id: string | null, raw: unknown):
     const res = id
       ? await supabase.from("grovnews_posts").update(row).eq("id", id).select("id, slug").maybeSingle()
       : await supabase.from("grovnews_posts").insert({ ...row, status: "DRAFT", created_by: adminId }).select("id, slug").single();
-    if (res.error) return { ok: false, error: res.error.code === "23505" ? "slug_taken" : "generic" };
+    if (res.error) return { ok: false, error: res.error.code === "23505" ? "slug_taken" : inEdition(res.error) ? "in_edition" : "generic" };
     if (!res.data) return { ok: false, error: "invalid" };
     await logAudit(supabase, {
       actorId: adminId, action: id ? "grovnews.post_updated" : "grovnews.post_created",
@@ -71,7 +75,7 @@ export async function savePostAction(id: string | null, raw: unknown):
  * time only, so re-publishing an archived post does not move it to the top of
  * everyone's feed as if it were news.
  */
-export async function setPostStatusAction(id: string, status: PostStatus): Promise<{ ok: true } | Fail> {
+export async function setPostStatusAction(id: string, status: PostStatus): Promise<{ ok: true } | Fail<"in_edition">> {
   try {
     const { supabase, adminId } = await requireAdmin();
     if (!isUuid(id) || !(POST_STATUSES as readonly string[]).includes(status)) return { ok: false, error: "invalid" };
@@ -80,7 +84,7 @@ export async function setPostStatusAction(id: string, status: PostStatus): Promi
     const patch: { status: PostStatus; published_at?: string } = { status };
     if (status === "PUBLISHED" && !current.published_at) patch.published_at = new Date().toISOString();
     const { error } = await supabase.from("grovnews_posts").update(patch).eq("id", id);
-    if (error) return { ok: false, error: "generic" };
+    if (error) return { ok: false, error: inEdition(error) ? "in_edition" : "generic" };
     await logAudit(supabase, {
       actorId: adminId, action: "grovnews.post_status", entityType: "grovnews_post", entityId: id,
       before: { status: current.status }, after: { status },

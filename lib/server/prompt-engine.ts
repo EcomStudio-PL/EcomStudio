@@ -202,10 +202,13 @@ async function plannerProviderOrder(supabase: Client): Promise<VisionProvider[]>
   return fallback ? [primary, fallback] : [primary];
 }
 
-async function getVisionBackends(supabase: Client, primaryModel: string): Promise<VisionBackend[]> {
+async function getVisionBackends(
+  supabase: Client, primaryModel: string, known?: readonly { id: string; slug: string }[],
+): Promise<VisionBackend[]> {
   const order = await plannerProviderOrder(supabase);
-  const { data: providers } = await supabase
-    .from("ai_providers").select("id, slug").eq("active", true).in("slug", order);
+  const providers = known
+    ? known.filter((p) => (order as string[]).includes(p.slug))
+    : (await supabase.from("ai_providers").select("id, slug").eq("active", true).in("slug", order)).data;
   if (!providers?.length) return [];
 
   const backends: VisionBackend[] = [];
@@ -242,9 +245,17 @@ async function getVisionBackends(supabase: Client, primaryModel: string): Promis
  * eventually a deployment where the generator has a key and the newsletter
  * quietly does not. This function adds no behaviour: it is `getVisionBackends`
  * with the configured analysis model already looked up.
+ *
+ * `known` is for a caller with no user session (the GrovNews daily job, see
+ * migration 0121): `ai_providers` is readable only to a signed-in user, so
+ * that caller lists the active providers through a token-gated function and
+ * hands them in. Everything after the list — order, credentials, vault, the
+ * backends — is this same code; omitted, nothing changes.
  */
-export async function textCapableBackends(supabase: Client): Promise<VisionBackend[]> {
-  return getVisionBackends(supabase, await getAnalysisModel(supabase));
+export async function textCapableBackends(
+  supabase: Client, known?: readonly { id: string; slug: string }[],
+): Promise<VisionBackend[]> {
+  return getVisionBackends(supabase, await getAnalysisModel(supabase), known);
 }
 
 async function downloadReferences(supabase: Client, paths: string[]): Promise<ReferenceImage[]> {

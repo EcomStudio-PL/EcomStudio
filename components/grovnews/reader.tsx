@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { ArrowLeft, Clock, ExternalLink, Lock, Newspaper } from "lucide-react";
+import { ArrowLeft, ChevronRight, Clock, ExternalLink, Lock, Newspaper, Star } from "lucide-react";
 import { parseContent, type Block, type Inline } from "@/lib/grovnews";
-import type { Article, FeedPost } from "@/lib/services/grovnews";
+import { editionDateLabel, warsawDate } from "@/lib/grovnews-research";
+import type { Article, CurrentEdition, FeedPost } from "@/lib/services/grovnews";
 import { cn } from "@/lib/utils";
 
 /**
@@ -92,6 +93,58 @@ export function GrovNewsFeed({ posts, locale, t }: { posts: FeedPost[]; locale: 
         </li>
       ))}
     </ul>
+  );
+}
+
+/* ── the day's edition ─────────────────────────────────────────────────────── */
+
+/**
+ * The latest published edition, above the feed: the intro and its posts in
+ * the editor's order. The intro is plain text (React escapes it), never HTML.
+ * "Today" is decided on the Warsaw calendar, the same key editions use;
+ * dates are numeric (DD.MM.YYYY), so `locale` is taken only for symmetry
+ * with the feed.
+ */
+export function GrovNewsEditionBox({ edition, t }: { edition: CurrentEdition; locale: string; t: T }) {
+  const today = edition.date === warsawDate();
+  return (
+    <section aria-labelledby="grovnews-edition" data-grovnews-edition-box={edition.date}
+      className="panel relative mb-5 min-w-0 overflow-hidden rounded-2xl p-4 sm:p-5">
+      <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-24"
+        style={{ background: "radial-gradient(26rem 7rem at 0% -20%, rgb(var(--accent) / 0.16), transparent 70%)" }} />
+      <div className="relative min-w-0">
+        <p className="overline">{edition.title}</p>
+        <h2 id="grovnews-edition" className="mt-1 font-display text-[19px] font-semibold leading-snug tracking-tight">
+          {today ? t("grovnews.edition.today") : t("grovnews.edition.from", { date: editionDateLabel(edition.date) })}
+        </h2>
+        {edition.intro && (
+          <p className="mt-2 whitespace-pre-line break-words text-[14px] leading-relaxed text-muted">{edition.intro}</p>
+        )}
+        <ol className="mt-3 divide-y divide-line border-t border-line">
+          {edition.posts.map((p) => (
+            <li key={p.id} className="min-w-0">
+              <Link href={`/grovnews/${p.slug}`} data-grovnews-edition-post={p.slug}
+                className="group flex min-w-0 items-center gap-3 py-2.5">
+                <span className="min-w-0 flex-1">
+                  <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    {p.featured && (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-[0.06em] text-accent">
+                        <Star size={11} aria-hidden />{t("grovnews.edition.featured")}
+                      </span>
+                    )}
+                    <span className="min-w-0 break-words text-[14.5px] font-semibold leading-snug text-ink group-hover:text-accent">{p.title}</span>
+                  </span>
+                  <span className="mt-0.5 inline-flex items-center gap-1 text-[12px] text-faint">
+                    <Clock size={12} aria-hidden />{t("grovnews.readTime", { n: p.readMinutes })}
+                  </span>
+                </span>
+                <ChevronRight size={16} aria-hidden className="shrink-0 text-faint group-hover:text-accent" />
+              </Link>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
   );
 }
 

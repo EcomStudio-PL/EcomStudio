@@ -65,6 +65,7 @@ const PUBLIC: Record<string, string> = {
 const SERVER_TOKEN: Record<string, string> = {
   "/api/cron/mail": "platform scheduler (CRON_SECRET) or an admin",
   "/api/newsletter/worker": "the sending belt, driven by the same secret",
+  "/api/cron/grovnews": "GrovNews daily run: POST only, CRON_SECRET or the dispatch token from the pg_cron tick (0121); no session",
   "/api/hooks/supabase/send-email": "Supabase auth hook, verified by its own signing secret",
   /*
     THE ONE ROUTE THAT TURNS MONEY INTO CREDITS, and it is anonymous by

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Settings2, UserPlus } from "lucide-react";
+import { Mail, Search, Settings2, UserPlus } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { toast } from "@/lib/notify";
 import { Button } from "@/components/ui/button";
@@ -14,10 +14,19 @@ import {
 } from "@/app/actions/grovnews";
 import { ADMIN_GRANT_SOURCES, GRANT_PRESETS, effectiveStatus, type EffectiveStatus, type GrantPreset } from "@/lib/grovnews";
 import type { AdminEntitlement } from "@/lib/services/grovnews";
+import type { MailEligibility } from "@/lib/services/grovnews-research";
 
 const TONE: Record<EffectiveStatus, "success" | "warning" | "neutral" | "danger" | "info"> = {
   ACTIVE: "success", SCHEDULED: "info", EXPIRED: "neutral", REVOKED: "danger",
 };
+
+/** Whether the newsletter would mail this person — its own consent and
+ *  suppression rules, read on the server. Suppression always wins. */
+const MAIL_TONE: Record<MailEligibility, "success" | "warning" | "neutral" | "danger"> = {
+  ok: "success", no_contact: "neutral", no_consent: "warning", unsubscribed: "neutral", suppressed: "danger",
+};
+
+export type SubscriberRow = AdminEntitlement & { mail: MailEligibility };
 
 /** Numeric, in Warsaw time: "25.09.2026". A client component is rendered on
  *  the server AND in the browser, and the two ICU builds spell month NAMES
@@ -54,7 +63,7 @@ function PresetPicker({ preset, onPreset, custom, onCustom }: {
   );
 }
 
-export function SubscribersManager({ rows }: { rows: AdminEntitlement[] }) {
+export function SubscribersManager({ rows }: { rows: SubscriberRow[] }) {
   const { t } = useI18n();
   const router = useRouter();
   const fmt = useFormatDate();
@@ -98,9 +107,16 @@ export function SubscribersManager({ rows }: { rows: AdminEntitlement[] }) {
         </Button>
       </div>
 
+      <p className="flex min-w-0 items-start gap-2 text-[12.5px] leading-relaxed text-muted" data-grovnews-mail-note>
+        <Mail size={14} aria-hidden className="mt-0.5 shrink-0 text-faint" />
+        <span className="min-w-0">{t("grovnewsAdm.mailNote")}</span>
+      </p>
+
       <AdminTable
         empty={t("grovnewsAdm.noSubscribers")}
-        headers={[t("grovnewsAdm.colUser"), t("grovnewsAdm.colStatus"), t("grovnewsAdm.colSource"),
+        // Access and e-mail status share a cell: two separate facts, one glance,
+        // and the table keeps the width it had before the e-mail column.
+        headers={[t("grovnewsAdm.colUser"), `${t("grovnewsAdm.colStatus")} · ${t("grovnewsAdm.colMail")}`, t("grovnewsAdm.colSource"),
           t("grovnewsAdm.colStart"), t("grovnewsAdm.colExpires"), t("grovnewsAdm.colNote"), ""]}
         rows={visible.map((r) => {
           const s = effectiveStatus({ status: r.status, starts_at: r.startsAt, expires_at: r.expiresAt }, now);
@@ -109,8 +125,13 @@ export function SubscribersManager({ rows }: { rows: AdminEntitlement[] }) {
               <span className="block truncate">{r.name || r.email}</span>
               {r.name && <span className="block truncate text-[11.5px] font-normal text-muted">{r.email}</span>}
             </span>,
-            <Badge key="s" tone={TONE[s]} dot>{t(`grovnewsAdm.ent.${s}`)}</Badge>,
-            <span key="src" className="whitespace-nowrap">{t(`grovnewsAdm.source.${r.source}`)}</span>,
+            <span key="s" className="flex min-w-0 flex-col items-start gap-1">
+              <Badge tone={TONE[s]} dot>{t(`grovnewsAdm.ent.${s}`)}</Badge>
+              <span className="max-w-full" data-grovnews-mail={r.mail}>
+                <Badge tone={MAIL_TONE[r.mail]} className="max-w-full whitespace-normal">{t(`grovnewsAdm.mailStatus.${r.mail}`)}</Badge>
+              </span>
+            </span>,
+            <span key="src" className="lg:whitespace-nowrap">{t(`grovnewsAdm.source.${r.source}`)}</span>,
             <span key="from" className="whitespace-nowrap tabular-nums">{fmt(r.startsAt)}</span>,
             <span key="to" className="whitespace-nowrap tabular-nums">{fmt(r.expiresAt) ?? t("grovnewsAdm.forever")}</span>,
             r.note ? <span key="n" className="line-clamp-2 text-[12px] text-muted">{r.note}</span> : "",
