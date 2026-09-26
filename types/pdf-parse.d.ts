@@ -19,10 +19,8 @@ declare module "pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js" {
   };
   type PdfDocument = { numPages: number; getPage(n: number): Promise<PdfPage>; destroy(): Promise<void> };
   const PDFJS: {
-    disableWorker: boolean;
-    isEvalSupported: boolean;
-    disableFontFace: boolean;
-    maxImageSize: number;
+    /** The global settings object pdf.js actually reads (globalThis.PDFJS). */
+    PDFJS: { disableWorker: boolean; isEvalSupported: boolean; disableFontFace: boolean; maxImageSize: number };
     OPS: Record<string, number>;
     getDocument(src: {
       data: Uint8Array; nativeImageDecoderSupport?: string; disableFontFace?: boolean; isEvalSupported?: boolean;

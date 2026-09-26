@@ -125,9 +125,11 @@ export async function readEngineAnalytics(supabase: Client, toolKey: string, set
   // request URL grows past what PostgREST accepts.
   const jobIds = new Set(runs.map((r) => r.job_id).filter(Boolean) as string[]);
   const sessionIds = [...new Set(runs.map((r) => r.prompt_session_id).filter(Boolean) as string[])];
-  for (let i = 0; i < sessionIds.length; i += CHUNK) {
+  // Small session chunks: one session can own dozens of jobs, and a request
+  // is capped at 1000 rows.
+  for (let i = 0; i < sessionIds.length; i += 20) {
     const { data: jobs } = await supabase.from("generation_jobs").select("id")
-      .in("prompt_session_id", sessionIds.slice(i, i + CHUNK)).limit(1000);
+      .in("prompt_session_id", sessionIds.slice(i, i + 20)).limit(1000);
     for (const j of jobs ?? []) jobIds.add(j.id);
   }
   let likes = 0; let dislikes = 0;

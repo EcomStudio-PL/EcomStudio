@@ -117,13 +117,15 @@ export function KnowledgeImport({ toolKey }: { toolKey: string }) {
       const form = new FormData();
       form.append("file", file);
       if (name.trim()) form.append("name", name.trim());
+      // The server assigns the set to this tool in the same request (or to
+      // none, when the admin unticked it).
+      form.append("tool", assign ? toolKey : "none");
       const res = await fetch("/api/admin/knowledge/import", { method: "POST", body: form });
       const json = await res.json().catch(() => null) as { ok?: boolean; error?: string; setId?: string; examples?: number; pending?: number } | null;
       if (!json?.ok || !json.setId) {
         toast.error(t(`aicc.knowledge.importErr.${json?.error ?? "generic"}`));
         return;
       }
-      if (assign) await setToolKnowledgeAction({ toolKey, setId: json.setId, assigned: true });
       toast.success(t("aicc.knowledge.imported", { n: json.examples ?? 0, pending: json.pending ?? 0 }));
       setFile(null); setName("");
       router.refresh();

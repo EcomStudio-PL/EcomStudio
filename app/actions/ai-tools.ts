@@ -13,7 +13,12 @@ import { TOOL_VARIABLES, malformedPlaceholders, parsePlaceholders } from "@/lib/
  *  of the tool stop at the fail-safe, so publishing is refused instead. */
 function unresolvable(toolKey: string, body: string): string[] {
   const known = new Set((TOOL_VARIABLES[toolKey] ?? []).map((d) => d.key));
-  return [...new Set(parsePlaceholders(body).map((p) => p.name).filter((n) => !known.has(n)))];
+  const names = parsePlaceholders(body).map((p) => p.name);
+  const bad = [...new Set(names.filter((n) => !known.has(n)))];
+  // GrovShot writes one prompt per planned scene: a template without {{scene}}
+  // would give every card the same prompt, so it cannot be published.
+  if (toolKey === "prompts" && !names.includes("scene")) bad.push("scene");
+  return bad;
 }
 
 /** Every `ai_tools` column a config save can write, typed once. */

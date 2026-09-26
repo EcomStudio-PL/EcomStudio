@@ -19,6 +19,7 @@ import sharp from "sharp";
  * and anything the heuristic is unsure about is still only a candidate.
  */
 
+export const PDF_MAX_IMAGE_PIXELS = 4096 * 4096;
 export const PDF_LIMITS = { maxPages: 60, maxImages: 80, minSide: 64, maxSide: 2048 };
 
 export type PdfImage = { jpeg: Buffer; width: number; height: number };
@@ -69,13 +70,16 @@ function pageText(items: { str: string; transform: number[] }[]): string {
 
 export async function readPdf(data: Buffer): Promise<{ pages: PdfPageData[]; numPages: number }> {
   const { default: PDFJS } = await import("pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js");
-  PDFJS.disableWorker = true;
-  // pdf.js 1.10 reads these from the GLOBAL, not from getDocument's options:
-  // no eval/new Function, no font compilation, and no image larger than
-  // 4096×4096 decoded at all (a tiny PDF can declare a gigapixel image).
-  PDFJS.isEvalSupported = false;
-  PDFJS.disableFontFace = true;
-  PDFJS.maxImageSize = 4096 * 4096;
+  // pdf.js 1.10 reads its settings from its GLOBAL settings object
+  // (`PDFJS.PDFJS`, the same object as globalThis.PDFJS) — not from the module
+  // export and not from getDocument's options. No eval/new Function, no font
+  // compilation, and no image larger than 4096×4096 decoded at all (a tiny PDF
+  // can declare a gigapixel image).
+  const settings = PDFJS.PDFJS;
+  settings.disableWorker = true;
+  settings.isEvalSupported = false;
+  settings.disableFontFace = true;
+  settings.maxImageSize = PDF_MAX_IMAGE_PIXELS;
   const doc = await PDFJS.getDocument({
     data: new Uint8Array(data), nativeImageDecoderSupport: "none", disableFontFace: true, isEvalSupported: false,
   });

@@ -173,14 +173,17 @@ function stripControls(value: string): string {
 
 /** Make an untrusted value safe to place inside an admin prompt. */
 export function sanitizeValue(value: string, def: Pick<VariableDef, "render" | "max">): string {
-  let v = stripControls(value);
+  // Fold look-alikes first (fullwidth brackets → ASCII) and drop invisible
+  // format characters (zero-width space/joiners, BOM), so a marker cannot be
+  // smuggled in a form the model reads but the checks below do not.
+  let v = stripControls(value.normalize("NFKC")).replace(/[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, "");
   // Our delimiters and the placeholder grammar can never be forged from data.
   // Removal is repeated until nothing changes: a single pass could itself
   // assemble a new marker out of the pieces around a removed one.
   let prev: string;
   do {
     prev = v;
-    v = v.replace(/DANE_KLIENTA/gi, "").replace(/[<>]{2,}/g, "");
+    v = v.replace(/D\s*A\s*N\s*E\s*_\s*K\s*L\s*I\s*E\s*N\s*T\s*A/gi, "").replace(/[<>](\s*[<>])+/g, "");
   } while (v !== prev);
   v = v.replace(/\{\{/g, "{ {").replace(/\}\}/g, "} }");
   if (def.render === "inline") v = v.replace(/\s+/g, " ");

@@ -4621,7 +4621,7 @@
     "engine.noEngineVideo": "Moduł wideo jest niedostępny (wkrótce) — nie ma jeszcze silnika do skonfigurowania.",
     "err.modeUnsupported": "To narzędzie nie obsługuje tego trybu.",
     "err.workflowUnpublished": "Najpierw opublikuj workflow, potem przełącz tryb.",
-    "err.variableUnknown": "Prompt zawiera zmienną, której to narzędzie nie zna, albo błędny zapis {{…}}.",
+    "err.variableUnknown": "Prompt zawiera zmienną, której to narzędzie nie zna, albo błędny zapis {{…}}. GrovShot wymaga też {{scene}}.",
     "sec.mode": "Tryb",
     "sec.modeSub": "Skąd bierze się instrukcja dla modelu. Dostępne są tylko tryby, które to narzędzie naprawdę obsługuje.",
     "sec.prompt": "Prompt",

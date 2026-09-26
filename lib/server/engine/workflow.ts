@@ -1,6 +1,6 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
-import { priceFor, type ReferenceImage, type AiModelRecord } from "@/lib/ai/types";
+import { effectiveQuality, priceFor, type ReferenceImage, type AiModelRecord } from "@/lib/ai/types";
 import type { VisionBackend } from "@/lib/ai/engine/vision";
 import { appendCustomerBlock, workflowVariables, type CompileValues } from "@/lib/ai/prompt-variables";
 import type { RuntimeWorkflow } from "@/lib/server/ai-engine";
@@ -79,11 +79,16 @@ export async function runImageWorkflow(supabase: Client, input: WorkflowRunInput
   // here — before any analysis and before any charge.
   if (imageStep.modelId && imageStep.modelId !== input.generation.modelId) {
     const { data: model } = await supabase.from("ai_models")
-      .select("id, active, pricing, credit_cost, metadata, supported_resolutions")
+      .select("id, active, pricing, credit_cost, metadata, supported_resolutions, supported_aspect_ratios")
       .eq("id", imageStep.modelId).maybeSingle();
     const res = input.generation.resolution ?? "1K";
+    // Priced exactly the way runGeneration will price it (effective quality,
+    // quantity), and able to draw the framing the tool already chose.
+    const priced = model as unknown as Pick<AiModelRecord, "pricing" | "credit_cost" | "metadata">;
+    const quality = model ? effectiveQuality(priced as never, input.generation.quality ?? undefined) ?? null : null;
     const fits = model?.active && (model.supported_resolutions ?? ["1K"]).includes(res)
-      && priceFor(model as unknown as Pick<AiModelRecord, "pricing" | "credit_cost" | "metadata">, res, input.generation.quality ?? null) <= input.expectedCost;
+      && (model.supported_aspect_ratios ?? []).includes(input.generation.aspectRatio)
+      && priceFor(priced, res, quality) * Math.max(1, input.generation.quantity ?? 1) <= input.expectedCost;
     if (!fits) {
       await record("blocked", { error: "model_override_mismatch" });
       return { ok: false, error: "model_unavailable" };

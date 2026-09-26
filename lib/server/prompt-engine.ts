@@ -306,7 +306,11 @@ async function waitForSession(supabase: Client, sessionId: string): Promise<Prom
  */
 function publishedTemplate(engine: EngineConfig | null): string | null {
   if (!engine || engine.mode !== "grovbase") return null;
-  return engine.systemPrompt?.trim() ? engine.systemPrompt : null;
+  const body = engine.systemPrompt?.trim() ? engine.systemPrompt : null;
+  // A template that does not place the scene cannot tell the cards apart
+  // (the publish action refuses one; a body stored before that rule existed
+  // is not used either — the master template keeps serving).
+  return body && /\{\{\s*scene\s*(\?|\||\}\})/.test(body) ? body : null;
 }
 
 /** One final prompt from the published template. Scene fields come from the

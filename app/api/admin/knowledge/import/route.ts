@@ -59,6 +59,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "unsupported_format" }, { status: 415 });
   }
   const givenName = String(form.get("name") ?? "").trim().slice(0, 160);
+  // WHICH TOOL THE SET SERVES. The tool page sends its own key (or "none");
+  // the knowledge library (Admin → AI → Wiedza) sends nothing, and its sets
+  // serve GrovShot as they always did — retrieval is tool-scoped now, so the
+  // assignment has to be explicit.
+  const toolField = String(form.get("tool") ?? "").trim();
+  const assignTo = toolField === "none" ? null
+    : toolField && /^[a-z_]{1,60}$/.test(toolField) ? toolField : "prompts";
 
   const { data: set, error: setErr } = await supabase.from("knowledge_sets").insert({
     name: givenName || file.name.replace(/\.(zip|pdf)$/i, "").slice(0, 160) || "Zestaw",
@@ -67,6 +74,10 @@ export async function POST(request: Request) {
   }).select("id").single();
   if (setErr || !set) return NextResponse.json({ ok: false, error: "generic" }, { status: 400 });
   const setId = set.id;
+  if (assignTo) {
+    const { data: tool } = await supabase.from("ai_tools").select("tool_key").eq("tool_key", assignTo).maybeSingle();
+    if (tool) await supabase.from("ai_tool_knowledge").upsert({ tool_key: assignTo, set_id: setId, enabled: true });
+  }
   const stage = (status: string, patch: Record<string, unknown> = {}) =>
     supabase.from("knowledge_sets").update({ status, updated_at: new Date().toISOString(), ...patch } as never).eq("id", setId);
   const fail = async (error: string, status = 400) => {

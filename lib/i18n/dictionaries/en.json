@@ -4621,7 +4621,7 @@
     "engine.noEngineVideo": "The video module is unavailable (coming soon) — there is no engine to configure yet.",
     "err.modeUnsupported": "This tool does not support that mode.",
     "err.workflowUnpublished": "Publish a workflow first, then switch the mode.",
-    "err.variableUnknown": "The prompt contains a variable this tool does not know, or a malformed {{…}}.",
+    "err.variableUnknown": "The prompt contains a variable this tool does not know, or a malformed {{…}}. GrovShot also requires {{scene}}.",
     "sec.mode": "Mode",
     "sec.modeSub": "Where the model's instruction comes from. Only modes this tool really supports are offered.",
     "sec.prompt": "Prompt",

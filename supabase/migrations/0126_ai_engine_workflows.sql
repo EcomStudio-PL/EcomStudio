@@ -447,13 +447,15 @@ grant execute on function public.knowledge_candidates(text, text, extensions.vec
 
 -- NO CHANGE FOR KNOWLEDGE THAT ALREADY SERVES GROVSHOT. Until now the
 -- planner searched every READY set; from now on a tool reads only the sets
--- assigned to it. Every set that is READY at migration time is therefore
--- assigned to 'prompts' explicitly, so the planner keeps exactly the memory it
--- had (and an admin can detach it). On a database with no sets this is a no-op.
+-- assigned to it. Every set that exists at migration time (and did not fail)
+-- is therefore assigned to 'prompts' explicitly — including one still being
+-- imported — so the planner keeps exactly the memory it had (and an admin can
+-- detach it). New library imports are assigned by the import route. On a
+-- database with no sets this is a no-op.
 insert into public.ai_tool_knowledge (tool_key, set_id, enabled)
 select 'prompts', s.id, true
   from public.knowledge_sets s
- where s.status = 'ready'
+ where s.status <> 'error'
    and exists (select 1 from public.ai_tools t where t.tool_key = 'prompts')
 on conflict (tool_key, set_id) do nothing;
 

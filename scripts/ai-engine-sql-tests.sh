@@ -146,7 +146,7 @@ create table public.usage_events (id uuid primary key default gen_random_uuid(),
   generation_job_id uuid references public.generation_jobs(id), status text not null default 'pending');
 alter table public.usage_events enable row level security;
 
-insert into public.knowledge_sets (name, status) values ('legacy-ready', 'ready'), ('legacy-busy', 'indexing');
+insert into public.knowledge_sets (name, status) values ('legacy-ready', 'ready'), ('legacy-busy', 'indexing'), ('legacy-error', 'error');
 insert into public.ai_tools (tool_key, engine_mode) values
   ('retouch', 'grovbase'), ('fashion_flat_lay', 'grovbase'), ('prompts', 'grovbase'), ('compress', 'off');
 
@@ -176,7 +176,7 @@ A1=$(step a1 analyze analysis true); A2=$(step a2 analyze text false); IMG=$(ste
 save() { as_user "$ADMIN" "select public.ai_save_tool_workflow('retouch', '$1'::jsonb, 's', '$2', $3)->>'${4:-ok}'"; }
 
 echo "Modes and columns"
-check "a READY set that served GrovShot before stays assigned to it (backfill)" "$(q "select string_agg(s.name, ',') from public.ai_tool_knowledge k join public.knowledge_sets s on s.id = k.set_id where k.tool_key = 'prompts'")" "legacy-ready"
+check "existing sets (ready or mid-import) stay assigned to GrovShot; failed ones do not (backfill)" "$(q "select string_agg(s.name, ',' order by s.name) from public.ai_tool_knowledge k join public.knowledge_sets s on s.id = k.set_id where k.tool_key = 'prompts'")" "legacy-busy,legacy-ready"
 check "engine_mode accepts 'workflow'" "$(err "update public.ai_tools set engine_mode = 'workflow' where tool_key = 'compress'")" "ok"
 q "update public.ai_tools set engine_mode = 'off' where tool_key = 'compress'" >/dev/null
 check "engine_mode still rejects anything else" "$(err "update public.ai_tools set engine_mode = 'bogus' where tool_key = 'compress'" | grep -c check)" "1"

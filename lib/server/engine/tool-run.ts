@@ -173,6 +173,14 @@ export async function prepareGeneratorEngine(
   const engine = await resolveEngine(supabase, "generator");
   if (!engine || engine.mode !== "hybrid" || !engine.systemPrompt?.trim()) return noop;
   const template = engine.systemPrompt;
+  // A template that makes model calls to resolve runs them only for a
+  // workspace with credits (the exact price is checked by runGeneration).
+  if (usesCostlyVariables(template)) {
+    const { data: wallet } = await supabase
+      .from("credit_wallets").select("balance").eq("workspace_id", workspaceId).maybeSingle();
+    if (!wallet) return { ok: false, error: "no_wallet" };
+    if (wallet.balance <= 0) return { ok: false, error: "insufficient_credits" };
+  }
   const resolved = await resolveVariables([template], {
     supabase, workspaceId, toolKey: "generator", strategy: engine.knowledgeStrategy,
     seed: `generator:${workspaceId}:${inputHash}`,
