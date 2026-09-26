@@ -5,6 +5,7 @@ import { featureBlockedForApi } from "@/lib/server/feature-availability";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { generateFromConcept } from "@/lib/server/concept-generation";
 import { runGeneration } from "@/lib/server/generation";
+import { prepareGeneratorEngine } from "@/lib/server/engine/tool-run";
 import { QUALITIES, type AspectRatio, type Quality, type Resolution } from "@/lib/ai/types";
 
 export const maxDuration = 300;
@@ -167,8 +168,16 @@ export async function POST(request: Request) {
     ? `${basePrompt}\n\nPoprawki klienta do tego samego ujęcia (zastosuj je, ale nie zmieniaj samego produktu ani jego cech): ${instruction}`
     : basePrompt;
 
+  // The same hybrid wrapper as the first run (a no-op unless one is published).
+  const engine = await prepareGeneratorEngine(supabase, user.id, workspace.id, {
+    userPrompt: prompt, negative: null, productDescription: null,
+    aspectRatio: job.aspect_ratio || "1:1", resolution: job.resolution ?? null, referencePaths,
+  });
+  if (!engine.ok) return NextResponse.json({ ok: false, error: engine.error }, { status: 400 });
+
   const result = await runGeneration(supabase, user.id, workspace.id, {
     modelId: modelId ?? job.model_id ?? "",
+    enginePrompt: engine.enginePrompt ?? undefined,
     // Only a client-chosen model must pass the custom-visibility gate; the
     // job's own original model keeps working even if later hidden.
     requireCustomVisible: !!modelId,
@@ -185,5 +194,6 @@ export async function POST(request: Request) {
     parentJobId: job.id,
     promptOrigin: "custom",
   });
+  await engine.finish(result);
   return NextResponse.json(result, { status: result.ok ? 200 : result.error === "insufficient_credits" ? 402 : 400 });
 }

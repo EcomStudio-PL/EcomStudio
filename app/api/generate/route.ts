@@ -4,6 +4,7 @@ import { accountBlockedResponse } from "@/lib/server/account-block";
 import { featureBlockedForApi } from "@/lib/server/feature-availability";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { runGeneration, type GenerateInput } from "@/lib/server/generation";
+import { prepareGeneratorEngine } from "@/lib/server/engine/tool-run";
 import { QUALITIES, type Quality } from "@/lib/ai/types";
 
 export const maxDuration = 300;
@@ -36,9 +37,26 @@ export async function POST(request: Request) {
   // concept/session lineage (a custom job must never point at an engine
   // concept), and the origin is pinned to "custom" (base price, prompt
   // stored in clear on the job as the customer's own words).
+  const referencePaths = (body.referencePaths ?? []).filter((p) => typeof p === "string" && p.startsWith(`${workspace.id}/`));
+  const productDescription = typeof body.productDescription === "string" ? body.productDescription.slice(0, 2000) : undefined;
+  // HYBRID MODE (Admin → Narzędzia i silniki): a published GrovBase
+  // instruction wraps the customer's prompt as separated data. Server-side
+  // only — the body cannot choose, see or replace it. With nothing published
+  // this is a no-op and the generator runs exactly as before.
+  const engine = await prepareGeneratorEngine(supabase, user.id, workspace.id, {
+    userPrompt: String(body.prompt ?? ""),
+    negative: typeof body.negative === "string" ? body.negative : null,
+    productDescription: productDescription ?? null,
+    aspectRatio: String(body.aspectRatio ?? ""),
+    resolution: typeof body.resolution === "string" ? body.resolution : null,
+    referencePaths,
+  });
+  if (!engine.ok) return NextResponse.json({ ok: false, error: engine.error }, { status: 400 });
+
   const result = await runGeneration(supabase, user.id, workspace.id, {
     modelId: String(body.modelId ?? ""),
     prompt: String(body.prompt ?? ""),
+    enginePrompt: engine.enginePrompt ?? undefined,
     negative: typeof body.negative === "string" ? body.negative : undefined,
     aspectRatio: body.aspectRatio,
     resolution: body.resolution,
@@ -50,12 +68,13 @@ export async function POST(request: Request) {
     // The generator no longer creates or requires a product: only free-text
     // context travels, and `newProduct` is deliberately NOT read from the
     // body so this endpoint can never write to the catalogue.
-    productDescription: typeof body.productDescription === "string" ? body.productDescription.slice(0, 2000) : undefined,
+    productDescription,
     promptOrigin: "custom",
     requireCustomVisible: true,
-    referencePaths: (body.referencePaths ?? []).filter((p) => typeof p === "string" && p.startsWith(`${workspace.id}/`)),
+    referencePaths,
     referenceImageIds: (body.referenceImageIds ?? []).filter((x) => typeof x === "string"),
     inspirationPaths: (body.inspirationPaths ?? []).filter((p) => typeof p === "string" && p.startsWith(`${workspace.id}/`)).slice(0, 5),
   });
+  await engine.finish(result);
   return NextResponse.json(result, { status: result.ok ? 200 : 400 });
 }

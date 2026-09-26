@@ -40,8 +40,47 @@ export function isAiToolKey(value: string): value is AiToolKey {
   return (AI_TOOL_KEYS as readonly string[]).includes(value);
 }
 
-export const ENGINE_MODES = ["off", "grovbase", "user", "hybrid"] as const;
+export const ENGINE_MODES = ["off", "grovbase", "user", "hybrid", "workflow"] as const;
 export type EngineMode = (typeof ENGINE_MODES)[number];
+
+/**
+ * WHICH MODES A TOOL CAN REALLY RUN. A mode appears in the admin picker only
+ * when the tool's server path implements it — the panel never offers a switch
+ * that would decide nothing, and the save action refuses anything else.
+ *
+ *   prompts   GrovShot. A published template replaces the built-in master
+ *             template; with none published it runs exactly as before.
+ *   generator The customer's own prompt ('user', today's behaviour) or that
+ *             prompt wrapped by a GrovBase instruction ('hybrid').
+ *   retouch   A published prompt replaces the built-in one; a workflow may
+ *             prepare analysis steps before the one billed image step.
+ *   fashion_* The operator's prompt (the seller hint rides along as separated
+ *             DATA, as the tool always did), or a workflow.
+ *   the rest  No prompt engine: local pixel tools, specialised provider tools
+ *             and the unreleased video tool.
+ */
+export const TOOL_ENGINE_MODES: Record<AiToolKey, readonly EngineMode[]> = {
+  prompts: ["grovbase"],
+  generator: ["user", "hybrid"],
+  retouch: ["grovbase", "workflow"],
+  editor: ["off"], resize: ["off"], compress: ["off"], tool_watermark: ["off"],
+  tool_upscale: ["off"], tool_expand: ["off"], video: ["off"],
+  fashion_ghost_mannequin: ["grovbase", "workflow"],
+  fashion_flat_lay: ["grovbase", "workflow"],
+  fashion_iron: ["grovbase", "workflow"],
+  fashion_change_person: ["grovbase", "workflow"],
+  fashion_change_face: ["grovbase", "workflow"],
+};
+
+/** Whether a tool has a prompt engine at all. */
+export function toolHasPromptEngine(key: AiToolKey): boolean {
+  return TOOL_ENGINE_MODES[key].some((m) => m !== "off");
+}
+
+/** Tools that can run a multi-step workflow. */
+export function toolSupportsWorkflow(key: AiToolKey): boolean {
+  return TOOL_ENGINE_MODES[key].includes("workflow");
+}
 
 /** Which family a tool belongs to on the registry screen. */
 export type ToolCategory = "generation" | "editing" | "local" | "video";
@@ -159,6 +198,11 @@ export type ToolRow = {
   engineMode: EngineMode;
   /** Has a published hidden prompt, and which version. */
   promptVersion: number | null;
+  /** Has a published workflow, and which version (optional: older callers
+   *  build rows without it). */
+  workflowVersion?: number | null;
+  /** How retrieval balances proven examples against variety. */
+  knowledgeStrategy?: "proven" | "diverse";
   serviceSlug: string | null;
   /** Credits the catalogue charges for one run. */
   credits: number | null;
@@ -199,7 +243,7 @@ export async function readToolRegistry(
 ): Promise<ToolRow[]> {
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
 
-  const [toolsRes, modelsRes, promptsRes, knowledgeRes, servicesRes, usageRes] = await Promise.all([
+  const [toolsRes, modelsRes, promptsRes, knowledgeRes, servicesRes, usageRes, workflowsRes] = await Promise.all([
     supabase.from("ai_tools").select("*"),
     supabase.from("ai_tool_models").select("tool_key, model_id, role, sort_order"),
     supabase.from("ai_tool_prompts").select("tool_key, version").eq("status", "published"),
@@ -210,6 +254,7 @@ export async function readToolRegistry(
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(20000),
+    supabase.from("ai_tool_workflows").select("tool_key, version").eq("status", "published"),
   ]);
 
   const modelIds = [...new Set((modelsRes.data ?? []).map((m) => m.model_id))];
@@ -241,6 +286,7 @@ export async function readToolRegistry(
   }
 
   const promptVersion = new Map((promptsRes.data ?? []).map((p) => [p.tool_key, p.version]));
+  const workflowVersion = new Map((workflowsRes.data ?? []).map((w) => [w.tool_key, w.version]));
   const knowledgeCount = new Map<string, number>();
   for (const k of knowledgeRes.data ?? []) {
     knowledgeCount.set(k.tool_key, (knowledgeCount.get(k.tool_key) ?? 0) + 1);
@@ -273,6 +319,8 @@ export async function readToolRegistry(
       hiddenFromMenu: state?.hiddenFromMenu ?? false,
       engineMode: (row?.engine_mode as EngineMode) ?? "off",
       promptVersion: promptVersion.get(key) ?? null,
+      workflowVersion: workflowVersion.get(key) ?? null,
+      knowledgeStrategy: row?.knowledge_strategy === "diverse" ? "diverse" : "proven",
       serviceSlug: row?.service_slug ?? null,
       credits: svc?.credits_cost ?? null,
       serviceEnabled: svc?.enabled ?? true,
@@ -360,6 +408,49 @@ export async function readPromptHistory(supabase: Client, toolKey: string): Prom
     summary: r.summary,
     reason: r.reason,
     source: r.source,
+    createdAt: r.created_at,
+    publishedAt: r.published_at,
+    authorName: r.created_by ? nameById.get(r.created_by) ?? null : null,
+  }));
+}
+
+/** Workflow version history for one tool. Step prompts are never selected. */
+export type WorkflowVersionRow = {
+  id: string;
+  version: number;
+  status: string;
+  summary: string | null;
+  reason: string | null;
+  stepCount: number;
+  createdAt: string;
+  publishedAt: string | null;
+  authorName: string | null;
+};
+
+export async function readWorkflowHistory(supabase: Client, toolKey: string): Promise<WorkflowVersionRow[]> {
+  const { data } = await supabase
+    .from("ai_tool_workflows")
+    .select("id, version, status, summary, reason, created_at, published_at, created_by, ai_tool_workflow_steps(id)")
+    .eq("tool_key", toolKey)
+    .order("version", { ascending: false })
+    .limit(50);
+  const rows = (data ?? []) as unknown as {
+    id: string; version: number; status: string; summary: string | null; reason: string | null;
+    created_at: string; published_at: string | null; created_by: string | null;
+    ai_tool_workflow_steps: { id: string }[] | null;
+  }[];
+  const authorIds = [...new Set(rows.map((r) => r.created_by).filter(Boolean))] as string[];
+  const { data: authors } = authorIds.length
+    ? await supabase.from("profiles").select("id, full_name, email").in("id", authorIds)
+    : { data: [] as { id: string; full_name: string | null; email: string }[] };
+  const nameById = new Map((authors ?? []).map((a) => [a.id, a.full_name ?? a.email]));
+  return rows.map((r) => ({
+    id: r.id,
+    version: r.version,
+    status: r.status,
+    summary: r.summary,
+    reason: r.reason,
+    stepCount: r.ai_tool_workflow_steps?.length ?? 0,
     createdAt: r.created_at,
     publishedAt: r.published_at,
     authorName: r.created_by ? nameById.get(r.created_by) ?? null : null,

@@ -11,7 +11,10 @@ import { composeFinalPrompt, validateFinalPrompt, PROMPT_TEMPLATE_VERSION } from
 import { VISION_MODEL, type VisionBackend, type VisionOutcome, type VisionProvider } from "@/lib/ai/engine/vision";
 import type { ImageAnalysis, SessionInput } from "@/lib/ai/engine/types";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
-import { getEngineRuleDirectives, retrieveKnowledgeHints } from "@/lib/server/knowledge";
+import { getEngineRuleDirectives, retrieveToolKnowledge } from "@/lib/server/knowledge";
+import { resolveEngine, type EngineConfig } from "@/lib/server/ai-engine";
+import { TOOL_VARIABLES, type CompileValues } from "@/lib/ai/prompt-variables";
+import { compileForTool, recordEngineRun, resolveVariables } from "@/lib/server/engine/runtime";
 
 export type ShotBrief = {
   /** The customer's own words for this shot — optional, max ~300 chars. */
@@ -258,7 +261,7 @@ export async function textCapableBackends(
   return getVisionBackends(supabase, await getAnalysisModel(supabase), known);
 }
 
-async function downloadReferences(supabase: Client, paths: string[]): Promise<ReferenceImage[]> {
+export async function downloadReferences(supabase: Client, paths: string[]): Promise<ReferenceImage[]> {
   const refs: ReferenceImage[] = [];
   let total = 0;
   for (const path of paths.slice(0, MAX_REFS)) {
@@ -297,6 +300,32 @@ async function waitForSession(supabase: Client, sessionId: string): Promise<Prom
 }
 
 /**
+ * THE PUBLISHED GROVSHOT TEMPLATE, when Admin → Narzędzia i silniki has one
+ * for `prompts` in 'grovbase' mode. Null means "use the built-in master
+ * template" — which is what happens today, because nothing is published.
+ */
+function publishedTemplate(engine: EngineConfig | null): string | null {
+  if (!engine || engine.mode !== "grovbase") return null;
+  return engine.systemPrompt?.trim() ? engine.systemPrompt : null;
+}
+
+/** One final prompt from the published template. Scene fields come from the
+ *  planner (or the customer's brief) and are untrusted data; a required
+ *  variable that cannot be resolved fails the session — never a guess. */
+function compileGrovshotPrompt(
+  template: string, values: CompileValues, scene: PlannedScene,
+): string {
+  const compiled = compileForTool(template, TOOL_VARIABLES.prompts, {
+    ...values,
+    scene: scene.scene_description,
+    scene_title: scene.title,
+    human_presence: scene.human_presence ? "tak" : "nie",
+  });
+  if (!compiled.ok) throw new ProviderError(compiled.error === "variable_missing" ? "variable_missing" : "prompt_unconfigured");
+  return compiled.text;
+}
+
+/**
  * "PRZYGOTUJ N UJĘĆ" (N = 5-10, the seller's choice): analyse every reference
  * once, build the Product Feature Manifest and Product Lock once, design
  * exactly N diverse product-appropriate scenes with per-scene reference
@@ -318,6 +347,10 @@ export async function runPromptSession(
   const analysisModel = await getAnalysisModel(supabase);
   const backends = await getVisionBackends(supabase, analysisModel);
   if (backends.length === 0) return { ok: false, error: "analysis_unavailable" };
+  // The engine configuration is read ONCE: a template published while this
+  // session runs does not change the prompts this session writes.
+  const engine = await resolveEngine(supabase, "prompts");
+  const template = publishedTemplate(engine);
 
   // Normalized customer briefs — index-aligned with the shot order. A brief
   // participates only when it carries at least a few characters of text.
@@ -486,12 +519,15 @@ export async function runPromptSession(
     // examples from the knowledge base. Both arrive as ciphertext through
     // definer RPCs and are decrypted only here; both are failure-safe and
     // feed EXCLUSIVELY the internal planner brief, never any customer copy.
+    // Knowledge comes ONLY from the sets assigned to this tool (Admin →
+    // Narzędzia i silniki → GrovShot → Wiedza), approved examples only,
+    // ranked by relevance and feedback-adjusted quality.
     const [ruleDirectives, knowledge] = await Promise.all([
       getEngineRuleDirectives(supabase),
-      retrieveKnowledgeHints(
-        supabase,
+      retrieveToolKnowledge(
+        supabase, "prompts",
         [sessionInfo.productName, sessionInfo.description, sessionInfo.extraInfo].filter(Boolean).join("\n"),
-        3,
+        { strategy: engine?.knowledgeStrategy ?? "proven", seed: session.id, topK: 3 },
       ),
     ]);
     const knowledgeBlock = knowledge.hints.length > 0
@@ -594,7 +630,34 @@ export async function runPromptSession(
     // the count never drops.
     stage = "prompts";
     let qaRepaired = 0;
+    // A published template: its session-level variables are resolved once
+    // (the product analysis is a model call, made only when referenced).
+    const templateValues: CompileValues | null = template
+      ? (await resolveVariables([template], {
+          supabase, workspaceId, toolKey: "prompts",
+          strategy: engine?.knowledgeStrategy ?? "proven", seed: session.id,
+          referencePaths: input.referencePaths.slice(0, MAX_REFS),
+          images: async () => images,
+          backends: async () => backends,
+          knowledgeQuery: "",
+          knowledge,
+          base: {
+            product_name: sessionInfo.productName || null,
+            product_description: sessionInfo.description,
+            extra_info: sessionInfo.extraInfo,
+            style: sessionInfo.style,
+            session_type: sessionType,
+            aspect_ratio: input.aspectRatio,
+            resolution: normalizeResolution(input.resolution),
+          },
+        })).values
+      : null;
     const rows = scenes.map((scene, idx) => {
+      if (template && templateValues) {
+        const prompt = compileGrovshotPrompt(template, templateValues, scene);
+        const sealed = encryptConceptPayload(prompt, "", { tv: PROMPT_TEMPLATE_VERSION });
+        return promptRow(scene, idx, sealed);
+      }
       let prompt = composeFinalPrompt({
         productName: sessionInfo.productName,
         sceneDescription: scene.scene_description,
@@ -612,6 +675,9 @@ export async function runPromptSession(
         });
       }
       const sealed = encryptConceptPayload(prompt, "", { tv: PROMPT_TEMPLATE_VERSION });
+      return promptRow(scene, idx, sealed);
+    });
+    function promptRow(scene: PlannedScene, idx: number, sealed: { ciphertext: string; iv: string; authTag: string }) {
       return {
         product_id: productId, workspace_id: workspaceId, session_id: session.id,
         concept_name: scene.title, shot_type: "scene", scene_type: null,
@@ -628,7 +694,7 @@ export async function runPromptSession(
         format: input.aspectRatio, style: input.style?.trim() || null,
         priority: idx + 1, status: "ready" as const, lock_strength: "LOW",
       };
-    });
+    }
     lap("promptsMs");
     // A reused (retried) session may carry rows from a partially failed run.
     if (retryable) await supabase.from("generated_prompts").delete().eq("session_id", session.id);
@@ -666,11 +732,26 @@ export async function runPromptSession(
         total_latency_ms: Date.now() - startedAt,
       },
     });
+    await recordEngineRun(supabase, {
+      toolKey: "prompts", workspaceId, userId, mode: engine?.mode ?? "grovbase", status: "ok",
+      promptSessionId: session.id, promptVersion: template ? engine?.promptVersion ?? null : null,
+      knowledgeExampleIds: knowledge.exampleIds, sceneExampleId: knowledge.sceneExampleId,
+      engineVersion: `v${ENGINE_VERSION}/t${PROMPT_TEMPLATE_VERSION}`,
+      durationMs: Date.now() - startedAt,
+    });
     return { ok: true, sessionId: session.id, productId: productId ?? "", promptCount: rows.length };
   } catch (e) {
     const safe = e instanceof ProviderError ? e.safeMessage : "analysis_error";
     const providerCode = e instanceof ProviderError ? e.providerCode : undefined;
     await failUsage(supabase, { serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet.id, error: safe });
+    await recordEngineRun(supabase, {
+      toolKey: "prompts", workspaceId, userId, mode: engine?.mode ?? "grovbase",
+      status: safe === "variable_missing" || safe === "prompt_unconfigured" ? "blocked" : "failed",
+      error: safe, promptSessionId: session.id,
+      promptVersion: template ? engine?.promptVersion ?? null : null,
+      engineVersion: `v${ENGINE_VERSION}/t${PROMPT_TEMPLATE_VERSION}`,
+      durationMs: Date.now() - startedAt,
+    });
     await supabase.from("prompt_sessions").update({
       status: "failed", error: safe, error_stage: stage, latency_ms: Date.now() - startedAt,
     }).eq("id", session.id);
@@ -720,6 +801,42 @@ export async function regeneratePrompt(
     }, { count: 1, avoidTitles: avoid });
     let scene: PlannedScene | undefined = scened.scenes[0];
     if (!scene) return { ok: false, error: "analysis_empty" };
+    // Same template as the session's other cards: the published one when
+    // there is one (its session-level variables re-resolved), else the master.
+    const engine = await resolveEngine(supabase, "prompts");
+    const template = publishedTemplate(engine);
+    if (template) {
+      const { values } = await resolveVariables([template], {
+        supabase, workspaceId, toolKey: "prompts",
+        strategy: engine?.knowledgeStrategy ?? "proven", seed: `${session.id}:${promptId}`,
+        referencePaths: session.reference_paths ?? [],
+        images: async () => images, backends: async () => backends,
+        knowledgeQuery: [session.product_name, session.description, session.extra_info].filter(Boolean).join("\n"),
+        base: {
+          product_name: session.product_name || null,
+          product_description: session.description,
+          extra_info: session.extra_info,
+          style: session.style,
+          session_type: session.session_type,
+          aspect_ratio: session.aspect_ratio,
+          resolution: session.resolution,
+        },
+      });
+      const sealed = encryptConceptPayload(compileGrovshotPrompt(template, values, scene), "", { tv: PROMPT_TEMPLATE_VERSION });
+      await supabase.from("generated_prompts").update({
+        concept_name: scene.title, shot_type: "scene", scene_type: null,
+        customer_title: scene.title,
+        customer_description: scene.scene_description,
+        prompt_text: "", negative_prompt: null,
+        prompt_encrypted: sealed.ciphertext, prompt_iv: sealed.iv, prompt_tag: sealed.authTag,
+        primary_reference: scene.reference_indices[0] ?? 1,
+        supporting_references: [] as never,
+        reference_indices: scene.reference_indices,
+        reference_rationale: null, lock_strength: "LOW",
+        generation_count: 0, last_job_id: null,
+      }).eq("id", promptId);
+      return { ok: true };
+    }
     let finalPrompt = composeFinalPrompt({
       productName: session.product_name,
       sceneDescription: scene.scene_description,

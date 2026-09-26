@@ -36,6 +36,8 @@ export type EngineConfig = {
   /** The decrypted system prompt, or null when the tool has none published. */
   systemPrompt: string | null;
   promptVersion: number | null;
+  /** How knowledge retrieval balances proven examples against variety. */
+  knowledgeStrategy: "proven" | "diverse";
 };
 
 /**
@@ -80,6 +82,7 @@ export async function resolveEngine(supabase: Client, toolKey: string): Promise<
       fallbackModelId: row.fallback_model_id,
       systemPrompt,
       promptVersion: row.prompt_version,
+      knowledgeStrategy: row.knowledge_strategy === "diverse" ? "diverse" : "proven",
     };
   } catch {
     return null;
@@ -111,6 +114,68 @@ export function openPrompt(row: { body_encrypted: string; body_iv: string; body_
   if (!encryptionAvailable()) return null;
   try {
     return decryptSecret(row.body_encrypted, row.body_iv, row.body_tag);
+  } catch {
+    return null;
+  }
+}
+
+/* ── workflows ────────────────────────────────────────────────────────────*/
+
+export type WorkflowStep = {
+  position: number;
+  name: string;
+  enabled: boolean;
+  operation: "analyze" | "generate_image";
+  outputKind: "text" | "analysis" | "image";
+  useImages: boolean;
+  /** Image-model override; null = the tool's own model. */
+  modelId: string | null;
+  /** Text-provider override; null = the configured planner order. */
+  textProvider: "openai" | "google" | null;
+  timeoutMs: number;
+  maxAttempts: number;
+  condition: "always" | "if_hint" | "if_previous_nonempty";
+  /** Decrypted step prompt. Server memory only. */
+  prompt: string;
+};
+
+export type RuntimeWorkflow = { id: string; version: number; steps: WorkflowStep[] };
+
+/**
+ * The PUBLISHED workflow of a tool, read once, decrypted server-side.
+ *
+ * Returns null — never throws — when there is none, the token is missing or a
+ * step cannot be opened. A workflow with an unreadable step is not "mostly
+ * there": the caller fails safe before any charge.
+ */
+export async function loadPublishedWorkflow(supabase: Client, toolKey: string): Promise<RuntimeWorkflow | null> {
+  const token = dispatchToken();
+  if (!token || !encryptionAvailable()) return null;
+  try {
+    const { data, error } = await supabase.rpc("ai_tool_workflow_runtime", { p_tool_key: toolKey, p_token: token });
+    if (error || !data?.length) return null;
+    const steps: WorkflowStep[] = [];
+    for (const r of data) {
+      let prompt: string;
+      try { prompt = decryptSecret(r.prompt_encrypted, r.prompt_iv, r.prompt_tag); }
+      catch { return null; }
+      steps.push({
+        position: r.position,
+        name: r.name,
+        enabled: r.enabled,
+        operation: r.operation === "generate_image" ? "generate_image" : "analyze",
+        outputKind: r.output_kind === "image" ? "image" : r.output_kind === "analysis" ? "analysis" : "text",
+        useImages: r.use_images,
+        modelId: r.model_id,
+        textProvider: r.text_provider === "openai" || r.text_provider === "google" ? r.text_provider : null,
+        timeoutMs: r.timeout_ms,
+        maxAttempts: r.max_attempts,
+        condition: r.condition === "if_hint" || r.condition === "if_previous_nonempty" ? r.condition : "always",
+        prompt,
+      });
+    }
+    steps.sort((a, b) => a.position - b.position);
+    return { id: data[0].workflow_id, version: data[0].version, steps };
   } catch {
     return null;
   }

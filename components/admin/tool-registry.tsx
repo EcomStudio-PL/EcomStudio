@@ -58,7 +58,7 @@ export type PanelEntry = {
 };
 
 const ENGINE_TONE: Record<EngineMode, "neutral" | "info" | "accent"> = {
-  off: "neutral", user: "info", grovbase: "accent", hybrid: "accent",
+  off: "neutral", user: "info", grovbase: "accent", hybrid: "accent", workflow: "accent",
 };
 
 type Quick = "all" | "active" | "soon" | "hidden";
@@ -338,7 +338,9 @@ function EntryRow({ entry, open, mounted, onOpen, selected, onSelect, availabili
                 {kind === "tool" && tool ? t(`aicc.category.${tool.category}`) : t(`aicc.panel.kind.${kind}`)}
               </Badge>
               {tool && <Badge tone={ENGINE_TONE[tool.engineMode]}>{t(`aicc.engine.${tool.engineMode}`)}</Badge>}
+              {tool && <Badge tone="neutral" className="max-w-full overflow-hidden">{modelLine(tool, t)}</Badge>}
               {tool && tool.promptVersion !== null && <Badge tone="neutral">v{tool.promptVersion}</Badge>}
+              {tool?.workflowVersion ? <Badge tone="neutral">{t("aicc.engine.workflowShort", { n: tool.workflowVersion })}</Badge> : null}
               {tool && <span className="text-[12px] font-semibold tabular-nums text-muted">{creditsLabel(tool, t)}</span>}
               {admin.hiddenFromMenu && admin.status !== "DISABLED" && (
                 <span className="inline-flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wide text-faint">
@@ -417,7 +419,9 @@ const savedKey = (r: FeatureAdminRow) =>
   [r.status, r.hiddenFromMenu, r.startsAt, r.endsAt, r.autoReenable, r.customTitle, r.customMessage, r.updatedAt].join("|");
 
 function subLine(entry: PanelEntry, kind: PanelKind, covered: number, t: T): string {
-  if (entry.tool) return modelLine(entry.tool, t);
+  // The model has its own badge on the row; the line under the name says
+  // where the tool lives instead of repeating it.
+  if (entry.tool) return entry.admin.path || modelLine(entry.tool, t);
   if (kind === "category") return t("aicc.panel.categoryLine", { n: covered });
   return entry.admin.path;
 }

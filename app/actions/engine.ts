@@ -63,8 +63,8 @@ export async function deleteKnowledgeSetAction(id: string): Promise<Result> {
   try {
     const { supabase } = await requireAdmin();
     // Storage first (best-effort): the source zip and both image folders.
-    const paths: string[] = [`sets/${id}/source.zip`];
-    for (const dir of ["before", "after"]) {
+    const paths: string[] = [`sets/${id}/source.zip`, `sets/${id}/source.pdf`];
+    for (const dir of ["before", "after", "pdf"]) {
       const { data: files } = await supabase.storage.from("knowledge").list(`sets/${id}/${dir}`, { limit: 400 });
       for (const f of files ?? []) paths.push(`sets/${id}/${dir}/${f.name}`);
     }

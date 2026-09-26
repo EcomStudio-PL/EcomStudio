@@ -3,6 +3,7 @@ import type { Client } from "@/lib/services/workspace";
 import { decryptSecret, encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { readProviderKey } from "@/lib/server/provider-credentials";
 import { dispatchToken } from "@/lib/server/integrations";
+import { rankCandidates, type KnowledgeStrategy } from "@/lib/ai/knowledge-ranking";
 
 /**
  * KNOWLEDGE BASE — the engine's memory of past reference sets.
@@ -63,8 +64,10 @@ export function buildHintCiphertext(example: {
   what_worked?: string | null;
   what_failed?: string | null;
   correction?: string | null;
+  scene?: string | null;
 }): { ciphertext: string; iv: string; authTag: string } | null {
   const parts: string[] = [];
+  if (example.scene?.trim()) parts.push(`Scena: ${example.scene.trim().slice(0, 240)}`);
   if (example.what_worked?.trim()) parts.push(`Sprawdziło się: ${example.what_worked.trim()}`);
   if (example.what_failed?.trim()) parts.push(`Unikaj: ${example.what_failed.trim()}`);
   if (example.correction?.trim()) parts.push(`Poprawka: ${example.correction.trim()}`);
@@ -110,6 +113,74 @@ export async function retrieveKnowledgeHints(
       if (hints.length >= topK) break;
     }
     return { hints, exampleIds: ids };
+  } catch {
+    return empty;
+  }
+}
+
+export type ToolKnowledge = KnowledgeHints & {
+  /** The scene of the best-ranked example that has one — a candidate scene,
+   *  still untrusted data wherever it is placed. */
+  scene: string | null;
+  sceneExampleId: string | null;
+};
+
+/**
+ * TOOL-SCOPED RETRIEVAL. Only sets ASSIGNED to this tool, only APPROVED and
+ * ENABLED examples in READY sets (all enforced in SQL, migration 0126). The
+ * ranking is `rankCandidates` — relevance plus a Bayesian quality score, so
+ * 👍/👎 reorder examples without ever touching a prompt.
+ *
+ * Relevance gates are the original matcher's: a query vector is required and
+ * an example must be embedded and at least 0.25 similar. Never throws; an
+ * empty result is a normal outcome.
+ */
+export async function retrieveToolKnowledge(
+  supabase: Client,
+  toolKey: string,
+  queryText: string,
+  opts: { strategy: KnowledgeStrategy; seed: string; topK?: number },
+): Promise<ToolKnowledge> {
+  const empty: ToolKnowledge = { hints: [], exampleIds: [], scene: null, sceneExampleId: null };
+  try {
+    if (!encryptionAvailable() || !queryText.trim()) return empty;
+    // Relevance first, as the original matcher: no query vector (no OpenAI
+    // credential, no text) means no hints — never "some hint, unrelated".
+    const vector = (await embedTexts(supabase, [queryText]))?.[0] ?? null;
+    if (!vector) return empty;
+    const { data, error } = await supabase.rpc("knowledge_candidates", {
+      p_token: dispatchToken(),
+      p_tool_key: toolKey,
+      p_embedding: vector ? (JSON.stringify(vector) as unknown as string) : null,
+      p_limit: 20,
+    });
+    if (error || !data?.length) return empty;
+    // Below this similarity an example is about something else entirely —
+    // the same floor the original matcher used.
+    const pool = data.filter((r) => typeof r.similarity === "number" && r.similarity >= 0.25);
+    const ranked = rankCandidates(
+      pool.map((r) => ({
+        id: r.id, similarity: r.similarity, resultRating: r.result_rating,
+        usageCount: r.usage_count, positiveCount: r.positive_count,
+        negativeCount: r.negative_count, scene: r.scene,
+      })),
+      { strategy: opts.strategy, topK: opts.topK ?? 3, seed: opts.seed },
+    );
+    const byId = new Map(pool.map((r) => [r.id, r]));
+    const hints: string[] = [];
+    const ids: string[] = [];
+    let scene: string | null = null;
+    let sceneExampleId: string | null = null;
+    for (const c of ranked) {
+      const r = byId.get(c.id);
+      if (!r) continue;
+      try {
+        hints.push(decryptSecret(r.hint_encrypted, r.hint_iv, r.hint_tag));
+        ids.push(r.id);
+        if (!scene && r.scene?.trim()) { scene = r.scene.trim(); sceneExampleId = r.id; }
+      } catch { /* sealed with an older key — skip */ }
+    }
+    return { hints, exampleIds: ids, scene, sceneExampleId };
   } catch {
     return empty;
   }

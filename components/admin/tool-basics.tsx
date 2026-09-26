@@ -5,7 +5,8 @@ import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { saveToolConfigAction } from "@/app/actions/ai-tools";
 import {
-  ENGINE_MODES, mergeToolConfig, type ToolConfigSection, type ToolConfigValues,
+  ENGINE_MODES, TOOL_ENGINE_MODES, isAiToolKey, mergeToolConfig,
+  type EngineMode, type ToolConfigSection, type ToolConfigValues,
 } from "@/lib/services/ai-tools";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
@@ -24,12 +25,15 @@ import { cn } from "@/lib/utils";
 
 export type { ToolConfigValues };
 
-export function ToolConfigForm({ initial, services, section }: {
+export function ToolConfigForm({ initial, services, section, part }: {
   initial: ToolConfigValues;
   services: { slug: string; name: string; credits: number }[];
   /** "basics" shows the catalogue link and the note; "billing" only the
    *  catalogue link; "engine" the mode and the request policy. */
   section: ToolConfigSection;
+  /** Engine section only: show just the mode, or just the request policy
+   *  (the engine tab puts them in separate numbered sections). */
+  part?: "mode" | "execution";
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -37,6 +41,11 @@ export function ToolConfigForm({ initial, services, section }: {
   const [pending, start] = useTransition();
   const [form, setForm] = useState(initial);
   const payload = mergeToolConfig(section, initial, form);
+  // Only the modes this tool's server path implements — plus the stored one,
+  // so a legacy value is visible rather than silently re-labelled.
+  const modes: readonly EngineMode[] = isAiToolKey(initial.toolKey)
+    ? ENGINE_MODES.filter((m) => TOOL_ENGINE_MODES[initial.toolKey as keyof typeof TOOL_ENGINE_MODES].includes(m) || m === initial.engineMode)
+    : ENGINE_MODES;
   const dirty = JSON.stringify(payload) !== JSON.stringify(initial);
 
   function save() {
@@ -44,7 +53,12 @@ export function ToolConfigForm({ initial, services, section }: {
       // The server writes only this section's columns, whatever else is in flight.
       const res = await saveToolConfigAction(payload, section);
       if (res.ok) { toast.success(t("common.saved")); router.refresh(); }
-      else toast.error(res.error === "unknown_service" ? t("aicc.err.unknownService") : t("common.error"));
+      else toast.error(
+        res.error === "unknown_service" ? t("aicc.err.unknownService")
+        : res.error === "mode_unsupported" ? t("aicc.err.modeUnsupported")
+        : res.error === "workflow_unpublished" ? t("aicc.err.workflowUnpublished")
+        : t("common.error"),
+      );
     });
   }
 
@@ -76,10 +90,11 @@ export function ToolConfigForm({ initial, services, section }: {
         </>
       ) : (
         <>
+          {part !== "execution" && (
           <fieldset>
             <legend className="mb-2 text-sm font-semibold">{t("aicc.engine.legend")}</legend>
             <div className="grid gap-2 sm:grid-cols-2">
-              {ENGINE_MODES.map((mode) => (
+              {modes.map((mode) => (
                 <label key={mode}
                   className={cn(
                     "flex cursor-pointer gap-3 rounded-xl border p-3 transition-colors",
@@ -100,7 +115,9 @@ export function ToolConfigForm({ initial, services, section }: {
               ))}
             </div>
           </fieldset>
+          )}
 
+          {part !== "mode" && (
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <Label htmlFor={`${id}-timeout`}>{t("aicc.engine.timeout")}</Label>
@@ -115,6 +132,7 @@ export function ToolConfigForm({ initial, services, section }: {
               <p className="mt-1 text-xs text-faint">{t("aicc.engine.attemptsHint")}</p>
             </div>
           </div>
+          )}
         </>
       )}
 

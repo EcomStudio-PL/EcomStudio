@@ -119,15 +119,20 @@ check("the panel does not fetch its own gallery on mount",
 console.log("\nC. A TOOL WITHOUT A PUBLISHED PROMPT REFUSES");
 
 const server = readFileSync("lib/server/fashion.ts", "utf8");
+// The engine runtime (AI ENGINE upgrade) reads the published prompt or
+// workflow; the Moda tools hand it NO built-in prompt.
+const toolRun = readFileSync("lib/server/engine/tool-run.ts", "utf8");
 check("the prompt comes from the admin system",
-  /resolveSystemPrompt\(supabase, config\.toolKey\)/.test(server));
+  /runEngineImageTool\(supabase, userId, workspaceId, \{\s*toolKey: config\.toolKey,\s*builtInPrompt: null,/.test(server)
+    && /const engine = await resolveEngine\(supabase, input\.toolKey\)/.test(toolRun));
 check("an absent prompt is refused, not substituted",
-  /if \(!prompt \|\| !prompt\.trim\(\)\) return \{ ok: false, error: "prompt_unconfigured" \}/.test(server));
+  /if \(!template \|\| !template\.trim\(\)\) return \{ ok: false, error: "prompt_unconfigured" \}/.test(toolRun)
+    && /if \(input\.builtInPrompt === null\) return \{ ok: false, error: "prompt_unconfigured" \}/.test(toolRun));
 // A long string literal in this file would be a built-in prompt by another name.
 const longLiterals = (stripComments(server).match(/`[^`]{200,}`/g) ?? []).length;
 check("the server module carries no prompt text of its own", longLiterals === 0);
-check("the seller's hint is appended, never substituted",
-  /\$\{prompt\}\\n\\n\[WSKAZÓWKA OD SPRZEDAWCY\]/.test(server));
+check("the seller's hint is appended as separated data, never substituted",
+  /appendCustomerBlock\(compiled\.text, "wskazówka sprzedawcy", input\.hint, 1000\)/.test(toolRun));
 
 /* ── D. TWO POOLS STAY TWO POOLS ─────────────────────────────────────────
  * For "Zmiana postaci" the garment and the person are different inputs. If the

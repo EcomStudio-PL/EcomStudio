@@ -85,7 +85,10 @@ console.log("C. the hidden prompt stays on the server");
   check("the runtime read is token-guarded", engine.includes("dispatchToken()")
     && engine.includes("ai_tool_runtime"));
   check("the history query never selects a body", !/select\([^)]*body_encrypted/.test(service));
-  check("only one action opens a body", (actions.match(/openPrompt\(/g) ?? []).length === 1);
+  // Two call sites open a body: the editor's read (the only one that RETURNS
+  // it) and the publish gate that checks a stored draft's placeholders.
+  check("only one action returns a body", (actions.match(/openPrompt\(/g) ?? []).length === 2
+    && (actions.match(/return \{ ok: true, body \}/g) ?? []).length === 1);
   check("the editor receives versions, never bodies", !/body:\s*/.test(page)
     && editor.includes("readPromptBodyAction"));
   check("a body is sealed before it is stored", actions.includes("sealPrompt(body)"));
@@ -139,12 +142,14 @@ console.log("F. retries cannot quietly double an invoice");
 console.log("G. the seed describes the code, not a guess");
 {
   const seed = read("supabase/migrations/0070_ai_control_center.sql");
+  // 0126 widens the mode constraint (adds 'workflow').
+  const modes = read("supabase/migrations/0126_ai_engine_workflows.sql");
   const retouch = read("lib/server/retouch.ts");
   const identifier = retouch.match(/RETOUCH_MODEL_IDENTIFIER = "([^"]+)"/)?.[1] ?? "";
   check("retouch's seeded model is the one its source asks for",
     identifier.length > 0 && seed.includes(identifier), identifier);
   check("every engine mode in the code is allowed by the constraint",
-    ENGINE_MODES.every((m) => seed.includes(`'${m}'`)));
+    ENGINE_MODES.every((m) => modes.includes(`'${m}'`)));
 }
 
 console.log("H. an API cost is measured, estimated or unknown — never invented");

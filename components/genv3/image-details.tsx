@@ -14,6 +14,7 @@ import type { GalleryItem } from "@/components/genv3/types";
 import { ratioName } from "@/components/genv3/ratio-options";
 import { fileNameFor, saveBlob } from "@/lib/save-image";
 import { ZoomPan, ZOOM_MAX, ZOOM_MIN, stepZoom } from "@/components/genv3/zoom-pan";
+import { ResultFeedback } from "@/components/genv3/result-feedback";
 
 /**
  * INFORMACJE O OBRAZIE — the premium image-details view.
@@ -469,6 +470,9 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
               <span className="truncate">{t("genv3.downloadImage")}</span>
             </button>
           </div>
+
+          {/* 👍 / 👎 — one vote per result, stored server-side; ranking only. */}
+          {item.generationId && <ResultFeedback key={item.generationId} generationId={item.generationId} />}
 
           {/* The one thing this panel exists to lead to, at full width. */}
           {canRegenerate && (

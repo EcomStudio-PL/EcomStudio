@@ -1,8 +1,7 @@
 import "server-only";
 import sharp from "sharp";
 import type { Client } from "@/lib/services/workspace";
-import { runGeneration } from "@/lib/server/generation";
-import { resolveSystemPrompt } from "@/lib/server/ai-engine";
+import { engineToolConfigured, runEngineImageTool } from "@/lib/server/engine/tool-run";
 import { fashionTool, type FashionToolConfig } from "@/lib/fashion-tools";
 import { RATIO_SHAPE, type AspectRatio, type Resolution } from "@/lib/ai/types";
 
@@ -23,7 +22,8 @@ import { RATIO_SHAPE, type AspectRatio, type Resolution } from "@/lib/ai/types";
  * operator without a deploy, so their prompts live where every other tool
  * prompt already lives: `ai_tool_prompts`, written from Admin → AI → the
  * tool's own screen, published with a version and a reason, and read here
- * through `resolveSystemPrompt`.
+ * through the engine runtime (`runEngineImageTool`) — or, in workflow mode,
+ * the tool's published workflow.
  *
  * UNTIL A PROMPT IS PUBLISHED THE TOOL REFUSES. It does not fall back to an
  * invented instruction. A made-up prompt would produce plausible-looking
@@ -172,10 +172,11 @@ export async function runFashionTool(
   const model = await fashionModel(supabase);
   if (!model) return { ok: false, error: "model_unavailable" };
 
-  // THE OPERATOR'S PROMPT, OR NOTHING. See the header: there is deliberately
-  // no built-in fallback text.
-  const prompt = await resolveSystemPrompt(supabase, config.toolKey);
-  if (!prompt || !prompt.trim()) return { ok: false, error: "prompt_unconfigured" };
+  // THE OPERATOR'S PROMPT (or published workflow), OR NOTHING — checked here,
+  // before any photo is read, exactly where the tool always refused.
+  if (!(await engineToolConfigured(supabase, config.toolKey, false))) {
+    return { ok: false, error: "prompt_unconfigured" };
+  }
 
   const paths = orderedPaths(config, input.inputs);
   if (paths.length === 0) return { ok: false, error: "missing_input" };
@@ -196,27 +197,33 @@ export async function runFashionTool(
     aspectRatio = await ratioOfSource(Buffer.from(await blob.arrayBuffer()), model.ratios);
   }
 
-  // The seller's hint is APPENDED, never substituted: the operator's prompt
-  // carries the product-fidelity rules and must not be replaceable from a
-  // textarea on the public side of the app.
+  // The seller's hint is DATA, never a substitute for the operator's prompt:
+  // the engine places it in a separated block after the instruction (or where
+  // the prompt's {{hint}} puts it), so it cannot replace the fidelity rules.
+  // THE OPERATOR'S PROMPT (or published workflow), OR NOTHING — see the
+  // header: there is deliberately no built-in fallback text.
   const hint = config.showHint ? (input.hint ?? "").trim().slice(0, 1000) : "";
-  const fullPrompt = hint ? `${prompt}\n\n[WSKAZÓWKA OD SPRZEDAWCY]\n${hint}` : prompt;
 
-  const result = await runGeneration(supabase, userId, workspaceId, {
-    modelId: model.id,
-    prompt: fullPrompt,
-    aspectRatio,
-    resolution,
-    quantity: 1,
+  const result = await runEngineImageTool(supabase, userId, workspaceId, {
+    toolKey: config.toolKey,
+    builtInPrompt: null,
+    hint,
     // The seller's photographs ARE the subject: image-to-image throughout.
     referencePaths: paths,
-    referenceImageIds: [],
-    // GrovBase wrote the instruction, so the job row stores no prompt text and
-    // the customer-facing projection has nothing to show.
-    hidePromptText: true,
-    promptOrigin: "ecomstudio",
-    costOverride: fashionPrice(model, resolution),
-    operation: config.operation,
+    expectedCost: fashionPrice(model, resolution),
+    generation: {
+      modelId: model.id,
+      aspectRatio,
+      resolution,
+      quantity: 1,
+      referenceImageIds: [],
+      // GrovBase wrote the instruction, so the job row stores no prompt text
+      // and the customer-facing projection has nothing to show.
+      hidePromptText: true,
+      promptOrigin: "ecomstudio",
+      costOverride: fashionPrice(model, resolution),
+      operation: config.operation,
+    },
   });
 
   if (!result.ok) return result;
@@ -239,6 +246,5 @@ export async function runFashionTool(
  * screen that owns it.
  */
 export async function fashionToolAvailable(supabase: Client, toolKey: string): Promise<boolean> {
-  const prompt = await resolveSystemPrompt(supabase, toolKey);
-  return Boolean(prompt && prompt.trim());
+  return engineToolConfigured(supabase, toolKey, false);
 }

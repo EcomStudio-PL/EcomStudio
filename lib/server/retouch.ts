@@ -1,7 +1,7 @@
 import "server-only";
 import sharp from "sharp";
 import type { Client } from "@/lib/services/workspace";
-import { runGeneration } from "@/lib/server/generation";
+import { runEngineImageTool } from "@/lib/server/engine/tool-run";
 import { RATIO_SHAPE, type AspectRatio, type Resolution } from "@/lib/ai/types";
 
 /**
@@ -28,6 +28,8 @@ const RETOUCH_MODEL_IDENTIFIER = "gemini-3-pro-image-preview";
 /** Marks the job in `generation_jobs.settings` so the tool's own gallery,
  *  the library and the cost log can tell a retouch from a generation. */
 export const RETOUCH_OPERATION = "image_retouch";
+/** The tool's row in Admin → Narzędzia i silniki (`ai_tools.tool_key`). */
+const RETOUCH_TOOL_KEY = "retouch";
 
 /**
  * THE HIDDEN RETOUCH PROMPT. Server-only by construction (see above).
@@ -228,21 +230,29 @@ export async function runRetouch(
     aspectRatio = await ratioOfSource(Buffer.from(await blob.arrayBuffer()), model.ratios);
   }
 
-  const result = await runGeneration(supabase, userId, workspaceId, {
-    modelId: model.id,
-    prompt: RETOUCH_PROMPT,
-    aspectRatio,
-    resolution,
-    quantity: 1,
+  // THE INSTRUCTION: a published workflow or prompt from Admin → Narzędzia i
+  // silniki when there is one, otherwise the built-in RETOUCH_PROMPT exactly
+  // as before. Nothing is published by default, so nothing changes by default.
+  const result = await runEngineImageTool(supabase, userId, workspaceId, {
+    toolKey: RETOUCH_TOOL_KEY,
+    builtInPrompt: RETOUCH_PROMPT,
+    hint: "",
     // The source photo IS the subject: image-to-image, never text-to-image.
     referencePaths: [input.sourcePath],
-    referenceImageIds: [],
-    // GrovBase wrote the prompt, so it is GrovBase's: the job row stores no
-    // prompt text and the customer-facing projection has nothing to show.
-    hidePromptText: true,
-    promptOrigin: "ecomstudio",
-    costOverride: retouchPrice(model, resolution),
-    operation: RETOUCH_OPERATION,
+    expectedCost: retouchPrice(model, resolution),
+    generation: {
+      modelId: model.id,
+      aspectRatio,
+      resolution,
+      quantity: 1,
+      referenceImageIds: [],
+      // GrovBase wrote the prompt, so it is GrovBase's: the job row stores no
+      // prompt text and the customer-facing projection has nothing to show.
+      hidePromptText: true,
+      promptOrigin: "ecomstudio",
+      costOverride: retouchPrice(model, resolution),
+      operation: RETOUCH_OPERATION,
+    },
   });
 
   if (!result.ok) return result;

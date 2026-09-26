@@ -79,6 +79,22 @@ export type GenerateInput = {
    *  the job so a tool can list its own results and the cost log can tell
    *  one operation from another; absent for the plain generator. */
   operation?: string;
+  /**
+   * HYBRID ENGINE: the text the PROVIDER receives, when a GrovBase instruction
+   * wraps the customer's words (lib/server/engine/tool-run.ts). `prompt` stays
+   * the customer's own text — it is what the job row stores and what the
+   * customer sees — and this never reaches the job row, the response or a log.
+   * The customer's negative prompt is already inside it as separated data.
+   */
+  enginePrompt?: string;
+  /**
+   * What the duplicate-submit key hashes instead of the prompt, for engine
+   * paths whose compiled text is not reproducible (workflow step outputs,
+   * "diverse" knowledge picks): the tool, the engine versions and the
+   * customer's own inputs. Two identical clicks must still collapse into one
+   * charge even when the text sent to the provider would differ.
+   */
+  dedupePrompt?: string;
 };
 
 export type GenerateOutput =
@@ -276,6 +292,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   // Job (queued -> processing)
   const promptText = [input.prompt.trim(), input.negative?.trim() ? `AVOID: ${input.negative.trim()}` : ""]
     .filter(Boolean).join("\n");
+  const providerPrompt = input.enginePrompt?.trim() ? input.enginePrompt.trim() : promptText;
   /**
    * ONE settings object for every write to the job row. The later updates
    * (after a retry, after a fallback served) used to rebuild a smaller
@@ -321,7 +338,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
 
   const idempotencyKey = generationIdempotencyKey(workspaceId, {
     modelId: input.modelId,
-    prompt: promptText,
+    prompt: input.dedupePrompt ?? promptText,
     aspectRatio,                        // resolved, not the raw request value
     resolution: resolution ?? null,
     quality: quality ?? null,
@@ -586,7 +603,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       }
       try {
         result = await withProviderLimit(cProviderSlug, () => cAdapter.generate(cModel, {
-          prompt: promptText, aspectRatio, resolution: cResolution,
+          prompt: providerPrompt, aspectRatio, resolution: cResolution,
           // A fallback engine only receives the quality if IT declares it.
           quality: quality && modelQualities(cModel).includes(quality) ? quality : undefined,
           quantity, referenceImages: cFit.list, productLock: { fidelityInstructions: cFidelity },

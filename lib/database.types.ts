@@ -132,9 +132,11 @@ export type Database = {
           notes: string | null
           updated_at: string
           updated_by: string | null
+          knowledge_strategy: string
         }
         Insert: {
           tool_key: string
+          knowledge_strategy?: string
           service_slug?: string | null
           engine_mode?: string
           allow_model_choice?: boolean
@@ -147,6 +149,7 @@ export type Database = {
         }
         Update: {
           tool_key?: string
+          knowledge_strategy?: string
           service_slug?: string | null
           engine_mode?: string
           allow_model_choice?: boolean
@@ -156,6 +159,182 @@ export type Database = {
           notes?: string | null
           updated_at?: string
           updated_by?: string | null
+        }
+        Relationships: []
+      }
+      ai_tool_workflows: {
+        Row: {
+          id: string
+          tool_key: string
+          version: number
+          status: string
+          summary: string | null
+          reason: string | null
+          created_by: string | null
+          created_at: string
+          published_at: string | null
+        }
+        Insert: {
+          id?: string
+          tool_key: string
+          version: number
+          status?: string
+          summary?: string | null
+          reason?: string | null
+          created_by?: string | null
+          created_at?: string
+          published_at?: string | null
+        }
+        Update: {
+          id?: string
+          tool_key?: string
+          version?: number
+          status?: string
+          summary?: string | null
+          reason?: string | null
+          created_by?: string | null
+          created_at?: string
+          published_at?: string | null
+        }
+        Relationships: []
+      }
+      ai_tool_workflow_steps: {
+        Row: {
+          id: string
+          workflow_id: string
+          position: number
+          name: string
+          enabled: boolean
+          operation: string
+          output_kind: string
+          use_images: boolean
+          model_id: string | null
+          text_provider: string | null
+          timeout_ms: number
+          max_attempts: number
+          condition: string
+          prompt_encrypted: string
+          prompt_iv: string
+          prompt_tag: string
+        }
+        Insert: {
+          id?: string
+          workflow_id: string
+          position: number
+          name: string
+          enabled?: boolean
+          operation: string
+          output_kind: string
+          use_images?: boolean
+          model_id?: string | null
+          text_provider?: string | null
+          timeout_ms?: number
+          max_attempts?: number
+          condition?: string
+          prompt_encrypted: string
+          prompt_iv: string
+          prompt_tag: string
+        }
+        Update: {
+          id?: string
+          workflow_id?: string
+          position?: number
+          name?: string
+          enabled?: boolean
+          operation?: string
+          output_kind?: string
+          use_images?: boolean
+          model_id?: string | null
+          text_provider?: string | null
+          timeout_ms?: number
+          max_attempts?: number
+          condition?: string
+          prompt_encrypted?: string
+          prompt_iv?: string
+          prompt_tag?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_tool_workflow_steps_workflow_id_fkey"
+            columns: ["workflow_id"]
+            isOneToOne: false
+            referencedRelation: "ai_tool_workflows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_engine_runs: {
+        Row: {
+          id: string
+          created_at: string
+          tool_key: string
+          workspace_id: string | null
+          user_id: string | null
+          job_id: string | null
+          prompt_session_id: string | null
+          mode: string
+          status: string
+          error: string | null
+          engine_version: string | null
+          prompt_version: number | null
+          workflow_id: string | null
+          workflow_version: number | null
+          model_id: string | null
+          model_label: string | null
+          steps: Json
+          knowledge_example_ids: string[]
+          scene_example_id: string | null
+          credits: number | null
+          api_cost_usd_micros: number | null
+          duration_ms: number | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          tool_key: string
+          workspace_id?: string | null
+          user_id?: string | null
+          job_id?: string | null
+          prompt_session_id?: string | null
+          mode: string
+          status: string
+          error?: string | null
+          engine_version?: string | null
+          prompt_version?: number | null
+          workflow_id?: string | null
+          workflow_version?: number | null
+          model_id?: string | null
+          model_label?: string | null
+          steps?: Json
+          knowledge_example_ids?: string[]
+          scene_example_id?: string | null
+          credits?: number | null
+          api_cost_usd_micros?: number | null
+          duration_ms?: number | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          tool_key?: string
+          workspace_id?: string | null
+          user_id?: string | null
+          job_id?: string | null
+          prompt_session_id?: string | null
+          mode?: string
+          status?: string
+          error?: string | null
+          engine_version?: string | null
+          prompt_version?: number | null
+          workflow_id?: string | null
+          workflow_version?: number | null
+          model_id?: string | null
+          model_label?: string | null
+          steps?: Json
+          knowledge_example_ids?: string[]
+          scene_example_id?: string | null
+          credits?: number | null
+          api_cost_usd_micros?: number | null
+          duration_ms?: number | null
         }
         Relationships: []
       }
@@ -1562,6 +1741,7 @@ export type Database = {
           user_id: string
           verdict: string
           workspace_id: string
+          updated_at: string | null
         }
         Insert: {
           asset_path?: string | null
@@ -1573,6 +1753,7 @@ export type Database = {
           user_id: string
           verdict: string
           workspace_id: string
+          updated_at?: string | null
         }
         Update: {
           asset_path?: string | null
@@ -1584,6 +1765,7 @@ export type Database = {
           user_id?: string
           verdict?: string
           workspace_id?: string
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -3055,6 +3237,17 @@ export type Database = {
           tags: string[]
           what_failed: string | null
           what_worked: string | null
+          review_status: string
+          scene: string | null
+          product_category: string | null
+          confidence: number | null
+          source_kind: string
+          source_ref: string | null
+          usage_count: number
+          positive_count: number
+          negative_count: number
+          reviewed_by: string | null
+          reviewed_at: string | null
         }
         Insert: {
           correction?: string | null
@@ -3073,6 +3266,17 @@ export type Database = {
           tags?: string[]
           what_failed?: string | null
           what_worked?: string | null
+          review_status?: string
+          scene?: string | null
+          product_category?: string | null
+          confidence?: number | null
+          source_kind?: string
+          source_ref?: string | null
+          usage_count?: number
+          positive_count?: number
+          negative_count?: number
+          reviewed_by?: string | null
+          reviewed_at?: string | null
         }
         Update: {
           correction?: string | null
@@ -3091,6 +3295,17 @@ export type Database = {
           tags?: string[]
           what_failed?: string | null
           what_worked?: string | null
+          review_status?: string
+          scene?: string | null
+          product_category?: string | null
+          confidence?: number | null
+          source_kind?: string
+          source_ref?: string | null
+          usage_count?: number
+          positive_count?: number
+          negative_count?: number
+          reviewed_by?: string | null
+          reviewed_at?: string | null
         }
         Relationships: [
           {
@@ -6177,7 +6392,62 @@ export type Database = {
           prompt_iv: string | null
           prompt_tag: string | null
           prompt_version: number | null
+          knowledge_strategy: string
         }[]
+      }
+      ai_tool_workflow_runtime: {
+        Args: { p_tool_key: string; p_token: string | null }
+        Returns: {
+          workflow_id: string
+          version: number
+          position: number
+          name: string
+          enabled: boolean
+          operation: string
+          output_kind: string
+          use_images: boolean
+          model_id: string | null
+          text_provider: string | null
+          timeout_ms: number
+          max_attempts: number
+          condition: string
+          prompt_encrypted: string
+          prompt_iv: string
+          prompt_tag: string
+        }[]
+      }
+      ai_save_tool_workflow: {
+        Args: { p_tool_key: string; p_steps: Json; p_summary?: string | null; p_reason?: string | null; p_publish?: boolean }
+        Returns: Json
+      }
+      ai_publish_tool_workflow: { Args: { p_id: string; p_reason?: string | null }; Returns: Json }
+      ai_restore_tool_workflow: { Args: { p_id: string; p_reason?: string | null }; Returns: Json }
+      knowledge_candidates: {
+        Args: { p_token: string | null; p_tool_key: string; p_embedding?: string | null; p_limit?: number }
+        Returns: {
+          id: string
+          similarity: number | null
+          result_rating: number | null
+          usage_count: number
+          positive_count: number
+          negative_count: number
+          scene: string | null
+          product_category: string | null
+          tags: string[]
+          hint_encrypted: string
+          hint_iv: string
+          hint_tag: string
+          created_at: string
+        }[]
+      }
+      ai_engine_run_record: { Args: { p_token: string | null; p_run: Json }; Returns: string }
+      generation_feedback_submit: {
+        Args: { p_generation_id: string; p_verdict: string | null; p_reasons?: string[] }
+        Returns: Json
+      }
+      generation_feedback_mine: {
+        Args: { p_generation_ids: string[] }
+        Returns: { generation_id: string; verdict: string | null; reasons: string[] | null }[]
       }
       credit_wallets_total: { Args: never; Returns: number }
       generation_credits_total: { Args: never; Returns: number }

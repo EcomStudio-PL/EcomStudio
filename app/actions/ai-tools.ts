@@ -5,8 +5,16 @@ import { logAudit } from "@/lib/services/audit";
 import { encryptionAvailable } from "@/lib/server/crypto";
 import { openPrompt, sealPrompt } from "@/lib/server/ai-engine";
 import {
-  ENGINE_MODES, isAiToolKey, type EngineMode, type ToolConfigSection,
+  ENGINE_MODES, TOOL_ENGINE_MODES, isAiToolKey, type EngineMode, type ToolConfigSection,
 } from "@/lib/services/ai-tools";
+import { TOOL_VARIABLES, malformedPlaceholders, parsePlaceholders } from "@/lib/ai/prompt-variables";
+
+/** Placeholders a tool cannot resolve. Publishing one would make every run
+ *  of the tool stop at the fail-safe, so publishing is refused instead. */
+function unresolvable(toolKey: string, body: string): string[] {
+  const known = new Set((TOOL_VARIABLES[toolKey] ?? []).map((d) => d.key));
+  return [...new Set(parsePlaceholders(body).map((p) => p.name).filter((n) => !known.has(n)))];
+}
 
 /** Every `ai_tools` column a config save can write, typed once. */
 const ALL_COLUMNS = {
@@ -81,6 +89,18 @@ export async function saveToolConfigAction(input: {
     const owns = (col: keyof typeof ALL_COLUMNS) => !section || SECTION_COLUMNS[section].includes(col);
     if (owns("engine_mode") && !(ENGINE_MODES as readonly string[]).includes(input.engineMode)) {
       return { ok: false, error: "invalid_mode" };
+    }
+    // Only a mode the tool's server path really implements (see
+    // TOOL_ENGINE_MODES) — a switch that would decide nothing is refused.
+    if (owns("engine_mode") && !TOOL_ENGINE_MODES[input.toolKey].includes(input.engineMode)) {
+      return { ok: false, error: "mode_unsupported" };
+    }
+    // Workflow mode needs a published workflow first; switching to it without
+    // one would take the tool down (or silently run the fallback).
+    if (owns("engine_mode") && input.engineMode === "workflow") {
+      const { data: wf } = await supabase.from("ai_tool_workflows")
+        .select("id").eq("tool_key", input.toolKey).eq("status", "published").maybeSingle();
+      if (!wf) return { ok: false, error: "workflow_unpublished" };
     }
     // The catalogue is the price list; a tool may only point at a row that is
     // actually in it, never invent a slug.
@@ -198,6 +218,9 @@ export async function savePromptAction(input: {
     // Publishing is a production change: it needs a sentence saying why, or
     // the version history is a list of anonymous edits.
     if (input.publish && !input.reason?.trim()) return { ok: false, error: "reason_required" };
+    if (input.publish && (unresolvable(input.toolKey, body).length > 0 || malformedPlaceholders(body).length > 0)) {
+      return { ok: false, error: "variable_unknown" };
+    }
     if (!encryptionAvailable()) return { ok: false, error: "encryption_unavailable" };
 
     const sealed = sealPrompt(body);
@@ -231,6 +254,15 @@ export async function publishPromptVersionAction(id: string, reason: string): Pr
   try {
     const { supabase, adminId } = await requireAdmin();
     if (!reason.trim()) return { ok: false, error: "reason_required" };
+    // The same variable gate as a direct publish, applied to the stored draft.
+    const { data: draft } = await supabase.from("ai_tool_prompts")
+      .select("tool_key, body_encrypted, body_iv, body_tag").eq("id", id).maybeSingle();
+    if (!draft) return { ok: false, error: "not_found" };
+    const draftBody = openPrompt(draft);
+    if (draftBody === null) return { ok: false, error: "decrypt_failed" };
+    if (unresolvable(draft.tool_key, draftBody).length > 0 || malformedPlaceholders(draftBody).length > 0) {
+      return { ok: false, error: "variable_unknown" };
+    }
     const { data, error } = await supabase.rpc("ai_publish_tool_prompt", { p_id: id, p_reason: reason.trim() });
     if (error) return { ok: false, error: "generic" };
     const result = data as { ok?: boolean; error?: string; tool_key?: string } | null;
