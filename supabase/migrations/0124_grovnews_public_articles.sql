@@ -145,7 +145,15 @@ as $$
   select jsonb_build_object(
     'slug', a.slug, 'title', a.title, 'excerpt', a.excerpt, 'content', a.content,
     'cover_url', a.cover_url, 'cover_alt', a.cover_alt,
-    'tags', to_jsonb(a.tags), 'sources', a.sources, 'faq', a.faq, 'related_slugs', to_jsonb(a.related_slugs),
+    'tags', to_jsonb(a.tags), 'sources', a.sources, 'faq', a.faq,
+    -- Only related articles that are themselves public, in the admin's order:
+    -- the slug of a draft is not something a visitor may learn from here.
+    'related_slugs', coalesce((
+      select jsonb_agg(u.s order by u.ord)
+      from unnest(a.related_slugs) with ordinality as u(s, ord)
+      where exists (select 1 from public.grovnews_public_articles r
+                    where r.slug = u.s and r.status = 'PUBLISHED' and r.published_at <= now())
+    ), '[]'::jsonb),
     'seo_title', a.seo_title, 'seo_description', a.seo_description, 'canonical_url', a.canonical_url,
     'og_title', a.og_title, 'og_description', a.og_description,
     'noindex', a.noindex, 'language', a.language, 'schema_type', a.schema_type,

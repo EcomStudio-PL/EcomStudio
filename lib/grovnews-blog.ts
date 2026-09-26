@@ -165,6 +165,15 @@ export type PublicArticleInputError =
 /** /blog/kategoria/<slug> is the category page: an article cannot own it. */
 export const RESERVED_BLOG_SLUGS: ReadonlySet<string> = new Set(["kategoria"]);
 
+/** The address a draft made from a premium post starts with: neutral, never
+ *  that post's headline. The editor replaces it with the public title's slug. */
+export const placeholderSlug = (postId: string, n = 1) =>
+  `grovnews-${postId.replace(/-/g, "").slice(0, 8).toLowerCase()}${n > 1 ? `-${n}` : ""}`;
+export const isPlaceholderSlug = (slug: string) => /^grovnews-[0-9a-f]{8}(-\d)?$/.test(slug);
+
+/** https:// literally (what the table's constraint checks), and a real URL. */
+const strictHttps = (v: string) => /^https:\/\//i.test(v) && isHttpsUrl(v);
+
 const optional = (v: unknown, max: number) => {
   const s = text(v).trim();
   return s ? s.slice(0, max) : null;
@@ -216,9 +225,9 @@ export function validatePublicArticleInput(raw: unknown):
   const content = text(r.content);
   if (content.length > 200000) return { ok: false, error: "content" };
   const cover = text(r.coverUrl).trim();
-  if (cover && !isHttpsUrl(cover)) return { ok: false, error: "cover" };
+  if (cover && !strictHttps(cover)) return { ok: false, error: "cover" };
   const canonical = text(r.canonicalUrl).trim();
-  if (canonical && (!isHttpsUrl(canonical) || canonical.length > 2000)) return { ok: false, error: "canonical" };
+  if (canonical && (!strictHttps(canonical) || canonical.length > 2000)) return { ok: false, error: "canonical" };
   const categoryId = r.categoryId ? text(r.categoryId) : null;
   if (categoryId !== null && !isUuid(categoryId)) return { ok: false, error: "category" };
   const lang = text(r.language) || "pl";

@@ -6338,7 +6338,8 @@
       "errNoSource": "Ein KI-Entwurf braucht einen GrovNews-Quellbeitrag.",
       "errAiFailed": "Die KI hat keinen Entwurf erstellt. Versuche es gleich noch einmal oder schreibe den Text selbst.",
       "errCanonical": "Die kanonische URL muss mit https:// beginnen.",
-      "errFaq": "Jede FAQ-Frage braucht eine Antwort (höchstens 10 Fragen)."
+      "errFaq": "Jede FAQ-Frage braucht eine Antwort (höchstens 10 Fragen).",
+      "errStale": "Der Artikel wurde inzwischen geändert (etwa in einem anderen Tab). Lade die Seite neu und versuche es erneut."
     }
   }
 }

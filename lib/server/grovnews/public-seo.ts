@@ -85,12 +85,18 @@ export type PublicSeoDraft = {
   warnings: { headline: HeadlineWarning[]; numbers: string[] };
 };
 
-/** Model text made plain: cleaned, capped, no links, no markdown marks. */
+/** Model text made plain: cleaned, capped, no links, no markdown marks. Bold
+ *  marks go first and line markers are stripped until none is left (stacked
+ *  or overlong ones included), without ever crossing a line — so neither a
+ *  heading, a list, a quote nor a merged paragraph survives from the model. */
 function plain(value: unknown, max: number): string {
-  return cleanText(stripLinks(String(value ?? "")), max)
-    .replace(/^\s*(#{1,6}|>|[-*]\s)\s*/gm, "")
-    .replace(/\*\*/g, "")
-    .trim();
+  let out = cleanText(stripLinks(String(value ?? "")), max).replace(/\*\*/g, "");
+  let previous: string;
+  do {
+    previous = out;
+    out = out.replace(/^[ \t]*(?:#+|>+|[-*+][ \t]+)[ \t]*/gm, "");
+  } while (out !== previous);
+  return out.trim();
 }
 const line = (value: unknown, max: number) => plain(value, max).replace(/\n+/g, " ");
 

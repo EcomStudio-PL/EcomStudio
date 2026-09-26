@@ -6338,7 +6338,8 @@
       "errNoSource": "An AI draft needs a GrovNews source post.",
       "errAiFailed": "The AI did not produce a draft. Try again shortly or write the text by hand.",
       "errCanonical": "The canonical URL must start with https://",
-      "errFaq": "Every FAQ question needs an answer (up to 10 questions)."
+      "errFaq": "Every FAQ question needs an answer (up to 10 questions).",
+      "errStale": "The article changed in the meantime (in another tab, say). Reload the page and try again."
     }
   }
 }

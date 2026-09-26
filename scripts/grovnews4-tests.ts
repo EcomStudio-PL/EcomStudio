@@ -23,7 +23,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import {
   COPY_LIMIT, FALLBACK_OG_IMAGE, articleCanonical, articleJsonLd, articleMetadata, articleSeoChecks, blogPath,
-  copyOverlap, headlineWarnings, jsonLdScript, parseRelatedSlugs, readFaq, relatedArticles, toBlogArticle, toBlogCard,
+  copyOverlap, headlineWarnings, isPlaceholderSlug, jsonLdScript, parseRelatedSlugs, placeholderSlug, readFaq,
+  relatedArticles, toBlogArticle, toBlogCard,
   unsupportedNumbers, validatePublicArticleInput, type BlogArticle, type BlogCard,
 } from "../lib/grovnews-blog";
 import { absoluteUrl } from "../lib/site";
@@ -100,6 +101,8 @@ async function main() {
     check("cover and canonical must be https (no http, javascript:, data:)",
       bad({ coverUrl: "http://x.pl/a.jpg" }, "cover") && bad({ canonicalUrl: "javascript:alert(1)" }, "canonical")
       && bad({ canonicalUrl: "data:text/html,x" }, "canonical") && bad({ canonicalUrl: "http://grovbase.com/blog/a" }, "canonical"));
+    check("…literally https:// — the forms URL() tolerates (https:host, https:/host) are the field's error, not a database one",
+      bad({ canonicalUrl: "https:grovbase.com/blog/a" }, "canonical") && bad({ coverUrl: "https:/x.pl/a.jpg" }, "cover"));
     check("a half-filled FAQ row is an error, an empty one is ignored, more than 10 is refused",
       bad({ faq: [{ q: "Pytanie?", a: "" }] }, "faq") && bad({ faq: Array.from({ length: 11 }, () => ({ q: "q", a: "a" })) }, "faq")
       && (validatePublicArticleInput({ title: "x", faq: [{ q: "", a: "" }, { q: "Q", a: "A" }] }) as { value: { faq: unknown[] } }).value.faq.length === 1);
@@ -203,6 +206,8 @@ async function main() {
     check("the migration's public functions read only the public table and the category names",
       fns.length === 3 && fns.every((f) => !/grovnews_posts|research|edition|entitlement|internal_note|source_grovnews_post_id|created_by/.test(f[2])
         && /from public\.grovnews_public_articles a/.test(f[2])), fns.map((f) => f[1]).join());
+    check("related slugs leave the database only when those articles are themselves published",
+      /unnest\(a\.related_slugs\) with ordinality as u\(s, ord\)[\s\S]*?r\.status = 'PUBLISHED' and r\.published_at <= now\(\)/.test(mig));
     check("each public function returns PUBLISHED, already-published rows only",
       fns.every((f) => /a\.status = 'PUBLISHED' and a\.published_at <= now\(\)/.test(f[2])));
     check("the migration alters and drops nothing that exists, and grants anon no table",
@@ -229,8 +234,13 @@ async function main() {
     check("the existing sitemap rules are untouched", /isNoindex\(p\.seo\)/.test(sitemap) && /\.eq\("status", "published"\)/.test(sitemap)
       && /home\?\.kind === "app" \? home\.slug : null/.test(sitemap));
     const robots = code(read("app/robots.ts"));
-    check("robots: /grovnews kept out, /blog left open, no whole-site Disallow",
-      /"\/grovnews",/.test(robots) && !/"\/blog/.test(robots) && /allow: "\/"/.test(robots) && /sitemap: absoluteUrl\("\/sitemap\.xml"\)/.test(robots));
+    check("robots: /grovnews and its subtree kept out (not every path starting 'grovnews'), /blog left open, no whole-site Disallow",
+      /"\/grovnews\$", "\/grovnews\/",/.test(robots) && !/"\/grovnews",/.test(robots) && !/"\/blog/.test(robots)
+      && /allow: "\/"/.test(robots) && /sitemap: absoluteUrl\("\/sitemap\.xml"\)/.test(robots));
+    check("a CMS page named 'blog' is not listed twice (the static route owns /blog)", /new Set\(\["home", "blog"\]\)/.test(sitemap));
+    check("a failed public read is thrown, never cached as 'no articles'; the sitemap and related cards degrade, the rest stands",
+      (code(read("lib/server/grovnews-blog.ts")).match(/if \(error\) throw new Error\(/g) ?? []).length === 3 && /getBlogSitemap\(\)\.catch\(\(\) => \[\]\)/.test(sitemap)
+      && /getBlogFeed\(null, 60\)\.catch\(\(\) => \[\]\)/.test(read("app/blog/[slug]/page.tsx")));
     const indexPage = code(read("app/blog/page.tsx"));
     check("/blog: its own canonical, noindex while it is empty", /canonical: "\/blog"/.test(indexPage) && /cards\.length === 0 \? \{ robots: \{ index: false, follow: true \} \}/.test(indexPage));
   }
@@ -251,8 +261,11 @@ async function main() {
       /from\("profiles"\)\.select\("role"\)\.eq\("id", user\.id\)/.test(acts) && /profile\?\.role !== "admin"\) throw new Error\("forbidden"\)/.test(acts)
       && chunks.every((c) => /\} catch \(e\) \{\s+return failed\(e\);\s+\}/.test(c)));
     const fromPost = chunks.find((c) => c.startsWith("createPublicFromPostAction")) ?? "";
-    check("A2 'from GrovNews' makes a DRAFT with an EMPTY lead and body — the premium text is never copied",
+    check("A2 'from GrovNews' makes a DRAFT with an EMPTY lead and body and a NEUTRAL address — never the premium text or headline",
       /status: "DRAFT"/.test(fromPost) && /excerpt: "", content: ""/.test(fromPost) && !/post\.(content|excerpt)/.test(fromPost)
+      && /slug: placeholderSlug\(postId, n\)/.test(fromPost) && !/slugify\(post\.title/.test(fromPost)
+      && placeholderSlug("3F2A1B9C-0000-4000-8000-000000000000") === "grovnews-3f2a1b9c" && isPlaceholderSlug(placeholderSlug("3f2a1b9c-x", 2))
+      && /isPlaceholderSlug\(article\.slug\)/.test(read("components/admin/grovnews/blog-editor.tsx"))
       && /\.select\("id, title, status, category_id, tags, sources, language"\)/.test(fromPost));
     check("A2b only from a PUBLISHED post, and one public version per post", /post\.status !== "PUBLISHED"\) return \{ ok: false, error: "not_published" \}/.test(fromPost)
       && /source_grovnews_post_id", postId\)/.test(fromPost));
@@ -264,13 +277,20 @@ async function main() {
     check("A4 publishing happens in ONE action, which stamps the first date and runs the copy guard",
       setters.join() === "setPublicArticleStatusAction" && /tooCloseToPremium\(supabase, current\.source_grovnews_post_id/.test(acts)
       && /if \(status === "PUBLISHED" && !current\.published_at\) patch\.published_at/.test(acts));
+    check("the copy guard reads every public text: lead, body, FAQ, search and share descriptions",
+      /\[a\.excerpt, a\.content, \.\.\.a\.faq\.flatMap\(\(f\) => \[f\.q, f\.a\]\), a\.seoDescription \?\? "", a\.ogDescription \?\? ""\]/.test(acts)
+      && /faq: readFaq\(current\.faq\)/.test(acts));
+    check("publish and save are compare-and-set on what they checked (no race past the guard)",
+      /\.eq\("id", id\)\.eq\("updated_at", current\.updated_at\)\.select\("id"\)/.test(acts)
+      && /\.update\(row\)\.eq\("id", id\)\.eq\("status", current\.status\)/.test(acts) && /error: "stale"/.test(acts));
     check("A4b saving new articles always creates a DRAFT", /insert\(\{ \.\.\.row, status: "DRAFT", created_by: adminId \}\)/.test(acts));
     check("A5/A6 back to draft and archive are the same checked status move", /POST_STATUSES as readonly string\[\]\)\.includes\(status\)/.test(acts));
-    check("A renamed, once-published article keeps its old link through the EXISTING redirect table (301)",
-      /from\("cms_redirects"\)\.upsert\(/.test(acts) && /status_code: 301/.test(acts) && /onConflict: "source"/.test(acts)
-      && /if \(current && current\.slug !== v\.slug\) \{\s+[\s\S]{0,300}?await freeAddress\(supabase, v\.slug\);\s+if \(current\.published_at\) await moveAddress\(/.test(acts));
-    check("…and a rename never leaves a redirect FROM the article's new address (no loop back to the old one)",
-      /freeAddress[\s\S]*?\.update\(\{ enabled: false \}\)\.eq\("source", normalizePath\(blogPath\(slug\)\)\)/.test(acts)
+    check("A renamed, once-published article keeps its old link through the EXISTING redirect table (307: re-pointable, never cached forever)",
+      /from\("cms_redirects"\)\.upsert\(/.test(acts) && /status_code: 307/.test(acts) && !/status_code: 30[18]/.test(acts)
+      && /onConflict: "source"/.test(acts) && /if \(current\.published_at\) await moveAddress\(/.test(acts));
+    check("…a live article frees its new address; one not served only breaks a loop back to itself (anyone else's redirect stays)",
+      /if \(current\.status === "PUBLISHED"\) await freeAddress\(supabase, v\.slug\);\s+else await breakLoop\(supabase, v\.slug, current\.slug\);/.test(acts)
+      && /\.eq\("source", normalizePath\(blogPath\(slug\)\)\)\.eq\("target", blogPath\(previous\)\)/.test(acts)
       && /\.update\(\{ target \}\)\.eq\("target", source\)\.neq\("source", normalizePath\(target\)\)/.test(acts));
     const preview = "app/admin/newsletter/grovnews/blog/[id]/podglad/page.tsx";
     check("A7 the draft preview exists ONLY behind the admin layout, noindex, and no public preview route",
@@ -328,6 +348,18 @@ async function main() {
       && !/https?:\/\/|\]\(|\*\*/.test(d.content));
     check("related only from the candidates offered; unsupported numbers flagged for the admin",
       d.relatedSlugs.join() === "inne-artykul" && d.warnings.numbers.includes("2027") && !d.warnings.numbers.includes("12"));
+    const flat = parsePublicSeoDraft({
+      title: "Allegro zmienia X", excerpt: "Lead lead lead lead.", seo_title: "", seo_description: "",
+      sections: [
+        { heading: "######## H", body: "**## Sneaky\n\n**- item\n- - item\n> > quote\n\nPara one.\n\n- listed\nText long enough to pass the threshold of the parser for sure." },
+        { heading: "Druga", body: "Więcej treści, wystarczająco dużo, żeby przejść próg długości artykułu w parserze szkicu AI." },
+      ], faq: [], related: [],
+    }, { candidates: [], material: "" });
+    const bodyLines = flat.content.split("\n");
+    check("model markdown is flattened for good: stacked / overlong markers, bold-wrapped headings, nested lists and quotes",
+      bodyLines.filter((l) => /^#{1,6} /.test(l)).map((l) => l.replace(/^#+ /, "")).join() === "H,Druga"
+      && !bodyLines.some((l) => /^\s*([-*+>]|#)/.test(l) && !/^## (H|Druga)$/.test(l)) && flat.content.includes("Sneaky"));
+    check("…and the blank line before a former list line survives (paragraphs are not merged)", flat.content.includes("Para one.\n\nlisted"));
     let threw = "";
     try { parsePublicSeoDraft({ title: "x", sections: [] }, { candidates: [], material: "" }); } catch (e) { threw = (e as Error).message; }
     check("a thin or nonsense answer is 'ai_invalid', never a half-filled draft", threw === "ai_invalid");

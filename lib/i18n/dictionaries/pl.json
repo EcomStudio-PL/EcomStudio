@@ -6338,7 +6338,8 @@
       "errNoSource": "Szkic AI wymaga wpisu źródłowego GrovNews.",
       "errAiFailed": "AI nie przygotowało szkicu. Spróbuj ponownie za chwilę albo napisz tekst ręcznie.",
       "errCanonical": "Adres kanoniczny musi zaczynać się od https://",
-      "errFaq": "Każde pytanie FAQ potrzebuje odpowiedzi (maksymalnie 10 pytań)."
+      "errFaq": "Każde pytanie FAQ potrzebuje odpowiedzi (maksymalnie 10 pytań).",
+      "errStale": "Artykuł zmienił się w międzyczasie (np. w innej karcie). Odśwież stronę i spróbuj ponownie."
     }
   }
 }

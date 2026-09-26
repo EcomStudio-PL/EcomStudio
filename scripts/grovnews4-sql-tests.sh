@@ -156,6 +156,11 @@ check "P5 no internal note in the public article" "$(echo "$ALL" | grep -c 'INTE
 check "P6 the article carries exactly the page's columns — no provenance, author, status or research" \
   "$(as_anon "select string_agg(k, ',' order by k) from jsonb_object_keys(public.grovnews_public_article('pub')) k")" \
   "canonical_url,category,content,cover_alt,cover_url,excerpt,faq,language,noindex,og_description,og_title,published_at,read_minutes,related_slugs,schema_type,seo_description,seo_title,slug,sources,tags,title,updated_at"
+q "update public.grovnews_public_articles set related_slugs = '{draft1,draft2,future,hidden-not-yet,pub}' where slug = 'pub'" >/dev/null
+art rel-target PUBLISHED >/dev/null
+q "update public.grovnews_public_articles set related_slugs = '{draft1,rel-target,draft2}' where slug = 'pub'" >/dev/null
+check "P6a related slugs: only PUBLISHED ones leave the database, in the admin's order (a draft's slug never does)" \
+  "$(as_anon "select public.grovnews_public_article('pub')->'related_slugs'")" '["rel-target"]'
 check "P6b a feed card carries only the card's columns" \
   "$(as_anon "select string_agg(k, ',' order by k) from jsonb_object_keys((select public.grovnews_public_feed(1)->0)) k")" \
   "category,cover_alt,cover_url,excerpt,language,published_at,read_minutes,slug,title"
@@ -167,7 +172,7 @@ check "P8 the premium post stays unreadable to anon and to a non-entitled custom
   "$(as_anon "select count(*) from public.grovnews_posts")|$(as_user "$CUST" "select count(*) from public.grovnews_posts")|$(as_user "$SUB" "select count(*) from public.grovnews_posts")" "0|0|1"
 check "P9 the feed filters by category and hides an inactive one" \
   "$(as_anon "select jsonb_array_length(public.grovnews_public_feed(100, 'allegro'))")|$(as_anon "select jsonb_array_length(public.grovnews_public_feed(100, 'olx'))")|$(q "update public.grovnews_categories set is_active = false where slug = 'allegro'")$(as_anon "select jsonb_array_length(public.grovnews_public_feed(100, 'allegro'))")|$(as_anon "select public.grovnews_public_article('pub')->'category' = 'null'::jsonb")" \
-  "1|0|0|t"
+  "2|0|0|t"
 q "update public.grovnews_categories set is_active = true where slug = 'allegro'" >/dev/null
 check "P10 the feed limit is clamped (0 → 1, 10000 → at most 100)" \
   "$(as_anon "select jsonb_array_length(public.grovnews_public_feed(0))")|$(as_anon "select jsonb_array_length(public.grovnews_public_feed(10000)) <= 100")" "1|t"

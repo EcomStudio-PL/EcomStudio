@@ -12,7 +12,7 @@ import { blogPath } from "@/lib/grovnews-blog";
  * auth pages and the legal documents — and nothing else.
  */
 /** Slugs the fixed list already owns or that are not public pages. */
-const RESERVED_SLUGS = new Set(["home"]);
+const RESERVED_SLUGS = new Set(["home", "blog"]);
 
 const PUBLIC_ROUTES = [
   { path: "/", priority: 1, changeFrequency: "weekly" as const },
@@ -40,7 +40,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       .select("slug, published_at, kind, status, seo")
       .eq("status", "published"),
     getActiveHomepage(),
-    getBlogSitemap(),
+    // The blog failing to answer leaves the rest of the sitemap intact.
+    getBlogSitemap().catch(() => []),
   ]);
   // The product Home (kind `app`) that currently answers "/" forwards its own
   // slug there (app/[slug]/page.tsx), so it is "/" above and not a page of its

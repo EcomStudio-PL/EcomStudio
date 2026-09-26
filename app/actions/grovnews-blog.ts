@@ -3,9 +3,10 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/services/audit";
 import type { Client } from "@/lib/services/workspace";
-import { POST_STATUSES, isUuid, readSources, slugify, type PostStatus } from "@/lib/grovnews";
+import { POST_STATUSES, isUuid, readSources, type PostStatus } from "@/lib/grovnews";
 import {
-  COPY_LIMIT, RESERVED_BLOG_SLUGS, blogPath, copyOverlap, validatePublicArticleInput, type PublicArticleInputError,
+  COPY_LIMIT, blogPath, copyOverlap, placeholderSlug, readFaq, validatePublicArticleInput,
+  type FaqItem, type PublicArticleInputError,
 } from "@/lib/grovnews-blog";
 import { normalizePath } from "@/lib/server/redirects";
 import { BLOG_TAG } from "@/lib/server/grovnews-blog";
@@ -50,25 +51,39 @@ function revalidateBlog() {
 /**
  * A public version is a NEW text about the same facts. When the article came
  * from a premium post, too much of that post's text word for word is refused
- * — the one way a paid article could otherwise end up free on /blog.
+ * — the one way a paid article could otherwise end up free on /blog. Every
+ * text the page shows or announces is checked: the lead, the body, the FAQ
+ * and the search/share descriptions.
  */
-async function tooCloseToPremium(supabase: Client, postId: string | null, excerpt: string, content: string): Promise<boolean> {
+type PublicText = { excerpt: string; content: string; faq: FaqItem[]; seoDescription: string | null; ogDescription: string | null };
+const publicText = (a: PublicText) =>
+  [a.excerpt, a.content, ...a.faq.flatMap((f) => [f.q, f.a]), a.seoDescription ?? "", a.ogDescription ?? ""].join("\n\n");
+
+async function tooCloseToPremium(supabase: Client, postId: string | null, text: PublicText): Promise<boolean> {
   if (!postId) return false;
   const { data: post } = await supabase.from("grovnews_posts").select("excerpt, content").eq("id", postId).maybeSingle();
   if (!post) return false;
-  return copyOverlap(`${excerpt}\n\n${content}`, `${post.excerpt}\n\n${post.content}`) > COPY_LIMIT;
+  return copyOverlap(publicText(text), `${post.excerpt}\n\n${post.content}`) > COPY_LIMIT;
 }
 
 /**
  * THE EXISTING REDIRECT TABLE (cms_redirects, read by the middleware) keeps
  * old links alive — nothing new is built for it:
  *   · a redirect FROM this article's own address would hide the article (the
- *     middleware redirects before the page renders), so it is switched off;
+ *     middleware redirects before the page renders), so it is switched off
+ *     when the article is live;
  *   · when a once-published article is renamed, its old address points to the
- *     new one, and anything that pointed to the old address follows.
+ *     new one, and anything that pointed to the old address follows. 307, the
+ *     table's own convention for rows that get re-pointed: a rename can be
+ *     undone, and a browser that cached a 301 would loop forever.
  */
 async function freeAddress(supabase: Client, slug: string) {
   await supabase.from("cms_redirects").update({ enabled: false }).eq("source", normalizePath(blogPath(slug))).eq("enabled", true);
+}
+
+async function breakLoop(supabase: Client, slug: string, previous: string) {
+  await supabase.from("cms_redirects").update({ enabled: false })
+    .eq("source", normalizePath(blogPath(slug))).eq("target", blogPath(previous)).eq("enabled", true);
 }
 
 async function moveAddress(supabase: Client, adminId: string, id: string, from: string, to: string) {
@@ -76,7 +91,7 @@ async function moveAddress(supabase: Client, adminId: string, id: string, from: 
   const target = blogPath(to);
   await supabase.from("cms_redirects").update({ target }).eq("target", source).neq("source", normalizePath(target));
   await supabase.from("cms_redirects").upsert(
-    { source, target, status_code: 301, enabled: true, note: `grovnews_public_article:${id}`, created_by: adminId },
+    { source, target, status_code: 307, enabled: true, note: `grovnews_public_article:${id}`, created_by: adminId },
     { onConflict: "source" },
   );
 }
@@ -84,7 +99,7 @@ async function moveAddress(supabase: Client, adminId: string, id: string, from: 
 /* ── save ──────────────────────────────────────────────────────────────────── */
 
 export async function savePublicArticleAction(id: string | null, raw: unknown):
-  Promise<{ ok: true; id: string; slug: string } | Fail<PublicArticleInputError | "slug_taken" | "too_close" | "incomplete">> {
+  Promise<{ ok: true; id: string; slug: string } | Fail<PublicArticleInputError | "slug_taken" | "too_close" | "incomplete" | "stale">> {
   try {
     const { supabase, adminId } = await requireAdmin();
     if (id !== null && !isUuid(id)) return { ok: false, error: "invalid" };
@@ -99,7 +114,7 @@ export async function savePublicArticleAction(id: string | null, raw: unknown):
       // An article that is live stays a publishable, new text after the edit.
       if (data.status === "PUBLISHED") {
         if (!v.content.trim() || !v.excerpt) return { ok: false, error: "incomplete" };
-        if (await tooCloseToPremium(supabase, data.source_grovnews_post_id, v.excerpt, v.content)) return { ok: false, error: "too_close" };
+        if (await tooCloseToPremium(supabase, data.source_grovnews_post_id, v)) return { ok: false, error: "too_close" };
       }
     }
     const row = {
@@ -110,16 +125,19 @@ export async function savePublicArticleAction(id: string | null, raw: unknown):
       og_title: v.ogTitle, og_description: v.ogDescription, internal_note: v.internalNote,
       estimated_read_minutes: v.readMinutes,
     };
-    const res = id
-      ? await supabase.from(TABLE).update(row).eq("id", id).select("id, slug").maybeSingle()
+    // Compare-and-set on the status that was checked above: a publish that
+    // landed in between (and so skipped this save's guard) makes this 0 rows.
+    const res = id && current
+      ? await supabase.from(TABLE).update(row).eq("id", id).eq("status", current.status).select("id, slug").maybeSingle()
       : await supabase.from(TABLE).insert({ ...row, status: "DRAFT", created_by: adminId }).select("id, slug").single();
     if (res.error) return { ok: false, error: res.error.code === "23505" ? "slug_taken" : "generic" };
-    if (!res.data) return { ok: false, error: "invalid" };
+    if (!res.data) return { ok: false, error: current ? "stale" : "invalid" };
     if (current && current.slug !== v.slug) {
-      // The new address is this article's now — whatever redirect started
-      // there (an older rename of this very article, say) must not loop or
-      // hide it, published or not.
-      await freeAddress(supabase, v.slug);
+      // A live article takes its new address over; one that is not served
+      // only breaks a redirect that would loop back to its own old address
+      // (publishing frees the address later) — anyone else's is left alone.
+      if (current.status === "PUBLISHED") await freeAddress(supabase, v.slug);
+      else await breakLoop(supabase, v.slug, current.slug);
       if (current.published_at) await moveAddress(supabase, adminId, res.data.id, current.slug, v.slug);
     } else if (current?.status === "PUBLISHED") {
       await freeAddress(supabase, v.slug);
@@ -144,23 +162,31 @@ export async function savePublicArticleAction(id: string | null, raw: unknown):
  * and passes the copy guard.
  */
 export async function setPublicArticleStatusAction(id: string, status: PostStatus):
-  Promise<{ ok: true } | Fail<"too_close" | "incomplete">> {
+  Promise<{ ok: true } | Fail<"too_close" | "incomplete" | "stale">> {
   try {
     const { supabase, adminId } = await requireAdmin();
     if (!isUuid(id) || !(POST_STATUSES as readonly string[]).includes(status)) return { ok: false, error: "invalid" };
     const { data: current } = await supabase.from(TABLE)
-      .select("slug, status, published_at, excerpt, content, source_grovnews_post_id").eq("id", id).maybeSingle();
+      .select("slug, status, published_at, updated_at, excerpt, content, faq, seo_description, og_description, source_grovnews_post_id")
+      .eq("id", id).maybeSingle();
     if (!current) return { ok: false, error: "invalid" };
     if (status === "PUBLISHED") {
       if (!current.content.trim() || !current.excerpt.trim()) return { ok: false, error: "incomplete" };
-      if (await tooCloseToPremium(supabase, current.source_grovnews_post_id, current.excerpt, current.content)) {
+      if (await tooCloseToPremium(supabase, current.source_grovnews_post_id, {
+        excerpt: current.excerpt, content: current.content, faq: readFaq(current.faq),
+        seoDescription: current.seo_description, ogDescription: current.og_description,
+      })) {
         return { ok: false, error: "too_close" };
       }
     }
     const patch: { status: PostStatus; published_at?: string } = { status };
     if (status === "PUBLISHED" && !current.published_at) patch.published_at = new Date().toISOString();
-    const { error } = await supabase.from(TABLE).update(patch).eq("id", id);
+    // Compare-and-set on the version that was checked: a save that changed
+    // the text in between bumps updated_at, and this publish matches 0 rows.
+    const { data: moved, error } = await supabase.from(TABLE).update(patch)
+      .eq("id", id).eq("updated_at", current.updated_at).select("id").maybeSingle();
     if (error) return { ok: false, error: "generic" };
+    if (!moved) return { ok: false, error: "stale" };
     if (status === "PUBLISHED") await freeAddress(supabase, current.slug);
     await logAudit(supabase, {
       actorId: adminId, action: "grovnews.blog_status", entityType: "grovnews_public_article", entityId: id,
@@ -195,11 +221,11 @@ export async function createPublicFromPostAction(postId: string):
       (await supabase.from(TABLE).select("id").eq("source_grovnews_post_id", postId).maybeSingle()).data?.id ?? null;
     const found = await existing();
     if (found) return { ok: true, id: found, existed: true };
-    const slugged = slugify(post.title, 110);
-    const base = !slugged || RESERVED_BLOG_SLUGS.has(slugged) ? `grovnews-${slugged || "blog"}` : slugged;
+    // The address is a neutral placeholder, never the premium headline: it
+    // follows the public title in the editor until the article is published.
     for (let n = 1; n <= 5; n++) {
       const { data, error } = await supabase.from(TABLE).insert({
-        title: post.title, slug: n === 1 ? base : `${base}-${n}`, excerpt: "", content: "",
+        title: post.title, slug: placeholderSlug(postId, n), excerpt: "", content: "",
         category_id: post.category_id, tags: post.tags ?? [], sources: readSources(post.sources), language: post.language,
         source_grovnews_post_id: postId, status: "DRAFT", created_by: adminId,
       }).select("id").single();

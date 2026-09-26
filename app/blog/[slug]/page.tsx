@@ -20,7 +20,11 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
 export default async function BlogArticlePage({ params }: Params) {
   const { slug } = await params;
-  const [article, chrome, feed] = await Promise.all([getBlogArticle(slug), blogChrome(), getBlogFeed(null, 60)]);
+  const [article, chrome, feed] = await Promise.all([
+    getBlogArticle(slug), blogChrome(),
+    // Related cards are optional: the article renders without them.
+    getBlogFeed(null, 60).catch(() => []),
+  ]);
   if (!article) notFound();
   const { locale, t, signedIn, showAuth, shell } = chrome;
   const jsonLd = articleJsonLd(article, { home: t("grovnews.blog.home"), blog: t("grovnews.blog.title") });

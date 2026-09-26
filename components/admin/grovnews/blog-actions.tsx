@@ -15,6 +15,7 @@ export const BLOG_ERROR_KEY: Record<string, string> = {
   forbidden: "grovnewsAdm.errForbidden",
   too_close: "grovnewsAdm.blog.errTooClose",
   incomplete: "grovnewsAdm.blog.errIncomplete",
+  stale: "grovnewsAdm.blog.errStale",
   not_published: "grovnewsAdm.blog.errNotPublished",
   no_source: "grovnewsAdm.blog.errNoSource",
   noServerKey: "grovnewsAdm.research.err.noServerKey",

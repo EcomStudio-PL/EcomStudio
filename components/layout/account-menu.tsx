@@ -138,7 +138,7 @@ export function AccountMenu({ name, email, credits, plan, isAdmin, showName, gro
         {open && (
           <div className="absolute right-0 top-full z-50 pt-2">
             <div role="menu"
-              className="overlay animate-pop w-[21rem] overflow-hidden rounded-2xl">
+              className="overlay animate-pop thin-scroll max-h-[calc(100dvh-var(--header-h)-0.5rem)] w-[21rem] overflow-y-auto overflow-x-hidden overscroll-contain rounded-2xl">
               {/* GREETING */}
               {greeting && (
                 <p className="px-4 pt-4 text-[13px] font-semibold text-muted">

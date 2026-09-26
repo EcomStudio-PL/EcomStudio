@@ -14,7 +14,7 @@ import { SeoPreview } from "@/components/admin/cms/seo-preview";
 import { generatePublicSeoDraftAction, savePublicArticleAction } from "@/app/actions/grovnews-blog";
 import { LANGUAGES, slugify, sourcesToText, type PostSource } from "@/lib/grovnews";
 import {
-  SCHEMA_TYPES, articleSeoChecks, blogPath, headlineWarnings, type FaqItem,
+  SCHEMA_TYPES, articleSeoChecks, blogPath, headlineWarnings, isPlaceholderSlug, type FaqItem,
 } from "@/lib/grovnews-blog";
 import { SITE_ORIGIN } from "@/lib/site";
 import { BLOG_ERROR_KEY, BlogRowActions } from "./blog-actions";
@@ -64,7 +64,8 @@ export function BlogEditor({ article, categories }: {
   // does not keep that post's headline in its public URL once the title is
   // rewritten. A slug the admin set by hand stays theirs.
   const [slugTouched, setSlugTouched] = useState(
-    Boolean(article.publishedAt) || (article.id !== null && article.slug !== slugify(article.title)),
+    Boolean(article.publishedAt)
+      || (article.id !== null && article.slug !== slugify(article.title) && !isPlaceholderSlug(article.slug)),
   );
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((prev) => ({ ...prev, [k]: v }));
 

@@ -33,7 +33,10 @@ export const getBlogFeed = unstable_cache(
   async (category: string | null, limit: number): Promise<BlogCard[]> => {
     if (category !== null && !SLUG_RE.test(category)) return [];
     const { data, error } = await anon().rpc("grovnews_public_feed", { p_limit: limit, p_category: category });
-    if (error || !Array.isArray(data)) return [];
+    // A failed read is thrown, never cached as "no articles": unstable_cache
+    // stores nothing that throws, and a stale entry keeps being served.
+    if (error) throw new Error(`grovnews_public_feed: ${error.message}`);
+    if (!Array.isArray(data)) return [];
     return data.map(toBlogCard).filter((c): c is BlogCard => c !== null);
   },
   ["grovnews-blog-feed"],
@@ -45,7 +48,8 @@ export const getBlogArticle = unstable_cache(
   async (slug: string): Promise<BlogArticle | null> => {
     if (!SLUG_RE.test(slug) || slug.length > 120) return null;
     const { data, error } = await anon().rpc("grovnews_public_article", { p_slug: slug });
-    if (error || !data) return null;
+    if (error) throw new Error(`grovnews_public_article: ${error.message}`);
+    if (!data) return null;
     return toBlogArticle(data);
   },
   ["grovnews-blog-article"],
@@ -58,7 +62,8 @@ export type BlogSitemapEntry = { slug: string; lastModified: string; canonicalUr
 export const getBlogSitemap = unstable_cache(
   async (): Promise<BlogSitemapEntry[]> => {
     const { data, error } = await anon().rpc("grovnews_public_sitemap");
-    if (error || !Array.isArray(data)) return [];
+    if (error) throw new Error(`grovnews_public_sitemap: ${error.message}`);
+    if (!Array.isArray(data)) return [];
     return (data as { slug: unknown; last_modified: unknown; canonical_url: unknown }[])
       .filter((r) => typeof r.slug === "string" && SLUG_RE.test(r.slug))
       .map((r) => ({
