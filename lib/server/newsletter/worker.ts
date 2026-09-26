@@ -83,7 +83,8 @@ export type WorkerRun = {
   /**
    * Why this run did nothing, as a machine code the settings screen maps to its
    * own copy: "paused", "no_server_token", "smtp_not_configured",
-   * "smtp_unavailable", "claim_failed". Absent on a run that reached the queue.
+   * "smtp_unavailable", "claim_failed", "grovnews_guard_unavailable". Absent on
+   * a run that reached the queue.
    */
   reason?: string;
 };
@@ -363,6 +364,46 @@ function withIntro(
   return { blocks, bodyHtml: definition.bodyHtml };
 }
 
+/* ── GROVNEWS: ACCESS AT THE MOMENT OF SENDING ───────────────────────────── */
+
+/** Written into last_error_safe of a GrovNews row whose reader lost access
+ *  between queueing and sending. Terminal: the row is finished 'skipped'. */
+export const GROVNEWS_ACCESS_INACTIVE = "grovnews_access_inactive";
+
+/** The guard could not be asked. Nothing unverified is sent. */
+const GROVNEWS_GUARD_UNAVAILABLE = "grovnews_guard_unavailable";
+
+type GuardVerdict = { grovnews: boolean; allowed: boolean };
+
+/**
+ * Migration 0122's `grovnews_send_guard`: for each recipient, is it a GrovNews
+ * row, and if so does its reader have GrovNews access RIGHT NOW. Rows of
+ * ordinary campaigns always come back allowed, so for them this is a no-op.
+ *
+ * Null means the question could not be asked. The caller treats that as "do
+ * not send" — an access guard that fails open is not a guard. A row missing
+ * from the answer no longer exists (its campaign was deleted) and is not sent
+ * either.
+ */
+async function grovnewsGuard(
+  supabase: Client, token: string, ids: string[],
+): Promise<Map<string, GuardVerdict> | null> {
+  const { data, error } = await serverRpc(supabase).rpc("grovnews_send_guard", {
+    p_token: token, p_recipient_ids: ids,
+  });
+  if (error) {
+    console.error("newsletter.worker.grovnewsGuard", error.message.slice(0, 120));
+    return null;
+  }
+  const verdicts = new Map<string, GuardVerdict>();
+  for (const entry of Array.isArray(data) ? data : []) {
+    const row = asRecord(entry);
+    const id = asString(row.recipient_id);
+    if (id) verdicts.set(id, { grovnews: row.grovnews === true, allowed: row.allowed === true });
+  }
+  return verdicts;
+}
+
 /* ── THE RUN ─────────────────────────────────────────────────────────────── */
 
 const sleep = (ms: number): Promise<void> =>
@@ -499,10 +540,24 @@ export async function runWorkerBatch(supabase: Client): Promise<WorkerRun> {
   }
 }
 
-async function drainQueue(
+/** Exported for scripts/grovnews21-tests.ts, which drives this exact loop with
+ *  an in-memory queue and a fake mailer. Nothing in the app calls it directly. */
+export async function drainQueue(
   supabase: Client, token: string, mailer: BulkMailer,
   batchSize: number, pace: number, deadline: number,
 ): Promise<WorkerRun> {
+  /*
+    THE GROVNEWS GUARD MUST ANSWER BEFORE ANYTHING IS CLAIMED (migration 0122).
+    A claim spends an attempt on every row it hands out, so discovering an
+    unreachable guard only after the claim would burn attempts on ordinary
+    campaigns too. An empty question costs one round trip and proves the door
+    exists and accepts the token; without it this run sends nothing.
+  */
+  if (!(await grovnewsGuard(supabase, token, []))) {
+    await stampRun(supabase, token, EMPTY, GROVNEWS_GUARD_UNAVAILABLE);
+    return { ...EMPTY, reason: GROVNEWS_GUARD_UNAVAILABLE };
+  }
+
   const limit = batchLimit(batchSize, pace, deadline - Date.now());
   const { data, error } = await supabase.rpc("newsletter_queue_claim", {
     p_token: token, p_limit: limit,
@@ -580,6 +635,30 @@ async function drainQueue(
     for (const [id, value] of viaRpc.extras) extras.set(id, value);
   }
 
+  /*
+    GROVNEWS ACCESS, ASKED AGAIN NOW (migration 0122).
+
+    The audience was frozen when the edition was queued, and a reader can lose
+    GrovNews access after that — revoked, run out, account blocked. One call
+    for the whole batch says which rows are GrovNews rows and drops the ones
+    already refused; every GrovNews row is then asked once more immediately
+    before its own SMTP call (below), because pacing spreads a batch over up
+    to the whole run budget. Ordinary campaigns come back "allowed" and are
+    not asked again.
+
+    If the guard stops answering between the probe above and this call,
+    nothing is sent: every claimed row goes back through the ordinary backoff
+    (and, at the attempt ceiling, to a terminal 'failed'), never left
+    'sending' where five such runs would strand it for good.
+  */
+  const verdicts = await grovnewsGuard(supabase, token, rows.map((row) => row.id));
+  if (!verdicts) {
+    for (const row of rows) await finish(supabase, token, row.id, "failed", GROVNEWS_GUARD_UNAVAILABLE);
+    run.failed += rows.length;
+    await stampRun(supabase, token, run, GROVNEWS_GUARD_UNAVAILABLE);
+    return { ...run, reason: GROVNEWS_GUARD_UNAVAILABLE };
+  }
+
   let lastError: string | null = null;
   let first = true;
 
@@ -594,6 +673,15 @@ async function drainQueue(
     if (Date.now() >= deadline) {
       run.skipped += rows.length - index;
       break;
+    }
+
+    // A row the guard did not answer for is gone; a refused GrovNews row is
+    // closed for good — access is decided now, not when the queue was built.
+    const verdict = verdicts.get(row.id);
+    if (!verdict || (verdict.grovnews && !verdict.allowed)) {
+      if (verdict) await finish(supabase, token, row.id, "skipped", GROVNEWS_ACCESS_INACTIVE);
+      run.skipped += 1;
+      continue;
     }
 
     const load = definitions.get(`${row.campaignId}|${row.stepIndex}|${row.variant}`);
@@ -616,6 +704,26 @@ async function drainQueue(
     // that stops early has not already paid for a message it never sent.
     if (!first) await sleep(pace);
     first = false;
+
+    // THE FINAL WORD for a GrovNews row, after the pacing delay and right
+    // before the SMTP call, so no minute-long window is left in which access
+    // is gone but the message still leaves. Unanswerable means "not now": the
+    // row goes back through the ordinary backoff and is asked again then.
+    if (verdict.grovnews) {
+      const now = await grovnewsGuard(supabase, token, [row.id]);
+      const final = now?.get(row.id);
+      if (!now) {
+        await finish(supabase, token, row.id, "failed", GROVNEWS_GUARD_UNAVAILABLE);
+        run.failed += 1;
+        lastError = GROVNEWS_GUARD_UNAVAILABLE;
+        continue;
+      }
+      if (!final || !final.allowed) {
+        if (final) await finish(supabase, token, row.id, "skipped", GROVNEWS_ACCESS_INACTIVE);
+        run.skipped += 1;
+        continue;
+      }
+    }
 
     const result = await sendOne(mailer, row, load.definition, extras.get(row.contactId));
     if (result.sent) {

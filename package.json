@@ -53,6 +53,8 @@
     "test:credits": "esbuild scripts/credit-usage-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/credit-usage-tests.cjs --log-level=silent && node .next/credit-usage-tests.cjs",
     "test:grovnews": "esbuild scripts/grovnews-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/grovnews-tests.cjs --log-level=silent && node .next/grovnews-tests.cjs",
     "test:grovnews2": "esbuild scripts/grovnews2-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/grovnews2-tests.cjs --log-level=silent && node .next/grovnews2-tests.cjs",
+    "test:grovnews21": "esbuild scripts/grovnews21-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/grovnews21-tests.cjs --log-level=silent && node .next/grovnews21-tests.cjs",
+    "test:grovnews21:sql": "bash scripts/grovnews21-sql-tests.sh",
     "test:nav": "esbuild scripts/nav-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/nav-tests.cjs --log-level=silent && node .next/nav-tests.cjs",
     "test:home": "esbuild scripts/home-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/home-tests.cjs --log-level=silent && node .next/home-tests.cjs",
     "test:homeprobe": "node scripts/home-probe.mjs",
