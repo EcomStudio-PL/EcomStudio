@@ -6160,7 +6160,9 @@
           "busy": "Ein Lauf ist gerade aktiv — versuche es in ein paar Minuten erneut.",
           "gave_up": "Der heutige Lauf wurde nach wiederholten Fehlern gestoppt. Details in der Tabelle der letzten Läufe.",
           "failed": "Der heutige Lauf wurde nach wiederholten Fehlern gestoppt. Details in der Tabelle der letzten Läufe.",
-          "other": "Der Zyklus wurde nicht gestartet."
+          "other": "Der Zyklus wurde nicht gestartet.",
+          "waiting_publish": "Der heutige Artikel wartet auf die eingestellte Veröffentlichungszeit.",
+          "waiting_send": "Der Artikel ist veröffentlicht — die E-Mail wartet auf die eingestellte Versandzeit."
         },
         "errNoServerKey": "Der Server-Schlüssel fehlt — der Zyklus kann nicht laufen. Das ist eine Einstellung der Serverumgebung; melde es dem Betreiber.",
         "errGeneric": "Der Zyklus wurde mit einem Fehler abgebrochen. Details in der Tabelle der letzten Läufe."
@@ -6187,7 +6189,8 @@
         "aiDown": "Störung beim KI-Anbieter",
         "sources": "Quellen: {ok} OK, {failed} fehlgeschlagen",
         "article": "Artikel: {status}",
-        "noArticle": "kein Artikel"
+        "noArticle": "kein Artikel",
+        "aiCalls": "KI: {n} Aufrufe"
       },
       "editionStatus": {
         "DRAFT": "Entwurf",
@@ -6247,7 +6250,22 @@
         "recipients": "Empfänger: {n}",
         "emailOff": "Der E-Mail-Versand ist in den Einstellungen ausgeschaltet.",
         "emailNotQueued": "Kein Versand in die Warteschlange gestellt.",
-        "outcome": "Ergebnis"
+        "outcome": "Ergebnis",
+        "aiCalls": "KI-Aufrufe",
+        "aiCost": "Kosten: {cost}",
+        "aiCostUnknown": "ohne Preis: {n}",
+        "sourceErrors": "Quellenfehler:",
+        "operators": "Team-Kopien: {sent} gesendet, {failed} fehlgeschlagen",
+        "waiting": {
+          "publish": "wartet auf die Veröffentlichungszeit",
+          "send": "wartet auf die Versandzeit"
+        },
+        "noTopics": {
+          "no_sources": "Nicht geschrieben — es gibt keine aktivierte Quelle zum Lesen.",
+          "all_sources_failed": "Nicht geschrieben — heute konnte keine Quelle gelesen werden, es gab keine Grundlage.",
+          "below_threshold": "Nicht geschrieben — heute hat kein Thema die Relevanz- und Wichtigkeitsschwellen erreicht.",
+          "no_candidates": "Nicht geschrieben — heute waren keine Themen bereit."
+        }
       },
       "reviewReason": {
         "topic_review": "Mindestens ein Thema muss geprüft werden (z. B. nur eine Quelle oder Zahlen zum Nachprüfen).",
@@ -6296,7 +6314,35 @@
         "DRAFT": "Entwurf",
         "PUBLISHED": "veröffentlicht",
         "ARCHIVED": "archiviert"
-      }
+      },
+      "aiTitle": "KI-Modell für GrovNews",
+      "aiHint": "GrovNews nutzt die in der Plattform konfigurierten KI-Anbieter — ohne eigenen Schlüssel. Der gewählte Anbieter wird zuerst gefragt, der andere konfigurierte bleibt als Ausweichlösung.",
+      "aiProvider": "Anbieter",
+      "aiProviderDefault": "Standardreihenfolge der Plattform ({order})",
+      "aiProviderDefaultNone": "Standardreihenfolge der Plattform",
+      "aiProviderName": {
+        "openai": "OpenAI",
+        "google": "Google Gemini"
+      },
+      "aiModel": "Modell",
+      "aiModelDefault": "Standardmodell des Anbieters",
+      "aiCredOk": "Schlüssel funktioniert",
+      "aiCredMissing": "Kein funktionierender Schlüssel",
+      "aiCredInactive": "Anbieter in der Plattform deaktiviert",
+      "aiCredUnknown": "Schlüsselstatus unbekannt",
+      "aiFallbackNote": "Solange der Schlüssel nicht funktioniert, nutzt GrovNews die Standardreihenfolge der Plattform.",
+      "publishHour": "Uhrzeit der Veröffentlichung",
+      "sendHour": "Uhrzeit des E-Mail-Versands",
+      "hourAfterPrep": "Direkt nach der Vorbereitung",
+      "hourAfterPublish": "Direkt nach der Veröffentlichung",
+      "hoursHint": "Veröffentlichungs- und Versandzeit gelten im automatischen Modus (Warschauer Zeit): Vorbereitung → Veröffentlichung → Versand. Im Prüfmodus wird nichts ohne Ihre Entscheidung veröffentlicht oder versendet.",
+      "errHours": "Die Uhrzeiten müssen aufeinander folgen: Vorbereitung, dann Veröffentlichung, dann Versand.",
+      "errOperators": "Geben Sie höchstens {max} gültige E-Mail-Adressen ein, getrennt durch Komma oder Zeilenumbruch.",
+      "errModel": "Wählen Sie ein Modell aus der Liste des gewählten Anbieters.",
+      "operatorsTitle": "Kopien der Zusammenfassung für das Team",
+      "operatorsHint": "Bis zu {max} Adressen (z. B. die Redaktion), die dieselbe Tageszusammenfassung erhalten, sobald sie für die Abonnenten eingeplant ist. Niemals Kunden; gesperrte Adressen werden übersprungen.",
+      "operatorsLabel": "E-Mail-Adressen",
+      "operatorsPlaceholder": "redaktion@ihrefirma.de"
     },
     "errInEdition": "Dieser Beitrag steckt in einer Ausgabe, die auf den Versand wartet. Setze die Ausgabe zuerst auf Entwurf zurück oder entferne den Beitrag.",
     "content": {
@@ -6625,7 +6671,7 @@
       "RSS": "RSS-Feed — die Liste der neuesten Beiträge, die eine Website veröffentlicht.",
       "ATOM": "Atom-Feed — funktioniert wie RSS, in einem neueren Format.",
       "PUBLIC_FEED": "Öffentlicher JSON-, RSS- oder Atom-Feed — das Format wird automatisch erkannt.",
-      "API": "Benötigt einen Anbieter-Adapter, der noch nicht konfiguriert ist — die Quelle bleibt nicht verfügbar und wird nicht abgerufen.",
+      "API": "Eine API, die einen JSON Feed, RSS/Atom oder eine JSON-Liste liefert (Titel und URL, optional Datum und Zusammenfassung). Optionale Autorisierung: Bearer-Token oder Schlüssel im Header — das Geheimnis liegt im Tresor und geht nur an die Domain der Quelle.",
       "MANUAL": "Wird nie abgerufen — Einträge fügst du in Research von Hand hinzu.",
       "WEB_PAGE": "Eine öffentliche Übersichtsseite; Links werden unter Beachtung von robots.txt gelesen."
     },
@@ -6699,7 +6745,9 @@
         "empty": "Keine Einträge",
         "robots_unreachable": "robots.txt nicht erreichbar",
         "requires_access": "Erfordert Anmeldung oder bezahlten Zugang",
-        "bot_protection": "Bot-Schutz (CAPTCHA)"
+        "bot_protection": "Bot-Schutz (CAPTCHA)",
+        "auth_failed": "Autorisierung abgelehnt (401/403)",
+        "secret_missing": "Autorisierungsgeheimnis fehlt"
       },
       "importOpen": "Quellen importieren",
       "colHealth": "Zustand",
@@ -6740,7 +6788,58 @@
         "body": "Der Test hat einen besseren Weg gefunden, diese Quelle zu lesen. Öffne das Formular, prüfe die Angaben und speichere — nichts ändert sich automatisch.",
         "apply": "Formular mit Empfehlung öffnen",
         "formNote": "Typ und Adresse wurden aus der Empfehlung des Tests übernommen. Prüfe die Angaben und klicke auf „Speichern“."
-      }
+      },
+      "auth": {
+        "title": "Autorisierung",
+        "none": "Keine",
+        "bearer": "Bearer-Token",
+        "header": "API-Schlüssel im Header",
+        "headerName": "Header-Name",
+        "headerHint": "z. B. X-API-Key",
+        "errHeader": "Header-Name: Buchstaben, Ziffern und Bindestriche (bis 64 Zeichen); System-Header sind nicht erlaubt.",
+        "secret": "Geheimnis",
+        "secretSaved": "Gespeichert · endet auf {last4}",
+        "secretSavedNoFour": "Gespeichert",
+        "secretNone": "Kein Geheimnis gespeichert",
+        "secretPlaceholder": "Token oder Schlüssel einfügen",
+        "secretReplace": "Ersetzen",
+        "secretRemove": "Geheimnis entfernen",
+        "secretSavedToast": "Geheimnis im Tresor gespeichert.",
+        "secretRemovedToast": "Geheimnis entfernt.",
+        "secretHint": "Das Geheimnis kommt beim Speichern der Quelle in den Tresor (Supabase Vault). Es wird nie wieder angezeigt oder an den Browser gesendet und beim Abruf nur an die Domain dieser Quelle geschickt.",
+        "missingNote": "Die Autorisierung ist aktiv, aber es gibt kein Geheimnis — die Quelle wird nicht gelesen.",
+        "errSecret": "Das Geheimnis darf nicht leer sein und keine Steuerzeichen enthalten.",
+        "errNotApi": "Ein Geheimnis kann nur für eine API-Quelle mit aktiver Autorisierung gespeichert werden."
+      },
+      "line": {
+        "sources": "Quellen: {n}",
+        "ok": "OK: {n}",
+        "untested": "nicht getestet: {n}"
+      },
+      "kind": {
+        "timeout": "Timeout: {n}",
+        "auth": "Autorisierung: {n}",
+        "http": "HTTP-Fehler: {n}",
+        "invalid_feed": "falsches Format: {n}",
+        "other": "sonstige: {n}"
+      },
+      "colMethod": "Methode",
+      "method": {
+        "RSS": "RSS",
+        "API": "API",
+        "WWW": "WWW",
+        "MANUAL": "Manuell"
+      },
+      "state": {
+        "ok": "Gesund",
+        "problem": "Problem",
+        "untested": "Nicht getestet",
+        "off": "Aus"
+      },
+      "testWorks": "Funktioniert",
+      "testLastItem": "Neuester Eintrag: {at}",
+      "apiJson": "JSON-Liste (API)",
+      "testSource": "Quelle testen"
     },
     "mon": {
       "title": "Monetarisierung",
@@ -7143,7 +7242,7 @@
       "mailFrame": "Vorschau der E-Mail zum Artikel des Tages",
       "mailPreviewSaved": "Die Vorschau zeigt die gespeicherte Version — speichern Sie Ihre Änderungen, um sie zu aktualisieren.",
       "mailTime": "{words} Wörter · ca. {n} Min. Lesezeit",
-      "mailTarget": "Die E-Mail ist eine kurze Zusammenfassung des Tages mit einem Link — die vollen 3–5 Minuten Lesezeit bietet der Artikel.",
+      "mailTarget": "Die E-Mail ist eine Tageszusammenfassung für 3–5 Minuten: die wichtigsten Themen, jedes mit Link zu seiner Stelle im Artikel, und ein Link zur ganzen Ausgabe.",
       "mailCopyTitle": "Text der E-Mail",
       "mailCopyHint": "Eine Einleitung und 2–3 Sätze pro Thema. Betreff und Vorschauzeile entstehen aus dem Datum und der Schlagzeile des Tages.",
       "mailIntro": "Einleitung der E-Mail",
@@ -7173,7 +7272,8 @@
         "single_source": "Nur eine inoffizielle Quelle.",
         "model": "Die KI war sich bei den Fakten in diesem Abschnitt nicht sicher.",
         "unsupported_numbers": "Der Text enthält Zahlen, die in den Quellen nicht vorkommen.",
-        "verbatim": "Ein Teil des Textes ist zu nah an der Quelle."
+        "verbatim": "Ein Teil des Textes ist zu nah an der Quelle.",
+        "translation_invalid": "Die Übersetzung des Originalauszugs hat die Prüfung nicht bestanden (leer, Länge, Zahlen oder Sprache) — sie wurde weggelassen."
       },
       "sourcesCount": "Quellen ({n})",
       "noSources": "Keine Quellen mit sicherer Adresse (https).",
@@ -7208,7 +7308,14 @@
         "aiFailed": "Die KI hat keinen gültigen Abschnitt geliefert — bitte versuchen Sie es gleich noch einmal.",
         "campaignLocked": "Die Kampagne ist kein Entwurf mehr — der E-Mail-Text kann nicht geändert werden.",
         "newsletter": "Der Newsletter hat den aktualisierten Kampagneninhalt nicht angenommen — bitte versuchen Sie es erneut."
-      }
+      },
+      "original": "Original ({lang})",
+      "originalSource": "Quelle",
+      "translation": "Polnische Übersetzung",
+      "readMore": "Weiterlesen",
+      "mailTopToday": "Das Wichtigste heute",
+      "openEdition": "Die ganze heutige Ausgabe öffnen",
+      "languageBadge": "{lang} → PL"
     },
     "dash": {
       "today": "Heute",

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Activity, Download, FileSpreadsheet, Filter, FlaskConical, Pencil, Plus, Rss, ShieldCheck, Square, Wand2,
+  Activity, Download, FileSpreadsheet, Filter, FlaskConical, KeyRound, Pencil, Plus, Rss, ShieldCheck, Square, Wand2,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { toast } from "@/lib/notify";
@@ -15,16 +15,20 @@ import { Switch } from "@/components/ui/record";
 import { AdminTable } from "@/components/ui/admin-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
-  ingestNowAction, saveSourceAction, setSourceEnabledAction, testSourceAction,
+  ingestNowAction, saveSourceAction, saveSourceSecretAction, setSourceEnabledAction, testSourceAction,
 } from "@/app/actions/grovnews-research";
 import { checkSourcesAction } from "@/app/actions/grovnews-sources";
 import {
-  FETCHED_TYPES, HEALTH_STATUSES, SOURCE_TYPES, isAcceptableSourceUrl, type SourceHealth, type SourceType,
+  FETCHED_TYPES, HEALTH_STATUSES, SOURCE_ERROR_KINDS, SOURCE_TYPES, isAcceptableSourceUrl, isValidAuthHeader, sourceMethod, sourceState,
+  type SourceAuthKind, type SourceHealth, type SourceState, type SourceType,
 } from "@/lib/grovnews-research";
 import type { ProbeSummary } from "@/lib/grovnews-import";
-import type { AdminSource } from "@/lib/services/grovnews-research";
+import type { AdminSource, SourceHealthSummary } from "@/lib/services/grovnews-research";
 import type { CategoryRow } from "@/lib/services/grovnews";
 import { ProgressBar, SourceImport } from "./source-import";
+import { SourceAuthFields, type SourceSecretState } from "./source-auth";
+
+export type { SourceSecretState } from "./source-auth";
 
 type T = (key: string, vars?: Record<string, string | number>) => string;
 type Language = AdminSource["language"];
@@ -38,6 +42,8 @@ const ERROR_CODES = [
   "network", "robots", "unrecognized_format", "adapter_unavailable", "no_url", "manual", "error",
   // 0125: what a test or a health check can record besides a fetch failure.
   "empty", "robots_unreachable", "requires_access", "bot_protection",
+  // 0128: an API source's own refusals.
+  "auth_failed", "secret_missing",
 ] as const;
 
 function errorLabel(t: T, code: string): string {
@@ -56,6 +62,9 @@ const ERROR_KEYS: Record<string, string> = {
   priority: "grovnewsAdm.sources.err.priority",
   language: "grovnewsAdm.sources.err.language",
   urlTaken: "grovnewsAdm.sources.err.urlTaken",
+  authHeader: "grovnewsAdm.sources.auth.errHeader",
+  secret: "grovnewsAdm.sources.auth.errSecret",
+  notApi: "grovnewsAdm.sources.auth.errNotApi",
   noServerKey: "grovnewsAdm.sources.err.noServerKey",
   invalid: "grovnewsAdm.sources.err.invalid",
   forbidden: "grovnewsAdm.errForbidden",
@@ -63,7 +72,12 @@ const ERROR_KEYS: Record<string, string> = {
 };
 const errorMessage = (t: T, code: string | undefined) => t(ERROR_KEYS[code ?? "generic"] ?? "common.error");
 
-const isFetched = (type: SourceType) => FETCHED_TYPES.includes(type);
+/** Read by the job (and testable here): the feed types, pages and — since
+ *  0128 — API sources. */
+const isFetched = (type: SourceType) => FETCHED_TYPES.includes(type) || type === "API";
+
+/** 0128: the compact state a row shows. */
+const STATE_TONE: Record<SourceState, Tone> = { ok: "success", problem: "danger", untested: "neutral", off: "neutral" };
 
 function hostOf(url: string | null): string | null {
   if (!url) return null;
@@ -128,7 +142,13 @@ type CheckRun = { checked: number; remaining: number | null; statuses: Record<st
 /** The list of sources the daily research reads: add, edit, switch on/off,
  *  test one (which records its health), check them all, fetch one or all
  *  now, and bulk-import a file. */
-export function SourcesManager({ sources, categories }: { sources: AdminSource[]; categories: CategoryRow[] }) {
+export function SourcesManager({ sources, categories, summary, secrets = {} }: {
+  sources: AdminSource[]; categories: CategoryRow[];
+  /** 0128: real counts, from the service the Pulpit uses too. */
+  summary?: SourceHealthSummary;
+  /** 0128: per API source that authenticates — stored or not, last four. */
+  secrets?: Record<string, SourceSecretState>;
+}) {
   const { t } = useI18n();
   const router = useRouter();
   const fmt = useFormatDateTime();
@@ -338,6 +358,27 @@ export function SourcesManager({ sources, categories }: { sources: AdminSource[]
         </div>
       ) : (
         <>
+          {summary && (
+            <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[13px] tabular-nums" data-grovnews-health-line
+              data-ok={summary.ok} data-problem={summary.problem} data-untested={summary.untested}>
+              <span className="font-semibold">{t("grovnewsAdm.sources.line.sources", { n: summary.enabled })}</span>
+              <span aria-hidden className="text-faint">·</span>
+              <span className="text-success">{t("grovnewsAdm.sources.line.ok", { n: summary.ok })}</span>
+              {SOURCE_ERROR_KINDS.filter((k) => summary.byKind[k] > 0).map((k) => (
+                <span key={k} className="contents">
+                  <span aria-hidden className="text-faint">·</span>
+                  <span className="text-danger" data-grovnews-health-kind={k}>{t(`grovnewsAdm.sources.kind.${k}`, { n: summary.byKind[k] })}</span>
+                </span>
+              ))}
+              {summary.untested > 0 && (
+                <>
+                  <span aria-hidden className="text-faint">·</span>
+                  <span className="text-muted">{t("grovnewsAdm.sources.line.untested", { n: summary.untested })}</span>
+                </>
+              )}
+            </p>
+          )}
+
           {/* ── health summary: a chip per state, a click filters by it ───────── */}
           <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8" data-grovnews-health-summary>
             <SummaryChip data="total" label={t("grovnewsAdm.sources.summary.total")} value={sources.length}
@@ -415,7 +456,7 @@ export function SourcesManager({ sources, categories }: { sources: AdminSource[]
               empty={t("grovnewsAdm.sources.emptyTitle")}
               // Type + category and the two timestamps share cells, so the row's
               // actions stay on screen in a desktop table instead of scrolling away.
-              headers={[t("common.name"), `${t("common.type")} · ${t("grovnewsAdm.colCategory")}`, t("grovnewsAdm.sources.colPriority"),
+              headers={[t("common.name"), `${t("grovnewsAdm.sources.colMethod")} · ${t("grovnewsAdm.colCategory")}`, t("grovnewsAdm.sources.colPriority"),
                 t("grovnewsAdm.sources.colEnabled"), `${t("grovnewsAdm.sources.colChecked")} · ${t("grovnewsAdm.sources.colSuccess")}`,
                 `${t("grovnewsAdm.sources.colHealth")} · ${t("grovnewsAdm.sources.colError")}`, t("common.actions")]}
               rows={visible.map((s) => {
@@ -439,10 +480,16 @@ export function SourcesManager({ sources, categories }: { sources: AdminSource[]
                       <span className="block truncate text-[11.5px] font-normal text-muted" title={s.url ?? undefined}>{host}</span>
                     )}
                   </span>,
-                  <span key="ty" className="block min-w-0">
+                  <span key="ty" className="block min-w-0" data-grovnews-source-method={sourceMethod(s.type)}>
                     <span className="flex flex-wrap items-center gap-1.5">
-                      <span className="whitespace-nowrap">{t(`grovnewsAdm.sourceType.${s.type}`)}</span>
-                      {s.type === "API" && <Badge tone="warning">{t("common.unavailable")}</Badge>}
+                      <Badge tone="neutral">{t(`grovnewsAdm.sources.method.${sourceMethod(s.type)}`)}</Badge>
+                      <span className="whitespace-nowrap text-[12px] font-normal text-muted">{t(`grovnewsAdm.sourceType.${s.type}`)}</span>
+                      {s.type === "API" && s.authKind !== "none" && (
+                        <Badge tone={secrets[s.id]?.configured ? "success" : "warning"}>
+                          <KeyRound size={11} aria-hidden />
+                          {t(secrets[s.id]?.configured ? `grovnewsAdm.sources.auth.${s.authKind}` : "grovnewsAdm.sources.errors.secret_missing")}
+                        </Badge>
+                      )}
                     </span>
                     <span className="block truncate text-[11.5px] font-normal text-muted">{s.categoryName ?? t("grovnewsAdm.noCategory")}</span>
                   </span>,
@@ -453,8 +500,14 @@ export function SourcesManager({ sources, categories }: { sources: AdminSource[]
                     <span className="block">{fmt(s.lastCheckedAt) ?? t("grovnewsAdm.sources.never")}</span>
                     <span className="block text-[11.5px] text-muted">{t("grovnewsAdm.sources.colSuccess")}: {fmt(s.lastSuccessAt) ?? t("grovnewsAdm.sources.never")}</span>
                   </span>,
-                  <span key="er" className="block min-w-0 max-w-[14rem] space-y-1" data-grovnews-source-health={s.health}>
-                    <HealthBadge health={s.health} />
+                  <span key="er" className="block min-w-0 max-w-[14rem] space-y-1" data-grovnews-source-health={s.health}
+                    data-grovnews-source-state={sourceState(s.health)}>
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <Badge tone={STATE_TONE[sourceState(s.health)]} dot>{t(`grovnewsAdm.sources.state.${sourceState(s.health)}`)}</Badge>
+                      {sourceState(s.health) === "problem" && (
+                        <span className={cn("text-[11.5px] font-normal", TONE_TEXT[HEALTH_TONE[s.health]])}>{t(`grovnewsAdm.sourceHealth.${s.health}`)}</span>
+                      )}
+                    </span>
                     {s.lastError && (
                       <span className={cn("block break-words text-[12.5px]", s.health === "DEGRADED" ? "text-warning" : "text-danger")}
                         data-grovnews-source-error={s.lastError}>
@@ -490,6 +543,8 @@ export function SourcesManager({ sources, categories }: { sources: AdminSource[]
       {editing && (
         <SourceForm key={editing === "new" ? "new" : editing.id} source={editing === "new" ? null : editing} preset={preset}
           categories={categories} onClose={() => { setEditing(null); setPreset(null); }}
+          secretState={editing === "new" ? null : secrets[editing.id] ?? null}
+          onTest={editing === "new" || locked ? undefined : () => { const src = editing; setEditing(null); setPreset(null); test(src); }}
           onSaved={() => { setEditing(null); setPreset(null); router.refresh(); }} />
       )}
 
@@ -508,17 +563,26 @@ export function SourcesManager({ sources, categories }: { sources: AdminSource[]
               {r.state === "running" && <p className="text-muted">{t("grovnewsAdm.sources.testing")}</p>}
               {r.state === "failed" && (
                 <div className="rounded-xl border border-line bg-raised px-3.5 py-3">
-                  <p className="font-semibold text-danger">{t("grovnewsAdm.sources.testFailed")}</p>
+                  <p className="font-semibold text-danger">✕ {t("grovnewsAdm.sources.testFailed")}</p>
                   <p className="mt-1 break-words text-muted">{r.message}</p>
                 </div>
               )}
               {r.state === "ok" && (
-                <p className="font-semibold">{t("grovnewsAdm.sources.testEntries", { count: r.entries })}</p>
+                <p className="font-semibold text-success" data-grovnews-source-test-works>
+                  ✓ {t("grovnewsAdm.sources.testWorks")} · {t("grovnewsAdm.sources.testEntries", { count: r.entries })}
+                </p>
               )}
-              {(health || detected || resolved) && (
+              {probe?.lastItemAt && (
+                <p className="text-[12.5px] text-muted" data-grovnews-source-test-last-item>
+                  {t("grovnewsAdm.sources.testLastItem", { at: fmt(probe.lastItemAt) ?? "—" })}
+                </p>
+              )}
+              {(health || detected || resolved || (testing.source.type === "API" && r.state === "ok")) && (
                 <dl className="grid min-w-0 grid-cols-1 gap-2.5 rounded-xl border border-line px-3.5 py-3 sm:grid-cols-2" data-grovnews-source-test-details>
                   {health && detailLabel("grovnewsAdm.sources.testHealth", <HealthBadge health={health} />)}
                   {detected && detailLabel("grovnewsAdm.sources.testDetected", t(`grovnewsAdm.sourceType.${detected}`))}
+                  {!detected && testing.source.type === "API" && r.state === "ok"
+                    && detailLabel("grovnewsAdm.sources.testDetected", t("grovnewsAdm.sources.apiJson"))}
                   {resolved && (
                     <div className="min-w-0 sm:col-span-2">
                       <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-faint">{t("grovnewsAdm.sources.testResolved")}</dt>
@@ -596,11 +660,15 @@ function SummaryChip({ label, value, tone, active, onClick, data }: {
 
 /** Add and edit share one form: the same fields, the same validation (the
  *  server re-validates with validateSourceInput). */
-function SourceForm({ source, preset, categories, onClose, onSaved }: {
+function SourceForm({ source, preset, categories, onClose, onSaved, secretState, onTest }: {
   source: AdminSource | null;
   /** A test's recommendation: the form opens with it, the admin reviews and saves. */
   preset?: { type: SourceType; url: string } | null;
   categories: CategoryRow[]; onClose: () => void; onSaved: () => void;
+  /** 0128: the stored secret of an API source (never its value). */
+  secretState?: SourceSecretState | null;
+  /** 0128: "Testuj źródło" for a saved source (runs the recorded test). */
+  onTest?: () => void;
 }) {
   const { t } = useI18n();
   const [pending, start] = useTransition();
@@ -612,6 +680,11 @@ function SourceForm({ source, preset, categories, onClose, onSaved }: {
   const [official, setOfficial] = useState(source?.official ?? false);
   const [language, setLanguage] = useState<Language>(source?.language ?? "pl");
   const [enabled, setEnabled] = useState(source?.enabled ?? true);
+  // 0128: an API source's authorization; the secret typed here is write-only.
+  const [authKind, setAuthKind] = useState<SourceAuthKind>(source?.authKind ?? "none");
+  const [authHeader, setAuthHeader] = useState(source?.authHeader ?? "");
+  const [secret, setSecret] = useState("");
+  const [secretGone, setSecretGone] = useState(false);
 
   // An inactive category stays selectable for the source that already uses it,
   // so editing something else never silently clears it.
@@ -620,12 +693,23 @@ function SourceForm({ source, preset, categories, onClose, onSaved }: {
   const urlBad = url.trim() !== "" && !isAcceptableSourceUrl(url);
   const priorityNum = priority.trim() === "" ? Number.NaN : Number(priority);
   const priorityBad = !Number.isInteger(priorityNum) || priorityNum < 0 || priorityNum > 100;
+  const api = type === "API";
+  const headerBad = api && authKind === "header" && !isValidAuthHeader(authHeader.trim());
 
   const save = () => start(async () => {
+    const kind: SourceAuthKind = api ? authKind : "none";
     const res = await saveSourceAction(source?.id ?? null, {
       name, type, url: url.trim() || null, enabled, categoryId: categoryId || null, priority: priorityNum, official, language,
+      authKind: kind, authHeader: kind === "header" ? authHeader.trim() : null,
     });
     if (!res.ok) { toast.error(errorMessage(t, res.error)); return; }
+    // The secret goes to the vault only after the row says it is expected.
+    if (kind !== "none" && secret.trim()) {
+      const sec = await saveSourceSecretAction(res.id, secret);
+      setSecret("");
+      if (!sec.ok) { toast.error(errorMessage(t, sec.error)); onSaved(); return; }
+      toast.success(t("grovnewsAdm.sources.auth.secretSavedToast"));
+    }
     toast.success(t(source ? "grovnewsAdm.sources.updated" : "grovnewsAdm.sources.created"));
     onSaved();
   });
@@ -652,7 +736,6 @@ function SourceForm({ source, preset, categories, onClose, onSaved }: {
             {SOURCE_TYPES.map((s) => <option key={s} value={s}>{t(`grovnewsAdm.sourceType.${s}`)}</option>)}
           </Select>
           <p className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5 text-[12px] leading-snug text-muted" data-grovnews-source-type-hint={type}>
-            {type === "API" && <Badge tone="warning">{t("common.unavailable")}</Badge>}
             <span className="min-w-0">{t(`grovnewsAdm.sourceTypeHint.${type}`)}</span>
           </p>
         </div>
@@ -688,6 +771,12 @@ function SourceForm({ source, preset, categories, onClose, onSaved }: {
           </div>
         </div>
 
+        {api && (
+          <SourceAuthFields sourceId={source?.id ?? null} kind={authKind} header={authHeader} secret={secret}
+            secretState={secretGone ? { configured: false, lastFour: null } : secretState ?? null}
+            onKind={setAuthKind} onHeader={setAuthHeader} onSecret={setSecret} onSecretRemoved={() => setSecretGone(true)} />
+        )}
+
         <div className="space-y-3 rounded-xl border border-line px-3.5 py-3">
           <div className="flex items-start justify-between gap-3">
             <span className="min-w-0">
@@ -706,8 +795,13 @@ function SourceForm({ source, preset, categories, onClose, onSaved }: {
         </div>
 
         <div className="flex flex-wrap justify-end gap-2">
+          {onTest && source && isFetched(source.type) && source.url && (
+            <Button type="button" variant="secondary" className="mr-auto" disabled={pending} onClick={onTest} data-grovnews-source-form-test>
+              <FlaskConical size={14} aria-hidden />{t("grovnewsAdm.sources.testSource")}
+            </Button>
+          )}
           <Button type="button" variant="ghost" onClick={onClose}>{t("common.cancel")}</Button>
-          <Button type="submit" disabled={pending || !name.trim() || urlBad || priorityBad || (!manual && !url.trim())}>
+          <Button type="submit" disabled={pending || !name.trim() || urlBad || priorityBad || headerBad || (!manual && !url.trim())}>
             {pending ? t("common.saving") : t("grovnewsAdm.save")}
           </Button>
         </div>

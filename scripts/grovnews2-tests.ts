@@ -323,22 +323,28 @@ const NEW_TABLES = ["grovnews_settings", "grovnews_sources", "grovnews_research_
     check("FETCHED_TYPES are RSS/ATOM/PUBLIC_FEED/WEB_PAGE — never MANUAL, never API",
       [...FETCHED_TYPES].sort().join() === "ATOM,PUBLIC_FEED,RSS,WEB_PAGE");
     const pipe = code(read("lib/server/grovnews/pipeline.ts"));
-    check("pipeline: MANUAL sources are filtered out before any fetch; API is recorded as adapter_unavailable",
+    // 0128 (grovnews6): API sources are READ now, through their own reader
+    // (lib/server/grovnews/api.ts) — no longer recorded as adapter_unavailable.
+    // Pinned instead: MANUAL is still never fetched, an API source goes to
+    // readApiSource, and one that needs a secret it does not have is recorded
+    // as secret_missing WITHOUT any request (below, run for real).
+    check("pipeline: MANUAL sources are filtered out before any fetch; API goes to its own reader (0128)",
       /ctx\.sources\.filter\([\s\S]{0,120}s\.type !== "MANUAL"\)/.test(pipe)
-      && /source\.type === "API"\)[\s\S]{0,300}store\.ingest\(db, source\.id, false, "adapter_unavailable", \[\]\)/.test(pipe));
+      && /source\.type === "API"\s*\?\s*await readApiSource\(db, source, recent, Date\.now\(\), deps\)/.test(pipe));
     const sources: JobContext["sources"] = [
       { id: ID(1), name: "Ręczne", type: "MANUAL", url: null, categoryId: null, priority: 90, official: true, language: "pl" },
-      { id: ID(2), name: "API", type: "API", url: "https://api.example.com/v1", categoryId: null, priority: 80, official: false, language: "pl" },
+      { id: ID(2), name: "API", type: "API", url: "https://api.example.com/v1", categoryId: null, priority: 80, official: false, language: "pl",
+        authKind: "bearer", authHeader: null },
       { id: ID(3), name: "Wewnętrzny", type: "RSS", url: "https://127.0.0.1/feed", categoryId: null, priority: 10, official: false, language: "pl" },
     ];
     const ctx: JobContext = { settings: DEFAULT_SETTINGS, sources, categories: [], recent: [] };
     const f = fakeDb(() => ({ inserted: 0, duplicates: 0, skipped: 0, stale: 0, items: [] }));
     const rep = await ingestSources(f.db, ctx, budget(600_000));
     const ingests = f.calls.filter((c) => c.fn === "grovnews_ingest");
-    check("ingest (run for real): MANUAL never read, API → adapter_unavailable, an IP-literal feed → forbidden_host, both recorded",
+    check("ingest (run for real): MANUAL never read, an API source without its secret → secret_missing (no request), an IP-literal feed → forbidden_host, both recorded",
       rep.sources === 2 && rep.failed === 2 && ingests.length === 2
       && !ingests.some((c) => c.args.p_source_id === ID(1))
-      && ingests.some((c) => c.args.p_source_id === ID(2) && c.args.p_ok === false && c.args.p_error === "adapter_unavailable")
+      && ingests.some((c) => c.args.p_source_id === ID(2) && c.args.p_ok === false && c.args.p_error === "secret_missing")
       && ingests.some((c) => c.args.p_source_id === ID(3) && c.args.p_ok === false && c.args.p_error === "forbidden_host"),
       JSON.stringify({ rep, ingests }));
     const only = fakeDb(() => ({ inserted: 0, duplicates: 0, skipped: 0, stale: 0, items: [] }));

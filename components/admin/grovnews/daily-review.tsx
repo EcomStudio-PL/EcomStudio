@@ -61,6 +61,7 @@ const TOPIC_REVIEW: Record<string, string> = {
   model: "grovnewsAdm.daily.topicReview.model",
   unsupported_numbers: "grovnewsAdm.daily.topicReview.unsupported_numbers",
   verbatim: "grovnewsAdm.daily.topicReview.verbatim",
+  translation_invalid: "grovnewsAdm.daily.topicReview.translation_invalid",
 };
 
 const CONFIDENCE_TONE = { HIGH: "success", MEDIUM: "info", LOW: "warning" } as const;
@@ -292,6 +293,11 @@ export function DailyReview({ edition, daily }: { edition: AdminEditionDetail; d
                         <Badge tone={CONFIDENCE_TONE[tp.confidence]}>{t(`grovnewsAdm.daily.confidence.${tp.confidence}`)}</Badge>
                         {tp.official && (
                           <Badge tone="accent"><ShieldCheck size={12} aria-hidden />{t("grovnewsAdm.daily.official")}</Badge>
+                        )}
+                        {tp.language && tp.language !== "pl" && (
+                          <Badge tone={tp.original && !tp.translation ? "warning" : "info"} data-grovnews-daily-topic-language={tp.language}>
+                            {t("grovnewsAdm.daily.languageBadge", { lang: tp.language.toUpperCase() })}
+                          </Badge>
                         )}
                       </div>
                       {tp.short && <p className="break-words text-[12.5px] leading-relaxed text-muted">{tp.short}</p>}

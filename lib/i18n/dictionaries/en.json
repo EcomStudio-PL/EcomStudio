@@ -6160,7 +6160,9 @@
           "busy": "A run is in progress — try again in a few minutes.",
           "gave_up": "Today's run stopped after repeated errors. See the recent runs table for details.",
           "failed": "Today's run stopped after repeated errors. See the recent runs table for details.",
-          "other": "The cycle was not started."
+          "other": "The cycle was not started.",
+          "waiting_publish": "Today's article is waiting for the configured publish hour.",
+          "waiting_send": "The article is published — the e-mail is waiting for the configured send hour."
         },
         "errNoServerKey": "The server key is missing — the cycle cannot run. It is a server environment setting; report it to the operator.",
         "errGeneric": "The cycle stopped with an error. See the recent runs table for details."
@@ -6187,7 +6189,8 @@
         "aiDown": "AI provider outage",
         "sources": "sources: {ok} OK, {failed} failed",
         "article": "article: {status}",
-        "noArticle": "no article"
+        "noArticle": "no article",
+        "aiCalls": "AI: {n} calls"
       },
       "editionStatus": {
         "DRAFT": "draft",
@@ -6247,7 +6250,22 @@
         "recipients": "Recipients: {n}",
         "emailOff": "E-mail sending is turned off in the settings.",
         "emailNotQueued": "No send was queued.",
-        "outcome": "Outcome"
+        "outcome": "Outcome",
+        "aiCalls": "AI calls",
+        "aiCost": "cost: {cost}",
+        "aiCostUnknown": "unpriced: {n}",
+        "sourceErrors": "Source errors:",
+        "operators": "team copies: {sent} sent, {failed} failed",
+        "waiting": {
+          "publish": "waiting for the publish hour",
+          "send": "waiting for the send hour"
+        },
+        "noTopics": {
+          "no_sources": "Not written — there is no enabled source to read.",
+          "all_sources_failed": "Not written — no source could be read today, so there was nothing to write from.",
+          "below_threshold": "Not written — no topic passed the relevance and importance thresholds today.",
+          "no_candidates": "Not written — no topics were ready to be written today."
+        }
       },
       "reviewReason": {
         "topic_review": "At least one topic needs review (e.g. a single source or figures to check).",
@@ -6296,7 +6314,35 @@
         "DRAFT": "draft",
         "PUBLISHED": "published",
         "ARCHIVED": "archived"
-      }
+      },
+      "aiTitle": "GrovNews AI model",
+      "aiHint": "GrovNews uses the AI providers configured in the platform — no separate key. The chosen provider is asked first; the other configured one stays as a fallback.",
+      "aiProvider": "Provider",
+      "aiProviderDefault": "Platform default order ({order})",
+      "aiProviderDefaultNone": "Platform default order",
+      "aiProviderName": {
+        "openai": "OpenAI",
+        "google": "Google Gemini"
+      },
+      "aiModel": "Model",
+      "aiModelDefault": "Provider's default model",
+      "aiCredOk": "Key works",
+      "aiCredMissing": "No working key",
+      "aiCredInactive": "Provider switched off in the platform",
+      "aiCredUnknown": "Key status unknown",
+      "aiFallbackNote": "Until the key works, GrovNews uses the platform's default order.",
+      "publishHour": "Publish hour",
+      "sendHour": "E-mail send hour",
+      "hourAfterPrep": "Right after preparation",
+      "hourAfterPublish": "Right after publishing",
+      "hoursHint": "Publish and send hours apply to automatic mode (Warsaw time): prepare → publish → send. In review mode nothing is published or sent without your decision.",
+      "errHours": "The hours must be in order: preparation, then publishing, then sending.",
+      "errOperators": "Enter at most {max} valid e-mail addresses, separated by commas or new lines.",
+      "errModel": "Pick a model from the list available for the chosen provider.",
+      "operatorsTitle": "Digest copies for the team",
+      "operatorsHint": "Up to {max} addresses (e.g. the editors) that get the same daily digest right after it is queued for subscribers. Never customers; suppressed addresses are skipped.",
+      "operatorsLabel": "E-mail addresses",
+      "operatorsPlaceholder": "editors@yourcompany.com"
     },
     "errInEdition": "This post is in an edition waiting to be sent. Move the edition back to draft or remove the post from it first.",
     "content": {
@@ -6625,7 +6671,7 @@
       "RSS": "RSS feed — the list of latest posts a site publishes.",
       "ATOM": "Atom feed — works like RSS, in a newer format.",
       "PUBLIC_FEED": "Public JSON, RSS or Atom feed — the format is detected automatically.",
-      "API": "Needs a provider adapter that is not configured yet — the source stays unavailable and is not fetched.",
+      "API": "An API returning a JSON Feed, RSS/Atom or a JSON list (title and URL, optionally a date and summary). Optional authorization: a Bearer token or a key in a header — the secret is stored in the vault and sent only to the source's own domain.",
       "MANUAL": "Never fetched — you add its items by hand in Research.",
       "WEB_PAGE": "One public listing page; links are read with respect for robots.txt."
     },
@@ -6699,7 +6745,9 @@
         "empty": "No entries",
         "robots_unreachable": "robots.txt could not be read",
         "requires_access": "Requires a login or paid access",
-        "bot_protection": "Anti-bot protection (CAPTCHA)"
+        "bot_protection": "Anti-bot protection (CAPTCHA)",
+        "auth_failed": "Authorization refused (401/403)",
+        "secret_missing": "Authorization secret missing"
       },
       "importOpen": "Import sources",
       "colHealth": "Health",
@@ -6740,7 +6788,58 @@
         "body": "The test found a better way to read this source. Open the form, review the details and save — nothing changes automatically.",
         "apply": "Open the form with the recommendation",
         "formNote": "Type and address were prefilled from the test's recommendation. Review them and click “Save”."
-      }
+      },
+      "auth": {
+        "title": "Authorization",
+        "none": "None",
+        "bearer": "Bearer token",
+        "header": "API key in a header",
+        "headerName": "Header name",
+        "headerHint": "e.g. X-API-Key",
+        "errHeader": "Header name: letters, digits and hyphens (up to 64 characters); system headers are not allowed.",
+        "secret": "Secret",
+        "secretSaved": "Saved · ends in {last4}",
+        "secretSavedNoFour": "Saved",
+        "secretNone": "No secret saved",
+        "secretPlaceholder": "Paste the token or key",
+        "secretReplace": "Replace",
+        "secretRemove": "Remove secret",
+        "secretSavedToast": "Secret saved in the vault.",
+        "secretRemovedToast": "Secret removed.",
+        "secretHint": "The secret goes to the vault (Supabase Vault) when the source is saved. It is never shown again or sent to the browser, and when fetching it goes only to this source's own domain.",
+        "missingNote": "Authorization is on but there is no secret — the source will not be read.",
+        "errSecret": "The secret cannot be empty or contain control characters.",
+        "errNotApi": "A secret can only be saved for an API source with authorization turned on."
+      },
+      "line": {
+        "sources": "Sources: {n}",
+        "ok": "OK: {n}",
+        "untested": "not tested: {n}"
+      },
+      "kind": {
+        "timeout": "timeout: {n}",
+        "auth": "auth: {n}",
+        "http": "HTTP error: {n}",
+        "invalid_feed": "bad format: {n}",
+        "other": "other: {n}"
+      },
+      "colMethod": "Method",
+      "method": {
+        "RSS": "RSS",
+        "API": "API",
+        "WWW": "WWW",
+        "MANUAL": "Manual"
+      },
+      "state": {
+        "ok": "Healthy",
+        "problem": "Problem",
+        "untested": "Not tested",
+        "off": "Off"
+      },
+      "testWorks": "Works",
+      "testLastItem": "Newest entry: {at}",
+      "apiJson": "JSON list (API)",
+      "testSource": "Test source"
     },
     "mon": {
       "title": "Monetisation",
@@ -7143,7 +7242,7 @@
       "mailFrame": "Preview of the article-of-the-day e-mail",
       "mailPreviewSaved": "The preview shows the saved version — save your changes to refresh it.",
       "mailTime": "{words} words · approx. {n} min read",
-      "mailTarget": "The e-mail is a short summary of the day with one link — the article provides the full 3–5 minute read.",
+      "mailTarget": "The e-mail is a 3–5 minute digest of the day: the key topics, each linking to its place in the article, and a link to the full edition.",
       "mailCopyTitle": "E-mail copy",
       "mailCopyHint": "An intro and 2–3 sentences per topic. The subject and preview line come from the date and the headline of the day.",
       "mailIntro": "E-mail intro",
@@ -7173,7 +7272,8 @@
         "single_source": "Only one unofficial source.",
         "model": "The AI was not sure about the facts in this section.",
         "unsupported_numbers": "The text contains numbers that do not appear in the sources.",
-        "verbatim": "Part of the text is too close to the source."
+        "verbatim": "Part of the text is too close to the source.",
+        "translation_invalid": "The translation of the original excerpt failed its checks (empty, length, numbers or language) — it was left out."
       },
       "sourcesCount": "Sources ({n})",
       "noSources": "No sources with a secure (https) address.",
@@ -7208,7 +7308,14 @@
         "aiFailed": "The AI did not return a valid section — please try again shortly.",
         "campaignLocked": "The campaign is no longer a draft — the e-mail copy cannot be changed.",
         "newsletter": "The Newsletter did not accept the updated campaign content — please try again."
-      }
+      },
+      "original": "Original ({lang})",
+      "originalSource": "Source",
+      "translation": "Polish translation",
+      "readMore": "Read more",
+      "mailTopToday": "Top stories today",
+      "openEdition": "Open today's full edition",
+      "languageBadge": "{lang} → PL"
     },
     "dash": {
       "today": "Today",

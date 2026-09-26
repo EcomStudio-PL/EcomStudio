@@ -491,13 +491,18 @@ export async function adminMailEligibility(
     supabase.from("newsletter_contacts").select("user_id, email, marketing_consent, unsubscribed_at").is("user_id", null).in("email", emails).limit(5000),
     supabase.from("newsletter_suppressions").select("email").in("email", emails).limit(5000),
   ]);
-  const blocked = new Set((suppressed ?? []).map((s) => s.email));
+  const blocked = new Set((suppressed ?? []).map((s) => s.email.toLowerCase()));
   type Contact = { user_id: string | null; email: string; marketing_consent: boolean; unsubscribed_at: string | null };
   const contacts = [...(byUser ?? []), ...(byEmail ?? [])] as Contact[];
   for (const u of users) {
-    const c = contacts.find((x) => x.user_id === u.id) ?? contacts.find((x) => x.user_id === null && x.email === u.email.toLowerCase());
+    // 0128: the address mailed must BE the user's own address — a contact
+    // linked to them under another address is not theirs to mail (the rule
+    // grovnews_eligible_contacts applies), and one contact per person.
+    const own = u.email.toLowerCase();
+    const c = contacts.find((x) => x.user_id === u.id && x.email.toLowerCase() === own)
+      ?? contacts.find((x) => x.user_id === null && x.email.toLowerCase() === own);
     if (!c) { out.set(u.id, "no_contact"); continue; }
-    if (blocked.has(c.email)) out.set(u.id, "suppressed");
+    if (blocked.has(c.email.toLowerCase())) out.set(u.id, "suppressed");
     else if (c.unsubscribed_at) out.set(u.id, "unsubscribed");
     else if (!c.marketing_consent) out.set(u.id, "no_consent");
     else out.set(u.id, "ok");

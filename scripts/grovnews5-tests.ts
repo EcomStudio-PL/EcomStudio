@@ -957,7 +957,11 @@ const recOf = (v: unknown) => (v && typeof v === "object" ? v : {}) as Record<st
         allLinks.length > 0 && allLinks.every((u) => research.has(u)) && !/evil/.test(composed.post.content + composed.post.title + composed.post.excerpt)
         && composed.post.sources.every((s) => research.has(s.url)), JSON.stringify(allLinks));
       const mailHtml = renderDailyMailHtml({ date: DATE, articleSlug: "grovnews-2026-09-26", mail: composeDailyMail(DATE, composed.post.daily) });
-      check("F10 the day's mail has exactly one link (the article)", hrefsOf(mailHtml).length === 1 && hrefsOf(mailHtml)[0] === postUrl("grovnews-2026-09-26"));
+      // 0128 (grovnews6 M9): the digest links to the article AND to each topic's
+      // anchor in it — still nothing but the published article.
+      check("F10 the day's mail links only to the article (and its topic anchors #tN)",
+        hrefsOf(mailHtml).length === composed.post.daily.topics.length + 1
+        && hrefsOf(mailHtml).every((h) => h === postUrl("grovnews-2026-09-26") || new RegExp(`^${postUrl("grovnews-2026-09-26")}#t\\d+$`).test(h)));
     }
   }
 
@@ -1513,9 +1517,10 @@ const recOf = (v: unknown) => (v && typeof v === "object" ? v : {}) as Record<st
       && dbR.of("grovnews_edition_send").length === 1 && statsOf(runR).outcome === "published_queued",
       JSON.stringify({ runR, calls: dbR.calls.map((c) => c.fn) }));
     const body = String(sendArgs.p_body ?? "");
-    check("D7 …and what it hands the send door is the day's mail: \"GrovNews — DD.MM.YYYY\", ONE link (the article), utm-tagged links",
-      sendArgs.p_edition_id === ED_ID && sendArgs.p_subject === "GrovNews — 25.09.2026" && hrefsOf(body).join() === postUrl(SLUG)
-      && Array.isArray(sendArgs.p_links) && (sendArgs.p_links as string[]).length === 1 && (sendArgs.p_links as string[]).every((l) => l.startsWith(`${postUrl(SLUG)}?`) && l.includes("utm_campaign=grovnews-2026-09-25")),
+    // 0128 (grovnews6 M9): one "Czytaj więcej" anchor per topic + the article.
+    check("D7 …and what it hands the send door is the day's mail: \"GrovNews — DD.MM.YYYY\", links only to the article (+ #t1 for its one topic), utm-tagged links",
+      sendArgs.p_edition_id === ED_ID && sendArgs.p_subject === "GrovNews — 25.09.2026" && hrefsOf(body).join() === `${postUrl(SLUG)}#t1,${postUrl(SLUG)}`
+      && Array.isArray(sendArgs.p_links) && (sendArgs.p_links as string[]).length === 2 && (sendArgs.p_links as string[]).every((l) => l.startsWith(`${postUrl(SLUG)}?`) && l.includes("utm_campaign=grovnews-2026-09-25")),
       JSON.stringify({ subject: sendArgs.p_subject, links: sendArgs.p_links, hrefs: hrefsOf(body) }));
 
     // D8/D9 — the database's half.
@@ -1541,7 +1546,9 @@ const recOf = (v: unknown) => (v && typeof v === "object" ? v : {}) as Record<st
     };
     const mail = composeDailyMail(DATE, record);
     const html = renderDailyMailHtml({ date: DATE, articleSlug: SLUG, mail });
-    check("M1 renderDailyMailHtml: exactly ONE href, and it is postUrl(slug)", hrefsOf(html).length === 1 && hrefsOf(html)[0] === postUrl(SLUG), hrefsOf(html).join(" "));
+    // 0128 (grovnews6 M9): "Czytaj więcej" per topic → #tN; "Otwórz całe…" → the article.
+    check("M1 renderDailyMailHtml: every href is postUrl(slug) or one of its topic anchors (#t1..#tN), the article last",
+      hrefsOf(html).join(" ") === `${postUrl(SLUG)}#t1 ${postUrl(SLUG)}#t2 ${postUrl(SLUG)}`, hrefsOf(html).join(" "));
     check("M1 subject \"GrovNews — DD.MM.YYYY\" (numeric date), one section per topic, the intro as written",
       mail.subject === "GrovNews — 26.09.2026" && html.includes("GrovNews — 26.09.2026") && mail.sections.length === 2 && mail.intro === record.mailIntro);
     check("M1 no <img>, no src= on any tag, no <script>; every text escaped (a <script> title, an <img> in the copy stay text)",
@@ -1549,25 +1556,28 @@ const recOf = (v: unknown) => (v && typeof v === "object" ? v : {}) as Record<st
       && html.includes("Allegro &lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;opłaty&quot;")
       && html.includes("Dzień dobry &amp; witaj &lt;b&gt;czytelniku&lt;/b&gt;"));
     const ok = mailBodyDaily(DATE, SLUG, mail);
-    check("M1 mailBodyDaily: a clean body passes; its links are the one article link, utm-tagged",
-      ok.html === html && ok.links.length === 1 && ok.links[0].startsWith(`${postUrl(SLUG)}?`) && ok.links[0].includes("utm_source=grovnews"));
+    check("M1 mailBodyDaily: a clean body passes; its links are the article and its anchors, utm-tagged",
+      ok.html === html && ok.links.length === 3 && ok.links.every((l) => l.startsWith(`${postUrl(SLUG)}?`) && l.includes("utm_source=grovnews")));
     const dailySrc = code(read("lib/server/grovnews/daily.ts"));
     const GUARD = '|| tags.some((tag) => /\\bhref\\s*=\\s*[^"\\s]/i.test(tag))';
     const VISIBLE = /https?:\/\/|\bwww\.|[\p{L}\p{M}\p{N}_-][.\uFF0E\u3002\uFF61][a-z]{2,24}(?![a-z])|[\p{L}\p{M}\p{N}._%+-]@[\p{L}\p{M}\p{N}-]/iu;
+    // 0128: the allowed set is the article and its topic anchors (allowedDigestHrefs).
     const guard = (h: string, target: string): string => {
       const hrefs = hrefsOf(h);
       const tags = h.match(/<[^>]*>/g) ?? [];
       const visible = h.replace(/<[^>]*>/g, " ").replace(/&amp;/g, "&");
-      return hrefs.length === 0 || hrefs.some((x) => x !== target) || tags.some((tag) => /\bhref\s*=\s*[^"\s]/i.test(tag)) || VISIBLE.test(visible)
+      const allowed = new Set([target, `${target}#t1`, `${target}#t2`]);
+      return hrefs.length === 0 || hrefs.some((x) => !allowed.has(x)) || tags.some((tag) => /\bhref\s*=\s*[^"\s]/i.test(tag)) || VISIBLE.test(visible)
         ? "foreign_link" : "ok";
     };
     const tampered = [
       html.replace("</div>\n</div>", `<a href="https://evil.example/x">x</a></div>\n</div>`),
       `${html}<a href='https://evil.example/y'>y</a>`,
       `${html}<a href=https://evil.example/z>z</a>`,
-      html.replace(/<a href="[^"]*"/, "<a"),
+      html.replace(/<a href="[^"]*"/g, "<a"),
       html.replace(postUrl(SLUG), `${postUrl(SLUG)}-inny`),
       html.replace(postUrl(SLUG), `${postUrl(SLUG).replace(SLUG, "inny-wpis")}`),
+      html.replace(`${postUrl(SLUG)}#t1`, `${postUrl(SLUG)}#t9`),
       html.replace("</div>\n</div>", "<p>Zaloguj: https://allegro-weryfikacja.com/login</p></div>\n</div>"),
       html.replace("</div>\n</div>", "<p>evil.com/x oraz x@evil.com</p></div>\n</div>"),
       html.replace("</div>\n</div>", "<p>Więcej na 1688.com dziś</p></div>\n</div>"),
@@ -1585,7 +1595,7 @@ const recOf = (v: unknown) => (v && typeof v === "object" ? v : {}) as Record<st
       (() => { try { mailBodyDaily(DATE, SLUG, govMail); return true; } catch { return false; } })(), govMail.intro);
     const hostileMail = { ...mail, sections: [{ title: "Tytuł", text: "Kliknij <a href=\"https://evil.example\">tutaj</a>" }] };
     check("M1 markup in the mail's own text never becomes a link: escaped in the html, and the body is refused outright (fail-closed)",
-      hrefsOf(renderDailyMailHtml({ date: DATE, articleSlug: SLUG, mail: hostileMail })).length === 1
+      hrefsOf(renderDailyMailHtml({ date: DATE, articleSlug: SLUG, mail: hostileMail })).length === 2
       && throwsWith(() => mailBodyDaily(DATE, SLUG, hostileMail)) === "foreign_link");
     const M125 = sqlCode(read("supabase/migrations/0125_grovnews_sources_daily.sql"));
     const send = fnBody(M125, "grovnews_edition_send");
@@ -1622,9 +1632,13 @@ const recOf = (v: unknown) => (v && typeof v === "object" ? v : {}) as Record<st
     const definers = (name: string) => migs.filter((f) => new RegExp(`create (or replace )?function public\\.${name}\\(`).test(read(`supabase/migrations/${f}`)));
     const hasAccess = definers("grovnews_user_has_access");
     const g3 = read("scripts/grovnews3-sql-tests.sh");
+    // 0128 redefines grovnews_eligible_contacts (the mailed address must be the
+    // verified one; one copy per person) — it still asks grovnews_user_has_access.
     check("M6/M7/M8 paid / launch / expired access: 0125 redefines neither grovnews_user_has_access nor grovnews_eligible_contacts — the 0123 resolver stays authoritative",
       !/function public\.(grovnews_user_has_access|grovnews_eligible_contacts|grovnews_has_access)\(/.test(M125)
-      && hasAccess[hasAccess.length - 1] === "0123_grovnews_monetization.sql" && definers("grovnews_eligible_contacts").at(-1) === "0122_grovnews_send_time_access.sql",
+      && hasAccess[hasAccess.length - 1] === "0123_grovnews_monetization.sql"
+      && ["0122_grovnews_send_time_access.sql", "0128_grovnews_finalization.sql"].includes(definers("grovnews_eligible_contacts").at(-1) ?? "")
+      && /public\.grovnews_user_has_access\(u\.id\)/.test(read(`supabase/migrations/${definers("grovnews_eligible_contacts").at(-1)}`)),
       JSON.stringify({ hasAccess, eligible: definers("grovnews_eligible_contacts") }));
     check("M6/M7/M8 …proven at the database by grovnews3-sql: G6 paid, L8/L10 launch, G11/G12 expiry",
       ["check \"G6 invoice.paid activates paid access\"", "check \"L8 access source is LAUNCH_BONUS", "check \"L10 launch access running out",

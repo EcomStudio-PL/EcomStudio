@@ -333,7 +333,8 @@ export function sourceErrorBucket(code: string | null): SourceErrorBucket {
   const c = (code ?? "").trim();
   const http = /^http_status_(\d{3})$/.exec(c);
   if (c === "timeout") return "timeout";
-  if ((http && ["401", "402", "403", "407", "451"].includes(http[1])) || c === "requires_access" || c === "bot_protection") return "auth";
+  if ((http && ["401", "402", "403", "407", "451"].includes(http[1])) || c === "requires_access" || c === "bot_protection"
+    || c === "auth_failed" || c === "secret_missing") return "auth";
   if (http) return "http";
   if (["dns", "network", "private_address", "forbidden_host", "invalid_url", "too_large", "too_many_redirects", "robots_unreachable"].includes(c)) return "network";
   if (c === "unrecognized_format") return "format";

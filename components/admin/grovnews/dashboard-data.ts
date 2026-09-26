@@ -4,8 +4,8 @@ import {
   adminSourceHealth, adminStats, adminToday,
   type AdminStats, type SourceHealthSummary, type TodayStatus,
 } from "@/lib/services/grovnews";
-import { adminGetSettings, adminSchedulerStatus } from "@/lib/services/grovnews-research";
-import { grovnewsEconomics, type GrovNewsEconomics } from "@/lib/services/api-economics";
+import { adminGetSettings, adminSchedulerStatus, todayRunSummary } from "@/lib/services/grovnews-research";
+import { grovnewsEconomics, type GrovNewsEconomics, type GrovNewsWindow } from "@/lib/services/api-economics";
 
 /**
  * GROVNEWS PULPIT — the data behind "does GrovNews work today?", in one
@@ -34,6 +34,8 @@ export type DashboardData = {
   /** pg_cron job present (null = the scheduler status could not be read). */
   scheduled: boolean | null;
   economics: GrovNewsEconomics | null;
+  /** AI cost of TODAY'S RUN (its traced calls, run_ref = run id); null before a run exists. */
+  runCost: GrovNewsWindow | null;
 };
 
 const orNull = async <T>(p: Promise<T>): Promise<T | null> => {
@@ -45,13 +47,14 @@ const orNull = async <T>(p: Promise<T>): Promise<T | null> => {
 };
 
 export async function loadGrovNewsDashboard(db: Client, now: Date = new Date()): Promise<DashboardData> {
-  const [stats, health, today, settings, scheduler, economics] = await Promise.all([
+  const [stats, health, today, settings, scheduler, economics, run] = await Promise.all([
     adminStats(db, now),
     orNull(adminSourceHealth(db)),
     orNull(adminToday(db, now)),
     adminGetSettings(db),
     orNull(adminSchedulerStatus(db)),
     orNull(grovnewsEconomics(db, now)),
+    orNull(todayRunSummary(db, now)),
   ]);
   return {
     stats, health, today,
@@ -61,6 +64,9 @@ export async function loadGrovNewsDashboard(db: Client, now: Date = new Date()):
     },
     scheduled: scheduler ? scheduler.jobScheduled : null,
     economics,
+    runCost: run && run.status !== null
+      ? { aiCostUsdMicros: run.aiCostUsdMicros ?? 0, aiCalls: run.aiCalls, unknownCostCalls: run.unknownCostCalls }
+      : null,
   };
 }
 

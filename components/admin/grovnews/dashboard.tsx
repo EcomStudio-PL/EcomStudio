@@ -66,7 +66,9 @@ export function GrovNewsTodayPanel({ data, verdict, locale, t }: { data: Dashboa
   const e = today?.edition ?? null;
   const run = today?.run ?? null;
   const mail = today?.mail ?? null;
-  const cost = aiCostLabel(economics?.today ?? null, t);
+  // The edition's own AI cost when today's run exists; otherwise every
+  // GrovNews call made today (e.g. an admin "analyse now").
+  const cost = aiCostLabel(data.runCost ?? economics?.today ?? null, t);
   const hour = hh(settings.runHour);
   const dash = "—";
   return (

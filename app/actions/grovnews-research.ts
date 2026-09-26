@@ -170,24 +170,6 @@ export async function testSourceAction(id: string):
 /* ── API sources: the secret (0128) ────────────────────────────────────────── */
 
 /**
- * What the source editor may know about an API source's secret: whether one
- * is stored, its last four characters (cut in the database) and when it
- * changed. Never the value.
- */
-export async function sourceSecretStatusAction(id: string):
-  Promise<{ ok: true; configured: boolean; lastFour: string | null; updatedAt: string | null } | Fail> {
-  try {
-    const { supabase } = await requireAdmin();
-    if (!isUuid(id)) return { ok: false, error: "invalid" };
-    const name = sourceSecretName(id);
-    const status = (await secretStatuses(supabase, [name])).get(name);
-    return { ok: true, configured: status?.configured === true, lastFour: status?.lastFour ?? null, updatedAt: status?.updatedAt ?? null };
-  } catch (e) {
-    return failed(e);
-  }
-}
-
-/**
  * Store (or replace) an API source's secret in the vault. Only for an API
  * source that is configured to send one. The value is written and forgotten:
  * it is not returned, not logged and not audited — the audit records only

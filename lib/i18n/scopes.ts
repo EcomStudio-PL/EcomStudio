@@ -111,6 +111,7 @@ const admin = [
   "dashboard",
   "econ",
   "editor",
+  "fashion",
   "featAdm",
   "flags",
   "generator",

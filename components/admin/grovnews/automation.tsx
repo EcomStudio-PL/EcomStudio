@@ -3,20 +3,21 @@ import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  AlertTriangle, ArrowRight, CalendarClock, KeyRound, Loader2, Play, Save, Sparkles,
+  AlertTriangle, ArrowRight, Bot, CalendarClock, Clock, KeyRound, Loader2, Mail, Play, Save, Sparkles,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { toast } from "@/lib/notify";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input, Label, Select } from "@/components/ui/input";
+import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { ConfirmModal } from "@/components/ui/modal";
 import { Switch } from "@/components/ui/record";
 import { Segmented } from "@/components/ui/segmented";
 import { AdminTable } from "@/components/ui/admin-table";
 import { runDailyNowAction, saveSettingsAction } from "@/app/actions/grovnews-research";
 import {
-  EDITION_STATUSES, LOOKBACK_RANGE, MODES, RUN_STAGES, editionDateLabel, type GrovNewsMode,
+  AI_PROVIDERS, EDITION_STATUSES, LOOKBACK_RANGE, MAX_OPERATOR_EMAILS, MODES, RUN_STAGES, SOURCE_ERROR_KINDS, editionDateLabel,
+  parseOperatorEmails, sourceErrorKind, type GrovNewsAiProvider, type GrovNewsMode,
 } from "@/lib/grovnews-research";
 import type { AdminRun, AdminSettings, SchedulerStatus } from "@/lib/services/grovnews-research";
 import { cn } from "@/lib/utils";
@@ -42,7 +43,9 @@ const RUN_TRIGGERS = ["CRON", "ADMIN"] as const;
 const RUN_TONE: Record<(typeof RUN_STATUSES)[number], "info" | "success" | "danger"> = {
   RUNNING: "info", DONE: "success", FAILED: "danger",
 };
-const SKIP_REASONS = ["done", "busy", "gave_up", "failed"] as const;
+const SKIP_REASONS = ["done", "busy", "gave_up", "failed", "waiting_publish", "waiting_send"] as const;
+/** Why a day ended without an article (pipeline.ts noTopicsReason). */
+const NO_TOPICS_REASONS = ["no_sources", "all_sources_failed", "below_threshold", "no_candidates"] as const;
 const TICKS = ["succeeded", "failed", "running"] as const;
 
 /** How far back a story still counts as today's news (hours). The stored
@@ -126,6 +129,9 @@ type Form = {
   mode: GrovNewsMode; dailyEnabled: boolean; runHour: number;
   minRelevance: string; minImportance: string; maxTopics: string; autoPublishOfficialSensitive: boolean;
   minTopics: string; lookbackHours: number; emailEnabled: boolean;
+  /** 0128 — "" means "the default" (platform order / provider's model /
+   *  right after the previous step). */
+  aiProvider: "" | GrovNewsAiProvider; aiModel: string; publishHour: string; sendHour: string; operatorEmails: string;
 };
 
 const fromSettings = (s: AdminSettings): Form => ({
@@ -133,14 +139,28 @@ const fromSettings = (s: AdminSettings): Form => ({
   minRelevance: String(s.minRelevance), minImportance: String(s.minImportance), maxTopics: String(s.maxTopics),
   autoPublishOfficialSensitive: s.autoPublishOfficialSensitive,
   minTopics: String(s.minTopics), lookbackHours: s.lookbackHours, emailEnabled: s.emailEnabled,
+  aiProvider: s.aiProvider ?? "", aiModel: s.aiModel ?? "",
+  publishHour: s.publishHour === null ? "" : String(s.publishHour), sendHour: s.sendHour === null ? "" : String(s.sendHour),
+  operatorEmails: s.operatorEmails.join("\n"),
 });
 
-export function AutomationPanel({ settings, scheduler, runs, aiAvailable, serverKey }: {
+/** What the server says about the platform's AI providers: switched on, and
+ *  holding a usable key (never the key itself). */
+export type ProviderStatus = {
+  providers: Record<GrovNewsAiProvider, { active: boolean; usable: boolean }>;
+  platformOrder: GrovNewsAiProvider[];
+};
+
+const hh = (h: number) => `${String(h).padStart(2, "0")}:00`;
+
+export function AutomationPanel({ settings, scheduler, runs, aiAvailable, serverKey, providers, modelOptions }: {
   settings: AdminSettings;
   scheduler: SchedulerStatus | null;
   runs: AdminRun[];
   aiAvailable: boolean;
   serverKey: boolean;
+  providers: ProviderStatus | null;
+  modelOptions: Record<GrovNewsAiProvider, readonly string[]>;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -159,6 +179,17 @@ export function AutomationPanel({ settings, scheduler, runs, aiAvailable, server
   const minTopics = intIn(form.minTopics, 1, 10);
   const maxTopics = intIn(form.maxTopics, 1, 10);
   const minTopicsError = minTopics === null ? "range" : maxTopics !== null && minTopics > maxTopics ? "aboveMax" : null;
+  // 0128: prepare ≤ publish ≤ send (the database checks the same order), and
+  // at most five plausible operator addresses.
+  const publishHourN = form.publishHour === "" ? null : Number(form.publishHour);
+  const sendHourN = form.sendHour === "" ? null : Number(form.sendHour);
+  const hoursError = (publishHourN !== null && publishHourN < form.runHour)
+    || (sendHourN !== null && sendHourN < (publishHourN ?? form.runHour));
+  const operators = parseOperatorEmails(form.operatorEmails);
+  const operatorsError = operators === null;
+  const providerLabel = (p: GrovNewsAiProvider) => t(`grovnewsAdm.automation.aiProviderName.${p}`);
+  const chosen = form.aiProvider === "" ? null : form.aiProvider;
+  const chosenStatus = chosen && providers ? providers.providers[chosen] : null;
   const lookbackOptions = useMemo(() => {
     const list: number[] = [...LOOKBACK_PRESETS];
     const current = settings.lookbackHours;
@@ -174,10 +205,15 @@ export function AutomationPanel({ settings, scheduler, runs, aiAvailable, server
       minRelevance: Number(form.minRelevance), minImportance: Number(form.minImportance), maxTopics: Number(form.maxTopics),
       autoPublishOfficialSensitive: form.autoPublishOfficialSensitive,
       minTopics: Number(form.minTopics), lookbackHours: form.lookbackHours, emailEnabled: form.emailEnabled,
+      aiProvider: form.aiProvider || null, aiModel: form.aiProvider && form.aiModel ? form.aiModel : null,
+      publishHour: publishHourN, sendHour: sendHourN, operatorEmails: operators ?? [],
     });
     setConfirming(false);
     if (res.ok) { toast.success(t("grovnewsAdm.saved")); router.refresh(); return; }
     toast.error(t(res.error === "invalid" ? "grovnewsAdm.automation.errInvalidDaily"
+      : res.error === "hours" ? "grovnewsAdm.automation.errHours"
+      : res.error === "operators" ? "grovnewsAdm.automation.errOperators"
+      : res.error === "model" ? "grovnewsAdm.automation.errModel"
       : res.error === "forbidden" ? "grovnewsAdm.errForbidden" : "common.error"));
   });
 
@@ -194,7 +230,9 @@ export function AutomationPanel({ settings, scheduler, runs, aiAvailable, server
       return;
     }
     if (res.status === "done") toast.success(t("grovnewsAdm.automation.run.done"));
-    else if (res.status === "partial") {
+    else if (res.reason === "waiting_publish" || res.reason === "waiting_send") {
+      toast.info(t(`grovnewsAdm.automation.run.skipped.${res.reason}`));
+    } else if (res.status === "partial") {
       const stage = oneOf(RUN_STAGES, res.stage);
       toast.info(stage
         ? t("grovnewsAdm.automation.run.partialAt", { stage: t(`grovnewsAdm.runStage.${stage}`) })
@@ -318,6 +356,28 @@ export function AutomationPanel({ settings, scheduler, runs, aiAvailable, server
             <Label htmlFor="gn-tz">{t("grovnewsAdm.automation.timezone")}</Label>
             <Input id="gn-tz" readOnly value={t("grovnewsAdm.automation.timezoneValue")} className="text-muted" />
           </div>
+          <div className="min-w-0" data-automation-publish-hour>
+            <Label htmlFor="gn-publish-hour">{t("grovnewsAdm.automation.publishHour")}</Label>
+            <Select id="gn-publish-hour" value={form.publishHour} onChange={(e) => set("publishHour", e.target.value)}
+              aria-invalid={hoursError || undefined}>
+              <option value="">{t("grovnewsAdm.automation.hourAfterPrep")}</option>
+              {Array.from({ length: 24 }, (_, h) => <option key={h} value={String(h)}>{hh(h)}</option>)}
+            </Select>
+          </div>
+          <div className="min-w-0" data-automation-send-hour>
+            <Label htmlFor="gn-send-hour">{t("grovnewsAdm.automation.sendHour")}</Label>
+            <Select id="gn-send-hour" value={form.sendHour} onChange={(e) => set("sendHour", e.target.value)}
+              aria-invalid={hoursError || undefined}>
+              <option value="">{t("grovnewsAdm.automation.hourAfterPublish")}</option>
+              {Array.from({ length: 24 }, (_, h) => <option key={h} value={String(h)}>{hh(h)}</option>)}
+            </Select>
+          </div>
+          <div className="min-w-0 sm:col-span-2 -mt-1 space-y-1 text-[12px] leading-relaxed text-faint" data-automation-hours-hint>
+            <p>{t("grovnewsAdm.automation.hoursHint")}</p>
+            {hoursError && (
+              <p role="alert" className="text-danger" data-automation-hours-error>{t("grovnewsAdm.automation.errHours")}</p>
+            )}
+          </div>
           <div className="min-w-0">
             <Label htmlFor="gn-min-rel">{t("grovnewsAdm.automation.minRelevance")}</Label>
             <Input id="gn-min-rel" type="number" inputMode="numeric" min={0} max={100} step={1}
@@ -363,12 +423,72 @@ export function AutomationPanel({ settings, scheduler, runs, aiAvailable, server
           <p>{t("grovnewsAdm.automation.lookbackHint")}</p>
         </div>
 
+        {/* ── 0128: the AI GrovNews prefers — inside the platform's stack ──── */}
+        <div className="min-w-0 space-y-3 border-t border-line pt-5" data-automation-ai-choice={form.aiProvider || "default"}>
+          <div className="min-w-0">
+            <p className="flex min-w-0 items-center gap-2 text-[13px] font-semibold"><Bot size={15} aria-hidden className="shrink-0 text-accent" />{t("grovnewsAdm.automation.aiTitle")}</p>
+            <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t("grovnewsAdm.automation.aiHint")}</p>
+          </div>
+          <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="min-w-0">
+              <Label htmlFor="gn-ai-provider">{t("grovnewsAdm.automation.aiProvider")}</Label>
+              <Select id="gn-ai-provider" value={form.aiProvider}
+                onChange={(e) => { const v = e.target.value; setForm((f) => ({ ...f, aiProvider: v === "openai" || v === "google" ? v : "", aiModel: "" })); }}>
+                <option value="">
+                  {providers && providers.platformOrder.length > 0
+                    ? t("grovnewsAdm.automation.aiProviderDefault", { order: providers.platformOrder.map(providerLabel).join(" → ") })
+                    : t("grovnewsAdm.automation.aiProviderDefaultNone")}
+                </option>
+                {AI_PROVIDERS.map((p) => <option key={p} value={p}>{providerLabel(p)}</option>)}
+              </Select>
+            </div>
+            <div className="min-w-0">
+              <Label htmlFor="gn-ai-model">{t("grovnewsAdm.automation.aiModel")}</Label>
+              <Select id="gn-ai-model" value={form.aiModel} disabled={!chosen} onChange={(e) => set("aiModel", e.target.value)}>
+                <option value="">{t("grovnewsAdm.automation.aiModelDefault")}</option>
+                {(chosen ? modelOptions[chosen] : []).map((m) => <option key={m} value={m}>{m}</option>)}
+              </Select>
+            </div>
+          </div>
+          {chosen && (
+            <p className="flex min-w-0 flex-wrap items-center gap-2 text-[12.5px] leading-relaxed text-muted" data-automation-ai-credential={
+              !chosenStatus ? "unknown" : !chosenStatus.active ? "inactive" : chosenStatus.usable ? "ok" : "missing"}>
+              <Badge tone={chosenStatus?.usable ? "success" : "warning"} dot>
+                {t(!chosenStatus ? "grovnewsAdm.automation.aiCredUnknown" : !chosenStatus.active ? "grovnewsAdm.automation.aiCredInactive"
+                  : chosenStatus.usable ? "grovnewsAdm.automation.aiCredOk" : "grovnewsAdm.automation.aiCredMissing")}
+              </Badge>
+              {!chosenStatus?.usable && <span className="min-w-0">{t("grovnewsAdm.automation.aiFallbackNote")}</span>}
+            </p>
+          )}
+          {chosen && !chosenStatus?.usable && (
+            <CardLink href="/admin/ai/modele?tab=dostawcy">{t("grovnewsAdm.automation.ai.openProviders")}</CardLink>
+          )}
+        </div>
+
         <div className="flex min-w-0 items-start justify-between gap-4 border-t border-line pt-5" data-automation-email-enabled={form.emailEnabled ? "on" : "off"}>
           <div className="min-w-0">
             <p className="text-[13px] font-semibold">{t("grovnewsAdm.automation.emailEnabled")}</p>
             <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t("grovnewsAdm.automation.emailEnabledHint")}</p>
           </div>
           <Switch checked={form.emailEnabled} onChange={(v) => set("emailEnabled", v)} label={t("grovnewsAdm.automation.emailEnabled")} />
+        </div>
+
+        {/* ── 0128: copies of the day's digest for the team ─────────────────── */}
+        <div className="min-w-0 space-y-2 border-t border-line pt-5" data-automation-operators>
+          <div className="min-w-0">
+            <p className="flex min-w-0 items-center gap-2 text-[13px] font-semibold"><Mail size={15} aria-hidden className="shrink-0 text-accent" />{t("grovnewsAdm.automation.operatorsTitle")}</p>
+            <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t("grovnewsAdm.automation.operatorsHint", { max: MAX_OPERATOR_EMAILS })}</p>
+          </div>
+          <Label htmlFor="gn-operators" hint={`${operators?.length ?? "—"}/${MAX_OPERATOR_EMAILS}`}>{t("grovnewsAdm.automation.operatorsLabel")}</Label>
+          <Textarea id="gn-operators" rows={3} value={form.operatorEmails} spellCheck={false} autoComplete="off" inputMode="email"
+            placeholder={t("grovnewsAdm.automation.operatorsPlaceholder")} aria-invalid={operatorsError || undefined}
+            aria-describedby={operatorsError ? "gn-operators-error" : undefined}
+            onChange={(e) => set("operatorEmails", e.target.value)} />
+          {operatorsError && (
+            <p id="gn-operators-error" role="alert" className="text-[12px] leading-snug text-danger" data-automation-operators-error>
+              {t("grovnewsAdm.automation.errOperators", { max: MAX_OPERATOR_EMAILS })}
+            </p>
+          )}
         </div>
 
         <div className="min-w-0 border-t border-line pt-5">
@@ -393,7 +513,8 @@ export function AutomationPanel({ settings, scheduler, runs, aiAvailable, server
           <p className="min-w-0 text-[12px] text-faint">
             {settings.updatedAt && t("grovnewsAdm.automation.updatedAt", { at: fmt(settings.updatedAt) ?? "" })}
           </p>
-          <Button onClick={onSave} disabled={saving || !dirty || minTopicsError !== null} className="w-full shrink-0 sm:w-auto" data-automation-save>
+          <Button onClick={onSave} disabled={saving || !dirty || minTopicsError !== null || hoursError || operatorsError}
+            className="w-full shrink-0 sm:w-auto" data-automation-save>
             {saving ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Save size={15} aria-hidden />}
             {t("grovnewsAdm.save")}
           </Button>
@@ -481,7 +602,7 @@ function WarnLine({ children, data }: { children: React.ReactNode; data: string 
  * existed, shows "—" rather than a zero it never counted.
  */
 function LastRun({ run }: { run: AdminRun }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const fmt = useFormatDateTime();
   const s = run.stats;
   const status = oneOf(RUN_STATUSES, run.status);
@@ -501,6 +622,21 @@ function LastRun({ run }: { run: AdminRun }) {
   const sourcesWarn = sources !== null && sources > 0 && failed !== null && failed * 2 >= sources;
   const aiWarn = outcome === "ai_unavailable" || s.ai === "unavailable" ? "unavailable"
     : outcome === "provider_down" || s.ai === "provider_down" ? "provider_down" : null;
+
+  // 0128: what the run spent on AI (traced per request under its id), which
+  // sources failed and how, why nothing was written, whether it waits.
+  const aiCalls = num(s, "ai_usage", "calls");
+  const aiCost = num(s, "ai_usage", "cost_usd_micros");
+  const aiUnknown = num(s, "ai_usage", "unknown_cost_calls");
+  const usd = (micros: number) => new Intl.NumberFormat(locale === "pl" ? "pl-PL" : locale === "de" ? "de-DE" : "en-GB", {
+    style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: micros < 10_000 ? 4 : 2,
+  }).format(micros / 1_000_000);
+  const sourceErrors = Array.isArray(s.source_errors) ? s.source_errors : [];
+  const errorKinds = SOURCE_ERROR_KINDS.map((k) => [k, sourceErrors.filter((e) =>
+    e && typeof e === "object" && sourceErrorKind(String((e as Record<string, unknown>).code ?? "")) === k).length] as const)
+    .filter(([, n]) => n > 0);
+  const waiting = s.waiting === "publish" || s.waiting === "send" ? s.waiting : null;
+  const operators = section(s, "operators");
 
   const metrics: { key: string; label: string; value: number | null; danger?: boolean; notes: string[] }[] = [
     { key: "sources", label: t("grovnewsAdm.automation.lastRun.sources"), value: sources, notes: [] },
@@ -523,10 +659,18 @@ function LastRun({ run }: { run: AdminRun }) {
       ],
     },
     { key: "selected", label: t("grovnewsAdm.automation.lastRun.selected"), value: selected, notes: [] },
+    {
+      key: "aiCalls", label: t("grovnewsAdm.automation.lastRun.aiCalls"), value: aiCalls,
+      notes: [
+        ...(aiCost !== null && aiCalls && aiCost > 0 ? [t("grovnewsAdm.automation.lastRun.aiCost", { cost: usd(aiCost) })] : []),
+        ...(aiUnknown ? [t("grovnewsAdm.automation.lastRun.aiCostUnknown", { n: aiUnknown })] : []),
+      ],
+    },
   ];
 
   const article = section(s, "article");
   const articleWritten = !!article && typeof article.status === "string";
+  const noTopics = article ? oneOf(NO_TOPICS_REASONS, article.reason) : null;
   const articleStatus = article ? oneOf(ARTICLE_STATUSES, article.status) : null;
   const articleTopics = num(s, "article", "topics");
   const merged = num(s, "article", "merged");
@@ -559,6 +703,9 @@ function LastRun({ run }: { run: AdminRun }) {
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="text-[13px] font-semibold tabular-nums">{editionDateLabel(run.date)}</span>
           {status && <Badge tone={RUN_TONE[status]} dot>{t(`grovnewsAdm.runStatus.${status}`)}</Badge>}
+          {waiting && status === "RUNNING" && (
+            <Badge tone="info"><Clock size={12} aria-hidden />{t(`grovnewsAdm.automation.lastRun.waiting.${waiting}`)}</Badge>
+          )}
         </div>
       </div>
 
@@ -588,6 +735,15 @@ function LastRun({ run }: { run: AdminRun }) {
         </div>
       )}
 
+      {errorKinds.length > 0 && (
+        <p className="flex min-w-0 flex-wrap items-center gap-1.5 text-[12px] text-muted" data-automation-last-run-source-errors>
+          <span className="font-semibold">{t("grovnewsAdm.automation.lastRun.sourceErrors")}</span>
+          {errorKinds.map(([k, n]) => (
+            <Badge key={k} tone="warning">{t(`grovnewsAdm.sources.kind.${k}`, { n })}</Badge>
+          ))}
+        </p>
+      )}
+
       <dl className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4" data-automation-last-run-metrics>
         {metrics.map((m) => (
           <div key={m.key} className="plate min-w-0 rounded-xl px-3 py-2.5" data-metric={m.key}>
@@ -605,7 +761,9 @@ function LastRun({ run }: { run: AdminRun }) {
           <p className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-faint">{t("grovnewsAdm.automation.lastRun.article")}</p>
           {!article ? <p className="mt-1.5 text-[13px] text-muted">—</p>
             : !articleWritten ? (
-              <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{t("grovnewsAdm.automation.lastRun.articleNone")}</p>
+              <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted" data-automation-no-topics={noTopics ?? "unknown"}>
+                {t(noTopics ? `grovnewsAdm.automation.lastRun.noTopics.${noTopics}` : "grovnewsAdm.automation.lastRun.articleNone")}
+              </p>
             ) : (
               <>
                 <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -650,6 +808,11 @@ function LastRun({ run }: { run: AdminRun }) {
                   n: sendStatus === "already_queued" || recipients === null ? "—" : recipients,
                 })}
               </span>
+              {operators && typeof operators.sent === "number" && (
+                <span className="text-[12px] tabular-nums text-faint" data-automation-last-run-operators>
+                  {t("grovnewsAdm.automation.lastRun.operators", { sent: operators.sent, failed: typeof operators.failed === "number" ? operators.failed : 0 })}
+                </span>
+              )}
             </div>
           ) : (
             <>
@@ -708,6 +871,9 @@ function RunSummary({ stats }: { stats: Record<string, unknown> }) {
   }
   if (edition) parts.push(t("grovnewsAdm.automation.stats.edition", { status: t(`grovnewsAdm.automation.editionStatus.${edition}`) }));
   if (recipients !== null) parts.push(t("grovnewsAdm.automation.stats.recipients", { n: recipients }));
+  const aiCalls = num(stats, "ai_usage", "calls");
+  if (aiCalls) parts.push(t("grovnewsAdm.automation.stats.aiCalls", { n: aiCalls }));
+  if (stats.waiting === "publish" || stats.waiting === "send") parts.push(t(`grovnewsAdm.automation.lastRun.waiting.${stats.waiting}`));
   // The outcome line already says it when the model was the reason.
   if (outcome !== "ai_unavailable" && outcome !== "provider_down") {
     if (stats.ai === "unavailable") parts.push(t("grovnewsAdm.automation.stats.aiUnavailable"));

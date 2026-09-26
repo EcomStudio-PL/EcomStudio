@@ -6160,7 +6160,9 @@
           "busy": "Cykl właśnie trwa — spróbuj ponownie za kilka minut.",
           "gave_up": "Dzisiejszy cykl zatrzymał się po powtarzających się błędach. Szczegóły w tabeli ostatnich uruchomień.",
           "failed": "Dzisiejszy cykl zatrzymał się po powtarzających się błędach. Szczegóły w tabeli ostatnich uruchomień.",
-          "other": "Cykl nie został uruchomiony."
+          "other": "Cykl nie został uruchomiony.",
+          "waiting_publish": "Dzisiejszy artykuł czeka na ustawioną godzinę publikacji.",
+          "waiting_send": "Artykuł jest opublikowany — e-mail czeka na ustawioną godzinę wysyłki."
         },
         "errNoServerKey": "Brak klucza serwera — cykl nie może się uruchomić. To ustawienie środowiska serwera, zgłoś je operatorowi.",
         "errGeneric": "Cykl przerwał się z błędem. Szczegóły w tabeli ostatnich uruchomień."
@@ -6187,7 +6189,8 @@
         "aiDown": "awaria dostawcy AI",
         "sources": "źródła: {ok} OK, {failed} z błędem",
         "article": "artykuł: {status}",
-        "noArticle": "bez artykułu"
+        "noArticle": "bez artykułu",
+        "aiCalls": "AI: {n} wywołań"
       },
       "editionStatus": {
         "DRAFT": "szkic",
@@ -6247,7 +6250,22 @@
         "recipients": "Odbiorcy: {n}",
         "emailOff": "Wysyłka e-maili jest wyłączona w ustawieniach.",
         "emailNotQueued": "Wysyłka nie została zlecona.",
-        "outcome": "Wynik"
+        "outcome": "Wynik",
+        "aiCalls": "Wywołania AI",
+        "aiCost": "koszt: {cost}",
+        "aiCostUnknown": "bez ceny: {n}",
+        "sourceErrors": "Błędy źródeł:",
+        "operators": "kopie dla zespołu: {sent} wysłane, {failed} nieudane",
+        "waiting": {
+          "publish": "czeka na godzinę publikacji",
+          "send": "czeka na godzinę wysyłki"
+        },
+        "noTopics": {
+          "no_sources": "Nie powstał — nie ma żadnego włączonego źródła do odczytu.",
+          "all_sources_failed": "Nie powstał — żadnego źródła nie udało się dziś odczytać, więc nie ma z czego pisać.",
+          "below_threshold": "Nie powstał — dziś żaden temat nie przekroczył progów istotności i ważności.",
+          "no_candidates": "Nie powstał — dziś nie było tematów gotowych do napisania."
+        }
       },
       "reviewReason": {
         "topic_review": "Co najmniej jeden temat wymaga przeglądu (np. pojedyncze źródło albo liczby do sprawdzenia).",
@@ -6296,7 +6314,35 @@
         "DRAFT": "szkic",
         "PUBLISHED": "opublikowany",
         "ARCHIVED": "zarchiwizowany"
-      }
+      },
+      "aiTitle": "Model AI dla GrovNews",
+      "aiHint": "GrovNews korzysta z dostawców AI skonfigurowanych w platformie — bez osobnego klucza. Wybrany dostawca jest pytany pierwszy, drugi skonfigurowany zostaje jako zapasowy.",
+      "aiProvider": "Dostawca",
+      "aiProviderDefault": "Domyślna kolejność platformy ({order})",
+      "aiProviderDefaultNone": "Domyślna kolejność platformy",
+      "aiProviderName": {
+        "openai": "OpenAI",
+        "google": "Google Gemini"
+      },
+      "aiModel": "Model",
+      "aiModelDefault": "Domyślny model dostawcy",
+      "aiCredOk": "Klucz działa",
+      "aiCredMissing": "Brak działającego klucza",
+      "aiCredInactive": "Dostawca wyłączony w platformie",
+      "aiCredUnknown": "Stan klucza nieznany",
+      "aiFallbackNote": "Dopóki klucz nie działa, GrovNews użyje domyślnej kolejności platformy.",
+      "publishHour": "Godzina publikacji",
+      "sendHour": "Godzina wysyłki e-maila",
+      "hourAfterPrep": "Zaraz po przygotowaniu",
+      "hourAfterPublish": "Zaraz po publikacji",
+      "hoursHint": "Godziny publikacji i wysyłki dotyczą trybu automatycznego (czas warszawski): przygotowanie → publikacja → wysyłka. W trybie przeglądu nic nie jest publikowane ani wysyłane bez Twojej decyzji.",
+      "errHours": "Godziny muszą iść po kolei: przygotowanie, potem publikacja, potem wysyłka.",
+      "errOperators": "Wpisz najwyżej {max} poprawnych adresów e-mail, oddzielonych przecinkiem lub nową linią.",
+      "errModel": "Wybierz model z listy dostępnej dla wybranego dostawcy.",
+      "operatorsTitle": "Kopie skrótu dla zespołu",
+      "operatorsHint": "Do {max} adresów (np. redakcja), które dostaną ten sam skrót dnia zaraz po zleceniu wysyłki do subskrybentów. Nigdy klienci; adresy z listy wykluczeń są pomijane.",
+      "operatorsLabel": "Adresy e-mail",
+      "operatorsPlaceholder": "redakcja@twojafirma.pl"
     },
     "errInEdition": "Ten wpis jest w wydaniu, które czeka na wysyłkę. Najpierw cofnij wydanie do szkicu albo usuń z niego wpis.",
     "content": {
@@ -6625,7 +6671,7 @@
       "RSS": "Kanał RSS — lista najnowszych wpisów publikowana przez serwis.",
       "ATOM": "Kanał Atom — działa jak RSS, w nowszym formacie.",
       "PUBLIC_FEED": "Publiczny feed JSON, RSS lub Atom — format jest rozpoznawany automatycznie.",
-      "API": "Wymaga adaptera dostawcy, który nie jest jeszcze skonfigurowany — źródło pozostaje niedostępne i nie jest pobierane.",
+      "API": "API zwracające JSON Feed, RSS/Atom albo listę JSON (tytuł i adres, opcjonalnie data i opis). Opcjonalna autoryzacja: Bearer token albo klucz w nagłówku — sekret trafia do sejfu i tylko do domeny źródła.",
       "MANUAL": "Nigdy nie jest pobierane — pozycje dodajesz ręcznie w Researchu.",
       "WEB_PAGE": "Jedna publiczna strona z listą wpisów; linki są odczytywane z poszanowaniem robots.txt."
     },
@@ -6699,7 +6745,9 @@
         "empty": "Brak pozycji",
         "robots_unreachable": "Nie udało się odczytać robots.txt",
         "requires_access": "Wymaga logowania lub płatnego dostępu",
-        "bot_protection": "Zabezpieczenie anty-bot (CAPTCHA)"
+        "bot_protection": "Zabezpieczenie anty-bot (CAPTCHA)",
+        "auth_failed": "Autoryzacja odrzucona (401/403)",
+        "secret_missing": "Brak sekretu autoryzacji"
       },
       "importOpen": "Importuj źródła",
       "colHealth": "Stan",
@@ -6740,7 +6788,58 @@
         "body": "Test znalazł lepszy sposób odczytu tego źródła. Otwórz formularz, sprawdź dane i zapisz — nic nie zmieni się automatycznie.",
         "apply": "Otwórz formularz z rekomendacją",
         "formNote": "Typ i adres wypełniono rekomendacją z testu. Sprawdź dane i kliknij „Zapisz”."
-      }
+      },
+      "auth": {
+        "title": "Autoryzacja",
+        "none": "Brak",
+        "bearer": "Bearer token",
+        "header": "Klucz API w nagłówku",
+        "headerName": "Nazwa nagłówka",
+        "headerHint": "np. X-API-Key",
+        "errHeader": "Nazwa nagłówka: litery, cyfry i myślniki (do 64 znaków); nagłówki systemowe są niedozwolone.",
+        "secret": "Sekret",
+        "secretSaved": "Zapisany · końcówka {last4}",
+        "secretSavedNoFour": "Zapisany",
+        "secretNone": "Brak zapisanego sekretu",
+        "secretPlaceholder": "Wklej token lub klucz",
+        "secretReplace": "Zastąp",
+        "secretRemove": "Usuń sekret",
+        "secretSavedToast": "Sekret zapisany w sejfie.",
+        "secretRemovedToast": "Sekret usunięty.",
+        "secretHint": "Sekret trafia do sejfu (Supabase Vault) razem z zapisem źródła. Nie jest już nigdzie pokazywany ani wysyłany do przeglądarki, a przy pobieraniu trafia wyłącznie do domeny tego źródła.",
+        "missingNote": "Autoryzacja jest włączona, ale nie ma sekretu — źródło nie zostanie odczytane.",
+        "errSecret": "Sekret nie może być pusty ani zawierać znaków sterujących.",
+        "errNotApi": "Sekret można zapisać tylko dla źródła API z włączoną autoryzacją."
+      },
+      "line": {
+        "sources": "Źródła: {n}",
+        "ok": "OK: {n}",
+        "untested": "nie testowano: {n}"
+      },
+      "kind": {
+        "timeout": "timeout: {n}",
+        "auth": "autoryzacja: {n}",
+        "http": "błąd HTTP: {n}",
+        "invalid_feed": "zły format: {n}",
+        "other": "inne: {n}"
+      },
+      "colMethod": "Metoda",
+      "method": {
+        "RSS": "RSS",
+        "API": "API",
+        "WWW": "WWW",
+        "MANUAL": "Ręczne"
+      },
+      "state": {
+        "ok": "Zdrowe",
+        "problem": "Problem",
+        "untested": "Nie testowano",
+        "off": "Wyłączone"
+      },
+      "testWorks": "Działa",
+      "testLastItem": "Najnowszy wpis: {at}",
+      "apiJson": "Lista JSON (API)",
+      "testSource": "Testuj źródło"
     },
     "mon": {
       "title": "Monetyzacja",
@@ -7143,7 +7242,7 @@
       "mailFrame": "Podgląd e-maila artykułu dnia",
       "mailPreviewSaved": "Podgląd pokazuje zapisaną wersję — zapisz zmiany, aby go odświeżyć.",
       "mailTime": "{words} słów · ok. {n} min czytania",
-      "mailTarget": "E-mail to krótki skrót dnia z jednym linkiem — pełne 3–5 minut czytania daje artykuł.",
+      "mailTarget": "E-mail to skrót dnia na 3–5 minut: najważniejsze tematy, każdy z linkiem do swojego miejsca w artykule, i link do całego wydania.",
       "mailCopyTitle": "Treść e-maila",
       "mailCopyHint": "Wstęp i po 2–3 zdania o każdym temacie. Temat i zajawka powstają z daty i nagłówka dnia.",
       "mailIntro": "Wstęp e-maila",
@@ -7173,7 +7272,8 @@
         "single_source": "Tylko jedno, nieoficjalne źródło.",
         "model": "AI nie była pewna faktów w tej sekcji.",
         "unsupported_numbers": "W tekście są liczby, których nie ma w źródłach.",
-        "verbatim": "Fragment tekstu jest zbyt bliski źródłu."
+        "verbatim": "Fragment tekstu jest zbyt bliski źródłu.",
+        "translation_invalid": "Tłumaczenie fragmentu oryginału nie przeszło kontroli (pusty tekst, długość, liczby albo język) — zostało pominięte."
       },
       "sourcesCount": "Źródła ({n})",
       "noSources": "Brak źródeł z bezpiecznym adresem (https).",
@@ -7208,7 +7308,14 @@
         "aiFailed": "AI nie zwróciła poprawnej sekcji — spróbuj ponownie za chwilę.",
         "campaignLocked": "Kampania nie jest już szkicem — treści e-maila nie można zmieniać.",
         "newsletter": "Newsletter nie przyjął zaktualizowanej treści kampanii — spróbuj ponownie."
-      }
+      },
+      "original": "Oryginał ({lang})",
+      "originalSource": "Źródło",
+      "translation": "Tłumaczenie PL",
+      "readMore": "Czytaj więcej",
+      "mailTopToday": "Najważniejsze dzisiaj",
+      "openEdition": "Otwórz całe dzisiejsze wydanie",
+      "languageBadge": "{lang} → PL"
     },
     "dash": {
       "today": "Dzisiaj",
