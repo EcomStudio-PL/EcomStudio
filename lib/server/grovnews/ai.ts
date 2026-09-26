@@ -1,8 +1,13 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
-import { callVisionJson } from "@/lib/ai/engine/vision";
+import {
+  OPENAI_VISION_MODELS, VISION_FALLBACKS, VISION_MODEL, callVisionJson, type VisionBackend, type VisionProvider,
+} from "@/lib/ai/engine/vision";
 import { textCapableBackends } from "@/lib/server/prompt-engine";
-import { cleanText, stripLinks } from "@/lib/grovnews-research";
+import { readProviderKey } from "@/lib/server/provider-credentials";
+import { dispatchToken } from "@/lib/server/server-token";
+import { textMeter, type TextMeter } from "@/lib/server/ai-usage";
+import { AI_PROVIDERS, cleanText, stripLinks, type GrovNewsAiProvider } from "@/lib/grovnews-research";
 import { aiProviders, type AnalyzeWork, type DraftWork } from "./store";
 
 /**
@@ -40,15 +45,114 @@ import { aiProviders, type AnalyzeWork, type DraftWork } from "./store";
 type Schema = Record<string, unknown>;
 export type Engine = { ask<T>(req: { system: string; user: string; schema: Schema }): Promise<T> };
 
-/** The configured chain, or null when no provider is configured — an honest
- *  "unavailable", never a fabricated result. */
-export async function grovnewsEngine(db: Client): Promise<Engine | null> {
+/* ── which model (0128) ────────────────────────────────────────────────────── */
+
+/** The model ids the platform's own stack really calls, per provider
+ *  (lib/ai/engine/vision.ts) — the only ones an admin may pick for GrovNews. */
+export const GROVNEWS_MODEL_OPTIONS: Record<GrovNewsAiProvider, readonly string[]> = {
+  google: [...new Set([VISION_MODEL, ...VISION_FALLBACKS])],
+  openai: [...OPENAI_VISION_MODELS],
+};
+
+/** The admin's preference: a provider (and model) first, or null = the
+ *  platform's order. */
+export type EngineChoice = { provider: GrovNewsAiProvider | null; model: string | null };
+
+/**
+ * The chain GrovNews uses, in order: the chosen provider first (with the
+ * chosen model as its preferred id — the backend still falls through its own
+ * list), then every other provider the platform has configured, as fallback.
+ * No choice, or a chosen provider with no working credential: the platform's
+ * order unchanged. Pure — tested in grovnews6.
+ */
+export function orderBackends(platform: readonly VisionBackend[], choice: EngineChoice, chosen?: VisionBackend | null): VisionBackend[] {
+  if (!choice.provider) return [...platform];
+  const own = platform.find((b) => b.provider === choice.provider) ?? chosen ?? null;
+  if (!own) return [...platform];
+  const model = choice.model && (GROVNEWS_MODEL_OPTIONS[choice.provider] as readonly string[]).includes(choice.model)
+    ? choice.model : own.model;
+  return [{ ...own, model }, ...platform.filter((b) => b.provider !== choice.provider)];
+}
+
+/**
+ * One provider's backend, resolved the way every platform caller resolves a
+ * key (provider_credential_read → readProviderKey — the vault first), for a
+ * provider the admin CHOSE for GrovNews that the platform's planner order does
+ * not list. Null when it has no usable key.
+ */
+async function providerBackend(db: Client, provider: { id: string; slug: string }): Promise<VisionBackend | null> {
+  if (!(AI_PROVIDERS as readonly string[]).includes(provider.slug)) return null;
+  const { data: rows } = await db.rpc("provider_credential_read", { p_token: dispatchToken() ?? "", p_provider_id: provider.id });
+  const cred = Array.isArray(rows) ? rows[0] : null;
+  if (!cred) return null;
+  const apiKey = await readProviderKey(db, provider.id, cred);
+  if (!apiKey) return null;
+  return { provider: provider.slug as VisionProvider, cred: { apiKey, baseUrl: cred.base_url } };
+}
+
+/** The settings' choice, read under the caller's own client (an admin reads
+ *  the row; the job passes its context's settings instead). */
+export async function engineChoice(db: Client): Promise<EngineChoice> {
+  const { data } = await db.from("grovnews_settings").select("ai_provider, ai_model").eq("id", true).maybeSingle();
+  const provider = (AI_PROVIDERS as readonly string[]).includes(data?.ai_provider ?? "") ? data?.ai_provider as GrovNewsAiProvider : null;
+  return { provider, model: provider && typeof data?.ai_model === "string" ? data.ai_model : null };
+}
+
+/** The ordered backends for a choice. */
+export async function grovnewsBackends(db: Client, choice: EngineChoice): Promise<VisionBackend[]> {
   const known = await aiProviders(db);
   const backends = await textCapableBackends(db, known);
-  if (backends.length === 0) return null;
+  const listed = backends.some((b) => b.provider === choice.provider);
+  const wanted = choice.provider && !listed ? known.find((p) => p.slug === choice.provider) : undefined;
+  return orderBackends(backends, choice, wanted ? await providerBackend(db, wanted) : null);
+}
+
+/**
+ * Per provider: is it switched on, and does it hold a usable key? Booleans
+ * only — the key is resolved server-side and dropped. For the admin screen.
+ */
+export async function grovnewsProviderStatus(db: Client): Promise<{
+  providers: Record<GrovNewsAiProvider, { active: boolean; usable: boolean }>; platformOrder: GrovNewsAiProvider[];
+}> {
+  const known = await aiProviders(db);
+  const platform = await textCapableBackends(db, known);
+  const providers = { openai: { active: false, usable: false }, google: { active: false, usable: false } };
+  for (const slug of AI_PROVIDERS) {
+    const p = known.find((k) => k.slug === slug);
+    if (!p) continue;
+    providers[slug].active = true;
+    providers[slug].usable = platform.some((b) => b.provider === slug) || (await providerBackend(db, p)) !== null;
+  }
+  return { providers, platformOrder: platform.map((b) => b.provider).filter((x): x is GrovNewsAiProvider => (AI_PROVIDERS as readonly string[]).includes(x)) };
+}
+
+export type EngineOptions = {
+  /** The admin's preference; read from the settings when omitted. */
+  choice?: EngineChoice;
+  /** The trace every request is recorded in. A caller that brings its own
+   *  meter flushes it (per stage); without one, a meter is made here and
+   *  flushed after every call. */
+  meter?: TextMeter;
+  /** The trace's run reference when no meter is given (grovnews:<action>). */
+  ref?: string;
+  actorKind?: "system" | "admin";
+};
+
+/** The configured chain, or null when no provider is configured — an honest
+ *  "unavailable", never a fabricated result. EVERY request it makes is
+ *  traced in ai_provider_calls (consumer 'grovnews'). */
+export async function grovnewsEngine(db: Client, opts: EngineOptions = {}): Promise<Engine | null> {
+  const choice = opts.choice ?? await engineChoice(db);
+  const own = opts.meter ? null
+    : textMeter(db, { actorKind: opts.actorKind ?? "admin", consumer: "grovnews", runRef: opts.ref ?? "grovnews:admin" });
+  const meter = opts.meter ?? own;
+  const ordered = await grovnewsBackends(db, choice);
+  if (ordered.length === 0) return null;
+  const backends = meter ? meter.wrap(ordered) : ordered;
   return {
     ask<T>(req: { system: string; user: string; schema: Schema }): Promise<T> {
-      return callVisionJson<T>(backends, { images: [], ...req }).then((r) => r.data);
+      const call = callVisionJson<T>(backends, { images: [], ...req }).then((r) => r.data);
+      return own ? call.finally(() => own.flush()) : call;
     },
   };
 }

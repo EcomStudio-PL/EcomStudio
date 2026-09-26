@@ -283,6 +283,8 @@ export type ProbeSummary = {
   recommended: { type: ImportableType; url: string } | null;
   sample: string[];
   checkedAt: string;
+  /** 0128: the newest entry's date among what was read, when any is dated. */
+  lastItemAt?: string | null;
 };
 
 export const ROW_STATUSES = ["READY", "ATTENTION", "ERROR", "DUPLICATE"] as const;

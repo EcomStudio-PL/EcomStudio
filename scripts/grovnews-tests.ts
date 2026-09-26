@@ -140,7 +140,9 @@ section("D. SERVER — admin first, access before content");
 
   const feed = code(read("app/(app)/grovnews/page.tsx"));
   const art = code(read("app/(app)/grovnews/[slug]/page.tsx"));
-  const beforeFeed = feed.indexOf("if (!access && !admin) return <GrovNewsLocked") < feed.indexOf("listFeed(supabase)");
+  // `listFeed(supabase` without the closing paren: the feed now takes a
+  // validated category filter as a second argument (GrovNews UI upgrade).
+  const beforeFeed = feed.indexOf("if (!access && !admin) return <GrovNewsLocked") < feed.indexOf("listFeed(supabase");
   const beforeArt = art.indexOf("if (!access && !admin) return <GrovNewsLocked") < art.indexOf("getPublishedArticle(supabase");
   check("/grovnews: no access → locked screen, and the feed is never queried", feed.includes("return <GrovNewsLocked") && beforeFeed);
   check("/grovnews/[slug]: a direct link without access → locked screen, the post is never read", art.includes("return <GrovNewsLocked") && beforeArt);

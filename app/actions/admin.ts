@@ -282,6 +282,11 @@ export async function toggleProviderAction(providerId: string, active: boolean):
     const { supabase } = await requireAdmin();
     const { error } = await supabase.from("ai_providers").update({ active }).eq("id", providerId);
     if (error) return { ok: false, error: "generic" };
+    await supabase.rpc("log_activity", {
+      p_workspace_id: null as unknown as string,
+      p_action: active ? "admin.provider_activated" : "admin.provider_deactivated",
+      p_entity_type: "ai_provider", p_entity_id: providerId,
+    });
     revalidatePath("/admin/ai/modele");
     return { ok: true };
   } catch {

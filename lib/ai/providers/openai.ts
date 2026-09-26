@@ -81,10 +81,17 @@ export const openaiAdapter: ImageProviderAdapter = {
 
     if (!res.ok) throw await classifyOpenAiError(res);
 
-    const json = (await res.json()) as { data?: { b64_json?: string }[] };
+    const json = (await res.json()) as {
+      data?: { b64_json?: string }[];
+      usage?: { input_tokens?: number; output_tokens?: number };
+    };
     const images = (json.data ?? []).filter((d) => d.b64_json).map((d) => ({ base64: d.b64_json!, mime: "image/png" }));
     if (!images.length) throw new ProviderError("provider_empty_result");
-    return { images, providerMetadata: { requestId: res.headers.get("x-request-id") ?? undefined } };
+    return {
+      images,
+      providerMetadata: { requestId: res.headers.get("x-request-id") ?? undefined },
+      usage: reportedUsage(json.usage?.input_tokens, json.usage?.output_tokens),
+    };
   },
 };
 
@@ -149,4 +156,11 @@ function editForm(
     form.append("image[]", new Blob([Buffer.from(r.base64, "base64")], { type: r.mime }), `ref${i + 1}.${ext}`);
   });
   return form;
+}
+
+/** The provider's own token counts, or undefined when it reported none. */
+function reportedUsage(input: unknown, output: unknown): { inputTokens?: number; outputTokens?: number } | undefined {
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.round(v) : undefined);
+  const inputTokens = n(input); const outputTokens = n(output);
+  return inputTokens === undefined && outputTokens === undefined ? undefined : { inputTokens, outputTokens };
 }

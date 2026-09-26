@@ -392,6 +392,33 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_token_prices: {
+        Row: {
+          input_usd_micros_per_mtok: number
+          model: string
+          output_usd_micros_per_mtok: number
+          provider_slug: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          input_usd_micros_per_mtok: number
+          model: string
+          output_usd_micros_per_mtok: number
+          provider_slug: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          input_usd_micros_per_mtok?: number
+          model?: string
+          output_usd_micros_per_mtok?: number
+          provider_slug?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       ai_tool_knowledge: {
         Row: { tool_key: string; set_id: string; enabled: boolean; created_at: string }
         Insert: { tool_key: string; set_id: string; enabled?: boolean; created_at?: string }
@@ -550,6 +577,84 @@ export type Database = {
           },
         ]
       }
+      ai_provider_calls: {
+        Row: {
+          actor_kind: string
+          consumer: string
+          cost_basis: string
+          cost_usd_micros: number | null
+          created_at: string
+          currency: string
+          duration_ms: number | null
+          error_code: string | null
+          id: string
+          input_tokens: number | null
+          job_id: string | null
+          model: string | null
+          output_tokens: number | null
+          provider_slug: string
+          request_count: number
+          run_ref: string | null
+          status: string
+          tool_key: string | null
+          unit_kind: string | null
+          units: number | null
+          usage_event_id: string | null
+          user_id: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          actor_kind: string
+          consumer: string
+          cost_basis: string
+          cost_usd_micros?: number | null
+          created_at?: string
+          currency?: string
+          duration_ms?: number | null
+          error_code?: string | null
+          id?: string
+          input_tokens?: number | null
+          job_id?: string | null
+          model?: string | null
+          output_tokens?: number | null
+          provider_slug: string
+          request_count?: number
+          run_ref?: string | null
+          status: string
+          tool_key?: string | null
+          unit_kind?: string | null
+          units?: number | null
+          usage_event_id?: string | null
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          actor_kind?: string
+          consumer?: string
+          cost_basis?: string
+          cost_usd_micros?: number | null
+          created_at?: string
+          currency?: string
+          duration_ms?: number | null
+          error_code?: string | null
+          id?: string
+          input_tokens?: number | null
+          job_id?: string | null
+          model?: string | null
+          output_tokens?: number | null
+          provider_slug?: string
+          request_count?: number
+          run_ref?: string | null
+          status?: string
+          tool_key?: string | null
+          unit_kind?: string | null
+          units?: number | null
+          usage_event_id?: string | null
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: []
+      }
       ai_provider_credentials: {
         Row: {
           active: boolean
@@ -565,7 +670,11 @@ export type Database = {
           last_image_test_error_safe: string | null
           last_image_test_status: string | null
           last_test_error_safe: string | null
+          last_error_at: string | null
+          last_error_code: string | null
+          last_success_at: string | null
           last_test_status: string | null
+          last_test_latency_ms: number | null
           last_tested_at: string | null
           provider_id: string
           updated_at: string
@@ -585,7 +694,11 @@ export type Database = {
           last_image_test_error_safe?: string | null
           last_image_test_status?: string | null
           last_test_error_safe?: string | null
+          last_error_at?: string | null
+          last_error_code?: string | null
+          last_success_at?: string | null
           last_test_status?: string | null
+          last_test_latency_ms?: number | null
           last_tested_at?: string | null
           provider_id: string
           updated_at?: string
@@ -605,7 +718,11 @@ export type Database = {
           last_image_test_error_safe?: string | null
           last_image_test_status?: string | null
           last_test_error_safe?: string | null
+          last_error_at?: string | null
+          last_error_code?: string | null
+          last_success_at?: string | null
           last_test_status?: string | null
+          last_test_latency_ms?: number | null
           last_tested_at?: string | null
           provider_id?: string
           updated_at?: string
@@ -2881,6 +2998,7 @@ export type Database = {
           duplicate_of: string | null
           id: string
           importance_score: number | null
+          language: string | null
           metadata: Json
           normalized_url: string
           post_id: string | null
@@ -2912,6 +3030,7 @@ export type Database = {
           duplicate_of?: string | null
           id?: string
           importance_score?: number | null
+          language?: string | null
           metadata?: Json
           normalized_url: string
           post_id?: string | null
@@ -2943,6 +3062,7 @@ export type Database = {
           duplicate_of?: string | null
           id?: string
           importance_score?: number | null
+          language?: string | null
           metadata?: Json
           normalized_url?: string
           post_id?: string | null
@@ -3040,6 +3160,8 @@ export type Database = {
       }
       grovnews_settings: {
         Row: {
+          ai_model: string | null
+          ai_provider: string | null
           auto_publish_official_sensitive: boolean
           daily_enabled: boolean
           email_enabled: boolean
@@ -3050,12 +3172,17 @@ export type Database = {
           min_relevance: number
           min_topics: number
           mode: string
+          operator_emails: string[]
+          publish_hour: number | null
           run_hour: number
+          send_hour: number | null
           timezone: string
           updated_at: string
           updated_by: string | null
         }
         Insert: {
+          ai_model?: string | null
+          ai_provider?: string | null
           auto_publish_official_sensitive?: boolean
           daily_enabled?: boolean
           email_enabled?: boolean
@@ -3066,12 +3193,17 @@ export type Database = {
           min_relevance?: number
           min_topics?: number
           mode?: string
+          operator_emails?: string[]
+          publish_hour?: number | null
           run_hour?: number
+          send_hour?: number | null
           timezone?: string
           updated_at?: string
           updated_by?: string | null
         }
         Update: {
+          ai_model?: string | null
+          ai_provider?: string | null
           auto_publish_official_sensitive?: boolean
           daily_enabled?: boolean
           email_enabled?: boolean
@@ -3082,7 +3214,10 @@ export type Database = {
           min_relevance?: number
           min_topics?: number
           mode?: string
+          operator_emails?: string[]
+          publish_hour?: number | null
           run_hour?: number
+          send_hour?: number | null
           timezone?: string
           updated_at?: string
           updated_by?: string | null
@@ -3091,6 +3226,8 @@ export type Database = {
       }
       grovnews_sources: {
         Row: {
+          auth_header: string | null
+          auth_kind: string
           baseline_at: string | null
           category_id: string | null
           consecutive_failures: number
@@ -3116,6 +3253,8 @@ export type Database = {
           url: string | null
         }
         Insert: {
+          auth_header?: string | null
+          auth_kind?: string
           baseline_at?: string | null
           category_id?: string | null
           consecutive_failures?: number
@@ -3141,6 +3280,8 @@ export type Database = {
           url?: string | null
         }
         Update: {
+          auth_header?: string | null
+          auth_kind?: string
           baseline_at?: string | null
           category_id?: string | null
           consecutive_failures?: number
@@ -6441,6 +6582,19 @@ export type Database = {
         }[]
       }
       ai_engine_run_record: { Args: { p_token: string | null; p_run: Json }; Returns: string }
+      ai_provider_call_record: {
+        Args: { p_token: string | null; p_calls: Json }
+        Returns: number
+      }
+      ai_token_prices_read: {
+        Args: { p_token: string | null }
+        Returns: {
+          input_usd_micros_per_mtok: number
+          model: string
+          output_usd_micros_per_mtok: number
+          provider_slug: string
+        }[]
+      }
       generation_feedback_submit: {
         Args: { p_generation_id: string; p_verdict: string | null; p_reasons?: string[] }
         Returns: Json
@@ -6815,6 +6969,8 @@ export type Database = {
         Returns: Json
       }
       grovnews_job_context: { Args: { p_token: string }; Returns: Json }
+      grovnews_operator_emails_ok: { Args: { p: string[] }; Returns: boolean }
+      grovnews_operator_recipients: { Args: { p_token: string }; Returns: string[] }
       grovnews_source_checked: {
         Args: { p_result: Json; p_source_id: string; p_token: string }
         Returns: string

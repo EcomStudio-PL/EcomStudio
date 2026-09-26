@@ -20,6 +20,7 @@ import {
 } from "@/lib/images/local";
 import { clampEditorState } from "@/lib/images/editor-state";
 import { claimFreeRun, freeToolRules, planQualifies, releaseFreeRun, windowStart } from "@/lib/server/free-tools";
+import { recordProviderCalls, type ProviderCall } from "@/lib/server/ai-usage";
 
 /**
  * IMAGE TOOLS SERVICE — the single place a tool run happens.
@@ -652,6 +653,20 @@ async function runPaid(
   });
   if (!usage.ok) { await releaseFree(); return { ok: false, error: usage.error }; }
 
+  // The provider side of this run (ai_provider_calls). The price is the
+  // provider catalogue's per-call figure — an ESTIMATE, labelled as one; no
+  // image-tool vendor returns what it billed.
+  const callStartedAt = Date.now();
+  const trace = (ok: boolean, costUsd: number | null, errorCode?: string): ProviderCall => ({
+    actorKind: "customer", consumer: "image_tool", userId, workspaceId,
+    toolKey: slug === "upscale" ? "tool_upscale" : slug === "expand" ? "tool_expand" : slug,
+    usageEventId: usage.eventId, providerSlug: picked.provider.slug, model: picked.provider.label,
+    status: ok ? "succeeded" : "failed", errorCode: ok ? null : errorCode,
+    units: 1, unitKind: "request",
+    cost: costUsd == null ? { basis: "unknown" } : { basis: "estimated", usdMicros: usdToMicros(costUsd) },
+    durationMs: Date.now() - callStartedAt,
+  });
+
   try {
     const request = { bytes: input.file, mime: input.mime };
     const result = background
@@ -682,6 +697,7 @@ async function runPaid(
       apiCostUsdMicros: usdToMicros(result.costUsd),
       providerRequestId: result.requestId,
     });
+    await recordProviderCalls(supabase, [trace(true, result.costUsd)]);
     return {
       ok: true, bytes, mime: mimeOf(after.format), credits: price.credits,
       before: { width: before.width, height: before.height, bytes: before.bytes },
@@ -692,6 +708,9 @@ async function runPaid(
     const code = e instanceof ToolProviderError ? e.code : "provider_error";
     // The seller keeps their credits: one idempotent refund, always.
     await failUsage(supabase, { serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet.id, error: code, apiCostUsdMicros: 0 });
+    // A refused call is not billed by these vendors, but we do not KNOW that
+    // for a timeout — so the cost is unknown rather than a confident zero.
+    await recordProviderCalls(supabase, [trace(false, code === "provider_timeout" ? null : 0, code)]);
     return { ok: false, error: code };
   }
 }

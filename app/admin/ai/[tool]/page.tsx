@@ -6,13 +6,17 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getAvailabilityMap } from "@/lib/server/feature-availability";
 import {
-  isAiToolKey, readBillingServices, readPickableModels, readPromptHistory, readToolRegistry,
+  MODEL_ASSIGNMENT_RUNTIME, isAiToolKey, readBillingServices, readPickableModels, readPromptHistory, readToolRegistry,
   readWorkflowHistory, toolHasPromptEngine, toolSupportsWorkflow, toolTabs, type ToolTab,
 } from "@/lib/services/ai-tools";
 import { readEngineAnalytics, readEngineRuns } from "@/lib/services/ai-engine-analytics";
 import { TOOL_VARIABLES } from "@/lib/ai/prompt-variables";
 import { MIN_SAMPLE } from "@/lib/ai/knowledge-ranking";
 import { getUsableModels } from "@/lib/ai/router";
+import { readOneToolEconomics, readUsageHistory } from "@/lib/services/api-economics";
+import { readToolApiPath } from "@/lib/server/tool-api-path";
+import { ToolApiPathCard } from "@/components/admin/tool-api-path";
+import { ToolEconomicsPanel, UsageHistoryList } from "@/components/admin/api-economics";
 import { billingFrom } from "@/lib/images/pricing";
 import { STATUS_TONE } from "@/lib/status-tone";
 import { PageHeader } from "@/components/ui/page-header";
@@ -115,7 +119,7 @@ export default async function ToolWorkspace({ params, searchParams }: {
       {tab === "engine" && <EngineTab supabase={supabase} t={t} row={row} config={config} locale={locale} />}
       {tab === "models" && <ModelsTab supabase={supabase} t={t} row={row} config={config} />}
       {tab === "knowledge" && <KnowledgeTab supabase={supabase} t={t} row={row} locale={locale} />}
-      {tab === "economics" && <EconomicsTab supabase={supabase} t={t} row={row} />}
+      {tab === "economics" && <EconomicsTab supabase={supabase} t={t} row={row} locale={locale} />}
       {tab === "history" && <HistoryTab supabase={supabase} t={t} row={row} locale={locale} />}
     </div>
   );
@@ -280,24 +284,35 @@ async function EngineTab({ supabase, t, row, config, locale }: WithConfig & { lo
 /* ── MODELE ───────────────────────────────────────────────────────────────*/
 
 async function ModelsTab({ supabase, t, row, config }: WithConfig) {
-  const pickable = await readPickableModels(supabase);
+  const [pickable, path] = await Promise.all([readPickableModels(supabase), readToolApiPath(supabase, row.key)]);
+  // The picker is offered only where the runtime READS it. Elsewhere the
+  // model comes from another source and is shown as such, read-only.
+  const assignable = MODEL_ASSIGNMENT_RUNTIME.has(row.key);
 
   return (
-    <Card className="p-5">
-      <CardHeader title={t("aicc.models.title")} sub={t("aicc.models.sub")} />
-      <div className="pt-4">
-        <ToolModelPicker
-          toolKey={row.key}
-          models={pickable}
-          config={config}
-          initial={{
-            primaryId: row.models.find((m) => m.role === "primary")?.id ?? null,
-            fallbackId: row.models.find((m) => m.role === "fallback")?.id ?? null,
-            allowedIds: row.models.filter((m) => m.role === "allowed").map((m) => m.id),
-          }}
-        />
-      </div>
-    </Card>
+    <div className="space-y-5">
+      <Card className="p-5">
+        <CardHeader title={t("aicc.apiPath.title")} sub={t("aicc.apiPath.sub")} />
+        <div className="pt-4"><ToolApiPathCard path={path} t={t} /></div>
+      </Card>
+      {assignable && (
+        <Card className="p-5">
+          <CardHeader title={t("aicc.models.title")} sub={t("aicc.models.sub")} />
+          <div className="pt-4">
+            <ToolModelPicker
+              toolKey={row.key}
+              models={pickable}
+              config={config}
+              initial={{
+                primaryId: row.models.find((m) => m.role === "primary")?.id ?? null,
+                fallbackId: row.models.find((m) => m.role === "fallback")?.id ?? null,
+                allowedIds: row.models.filter((m) => m.role === "allowed").map((m) => m.id),
+              }}
+            />
+          </div>
+        </Card>
+      )}
+    </div>
   );
 }
 
@@ -450,106 +465,31 @@ function SceneList({ title, rows, empty }: { title: string; rows: { scene: strin
 
 /* ── EKONOMIA ─────────────────────────────────────────────────────────────*/
 
-async function EconomicsTab({ supabase, t, row }: Ctx) {
-  if (!row.serviceSlug) return null;
-  const since = new Date(Date.now() - 90 * 86_400_000).toISOString();
-  const [{ data: events }, { data: billingRow }] = await Promise.all([
-    supabase.from("usage_events")
-      .select("status, credits_charged, api_cost_usd_micros_snapshot, actual_api_cost_usd_micros, created_at")
-      .eq("service_slug", row.serviceSlug)
-      .gte("created_at", since)
-      .limit(20000),
-    supabase.from("app_settings").select("value").eq("key", "billing").maybeSingle(),
-  ]);
-  const billing = billingFrom(billingRow?.value);
-  const rows = events ?? [];
-
-  const slice = (days: number) => {
-    const from = Date.now() - days * 86_400_000;
-    const inWindow = rows.filter((e) => new Date(e.created_at).getTime() >= from);
-    const billed = inWindow.filter((e) => e.status !== "refunded");
-    const credits = billed.reduce((s, e) => s + e.credits_charged, 0);
-    // The REAL recorded cost wins; the catalogue snapshot is only a fallback
-    // for events written before per-call costs were captured.
-    const costUsd = billed.reduce(
-      (s, e) => s + (e.actual_api_cost_usd_micros || e.api_cost_usd_micros_snapshot), 0) / 1_000_000;
-    const revenue = credits * billing.plnPerCredit;
-    const cost = costUsd * billing.usdToPln;
-    return {
-      days,
-      runs: inWindow.length,
-      failed: inWindow.filter((e) => e.status === "failed" || e.status === "refunded").length,
-      credits,
-      cost,
-      revenue,
-      profit: revenue - cost,
-      margin: revenue > 0 ? ((revenue - cost) / revenue) * 100 : null,
-    };
-  };
-
-  const pln = (v: number) => `${v.toFixed(2)} zł`;
-
+async function EconomicsTab({ supabase, t, row, locale }: Ctx & { locale: string }) {
+  // Attributed by TOOL, not by service slug: every engine image tool is
+  // booked as image_generation, so a service filter showed Retusz/Moda as
+  // empty and folded them into the generator.
+  const econ = await readOneToolEconomics(supabase, row.key);
   return (
-    <Card>
-      <CardHeader title={t("aicc.economics.title")} sub={t("aicc.economics.sub")} />
-      <div className="table-scroll thin-scroll overflow-x-auto">
-        <table className="w-full min-w-[720px] text-sm">
-          <thead>
-            <tr className="text-left text-[11px] uppercase tracking-[0.08em] text-faint">
-              {[t("aicc.economics.window"), t("aicc.economics.runs"), t("aicc.economics.failed"),
-                t("nav.credits"), t("aicc.economics.apiCost"), t("aicc.economics.revenue"),
-                t("aicc.economics.profit"), t("aicc.economics.margin")].map((h) => (
-                <th key={h} className="whitespace-nowrap px-5 py-2.5 font-semibold">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {WINDOWS.map((days) => {
-              const s = slice(days);
-              return (
-                <tr key={days} className="border-t border-line">
-                  <td className="whitespace-nowrap px-5 py-2.5 font-medium">{t("aicc.economics.lastDays", { n: days })}</td>
-                  <td className="px-5 py-2.5 tabular-nums">{s.runs}</td>
-                  <td className={cn("px-5 py-2.5 tabular-nums", s.failed > 0 && "text-danger")}>{s.failed}</td>
-                  <td className="px-5 py-2.5 tabular-nums">{s.credits}</td>
-                  <td className="px-5 py-2.5 tabular-nums">{pln(s.cost)}</td>
-                  <td className="px-5 py-2.5 tabular-nums">{pln(s.revenue)}</td>
-                  <td className={cn("px-5 py-2.5 tabular-nums", s.profit < 0 && "text-danger")}>{pln(s.profit)}</td>
-                  <td className="px-5 py-2.5 tabular-nums">
-                    {s.margin === null ? "—" : (
-                      <Badge tone={s.margin >= billing.minMarginPercent ? "success" : "danger"}>
-                        {Math.round(s.margin)}%
-                      </Badge>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <p className="border-t border-line px-5 py-2.5 text-xs text-faint">
-        {t("aicc.economics.assumptions", {
-          credit: billing.plnPerCredit.toFixed(2),
-          fx: billing.usdToPln.toFixed(2),
-        })}
-      </p>
-    </Card>
+    <div className="space-y-4">
+      <ToolEconomicsPanel today={econ.today} days30={econ.days30} usdToPln={econ.usdToPln} locale={locale} t={t} />
+      <p className="text-xs text-faint">{t("aicc.econ.note", { fx: econ.usdToPln.toFixed(2) })}</p>
+      {econ.truncated && <p className="text-xs text-warning">{t("aicc.econ.truncated")}</p>}
+    </div>
   );
 }
 
 /* ── HISTORIA ─────────────────────────────────────────────────────────────*/
 
 async function HistoryTab({ supabase, t, row, locale }: Ctx & { locale: string }) {
-  if (!row.serviceSlug) return null;
-  const { data: events } = await supabase
-    .from("usage_events")
-    .select("id, status, credits_charged, actual_api_cost_usd_micros, model_slug, provider_slug, error, created_at")
-    .eq("service_slug", row.serviceSlug)
-    .order("created_at", { ascending: false })
-    .limit(50);
-
-  const runs = toolHasPromptEngine(row.key) ? await readEngineRuns(supabase, row.key, 30) : [];
+  const [history, runs] = await Promise.all([
+    readUsageHistory(supabase, { toolKey: row.key, days: 30, limit: 50 }),
+    toolHasPromptEngine(row.key) ? readEngineRuns(supabase, row.key, 30) : Promise.resolve([]),
+  ]);
+  const toolLabel = (k: string) => {
+    const label = t(`aicc.toolName.${k}`);
+    return label === `aicc.toolName.${k}` ? k : label;
+  };
 
   return (
     <div className="space-y-5">
@@ -557,33 +497,7 @@ async function HistoryTab({ supabase, t, row, locale }: Ctx & { locale: string }
     {row.key === "prompts" && <ShotSessions supabase={supabase} t={t} locale={locale} />}
     <Card>
       <CardHeader title={t("aicc.history.title")} sub={t("aicc.history.sub")} />
-      {(events ?? []).length === 0 ? (
-        <p className="px-5 py-10 text-center text-sm text-muted">{t("aicc.history.empty")}</p>
-      ) : (
-        <ul className="divide-y divide-line">
-          {(events ?? []).map((e) => (
-            <li key={e.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-5 py-2.5">
-              <Badge tone={e.status === "succeeded" ? "success" : e.status === "failed" ? "danger" : "neutral"}>
-                {e.status}
-              </Badge>
-              <span className="min-w-0 flex-1 truncate text-[13px] text-muted">
-                {[e.model_slug, e.provider_slug].filter(Boolean).join(" · ") || "—"}
-                {/* The safe error string only — provider payloads never land here. */}
-                {e.error ? ` — ${e.error}` : ""}
-              </span>
-              <span className="shrink-0 text-xs tabular-nums text-faint">
-                {e.credits_charged} kr.
-                {e.actual_api_cost_usd_micros
-                  ? ` · $${(e.actual_api_cost_usd_micros / 1_000_000).toFixed(4)}`
-                  : ""}
-              </span>
-              <span className="shrink-0 text-xs text-faint" title={formatDate(e.created_at, locale)}>
-                <RelativeTime at={e.created_at} locale={locale} t={t} />
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <UsageHistoryList rows={history.rows} usdToPln={history.usdToPln} locale={locale} t={t} toolLabel={toolLabel} />
     </Card>
     </div>
   );

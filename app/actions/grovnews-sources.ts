@@ -11,6 +11,7 @@ import {
 import { SheetError, readSourceFile } from "@/lib/server/grovnews/sheet";
 import { healthFromProbe, probeMany, verifyOption } from "@/lib/server/grovnews/probe";
 import * as store from "@/lib/server/grovnews/store";
+import { healthFromApiProbe, probeApiSource } from "@/lib/server/grovnews/api";
 
 /**
  * GROVNEWS STAGE 5 — bulk source import and source health (admin only).
@@ -268,18 +269,31 @@ export async function checkSourcesAction(since: string):
     // not keep just-checked sources "due" and test them again.
     const from = Math.min(asked, Date.now());
     const { data } = await supabase.from("grovnews_sources")
-      .select("id, url, source_type, last_checked_at").eq("enabled", true).in("source_type", [...FETCHED_TYPES])
+      .select("id, url, source_type, last_checked_at, auth_kind, auth_header").eq("enabled", true).in("source_type", [...FETCHED_TYPES, "API"])
       .not("url", "is", null).order("last_checked_at", { ascending: true, nullsFirst: true }).limit(2000);
     const due = (data ?? []).filter((s) => s.url && (!s.last_checked_at || Date.parse(s.last_checked_at) < from));
     const batch = due.slice(0, MAX_PROBES_PER_CALL);
-    const { results } = await probeMany(batch.map((s) => ({ key: s.id, url: s.url as string })), {
+    // Feeds and pages through the public probe; API sources (0128) through
+    // their own reader — a key, if any, to their own origin only.
+    const feeds = batch.filter((s) => s.source_type !== "API");
+    const apis = batch.filter((s) => s.source_type === "API");
+    const { results } = await probeMany(feeds.map((s) => ({ key: s.id, url: s.url as string })), {
       concurrency: 4, deadline: Date.now() + PROBE_BUDGET_MS,
     });
     const statuses: Record<string, number> = {};
-    for (const s of batch) {
+    for (const s of feeds) {
       const probe = results.get(s.id);
       if (!probe) continue;
       const status = await store.sourceChecked(supabase, s.id, healthFromProbe(probe, { url: s.url as string, type: s.source_type }));
+      statuses[status] = (statuses[status] ?? 0) + 1;
+    }
+    const apiDeadline = Date.now() + PROBE_BUDGET_MS;
+    for (const s of apis) {
+      if (Date.now() + 20_000 > apiDeadline) break;
+      const probe = await probeApiSource(supabase, {
+        id: s.id, url: s.url, authKind: s.auth_kind === "bearer" || s.auth_kind === "header" ? s.auth_kind : "none", authHeader: s.auth_header,
+      });
+      const status = await store.sourceChecked(supabase, s.id, healthFromApiProbe(probe));
       statuses[status] = (statuses[status] ?? 0) + 1;
     }
     const checked = Object.values(statuses).reduce((a, b) => a + b, 0);

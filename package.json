@@ -107,7 +107,11 @@
     "test:analytics:browser": "node scripts/analytics-browser-probe.mjs",
     "test:plancaps": "esbuild scripts/plan-capability-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/plan-capability-tests.cjs --log-level=silent && node .next/plan-capability-tests.cjs",
     "test:stripe": "esbuild scripts/stripe-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/stripe-tests.cjs --log-level=silent && node .next/stripe-tests.cjs",
-    "test:billingsync": "esbuild scripts/billing-sync-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/billing-sync-tests.cjs --log-level=silent && node .next/billing-sync-tests.cjs"
+    "test:billingsync": "esbuild scripts/billing-sync-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/billing-sync-tests.cjs --log-level=silent && node .next/billing-sync-tests.cjs",
+    "test:apiecon": "esbuild scripts/api-economics-tests.ts --bundle --platform=node --format=cjs --alias:@/lib/supabase/server=./scripts/stubs/api-supabase-server.ts --alias:next/cache=./scripts/stubs/next-cache.ts --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --external:pdf-parse --outfile=.next/api-economics-tests.cjs --log-level=silent && node .next/api-economics-tests.cjs",
+    "test:apiecon:sql": "bash scripts/api-usage-sql-tests.sh",
+    "test:settings": "esbuild scripts/settings-tests.ts --bundle --platform=node --format=cjs --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/settings-tests.cjs --log-level=silent && node .next/settings-tests.cjs",
+    "test:grovnewsui": "esbuild scripts/grovnews-ui-tests.ts --bundle --platform=node --format=cjs --jsx=automatic --alias:@/lib/supabase/server=./scripts/stubs/grovnews-ui-env.ts --alias:@/lib/i18n/server=./scripts/stubs/grovnews-ui-env.ts --alias:@/lib/server/feature-availability=./scripts/stubs/grovnews-ui-env.ts --alias:@=. --alias:server-only=./scripts/server-only-stub.js --external:sharp --outfile=.next/grovnews-ui-tests.cjs --log-level=silent && node .next/grovnews-ui-tests.cjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",

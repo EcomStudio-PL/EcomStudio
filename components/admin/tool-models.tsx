@@ -52,7 +52,8 @@ export function ToolModelPicker({ toolKey, models, initial, config }: {
         allowedModelIds: choice ? [...allowed] : [],
       });
       if (!models.ok) {
-        toast.error(models.error === "same_model" ? t("aicc.err.sameModel") : t("common.error"));
+        toast.error(models.error === "same_model" ? t("aicc.err.sameModel")
+          : models.error === "model_incompatible" ? t("aicc.err.modelIncompatible") : t("common.error"));
         return;
       }
       // Only the two flags this picker owns — never the engine or billing

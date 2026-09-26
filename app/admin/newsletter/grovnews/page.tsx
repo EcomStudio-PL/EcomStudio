@@ -3,22 +3,29 @@ import { FilePlus2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
-import { adminStats } from "@/lib/services/grovnews";
 import { Stat } from "@/components/ui/stat";
 import { Badge } from "@/components/ui/badge";
 import { AdminTable } from "@/components/ui/admin-table";
+import { dashboardVerdict, loadGrovNewsDashboard } from "@/components/admin/grovnews/dashboard-data";
+import { GrovNewsEconomicsPanel, GrovNewsTodayPanel } from "@/components/admin/grovnews/dashboard";
 
 export const dynamic = "force-dynamic";
 
-/** GrovNews at a glance — every number counted from the tables, none made up. */
+/** GrovNews at a glance — "does it work today?" first, then the money, then
+ *  the content. Every number counted from the tables, none made up; what is
+ *  not known is said to be unknown. */
 export default async function GrovNewsDashboard() {
   const supabase = await createClient();
-  const [{ dict, locale }, stats] = await Promise.all([getDictionary(), adminStats(supabase)]);
+  const now = new Date();
+  const [{ dict, locale }, data] = await Promise.all([getDictionary(), loadGrovNewsDashboard(supabase, now)]);
+  const { stats } = data;
   const t = makeT(dict);
   const date = (iso: string | null) => iso
     ? new Date(iso).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/Warsaw" }) : "—";
   return (
-    <div className="space-y-5" data-grovnews-dashboard>
+    <div className="min-w-0 space-y-5" data-grovnews-dashboard>
+      <GrovNewsTodayPanel data={data} verdict={dashboardVerdict(data.today, data.settings, now)} locale={locale} t={t} />
+      <GrovNewsEconomicsPanel economics={data.economics} locale={locale} t={t} />
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
         <Stat label={t("grovnewsAdm.statTotal")} value={stats.total} />
         <Stat label={t("grovnewsAdm.statPublished")} value={stats.published} tone="success" />

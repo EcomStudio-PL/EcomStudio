@@ -20,12 +20,23 @@ export async function saveProfileAction(_prev: { ok: boolean } | null, formData:
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false };
-  const fullName = String(formData.get("full_name") ?? "").trim();
-  const theme = String(formData.get("theme") ?? "system");
-  const { error } = await supabase.from("profiles").update({ full_name: fullName }).eq("id", user.id);
-  await supabase.from("user_preferences").update({ theme }).eq("user_id", user.id);
+  // The settings page is tabbed: the name is saved from "Profil", the theme
+  // from "Preferencje". Each form sends only its own field, and a field that
+  // was not sent is left alone — otherwise saving the name would reset the
+  // theme to a default, and choosing a theme would blank the name.
+  let ok = true;
+  if (formData.has("full_name")) {
+    const fullName = String(formData.get("full_name") ?? "").trim();
+    const { error } = await supabase.from("profiles").update({ full_name: fullName }).eq("id", user.id);
+    if (error) ok = false;
+  }
+  if (formData.has("theme")) {
+    const theme = String(formData.get("theme") ?? "");
+    if (theme !== "light" && theme !== "dark" && theme !== "system") return { ok: false };
+    await supabase.from("user_preferences").update({ theme }).eq("user_id", user.id);
+  }
   revalidatePath("/settings");
-  return { ok: !error };
+  return { ok };
 }
 
 export async function saveBillingProfileAction(_prev: { ok: boolean } | null, formData: FormData) {

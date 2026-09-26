@@ -110,7 +110,7 @@ export async function matchRedirect(pathname: string): Promise<Redirect | null> 
  *  app's own pages are not somewhere you may redirect FROM. */
 export const PROTECTED_SOURCES = [
   "/", "/api", "/admin", "/home", "/login", "/register", "/logout",
-  "/dashboard", "/settings", "/generator", "/library", "/prompts", "/history",
+  "/dashboard", "/settings", "/profile", "/generator", "/library", "/prompts", "/history",
   "/credits", "/plan", "/tools", "/inspirations", "/support", "/retusz",
   "/wideo", "/k", "/podglad", "/_next", "/favicon.ico", "/sitemap.xml",
   "/robots.txt", "/manifest.webmanifest",

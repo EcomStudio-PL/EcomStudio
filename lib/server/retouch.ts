@@ -2,6 +2,7 @@ import "server-only";
 import sharp from "sharp";
 import type { Client } from "@/lib/services/workspace";
 import { runEngineImageTool } from "@/lib/server/engine/tool-run";
+import { resolveEngine } from "@/lib/server/ai-engine";
 import { RATIO_SHAPE, type AspectRatio, type Resolution } from "@/lib/ai/types";
 
 /**
@@ -23,7 +24,7 @@ import { RATIO_SHAPE, type AspectRatio, type Resolution } from "@/lib/ai/types";
 /** The model this tool runs on. Resolved by its API identifier, never by the
  *  marketing name — the row is admin-managed and its display name may change
  *  without the endpoint changing. */
-const RETOUCH_MODEL_IDENTIFIER = "gemini-3-pro-image-preview";
+export const RETOUCH_MODEL_IDENTIFIER = "gemini-3-pro-image-preview";
 
 /** Marks the job in `generation_jobs.settings` so the tool's own gallery,
  *  the library and the cost log can tell a retouch from a generation. */
@@ -110,6 +111,8 @@ export type RetouchModelInfo = {
   ratios: string[];
   /** Credits per image at each size, already including any admin override. */
   pricing: Record<string, number>;
+  /** The fallback assigned in Admin → Narzędzia i silniki, when enabled there. */
+  fallbackId: string | null;
 };
 
 type SettingsRow = { price_per_image?: unknown; price_1k?: unknown; price_2k?: unknown; price_4k?: unknown };
@@ -122,11 +125,19 @@ type SettingsRow = { price_per_image?: unknown; price_1k?: unknown; price_2k?: u
  * client: the browser is shown this number, the server recomputes it.
  */
 export async function retouchModel(supabase: Client): Promise<RetouchModelInfo | null> {
+  // THE MODEL ASSIGNED IN THE PANEL (ai_tool_models primary, read through the
+  // token-gated ai_tool_runtime). Without an assignment the tool keeps the
+  // model it has always used, so an install that never touched the picker
+  // behaves exactly as before.
+  const engine = await resolveEngine(supabase, RETOUCH_TOOL_KEY);
+  const primaryId = engine?.primaryModelId ?? null;
+  const fallbackId = engine?.fallbackEnabled && engine.fallbackModelId && engine.fallbackModelId !== primaryId
+    ? engine.fallbackModelId : null;
   const [{ data: model }, { data: setting }] = await Promise.all([
     supabase
       .from("ai_models")
       .select("id, supported_resolutions, supported_aspect_ratios, pricing, credit_cost, active, ai_providers!inner(active)")
-      .eq("model_identifier", RETOUCH_MODEL_IDENTIFIER)
+      .eq(primaryId ? "id" : "model_identifier", primaryId ?? RETOUCH_MODEL_IDENTIFIER)
       .eq("active", true)
       .eq("ai_providers.active", true)
       .maybeSingle(),
@@ -151,6 +162,7 @@ export async function retouchModel(supabase: Client): Promise<RetouchModelInfo |
     resolutions,
     ratios: model.supported_aspect_ratios ?? ["1:1"],
     pricing,
+    fallbackId,
   };
 }
 
@@ -242,6 +254,10 @@ export async function runRetouch(
     expectedCost: retouchPrice(model, resolution),
     generation: {
       modelId: model.id,
+      // runGeneration tries it only when the primary cannot serve, under the
+      // same reservation, and skips it when it cannot take the references
+      // (Product Lock) or render the paid size.
+      ...(model.fallbackId ? { fallbackModelIds: [model.fallbackId] } : {}),
       aspectRatio,
       resolution,
       quantity: 1,

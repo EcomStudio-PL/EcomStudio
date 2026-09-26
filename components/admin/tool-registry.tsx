@@ -6,7 +6,7 @@ import {
   ChevronDown, Cpu, ExternalLink, EyeOff, History, Search, Settings2, X,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
-import { MODEL_PRICED, toolTabs, type EngineMode, type ToolRow } from "@/lib/services/ai-tools";
+import { MODEL_ASSIGNMENT_RUNTIME, MODEL_PRICED, apiPathKind, toolTabs, type EngineMode, type ToolRow } from "@/lib/services/ai-tools";
 import { FEATURE_STATUSES, type AvailabilityMap, type FeatureKey, type FeatureStatus } from "@/lib/features";
 import type { FeatureAdminRow } from "@/app/actions/features";
 import {
@@ -448,8 +448,10 @@ function ModelSection({ tool, models }: { tool: ToolRow; models: PickableModel[]
   // a control that decides nothing.
   const tabs = toolTabs(tool);
   const config = configOf(tool);
-  const providers = [...new Set(tool.models
-    .filter((m) => m.role !== "allowed").map((m) => m.providerName).filter(Boolean))];
+  const assignable = MODEL_ASSIGNMENT_RUNTIME.has(tool.key);
+  const providers = assignable ? [...new Set(tool.models
+    .filter((m) => m.role !== "allowed" && (m.role !== "fallback" || tool.fallbackEnabled))
+    .map((m) => m.providerName).filter(Boolean))] : [];
 
   return (
     <div className="space-y-4">
@@ -471,7 +473,14 @@ function ModelSection({ tool, models }: { tool: ToolRow; models: PickableModel[]
           <ToolConfigForm section="engine" initial={config} services={[]} />
         </div>
       )}
-      {tabs.includes("models") && (
+      {tabs.includes("models") && !assignable && (
+        <p className="border-t border-line pt-3.5 text-[12.5px] text-muted">
+          <Link href={`/admin/ai/${tool.key}?tab=models`} className="font-semibold text-accent hover:opacity-80">
+            {t("aicc.apiPath.title")} →
+          </Link>
+        </p>
+      )}
+      {tabs.includes("models") && assignable && (
         <div className="border-t border-line pt-3.5">
           <ToolModelPicker toolKey={tool.key} models={models} config={config}
             initial={{
@@ -565,13 +574,23 @@ function CreditsSection({ tool, services, models }: {
  * confident wrong answer this screen exists to remove.
  */
 function modelLine(r: ToolRow, t: T): string {
-  const primary = r.models.find((m) => m.role === "primary");
-  const fallback = r.models.find((m) => m.role === "fallback");
-  if (primary) return fallback ? `${primary.name} → ${fallback.name}` : primary.name;
-  if (r.category === "local") return t("aicc.tools.localPipeline");
-  if (r.allowModelChoice) return t("aicc.tools.customerChoice");
-  if (r.engineMode === "off") return t("aicc.tools.noEngine");
-  return t("aicc.tools.noModel");
+  // Only a tool whose runtime READS the assignment shows it as its model.
+  // Everywhere else a stored assignment decides nothing, so the line names
+  // the source the run really takes its model from.
+  switch (apiPathKind(r.key, r.category)) {
+    case "local": return t("aicc.apiPath.localShort");
+    case "assigned": {
+      const primary = r.models.find((m) => m.role === "primary");
+      const fallback = r.models.find((m) => m.role === "fallback");
+      if (primary) return fallback && r.fallbackEnabled ? `${primary.name} → ${fallback.name}` : primary.name;
+      return t("aicc.apiPath.defaultShort");
+    }
+    case "customer_choice": return t("aicc.tools.customerChoice");
+    case "concept_chain": return t("aicc.apiPath.conceptShort");
+    case "fixed": return t("aicc.apiPath.fixedShort");
+    case "capability": return t("aicc.apiPath.capabilityShort");
+    default: return r.engineMode === "off" ? t("aicc.tools.noEngine") : t("aicc.tools.noModel");
+  }
 }
 
 function creditsText(n: number, t: T): string {

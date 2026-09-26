@@ -10,6 +10,9 @@ import { absoluteUrl } from "@/lib/site";
 const PRIVATE = [
   "/admin", "/api/", "/auth/", "/home", "/dashboard", "/generator", "/library",
   "/prompts", "/history", "/credits", "/plan", "/settings",
+  // /profile only forwards to /settings?tab=profile — the page and its subtree,
+  // not every public slug that merely starts "profile".
+  "/profile$", "/profile/",
   "/tools", "/inspirations", "/support", "/retusz", "/wideo", "/k/",
   "/reset-password",
   // GrovNews Premium is subscriber content; its public face is /blog. The

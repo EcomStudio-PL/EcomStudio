@@ -1,4 +1,6 @@
 import "server-only";
+import { readTokenPrices, recordProviderCalls } from "@/lib/server/ai-usage";
+import { tokenCost } from "@/lib/ai/usage-cost";
 import type { Client } from "@/lib/services/workspace";
 import { decryptSecret, encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { readProviderKey } from "@/lib/server/provider-credentials";
@@ -36,19 +38,37 @@ async function openaiKey(supabase: Client): Promise<{ apiKey: string; baseUrl: s
 
 /** Batch-embed up to ~40 short texts. Returns null when embeddings are not
  *  available (no credential) — callers degrade gracefully. */
-export async function embedTexts(supabase: Client, texts: string[]): Promise<number[][] | null> {
+export async function embedTexts(
+  supabase: Client, texts: string[],
+  /** Who asked, for the provider trace. Defaults to a system call. */
+  who: { actorKind: "customer" | "system" | "admin"; userId?: string | null; workspaceId?: string | null } = { actorKind: "system" },
+): Promise<number[][] | null> {
   if (texts.length === 0) return [];
   const cred = await openaiKey(supabase);
   if (!cred) return null;
   const input = texts.map((t) => t.replace(/\s+/g, " ").trim().slice(0, 6000) || " ");
+  const started = Date.now();
   const res = await fetch(`${cred.baseUrl}/v1/embeddings`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${cred.apiKey}` },
     body: JSON.stringify({ model: EMBEDDING_MODEL, input }),
     signal: AbortSignal.timeout(30_000),
   }).catch(() => null);
+  const json = res?.ok
+    ? await res.json().catch(() => null) as { data?: { index: number; embedding: number[] }[]; usage?: { prompt_tokens?: number } } | null
+    : null;
+  // Every embeddings request is a paid provider call: traced with the tokens
+  // OpenAI reported (cost = tokens × the admin price list, else unknown).
+  const tokens = typeof json?.usage?.prompt_tokens === "number" ? json.usage.prompt_tokens : null;
+  await recordProviderCalls(supabase, [{
+    ...who, consumer: "embeddings", providerSlug: "openai", model: EMBEDDING_MODEL,
+    status: json?.data ? "succeeded" : "failed",
+    errorCode: json?.data ? null : res ? `http_${res.status}` : "network",
+    inputTokens: tokens,
+    cost: tokenCost(await readTokenPrices(supabase), "openai", EMBEDDING_MODEL, tokens, 0),
+    durationMs: Date.now() - started,
+  }]);
   if (!res?.ok) return null;
-  const json = await res.json().catch(() => null) as { data?: { index: number; embedding: number[] }[] } | null;
   if (!json?.data) return null;
   const out: number[][] = new Array(texts.length);
   for (const d of json.data) out[d.index] = d.embedding;

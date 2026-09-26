@@ -176,7 +176,7 @@ check("topics are a closed list",
 /* ═══════════════════════════════════════════════════════════════════════ */
 console.log("\nD. A PAGE CANNOT CLAIM A ROUTE THE APP OWNS");
 
-for (const slug of ["admin", "api", "auth", "dashboard", "login", "register", "settings", "k", "blog"]) {
+for (const slug of ["admin", "api", "auth", "dashboard", "login", "register", "settings", "profile", "k", "blog"]) {
   check(`refused: /${slug}`, slugProblem(slug) === "reserved");
 }
 check("an empty slug is refused", slugProblem("") === "empty");
@@ -196,7 +196,17 @@ const migration = definingMigration ? readFileSync(`supabase/migrations/${defini
 check("the reserved-slug function is read from the latest migration that defines it",
   definingMigration >= "0125", definingMigration);
 const dbList = RESERVED_DEF.exec(migration)?.[1] ?? "";
-const dbSlugs = [...dbList.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+// A later migration may extend the list WITHOUT restating it: 0127 rebuilds
+// the live function from pg_get_functiondef and splices one slug in after
+// 'settings' ("execute replace(v_def, '''settings''', '''settings'', ''profile''')").
+// Those additions are part of what the database runs, so they count too.
+const SPLICE = /execute replace\(v_def, '''([^']+)''', '''\1'', ''([^']+)'''\)/g;
+const spliced = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql") && f > definingMigration).sort()
+  .map((f) => readFileSync(`supabase/migrations/${f}`, "utf8"))
+  .filter((sql) => /cms_slug_is_reserved\(text\)/.test(sql))
+  .flatMap((sql) => [...sql.matchAll(SPLICE)].map((m) => m[2]));
+const dbSlugs = [...[...dbList.matchAll(/'([^']+)'/g)].map((m) => m[1]), ...spliced];
+check("the /profile slug reserved by 0127 is read from its splice", spliced.includes("profile"), `${spliced}`);
 const missingInApp = dbSlugs.filter((s) => !RESERVED.includes(s));
 const missingInDb = RESERVED.filter((s) => !dbSlugs.includes(s));
 check("the app's reserved list matches the database's",

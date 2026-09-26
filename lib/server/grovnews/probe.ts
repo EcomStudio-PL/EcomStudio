@@ -42,7 +42,7 @@ const ACCEPT_ANY = "application/rss+xml, application/atom+xml;q=0.95, applicatio
 const ACCEPT_FEED = "application/rss+xml, application/atom+xml, application/feed+json;q=0.9, application/xml;q=0.8, text/xml;q=0.8, */*;q=0.1";
 
 const KIND_TYPE: Record<ParsedFeed["kind"], ImportableType | null> = {
-  rss: "RSS", rdf: "RSS", atom: "ATOM", json: "PUBLIC_FEED", page: null,
+  rss: "RSS", rdf: "RSS", atom: "ATOM", json: "PUBLIC_FEED", page: null, api: null,
 };
 
 /** Answers that mean "not for you" — never worked around. */
@@ -132,6 +132,16 @@ async function robotsFor(ctx: Ctx, origin: string): Promise<Robots> {
     }
     return { error: e };
   }
+}
+
+/** The newest dated entry of a read (ISO), or null. */
+export function newestEntryAt(entries: readonly { publishedAt: string | null }[]): string | null {
+  let best = Number.NEGATIVE_INFINITY;
+  for (const e of entries) {
+    const t = e.publishedAt ? Date.parse(e.publishedAt) : Number.NaN;
+    if (Number.isFinite(t) && t > best) best = t;
+  }
+  return Number.isFinite(best) ? new Date(best).toISOString() : null;
 }
 
 const allowedBy = (robots: string | null, url: URL) => robots === null || robotsAllows(robots, `${url.pathname}${url.search}`);
@@ -224,7 +234,7 @@ export async function probeSource(rawUrl: string, deps: ProbeDeps = {}): Promise
     const options = rank(urls.flatMap((u) => types.map((type) => signOption({ type, url: u, entries, checkedAt }))), url);
     return base(checkedAt, {
       verdict: "OK", httpStatus: doc.status, resolvedUrl, detectedType: detected, feedUrl: null, options,
-      recommended: { type: detected, url }, sample,
+      recommended: { type: detected, url }, sample, lastItemAt: newestEntryAt(feed.entries),
     });
   }
 
@@ -243,6 +253,7 @@ export async function probeSource(rawUrl: string, deps: ProbeDeps = {}): Promise
     : signals.wordpress ? [new URL("feed/", doc.url.endsWith("/") ? doc.url : `${doc.url}/`).toString()] : [];
   let feedUrl: string | null = null;
   let feedSample: string[] = [];
+  let feedNewest: string | null = null;
   for (const candidate of candidates) {
     if (feedUrl || ctx.now() + 12_000 > ctx.deadline || !isAcceptableSourceUrl(candidate)) continue;
     try {
@@ -257,6 +268,7 @@ export async function probeSource(rawUrl: string, deps: ProbeDeps = {}): Promise
       if (parsed && type && parsed.entries.length > 0) {
         feedUrl = candidate;
         feedSample = parsed.entries.slice(0, 5).map((e) => e.title);
+        feedNewest = newestEntryAt(parsed.entries);
         options.push(signOption({ type, url: candidate, entries: parsed.entries.length, checkedAt }));
         if (type !== "PUBLIC_FEED") options.push(signOption({ type: "PUBLIC_FEED", url: candidate, entries: parsed.entries.length, checkedAt }));
       }
@@ -278,6 +290,7 @@ export async function probeSource(rawUrl: string, deps: ProbeDeps = {}): Promise
     verdict: "OK", httpStatus: doc.status, resolvedUrl, detectedType: "WEB_PAGE", feedUrl, options: ranked,
     recommended: { type: ranked[0].type, url: ranked[0].url },
     sample: feedSample.length ? feedSample : listing.entries.slice(0, 5).map((e) => e.title),
+    lastItemAt: feedNewest,
   });
 }
 

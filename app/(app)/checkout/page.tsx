@@ -61,7 +61,7 @@ export default async function CheckoutPage({ searchParams }: {
   // code need the embedded sheet, so without the key they are not offered —
   // rather than shown at one price and charged at another.
   const publishableKey = stripePublishableKey();
-  if (!publishableKey && parsed.kind === "grovnews") redirect("/settings");
+  if (!publishableKey && parsed.kind === "grovnews") redirect("/settings?tab=subscriptions#grovnews");
   const request: CheckoutRequest = !publishableKey && parsed.kind === "subscription"
     ? { kind: "subscription", planId: parsed.planId, period: parsed.period }
     : parsed;
@@ -77,7 +77,7 @@ export default async function CheckoutPage({ searchParams }: {
   // back to its card in the settings).
   if (!priced.ok) {
     redirect(request.kind === "grovnews"
-      ? "/settings"
+      ? "/settings?tab=subscriptions#grovnews"
       : `/plan?checkout=${encodeURIComponent(priced.reason)}`);
   }
 

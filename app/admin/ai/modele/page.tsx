@@ -4,11 +4,15 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { CheckCircle2, ExternalLink, Plug } from "lucide-react";
 import { providerStatuses } from "@/lib/server/image-tools";
-import {
-  groupBy, monthStart, periodStart, readBudgetStatus, readUsage, summarise,
-  type PeriodKey,
-} from "@/lib/services/ai-economics";
-import type { BillingConfig } from "@/lib/images/pricing";
+import { secretStatuses } from "@/lib/server/secret-store";
+import { providerSecretName, VAULT_SENTINEL } from "@/lib/server/provider-credentials";
+import { encryptionAvailable } from "@/lib/server/crypto";
+import { maskKey, providerState } from "@/lib/provider-status";
+import { monthStart, readBudgetStatus } from "@/lib/services/ai-economics";
+import { grovnewsEconomics, readToolEconomics, readUsageHistory } from "@/lib/services/api-economics";
+import { readTokenPriceRows } from "@/lib/services/token-prices";
+import { formatPln, ToolEconomicsTable, UsageHistoryList } from "@/components/admin/api-economics";
+import { TokenPriceEditor } from "@/components/admin/token-prices";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +21,6 @@ import { ProviderCard, type ProviderView } from "@/components/admin/provider-car
 import { ModelRow, type ModelView } from "@/components/admin/model-editor";
 import { GenerationPriority, type PriorityModelOption } from "@/components/admin/generation-priority";
 import { ProviderBudgets, type BudgetView } from "@/components/admin/provider-budget";
-import { CostTable, type CostRow } from "@/components/admin/cost-table";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -34,13 +37,13 @@ export const dynamic = "force-dynamic";
  * spend per provider, and a budget to measure it against.
  */
 
-const TABS = ["dostawcy", "modele", "koszty", "alerty"] as const;
+const TABS = ["dostawcy", "modele", "koszty", "historia", "alerty"] as const;
 type Tab = (typeof TABS)[number];
 
 export default async function AiModelsPage({ searchParams }: {
-  searchParams: Promise<{ tab?: string; period?: string }>;
+  searchParams: Promise<{ tab?: string; tool?: string; provider?: string; days?: string }>;
 }) {
-  const { tab: tabParam, period: periodParam } = await searchParams;
+  const { tab: tabParam, tool, provider, days } = await searchParams;
   const tab: Tab = (TABS as readonly string[]).includes(tabParam ?? "") ? (tabParam as Tab) : "dostawcy";
 
   const supabase = await createClient();
@@ -72,7 +75,8 @@ export default async function AiModelsPage({ searchParams }: {
 
       {tab === "dostawcy" && <ProvidersTab supabase={supabase} t={t} locale={locale} />}
       {tab === "modele" && <ModelsTab supabase={supabase} t={t} locale={locale} />}
-      {tab === "koszty" && <CostsTab supabase={supabase} t={t} locale={locale} period={periodParam} />}
+      {tab === "koszty" && <CostsTab supabase={supabase} t={t} locale={locale} />}
+      {tab === "historia" && <UsageTab supabase={supabase} t={t} locale={locale} toolFilter={tool} providerFilter={provider} days={days} />}
       {tab === "alerty" && <AlertsTab supabase={supabase} />}
     </div>
   );
@@ -86,28 +90,55 @@ type Ctx = {
 /* ── DOSTAWCY ─────────────────────────────────────────────────────────────*/
 
 async function ProvidersTab({ supabase, t, locale }: Ctx & { locale: string }) {
-  const [{ data: providers }, { data: creds }, spend] = await Promise.all([
-    supabase.from("ai_providers").select("id, slug, name, active, ai_models(id, active)").order("name"),
+  const [{ data: providers }, { data: creds }, { data: toolModels }, spend] = await Promise.all([
+    supabase.from("ai_providers").select("id, slug, name, active, ai_models(id, active, name, display_name)").order("name"),
     // Masked metadata only. Ciphertext never leaves the server, and the panel
     // shows the last four characters so an operator can tell two keys apart.
     supabase.from("ai_provider_credentials")
-      .select("provider_id, last_four, updated_at, last_tested_at, last_test_status, last_test_error_safe, base_url, last_image_test_at, last_image_test_status, last_image_test_error_safe"),
+      .select("provider_id, encrypted_value, last_four, updated_at, last_tested_at, last_test_status, last_test_error_safe, last_test_latency_ms, base_url, last_image_test_at, last_image_test_status, last_image_test_error_safe, last_success_at, last_error_at, last_error_code"),
+    supabase.from("ai_tool_models").select("tool_key, model_id"),
     readBudgetStatus(supabase),
   ]);
+
+  // CAN THIS SERVER OPEN THE KEY? A vault copy always can; a pre-vault
+  // ciphertext only when its decryption key is present. Asked of the vault's
+  // status (configured / last four) — the value is never read for this.
+  const vault = await secretStatuses(supabase, (creds ?? []).map((c) => providerSecretName(c.provider_id)));
+  const legacyReadable = encryptionAvailable();
+  const toolsByModel = new Map<string, Set<string>>();
+  for (const r of toolModels ?? []) {
+    const set = toolsByModel.get(r.model_id) ?? new Set<string>();
+    set.add(r.tool_key); toolsByModel.set(r.model_id, set);
+  }
 
   const credByProvider = new Map((creds ?? []).map((c) => [c.provider_id, c]));
   const spendById = new Map(spend.map((s) => [s.providerId, s]));
   const views: ProviderView[] = (providers ?? []).map((p) => {
     const c = credByProvider.get(p.id);
+    const inVault = c ? vault.get(providerSecretName(p.id))?.configured === true : false;
+    const readable = Boolean(c) && (inVault || (c!.encrypted_value !== VAULT_SENTINEL && legacyReadable));
+    const tools = new Set<string>();
+    for (const m of p.ai_models) for (const k of toolsByModel.get(m.id) ?? []) tools.add(k);
+    const facts = c ? {
+      readable, updatedAt: c.updated_at, lastTestedAt: c.last_tested_at, lastTestStatus: c.last_test_status,
+      lastSuccessAt: c.last_success_at, lastErrorAt: c.last_error_at, lastErrorCode: c.last_error_code,
+    } : null;
+    const status = providerState(facts);
     return {
       id: p.id, slug: p.slug, name: p.name, active: p.active,
       modelsActive: p.ai_models.filter((m) => m.active).length,
       modelsTotal: p.ai_models.length,
+      modelNames: p.ai_models.filter((m) => m.active).map((m) => m.display_name || m.name),
+      toolKeys: [...tools].sort(),
+      state: status.state, stateReason: status.reason,
       credential: c ? {
-        lastFour: c.last_four, updatedAt: c.updated_at, lastTestedAt: c.last_tested_at,
-        lastTestStatus: c.last_test_status, lastTestError: c.last_test_error_safe,
-        baseUrl: c.base_url, lastImageTestAt: c.last_image_test_at,
-        lastImageTestStatus: c.last_image_test_status, lastImageTestError: c.last_image_test_error_safe,
+        masked: maskKey(c.last_four) ?? "••••", source: inVault ? "vault" : "legacy", readable,
+        updatedAt: c.updated_at, lastTestedAt: c.last_tested_at,
+        lastTestStatus: c.last_test_status, lastTestDetail: c.last_test_error_safe,
+        latencyMs: c.last_test_latency_ms, baseUrl: c.base_url,
+        lastImageTestAt: c.last_image_test_at, lastImageTestStatus: c.last_image_test_status,
+        lastImageTestError: c.last_image_test_error_safe,
+        lastSuccessAt: c.last_success_at, lastErrorAt: c.last_error_at, lastErrorCode: c.last_error_code,
       } : null,
     };
   });
@@ -286,77 +317,133 @@ async function ModelsTab({ supabase, t, locale }: Ctx & { locale: string }) {
 
 /* ── UŻYCIE I KOSZTY ──────────────────────────────────────────────────────*/
 
-const PERIOD_TABS: PeriodKey[] = ["today", "week", "month", "quarter"];
-
-async function CostsTab({ supabase, t, locale, period }: Ctx & { locale: string; period?: string }) {
-  const active: PeriodKey = (PERIOD_TABS as string[]).includes(period ?? "")
-    ? (period as PeriodKey) : "month";
-  const { events, billing, truncated } = await readUsage(supabase, {
-    since: periodStart(active).toISOString(),
-  });
-  const totals = summarise(events, billing);
-
-  const byModel = groupBy(events, (e) => e.model_slug, billing);
-  const byTool = groupBy(events, (e) => e.service_slug, billing);
-
-  const rows: CostRow[] = events.map((e) => {
-    const one = summarise([e], billing);
-    return {
-      id: e.id, createdAt: e.created_at, status: e.status,
-      tool: e.service_slug, provider: e.provider_slug, model: e.model_slug,
-      basis: one.measured ? "measured" : one.estimated ? "estimated" : "unknown",
-      costUsd: one.costUsdMicros / 1_000_000,
-      credits: one.credits, revenuePln: one.revenuePln, profitPln: one.profitPln,
-    };
-  });
-
-  const pln = (v: number) => `${v.toFixed(2)} zł`;
+/**
+ * Per tool, today and 30 days: runs, credits, provider cost (with its basis),
+ * the revenue customers actually PAID for those runs, and the margin where it
+ * can really be computed. Credits are not money — a bonus or free run earns 0.
+ */
+async function CostsTab({ supabase, t, locale }: Ctx & { locale: string }) {
+  const [econ, gn, prices] = await Promise.all([
+    readToolEconomics(supabase),
+    grovnewsEconomics(supabase),
+    readTokenPriceRows(supabase),
+  ]);
+  const toolLabel = (k: string) => {
+    const label = t(`aicc.toolName.${k}`);
+    return label === `aicc.toolName.${k}` ? k : label;
+  };
+  const sum = (w: "today" | "days30") => econ.tools.reduce((acc, x) => {
+    const a = x[w];
+    acc.costKnown += a.cost.usdMicros; acc.unknown += a.cost.unknown; acc.revenue += a.revenueCents; acc.runs += a.runs;
+    if (a.marginCents != null) { acc.margin += a.marginCents; acc.hasMargin = true; }
+    return acc;
+  }, { costKnown: 0, unknown: 0, revenue: 0, runs: 0, margin: 0, hasMargin: false });
 
   return (
+    <div className="space-y-5">
+      <div className="grid gap-4 [&>*]:min-w-0 md:grid-cols-2">
+        {(["today", "days30"] as const).map((w) => {
+          const s = sum(w);
+          return (
+            <div key={w} className="panel rounded-2xl p-4 sm:p-5" data-costs-summary={w}>
+              <p className="overline">{t(`aicc.econ.${w}`)}</p>
+              <div className="mt-3 grid grid-cols-2 gap-2.5 [&>*]:min-w-0">
+                <Metric label={t("aicc.econ.runs")} value={String(s.runs)} />
+                <Metric label={t("aicc.econ.apiCost")}
+                  value={`${formatPln(Math.round((s.costKnown / 1_000_000) * econ.usdToPln * 100), locale)}${s.unknown ? ` + ${t("aicc.econ.plusUnknown", { n: s.unknown })}` : ""}`} />
+                <Metric label={t("aicc.econ.revenue")} value={formatPln(s.revenue, locale)} accent />
+                <Metric label={t("aicc.econ.margin")} value={s.hasMargin ? formatPln(s.margin, locale) : "—"} danger={s.hasMargin && s.margin < 0} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-xs text-faint">{t("aicc.econ.note", { fx: econ.usdToPln.toFixed(2) })}</p>
+      {econ.truncated && <p className="text-xs text-warning">{t("aicc.econ.truncated")}</p>}
+
+      <Card>
+        <CardHeader title={t("aicc.econ.byTool")} sub={t("aicc.econ.byToolSub")} />
+        <ToolEconomicsTable tools={econ.tools} usdToPln={econ.usdToPln} locale={locale} t={t} toolLabel={toolLabel} />
+      </Card>
+
+      <GrovNewsEconomicsCard gn={gn} usdToPln={econ.usdToPln} locale={locale} t={t} />
+
+      <Card>
+        <CardHeader title={t("aicc.prices.title")} sub={t("aicc.prices.sub")} />
+        <div className="p-4 sm:p-5">
+          <TokenPriceEditor rows={prices} />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function GrovNewsEconomicsCard({ gn, usdToPln, locale, t }: {
+  gn: Awaited<ReturnType<typeof grovnewsEconomics>>; usdToPln: number; locale: string; t: Ctx["t"];
+}) {
+  const cost = (w: { aiCostUsdMicros: number; aiCalls: number; unknownCostCalls: number }) =>
+    `${formatPln(Math.round((w.aiCostUsdMicros / 1_000_000) * usdToPln * 100), locale)}${w.unknownCostCalls ? ` + ${t("aicc.econ.plusUnknown", { n: w.unknownCostCalls })}` : ""}`;
+  return (
+    <Card data-grovnews-economics>
+      <CardHeader title={t("aicc.econ.grovnews.title")} sub={t("aicc.econ.grovnews.sub")} />
+      <div className="grid grid-cols-2 gap-2.5 p-4 [&>*]:min-w-0 sm:p-5 lg:grid-cols-4">
+        <Metric label={t("aicc.econ.grovnews.aiToday")} value={cost(gn.today)} />
+        <Metric label={t("aicc.econ.grovnews.ai30")} value={cost(gn.days30)} />
+        <Metric label={t("aicc.econ.grovnews.editions")} value={String(gn.editions30)} />
+        <Metric label={t("aicc.econ.grovnews.paid")} value={String(gn.activePaid)} />
+        <Metric label={t("aicc.econ.grovnews.mrr")} value={formatPln(gn.mrrCents, locale)} accent />
+        <Metric label={t("aicc.econ.grovnews.revenue30")} value={formatPln(gn.revenue30Cents, locale)} />
+        <Metric label={t("aicc.econ.grovnews.grants")} value={t("aicc.econ.grovnews.grantsValue", { promo: gn.promoActive, launch: gn.launchActive, admin: gn.adminGrants })} />
+        <Metric label={t("aicc.econ.grovnews.margin")} value={gn.margin30Cents == null ? "—" : formatPln(gn.margin30Cents, locale)} danger={(gn.margin30Cents ?? 0) < 0} />
+      </div>
+      <p className="border-t border-line px-5 py-2.5 text-xs text-faint">{t("aicc.econ.grovnews.note")}</p>
+    </Card>
+  );
+}
+
+/* ── HISTORIA UŻYCIA ──────────────────────────────────────────────────────*/
+
+async function UsageTab({ supabase, t, locale, toolFilter, providerFilter, days }: Ctx & {
+  locale: string; toolFilter?: string; providerFilter?: string; days?: string;
+}) {
+  const nDays = [1, 7, 30, 90].includes(Number(days)) ? Number(days) : 7;
+  const tool = toolFilter && /^[a-z0-9_]{2,64}$/.test(toolFilter) ? toolFilter : null;
+  const provider = providerFilter && /^[a-z0-9_-]{2,40}$/.test(providerFilter) ? providerFilter : null;
+  const history = await readUsageHistory(supabase, { toolKey: tool, provider, days: nDays, limit: 200 });
+  const toolLabel = (k: string) => {
+    const label = t(`aicc.toolName.${k}`);
+    return label === `aicc.toolName.${k}` ? k : label;
+  };
+  const href = (patch: Record<string, string | null>) => {
+    const q = new URLSearchParams({ tab: "historia" });
+    const cur: Record<string, string | null> = { days: String(nDays), tool, provider, ...patch };
+    for (const [k, v] of Object.entries(cur)) if (v) q.set(k, v);
+    return `/admin/ai/modele?${q.toString()}`;
+  };
+  return (
     <div className="space-y-4">
-      <nav className="flex gap-1 rounded-xl bg-raised p-1" aria-label={t("aicc.economics.window")}>
-        {PERIOD_TABS.map((p) => (
-          <Link key={p} href={`/admin/ai/modele?tab=koszty&period=${p}`} scroll={false}
-            aria-current={p === active ? "true" : undefined}
-            className={cn(
-              "min-h-[32px] rounded-lg px-3 text-[13px] font-semibold leading-8 transition-colors",
-              p === active ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink",
-            )}>
-            {t(`aicc.costs.period.${p}`)}
+      <nav className="flex flex-wrap gap-1 rounded-xl bg-raised p-1" aria-label={t("aicc.econ.window")}>
+        {[1, 7, 30, 90].map((d) => (
+          <Link key={d} href={href({ days: String(d) })} scroll={false}
+            aria-current={d === nDays ? "true" : undefined}
+            className={cn("min-h-[32px] rounded-lg px-3 text-[13px] font-semibold leading-8 transition-colors",
+              d === nDays ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink")}>
+            {t("aicc.econ.lastDays", { n: d })}
           </Link>
         ))}
       </nav>
-
-      <div className="grid grid-cols-2 gap-2.5 [&>*]:min-w-0 lg:grid-cols-4">
-        <Metric label={t("aicc.economics.apiCost")} value={pln(totals.costPln)} />
-        <Metric label={t("aicc.economics.revenue")} value={pln(totals.revenuePln)} accent />
-        <Metric label={t("aicc.economics.profit")} value={pln(totals.profitPln)}
-          danger={totals.profitPln < 0} />
-        <Metric label={t("aicc.economics.margin")}
-          value={totals.marginPercent === null ? "—" : `${Math.round(totals.marginPercent)}%`} />
-        <Metric label={t("aicc.economics.runs")} value={String(totals.requests)} />
-        <Metric label={t("aicc.costs.succeeded")} value={String(totals.succeeded)} />
-        <Metric label={t("aicc.economics.failed")} value={String(totals.failed)}
-          danger={totals.failed > 0} />
-        <Metric label={t("nav.credits")} value={String(totals.credits)} />
-      </div>
-
-      {/*
-        How many of those cost figures we actually measured. A screen that
-        cannot say this is a screen that quietly presents estimates as facts.
-      */}
-      <p className="text-xs text-faint">
-        {t("aicc.costs.basisSummary", {
-          measured: totals.measured, estimated: totals.estimated, unknown: totals.unknown,
-        })}
-      </p>
-
-      <div className="grid gap-4 [&>*]:min-w-0 lg:grid-cols-2">
-        <Breakdown title={t("aicc.costs.byModel")} rows={byModel} billing={billing} t={t} />
-        <Breakdown title={t("aicc.costs.byTool")} rows={byTool} billing={billing} t={t} />
-      </div>
-
-      <CostTable rows={rows} locale={locale} truncated={truncated} />
+      {(tool || provider) && (
+        <p className="flex flex-wrap items-center gap-2 text-xs text-muted">
+          {tool && <Badge tone="accent">{toolLabel(tool)}</Badge>}
+          {provider && <Badge tone="accent">{provider}</Badge>}
+          <Link href={href({ tool: null, provider: null })} className="text-accent hover:underline">{t("aicc.econ.clearFilter")}</Link>
+        </p>
+      )}
+      <Card>
+        <CardHeader title={t("aicc.econ.historyTitle")} sub={t("aicc.econ.historySub")} />
+        <UsageHistoryList rows={history.rows} usdToPln={history.usdToPln} locale={locale} t={t} toolLabel={toolLabel} />
+      </Card>
+      {history.truncated && <p className="text-xs text-warning">{t("aicc.econ.truncated")}</p>}
     </div>
   );
 }
@@ -365,57 +452,10 @@ function Metric({ label, value, accent, danger }: {
   label: string; value: string; accent?: boolean; danger?: boolean;
 }) {
   return (
-    <div className="panel min-w-0 rounded-2xl px-4 py-3">
-      <p className="overline text-[9.5px]">{label}</p>
-      <p className={cn("metric mt-1 truncate text-[1.3rem]",
-        danger ? "text-danger" : accent ? "text-accent2" : "text-ink")}>{value}</p>
+    <div className="rounded-xl bg-raised px-3 py-2.5">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-faint">{label}</p>
+      <p className={cn("mt-1 font-display text-[15px] font-semibold tabular-nums", accent && "text-accent", danger && "text-danger")}>{value}</p>
     </div>
-  );
-}
-
-function Breakdown({ title, rows, billing, t }: {
-  title: string;
-  rows: { key: string; totals: ReturnType<typeof summarise> }[];
-  billing: BillingConfig;
-  t: Ctx["t"];
-}) {
-  return (
-    <Card>
-      <CardHeader title={title} />
-      {rows.length === 0 ? (
-        <p className="px-5 py-8 text-center text-sm text-muted">{t("aicc.costs.empty")}</p>
-      ) : (
-        <div className="table-scroll thin-scroll overflow-x-auto">
-          <table className="w-full min-w-[520px] text-sm">
-            <thead>
-              <tr className="text-left text-[11px] uppercase tracking-[0.08em] text-faint">
-                {["", t("aicc.economics.runs"), t("aicc.economics.apiCost"),
-                  t("aicc.economics.revenue"), t("aicc.economics.margin")].map((h, i) => (
-                  <th key={i} className="whitespace-nowrap px-5 py-2 font-semibold">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.slice(0, 12).map((r) => (
-                <tr key={r.key} className="border-t border-line">
-                  <td className="max-w-[180px] truncate px-5 py-2 font-medium">{r.key}</td>
-                  <td className="px-5 py-2 tabular-nums">{r.totals.requests}</td>
-                  <td className="whitespace-nowrap px-5 py-2 tabular-nums">{r.totals.costPln.toFixed(2)} zł</td>
-                  <td className="whitespace-nowrap px-5 py-2 tabular-nums">{r.totals.revenuePln.toFixed(2)} zł</td>
-                  <td className="px-5 py-2">
-                    {r.totals.marginPercent === null ? "—" : (
-                      <Badge tone={r.totals.marginPercent >= billing.minMarginPercent ? "success" : "danger"}>
-                        {Math.round(r.totals.marginPercent)}%
-                      </Badge>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Card>
   );
 }
 

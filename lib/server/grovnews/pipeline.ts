@@ -3,11 +3,15 @@ import { createHash } from "node:crypto";
 import type { Client } from "@/lib/services/workspace";
 import type { Json } from "@/lib/database.types";
 import {
-  FETCHED_TYPES, findSimilar, normalizeTitle, normalizeUrl, relatedCandidates, warsawDate,
+  FETCHED_TYPES, findSimilar, itemLanguage, normalizeTitle, normalizeUrl, relatedCandidates, warsawDate, warsawHour,
 } from "@/lib/grovnews-research";
-import { SafeFetchError, fetchPageRespectingRobots } from "./fetch";
-import { extractListing, parseFeed } from "./feed";
+import { readTokenPrices, textMeter, type TextMeter } from "@/lib/server/ai-usage";
+import { tokenCost, type TokenPrice } from "@/lib/ai/usage-cost";
+import { SafeFetchError, fetchPageRespectingRobots, type Transport } from "./fetch";
+import { extractListing, parseFeed, type ParsedFeed } from "./feed";
+import { apiErrorCode, readApi, resolveApiAuth } from "./api";
 import { analyzeItem, grovnewsEngine, writeDigest, writeDraft, type Engine } from "./ai";
+import { sendOperatorCopies, type OperatorDeps } from "./operators";
 import {
   blurbText, composePost, digestLinks, digestUtm, fallbackBlurb, fallbackIntro, linkedSlugs, renderDigestHtml,
 } from "./compose";
@@ -101,7 +105,28 @@ export async function readSource(source: store.SourceRef, recent: store.RecentIt
     : await fetchPageRespectingRobots(source.url, { accept: ACCEPT[source.type] ?? ACCEPT.RSS, maxBytes: 2_000_000 });
   const parsed = source.type === "WEB_PAGE" ? extractListing(doc.body, doc.url) : parseFeed(doc.body, doc.url, now);
   if (!parsed) throw new Error("unrecognized_format");
+  return itemsFrom(parsed, source, recent, now);
+}
 
+/**
+ * 0128 — read an API source: its credential from the vault (sent to its own
+ * origin only), a JSON Feed / RSS / Atom answer or the generic JSON mapping.
+ * The entries become items exactly like a feed's.
+ */
+export async function readApiSource(
+  db: Client, source: store.SourceRef, recent: store.RecentItem[], now: number, deps: { transport?: Transport } = {},
+): Promise<store.IngestItem[]> {
+  if (!source.url) throw new Error("no_url");
+  const auth = await resolveApiAuth(db, source);
+  if (auth === "secret_missing") throw new Error("secret_missing");
+  const { parsed } = await readApi(source.url, auth, { transport: deps.transport, now });
+  return itemsFrom(parsed, source, recent, now);
+}
+
+/** A read's entries as item payloads: normalised URL, title key, hash, the
+ *  item's detected language (its source's when the text does not say), a
+ *  candidate duplicate from the dedupe memory. */
+function itemsFrom(parsed: ParsedFeed, source: store.SourceRef, recent: store.RecentItem[], now: number): store.IngestItem[] {
   const items: store.IngestItem[] = [];
   for (const e of parsed.entries) {
     const nurl = normalizeUrl(e.url);
@@ -113,6 +138,7 @@ export async function readSource(source: store.SourceRef, recent: store.RecentIt
       url: e.url, nurl, title: e.title, excerpt: e.excerpt, published_at: e.publishedAt, hash, title_norm: titleNorm,
       duplicate_of: findSimilar(titleNorm, recent),
       stale: Number.isFinite(published) && now - published > STALE_AFTER,
+      language: itemLanguage(e.title, e.excerpt, source.language),
       metadata: {
         kind: parsed.kind,
         ...(e.guid ? { guid: e.guid } : {}),
@@ -125,6 +151,7 @@ export async function readSource(source: store.SourceRef, recent: store.RecentIt
 
 export async function ingestSources(
   db: Client, ctx: store.JobContext, b: Budget, onlySourceId?: string, alreadyRead?: ReadonlySet<string>,
+  deps: { transport?: Transport } = {},
 ): Promise<IngestReport> {
   const report: IngestReport = {
     sources: 0, failed: 0, inserted: 0, duplicates: 0, stale: 0, skipped: 0, errors: [], succeeded: 0, found: 0, remaining: 0, done: [],
@@ -143,20 +170,17 @@ export async function ingestSources(
   const ran = await pool(sources, 4, () => b.left() < 20_000, async (source) => {
     report.sources++;
     report.done?.push(source.id);
-    if (source.type === "API") {
-      // No API adapter is registered until a provider with a real key exists
-      // (CLAUDE.md: never fake a provider). Recorded, not silently skipped.
-      await store.ingest(db, source.id, false, "adapter_unavailable", []);
-      report.failed++;
-      report.errors.push({ sourceId: source.id, code: "adapter_unavailable" });
-      return;
-    }
-    if (!FETCHED_TYPES.includes(source.type)) return;
+    if (source.type !== "API" && !FETCHED_TYPES.includes(source.type)) return;
     let items: store.IngestItem[];
     try {
-      items = await readSource(source, recent, Date.now());
+      // 0128: an API source is read through its own reader (its key, if it
+      // has one, to its own origin only); every other type as before.
+      items = source.type === "API"
+        ? await readApiSource(db, source, recent, Date.now(), deps)
+        : await readSource(source, recent, Date.now());
     } catch (e) {
-      const code = errorCode(e);
+      if (e instanceof store.StoreError) throw e;
+      const code = source.type === "API" ? apiErrorCode(e) : errorCode(e);
       await store.ingest(db, source.id, false, code, []);
       report.failed++;
       report.errors.push({ sourceId: source.id, code });
@@ -313,12 +337,20 @@ export function mailBody(edition: { date: string; title: string }, intro: string
 
 /** AUTOMATIC mode: write the day's mail from the edition's published posts
  *  and hand it to the newsletter queue through the one unattended door. */
-export async function autoSendEdition(db: Client, engine: Engine | null, editionId: string) {
+export type AutoSendResult = {
+  status: string; recipients: number; aiUsed: boolean;
+  /** 0128: what was handed to the send door (for the operator copies). */
+  mail?: { subject: string; preview: string; html: string };
+};
+
+export async function autoSendEdition(db: Client, engine: Engine | null, editionId: string): Promise<AutoSendResult> {
+  // The digest is built ONLY from the edition's own record and its PUBLISHED
+  // posts (grovnews_edition_mail_source) — never from another draft.
   const source = await store.editionMailSource(db, editionId);
   if (!source || source.posts.length === 0) return { status: "edition_empty", recipients: 0, aiUsed: false };
   if (source.articlePostId) {
-    // The day's ONE article: its mail was written with it, and links to it
-    // alone (0125 §6).
+    // The day's ONE article: its digest was written with it, and links to it
+    // (and its topic anchors) alone (0125 §6, 0128 §8).
     const article = source.posts.find((p) => p.id === source.articlePostId);
     if (!article || !source.daily) return { status: "edition_empty", recipients: 0, aiUsed: false };
     const mail = composeDailyMail(source.date, source.daily);
@@ -326,7 +358,7 @@ export async function autoSendEdition(db: Client, engine: Engine | null, edition
     const res = await store.editionSend(db, {
       editionId, subject: mail.subject, preview: mail.preview, body: html, links, utm: digestUtm(source.date),
     });
-    return { status: res.status, recipients: res.recipients ?? 0, aiUsed: false };
+    return { status: res.status, recipients: res.recipients ?? 0, aiUsed: false, mail: { subject: mail.subject, preview: mail.preview, html } };
   }
   const edition = { date: source.date, title: source.title, intro: source.intro };
   const mail = await composeEditionMail(engine, edition, source.posts);
@@ -334,7 +366,7 @@ export async function autoSendEdition(db: Client, engine: Engine | null, edition
   const res = await store.editionSend(db, {
     editionId, subject: mail.subject, preview: mail.preview, body: html, links, utm: digestUtm(source.date),
   });
-  return { status: res.status, recipients: res.recipients ?? 0, aiUsed: mail.aiUsed };
+  return { status: res.status, recipients: res.recipients ?? 0, aiUsed: mail.aiUsed, mail: { subject: mail.subject, preview: mail.preview, html } };
 }
 
 /* ── 5. THE DAY'S ARTICLE ───────────────────────────────────────────────────── */
@@ -401,6 +433,29 @@ export type RunReport = {
   stats?: Record<string, Json>;
 };
 
+/** What a run can be handed besides the database (tests; production passes
+ *  nothing): the clock the publish / send hours are read on, the transport
+ *  API sources are read through, the operator copies' mailer. */
+export type RunDeps = { now?: () => Date; transport?: Transport; operators?: OperatorDeps };
+
+/** Why a day ended without an article — said in the stats, never guessed. */
+export function noTopicsReason(ingest: Counts, selected: unknown): string {
+  if ((ingest.sources ?? 0) === 0) return "no_sources";
+  if ((ingest.succeeded ?? 0) === 0 && (ingest.failed ?? 0) > 0) return "all_sources_failed";
+  return typeof selected === "number" && selected === 0 ? "below_threshold" : "no_candidates";
+}
+
+/** Per-source failures of a read, as codes: a count per code, and the
+ *  sources (id + code, bounded), merged with what earlier invocations saw. */
+function sourceErrors(prev: Json | undefined, errors: readonly { sourceId: string; code: string }[]): Json {
+  const list = Array.isArray(prev) ? prev.filter((x): x is { id: string; code: string } =>
+    !!x && typeof x === "object" && !Array.isArray(x) && typeof (x as Record<string, unknown>).id === "string"
+    && typeof (x as Record<string, unknown>).code === "string") : [];
+  const seen = new Set(list.map((x) => x.id));
+  for (const e of errors) if (!seen.has(e.sourceId)) { list.push({ id: e.sourceId, code: e.code.slice(0, 60) }); seen.add(e.sourceId); }
+  return list.slice(0, 300);
+}
+
 /**
  * One invocation of the day's run: claim the day, continue from its stage,
  * stop before the deadline. Throws on any failure after recording it in the
@@ -417,8 +472,13 @@ export type RunReport = {
  * FAIL-SAFE: half the sources failing, any topic in doubt, too few topics —
  * the article waits for a person. No model — nothing is written, and the run
  * tries again later instead of finishing the day empty-handed.
+ *
+ * 0128: AUTOMATIC mode waits for publish_hour before DRAFT and for send_hour
+ * before SEND (the database's claim and tick wait too, without spending an
+ * attempt). Every model request is traced under this run's id and its count
+ * and cost are kept in the stats; per-source failures are kept as codes.
  */
-export async function runDaily(db: Client, trigger: "CRON" | "ADMIN", budgetMs: number): Promise<RunReport> {
+export async function runDaily(db: Client, trigger: "CRON" | "ADMIN", budgetMs: number, deps: RunDeps = {}): Promise<RunReport> {
   const b = budget(budgetMs);
   await store.editionsSync(db);
   const claim = await store.runClaim(db, trigger);
@@ -428,21 +488,52 @@ export async function runDaily(db: Client, trigger: "CRON" | "ADMIN", budgetMs: 
   let stage = claim.stage;
   const stats: Record<string, Json> = { ...(claim.stats ?? {}) };
   const date = claim.run_date || warsawDate();
+  const hour = () => warsawHour(deps.now ? deps.now() : new Date());
+  // Every model request of this run is traced under its id (ai_provider_calls).
+  const meter: TextMeter = textMeter(db, { actorKind: trigger === "CRON" ? "system" : "admin", consumer: "grovnews", runRef: runId });
+  let prices: TokenPrice[] | null = null;
+  let counted = 0;
+  /** Fold the model requests made since the last call into the stats, and
+   *  write their trace. Never throws (telemetry). */
+  const settleAi = async () => {
+    const all = meter.attempts();
+    const fresh = all.slice(counted);
+    counted = all.length;
+    if (fresh.length === 0) return;
+    prices ??= await readTokenPrices(db);
+    let known = 0;
+    let unknown = 0;
+    for (const a of fresh) {
+      const c = tokenCost(prices, a.provider, a.model, a.inputTokens, a.outputTokens);
+      if (c.basis === "unknown") unknown += 1; else known += c.usdMicros;
+    }
+    stats.ai_usage = add(counts(stats.ai_usage), { calls: fresh.length, cost_usd_micros: known, unknown_cost_calls: unknown });
+    await meter.flush();
+  };
   try {
     const ctx = await store.jobContext(db);
     const automatic = ctx.settings.mode === "AUTOMATIC";
     let engine: Engine | null | undefined;
-    const getEngine = async () => (engine === undefined ? (engine = await grovnewsEngine(db)) : engine);
+    const getEngine = async () => (engine === undefined
+      ? (engine = await grovnewsEngine(db, {
+        choice: { provider: ctx.settings.aiProvider, model: ctx.settings.aiModel }, meter,
+        actorKind: trigger === "CRON" ? "system" : "admin",
+      }))
+      : engine);
 
     if (stage === "INGEST") {
       const read = Array.isArray(stats.ingest_done)
         ? stats.ingest_done.filter((id): id is string => typeof id === "string")
         : [];
-      const r = await ingestSources(db, ctx, b, undefined, new Set(read));
+      const r = await ingestSources(db, ctx, b, undefined, new Set(read), { transport: deps.transport });
       stats.ingest = add(counts(stats.ingest), {
         sources: r.sources, succeeded: r.succeeded ?? 0, failed: r.failed, found: r.found ?? 0, inserted: r.inserted,
         duplicates: r.duplicates, stale: r.stale, skipped: r.skipped,
       });
+      if (r.errors.length > 0) {
+        stats.source_errors = sourceErrors(stats.source_errors, r.errors);
+        stats.ingest_errors = add(counts(stats.ingest_errors), r.errors.reduce<Counts>((acc, e) => ({ ...acc, [e.code]: (acc[e.code] ?? 0) + 1 }), {}));
+      }
       if ((r.remaining ?? 0) > 0) {
         // Out of time with sources still unread: the next tick continues.
         stats.ingest_done = [...read, ...(r.done ?? [])];
@@ -477,11 +568,13 @@ export async function runDaily(db: Client, trigger: "CRON" | "ADMIN", budgetMs: 
         if (r.remaining === 0 && r.analyzed + r.failed === 0) break;
         if (b.left() < 60_000) {
           stats.analyze = { analyzed: total, failed };
+          await settleAi();
           await store.runUpdate(db, runId, { stage, stats, release: true });
           return { status: "partial", stage, stats };
         }
       }
       stats.analyze = { analyzed: total, failed };
+      await settleAi();
       if (stats.ai === "unavailable" || stats.ai === "provider_down") {
         // FAIL-SAFE: without a model nothing is judged, so nothing is written
         // or sent — and the day is not closed as if there were no news.
@@ -494,18 +587,28 @@ export async function runDaily(db: Client, trigger: "CRON" | "ADMIN", budgetMs: 
       await store.runUpdate(db, runId, { stage, stats });
     }
 
+    if (stage === "DRAFT" && automatic && ctx.settings.publishHour !== null && hour() < ctx.settings.publishHour) {
+      // AUTOMATIC: the article is written (and published) at publish_hour.
+      stats.waiting = "publish";
+      await store.runUpdate(db, runId, { stage, stats, release: true });
+      return { status: "partial", reason: "waiting_publish", stage, stats };
+    }
+    if (stats.waiting === "publish") stats.waiting = null;
+
     if (stage === "DRAFT") {
       const ingest = counts(stats.ingest);
       const sourcesFailed = (ingest.sources ?? 0) > 0 && (ingest.failed ?? 0) * 2 >= (ingest.sources ?? 0);
       const r = await draftDaily(db, ctx.settings, await getEngine(), date, { publish: automatic, sourcesFailed });
+      await settleAi();
       if (r.outcome === "ai_unavailable" || r.outcome === "provider_down") {
         stats.outcome = r.outcome;
         await store.runUpdate(db, runId, { stage, stats, release: true });
         return { status: "partial", stage, stats };
       }
       if (r.outcome === "no_topics" || !r.article) {
-        // No valuable topic today: no article, no mail — never filler.
-        stats.article = { topics: 0 };
+        // No valuable topic today: no article, no mail — never filler. The
+        // stats say why (no sources, every source failed, nothing met the bar).
+        stats.article = { topics: 0, reason: noTopicsReason(ingest, stats.selected) };
         stats.outcome = "no_topics";
         stage = "DONE";
       } else {
@@ -536,6 +639,14 @@ export async function runDaily(db: Client, trigger: "CRON" | "ADMIN", budgetMs: 
       await store.runUpdate(db, runId, { stage, stats });
     }
 
+    if (stage === "SEND" && ctx.settings.sendHour !== null && hour() < ctx.settings.sendHour) {
+      // AUTOMATIC: the mail goes at send_hour (published already).
+      stats.waiting = "send";
+      await store.runUpdate(db, runId, { stage, stats, release: true });
+      return { status: "partial", reason: "waiting_send", stage, stats };
+    }
+    if (stats.waiting === "send") stats.waiting = null;
+
     if (stage === "SEND") {
       if (!editionId) {
         const again = await store.buildEdition(db, date, true);
@@ -543,15 +654,20 @@ export async function runDaily(db: Client, trigger: "CRON" | "ADMIN", budgetMs: 
       }
       if (editionId) {
         const r = await autoSendEdition(db, await getEngine(), editionId);
-        stats.send = r;
+        stats.send = { status: r.status, recipients: r.recipients, aiUsed: r.aiUsed };
         stats.outcome = r.status === "queued" ? "published_queued" : `published_${r.status}`;
+        // The same digest to the admin-configured operator addresses — once,
+        // right after the subscribers' campaign was queued. Never fails the run.
+        if (r.status === "queued" && r.mail) stats.operators = await sendOperatorCopies(db, r.mail, deps.operators);
       }
+      await settleAi();
       stage = "DONE";
     }
 
     await store.runUpdate(db, runId, { stage: "DONE", status: "DONE", stats });
     return { status: "done", stage: "DONE", stats };
   } catch (e) {
+    await settleAi().catch(() => undefined);
     await store.runUpdate(db, runId, { stage, stats, error: errorCode(e), release: true }).catch(() => undefined);
     throw e;
   }

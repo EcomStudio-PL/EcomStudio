@@ -4,14 +4,17 @@ import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/services/audit";
 import { isUuid } from "@/lib/grovnews";
 import {
-  normalizeTitle, normalizeUrl, validateManualItem, validateSettingsInput, validateSourceInput, warsawDate,
+  isValidSourceSecret, normalizeTitle, normalizeUrl, validateManualItem, validateSettingsInput, validateSourceInput, warsawDate,
   type SourceInputError,
 } from "@/lib/grovnews-research";
 import * as store from "@/lib/server/grovnews/store";
 import {
   analyzeQueue, budget, composeEditionMail, contentHash, draftQueue, errorCode, ingestSources, mailBody, runDaily,
 } from "@/lib/server/grovnews/pipeline";
-import { grovnewsEngine } from "@/lib/server/grovnews/ai";
+import { GROVNEWS_MODEL_OPTIONS, grovnewsEngine } from "@/lib/server/grovnews/ai";
+import { healthFromApiProbe, probeApiSource, sourceSecretName } from "@/lib/server/grovnews/api";
+import { sendOperatorCopies } from "@/lib/server/grovnews/operators";
+import { clearSecret, putSecret, secretStatuses } from "@/lib/server/secret-store";
 import { digestUtm } from "@/lib/server/grovnews/compose";
 import { composeDailyMail, mailBodyDaily } from "@/lib/server/grovnews/daily";
 import { healthFromProbe, probeSource } from "@/lib/server/grovnews/probe";
@@ -81,18 +84,24 @@ export async function saveSourceAction(id: string | null, raw: unknown):
     const parsed = validateSourceInput(raw);
     if (!parsed.ok) return { ok: false, error: parsed.error };
     const v = parsed.value;
+    // 0128: how an API source authenticates. The secret is NOT part of this
+    // row (saveSourceSecretAction writes it to the vault).
     const row = {
       name: v.name, source_type: v.type, url: v.url, enabled: v.enabled, category_id: v.categoryId,
       priority: v.priority, official_source: v.official, language: v.language,
+      auth_kind: v.authKind, auth_header: v.authHeader,
     };
     const res = id
       ? await supabase.from("grovnews_sources").update(row).eq("id", id).select("id").maybeSingle()
       : await supabase.from("grovnews_sources").insert({ ...row, created_by: adminId }).select("id").single();
     if (res.error) return { ok: false, error: res.error.code === "23505" ? "urlTaken" : res.error.code === "23503" ? "category" : "generic" };
     if (!res.data) return { ok: false, error: "invalid" };
+    // A source that no longer sends a key keeps none: its stored secret goes.
+    if (id && v.authKind === "none") await clearSecret(supabase, sourceSecretName(res.data.id));
     await logAudit(supabase, {
       actorId: adminId, action: id ? "grovnews.source_updated" : "grovnews.source_created",
-      entityType: "grovnews_source", entityId: res.data.id, after: { name: v.name, type: v.type, url: v.url, official: v.official },
+      entityType: "grovnews_source", entityId: res.data.id,
+      after: { name: v.name, type: v.type, url: v.url, official: v.official, auth: v.authKind },
     });
     revalidateAll();
     return { ok: true, id: res.data.id };
@@ -131,10 +140,21 @@ export async function testSourceAction(id: string):
     const { supabase } = await requireAdmin();
     if (!isUuid(id)) return { ok: false, error: "invalid" };
     const { data: s } = await supabase.from("grovnews_sources")
-      .select("id, name, source_type, url, category_id, priority, official_source, language").eq("id", id).maybeSingle();
+      .select("id, name, source_type, url, category_id, priority, official_source, language, auth_kind, auth_header").eq("id", id).maybeSingle();
     if (!s) return { ok: false, error: "invalid" };
-    if (s.source_type === "MANUAL" || s.source_type === "API" || !s.url) {
-      return { ok: false, error: "notFetchable", code: s.source_type === "API" ? "adapter_unavailable" : "manual" };
+    if (s.source_type === "MANUAL" || !s.url) return { ok: false, error: "notFetchable", code: "manual" };
+    if (s.source_type === "API") {
+      // 0128: the API reader — its key (from the vault, server-side) to its
+      // own origin only. The answer is a verdict and codes; never the key,
+      // never the upstream body.
+      const probe = await probeApiSource(supabase, {
+        id: s.id, url: s.url, authKind: s.auth_kind === "bearer" || s.auth_kind === "header" ? s.auth_kind : "none", authHeader: s.auth_header,
+      });
+      const result = healthFromApiProbe(probe);
+      const health = await store.sourceChecked(supabase, s.id, result);
+      revalidateAll();
+      if (result.ok) return { ok: true, entries: probe.entries, sample: probe.sample, health, probe };
+      return { ok: false, error: "fetch", code: result.error ?? "error", health, probe };
     }
     const probe = await probeSource(s.url, { deadline: Date.now() + 90_000 });
     const result = healthFromProbe(probe, { url: s.url, type: s.source_type });
@@ -142,6 +162,71 @@ export async function testSourceAction(id: string):
     revalidateAll();
     if (result.ok) return { ok: true, entries: result.entries ?? 0, sample: probe.sample, health, probe };
     return { ok: false, error: "fetch", code: result.error ?? errorCode(null), health, probe };
+  } catch (e) {
+    return failed(e);
+  }
+}
+
+/* ── API sources: the secret (0128) ────────────────────────────────────────── */
+
+/**
+ * What the source editor may know about an API source's secret: whether one
+ * is stored, its last four characters (cut in the database) and when it
+ * changed. Never the value.
+ */
+export async function sourceSecretStatusAction(id: string):
+  Promise<{ ok: true; configured: boolean; lastFour: string | null; updatedAt: string | null } | Fail> {
+  try {
+    const { supabase } = await requireAdmin();
+    if (!isUuid(id)) return { ok: false, error: "invalid" };
+    const name = sourceSecretName(id);
+    const status = (await secretStatuses(supabase, [name])).get(name);
+    return { ok: true, configured: status?.configured === true, lastFour: status?.lastFour ?? null, updatedAt: status?.updatedAt ?? null };
+  } catch (e) {
+    return failed(e);
+  }
+}
+
+/**
+ * Store (or replace) an API source's secret in the vault. Only for an API
+ * source that is configured to send one. The value is written and forgotten:
+ * it is not returned, not logged and not audited — the audit records only
+ * that it changed.
+ */
+export async function saveSourceSecretAction(id: string, secret: string):
+  Promise<{ ok: true; lastFour: string | null } | Fail<"notApi" | "secret">> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    if (!isUuid(id)) return { ok: false, error: "invalid" };
+    if (!isValidSourceSecret(secret)) return { ok: false, error: "secret" };
+    const { data: s } = await supabase.from("grovnews_sources").select("id, source_type, auth_kind").eq("id", id).maybeSingle();
+    if (!s) return { ok: false, error: "invalid" };
+    if (s.source_type !== "API" || s.auth_kind === "none") return { ok: false, error: "notApi" };
+    const name = sourceSecretName(id);
+    const put = await putSecret(supabase, name, secret);
+    if (!put.ok) return { ok: false, error: put.error === "forbidden" ? "forbidden" : "generic" };
+    await logAudit(supabase, {
+      actorId: adminId, action: "grovnews.source_secret_saved", entityType: "grovnews_source", entityId: id, after: { secret: "replaced" },
+    });
+    revalidateAll();
+    const status = (await secretStatuses(supabase, [name])).get(name);
+    return { ok: true, lastFour: status?.lastFour ?? null };
+  } catch (e) {
+    return failed(e);
+  }
+}
+
+/** Remove an API source's secret from the vault. */
+export async function clearSourceSecretAction(id: string): Promise<{ ok: true; removed: boolean } | Fail> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    if (!isUuid(id)) return { ok: false, error: "invalid" };
+    const removed = await clearSecret(supabase, sourceSecretName(id));
+    await logAudit(supabase, {
+      actorId: adminId, action: "grovnews.source_secret_removed", entityType: "grovnews_source", entityId: id, after: { removed },
+    });
+    revalidateAll();
+    return { ok: true, removed };
   } catch (e) {
     return failed(e);
   }
@@ -175,7 +260,7 @@ export async function analyzeNowAction():
   try {
     const { supabase, adminId } = await requireAdmin();
     if (!store.serverTokenAvailable()) return NO_SERVER_KEY;
-    const engine = await grovnewsEngine(supabase);
+    const engine = await grovnewsEngine(supabase, { ref: "grovnews:analyze" });
     if (!engine) return { ok: false, error: "aiUnavailable" };
     const ctx = await store.jobContext(supabase);
     const r = await analyzeQueue(supabase, ctx, engine, budget(150_000), 15);
@@ -260,7 +345,7 @@ export async function createDraftFromItemAction(id: string):
     if (!item) return { ok: false, error: "invalid" };
     if (item.post_id) return { ok: true, postId: item.post_id };
     if (item.status === "USED") return { ok: false, error: "used" };
-    const engine = await grovnewsEngine(supabase);
+    const engine = await grovnewsEngine(supabase, { ref: "grovnews:draft" });
     if (!engine) return { ok: false, error: "aiUnavailable" };
     if (item.status !== "SELECTED") {
       const { error } = await supabase.from("grovnews_research_items")
@@ -446,7 +531,7 @@ async function readEdition(supabase: Awaited<ReturnType<typeof requireAdmin>>["s
 
 /**
  * THE MAIL OF A DAY'S ARTICLE (0125): one intro, one short section per topic,
- * ONE link — to the published article. Built from the edition's own record,
+ * links only to the published article (and its topic anchors, 0128). Built from the edition's own record,
  * never from what a campaign row says now. Null when this is not an article
  * edition (the Stage 2 digest path applies).
  */
@@ -489,7 +574,7 @@ export async function prepareEmailAction(id: string):
     if (!source || !(await allPostsPublished(supabase, id, source))) return { ok: false, error: "unpublished" };
 
     const daily = dailyMailOf(ed, source);
-    const engine = daily ? null : await grovnewsEngine(supabase);
+    const engine = daily ? null : await grovnewsEngine(supabase, { ref: "grovnews:mail" });
     const edition = { date: source.date, title: source.title, intro: source.intro };
     const mail = daily
       ? { subject: daily.subject, preview: daily.preview, intro: daily.intro, blurbs: new Map<string, string>(), aiUsed: false }
@@ -712,9 +797,12 @@ export async function sendEditionAction(id: string):
       status: "QUEUED", queued_at: claimedAt, email_recipients: recipients, failure_reason: null, email_body: html,
     }).eq("id", id);
     if (error) return { ok: false, error: "generic" };
+    // 0128: the same digest to the admin-configured operator addresses, once,
+    // now that the subscribers' send is queued. Best effort — never undoes it.
+    const operators = await sendOperatorCopies(supabase, { subject: ed.email_subject, preview: ed.email_preview ?? "", html });
     await logAudit(supabase, {
       actorId: adminId, action: "grovnews.email_sent", entityType: "grovnews_edition", entityId: id,
-      after: { campaign: ed.campaign_id, recipients },
+      after: { campaign: ed.campaign_id, recipients, operators },
     });
     revalidateAll();
     return { ok: true, recipients };
@@ -725,24 +813,32 @@ export async function sendEditionAction(id: string):
 
 /* ── automation ────────────────────────────────────────────────────────────── */
 
-export async function saveSettingsAction(raw: unknown): Promise<{ ok: true } | Fail> {
+export async function saveSettingsAction(raw: unknown): Promise<{ ok: true } | Fail<"hours" | "operators" | "model">> {
   try {
     const { supabase, adminId } = await requireAdmin();
-    const parsed = validateSettingsInput(raw);
-    if (!parsed.ok) return { ok: false, error: "invalid" };
+    // The model must be one the platform's stack really calls (0128).
+    const parsed = validateSettingsInput(raw, GROVNEWS_MODEL_OPTIONS);
+    if (!parsed.ok) return { ok: false, error: parsed.error ?? "invalid" };
     const v = parsed.value;
-    const { data: before } = await supabase.from("grovnews_settings").select("mode, daily_enabled, email_enabled").eq("id", true).maybeSingle();
+    const { data: before } = await supabase.from("grovnews_settings")
+      .select("mode, daily_enabled, email_enabled, ai_provider, ai_model, publish_hour, send_hour").eq("id", true).maybeSingle();
     const { error } = await supabase.from("grovnews_settings").update({
       mode: v.mode, daily_enabled: v.dailyEnabled, run_hour: v.runHour, min_relevance: v.minRelevance,
       min_importance: v.minImportance, max_topics: v.maxTopics, auto_publish_official_sensitive: v.autoPublishOfficialSensitive,
       min_topics: v.minTopics, lookback_hours: v.lookbackHours, email_enabled: v.emailEnabled,
+      ai_provider: v.aiProvider, ai_model: v.aiModel, publish_hour: v.publishHour, send_hour: v.sendHour,
+      operator_emails: v.operatorEmails,
       updated_by: adminId,
     }).eq("id", true);
     if (error) return { ok: false, error: "generic" };
     await logAudit(supabase, {
       actorId: adminId, action: "grovnews.settings_saved", entityType: "grovnews_settings",
-      before: before ? { mode: before.mode, daily_enabled: before.daily_enabled, email_enabled: before.email_enabled } : undefined,
-      after: { ...v },
+      before: before ? {
+        mode: before.mode, daily_enabled: before.daily_enabled, email_enabled: before.email_enabled,
+        ai_provider: before.ai_provider, ai_model: before.ai_model, publish_hour: before.publish_hour, send_hour: before.send_hour,
+      } : undefined,
+      // Operator addresses are recorded as a count, not as a list of addresses.
+      after: { ...v, operatorEmails: v.operatorEmails.length },
     });
     revalidateAll();
     return { ok: true };

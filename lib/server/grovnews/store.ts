@@ -3,7 +3,9 @@ import type { Client } from "@/lib/services/workspace";
 import type { Json } from "@/lib/database.types";
 import { dispatchToken } from "@/lib/server/server-token";
 import {
-  DEFAULT_SETTINGS, readDailyRecord, type DailyRecord, type GrovNewsSettings, type GrovNewsMode, type SourceType,
+  AI_PROVIDERS, DEFAULT_SETTINGS, MODEL_ID_RE, parseOperatorEmails, readDailyRecord,
+  type ContentLanguage, type DailyRecord, type GrovNewsAiProvider, type GrovNewsSettings, type GrovNewsMode,
+  type SourceAuthKind, type SourceType,
 } from "@/lib/grovnews-research";
 
 export type { DailyRecord, DailyTopicRecord } from "@/lib/grovnews-research";
@@ -49,6 +51,8 @@ async function unwrap<T>(call: PromiseLike<{ data: unknown; error: { message: st
 export type SourceRef = {
   id: string; name: string; type: SourceType; url: string | null; categoryId: string | null;
   priority: number; official: boolean; language: "pl" | "en" | "de";
+  /** 0128: how an API source authenticates (the secret is in the vault). */
+  authKind?: SourceAuthKind; authHeader?: string | null;
 };
 export type CategoryRef = { id: string; slug: string; name: string };
 export type RecentItem = { id: string; hash: string; title: string };
@@ -58,7 +62,11 @@ type RawSettings = {
   mode?: string; daily_enabled?: boolean; run_hour?: number; min_relevance?: number; min_importance?: number;
   max_topics?: number; auto_publish_official_sensitive?: boolean;
   min_topics?: number; lookback_hours?: number; email_enabled?: boolean;
+  ai_provider?: string | null; ai_model?: string | null; publish_hour?: number | null; send_hour?: number | null;
+  operator_emails?: string[] | null;
 };
+
+const hourOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 23 ? v : null);
 
 export function settingsFromRow(raw: RawSettings | null | undefined): GrovNewsSettings {
   if (!raw) return DEFAULT_SETTINGS;
@@ -74,6 +82,11 @@ export function settingsFromRow(raw: RawSettings | null | undefined): GrovNewsSe
     minTopics: raw.min_topics ?? DEFAULT_SETTINGS.minTopics,
     lookbackHours: raw.lookback_hours ?? DEFAULT_SETTINGS.lookbackHours,
     emailEnabled: raw.email_enabled !== false,
+    aiProvider: (AI_PROVIDERS as readonly string[]).includes(raw.ai_provider ?? "") ? raw.ai_provider as GrovNewsAiProvider : null,
+    aiModel: typeof raw.ai_model === "string" && MODEL_ID_RE.test(raw.ai_model) ? raw.ai_model : null,
+    publishHour: hourOrNull(raw.publish_hour),
+    sendHour: hourOrNull(raw.send_hour),
+    operatorEmails: parseOperatorEmails(raw.operator_emails ?? []) ?? [],
   };
 }
 
@@ -81,13 +94,15 @@ export async function jobContext(db: Client): Promise<JobContext> {
   const raw = await unwrap<{
     settings: RawSettings; recent: RecentItem[]; categories: CategoryRef[];
     sources: { id: string; name: string; type: SourceType; url: string | null; category_id: string | null;
-      priority: number; official: boolean; language: "pl" | "en" | "de" }[];
+      priority: number; official: boolean; language: "pl" | "en" | "de"; auth_kind?: string; auth_header?: string | null }[];
   }>(db.rpc("grovnews_job_context", { p_token: token() }));
   return {
     settings: settingsFromRow(raw.settings),
     sources: (raw.sources ?? []).map((s) => ({
       id: s.id, name: s.name, type: s.type, url: s.url, categoryId: s.category_id,
       priority: s.priority, official: s.official, language: s.language,
+      authKind: s.auth_kind === "bearer" || s.auth_kind === "header" ? s.auth_kind : "none",
+      authHeader: s.auth_header ?? null,
     })),
     categories: raw.categories ?? [],
     recent: raw.recent ?? [],
@@ -97,6 +112,8 @@ export async function jobContext(db: Client): Promise<JobContext> {
 export type IngestItem = {
   url: string; nurl: string; title: string; excerpt: string; published_at: string | null;
   hash: string; title_norm: string; duplicate_of: string | null; stale: boolean; metadata: Record<string, Json>;
+  /** 0128: the item's detected language (its source's when undetectable). */
+  language?: ContentLanguage;
 };
 export type IngestResult = {
   inserted: number; duplicates: number; skipped: number; stale: number; items: RecentItem[];
@@ -199,6 +216,13 @@ export async function runUpdate(db: Client, runId: string, patch: {
   }));
 }
 
+/** 0128: the admin-configured operator addresses, suppressed ones left out
+ *  (admin session or the job's token). */
+export async function operatorRecipients(db: Client): Promise<string[]> {
+  const list = await unwrap<string[] | null>(db.rpc("grovnews_operator_recipients", { p_token: dispatchToken() ?? "" }));
+  return Array.isArray(list) ? list.filter((e): e is string => typeof e === "string") : [];
+}
+
 export async function aiProviders(db: Client): Promise<{ id: string; slug: string }[]> {
   return (await unwrap<{ id: string; slug: string }[] | null>(db.rpc("grovnews_ai_providers", { p_token: token() }))) ?? [];
 }
@@ -252,6 +276,8 @@ export type DailySource = {
   /** Review-flagged, or law/tax from an unofficial site (its excerpt still
    *  reaches the writer, so the topic waits for a person). */
   flagged?: boolean;
+  /** 0128: the report's own language. */
+  language?: ContentLanguage;
 };
 export type DailyCandidate = {
   id: string; url: string; title: string; excerpt: string; published_at: string | null; discovered_at: string;
@@ -260,6 +286,8 @@ export type DailyCandidate = {
   review_reason: string | null; category: string | null;
   source_name: string; official: boolean; priority: number; language: "pl" | "en" | "de"; source_id: string | null;
   related: DailySource[];
+  /** 0128: the item's own (detected) language; `language` is its source's. */
+  item_language?: ContentLanguage;
 };
 
 /** Today's SELECTED topics, each with every report of the same story. */

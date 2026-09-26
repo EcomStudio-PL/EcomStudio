@@ -33,6 +33,8 @@ export const RESERVED_SLUGS = new Set([
   // not collide with this route anyway, but a page NAMED "podglad" would be a
   // confusing thing to own.
   "podglad",
+  // /profile forwards to the account settings' profile tab (0127).
+  "profile",
 ]);
 
 function textFor(seo: PageSeo, locale: string): SeoText {

@@ -110,6 +110,9 @@ export const googleAdapter: ImageProviderAdapter = {
     // still lands in the job's trail and the operator is still told. Only the
     // images stop being discarded.
     const images: GenerationResult["images"] = [];
+    // Summed over the per-image requests, from each response's usageMetadata.
+    let inputTokens: number | undefined;
+    let outputTokens: number | undefined;
     for (let i = 0; i < req.quantity; i++) {
       // THE DEADLINE IS CHECKED PER IMAGE, because each image is its own
       // request. Stopping here hands back what was produced through the
@@ -148,7 +151,13 @@ export const googleAdapter: ImageProviderAdapter = {
         if (!res.ok) throw await classifyGoogleError(res);
         const json = (await res.json()) as {
           candidates?: { content?: { parts?: { inlineData?: { mimeType: string; data: string } }[] } }[];
+          usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number };
         };
+        const meta = json.usageMetadata;
+        if (typeof meta?.promptTokenCount === "number") inputTokens = (inputTokens ?? 0) + meta.promptTokenCount;
+        if (typeof meta?.candidatesTokenCount === "number" || typeof meta?.thoughtsTokenCount === "number") {
+          outputTokens = (outputTokens ?? 0) + (meta?.candidatesTokenCount ?? 0) + (meta?.thoughtsTokenCount ?? 0);
+        }
         const inline = json.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData;
         if (!inline?.data) throw new ProviderError("provider_empty_result");
         images.push({ base64: inline.data, mime: inline.mimeType || "image/png" });
@@ -161,6 +170,9 @@ export const googleAdapter: ImageProviderAdapter = {
         throw new ProviderError("provider_error", false, undefined, undefined, images);
       }
     }
-    return { images };
+    return {
+      images,
+      usage: inputTokens === undefined && outputTokens === undefined ? undefined : { inputTokens, outputTokens },
+    };
   },
 };

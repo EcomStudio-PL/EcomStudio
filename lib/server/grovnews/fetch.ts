@@ -26,8 +26,10 @@ import { isAcceptableSourceUrl } from "@/lib/grovnews-research";
  *     DECOMPRESSED stream, so neither a slow server nor a gzip bomb can hold
  *     the job.
  *
- * It never sends a cookie, never an Authorization header, and identifies
- * itself honestly. It does not solve CAPTCHAs, log in, or retry around a
+ * It never sends a cookie, and identifies itself honestly. The ONE exception
+ * to "no credentials" is an API source's own key (0128), which reaches this
+ * module only through `headersFor` — asked afresh for every hop, so the API
+ * reader can hand it to the source's own origin and to nothing else. It does not solve CAPTCHAs, log in, or retry around a
  * refusal: a 401/403/429 is an answer, not an obstacle.
  */
 
@@ -59,6 +61,10 @@ export type FetchOptions = {
   /** Asked before EVERY request of the fetch, the redirects included (after
    *  the address check); throwing stops the fetch. The robots gate. */
   beforeHop?: (url: URL) => Promise<void>;
+  /** Extra request headers for ONE hop (the redirects included), decided by
+   *  the caller per address — the API reader's credential, sent to the
+   *  source's own origin only. Never overrides the headers set here. */
+  headersFor?: (url: URL) => Record<string, string>;
 };
 
 /* ── which addresses are the public internet ───────────────────────────────── */
@@ -160,7 +166,7 @@ export function guardedLookup(resolve: Resolver = systemResolver) {
 type RawResponse = { status: number; headers: Record<string, string | string[] | undefined>; body: Readable };
 export type Transport = (url: URL, headers: Record<string, string>, signal: AbortSignal) => Promise<RawResponse>;
 
-const httpsTransport: Transport = (url, headers, signal) => new Promise((resolve, reject) => {
+export const httpsTransport: Transport = (url, headers, signal) => new Promise((resolve, reject) => {
   const req = httpsRequest(url, {
     method: "GET", headers, signal, lookup: guardedLookup() as never, agent: false,
   }, (res: IncomingMessage) => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: res }));
@@ -258,6 +264,7 @@ export async function fetchWith(transport: Transport, rawUrl: string, opts: Fetc
       let res: RawResponse;
       try {
         res = await transport(url, {
+          ...(opts.headersFor ? opts.headersFor(url) : {}),
           "user-agent": USER_AGENT,
           accept: opts.accept,
           "accept-encoding": "gzip, deflate, br",
@@ -409,11 +416,14 @@ export function globMatches(pattern: string, path: string): boolean {
  * allows; a refused one (429) or an unreachable one (5xx, network) does not:
  * when in doubt, the answer is no ("robots_unreachable" — try again later).
  */
-export function robotsGate(): (url: URL) => Promise<void> {
+export function robotsGate(
+  fetcher: (url: string, opts: FetchOptions) => Promise<FetchedDocument> = safeFetch,
+): (url: URL) => Promise<void> {
   const byOrigin = new Map<string, Promise<string | null>>();
   const read = async (origin: string): Promise<string | null> => {
     try {
-      return (await safeFetch(`${origin}/robots.txt`, { accept: "text/plain", maxBytes: 256_000, timeoutMs: 6_000 })).body;
+      // robots.txt is read WITHOUT any caller header: no credential goes to it.
+      return (await fetcher(`${origin}/robots.txt`, { accept: "text/plain", maxBytes: 256_000, timeoutMs: 6_000 })).body;
     } catch (e) {
       const status = e instanceof SafeFetchError ? e.status : undefined;
       if (typeof status === "number" && status >= 400 && status < 500 && status !== 429) return null;

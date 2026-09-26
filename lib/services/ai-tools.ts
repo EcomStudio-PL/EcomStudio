@@ -97,6 +97,29 @@ const CATEGORY: Record<AiToolKey, ToolCategory> = {
 /** Which tools actually run through the ai_models path (`runGeneration`).
  *  The paid micro-tools reach a provider by capability instead, so offering
  *  them a model picker would be a control that decides nothing. */
+/**
+ * Tools whose RUNTIME reads the model assignment made in this panel
+ * (ai_tool_models primary / fallback). For every other tool the model comes
+ * from somewhere else (the customer's choice, the concept chain, a fixed
+ * identifier, a capability chain) and the panel shows that path read-only
+ * instead of a picker that would change nothing.
+ */
+export const MODEL_ASSIGNMENT_RUNTIME: ReadonlySet<string> = new Set(["retouch"]);
+
+/** Where a tool's model/provider really comes from at run time — the one
+ *  answer the registry line, the tool page and the API-path card share. */
+export type ApiPathKind = "local" | "assigned" | "customer_choice" | "concept_chain" | "fixed" | "capability" | "none";
+
+export function apiPathKind(toolKey: string, category?: string): ApiPathKind {
+  if (category === "local" || ["editor", "resize", "compress", "tool_watermark"].includes(toolKey)) return "local";
+  if (MODEL_ASSIGNMENT_RUNTIME.has(toolKey)) return "assigned";
+  if (toolKey === "generator") return "customer_choice";
+  if (toolKey === "prompts") return "concept_chain";
+  if (toolKey.startsWith("fashion_")) return "fixed";
+  if (toolKey === "tool_upscale" || toolKey === "tool_expand") return "capability";
+  return "none";
+}
+
 const MODEL_DRIVEN: readonly AiToolKey[] = [
   "prompts", "generator", "retouch", "video",
   "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person",

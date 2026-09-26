@@ -32,7 +32,7 @@ export type FeedEntry = {
   categories: string[];
 };
 
-export type ParsedFeed = { kind: "rss" | "rdf" | "atom" | "json" | "page"; title: string | null; entries: FeedEntry[] };
+export type ParsedFeed = { kind: "rss" | "rdf" | "atom" | "json" | "page" | "api"; title: string | null; entries: FeedEntry[] };
 
 export const MAX_ENTRIES = 50;
 /** Characters parsed per document. Fifty feed entries fit many times over. */
@@ -348,6 +348,64 @@ export function parseFeed(body: string, baseUrl: string, now: number = Date.now(
   if (trimmed.startsWith("{")) return parseJsonFeed(trimmed, baseUrl, now);
   if (trimmed.startsWith("<")) return parseXml(trimmed, baseUrl, now);
   return null;
+}
+
+/* ── a plain JSON API (0128) ───────────────────────────────────────────────── */
+
+/** Where an API response keeps its list, in the order they are tried. */
+const API_LIST_KEYS = ["items", "articles", "data", "results", "entries", "news", "posts"] as const;
+const API_TITLE = ["title", "headline", "name"] as const;
+const API_URL = ["url", "link", "href", "web_url", "permalink"] as const;
+const API_DATE = ["published_at", "publishedAt", "date_published", "date", "pubDate", "published", "created_at", "updated_at"] as const;
+const API_SUMMARY = ["summary", "description", "excerpt", "abstract", "lead", "teaser"] as const;
+
+/**
+ * A MINIMAL generic JSON mapping for an API that is not a feed: an array of
+ * objects — at the top level, or under items / articles / data / results /
+ * entries (one level down, or data.<one of those>) — each with a title and a
+ * URL, and optionally a date and a summary. Anything else is not a format we
+ * read (null). Everything taken from it is treated exactly like a feed entry:
+ * capped, markup-stripped, http(s) links only, dates sanity-checked.
+ */
+export function parseApiJson(body: string, baseUrl: string, now: number = Date.now()): ParsedFeed | null {
+  let doc: unknown;
+  try {
+    doc = JSON.parse(body.replace(/^﻿/, "").slice(0, MAX_INPUT * 2));
+  } catch {
+    return null;
+  }
+  const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : null);
+  const listIn = (o: Record<string, unknown> | null): unknown[] | null => {
+    if (!o) return null;
+    for (const k of API_LIST_KEYS) if (Array.isArray(o[k])) return o[k] as unknown[];
+    return null;
+  };
+  const top = obj(doc);
+  const list = Array.isArray(doc) ? doc : listIn(top) ?? listIn(obj(top?.data)) ?? null;
+  if (!list) return null;
+  const pick = (o: Record<string, unknown>, keys: readonly string[]): string | null => {
+    for (const k of keys) {
+      const v = o[k];
+      if (typeof v === "string" && v.trim()) return v;
+    }
+    return null;
+  };
+  const esc = (v: string | null) => (v ? v.replace(/&/g, "&amp;").replace(/</g, "&lt;") : null);
+  const entries = list.slice(0, MAX_ENTRIES).map((raw) => {
+    const it = obj(raw);
+    if (!it) return null;
+    return entry({
+      title: esc(pick(it, API_TITLE)),
+      url: absolute(pick(it, API_URL), baseUrl),
+      date: date(pick(it, API_DATE), now),
+      // A summary may be HTML (it is stripped) or plain text (escaped first).
+      excerpt: pick(it, API_SUMMARY),
+      guid: esc(typeof it.id === "string" || typeof it.id === "number" ? String(it.id) : null),
+      categories: [],
+    });
+  });
+  const title = top ? pick(top, ["title", "name"]) : null;
+  return { kind: "api", title: title ? htmlToText(esc(title) ?? "", 200) : null, entries: entries.filter(isEntry) };
 }
 
 /**

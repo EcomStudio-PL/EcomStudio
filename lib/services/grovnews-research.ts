@@ -1,9 +1,12 @@
 import type { Client } from "./workspace";
 import { campaignStats, type CampaignStats } from "./newsletter";
 import type {
-  DailyRecord, EditionStatus, GrovNewsSettings, ItemStatus, SourceHealth, SourceType,
+  DailyRecord, EditionStatus, GrovNewsSettings, ItemStatus, SourceAuthKind, SourceHealth, SourceType,
 } from "@/lib/grovnews-research";
-import { DEFAULT_SETTINGS, effectiveHealth, readDailyRecord } from "@/lib/grovnews-research";
+import {
+  AI_PROVIDERS, DEFAULT_SETTINGS, SOURCE_ERROR_KINDS, effectiveHealth, parseOperatorEmails, readDailyRecord, sourceErrorKind,
+  sourceState, warsawDate, type GrovNewsAiProvider, type SourceErrorKind,
+} from "@/lib/grovnews-research";
 
 /**
  * GROVNEWS STAGE 2 — admin reads. Every table read here is admin-only under
@@ -30,6 +33,11 @@ export async function adminGetSettings(supabase: Client): Promise<AdminSettings>
     minTopics: data.min_topics ?? DEFAULT_SETTINGS.minTopics,
     lookbackHours: data.lookback_hours ?? DEFAULT_SETTINGS.lookbackHours,
     emailEnabled: data.email_enabled !== false,
+    aiProvider: (AI_PROVIDERS as readonly string[]).includes(data.ai_provider ?? "") ? data.ai_provider as GrovNewsAiProvider : null,
+    aiModel: data.ai_model ?? null,
+    publishHour: data.publish_hour ?? null,
+    sendHour: data.send_hour ?? null,
+    operatorEmails: parseOperatorEmails(data.operator_emails ?? []) ?? [],
     updatedAt: data.updated_at,
   };
 }
@@ -80,13 +88,16 @@ export type AdminSource = {
    *  never tested), and what the last read established. */
   health: SourceHealth; failures: number; lastHttpStatus: number | null; detectedType: string | null;
   resolvedUrl: string | null; lastItems: number | null; lastNewItems: number | null;
+  /** 0128: how an API source authenticates (the secret's own status is read
+   *  server-side from the vault, never here). */
+  authKind: SourceAuthKind; authHeader: string | null;
 };
 
 /** Every source (a bulk import can bring hundreds; the list never silently
  *  stops at an arbitrary length below that). */
 export async function adminListSources(supabase: Client): Promise<AdminSource[]> {
   const { data } = await supabase.from("grovnews_sources")
-    .select("id, name, source_type, url, enabled, category_id, priority, official_source, language, last_checked_at, last_success_at, last_error, health_status, consecutive_failures, last_http_status, detected_type, resolved_url, last_items_count, last_new_items, category:grovnews_categories(name)")
+    .select("id, name, source_type, url, enabled, category_id, priority, official_source, language, last_checked_at, last_success_at, last_error, health_status, consecutive_failures, last_http_status, detected_type, resolved_url, last_items_count, last_new_items, auth_kind, auth_header, category:grovnews_categories(name)")
     .order("enabled", { ascending: false }).order("priority", { ascending: false }).order("name").limit(2000);
   type Row = {
     id: string; name: string; source_type: string; url: string | null; enabled: boolean; category_id: string | null;
@@ -94,6 +105,7 @@ export async function adminListSources(supabase: Client): Promise<AdminSource[]>
     last_success_at: string | null; last_error: string | null; category: { name: string } | null;
     health_status: string | null; consecutive_failures: number; last_http_status: number | null; detected_type: string | null;
     resolved_url: string | null; last_items_count: number | null; last_new_items: number | null;
+    auth_kind: string | null; auth_header: string | null;
   };
   return ((data ?? []) as unknown as Row[]).map((r) => ({
     id: r.id, name: r.name, type: r.source_type as SourceType, url: r.url, enabled: r.enabled,
@@ -103,7 +115,175 @@ export async function adminListSources(supabase: Client): Promise<AdminSource[]>
     health: effectiveHealth(r.enabled, r.health_status), failures: r.consecutive_failures ?? 0,
     lastHttpStatus: r.last_http_status, detectedType: r.detected_type, resolvedUrl: r.resolved_url,
     lastItems: r.last_items_count, lastNewItems: r.last_new_items,
+    authKind: r.auth_kind === "bearer" || r.auth_kind === "header" ? r.auth_kind : "none",
+    authHeader: r.auth_header,
   }));
+}
+
+/* ── source health, summarised (0128) — shared with the Pulpit dashboard ─── */
+
+/**
+ * sourceHealthSummary(db) → SourceHealthSummary
+ *
+ *   total      every source row (switched off included)
+ *   enabled    sources switched on — the base the other counts add up to:
+ *              enabled = ok + problem + untested
+ *   ok         enabled and HEALTHY
+ *   problem    enabled and DEGRADED / FAILED / UNSUPPORTED
+ *   untested   enabled and never checked
+ *   byKind     the problem sources grouped by their last error code:
+ *              timeout / auth / http / invalid_feed / other (every key is
+ *              present, 0 when none) — "72 źródła · 69 OK · 2 timeout · 1 auth"
+ *
+ * Admin RLS: a non-admin client reads no rows and gets all zeros.
+ */
+export type SourceHealthSummary = {
+  total: number; enabled: number; ok: number; problem: number; untested: number;
+  byKind: Record<SourceErrorKind, number>;
+};
+
+export async function sourceHealthSummary(db: Client): Promise<SourceHealthSummary> {
+  const { data } = await db.from("grovnews_sources").select("enabled, health_status, last_error").limit(5000);
+  const out: SourceHealthSummary = {
+    total: 0, enabled: 0, ok: 0, problem: 0, untested: 0,
+    byKind: Object.fromEntries(SOURCE_ERROR_KINDS.map((k) => [k, 0])) as Record<SourceErrorKind, number>,
+  };
+  for (const r of data ?? []) {
+    out.total += 1;
+    const state = sourceState(effectiveHealth(r.enabled, r.health_status));
+    if (state === "off") continue;
+    out.enabled += 1;
+    if (state === "ok") out.ok += 1;
+    else if (state === "untested") out.untested += 1;
+    else {
+      out.problem += 1;
+      out.byKind[sourceErrorKind(r.last_error)] += 1;
+    }
+  }
+  return out;
+}
+
+/* ── today's run, summarised (0128) — shared with the Pulpit dashboard ───── */
+
+/**
+ * todayRunSummary(db, now?) → TodayRunSummary — "does GrovNews work today?"
+ * Every field is null when there is nothing to report (no run yet, no
+ * edition, no campaign); nothing is guessed.
+ *
+ *   runDate            today's Warsaw date (YYYY-MM-DD), always set
+ *   status             grovnews_runs.status: RUNNING | DONE | FAILED | null
+ *   stage              INGEST | ANALYZE | DRAFT | EDITION | SEND | DONE | null
+ *   startedAt, finishedAt   ISO timestamps
+ *   sources            sources the run tried to read (stats.ingest.sources)
+ *   fetched            entries those reads listed (stats.ingest.found)
+ *   inserted           new research items stored (stats.ingest.inserted)
+ *   duplicates         reports recognised as a known story
+ *   rejected           entries set aside as stale / baseline (stats.ingest.stale)
+ *   accepted           topics in the day's article (stats.article.topics), or
+ *                      the topics selected when no article was written yet
+ *   aiCalls            provider requests traced for this run
+ *                      (ai_provider_calls, consumer 'grovnews', run_ref = run id)
+ *   aiCostUsdMicros    sum of the KNOWN costs of those requests (USD micros),
+ *                      null when none is known
+ *   unknownCostCalls   requests whose cost is unknown (no price listed)
+ *   editionId, editionStatus   today's edition (grovnews_editions)
+ *   campaignId         its newsletter campaign
+ *   recipients         recipients queued (edition.email_recipients)
+ *   sent, failed       newsletter_recipients of that campaign by status
+ *   outcome            stats.outcome (published_queued, draft_review,
+ *                      no_topics, ai_unavailable, waiting_publish, …)
+ *
+ * Admin RLS on every table read.
+ */
+export type TodayRunSummary = {
+  runDate: string;
+  status: "RUNNING" | "DONE" | "FAILED" | null;
+  stage: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  sources: number | null;
+  fetched: number | null;
+  inserted: number | null;
+  duplicates: number | null;
+  rejected: number | null;
+  accepted: number | null;
+  aiCalls: number;
+  aiCostUsdMicros: number | null;
+  unknownCostCalls: number;
+  editionId: string | null;
+  editionStatus: EditionStatus | null;
+  campaignId: string | null;
+  recipients: number | null;
+  sent: number | null;
+  failed: number | null;
+  outcome: string | null;
+};
+
+const statNum = (stats: Record<string, unknown>, sectionName: string | null, field: string): number | null => {
+  const holder = sectionName === null ? stats : stats[sectionName];
+  if (!holder || typeof holder !== "object" || Array.isArray(holder)) return null;
+  const v = (holder as Record<string, unknown>)[field];
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+};
+
+export async function todayRunSummary(db: Client, now: Date = new Date()): Promise<TodayRunSummary> {
+  const runDate = warsawDate(now);
+  const [{ data: run }, { data: edition }] = await Promise.all([
+    db.from("grovnews_runs").select("id, status, stage, started_at, finished_at, stats")
+      .eq("kind", "DAILY").eq("run_date", runDate).maybeSingle(),
+    db.from("grovnews_editions").select("id, status, campaign_id, email_recipients").eq("edition_date", runDate).maybeSingle(),
+  ]);
+  const stats = (run?.stats && typeof run.stats === "object" && !Array.isArray(run.stats) ? run.stats : {}) as Record<string, unknown>;
+
+  let aiCalls = 0;
+  let known = 0;
+  let anyKnown = false;
+  let unknownCostCalls = 0;
+  if (run) {
+    const { data: calls } = await db.from("ai_provider_calls").select("request_count, cost_usd_micros, cost_basis")
+      .eq("consumer", "grovnews").eq("run_ref", run.id).limit(5000);
+    for (const c of calls ?? []) {
+      aiCalls += c.request_count ?? 1;
+      if (c.cost_basis === "unknown" || c.cost_usd_micros === null) unknownCostCalls += c.request_count ?? 1;
+      else { known += Number(c.cost_usd_micros); anyKnown = true; }
+    }
+  }
+
+  let sent: number | null = null;
+  let failed: number | null = null;
+  if (edition?.campaign_id) {
+    const count = async (status: string) => {
+      const { count: n } = await db.from("newsletter_recipients").select("id", { count: "exact", head: true })
+        .eq("campaign_id", edition.campaign_id as string).eq("status", status);
+      return n ?? 0;
+    };
+    [sent, failed] = await Promise.all([count("sent"), count("failed")]);
+  }
+
+  const status = run?.status === "RUNNING" || run?.status === "DONE" || run?.status === "FAILED" ? run.status : null;
+  return {
+    runDate,
+    status,
+    stage: run?.stage ?? null,
+    startedAt: run?.started_at ?? null,
+    finishedAt: run?.finished_at ?? null,
+    sources: statNum(stats, "ingest", "sources"),
+    fetched: statNum(stats, "ingest", "found"),
+    inserted: statNum(stats, "ingest", "inserted"),
+    duplicates: statNum(stats, "ingest", "duplicates"),
+    rejected: statNum(stats, "ingest", "stale"),
+    accepted: statNum(stats, "article", "topics") ?? statNum(stats, null, "selected"),
+    aiCalls,
+    aiCostUsdMicros: anyKnown ? known : null,
+    unknownCostCalls,
+    editionId: edition?.id ?? null,
+    editionStatus: (edition?.status ?? null) as EditionStatus | null,
+    campaignId: edition?.campaign_id ?? null,
+    recipients: edition?.email_recipients ?? null,
+    sent,
+    failed,
+    outcome: typeof stats.outcome === "string" ? stats.outcome : null,
+  };
 }
 
 /* ── research inbox ────────────────────────────────────────────────────────── */

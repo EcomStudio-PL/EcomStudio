@@ -15,6 +15,8 @@ import {
 import { buildFidelityInstructions } from "@/lib/ai/product-lock";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
+import { recordProviderCalls, type ProviderCall } from "@/lib/server/ai-usage";
+import { imageCost } from "@/lib/ai/usage-cost";
 import {
   GENERATION_BUDGET_MS, MAX_ATTEMPTS_PER_PROVIDER, PROVIDER_CALL_BUDGET_MS,
   fitsInBudget, getProviderHealth, providerBlocked,
@@ -498,6 +500,27 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     error: string; code?: string; status?: number; message?: string;
   };
   const attempts: Attempt[] = [];
+  /*
+    THE PROVIDER SIDE OF THIS RUN, one entry per request actually sent —
+    failed attempts included, because a provider bills the images it produced
+    before failing. Written to ai_provider_calls when the run closes, linked to
+    the usage event (the customer's charge) and the job. Telemetry only: it
+    never changes what the customer is charged or refunded.
+  */
+  const providerCalls: ProviderCall[] = [];
+  const traceCall = (c: {
+    providerSlug: string; model: { model_identifier: string; internal_cost_usd_micros: number | null };
+    ok: boolean; images: number; ms: number; errorCode?: string;
+    usage?: { inputTokens?: number; outputTokens?: number };
+  }) => providerCalls.push({
+    actorKind: "customer", consumer: "generation", userId, workspaceId,
+    toolKey: generationToolKey(input), jobId: job.id, usageEventId: usage.eventId,
+    providerSlug: c.providerSlug, model: c.model.model_identifier,
+    status: c.ok ? "succeeded" : "failed", errorCode: c.ok ? null : (c.errorCode ?? "provider_error"),
+    units: c.images, unitKind: "image",
+    inputTokens: c.usage?.inputTokens ?? null, outputTokens: c.usage?.outputTokens ?? null,
+    cost: imageCost(c.model.internal_cost_usd_micros, c.images), durationMs: c.ms,
+  });
   let result: Awaited<ReturnType<ImageProviderAdapter["generate"]>> | null = null;
   let served: { model: typeof model; providerSlug: string } | null = null;
   let lastError: ProviderError | null = null;
@@ -601,6 +624,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         });
         break;
       }
+      const attemptStartedAt = Date.now();
       try {
         result = await withProviderLimit(cProviderSlug, () => cAdapter.generate(cModel, {
           prompt: providerPrompt, aspectRatio, resolution: cResolution,
@@ -613,6 +637,10 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
           deadlineAt,
         }, { apiKey: cApiKey, baseUrl: cBaseUrl }));
         served = { model: cModel, providerSlug: cProviderSlug };
+        traceCall({
+          providerSlug: cProviderSlug, model: cModel, ok: true, images: result.images.length,
+          ms: Date.now() - attemptStartedAt, usage: result.usage,
+        });
         if (health.get(cProviderSlug) && health.get(cProviderSlug)!.state !== "healthy") {
           await recordProviderSuccess(supabase, cProviderSlug);
         }
@@ -620,6 +648,10 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       } catch (e) {
         const pe = e instanceof ProviderError ? e : new ProviderError("provider_error");
         lastError = pe;
+        traceCall({
+          providerSlug: cProviderSlug, model: cModel, ok: false, images: pe.partial?.length ?? 0,
+          ms: Date.now() - attemptStartedAt, errorCode: pe.safeMessage,
+        });
         attempts.push({
           provider: cProviderSlug, model: cModel.model_identifier, attempt,
           error: pe.safeMessage, code: pe.providerCode,
@@ -681,6 +713,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   if (!result || !served) {
     const safe = lastError?.safeMessage ?? "provider_error";
     await failUsage(supabase, { serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet.id, error: safe });
+    await recordProviderCalls(supabase, providerCalls);
     await supabase.from("generation_jobs").update({
       status: "failed", error_message: safe, error_class: safe,
       latency_ms: Date.now() - startedAt, completed_at: new Date().toISOString(),
@@ -860,6 +893,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
 
   if (stored.length === 0) {
     await failUsage(supabase, { serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet.id, error: "storage_failed" });
+    await recordProviderCalls(supabase, providerCalls);
     await supabase.from("generation_jobs").update({
       status: "failed", error_message: "storage_failed", error_class: "storage_failed",
       latency_ms: Date.now() - startedAt, completed_at: new Date().toISOString(),
@@ -891,6 +925,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     apiCostUsdMicros: (model2.internal_cost_usd_micros ?? 0) * stored.length,
     providerRequestId: requestId,
   });
+  await recordProviderCalls(supabase, providerCalls);
   await supabase.from("generation_jobs").update({
     status: "completed", credits_charged: charged, latency_ms: Date.now() - startedAt,
     request_id: requestId,
@@ -929,6 +964,19 @@ async function resolveModelCandidate(supabase: Client, modelId: string) {
   const apiKey = await readProviderKey(supabase, provider.id, cred);
   if (!apiKey) return null;
   return { model, providerSlug: provider.slug, adapter, apiKey, baseUrl: cred.base_url };
+}
+
+/**
+ * Which tool this run belongs to, for the provider trace. Every engine image
+ * tool reaches this one function and the ledger books them all as
+ * `image_generation`; the operation (Retusz, Moda) or the prompt session
+ * (GrovShot concepts) is what tells them apart.
+ */
+function generationToolKey(input: GenerateInput): string {
+  if (input.operation === "image_retouch") return "retouch";
+  if (input.operation && /^fashion_[a-z_]+$/.test(input.operation)) return input.operation;
+  if (input.promptSessionId || input.conceptId) return "prompts";
+  return "generator";
 }
 
 function buildProductContext(name: string, description: string | null, extraInfo: string | null): string {

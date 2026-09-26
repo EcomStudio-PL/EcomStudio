@@ -23,13 +23,37 @@ export const OPENAI_VISION_MODELS = ["gpt-5", "gpt-4.1", "gpt-4o"];
 export type VisionCredential = { apiKey: string; baseUrl?: string | null };
 export type VisionProvider = "google" | "openai";
 
+/**
+ * One HTTP request to a provider, as the provider reported it. Tokens are what
+ * the response's own usage block said — absent when it said nothing — and are
+ * never estimated here. Pricing them is the caller's business.
+ */
+export type VisionAttempt = {
+  provider: VisionProvider;
+  model: string;
+  ok: boolean;
+  durationMs: number;
+  /** The engine's failure code (analysis_*), never a provider message. */
+  error?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+};
+
 /** One configured backend the chain may use. */
 export type VisionBackend = {
   provider: VisionProvider;
   cred: VisionCredential;
   /** Preferred model id; the backend still falls through its own id list. */
   model?: string;
+  /**
+   * Told about every request this backend makes, successful or not — so a
+   * caller can record what it spent without this layer knowing where the
+   * record goes. It must not throw; a throwing meter is ignored.
+   */
+  meter?: (attempt: VisionAttempt) => void;
 };
+
+type Usage = { inputTokens?: number; outputTokens?: number };
 
 export type VisionRequest = {
   images: ReferenceImage[];
@@ -109,14 +133,21 @@ async function runBackend<T>(backend: VisionBackend, req: VisionRequest): Promis
   let lastError: unknown = new ProviderError("analysis_unavailable");
   for (const model of ids) {
     for (let attempt = 0; ; attempt++) {
+      const started = Date.now();
+      const usage: Usage = {};
       try {
         const data = backend.provider === "google"
-          ? await callGemini<T>(backend.cred, req, model)
-          : await callOpenAI<T>(backend.cred, req, model);
+          ? await callGemini<T>(backend.cred, req, model, usage)
+          : await callOpenAI<T>(backend.cred, req, model, usage);
+        meter(backend, { provider: backend.provider, model, ok: true, durationMs: Date.now() - started, ...usage });
         return { data, model };
       } catch (e) {
         lastError = e;
         const safe = e instanceof ProviderError ? e.safeMessage : "";
+        meter(backend, {
+          provider: backend.provider, model, ok: false, durationMs: Date.now() - started,
+          error: safe || "analysis_error", ...usage,
+        });
         if (TRANSIENT.has(safe) && attempt < RETRY_DELAYS_MS.length) {
           await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
           continue;
@@ -133,6 +164,16 @@ async function runBackend<T>(backend: VisionBackend, req: VisionRequest): Promis
     throw new ProviderError("analysis_unavailable", true);
   }
   throw lastError;
+}
+
+function meter(backend: VisionBackend, attempt: VisionAttempt): void {
+  if (!backend.meter) return;
+  try { backend.meter(attempt); } catch { /* telemetry never breaks a call */ }
+}
+
+/** A non-negative integer from a provider usage field, or undefined. */
+function tokenCount(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.round(v) : undefined;
 }
 
 function dedupe(list: string[]): string[] {
@@ -170,7 +211,7 @@ async function providerCode(res: Response): Promise<string | undefined> {
   } catch { return undefined; }
 }
 
-async function callGemini<T>(cred: VisionCredential, req: VisionRequest, model: string): Promise<T> {
+async function callGemini<T>(cred: VisionCredential, req: VisionRequest, model: string, usage: Usage): Promise<T> {
   const base = cred.baseUrl?.replace(/\/$/, "") || "https://generativelanguage.googleapis.com";
   const url = `${base}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cred.apiKey)}`;
   const parts: Record<string, unknown>[] = [
@@ -199,7 +240,16 @@ async function callGemini<T>(cred: VisionCredential, req: VisionRequest, model: 
   const failure = await classify(res);
   if (failure) throw failure;
 
-  const json = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+  const json = (await res.json()) as {
+    candidates?: { content?: { parts?: { text?: string }[] } }[];
+    usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number };
+  };
+  // Billed output includes the model's thinking tokens where it reports them.
+  const meta = json.usageMetadata;
+  usage.inputTokens = tokenCount(meta?.promptTokenCount);
+  const out = tokenCount(meta?.candidatesTokenCount);
+  const thoughts = tokenCount(meta?.thoughtsTokenCount);
+  usage.outputTokens = out === undefined && thoughts === undefined ? undefined : (out ?? 0) + (thoughts ?? 0);
   const text = json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
   return parseJson<T>(text);
 }
@@ -210,7 +260,7 @@ async function callGemini<T>(cred: VisionCredential, req: VisionRequest, model: 
  * expressed in Gemini's dialect; every consumer of this layer already
  * validates and normalises what comes back.
  */
-async function callOpenAI<T>(cred: VisionCredential, req: VisionRequest, model: string): Promise<T> {
+async function callOpenAI<T>(cred: VisionCredential, req: VisionRequest, model: string, usage: Usage): Promise<T> {
   const base = cred.baseUrl?.replace(/\/$/, "") || "https://api.openai.com";
   const content: Record<string, unknown>[] = [
     ...req.images.map((r) => ({
@@ -247,7 +297,12 @@ ${JSON.stringify(req.schema)}`;
   const failure = await classify(res);
   if (failure) throw failure;
 
-  const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+  const json = (await res.json()) as {
+    choices?: { message?: { content?: string } }[];
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
+  usage.inputTokens = tokenCount(json.usage?.prompt_tokens);
+  usage.outputTokens = tokenCount(json.usage?.completion_tokens);
   return parseJson<T>(json.choices?.[0]?.message?.content ?? "");
 }
 

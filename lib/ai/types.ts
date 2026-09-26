@@ -160,6 +160,9 @@ export type GeneratedImage = { base64?: string; url?: string; mime: string; widt
 export interface GenerationResult {
   images: GeneratedImage[];
   providerMetadata?: Record<string, unknown>;
+  /** Tokens as the provider's own response reported them — absent when it
+   *  reported none. Never estimated by an adapter. */
+  usage?: { inputTokens?: number; outputTokens?: number };
 }
 
 /**

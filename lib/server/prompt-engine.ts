@@ -15,6 +15,7 @@ import { getEngineRuleDirectives, retrieveToolKnowledge } from "@/lib/server/kno
 import { resolveEngine, type EngineConfig } from "@/lib/server/ai-engine";
 import { TOOL_VARIABLES, type CompileValues } from "@/lib/ai/prompt-variables";
 import { compileForTool, recordEngineRun, resolveVariables } from "@/lib/server/engine/runtime";
+import { textMeter } from "@/lib/server/ai-usage";
 
 export type ShotBrief = {
   /** The customer's own words for this shot — optional, max ~300 chars. */
@@ -349,7 +350,7 @@ export async function runPromptSession(
   const productLabel = (input.productName?.trim() || input.description?.trim().split(/[.\n]/)[0] || "").slice(0, 80).trim();
 
   const analysisModel = await getAnalysisModel(supabase);
-  const backends = await getVisionBackends(supabase, analysisModel);
+  let backends = await getVisionBackends(supabase, analysisModel);
   if (backends.length === 0) return { ok: false, error: "analysis_unavailable" };
   // The engine configuration is read ONCE: a template published while this
   // session runs does not change the prompts this session writes.
@@ -485,6 +486,14 @@ export async function runPromptSession(
     await supabase.from("prompt_sessions").update({ status: "failed", error: usage.error }).eq("id", session.id);
     return { ok: false, error: usage.error, sessionId: session.id };
   }
+  // Every analysis / planner request of this session goes into the provider
+  // trace (ai_provider_calls) against the customer's charge — tracking only;
+  // the requests themselves are unchanged.
+  const meter = textMeter(supabase, {
+    actorKind: "customer", consumer: "prompt_engine", userId, workspaceId,
+    toolKey: "prompts", usageEventId: usage.eventId, runRef: session.id,
+  });
+  backends = meter.wrap(backends);
 
   const sessionInfo: SessionInput = {
     productName: productLabel,
@@ -743,11 +752,13 @@ export async function runPromptSession(
       engineVersion: `v${ENGINE_VERSION}/t${PROMPT_TEMPLATE_VERSION}`,
       durationMs: Date.now() - startedAt,
     });
+    await meter.flush();
     return { ok: true, sessionId: session.id, productId: productId ?? "", promptCount: rows.length };
   } catch (e) {
     const safe = e instanceof ProviderError ? e.safeMessage : "analysis_error";
     const providerCode = e instanceof ProviderError ? e.providerCode : undefined;
     await failUsage(supabase, { serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet.id, error: safe });
+    await meter.flush();
     await recordEngineRun(supabase, {
       toolKey: "prompts", workspaceId, userId, mode: engine?.mode ?? "grovbase",
       status: safe === "variable_missing" || safe === "prompt_unconfigured" ? "blocked" : "failed",
@@ -789,7 +800,11 @@ export async function regeneratePrompt(
   if (!session || session.status !== "ready") return { ok: false, error: "not_found" };
 
   const analysisModel = await getAnalysisModel(supabase);
-  const backends = await getVisionBackends(supabase, analysisModel);
+  const meter = textMeter(supabase, {
+    actorKind: "customer", consumer: "prompt_engine", userId: session.user_id ?? null,
+    workspaceId, toolKey: "prompts", runRef: session.id,
+  });
+  const backends = meter.wrap(await getVisionBackends(supabase, analysisModel));
   if (backends.length === 0) return { ok: false, error: "analysis_unavailable" };
 
   const { data: siblings } = await supabase
@@ -870,6 +885,8 @@ export async function regeneratePrompt(
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof ProviderError ? e.safeMessage : "analysis_error" };
+  } finally {
+    await meter.flush();
   }
 }
 

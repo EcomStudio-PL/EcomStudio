@@ -141,6 +141,8 @@ export const RESERVED = [
   "sitemap.xml", "robots.txt", "manifest.webmanifest", "_next", "favicon.ico",
   // The public GrovNews blog (/blog) is a static route since Stage 4 (0125).
   "blog",
+  // /profile forwards to /settings?tab=profile (0127).
+  "profile",
 ];
 
 export type SlugProblem = "empty" | "shape" | "reserved" | "taken" | null;

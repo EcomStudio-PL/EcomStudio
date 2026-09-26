@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowUpRight, ChevronDown, CreditCard, LifeBuoy, LogOut, Newspaper, Plus, Settings, Shield, User } from "lucide-react";
+import { ArrowUpRight, ChevronDown, CreditCard, LifeBuoy, LogOut, Newspaper, Plus, Settings, Shield } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { creditLevel, CREDIT_METER_CLASS, CREDIT_REFERENCE } from "@/lib/credit-level";
@@ -219,7 +219,9 @@ export function AccountMenu({ name, email, credits, plan, isAdmin, showName, gro
               {/* LINKS */}
               <div className="p-1.5 pt-2">
                 {grovnews && <Item href="/grovnews" icon={Newspaper} label={t("grovnews.title")} />}
-                <Item href="/settings" icon={User} label={t("account.profile")} />
+                {/* One row per destination: the profile is the first tab of
+                    Ustawienia (/profile forwards there), so it has no row of
+                    its own. */}
                 <Item href="/settings" icon={Settings} label={t("account.settings")} />
                 <Item href="/plan" icon={CreditCard} label={t("nav.plan")} />
                 <Item href="/support" icon={LifeBuoy} label={t("account.help")} />

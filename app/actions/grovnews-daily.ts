@@ -7,7 +7,8 @@ import { cleanText, readDailyRecord, type DailyRecord, type DailyTopicRecord } f
 import * as store from "@/lib/server/grovnews/store";
 import { grovnewsEngine } from "@/lib/server/grovnews/ai";
 import {
-  composeDailyMail, joinArticle, mailBodyDaily, mailText, splitArticle, toTopic, topicReview, topicSection, writeDaily, type Topic,
+  checkedTranslation, composeDailyMail, joinArticle, mailBodyDaily, mailText, splitArticle, toTopic, topicReview, topicSection,
+  writeDaily, type Topic,
 } from "@/lib/server/grovnews/daily";
 import { saveStepAction } from "@/app/actions/newsletter";
 
@@ -70,13 +71,19 @@ const editable = (l: Loaded) => l.ed.status === "DRAFT" && l.post.status === "DR
 /** A story and every report of it, read as the admin (RLS), in the shape the
  *  job's own candidates have. */
 async function candidateFor(supabase: Db, itemId: string): Promise<store.DailyCandidate | null> {
-  const cols = "id, canonical_url, source_title, source_excerpt, source_published_at, discovered_at, ai_title, ai_summary, ai_reason, relevance_score, importance_score, sensitive, review_required, review_reason, status, post_id, duplicate_of, source_id, category:grovnews_categories(slug), source:grovnews_sources(name, official_source, priority, language)";
+  const cols = "id, canonical_url, source_title, source_excerpt, source_published_at, discovered_at, ai_title, ai_summary, ai_reason, relevance_score, importance_score, sensitive, review_required, review_reason, status, post_id, duplicate_of, source_id, language, category:grovnews_categories(slug), source:grovnews_sources(name, official_source, priority, language)";
   type Row = {
     id: string; canonical_url: string; source_title: string; source_excerpt: string; source_published_at: string | null;
     discovered_at: string; ai_title: string | null; ai_summary: string | null; ai_reason: string | null;
     relevance_score: number | null; importance_score: number | null; sensitive: boolean; review_required: boolean;
     review_reason: string | null; status: string; post_id: string | null; duplicate_of: string | null; source_id: string | null;
+    language: string | null;
     category: { slug: string } | null; source: { name: string; official_source: boolean; priority: number; language: string } | null;
+  };
+  // 0128: an item's own language (detected at ingest), else its source's.
+  const langOf = (r: Row): "pl" | "en" | "de" => {
+    const l = r.language ?? r.source?.language;
+    return l === "en" || l === "de" ? l : "pl";
   };
   const { data: item } = await supabase.from("grovnews_research_items").select(cols).eq("id", itemId).maybeSingle();
   if (!item) return null;
@@ -89,10 +96,11 @@ async function candidateFor(supabase: Db, itemId: string): Promise<store.DailyCa
     relevance: i.relevance_score, importance: i.importance_score, sensitive: i.sensitive, review_required: i.review_required,
     review_reason: i.review_reason, category: i.category?.slug ?? null, source_name: i.source?.name ?? "",
     official: i.source?.official_source ?? false, priority: i.source?.priority ?? 50,
-    language: lang === "en" || lang === "de" ? lang : "pl", source_id: i.source_id,
+    language: lang === "en" || lang === "de" ? lang : "pl", source_id: i.source_id, item_language: langOf(i),
     related: ((dups ?? []) as unknown as Row[]).map((d) => ({
       id: d.id, url: d.canonical_url, title: d.source_title, excerpt: d.source_excerpt.slice(0, 600), published_at: d.source_published_at,
       source: d.source?.name ?? "", official: d.source?.official_source ?? false, priority: d.source?.priority ?? 50, source_id: d.source_id,
+      language: langOf(d),
     })),
   };
 }
@@ -128,7 +136,7 @@ async function saveArticle(supabase: Db, l: Loaded, content: string, record: Dai
 /** One topic written by the model, checked like the day's article is. */
 async function writeTopic(supabase: Db, date: string, topic: Topic, n: number):
   Promise<{ section: string; record: DailyTopicRecord } | "aiUnavailable" | "aiFailed"> {
-  const engine = await grovnewsEngine(supabase);
+  const engine = await grovnewsEngine(supabase, { ref: "grovnews:daily_topic" });
   if (!engine) return "aiUnavailable";
   let copy;
   try {
@@ -141,12 +149,17 @@ async function writeTopic(supabase: Db, date: string, topic: Topic, n: number):
   const sources = [topic.primary, ...topic.supporting]
     .map((s) => ({ url: s.url, title: cleanText(s.title, 300).replace(/\n/g, " "), source: s.source, official: s.official }))
     .sort((a, b) => Number(b.official) - Number(a.official));
+  // 0128: a non-Polish topic quotes its short original and the checked
+  // translation, exactly as the daily run writes it.
+  const translation = checkedTranslation(topic, copy);
   return {
-    section: topicSection(n, copy, sources),
+    section: topicSection(n, copy, sources, topic.original ? { original: topic.original, translation } : null),
     record: {
       itemId: topic.itemId, title: copy.title, short: copy.short || copy.title, mail: copy.mail || copy.short || copy.title,
       category: topic.category, confidence: topic.confidence, official: topic.official, sources: sources.slice(0, 12),
       review: reasons.length > 0, reviewReason: reasons.length ? reasons.join("; ").slice(0, 300) : null,
+      language: topic.language,
+      ...(topic.original ? { original: { text: topic.original.text, url: topic.original.url, source: topic.original.source }, translation } : {}),
     },
   };
 }
@@ -314,7 +327,7 @@ export async function addDailyTopicAction(editionId: string, itemId: string):
 /**
  * Edit the mail's intro and each topic's short summary. Allowed until the mail
  * is queued; if a draft campaign already exists, its body is rebuilt from the
- * edited copy (still one link, to the article).
+ * edited copy (still linking only to the article and its topic anchors).
  */
 export async function saveDailyMailAction(editionId: string, input: { intro: string; mails: Record<string, string> }):
   Promise<{ ok: true } | Fail<"notArticle" | "locked" | "campaignLocked" | "newsletter">> {

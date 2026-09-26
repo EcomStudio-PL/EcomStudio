@@ -225,6 +225,15 @@ export function relatedCandidates(
 
 /* ── settings ──────────────────────────────────────────────────────────────── */
 
+/** The AI providers GrovNews can prefer — the platform's own text-capable
+ *  backends (lib/ai/engine/vision.ts). NULL in the settings = the platform's
+ *  order. There is deliberately no key here: keys live with the providers. */
+export const AI_PROVIDERS = ["openai", "google"] as const;
+export type GrovNewsAiProvider = (typeof AI_PROVIDERS)[number];
+
+/** At most this many operator addresses receive a copy of the day's digest. */
+export const MAX_OPERATOR_EMAILS = 5;
+
 export type GrovNewsSettings = {
   mode: GrovNewsMode;
   dailyEnabled: boolean;
@@ -241,12 +250,24 @@ export type GrovNewsSettings = {
   lookbackHours: number;
   /** AUTOMATIC mode mails the day's article only while this is on. */
   emailEnabled: boolean;
+  /** 0128: a preferred provider (and model) inside the platform's AI stack;
+   *  null = the platform's own order. */
+  aiProvider: GrovNewsAiProvider | null;
+  aiModel: string | null;
+  /** 0128, AUTOMATIC mode only (Europe/Warsaw): the article is written and
+   *  published at or after this hour, the mail sent at or after that one.
+   *  null = right after the previous step (the behaviour before 0128). */
+  publishHour: number | null;
+  sendHour: number | null;
+  /** 0128: admin-configured addresses that get a copy of the day's digest. */
+  operatorEmails: string[];
 };
 
 export const DEFAULT_SETTINGS: GrovNewsSettings = {
   mode: "REVIEW", dailyEnabled: false, runHour: 6, timezone: "Europe/Warsaw",
   minRelevance: 60, minImportance: 60, maxTopics: 5, autoPublishOfficialSensitive: false,
   minTopics: 3, lookbackHours: 36, emailEnabled: true,
+  aiProvider: null, aiModel: null, publishHour: null, sendHour: null, operatorEmails: [],
 };
 
 export const LOOKBACK_RANGE = { min: 12, max: 168 } as const;
@@ -256,7 +277,32 @@ const int = (v: unknown, min: number, max: number): number | null => {
   return Number.isInteger(n) && n >= min && n <= max ? n : null;
 };
 
-export function validateSettingsInput(raw: unknown): { ok: true; value: GrovNewsSettings } | { ok: false } {
+/** A model id as the platform writes them ("gpt-4.1", "gemini-flash-latest"). */
+export const MODEL_ID_RE = /^[a-z0-9][a-z0-9.-]{0,79}$/;
+const EMAIL_RE = /^[a-z0-9._%+-]{1,64}@[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})*\.[a-z]{2,24}$/;
+
+/** A typed list of addresses ("a@x.pl, b@y.pl" or one per line) as the
+ *  normalised list, or null when any entry is not an address or there are too
+ *  many. The same rule as the database's grovnews_operator_emails_ok. */
+export function parseOperatorEmails(raw: unknown): string[] | null {
+  const parts = Array.isArray(raw)
+    ? raw.map((x) => String(x ?? ""))
+    : String(raw ?? "").split(/[\s,;]+/);
+  const list = [...new Set(parts.map((x) => x.trim().toLowerCase()).filter(Boolean))];
+  if (list.length > MAX_OPERATOR_EMAILS) return null;
+  return list.every((e) => e.length <= 254 && EMAIL_RE.test(e)) ? list : null;
+}
+
+export type SettingsInputError = "hours" | "operators" | "model";
+
+/**
+ * The settings an admin submitted, validated. `models` (server side) is the
+ * list of model ids the platform's stack really offers per provider — an id
+ * outside it is refused rather than stored and discovered missing at 06:00.
+ */
+export function validateSettingsInput(
+  raw: unknown, models?: Partial<Record<GrovNewsAiProvider, readonly string[]>>,
+): { ok: true; value: GrovNewsSettings } | { ok: false; error?: SettingsInputError } {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const mode = (MODES as readonly string[]).includes(String(r.mode)) ? (r.mode as GrovNewsMode) : null;
   const runHour = int(r.runHour, 0, 23);
@@ -269,6 +315,24 @@ export function validateSettingsInput(raw: unknown): { ok: true; value: GrovNews
       || minTopics === null || lookbackHours === null || minTopics > maxTopics) {
     return { ok: false };
   }
+  // 0128 — every new field is optional: absent means today's behaviour.
+  const hour = (v: unknown): number | null | undefined => (v === undefined || v === null || v === "" ? null : int(v, 0, 23) ?? undefined);
+  const publishHour = hour(r.publishHour);
+  const sendHour = hour(r.sendHour);
+  if (publishHour === undefined || sendHour === undefined) return { ok: false, error: "hours" };
+  if ((publishHour !== null && publishHour < runHour) || (sendHour !== null && sendHour < (publishHour ?? runHour))) {
+    return { ok: false, error: "hours" };
+  }
+  const providerRaw = r.aiProvider === undefined || r.aiProvider === null || r.aiProvider === "" ? null : String(r.aiProvider);
+  if (providerRaw !== null && !(AI_PROVIDERS as readonly string[]).includes(providerRaw)) return { ok: false, error: "model" };
+  const aiProvider = providerRaw as GrovNewsAiProvider | null;
+  const modelRaw = r.aiModel === undefined || r.aiModel === null || r.aiModel === "" ? null : String(r.aiModel);
+  if (modelRaw !== null && (!aiProvider || !MODEL_ID_RE.test(modelRaw)
+      || (models && !(models[aiProvider] ?? []).includes(modelRaw)))) {
+    return { ok: false, error: "model" };
+  }
+  const operatorEmails = r.operatorEmails === undefined ? [] : parseOperatorEmails(r.operatorEmails);
+  if (operatorEmails === null) return { ok: false, error: "operators" };
   return {
     ok: true,
     value: {
@@ -277,11 +341,37 @@ export function validateSettingsInput(raw: unknown): { ok: true; value: GrovNews
       autoPublishOfficialSensitive: r.autoPublishOfficialSensitive === true,
       minTopics, lookbackHours,
       emailEnabled: r.emailEnabled !== false,
+      aiProvider, aiModel: modelRaw, publishHour, sendHour, operatorEmails,
     },
   };
 }
 
 /* ── sources ───────────────────────────────────────────────────────────────── */
+
+/** 0128: how an API source authenticates. The secret itself is never here —
+ *  it lives in the vault (grovbase.grovnews_source.<id>). */
+export const AUTH_KINDS = ["none", "bearer", "header"] as const;
+export type SourceAuthKind = (typeof AUTH_KINDS)[number];
+
+/** Headers a key may never be sent in: they frame, route or identify the
+ *  request itself (the same list the database's check holds). */
+export const RESERVED_AUTH_HEADERS: readonly string[] = [
+  "host", "cookie", "set-cookie", "content-length", "content-type", "content-encoding", "transfer-encoding",
+  "connection", "keep-alive", "te", "trailer", "upgrade", "expect", "proxy-authorization", "proxy-connection",
+  "user-agent", "accept", "accept-encoding", "accept-language", "referer", "origin", "forwarded",
+  "x-forwarded-for", "x-forwarded-host",
+];
+
+export function isValidAuthHeader(name: unknown): name is string {
+  return typeof name === "string" && /^[A-Za-z0-9-]{1,64}$/.test(name) && !RESERVED_AUTH_HEADERS.includes(name.toLowerCase());
+}
+
+/** A secret an admin typed for an API source: something to send in a header
+ *  — no control characters (a header cannot carry them), bounded. */
+export function isValidSourceSecret(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length >= 1 && value.length <= 4096
+    && !/[\u0000-\u001f\u007f]/.test(value);
+}
 
 export type SourceInput = {
   name: string;
@@ -292,9 +382,12 @@ export type SourceInput = {
   priority: number;
   official: boolean;
   language: "pl" | "en" | "de";
+  /** 0128: API sources only; any other type is always "none". */
+  authKind: SourceAuthKind;
+  authHeader: string | null;
 };
 
-export type SourceInputError = "name" | "type" | "url" | "category" | "priority" | "language";
+export type SourceInputError = "name" | "type" | "url" | "category" | "priority" | "language" | "authHeader";
 
 export function validateSourceInput(raw: unknown): { ok: true; value: SourceInput } | { ok: false; error: SourceInputError } {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -311,13 +404,131 @@ export function validateSourceInput(raw: unknown): { ok: true; value: SourceInpu
   if (priority === null) return { ok: false, error: "priority" };
   const language = r.language === undefined ? "pl" : String(r.language);
   if (language !== "pl" && language !== "en" && language !== "de") return { ok: false, error: "language" };
+  const kindRaw = type === "API" && (AUTH_KINDS as readonly string[]).includes(String(r.authKind)) ? (r.authKind as SourceAuthKind) : "none";
+  const authHeader = kindRaw === "header" ? String(r.authHeader ?? "").trim() : null;
+  if (kindRaw === "header" && !isValidAuthHeader(authHeader)) return { ok: false, error: "authHeader" };
   return {
     ok: true,
     value: {
       name, type, url: urlRaw || null, enabled: r.enabled !== false, categoryId, priority,
-      official: r.official === true, language,
+      official: r.official === true, language, authKind: kindRaw, authHeader,
     },
   };
+}
+
+/* ── source health at a glance (0128) ──────────────────────────────────────── */
+
+/** The compact state a list shows: Zdrowe / Problem / Nie testowano (and
+ *  switched off, which is neither). */
+export type SourceState = "ok" | "problem" | "untested" | "off";
+
+export function sourceState(health: SourceHealth): SourceState {
+  if (health === "DISABLED") return "off";
+  if (health === "UNCHECKED") return "untested";
+  return health === "HEALTHY" ? "ok" : "problem";
+}
+
+/** How a source is read, in one word: a feed, an API, a web page — or typed
+ *  in by hand. */
+export type SourceMethod = "RSS" | "API" | "WWW" | "MANUAL";
+
+export function sourceMethod(type: SourceType): SourceMethod {
+  if (type === "API") return "API";
+  if (type === "WEB_PAGE") return "WWW";
+  if (type === "MANUAL") return "MANUAL";
+  return "RSS";
+}
+
+export const SOURCE_ERROR_KINDS = ["timeout", "auth", "http", "invalid_feed", "other"] as const;
+export type SourceErrorKind = (typeof SOURCE_ERROR_KINDS)[number];
+
+/** A stored error code (never a message) grouped for a summary line:
+ *  "69 OK · 2 timeout · 1 auth error". */
+export function sourceErrorKind(code: string | null | undefined): SourceErrorKind {
+  const c = String(code ?? "").toLowerCase();
+  if (c === "timeout") return "timeout";
+  if (["auth_failed", "secret_missing", "requires_access", "http_status_401", "http_status_403", "http_status_407"].includes(c)) return "auth";
+  if (/^http_status_\d{3}$/.test(c)) return "http";
+  if (c === "unrecognized_format") return "invalid_feed";
+  return "other";
+}
+
+/* ── language (0128) ───────────────────────────────────────────────────────── */
+
+export const CONTENT_LANGUAGES = ["pl", "en", "de"] as const;
+export type ContentLanguage = (typeof CONTENT_LANGUAGES)[number];
+
+/** Function words that are frequent in one language and rare in the others.
+ *  No word appears in two lists. */
+const LANGUAGE_WORDS: Record<ContentLanguage, ReadonlySet<string>> = {
+  pl: new Set([
+    "i", "w", "z", "na", "do", "nie", "się", "że", "jest", "dla", "od", "po", "oraz", "jak", "czy", "ale", "przez",
+    "przy", "jego", "jej", "ich", "ten", "ta", "te", "tym", "które", "który", "która", "będzie", "są", "już",
+    "także", "również", "tylko", "może", "można", "został", "została", "zostanie", "roku", "lub", "co", "we", "za",
+    "ze", "pod", "nad", "przed", "oraz", "nowe", "nowy", "nowa", "będą", "tego", "tej", "jako", "sprzedawców",
+  ]),
+  en: new Set([
+    "the", "and", "of", "to", "in", "is", "for", "on", "with", "that", "this", "are", "was", "will", "by", "from",
+    "as", "at", "be", "has", "have", "it", "its", "an", "or", "their", "they", "which", "more", "about", "after",
+    "than", "into", "can", "says", "said", "new", "sellers", "been", "would", "could", "should", "these", "those",
+  ]),
+  de: new Set([
+    "der", "die", "das", "und", "ist", "nicht", "mit", "für", "von", "den", "dem", "des", "ein", "eine", "einen",
+    "einem", "auf", "auch", "sich", "im", "zu", "zum", "zur", "bei", "wird", "werden", "sind", "nach", "über", "aus",
+    "dass", "wie", "oder", "noch", "neue", "kann", "vom", "hat", "haben", "wurde", "wurden", "ab", "bis", "händler",
+  ]),
+};
+const PL_LETTERS = /[ąćęłńśźż]/g;
+const DE_LETTERS = /[äöüß]/g;
+
+/**
+ * The language a text is written in — deterministic, no model: function-word
+ * counts plus the letters only one of the three alphabets has. Null when the
+ * text says too little to tell (the caller then falls back to the source's
+ * configured language).
+ */
+export function detectLanguage(text: string): ContentLanguage | null {
+  const low = String(text ?? "").toLowerCase().slice(0, 4000);
+  const score: Record<ContentLanguage, number> = { pl: 0, en: 0, de: 0 };
+  for (const word of low.match(/\p{L}+/gu) ?? []) {
+    for (const lang of CONTENT_LANGUAGES) if (LANGUAGE_WORDS[lang].has(word)) score[lang] += 1;
+  }
+  score.pl += 2 * Math.min(5, (low.match(PL_LETTERS) ?? []).length);
+  score.de += 2 * Math.min(5, (low.match(DE_LETTERS) ?? []).length);
+  const ranked = [...CONTENT_LANGUAGES].sort((a, b) => score[b] - score[a]);
+  const [best, second] = ranked;
+  return score[best] >= 2 && score[best] > score[second] ? best : null;
+}
+
+/** A research item's language: what its own words say, else its source's. */
+export function itemLanguage(title: string, excerpt: string, sourceLanguage: ContentLanguage): ContentLanguage {
+  return detectLanguage(`${title}\n${excerpt}`) ?? sourceLanguage;
+}
+
+/** The longest verbatim quote a non-Polish topic may carry (copyright
+ *  hygiene: a short excerpt, never the article). */
+export const ORIGINAL_EXCERPT_MAX = 300;
+
+/**
+ * A SHORT verbatim excerpt of a report, chosen deterministically: the whole
+ * text when it fits, otherwise cut at the last sentence end inside the limit
+ * (or, failing that, the last word, marked with "…"). One line, and without
+ * the characters the article format reads as marks (* [ ]), so it renders as
+ * the quote it is and nothing else.
+ */
+export function originalExcerpt(raw: string, max = ORIGINAL_EXCERPT_MAX): string {
+  const flat = String(raw ?? "").replace(/[[\]*]/g, "").replace(/\s+/g, " ").trim();
+  if (!flat) return "";
+  if (flat.length <= max) return flat;
+  const head = flat.slice(0, max + 1);
+  let cut = -1;
+  for (const m of head.matchAll(/[.!?…](?=\s)/g)) {
+    if ((m.index ?? 0) + 1 <= max) cut = (m.index ?? 0) + 1;
+  }
+  if (cut >= Math.floor(max * 0.4)) return flat.slice(0, cut).trim();
+  const space = head.lastIndexOf(" ", max);
+  const base = space > max * 0.5 ? flat.slice(0, space) : flat.slice(0, max);
+  return `${base.replace(/[\s,;:–—-]+$/, "")}…`;
 }
 
 /* ── source health (0125 §2) ───────────────────────────────────────────────── */
@@ -344,6 +555,12 @@ export type DailyTopicRecord = {
   confidence: "HIGH" | "MEDIUM" | "LOW"; official: boolean;
   sources: { url: string; title: string; source: string; official: boolean }[];
   review: boolean; reviewReason: string | null;
+  /** 0128: the language of the topic's primary report; for a non-Polish one,
+   *  the short verbatim excerpt quoted in the article and its checked Polish
+   *  translation (null when the translation failed its checks). */
+  language?: ContentLanguage;
+  original?: { text: string; url: string; source: string } | null;
+  translation?: string | null;
 };
 export type DailyRecord = {
   version: 1; date: string; headline: string; opening: string; mailIntro: string; watch: string[];
@@ -363,7 +580,14 @@ export function readDailyRecord(v: unknown): DailyRecord | null {
     const title = recStr(o.title, 200);
     if (!title) return [];
     const conf = o.confidence === "HIGH" || o.confidence === "MEDIUM" ? o.confidence : "LOW";
+    const lang = (CONTENT_LANGUAGES as readonly unknown[]).includes(o.language) ? (o.language as ContentLanguage) : undefined;
+    const orig = o.original && typeof o.original === "object" ? o.original as Record<string, unknown> : null;
+    const origUrl = orig ? recStr(orig.url, 2000) : "";
+    const original = orig && recStr(orig.text, ORIGINAL_EXCERPT_MAX + 1) && /^https:\/\//i.test(origUrl)
+      ? { text: recStr(orig.text, ORIGINAL_EXCERPT_MAX + 1), url: origUrl, source: recStr(orig.source, 120) } : null;
     return [{
+      ...(lang ? { language: lang } : {}),
+      ...(original ? { original, translation: typeof o.translation === "string" ? o.translation.slice(0, 900) : null } : {}),
       itemId: recStr(o.itemId, 40), title, short: recStr(o.short, 400), mail: recStr(o.mail, 900),
       category: typeof o.category === "string" ? o.category.slice(0, 60) : null, confidence: conf, official: o.official === true,
       sources: (Array.isArray(o.sources) ? o.sources : []).slice(0, 12).flatMap((s) => {
@@ -446,6 +670,14 @@ export function warsawDate(d: Date = new Date()): string {
   }).formatToParts(d);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/** The hour (0–23) on a Warsaw clock — what publish_hour / send_hour mean. */
+export function warsawHour(d: Date = new Date()): number {
+  const h = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Warsaw", hour: "2-digit", hourCycle: "h23" })
+    .formatToParts(d).find((p) => p.type === "hour")?.value;
+  const n = Number(h);
+  return Number.isInteger(n) ? n % 24 : d.getUTCHours();
 }
 
 /** DD.MM.YYYY from a YYYY-MM-DD edition date — numeric, so server and

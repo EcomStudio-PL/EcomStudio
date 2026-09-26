@@ -5,7 +5,7 @@ import { logAudit } from "@/lib/services/audit";
 import { encryptionAvailable } from "@/lib/server/crypto";
 import { openPrompt, sealPrompt } from "@/lib/server/ai-engine";
 import {
-  ENGINE_MODES, TOOL_ENGINE_MODES, isAiToolKey, type EngineMode, type ToolConfigSection,
+  ENGINE_MODES, MODEL_ASSIGNMENT_RUNTIME, TOOL_ENGINE_MODES, isAiToolKey, type EngineMode, type ToolConfigSection,
 } from "@/lib/services/ai-tools";
 import { TOOL_VARIABLES, malformedPlaceholders, parsePlaceholders } from "@/lib/ai/prompt-variables";
 
@@ -180,14 +180,24 @@ export async function saveToolModelsAction(input: {
     // read as "configured" on the registry screen and fail at runtime.
     if (wanted.length > 0) {
       const { data: known } = await supabase
-        .from("ai_models").select("id").in("id", wanted.map((w) => w.id));
-      const knownIds = new Set((known ?? []).map((m) => m.id));
-      if (wanted.some((w) => !knownIds.has(w.id))) return { ok: false, error: "unknown_model" };
+        .from("ai_models").select("id, type, supports_reference_images").in("id", wanted.map((w) => w.id));
+      const byId = new Map((known ?? []).map((m) => [m.id, m]));
+      if (wanted.some((w) => !byId.has(w.id))) return { ok: false, error: "unknown_model" };
+      // A tool whose runtime READS this assignment (Retusz) is image-to-image:
+      // a model that is not an image model, or cannot take the source photo,
+      // would break the tool or the Product Lock. Refused here, not at run time.
+      if (MODEL_ASSIGNMENT_RUNTIME.has(input.toolKey)
+        && wanted.some((w) => w.role !== "allowed" && (byId.get(w.id)?.type !== "image" || !byId.get(w.id)?.supports_reference_images))) {
+        return { ok: false, error: "model_incompatible" };
+      }
     }
 
     // Replace the whole assignment set: it is small, and a diff would leave
-    // orphan roles behind on the first mistake.
-    await supabase.from("ai_tool_models").delete().eq("tool_key", input.toolKey);
+    // orphan roles behind on the first mistake. The old set is removed only
+    // after the new one is known valid, and a failed delete stops the save
+    // instead of inserting on top of it.
+    const { error: clearError } = await supabase.from("ai_tool_models").delete().eq("tool_key", input.toolKey);
+    if (clearError) return { ok: false, error: "generic" };
     if (wanted.length > 0) {
       const { error } = await supabase.from("ai_tool_models").insert(
         wanted.map((w, i) => ({ tool_key: input.toolKey, model_id: w.id, role: w.role, sort_order: i })),

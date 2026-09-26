@@ -1,13 +1,24 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { readProviderKey, vaultPlaceholderColumns, writeProviderKey } from "@/lib/server/provider-credentials";
-import { testProviderConnection } from "@/lib/server/provider-test";
-import { dispatchToken } from "@/lib/server/integrations";
+import {
+  providerSecretName, readProviderKey, vaultPlaceholderColumns, writeProviderKey,
+  type LegacyCredential,
+} from "@/lib/server/provider-credentials";
+import { clearSecret } from "@/lib/server/secret-store";
+import { testProviderConnection, type TestStatus } from "@/lib/server/provider-test";
+import { dispatchToken, ensureDispatchHash } from "@/lib/server/integrations";
+import { recordProviderCalls } from "@/lib/server/ai-usage";
+import { imageCost } from "@/lib/ai/usage-cost";
 import { getAdapter } from "@/lib/ai/registry";
 import { ProviderError } from "@/lib/ai/types";
 
-type Result = { ok: boolean; error?: string; status?: string; message?: string };
+/**
+ * `status` is a verdict code and `detail` a short code (http_401, sandbox…);
+ * the panel translates both. No provider message and no key ever travels in
+ * this result.
+ */
+type Result = { ok: boolean; error?: string; status?: string; detail?: string | null; latencyMs?: number | null };
 
 /**
  * "sandbox" or "live" when the key itself says so, null when the vendor gives
@@ -68,6 +79,15 @@ export async function saveProviderCredentialAction(
       last_tested_at: null,
       last_test_status: null,
       last_test_error_safe: null,
+      last_test_latency_ms: null,
+      // A new key has proven nothing yet: the verdicts of the key it replaces
+      // must not keep reading "generates" / "last error" against it.
+      last_image_test_at: null,
+      last_image_test_status: null,
+      last_image_test_error_safe: null,
+      last_success_at: null,
+      last_error_at: null,
+      last_error_code: null,
       updated_at: new Date().toISOString(),
       updated_by: adminId,
     };
@@ -105,6 +125,14 @@ export async function saveProviderCredentialAction(
       },
     }).eq("id", providerId);
 
+    // THE RUNTIME READS THIS KEY WITH THE SERVER TOKEN (provider_credential_read
+    // → server_call_ok). That token is only accepted once its hash has been
+    // published, and until now only the mail/telegram/captcha saves published
+    // it — so a fresh install could save a key, pass the admin-side test, and
+    // still have every customer generation refused. Publishing it here makes
+    // "saved" mean "usable".
+    await ensureDispatchHash(supabase);
+
     await supabase.rpc("log_activity", {
       p_workspace_id: null as unknown as string, p_action: "admin.provider_credential_saved",
       p_entity_type: "ai_provider", p_entity_id: providerId,
@@ -119,8 +147,16 @@ export async function saveProviderCredentialAction(
 export async function deleteProviderCredentialAction(providerId: string): Promise<Result> {
   try {
     const { supabase } = await requireAdmin();
+    // The secret itself first: deleting only the metadata row used to leave
+    // the key sitting in the vault, where readProviderKey would still find it.
+    const cleared = await clearSecret(supabase, providerSecretName(providerId));
     const { error } = await supabase.from("ai_provider_credentials").delete().eq("provider_id", providerId);
     if (error) return { ok: false, error: "generic" };
+    if (!cleared) {
+      // The row is gone, so the panel shows "not configured"; the vault copy
+      // (if one existed) could not be removed and is reported, not hidden.
+      console.error("credentials.delete", "vault_clear_failed");
+    }
     await supabase.rpc("log_activity", {
       p_workspace_id: null as unknown as string, p_action: "admin.provider_credential_deleted",
       p_entity_type: "ai_provider", p_entity_id: providerId,
@@ -133,92 +169,151 @@ export async function deleteProviderCredentialAction(providerId: string): Promis
 }
 
 /**
+ * The key exactly as a CUSTOMER RUN would get it.
+ *
+ * Generation, vision and GrovNews read a provider key through
+ * provider_credential_read with the server token, then open the vault (or the
+ * legacy ciphertext). The panel used to test with the admin's own session,
+ * which can read a vault secret without any token and never touched the
+ * runtime door — so a key could pass the test while every customer call
+ * failed. Both tests now go through the same door, step by step, and stop at
+ * the first step that fails with a code that names it.
+ *
+ * An INACTIVE provider is still testable (activate after a green test is the
+ * documented flow): the runtime door only serves active providers, so for an
+ * inactive one the metadata row is read with the admin session instead, and
+ * everything after that is identical.
+ */
+async function runtimeKey(
+  supabase: Awaited<ReturnType<typeof createClient>>, providerId: string,
+): Promise<{ ok: true; apiKey: string; baseUrl: string | null; slug: string } | { ok: false; status: TestStatus }> {
+  const { data: provider } = await supabase.from("ai_providers").select("slug, active").eq("id", providerId).maybeSingle();
+  if (!provider) return { ok: false, status: "no_credential" };
+  const token = dispatchToken();
+  if (!token) return { ok: false, status: "server_unconfigured" };
+
+  let cred: (LegacyCredential & { base_url: string | null }) | null = null;
+  if (provider.active) {
+    const read = () => supabase.rpc("provider_credential_read", { p_token: token, p_provider_id: providerId });
+    let { data, error } = await read();
+    if (error) {
+      // The hash may simply never have been published on this install.
+      await ensureDispatchHash(supabase);
+      ({ data, error } = await read());
+    }
+    if (error) return { ok: false, status: "server_unconfigured" };
+    cred = data?.[0] ?? null;
+  } else {
+    const { data } = await supabase.from("ai_provider_credentials")
+      .select("encrypted_value, iv, auth_tag, base_url").eq("provider_id", providerId).maybeSingle();
+    cred = data ?? null;
+  }
+  if (!cred) return { ok: false, status: "no_credential" };
+  const apiKey = await readProviderKey(supabase, providerId, cred);
+  // A row exists but no key can be opened from it: typically a key saved
+  // before the vault, whose decryption key is not on this server. Saving the
+  // key again moves it into the vault.
+  if (!apiKey) return { ok: false, status: "key_unreadable" };
+  return { ok: true, apiKey, baseUrl: cred.base_url, slug: provider.slug };
+}
+
+/**
  * REAL image-generation test. A key can list models and still fail to
- * generate (dead quota, model access, billing) — the production incident
- * proved it. This runs one minimal, cheapest-possible generation through the
- * SAME adapter and model the customers use and stores the verdict separately
- * from the connection test. It costs a fraction of a cent; that is the price
- * of certainty.
+ * generate (dead quota, model access, billing). This runs one minimal
+ * generation through the SAME adapter and model the customers use and stores
+ * the verdict separately from the connection test. It costs a fraction of a
+ * cent — which is recorded in the provider trace as an admin call, so the
+ * spend is visible and never mistaken for customer revenue.
  */
 export async function testProviderImageAction(providerId: string): Promise<Result> {
   try {
-    const { supabase } = await requireAdmin();
-    const { data: provider } = await supabase.from("ai_providers").select("slug").eq("id", providerId).maybeSingle();
-    const { data: cred } = await supabase
-      .from("ai_provider_credentials")
-      .select("encrypted_value, iv, auth_tag, base_url")
-      .eq("provider_id", providerId).maybeSingle();
-    if (!provider || !cred) return { ok: false, error: "no_credential" };
-    const adapter = getAdapter(provider.slug);
+    const { supabase, adminId } = await requireAdmin();
+    const key = await runtimeKey(supabase, providerId);
+    if (!key.ok) return { ok: false, error: key.status, status: key.status };
+    const adapter = getAdapter(key.slug);
     if (!adapter) return { ok: false, error: "no_adapter" };
     const { data: model } = await supabase
       .from("ai_models").select("*")
-      .eq("provider_id", providerId).eq("active", true)
+      .eq("provider_id", providerId).eq("active", true).eq("type", "image")
       .order("sort_order", { ascending: true }).limit(1).maybeSingle();
     if (!model) return { ok: false, error: "no_model" };
 
-    const apiKey = await readProviderKey(supabase, providerId, cred);
-    if (!apiKey) return { ok: false, error: "no_credential" };
-
     let status = "image_ok";
-    let message: string | null = null;
+    let detail: string | null = null;
+    let images = 0;
+    const started = Date.now();
     try {
       const result = await adapter.generate(model, {
         prompt: "A plain matte gray cube on a clean white studio background",
         aspectRatio: "1:1", resolution: "1K", quantity: 1, referenceImages: [],
         productLock: { fidelityInstructions: "" },
-      }, { apiKey, baseUrl: cred.base_url });
-      if (!result.images.length) { status = "image_failed"; message = "empty_result"; }
+      }, { apiKey: key.apiKey, baseUrl: key.baseUrl });
+      images = result.images.length;
+      if (!images) { status = "image_failed"; detail = "empty_result"; }
     } catch (e) {
       status = "image_failed";
-      message = e instanceof ProviderError
-        ? [e.safeMessage, e.providerCode, e.upstream?.status ? `http=${e.upstream.status}` : null].filter(Boolean).join(" · ")
+      images = e instanceof ProviderError ? e.partial?.length ?? 0 : 0;
+      detail = e instanceof ProviderError
+        ? [e.safeMessage, e.upstream?.status ? `http_${e.upstream.status}` : null].filter(Boolean).join(" · ")
         : "unknown_error";
     }
+    await recordProviderCalls(supabase, [{
+      actorKind: "admin", consumer: "provider_test", userId: adminId,
+      providerSlug: key.slug, model: model.model_identifier,
+      status: status === "image_ok" ? "succeeded" : "failed",
+      errorCode: status === "image_ok" ? null : "image_test_failed",
+      units: images, unitKind: "image",
+      cost: imageCost(model.internal_cost_usd_micros, images),
+      durationMs: Date.now() - started,
+    }]);
 
     await supabase.from("ai_provider_credentials").update({
       last_image_test_at: new Date().toISOString(),
       last_image_test_status: status,
-      last_image_test_error_safe: message,
+      last_image_test_error_safe: detail,
     }).eq("provider_id", providerId);
-    // A positive proof of real generation clears any stored cooldown; a
-    // failed one records the honest state so the router routes around it.
+    // A positive proof of real generation clears any stored cooldown.
     if (status === "image_ok") {
-      await supabase.rpc("provider_health_set", { p_token: dispatchToken(), p_slug: provider.slug, p_state: "healthy", p_cooldown_seconds: 0 });
+      await supabase.rpc("provider_health_set", { p_token: dispatchToken(), p_slug: key.slug, p_state: "healthy", p_cooldown_seconds: 0 });
     }
     revalidatePath("/admin/ai/modele");
-    return { ok: status === "image_ok", status, message: message ?? undefined };
+    return { ok: status === "image_ok", status, detail };
   } catch {
     return { ok: false, error: "generic" };
   }
 }
 
-/** Decrypts server-side only, probes the provider, stores a safe test result. */
+/**
+ * CONNECTION TEST — "connected" means the key was read through the runtime
+ * door AND the provider accepted it on its cheapest real endpoint. Nothing is
+ * marked connected because a string exists in the database.
+ */
 export async function testProviderConnectionAction(providerId: string): Promise<Result> {
   try {
     const { supabase } = await requireAdmin();
-    const { data: provider } = await supabase.from("ai_providers").select("slug").eq("id", providerId).maybeSingle();
-    const { data: cred } = await supabase
-      .from("ai_provider_credentials")
-      .select("encrypted_value, iv, auth_tag, base_url")
-      .eq("provider_id", providerId)
-      .maybeSingle();
-    if (!provider || !cred) return { ok: false, error: "no_credential" };
-    const apiKey = await readProviderKey(supabase, providerId, cred);
-    if (!apiKey) return { ok: false, error: "no_credential" };
-    const result = await testProviderConnection(provider.slug, apiKey, cred.base_url);
-    await supabase.from("ai_provider_credentials").update({
-      last_tested_at: new Date().toISOString(),
-      last_test_status: result.status,
-      last_test_error_safe: result.status === "connected" ? null : result.message,
-    }).eq("provider_id", providerId);
+    const key = await runtimeKey(supabase, providerId);
+    const result = key.ok
+      ? await testProviderConnection(key.slug, key.apiKey, key.baseUrl)
+      : { status: key.status, detail: null, latencyMs: null };
+    // A key that cannot be opened is a failed test of THIS key — recorded as
+    // such so the card stops showing an old green verdict.
+    const { data: exists } = await supabase.from("ai_provider_credentials")
+      .select("id").eq("provider_id", providerId).maybeSingle();
+    if (exists) {
+      await supabase.from("ai_provider_credentials").update({
+        last_tested_at: new Date().toISOString(),
+        last_test_status: result.status,
+        last_test_error_safe: result.status === "connected" ? result.detail : result.detail ?? result.status,
+        last_test_latency_ms: result.latencyMs,
+      }).eq("provider_id", providerId);
+    }
     // A passing test lifts any stored cooldown so the router tries the
     // provider again immediately instead of waiting it out.
-    if (result.status === "connected") {
-      await supabase.rpc("provider_health_set", { p_token: dispatchToken(), p_slug: provider.slug, p_state: "healthy", p_cooldown_seconds: 0 });
+    if (key.ok && result.status === "connected") {
+      await supabase.rpc("provider_health_set", { p_token: dispatchToken(), p_slug: key.slug, p_state: "healthy", p_cooldown_seconds: 0 });
     }
     revalidatePath("/admin/ai/modele");
-    return { ok: true, status: result.status, message: result.message };
+    return { ok: result.status === "connected", status: result.status, detail: result.detail, latencyMs: result.latencyMs };
   } catch {
     return { ok: false, error: "generic" };
   }

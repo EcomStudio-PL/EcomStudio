@@ -7,6 +7,7 @@ import { runGeneration, type GenerateInput, type GenerateOutput } from "@/lib/se
 import { downloadReferences, textCapableBackends } from "@/lib/server/prompt-engine";
 import { compileForTool, recordEngineRun, resolveVariables } from "@/lib/server/engine/runtime";
 import { runImageWorkflow } from "@/lib/server/engine/workflow";
+import { textMeter, type TextMeter } from "@/lib/server/ai-usage";
 
 /**
  * ONE ENTRY FOR THE PROMPT-DRIVEN IMAGE TOOLS (Retusz, Moda).
@@ -37,6 +38,20 @@ export type EngineToolInput = {
 export async function runEngineImageTool(
   supabase: Client, userId: string, workspaceId: string, input: EngineToolInput,
 ): Promise<GenerateOutput> {
+  // Analysis requests made to resolve this tool's variables (and workflow
+  // analyze steps) go into the provider trace; the image call traces itself
+  // inside runGeneration. Tracking only — nothing about the run changes.
+  const meter = textMeter(supabase, { actorKind: "customer", consumer: "workflow", userId, workspaceId, toolKey: input.toolKey });
+  try {
+    return await runEngineImageToolMetered(supabase, userId, workspaceId, input, meter);
+  } finally {
+    await meter.flush();
+  }
+}
+
+async function runEngineImageToolMetered(
+  supabase: Client, userId: string, workspaceId: string, input: EngineToolInput, meter: TextMeter,
+): Promise<GenerateOutput> {
   const started = Date.now();
   const engine = await resolveEngine(supabase, input.toolKey);
   const strategy = engine?.knowledgeStrategy ?? "proven";
@@ -49,7 +64,7 @@ export async function runEngineImageTool(
     seed: `${input.toolKey}:${workspaceId}:${inputHash}`,
     referencePaths: input.referencePaths,
     images: () => downloadReferences(supabase, input.referencePaths),
-    backends: () => textCapableBackends(supabase),
+    backends: async () => meter.wrap(await textCapableBackends(supabase)),
     knowledgeQuery: [input.toolKey.replace(/_/g, " "), input.hint].filter(Boolean).join("\n"),
     base: {
       tool_name: input.toolKey,
@@ -181,12 +196,13 @@ export async function prepareGeneratorEngine(
     if (!wallet) return { ok: false, error: "no_wallet" };
     if (wallet.balance <= 0) return { ok: false, error: "insufficient_credits" };
   }
+  const meter = textMeter(supabase, { actorKind: "customer", consumer: "workflow", userId, workspaceId, toolKey: "generator" });
   const resolved = await resolveVariables([template], {
     supabase, workspaceId, toolKey: "generator", strategy: engine.knowledgeStrategy,
     seed: `generator:${workspaceId}:${inputHash}`,
     referencePaths: input.referencePaths,
     images: () => downloadReferences(supabase, input.referencePaths),
-    backends: () => textCapableBackends(supabase),
+    backends: async () => meter.wrap(await textCapableBackends(supabase)),
     knowledgeQuery: [input.userPrompt, input.productDescription].filter(Boolean).join("\n"),
     base: {
       user_prompt: input.userPrompt || null,
@@ -196,6 +212,7 @@ export async function prepareGeneratorEngine(
       resolution: input.resolution,
     },
   });
+  await meter.flush();
   const compiled = compileForTool(template, TOOL_VARIABLES.generator, resolved.values);
   const trace = {
     toolKey: "generator", workspaceId, userId, mode: "hybrid" as const,
