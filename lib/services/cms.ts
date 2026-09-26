@@ -139,6 +139,8 @@ export const RESERVED = [
   "prompts", "history", "credits", "plan", "tools", "inspirations",
   "support", "retusz", "wideo", "k", "forgot-password", "reset-password",
   "sitemap.xml", "robots.txt", "manifest.webmanifest", "_next", "favicon.ico",
+  // The public GrovNews blog (/blog) is a static route since Stage 4 (0125).
+  "blog",
 ];
 
 export type SlugProblem = "empty" | "shape" | "reserved" | "taken" | null;

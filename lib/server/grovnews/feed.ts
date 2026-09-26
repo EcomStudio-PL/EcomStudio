@@ -381,3 +381,75 @@ export function extractListing(html: string, pageUrl: string): ParsedFeed {
   const title = elements(html.slice(0, 200_000), lower(html.slice(0, 200_000)), "title", 1)[0]?.inner;
   return { kind: "page", title: title ? htmlToText(title, 200) : null, entries };
 }
+
+/* ── discovery (Stage 5) ───────────────────────────────────────────────────── */
+
+const FEED_LINK_TYPES = new Set([
+  "application/rss+xml", "application/atom+xml", "application/feed+json", "application/rdf+xml",
+]);
+
+/**
+ * The feeds a page announces in its <head>: `<link rel="alternate"
+ * type="application/rss+xml|atom+xml|feed+json" href="…">`, resolved against
+ * the page and https only. At most five, in the page's order. It only READS
+ * what the site publishes about itself — nothing is guessed here.
+ */
+export function discoverFeeds(html: string, pageUrl: string): { url: string; type: string }[] {
+  const src = html.slice(0, 200_000);
+  const low = lower(src);
+  const headEnd = low.indexOf("</head>");
+  const head = headEnd > 0 ? src.slice(0, headEnd) : src;
+  const headLow = lower(head);
+  const out: { url: string; type: string }[] = [];
+  const seen = new Set<string>();
+  // <link> is a void element: HTML5 writes it without "/>" and never closes
+  // it, so each tag is read on its own (not as an open…close span).
+  let at = 0;
+  for (let scanned = 0; scanned < 300 && out.length < 5; ) {
+    const start = headLow.indexOf("<link", at);
+    if (start < 0) break;
+    const gt = head.indexOf(">", start);
+    if (gt < 0) break;
+    at = gt + 1;
+    if (!NAME_END.test(head[start + 5] ?? "")) continue;
+    scanned++;
+    const attrs = head.slice(start + 5, gt).slice(0, 4000);
+    const rel = (attr(attrs, "rel") ?? "").toLowerCase().split(/\s+/);
+    const type = (attr(attrs, "type") ?? "").toLowerCase().trim();
+    if (!rel.includes("alternate") || !FEED_LINK_TYPES.has(type)) continue;
+    const url = absolute(attr(attrs, "href"), pageUrl);
+    if (!url || !url.startsWith("https://") || seen.has(url)) continue;
+    seen.add(url);
+    out.push({ url, type });
+  }
+  return out;
+}
+
+/**
+ * What a page says about ITSELF that decides whether GrovNews may read it:
+ * a bot-protection challenge (Cloudflare, DataDome, PerimeterX, Imperva,
+ * reCAPTCHA / hCaptcha / Turnstile) or a login form standing where the
+ * content should be. GrovNews does not solve challenges or sign in — such a
+ * page is UNSUPPORTED, full stop. Also whether it is a WordPress site (which
+ * publishes a feed at /feed/ by convention).
+ */
+export function pageSignals(html: string): { botProtection: boolean; loginWall: boolean; wordpress: boolean } {
+  const low = lower(html.slice(0, 300_000));
+  // Interstitials are small; a long document is a page with content of its
+  // own even when it marks none up as <main>/<article>.
+  const content = low.includes("<article") || low.includes("<main") || html.length > 150_000;
+  // A challenge page says so; a widget or a vendor script alone (a captcha on
+  // a feedback form, a bot-management tag on an ordinary page) is only a
+  // challenge when the page has no content of its own.
+  const challenge = [
+    "cf-chl-", "cf_chl_opt", "just a moment...", "attention required! | cloudflare",
+    "captcha-delivery.com", "px-captcha", "_incapsula_resource", "incapsula incident",
+    "are you a robot", "verify you are human",
+  ].some((m) => low.includes(m));
+  const widget = ["challenge-platform", "datadome", "g-recaptcha", "h-captcha", "cf-turnstile"].some((m) => low.includes(m));
+  const botProtection = challenge || (widget && !content);
+  const passwordField = /<input[^>]{0,400}type\s*=\s*["']?password/.test(low);
+  const loginWall = passwordField && !content;
+  const wordpress = low.includes("/wp-content/") || low.includes("/wp-includes/") || low.includes("wp-json");
+  return { botProtection, loginWall, wordpress };
+}

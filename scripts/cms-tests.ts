@@ -17,7 +17,7 @@
  *
  * Run: npm run test:cms
  */
-import { readFileSync } from "fs";
+import { readFileSync, readdirSync } from "fs";
 import { scopeCss, styleSafe } from "../lib/cms-css";
 import { sanitizeHtml, sanitizeRichText } from "../lib/cms-sanitize";
 import { resolveHandler, FORM_HANDLERS, isContactTopic } from "../lib/cms-forms";
@@ -176,7 +176,7 @@ check("topics are a closed list",
 /* ═══════════════════════════════════════════════════════════════════════ */
 console.log("\nD. A PAGE CANNOT CLAIM A ROUTE THE APP OWNS");
 
-for (const slug of ["admin", "api", "auth", "dashboard", "login", "register", "settings", "k"]) {
+for (const slug of ["admin", "api", "auth", "dashboard", "login", "register", "settings", "k", "blog"]) {
   check(`refused: /${slug}`, slugProblem(slug) === "reserved");
 }
 check("an empty slug is refused", slugProblem("") === "empty");
@@ -186,9 +186,16 @@ check("a leading dash is refused", slugProblem("-x") === "shape");
 check("an ordinary slug passes", slugProblem("polityka-prywatnosci") === null);
 
 // The app's list and the database's list have to agree, or one of them is
-// enforcing a rule the other does not.
-const migration = readFileSync("supabase/migrations/0085_cms_page_builder.sql", "utf8");
-const dbList = /cms_slug_is_reserved[\s\S]*?array\[([\s\S]*?)\]/.exec(migration)?.[1] ?? "";
+// enforcing a rule the other does not. The database's list is the one in the
+// LATEST migration that (re)defines the function (0085, then 0125 added
+// "blog") — the one the database actually runs.
+const RESERVED_DEF = /create or replace function public\.cms_slug_is_reserved[\s\S]*?array\[([\s\S]*?)\]/;
+const definingMigration = readdirSync("supabase/migrations").filter((f) => f.endsWith(".sql")).sort()
+  .filter((f) => RESERVED_DEF.test(readFileSync(`supabase/migrations/${f}`, "utf8"))).pop() ?? "";
+const migration = definingMigration ? readFileSync(`supabase/migrations/${definingMigration}`, "utf8") : "";
+check("the reserved-slug function is read from the latest migration that defines it",
+  definingMigration >= "0125", definingMigration);
+const dbList = RESERVED_DEF.exec(migration)?.[1] ?? "";
 const dbSlugs = [...dbList.matchAll(/'([^']+)'/g)].map((m) => m[1]);
 const missingInApp = dbSlugs.filter((s) => !RESERVED.includes(s));
 const missingInDb = RESERVED.filter((s) => !dbSlugs.includes(s));

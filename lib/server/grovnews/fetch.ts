@@ -4,7 +4,7 @@ import { lookup as dnsLookup, type LookupAddress } from "node:dns";
 import { isIP } from "node:net";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import type { IncomingMessage } from "node:http";
-import type { Readable } from "node:stream";
+import { pipeline, type Readable } from "node:stream";
 import { isAcceptableSourceUrl } from "@/lib/grovnews-research";
 
 /**
@@ -35,7 +35,7 @@ export const USER_AGENT = "GrovBaseNewsBot/1.0 (+https://grovbase.com)";
 
 export type FetchErrorCode =
   | "invalid_url" | "forbidden_host" | "private_address" | "dns" | "timeout" | "too_large"
-  | "http_status" | "too_many_redirects" | "network" | "robots";
+  | "http_status" | "too_many_redirects" | "network" | "robots" | "robots_unreachable";
 
 export class SafeFetchError extends Error {
   constructor(public readonly code: FetchErrorCode, public readonly status?: number) {
@@ -56,6 +56,9 @@ export type FetchOptions = {
   maxBytes?: number;
   timeoutMs?: number;
   maxRedirects?: number;
+  /** Asked before EVERY request of the fetch, the redirects included (after
+   *  the address check); throwing stops the fetch. The robots gate. */
+  beforeHop?: (url: URL) => Promise<void>;
 };
 
 /* ── which addresses are the public internet ───────────────────────────────── */
@@ -187,10 +190,14 @@ async function readCapped(res: RawResponse, max: number): Promise<Buffer> {
     throw new SafeFetchError("too_large");
   }
   const encoding = header(res.headers, "content-encoding").toLowerCase().trim();
-  const stream: Readable = encoding === "gzip" || encoding === "x-gzip" ? res.body.pipe(createGunzip())
-    : encoding === "deflate" ? res.body.pipe(createInflate())
-    : encoding === "br" ? res.body.pipe(createBrotliDecompress())
-    : res.body;
+  const decoder = encoding === "gzip" || encoding === "x-gzip" ? createGunzip()
+    : encoding === "deflate" ? createInflate()
+    : encoding === "br" ? createBrotliDecompress()
+    : null;
+  // pipeline (not .pipe): an aborted or failed body also ends the decoder, so
+  // a stalled compressed response times out instead of hanging.
+  if (decoder) pipeline(res.body, decoder, () => {});
+  const stream: Readable = decoder ?? res.body;
   const chunks: Buffer[] = [];
   let total = 0;
   try {
@@ -231,57 +238,89 @@ export function decodeBody(bytes: Buffer, contentType: string): string {
 export async function fetchWith(transport: Transport, rawUrl: string, opts: FetchOptions): Promise<FetchedDocument> {
   const maxBytes = opts.maxBytes ?? 2_000_000;
   const maxRedirects = opts.maxRedirects ?? 3;
-  const signal = AbortSignal.timeout(opts.timeoutMs ?? 12_000);
+  // The page's own deadline. Time spent in `beforeHop` (a robots.txt read,
+  // bounded by its own timeout) is not charged to it.
+  const deadline = pausableDeadline(opts.timeoutMs ?? 12_000);
+  const signal = deadline.signal;
   let current = rawUrl;
+  try {
+    for (let hop = 0; hop <= maxRedirects; hop++) {
+      if (!isAcceptableSourceUrl(current)) {
+        let valid = true;
+        try { new URL(current); } catch { valid = false; }
+        throw new SafeFetchError(valid ? "forbidden_host" : "invalid_url");
+      }
+      const url = new URL(current);
+      if (opts.beforeHop) {
+        deadline.pause();
+        try { await opts.beforeHop(url); } finally { deadline.resume(); }
+      }
+      let res: RawResponse;
+      try {
+        res = await transport(url, {
+          "user-agent": USER_AGENT,
+          accept: opts.accept,
+          "accept-encoding": "gzip, deflate, br",
+          "accept-language": "pl,en;q=0.8,de;q=0.6",
+        }, signal);
+      } catch (e) {
+        throw classify(e, signal);
+      }
 
-  for (let hop = 0; hop <= maxRedirects; hop++) {
-    if (!isAcceptableSourceUrl(current)) {
-      let valid = true;
-      try { new URL(current); } catch { valid = false; }
-      throw new SafeFetchError(valid ? "forbidden_host" : "invalid_url");
-    }
-    const url = new URL(current);
-    let res: RawResponse;
-    try {
-      res = await transport(url, {
-        "user-agent": USER_AGENT,
-        accept: opts.accept,
-        "accept-encoding": "gzip, deflate, br",
-        "accept-language": "pl,en;q=0.8,de;q=0.6",
-      }, signal);
-    } catch (e) {
-      throw classify(e, signal);
-    }
+      if (res.status >= 300 && res.status < 400) {
+        const location = header(res.headers, "location");
+        res.body.destroy();
+        if (!location) throw new SafeFetchError("http_status", res.status);
+        current = new URL(location, url).toString();
+        continue;
+      }
+      if (res.status < 200 || res.status >= 300) {
+        res.body.destroy();
+        throw new SafeFetchError("http_status", res.status);
+      }
 
-    if (res.status >= 300 && res.status < 400) {
-      const location = header(res.headers, "location");
-      res.body.destroy();
-      if (!location) throw new SafeFetchError("http_status", res.status);
-      current = new URL(location, url).toString();
-      continue;
+      const contentType = header(res.headers, "content-type");
+      let bytes: Buffer;
+      try {
+        bytes = await readCapped(res, maxBytes);
+      } catch (e) {
+        throw classify(e, signal);
+      }
+      return { url: url.toString(), status: res.status, contentType, body: decodeBody(bytes, contentType) };
     }
-    if (res.status < 200 || res.status >= 300) {
-      res.body.destroy();
-      throw new SafeFetchError("http_status", res.status);
-    }
-
-    const contentType = header(res.headers, "content-type");
-    let bytes: Buffer;
-    try {
-      bytes = await readCapped(res, maxBytes);
-    } catch (e) {
-      throw classify(e, signal);
-    }
-    return { url: url.toString(), status: res.status, contentType, body: decodeBody(bytes, contentType) };
+    throw new SafeFetchError("too_many_redirects");
+  } finally {
+    deadline.pause();
   }
-  throw new SafeFetchError("too_many_redirects");
+}
+
+/** A timeout signal that can stop the clock (and start it again). */
+function pausableDeadline(ms: number): { signal: AbortSignal; pause: () => void; resume: () => void } {
+  const controller = new AbortController();
+  let left = ms;
+  let since = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const resume = () => {
+    if (timer || controller.signal.aborted) return;
+    since = Date.now();
+    timer = setTimeout(() => controller.abort(new DOMException("The operation timed out.", "TimeoutError")), Math.max(0, left));
+    timer.unref?.();
+  };
+  const pause = () => {
+    if (!timer) return;
+    clearTimeout(timer);
+    timer = null;
+    left -= Date.now() - since;
+  };
+  resume();
+  return { signal: controller.signal, pause, resume };
 }
 
 export function safeFetch(url: string, opts: FetchOptions): Promise<FetchedDocument> {
   return fetchWith(httpsTransport, url, opts);
 }
 
-/* ── robots.txt — for WEB_PAGE sources only ────────────────────────────────── */
+/* ── robots.txt — for every source, at every hop ───────────────────────────── */
 
 /**
  * May our user agent fetch `path`? The longest matching rule wins (RFC 9309),
@@ -364,19 +403,38 @@ export function globMatches(pattern: string, path: string): boolean {
   return p >= pat.length;
 }
 
-/** Fetch a page only if the site's robots.txt allows it. A missing robots.txt
- *  (4xx) allows; an unreachable one (5xx, network) does not — when in doubt,
- *  the answer is no. */
+/**
+ * A robots.txt check for every address a fetch visits — the redirects
+ * included — reading each site's robots.txt once. A missing robots.txt (4xx)
+ * allows; a refused one (429) or an unreachable one (5xx, network) does not:
+ * when in doubt, the answer is no ("robots_unreachable" — try again later).
+ */
+export function robotsGate(): (url: URL) => Promise<void> {
+  const byOrigin = new Map<string, Promise<string | null>>();
+  const read = async (origin: string): Promise<string | null> => {
+    try {
+      return (await safeFetch(`${origin}/robots.txt`, { accept: "text/plain", maxBytes: 256_000, timeoutMs: 6_000 })).body;
+    } catch (e) {
+      const status = e instanceof SafeFetchError ? e.status : undefined;
+      if (typeof status === "number" && status >= 400 && status < 500 && status !== 429) return null;
+      throw new SafeFetchError("robots_unreachable");
+    }
+  };
+  // Each address is judged once (a hostile robots.txt costs CPU per check).
+  const judged = new Map<string, boolean>();
+  return async (url) => {
+    let robots = byOrigin.get(url.origin);
+    if (!robots) { robots = read(url.origin); byOrigin.set(url.origin, robots); }
+    const body = await robots;
+    if (body === null) return;
+    const key = `${url.origin}${url.pathname}${url.search}`;
+    let ok = judged.get(key);
+    if (ok === undefined) { ok = robotsAllows(body, `${url.pathname}${url.search}`); judged.set(key, ok); }
+    if (!ok) throw new SafeFetchError("robots");
+  };
+}
+
+/** Fetch only what the site's robots.txt allows — at every hop. */
 export async function fetchPageRespectingRobots(url: string, opts: FetchOptions): Promise<FetchedDocument> {
-  const target = new URL(url);
-  let allowed = true;
-  try {
-    const robots = await safeFetch(`${target.origin}/robots.txt`, { accept: "text/plain", maxBytes: 256_000, timeoutMs: 6_000 });
-    allowed = robotsAllows(robots.body, `${target.pathname}${target.search}`);
-  } catch (e) {
-    const status = e instanceof SafeFetchError ? e.status : undefined;
-    allowed = typeof status === "number" && status >= 400 && status < 500;
-  }
-  if (!allowed) throw new SafeFetchError("robots");
-  return safeFetch(url, opts);
+  return safeFetch(url, { ...opts, beforeHop: robotsGate() });
 }

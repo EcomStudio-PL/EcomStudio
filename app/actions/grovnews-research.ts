@@ -9,10 +9,14 @@ import {
 } from "@/lib/grovnews-research";
 import * as store from "@/lib/server/grovnews/store";
 import {
-  analyzeQueue, budget, composeEditionMail, contentHash, draftQueue, errorCode, ingestSources, mailBody, readSource, runDaily,
+  analyzeQueue, budget, composeEditionMail, contentHash, draftQueue, errorCode, ingestSources, mailBody, runDaily,
 } from "@/lib/server/grovnews/pipeline";
 import { grovnewsEngine } from "@/lib/server/grovnews/ai";
 import { digestUtm } from "@/lib/server/grovnews/compose";
+import { composeDailyMail, mailBodyDaily } from "@/lib/server/grovnews/daily";
+import { healthFromProbe, probeSource } from "@/lib/server/grovnews/probe";
+import { readDailyRecord } from "@/lib/grovnews-research";
+import type { ProbeSummary } from "@/lib/grovnews-import";
 import {
   createCampaignAction, deleteCampaignAction, saveCampaignAction, saveStepAction, scheduleCampaignAction,
   sendTestCampaignAction,
@@ -114,11 +118,15 @@ export async function setSourceEnabledAction(id: string, enabled: boolean): Prom
 }
 
 /**
- * Read one saved source now and report what it would yield — nothing is
- * stored. Uses the same guarded fetcher and parser as the daily job.
+ * Test one saved source now ("Testuj"): read it through the same guarded
+ * fetcher the daily job uses — robots.txt first, no login, no retry around a
+ * refusal — say what the URL really is, and RECORD its health (0125 §2). No
+ * item is stored; the source's own settings are not changed (a better type
+ * is offered, the admin decides).
  */
 export async function testSourceAction(id: string):
-  Promise<{ ok: true; entries: number; sample: string[] } | (Fail<"fetch" | "notFetchable"> & { code?: string })> {
+  Promise<{ ok: true; entries: number; sample: string[]; health: string; probe: ProbeSummary }
+    | (Fail<"fetch" | "notFetchable"> & { code?: string; health?: string; probe?: ProbeSummary })> {
   try {
     const { supabase } = await requireAdmin();
     if (!isUuid(id)) return { ok: false, error: "invalid" };
@@ -128,15 +136,12 @@ export async function testSourceAction(id: string):
     if (s.source_type === "MANUAL" || s.source_type === "API" || !s.url) {
       return { ok: false, error: "notFetchable", code: s.source_type === "API" ? "adapter_unavailable" : "manual" };
     }
-    try {
-      const items = await readSource({
-        id: s.id, name: s.name, type: s.source_type as store.SourceRef["type"], url: s.url, categoryId: s.category_id,
-        priority: s.priority, official: s.official_source, language: s.language === "en" || s.language === "de" ? s.language : "pl",
-      }, [], Date.now());
-      return { ok: true, entries: items.length, sample: items.slice(0, 5).map((i) => i.title) };
-    } catch (e) {
-      return { ok: false, error: "fetch", code: errorCode(e) };
-    }
+    const probe = await probeSource(s.url, { deadline: Date.now() + 90_000 });
+    const result = healthFromProbe(probe, { url: s.url, type: s.source_type });
+    const health = await store.sourceChecked(supabase, s.id, result);
+    revalidateAll();
+    if (result.ok) return { ok: true, entries: result.entries ?? 0, sample: probe.sample, health, probe };
+    return { ok: false, error: "fetch", code: result.error ?? errorCode(null), health, probe };
   } catch (e) {
     return failed(e);
   }
@@ -428,12 +433,32 @@ export async function setEditionStatusAction(id: string, target: EditionTarget):
   }
 }
 
-type EditionRow = { id: string; status: string; campaign_id: string | null; edition_date: string; title: string; intro: string };
+type EditionRow = {
+  id: string; status: string; campaign_id: string | null; edition_date: string; title: string; intro: string;
+  article_post_id: string | null; daily: unknown;
+};
 
 async function readEdition(supabase: Awaited<ReturnType<typeof requireAdmin>>["supabase"], id: string): Promise<EditionRow | null> {
   const { data } = await supabase.from("grovnews_editions")
-    .select("id, status, campaign_id, edition_date, title, intro").eq("id", id).maybeSingle();
+    .select("id, status, campaign_id, edition_date, title, intro, article_post_id, daily").eq("id", id).maybeSingle();
   return data;
+}
+
+/**
+ * THE MAIL OF A DAY'S ARTICLE (0125): one intro, one short section per topic,
+ * ONE link — to the published article. Built from the edition's own record,
+ * never from what a campaign row says now. Null when this is not an article
+ * edition (the Stage 2 digest path applies).
+ */
+function dailyMailOf(ed: Pick<EditionRow, "article_post_id" | "daily">, source: store.MailSource):
+  { subject: string; preview: string; intro: string; html: string } | null {
+  if (!ed.article_post_id) return null;
+  const record = readDailyRecord(ed.daily);
+  const article = source.posts.find((p) => p.id === ed.article_post_id);
+  if (!record || !article) throw new Error("edition_empty");
+  const mail = composeDailyMail(source.date, record);
+  const { html } = mailBodyDaily(source.date, article.slug, mail);
+  return { subject: mail.subject, preview: mail.preview, intro: mail.intro, html };
 }
 
 /** Every post the edition carries is in the mail source (which lists only
@@ -463,12 +488,15 @@ export async function prepareEmailAction(id: string):
     const source = await store.editionMailSource(supabase, id);
     if (!source || !(await allPostsPublished(supabase, id, source))) return { ok: false, error: "unpublished" };
 
-    const engine = await grovnewsEngine(supabase);
+    const daily = dailyMailOf(ed, source);
+    const engine = daily ? null : await grovnewsEngine(supabase);
     const edition = { date: source.date, title: source.title, intro: source.intro };
-    const mail = await composeEditionMail(engine, edition, source.posts);
-    const { html } = mailBody(edition, mail.intro, source.posts, mail.blurbs);
+    const mail = daily
+      ? { subject: daily.subject, preview: daily.preview, intro: daily.intro, blurbs: new Map<string, string>(), aiUsed: false }
+      : await composeEditionMail(engine, edition, source.posts);
+    const html = daily ? daily.html : mailBody(edition, mail.intro, source.posts, mail.blurbs).html;
 
-    for (const p of source.posts) {
+    for (const p of daily ? [] : source.posts) {
       const { error } = await supabase.from("grovnews_edition_posts")
         .update({ email_blurb: mail.blurbs.get(p.id) ?? null }).eq("edition_id", id).eq("post_id", p.id);
       if (error) return { ok: false, error: guardError(error) === "locked" ? "campaignLocked" : "generic" };
@@ -542,6 +570,9 @@ export async function saveEmailAction(id: string, input: {
 
     const source = await store.editionMailSource(supabase, id);
     if (!source || !(await allPostsPublished(supabase, id, source))) return { ok: false, error: "unpublished" };
+    // A day's article mail is written from its record (edited in the daily
+    // review panel), not from per-post blurbs.
+    if (ed.article_post_id) return { ok: false, error: "invalid" };
     const blurbs = new Map<string, string>();
     for (const p of source.posts) {
       const given = input.blurbs?.[p.id];
@@ -606,7 +637,7 @@ export async function sendEditionAction(id: string):
     if (!isUuid(id)) return { ok: false, error: "invalid" };
     if (!store.serverTokenAvailable()) return NO_SERVER_KEY;
     const { data: ed } = await supabase.from("grovnews_editions")
-      .select("id, status, campaign_id, edition_date, title, intro, email_subject, email_preview, email_prepared_at, email_recipients")
+      .select("id, status, campaign_id, edition_date, title, intro, email_subject, email_preview, email_prepared_at, email_recipients, article_post_id, daily")
       .eq("id", id).maybeSingle();
     if (!ed) return { ok: false, error: "invalid" };
     if (ed.status === "QUEUED" || ed.status === "SENT") return { ok: true, recipients: ed.email_recipients ?? 0, already: true };
@@ -650,7 +681,13 @@ export async function sendEditionAction(id: string):
     // The body that goes out is rebuilt here from the edition, not trusted
     // from the campaign row someone may have edited in the meantime.
     const blurbs = new Map(source.posts.map((p) => [p.id, p.blurb ?? ""]));
-    const { html } = mailBody({ date: source.date, title: source.title }, source.intro, source.posts, blurbs);
+    let html: string;
+    try {
+      html = dailyMailOf(ed, source)?.html ?? mailBody({ date: source.date, title: source.title }, source.intro, source.posts, blurbs).html;
+    } catch {
+      await release();
+      return { ok: false, error: "unpublished" };
+    }
     const step = await saveStepAction({
       campaignId: ed.campaign_id, stepIndex: 0, variant: "A", subject: ed.email_subject, preheader: ed.email_preview ?? "",
       editor: "html", bodyHtml: html,
@@ -694,16 +731,17 @@ export async function saveSettingsAction(raw: unknown): Promise<{ ok: true } | F
     const parsed = validateSettingsInput(raw);
     if (!parsed.ok) return { ok: false, error: "invalid" };
     const v = parsed.value;
-    const { data: before } = await supabase.from("grovnews_settings").select("mode, daily_enabled").eq("id", true).maybeSingle();
+    const { data: before } = await supabase.from("grovnews_settings").select("mode, daily_enabled, email_enabled").eq("id", true).maybeSingle();
     const { error } = await supabase.from("grovnews_settings").update({
       mode: v.mode, daily_enabled: v.dailyEnabled, run_hour: v.runHour, min_relevance: v.minRelevance,
       min_importance: v.minImportance, max_topics: v.maxTopics, auto_publish_official_sensitive: v.autoPublishOfficialSensitive,
+      min_topics: v.minTopics, lookback_hours: v.lookbackHours, email_enabled: v.emailEnabled,
       updated_by: adminId,
     }).eq("id", true);
     if (error) return { ok: false, error: "generic" };
     await logAudit(supabase, {
       actorId: adminId, action: "grovnews.settings_saved", entityType: "grovnews_settings",
-      before: before ? { mode: before.mode, daily_enabled: before.daily_enabled } : undefined,
+      before: before ? { mode: before.mode, daily_enabled: before.daily_enabled, email_enabled: before.email_enabled } : undefined,
       after: { ...v },
     });
     revalidateAll();

@@ -27,6 +27,8 @@ export const RESERVED_SLUGS = new Set([
   "prompts", "history", "credits", "plan", "tools", "inspirations",
   "support", "retusz", "wideo", "k", "forgot-password", "reset-password",
   "sitemap.xml", "robots.txt", "manifest.webmanifest", "_next", "favicon.ico",
+  // The public GrovNews blog owns /blog (0125).
+  "blog",
   // The admin-only draft preview. /podglad/<slug> is two segments and could
   // not collide with this route anyway, but a page NAMED "podglad" would be a
   // confusing thing to own.

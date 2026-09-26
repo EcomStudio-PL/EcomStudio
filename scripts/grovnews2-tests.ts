@@ -728,8 +728,13 @@ const NEW_TABLES = ["grovnews_settings", "grovnews_sources", "grovnews_research_
     check("admin createDraftFromItemAction asks for publish=false (an admin-started draft is always reviewed)",
       /draftQueue\(supabase, engine, budget\([\d_]+\), false, id\)/.test(draftChunk));
     const pipe = code(read("lib/server/grovnews/pipeline.ts"));
+    // Stage 5 (0125): the daily run writes ONE article from the day's topics
+    // (draftDaily) instead of one post per item (draftQueue, still used by the
+    // admin's per-item draft above). The rule pinned here is unchanged: it
+    // asks to publish only in AUTOMATIC mode, and the database decides.
     check("the daily run asks to publish only in AUTOMATIC mode (and the DB decides anyway)",
-      /const automatic = ctx\.settings\.mode === "AUTOMATIC";/.test(pipe) && /draftQueue\(db, await getEngine\(\), b, automatic\)/.test(pipe));
+      /const automatic = ctx\.settings\.mode === "AUTOMATIC";/.test(pipe)
+      && /draftDaily\(db, ctx\.settings, await getEngine\(\), date, \{ publish: automatic, sourcesFailed \}\)/.test(pipe));
   }
 
   /* ── E ─────────────────────────────────────────────────────────────────────── */

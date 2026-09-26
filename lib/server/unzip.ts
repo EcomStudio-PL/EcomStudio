@@ -31,6 +31,15 @@ const ALLOWED_EXT = new Set([
 export type ZipEntry = { path: string; data: Buffer };
 export type UnzipResult = { entries: ZipEntry[]; skipped: string[] };
 
+/** Narrower budgets for a caller that reads a small, known archive (an
+ *  .xlsx is a zip of XML parts). Omitted fields keep the defaults above. */
+export type UnzipOptions = {
+  allowedExt?: ReadonlySet<string>;
+  maxEntries?: number;
+  maxFileBytes?: number;
+  maxTotalBytes?: number;
+};
+
 class ZipError extends Error {
   constructor(public code: string) { super(code); }
 }
@@ -55,9 +64,12 @@ function safePath(raw: string): string | null {
   return segments.join("/");
 }
 
-export function unzipSafe(buf: Buffer): UnzipResult {
+export function unzipSafe(buf: Buffer, opts: UnzipOptions = {}): UnzipResult {
+  const allowedExt = opts.allowedExt ?? ALLOWED_EXT;
+  const maxFile = Math.min(opts.maxFileBytes ?? MAX_FILE_BYTES, MAX_FILE_BYTES);
+  const maxTotal = Math.min(opts.maxTotalBytes ?? MAX_TOTAL_BYTES, MAX_TOTAL_BYTES);
   const { cdOffset, cdCount } = readEocd(buf);
-  if (cdCount > MAX_ENTRIES) throw new ZipError("zip_too_many_files");
+  if (cdCount > Math.min(opts.maxEntries ?? MAX_ENTRIES, MAX_ENTRIES)) throw new ZipError("zip_too_many_files");
 
   const entries: ZipEntry[] = [];
   const skipped: string[] = [];
@@ -86,13 +98,13 @@ export function unzipSafe(buf: Buffer): UnzipResult {
     if (unixType === 0xa) { skipped.push(name); continue; }
 
     const ext = name.split(".").pop()?.toLowerCase() ?? "";
-    if (!ALLOWED_EXT.has(ext)) { skipped.push(name); continue; }
+    if (!allowedExt.has(ext)) { skipped.push(name); continue; }
 
     // Skip BEFORE budgeting: an entry we will never extract must not fail the
     // whole archive on its (attacker-controlled, unverified) declared size.
     if (method !== 0 && method !== 8) { skipped.push(name); continue; }
-    if (uncompSize > MAX_FILE_BYTES) throw new ZipError("zip_file_too_large");
-    if (total + uncompSize > MAX_TOTAL_BYTES) throw new ZipError("zip_too_large");
+    if (uncompSize > maxFile) throw new ZipError("zip_file_too_large");
+    if (total + uncompSize > maxTotal) throw new ZipError("zip_too_large");
 
     // Local header: skip its own (possibly different) name/extra lengths.
     if (localOffset + 30 > buf.length || buf.readUInt32LE(localOffset) !== 0x04034b50) throw new ZipError("zip_invalid");
@@ -107,15 +119,15 @@ export function unzipSafe(buf: Buffer): UnzipResult {
       data = Buffer.from(raw);
     } else {
       try {
-        data = inflateRawSync(raw, { maxOutputLength: MAX_FILE_BYTES });
+        data = inflateRawSync(raw, { maxOutputLength: maxFile });
       } catch {
         throw new ZipError("zip_file_too_large");
       }
     }
     // The declared size is attacker-controlled — budget on the REAL size.
-    if (data.length > MAX_FILE_BYTES) throw new ZipError("zip_file_too_large");
+    if (data.length > maxFile) throw new ZipError("zip_file_too_large");
     total += data.length;
-    if (total > MAX_TOTAL_BYTES) throw new ZipError("zip_too_large");
+    if (total > maxTotal) throw new ZipError("zip_too_large");
 
     entries.push({ path: name, data });
   }

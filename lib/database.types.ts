@@ -2595,10 +2595,12 @@ export type Database = {
       }
       grovnews_editions: {
         Row: {
+          article_post_id: string | null
           auto_generated: boolean
           campaign_id: string | null
           created_at: string
           created_by: string | null
+          daily: Json | null
           edition_date: string
           email_body: string | null
           email_prepared_at: string | null
@@ -2617,10 +2619,12 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          article_post_id?: string | null
           auto_generated?: boolean
           campaign_id?: string | null
           created_at?: string
           created_by?: string | null
+          daily?: Json | null
           edition_date: string
           email_body?: string | null
           email_prepared_at?: string | null
@@ -2639,10 +2643,12 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          article_post_id?: string | null
           auto_generated?: boolean
           campaign_id?: string | null
           created_at?: string
           created_by?: string | null
+          daily?: Json | null
           edition_date?: string
           email_body?: string | null
           email_prepared_at?: string | null
@@ -2661,6 +2667,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "grovnews_editions_article_post_id_fkey"
+            columns: ["article_post_id"]
+            isOneToOne: true
+            referencedRelation: "grovnews_posts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "grovnews_editions_campaign_id_fkey"
             columns: ["campaign_id"]
@@ -2847,10 +2860,13 @@ export type Database = {
         Row: {
           auto_publish_official_sensitive: boolean
           daily_enabled: boolean
+          email_enabled: boolean
           id: boolean
+          lookback_hours: number
           max_topics: number
           min_importance: number
           min_relevance: number
+          min_topics: number
           mode: string
           run_hour: number
           timezone: string
@@ -2860,10 +2876,13 @@ export type Database = {
         Insert: {
           auto_publish_official_sensitive?: boolean
           daily_enabled?: boolean
+          email_enabled?: boolean
           id?: boolean
+          lookback_hours?: number
           max_topics?: number
           min_importance?: number
           min_relevance?: number
+          min_topics?: number
           mode?: string
           run_hour?: number
           timezone?: string
@@ -2873,10 +2892,13 @@ export type Database = {
         Update: {
           auto_publish_official_sensitive?: boolean
           daily_enabled?: boolean
+          email_enabled?: boolean
           id?: boolean
+          lookback_hours?: number
           max_topics?: number
           min_importance?: number
           min_relevance?: number
+          min_topics?: number
           mode?: string
           run_hour?: number
           timezone?: string
@@ -2887,52 +2909,76 @@ export type Database = {
       }
       grovnews_sources: {
         Row: {
+          baseline_at: string | null
           category_id: string | null
+          consecutive_failures: number
           created_at: string
           created_by: string | null
+          detected_type: string | null
           enabled: boolean
+          health_status: string | null
           id: string
           language: string
           last_checked_at: string | null
           last_error: string | null
+          last_http_status: number | null
+          last_items_count: number | null
+          last_new_items: number | null
           last_success_at: string | null
           name: string
           official_source: boolean
           priority: number
+          resolved_url: string | null
           source_type: string
           updated_at: string
           url: string | null
         }
         Insert: {
+          baseline_at?: string | null
           category_id?: string | null
+          consecutive_failures?: number
           created_at?: string
           created_by?: string | null
+          detected_type?: string | null
           enabled?: boolean
+          health_status?: string | null
           id?: string
           language?: string
           last_checked_at?: string | null
           last_error?: string | null
+          last_http_status?: number | null
+          last_items_count?: number | null
+          last_new_items?: number | null
           last_success_at?: string | null
           name: string
           official_source?: boolean
           priority?: number
+          resolved_url?: string | null
           source_type: string
           updated_at?: string
           url?: string | null
         }
         Update: {
+          baseline_at?: string | null
           category_id?: string | null
+          consecutive_failures?: number
           created_at?: string
           created_by?: string | null
+          detected_type?: string | null
           enabled?: boolean
+          health_status?: string | null
           id?: string
           language?: string
           last_checked_at?: string | null
           last_error?: string | null
+          last_http_status?: number | null
+          last_items_count?: number | null
+          last_new_items?: number | null
           last_success_at?: string | null
           name?: string
           official_source?: boolean
           priority?: number
+          resolved_url?: string | null
           source_type?: string
           updated_at?: string
           url?: string | null
@@ -6469,6 +6515,25 @@ export type Database = {
           slug: string
         }[]
       }
+      grovnews_daily_article: {
+        Args: {
+          p_date: string
+          p_item_ids: string[]
+          p_post: Json
+          p_publish: boolean
+          p_review_reason: string
+          p_token: string
+        }
+        Returns: Json
+      }
+      grovnews_daily_candidates: {
+        Args: { p_date: string; p_token: string }
+        Returns: Json
+      }
+      grovnews_import_sources: {
+        Args: { p_rows: Json; p_update_existing: boolean }
+        Returns: Json
+      }
       grovnews_ingest: {
         Args: {
           p_error: string
@@ -6480,6 +6545,10 @@ export type Database = {
         Returns: Json
       }
       grovnews_job_context: { Args: { p_token: string }; Returns: Json }
+      grovnews_source_checked: {
+        Args: { p_result: Json; p_source_id: string; p_token: string }
+        Returns: string
+      }
       grovnews_run_claim: { Args: { p_token: string; p_trigger: string }; Returns: Json }
       grovnews_run_update: {
         Args: {

@@ -2,7 +2,11 @@ import "server-only";
 import type { Client } from "@/lib/services/workspace";
 import type { Json } from "@/lib/database.types";
 import { dispatchToken } from "@/lib/server/server-token";
-import { DEFAULT_SETTINGS, type GrovNewsSettings, type GrovNewsMode, type SourceType } from "@/lib/grovnews-research";
+import {
+  DEFAULT_SETTINGS, readDailyRecord, type DailyRecord, type GrovNewsSettings, type GrovNewsMode, type SourceType,
+} from "@/lib/grovnews-research";
+
+export type { DailyRecord, DailyTopicRecord } from "@/lib/grovnews-research";
 
 /**
  * THE DAILY JOB'S DATABASE DOORS (migration 0121 §6), typed.
@@ -53,6 +57,7 @@ export type JobContext = { settings: GrovNewsSettings; sources: SourceRef[]; cat
 type RawSettings = {
   mode?: string; daily_enabled?: boolean; run_hour?: number; min_relevance?: number; min_importance?: number;
   max_topics?: number; auto_publish_official_sensitive?: boolean;
+  min_topics?: number; lookback_hours?: number; email_enabled?: boolean;
 };
 
 export function settingsFromRow(raw: RawSettings | null | undefined): GrovNewsSettings {
@@ -66,6 +71,9 @@ export function settingsFromRow(raw: RawSettings | null | undefined): GrovNewsSe
     minImportance: raw.min_importance ?? DEFAULT_SETTINGS.minImportance,
     maxTopics: raw.max_topics ?? DEFAULT_SETTINGS.maxTopics,
     autoPublishOfficialSensitive: raw.auto_publish_official_sensitive === true,
+    minTopics: raw.min_topics ?? DEFAULT_SETTINGS.minTopics,
+    lookbackHours: raw.lookback_hours ?? DEFAULT_SETTINGS.lookbackHours,
+    emailEnabled: raw.email_enabled !== false,
   };
 }
 
@@ -90,7 +98,12 @@ export type IngestItem = {
   url: string; nurl: string; title: string; excerpt: string; published_at: string | null;
   hash: string; title_norm: string; duplicate_of: string | null; stale: boolean; metadata: Record<string, Json>;
 };
-export type IngestResult = { inserted: number; duplicates: number; skipped: number; stale: number; items: RecentItem[] };
+export type IngestResult = {
+  inserted: number; duplicates: number; skipped: number; stale: number; items: RecentItem[];
+  /** 0125: how many entries the read listed; whether it was the source's
+   *  first stored read (its baseline). */
+  entries?: number; baseline?: boolean;
+};
 
 export async function ingest(db: Client, sourceId: string, ok: boolean, error: string | null, items: IngestItem[]): Promise<IngestResult> {
   return unwrap<IngestResult>(db.rpc("grovnews_ingest", {
@@ -194,12 +207,17 @@ export type MailSourcePost = {
   id: string; slug: string; title: string; excerpt: string; content: string;
   emailSummary: string | null; blurb: string | null;
 };
-export type MailSource = { date: string; title: string; intro: string; posts: MailSourcePost[] };
+export type MailSource = {
+  date: string; title: string; intro: string; posts: MailSourcePost[];
+  /** 0125: the day's article and its editorial record, when this is an
+   *  article edition. */
+  articlePostId?: string | null; daily?: DailyRecord | null;
+};
 
-/** The edition and its PUBLISHED posts, in order (0121 §6.8b). */
+/** The edition and its PUBLISHED posts, in order (0121 §6.8b, 0125 §5.6). */
 export async function editionMailSource(db: Client, editionId: string): Promise<MailSource | null> {
   const raw = await unwrap<{
-    date: string; title: string; intro: string | null;
+    date: string; title: string; intro: string | null; article_post_id?: string | null; daily?: unknown;
     posts: { id: string; slug: string; title: string; excerpt: string; content: string; email_summary: string | null; blurb: string | null }[];
   } | null>(db.rpc("grovnews_edition_mail_source", { p_token: token(), p_edition_id: editionId }));
   if (!raw) return null;
@@ -209,5 +227,75 @@ export async function editionMailSource(db: Client, editionId: string): Promise<
       id: p.id, slug: p.slug, title: p.title, excerpt: p.excerpt, content: p.content,
       emailSummary: p.email_summary, blurb: p.blurb,
     })),
+    articlePostId: raw.article_post_id ?? null,
+    daily: readDailyRecord(raw.daily),
   };
+}
+
+/* ── 0125: source health, the day's topics, the day's article ─────────────── */
+
+export type HealthResult = {
+  ok: boolean; error: string | null; http: number | null; detected_type: string | null;
+  resolved_url: string | null; entries: number | null;
+};
+
+/** Record one health check (admin session or the job's token). */
+export async function sourceChecked(db: Client, sourceId: string, result: HealthResult): Promise<string> {
+  return unwrap<string>(db.rpc("grovnews_source_checked", {
+    p_token: dispatchToken() ?? "", p_source_id: sourceId, p_result: result as unknown as Json,
+  }));
+}
+
+export type DailySource = {
+  id: string; url: string; title: string; excerpt: string; published_at: string | null;
+  source: string; official: boolean; priority: number; source_id: string | null;
+  /** Review-flagged, or law/tax from an unofficial site (its excerpt still
+   *  reaches the writer, so the topic waits for a person). */
+  flagged?: boolean;
+};
+export type DailyCandidate = {
+  id: string; url: string; title: string; excerpt: string; published_at: string | null; discovered_at: string;
+  ai_title: string | null; ai_summary: string | null; ai_reason: string | null;
+  relevance: number | null; importance: number | null; sensitive: boolean; review_required: boolean;
+  review_reason: string | null; category: string | null;
+  source_name: string; official: boolean; priority: number; language: "pl" | "en" | "de"; source_id: string | null;
+  related: DailySource[];
+};
+
+/** Today's SELECTED topics, each with every report of the same story. */
+export async function dailyCandidates(db: Client, date: string): Promise<DailyCandidate[]> {
+  return (await unwrap<DailyCandidate[] | null>(db.rpc("grovnews_daily_candidates", { p_token: token(), p_date: date }))) ?? [];
+}
+
+export type DailyArticleResult = {
+  post_id: string; slug: string; status: string; created: boolean;
+  edition_id: string | null; edition_status: string | null; attached?: boolean;
+};
+
+/** The day's article when it is already written (its topics are then USED,
+ *  so a resumed run finds no candidates) — or null. The database returns an
+ *  existing article before it looks at the (here empty) topics; with none
+ *  written it refuses the empty list, and nothing is written. */
+export async function dailyArticleOf(db: Client, date: string): Promise<DailyArticleResult | null> {
+  const { data, error } = await db.rpc("grovnews_daily_article", {
+    p_token: token(), p_date: date, p_item_ids: [], p_post: {} as Json, p_publish: false, p_review_reason: "",
+  });
+  if (error) {
+    if (/invalid_items/.test(error.message)) return null;
+    throw new StoreError(error.message.slice(0, 120) || "rpc_failed");
+  }
+  return data as DailyArticleResult;
+}
+
+/** Write the day's ONE article (the database decides whether it publishes).
+ *  `absorbed`: same-story items merged into a topic — claimed with it. */
+export async function dailyArticle(db: Client, input: {
+  date: string; itemIds: string[]; post: PostPayload & { daily: DailyRecord }; publish: boolean; reviewReason: string;
+  absorbed?: string[];
+}): Promise<DailyArticleResult> {
+  const post = { ...input.post, absorbed: input.absorbed ?? [] };
+  return unwrap<DailyArticleResult>(db.rpc("grovnews_daily_article", {
+    p_token: token(), p_date: input.date, p_item_ids: input.itemIds, p_post: post as unknown as Json,
+    p_publish: input.publish, p_review_reason: input.reviewReason,
+  }));
 }

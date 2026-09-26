@@ -18,11 +18,23 @@ import {
   arrangeEditionAction, prepareEmailAction, saveEditionAction, saveEmailAction, sendEditionAction, setEditionStatusAction,
   testSendEditionAction, type EditionTarget,
 } from "@/app/actions/grovnews-research";
-import { DIGEST_WORDS, digestMinutes, editionDateLabel, wordCount, type EditionStatus } from "@/lib/grovnews-research";
+import { DIGEST_WORDS, digestMinutes, editionDateLabel, wordCount, type DailyRecord, type EditionStatus } from "@/lib/grovnews-research";
 import type { AdminEditionDetail } from "@/lib/services/grovnews-research";
 import { EDITION_TONE, isFailureReason, useFormatDateTime } from "./editions";
+import { DailyReview } from "./daily-review";
 
 type Candidate = { id: string; title: string; status: string; publishedAt: string | null };
+
+/** The day's ONE article (0125), as the page hands it over for review: its
+ *  record, the article itself, the mail exactly as it would go out, and the
+ *  stories an admin may still add. */
+export type DailyReviewData = {
+  record: DailyRecord;
+  article: { id: string; slug: string; title: string; status: string; content: string; publishedAt: string | null };
+  mailHtml: string;
+  candidates: { id: string; title: string; source: string | null; official: boolean; relevance: number | null; importance: number | null }[];
+  maxTopics: number;
+};
 
 /** The moves the server allows from each state (TRANSITIONS in
  *  app/actions/grovnews-research.ts) — mirrored so the screen only offers
@@ -125,8 +137,8 @@ function Note({ children }: { children: React.ReactNode }) {
  * queued); this screen offers only the moves that can succeed and turns every
  * refusal into a sentence.
  */
-export function EditionEditor({ edition, candidates, adminEmail }: {
-  edition: AdminEditionDetail; candidates: Candidate[]; adminEmail: string;
+export function EditionEditor({ edition, candidates, adminEmail, daily = null }: {
+  edition: AdminEditionDetail; candidates: Candidate[]; adminEmail: string; daily?: DailyReviewData | null;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -197,11 +209,15 @@ export function EditionEditor({ edition, candidates, adminEmail }: {
         </div>
       </header>
 
+      {/* 1b · the day's ONE article: review it and its mail side by side */}
+      {daily && <DailyReview edition={edition} daily={daily} />}
+
       {/* 2 · title and intro */}
       <DetailsForm key={`${edition.title}\u0000${edition.intro}`} edition={edition} />
 
-      {/* 3 · posts */}
-      <PostsSection edition={edition} candidates={candidates} hasUnpublished={hasUnpublished} />
+      {/* 3 · posts — an article edition carries exactly its article, so
+             there is no list to arrange */}
+      {!daily && <PostsSection edition={edition} candidates={candidates} hasUnpublished={hasUnpublished} />}
 
       {/* 4 · mail */}
       <Section title={t("grovnewsAdm.editions.mailTitle")} data-grovnews-edition-mail>
@@ -209,7 +225,7 @@ export function EditionEditor({ edition, candidates, adminEmail }: {
           <Note>{t(status === "ARCHIVED" ? "grovnewsAdm.editions.mailArchived" : "grovnewsAdm.editions.mailNeedsPublished")}</Note>
         ) : (
           <MailPanel edition={edition} adminEmail={adminEmail} aiUsed={aiUsed} pending={pending} onPrepare={prepare}
-            hasUnpublished={hasUnpublished} />
+            hasUnpublished={hasUnpublished} article={daily !== null} />
         )}
       </Section>
 
@@ -395,9 +411,9 @@ function PostsSection({ edition, candidates, hasUnpublished }: {
 
 /* ── mail ──────────────────────────────────────────────────────────────────── */
 
-function MailPanel({ edition, adminEmail, aiUsed, pending, onPrepare, hasUnpublished }: {
+function MailPanel({ edition, adminEmail, aiUsed, pending, onPrepare, hasUnpublished, article }: {
   edition: AdminEditionDetail; adminEmail: string; aiUsed: boolean | null; pending: boolean; onPrepare: () => void;
-  hasUnpublished: boolean;
+  hasUnpublished: boolean; article: boolean;
 }) {
   const { t } = useI18n();
   const fmt = useFormatDateTime();
@@ -451,7 +467,8 @@ function MailPanel({ edition, adminEmail, aiUsed, pending, onPrepare, hasUnpubli
       )}
 
       {prepared ? (
-        <MailForm key={edition.emailPreparedAt ?? "none"} edition={edition} adminEmail={adminEmail} hasUnpublished={hasUnpublished} />
+        <MailForm key={edition.emailPreparedAt ?? "none"} edition={edition} adminEmail={adminEmail} hasUnpublished={hasUnpublished}
+          article={article} />
       ) : (
         <Note>{t("grovnewsAdm.editions.notPreparedYet")}</Note>
       )}
@@ -493,8 +510,12 @@ function campaignStatus(s: string): (typeof CAMPAIGN_STATUSES)[number] {
   return (CAMPAIGN_STATUSES as readonly string[]).includes(s) ? (s as (typeof CAMPAIGN_STATUSES)[number]) : "draft";
 }
 
-function MailForm({ edition, adminEmail, hasUnpublished }: {
+function MailForm({ edition, adminEmail, hasUnpublished, article }: {
   edition: AdminEditionDetail; adminEmail: string; hasUnpublished: boolean;
+  /** A day's article edition: its mail copy is written from the article's
+   *  record and edited in the review panel above (saveEmailAction refuses
+   *  it), so the Stage 2 copy editor is not offered here. */
+  article: boolean;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -514,6 +535,7 @@ function MailForm({ edition, adminEmail, hasUnpublished }: {
 
   const campaignDraft = edition.campaign?.status === "draft";
   const editable = edition.status === "PUBLISHED" && campaignDraft;
+  const copyEditable = editable && !article;
   const canSend = editable && !hasUnpublished;
   const dirty = subject !== (edition.emailSubject ?? "") || preview !== (edition.emailPreview ?? "") || intro !== edition.intro
     || edition.items.some((i) => (blurbs[i.postId] ?? "") !== initialBlurbs[i.postId]);
@@ -555,40 +577,46 @@ function MailForm({ edition, adminEmail, hasUnpublished }: {
       <div className="grid min-w-0 gap-4 sm:grid-cols-2">
         <div className="min-w-0">
           <Label htmlFor="ed-subject" hint={`${subject.length}/200`}>{t("grovnewsAdm.editions.subject")}</Label>
-          <Input id="ed-subject" value={subject} maxLength={200} readOnly={!editable} onChange={(e) => setSubject(e.target.value)} />
+          <Input id="ed-subject" value={subject} maxLength={200} readOnly={!copyEditable} onChange={(e) => setSubject(e.target.value)} />
         </div>
         <div className="min-w-0">
           <Label htmlFor="ed-preview" hint={`${preview.length}/300`}>{t("grovnewsAdm.editions.previewLine")}</Label>
-          <Input id="ed-preview" value={preview} maxLength={300} readOnly={!editable} onChange={(e) => setPreview(e.target.value)} />
+          <Input id="ed-preview" value={preview} maxLength={300} readOnly={!copyEditable} onChange={(e) => setPreview(e.target.value)} />
         </div>
       </div>
-      <div>
-        <Label htmlFor="ed-mail-intro" hint={`${intro.length}/1500`}>{t("grovnewsAdm.editions.mailIntro")}</Label>
-        <Textarea id="ed-mail-intro" rows={3} value={intro} maxLength={1500} readOnly={!editable} onChange={(e) => setIntro(e.target.value)} />
-      </div>
-      {edition.items.map((item, index) => (
-        <div key={item.postId} className="min-w-0">
-          <Label htmlFor={`ed-blurb-${item.postId}`} hint={`${(blurbs[item.postId] ?? "").length}/1500`}>
-            <span className="break-words">{index + 1}. {item.title || "—"}</span>
-          </Label>
-          <Textarea id={`ed-blurb-${item.postId}`} rows={3} maxLength={1500} readOnly={!editable}
-            value={blurbs[item.postId] ?? ""} data-grovnews-edition-blurb={item.postId}
-            onChange={(e) => setBlurbs((b) => ({ ...b, [item.postId]: e.target.value }))} />
-        </div>
-      ))}
+      {!article && (
+        <>
+          <div>
+            <Label htmlFor="ed-mail-intro" hint={`${intro.length}/1500`}>{t("grovnewsAdm.editions.mailIntro")}</Label>
+            <Textarea id="ed-mail-intro" rows={3} value={intro} maxLength={1500} readOnly={!editable} onChange={(e) => setIntro(e.target.value)} />
+          </div>
+          {edition.items.map((item, index) => (
+            <div key={item.postId} className="min-w-0">
+              <Label htmlFor={`ed-blurb-${item.postId}`} hint={`${(blurbs[item.postId] ?? "").length}/1500`}>
+                <span className="break-words">{index + 1}. {item.title || "—"}</span>
+              </Label>
+              <Textarea id={`ed-blurb-${item.postId}`} rows={3} maxLength={1500} readOnly={!editable}
+                value={blurbs[item.postId] ?? ""} data-grovnews-edition-blurb={item.postId}
+                onChange={(e) => setBlurbs((b) => ({ ...b, [item.postId]: e.target.value }))} />
+            </div>
+          ))}
 
-      <div className="plate min-w-0 rounded-xl px-3.5 py-3" data-grovnews-digest-minutes={minutes}>
-        <p className="text-[13px] font-semibold">
-          {t("grovnewsAdm.editions.digestTime", { n: minutes, words })}
-        </p>
-        <p className="mt-0.5 break-words text-[12px] text-muted">
-          {t("grovnewsAdm.editions.digestTarget", { min: DIGEST_WORDS.min, max: DIGEST_WORDS.max })}
-          {" · "}
-          <span className={lengthHint === "grovnewsAdm.editions.digestOk" ? "text-success" : "text-warning"}>{t(lengthHint)}</span>
-        </p>
-      </div>
+          <div className="plate min-w-0 rounded-xl px-3.5 py-3" data-grovnews-digest-minutes={minutes}>
+            <p className="text-[13px] font-semibold">
+              {t("grovnewsAdm.editions.digestTime", { n: minutes, words })}
+            </p>
+            <p className="mt-0.5 break-words text-[12px] text-muted">
+              {t("grovnewsAdm.editions.digestTarget", { min: DIGEST_WORDS.min, max: DIGEST_WORDS.max })}
+              {" · "}
+              <span className={lengthHint === "grovnewsAdm.editions.digestOk" ? "text-success" : "text-warning"}>{t(lengthHint)}</span>
+            </p>
+          </div>
+        </>
+      )}
 
-      {editable ? (
+      {article && editable ? (
+        <Note>{t("grovnewsAdm.daily.mailInReview")}</Note>
+      ) : copyEditable ? (
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
           {dirty && <span className="min-w-0 text-[12px] text-muted sm:mr-auto">{t("grovnewsAdm.editions.unsaved")}</span>}
           <Button size="sm" disabled={pending || !dirty || !subject.trim()} onClick={save} data-grovnews-edition-save-mail>

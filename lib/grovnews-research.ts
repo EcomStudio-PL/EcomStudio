@@ -73,13 +73,24 @@ const ZWSP = String.fromCharCode(0x200b);
  * client turns it into a link — the text reads the same, nothing is clickable.
  */
 export function stripLinks(text: string): string {
+  // Every dot of a label chain is defused, not only the last one — otherwise
+  // "biznes.gov.pl" keeps a linkable "biznes.gov".
+  const defuse = (labels: string) => labels.replace(/\./g, `.${ZWSP}`);
   return text
+    // Look-alike dots (fullwidth, ideographic) are dots.
+    .replace(/[\uFF0E\u3002\uFF61]/g, ".")
     .replace(/\[([^\]\n]{1,300})\]\([^)\s]{1,2000}\)/g, "$1")
     .replace(/\b(?:https?:\/\/|www\.)[^\s<>()]+/gi, "")
-    .replace(/\b(?:[a-z0-9-]{1,63}\.)+[a-z]{2,24}\/[^\s<>()]*/gi, "")
-    .replace(/([a-z0-9._%+-]{1,64})@((?:[a-z0-9-]{1,63}\.)+[a-z]{2,24})\b/gi, `$1@${ZWSP}$2`)
-    .replace(/\b((?:[a-z0-9-]{1,63}\.)+)([a-z]{2,24})\b/gi, (m: string, labels: string, tld: string) =>
-      /^\d+\.$/.test(labels) ? m : `${labels}${ZWSP}${tld}`)
+    // Labels may be digits, non-ASCII letters or carry combining marks
+    // (1688.com, łódź.pl).
+    .replace(/(?<![\p{L}\p{M}\p{N}-])(?:[\p{L}\p{M}\p{N}-]{1,63}\.)+[a-z]{2,24}\/[^\s<>()]*/giu, "")
+    .replace(/(?<![\p{N}.])\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?\/[^\s<>()]*/gu, "")
+    .replace(/([\p{L}\p{M}\p{N}._%+-]{1,64})@((?:[\p{L}\p{M}\p{N}-]{1,63}\.)+)([a-z]{2,24})(?![a-z])/giu,
+      (_m: string, user: string, labels: string, tld: string) => `${user}@${ZWSP}${defuse(labels)}${tld}`)
+    // A letters-only TLD never matches a decimal (3.5), so every label.tld is
+    // defused — digits-only labels too.
+    .replace(/(?<![\p{L}\p{M}\p{N}-])((?:[\p{L}\p{M}\p{N}-]{1,63}\.)+)([a-z]{2,24})(?![a-z])/giu,
+      (_m: string, labels: string, tld: string) => `${defuse(labels)}${tld}`)
     .replace(/ {2,}/g, " ");
 }
 
@@ -114,6 +125,11 @@ export function normalizeUrl(raw: string): string | null {
   return `https://${host}${path === "/" ? "" : path}${query}`.slice(0, 2000);
 }
 
+/** GrovBase's own platform: the app itself, its database project and its
+ *  deployments. Public names, but never a news source — pointing the fetcher
+ *  at them would only make it call our own backend. */
+const PLATFORM_SUFFIXES = ["grovbase.com", "supabase.co", "supabase.in", "supabase.net", "vercel.app", "vercel.sh"];
+
 /** Hosts an admin may never point a source at, whatever DNS says. The fetcher
  *  re-checks every resolved address; this catches the obvious at save time. */
 export function isForbiddenHost(hostname: string): boolean {
@@ -121,6 +137,7 @@ export function isForbiddenHost(hostname: string): boolean {
   if (!h || h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local")
       || h.endsWith(".internal") || h.endsWith(".lan") || h.endsWith(".home.arpa")) return true;
   if (/^[\d.]+$/.test(h) || h.includes(":")) return true; // IP literals: a source is a name, not an address
+  if (PLATFORM_SUFFIXES.some((d) => h === d || h.endsWith(`.${d}`))) return true;
   return !h.includes(".");
 }
 
@@ -136,6 +153,9 @@ export function isAcceptableSourceUrl(raw: string): boolean {
   if (url.protocol !== "https:" || url.username || url.password) return false;
   if (url.port && url.port !== "443") return false;
   if (String(raw).length > 2000) return false;
+  // The URL parser silently drops tabs and newlines; an address that needs
+  // that is not one to store (or to sign).
+  if (/[\u0000-\u001f\u007f]/.test(String(raw).trim())) return false;
   return !isForbiddenHost(url.hostname);
 }
 
@@ -214,12 +234,22 @@ export type GrovNewsSettings = {
   minImportance: number;
   maxTopics: number;
   autoPublishOfficialSensitive: boolean;
+  /** Below this many valuable topics the day's article waits for a person
+   *  (0125 §4) — it is still written, never padded. */
+  minTopics: number;
+  /** How old a story may be and still count as today's news. */
+  lookbackHours: number;
+  /** AUTOMATIC mode mails the day's article only while this is on. */
+  emailEnabled: boolean;
 };
 
 export const DEFAULT_SETTINGS: GrovNewsSettings = {
   mode: "REVIEW", dailyEnabled: false, runHour: 6, timezone: "Europe/Warsaw",
   minRelevance: 60, minImportance: 60, maxTopics: 5, autoPublishOfficialSensitive: false,
+  minTopics: 3, lookbackHours: 36, emailEnabled: true,
 };
+
+export const LOOKBACK_RANGE = { min: 12, max: 168 } as const;
 
 const int = (v: unknown, min: number, max: number): number | null => {
   const n = Number(v);
@@ -233,7 +263,10 @@ export function validateSettingsInput(raw: unknown): { ok: true; value: GrovNews
   const minRelevance = int(r.minRelevance, 0, 100);
   const minImportance = int(r.minImportance, 0, 100);
   const maxTopics = int(r.maxTopics, 1, 10);
-  if (!mode || runHour === null || minRelevance === null || minImportance === null || maxTopics === null) {
+  const minTopics = int(r.minTopics ?? DEFAULT_SETTINGS.minTopics, 1, 10);
+  const lookbackHours = int(r.lookbackHours ?? DEFAULT_SETTINGS.lookbackHours, LOOKBACK_RANGE.min, LOOKBACK_RANGE.max);
+  if (!mode || runHour === null || minRelevance === null || minImportance === null || maxTopics === null
+      || minTopics === null || lookbackHours === null || minTopics > maxTopics) {
     return { ok: false };
   }
   return {
@@ -242,6 +275,8 @@ export function validateSettingsInput(raw: unknown): { ok: true; value: GrovNews
       mode, runHour, minRelevance, minImportance, maxTopics, timezone: "Europe/Warsaw",
       dailyEnabled: r.dailyEnabled === true,
       autoPublishOfficialSensitive: r.autoPublishOfficialSensitive === true,
+      minTopics, lookbackHours,
+      emailEnabled: r.emailEnabled !== false,
     },
   };
 }
@@ -282,6 +317,75 @@ export function validateSourceInput(raw: unknown): { ok: true; value: SourceInpu
       name, type, url: urlRaw || null, enabled: r.enabled !== false, categoryId, priority,
       official: r.official === true, language,
     },
+  };
+}
+
+/* ── source health (0125 §2) ───────────────────────────────────────────────── */
+
+/** What the database stores. DISABLED is not stored: it is `enabled = false`. */
+export const STORED_HEALTH = ["HEALTHY", "DEGRADED", "FAILED", "UNSUPPORTED"] as const;
+export type StoredHealth = (typeof STORED_HEALTH)[number];
+export const HEALTH_STATUSES = ["HEALTHY", "DEGRADED", "FAILED", "UNSUPPORTED", "DISABLED", "UNCHECKED"] as const;
+export type SourceHealth = (typeof HEALTH_STATUSES)[number];
+
+/** The state a screen shows: switched off beats everything, never checked is
+ *  said out loud rather than shown as healthy. */
+export function effectiveHealth(enabled: boolean, stored: string | null): SourceHealth {
+  if (!enabled) return "DISABLED";
+  return (STORED_HEALTH as readonly string[]).includes(stored ?? "") ? (stored as StoredHealth) : "UNCHECKED";
+}
+
+/* ── the day's article: its editorial record (0125 §5) ────────────────────── */
+
+/** The editorial record of a day's article (kept on the admin-only edition,
+ *  never on the post — 0125 §5). */
+export type DailyTopicRecord = {
+  itemId: string; title: string; short: string; mail: string; category: string | null;
+  confidence: "HIGH" | "MEDIUM" | "LOW"; official: boolean;
+  sources: { url: string; title: string; source: string; official: boolean }[];
+  review: boolean; reviewReason: string | null;
+};
+export type DailyRecord = {
+  version: 1; date: string; headline: string; opening: string; mailIntro: string; watch: string[];
+  topics: DailyTopicRecord[]; review: { required: boolean; reasons: string[] }; generatedAt: string;
+};
+
+const recStr = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
+
+/** A stored record, re-validated on the way in: it is data, and the mail and
+ *  the review screen render it. */
+export function readDailyRecord(v: unknown): DailyRecord | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const r = v as Record<string, unknown>;
+  const topics = (Array.isArray(r.topics) ? r.topics : []).slice(0, 10).flatMap((t): DailyTopicRecord[] => {
+    if (!t || typeof t !== "object") return [];
+    const o = t as Record<string, unknown>;
+    const title = recStr(o.title, 200);
+    if (!title) return [];
+    const conf = o.confidence === "HIGH" || o.confidence === "MEDIUM" ? o.confidence : "LOW";
+    return [{
+      itemId: recStr(o.itemId, 40), title, short: recStr(o.short, 400), mail: recStr(o.mail, 900),
+      category: typeof o.category === "string" ? o.category.slice(0, 60) : null, confidence: conf, official: o.official === true,
+      sources: (Array.isArray(o.sources) ? o.sources : []).slice(0, 12).flatMap((s) => {
+        if (!s || typeof s !== "object") return [];
+        const x = s as Record<string, unknown>;
+        const url = recStr(x.url, 2000);
+        return /^https:\/\//i.test(url) ? [{ url, title: recStr(x.title, 300), source: recStr(x.source, 120), official: x.official === true }] : [];
+      }),
+      review: o.review === true, reviewReason: typeof o.reviewReason === "string" ? o.reviewReason.slice(0, 300) : null,
+    }];
+  });
+  const review = (r.review && typeof r.review === "object" ? r.review : {}) as Record<string, unknown>;
+  return {
+    version: 1, date: recStr(r.date, 10), headline: recStr(r.headline, 200), opening: recStr(r.opening, 1200),
+    mailIntro: recStr(r.mailIntro, 600),
+    watch: (Array.isArray(r.watch) ? r.watch : []).slice(0, 6).map((w) => recStr(w, 300)).filter(Boolean),
+    topics,
+    review: {
+      required: review.required === true,
+      reasons: (Array.isArray(review.reasons) ? review.reasons : []).slice(0, 10).map((x) => recStr(x, 60)).filter(Boolean),
+    },
+    generatedAt: recStr(r.generatedAt, 40),
   };
 }
 
