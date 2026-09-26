@@ -31,6 +31,7 @@ export function SettingsTabs({ initialTab, panels }: {
   const { t } = useI18n();
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const refs = useRef<Partial<Record<SettingsTab, HTMLButtonElement | null>>>({});
+  const strip = useRef<HTMLDivElement | null>(null);
 
   // A real navigation to /settings?tab=… (a link from elsewhere in the app,
   // Back/Forward) re-renders this same instance: follow the address.
@@ -50,6 +51,16 @@ export function SettingsTabs({ initialTab, panels }: {
     window.addEventListener("hashchange", follow);
     return () => window.removeEventListener("hashchange", follow);
   }, []);
+
+  // On a phone the strip scrolls sideways: keep the open tab in sight. Only
+  // the strip moves — never the page (the #grovnews deep link scrolls it).
+  useEffect(() => {
+    const box = strip.current, el = refs.current[tab];
+    if (!box || !el) return;
+    const s = box.getBoundingClientRect(), b = el.getBoundingClientRect();
+    if (b.left < s.left) box.scrollLeft -= s.left - b.left + 8;
+    else if (b.right > s.right) box.scrollLeft += b.right - s.right + 8;
+  }, [tab]);
 
   const select = useCallback((next: SettingsTab, focus = false) => {
     setTab(next);
@@ -76,7 +87,7 @@ export function SettingsTabs({ initialTab, panels }: {
 
   return (
     <div className="min-w-0">
-      <div className="min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div ref={strip} className="thin-scroll min-w-0 overflow-x-auto pb-1">
         <div role="tablist" aria-label={t("settings.tabs.label")}
           className="inline-flex min-w-max gap-1 rounded-xl bg-sunken/80 p-1">
           {SETTINGS_TABS.map((key) => {

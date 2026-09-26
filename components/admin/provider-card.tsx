@@ -97,7 +97,7 @@ export function ProviderCard({ p, locale }: { p: ProviderView; locale: string })
           </span>
           <div className="min-w-0">
             <h3 className="truncate font-display text-base font-semibold">{p.name}</h3>
-            <code className="text-xs text-faint">{p.slug}</code>
+            <code className="block truncate text-xs text-faint">{p.slug}</code>
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
@@ -114,7 +114,7 @@ export function ProviderCard({ p, locale }: { p: ProviderView; locale: string })
       )}
       {c && !p.active && <p className="mt-2 text-xs text-muted">{t("aicc.providers.inactiveNote")}</p>}
 
-      <dl className="mt-4 grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
+      <dl className="mt-4 grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
         <Row label={t("admin.apiKey")}>
           {c ? <code className="text-xs" data-masked-key>{c.masked}</code> : <span className="text-muted">{t("aicc.providers.state.not_configured")}</span>}
         </Row>
@@ -122,7 +122,7 @@ export function ProviderCard({ p, locale }: { p: ProviderView; locale: string })
         <Row label={t("admin.lastTest")}>
           {c?.lastTestStatus ? (
             <span className="flex flex-wrap items-center justify-end gap-1.5">
-              <Badge tone={c.lastTestStatus === "connected" ? "success" : c.lastTestStatus === "unsupported" ? "neutral" : "danger"}>
+              <Badge className="max-w-full !whitespace-normal" tone={c.lastTestStatus === "connected" ? "success" : c.lastTestStatus === "unsupported" ? "neutral" : "danger"}>
                 {t(`admin.test.${c.lastTestStatus}`)}
               </Badge>
               <span className="text-xs text-faint">{fmt(c.lastTestedAt)}</span>
@@ -143,10 +143,10 @@ export function ProviderCard({ p, locale }: { p: ProviderView; locale: string })
         </Row>
         <Row label={t("admin.imageTest")}>
           {c?.lastImageTestStatus ? (
-            <Badge tone={c.lastImageTestStatus === "image_ok" ? "success" : "danger"}>
+            <Badge className="max-w-full !whitespace-normal" tone={c.lastImageTestStatus === "image_ok" ? "success" : "danger"}>
               {c.lastImageTestStatus === "image_ok" ? t("admin.imageTestOk") : t("admin.imageTestFailed")}
             </Badge>
-          ) : <Badge tone="neutral">{t("admin.imageTestNever")}</Badge>}
+          ) : <Badge className="max-w-full !whitespace-normal" tone="neutral">{t("admin.imageTestNever")}</Badge>}
         </Row>
         <Row label={t("admin.nav.models")}>
           <span className="text-xs">{p.modelsActive} / {p.modelsTotal} {t("admin.active").toLowerCase()}</span>

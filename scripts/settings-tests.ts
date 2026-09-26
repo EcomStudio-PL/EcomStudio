@@ -227,7 +227,11 @@ check("SET7d the checkout sends a GrovNews refusal back to the card, not to the 
 /* ── SET8 / SET9 ──────────────────────────────────────────────────────── */
 section("SET8/SET9. PHONES AND THEMES — STRUCTURE HERE, PIXELS IN THE LEAD'S PROBE");
 check("SET8a the tab strip scrolls sideways inside a min-w-0 box, never the page",
-  /className="min-w-0 overflow-x-auto/.test(tabs) && /min-w-max/.test(tabs) && /whitespace-nowrap/.test(tabs) && /shrink-0/.test(tabs));
+  /className="thin-scroll min-w-0 overflow-x-auto/.test(tabs) && /min-w-max/.test(tabs) && /whitespace-nowrap/.test(tabs) && /shrink-0/.test(tabs));
+check("SET8d on a phone the strip shows it scrolls (visible thin scrollbar) and keeps the open tab in sight without moving the page",
+  !/scrollbar-width:none|::-webkit-scrollbar\]:hidden/.test(tabs)
+  && /box\.scrollLeft -= s\.left - b\.left/.test(tabs) && /box\.scrollLeft \+= b\.right - s\.right/.test(tabs)
+  && !/scrollIntoView\(\{[^}]*inline/.test(tabs));
 check("SET8b the page column shrinks (min-w-0 max-w-2xl)", /className="mx-auto min-w-0 max-w-2xl"/.test(page));
 const fixed = NEW_UI.filter((f) => /\b(w|min-w)-\[\d+px\]/.test(read(f)));
 check("SET8c no fixed pixel widths in the new settings UI", fixed.length === 0, fixed.join(", "));

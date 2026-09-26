@@ -485,7 +485,7 @@ export function SourcesManager({ sources, categories, summary, secrets = {} }: {
                       <Badge tone="neutral">{t(`grovnewsAdm.sources.method.${sourceMethod(s.type)}`)}</Badge>
                       <span className="whitespace-nowrap text-[12px] font-normal text-muted">{t(`grovnewsAdm.sourceType.${s.type}`)}</span>
                       {s.type === "API" && s.authKind !== "none" && (
-                        <Badge tone={secrets[s.id]?.configured ? "success" : "warning"}>
+                        <Badge className="max-w-full !whitespace-normal" tone={secrets[s.id]?.configured ? "success" : "warning"}>
                           <KeyRound size={11} aria-hidden />
                           {t(secrets[s.id]?.configured ? `grovnewsAdm.sources.auth.${s.authKind}` : "grovnewsAdm.sources.errors.secret_missing")}
                         </Badge>
@@ -496,7 +496,7 @@ export function SourcesManager({ sources, categories, summary, secrets = {} }: {
                   <span key="p" className="tabular-nums">{s.priority}</span>,
                   <Switch key="e" checked={s.enabled} disabled={pending}
                     label={`${t("grovnewsAdm.sources.colEnabled")}: ${s.name}`} onChange={(v) => setEnabled(s, v)} />,
-                  <span key="lc" className="block whitespace-nowrap tabular-nums">
+                  <span key="lc" className="block tabular-nums lg:whitespace-nowrap">
                     <span className="block">{fmt(s.lastCheckedAt) ?? t("grovnewsAdm.sources.never")}</span>
                     <span className="block text-[11.5px] text-muted">{t("grovnewsAdm.sources.colSuccess")}: {fmt(s.lastSuccessAt) ?? t("grovnewsAdm.sources.never")}</span>
                   </span>,
