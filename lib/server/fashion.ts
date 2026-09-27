@@ -136,6 +136,8 @@ export type FashionRunInput = {
   /** The seller's own words, appended to the operator's prompt. Optional, and
    *  only on the tools whose panel offers the field. */
   hint?: string;
+  /** Results per run the panel showed the price for (Workflow ON). */
+  quotedOutputs?: number;
 };
 
 export type FashionRunResult =
@@ -213,6 +215,7 @@ export async function runFashionTool(
     // The seller's photographs ARE the subject: image-to-image throughout.
     referencePaths: paths,
     expectedCost: fashionPrice(model, resolution),
+    quotedOutputs: input.quotedOutputs,
     generation: {
       modelId: model.id,
       aspectRatio,

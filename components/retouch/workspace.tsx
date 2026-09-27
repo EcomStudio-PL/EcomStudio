@@ -137,7 +137,7 @@ export function RetouchWorkspace({
     try {
       const res = await fetch("/api/retouch", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourcePath: job.path, resolution, format }),
+        body: JSON.stringify({ sourcePath: job.path, resolution, format, expectedOutputs: outputsPerRun }),
       });
       const json = await res.json() as {
         ok: boolean; error?: string; credits?: number; pending?: boolean; runId?: string; expected?: number;
@@ -172,7 +172,7 @@ export function RetouchWorkspace({
       setJobs((prev) => prev.map((j) => j.key === job.key ? { ...j, status: "failed", error: t("common.error") } : j));
       return false;
     }
-  }, [resolution, format, perImage, absorb, errText, t]);
+  }, [resolution, format, perImage, outputsPerRun, absorb, errText, t]);
 
   async function retouchAll() {
     // Guarded against the double click that would otherwise pay twice.

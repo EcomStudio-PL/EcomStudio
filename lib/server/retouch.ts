@@ -228,6 +228,8 @@ export type RetouchInput = {
   /** "original" (default) keeps the source shape; anything else must be a
    *  framing the model declares. */
   format?: string;
+  /** Results per run the panel showed the price for. */
+  quotedOutputs?: number;
 };
 
 export type RetouchResult =
@@ -268,6 +270,7 @@ export async function runRetouch(
     // The source photo IS the subject: image-to-image, never text-to-image.
     referencePaths: [input.sourcePath],
     expectedCost: retouchPrice(model, resolution),
+    quotedOutputs: input.quotedOutputs,
     generation: {
       modelId: model.id,
       // runGeneration tries it only when the primary cannot serve, under the

@@ -1993,7 +1993,8 @@
       "workflow_no_result": "Przebieg nie zwrócił wyniku — kredyty zostały zwrócone.",
       "workflow_unavailable": "To narzędzie jest chwilowo niedostępne — kredyty zostały zwrócone.",
       "run_create_failed": "Nie udało się uruchomić — kredyty zostały zwrócone.",
-      "network_error": "Utracono połączenie. Wynik pojawi się w galerii, gdy będzie gotowy."
+      "network_error": "Utracono połączenie. Wynik pojawi się w galerii, gdy będzie gotowy.",
+      "price_changed": "Cena się zmieniła — odśwież stronę, aby zobaczyć aktualną. Kredyty nie zostały pobrane."
     },
     "fromPrompts": "Sesja ujęć: {name} — scena, referencje i format są już ustawione.",
     "fromCr": "od {n} ◆",

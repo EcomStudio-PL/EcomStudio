@@ -12,6 +12,7 @@ import { recordProviderCalls } from "@/lib/server/ai-usage";
 import { imageCost } from "@/lib/ai/usage-cost";
 import { getAdapter } from "@/lib/ai/registry";
 import { ProviderError } from "@/lib/ai/types";
+import { resolvesInternally } from "@/lib/server/host-guard";
 import { validateProviderBaseUrl } from "@/lib/provider-status";
 
 /**
@@ -70,6 +71,8 @@ export async function saveProviderCredentialAction(
     // stored, so a bad URL never leaves a fresh secret pointed at it.
     const host = validateProviderBaseUrl(baseUrl);
     if (!host.ok) return { ok: false, error: host.error };
+    // …and by what the name RESOLVES to: never a private or metadata address.
+    if (host.value && await resolvesInternally(new URL(host.value).hostname)) return { ok: false, error: "base_url_invalid" };
     const sealed = await writeProviderKey(supabase, providerId, key);
     if (!sealed.ok) {
       return { ok: false, error: sealed.error === "forbidden" ? "forbidden" : "secret_write_failed" };

@@ -14,6 +14,7 @@ process.env.GROVBASE_SERVER_KEY = "test-server-key-0123456789abcdef-XYZ";
 delete process.env.APP_ENCRYPTION_KEY;
 
 import { providerState, maskKey } from "../lib/provider-status";
+import { internalAddress } from "../lib/server/host-guard";
 import { testProviderConnection } from "../lib/server/provider-test";
 import {
   saveProviderCredentialAction, deleteProviderCredentialAction, testProviderConnectionAction,
@@ -270,6 +271,11 @@ async function main() {
       !r.ok && r.error === "base_url_invalid" && !db.rpcCalls.some((c) => c.name === "secret_put")
       && !db.rows("ai_provider_credentials").some((row) => row.last_four === "1234"),
       { r, calls: db.rpcCalls.map((c) => c.name), rows: db.rows("ai_provider_credentials").length });
+  }
+  for (const [ip, internal] of [["10.0.0.5", true], ["172.20.1.1", true], ["192.168.1.1", true], ["127.0.0.1", true],
+    ["169.254.169.254", true], ["100.64.0.1", true], ["::1", true], ["fd00::1", true], ["::ffff:10.1.2.3", true],
+    ["8.8.8.8", false], ["142.250.1.1", false], ["2001:4860::8888", false]] as const) {
+    check(`API5 a Base URL resolving to ${ip} is ${internal ? "refused" : "allowed"}`, internalAddress(ip) === internal);
   }
   db = providerDb({ key: null }); g.__apiFakeDb = db;
   const withHost = await saveProviderCredentialAction("p1", "sk-host-ok-5555", "https://gateway.example.com/v1/");

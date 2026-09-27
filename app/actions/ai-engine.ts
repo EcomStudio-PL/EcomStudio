@@ -433,7 +433,9 @@ export async function readWorkflowTestAction(runId: string): Promise<Result & { 
     const [{ data: run }, { data: steps }] = await Promise.all([
       supabase.from("ai_engine_runs")
         .select("id, status, error, workflow_version, expected_outputs, outputs, duration_ms, api_cost_usd_micros, cost_unknown, locked_until, run_kind, created_at")
-        .eq("id", runId).maybeSingle(),
+        // Test runs only: this reader also DRIVES an idle run, and a customer's
+        // run must never be driven (or closed) in an admin's session.
+        .eq("id", runId).eq("run_kind", "workflow_test").maybeSingle(),
       supabase.from("ai_engine_step_runs")
         .select("position, item_index, step_name, operation, status, attempts, duration_ms, provider_slug, model, input_tokens, output_tokens, cost_usd_micros, cost_basis, error_code, output")
         .eq("run_id", runId).order("position").order("item_index"),

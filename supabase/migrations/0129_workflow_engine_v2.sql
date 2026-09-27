@@ -636,6 +636,21 @@ declare
 begin
   if not public.server_call_ok(p_token) then raise exception 'forbidden'; end if;
   if p_owner is null or char_length(p_owner) not between 8 and 80 then raise exception 'invalid_owner'; end if;
+  -- A CUSTOMER RUN WHOSE CHARGE IS NO LONGER OPEN NEVER RUNS AGAIN. The stale-
+  -- charge reconciler (0102) refunds a pending event with nothing delivered;
+  -- resuming that run afterwards would deliver images for free. It is closed
+  -- here instead, and so is a run that has been resumed an unreasonable number
+  -- of times (each invocation is paid provider work).
+  update public.ai_engine_runs r
+     set status = 'failed',
+         error = case when r.invocations >= 30 then 'invocation_limit' else 'charge_closed' end,
+         locked_until = null, finished_at = now(), updated_at = now()
+   where r.id = p_run_id
+     and r.status in ('queued', 'running')
+     and (r.locked_until is null or r.locked_until < now() or r.lease_owner = p_owner)
+     and (r.invocations >= 30
+          or (r.run_kind = 'workflow' and r.usage_event_id is not null and exists (
+                select 1 from public.usage_events e where e.id = r.usage_event_id and e.status <> 'pending')));
   update public.ai_engine_runs
      set locked_until = now() + make_interval(secs => least(greatest(coalesce(p_lease_seconds, 60), 10), 900)),
          lease_owner = p_owner,
@@ -751,8 +766,11 @@ begin
   if v_step.status = 'running' and v_step.locked_until is not null and v_step.locked_until > now() then
     return jsonb_build_object('state', 'busy');
   end if;
+  -- Every begin is counted: a step that keeps being resumed (each time a paid
+  -- call) is visible to the runtime, which fails it past its attempt budget.
   update public.ai_engine_step_runs
      set status = 'running',
+         attempts = least(20, attempts + 1),
          started_at = coalesce(started_at, now()),
          locked_until = now() + make_interval(secs => least(greatest(coalesce(p_lease_seconds, 300), 10), 900))
    where id = v_step.id;
@@ -871,15 +889,23 @@ begin
   -- job (the foreign keys' SET NULL) is allowed; changing what was charged,
   -- what it cost or what it was is not.
   if old.status in ('succeeded', 'refunded') and (
-       new.status, new.credits_charged, new.api_cost_usd_micros_snapshot, new.sale_value_cents_snapshot,
-       new.actual_api_cost_usd_micros, new.result_count, new.credit_tx_id, new.refund_tx_id,
-       new.service_slug, new.service_id, new.provider_slug, new.model_slug, new.metadata, new.error,
-       new.started_at, new.finished_at, new.created_at, new.idempotency_key, new.provider_request_id
-     ) is distinct from (
-       old.status, old.credits_charged, old.api_cost_usd_micros_snapshot, old.sale_value_cents_snapshot,
-       old.actual_api_cost_usd_micros, old.result_count, old.credit_tx_id, old.refund_tx_id,
-       old.service_slug, old.service_id, old.provider_slug, old.model_slug, old.metadata, old.error,
-       old.started_at, old.finished_at, old.created_at, old.idempotency_key, old.provider_request_id
+       (
+         new.status, new.credits_charged, new.api_cost_usd_micros_snapshot, new.sale_value_cents_snapshot,
+         new.actual_api_cost_usd_micros, new.result_count,
+         new.service_slug, new.provider_slug, new.model_slug, new.metadata, new.error,
+         new.started_at, new.finished_at, new.created_at, new.idempotency_key, new.provider_request_id
+       ) is distinct from (
+         old.status, old.credits_charged, old.api_cost_usd_micros_snapshot, old.sale_value_cents_snapshot,
+         old.actual_api_cost_usd_micros, old.result_count,
+         old.service_slug, old.provider_slug, old.model_slug, old.metadata, old.error,
+         old.started_at, old.finished_at, old.created_at, old.idempotency_key, old.provider_request_id
+       )
+       -- Foreign keys declared ON DELETE SET NULL (the credit transactions of a
+       -- deleted wallet, a retired service): detaching to NULL is allowed —
+       -- account deletion must keep working — re-pointing is not.
+       or (new.credit_tx_id is not null and new.credit_tx_id is distinct from old.credit_tx_id)
+       or (new.refund_tx_id is not null and new.refund_tx_id is distinct from old.refund_tx_id)
+       or (new.service_id is not null and new.service_id is distinct from old.service_id)
      ) then
     raise exception 'usage_event_immutable' using errcode = 'P0001';
   end if;
@@ -1134,6 +1160,13 @@ end $$;
 drop trigger if exists generation_feedback_pin on public.generation_feedback;
 create trigger generation_feedback_pin before insert or update of verdict on public.generation_feedback
   for each row execute function public.generation_feedback_pin();
+
+-- The pinned engine facts (run, versions, model, provider) are admin data:
+-- a workspace member keeps reading the feedback columns they always could,
+-- not the new ones.
+revoke select on public.generation_feedback from authenticated;
+grant select (id, workspace_id, user_id, generation_job_id, asset_path, verdict, issues, comment, created_at, updated_at)
+  on public.generation_feedback to authenticated;
 
 -- ROLLBACK (manual, in this order):
 --   drop trigger if exists generation_feedback_pin on public.generation_feedback;

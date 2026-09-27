@@ -310,6 +310,27 @@ EV4=$(q "insert into public.usage_events (user_id, workspace_id, credits_charged
 check "a failed event can still be refunded (failed → refunded is not locked)" \
   "$(as_user "$U1" "select public.usage_event_fail('$TOKEN', '$EV4', 'x', 0) is not null"); $(q "select status from public.usage_events where id='$EV4'")" "t; refunded"
 
+check "L3 an FK detach to NULL of the credit / refund transaction is allowed (account deletion keeps working)" \
+  "$(err "update public.usage_events set credit_tx_id = null, refund_tx_id = null, service_id = null where id = '$EV'")" "ok"
+check "L3 …re-pointing it to another transaction is not" "$(err "update public.usage_events set credit_tx_id = gen_random_uuid() where id = '$EV'")" "usage_event_immutable"
+
+echo "R — review fixes: a closed charge ends the run; resumes are bounded"
+EVR=$(q "insert into public.usage_events (user_id, workspace_id, credits_charged, status) values ('$U1','$WS',10,'refunded') returning id")
+RUNR=$(q "select public.ai_engine_run_create('$TOKEN', jsonb_build_object('tool_key','retouch','workspace_id','$WS','user_id','$U1','idempotency_key','run-refunded-1','usage_event_id','$EVR','workflow_id','$V2ID','workflow_version',2,'expected_outputs',1,'input','{}'::jsonb))->>'id'")
+check "R1 a run whose charge was refunded cannot be claimed (no free resume)" \
+  "$(q "select public.ai_engine_run_claim('$TOKEN', '$RUNR', 'owner-rrrr-0001', 60)->>'reason'")" "finished"
+check "R1 …and is closed as failed: charge_closed" "$(q "select status || ':' || error from public.ai_engine_runs where id='$RUNR'")" "failed:charge_closed"
+RUNI=$(q "select public.ai_engine_run_create('$TOKEN', jsonb_build_object('tool_key','retouch','workspace_id','$WS','user_id','$U1','idempotency_key','run-invoc-1','workflow_id','$V2ID','workflow_version',2,'expected_outputs',1,'input','{}'::jsonb))->>'id'")
+q "update public.ai_engine_runs set invocations = 30 where id = '$RUNI'" >/dev/null
+check "R2 a run resumed 30 times is closed (invocation_limit)" \
+  "$(q "select public.ai_engine_run_claim('$TOKEN', '$RUNI', 'owner-iiii-0001', 60)->>'reason'"):$(q "select error from public.ai_engine_runs where id='$RUNI'")" "finished:invocation_limit"
+RUNB=$(q "select public.ai_engine_run_create('$TOKEN', jsonb_build_object('tool_key','retouch','workspace_id','$WS','user_id','$U1','idempotency_key','run-begin-1','workflow_id','$V2ID','workflow_version',2,'expected_outputs',1,'input','{}'::jsonb))->>'id'")
+q "select public.ai_engine_run_claim('$TOKEN', '$RUNB', 'owner-bbbb-0001', 60)" >/dev/null
+b1=$(q "select public.ai_engine_step_begin('$TOKEN', '$RUNB', 'owner-bbbb-0001', 1, -1, 'A', 'image_edit', 10)->>'attempts'")
+q "update public.ai_engine_step_runs set locked_until = now() - interval '1 second' where run_id = '$RUNB'" >/dev/null
+b2=$(q "select public.ai_engine_step_begin('$TOKEN', '$RUNB', 'owner-bbbb-0001', 1, -1, 'A', 'image_edit', 10)->>'attempts'")
+check "R3 every begin of a step is counted (the runtime bounds resumes with it)" "$b1:$b2" "0:1"
+
 echo "P — pricing"
 check "P1 cached-input price column exists and is read through the door" "$(q "select count(*) from public.ai_token_prices_read('$TOKEN')")" "0"
 check "P2 per-unit prices: an admin can set an image price by resolution" \
@@ -327,6 +348,8 @@ q "insert into public.generation_feedback (workspace_id, user_id, generation_job
 check "F1 a vote carries the run, tool, workflow version, model and provider" \
   "$(q "select (engine_run_id = '$RUN')::text || ':' || tool_key || ':' || workflow_version || ':' || provider_slug from public.generation_feedback where generation_job_id = '$JOB'")" \
   "true:retouch:2:google"
+check "F3 a workspace member can still read their vote…" "$(as_user "$U1" "select verdict from public.generation_feedback where generation_job_id = '$JOB'")" "like"
+check "F3 …but not the pinned engine facts (admin data)" "$(err "select model_label from public.generation_feedback" authenticated "$U1")" "permission denied for table generation_feedback"
 check "F2 a vote changes no workflow and no prompt" "$(q "select count(*) from public.ai_tool_workflows where tool_key='retouch' and status='published'")" "1"
 
 echo

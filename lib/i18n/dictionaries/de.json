@@ -1993,7 +1993,8 @@
       "workflow_no_result": "Der Lauf lieferte kein Ergebnis — deine Credits wurden erstattet.",
       "workflow_unavailable": "Dieses Werkzeug ist vorübergehend nicht verfügbar — Credits erstattet.",
       "run_create_failed": "Start fehlgeschlagen — deine Credits wurden erstattet.",
-      "network_error": "Verbindung verloren. Das Ergebnis erscheint in der Galerie, sobald es fertig ist."
+      "network_error": "Verbindung verloren. Das Ergebnis erscheint in der Galerie, sobald es fertig ist.",
+      "price_changed": "Der Preis hat sich geändert — lade die Seite neu. Es wurden keine Credits abgebucht."
     },
     "fromPrompts": "Aufnahme-Session: {name} — Szene, Referenzen und Format sind vorausgefüllt.",
     "fromCr": "ab {n} ◆",

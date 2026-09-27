@@ -211,6 +211,7 @@ export function FashionToolWorkspace({
           resolution: config.showResolution ? resolution : undefined,
           format: config.showFormat ? format : undefined,
           hint: config.showHint ? hint.trim().slice(0, FASHION_HINT_MAX) : undefined,
+          expectedOutputs: outputsPerRun,
         }),
       });
       const json = await res.json() as {
@@ -246,7 +247,7 @@ export function FashionToolWorkspace({
       setJobs((prev) => prev.map((j) => j.key === job.key ? { ...j, status: "failed", error: t("common.error") } : j));
       return false;
     }
-  }, [config, resolution, format, hint, perImage, absorb, errText, t]);
+  }, [config, resolution, format, hint, perImage, outputsPerRun, absorb, errText, t]);
 
   /**
    * Build the batch. Each job carries one photograph from every pool: index i

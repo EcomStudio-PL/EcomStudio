@@ -80,6 +80,9 @@ export type WorkflowStartInput = {
   knowledgeStrategy: KnowledgeStrategy;
   /** Admin test: no ledger, no job; images land in a test folder. */
   test?: boolean;
+  /** The result count the customer's panel quoted (and priced). A publish
+   *  between page load and click must not charge more than was shown. */
+  quotedOutputs?: number;
 };
 
 export type WorkflowStartOutput =
@@ -101,6 +104,9 @@ export async function startWorkflowRun(
     return { ok: false, error: "prompt_unconfigured" };
   }
   const expected = maxOutputsOf(wf.steps[finalIdx]);
+  if (!input.test && input.quotedOutputs !== undefined && input.quotedOutputs !== expected) {
+    return { ok: false, error: "price_changed" };
+  }
   const credits = input.test ? 0 : Math.max(0, Math.trunc(input.unitCredits)) * expected;
 
   const runInput = {
@@ -363,10 +369,20 @@ async function walkSteps(
       if (begun.state !== "run") return "yield";
 
       const started = Date.now();
+      // RESUME BUDGET. Every begin is counted by the database; a step that keeps
+      // being resumed (each time a paid provider call) is failed once it has
+      // used its attempts plus two resumes — never retried forever.
+      if (begun.attempts >= Math.max(1, step.maxAttempts) + 2) {
+        await finishStep(ctx.supabase, run.id, owner, position, itemIndex, {
+          status: "failed", attempts: begun.attempts, cost: { basis: "estimated", usdMicros: 0 },
+          errorCode: "resume_limit", durationMs: 0,
+        });
+        return null;
+      }
       const result = await executeUnit(ctx, step, i, defs, { ...values, ...(step.itemName && item ? { [step.itemName]: renderValue(item) } : {}) },
         item, outputs, hint, hintSupported, itemIndex);
       if (!result.ok && result.retryLater) return "yield";
-      await finishStep(ctx.supabase, run.id, owner, position, itemIndex, {
+      const recorded = await finishStep(ctx.supabase, run.id, owner, position, itemIndex, {
         status: result.ok ? "succeeded" : "failed",
         attempts: result.attempts,
         providerSlug: result.providerSlug, model: result.model,
@@ -376,6 +392,9 @@ async function walkSteps(
         output: result.ok ? toJson(result.value) : null,
         durationMs: Date.now() - started,
       });
+      // Not recorded = this invocation lost the run's lease (another driver
+      // owns it now): stop here, the owner carries on from the stored state.
+      if (!recorded) return "yield";
       return result.ok ? result.value : null;
     };
 
@@ -477,6 +496,21 @@ async function finishRun(
     error: string | null; test: boolean; input: RunInput | null; ctx?: ExecContext;
   },
 ): Promise<DriveStatus> {
+  // Only the CURRENT lease holder closes a run: renewing the lease is the
+  // proof. A driver that lost it does nothing — no assets, no ledger call.
+  if (!(await patchRun(supabase, run.id, owner, { lease_seconds: 120 }))) return "busy";
+
+  // The charge must still be open. The stale-charge reconciler refunds a
+  // pending event that shows nothing delivered; a run finished after that
+  // must not hand over images for free.
+  if (!r.test && run.usage_event_id) {
+    const { data: ev } = await supabase.from("usage_events").select("status").eq("id", run.usage_event_id).maybeSingle();
+    if (ev && ev.status !== "pending") {
+      await patchRun(supabase, run.id, owner, { status: "failed", error: "charge_closed", outputs: [] });
+      return "failed";
+    }
+  }
+
   const rows = await readStepRuns(supabase, run.id);
   const closed = rows.filter((x) => x.status === "succeeded" || x.status === "failed");
   // RUN COST = the sum of the real step costs. A step whose price is not

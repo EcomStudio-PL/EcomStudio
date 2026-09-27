@@ -38,8 +38,10 @@ export async function POST(request: Request) {
   let sourcePath = "";
   let resolution: string | undefined;
   let format: string | undefined;
+  let quotedOutputs: number | undefined;
   try {
-    const body = (await request.json()) as { sourcePath?: string; resolution?: string; format?: string };
+    const body = (await request.json()) as { sourcePath?: string; resolution?: string; format?: string; expectedOutputs?: unknown };
+    if (typeof body.expectedOutputs === "number" && Number.isInteger(body.expectedOutputs)) quotedOutputs = body.expectedOutputs;
     sourcePath = typeof body.sourcePath === "string" ? body.sourcePath : "";
     if (typeof body.resolution === "string") resolution = body.resolution.slice(0, 8);
     if (typeof body.format === "string") format = body.format.slice(0, 12);
@@ -53,7 +55,7 @@ export async function POST(request: Request) {
     && /^[\w\-./]+$/.test(sourcePath);
   if (!valid) return NextResponse.json({ ok: false, error: "invalid_input" }, { status: 400 });
 
-  const result = await runRetouch(supabase, user.id, workspace.id, { sourcePath, resolution, format });
+  const result = await runRetouch(supabase, user.id, workspace.id, { sourcePath, resolution, format, quotedOutputs });
   // Workflow ON: the run is started and charged; it is driven after this
   // response, and the panel polls its status instead of holding a request.
   if (result.ok && "pending" in result) driveAfterResponse(supabase, result.runId, startedAt);

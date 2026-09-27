@@ -39,7 +39,9 @@ import { AdminShell } from "@/components/layout/admin-mobile";
 import { AdminSidebar } from "@/components/layout/admin-sidebar";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
-import { ProviderCard } from "@/components/admin/provider-card";
+import { ProviderCard, type ProviderView } from "@/components/admin/provider-card";
+import type { ExecutionSummary, PathModel, ToolApiPath } from "@/lib/server/tool-api-path";
+import type { WorkflowVersionRow } from "@/lib/services/ai-tools";
 import { ToolTabs } from "@/components/admin/tool-tabs";
 import { WorkflowBuilder } from "@/components/admin/workflow-builder";
 import { WorkflowTestPanel } from "@/components/admin/workflow-test";
@@ -49,7 +51,7 @@ import { TokenPriceEditor } from "@/components/admin/token-prices";
 
 export const dynamic = "force-dynamic";
 
-const provider = {
+const provider: ProviderView = {
   id: "p1", slug: "google", name: "Google (Gemini) — dostawca o bardzo długiej nazwie", active: true,
   modelsActive: 3, modelsTotal: 4, modelNames: ["Nano Banana Pro", "Gemini Flash", "Imagen 4"], toolKeys: ["retouch", "fashion_flat_lay"],
   state: "connected", stateReason: null,
@@ -60,7 +62,7 @@ const provider = {
     lastSuccessAt: "2026-09-20T10:01:00Z", lastErrorAt: null, lastErrorCode: null,
   },
 };
-const wfVersions = [
+const wfVersions: WorkflowVersionRow[] = [
   { id: "w3", version: 3, status: "draft", summary: "Retusz → sceny → 5 generacji", reason: null, stepCount: 3, maxOutputs: 5, createdAt: "2026-09-22T10:00:00Z", publishedAt: null, authorName: "Anna Admin" },
   { id: "w2", version: 2, status: "published", summary: "Analiza + obraz", reason: "Test", stepCount: 2, maxOutputs: 1, createdAt: "2026-09-12T10:00:00Z", publishedAt: "2026-09-12T10:00:00Z", authorName: "Anna Admin" },
   { id: "w1", version: 1, status: "superseded", summary: null, reason: "Start", stepCount: 1, maxOutputs: 1, createdAt: "2026-09-02T10:00:00Z", publishedAt: "2026-09-02T10:00:00Z", authorName: null },
@@ -69,7 +71,7 @@ const models = [
   { id: "m1", name: "Nano Banana Pro — bardzo długa nazwa modelu obrazu", refs: true },
   { id: "m2", name: "GPT Image 1", refs: true },
 ];
-const exec = {
+const exec: ExecutionSummary = {
   engineMode: "grovbase", workflowEnabled: true,
   workflow: { id: "w2", version: 2, maxOutputs: 5, concurrency: 3, steps: [
     { n: 1, name: "Retusz zdjęcia produktu", operation: "tool", enabled: true, forEach: null, maxItems: null, model: null, fallback: null, textProvider: null, textModel: null, toolSlug: "retouch" },
@@ -79,7 +81,7 @@ const exec = {
 };
 const pm = (id, name, cost) => ({ id, providerSlug: "google", providerName: "Google", model: name, identifier: name, ready: true,
   costPerImageUsdMicros: cost, costSource: cost === null ? "unknown" : "unit_price" });
-const path = { kind: "assigned", primary: pm("m1", "gemini-3-pro-image-preview", 134000), fallback: pm("m2", "gpt-image-1", null), defaulted: false };
+const path: ToolApiPath = { kind: "assigned", primary: pm("m1", "gemini-3-pro-image-preview", 134000), fallback: pm("m2", "gpt-image-1", null), defaulted: false };
 const units = {
   rows: [{ providerSlug: "google", model: "gemini-3-pro-image-preview", unitKind: "image", resolution: "2K", quality: "*", usdPerUnit: 0.134, updatedAt: null }],
   models: [
@@ -123,7 +125,7 @@ export default async function Probe() {
 
 if (process.argv.includes("--harness")) {
   fs.mkdirSync(DIR, { recursive: true });
-  fs.writeFileSync(`${DIR}/page.tsx`, PAGE_SRC.replace(/^const pm = \(id, name, cost\)/m, "const pm = (id: string, name: string, cost: number | null)"));
+  fs.writeFileSync(`${DIR}/page.tsx`, PAGE_SRC.replace(/^const pm = \(id, name, cost\) =>/m, "const pm = (id: string, name: string, cost: number | null): PathModel =>"));
   console.log(`harness written to ${DIR}`);
   process.exit(0);
 }
@@ -209,8 +211,14 @@ for (const device of [
   await baseUrl.fill("https://gateway.example.com/v1");
   check(`API5 ${tag}: a valid Base URL lets it save`, await save.isEnabled());
   // The full key exists ONLY in the input the admin typed into.
-  const html = await page.evaluate((k) => document.documentElement.outerHTML.split(k).length - 1, KEY);
-  check(`API7 ${tag}: the typed key is not rendered anywhere in the DOM markup`, html === 0, html);
+  // React mirrors a controlled input's value into its own attribute; outside
+  // that one input the key must appear nowhere (no preview, no echo, no label).
+  const html = await page.evaluate((k) => {
+    const clone = document.documentElement.cloneNode(true);
+    clone.querySelectorAll("[data-provider-key-form] input[autocomplete='new-password']").forEach((el) => el.remove());
+    return clone.outerHTML.split(k).length - 1 + document.body.innerText.split(k).length - 1;
+  }, KEY);
+  check(`API7 ${tag}: the typed key exists only inside its own input`, html === 0, html);
   const mask = await page.locator("[data-probe-provider]").innerText();
   check(`API6 ${tag}: the card shows only the mask`, /•••• 9f2k/.test(mask));
   await page.keyboard.press("Escape");

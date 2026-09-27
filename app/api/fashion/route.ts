@@ -52,7 +52,7 @@ export async function POST(request: Request) {
   if (!workspace) return NextResponse.json({ ok: false, error: "no_workspace" }, { status: 400 });
 
   let body: {
-    tool?: unknown; inputs?: unknown; resolution?: unknown; format?: unknown; hint?: unknown;
+    tool?: unknown; inputs?: unknown; resolution?: unknown; format?: unknown; hint?: unknown; expectedOutputs?: unknown;
   } = {};
   try { body = (await request.json()) as typeof body; } catch { /* validated below */ }
 
@@ -89,6 +89,7 @@ export async function POST(request: Request) {
 
   const result = await runFashionTool(supabase, user.id, workspace.id, {
     tool: config.key, inputs, resolution, format, hint,
+    quotedOutputs: typeof body.expectedOutputs === "number" && Number.isInteger(body.expectedOutputs) ? body.expectedOutputs : undefined,
   });
   // Workflow ON: the run is started and charged; it is driven after this
   // response, and the panel polls its status instead of holding a request.

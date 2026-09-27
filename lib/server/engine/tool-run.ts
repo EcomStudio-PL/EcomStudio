@@ -37,6 +37,8 @@ export type EngineToolInput = {
   referencePaths: string[];
   generation: Omit<GenerateInput, "prompt" | "referencePaths"> & { modelId: string };
   expectedCost: number;
+  /** Results per run the panel quoted (Workflow ON); see startWorkflowRun. */
+  quotedOutputs?: number;
 };
 
 /** A workflow run that was started (and charged) but not finished yet. */
@@ -101,7 +103,7 @@ async function runEngineImageToolMetered(
         quality: input.generation.quality ?? null,
         toolModelId: input.generation.modelId, toolFallbackId: input.generation.fallbackModelIds?.[0] ?? null,
         unitCredits: input.expectedCost, operation: input.generation.operation ?? input.toolKey,
-        knowledgeStrategy: strategy,
+        knowledgeStrategy: strategy, quotedOutputs: input.quotedOutputs,
       });
       if (!started.ok) return { ok: false, error: started.error, missingCredits: started.missingCredits };
       return {

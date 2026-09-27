@@ -1993,7 +1993,8 @@
       "workflow_no_result": "The run returned no result — your credits were returned.",
       "workflow_unavailable": "This tool is temporarily unavailable — your credits were returned.",
       "run_create_failed": "Could not start — your credits were returned.",
-      "network_error": "Connection lost. The result will appear in the gallery when it is ready."
+      "network_error": "Connection lost. The result will appear in the gallery when it is ready.",
+      "price_changed": "The price has changed — refresh the page to see the current one. No credits were taken."
     },
     "fromPrompts": "Shot session: {name} — scene, references and format are prefilled.",
     "fromCr": "from {n} ◆",

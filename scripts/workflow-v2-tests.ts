@@ -74,6 +74,7 @@ function query(db: Db, table: string) {
   let pendingUpdate: Row | null = null;
   const rows = () => {
     if (table === "credit_wallets") return [{ id: db.wallet.id, balance: db.wallet.balance, workspace_id: WS }];
+    if (table === "usage_events") return db.events;
     return db.tables[table] ?? (db.tables[table] = []);
   };
   const run = () => {
@@ -156,6 +157,12 @@ function rpc(db: Db, name: string, a: Record<string, unknown>): { data: unknown;
       if (!r) return { data: { claimed: false, reason: "not_found" }, error: null };
       if (!["queued", "running"].includes(r.status as string)) return { data: { claimed: false, reason: "finished", status: r.status }, error: null };
       if (!leaseOk(r) && r.lease_owner !== a.p_owner) return { data: { claimed: false, reason: "busy", status: r.status }, error: null };
+      const ev = db.events.find((e) => e.id === r.usage_event_id);
+      if (Number(r.invocations ?? 0) >= 30 || (r.run_kind === "workflow" && ev && ev.status !== "pending")) {
+        r.status = "failed"; r.error = Number(r.invocations ?? 0) >= 30 ? "invocation_limit" : "charge_closed"; r.locked_until = null;
+        return { data: { claimed: false, reason: "finished", status: "failed" }, error: null };
+      }
+      r.invocations = Number(r.invocations ?? 0) + 1;
       r.lease_owner = a.p_owner; r.locked_until = now() + Number(a.p_lease_seconds) * 1000;
       if (r.status === "queued") r.status = "running";
       return { data: { claimed: true, status: r.status }, error: null };
@@ -179,8 +186,9 @@ function rpc(db: Db, name: string, a: Record<string, unknown>): { data: unknown;
       if (s.status === "succeeded") return { data: { state: "done", output: s.output, provider: s.provider_slug, model: s.model }, error: null };
       if (s.status === "failed" || s.status === "skipped") return { data: { state: s.status, error: s.error_code }, error: null };
       if (s.status === "running" && (s.locked_until as number) > now()) return { data: { state: "busy" }, error: null };
-      s.status = "running"; s.locked_until = now() + Number(a.p_lease_seconds) * 1000;
-      return { data: { state: "run", attempts: s.attempts }, error: null };
+      const prior = s.attempts as number;
+      s.status = "running"; s.attempts = Math.min(20, prior + 1); s.locked_until = now() + Number(a.p_lease_seconds) * 1000;
+      return { data: { state: "run", attempts: prior }, error: null };
     }
     case "ai_engine_step_finish": {
       const r = runs.find((x) => x.id === a.p_run_id);
@@ -530,6 +538,71 @@ async function main() {
     check("a succeeded step is never executed (or paid) twice on resume", imageCalls.length === n);
     runOf(db, s.runId).status = "ok";
   }
+
+  console.log("Review fixes — a refunded charge can never be resumed into free images");
+  {
+    const db = setup();
+    publish(db, [step("image_edit", "a", { prompt: "A" }), step("image_edit", "final", { inputImage: "a", prompt: "B" })]);
+    const s = await start(db);
+    if (!s.ok) return;
+    await drive(db, s.runId, 20_000); // abandoned after the first invocation
+    // the stale-charge reconciler refunds the pending event (0102)
+    db.events[0].status = "refunded"; db.wallet.balance += 10;
+    runOf(db, s.runId).locked_until = null;
+    const again = await drive(db, s.runId);
+    check("HIGH-1 a run whose charge was refunded is closed, not resumed", again === "failed" && runOf(db, s.runId).error === "charge_closed", { again, err: runOf(db, s.runId).error });
+    check("HIGH-1 …no provider call, no asset, no completion", imageCalls.length === 0 && db.tables.generation_assets.length === 0 && db.events[0].status === "refunded");
+  }
+  {
+    const db = setup();
+    publish(db, [step("image_edit", "final", { prompt: "X" })]);
+    const s = await start(db);
+    if (!s.ok) return;
+    // Pretend the reconciler closed the charge between the last step and the finish.
+    modelScript.set("m-main", ["ok"]);
+    const drivePromise = drive(db, s.runId);
+    setTimeout(() => { db.events[0].status = "refunded"; }, 5);
+    const out = await drivePromise;
+    check("HIGH-1 the finish re-checks the charge: refunded mid-run → no images handed over",
+      out === "failed" && db.tables.generation_assets.length === 0, { out, assets: db.tables.generation_assets.length });
+  }
+  {
+    const db = setup();
+    publish(db, [step("image_edit", "final", { prompt: "X", maxAttempts: 1 })]);
+    const s = await start(db);
+    if (!s.ok) return;
+    const st = () => stepsOf(db, s.runId)[0];
+    // Three invocations each die mid-step (the step stays 'running').
+    for (let i = 0; i < 3; i++) {
+      db.tables.ai_engine_step_runs.push(...(st() ? [] : [{ run_id: s.runId, position: 1, item_index: -1, status: "pending", attempts: 0 }]));
+      st().status = "running"; st().locked_until = 0; st().attempts = (st().attempts as number) + 1;
+    }
+    runOf(db, s.runId).status = "running"; runOf(db, s.runId).locked_until = null;
+    const out = await drive(db, s.runId);
+    check("MED-2 a step resumed past its attempt budget fails instead of paying again", imageCalls.length === 0 && st().error_code === "resume_limit" && out === "failed", { out, st: st() });
+  }
+  {
+    const db = setup();
+    publish(db, [step("image_edit", "final", { prompt: "X" })]);
+    const s = await start(db);
+    if (!s.ok) return;
+    runOf(db, s.runId).invocations = 30;
+    const out = await drive(db, s.runId);
+    check("MED-2 a run resumed 30 times is closed (invocation limit), no provider call", out === "failed" && imageCalls.length === 0 && runOf(db, s.runId).error === "invocation_limit");
+  }
+  {
+    const db = setup();
+    publish(db, [step("image_edit", "final", { prompt: "X" })], 1);
+    const wf = await loadWorkflow(client(db), "retouch", null);
+    const r = await startWorkflowRun(client(db), USER, WS, {
+      toolKey: "retouch", workflow: wf!, hint: "", referencePaths: [`${WS}/in/photo.jpg`], aspectRatio: "1:1", resolution: "1K",
+      quality: null, toolModelId: "m-main", toolFallbackId: null, unitCredits: 10, operation: "image_retouch",
+      knowledgeStrategy: "proven", quotedOutputs: 5,
+    });
+    check("LOW-9 a price quoted for a different result count is refused before any charge", !r.ok && r.error === "price_changed" && db.events.length === 0);
+  }
+  check("LOW-3 the admin test reader only reads (and drives) TEST runs",
+    /\.eq\("id", runId\)\.eq\("run_kind", "workflow_test"\)/.test(read("app/actions/ai-engine.ts")));
 
   console.log("Retry classes");
   {
