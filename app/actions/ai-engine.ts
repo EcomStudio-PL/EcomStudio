@@ -14,6 +14,18 @@ import {
   TOOL_VARIABLES, compileTemplate, malformedPlaceholders, parsePlaceholders,
   sampleValues, workflowVariables, type VariableDef,
 } from "@/lib/ai/prompt-variables";
+import {
+  STEP_PROMPT_MAX, STEP_TIMEOUT_DEFAULT_MS, fromV1, stepVariables, validateWorkflow, type WorkflowStepDef,
+} from "@/lib/ai/workflow-def";
+import { parseStepValue, renderValue } from "@/lib/ai/workflow-values";
+import type { Resolution } from "@/lib/ai/types";
+import { getCurrentWorkspace } from "@/lib/services/workspace";
+import { resolveEngine } from "@/lib/server/ai-engine";
+import { loadWorkflow } from "@/lib/server/engine/workflow-store";
+import { startWorkflowRun } from "@/lib/server/engine/workflow";
+import { driveAfterResponse } from "@/lib/server/engine/drive";
+import { retouchModel } from "@/lib/server/retouch";
+import { fashionModel } from "@/lib/server/fashion";
 
 /**
  * AI ENGINE — the admin actions this upgrade adds next to app/actions/
@@ -24,8 +36,9 @@ import {
  *   - a decrypted body leaves the server only to the admin who asked for that
  *     specific version (the workflow editor), never in a list;
  *   - publish and rollback are single SQL transactions (migration 0126);
- *   - nothing here makes a paid provider call. "Testuj konfigurację" is a dry
- *     run: it compiles, checks and estimates, and says so.
+ *   - "Testuj konfigurację" is a dry run: it compiles, checks and estimates,
+ *     and makes no provider call. "Testuj workflow" is the one real run here,
+ *     on the admin's own test photos, recorded as a test (never charged).
  */
 
 type Result = { ok: boolean; error?: string };
@@ -45,7 +58,6 @@ const refresh = (toolKey: string) => {
 };
 
 const PROMPT_MAX_CHARS = 40000;
-const STEP_PROMPT_MAX = 20000;
 
 /* ── compile preview ──────────────────────────────────────────────────────*/
 
@@ -68,13 +80,18 @@ export type CompilePreview = {
  */
 export async function compilePreviewAction(input: {
   toolKey: string; body: string; workflowPosition?: number | null;
+  /** v2 builder: the step list (names/kinds are what matter) and the index. */
+  workflow?: { steps: WorkflowStepInput[]; index: number } | null;
 }): Promise<CompilePreview> {
   const empty = { chars: 0, unknown: [], missing: [], malformed: [], used: [] };
   try {
     await requireAdmin();
     if (!isAiToolKey(input.toolKey)) return { ok: false, error: "unknown_tool", ...empty };
     const body = String(input.body ?? "").slice(0, PROMPT_MAX_CHARS);
-    const defs = input.workflowPosition ? workflowVariables(input.toolKey, input.workflowPosition) : TOOL_VARIABLES[input.toolKey] ?? [];
+    const wf = input.workflow;
+    const defs = wf && Array.isArray(wf.steps) && Number.isInteger(wf.index)
+      ? stepVariables(input.toolKey, wf.steps.map(normaliseStep), wf.index)
+      : input.workflowPosition ? workflowVariables(input.toolKey, input.workflowPosition) : TOOL_VARIABLES[input.toolKey] ?? [];
     const malformed = malformedPlaceholders(body);
     const compiled = compileTemplate(body, defs, sampleValues(defs));
     if (!compiled.ok) {
@@ -112,96 +129,95 @@ export async function saveKnowledgeStrategyAction(toolKey: string, strategy: "pr
 
 /* ── workflows ────────────────────────────────────────────────────────────*/
 
-export type WorkflowStepInput = {
-  name: string;
-  enabled: boolean;
-  operation: "analyze" | "generate_image";
-  outputKind: "text" | "analysis" | "image";
-  useImages: boolean;
-  modelId: string | null;
-  textProvider: "openai" | "google" | null;
-  timeoutMs: number;
-  maxAttempts: number;
-  condition: "always" | "if_hint" | "if_previous_nonempty";
-  prompt: string;
-};
+/** One step as the builder edits it (the v2 definition, prompt included). */
+export type WorkflowStepInput = WorkflowStepDef;
 
 type StepError = { error: string; step?: number; names?: string[] };
 
-/** Validate a step list the way the SQL function will — and then some (the
- *  variables each step may use, and the model override's real capabilities). */
-async function validateSteps(
+/**
+ * Validate a definition exactly the way the runtime will (shared code in
+ * lib/ai/workflow-def.ts), then check what only the server can: that every
+ * image model a step names is usable right now and can carry the images the
+ * Product Lock depends on.
+ */
+async function validateDefinition(
   supabase: Awaited<ReturnType<typeof requireAdmin>>["supabase"],
-  toolKey: AiToolKey, steps: WorkflowStepInput[],
+  toolKey: AiToolKey, steps: WorkflowStepInput[], concurrency: number,
 ): Promise<StepError | null> {
-  if (!Array.isArray(steps) || steps.length < 1 || steps.length > 8) return { error: "invalid_steps" };
-  const last = steps.length - 1;
-  for (let i = 0; i < steps.length; i++) {
-    const s = steps[i];
-    const n = i + 1;
-    const name = String(s.name ?? "").trim();
-    if (!name || name.length > 80) return { error: "step_name", step: n };
-    const prompt = String(s.prompt ?? "").trim();
-    if (!prompt) return { error: "empty_prompt", step: n };
-    if (prompt.length > STEP_PROMPT_MAX) return { error: "too_long", step: n };
-    if (s.operation !== "analyze" && s.operation !== "generate_image") return { error: "invalid_steps", step: n };
-    if (s.operation === "generate_image") {
-      if (i !== last) return { error: "image_step_last", step: n };
-      if (!s.enabled) return { error: "image_step_disabled", step: n };
-      if (s.outputKind !== "image") return { error: "invalid_steps", step: n };
-    } else {
-      if (i === last) return { error: "image_step_last", step: n };
-      if (s.outputKind !== "text" && s.outputKind !== "analysis") return { error: "invalid_steps", step: n };
-      if (s.modelId) return { error: "invalid_steps", step: n };
-    }
-    if (s.textProvider !== null && s.textProvider !== "openai" && s.textProvider !== "google") return { error: "invalid_steps", step: n };
-    if (s.operation === "generate_image" && s.textProvider) return { error: "invalid_steps", step: n };
-    if (!["always", "if_hint", "if_previous_nonempty"].includes(s.condition)) return { error: "invalid_steps", step: n };
-    const unknown = unknownVariables(prompt, workflowVariables(toolKey, n));
-    if (unknown.length) return { error: "variable_unknown", step: n, names: unknown };
-    if (malformedPlaceholders(prompt).length) return { error: "variable_malformed", step: n };
-  }
-  // A model override must be a model the router can really use for an
-  // image-to-image step: active, keyed, and able to carry the references the
-  // Product Lock depends on.
-  const override = steps[last].modelId;
-  if (override) {
+  const clean = steps.map(normaliseStep);
+  const v = validateWorkflow(toolKey, { steps: clean, concurrency });
+  if (!v.ok) return { error: v.error, step: v.step, names: v.names };
+  const wanted = clean.flatMap((s, i) => [s.modelId, s.fallbackModelId].filter(Boolean).map((id) => ({ id: id as string, step: i + 1, refs: s.inputImage !== "none" })));
+  if (wanted.length) {
     const usable = await getUsableModels(supabase);
-    const m = usable.find((u) => u.id === override);
-    if (!m || !m.capabilities_ui.supportsReferenceImages) return { error: "model_unusable", step: steps.length };
+    for (const w of wanted) {
+      const m = usable.find((u) => u.id === w.id);
+      if (!m || (w.refs && !m.capabilities_ui.supportsReferenceImages)) return { error: "model_unusable", step: w.step };
+    }
   }
   return null;
 }
 
+/** Everything coming from the browser is re-shaped to the exact type — an
+ *  unexpected field is dropped, a wrong type becomes an invalid value. */
+function normaliseStep(s: WorkflowStepInput): WorkflowStepDef {
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const opt = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const int = (v: unknown, d: number) => (Number.isFinite(Number(v)) ? Math.trunc(Number(v)) : d);
+  return {
+    name: str(s.name).trim().slice(0, 80),
+    enabled: s.enabled !== false,
+    operation: s.operation,
+    outputKind: s.outputKind,
+    outputName: str(s.outputName).trim(),
+    inputImage: str(s.inputImage).trim() || "customer",
+    forEach: opt(s.forEach),
+    itemName: opt(s.itemName),
+    maxItems: s.maxItems === null || s.maxItems === undefined ? null : int(s.maxItems, 0),
+    modelId: opt(s.modelId),
+    fallbackModelId: opt(s.fallbackModelId),
+    textProvider: s.textProvider === "openai" || s.textProvider === "google" ? s.textProvider : null,
+    textModel: opt(s.textModel),
+    toolSlug: s.operation === "tool" ? s.toolSlug : null,
+    timeoutMs: int(s.timeoutMs, STEP_TIMEOUT_DEFAULT_MS),
+    maxAttempts: int(s.maxAttempts, 1),
+    onError: s.onError === "continue" ? "continue" : "stop",
+    onItemError: s.onItemError === "fail_run" ? "fail_run" : "continue",
+    condition: s.condition === "if_hint" || s.condition === "if_previous_nonempty" ? s.condition : "always",
+    prompt: str(s.prompt).slice(0, STEP_PROMPT_MAX + 1),
+  };
+}
+
 export async function saveWorkflowAction(input: {
-  toolKey: string; steps: WorkflowStepInput[]; summary: string | null; reason: string | null; publish: boolean;
-}): Promise<Result & { version?: number; step?: number; names?: string[] }> {
+  toolKey: string; steps: WorkflowStepInput[]; concurrency: number;
+  summary: string | null; reason: string | null; publish: boolean;
+}): Promise<Result & { version?: number; id?: string; step?: number; names?: string[] }> {
   try {
     const { supabase, adminId } = await requireAdmin();
     if (!isAiToolKey(input.toolKey) || !toolSupportsWorkflow(input.toolKey)) return { ok: false, error: "workflow_unsupported" };
     if (input.publish && !input.reason?.trim()) return { ok: false, error: "reason_required" };
     if (!encryptionAvailable()) return { ok: false, error: "encryption_unavailable" };
-    const invalid = await validateSteps(supabase, input.toolKey, input.steps);
+    const concurrency = Math.trunc(Number(input.concurrency) || 3);
+    const invalid = await validateDefinition(supabase, input.toolKey, input.steps ?? [], concurrency);
     if (invalid) return { ok: false, ...invalid };
 
-    const payload = input.steps.map((s) => {
-      const sealed = sealPrompt(String(s.prompt).trim());
+    const payload = input.steps.map(normaliseStep).map((s) => {
+      // A tool step may carry no instruction of its own; an empty sealed body
+      // would be indistinguishable from a broken one, so it seals one space.
+      const sealed = sealPrompt(s.prompt.trim() || " ");
       return {
-        name: String(s.name).trim().slice(0, 80),
-        enabled: Boolean(s.enabled),
-        operation: s.operation,
-        output_kind: s.outputKind,
-        // The image step always carries the photos: without them the Product
-        // Lock has nothing to hold on to.
-        use_images: s.operation === "generate_image" ? true : Boolean(s.useImages),
-        model_id: s.operation === "generate_image" ? s.modelId || null : null,
-        text_provider: s.operation === "analyze" ? s.textProvider : null,
-        timeout_ms: Math.min(Math.max(Math.trunc(Number(s.timeoutMs)) || 60000, 5000), 300000),
-        max_attempts: Math.min(Math.max(Math.trunc(Number(s.maxAttempts)) || 1, 1), 3),
-        condition: s.condition,
-        prompt_encrypted: sealed.ciphertext,
-        prompt_iv: sealed.iv,
-        prompt_tag: sealed.authTag,
+        name: s.name, enabled: s.enabled, operation: s.operation, output_kind: s.outputKind,
+        use_images: s.inputImage !== "none",
+        model_id: s.operation === "image_edit" || s.operation === "image_generation" ? s.modelId : null,
+        fallback_model_id: s.operation === "image_edit" || s.operation === "image_generation" ? s.fallbackModelId : null,
+        text_provider: s.operation === "ai_text" ? s.textProvider : null,
+        text_model: s.operation === "ai_text" ? s.textModel : null,
+        tool_slug: s.operation === "tool" ? s.toolSlug : null,
+        timeout_ms: s.timeoutMs, max_attempts: s.maxAttempts, condition: s.condition,
+        output_name: s.outputName, input_image: s.inputImage,
+        for_each: s.forEach, item_name: s.itemName, max_items: s.maxItems,
+        on_error: s.onError, on_item_error: s.onItemError,
+        prompt_encrypted: sealed.ciphertext, prompt_iv: sealed.iv, prompt_tag: sealed.authTag,
       };
     });
     const { data, error } = await supabase.rpc("ai_save_tool_workflow", {
@@ -210,10 +226,11 @@ export async function saveWorkflowAction(input: {
       p_summary: input.summary?.trim().slice(0, 300) || null,
       p_reason: input.reason?.trim().slice(0, 500) || null,
       p_publish: input.publish,
+      p_concurrency: concurrency,
     });
     if (error) return { ok: false, error: "generic" };
-    const result = data as { ok?: boolean; error?: string; version?: number } | null;
-    if (!result?.ok) return { ok: false, error: result?.error ?? "generic" };
+    const result = data as { ok?: boolean; error?: string; version?: number; id?: string; step?: number } | null;
+    if (!result?.ok) return { ok: false, error: result?.error ?? "generic", step: result?.step };
     await logAudit(supabase, {
       actorId: adminId,
       action: input.publish ? "ai_tool.workflow_published" : "ai_tool.workflow_drafted",
@@ -222,7 +239,7 @@ export async function saveWorkflowAction(input: {
       after: { version: result.version, steps: payload.length, reason: input.reason?.trim() ?? null },
     });
     refresh(input.toolKey);
-    return { ok: true, version: result.version };
+    return { ok: true, version: result.version, id: result.id };
   } catch { return { ok: false, error: "generic" }; }
 }
 
@@ -243,6 +260,8 @@ export async function publishWorkflowAction(id: string, reason: string): Promise
   } catch { return { ok: false, error: "generic" }; }
 }
 
+/** ROLLBACK: the chosen version is copied forward as a NEW published version
+ *  (history is never rewritten). */
 export async function restoreWorkflowAction(id: string, reason: string): Promise<Result> {
   try {
     const { supabase, adminId } = await requireAdmin();
@@ -252,7 +271,7 @@ export async function restoreWorkflowAction(id: string, reason: string): Promise
     if (!result?.ok) return { ok: false, error: result?.error ?? "generic" };
     await logAudit(supabase, {
       actorId: adminId, action: "ai_tool.workflow_restored",
-      entityType: "ai_tool_workflow", entityId: id, after: { from_version: result.from_version, version: result.version },
+      entityType: "ai_tool_workflow", entityId: id, after: { from_version: result.from_version, version: result.version, reason: reason?.trim() || null },
     });
     if (result.tool_key) refresh(result.tool_key);
     return { ok: true };
@@ -260,34 +279,222 @@ export async function restoreWorkflowAction(id: string, reason: string): Promise
 }
 
 /** Open ONE workflow version for the editor — the only path its step prompts
- *  take out of the server, to the admin who asked for it. */
-export async function readWorkflowAction(id: string): Promise<Result & { steps?: WorkflowStepInput[]; summary?: string | null }> {
+ *  take out of the server, to the admin who asked for it. A v1 version is
+ *  returned in v2 shape (outputs renamed, references rewritten). */
+export async function readWorkflowAction(id: string): Promise<Result & {
+  steps?: WorkflowStepInput[]; summary?: string | null; concurrency?: number; version?: number; status?: string;
+}> {
   try {
     const { supabase } = await requireAdmin();
     const [{ data: wf }, { data: steps }] = await Promise.all([
-      supabase.from("ai_tool_workflows").select("id, summary").eq("id", id).maybeSingle(),
+      supabase.from("ai_tool_workflows").select("id, summary, concurrency, version, status").eq("id", id).maybeSingle(),
       supabase.from("ai_tool_workflow_steps")
-        .select("position, name, enabled, operation, output_kind, use_images, model_id, text_provider, timeout_ms, max_attempts, condition, prompt_encrypted, prompt_iv, prompt_tag")
+        .select("position, name, enabled, operation, output_kind, use_images, model_id, fallback_model_id, text_provider, text_model, timeout_ms, max_attempts, condition, output_name, input_image, for_each, item_name, max_items, tool_slug, on_error, on_item_error, prompt_encrypted, prompt_iv, prompt_tag")
         .eq("workflow_id", id).order("position"),
     ]);
     if (!wf || !steps?.length) return { ok: false, error: "not_found" };
-    const out: WorkflowStepInput[] = [];
+    const opened: { s: (typeof steps)[number]; prompt: string }[] = [];
     for (const s of steps) {
       const prompt = openPrompt({ body_encrypted: s.prompt_encrypted, body_iv: s.prompt_iv, body_tag: s.prompt_tag });
       if (prompt === null) return { ok: false, error: "decrypt_failed" };
-      out.push({
-        name: s.name, enabled: s.enabled,
-        operation: s.operation === "generate_image" ? "generate_image" : "analyze",
-        outputKind: s.output_kind === "image" ? "image" : s.output_kind === "analysis" ? "analysis" : "text",
+      opened.push({ s, prompt });
+    }
+    const legacy = opened.some(({ s }) => s.operation === "analyze" || s.operation === "generate_image");
+    let out: WorkflowStepDef[];
+    if (legacy) {
+      out = upgradeV1(fromV1(opened.map(({ s, prompt }) => ({
+        operation: s.operation, outputKind: s.output_kind, name: s.name, enabled: s.enabled,
         useImages: s.use_images, modelId: s.model_id,
         textProvider: s.text_provider === "openai" || s.text_provider === "google" ? s.text_provider : null,
         timeoutMs: s.timeout_ms, maxAttempts: s.max_attempts,
         condition: s.condition === "if_hint" || s.condition === "if_previous_nonempty" ? s.condition : "always",
         prompt,
-      });
+      }))));
+    } else {
+      out = opened.map(({ s, prompt }) => normaliseStep({
+        name: s.name, enabled: s.enabled, operation: s.operation as WorkflowStepDef["operation"],
+        outputKind: (s.output_kind === "analysis" ? "text" : s.output_kind) as WorkflowStepDef["outputKind"],
+        outputName: s.output_name ?? `krok_${s.position}`, inputImage: s.input_image ?? "customer",
+        forEach: s.for_each, itemName: s.item_name, maxItems: s.max_items,
+        modelId: s.model_id, fallbackModelId: s.fallback_model_id,
+        textProvider: s.text_provider === "openai" || s.text_provider === "google" ? s.text_provider : null,
+        textModel: s.text_model, toolSlug: (s.tool_slug ?? null) as WorkflowStepDef["toolSlug"],
+        timeoutMs: s.timeout_ms, maxAttempts: s.max_attempts,
+        onError: s.on_error === "continue" ? "continue" : "stop",
+        onItemError: s.on_item_error === "fail_run" ? "fail_run" : "continue",
+        condition: s.condition === "if_hint" || s.condition === "if_previous_nonempty" ? s.condition : "always",
+        prompt: s.operation === "tool" ? prompt.trim() : prompt,
+      }));
     }
-    return { ok: true, steps: out, summary: wf.summary };
+    return { ok: true, steps: out, summary: wf.summary, concurrency: wf.concurrency, version: wf.version, status: wf.status };
   } catch { return { ok: false, error: "generic" }; }
+}
+
+/** v1 outputs were called step1..stepN (now reserved): rename them and
+ *  rewrite {{stepN}} / {{previous}} so the definition saves as v2 unchanged. */
+function upgradeV1(steps: WorkflowStepDef[]): WorkflowStepDef[] {
+  return steps.map((s, i) => {
+    const prompt = s.prompt
+      .replace(/\{\{\s*step(\d+)(\s*[?|][^}]*)?\s*\}\}/g, (_m, n: string, mod: string | undefined) => `{{krok_${n}${mod ?? ""}}}`)
+      .replace(/\{\{\s*previous(\s*[?|][^}]*)?\s*\}\}/g, (_m, mod: string | undefined) => (i > 0 ? `{{krok_${i}${mod ?? ""}}}` : ""));
+    return { ...s, outputName: `krok_${i + 1}`, prompt };
+  });
+}
+
+/**
+ * WORKFLOW ON / OFF. ON needs a published version (a switch with nothing to
+ * run would silently fall back); OFF returns the tool to exactly its
+ * single-call behaviour. Logged with who and why.
+ */
+export async function setWorkflowEnabledAction(toolKey: string, enabled: boolean, reason: string | null): Promise<Result> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    if (!isAiToolKey(toolKey) || !toolSupportsWorkflow(toolKey)) return { ok: false, error: "workflow_unsupported" };
+    if (enabled) {
+      const { data: wf } = await supabase.from("ai_tool_workflows").select("id")
+        .eq("tool_key", toolKey).eq("status", "published").maybeSingle();
+      if (!wf) return { ok: false, error: "workflowMissing" };
+    }
+    const { error } = await supabase.from("ai_tools")
+      .update({ workflow_enabled: enabled, updated_at: new Date().toISOString(), updated_by: adminId })
+      .eq("tool_key", toolKey);
+    if (error) return { ok: false, error: "generic" };
+    await logAudit(supabase, {
+      actorId: adminId, action: enabled ? "ai_tool.workflow_enabled" : "ai_tool.workflow_disabled",
+      entityType: "ai_tool", entityId: toolKey, after: { enabled, reason: reason?.trim().slice(0, 500) || null },
+    });
+    refresh(toolKey);
+    revalidatePath("/retusz");
+    return { ok: true };
+  } catch { return { ok: false, error: "generic" }; }
+}
+
+/* ── test run ─────────────────────────────────────────────────────────────*/
+
+export type TestStepView = {
+  position: number; item: number; name: string | null; operation: string; status: string;
+  attempts: number; ms: number | null; provider: string | null; model: string | null;
+  inputTokens: number | null; outputTokens: number | null; costUsdMicros: number | null; costKnown: boolean;
+  error: string | null;
+  /** Admin-only preview of what the step produced (never its prompt). */
+  text: string | null; imageUrl: string | null;
+};
+export type TestRunView = {
+  id: string; status: string; error: string | null; version: number | null; expected: number;
+  delivered: number; durationMs: number | null; costUsdMicros: number | null; costUnknown: number;
+  tokensIn: number; tokensOut: number; driving: boolean; steps: TestStepView[]; results: string[];
+};
+
+/**
+ * TEST WORKFLOW — runs a version (draft or published) for real, on the
+ * admin's own test photos, BEFORE it is published. Real provider calls, so a
+ * real cost (recorded as `workflow_test`, never charged to anyone, never on
+ * the provider card's live status). The result lands in the admin's own
+ * workspace, in a test folder — not in any customer's library.
+ */
+export async function startWorkflowTestAction(input: {
+  toolKey: string; workflowId: string; referencePaths: string[]; hint?: string;
+}): Promise<Result & { runId?: string }> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    if (!isAiToolKey(input.toolKey) || !toolSupportsWorkflow(input.toolKey)) return { ok: false, error: "workflow_unsupported" };
+    const workspace = await getCurrentWorkspace(supabase, adminId);
+    if (!workspace) return { ok: false, error: "no_workspace" };
+    const paths = (input.referencePaths ?? []).filter((p) => typeof p === "string"
+      && p.startsWith(`${workspace.id}/`) && !p.includes("..") && /^[\w\-./]+$/.test(p) && p.length <= 300).slice(0, 10);
+    if (paths.length !== (input.referencePaths ?? []).length || paths.length === 0) return { ok: false, error: "invalid_input" };
+
+    const workflow = await loadWorkflow(supabase, input.toolKey, input.workflowId);
+    if (!workflow) return { ok: false, error: "not_found" };
+    const model = await toolImageModel(supabase, input.toolKey);
+    if (!model) return { ok: false, error: "model_unavailable" };
+    const engine = await resolveEngine(supabase, input.toolKey);
+    const started = await startWorkflowRun(supabase, adminId, workspace.id, {
+      toolKey: input.toolKey, workflow, hint: String(input.hint ?? "").slice(0, 1000), referencePaths: paths,
+      aspectRatio: "1:1", resolution: (model.resolutions[0] ?? "1K") as Resolution, quality: null,
+      toolModelId: model.id, toolFallbackId: model.fallbackId, unitCredits: 0,
+      operation: `${input.toolKey}_test`, knowledgeStrategy: engine?.knowledgeStrategy ?? "proven", test: true,
+    });
+    if (!started.ok) return { ok: false, error: started.error };
+    await logAudit(supabase, {
+      actorId: adminId, action: "ai_tool.workflow_tested", entityType: "ai_tool", entityId: input.toolKey,
+      after: { workflow_version: workflow.version, run: started.runId },
+    });
+    driveAfterResponse(supabase, started.runId, Date.now());
+    return { ok: true, runId: started.runId };
+  } catch { return { ok: false, error: "generic" }; }
+}
+
+/** The test run as the admin sees it: every step with ✓/✗, time, executor,
+ *  N/N items, tokens, cost — and keeps an idle run moving. */
+export async function readWorkflowTestAction(runId: string): Promise<Result & { run?: TestRunView }> {
+  try {
+    const { supabase } = await requireAdmin();
+    const [{ data: run }, { data: steps }] = await Promise.all([
+      supabase.from("ai_engine_runs")
+        .select("id, status, error, workflow_version, expected_outputs, outputs, duration_ms, api_cost_usd_micros, cost_unknown, locked_until, run_kind, created_at")
+        .eq("id", runId).maybeSingle(),
+      supabase.from("ai_engine_step_runs")
+        .select("position, item_index, step_name, operation, status, attempts, duration_ms, provider_slug, model, input_tokens, output_tokens, cost_usd_micros, cost_basis, error_code, output")
+        .eq("run_id", runId).order("position").order("item_index"),
+    ]);
+    if (!run) return { ok: false, error: "not_found" };
+    const active = run.status === "queued" || run.status === "running";
+    const driving = Boolean(run.locked_until && new Date(run.locked_until).getTime() > Date.now());
+    if (active && !driving) driveAfterResponse(supabase, runId, Date.now());
+
+    const imagePaths: string[] = [];
+    const parsed = (steps ?? []).map((st) => {
+      const v = parseStepValue(st.output);
+      if (v?.kind === "image") imagePaths.push(v.image.path);
+      return { st, v };
+    });
+    const outputs = ((run.outputs ?? []) as { path?: string }[]).map((o) => o.path).filter((p): p is string => Boolean(p));
+    const allPaths = [...new Set([...imagePaths, ...outputs])];
+    const { data: signed } = allPaths.length
+      ? await supabase.storage.from("generation-assets").createSignedUrls(allPaths, 900)
+      : { data: [] as { path: string | null; signedUrl: string }[] };
+    const urlOf = new Map((signed ?? []).map((u) => [u.path, u.signedUrl]));
+    const view: TestStepView[] = parsed.map(({ st, v }) => ({
+      position: st.position, item: st.item_index, name: st.step_name, operation: st.operation, status: st.status,
+      attempts: st.attempts, ms: st.duration_ms, provider: st.provider_slug, model: st.model,
+      inputTokens: st.input_tokens === null ? null : Number(st.input_tokens),
+      outputTokens: st.output_tokens === null ? null : Number(st.output_tokens),
+      costUsdMicros: st.cost_usd_micros === null ? null : Number(st.cost_usd_micros),
+      costKnown: st.cost_basis !== "unknown", error: st.error_code,
+      text: v && v.kind !== "image" ? (renderValue(v) ?? "").slice(0, 4000) : null,
+      imageUrl: v?.kind === "image" ? urlOf.get(v.image.path) ?? null : null,
+    }));
+    const closed = view.filter((x) => x.status === "succeeded" || x.status === "failed");
+    const sum = (k: "inputTokens" | "outputTokens") => closed.reduce((a, x) => a + (x[k] ?? 0), 0);
+    const unknownNow = closed.filter((x) => !x.costKnown).length;
+    return {
+      ok: true,
+      run: {
+        id: run.id, status: run.status, error: run.error, version: run.workflow_version,
+        expected: run.expected_outputs ?? 1, delivered: outputs.length,
+        durationMs: run.duration_ms ?? (active ? Date.now() - new Date(run.created_at).getTime() : null),
+        costUsdMicros: active ? closed.reduce((a, x) => a + (x.costUsdMicros ?? 0), 0) : run.api_cost_usd_micros === null ? null : Number(run.api_cost_usd_micros),
+        costUnknown: active ? unknownNow : run.cost_unknown,
+        tokensIn: sum("inputTokens"), tokensOut: sum("outputTokens"), driving,
+        steps: view, results: outputs.map((p) => urlOf.get(p)).filter((u): u is string => Boolean(u)),
+      },
+    };
+  } catch { return { ok: false, error: "generic" }; }
+}
+
+/** The tool's own image model (what a step that names none runs on). */
+async function toolImageModel(supabase: Awaited<ReturnType<typeof requireAdmin>>["supabase"], toolKey: string):
+  Promise<{ id: string; fallbackId: string | null; resolutions: string[] } | null> {
+  if (toolKey === "retouch") {
+    const m = await retouchModel(supabase);
+    return m ? { id: m.id, fallbackId: m.fallbackId, resolutions: m.resolutions } : null;
+  }
+  if (toolKey.startsWith("fashion_")) {
+    const m = await fashionModel(supabase);
+    return m ? { id: m.id, fallbackId: null, resolutions: m.resolutions } : null;
+  }
+  return null;
 }
 
 /* ── dry run ──────────────────────────────────────────────────────────────*/
@@ -304,7 +511,7 @@ export async function dryRunEngineAction(toolKey: string): Promise<Result & { ch
     const { supabase } = await requireAdmin();
     if (!isAiToolKey(toolKey)) return { ok: false, error: "unknown_tool" };
     const checks: DryRunCheck[] = [];
-    const { data: tool } = await supabase.from("ai_tools").select("engine_mode").eq("tool_key", toolKey).maybeSingle();
+    const { data: tool } = await supabase.from("ai_tools").select("engine_mode, workflow_enabled").eq("tool_key", toolKey).maybeSingle();
     const mode = (tool?.engine_mode ?? "off") as string;
     const supported = (TOOL_ENGINE_MODES[toolKey] as readonly string[]).includes(mode);
     checks.push({ key: "mode", status: supported ? "ok" : "fail", params: { mode } });
@@ -315,8 +522,8 @@ export async function dryRunEngineAction(toolKey: string): Promise<Result & { ch
 
     const templates: { text: string; defs: VariableDef[]; label: string }[] = [];
     let usesAnalyzeSteps = false;
-    let imageOverride: string | null = null;
-    if (mode === "workflow") {
+    const stepModels: string[] = [];
+    if (tool?.workflow_enabled) {
       const { data: wf } = await supabase.from("ai_tool_workflows")
         .select("id, version").eq("tool_key", toolKey).eq("status", "published").maybeSingle();
       if (!wf) {
@@ -326,20 +533,22 @@ export async function dryRunEngineAction(toolKey: string): Promise<Result & { ch
         if (!read.ok || !read.steps) {
           checks.push({ key: "decrypt", status: "fail" });
         } else {
-          checks.push({ key: "workflowPublished", status: "ok", params: { version: wf.version, steps: read.steps.length } });
-          read.steps.forEach((s, i) => {
-            templates.push({ text: s.prompt, defs: workflowVariables(toolKey, i + 1), label: `${i + 1}` });
-            if (s.operation === "analyze" && s.enabled) usesAnalyzeSteps = true;
-            if (s.operation === "generate_image") imageOverride = s.modelId;
+          const steps = read.steps;
+          checks.push({ key: "workflowPublished", status: "ok", params: { version: wf.version, steps: steps.length } });
+          steps.forEach((st, i) => {
+            if (st.prompt.trim()) templates.push({ text: st.prompt, defs: stepVariables(toolKey, steps, i), label: `${i + 1}` });
+            if (st.operation === "ai_text" && st.enabled) usesAnalyzeSteps = true;
+            for (const id of [st.modelId, st.fallbackModelId]) if (id) stepModels.push(id);
           });
         }
       }
-    } else {
+    }
+    {
       const { data: p } = await supabase.from("ai_tool_prompts")
         .select("version, body_encrypted, body_iv, body_tag").eq("tool_key", toolKey).eq("status", "published").maybeSingle();
       if (!p) {
         const builtIn = toolKey === "retouch" || toolKey === "prompts" || toolKey === "generator";
-        checks.push({ key: builtIn ? "builtInUsed" : "promptMissing", status: builtIn ? "warn" : "fail" });
+        checks.push({ key: builtIn ? "builtInUsed" : "promptMissing", status: builtIn || tool?.workflow_enabled ? "warn" : "fail" });
       } else {
         const body = openPrompt(p);
         if (body === null) checks.push({ key: "decrypt", status: "fail" });
@@ -373,10 +582,12 @@ export async function dryRunEngineAction(toolKey: string): Promise<Result & { ch
       const backends = await textCapableBackends(supabase);
       checks.push({ key: "textBackends", status: backends.length ? "ok" : "fail", params: { n: backends.length } });
     }
-    if (imageOverride) {
+    if (stepModels.length) {
       const usable = await getUsableModels(supabase);
-      const m = usable.find((u) => u.id === imageOverride);
-      checks.push({ key: "modelOverride", status: m ? "ok" : "fail", params: { model: m?.display_name || m?.name || imageOverride } });
+      for (const id of [...new Set(stepModels)]) {
+        const m = usable.find((u) => u.id === id);
+        checks.push({ key: "modelOverride", status: m ? "ok" : "fail", params: { model: m?.display_name || m?.name || id } });
+      }
     }
 
     // Knowledge actually reachable by this tool.

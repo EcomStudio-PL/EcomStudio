@@ -479,11 +479,23 @@ async function finishRun(
   // configured is counted as unknown — the run then says so; never 0.00.
   const costs = sumKnownCosts(closed.map((x) => (x.cost_basis === "unknown" || x.cost_usd_micros == null
     ? { basis: "unknown" as const } : { basis: "estimated" as const, usdMicros: Number(x.cost_usd_micros) })));
-  const stepsTrace = rows.slice(0, 200).map((x) => ({
-    n: x.position, item: x.item_index, name: x.step_name, op: x.operation, status: x.status,
-    ms: x.duration_ms, attempts: x.attempts, provider: x.provider_slug, model: x.model,
-    cost: x.cost_basis === "unknown" ? null : x.cost_usd_micros, error: x.error_code,
-  }));
+  // The admin trace: ONE entry per step (a fan-out as N/N), with the
+  // executor(s) that really answered. Codes, names and numbers only.
+  const byPosition = new Map<number, StepRunRow[]>();
+  for (const x of rows) byPosition.set(x.position, [...(byPosition.get(x.position) ?? []), x]);
+  const stepsTrace = [...byPosition.entries()].sort((a, b) => a[0] - b[0]).map(([n, list]) => {
+    const ok = list.filter((x) => x.status === "succeeded").length;
+    const fan = list.some((x) => x.item_index >= 0);
+    return {
+      n, name: list[0].step_name ?? list[0].operation, op: list[0].operation,
+      status: ok === list.length ? "ok" : ok > 0 ? "partial" : list.every((x) => x.status === "skipped") ? "skipped" : "failed",
+      ms: Math.max(0, ...list.map((x) => x.duration_ms ?? 0)),
+      attempts: Math.max(0, ...list.map((x) => x.attempts)),
+      items: fan ? `${ok}/${list.length}` : null,
+      executors: [...new Set(list.map((x) => [x.provider_slug, x.model].filter(Boolean).join("/")).filter(Boolean))].slice(0, 4),
+      error: list.find((x) => x.error_code)?.error_code ?? null,
+    };
+  });
   const expected = run.expected_outputs ?? 1;
   const delivered = r.images.length;
   const status: "ok" | "partial" | "failed" = delivered === 0 ? "failed" : delivered < expected ? "partial" : "ok";

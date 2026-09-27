@@ -7,15 +7,16 @@ import { makeT } from "@/lib/i18n/t";
 import { getAvailabilityMap } from "@/lib/server/feature-availability";
 import {
   MODEL_ASSIGNMENT_RUNTIME, isAiToolKey, readBillingServices, readPickableModels, readPromptHistory, readToolRegistry,
-  readWorkflowHistory, toolHasPromptEngine, toolSupportsWorkflow, toolTabs, type ToolTab,
+  LEGACY_TAB, readWorkflowHistory, toolHasPromptEngine, toolSupportsWorkflow, toolTabs, type ToolTab,
 } from "@/lib/services/ai-tools";
+import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { readEngineAnalytics, readEngineRuns } from "@/lib/services/ai-engine-analytics";
 import { TOOL_VARIABLES } from "@/lib/ai/prompt-variables";
 import { MIN_SAMPLE } from "@/lib/ai/knowledge-ranking";
 import { getUsableModels } from "@/lib/ai/router";
 import { readOneToolEconomics, readUsageHistory } from "@/lib/services/api-economics";
-import { readToolApiPath } from "@/lib/server/tool-api-path";
-import { ToolApiPathCard } from "@/components/admin/tool-api-path";
+import { readExecutionSummary, readToolApiPath } from "@/lib/server/tool-api-path";
+import { ExecutionPathCard } from "@/components/admin/tool-api-path";
 import { ToolEconomicsPanel, UsageHistoryList } from "@/components/admin/api-economics";
 import { billingFrom } from "@/lib/images/pricing";
 import { STATUS_TONE } from "@/lib/status-tone";
@@ -27,6 +28,7 @@ import { PromptDraftProvider, ToolPromptEditor, ToolPromptHistory } from "@/comp
 import { ToolModelPicker } from "@/components/admin/tool-models";
 import { KnowledgeImport, KnowledgeReview, ToolKnowledge, type ReviewItem } from "@/components/admin/tool-knowledge";
 import { WorkflowBuilder } from "@/components/admin/workflow-builder";
+import { WorkflowTestPanel } from "@/components/admin/workflow-test";
 import { EngineDryRun, KnowledgeStrategyForm } from "@/components/admin/engine-panels";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { formatDate } from "@/lib/utils";
@@ -62,7 +64,9 @@ export default async function ToolWorkspace({ params, searchParams }: {
   if (!row) notFound();
 
   const tabs = toolTabs(row);
-  const tab: ToolTab = (tabs as string[]).includes(tabParam ?? "") ? (tabParam as ToolTab) : tabs[0];
+  // Old links (?tab=economics / ?tab=history) land on the tab that now holds them.
+  const wanted = LEGACY_TAB[tabParam ?? ""] ?? tabParam ?? "";
+  const tab: ToolTab = (tabs as string[]).includes(wanted) ? (wanted as ToolTab) : tabs[0];
 
   // The stored values are what the form must round-trip — the registry row
   // carries them, so no second read of `ai_tools` is needed.
@@ -97,17 +101,22 @@ export default async function ToolWorkspace({ params, searchParams }: {
             <Badge tone={row.engineMode === "off" ? "neutral" : "accent"}>
               {t(`aicc.engine.${row.engineMode}`)}
             </Badge>
+            {toolSupportsWorkflow(row.key) && (
+              <Badge tone={row.workflowEnabled ? "accent" : "neutral"}>
+                {t("aicc.wf2.badge")} {row.workflowEnabled ? t("aicc.wf2.on") : t("aicc.wf2.off")}
+              </Badge>
+            )}
           </span>
         }
       />
 
-      <nav aria-label={t("aicc.tabsLabel")}
-        className="-mx-1 mb-5 flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <nav aria-label={t("aicc.tabsLabel")} data-tool-tabs
+        className="thin-scroll -mx-1 mb-5 flex snap-x gap-1 overflow-x-auto overscroll-x-contain px-1 pb-1.5">
         {tabs.map((key) => (
           <Link key={key} href={`/admin/ai/${row.key}?tab=${key}`} scroll={false}
             aria-current={key === tab ? "page" : undefined}
             className={cn(
-              "inline-flex h-9 shrink-0 items-center rounded-lg px-3 text-[13px] font-semibold transition-colors",
+              "inline-flex h-9 shrink-0 snap-start items-center whitespace-nowrap rounded-lg px-3 text-[13px] font-semibold transition-colors",
               key === tab ? "bg-raised text-ink" : "text-muted hover:text-ink",
             )}>
             {t(`aicc.tab.${key}`)}
@@ -117,10 +126,9 @@ export default async function ToolWorkspace({ params, searchParams }: {
 
       {tab === "basics" && <BasicsTab supabase={supabase} t={t} row={row} config={config} />}
       {tab === "engine" && <EngineTab supabase={supabase} t={t} row={row} config={config} locale={locale} />}
-      {tab === "models" && <ModelsTab supabase={supabase} t={t} row={row} config={config} />}
+      {tab === "workflow" && <WorkflowTab supabase={supabase} t={t} row={row} locale={locale} />}
+      {tab === "models" && <ModelsTab supabase={supabase} t={t} row={row} config={config} locale={locale} />}
       {tab === "knowledge" && <KnowledgeTab supabase={supabase} t={t} row={row} locale={locale} />}
-      {tab === "economics" && <EconomicsTab supabase={supabase} t={t} row={row} locale={locale} />}
-      {tab === "history" && <HistoryTab supabase={supabase} t={t} row={row} locale={locale} />}
     </div>
   );
 }
@@ -214,33 +222,25 @@ async function EngineTab({ supabase, t, row, config, locale }: WithConfig & { lo
     );
   }
   const supportsWorkflow = toolSupportsWorkflow(row.key);
-  const [versions, workflowVersions, usable] = await Promise.all([
-    readPromptHistory(supabase, row.key),
-    supportsWorkflow ? readWorkflowHistory(supabase, row.key) : Promise.resolve([]),
-    supportsWorkflow ? getUsableModels(supabase) : Promise.resolve([]),
-  ]);
-  const imageModels = usable
-    .filter((m) => m.capabilities_ui.supportsReferenceImages)
-    .map((m) => ({ id: m.id, name: m.display_name || m.name }));
+  const versions = await readPromptHistory(supabase, row.key);
   const defs = TOOL_VARIABLES[row.key] ?? [];
 
   return (
     <PromptDraftProvider>
       <div className="space-y-4">
+        {supportsWorkflow && row.workflowEnabled && (
+          <p className="rounded-xl border border-accent/30 bg-accent/5 px-4 py-3 text-[13px]" data-workflow-overrides>
+            {t("aicc.wf2.engineNote")}{" "}
+            <Link href={`/admin/ai/${row.key}?tab=workflow`} className="font-semibold text-accent hover:underline">{t("aicc.exec.openEditor")}</Link>
+          </p>
+        )}
         <Section n={1} title={t("aicc.sec.mode")} sub={t("aicc.sec.modeSub")}>
           <ToolConfigForm section="engine" part="mode" initial={config} services={[]} />
         </Section>
 
-        <Section n={2} title={supportsWorkflow ? t("aicc.sec.promptWorkflow") : t("aicc.sec.prompt")} sub={t("aicc.sec.promptSub")}>
+        <Section n={2} title={t("aicc.sec.prompt")} sub={t("aicc.sec.promptSub")}>
           <ToolPromptEditor toolKey={row.key} versions={versions} locale={locale}
             hasEngine={row.engineMode === "grovbase" || row.engineMode === "hybrid"} />
-          {supportsWorkflow && (
-            <div className="mt-6 border-t border-line pt-5">
-              <p className="mb-3 text-sm font-semibold">{t("aicc.wf.title")}</p>
-              <WorkflowBuilder toolKey={row.key} versions={workflowVersions} models={imageModels}
-                locale={locale} active={row.engineMode === "workflow"} />
-            </div>
-          )}
         </Section>
 
         <Section n={3} title={t("aicc.sec.variables")} sub={t("aicc.vars.syntax")}>
@@ -258,7 +258,7 @@ async function EngineTab({ supabase, t, row, config, locale }: WithConfig & { lo
               </li>
             ))}
           </ul>
-          {supportsWorkflow && <p className="mt-3 text-xs text-faint">{t("aicc.vars.workflowNote")}</p>}
+          {supportsWorkflow && <p className="mt-3 text-xs text-faint">{t("aicc.wf2.varsNote")}</p>}
         </Section>
 
         <Section n={4} title={t("aicc.sec.execution")} sub={t("aicc.engine.sub")}>
@@ -274,17 +274,51 @@ async function EngineTab({ supabase, t, row, config, locale }: WithConfig & { lo
 
         <Section n={6} title={t("aicc.sec.versions")} sub={t("aicc.sec.versionsSub")}>
           <ToolPromptHistory versions={versions} locale={locale} />
-          {supportsWorkflow && <p className="mt-3 text-xs text-faint">{t("aicc.wf.historyAbove")}</p>}
+          {supportsWorkflow && <p className="mt-3 text-xs text-faint">{t("aicc.wf2.historyElsewhere")}</p>}
         </Section>
       </div>
     </PromptDraftProvider>
   );
 }
 
-/* ── MODELE ───────────────────────────────────────────────────────────────*/
+/* ── WORKFLOW ─────────────────────────────────────────────────────────────*/
 
-async function ModelsTab({ supabase, t, row, config }: WithConfig) {
-  const [pickable, path] = await Promise.all([readPickableModels(supabase), readToolApiPath(supabase, row.key)]);
+async function WorkflowTab({ supabase, t, row, locale }: Ctx & { locale: string }) {
+  if (!toolSupportsWorkflow(row.key)) {
+    return (
+      <Card className="p-5">
+        <p className="text-[13px] text-muted" data-workflow-unsupported>{t("aicc.wf2.unsupported")}</p>
+      </Card>
+    );
+  }
+  const { data: { user } } = await supabase.auth.getUser();
+  const [versions, usable, workspace] = await Promise.all([
+    readWorkflowHistory(supabase, row.key),
+    getUsableModels(supabase),
+    user ? getCurrentWorkspace(supabase, user.id) : Promise.resolve(null),
+  ]);
+  const imageModels = usable.map((m) => ({
+    id: m.id, name: m.display_name || m.name, refs: m.capabilities_ui.supportsReferenceImages,
+  }));
+  return (
+    <div className="space-y-4">
+      <Section n={1} title={t("aicc.wf2.title")} sub={t("aicc.wf2.sub")}>
+        <WorkflowBuilder toolKey={row.key} versions={versions} models={imageModels}
+          locale={locale} enabled={row.workflowEnabled === true} />
+      </Section>
+      <Section n={2} title={t("aicc.wf2.test.title")} sub={t("aicc.wf2.test.sub")}>
+        <WorkflowTestPanel toolKey={row.key} versions={versions} workspaceId={workspace?.id ?? null} />
+      </Section>
+    </div>
+  );
+}
+
+/* ── MODELE, API I KOSZTY ─────────────────────────────────────────────────*/
+
+async function ModelsTab({ supabase, t, row, config, locale }: WithConfig & { locale: string }) {
+  const [pickable, path, exec] = await Promise.all([
+    readPickableModels(supabase), readToolApiPath(supabase, row.key), readExecutionSummary(supabase, row.key),
+  ]);
   // The picker is offered only where the runtime READS it. Elsewhere the
   // model comes from another source and is shown as such, read-only.
   const assignable = MODEL_ASSIGNMENT_RUNTIME.has(row.key);
@@ -292,12 +326,12 @@ async function ModelsTab({ supabase, t, row, config }: WithConfig) {
   return (
     <div className="space-y-5">
       <Card className="p-5">
-        <CardHeader title={t("aicc.apiPath.title")} sub={t("aicc.apiPath.sub")} />
-        <div className="pt-4"><ToolApiPathCard path={path} t={t} /></div>
+        <CardHeader title={t("aicc.exec.title")} sub={t("aicc.exec.sub")} />
+        <div className="pt-4"><ExecutionPathCard exec={exec} path={path} toolKey={row.key} t={t} /></div>
       </Card>
       {assignable && (
         <Card className="p-5">
-          <CardHeader title={t("aicc.models.title")} sub={t("aicc.models.sub")} />
+          <CardHeader title={t("aicc.models.title")} sub={exec.workflowEnabled && exec.workflow ? t("aicc.exec.pickerUnderWorkflow") : t("aicc.models.sub")} />
           <div className="pt-4">
             <ToolModelPicker
               toolKey={row.key}
@@ -312,6 +346,12 @@ async function ModelsTab({ supabase, t, row, config }: WithConfig) {
           </div>
         </Card>
       )}
+      {row.serviceSlug && <EconomicsTab supabase={supabase} t={t} row={row} locale={locale} />}
+      <p className="text-xs text-faint">
+        {t("aicc.exec.pricesNote")}{" "}
+        <Link href="/admin/ai/modele" className="font-semibold text-accent hover:underline">{t("aicc.exec.pricesLink")}</Link>
+      </p>
+      <HistoryTab supabase={supabase} t={t} row={row} locale={locale} />
     </div>
   );
 }
@@ -519,10 +559,15 @@ function EngineRuns({ t, runs, locale }: Pick<Ctx, "t"> & { runs: Awaited<Return
           {runs.map((r) => (
             <li key={r.id} className="space-y-1.5 px-4 py-3 sm:px-5">
               <div className="flex flex-wrap items-center gap-1.5">
-                <Badge tone={r.status === "ok" ? "success" : r.status === "blocked" ? "warning" : "danger"}>
+                <Badge tone={r.status === "ok" ? "success" : r.status === "blocked" || r.status === "partial" ? "warning"
+                  : r.status === "queued" || r.status === "running" ? "accent" : "danger"}>
                   {t(`aicc.runs.status.${r.status}`)}
                 </Badge>
                 <Badge tone="neutral">{t(`aicc.engine.${r.mode}`)}</Badge>
+                {r.runKind === "workflow_test" && <Badge tone="info">{t("aicc.runs.test")}</Badge>}
+                {r.expected !== null && r.delivered !== null && r.runKind !== "trace" && (
+                  <Badge tone="neutral">{t("aicc.runs.delivered", { n: r.delivered, of: r.expected })}</Badge>
+                )}
                 {r.promptVersion !== null && <Badge tone="neutral">{t("aicc.runs.promptV", { n: r.promptVersion })}</Badge>}
                 {r.workflowVersion !== null && <Badge tone="neutral">{t("aicc.runs.workflowV", { n: r.workflowVersion })}</Badge>}
                 {r.feedback && <Badge tone={r.feedback === "like" ? "success" : "danger"}>{r.feedback === "like" ? "👍" : "👎"}</Badge>}
@@ -537,15 +582,18 @@ function EngineRuns({ t, runs, locale }: Pick<Ctx, "t"> & { runs: Awaited<Return
                   r.knowledgeIds.length ? t("aicc.runs.knowledge", { n: r.knowledgeIds.length, ids: r.knowledgeIds.map((k) => k.slice(0, 8)).join(", ") }) : null,
                   r.sceneExampleId ? t("aicc.runs.scene", { id: r.sceneExampleId.slice(0, 8) }) : null,
                   r.credits !== null ? `${r.credits} kr.` : null,
+                  r.costUsdMicros !== null
+                    ? `${t("aicc.runs.cost")} $${(r.costUsdMicros / 1_000_000).toFixed(4)}${r.costUnknown ? ` + ${t("aicc.exec.costUnknown")} ×${r.costUnknown}` : ""}`
+                    : r.costUnknown ? `${t("aicc.runs.cost")} ${t("aicc.exec.costUnknown")}` : null,
                   r.durationMs !== null ? `${(r.durationMs / 1000).toFixed(1)} s` : null,
                   r.error ? `${t("aicc.runs.error")} ${r.error}` : null,
                 ].filter(Boolean).join(" · ") || "—"}
               </p>
               {r.steps.length > 0 && (
                 <p className="flex flex-wrap gap-1">
-                  {r.steps.map((st) => (
-                    <Badge key={st.n} tone={st.status === "ok" ? "success" : st.status === "skipped" ? "neutral" : "danger"}>
-                      {st.n}. {st.name} · {t(`aicc.runs.step.${st.status}`)}{st.ms ? ` · ${(st.ms / 1000).toFixed(1)} s` : ""}{st.attempts > 1 ? ` · ×${st.attempts}` : ""}
+                  {r.steps.map((st, i) => (
+                    <Badge key={`${st.n}-${i}`} tone={st.status === "ok" ? "success" : st.status === "skipped" ? "neutral" : st.status === "partial" ? "warning" : "danger"}>
+                      {st.n}. {st.name} · {t(`aicc.runs.step.${st.status}`)}{st.items ? ` · ${st.items}` : ""}{st.ms ? ` · ${(st.ms / 1000).toFixed(1)} s` : ""}{st.attempts > 1 ? ` · ×${st.attempts}` : ""}{st.executors?.length ? ` · ${st.executors.join(", ")}` : ""}
                     </Badge>
                   ))}
                 </p>

@@ -41,7 +41,9 @@ export function VariableChips({ defs, onInsert }: {
       <div className="flex flex-wrap gap-1.5">
         {defs.map((d) => (
           <button key={d.key} type="button"
-            title={t(`aicc.var.${d.key.startsWith("step") ? "stepN" : d.key}`)}
+            title={d.source === "workflow" && d.key !== "previous" && !/^step\d+$/.test(d.key)
+              ? d.sample // a named workflow output: the step it comes from
+              : t(`aicc.var.${/^step\d+$/.test(d.key) ? "stepN" : d.key}`)}
             onClick={() => onInsert(optional ? `{{${d.key}?}}` : `{{${d.key}}}`)}
             className={cn(
               "inline-flex min-h-[32px] items-center rounded-lg px-2.5 font-mono text-[11.5px] font-semibold ring-1 transition-[filter] hover:brightness-110",

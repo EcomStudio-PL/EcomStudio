@@ -22,7 +22,13 @@ export type EngineRunRow = {
   workflowVersion: number | null;
   modelLabel: string | null;
   modelId: string | null;
-  steps: { n: number; name: string; op: string; status: string; ms: number; attempts: number; error?: string; reason?: string }[];
+  steps: {
+    n: number; name: string; op: string; status: string; ms: number; attempts: number; error?: string | null; reason?: string;
+    /** Fan-out steps: "done/total". */
+    items?: string | null;
+    /** provider/model pairs that REALLY served the step. */
+    executors?: string[];
+  }[];
   knowledgeIds: string[];
   sceneExampleId: string | null;
   credits: number | null;
@@ -30,6 +36,12 @@ export type EngineRunRow = {
   durationMs: number | null;
   jobId: string | null;
   sessionId: string | null;
+  /** trace (single call) · workflow (customer run) · workflow_test (admin test). */
+  runKind: string;
+  /** Steps whose cost could not be priced (the run cost is then partial). */
+  costUnknown: number;
+  delivered: number | null;
+  expected: number | null;
   feedback: "like" | "dislike" | null;
 };
 
@@ -69,7 +81,7 @@ const CHUNK = 100;
 
 export async function readEngineRuns(supabase: Client, toolKey: string, limit = 30): Promise<EngineRunRow[]> {
   const { data } = await supabase.from("ai_engine_runs")
-    .select("id, created_at, mode, status, error, engine_version, prompt_version, workflow_version, model_label, model_id, steps, knowledge_example_ids, scene_example_id, credits, api_cost_usd_micros, duration_ms, job_id, prompt_session_id")
+    .select("id, created_at, mode, status, error, engine_version, prompt_version, workflow_version, model_label, model_id, steps, knowledge_example_ids, scene_example_id, credits, api_cost_usd_micros, duration_ms, job_id, prompt_session_id, run_kind, cost_unknown, expected_outputs, outputs")
     .eq("tool_key", toolKey).order("created_at", { ascending: false }).limit(limit);
   const rows = data ?? [];
   const jobIds = rows.map((r) => r.job_id).filter(Boolean) as string[];
@@ -93,6 +105,8 @@ export async function readEngineRuns(supabase: Client, toolKey: string, limit = 
       knowledgeIds: r.knowledge_example_ids ?? [], sceneExampleId: r.scene_example_id,
       credits: r.credits, costUsdMicros: r.api_cost_usd_micros, durationMs: r.duration_ms,
       jobId: r.job_id, sessionId: r.prompt_session_id,
+      runKind: r.run_kind, costUnknown: r.cost_unknown,
+      delivered: Array.isArray(r.outputs) ? r.outputs.length : null, expected: r.expected_outputs,
       feedback: c ? (c.like >= c.dislike ? "like" : "dislike") : null,
     };
   });
@@ -103,8 +117,9 @@ export async function readEngineAnalytics(supabase: Client, toolKey: string, set
   // Totals are COUNTED in the database (exact counts); averages and the vote
   // join use the latest SAMPLE_ROWS runs, which the view states.
   const countRuns = async (filter: { status?: string; mode?: string }) => {
+    // An admin's test runs are not customer runs: they stay out of the rates.
     let qb = supabase.from("ai_engine_runs").select("id", { count: "exact", head: true })
-      .eq("tool_key", toolKey).gte("created_at", since);
+      .eq("tool_key", toolKey).gte("created_at", since).neq("run_kind", "workflow_test");
     if (filter.status) qb = qb.eq("status", filter.status);
     if (filter.mode) qb = qb.eq("mode", filter.mode);
     const { count } = await qb;
@@ -115,7 +130,7 @@ export async function readEngineAnalytics(supabase: Client, toolKey: string, set
     countRuns({ mode: "workflow" }), countRuns({ mode: "workflow", status: "ok" }),
     supabase.from("ai_engine_runs")
       .select("status, mode, credits, duration_ms, job_id, prompt_session_id")
-      .eq("tool_key", toolKey).gte("created_at", since)
+      .eq("tool_key", toolKey).gte("created_at", since).neq("run_kind", "workflow_test")
       .order("created_at", { ascending: false }).limit(SAMPLE_ROWS),
   ]);
   const runs = runsData ?? [];

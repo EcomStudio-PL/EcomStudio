@@ -10,9 +10,10 @@ import { encryptionAvailable } from "@/lib/server/crypto";
 import { maskKey, providerState } from "@/lib/provider-status";
 import { monthStart, readBudgetStatus } from "@/lib/services/ai-economics";
 import { grovnewsEconomics, readToolEconomics, readUsageHistory } from "@/lib/services/api-economics";
-import { readTokenPriceRows } from "@/lib/services/token-prices";
+import { readTokenPriceRows, readUnitPriceRows } from "@/lib/services/token-prices";
 import { formatPln, ToolEconomicsTable, UsageHistoryList } from "@/components/admin/api-economics";
 import { TokenPriceEditor } from "@/components/admin/token-prices";
+import { UnitPriceEditor } from "@/components/admin/unit-prices";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -323,10 +324,11 @@ async function ModelsTab({ supabase, t, locale }: Ctx & { locale: string }) {
  * can really be computed. Credits are not money — a bonus or free run earns 0.
  */
 async function CostsTab({ supabase, t, locale }: Ctx & { locale: string }) {
-  const [econ, gn, prices] = await Promise.all([
+  const [econ, gn, prices, units] = await Promise.all([
     readToolEconomics(supabase),
     grovnewsEconomics(supabase),
     readTokenPriceRows(supabase),
+    readUnitPriceRows(supabase),
   ]);
   const toolLabel = (k: string) => {
     const label = t(`aicc.toolName.${k}`);
@@ -372,6 +374,12 @@ async function CostsTab({ supabase, t, locale }: Ctx & { locale: string }) {
         <CardHeader title={t("aicc.prices.title")} sub={t("aicc.prices.sub")} />
         <div className="p-4 sm:p-5">
           <TokenPriceEditor rows={prices} />
+        </div>
+      </Card>
+      <Card>
+        <CardHeader title={t("aicc.units.title")} sub={t("aicc.units.sub")} />
+        <div className="p-4 sm:p-5">
+          <UnitPriceEditor rows={units.rows} models={units.models} />
         </div>
       </Card>
     </div>

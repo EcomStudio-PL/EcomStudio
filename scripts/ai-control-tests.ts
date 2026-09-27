@@ -57,8 +57,8 @@ console.log("B. a tool only gets the tabs it can answer for");
 {
   const compress = toolTabs({ key: "compress", engineMode: "off", serviceSlug: "tool_compress" });
   check("a sharp tool has no engine tab", !compress.includes("engine"));
-  check("a sharp tool has no model tab", !compress.includes("models"));
-  check("a sharp tool still has economics", compress.includes("economics") && compress.includes("history"));
+  check("a sharp tool still has its costs and history (Modele, API i koszty)", compress.includes("models"));
+  check("a sharp tool has no workflow tab", !compress.includes("workflow"));
 
   const generator = toolTabs({ key: "generator", engineMode: "hybrid", serviceSlug: "image_generation" });
   check("a model-driven tool gets engine + models",
@@ -70,7 +70,11 @@ console.log("B. a tool only gets the tabs it can answer for");
   check("…but has no knowledge tab until it has one", !video.includes("knowledge"));
 
   const unbilled = toolTabs({ key: "editor", engineMode: "off", serviceSlug: null });
-  check("no service means no economics", !unbilled.includes("economics"));
+  check("no service and no model means no costs tab", !unbilled.includes("models"));
+  const retouchTabs = toolTabs({ key: "retouch", engineMode: "grovbase", serviceSlug: "image_generation" });
+  check("a workflow-capable tool gets the WORKFLOW tab", retouchTabs.includes("workflow"));
+  check("the tab order is Podstawowe · Silnik · Workflow · Modele, API i koszty · Wiedza",
+    JSON.stringify(retouchTabs) === JSON.stringify(["basics", "engine", "workflow", "models", "knowledge"]));
 }
 
 console.log("C. the hidden prompt stays on the server");

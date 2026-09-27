@@ -473,7 +473,7 @@ check("…and it is its own switch, not a rider on another tool's",
 const faceTabs = toolTabs({ key: "fashion_change_face", engineMode: "grovbase", serviceSlug: "image_edit" });
 check("…and it is a full admin tool: engine, models, prompt history",
   (AI_TOOL_KEYS as readonly string[]).includes("fashion_change_face")
-  && faceTabs.includes("engine") && faceTabs.includes("models") && faceTabs.includes("history"));
+  && faceTabs.includes("engine") && faceTabs.includes("models") && faceTabs.includes("workflow"));
 // Without the ai_tools row `ai_save_tool_prompt` refuses with `unknown_tool`,
 // so the operator can never publish the prompt and the tile never activates.
 const migration0098 = readFileSync("supabase/migrations/0098_fashion_change_face.sql", "utf8");

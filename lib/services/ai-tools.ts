@@ -62,14 +62,14 @@ export type EngineMode = (typeof ENGINE_MODES)[number];
 export const TOOL_ENGINE_MODES: Record<AiToolKey, readonly EngineMode[]> = {
   prompts: ["grovbase"],
   generator: ["user", "hybrid"],
-  retouch: ["grovbase", "workflow"],
+  retouch: ["grovbase"],
   editor: ["off"], resize: ["off"], compress: ["off"], tool_watermark: ["off"],
   tool_upscale: ["off"], tool_expand: ["off"], video: ["off"],
-  fashion_ghost_mannequin: ["grovbase", "workflow"],
-  fashion_flat_lay: ["grovbase", "workflow"],
-  fashion_iron: ["grovbase", "workflow"],
-  fashion_change_person: ["grovbase", "workflow"],
-  fashion_change_face: ["grovbase", "workflow"],
+  fashion_ghost_mannequin: ["grovbase"],
+  fashion_flat_lay: ["grovbase"],
+  fashion_iron: ["grovbase"],
+  fashion_change_person: ["grovbase"],
+  fashion_change_face: ["grovbase"],
 };
 
 /** Whether a tool has a prompt engine at all. */
@@ -77,9 +77,19 @@ export function toolHasPromptEngine(key: AiToolKey): boolean {
   return TOOL_ENGINE_MODES[key].some((m) => m !== "off");
 }
 
-/** Tools that can run a multi-step workflow. */
+/**
+ * Tools that can run a multi-step WORKFLOW (the switch on the Workflow tab).
+ * Exactly the tools whose server path is the engine runtime
+ * (`runEngineImageTool`): Retusz and the Moda tools. The generator, GrovShot,
+ * the provider tools and video run other pipelines, so their Workflow tab
+ * says so instead of offering a switch that would decide nothing.
+ */
+export const WORKFLOW_TOOLS: readonly AiToolKey[] = [
+  "retouch", "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron",
+  "fashion_change_person", "fashion_change_face",
+];
 export function toolSupportsWorkflow(key: AiToolKey): boolean {
-  return TOOL_ENGINE_MODES[key].includes("workflow");
+  return WORKFLOW_TOOLS.includes(key);
 }
 
 /** Which family a tool belongs to on the registry screen. */
@@ -181,8 +191,12 @@ export const MODEL_PRICED: readonly AiToolKey[] = [
   "fashion_change_face",
 ];
 
-export const TOOL_TABS = ["basics", "engine", "models", "knowledge", "economics", "history"] as const;
+export const TOOL_TABS = ["basics", "engine", "workflow", "models", "knowledge"] as const;
 export type ToolTab = (typeof TOOL_TABS)[number];
+
+/** Links from before the tabs were folded keep landing somewhere sensible:
+ *  costs and run history now live under "Modele, API i koszty". */
+export const LEGACY_TAB: Record<string, ToolTab> = { economics: "models", history: "models" };
 
 /**
  * The tabs this particular tool deserves. A compression tool has no engine to
@@ -195,9 +209,10 @@ export function toolTabs(row: { key: AiToolKey; engineMode: EngineMode; serviceS
   // The engine tab is always offered on a model-driven tool: it is how a tool
   // that has no engine yet is given one.
   if (modelDriven || row.engineMode !== "off") tabs.push("engine");
-  if (modelDriven) tabs.push("models");
+  if (toolSupportsWorkflow(row.key)) tabs.push("workflow");
+  // Models, the execution path, costs and run history — one tab.
+  if (modelDriven || row.serviceSlug) tabs.push("models");
   if (row.engineMode !== "off") tabs.push("knowledge");
-  if (row.serviceSlug) tabs.push("economics", "history");
   return tabs;
 }
 
@@ -224,6 +239,8 @@ export type ToolRow = {
   /** Has a published workflow, and which version (optional: older callers
    *  build rows without it). */
   workflowVersion?: number | null;
+  /** Workflow ON/OFF — its own switch, independent of the prompt mode. */
+  workflowEnabled?: boolean;
   /** How retrieval balances proven examples against variety. */
   knowledgeStrategy?: "proven" | "diverse";
   serviceSlug: string | null;
@@ -343,6 +360,7 @@ export async function readToolRegistry(
       engineMode: (row?.engine_mode as EngineMode) ?? "off",
       promptVersion: promptVersion.get(key) ?? null,
       workflowVersion: workflowVersion.get(key) ?? null,
+      workflowEnabled: row?.workflow_enabled === true,
       knowledgeStrategy: row?.knowledge_strategy === "diverse" ? "diverse" : "proven",
       serviceSlug: row?.service_slug ?? null,
       credits: svc?.credits_cost ?? null,
@@ -445,6 +463,8 @@ export type WorkflowVersionRow = {
   summary: string | null;
   reason: string | null;
   stepCount: number;
+  /** Results one run of this version delivers (and is charged for). */
+  maxOutputs: number | null;
   createdAt: string;
   publishedAt: string | null;
   authorName: string | null;
@@ -453,13 +473,13 @@ export type WorkflowVersionRow = {
 export async function readWorkflowHistory(supabase: Client, toolKey: string): Promise<WorkflowVersionRow[]> {
   const { data } = await supabase
     .from("ai_tool_workflows")
-    .select("id, version, status, summary, reason, created_at, published_at, created_by, ai_tool_workflow_steps(id)")
+    .select("id, version, status, summary, reason, created_at, published_at, created_by, max_outputs, ai_tool_workflow_steps(id)")
     .eq("tool_key", toolKey)
     .order("version", { ascending: false })
     .limit(50);
   const rows = (data ?? []) as unknown as {
     id: string; version: number; status: string; summary: string | null; reason: string | null;
-    created_at: string; published_at: string | null; created_by: string | null;
+    created_at: string; published_at: string | null; created_by: string | null; max_outputs: number | null;
     ai_tool_workflow_steps: { id: string }[] | null;
   }[];
   const authorIds = [...new Set(rows.map((r) => r.created_by).filter(Boolean))] as string[];
@@ -474,6 +494,7 @@ export async function readWorkflowHistory(supabase: Client, toolKey: string): Pr
     summary: r.summary,
     reason: r.reason,
     stepCount: r.ai_tool_workflow_steps?.length ?? 0,
+    maxOutputs: r.max_outputs,
     createdAt: r.created_at,
     publishedAt: r.published_at,
     authorName: r.created_by ? nameById.get(r.created_by) ?? null : null,
