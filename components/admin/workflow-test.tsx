@@ -54,7 +54,7 @@ export function WorkflowTestPanel({ toolKey, versions, workspaceId }: {
       const supabase = createClient();
       for (const file of Array.from(files).slice(0, 10 - photos.length)) {
         if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024) {
-          toast.error(t("products.invalidType")); continue;
+          toast.error(t("aicc.wf2.test.badType")); continue;
         }
         const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
         const path = `${workspaceId}/${folder.current}/${crypto.randomUUID()}.${ext}`;
