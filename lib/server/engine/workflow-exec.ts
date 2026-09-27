@@ -330,7 +330,7 @@ export async function runToolStep(
     // the engine entry point.
     const { retouchStepConfig } = await import("@/lib/server/retouch");
     const cfg = await retouchStepConfig(ctx.supabase);
-    if (!cfg) return fail("model_unavailable");
+    if (!cfg.ok) return fail(cfg.error);
     const compiled = compileForTool(cfg.prompt, TOOL_VARIABLES.retouch ?? [], { ...values, tool_name: "retouch" });
     if (!compiled.ok) return fail(compiled.error === "variable_missing" ? "variable_missing" : "prompt_unconfigured");
     return runImageStep(ctx, step, compiled.text, [source], outputName, { modelId: cfg.modelId, fallbackId: cfg.fallbackId });

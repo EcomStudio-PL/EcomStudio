@@ -41,7 +41,8 @@ const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 
 function mimeFromName(name: string): string {
   const ext = name.split(".").pop()?.toLowerCase();
-  return ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+  return ext === "png" ? "image/png" : ext === "webp" ? "image/webp"
+    : ext === "heic" ? "image/heic" : ext === "heif" ? "image/heif" : "image/jpeg";
 }
 
 export async function prepareReferenceImage(stored: Buffer, name: string): Promise<PreparedReference> {

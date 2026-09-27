@@ -116,6 +116,12 @@ async function runEngineImageToolMetered(
     // single-call path below, which refuses honestly when it has no prompt.
   }
 
+  // THE CONFIGURATION ITSELF COULD NOT BE READ (server token missing, RPC
+  // error): whether a prompt is published is unknown, so a built-in
+  // instruction is NOT swapped in — the panel may say something else.
+  // Refused before anything is reserved; the customer retries.
+  if (!engine && input.builtInPrompt) return { ok: false, error: "prompt_unavailable" };
+
   const engineMode = engine && (engine.mode === "grovbase" || engine.mode === "hybrid");
   const published = engineMode ? engine.systemPrompt?.trim() ? engine.systemPrompt : null : null;
   // A version IS published but could not be opened: never swap in the

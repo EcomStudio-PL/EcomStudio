@@ -40,10 +40,11 @@ export const RETOUCH_OPERATION = "image_retouch";
 const RETOUCH_TOOL_KEY = "retouch";
 
 /**
- * THE BUILT-IN RETOUCH PROMPT — used ONLY while nothing is published in the
- * panel (never alongside a published prompt). Server-only by construction
- * (see above). On that built-in path `runGeneration` still appends the
- * platform's Product Lock contract it was written to be paired with.
+ * THE BUILT-IN RETOUCH PROMPT — used ONLY while the panel is known to have
+ * nothing published (never alongside a published prompt, never when the
+ * configuration cannot be read). Server-only by construction (see above).
+ * Sent exactly as written, like a published prompt: it carries its own
+ * "keep the framing" rules, and nothing is appended to it.
  */
 const RETOUCH_PROMPT = `[ZADANIE]
 Przekształć dostarczone zdjęcie produktu w wysokiej klasy wizualizację sprzedażową premium do e-commerce. Zachowaj rzeczywisty kształt, proporcje, konstrukcję i funkcję produktu, ale popraw jego prezentację tak, aby wyglądał jak perfekcyjny fotorealistyczny render produktowy klasy premium. Efekt końcowy ma wyglądać jak profesjonalny packshot reklamowy / CGI hero shot: maksymalnie czysty, dopracowany, elegancki, nowoczesny i bardzo sprzedażowy. Produkt ma być głównym bohaterem kadru, ma wyglądać drożej, czytelniej i bardziej premium niż na surowym zdjęciu, ale nadal wiarygodnie produktowo. Czysto białe tło. Doświetl wszystkie obecnie zacienione miejsca i elementy. Zachowaj identyczny kadr i ujęcie ze zdjęcia referencyjnego. Nie ingeruj w ustawienie produktu na zdjęciu.
@@ -180,12 +181,17 @@ export async function retouchModel(supabase: Client): Promise<RetouchModelInfo |
  * the built-in prompt — never the retouch tool's own workflow (a workflow
  * step can therefore not recurse). Server memory only.
  */
-export async function retouchStepConfig(supabase: Client): Promise<{ prompt: string; modelId: string; fallbackId: string | null } | null> {
+export async function retouchStepConfig(supabase: Client):
+  Promise<{ ok: true; prompt: string; modelId: string; fallbackId: string | null } | { ok: false; error: "model_unavailable" | "prompt_unavailable" }> {
   const [model, engine] = await Promise.all([retouchModel(supabase), resolveEngine(supabase, RETOUCH_TOOL_KEY)]);
-  if (!model) return null;
-  const published = engine && (engine.mode === "grovbase" || engine.mode === "hybrid") && engine.systemPrompt?.trim()
-    ? engine.systemPrompt : null;
-  return { prompt: published ?? RETOUCH_PROMPT, modelId: model.id, fallbackId: model.fallbackId };
+  if (!model) return { ok: false, error: "model_unavailable" };
+  // Same rule as the single call: the built-in text only when the panel is
+  // known to have nothing published — never when it cannot be read.
+  if (!engine) return { ok: false, error: "prompt_unavailable" };
+  const engineMode = engine.mode === "grovbase" || engine.mode === "hybrid";
+  const published = engineMode && engine.systemPrompt?.trim() ? engine.systemPrompt : null;
+  if (engineMode && !published && engine.promptVersion !== null) return { ok: false, error: "prompt_unavailable" };
+  return { ok: true, prompt: published ?? RETOUCH_PROMPT, modelId: model.id, fallbackId: model.fallbackId };
 }
 
 function num(v: unknown): number | undefined {

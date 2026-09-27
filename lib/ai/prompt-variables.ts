@@ -176,7 +176,7 @@ export function sanitizeValue(value: string, def: Pick<VariableDef, "render" | "
   // Fold look-alikes first (fullwidth brackets → ASCII) and drop invisible
   // format characters (zero-width space/joiners, BOM), so a marker cannot be
   // smuggled in a form the model reads but the checks below do not.
-  let v = stripControls(value.normalize("NFKC")).replace(/[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, "");
+  let v = stripControls(value.normalize("NFKC")).replace(/[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF\uF8FE\uF8FF]/g, "");
   // Our delimiters and the placeholder grammar can never be forged from data.
   // Removal is repeated until nothing changes: a single pass could itself
   // assemble a new marker out of the pieces around a removed one.
@@ -209,9 +209,10 @@ export type CompileResult =
  * compile fails. The output is never partially filled.
  *
  * The compiler is not a second author: outside the placeholders the admin's
- * text is kept exactly. Only when an optional variable came out EMPTY is the
- * gap it left closed (runs of blank lines folded, the ends trimmed) — the one
- * change that exists because of the substitution itself.
+ * text is kept exactly. Only where an optional variable came out EMPTY is the
+ * gap it left closed — the line breaks touching THAT placeholder folded to at
+ * most one blank line, or dropped at the very start or end. Nothing else in
+ * the prompt is reflowed.
  */
 export function compileTemplate(template: string, defs: VariableDef[], values: CompileValues): CompileResult {
   if (!template.trim()) return { ok: false, error: "empty_template", missing: [], unknown: [] };
@@ -236,14 +237,26 @@ export function compileTemplate(template: string, defs: VariableDef[], values: C
       const clean = sanitizeValue(rawValue, def);
       return def.render === "block" ? wrapData(name, clean) : clean;
     }
-    if (mod?.startsWith("|")) { skipped.add(name); return (fb ?? "").trim(); }
-    if (mod === "?") { skipped.add(name); return ""; }
+    if (mod?.startsWith("|")) { skipped.add(name); return (fb ?? "").trim() || GAP; }
+    if (mod === "?") { skipped.add(name); return GAP; }
     missing.add(name);
     return "";
   });
   if (missing.size > 0) return { ok: false, error: "variable_missing", missing: [...missing], unknown: [] };
-  const tidied = skipped.size > 0 ? text.replace(/\n{3,}/g, "\n\n").trim() : text;
-  return { ok: true, text: tidied, used: [...used], skipped: [...skipped] };
+  return { ok: true, text: closeGaps(text), used: [...used], skipped: [...skipped] };
+}
+
+/** Marks where an optional variable came out empty (private-use code points:
+ *  never typed in a prompt, and stripped from any value that carried them). */
+const GAP = "\u{F8FF}\u{F8FE}";
+
+function closeGaps(text: string): string {
+  if (!text.includes(GAP)) return text;
+  return text.replace(/\n*\u{F8FF}\u{F8FE}\n*/gu, (m: string, offset: number, whole: string) => {
+    if (offset === 0 || offset + m.length === whole.length) return "";
+    const breaks = m.split("\n").length - 1;
+    return breaks >= 2 ? "\n\n" : breaks === 1 ? "\n" : "";
+  });
 }
 
 /** Sample values for the admin compile preview — never used at runtime. */

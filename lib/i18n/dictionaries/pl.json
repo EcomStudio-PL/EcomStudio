@@ -4744,6 +4744,7 @@
     "test.check.noPaidCall": "Nie wykonano żadnego płatnego wywołania.",
     "test.manifest.title": "Co dokładnie dostanie model",
     "test.manifest.note": "Wyliczone tym samym kodem, który wysyła zapytanie. Bez treści promptu i bez obrazu — tylko długość i SHA-256.",
+    "test.manifest.workflowNote": "Workflow jest WŁĄCZONY: uruchomienia idą krokami opublikowanego workflow. Poniżej — pojedyncze wywołanie, gdy workflow jest wyłączony; zapytanie kroku obrazu buduje ta sama warstwa Gemini.",
     "test.manifest.model": "Model",
     "test.manifest.provider": "Dostawca",
     "test.manifest.name": "Nazwa",

@@ -210,7 +210,7 @@ async function main() {
     // Product Lock: folded in by runGeneration for built-in and customer
     // prompts; a PUBLISHED admin prompt goes out exactly as written.
     const genSrc = read("lib/server/generation.ts");
-    check("Product Lock is added by runGeneration for built-in/customer prompts",
+    check("Product Lock is added by runGeneration for customer prompts (product_lock policy)",
       /text: `\$\{providerPrompt\}\\n\\n\$\{lock\}`, lock/.test(genSrc));
     check("a published admin prompt carries no Product Lock (exact policy)",
       /if \(promptPolicy === "exact"\)[\s\S]{0,200}lock: ""/.test(genSrc));

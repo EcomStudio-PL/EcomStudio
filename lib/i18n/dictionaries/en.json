@@ -4744,6 +4744,7 @@
     "test.check.noPaidCall": "No paid call was made.",
     "test.manifest.title": "What exactly the model will receive",
     "test.manifest.note": "Computed by the same code that sends the request. No prompt text and no image — length and SHA-256 only.",
+    "test.manifest.workflowNote": "Workflow is ON: runs follow the published workflow's steps. Below is the single call used when the workflow is off; the image step's request is built by the same Gemini layer.",
     "test.manifest.model": "Model",
     "test.manifest.provider": "Provider",
     "test.manifest.name": "Name",

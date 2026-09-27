@@ -4744,6 +4744,7 @@
     "test.check.noPaidCall": "Es wurde kein kostenpflichtiger Aufruf ausgeführt.",
     "test.manifest.title": "Was das Modell genau erhält",
     "test.manifest.note": "Berechnet vom selben Code, der die Anfrage sendet. Ohne Prompt-Text und ohne Bild — nur Länge und SHA-256.",
+    "test.manifest.workflowNote": "Workflow ist EIN: Läufe folgen den Schritten des veröffentlichten Workflows. Unten der Einzelaufruf bei ausgeschaltetem Workflow; die Anfrage des Bildschritts baut dieselbe Gemini-Schicht.",
     "test.manifest.model": "Modell",
     "test.manifest.provider": "Anbieter",
     "test.manifest.name": "Name",

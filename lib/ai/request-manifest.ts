@@ -47,6 +47,9 @@ export function promptLength(text: string): number {
 export type ManifestSource = "published" | "built_in" | "unavailable" | "none";
 
 export type RequestManifest = {
+  /** Workflow ON: runs follow the published workflow's own steps, not the
+   *  single call described here. */
+  workflowEnabled: boolean;
   model: { provider: string; name: string; identifier: string } | null;
   /** The fallback model's name, or null when fallback is off. */
   fallback: string | null;
@@ -92,8 +95,7 @@ export type LastRun = {
   policy: string | null;
   appended: boolean | null;
   chars: number | null;
-  sha256: string | null;
-  /** The recorded prompt hash equals today's published text (no-variable prompts). */
+  /** The recorded (keyed) digest equals today's published text (no-variable prompts). */
   matchesPublished: boolean | null;
   ratioRequested: string | null;
   ratioSent: string | null;

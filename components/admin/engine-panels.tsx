@@ -131,7 +131,6 @@ function ManifestView({ m }: { m: RequestManifest }) {
         [k("operation"), last.operation ?? "—"],
         [k("policy"), last.policy ? k(`policy.${last.policy}`) : "—"],
         [k("chars"), last.chars === null ? "—" : k("charsValue", { n: last.chars })],
-        [k("sha"), short(last.sha256)],
         [k("matches"), yesNo(last.matchesPublished)],
         [k("ratioSent"), `${last.ratioRequested ?? "—"} → ${last.ratioSent ?? k("notSent")}`],
         [k("sizeSent"), last.sizeSent ?? k("notSent")],
@@ -151,6 +150,7 @@ function ManifestView({ m }: { m: RequestManifest }) {
     <section className="space-y-2" data-manifest>
       <h4 className="text-[13px] font-semibold">{k("title")}</h4>
       <p className="text-xs text-muted">{k("note")}</p>
+      {m.workflowEnabled && <p className="text-xs font-medium text-warning" data-manifest-workflow>{k("workflowNote")}</p>}
       <div className="grid gap-2 lg:grid-cols-2">
         {sections.map((sec) => (
           <div key={sec.title} className="rounded-xl bg-raised px-3.5 py-2.5" data-manifest-section={sec.title}>

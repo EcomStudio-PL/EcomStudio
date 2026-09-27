@@ -15,6 +15,7 @@ import {
 import { buildFidelityInstructions } from "@/lib/ai/product-lock";
 import { describeProviderRequest, promptLength, type PromptPolicy } from "@/lib/ai/request-manifest";
 import { prepareReferenceImage, referenceFingerprint, type PreparedReference } from "@/lib/server/reference-image";
+import { promptDigest } from "@/lib/server/prompt-digest";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
 import { recordProviderCalls, type ProviderCall } from "@/lib/server/ai-usage";
@@ -678,7 +679,8 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       operation: cShape.operation,
       prompt_policy: promptPolicy, fidelity_appended: cText.lock !== "",
       prompt_chars: promptLength(cText.text),
-      prompt_sha256: createHash("sha256").update(cText.text).digest("hex"),
+      // Keyed, not a bare hash: this row is readable by the customer.
+      prompt_digest: promptDigest(cText.text),
       aspect_ratio_requested: input.aspectRatio, aspect_ratio_sent: cShape.aspectRatio,
       resolution: cResolution ?? null, image_size_sent: cShape.imageSize,
       inputs: cFit.list.map(referenceFingerprint),

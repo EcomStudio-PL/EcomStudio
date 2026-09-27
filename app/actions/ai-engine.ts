@@ -529,9 +529,14 @@ export async function dryRunEngineAction(toolKey: string): Promise<Result & { ch
     const mode = (tool?.engine_mode ?? "off") as string;
     const supported = (TOOL_ENGINE_MODES[toolKey] as readonly string[]).includes(mode);
     checks.push({ key: "mode", status: supported ? "ok" : "fail", params: { mode } });
+    // The request a real run would send, from the same code that sends it
+    // (image tools only — the ones with a model of their own). Built in every
+    // mode: with the engine off, Retusz still runs its built-in instruction.
+    const imageModel = await toolImageModel(supabase, toolKey);
+    const manifest = imageModel ? await buildRequestManifest(supabase, toolKey, { modelId: imageModel.id, fallbackId: imageModel.fallbackId }) : null;
     if (mode === "off") {
       checks.push({ key: "noEngine", status: "ok" });
-      return { ok: true, checks };
+      return { ok: true, checks, manifest };
     }
 
     const templates: { text: string; defs: VariableDef[]; label: string }[] = [];
@@ -617,11 +622,6 @@ export async function dryRunEngineAction(toolKey: string): Promise<Result & { ch
       checks.push({ key: "knowledge", status: (approved ?? 0) > 0 ? "ok" : "warn", params: { sets: setIds.length, approved: approved ?? 0, pending: pending ?? 0 } });
     }
     checks.push({ key: "noPaidCall", status: "ok" });
-
-    // The request a real run would send, from the same code that sends it
-    // (image tools only — the ones with a model of their own).
-    const imageModel = await toolImageModel(supabase, toolKey);
-    const manifest = imageModel ? await buildRequestManifest(supabase, toolKey, { modelId: imageModel.id, fallbackId: imageModel.fallbackId }) : null;
     return { ok: true, checks, manifest };
   } catch { return { ok: false, error: "generic" }; }
 }

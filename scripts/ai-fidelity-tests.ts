@@ -18,7 +18,8 @@
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import type { EngineConfig } from "@/lib/server/ai-engine";
-import { runRetouch, RETOUCH_MODEL_IDENTIFIER, RETOUCH_OPERATION } from "@/lib/server/retouch";
+import { runRetouch, retouchStepConfig, RETOUCH_MODEL_IDENTIFIER, RETOUCH_OPERATION } from "@/lib/server/retouch";
+import { promptDigest } from "@/lib/server/prompt-digest";
 import { FASHION_MODEL_IDENTIFIER } from "@/lib/server/fashion";
 import { callImageModel } from "@/lib/server/engine/image-call";
 import { buildGeminiImageRequest, geminiImageSize } from "@/lib/ai/providers/google-request";
@@ -225,8 +226,9 @@ async function main() {
     check("no Product Lock text anywhere in the body", !JSON.stringify(sent[0]?.body).includes("PRODUCT LOCK") && !JSON.stringify(sent[0]?.body).includes("camera and mood are creative"));
     check("no systemInstruction, no thinking/mediaResolution/sampling override",
       !("systemInstruction" in (sent[0]?.body ?? {})) && Object.keys(sent[0]?.body.generationConfig ?? {}).sort().join() === "imageConfig,responseModalities");
-    check("the job records policy exact, nothing appended, the same hash",
-      pr?.prompt_policy === "exact" && pr?.fidelity_appended === false && pr?.prompt_sha256 === sha(EXACT) && pr?.prompt_chars === Array.from(EXACT).length, pr);
+    check("the job records policy exact, nothing appended, the digest of exactly the published text",
+      pr?.prompt_policy === "exact" && pr?.fidelity_appended === false && pr?.prompt_digest === promptDigest(EXACT) && pr?.prompt_chars === Array.from(EXACT).length, pr);
+    check("…and that digest is keyed — not a bare SHA-256 anyone could test guesses against", typeof pr?.prompt_digest === "string" && pr?.prompt_digest !== sha(EXACT));
   }
 
   console.log("\nT6 VARIABLES — only what the admin wrote is expanded");
@@ -241,8 +243,16 @@ async function main() {
     await retouch(db2, "w/r/src.jpg");
     const t2 = sent[0] ? textOf(sent[0])[0]?.text : undefined;
     check("system variables are substituted and the admin's blank lines are kept", t2 === "Retusz: retouch.\n\n\n\nFormat auto, 2K.", t2);
-    const opt = compileTemplate("A {{hint?}}\n\n\n\nB", TOOL_VARIABLES.fashion_flat_lay ?? [], {});
-    check("only an EMPTIED optional variable closes its gap", opt.ok && opt.text === "A \n\nB", opt);
+    const defs = TOOL_VARIABLES.fashion_flat_lay ?? [];
+    const gaps: [string, Record<string, string>, string][] = [
+      ["A {{hint?}}\n\n\n\nB", {}, "A \n\nB"],
+      ["A\n\n{{hint?}}\n\nB", {}, "A\n\nB"],
+      ["{{hint?}}\n\nText\n\n\n\nkeep", {}, "Text\n\n\n\nkeep"],
+      ["Text\n\n\n\nkeep\n\n{{hint?}}", {}, "Text\n\n\n\nkeep"],
+      ["  lead {{tool_name}} trail  ", { tool_name: "iron" }, "  lead iron trail  "],
+    ];
+    const gapFail = gaps.filter(([t, v, want]) => { const r = compileTemplate(t, defs, v); return !r.ok || r.text !== want; });
+    check("only the gap an EMPTIED optional variable leaves is closed; the admin's other spacing stays", gapFail.length === 0, gapFail);
   }
 
   console.log("\nT7 NO HIDDEN KNOWLEDGE — nothing is fetched or injected unless a knowledge variable is placed");
@@ -362,7 +372,7 @@ async function main() {
     g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
     const { job, pr } = await retouch(db, "w/r/src.jpg");
     const want = ["provider", "model_identifier", "model_id", "fallback_used", "operation", "prompt_policy", "fidelity_appended",
-      "prompt_chars", "prompt_sha256", "aspect_ratio_requested", "aspect_ratio_sent", "resolution", "image_size_sent", "inputs",
+      "prompt_chars", "prompt_digest", "aspect_ratio_requested", "aspect_ratio_sent", "resolution", "image_size_sent", "inputs",
       "call_timeout_ms", "max_attempts", "budget_ms"];
     check("provider_request carries every field", want.every((k) => pr && k in pr), want.filter((k) => !(pr && k in pr)));
     check("job row: model and provider of who served", job?.model_id === PRO_ID && job?.provider_slug === "google");
@@ -380,6 +390,17 @@ async function main() {
     g.__fidelityEngine = engine({ systemPrompt: null, promptVersion: 7 });
     const refused = await retouch(db, "w/r/src.jpg");
     check("a published version that cannot be read is refused — never silently replaced by the built-in", !refused.res.ok && sent.length === 0 && (refused.res as { error?: string }).error === "prompt_unavailable");
+    g.__fidelityEngine = null;
+    const blind = await retouch(db, "w/r/src.jpg");
+    check("the configuration cannot be read at all → refused, not run on the built-in", !blind.res.ok && sent.length === 0 && (blind.res as { error?: string }).error === "prompt_unavailable", blind.res);
+    const stepBlind = await retouchStepConfig(fakeSupabase(db) as unknown as FakeClient);
+    g.__fidelityEngine = engine({ systemPrompt: null, promptVersion: 7 });
+    const stepLocked = await retouchStepConfig(fakeSupabase(db) as unknown as FakeClient);
+    g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
+    const stepOk = await retouchStepConfig(fakeSupabase(db) as unknown as FakeClient);
+    check("Workflow 'retouch' step: same rule (unreadable → refused; published → that exact text)",
+      !stepBlind.ok && stepBlind.error === "prompt_unavailable" && !stepLocked.ok && stepLocked.error === "prompt_unavailable"
+      && stepOk.ok && stepOk.prompt === EXACT && stepOk.modelId === PRO_ID);
   }
 
   console.log("\nONE Gemini implementation — Workflow's image step goes through the same builder");
@@ -419,6 +440,7 @@ async function main() {
       && m.config.sizes.map((s) => `${s.resolution}=${s.sent}`).join() === "1K=1K,2K=2K,4K=4K"
       && m.config.timeoutMs === 120_000 && m.config.maxAttempts === 1, m.config);
     check("the manifest carries no prompt text", !JSON.stringify(m).includes("GROVBASE_EXACT"));
+    check("workflow OFF is reported as such", m.workflowEnabled === false);
     // …and after a real run it shows what that run recorded.
     db.files.set("w/r/src.jpg", photo);
     await retouch(db, "w/r/src.jpg");

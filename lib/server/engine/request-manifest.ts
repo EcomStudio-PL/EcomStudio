@@ -11,6 +11,7 @@ import type { Resolution } from "@/lib/ai/types";
 import { GENERATION_BUDGET_MS, MAX_ATTEMPTS_PER_PROVIDER } from "@/lib/server/provider-router";
 import { RETOUCH_OPERATION } from "@/lib/server/retouch";
 import { FASHION_TOOLS } from "@/lib/fashion-tools";
+import { promptDigest } from "@/lib/server/prompt-digest";
 
 /**
  * WHAT A REAL RUN OF THIS TOOL WOULD SEND — computed, not described.
@@ -106,15 +107,16 @@ export async function buildRequestManifest(
   };
 
   return {
+    workflowEnabled: engine?.workflowEnabled === true,
     model: primary ? { provider: slugOf(primary), name: nameOf(primary), identifier: primary.model_identifier } : null,
     fallback: fb ? nameOf(fb) : null,
     prompt,
     config,
-    lastRun: meta ? await lastRunOf(supabase, meta.op, prompt.identical ? prompt.sha256 : null) : null,
+    lastRun: meta ? await lastRunOf(supabase, meta.op, published && prompt.identical ? promptDigest(published) : null) : null,
   };
 }
 
-async function lastRunOf(supabase: Client, operation: string, publishedSha: string | null): Promise<LastRun | null> {
+async function lastRunOf(supabase: Client, operation: string, publishedDigest: string | null): Promise<LastRun | null> {
   const { data: job } = await supabase.from("generation_jobs")
     .select("created_at, status, settings")
     .eq("settings->>operation", operation)
@@ -127,14 +129,14 @@ async function lastRunOf(supabase: Client, operation: string, publishedSha: stri
   const str = (v: unknown) => (typeof v === "string" ? v : null);
   const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
   const b = (v: unknown) => (typeof v === "boolean" ? v : null);
-  const recordedSha = str(r.prompt_sha256);
+  const recorded = str(r.prompt_digest);
   const inputs = Array.isArray(r.inputs) ? r.inputs : [];
   return {
     at: job.created_at, status: job.status,
     provider: str(r.provider), identifier: str(r.model_identifier), fallbackUsed: b(r.fallback_used),
     operation: str(r.operation), policy: str(r.prompt_policy), appended: b(r.fidelity_appended),
-    chars: n(r.prompt_chars), sha256: recordedSha,
-    matchesPublished: recordedSha && publishedSha ? recordedSha === publishedSha : null,
+    chars: n(r.prompt_chars),
+    matchesPublished: recorded && publishedDigest ? recorded === publishedDigest : null,
     ratioRequested: str(r.aspect_ratio_requested), ratioSent: str(r.aspect_ratio_sent),
     sizeSent: str(r.image_size_sent), timeoutMs: n(r.call_timeout_ms), maxAttempts: n(r.max_attempts),
     failedAttempts: Array.isArray(settings.attempts) ? settings.attempts.length : 0,
