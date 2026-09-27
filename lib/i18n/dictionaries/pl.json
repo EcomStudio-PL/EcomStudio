@@ -5283,7 +5283,18 @@
     "prompt.keyLegacyHint": "Zaszyfrowana poprzednim kluczem. Przy publikacji lub przywróceniu zostanie zapisana jako nowa wersja w sejfie kluczy.",
     "prompt.keyUnreadable": "Nieczytelna",
     "prompt.restored": "Przywrócono — opublikowano jako v{n}.",
-    "knowledge.importErr.prompt_key_unavailable": "Serwer nie mógł pobrać klucza szyfrowania z sejfu — spróbuj ponownie za chwilę."
+    "knowledge.importErr.prompt_key_unavailable": "Serwer nie mógł pobrać klucza szyfrowania z sejfu — spróbuj ponownie za chwilę.",
+    "test.manifest.modalities": "responseModalities",
+    "test.manifest.systemInstruction": "systemInstruction",
+    "test.manifest.sampling": "temperature / topP / topK / seed",
+    "test.manifest.responsePick": "Obraz z odpowiedzi",
+    "test.manifest.responsePickValue": "ostatni finalny (szkice „thought” pomijane)",
+    "test.manifest.digest": "Skrót promptu (kluczowany)",
+    "test.manifest.inputEqual": "Wgrane = wysłane",
+    "test.manifest.outputSha": "SHA-256 dostawca → do pobrania",
+    "test.manifest.outputEqual": "Dostawca = plik do pobrania",
+    "test.manifest.drafts": "Odpowiedź dostawcy",
+    "test.manifest.draftsValue": "{parts} obraz(y), pominięte szkice: {skipped}, finishReason: {reason}"
   },
   "batch": {
     "viewLabel": "Widok",

@@ -130,5 +130,10 @@ export type LastRun = {
     requestedSize: string | null; providerWidth: number | null; providerHeight: number | null;
     providerMime: string | null; providerBytes: number | null;
     storedWidth: number | null; storedHeight: number | null; storedBytes: number | null; transformed: boolean | null;
+    providerSha256: string | null; storedSha256: string | null; storedEqual: boolean | null;
+    /** Image parts the response carried / interim (thought) drafts skipped / finish reason. */
+    imageParts: number | null; thoughtSkipped: number | null; finishReason: string | null;
   }[];
+  /** The keyed digest of the final prompt as sent (settings.provider_request). */
+  digest: string | null;
 };

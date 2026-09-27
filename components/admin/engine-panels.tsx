@@ -122,8 +122,12 @@ function ManifestView({ m }: { m: RequestManifest }) {
         [k("ratio"), k(`ratio.${c.ratioWhenOriginal}`)],
         [k("ratios"), c.ratios.join(", ") || "—"],
         [k("sizes"), c.sizes.map((s) => `${s.resolution} → ${s.sent ?? k("notSent")}`).join(", ")],
+        [k("modalities"), "IMAGE"],
+        [k("systemInstruction"), k("notSent")],
+        [k("sampling"), k("modelDefault")],
         [k("mediaResolution"), k("modelDefault")],
         [k("thinking"), k("modelDefault")],
+        [k("responsePick"), k("responsePickValue")],
         [k("providerOptions"), k("providerOptionsNone")],
         [k("timeout"), c.timeoutMs === null
           ? k("timeoutDefault", { budget: secs(c.budgetMs) })
@@ -142,6 +146,7 @@ function ManifestView({ m }: { m: RequestManifest }) {
         [k("operation"), last.operation ?? "—"],
         [k("policy"), last.policy ? k(`policy.${last.policy}`) : "—"],
         [k("chars"), last.chars === null ? "—" : k("charsValue", { n: last.chars })],
+        [k("digest"), short(last.digest)],
         [k("matches"), yesNo(last.matchesPublished)],
         [k("ratioSent"), `${last.ratioRequested ?? "—"} → ${last.ratioSent ?? k("notSent")}`],
         [k("sizeSent"), last.sizeSent ?? k("notSent")],
@@ -152,6 +157,7 @@ function ManifestView({ m }: { m: RequestManifest }) {
             transform: k(`transform.${i.transform}`),
           })],
           [k("inputSha"), `${short(i.sourceSha256)} → ${i.sentSha256 === i.sourceSha256 ? "=" : short(i.sentSha256)}`],
+          [k("inputEqual"), yesNo(i.sentSha256 === i.sourceSha256)],
         ]),
         ...last.outputs.flatMap((o, n): [string, string][] => [
           [k("output", { n: n + 1 }), k("outputValue", {
@@ -159,6 +165,9 @@ function ManifestView({ m }: { m: RequestManifest }) {
             sw: o.storedWidth ?? "?", sh: o.storedHeight ?? "?", kb: o.storedBytes === null ? "?" : Math.round(o.storedBytes / 1024),
           })],
           [k("transformed"), yesNo(o.transformed)],
+          [k("outputSha"), `${short(o.providerSha256)} → ${o.storedSha256 === null ? "—" : o.storedEqual ? "=" : short(o.storedSha256)}`],
+          [k("outputEqual"), yesNo(o.storedEqual)],
+          [k("drafts"), o.imageParts === null ? "—" : k("draftsValue", { parts: o.imageParts, skipped: o.thoughtSkipped ?? 0, reason: o.finishReason ?? "—" })],
         ]),
       ],
     });

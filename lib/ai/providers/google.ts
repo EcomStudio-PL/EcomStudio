@@ -1,7 +1,7 @@
 import "server-only";
 import type { AiModelRecord, GenerationRequest, GenerationResult, ImageProviderAdapter, ProviderCredential } from "../types";
 import { ProviderError, sanitizeUpstreamMessage, timeoutFor } from "../types";
-import { buildGeminiImageRequest } from "./google-request";
+import { buildGeminiImageRequest, pickGeminiFinalImage, type GeminiResponse } from "./google-request";
 
 /**
  * Google's 429 body decides everything: a per-minute quota violation is a
@@ -148,8 +148,7 @@ export const googleAdapter: ImageProviderAdapter = {
           throw new ProviderError(e?.name === "TimeoutError" ? "provider_timeout" : "provider_unreachable", true);
         });
         if (!res.ok) throw await classifyGoogleError(res);
-        const json = (await res.json()) as {
-          candidates?: { content?: { parts?: { inlineData?: { mimeType: string; data: string } }[] } }[];
+        const json = (await res.json()) as GeminiResponse & {
           usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number };
         };
         const meta = json.usageMetadata;
@@ -157,9 +156,14 @@ export const googleAdapter: ImageProviderAdapter = {
         if (typeof meta?.candidatesTokenCount === "number" || typeof meta?.thoughtsTokenCount === "number") {
           outputTokens = (outputTokens ?? 0) + (meta?.candidatesTokenCount ?? 0) + (meta?.thoughtsTokenCount ?? 0);
         }
-        const inline = json.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData;
-        if (!inline?.data) throw new ProviderError("provider_empty_result");
-        images.push({ base64: inline.data, mime: inline.mimeType || "image/png" });
+        // The FINAL render — interim thought images are skipped (see
+        // pickGeminiFinalImage); what the response carried is recorded.
+        const pick = pickGeminiFinalImage(json);
+        if (!pick.image) throw new ProviderError("provider_empty_result", false, pick.finishReason ?? undefined);
+        images.push({
+          base64: pick.image.data, mime: pick.image.mimeType,
+          response: { imageParts: pick.imageParts, thoughtImagesSkipped: pick.thoughtImages, finishReason: pick.finishReason },
+        });
       } catch (e) {
         // The FIRST call failing means nothing was produced and nothing was
         // billed, so it throws clean and the runner retries and falls back

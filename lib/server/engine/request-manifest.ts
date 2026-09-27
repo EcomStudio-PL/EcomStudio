@@ -136,6 +136,7 @@ async function lastRunOf(supabase: Client, operation: string, publishedDigest: s
     provider: str(r.provider), identifier: str(r.model_identifier), fallbackUsed: b(r.fallback_used),
     operation: str(r.operation), policy: str(r.prompt_policy), appended: b(r.fidelity_appended),
     chars: n(r.prompt_chars),
+    digest: recorded,
     matchesPublished: recorded && publishedDigest ? recorded === publishedDigest : null,
     ratioRequested: str(r.aspect_ratio_requested), ratioSent: str(r.aspect_ratio_sent),
     sizeSent: str(r.image_size_sent), timeoutMs: n(r.call_timeout_ms), maxAttempts: n(r.max_attempts),
@@ -146,6 +147,8 @@ async function lastRunOf(supabase: Client, operation: string, publishedDigest: s
         requestedSize: str(x.requested_image_size), providerWidth: n(x.provider_returned_width), providerHeight: n(x.provider_returned_height),
         providerMime: str(x.provider_mime), providerBytes: n(x.provider_bytes),
         storedWidth: n(x.stored_width), storedHeight: n(x.stored_height), storedBytes: n(x.stored_bytes), transformed: b(x.transformed_after_provider),
+        providerSha256: str(x.provider_sha256), storedSha256: str(x.stored_sha256), storedEqual: b(x.stored_equals_provider),
+        imageParts: n(x.provider_image_parts), thoughtSkipped: n(x.provider_thought_images_skipped), finishReason: str(x.provider_finish_reason),
       };
     }),
     inputs: inputs.map((i) => {

@@ -312,9 +312,10 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   }
 
   // Job (queued -> processing)
-  const promptText = [input.prompt.trim(), input.negative?.trim() ? `AVOID: ${input.negative.trim()}` : ""]
-    .filter(Boolean).join("\n");
-  const providerPrompt = input.enginePrompt?.trim() ? input.enginePrompt.trim() : promptText;
+  // The text exactly as written — no trim, no normalising. (The emptiness
+  // checks above use trim; the value sent does not.)
+  const promptText = input.negative?.trim() ? `${input.prompt}\nAVOID: ${input.negative.trim()}` : input.prompt;
+  const providerPrompt = input.enginePrompt?.trim() ? input.enginePrompt : promptText;
   /**
    * ONE settings object for every write to the job row. The later updates
    * (after a retry, after a fallback served) used to rebuild a smaller
@@ -893,11 +894,23 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         const meta = await sharp(bytes, { failOn: "none" }).metadata();
         if (meta.width && meta.height) dims = { width: meta.width, height: meta.height };
       } catch { /* the model's own figures stand */ }
+      const providerSha = createHash("sha256").update(bytes).digest("hex");
+      // READ BACK what storage holds — the object "Pobierz" serves — so the
+      // record proves provider bytes === downloadable original, per job.
+      const { data: back } = await supabase.storage.from("generation-assets").download(path);
+      const storedBytes = back ? Buffer.from(await back.arrayBuffer()) : null;
+      const storedSha = storedBytes ? createHash("sha256").update(storedBytes).digest("hex") : null;
       providerOutput.push({
         requested_image_size: (lastRequest?.image_size_sent as string | null | undefined) ?? null,
         provider_returned_width: dims.width ?? null, provider_returned_height: dims.height ?? null,
-        provider_mime: mime, provider_bytes: bytes.length, provider_sha256: createHash("sha256").update(bytes).digest("hex"),
-        stored_width: dims.width ?? null, stored_height: dims.height ?? null, stored_bytes: bytes.length,
+        provider_mime: mime, provider_bytes: bytes.length, provider_sha256: providerSha,
+        // What the response carried: interim (thought) drafts are never kept.
+        provider_image_parts: img.response?.imageParts ?? null,
+        provider_thought_images_skipped: img.response?.thoughtImagesSkipped ?? null,
+        provider_finish_reason: img.response?.finishReason ?? null,
+        stored_width: dims.width ?? null, stored_height: dims.height ?? null,
+        stored_bytes: storedBytes?.length ?? null, stored_sha256: storedSha,
+        stored_equals_provider: storedSha === null ? null : storedSha === providerSha,
         stored_path: path, transformed_after_provider: false,
       });
       const { data: assetRow } = await supabase.from("generation_assets").insert({

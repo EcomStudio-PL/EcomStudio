@@ -176,7 +176,13 @@ export function timeoutFor(cap: number, deadlineAt?: number, nowMs: number = Dat
   return Math.min(cap, deadlineAt - nowMs);
 }
 
-export type GeneratedImage = { base64?: string; url?: string; mime: string; width?: number; height?: number };
+export type GeneratedImage = {
+  base64?: string; url?: string; mime: string; width?: number; height?: number;
+  /** What the provider's response carried around this image (recorded on the
+   *  job, never used to change it): image parts in total, interim drafts that
+   *  were skipped, and the finish reason. */
+  response?: { imageParts: number; thoughtImagesSkipped: number; finishReason: string | null };
+};
 
 export interface GenerationResult {
   images: GeneratedImage[];

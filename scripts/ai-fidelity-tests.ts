@@ -145,7 +145,12 @@ function fakeSupabase(db: Db) {
           const b = db.files.get(path);
           return b ? { data: new Blob([new Uint8Array(b)]), error: null } : { data: null, error: { message: "not found" } };
         },
-        upload: async (path: string) => { db.uploads.push(`${bucket}/${path}`); return { error: null }; },
+        // Keeps what was written, so a read-back sees exactly the uploaded bytes.
+        upload: async (path: string, body?: unknown) => {
+          db.uploads.push(`${bucket}/${path}`);
+          if (Buffer.isBuffer(body)) db.files.set(path, Buffer.from(body));
+          return { error: null };
+        },
         createSignedUrls: async (paths: string[]) => ({ data: paths.map((p) => ({ path: p, signedUrl: `https://signed/${p}` })), error: null }),
       }),
     },
@@ -163,6 +168,8 @@ type Sent = { url: string; body: {
 let sent: Sent[] = [];
 let script: number[] = [];      // HTTP statuses to answer, in order (200 = an image)
 let outPng = "";
+/** When set, the parts of the next successful Gemini answers (thought drafts etc.). */
+let responseParts: Record<string, unknown>[] | null = null;
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
@@ -173,7 +180,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     return new Response(JSON.stringify({ error: { status: "UNAVAILABLE", message: "overloaded", details: [{ retryDelay: "0.01s" }] } }), { status });
   }
   return new Response(JSON.stringify({
-    candidates: [{ content: { parts: [{ inlineData: { mimeType: "image/png", data: outPng } }] } }],
+    candidates: [{ finishReason: "STOP", content: { parts: responseParts ?? [{ inlineData: { mimeType: "image/png", data: outPng } }] } }],
     usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 1200 },
   }), { status: 200, headers: { "content-type": "application/json" } });
 }) as typeof fetch;
@@ -517,6 +524,136 @@ async function main() {
     check("provider_output: requested 4K, provider WxH = stored WxH, bytes equal, not transformed",
       out?.requested_image_size === "4K" && out?.provider_returned_width === out?.stored_width && out?.provider_returned_height === out?.stored_height
       && out?.provider_bytes === provided.length && out?.stored_bytes === provided.length && out?.provider_sha256 === sha(provided) && out?.transformed_after_provider === false, out);
+  }
+
+  console.log("\nTHOUGHT IMAGES — the FINAL render is kept, never an interim draft (Gemini 3 Pro Image thinks before it draws)");
+  {
+    const draft = async (color: string) => (await sharp({ create: { width: 32, height: 32, channels: 3, background: color } }).png().toBuffer()).toString("base64");
+    const [d1, d2, fin] = [await draft("#f00"), await draft("#0f0"), await draft("#00f")];
+    const db = freshDb(); db.files.set("w/r/src.jpg", photo);
+    g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
+    // The shape Google documents: thought text, up to two thought images, then the final image.
+    responseParts = [
+      { text: "Planning the composition…", thought: true },
+      { inlineData: { mimeType: "image/png", data: d1 }, thought: true },
+      { inlineData: { mimeType: "image/png", data: d2 }, thought: true },
+      { inlineData: { mimeType: "image/png", data: fin }, thoughtSignature: "sig" },
+    ];
+    const { res, job } = await retouch(db, "w/r/src.jpg");
+    const out = (((job?.settings ?? {}) as Row).provider_output as Row[] | undefined)?.[0];
+    check("the stored image is the FINAL one (not the first draft)", res.ok && out?.provider_sha256 === sha(Buffer.from(fin, "base64")) && out?.provider_sha256 !== sha(Buffer.from(d1, "base64")), out);
+    check("recorded: 3 image parts, 2 drafts skipped, finishReason STOP", out?.provider_image_parts === 3 && out?.provider_thought_images_skipped === 2 && out?.provider_finish_reason === "STOP", out);
+    responseParts = [{ inlineData: { mimeType: "image/png", data: d1 }, thought: true }];
+    const onlyDraft = await retouch(db, "w/r/src.jpg");
+    check("a response with ONLY drafts is empty → refused and refunded, a draft is never delivered",
+      !onlyDraft.res.ok && (onlyDraft.res as { error?: string }).error === "provider_empty_result" && sent.length === 1, onlyDraft.res);
+    responseParts = [{ inlineData: { mimeType: "image/png", data: d1 } }, { inlineData: { mimeType: "image/png", data: fin } }];
+    const two = await retouch(db, "w/r/src.jpg");
+    const out2 = (((two.job?.settings ?? {}) as Row).provider_output as Row[] | undefined)?.[0];
+    check("two unflagged images → the LAST one (Google's final image comes last)", out2?.provider_sha256 === sha(Buffer.from(fin, "base64")), out2);
+    responseParts = null;
+    check("the adapter no longer takes the first inlineData part", !/parts\?\.find\(\(p\) => p\.inlineData\)/.test(read("lib/ai/providers/google.ts")) && /pickGeminiFinalImage\(json\)/.test(read("lib/ai/providers/google.ts")));
+  }
+
+  console.log("\n§9 PROVIDER PARITY HARNESS — full GrovBase Retusz path vs a minimal hand-written Google request (no paid call)");
+  {
+    const canon = (v: unknown): unknown => Array.isArray(v) ? v.map(canon)
+      : v && typeof v === "object" ? Object.fromEntries(Object.keys(v as Row).sort().map((k) => [k, canon((v as Row)[k])])) : v;
+    const eq = (a: unknown, b: unknown) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
+    const cases: { name: string; resolution: string; format: string; imageConfig: Row }[] = [
+      { name: "2K, Oryginalny", resolution: "2K", format: "original", imageConfig: { imageSize: "2K" } },
+      { name: "4K, Oryginalny", resolution: "4K", format: "original", imageConfig: { imageSize: "4K" } },
+      { name: "1K, 4:5", resolution: "1K", format: "4:5", imageConfig: { aspectRatio: "4:5", imageSize: "1K" } },
+    ];
+    for (const cs of cases) {
+      const db = freshDb(); db.files.set("w/r/src.jpg", photo);
+      g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
+      await retouch(db, "w/r/src.jpg", { resolution: cs.resolution, format: cs.format });
+      const A = sent[0]!;
+      // B — what a person would send by hand, straight from Google's REST
+      // image-edit example: the same photo bytes, the same prompt, the same
+      // model, the same size/ratio. Written out literally, NOT via the builder.
+      const B = {
+        url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image:generateContent",
+        body: {
+          contents: [{ role: "user", parts: [{ inlineData: { mimeType: "image/jpeg", data: photo.toString("base64") } }, { text: EXACT }] }],
+          generationConfig: { responseModalities: ["IMAGE"], imageConfig: cs.imageConfig },
+        },
+      };
+      const noKey = (u: string) => u.replace(/\?.*$/, "");      // secrets normalised away
+      const aImg = imagesOf(A)[0]?.inlineData;
+      const flags = {
+        PROMPT_EQUAL: textOf(A).length === 1 && textOf(A)[0]!.text === EXACT,
+        INPUT_SHA_EQUAL: !!aImg && sha(Buffer.from(aImg.data, "base64")) === PHOTO_SHA && aImg.mimeType === "image/jpeg",
+        MODEL_EQUAL: noKey(A.url) === B.url,
+        GENERATION_CONFIG_EQUAL: eq(A.body.generationConfig, B.body.generationConfig),
+        PARTS_EQUAL: eq(A.body.contents, B.body.contents),
+        BODY_EQUAL: eq(A.body, B.body) && Object.keys(A.body).sort().join() === "contents,generationConfig",
+      };
+      console.log(`    ${cs.name}: ${Object.entries(flags).map(([k, v]) => `${k}=${v}`).join("  ")}`);
+      check(`parity ${cs.name}: every invariant true`, Object.values(flags).every(Boolean), flags);
+    }
+  }
+
+  console.log("\n§15 CHECKLIST A–L");
+  {
+    const one = async (systemPrompt: string | null, opts: { resolution?: string; format?: string } = {}) => {
+      const db = freshDb(); db.files.set("w/r/src.jpg", photo);
+      g.__fidelityEngine = engine({ systemPrompt, promptVersion: systemPrompt === null ? null : 3 });
+      const r = await retouch(db, "w/r/src.jpg", opts);
+      return { ...r, text: sent[0] ? textOf(sent[0])[0]?.text : undefined, body: sent[0]?.body, calls: sent.length };
+    };
+    const a = await one(EXACT);
+    check("A. publishedPrompt === finalPrompt (no variables)", a.text === EXACT);
+    const padded = "\n  Retusz.\n\n";
+    const ap = await one(padded);
+    check("A. …byte for byte, leading/trailing whitespace included (nothing trims it)", ap.text === padded, JSON.stringify(ap.text));
+    const b = await one("X {{fidelity_rules}} Y");
+    check("B. {{fidelity_rules}}: only that placeholder changes", b.text === `X ${buildFidelityInstructions()} Y`);
+    const c = await one("X Y");
+    check("C. no {{fidelity_rules}}: no Product Lock text in the final prompt", c.text === "X Y" && !(c.text ?? "").includes(buildFidelityInstructions().slice(0, 40)));
+    const ledger = (globalThis as unknown as { __fidelityLedger?: string[] });
+    ledger.__fidelityLedger = [];
+    const d = await one(null);
+    check("D. no prompt: PROMPT_NOT_CONFIGURED, 0 provider calls, 0 credits", !d.res.ok && (d.res as { error?: string }).error === "prompt_unconfigured" && d.calls === 0 && (ledger.__fidelityLedger ?? []).length === 0);
+    {
+      const db = freshDb(); db.files.set("w/g/p.jpg", photo); sent = [];
+      const USER = "  Mój prompt:\n\n— ZOSTAW kubek dokładnie tak 1:1 —  ";
+      await runGeneration(fakeSupabase(db) as unknown as FakeClient, "u", "w", {
+        modelId: PRO_ID, prompt: USER, aspectRatio: "1:1", resolution: "1K", quantity: 1, referencePaths: ["w/g/p.jpg"], referenceImageIds: [],
+      });
+      check("E. user prompt: exact string equality (whitespace, dashes, Polish letters kept)", textOf(sent[0]!)[0]?.text === USER, textOf(sent[0]!)[0]?.text);
+    }
+    check("F. input: sha(upload) === sha(provider input)", sha(Buffer.from(imagesOf({ url: "", body: a.body! })[0]!.inlineData.data, "base64")) === PHOTO_SHA);
+    check("G. Google payload parity — see §9 above (all invariants true)", true);
+    const h2 = await one(EXACT, { resolution: "2K" }); const h4 = await one(EXACT, { resolution: "4K" });
+    const drop = (x: unknown) => { const cc = JSON.parse(JSON.stringify(x)); delete cc.generationConfig.imageConfig.imageSize; return JSON.stringify(cc); };
+    check("H. 2K/4K: the only difference is imageSize", drop(h2.body) === drop(h4.body) && h2.body!.generationConfig.imageConfig.imageSize === "2K" && h4.body!.generationConfig.imageConfig.imageSize === "4K");
+    check("I. Oryginalny: aspectRatio absent", !("aspectRatio" in (a.body!.generationConfig.imageConfig)));
+    const out = (((a.job?.settings ?? {}) as Row).provider_output as Row[] | undefined)?.[0];
+    const url = (a.res as { url?: string }).url ?? "";
+    check("J. output: provider SHA === SHA read back from storage (the file Pobierz serves), same path",
+      out?.stored_sha256 === out?.provider_sha256 && out?.stored_equals_provider === true && out?.stored_sha256 === sha(Buffer.from(outPng, "base64"))
+      && url.endsWith(String(out?.stored_path)) && !/thumb|preview|render\/image/.test(url), { out, url });
+    {
+      const db = freshDb(); db.files.set("w/r/src.jpg", photo);
+      g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3, maxAttempts: 3, fallbackEnabled: false, fallbackModelId: NB2_ID });
+      script = [503, 503, 503];
+      await retouch(db, "w/r/src.jpg");
+      script = [];
+      check("K. fallback OFF: every attempt on gemini-3-pro-image, never another model", sent.length === 3 && sent.every((x) => /\/gemini-3-pro-image:generateContent/.test(x.url)));
+    }
+    const code = ["lib/server/retouch.ts", "lib/server/engine/tool-run.ts", "lib/server/generation.ts", "lib/server/engine/image-call.ts",
+      "lib/ai/providers/google.ts", "lib/ai/providers/google-request.ts", "lib/ai/providers/openai.ts", "lib/ai/providers/fal.ts",
+      "lib/server/concept-generation.ts", "lib/server/engine/workflow.ts", "app/api/generate/route.ts", "app/api/generations/regenerate/route.ts"].map(read).join("\n");
+    const legacy = [/RETOUCH_PROMPT\s*=/, /builtInPrompt/, /composeProviderText/, /appendCustomerBlock/, /wrapData/, /fidelityInstructions\}/,
+      /prompt\.trim\(\)\s*[,\]]/, /enginePrompt\.trim\(\)\s*:/];
+    // Request fields live only in the builder + adapters (a "seed" elsewhere is the knowledge sampler's, never sent).
+    const wire = ["lib/ai/providers/google.ts", "lib/ai/providers/google-request.ts", "lib/ai/providers/openai.ts", "lib/ai/providers/fal.ts"].map(read).join("\n");
+    const sampling = [/systemInstruction\s*:/, /temperature\s*:/, /topP\s*:/, /topK\s*:/, /\bseed\s*:/, /thinkingConfig\s*:/, /mediaResolution\s*:/];
+    const hits = [...legacy.filter((re) => re.test(code)), ...sampling.filter((re) => re.test(wire))].map(String);
+    check("L. regression search: no RETOUCH_PROMPT, no legacy append helper, no sampling/system fields in the image path", hits.length === 0, hits);
+    g.__fidelityEngine = null;
   }
 
   console.log("\nADMIN MANIFEST (Testuj konfigurację) — computed, no paid call");

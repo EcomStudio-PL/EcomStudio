@@ -5283,7 +5283,18 @@
     "prompt.keyLegacyHint": "Mit dem vorherigen Schlüssel verschlüsselt. Beim Veröffentlichen oder Wiederherstellen wird sie als neue Version mit dem Tresor-Schlüssel gespeichert.",
     "prompt.keyUnreadable": "Nicht lesbar",
     "prompt.restored": "Wiederhergestellt — als v{n} veröffentlicht.",
-    "knowledge.importErr.prompt_key_unavailable": "Der Server konnte den Schlüssel nicht aus dem Tresor laden — bitte gleich noch einmal versuchen."
+    "knowledge.importErr.prompt_key_unavailable": "Der Server konnte den Schlüssel nicht aus dem Tresor laden — bitte gleich noch einmal versuchen.",
+    "test.manifest.modalities": "responseModalities",
+    "test.manifest.systemInstruction": "systemInstruction",
+    "test.manifest.sampling": "temperature / topP / topK / seed",
+    "test.manifest.responsePick": "Bild aus der Antwort",
+    "test.manifest.responsePickValue": "das letzte finale (\"thought\"-Entwürfe übersprungen)",
+    "test.manifest.digest": "Prompt-Digest (verschlüsselt)",
+    "test.manifest.inputEqual": "Hochgeladen = gesendet",
+    "test.manifest.outputSha": "SHA-256 Anbieter → Download",
+    "test.manifest.outputEqual": "Anbieter = Download-Datei",
+    "test.manifest.drafts": "Anbieterantwort",
+    "test.manifest.draftsValue": "{parts} Bild(er), übersprungene Entwürfe: {skipped}, finishReason: {reason}"
   },
   "batch": {
     "viewLabel": "Ansicht",

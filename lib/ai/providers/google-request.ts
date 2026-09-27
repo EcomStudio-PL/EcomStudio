@@ -57,6 +57,48 @@ export function geminiImageSize(model: ModelShape, resolution: string | null | u
   return sizes.some((s) => s !== "1K") ? resolution : null;
 }
 
+/**
+ * THE IMAGE TO KEEP FROM A GEMINI RESPONSE — the final render, never a draft.
+ *
+ * Gemini 3 Pro Image thinks before it draws, and thinking cannot be switched
+ * off. Its response can carry up to two INTERIM images ("thought images",
+ * `thought: true`) before the final one — Google's own Nano Banana Pro sample
+ * skips them (`if part.thought: continue`) before reading `inline_data`. The
+ * old reader took the FIRST inlineData part, which is a composition draft
+ * whenever the model produced one: a different framing, a changed element, a
+ * wrong colour — a lottery the provider never meant to hand out.
+ *
+ * Rule: the LAST inlineData part that is not a thought. A response with only
+ * thought images has no final render and is treated as empty (the run is
+ * refunded), never "the best draft we have".
+ */
+export type GeminiResponsePart = { text?: string; thought?: boolean; inlineData?: { mimeType?: string; data?: string } };
+export type GeminiResponse = {
+  candidates?: { finishReason?: string; content?: { parts?: GeminiResponsePart[] } }[];
+};
+export type GeminiPick = {
+  image: { mimeType: string; data: string } | null;
+  /** Image parts in the response, drafts included. */
+  imageParts: number;
+  /** Interim (thought) images the response carried and were NOT kept. */
+  thoughtImages: number;
+  finishReason: string | null;
+};
+
+export function pickGeminiFinalImage(json: GeminiResponse): GeminiPick {
+  const cand = json.candidates?.[0];
+  const parts = cand?.content?.parts ?? [];
+  const images = parts.filter((p) => p.inlineData?.data);
+  const finals = images.filter((p) => p.thought !== true);
+  const last = finals[finals.length - 1]?.inlineData;
+  return {
+    image: last?.data ? { mimeType: last.mimeType || "image/png", data: last.data } : null,
+    imageParts: images.length,
+    thoughtImages: images.length - finals.length,
+    finishReason: cand?.finishReason ?? null,
+  };
+}
+
 export function buildGeminiImageRequest(model: ModelShape, req: RequestShape): GeminiImagePlan {
   const edit = req.referenceImages.length > 0;
   const aspectRatio = req.aspectRatio === "auto" ? null : req.aspectRatio;

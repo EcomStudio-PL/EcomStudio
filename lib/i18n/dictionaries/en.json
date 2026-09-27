@@ -5283,7 +5283,18 @@
     "prompt.keyLegacyHint": "Encrypted with the previous key. Publishing or restoring it saves it as a new version under the vault key.",
     "prompt.keyUnreadable": "Unreadable",
     "prompt.restored": "Restored — published as v{n}.",
-    "knowledge.importErr.prompt_key_unavailable": "The server could not fetch the encryption key from the vault — try again in a moment."
+    "knowledge.importErr.prompt_key_unavailable": "The server could not fetch the encryption key from the vault — try again in a moment.",
+    "test.manifest.modalities": "responseModalities",
+    "test.manifest.systemInstruction": "systemInstruction",
+    "test.manifest.sampling": "temperature / topP / topK / seed",
+    "test.manifest.responsePick": "Image taken from the response",
+    "test.manifest.responsePickValue": "the last final one (\"thought\" drafts skipped)",
+    "test.manifest.digest": "Prompt digest (keyed)",
+    "test.manifest.inputEqual": "Uploaded = sent",
+    "test.manifest.outputSha": "SHA-256 provider → downloadable",
+    "test.manifest.outputEqual": "Provider = downloadable file",
+    "test.manifest.drafts": "Provider response",
+    "test.manifest.draftsValue": "{parts} image(s), drafts skipped: {skipped}, finishReason: {reason}"
   },
   "batch": {
     "viewLabel": "View",
