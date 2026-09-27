@@ -22,8 +22,8 @@ import type { AspectRatio, Resolution } from "@/lib/ai/types";
  * WHAT THE MODEL RECEIVES, with a prompt published in Admin → Narzędzia i
  * silniki: the original uploaded photo (untouched bytes) + that prompt, byte
  * for byte + the size the customer chose + the framing the customer chose —
- * or, for "Oryginalny", no ratio at all, so the edit keeps the photo's own
- * shape. Nothing else: no Product Lock, no built-in text, no knowledge the
+ * or, for "Oryginalny", the official ratio nearest the photo's own
+ * proportions (lib/ai/aspect-ratio). Nothing else: no Product Lock, no built-in text, no knowledge the
  * prompt did not ask for.
  */
 
@@ -169,10 +169,12 @@ export async function runRetouch(
 
   const resolution = (model.resolutions.includes(input.resolution ?? "") ? input.resolution : model.resolutions[0]) as Resolution;
 
-  // "Oryginalny" is NOT a ratio GrovBase picks: snapping a 4:3 or 3:2 photo
-  // to the nearest of a handful of ratios (1:1, 16:9…) forced the model to
-  // re-frame the scene. "auto" sends no ratio, and the edit keeps the shape
-  // of the photo it was given. A framing the customer chose is sent exactly.
+  // "Oryginalny" = THE PHOTO'S OWN PROPORTIONS. Two earlier behaviours both
+  // re-framed: snapping to a handful of picker ratios (4:3 → 1:1), and
+  // sending no ratio at all (the model then chose — PROD: 933×700 came back
+  // 4:3 at 2K but ≈11:6 at 4K). runGeneration now sends the official Gemini
+  // ratio nearest the photo (933×700 → 4:3), identical at every size. A
+  // framing the customer chose is sent exactly.
   const aspectRatio: AspectRatio = input.format && input.format !== "original" && model.ratios.includes(input.format)
     ? input.format as AspectRatio
     : "auto";
@@ -193,6 +195,9 @@ export async function runRetouch(
       // (Product Lock) or render the paid size.
       ...(model.fallbackId ? { fallbackModelIds: [model.fallbackId] } : {}),
       aspectRatio,
+      // "Oryginalny" = the photo's own proportions, sent as the official
+      // ratio nearest them — never left to the model to pick.
+      ...(aspectRatio === "auto" ? { originalAspect: "derive" as const } : {}),
       resolution,
       quantity: 1,
       referenceImageIds: [],

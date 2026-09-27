@@ -4779,7 +4779,7 @@
     "test.manifest.config": "Request",
     "test.manifest.operation": "Operation",
     "test.manifest.ratio": "Aspect ratio with “Original”",
-    "test.manifest.ratio.input_photo": "not sent — the result keeps the photo's shape",
+    "test.manifest.ratio.input_photo": "not sent — the model picks the shape",
     "test.manifest.ratio.nearest_supported": "the nearest one the model lists",
     "test.manifest.ratio.provider_choice": "“auto” is sent — the provider picks the shape",
     "test.manifest.ratios": "Selectable ratios (sent exactly)",
@@ -5294,7 +5294,17 @@
     "test.manifest.outputSha": "SHA-256 provider → downloadable",
     "test.manifest.outputEqual": "Provider = downloadable file",
     "test.manifest.drafts": "Provider response",
-    "test.manifest.draftsValue": "{parts} image(s), drafts skipped: {skipped}, finishReason: {reason}"
+    "test.manifest.draftsValue": "{parts} image(s), drafts skipped: {skipped}, finishReason: {reason}",
+    "test.manifest.ratio.original_derived": "the photo's nearest official ratio, sent explicitly (e.g. 933×700 → 4:3)",
+    "test.manifest.aspectMode": "How the ratio was chosen",
+    "test.manifest.aspectMode.USER_SELECTED": "customer's choice",
+    "test.manifest.aspectMode.ORIGINAL_DERIVED": "Original → from the photo's proportions",
+    "test.manifest.aspectMode.UNSET": "not sent (provider default)",
+    "test.manifest.aspectSource": "Photo proportions → sent",
+    "test.manifest.aspectSourceValue": "{r} → {to}",
+    "test.manifest.inputQuality": "Source quality",
+    "test.manifest.megapixels": "{mp} MP",
+    "test.manifest.lowSource": "LOW SOURCE RESOLUTION (informational)"
   },
   "batch": {
     "viewLabel": "View",

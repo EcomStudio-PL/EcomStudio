@@ -24,7 +24,9 @@ import { FASHION_MODEL_IDENTIFIER } from "@/lib/server/fashion";
 import { callImageModel } from "@/lib/server/engine/image-call";
 import { prepareGeneratorEngine } from "@/lib/server/engine/tool-run";
 import { runGeneration } from "@/lib/server/generation";
-import { buildGeminiImageRequest, geminiImageSize } from "@/lib/ai/providers/google-request";
+import { GEMINI_IMAGE_ASPECT_RATIOS, buildGeminiImageRequest, geminiImageSize, pickGeminiFinalImage } from "@/lib/ai/providers/google-request";
+import { resolveOriginalAspectRatio } from "@/lib/ai/aspect-ratio";
+import { RATIO_SHAPE, type AspectRatio } from "@/lib/ai/types";
 import { buildFidelityInstructions } from "@/lib/ai/product-lock";
 import { compileTemplate, TOOL_VARIABLES } from "@/lib/ai/prompt-variables";
 import { prepareReferenceImage } from "@/lib/server/reference-image";
@@ -328,18 +330,20 @@ async function main() {
     check("a source that cannot be read is refused — never sent as text-to-image", !gone.res.ok && sent.length === 0 && (gone.res as { error?: string }).error === "source_unavailable", gone.res);
   }
 
-  console.log("\nT11 / T12 ASPECT RATIO — none imposed on 'Oryginalny'; a chosen one sent exactly");
+  console.log("\nT11 / T12 ASPECT RATIO — 'Oryginalny' = the photo's own shape, stated; a chosen one sent exactly");
   {
     const db = freshDb(); db.files.set("w/r/src.jpg", photo);
     g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
     const auto = await retouch(db, "w/r/src.jpg", { format: "original" });
-    check("original (3:2 photo): imageConfig carries NO aspectRatio", sent[0]?.body.generationConfig.imageConfig.aspectRatio === undefined, sent[0]?.body.generationConfig);
-    check("recorded: requested auto → sent null", auto.pr?.aspect_ratio_requested === "auto" && auto.pr?.aspect_ratio_sent === null, auto.pr);
+    check("original (1500×1000 photo): imageConfig.aspectRatio '3:2' — derived from the photo, never left to the model", sent[0]?.body.generationConfig.imageConfig.aspectRatio === "3:2", sent[0]?.body.generationConfig);
+    check("recorded: requested auto → ORIGINAL_DERIVED 1500×1000 (1.5) → sent 3:2",
+      auto.pr?.aspect_ratio_requested === "auto" && auto.pr?.aspect_ratio_sent === "3:2" && auto.pr?.aspect_ratio_mode === "ORIGINAL_DERIVED"
+      && auto.pr?.source_width === 1500 && auto.pr?.source_height === 1000 && auto.pr?.source_aspect_ratio === 1.5 && auto.pr?.resolved_aspect_ratio === "3:2", auto.pr);
     const expl = await retouch(db, "w/r/src.jpg", { format: "4:5" });
     check("chosen 4:5 → imageConfig.aspectRatio '4:5'", sent[0]?.body.generationConfig.imageConfig.aspectRatio === "4:5");
-    check("recorded: requested 4:5 → sent 4:5", expl.pr?.aspect_ratio_requested === "4:5" && expl.pr?.aspect_ratio_sent === "4:5");
+    check("recorded: requested 4:5 → sent 4:5, mode USER_SELECTED", expl.pr?.aspect_ratio_requested === "4:5" && expl.pr?.aspect_ratio_sent === "4:5" && expl.pr?.aspect_ratio_mode === "USER_SELECTED");
     const odd = await retouch(db, "w/r/src.jpg", { format: "7:3" });
-    check("a ratio the model does not list falls back to 'original' (nothing sent), not to a guess", sent[0]?.body.generationConfig.imageConfig.aspectRatio === undefined && odd.res.ok);
+    check("a ratio the model does not list falls back to 'Oryginalny' (the photo's 3:2), not to a guess", sent[0]?.body.generationConfig.imageConfig.aspectRatio === "3:2" && odd.res.ok && odd.pr?.aspect_ratio_mode === "ORIGINAL_DERIVED");
   }
 
   console.log("\nT13 SIZE — the size picked is the size Google is asked for");
@@ -555,18 +559,123 @@ async function main() {
     check("the adapter no longer takes the first inlineData part", !/parts\?\.find\(\(p\) => p\.inlineData\)/.test(read("lib/ai/providers/google.ts")) && /pickGeminiFinalImage\(json\)/.test(read("lib/ai/providers/google.ts")));
   }
 
+  console.log("\nORIGINAL RATIO — resolveOriginalAspectRatio: the photo's nearest OFFICIAL Gemini ratio");
+  {
+    const R = GEMINI_IMAGE_ASPECT_RATIOS;
+    const table: [number, number, AspectRatio][] = [
+      [933, 700, "4:3"], [1200, 1200, "1:1"], [1500, 1000, "3:2"], [1000, 1500, "2:3"], [1000, 1250, "4:5"],
+      [1250, 1000, "5:4"], [1920, 1080, "16:9"], [1080, 1920, "9:16"],
+      // non-standard shapes, incl. the PROD sources
+      [853, 700, "5:4"], [1280, 1024, "5:4"], [1280, 871, "3:2"], [576, 1280, "9:16"], [315, 699, "9:16"], [1080, 1350, "4:5"],
+      [2560, 1080, "21:9"], [3000, 1000, "21:9"], [1000, 3000, "9:16"], [4000, 3000, "4:3"], [3024, 4032, "3:4"], [1000, 1001, "1:1"], [1, 1, "1:1"],
+    ];
+    const bad = table.filter(([w, h, want]) => resolveOriginalAspectRatio(w, h, R) !== want).map(([w, h, want]) => `${w}×${h}: got ${resolveOriginalAspectRatio(w, h, R)}, want ${want}`);
+    check(`table (${table.length} shapes incl. 933×700 → 4:3) maps to the nearest official ratio`, bad.length === 0, bad);
+    check("the official list is exactly Gemini's 10 image ratios", [...R].sort().join() === ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"].sort().join(), R);
+    const exact = R.filter((r) => { const s = RATIO_SHAPE[r as Exclude<AspectRatio, "auto">]; return [1, 7, 113].some((k) => resolveOriginalAspectRatio(s.w * k, s.h * k, R) !== r); });
+    check("every official ratio, at any scale, resolves to itself (not a special-cased if/else)", exact.length === 0, exact);
+    // Monotonic: as the photo gets wider, the resolved ratio never gets narrower.
+    const val = (r: AspectRatio | null) => { const s = RATIO_SHAPE[r as Exclude<AspectRatio, "auto">]; return s.w / s.h; };
+    let prev = 0; let mono = true;
+    for (let w = 100; w <= 5000; w += 7) { const v = val(resolveOriginalAspectRatio(w, 1000, R)); if (v < prev) mono = false; prev = v; }
+    check("monotonic across 700 widths (100…5000 × 1000)", mono);
+    const reversed = [...R].reverse();
+    let orderFree = true;
+    for (let i = 0; i < 500; i++) { const w = 200 + ((i * 7919) % 4800), h = 200 + ((i * 104729) % 4800); if (resolveOriginalAspectRatio(w, h, R) !== resolveOriginalAspectRatio(w, h, reversed)) orderFree = false; }
+    check("deterministic: 500 shapes give the same answer whatever the list order (no hidden tie reliance)", orderFree);
+    check("unknown / invalid size → null (nothing derived, nothing sent)", [[0, 700], [933, 0], [NaN, 5], [-3, 4]].every(([w, h]) => resolveOriginalAspectRatio(w, h, R) === null));
+    check("an engine without an official list derives nothing", resolveOriginalAspectRatio(933, 700, []) === null);
+
+    // The PROD case end-to-end: 933×700 PNG, Oryginalny, 2K and 4K.
+    const prodShape = await sharp({ create: { width: 933, height: 700, channels: 3, background: "#a86" } }).png().toBuffer();
+    const bodies: Sent["body"][] = []; const recs: Row[] = [];
+    for (const size of ["2K", "4K"]) {
+      const db = freshDb(); db.files.set("w/r/prod.png", prodShape);
+      g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
+      const { pr } = await retouch(db, "w/r/prod.png", { resolution: size, format: "original" });
+      bodies.push(JSON.parse(JSON.stringify(sent[0]!.body))); recs.push(pr as Row);
+    }
+    check("933×700 + Oryginalny → aspectRatio '4:3' at 2K AND at 4K", bodies.every((b) => b.generationConfig.imageConfig.aspectRatio === "4:3"), bodies.map((b) => b.generationConfig));
+    const noSize = (b: Sent["body"]) => { const c = JSON.parse(JSON.stringify(b)); delete c.generationConfig.imageConfig.imageSize; return JSON.stringify(c); };
+    check("…and the 2K/4K bodies differ ONLY in imageSize", noSize(bodies[0]!) === noSize(bodies[1]!) && bodies[0]!.generationConfig.imageConfig.imageSize === "2K" && bodies[1]!.generationConfig.imageConfig.imageSize === "4K");
+    check("recorded: ORIGINAL_DERIVED, 933×700, 1.332857 → 4:3 (both sizes)", recs.every((r) => r.aspect_ratio_mode === "ORIGINAL_DERIVED" && r.source_width === 933 && r.source_height === 700 && r.source_aspect_ratio === 1.332857 && r.resolved_aspect_ratio === "4:3"), recs);
+    check("the photo itself is not touched (bytes sent === bytes uploaded)", sha(Buffer.from(imagesOf({ url: "", body: bodies[0]! })[0]!.inlineData.data, "base64")) === sha(prodShape));
+
+    // EXIF: a phone photo stored sideways is judged as the customer sees it.
+    const sideways = await sharp(photo).withMetadata({ orientation: 6 }).jpeg({ quality: 95 }).toBuffer();
+    const dbS = freshDb(); dbS.files.set("w/r/side.jpg", sideways);
+    g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
+    const side = await retouch(dbS, "w/r/side.jpg", { format: "original" });
+    check("EXIF-rotated 1500×1000 (shown 1000×1500) → 2:3", sent[0]?.body.generationConfig.imageConfig.aspectRatio === "2:3" && side.pr?.source_width === 1000, side.pr);
+
+    // Scope: only a caller that asks for it derives. The generator's "auto" is unchanged.
+    const dbG = freshDb(); dbG.files.set("w/g/p.jpg", photo); sent = [];
+    const gen = await runGeneration(fakeSupabase(dbG) as unknown as FakeClient, "u", "w", {
+      modelId: PRO_ID, prompt: "x", aspectRatio: "auto", resolution: "2K", quantity: 1, referencePaths: ["w/g/p.jpg"], referenceImageIds: [],
+    });
+    const genPr = ((([...dbG.jobs.values()].pop()?.settings ?? {}) as Row).provider_request ?? {}) as Row;
+    check("generator 'auto' (no originalAspect): still no ratio sent, mode UNSET", gen.ok && sent[0]?.body.generationConfig.imageConfig.aspectRatio === undefined && genPr.aspect_ratio_mode === "UNSET", genPr);
+  }
+
+  console.log("\nTHINKING — pickGeminiFinalImage edge cases (pure, no API call)");
+  {
+    const img = (id: string, thought?: boolean) => ({ inlineData: { mimeType: "image/png", data: id }, ...(thought ? { thought: true } : {}) });
+    const txt = (t: string, thought?: boolean) => ({ text: t, ...(thought ? { thought: true } : {}) });
+    const pick = (parts: Record<string, unknown>[]) => pickGeminiFinalImage({ candidates: [{ finishReason: "STOP", content: { parts } }] });
+    const cases: [string, Record<string, unknown>[], string | null][] = [
+      ["[thought image, final image] → final", [img("T1", true), img("F")], "F"],
+      ["[thought image, thought image, final image] → final", [img("T1", true), img("T2", true), img("F")], "F"],
+      ["[text thought, image thought, final image] → final", [txt("plan", true), img("T1", true), img("F")], "F"],
+      ["[thought image only] → none (fail + refund)", [img("T1", true)], null],
+      ["[final image only] → final", [img("F")], "F"],
+      ["[text, final image] → final", [txt("Here it is"), img("F")], "F"],
+      ["[final image, trailing thought image] → the non-thought one", [img("F"), img("T9", true)], "F"],
+      ["[two non-thought images] → the LAST (the render that follows any earlier output)", [img("A"), img("F")], "F"],
+      ["[thought text only] → none", [txt("thinking", true)], null],
+      ["[image part with empty data] → none", [{ inlineData: { mimeType: "image/png", data: "" } }], null],
+    ];
+    for (const [name, parts, want] of cases) {
+      const r = pick(parts);
+      check(name, (r.image?.data ?? null) === want, r);
+    }
+    const counted = pick([txt("plan", true), img("T1", true), img("T2", true), img("F")]);
+    check("counts: 3 image parts, 2 drafts skipped, finishReason STOP", counted.imageParts === 3 && counted.thoughtImages === 2 && counted.finishReason === "STOP", counted);
+    check("no candidates → none", pickGeminiFinalImage({}).image === null && pickGeminiFinalImage({ candidates: [] }).image === null);
+  }
+
+  console.log("\nMEDIA RESOLUTION — nothing lowers the input; the field is left UNSPECIFIED (the model default)");
+  {
+    const db = freshDb(); db.files.set("w/r/src.jpg", photo);
+    g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
+    await retouch(db, "w/r/src.jpg");
+    const b = sent[0]!.body;
+    check("no mediaResolution in generationConfig", !("mediaResolution" in b.generationConfig));
+    check("the image part carries only { inlineData: { mimeType, data } } (no per-part mediaResolution)",
+      JSON.stringify(Object.keys(b.contents[0]!.parts[0]!)) === '["inlineData"]' && JSON.stringify(Object.keys((b.contents[0]!.parts[0] as { inlineData: Row }).inlineData).sort()) === '["data","mimeType"]');
+    const src = ["lib", "app", "components"].map((d) => {
+      // Assignments or enum values in code — not the admin panel's label key "mediaResolution".
+      try { return require("node:child_process").execSync(`grep -rnE "MEDIA_RESOLUTION_|mediaResolution\\s*:|media_resolution" --include=*.ts --include=*.tsx ${d} || true`, { cwd: process.cwd() }).toString(); } catch { return ""; }
+    }).join("");
+    check("no code sets mediaResolution (LOW/MEDIUM or any value) anywhere in lib/app/components", src.trim() === "", src);
+  }
   console.log("\n§9 PROVIDER PARITY HARNESS — full GrovBase Retusz path vs a minimal hand-written Google request (no paid call)");
   {
     const canon = (v: unknown): unknown => Array.isArray(v) ? v.map(canon)
       : v && typeof v === "object" ? Object.fromEntries(Object.keys(v as Row).sort().map((k) => [k, canon((v as Row)[k])])) : v;
     const eq = (a: unknown, b: unknown) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
-    const cases: { name: string; resolution: string; format: string; imageConfig: Row }[] = [
-      { name: "2K, Oryginalny", resolution: "2K", format: "original", imageConfig: { imageSize: "2K" } },
-      { name: "4K, Oryginalny", resolution: "4K", format: "original", imageConfig: { imageSize: "4K" } },
-      { name: "1K, 4:5", resolution: "1K", format: "4:5", imageConfig: { aspectRatio: "4:5", imageSize: "1K" } },
+    // The PROD photo shape (933×700, PNG) and the 3:2 test photo. For
+    // "Oryginalny" the reference is given the ratio a person would pick for
+    // that photo by hand (933×700 is 4:3; 1500×1000 is 3:2), written literally.
+    const prodShape = await sharp({ create: { width: 933, height: 700, channels: 3, background: "#a86" } }).png().toBuffer();
+    const cases: { name: string; src: Buffer; mime: string; resolution: string; format: string; imageConfig: Row }[] = [
+      { name: "933×700 2K, Oryginalny", src: prodShape, mime: "image/png", resolution: "2K", format: "original", imageConfig: { aspectRatio: "4:3", imageSize: "2K" } },
+      { name: "933×700 4K, Oryginalny", src: prodShape, mime: "image/png", resolution: "4K", format: "original", imageConfig: { aspectRatio: "4:3", imageSize: "4K" } },
+      { name: "1500×1000 2K, Oryginalny", src: photo, mime: "image/jpeg", resolution: "2K", format: "original", imageConfig: { aspectRatio: "3:2", imageSize: "2K" } },
+      { name: "1500×1000 4K, Oryginalny", src: photo, mime: "image/jpeg", resolution: "4K", format: "original", imageConfig: { aspectRatio: "3:2", imageSize: "4K" } },
+      { name: "1500×1000 1K, 4:5", src: photo, mime: "image/jpeg", resolution: "1K", format: "4:5", imageConfig: { aspectRatio: "4:5", imageSize: "1K" } },
     ];
     for (const cs of cases) {
-      const db = freshDb(); db.files.set("w/r/src.jpg", photo);
+      const db = freshDb(); db.files.set("w/r/src.jpg", cs.src);
       g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
       await retouch(db, "w/r/src.jpg", { resolution: cs.resolution, format: cs.format });
       const A = sent[0]!;
@@ -576,7 +685,7 @@ async function main() {
       const B = {
         url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image:generateContent",
         body: {
-          contents: [{ role: "user", parts: [{ inlineData: { mimeType: "image/jpeg", data: photo.toString("base64") } }, { text: EXACT }] }],
+          contents: [{ role: "user", parts: [{ inlineData: { mimeType: cs.mime, data: cs.src.toString("base64") } }, { text: EXACT }] }],
           generationConfig: { responseModalities: ["IMAGE"], imageConfig: cs.imageConfig },
         },
       };
@@ -584,8 +693,10 @@ async function main() {
       const aImg = imagesOf(A)[0]?.inlineData;
       const flags = {
         PROMPT_EQUAL: textOf(A).length === 1 && textOf(A)[0]!.text === EXACT,
-        INPUT_SHA_EQUAL: !!aImg && sha(Buffer.from(aImg.data, "base64")) === PHOTO_SHA && aImg.mimeType === "image/jpeg",
+        INPUT_SHA_EQUAL: !!aImg && sha(Buffer.from(aImg.data, "base64")) === sha(cs.src) && aImg.mimeType === cs.mime,
         MODEL_EQUAL: noKey(A.url) === B.url,
+        ASPECT_RATIO_EQUAL: A.body.generationConfig.imageConfig.aspectRatio === B.body.generationConfig.imageConfig.aspectRatio,
+        IMAGE_SIZE_EQUAL: A.body.generationConfig.imageConfig.imageSize === B.body.generationConfig.imageConfig.imageSize,
         GENERATION_CONFIG_EQUAL: eq(A.body.generationConfig, B.body.generationConfig),
         PARTS_EQUAL: eq(A.body.contents, B.body.contents),
         BODY_EQUAL: eq(A.body, B.body) && Object.keys(A.body).sort().join() === "contents,generationConfig",
@@ -629,7 +740,8 @@ async function main() {
     const h2 = await one(EXACT, { resolution: "2K" }); const h4 = await one(EXACT, { resolution: "4K" });
     const drop = (x: unknown) => { const cc = JSON.parse(JSON.stringify(x)); delete cc.generationConfig.imageConfig.imageSize; return JSON.stringify(cc); };
     check("H. 2K/4K: the only difference is imageSize", drop(h2.body) === drop(h4.body) && h2.body!.generationConfig.imageConfig.imageSize === "2K" && h4.body!.generationConfig.imageConfig.imageSize === "4K");
-    check("I. Oryginalny: aspectRatio absent", !("aspectRatio" in (a.body!.generationConfig.imageConfig)));
+    check("I. Oryginalny: aspectRatio = the photo's own shape (1500×1000 → 3:2), identical at 2K and 4K",
+      a.body!.generationConfig.imageConfig.aspectRatio === "3:2" && h2.body!.generationConfig.imageConfig.aspectRatio === "3:2" && h4.body!.generationConfig.imageConfig.aspectRatio === "3:2");
     const out = (((a.job?.settings ?? {}) as Row).provider_output as Row[] | undefined)?.[0];
     const url = (a.res as { url?: string }).url ?? "";
     check("J. output: provider SHA === SHA read back from storage (the file Pobierz serves), same path",
@@ -668,8 +780,8 @@ async function main() {
     check("prompt: published v3, exact, identical, sha matches, nothing appended, no knowledge",
       m.prompt.source === "published" && m.prompt.version === 3 && m.prompt.policy === "exact" && m.prompt.identical === true
       && m.prompt.sha256 === sha(EXACT) && m.prompt.appended.length === 0 && m.prompt.knowledge.length === 0, m.prompt);
-    check("config: IMAGE_EDIT, original → not sent, sizes 1K/2K/4K sent as chosen, 120 s, 1 attempt",
-      m.config.operation === "IMAGE_EDIT" && m.config.ratioWhenOriginal === "input_photo"
+    check("config: IMAGE_EDIT, original → derived from the photo, sizes 1K/2K/4K sent as chosen, 120 s, 1 attempt",
+      m.config.operation === "IMAGE_EDIT" && m.config.ratioWhenOriginal === "original_derived"
       && m.config.sizes.map((s) => `${s.resolution}=${s.sent}`).join() === "1K=1K,2K=2K,4K=4K"
       && m.config.timeoutMs === 120_000 && m.config.maxAttempts === 1, m.config);
     check("the manifest carries no prompt text", !JSON.stringify(m).includes("GROVBASE_EXACT"));
@@ -679,7 +791,10 @@ async function main() {
     await retouch(db, "w/r/src.jpg");
     const m2 = await buildRequestManifest(fakeSupabase(db) as unknown as FakeClient, "retouch", { modelId: PRO_ID, fallbackId: null });
     check("last run: google / gemini-3-pro-image, text = current published, photo hash kept",
-      m2.lastRun?.identifier === "gemini-3-pro-image" && m2.lastRun.matchesPublished === true && m2.lastRun.inputs[0]?.sentSha256 === PHOTO_SHA && m2.lastRun.ratioSent === null, m2.lastRun);
+      m2.lastRun?.identifier === "gemini-3-pro-image" && m2.lastRun.matchesPublished === true && m2.lastRun.inputs[0]?.sentSha256 === PHOTO_SHA && m2.lastRun.ratioSent === "3:2", m2.lastRun);
+    check("last run: aspect mode ORIGINAL_DERIVED, 1.5 → 3:2; input 1.5 MP, not flagged low",
+      m2.lastRun?.aspectMode === "ORIGINAL_DERIVED" && m2.lastRun.sourceAspect === 1.5 && m2.lastRun.resolvedAspect === "3:2"
+      && m2.lastRun.inputs[0]?.megapixels === 1.5 && m2.lastRun.inputs[0]?.lowResolution === false, m2.lastRun);
   }
 
   g.__fidelityEngine = null;

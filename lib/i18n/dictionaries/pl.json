@@ -4779,7 +4779,7 @@
     "test.manifest.config": "Zapytanie",
     "test.manifest.operation": "Operacja",
     "test.manifest.ratio": "Proporcje przy „Oryginał”",
-    "test.manifest.ratio.input_photo": "nie wysyłane — wynik zachowuje kształt zdjęcia",
+    "test.manifest.ratio.input_photo": "nie wysyłane — kształt wybiera model",
     "test.manifest.ratio.nearest_supported": "najbliższe z listy modelu",
     "test.manifest.ratio.provider_choice": "wysyłane „auto” — proporcje wybiera dostawca",
     "test.manifest.ratios": "Proporcje do wyboru (wysyłane dokładnie)",
@@ -5294,7 +5294,17 @@
     "test.manifest.outputSha": "SHA-256 dostawca → do pobrania",
     "test.manifest.outputEqual": "Dostawca = plik do pobrania",
     "test.manifest.drafts": "Odpowiedź dostawcy",
-    "test.manifest.draftsValue": "{parts} obraz(y), pominięte szkice: {skipped}, finishReason: {reason}"
+    "test.manifest.draftsValue": "{parts} obraz(y), pominięte szkice: {skipped}, finishReason: {reason}",
+    "test.manifest.ratio.original_derived": "najbliższe oficjalne proporcje zdjęcia, wysyłane jawnie (np. 933×700 → 4:3)",
+    "test.manifest.aspectMode": "Sposób wyboru proporcji",
+    "test.manifest.aspectMode.USER_SELECTED": "wybór klienta",
+    "test.manifest.aspectMode.ORIGINAL_DERIVED": "Oryginalny → z proporcji zdjęcia",
+    "test.manifest.aspectMode.UNSET": "nie wysłane (domyślne dostawcy)",
+    "test.manifest.aspectSource": "Proporcje zdjęcia → wysłane",
+    "test.manifest.aspectSourceValue": "{r} → {to}",
+    "test.manifest.inputQuality": "Jakość źródła",
+    "test.manifest.megapixels": "{mp} MP",
+    "test.manifest.lowSource": "NISKA ROZDZIELCZOŚĆ ŹRÓDŁA (informacyjnie)"
   },
   "batch": {
     "viewLabel": "Widok",

@@ -4779,7 +4779,7 @@
     "test.manifest.config": "Anfrage",
     "test.manifest.operation": "Operation",
     "test.manifest.ratio": "Seitenverhältnis bei „Original“",
-    "test.manifest.ratio.input_photo": "nicht gesendet — das Ergebnis behält die Form des Fotos",
+    "test.manifest.ratio.input_photo": "nicht gesendet — das Modell wählt die Form",
     "test.manifest.ratio.nearest_supported": "das nächstliegende aus der Liste des Modells",
     "test.manifest.ratio.provider_choice": "„auto“ wird gesendet — der Anbieter wählt das Format",
     "test.manifest.ratios": "Wählbare Verhältnisse (genau gesendet)",
@@ -5294,7 +5294,17 @@
     "test.manifest.outputSha": "SHA-256 Anbieter → Download",
     "test.manifest.outputEqual": "Anbieter = Download-Datei",
     "test.manifest.drafts": "Anbieterantwort",
-    "test.manifest.draftsValue": "{parts} Bild(er), übersprungene Entwürfe: {skipped}, finishReason: {reason}"
+    "test.manifest.draftsValue": "{parts} Bild(er), übersprungene Entwürfe: {skipped}, finishReason: {reason}",
+    "test.manifest.ratio.original_derived": "das nächstliegende offizielle Seitenverhältnis des Fotos, ausdrücklich gesendet (z. B. 933×700 → 4:3)",
+    "test.manifest.aspectMode": "Wahl des Seitenverhältnisses",
+    "test.manifest.aspectMode.USER_SELECTED": "Wahl des Kunden",
+    "test.manifest.aspectMode.ORIGINAL_DERIVED": "Original → aus den Proportionen des Fotos",
+    "test.manifest.aspectMode.UNSET": "nicht gesendet (Anbieter-Standard)",
+    "test.manifest.aspectSource": "Fotoproportionen → gesendet",
+    "test.manifest.aspectSourceValue": "{r} → {to}",
+    "test.manifest.inputQuality": "Quellqualität",
+    "test.manifest.megapixels": "{mp} MP",
+    "test.manifest.lowSource": "NIEDRIGE QUELLAUFLÖSUNG (nur Hinweis)"
   },
   "batch": {
     "viewLabel": "Ansicht",

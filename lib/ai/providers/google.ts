@@ -1,7 +1,7 @@
 import "server-only";
 import type { AiModelRecord, GenerationRequest, GenerationResult, ImageProviderAdapter, ProviderCredential } from "../types";
 import { ProviderError, sanitizeUpstreamMessage, timeoutFor } from "../types";
-import { buildGeminiImageRequest, pickGeminiFinalImage, type GeminiResponse } from "./google-request";
+import { GEMINI_IMAGE_ASPECT_RATIOS, buildGeminiImageRequest, pickGeminiFinalImage, type GeminiResponse } from "./google-request";
 
 /**
  * Google's 429 body decides everything: a per-minute quota violation is a
@@ -83,6 +83,8 @@ export const googleAdapter: ImageProviderAdapter = {
     exactRatios: ["1:1", "3:4", "4:5", "16:9", "9:16"],
     // An edit with no ratio sent keeps the input photo's own shape.
     inputShapedOutput: true,
+    // What "Oryginalny" may resolve to (the photo's nearest official shape).
+    officialRatios: [...GEMINI_IMAGE_ASPECT_RATIOS],
   },
 
   /**

@@ -56,6 +56,10 @@ export function promptLength(text: string): number {
   return Array.from(text).length;
 }
 
+/** Below this the source is flagged LOW SOURCE RESOLUTION in the admin
+ *  diagnostics — a note for reading results, never a block or a change. */
+export const LOW_SOURCE_MEGAPIXELS = 1;
+
 /* ── the admin dry-run manifest (built in lib/server/engine/request-manifest.ts) ──*/
 
 export type ManifestSource = "published" | "unavailable" | "none";
@@ -94,7 +98,7 @@ export type RequestManifest = {
     /** "input_photo": nothing sent, the output keeps the photo's shape (Gemini);
      *  "provider_choice": "auto" sent, the provider picks (non-Gemini models);
      *  "nearest_supported": the photo's shape snapped to a listed ratio. */
-    ratioWhenOriginal: "input_photo" | "provider_choice" | "nearest_supported";
+    ratioWhenOriginal: "input_photo" | "provider_choice" | "nearest_supported" | "original_derived";
     ratios: string[];
     /** Each size the customer can pick → what imageSize carries (null = not sent). */
     sizes: { resolution: string; sent: string | null }[];
@@ -124,7 +128,15 @@ export type LastRun = {
   maxAttempts: number | null;
   /** Attempts that failed before the result (retries actually made). */
   failedAttempts: number;
-  inputs: { mime: string; bytes: number; width: number | null; height: number | null; sourceSha256: string; sentSha256: string; transform: string }[];
+  inputs: {
+    mime: string; bytes: number; width: number | null; height: number | null; sourceSha256: string; sentSha256: string; transform: string;
+    /** Informational only — a small source is never blocked or changed. */
+    megapixels: number | null; lowResolution: boolean;
+  }[];
+  /** How the sent ratio was decided (USER_SELECTED / ORIGINAL_DERIVED / UNSET) and from what. */
+  aspectMode: string | null;
+  sourceAspect: number | null;
+  resolvedAspect: string | null;
   /** What the provider returned vs what was stored (generation_jobs.settings.provider_output). */
   outputs: {
     requestedSize: string | null; providerWidth: number | null; providerHeight: number | null;

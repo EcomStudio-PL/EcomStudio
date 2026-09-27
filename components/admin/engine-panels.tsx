@@ -149,6 +149,8 @@ function ManifestView({ m }: { m: RequestManifest }) {
         [k("digest"), short(last.digest)],
         [k("matches"), yesNo(last.matchesPublished)],
         [k("ratioSent"), `${last.ratioRequested ?? "—"} → ${last.ratioSent ?? k("notSent")}`],
+        [k("aspectMode"), last.aspectMode ? k(`aspectMode.${last.aspectMode}`) : "—"],
+        [k("aspectSource"), last.sourceAspect === null ? "—" : k("aspectSourceValue", { r: last.sourceAspect, to: last.resolvedAspect ?? k("notSent") })],
         [k("sizeSent"), last.sizeSent ?? k("notSent")],
         [k("retries"), String(last.failedAttempts)],
         ...last.inputs.flatMap((i, n): [string, string][] => [
@@ -158,6 +160,8 @@ function ManifestView({ m }: { m: RequestManifest }) {
           })],
           [k("inputSha"), `${short(i.sourceSha256)} → ${i.sentSha256 === i.sourceSha256 ? "=" : short(i.sentSha256)}`],
           [k("inputEqual"), yesNo(i.sentSha256 === i.sourceSha256)],
+          [k("inputQuality"), i.megapixels === null ? "—"
+            : `${k("megapixels", { mp: i.megapixels })}${i.lowResolution ? ` · ${k("lowSource")}` : ""}`],
         ]),
         ...last.outputs.flatMap((o, n): [string, string][] => [
           [k("output", { n: n + 1 }), k("outputValue", {

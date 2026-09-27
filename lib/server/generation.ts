@@ -13,6 +13,7 @@ import {
   type AspectRatio, type GeneratedImage, type ImageProviderAdapter, type Quality, type Resolution,
 } from "@/lib/ai/types";
 import { describeProviderRequest, effectiveCallTimeout, promptLength } from "@/lib/ai/request-manifest";
+import { resolveOriginalAspectRatio, sourceAspect } from "@/lib/ai/aspect-ratio";
 import { prepareReferenceImage, referenceFingerprint, type PreparedReference } from "@/lib/server/reference-image";
 import { promptDigest } from "@/lib/server/prompt-digest";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
@@ -35,6 +36,14 @@ export type GenerateInput = {
   prompt: string;
   negative?: string;
   aspectRatio: AspectRatio;
+  /**
+   * "derive" (Retusz's "Oryginalny"): with aspectRatio "auto" and a source
+   * photo, the request names the provider's official ratio NEAREST the
+   * photo's own proportions (resolveOriginalAspectRatio) instead of leaving
+   * the output shape to the model. The photo is not touched. Absent = "auto"
+   * keeps its old meaning (no ratio sent to an engine that follows the input).
+   */
+  originalAspect?: "derive";
   resolution?: Resolution;
   /** Render quality ("Jakość"), honoured only when the model declares it in
    *  metadata.qualities — anything else is dropped, never guessed. */
@@ -632,8 +641,16 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     // Each candidate gets its own fit AND its own contract, so the prompt can
     // never describe an attachment this model did not receive.
     const cFit = supportsRefs ? fitRefs(cModel.max_reference_images || 6) : fitRefs(0);
+    // "Oryginalny" stated explicitly: the official ratio nearest the source
+    // photo (the first product reference — for Retusz, the photo itself, as
+    // the model will see it: EXIF rotation already applied). Unknown size or
+    // an engine without an official list → nothing derived, nothing sent.
+    const cSource = cFit.list[0] ?? null;
+    const cDerived = input.originalAspect === "derive" && aspectRatio === "auto" && cSource
+      ? resolveOriginalAspectRatio(cSource.width, cSource.height, cAdapter.capabilities.officialRatios ?? [])
+      : null;
     const cRequest = {
-      prompt: finalPrompt, aspectRatio, resolution: cResolution,
+      prompt: finalPrompt, aspectRatio: cDerived ?? aspectRatio, resolution: cResolution,
       // A fallback engine only receives the quality if IT declares it.
       quality: quality && modelQualities(cModel).includes(quality) ? quality : undefined,
       quantity, referenceImages: cFit.list, productLock: { fidelityInstructions: "" },
@@ -654,6 +671,12 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       // Keyed, not a bare hash: this row is readable by the customer.
       prompt_digest: promptDigest(finalPrompt),
       aspect_ratio_requested: input.aspectRatio, aspect_ratio_sent: cShape.aspectRatio,
+      // How the sent ratio was decided: the customer's pick, the source
+      // photo's own shape (Oryginalny), or not at all (the provider's default).
+      aspect_ratio_mode: input.aspectRatio !== "auto" ? "USER_SELECTED" : cDerived ? "ORIGINAL_DERIVED" : "UNSET",
+      source_width: cSource?.width ?? null, source_height: cSource?.height ?? null,
+      source_aspect_ratio: sourceAspect(cSource?.width, cSource?.height),
+      resolved_aspect_ratio: cShape.aspectRatio,
       resolution: cResolution ?? null, image_size_sent: cShape.imageSize,
       inputs: cFit.list.map(referenceFingerprint),
       // The tool's own per-request limit, or null = the adapter's ceiling below.

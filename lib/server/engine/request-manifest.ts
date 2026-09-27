@@ -5,7 +5,7 @@ import { resolveEngine } from "@/lib/server/ai-engine";
 import { TOOL_VARIABLES, parsePlaceholders, sampleValues } from "@/lib/ai/prompt-variables";
 import { compileForTool } from "@/lib/server/engine/runtime";
 import {
-  describeProviderRequest, effectiveCallTimeout, promptLength, type LastRun, type RequestManifest,
+  LOW_SOURCE_MEGAPIXELS, describeProviderRequest, effectiveCallTimeout, promptLength, type LastRun, type RequestManifest,
 } from "@/lib/ai/request-manifest";
 import type { Resolution } from "@/lib/ai/types";
 import { GENERATION_BUDGET_MS, MAX_ATTEMPTS_PER_PROVIDER } from "@/lib/server/provider-router";
@@ -36,10 +36,11 @@ type ModelRow = {
   ai_providers: { slug: string } | { slug: string }[] | null;
 };
 
-function operationOf(toolKey: string): { op: string; hint: boolean; snaps: boolean } | null {
-  if (toolKey === "retouch") return { op: RETOUCH_OPERATION, hint: false, snaps: false };
+function operationOf(toolKey: string): { op: string; hint: boolean; snaps: boolean; derives: boolean } | null {
+  // Retusz states "Oryginalny" as the official ratio nearest the photo.
+  if (toolKey === "retouch") return { op: RETOUCH_OPERATION, hint: false, snaps: false, derives: true };
   const f = FASHION_TOOLS.find((x) => x.toolKey === toolKey);
-  return f ? { op: f.operation, hint: f.showHint, snaps: true } : null;
+  return f ? { op: f.operation, hint: f.showHint, snaps: true, derives: false } : null;
 }
 
 export async function buildRequestManifest(
@@ -98,7 +99,7 @@ export async function buildRequestManifest(
   const resolutions = primary?.supported_resolutions?.length ? primary.supported_resolutions : ["1K"];
   const config: RequestManifest["config"] = {
     operation: probe(undefined)?.operation ?? "IMAGE_EDIT",
-    ratioWhenOriginal: meta?.snaps ? "nearest_supported" : primary && slugOf(primary) === "google" ? "input_photo" : "provider_choice",
+    ratioWhenOriginal: meta?.derives ? "original_derived" : meta?.snaps ? "nearest_supported" : primary && slugOf(primary) === "google" ? "input_photo" : "provider_choice",
     ratios: primary?.supported_aspect_ratios ?? [],
     sizes: resolutions.map((r) => ({ resolution: r, sent: probe(r as Resolution)?.imageSize ?? null })),
     timeoutMs: effectiveCallTimeout(engine?.timeoutMs) ?? null,
@@ -140,6 +141,7 @@ async function lastRunOf(supabase: Client, operation: string, publishedDigest: s
     matchesPublished: recorded && publishedDigest ? recorded === publishedDigest : null,
     ratioRequested: str(r.aspect_ratio_requested), ratioSent: str(r.aspect_ratio_sent),
     sizeSent: str(r.image_size_sent), timeoutMs: n(r.call_timeout_ms), maxAttempts: n(r.max_attempts),
+    aspectMode: str(r.aspect_ratio_mode), sourceAspect: n(r.source_aspect_ratio), resolvedAspect: str(r.resolved_aspect_ratio),
     failedAttempts: Array.isArray(settings.attempts) ? settings.attempts.length : 0,
     outputs: (Array.isArray(settings.provider_output) ? settings.provider_output : []).map((o) => {
       const x = (o ?? {}) as Record<string, unknown>;
@@ -153,9 +155,12 @@ async function lastRunOf(supabase: Client, operation: string, publishedDigest: s
     }),
     inputs: inputs.map((i) => {
       const x = (i ?? {}) as Record<string, unknown>;
+      const w = n(x.width), h = n(x.height);
+      const megapixels = w && h ? Math.round((w * h) / 10_000) / 100 : null;
       return {
-        mime: str(x.mime) ?? "?", bytes: n(x.bytes) ?? 0, width: n(x.width), height: n(x.height),
+        mime: str(x.mime) ?? "?", bytes: n(x.bytes) ?? 0, width: w, height: h,
         sourceSha256: str(x.source_sha256) ?? "", sentSha256: str(x.sent_sha256) ?? "", transform: str(x.transform) ?? "?",
+        megapixels, lowResolution: megapixels !== null && megapixels < LOW_SOURCE_MEGAPIXELS,
       };
     }),
   };

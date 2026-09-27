@@ -1,4 +1,4 @@
-import type { AiModelRecord, GenerationRequest } from "../types";
+import type { AiModelRecord, AspectRatio, GenerationRequest } from "../types";
 
 /**
  * THE GEMINI IMAGE REQUEST — built in ONE place.
@@ -22,6 +22,17 @@ import type { AiModelRecord, GenerationRequest } from "../types";
  * No systemInstruction, no thinking override, no sampling knobs: the model's
  * own defaults apply.
  */
+
+/**
+ * The output shapes Gemini's image models officially accept in
+ * imageConfig.aspectRatio (Gemini 3 Pro Image, 2.5 Flash Image; 3.1 Flash
+ * Image adds extreme panoramas this platform does not offer). Listed from
+ * square outwards so an exact tie in resolveOriginalAspectRatio keeps the
+ * less extreme shape.
+ */
+export const GEMINI_IMAGE_ASPECT_RATIOS: readonly AspectRatio[] = [
+  "1:1", "5:4", "4:5", "4:3", "3:4", "3:2", "2:3", "16:9", "9:16", "21:9",
+];
 
 export type GeminiPart =
   | { text: string }
