@@ -31,6 +31,7 @@ import { buildFidelityInstructions } from "@/lib/ai/product-lock";
 import { compileTemplate, TOOL_VARIABLES } from "@/lib/ai/prompt-variables";
 import { prepareReferenceImage } from "@/lib/server/reference-image";
 import { buildRequestManifest } from "@/lib/server/engine/request-manifest";
+import { getAdapter } from "@/lib/ai/registry";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -41,6 +42,10 @@ function check(name: string, ok: boolean, detail?: unknown) {
   else { failed++; console.log(`  ✗ ${name}`); if (detail !== undefined) console.log("      ", typeof detail === "string" ? detail : JSON.stringify(detail).slice(0, 600)); }
 }
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
+/** The credit ledger stub (start / complete / fail), reset per case. */
+const ledgerBox = globalThis as unknown as { __fidelityLedger?: string[] };
+const resetLedger = () => { ledgerBox.__fidelityLedger = []; };
+const ledger = () => JSON.stringify(ledgerBox.__fidelityLedger ?? []);
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
 /* ── the in-memory database ───────────────────────────────────────────────*/
@@ -341,7 +346,7 @@ async function main() {
       && auto.pr?.source_width === 1500 && auto.pr?.source_height === 1000 && auto.pr?.source_aspect_ratio === 1.5 && auto.pr?.resolved_aspect_ratio === "3:2", auto.pr);
     const expl = await retouch(db, "w/r/src.jpg", { format: "4:5" });
     check("chosen 4:5 → imageConfig.aspectRatio '4:5'", sent[0]?.body.generationConfig.imageConfig.aspectRatio === "4:5");
-    check("recorded: requested 4:5 → sent 4:5, mode USER_SELECTED", expl.pr?.aspect_ratio_requested === "4:5" && expl.pr?.aspect_ratio_sent === "4:5" && expl.pr?.aspect_ratio_mode === "USER_SELECTED");
+    check("recorded: requested 4:5 → sent 4:5, mode USER_SELECTED, resolved 4:5", expl.pr?.aspect_ratio_requested === "4:5" && expl.pr?.aspect_ratio_sent === "4:5" && expl.pr?.aspect_ratio_mode === "USER_SELECTED" && expl.pr?.resolved_aspect_ratio === "4:5", expl.pr);
     const odd = await retouch(db, "w/r/src.jpg", { format: "7:3" });
     check("a ratio the model does not list falls back to 'Oryginalny' (the photo's 3:2), not to a guess", sent[0]?.body.generationConfig.imageConfig.aspectRatio === "3:2" && odd.res.ok && odd.pr?.aspect_ratio_mode === "ORIGINAL_DERIVED");
   }
@@ -362,7 +367,9 @@ async function main() {
     const db = freshDb(); db.files.set("w/r/src.jpg", photo);
     g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3, maxAttempts: 1, fallbackEnabled: false, fallbackModelId: NB2_ID });
     script = [503];
+    resetLedger();
     const one = await retouch(db, "w/r/src.jpg");
+    check("…a failed run is reserved then released: ledger start → fail, never complete", ledger() === '["start","fail"]', ledger());
     check("fallback OFF + 1 attempt: a 503 is NOT retried and NO other model is called", !one.res.ok && sent.length === 1 && sent.every((s) => s.url.includes("/gemini-3-pro-image:")), sent.map((s) => s.url.replace(/\?.*/, "")));
     check("…the failure records fallback_used false, max_attempts 1", one.pr?.fallback_used === false && one.pr?.max_attempts === 1, one.pr);
     script = [503, 200];
@@ -371,8 +378,9 @@ async function main() {
     check("2 attempts: a 503 is retried once, on the SAME model, same body", two.res.ok && sent.length === 2 && sent[0]!.url === sent[1]!.url && JSON.stringify(sent[0]!.body) === JSON.stringify(sent[1]!.body));
     script = [400];
     g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3, maxAttempts: 3 });
+    resetLedger();
     const bad = await retouch(db, "w/r/src.jpg");
-    check("a 400 (bad request) is never retried", !bad.res.ok && sent.length === 1);
+    check("a 400 (bad request) is never retried — and not charged (start → fail)", !bad.res.ok && sent.length === 1 && ledger() === '["start","fail"]', ledger());
     script = [];
     g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3, maxAttempts: 3 });
     const ok = await retouch(db, "w/r/src.jpg");
@@ -387,6 +395,9 @@ async function main() {
     check("fallback ON: primary gets its 1 attempt, then the fallback (with its own retries) serves",
       fb.res.ok && sent.length === 3 && /gemini-3-pro-image:/.test(sent[0]!.url) && /gemini-3\.1-flash-image:/.test(sent[2]!.url)
       && fb.pr?.fallback_used === true && fb.pr?.model_identifier === "gemini-3.1-flash-image", sent.map((s) => s.url.replace(/\?.*/, "")));
+    check("…and the FALLBACK is sent the same derived 'Oryginalny' ratio (3:2), never left to the model",
+      sent.every((x) => x.body.generationConfig.imageConfig.aspectRatio === "3:2")
+      && fb.pr?.aspect_ratio_mode === "ORIGINAL_DERIVED" && fb.pr?.resolved_aspect_ratio === "3:2", sent.map((x) => x.body.generationConfig.imageConfig));
     script = [];
     check("the Google adapter uses the tool's timeout, not a fixed 90 s", /timeoutFor\(req\.callTimeoutMs \?\? GOOGLE_CALL_CAP_MS/.test(read("lib/ai/providers/google.ts")) && !/90_000/.test(read("lib/ai/providers/google.ts")));
   }
@@ -548,9 +559,11 @@ async function main() {
     check("the stored image is the FINAL one (not the first draft)", res.ok && out?.provider_sha256 === sha(Buffer.from(fin, "base64")) && out?.provider_sha256 !== sha(Buffer.from(d1, "base64")), out);
     check("recorded: 3 image parts, 2 drafts skipped, finishReason STOP", out?.provider_image_parts === 3 && out?.provider_thought_images_skipped === 2 && out?.provider_finish_reason === "STOP", out);
     responseParts = [{ inlineData: { mimeType: "image/png", data: d1 }, thought: true }];
+    resetLedger();
     const onlyDraft = await retouch(db, "w/r/src.jpg");
-    check("a response with ONLY drafts is empty → refused and refunded, a draft is never delivered",
+    check("a response with ONLY drafts is empty → refused, a draft is never delivered",
       !onlyDraft.res.ok && (onlyDraft.res as { error?: string }).error === "provider_empty_result" && sent.length === 1, onlyDraft.res);
+    check("…and NOT charged: the reservation is released (ledger start → fail, no complete)", ledger() === '["start","fail"]', ledger());
     responseParts = [{ inlineData: { mimeType: "image/png", data: d1 } }, { inlineData: { mimeType: "image/png", data: fin } }];
     const two = await retouch(db, "w/r/src.jpg");
     const out2 = (((two.job?.settings ?? {}) as Row).provider_output as Row[] | undefined)?.[0];
@@ -568,6 +581,8 @@ async function main() {
       // non-standard shapes, incl. the PROD sources
       [853, 700, "5:4"], [1280, 1024, "5:4"], [1280, 871, "3:2"], [576, 1280, "9:16"], [315, 699, "9:16"], [1080, 1350, "4:5"],
       [2560, 1080, "21:9"], [3000, 1000, "21:9"], [1000, 3000, "9:16"], [4000, 3000, "4:3"], [3024, 4032, "3:4"], [1000, 1001, "1:1"], [1, 1, "1:1"],
+      // boundary rows only the documented LOG distance gets right (a linear |r − w/h| picks the other side)
+      [1120, 1000, "5:4"], [2040, 1000, "21:9"], [1636, 1000, "16:9"], [1000, 1112, "1:1"],
     ];
     const bad = table.filter(([w, h, want]) => resolveOriginalAspectRatio(w, h, R) !== want).map(([w, h, want]) => `${w}×${h}: got ${resolveOriginalAspectRatio(w, h, R)}, want ${want}`);
     check(`table (${table.length} shapes incl. 933×700 → 4:3) maps to the nearest official ratio`, bad.length === 0, bad);
@@ -585,6 +600,35 @@ async function main() {
     check("deterministic: 500 shapes give the same answer whatever the list order (no hidden tie reliance)", orderFree);
     check("unknown / invalid size → null (nothing derived, nothing sent)", [[0, 700], [933, 0], [NaN, 5], [-3, 4]].every(([w, h]) => resolveOriginalAspectRatio(w, h, R) === null));
     check("an engine without an official list derives nothing", resolveOriginalAspectRatio(933, 700, []) === null);
+    // Mirror: a portrait photo gets the portrait twin of its landscape answer (21:9 has no 9:21 on the list).
+    let mirrorOk = true;
+    for (let i = 0; i < 400; i++) {
+      const w = 300 + ((i * 7919) % 3000), h = 300 + ((i * 104729) % 3000);
+      const a = resolveOriginalAspectRatio(w, h, R)!, b = resolveOriginalAspectRatio(h, w, R)!;
+      if (a === "21:9" || b === "21:9") continue;
+      const [x, y] = a.split(":");
+      if (b !== `${y}:${x}`) { mirrorOk = false; break; }
+    }
+    check("mirror property: resolve(h, w) is the portrait twin of resolve(w, h) (log metric symmetry)", mirrorOk);
+
+    // Nothing derivable → nothing sent, and the record says so (UNSET), end to end.
+    const garbage = Buffer.from("not an image at all — sharp cannot read me");
+    const dbU = freshDb(); dbU.files.set("w/r/broken.jpg", garbage);
+    g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
+    const unk = await retouch(dbU, "w/r/broken.jpg", { format: "original" });
+    check("unreadable source (no width/height) → no aspectRatio sent, mode UNSET, resolved null",
+      sent[0]?.body.generationConfig.imageConfig.aspectRatio === undefined && unk.pr?.aspect_ratio_mode === "UNSET" && unk.pr?.resolved_aspect_ratio === null && unk.pr?.source_width === null, unk.pr);
+    // The list comes from the ADAPTER: an engine that declares none derives nothing.
+    const google = getAdapter("google")!;
+    const savedOfficial = google.capabilities.officialRatios;
+    delete google.capabilities.officialRatios;
+    try {
+      const dbN = freshDb(); dbN.files.set("w/r/src.jpg", photo);
+      const noList = await retouch(dbN, "w/r/src.jpg", { format: "original" });
+      check("an adapter without officialRatios → nothing derived (no ratio, mode UNSET)", sent[0]?.body.generationConfig.imageConfig.aspectRatio === undefined && noList.pr?.aspect_ratio_mode === "UNSET", noList.pr);
+    } finally {
+      google.capabilities.officialRatios = savedOfficial;
+    }
 
     // The PROD case end-to-end: 933×700 PNG, Oryginalny, 2K and 4K.
     const prodShape = await sharp({ create: { width: 933, height: 700, channels: 3, background: "#a86" } }).png().toBuffer();
@@ -795,6 +839,19 @@ async function main() {
     check("last run: aspect mode ORIGINAL_DERIVED, 1.5 → 3:2; input 1.5 MP, not flagged low",
       m2.lastRun?.aspectMode === "ORIGINAL_DERIVED" && m2.lastRun.sourceAspect === 1.5 && m2.lastRun.resolvedAspect === "3:2"
       && m2.lastRun.inputs[0]?.megapixels === 1.5 && m2.lastRun.inputs[0]?.lowResolution === false, m2.lastRun);
+    // The case the flag exists for: the 933×700 PROD source (0.65 MP) — informational only.
+    const small = await sharp({ create: { width: 933, height: 700, channels: 3, background: "#a86" } }).png().toBuffer();
+    db.files.set("w/r/small.png", small);
+    const smallRun = await retouch(db, "w/r/small.png");
+    const m3 = await buildRequestManifest(fakeSupabase(db) as unknown as FakeClient, "retouch", { modelId: PRO_ID, fallbackId: null });
+    check("933×700 source: 0.65 MP, flagged LOW SOURCE RESOLUTION — and still sent untouched (run succeeded, same bytes)",
+      m3.lastRun?.inputs[0]?.megapixels === 0.65 && m3.lastRun.inputs[0]?.lowResolution === true && smallRun.res.ok
+      && m3.lastRun.inputs[0]?.sentSha256 === sha(small) && m3.lastRun.inputs[0]?.transform === "none", m3.lastRun?.inputs);
+    const square = await sharp({ create: { width: 1000, height: 1000, channels: 3, background: "#123" } }).png().toBuffer();
+    db.files.set("w/r/square.png", square);
+    await retouch(db, "w/r/square.png");
+    const m4 = await buildRequestManifest(fakeSupabase(db) as unknown as FakeClient, "retouch", { modelId: PRO_ID, fallbackId: null });
+    check("boundary: 1000×1000 = 1.00 MP is not flagged", m4.lastRun?.inputs[0]?.megapixels === 1 && m4.lastRun.inputs[0]?.lowResolution === false, m4.lastRun?.inputs);
   }
 
   g.__fidelityEngine = null;
