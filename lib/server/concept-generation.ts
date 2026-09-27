@@ -158,21 +158,6 @@ export function originCost(
   return base + Math.max(0, surcharge);
 }
 
-/**
- * Regeneration keeps the concept and varies only what a photographer would
- * vary between two takes of the same shot. The variation index rotates so
- * consecutive retries do not all ask for the same change.
- */
-const VARIATIONS = [
-  "Przesuń kamerę o kilka stopni i delikatnie zmień kadr; zachowaj tę samą scenę, otoczenie i nastrój.",
-  "Delikatnie przestaw drugoplanowe elementy sceny i minimalnie zmień pozycję produktu w kadrze; ta sama scena.",
-  "Subtelnie zmień kierunek światła (ten sam charakter światła), a osobie w kadrze nadaj nieco inną naturalną pozę; ta sama scena.",
-  "Wybierz odrobinę inny kadr — nieco bliżej lub szerzej — zachowując tę samą scenę i zamysł kompozycji.",
-];
-
-export function variationInstruction(generationCount: number): string {
-  return `Kolejne podejście:\nTo jest kolejne podejście do tego samego zatwierdzonego ujęcia. ${VARIATIONS[Math.max(0, generationCount - 1) % VARIATIONS.length]} Nie zmieniaj koncepcji sceny, typu otoczenia ani produktu.`;
-}
 
 export async function generateFromConcept(
   supabase: Client, userId: string, workspaceId: string, conceptId: string,
@@ -255,9 +240,8 @@ export async function generateFromConcept(
     .filter((p): p is string => typeof p === "string" && p.length > 0);
   if (referencePaths.length === 0) return { ok: false, error: "references_required" };
 
-  // The customer's regeneration note travels as an appendix to the hidden
-  // prompt — their words never replace the engine's, and the product-lock
-  // contract is restated right next to them.
+  // The customer's regeneration note is their own words, added after the
+  // concept's prompt — no GrovBase wording around it, nothing restated.
   const instruction = String(opts?.instruction ?? "")
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f]+/g, " ")
@@ -265,13 +249,10 @@ export async function generateFromConcept(
     .trim()
     .slice(0, 500);
 
+  // A retake sends the same concept prompt again (the model varies on its
+  // own); GrovBase adds no text of its own to it.
   const isRetake = (concept.generation_count ?? 0) > 0;
-  const parts = [basePrompt];
-  if (isRetake && !instruction) parts.push(variationInstruction(concept.generation_count ?? 1));
-  if (instruction) {
-    parts.push(`Poprawki klienta do tego samego ujęcia (zastosuj je, ale nie zmieniaj samego produktu ani jego cech): ${instruction}`);
-  }
-  const prompt = parts.join("\n\n");
+  const prompt = instruction ? `${basePrompt}\n\n${instruction}` : basePrompt;
 
   // The size the seller picked in the toolbar, if this engine renders it.
   const resolution = (session.resolution && (model.supported_resolutions ?? []).includes(session.resolution)

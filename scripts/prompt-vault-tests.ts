@@ -307,7 +307,7 @@ async function main() {
 
   console.log("\n1. SAVE DRAFT → refresh → the text is still there");
   let db = makeDb(); let supa = install(db); resetPromptKeyCache();
-  const T1 = "TEST GROVBASE {{product_description}}";
+  const T1 = "TEST GROVBASE {{product_description}} {{user_prompt}}";
   const saved = await savePromptAction({ toolKey: "generator", body: T1, summary: null, reason: null, publish: false });
   check("T1 save draft succeeds with no env key", saved.ok === true && saved.version === 1, saved);
   check("T1 the Vault key was created once, by the server", db.keyCreations === 1 && db.vault.has(VAULT_NAME));
@@ -352,7 +352,7 @@ async function main() {
   db.user = ADMIN;
   const prev = await compilePreviewAction({ toolKey: "generator", body: T1 });
   check("T5 compile preview fills {{product_description}} with its sample", prev.ok && prev.text?.includes(String(sampleValues(TOOL_VARIABLES.generator).product_description ?? "")) === true, prev);
-  const comp = compileForTool(T1, TOOL_VARIABLES.generator, { product_description: "Czerwony kubek ceramiczny" });
+  const comp = compileForTool(T1, TOOL_VARIABLES.generator, { product_description: "Czerwony kubek ceramiczny", user_prompt: "na stole" });
   check("T5 runtime compile renders the customer value as data", comp.ok && comp.text.startsWith("TEST GROVBASE") && comp.text.includes("Czerwony kubek ceramiczny"), comp);
   db.user = CUSTOMER;
   const hybrid = await prepareGeneratorEngine(supa, CUSTOMER, "ws-1", {
@@ -482,7 +482,7 @@ async function main() {
   await savePromptAction({ toolKey: "fashion_flat_lay", body: `${MARKER} Połóż produkt płasko. {{tool_name}} {{hint?}}`, summary: "12", reason: "T12", publish: true });
   db.user = CUSTOMER; resetPromptKeyCache();
   const { value: toolRun, logs } = await captureLogs(() => runEngineImageTool(supa, CUSTOMER, "ws-1", {
-    toolKey: "fashion_flat_lay", builtInPrompt: null, hint: "Ułóż rękawy", referencePaths: ["ws-1/a.jpg"],
+    toolKey: "fashion_flat_lay", hint: "Ułóż rękawy", referencePaths: ["ws-1/a.jpg"],
     generation: genInput, expectedCost: 7,
   }));
   const sent = generationCalls[0]?.prompt ?? "";

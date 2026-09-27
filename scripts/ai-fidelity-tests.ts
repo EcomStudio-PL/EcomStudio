@@ -394,27 +394,32 @@ async function main() {
     check("the job is filed under the Retusz operation", ((job?.settings ?? {}) as Row).operation === RETOUCH_OPERATION);
   }
 
-  console.log("\nBuilt-in instruction (nothing published) — also sent exactly, without the generic lock");
+  console.log("\nTEST F — nothing published: PROMPT_NOT_CONFIGURED, 0 provider calls, 0 credits (no built-in prompt exists)");
   {
     const db = freshDb(); db.files.set("w/r/src.jpg", photo);
+    const ledger = (globalThis as unknown as { __fidelityLedger?: string[] });
+    ledger.__fidelityLedger = [];
     g.__fidelityEngine = engine({ systemPrompt: null, promptVersion: null });
-    const { pr } = await retouch(db, "w/r/src.jpg");
-    const text = sent[0] ? textOf(sent[0])[0]?.text ?? "" : "";
-    check("built-in Retusz text starts with its own task and carries no appended lock", text.startsWith("[ZADANIE]") && !text.includes("camera and mood are creative") && pr?.fidelity_appended === false, text.slice(0, 60));
-    g.__fidelityEngine = engine({ systemPrompt: null, promptVersion: 7 });
-    const refused = await retouch(db, "w/r/src.jpg");
-    check("a published version that cannot be read is refused — never silently replaced by the built-in", !refused.res.ok && sent.length === 0 && (refused.res as { error?: string }).error === "prompt_unavailable");
+    const none = await retouch(db, "w/r/src.jpg");
+    check("nothing published → prompt_unconfigured, no request, no charge",
+      !none.res.ok && (none.res as { error?: string }).error === "prompt_unconfigured" && sent.length === 0 && (ledger.__fidelityLedger ?? []).length === 0, none.res);
     g.__fidelityEngine = null;
     const blind = await retouch(db, "w/r/src.jpg");
-    check("the configuration cannot be read at all → refused, not run on the built-in", !blind.res.ok && sent.length === 0 && (blind.res as { error?: string }).error === "prompt_unavailable", blind.res);
-    const stepBlind = await retouchStepConfig(fakeSupabase(db) as unknown as FakeClient);
+    check("configuration unreadable → refused, no request, no charge", !blind.res.ok && sent.length === 0 && (ledger.__fidelityLedger ?? []).length === 0, blind.res);
     g.__fidelityEngine = engine({ systemPrompt: null, promptVersion: 7 });
-    const stepLocked = await retouchStepConfig(fakeSupabase(db) as unknown as FakeClient);
+    const locked = await retouch(db, "w/r/src.jpg");
+    check("published version unreadable → prompt_unavailable, no request", !locked.res.ok && sent.length === 0 && (locked.res as { error?: string }).error === "prompt_unavailable");
+    check("the code holds no built-in Retusz text", !/\[ZADANIE\]|RETOUCH_PROMPT|builtInPrompt/.test(read("lib/server/retouch.ts") + read("lib/server/engine/tool-run.ts")));
+    const stepNone = await retouchStepConfig(fakeSupabase(db) as unknown as FakeClient);
+    g.__fidelityEngine = engine({ systemPrompt: null, promptVersion: null });
+    const stepEmpty = await retouchStepConfig(fakeSupabase(db) as unknown as FakeClient);
     g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
     const stepOk = await retouchStepConfig(fakeSupabase(db) as unknown as FakeClient);
-    check("Workflow 'retouch' step: same rule (unreadable → refused; published → that exact text)",
-      !stepBlind.ok && stepBlind.error === "prompt_unavailable" && !stepLocked.ok && stepLocked.error === "prompt_unavailable"
-      && stepOk.ok && stepOk.prompt === EXACT && stepOk.modelId === PRO_ID);
+    check("Workflow 'retouch' step: same rule (no published prompt → refused; published → that exact text)",
+      !stepNone.ok && !stepEmpty.ok && stepEmpty.error === "prompt_unconfigured" && stepOk.ok && stepOk.prompt === EXACT);
+    g.__fidelityEngine = engine({ systemPrompt: "Make the entire machine red.", promptVersion: 9 });
+    await retouch(db, "w/r/src.jpg");
+    check("Retusz does not know it is 'Retusz': 'Make the entire machine red.' goes out alone", textOf(sent[0]!)[0]?.text === "Make the entire machine red.");
   }
 
   console.log("\nONE Gemini implementation — Workflow's image step goes through the same builder");
@@ -437,34 +442,81 @@ async function main() {
     check("no other file builds a Gemini generateContent body", !/responseModalities/.test(read("lib/server/engine/image-call.ts") + read("lib/server/retouch.ts") + read("lib/server/fashion.ts") + read("lib/server/generation.ts")));
   }
 
-  console.log("\nGENERATOR — customer-facing scenes keep the Product Lock");
+  console.log("\nTEST A — user prompt (Własny prompt) is a strict passthrough");
   {
     const db = freshDb(); db.files.set("w/g/p.jpg", photo);
-    g.__fidelityEngine = engine({ toolKey: "generator", mode: "hybrid", systemPrompt: "Studio packshot instruction.", promptVersion: 2 });
-    const plain = await prepareGeneratorEngine(fakeSupabase(db) as unknown as FakeClient, "u", "w", {
-      userPrompt: "na marmurowym blacie", negative: null, productDescription: "Kubek 300 ml", aspectRatio: "1:1", resolution: "1K", referencePaths: ["w/g/p.jpg"],
-    });
-    check("hybrid template without {{fidelity_rules}} → product_lock policy", plain.ok && plain.promptPolicy === "product_lock");
-    g.__fidelityEngine = engine({ toolKey: "generator", mode: "hybrid", systemPrompt: "Instr.\n{{fidelity_rules}}", promptVersion: 3 });
-    const placed = await prepareGeneratorEngine(fakeSupabase(db) as unknown as FakeClient, "u", "w", {
-      userPrompt: "x", negative: null, productDescription: null, aspectRatio: "1:1", resolution: "1K", referencePaths: [],
-    });
-    check("…the admin placed {{fidelity_rules}} → exact (no second copy)", placed.ok && placed.promptPolicy === "exact");
     sent = [];
     const gen = await runGeneration(fakeSupabase(db) as unknown as FakeClient, "u", "w", {
-      modelId: PRO_ID, prompt: "na marmurowym blacie", enginePrompt: plain.ok ? plain.enginePrompt ?? undefined : undefined,
-      promptPolicy: plain.ok ? plain.promptPolicy : undefined, productDescription: "Kubek 300 ml",
+      modelId: PRO_ID, prompt: "TEST_USER_92761", productDescription: "Kubek 300 ml",
       aspectRatio: "1:1", resolution: "1K", quantity: 1, referencePaths: ["w/g/p.jpg"], referenceImageIds: [],
     });
-    const text = sent[0] ? textOf(sent[0])[0]?.text ?? "" : "";
-    check("generator run: engine text, then the Product Lock and the customer's product text",
-      gen.ok && text.startsWith("Studio packshot instruction.") && text.includes(buildFidelityInstructions().slice(0, 40)) && text.includes("Kubek 300 ml"), text.slice(0, 80));
+    check("provider text === 'TEST_USER_92761' (no lock, no product text, no GrovShot context)", gen.ok && textOf(sent[0]!)[0]?.text === "TEST_USER_92761", textOf(sent[0]!)[0]?.text);
     sent = [];
     await runGeneration(fakeSupabase(db) as unknown as FakeClient, "u", "w", {
-      modelId: PRO_ID, prompt: "zwykły prompt klienta", aspectRatio: "1:1", resolution: "1K", quantity: 1, referencePaths: ["w/g/p.jpg"], referenceImageIds: [],
+      modelId: PRO_ID, prompt: "Place this product on a marble table.", inspirationPaths: ["w/g/p.jpg"], markedImagePath: "w/g/p.jpg",
+      aspectRatio: "1:1", resolution: "1K", quantity: 1, referencePaths: ["w/g/p.jpg"], referenceImageIds: [],
     });
-    check("a caller that asks for nothing gets product_lock (exact is opt-in only)", (sent[0] ? textOf(sent[0])[0]?.text ?? "" : "").includes(buildFidelityInstructions().slice(0, 40)));
+    check("extra images attached → still the prompt alone (no attachment notes)", textOf(sent[0]!)[0]?.text === "Place this product on a marble table.");
+    check("no module appends the lock to a final prompt", !/buildFidelityInstructions/.test(read("lib/server/generation.ts") + read("lib/server/engine/tool-run.ts") + read("lib/server/engine/image-call.ts")));
+  }
+
+  console.log("\nTESTS B–E — GrovBase template: only explicit variables");
+  {
+    const db = freshDb(); db.files.set("w/r/src.jpg", photo);
+    g.__fidelityEngine = engine({ systemPrompt: "TEST_GB_92761", promptVersion: 1 });
+    await retouch(db, "w/r/src.jpg");
+    check("B: no variables → 'TEST_GB_92761' exactly", textOf(sent[0]!)[0]?.text === "TEST_GB_92761");
+    const c = compileTemplate("ABC\n{{scene}}\nXYZ", TOOL_VARIABLES.prompts ?? [], { scene: "WOODEN TABLE" });
+    check("C: explicit variable → 'ABC\\nWOODEN TABLE\\nXYZ' (value only, no wrapper)", c.ok && c.text === "ABC\nWOODEN TABLE\nXYZ", c);
+    g.__fidelityEngine = engine({ systemPrompt: "ABC", promptVersion: 1 });
+    await retouch(db, "w/r/src.jpg");
+    check("D: no {{fidelity_rules}} → 'ABC', no fidelity anywhere", textOf(sent[0]!)[0]?.text === "ABC");
+    g.__fidelityEngine = engine({ systemPrompt: "ABC\n{{fidelity_rules}}", promptVersion: 1 });
+    await retouch(db, "w/r/src.jpg");
+    check("E: {{fidelity_rules}} placed → 'ABC\\n' + the resolved rules", textOf(sent[0]!)[0]?.text === `ABC\n${buildFidelityInstructions()}`);
+    g.__fidelityEngine = engine({ toolKey: "generator", mode: "hybrid", systemPrompt: "Studio instruction.", promptVersion: 2 });
+    const noSlot = await prepareGeneratorEngine(fakeSupabase(db) as unknown as FakeClient, "u", "w", {
+      userPrompt: "x", negative: null, productDescription: null, aspectRatio: "1:1", resolution: "1K", referencePaths: [],
+    });
+    check("generator template without {{user_prompt}} → refused (GrovBase never decides where the customer's words go)", !noSlot.ok && noSlot.error === "prompt_unconfigured");
+    g.__fidelityEngine = engine({ toolKey: "generator", mode: "hybrid", systemPrompt: "Studio: {{user_prompt}}", promptVersion: 3 });
+    const slot = await prepareGeneratorEngine(fakeSupabase(db) as unknown as FakeClient, "u", "w", {
+      userPrompt: "na marmurze", negative: "napisy", productDescription: null, aspectRatio: "1:1", resolution: "1K", referencePaths: [],
+    });
+    check("generator template with {{user_prompt}} → exactly the compiled template (negative not added without {{negative_prompt}})", slot.ok && slot.enginePrompt === "Studio: na marmurze", slot);
     g.__fidelityEngine = null;
+  }
+
+  console.log("\nTEST G — 2K vs 4K: the requests differ ONLY in imageSize");
+  {
+    const bodies: Record<string, unknown>[] = [];
+    const recs: Row[] = [];
+    for (const size of ["2K", "4K"]) {
+      const db = freshDb(); db.files.set("w/r/src.jpg", photo);
+      g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
+      const { pr } = await retouch(db, "w/r/src.jpg", { resolution: size });
+      bodies.push(JSON.parse(JSON.stringify(sent[0]!.body)));
+      recs.push(pr as Row);
+    }
+    const strip = (b: Record<string, unknown>) => { const c = JSON.parse(JSON.stringify(b)); delete c.generationConfig.imageConfig.imageSize; return JSON.stringify(c); };
+    check("bodies identical except imageConfig.imageSize (2K vs 4K)", strip(bodies[0]!) === strip(bodies[1]!)
+      && (bodies[0] as { generationConfig: { imageConfig: { imageSize: string } } }).generationConfig.imageConfig.imageSize === "2K"
+      && (bodies[1] as { generationConfig: { imageConfig: { imageSize: string } } }).generationConfig.imageConfig.imageSize === "4K");
+    const same = ["provider", "model_identifier", "operation", "prompt_digest", "aspect_ratio_sent", "fallback_used"].every((k) => JSON.stringify(recs[0]![k]) === JSON.stringify(recs[1]![k]));
+    check("records: same provider, model, operation, prompt digest, ratio, fallback=false; same input hash", same && recs[0]!.fallback_used === false
+      && JSON.stringify((recs[0]!.inputs as Row[])[0]!.sent_sha256) === JSON.stringify((recs[1]!.inputs as Row[])[0]!.sent_sha256));
+  }
+
+  console.log("\nOUTPUT MANIFEST — the stored file IS the provider's output");
+  {
+    const db = freshDb(); db.files.set("w/r/src.jpg", photo);
+    g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
+    const { job } = await retouch(db, "w/r/src.jpg", { resolution: "4K" });
+    const out = (((job?.settings ?? {}) as Row).provider_output as Row[] | undefined)?.[0];
+    const provided = Buffer.from(outPng, "base64");
+    check("provider_output: requested 4K, provider WxH = stored WxH, bytes equal, not transformed",
+      out?.requested_image_size === "4K" && out?.provider_returned_width === out?.stored_width && out?.provider_returned_height === out?.stored_height
+      && out?.provider_bytes === provided.length && out?.stored_bytes === provided.length && out?.provider_sha256 === sha(provided) && out?.transformed_after_provider === false, out);
   }
 
   console.log("\nADMIN MANIFEST (Testuj konfigurację) — computed, no paid call");

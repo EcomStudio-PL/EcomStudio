@@ -123,19 +123,19 @@ const server = readFileSync("lib/server/fashion.ts", "utf8");
 // workflow; the Moda tools hand it NO built-in prompt.
 const toolRun = readFileSync("lib/server/engine/tool-run.ts", "utf8");
 check("the prompt comes from the admin system",
-  /runEngineImageTool\(supabase, userId, workspaceId, \{\s*toolKey: config\.toolKey,\s*builtInPrompt: null,/.test(server)
+  /runEngineImageTool\(supabase, userId, workspaceId, \{\s*toolKey: config\.toolKey,\s*hint,/.test(server) && !/builtInPrompt/.test(toolRun + server)
     && /const engine = await resolveEngine\(supabase, input\.toolKey\)/.test(toolRun));
 check("an absent prompt is refused, not substituted",
   /if \(!template \|\| !template\.trim\(\)\) return \{ ok: false, error: "prompt_unconfigured" \}/.test(toolRun)
     // Moda has no built-in prompt: `published ?? builtInPrompt` is null, and
     // the line above refuses — the workflow switch cannot bypass it (a switch
     // with nothing published falls through to this same path).
-    && /const template = published \?\? input\.builtInPrompt;/.test(toolRun));
+    && /const template = published;/.test(toolRun));
 // A long string literal in this file would be a built-in prompt by another name.
 const longLiterals = (stripComments(server).match(/`[^`]{200,}`/g) ?? []).length;
 check("the server module carries no prompt text of its own", longLiterals === 0);
-check("the seller's hint is appended as separated data, never substituted",
-  /appendCustomerBlock\(compiled\.text, "wskazówka sprzedawcy", input\.hint, 1000\)/.test(toolRun));
+check("the seller's hint reaches the model only where the prompt places {{hint}} (nothing appended)",
+  /const prompt = compiled\.text;/.test(toolRun) && !/appendCustomerBlock/.test(toolRun));
 
 /* ── D. TWO POOLS STAY TWO POOLS ─────────────────────────────────────────
  * For "Zmiana postaci" the garment and the person are different inputs. If the

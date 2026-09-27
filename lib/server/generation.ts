@@ -12,8 +12,7 @@ import {
   ALL_ASPECT_RATIOS, ProviderError, effectiveQuality, modelQualities, priceFor, priceForResolution,
   type AspectRatio, type GeneratedImage, type ImageProviderAdapter, type Quality, type Resolution,
 } from "@/lib/ai/types";
-import { buildFidelityInstructions } from "@/lib/ai/product-lock";
-import { describeProviderRequest, effectiveCallTimeout, promptLength, type PromptPolicy } from "@/lib/ai/request-manifest";
+import { describeProviderRequest, effectiveCallTimeout, promptLength } from "@/lib/ai/request-manifest";
 import { prepareReferenceImage, referenceFingerprint, type PreparedReference } from "@/lib/server/reference-image";
 import { promptDigest } from "@/lib/server/prompt-digest";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
@@ -100,22 +99,6 @@ export type GenerateInput = {
    * charge even when the text sent to the provider would differ.
    */
   dedupePrompt?: string;
-  /**
-   * WHOSE TEXT THE MODEL READS — and therefore what may be added to it.
-   *
-   *   exact         an admin's published GrovBase prompt (compiled). The
-   *                 provider receives that text and nothing else: no Product
-   *                 Lock, no product context. The admin places
-   *                 {{fidelity_rules}} where they want the lock.
-   *   product_lock  a customer's own prompt or GrovShot's planned one: the
-   *                 Product Lock contract and the product context follow it,
-   *                 exactly as they always have.
-   *
-   * Absent: `product_lock` — only a caller that owns the whole instruction
-   * (a tool's prompt, a generator template that places {{fidelity_rules}})
-   * asks for `exact`.
-   */
-  promptPolicy?: PromptPolicy;
   /**
    * THE TOOL'S OWN LIMITS from Admin → Narzędzia i silniki ("Limit czasu",
    * "Próby na modelu głównym"), when the caller is a configured tool. The
@@ -293,14 +276,12 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
 
   // Product: use existing or create ad-hoc from studio context
   let productId = input.productId ?? null;
-  let productInstructions: string | null = null;
   let productContext = "";
   if (productId) {
     const { data: product } = await supabase
       .from("products").select("id, name, description, instructions, extra_info")
       .eq("id", productId).eq("workspace_id", workspaceId).maybeSingle();
     if (!product) return { ok: false, error: "product_not_found" };
-    productInstructions = product.instructions;
     productContext = buildProductContext(product.name, product.description, product.extra_info);
   } else if (input.newProduct?.name?.trim()) {
     const np = input.newProduct;
@@ -334,7 +315,6 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   const promptText = [input.prompt.trim(), input.negative?.trim() ? `AVOID: ${input.negative.trim()}` : ""]
     .filter(Boolean).join("\n");
   const providerPrompt = input.enginePrompt?.trim() ? input.enginePrompt.trim() : promptText;
-  const promptPolicy: PromptPolicy = input.promptPolicy ?? "product_lock";
   /**
    * ONE settings object for every write to the job row. The later updates
    * (after a retry, after a fallback served) used to rebuild a smaller
@@ -509,38 +489,19 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     };
   };
 
-  /** The protected block that rides beside the Product Lock. It states only
-   *  what this exact request carries — never a role that was trimmed. */
-  const buildAttachmentContracts = (fit: ReturnType<typeof fitRefs>) => {
-    // Inspiration steers the scene, never the product.
-    const inspirationContract = fit.inspiration > 0
-      ? `\n\nINSPIRATION IMAGES: attached image(s) ${fit.products + 1}–${fit.products + fit.inspiration} are style and scene inspiration ONLY. Take mood, lighting, environment, framing and atmosphere from them. The PRODUCT itself must match ONLY the first ${fit.products} product reference image(s) exactly — never copy products, shapes, colors, labels or branding from the inspiration images.`
-      : "";
-    // The customer's drawn annotations LOCATE corrections; they are guidance,
-    // never content — the contract forbids rendering the marks themselves.
-    const markedContract = fit.marked
-      ? `\n\nMARKED GUIDANCE IMAGE: the FINAL attached image is a copy of the previously generated photo with the customer's hand-drawn annotations on it (strokes, boxes, circles, lines, arrows, highlighted regions). The annotations only indicate WHERE the requested corrections apply. The drawn marks themselves are NOT part of the product or the scene — never render them, their colors or their shapes in the output. Apply the customer's corrections in the marked regions and keep the product and the rest of the scene unchanged.`
-      : "";
-    return `${inspirationContract}${markedContract}`;
-  };
-  const buildFidelity = (fit: ReturnType<typeof fitRefs>) =>
-    `${buildFidelityInstructions(productInstructions)}${productContext}${buildAttachmentContracts(fit)}`;
   /**
-   * THE TEXT THE PROVIDER RECEIVES for one candidate — the only place it is
-   * composed. `exact`: the admin's prompt as published, plus nothing — except
-   * the two attachment notes when an inspiration or a marked image really is
-   * attached (they describe what the extra images are, and an engine prompt
-   * cannot know about them); Retusz and Moda never carry either. Otherwise:
-   * the prompt, then the Product Lock and product context, as always.
+   * THE FINAL PROMPT IS WHAT THE CALLER RESOLVED — and nothing else.
+   *
+   * GrovBase does not decide what the model should do; the prompt does. The
+   * text is fixed before this function is called (the customer's own words,
+   * or a published template with its explicit variables compiled) and it goes
+   * to the provider unchanged: no Product Lock, no product context, no notes
+   * about attached images. Where a prompt wants the lock, its template places
+   * {{fidelity_rules}}. The one addition is the customer's own negative field,
+   * serialised as a final "AVOID:" line because no image API here has a
+   * negative-prompt parameter — and only when they filled it.
    */
-  const composeProviderText = (fit: ReturnType<typeof fitRefs>) => {
-    if (promptPolicy === "exact") {
-      const notes = buildAttachmentContracts(fit);
-      return { text: notes ? `${providerPrompt}${notes}` : providerPrompt, lock: "" };
-    }
-    const lock = buildFidelity(fit);
-    return { text: `${providerPrompt}\n\n${lock}`, lock };
-  };
+  const finalPrompt = providerPrompt;
 
   // How many references the PRIMARY model would carry — the reference-capable
   // fallback guard below compares against this.
@@ -670,12 +631,11 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     // Each candidate gets its own fit AND its own contract, so the prompt can
     // never describe an attachment this model did not receive.
     const cFit = supportsRefs ? fitRefs(cModel.max_reference_images || 6) : fitRefs(0);
-    const cText = composeProviderText(cFit);
     const cRequest = {
-      prompt: cText.text, aspectRatio, resolution: cResolution,
+      prompt: finalPrompt, aspectRatio, resolution: cResolution,
       // A fallback engine only receives the quality if IT declares it.
       quality: quality && modelQualities(cModel).includes(quality) ? quality : undefined,
-      quantity, referenceImages: cFit.list, productLock: { fidelityInstructions: cText.lock },
+      quantity, referenceImages: cFit.list, productLock: { fidelityInstructions: "" },
       // The adapter cuts its own timeouts against this. A provider that
       // goes quiet is abandoned before the platform kills the function,
       // which is what keeps the refund below reachable.
@@ -688,10 +648,10 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       provider: cProviderSlug, model_identifier: cModel.model_identifier, model_id: cModel.id,
       fallback_used: candidateId !== input.modelId,
       operation: cShape.operation,
-      prompt_policy: promptPolicy, fidelity_appended: cText.lock !== "",
-      prompt_chars: promptLength(cText.text),
+      prompt_policy: "exact", fidelity_appended: false,
+      prompt_chars: promptLength(finalPrompt),
       // Keyed, not a bare hash: this row is readable by the customer.
-      prompt_digest: promptDigest(cText.text),
+      prompt_digest: promptDigest(finalPrompt),
       aspect_ratio_requested: input.aspectRatio, aspect_ratio_sent: cShape.aspectRatio,
       resolution: cResolution ?? null, image_size_sent: cShape.imageSize,
       inputs: cFit.list.map(referenceFingerprint),
@@ -902,6 +862,11 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   }).select("id").single();
 
   const stored: { url: string; path: string }[] = [];
+  /** THE OUTPUT AS THE PROVIDER RETURNED IT vs AS STORED — one entry per
+   *  image. The stored object IS the provider's bytes (no resize, no
+   *  re-encode; previews/thumbnails are separate derived files), which this
+   *  record proves per job rather than asserts. */
+  const providerOutput: Record<string, unknown>[] = [];
   let idx = 0;
   for (const img of result.images) {
     let bytes: Buffer | null = null;
@@ -928,6 +893,13 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         const meta = await sharp(bytes, { failOn: "none" }).metadata();
         if (meta.width && meta.height) dims = { width: meta.width, height: meta.height };
       } catch { /* the model's own figures stand */ }
+      providerOutput.push({
+        requested_image_size: (lastRequest?.image_size_sent as string | null | undefined) ?? null,
+        provider_returned_width: dims.width ?? null, provider_returned_height: dims.height ?? null,
+        provider_mime: mime, provider_bytes: bytes.length, provider_sha256: createHash("sha256").update(bytes).digest("hex"),
+        stored_width: dims.width ?? null, stored_height: dims.height ?? null, stored_bytes: bytes.length,
+        stored_path: path, transformed_after_provider: false,
+      });
       const { data: assetRow } = await supabase.from("generation_assets").insert({
         generation_id: generation.id, asset_type: "image", storage_path: path,
         width: dims.width ?? null, height: dims.height ?? null,
@@ -1001,6 +973,16 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       stored.push({ url: "", path });
     }
     idx++;
+  }
+  if (providerOutput.length > 0) {
+    await supabase.from("generation_jobs").update({
+      settings: {
+        ...jobSettings,
+        ...(attempts.length > 0 ? { attempts } : {}),
+        provider_request: lastRequest,
+        provider_output: providerOutput,
+      } as never,
+    }).eq("id", job.id);
   }
   // One batched signing call for the whole set instead of one per image.
   if (stored.length > 0) {

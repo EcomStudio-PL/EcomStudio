@@ -58,7 +58,7 @@ export function promptLength(text: string): number {
 
 /* ── the admin dry-run manifest (built in lib/server/engine/request-manifest.ts) ──*/
 
-export type ManifestSource = "published" | "built_in" | "unavailable" | "none";
+export type ManifestSource = "published" | "unavailable" | "none";
 
 export type RequestManifest = {
   /** Workflow ON: runs follow the published workflow's own steps, not the
@@ -83,6 +83,11 @@ export type RequestManifest = {
     knowledge: string[];
     /** Blocks the runner adds around the prompt ([] = none). */
     appended: ("product_lock" | "customer_hint")[];
+    /** STRICT: no variables — the published text goes out 1:1. TEMPLATE:
+     *  only the variables below are substituted. */
+    strict: boolean;
+    /** Variables the sample compile actually filled. */
+    resolved: string[];
   };
   config: {
     operation: "IMAGE_EDIT" | "IMAGE_GENERATION";
@@ -120,4 +125,10 @@ export type LastRun = {
   /** Attempts that failed before the result (retries actually made). */
   failedAttempts: number;
   inputs: { mime: string; bytes: number; width: number | null; height: number | null; sourceSha256: string; sentSha256: string; transform: string }[];
+  /** What the provider returned vs what was stored (generation_jobs.settings.provider_output). */
+  outputs: {
+    requestedSize: string | null; providerWidth: number | null; providerHeight: number | null;
+    providerMime: string | null; providerBytes: number | null;
+    storedWidth: number | null; storedHeight: number | null; storedBytes: number | null; transformed: boolean | null;
+  }[];
 };

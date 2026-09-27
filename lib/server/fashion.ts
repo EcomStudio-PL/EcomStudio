@@ -211,7 +211,6 @@ export async function runFashionTool(
 
   const result = await runEngineImageTool(supabase, userId, workspaceId, {
     toolKey: config.toolKey,
-    builtInPrompt: null,
     hint,
     // The seller's photographs ARE the subject: image-to-image throughout.
     referencePaths: paths,

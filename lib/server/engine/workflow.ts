@@ -6,7 +6,7 @@ import type { AspectRatio, Quality, ReferenceImage, Resolution } from "@/lib/ai/
 import type { VisionBackend } from "@/lib/ai/engine/vision";
 import type { KnowledgeStrategy } from "@/lib/ai/knowledge-ranking";
 import {
-  TOOL_VARIABLES, appendCustomerBlock, workflowVariables, type CompileValues, type VariableDef,
+  TOOL_VARIABLES, workflowVariables, type CompileValues, type VariableDef,
 } from "@/lib/ai/prompt-variables";
 import {
   finalStepIndex, imageProducing, maxOutputsOf, stepVariables, validateWorkflow, type WorkflowStepDef,
@@ -480,11 +480,9 @@ async function executeUnit(
     if (refs.length === 0) return fail("input_missing");
     return runToolStep(ctx, step, refs[0], outputName, values);
   }
-  // The seller's hint rides as a separated DATA block unless the admin placed
-  // {{hint}} in the instruction already.
-  const prompt = hintSupported && !/\{\{\s*hint\b/.test(step.prompt)
-    ? appendCustomerBlock(instruction, "wskazówka sprzedawcy", hint, 1000) : instruction;
-  return runImageStep(ctx, step, prompt, refs, outputName);
+  // The step's compiled text is final: the seller's hint is in it only where
+  // the step placed {{hint}}.
+  return runImageStep(ctx, step, instruction, refs, outputName);
 }
 
 /* ── finish ───────────────────────────────────────────────────────────────*/

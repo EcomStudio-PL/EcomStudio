@@ -320,7 +320,7 @@ async function main() {
     db.tool = { workflow_enabled: false, engine_mode: "grovbase", prompt: "PUBLISHED PROMPT" };
     publish(db, [step("image_edit", "wynik", { prompt: "WF PROMPT" })]);
     const r = await runEngineImageTool(client(db), USER, WS, {
-      toolKey: "retouch", builtInPrompt: "BUILT-IN", hint: "", referencePaths: [`${WS}/in/photo.jpg`],
+      toolKey: "retouch", hint: "", referencePaths: [`${WS}/in/photo.jpg`],
       generation: { modelId: "m-main", aspectRatio: "1:1", resolution: "1K", quantity: 1, referenceImageIds: [] }, expectedCost: 10,
     });
     check("WF1 OFF: one runGeneration call with the published prompt, no run, no workflow read",
@@ -328,7 +328,7 @@ async function main() {
       && db.tables.ai_engine_runs.length === 0 && !db.rpc.includes("ai_tool_workflow_read"));
     db.tool.workflow_enabled = true;
     const r2 = await runEngineImageTool(client(db), USER, WS, {
-      toolKey: "retouch", builtInPrompt: "BUILT-IN", hint: "", referencePaths: [`${WS}/in/photo.jpg`],
+      toolKey: "retouch", hint: "", referencePaths: [`${WS}/in/photo.jpg`],
       generation: { modelId: "m-main", aspectRatio: "1:1", resolution: "1K", quantity: 1, referenceImageIds: [] }, expectedCost: 10,
     });
     check("WF1 ON: the run is started (pending), charged once, and runGeneration is NOT called",
@@ -355,8 +355,8 @@ async function main() {
     const step1Img = stepsOf(db, s.runId).find((x) => x.position === 1)!.output as { image: { path: string } };
     const stored = db.storage.get(`generation-assets/${step1Img.image.path}`)!;
     check("WF3 step 2 received step 1's IMAGE as its input", visionCalls[0].images[0]?.base64 === stored.toString("base64"));
-    check("WF3 step 3 received step 1's image AND step 2's text (fenced as DATA)",
-      imageCalls[1].refs[0]?.base64 === stored.toString("base64") && imageCalls[1].prompt.includes("ANALIZA_WYNIK") && imageCalls[1].prompt.includes("DANE_KLIENTA"));
+    check("WF3 step 3 received step 1's image AND step 2's text (as the variable's value, no wrapper)",
+      imageCalls[1].refs[0]?.base64 === stored.toString("base64") && imageCalls[1].prompt.includes("ANALIZA_WYNIK") && !imageCalls[1].prompt.includes("DANE_KLIENTA"));
     check("WF16 the workflow version is saved on the run", run.workflow_version === 7);
     check("every text step carries the Product Lock rules as its system policy", visionCalls.every((v) => v.system.includes("PRODUCT LOCK")));
     check("…and the customer gets one result as a generation asset of the job",
@@ -627,7 +627,7 @@ async function main() {
     ]);
     db.tool.workflow_enabled = true;
     const pending = await runEngineImageTool(client(db), USER, WS, {
-      toolKey: "retouch", builtInPrompt: null, hint: "", referencePaths: [`${WS}/in/photo.jpg`],
+      toolKey: "retouch", hint: "", referencePaths: [`${WS}/in/photo.jpg`],
       generation: { modelId: "m-main", aspectRatio: "1:1", resolution: "1K", quantity: 1, referenceImageIds: [], operation: "image_retouch" }, expectedCost: 10,
     });
     if (!isPending(pending)) { check("pending", false, pending); return; }

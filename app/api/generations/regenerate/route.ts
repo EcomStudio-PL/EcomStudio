@@ -164,9 +164,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "references_required" }, { status: 400 });
   }
 
-  const prompt = instruction
-    ? `${basePrompt}\n\nPoprawki klienta do tego samego ujęcia (zastosuj je, ale nie zmieniaj samego produktu ani jego cech): ${instruction}`
-    : basePrompt;
+  // The customer's correction is their own words, added after their own
+  // prompt — no GrovBase wording around it.
+  const prompt = instruction ? `${basePrompt}\n\n${instruction}` : basePrompt;
 
   // The same hybrid wrapper as the first run (a no-op unless one is published).
   const engine = await prepareGeneratorEngine(supabase, user.id, workspace.id, {
@@ -178,7 +178,6 @@ export async function POST(request: Request) {
   const result = await runGeneration(supabase, user.id, workspace.id, {
     modelId: modelId ?? job.model_id ?? "",
     enginePrompt: engine.enginePrompt ?? undefined,
-    promptPolicy: engine.promptPolicy,
     // Only a client-chosen model must pass the custom-visibility gate; the
     // job's own original model keeps working even if later hidden.
     requireCustomVisible: !!modelId,

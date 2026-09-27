@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import type { Client } from "@/lib/services/workspace";
-import { TOOL_VARIABLES, appendCustomerBlock } from "@/lib/ai/prompt-variables";
+import { TOOL_VARIABLES } from "@/lib/ai/prompt-variables";
 import { resolveEngine } from "@/lib/server/ai-engine";
 import { runGeneration, type GenerateInput, type GenerateOutput } from "@/lib/server/generation";
 import { downloadReferences, textCapableBackends } from "@/lib/server/prompt-engine";
@@ -30,9 +30,8 @@ import { textMeter, type TextMeter } from "@/lib/server/ai-usage";
  */
 export type EngineToolInput = {
   toolKey: string;
-  /** The tool's built-in instruction, or null when it has none. */
-  builtInPrompt: string | null;
-  /** The seller's hint (already capped); "" when the tool has none. */
+  /** The seller's hint (already capped); "" when the tool has none. It reaches
+   *  the model only where the published prompt places {{hint}}. */
   hint: string;
   referencePaths: string[];
   generation: Omit<GenerateInput, "prompt" | "referencePaths"> & { modelId: string };
@@ -116,17 +115,10 @@ async function runEngineImageToolMetered(
     // single-call path below, which refuses honestly when it has no prompt.
   }
 
-  // THE CONFIGURATION ITSELF COULD NOT BE READ (server token missing, RPC
-  // error): whether a prompt is published is unknown, so a built-in
-  // instruction is NOT swapped in — the panel may say something else.
-  // Refused before anything is reserved; the customer retries.
-  if (!engine && input.builtInPrompt) return { ok: false, error: "prompt_unavailable" };
-
   const engineMode = engine && (engine.mode === "grovbase" || engine.mode === "hybrid");
   const published = engineMode ? engine.systemPrompt?.trim() ? engine.systemPrompt : null : null;
-  // A version IS published but could not be opened: never swap in the
-  // built-in instruction behind the admin's back — the customer would get a
-  // different prompt than the one the panel shows. Refused, nothing charged.
+  // A version IS published but could not be opened: refused, nothing charged
+  // (there is no other text to send — tools have no built-in prompt).
   if (engineMode && !published && engine.promptVersion !== null) {
     await recordEngineRun(supabase, {
       toolKey: input.toolKey, workspaceId, userId, mode: engine.mode, promptVersion: engine.promptVersion,
@@ -134,7 +126,10 @@ async function runEngineImageToolMetered(
     });
     return { ok: false, error: "prompt_unavailable" };
   }
-  const template = published ?? input.builtInPrompt;
+  // THE PUBLISHED PROMPT OR NOTHING. No built-in, legacy or default text
+  // exists for a tool; with nothing published the run stops here — no
+  // provider call, no credits, no fallback.
+  const template = published;
   if (!template || !template.trim()) return { ok: false, error: "prompt_unconfigured" };
 
   // A template that makes model calls to resolve (analysis, knowledge) is
@@ -164,24 +159,16 @@ async function runEngineImageToolMetered(
     return { ok: false, error: compiled.error === "variable_missing" ? "variable_missing" : "prompt_unconfigured" };
   }
 
-  // The seller's words stay DATA: a separated block after the instruction,
-  // unless the admin placed {{hint}} in the prompt (then it is wrapped there).
-  const usesHint = /\{\{\s*hint\b/.test(template);
-  const prompt = usesHint ? compiled.text : appendCustomerBlock(compiled.text, "wskazówka sprzedawcy", input.hint, 1000);
+  // THE FINAL PROMPT — compiled once, never changed after this line. The
+  // seller's hint is in it only where the template placed {{hint}}.
+  const prompt = compiled.text;
 
   const result = await runGeneration(supabase, userId, workspaceId, {
     ...input.generation,
     prompt,
     referencePaths: input.referencePaths,
     hidePromptText: true,
-    dedupePrompt: `engine:${input.toolKey}:p${published ? engine?.promptVersion ?? 0 : "builtin"}:${inputHash}`,
-    // THE TOOL'S PROMPT IS THE WHOLE INSTRUCTION: the provider receives the
-    // compiled text and nothing appended to it (the lock only where the admin
-    // wrote {{fidelity_rules}}). That holds for Retusz's built-in instruction
-    // too — it carries its own "keep the framing" rules, and the generic lock
-    // (written for NEW product photos: "the camera is creative") contradicted
-    // exactly those on an edit.
-    promptPolicy: "exact",
+    dedupePrompt: `engine:${input.toolKey}:p${engine?.promptVersion ?? 0}:${inputHash}`,
     // The panel's "Limit czasu" and "Próby na modelu głównym" are what the
     // image call really gets (clamped to the route budget) — not a label.
     ...(engine ? { callTimeoutMs: engine.timeoutMs, maxAttempts: engine.maxAttempts } : {}),
@@ -226,24 +213,17 @@ export async function engineOutputsPerRun(supabase: Client, toolKey: string): Pr
 export type GeneratorEngine =
   | {
       ok: true; enginePrompt: string | null; finish: (result: GenerateOutput) => Promise<void>;
-      /** "exact" only when the admin placed {{fidelity_rules}} themselves;
-       *  otherwise the generator's Product Lock and product context follow. */
-      promptPolicy?: "exact" | "product_lock";
     }
   | { ok: false; error: string };
 
 /**
- * The generator's own-prompt path in HYBRID mode: the published GrovBase
- * instruction first, the customer's prompt (and negative prompt) after it as a
- * separated DATA block — never glued into the instruction. In 'user' mode, or
- * in hybrid with nothing published, this returns `enginePrompt: null` and the
- * generator behaves exactly as it always has.
- *
- * The generator draws NEW scenes of the customer's product, so its Product
- * Lock and the customer's product text keep following the prompt (policy
- * product_lock) — unless the admin placed {{fidelity_rules}} in the template
- * themselves, in which case the text goes out exactly as compiled. In 'user'
- * mode nothing changes.
+ * The generator's template path in HYBRID mode: the published GrovBase
+ * template, compiled with its explicit variables — the customer's prompt
+ * where it places {{user_prompt}}, their negative where it places
+ * {{negative_prompt}}, the lock where it places {{fidelity_rules}}. Nothing
+ * is appended; a template without {{user_prompt}} cannot carry the customer's
+ * words and is refused. In 'user' mode (or hybrid with nothing published) this
+ * returns `enginePrompt: null` and the customer's prompt goes out 1:1.
  */
 export async function prepareGeneratorEngine(
   supabase: Client, userId: string, workspaceId: string,
@@ -294,15 +274,15 @@ export async function prepareGeneratorEngine(
     await recordEngineRun(supabase, { ...trace, status: "blocked", error: compiled.error, durationMs: Date.now() - started });
     return { ok: false, error: compiled.error === "variable_missing" ? "variable_missing" : "prompt_unconfigured" };
   }
-  let text = compiled.text;
-  if (!/\{\{\s*user_prompt\b/.test(template)) text = appendCustomerBlock(text, "prompt klienta", input.userPrompt, 6000);
-  if (input.negative?.trim() && !/\{\{\s*negative_prompt\b/.test(template)) {
-    text = appendCustomerBlock(text, "czego klient chce uniknąć", input.negative, 1000);
+  // The template must say where the customer's words go; GrovBase never
+  // decides that for it.
+  if (!/\{\{\s*user_prompt\b/.test(template)) {
+    await recordEngineRun(supabase, { ...trace, status: "blocked", error: "prompt_unconfigured", durationMs: Date.now() - started });
+    return { ok: false, error: "prompt_unconfigured" };
   }
   return {
     ok: true,
-    enginePrompt: text,
-    promptPolicy: /\{\{\s*fidelity_rules\b/.test(template) ? "exact" : "product_lock",
+    enginePrompt: compiled.text,
     finish: (result) => recordEngineRun(supabase, {
       ...trace,
       status: result.ok ? "ok" : "failed",

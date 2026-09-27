@@ -74,17 +74,17 @@ export async function buildRequestManifest(
       identical: variables.length === 0 ? text === published : null,
       variables,
       knowledge: variables.filter((v) => defs.find((d) => d.key === v)?.source === "knowledge"),
-      appended: meta?.hint && !variables.includes("hint") ? ["customer_hint"] : [],
+      appended: [],
+      strict: variables.length === 0,
+      resolved: compiled.ok ? compiled.used : [],
     };
   } else {
     const unreadable = engineMode && engine?.promptVersion != null;
-    const builtIn = !unreadable && toolKey === "retouch";
     prompt = {
-      source: unreadable ? "unavailable" : builtIn ? "built_in" : "none",
+      source: unreadable ? "unavailable" : "none",
       version: engine?.promptVersion ?? null, mode: engine?.mode ?? "?",
-      policy: builtIn ? "exact" : null,
-      chars: null, sha256: null, identical: null, variables: [], knowledge: [],
-      appended: [],
+      policy: null, chars: null, sha256: null, identical: null, variables: [], knowledge: [],
+      appended: [], strict: true, resolved: [],
     };
   }
 
@@ -140,6 +140,14 @@ async function lastRunOf(supabase: Client, operation: string, publishedDigest: s
     ratioRequested: str(r.aspect_ratio_requested), ratioSent: str(r.aspect_ratio_sent),
     sizeSent: str(r.image_size_sent), timeoutMs: n(r.call_timeout_ms), maxAttempts: n(r.max_attempts),
     failedAttempts: Array.isArray(settings.attempts) ? settings.attempts.length : 0,
+    outputs: (Array.isArray(settings.provider_output) ? settings.provider_output : []).map((o) => {
+      const x = (o ?? {}) as Record<string, unknown>;
+      return {
+        requestedSize: str(x.requested_image_size), providerWidth: n(x.provider_returned_width), providerHeight: n(x.provider_returned_height),
+        providerMime: str(x.provider_mime), providerBytes: n(x.provider_bytes),
+        storedWidth: n(x.stored_width), storedHeight: n(x.stored_height), storedBytes: n(x.stored_bytes), transformed: b(x.transformed_after_provider),
+      };
+    }),
     inputs: inputs.map((i) => {
       const x = (i ?? {}) as Record<string, unknown>;
       return {

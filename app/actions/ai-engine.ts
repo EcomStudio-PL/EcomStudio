@@ -566,7 +566,9 @@ export async function dryRunEngineAction(toolKey: string): Promise<Result & { ch
       const { data: p } = await supabase.from("ai_tool_prompts")
         .select("version, body_encrypted, body_iv, body_tag").eq("tool_key", toolKey).eq("status", "published").maybeSingle();
       if (!p) {
-        const builtIn = toolKey === "retouch" || toolKey === "prompts" || toolKey === "generator";
+        // Only GrovShot's planner and the customer-prompt generator run without
+        // a published text; every other tool refuses (no built-in prompt).
+        const builtIn = toolKey === "prompts" || toolKey === "generator";
         checks.push({ key: builtIn ? "builtInUsed" : "promptMissing", status: builtIn || tool?.workflow_enabled ? "warn" : "fail" });
       } else {
         const body = openPrompt(await promptKeyring(supabase), p)?.text ?? null;
@@ -574,6 +576,10 @@ export async function dryRunEngineAction(toolKey: string): Promise<Result & { ch
         else {
           checks.push({ key: "promptPublished", status: "ok", params: { version: p.version, chars: body.length } });
           templates.push({ text: body, defs: TOOL_VARIABLES[toolKey] ?? [], label: "prompt" });
+          // A generator template must say where the customer's words go.
+          if (toolKey === "generator" && !parsePlaceholders(body).some((ph) => ph.name === "user_prompt")) {
+            checks.push({ key: "userPromptMissing", status: "fail" });
+          }
         }
       }
     }

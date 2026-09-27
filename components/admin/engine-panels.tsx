@@ -94,16 +94,26 @@ function ManifestView({ m }: { m: RequestManifest }) {
     {
       title: k("prompt"),
       rows: [
+        [k("promptSource"), k("promptSource.grovbase")],
         [k("source"), k(`source.${p.source}`, { version: p.version ?? "?" })],
+        [k("promptMode"), p.source === "published" ? k(p.strict ? "promptMode.strict" : "promptMode.template") : "—"],
         [k("mode"), p.mode],
         [k("policy"), p.policy ? k(`policy.${p.policy}`) : "—"],
         [k("chars"), p.chars === null ? "—" : k("charsValue", { n: p.chars })],
         [k("sha"), short(p.sha256)],
         [k("identical"), p.source !== "published" ? "—" : p.identical === null ? k("identicalWithVars") : yesNo(p.identical)],
         [k("variables"), p.variables.length ? p.variables.map((v) => `{{${v}}}`).join(", ") : "—"],
+        [k("resolved"), p.resolved.length ? p.resolved.map((v) => `{{${v}}}`).join(", ") : "—"],
         [k("knowledge"), p.knowledge.length ? p.knowledge.map((v) => `{{${v}}}`).join(", ") : k("knowledgeNone")],
         [k("appended"), p.appended.length ? p.appended.map((a) => k(`appended.${a}`)).join(", ") : k("appended.none")],
       ],
+    },
+    {
+      // Guaranteed by the execution layer itself (and pinned by
+      // test:fidelity): GrovBase adds no text of its own anywhere.
+      title: k("guarantees"),
+      rows: ["hiddenPrefix", "hiddenSuffix", "autoLock", "autoKnowledge", "autoToolText", "fallbackPrompt"]
+        .map((g): [string, string] => [k(`g.${g}`), k("no")]),
     },
     {
       title: k("config"),
@@ -114,6 +124,7 @@ function ManifestView({ m }: { m: RequestManifest }) {
         [k("sizes"), c.sizes.map((s) => `${s.resolution} → ${s.sent ?? k("notSent")}`).join(", ")],
         [k("mediaResolution"), k("modelDefault")],
         [k("thinking"), k("modelDefault")],
+        [k("providerOptions"), k("providerOptionsNone")],
         [k("timeout"), c.timeoutMs === null
           ? k("timeoutDefault", { budget: secs(c.budgetMs) })
           : k("timeoutValue", { s: secs(c.timeoutMs), budget: secs(c.budgetMs) })],
@@ -141,6 +152,13 @@ function ManifestView({ m }: { m: RequestManifest }) {
             transform: k(`transform.${i.transform}`),
           })],
           [k("inputSha"), `${short(i.sourceSha256)} → ${i.sentSha256 === i.sourceSha256 ? "=" : short(i.sentSha256)}`],
+        ]),
+        ...last.outputs.flatMap((o, n): [string, string][] => [
+          [k("output", { n: n + 1 }), k("outputValue", {
+            size: o.requestedSize ?? "—", pw: o.providerWidth ?? "?", ph: o.providerHeight ?? "?",
+            sw: o.storedWidth ?? "?", sh: o.storedHeight ?? "?", kb: o.storedBytes === null ? "?" : Math.round(o.storedBytes / 1024),
+          })],
+          [k("transformed"), yesNo(o.transformed)],
         ]),
       ],
     });

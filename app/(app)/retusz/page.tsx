@@ -5,7 +5,7 @@ import { getWallet } from "@/lib/services/credits";
 import { listGalleryItems } from "@/lib/server/gallery";
 import { GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
 import { retouchModel, RETOUCH_OPERATION } from "@/lib/server/retouch";
-import { engineOutputsPerRun } from "@/lib/server/engine/tool-run";
+import { engineOutputsPerRun, engineToolConfigured } from "@/lib/server/engine/tool-run";
 import { RetouchWorkspace } from "@/components/retouch/workspace";
 
 export const dynamic = "force-dynamic";
@@ -26,13 +26,16 @@ export default async function RetouchPage() {
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) redirect("/home");
 
-  const [model, wallet, gallery, outputsPerRun] = await Promise.all([
+  const [model, wallet, gallery, outputsPerRun, configured] = await Promise.all([
     retouchModel(supabase),
     getWallet(supabase, workspace.id),
     listGalleryItems(supabase, workspace.id, { limit: GALLERY_PAGE_SIZE, operation: RETOUCH_OPERATION }),
     // Workflow ON: one photo yields the published workflow's result count,
     // and is priced for it (the server charges exactly this).
     engineOutputsPerRun(supabase, "retouch"),
+    // No published prompt → the tool is honestly unavailable (it has no
+    // built-in instruction to fall back on).
+    engineToolConfigured(supabase, "retouch", false),
   ]);
 
   return (
@@ -42,7 +45,7 @@ export default async function RetouchPage() {
       <RetouchWorkspace
         workspaceId={workspace.id}
         credits={wallet?.balance ?? 0}
-        available={!!model}
+        available={!!model && configured}
         resolutions={model?.resolutions ?? []}
         ratios={model?.ratios ?? []}
         pricing={model?.pricing ?? {}}

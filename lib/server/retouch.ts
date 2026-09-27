@@ -39,78 +39,12 @@ export const RETOUCH_OPERATION = "image_retouch";
 /** The tool's row in Admin → Narzędzia i silniki (`ai_tools.tool_key`). */
 const RETOUCH_TOOL_KEY = "retouch";
 
-/**
- * THE BUILT-IN RETOUCH PROMPT — used ONLY while the panel is known to have
- * nothing published (never alongside a published prompt, never when the
- * configuration cannot be read). Server-only by construction (see above).
- * Sent exactly as written, like a published prompt: it carries its own
- * "keep the framing" rules, and nothing is appended to it.
+/*
+ * THERE IS NO BUILT-IN RETOUCH PROMPT. The instruction is the one published in
+ * Admin → Narzędzia i silniki, sent exactly as compiled; with nothing
+ * published the tool refuses (prompt_unconfigured) before anything is
+ * reserved. The tool's name, route and slug never reach the model.
  */
-const RETOUCH_PROMPT = `[ZADANIE]
-Przekształć dostarczone zdjęcie produktu w wysokiej klasy wizualizację sprzedażową premium do e-commerce. Zachowaj rzeczywisty kształt, proporcje, konstrukcję i funkcję produktu, ale popraw jego prezentację tak, aby wyglądał jak perfekcyjny fotorealistyczny render produktowy klasy premium. Efekt końcowy ma wyglądać jak profesjonalny packshot reklamowy / CGI hero shot: maksymalnie czysty, dopracowany, elegancki, nowoczesny i bardzo sprzedażowy. Produkt ma być głównym bohaterem kadru, ma wyglądać drożej, czytelniej i bardziej premium niż na surowym zdjęciu, ale nadal wiarygodnie produktowo. Czysto białe tło. Doświetl wszystkie obecnie zacienione miejsca i elementy. Zachowaj identyczny kadr i ujęcie ze zdjęcia referencyjnego. Nie ingeruj w ustawienie produktu na zdjęciu.
-
-[STYL WIZUALNY]
-- estetyka premium e-commerce / hyper-clean commercial CGI
-- wygląd jak fotorealistyczny render 3D lub perfekcyjnie wyretuszowana fotografia studyjna
-- sterylna czystość, brak chaosu, brak przypadkowości
-- bardzo wysoka czytelność bryły już w miniaturze
-- wyraźna objętość produktu, atrakcyjna forma i elegancka geometria
-- materiały mają wyglądać luksusowo, czysto i technicznie perfekcyjnie
-- nowoczesny, minimalistyczny, komercyjny wygląd
-- tło neutralne, jasne, czyste, bez rozpraszaczy
-- produkt ma wyglądać jak nowy, nienaruszony, idealnie przygotowany do reklamy
-- zachowaj realizm użytkowy, ale usuń wrażenie taniej amatorskiej fotografii
-- całość ma sprawiać wrażenie dopracowanego premium renderu katalogowego
-- ostrość, kontrast lokalny i separacja planów mają być bardzo dobre, ale bez przesadnego HDR i bez sztucznego przerysowania
-
-[OŚWIETLENIE]
-- miękkie, duże, studyjne oświetlenie produktowe
-- jasny, czysty key light od przodu i lekko z góry
-- dodatkowe miękkie światło wypełniające dla pełnej czytelności detali
-- subtelny rim light / kontrowanie dla oddzielenia produktu od tła
-- delikatne, eleganckie refleksy podkreślające materiał i krawędzie
-- miękkie, krótkie, kontrolowane cienie
-- brak brudnych, przypadkowych odbić otoczenia
-- brak żółtych dominant, brak mieszanych temperatur barwowych
-- neutralna lub lekko chłodna biel światła
-- oświetlenie ma podkreślać objętość, fakturę i premium charakter produktu
-- powierzchnie metalowe, plastikowe, silikonowe lub lakierowane mają mieć piękne, czyste highlighty jak w reklamowej fotografii studyjnej
-- ekran, szkło lub elementy połyskliwe mają być czytelne, eleganckie i bez przepaleń
-
-[TECHNIKA RENDEROWANIA]
-- potraktuj produkt jak hero object w fotorealistycznym CGI
-- zachowaj dokładny design produktu, bez zmieniania jego konstrukcji
-- popraw geometrię wizualną: wyrównaj krawędzie, symetrię i powierzchnie, ale bez zmiany modelu
-- materiały mają być fizycznie wiarygodne, ale lekko upiększone reklamowo
-- wygładź przypadkowe deformacje, tanie załamania, nierówności i wady wynikające z kiepskiego zdjęcia
-- zwiększ czytelność faz, przetłoczeń, łączeń i istotnych elementów konstrukcyjnych
-- nadaj powierzchniom wysokiej jakości shader look: czysty mat, kontrolowany satynowy połysk, elegancki metal, dopracowany silikon, realistyczna guma, precyzyjne szkło
-- popraw separację produktu od tła
-- zachowaj naturalną perspektywę produktu, ale podaj go w bardziej atrakcyjny, sprzedażowy sposób
-- efekt końcowy ma przypominać połączenie packshotu premium, reklamy produktowej i fotorealistycznego renderu 3D
-- produkt ma wyglądać na idealnie nowy, fabrycznie czysty, premium i starannie zaprezentowany
-
-[RETUSZ]
-- usuń szumy, kompresję, artefakty, zabrudzenia, kurz, pyłki, rysy i przypadkowe skazy
-- usuń tanie wrażenie słabego zdjęcia wejściowego
-- oczyść krawędzie produktu i popraw wycięcie
-- popraw balans bieli, ekspozycję i kontrast
-- zwiększ mikrokontrast lokalny tylko w sposób elegancki i kontrolowany
-- dopracuj tekstury tak, by były czytelne, ale nie przesadnie ostre
-- wyrównaj kolor materiałów i usuń nieestetyczne przebarwienia
-- popraw nadruki, etykiety, skale, logo i elementy interfejsu tylko jeśli są obecne, zachowując ich zgodność z oryginałem
-- zachowaj naturalny wygląd produktu, bez plastikowej przesady i bez cartoonowego efektu
-- brak halo, brak przerysowanego sharpeningu, brak przesadnego glow
-- finalny obraz ma wyglądać drogo, czysto, profesjonalnie i bardzo wiarygodnie sprzedażowo
-
-[WAŻNE OGRANICZENIA]
-- nie zmieniaj projektu produktu
-- nie dodawaj nowych elementów konstrukcyjnych
-- nie zmieniaj koloru produktu, chyba że wynika to z korekty balansu bieli i lepszego odwzorowania materiału
-- nie deformuj proporcji
-- nie stylizuj w kierunku ilustracji, kreskówki ani sztucznego AI look
-- unikaj przesadnego beauty retuszu, który zniekształca realny wygląd przedmiotu
-- zachowaj zgodność z prawdziwym produktem, ale pokaż go w estetyce premium CGI`;
 
 export type RetouchModelInfo = {
   id: string;
@@ -177,21 +111,20 @@ export async function retouchModel(supabase: Client): Promise<RetouchModelInfo |
 
 /**
  * Retusz AS A WORKFLOW STEP: the instruction and model the tool itself would
- * use for ONE image — the published GrovBase prompt when there is one, else
- * the built-in prompt — never the retouch tool's own workflow (a workflow
+ * use for ONE image — the published GrovBase prompt, or a refusal when none
+ * is published — never the retouch tool's own workflow (a workflow
  * step can therefore not recurse). Server memory only.
  */
 export async function retouchStepConfig(supabase: Client):
-  Promise<{ ok: true; prompt: string; modelId: string; fallbackId: string | null } | { ok: false; error: "model_unavailable" | "prompt_unavailable" }> {
+  Promise<{ ok: true; prompt: string; modelId: string; fallbackId: string | null } | { ok: false; error: "model_unavailable" | "prompt_unavailable" | "prompt_unconfigured" }> {
   const [model, engine] = await Promise.all([retouchModel(supabase), resolveEngine(supabase, RETOUCH_TOOL_KEY)]);
   if (!model) return { ok: false, error: "model_unavailable" };
-  // Same rule as the single call: the built-in text only when the panel is
-  // known to have nothing published — never when it cannot be read.
+  // Same rule as the single call: the published prompt, or nothing at all.
   if (!engine) return { ok: false, error: "prompt_unavailable" };
   const engineMode = engine.mode === "grovbase" || engine.mode === "hybrid";
   const published = engineMode && engine.systemPrompt?.trim() ? engine.systemPrompt : null;
-  if (engineMode && !published && engine.promptVersion !== null) return { ok: false, error: "prompt_unavailable" };
-  return { ok: true, prompt: published ?? RETOUCH_PROMPT, modelId: model.id, fallbackId: model.fallbackId };
+  if (!published) return { ok: false, error: engine.promptVersion !== null ? "prompt_unavailable" : "prompt_unconfigured" };
+  return { ok: true, prompt: published, modelId: model.id, fallbackId: model.fallbackId };
 }
 
 function num(v: unknown): number | undefined {
@@ -244,12 +177,10 @@ export async function runRetouch(
     ? input.format as AspectRatio
     : "auto";
 
-  // THE INSTRUCTION: a published workflow or prompt from Admin → Narzędzia i
-  // silniki when there is one, otherwise the built-in RETOUCH_PROMPT exactly
-  // as before. Nothing is published by default, so nothing changes by default.
+  // THE INSTRUCTION: the published workflow or prompt from Admin → Narzędzia
+  // i silniki — or a refusal (prompt_unconfigured) when nothing is published.
   const result = await runEngineImageTool(supabase, userId, workspaceId, {
     toolKey: RETOUCH_TOOL_KEY,
-    builtInPrompt: RETOUCH_PROMPT,
     hint: "",
     // The source photo IS the subject: image-to-image, never text-to-image.
     referencePaths: [input.sourcePath],

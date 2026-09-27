@@ -7,8 +7,9 @@
  */
 process.env.APP_ENCRYPTION_KEY = "a".repeat(64); // throwaway key for the round trip
 
+import { readFileSync } from "node:fs";
 import { candidatePoolSize, clampShots, decryptConceptPayload, encryptConceptPayload, MAX_SHOTS, MIN_SHOTS } from "../lib/server/prompt-engine";
-import { variationInstruction, originCost } from "../lib/server/concept-generation";
+import { originCost } from "../lib/server/concept-generation";
 import type { UsableModel } from "../lib/ai/router";
 import { synthesizeScenes, diversityViolations, clampRefs, type PlannedScene } from "../lib/ai/engine/scenes";
 import { composeFinalPrompt, validateFinalPrompt, MASTER_PREFIX } from "../lib/ai/engine/template-prompt";
@@ -96,11 +97,10 @@ check("synthesized scenes carry references", synth2.every((s) => s.reference_ind
 check("clampRefs repairs empty/invalid refs", clampRefs({ ...existing[0], reference_indices: [0, 99, 2, 2] }, 3).reference_indices.join() === "2"
   || clampRefs({ ...existing[0], reference_indices: [0, 99, 2, 2] }, 3).reference_indices.includes(2));
 
-console.log("\nE. RETAKE VARIATION — controlled, rotating, never a new scene");
-const takes = [1, 2, 3, 4, 5].map((n) => variationInstruction(n));
-check("consecutive retakes vary differently", new Set(takes.slice(0, 4)).size === 4);
-check("the rotation wraps", takes[4] === takes[0]);
-check("every variation forbids changing the concept", takes.every((v) => v.includes("Nie zmieniaj koncepcji sceny")));
+console.log("\nE. RETAKE — the same concept prompt, no GrovBase text added");
+const genSrc = readFileSync("lib/server/concept-generation.ts", "utf8");
+check("a retake adds no variation text of its own", !/variationInstruction|Kolejne podejście/.test(genSrc));
+check("the customer's correction goes in as their own words", /instruction \? `\$\{basePrompt\}\\n\\n\$\{instruction\}` : basePrompt/.test(genSrc));
 
 console.log("\nF. DUAL PRICING — custom pays base, GrovBase adds the surcharge");
 const fakeModel = {
