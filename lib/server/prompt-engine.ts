@@ -16,6 +16,7 @@ import { resolveEngine, type EngineConfig } from "@/lib/server/ai-engine";
 import { TOOL_VARIABLES, type CompileValues } from "@/lib/ai/prompt-variables";
 import { compileForTool, recordEngineRun, resolveVariables } from "@/lib/server/engine/runtime";
 import { textMeter } from "@/lib/server/ai-usage";
+import { prepareReferenceImage, type PreparedReference } from "@/lib/server/reference-image";
 
 export type ShotBrief = {
   /** The customer's own words for this shot — optional, max ~300 chars. */
@@ -173,8 +174,11 @@ export function candidatePoolSize(shots: number): number {
 
 const RATIOS = new Set<string>(ALL_ASPECT_RATIOS);
 const MAX_REFS = 10;
-const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
-const MAX_TOTAL_BYTES = 18 * 1024 * 1024;
+/** Every upload path caps a photo at 10 MB, so nothing the customer could
+ *  upload is ever dropped here (a Workflow image step would otherwise run
+ *  without its source photo). The total still bounds one request. */
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
 
 /** Analysis model id, admin-configurable without a deploy:
  *  app_settings("generation").analysis_model. Falls back to the engine
@@ -264,8 +268,8 @@ export async function textCapableBackends(
   return getVisionBackends(supabase, await getAnalysisModel(supabase), known);
 }
 
-export async function downloadReferences(supabase: Client, paths: string[]): Promise<ReferenceImage[]> {
-  const refs: ReferenceImage[] = [];
+export async function downloadReferences(supabase: Client, paths: string[]): Promise<PreparedReference[]> {
+  const refs: PreparedReference[] = [];
   let total = 0;
   for (const path of paths.slice(0, MAX_REFS)) {
     const { data: blob } = await supabase.storage.from("product-images").download(path);
@@ -273,11 +277,8 @@ export async function downloadReferences(supabase: Client, paths: string[]): Pro
     const buf = Buffer.from(await blob.arrayBuffer());
     if (buf.length > MAX_IMAGE_BYTES || total + buf.length > MAX_TOTAL_BYTES) continue;
     total += buf.length;
-    const ext = path.split(".").pop()?.toLowerCase();
-    refs.push({
-      base64: buf.toString("base64"),
-      mime: ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "avif" ? "image/avif" : "image/jpeg",
-    });
+    // The stored original, MIME read from the bytes (lib/server/reference-image).
+    refs.push(await prepareReferenceImage(buf, path));
   }
   return refs;
 }

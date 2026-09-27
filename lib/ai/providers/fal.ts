@@ -42,14 +42,15 @@ export const falAdapter: ImageProviderAdapter = {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Key ${cred.apiKey}` },
       body: JSON.stringify({
-        prompt: `${req.prompt}\n\n${req.productLock.fidelityInstructions}`,
+        // Verbatim: the runner already folded in whatever the model must read.
+        prompt: req.prompt,
         image_size: size,
         num_images: req.quantity,
         enable_safety_checker: true,
       }),
       // Never past the runner's deadline: a request that outlives the route
       // is killed with the charge already taken and nobody left to refund it.
-      signal: AbortSignal.timeout(Math.max(1, timeoutFor(120_000, req.deadlineAt))),
+      signal: AbortSignal.timeout(Math.max(1, timeoutFor(req.callTimeoutMs ?? 120_000, req.deadlineAt))),
     }).catch((e) => {
       throw new ProviderError(e?.name === "TimeoutError" ? "provider_timeout" : "provider_unreachable", true);
     });

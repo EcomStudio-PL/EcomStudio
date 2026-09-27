@@ -290,9 +290,29 @@ export async function runImageStep(
 
 /* ── EXISTING GROVBASE TOOL ───────────────────────────────────────────────*/
 
-/** The framings the expand tool offers; anything else keeps the square. */
-function toolRatio(r: AspectRatio): "1:1" | "4:5" | "16:9" | "9:16" {
-  return r === "4:5" || r === "16:9" || r === "9:16" ? r : "1:1";
+type ToolRatio = "1:1" | "4:5" | "16:9" | "9:16";
+const TOOL_RATIOS: readonly ToolRatio[] = ["1:1", "4:5", "16:9", "9:16"];
+
+/** The framings the expand tool offers; anything else keeps the square.
+ *  "auto" (the customer kept the photo's own shape, so the image model was
+ *  sent no ratio) becomes the offered framing nearest that photo's shape —
+ *  expand needs a concrete canvas, and a square would reframe the photo. */
+async function toolRatio(r: AspectRatio, bytes: Buffer): Promise<ToolRatio> {
+  if ((TOOL_RATIOS as readonly string[]).includes(r)) return r as ToolRatio;
+  if (r !== "auto") return "1:1";
+  try {
+    const { default: sharp } = await import("sharp");
+    const meta = await sharp(bytes, { failOn: "none" }).metadata();
+    const turned = (meta.orientation ?? 1) >= 5;
+    const w = (turned ? meta.height : meta.width) ?? 0;
+    const h = (turned ? meta.width : meta.height) ?? 0;
+    if (!w || !h) return "1:1";
+    const shape = (x: ToolRatio) => { const [a, b] = x.split(":").map(Number); return Math.log(a! / b!); };
+    const target = Math.log(w / h);
+    return TOOL_RATIOS.reduce((best, x) => (Math.abs(shape(x) - target) < Math.abs(shape(best) - target) ? x : best), "1:1" as ToolRatio);
+  } catch {
+    return "1:1";
+  }
 }
 
 export async function runToolStep(
@@ -326,7 +346,7 @@ export async function runToolStep(
     // Tool vendors answer within their own 120 s request timeout.
     if (ctx.deadlineAt - Date.now() < 130_000) return { ...fail("provider_timeout", true), attempts: attempt - 1 };
     const started = Date.now();
-    const r = await runToolProviderStep(ctx.supabase, slug, { bytes, mime: source.mime }, { ratio: toolRatio(ctx.aspectRatio) });
+    const r = await runToolProviderStep(ctx.supabase, slug, { bytes, mime: source.mime }, { ratio: await toolRatio(ctx.aspectRatio, bytes) });
     const cost: Cost = r.ok
       ? (r.costUsd == null ? { basis: "unknown" } : { basis: "estimated", usdMicros: usdToMicros(r.costUsd) ?? 0 })
       // A refused call is not billed by these vendors; a timeout might be.

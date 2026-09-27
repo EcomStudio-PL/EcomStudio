@@ -207,8 +207,15 @@ async function main() {
     await run(baseState({ prompt: "OPERATOR PROMPT", promptVersion: 1 }), { hint: "Ułóż płasko" });
     const p = generationCalls[0]?.prompt ?? "";
     check("Moda: the seller hint is appended as DATA after the operator prompt", p.startsWith("OPERATOR PROMPT") && p.includes(DATA_OPEN) && p.includes("Ułóż płasko"));
-    check("Product Lock is still added by runGeneration (fidelity block untouched)",
-      /productLock: \{ fidelityInstructions: cFidelity \}/.test(read("lib/server/generation.ts")) || /fidelityInstructions: cFidelity/.test(read("lib/server/generation.ts")));
+    // Product Lock: folded in by runGeneration for built-in and customer
+    // prompts; a PUBLISHED admin prompt goes out exactly as written.
+    const genSrc = read("lib/server/generation.ts");
+    check("Product Lock is added by runGeneration for built-in/customer prompts",
+      /text: `\$\{providerPrompt\}\\n\\n\$\{lock\}`, lock/.test(genSrc));
+    check("a published admin prompt carries no Product Lock (exact policy)",
+      /if \(promptPolicy === "exact"\)[\s\S]{0,200}lock: ""/.test(genSrc));
+    check("the engine hands its tool prompt (published or built-in) to runGeneration as exact",
+      /promptPolicy: "exact",/.test(read("lib/server/engine/tool-run.ts")));
   }
 
   console.log("W — workflow");

@@ -46,7 +46,8 @@ export const openaiAdapter: ImageProviderAdapter = {
 
   async generate(model: AiModelRecord, req: GenerationRequest, cred: ProviderCredential): Promise<GenerationResult> {
     const base = cred.baseUrl?.replace(/\/$/, "") || "https://api.openai.com";
-    const prompt = `${req.prompt}\n\n${req.productLock.fidelityInstructions}`;
+    // Verbatim: the runner already folded in whatever the model must read.
+    const prompt = req.prompt;
     const size = SIZE[req.aspectRatio] ?? "1024x1024";
     // The customer's choice first (already validated against the model's
     // declared qualities), then a pinned per-row quality, then the old
@@ -67,7 +68,7 @@ export const openaiAdapter: ImageProviderAdapter = {
         : JSON.stringify({ model: model.model_identifier, prompt, n: req.quantity, size, quality }),
       // Never past the runner's deadline: a request that outlives the route
       // is killed with the charge already taken and nobody left to refund it.
-      signal: AbortSignal.timeout(Math.max(1, timeoutFor(180_000, req.deadlineAt))),
+      signal: AbortSignal.timeout(Math.max(1, timeoutFor(req.callTimeoutMs ?? 180_000, req.deadlineAt))),
     }).catch((e) => {
       throw new ProviderError(e?.name === "TimeoutError" ? "provider_timeout" : "provider_unreachable", true);
     });

@@ -7,6 +7,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import {
   dryRunEngineAction, saveKnowledgeStrategyAction, type DryRunCheck,
 } from "@/app/actions/ai-engine";
+import type { RequestManifest } from "@/lib/ai/request-manifest";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -20,12 +21,14 @@ export function EngineDryRun({ toolKey, toolPath }: { toolKey: string; toolPath:
   const { t } = useI18n();
   const [pending, start] = useTransition();
   const [checks, setChecks] = useState<DryRunCheck[] | null>(null);
+  const [manifest, setManifest] = useState<RequestManifest | null>(null);
 
   function run() {
     start(async () => {
       const res = await dryRunEngineAction(toolKey);
       if (!res.ok || !res.checks) { toast.error(t("common.error")); return; }
       setChecks(res.checks);
+      setManifest(res.manifest ?? null);
     });
   }
 
@@ -54,10 +57,121 @@ export function EngineDryRun({ toolKey, toolPath }: { toolKey: string; toolPath:
               </li>
             ))}
           </ul>
+          {manifest && <ManifestView m={manifest} />}
         </>
       )}
       {toolPath && <p className="text-xs leading-relaxed text-faint">{t("aicc.test.liveNote", { path: toolPath })}</p>}
     </div>
+  );
+}
+
+/**
+ * What a real run would send — model, prompt (length and hash, never the
+ * text), image handling, request settings — and what the last real run
+ * recorded, side by side. Read-only.
+ */
+function ManifestView({ m }: { m: RequestManifest }) {
+  const { t } = useI18n();
+  const k = (key: string, vars?: Record<string, string | number>) => t(`aicc.test.manifest.${key}`, vars);
+  const yesNo = (v: boolean | null) => (v === null ? "—" : k(v ? "yes" : "no"));
+  const short = (h: string | null) => (h ? `${h.slice(0, 12)}…${h.slice(-6)}` : "—");
+  const secs = (ms: number) => Math.round(ms / 1000);
+  const p = m.prompt;
+  const c = m.config;
+  const last = m.lastRun;
+  const recorded = Boolean(last?.provider);
+
+  const sections: { title: string; rows: [string, string][] }[] = [
+    {
+      title: k("model"),
+      rows: [
+        [k("provider"), m.model?.provider ?? "—"],
+        [k("name"), m.model?.name ?? "—"],
+        [k("identifier"), m.model?.identifier ?? "—"],
+        [k("fallback"), m.fallback ?? k("off")],
+      ],
+    },
+    {
+      title: k("prompt"),
+      rows: [
+        [k("source"), k(`source.${p.source}`, { version: p.version ?? "?" })],
+        [k("mode"), p.mode],
+        [k("policy"), p.policy ? k(`policy.${p.policy}`) : "—"],
+        [k("chars"), p.chars === null ? "—" : k("charsValue", { n: p.chars })],
+        [k("sha"), short(p.sha256)],
+        [k("identical"), p.source !== "published" ? "—" : p.identical === null ? k("identicalWithVars") : yesNo(p.identical)],
+        [k("variables"), p.variables.length ? p.variables.map((v) => `{{${v}}}`).join(", ") : "—"],
+        [k("knowledge"), p.knowledge.length ? p.knowledge.map((v) => `{{${v}}}`).join(", ") : k("knowledgeNone")],
+        [k("appended"), p.appended.length ? p.appended.map((a) => k(`appended.${a}`)).join(", ") : k("appended.none")],
+      ],
+    },
+    {
+      title: k("config"),
+      rows: [
+        [k("operation"), c.operation],
+        [k("ratio"), k(`ratio.${c.ratioWhenOriginal}`)],
+        [k("ratios"), c.ratios.join(", ") || "—"],
+        [k("sizes"), c.sizes.map((s) => `${s.resolution} → ${s.sent ?? k("notSent")}`).join(", ")],
+        [k("mediaResolution"), k("modelDefault")],
+        [k("thinking"), k("modelDefault")],
+        [k("timeout"), c.timeoutMs === null
+          ? k("timeoutDefault", { budget: secs(c.budgetMs) })
+          : k("timeoutValue", { s: secs(c.timeoutMs), budget: secs(c.budgetMs) })],
+        [k("attempts"), k("retryRule", { n: c.maxAttempts })],
+      ],
+    },
+  ];
+  if (last && recorded) {
+    sections.push({
+      title: k("last"),
+      rows: [
+        [k("when"), new Date(last.at).toLocaleString()],
+        [k("identifier"), `${last.provider} / ${last.identifier ?? "—"}`],
+        [k("fallbackUsed"), yesNo(last.fallbackUsed)],
+        [k("operation"), last.operation ?? "—"],
+        [k("policy"), last.policy ? k(`policy.${last.policy}`) : "—"],
+        [k("chars"), last.chars === null ? "—" : k("charsValue", { n: last.chars })],
+        [k("sha"), short(last.sha256)],
+        [k("matches"), yesNo(last.matchesPublished)],
+        [k("ratioSent"), `${last.ratioRequested ?? "—"} → ${last.ratioSent ?? k("notSent")}`],
+        [k("sizeSent"), last.sizeSent ?? k("notSent")],
+        [k("retries"), String(last.failedAttempts)],
+        ...last.inputs.flatMap((i, n): [string, string][] => [
+          [k("input", { n: n + 1 }), k("inputValue", {
+            mime: i.mime, w: i.width ?? "?", h: i.height ?? "?", kb: Math.round(i.bytes / 1024),
+            transform: k(`transform.${i.transform}`),
+          })],
+          [k("inputSha"), `${short(i.sourceSha256)} → ${i.sentSha256 === i.sourceSha256 ? "=" : short(i.sentSha256)}`],
+        ]),
+      ],
+    });
+  }
+
+  return (
+    <section className="space-y-2" data-manifest>
+      <h4 className="text-[13px] font-semibold">{k("title")}</h4>
+      <p className="text-xs text-muted">{k("note")}</p>
+      <div className="grid gap-2 lg:grid-cols-2">
+        {sections.map((sec) => (
+          <div key={sec.title} className="rounded-xl bg-raised px-3.5 py-2.5" data-manifest-section={sec.title}>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">{sec.title}</p>
+            <dl className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-x-3 gap-y-1 text-[12.5px]">
+              {sec.rows.map(([label, value], i) => (
+                <div key={i} className="contents">
+                  <dt className="text-muted">{label}</dt>
+                  <dd className="min-w-0 break-words font-medium">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ))}
+        <div className="rounded-xl bg-raised px-3.5 py-2.5">
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">{k("image")}</p>
+          <p className="text-[12.5px] leading-relaxed">{k("imageRule")}</p>
+          {!recorded && <p className="mt-2 text-xs text-faint">{last ? k("lastUnrecorded") : k("lastNone")}</p>}
+        </div>
+      </div>
+    </section>
   );
 }
 

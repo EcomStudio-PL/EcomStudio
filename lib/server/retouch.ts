@@ -1,9 +1,8 @@
 import "server-only";
-import sharp from "sharp";
 import type { Client } from "@/lib/services/workspace";
 import { isPending, runEngineImageTool } from "@/lib/server/engine/tool-run";
 import { resolveEngine } from "@/lib/server/ai-engine";
-import { RATIO_SHAPE, type AspectRatio, type Resolution } from "@/lib/ai/types";
+import type { AspectRatio, Resolution } from "@/lib/ai/types";
 
 /**
  * RETUSZ ZDJĘĆ — GrovBase's own retouch pass.
@@ -17,14 +16,22 @@ import { RATIO_SHAPE, type AspectRatio, type Resolution } from "@/lib/ai/types";
  *
  * Everything else is the existing pipeline: `runGeneration` resolves the
  * model and its decrypted credential, reserves credits through the usage
- * ledger, calls the provider with the source photo as the reference image,
+ * ledger, calls the provider with the source photo as the image to EDIT,
  * stores the output in the generation bucket and refunds on failure.
+ *
+ * WHAT THE MODEL RECEIVES, with a prompt published in Admin → Narzędzia i
+ * silniki: the original uploaded photo (untouched bytes) + that prompt, byte
+ * for byte + the size the customer chose + the framing the customer chose —
+ * or, for "Oryginalny", no ratio at all, so the edit keeps the photo's own
+ * shape. Nothing else: no Product Lock, no built-in text, no knowledge the
+ * prompt did not ask for.
  */
 
-/** The model this tool runs on. Resolved by its API identifier, never by the
- *  marketing name — the row is admin-managed and its display name may change
- *  without the endpoint changing. */
-export const RETOUCH_MODEL_IDENTIFIER = "gemini-3-pro-image-preview";
+/** The model this tool runs on when the panel assigns none. Resolved by its
+ *  API identifier, never by the marketing name — the row is admin-managed and
+ *  its display name may change without the endpoint changing. Nano Banana Pro
+ *  = Gemini 3 Pro Image, the generally available code (migration 0131). */
+export const RETOUCH_MODEL_IDENTIFIER = "gemini-3-pro-image";
 
 /** Marks the job in `generation_jobs.settings` so the tool's own gallery,
  *  the library and the cost log can tell a retouch from a generation. */
@@ -33,9 +40,10 @@ export const RETOUCH_OPERATION = "image_retouch";
 const RETOUCH_TOOL_KEY = "retouch";
 
 /**
- * THE HIDDEN RETOUCH PROMPT. Server-only by construction (see above).
- * Product fidelity outranks every aesthetic instruction in it, and
- * `runGeneration` additionally appends the platform's Product Lock contract.
+ * THE BUILT-IN RETOUCH PROMPT — used ONLY while nothing is published in the
+ * panel (never alongside a published prompt). Server-only by construction
+ * (see above). On that built-in path `runGeneration` still appends the
+ * platform's Product Lock contract it was written to be paired with.
  */
 const RETOUCH_PROMPT = `[ZADANIE]
 Przekształć dostarczone zdjęcie produktu w wysokiej klasy wizualizację sprzedażową premium do e-commerce. Zachowaj rzeczywisty kształt, proporcje, konstrukcję i funkcję produktu, ale popraw jego prezentację tak, aby wyglądał jak perfekcyjny fotorealistyczny render produktowy klasy premium. Efekt końcowy ma wyglądać jak profesjonalny packshot reklamowy / CGI hero shot: maksymalnie czysty, dopracowany, elegancki, nowoczesny i bardzo sprzedażowy. Produkt ma być głównym bohaterem kadru, ma wyglądać drożej, czytelniej i bardziej premium niż na surowym zdjęciu, ale nadal wiarygodnie produktowo. Czysto białe tło. Doświetl wszystkie obecnie zacienione miejsca i elementy. Zachowaj identyczny kadr i ujęcie ze zdjęcia referencyjnego. Nie ingeruj w ustawienie produktu na zdjęciu.
@@ -190,43 +198,14 @@ export function retouchPrice(model: RetouchModelInfo, resolution: string): numbe
   return model.pricing[resolution] ?? Object.values(model.pricing)[0] ?? 0;
 }
 
-/**
- * "Oryginalny" means the shape of the file the customer uploaded, snapped to
- * the nearest framing the engine can actually draw. Measuring beats guessing:
- * a 3000×2000 photo asked for as 1:1 comes back cropped, and the whole point
- * of a retouch is that the crop does not move.
- */
-async function ratioOfSource(bytes: Buffer, allowed: string[]): Promise<AspectRatio> {
-  const fallback = (allowed.includes("1:1") ? "1:1" : allowed[0] ?? "1:1") as AspectRatio;
-  try {
-    const meta = await sharp(bytes).metadata();
-    // EXIF orientation 5–8 stores the image rotated a quarter turn.
-    const swap = (meta.orientation ?? 1) >= 5;
-    const w = (swap ? meta.height : meta.width) ?? 0;
-    const h = (swap ? meta.width : meta.height) ?? 0;
-    if (!w || !h) return fallback;
-    const target = w / h;
-    let best = fallback;
-    let bestDelta = Infinity;
-    for (const r of allowed) {
-      const shape = RATIO_SHAPE[r as keyof typeof RATIO_SHAPE];
-      if (!shape) continue;
-      const delta = Math.abs(Math.log(shape.w / shape.h) - Math.log(target));
-      if (delta < bestDelta) { bestDelta = delta; best = r as AspectRatio; }
-    }
-    return best;
-  } catch {
-    return fallback;
-  }
-}
-
 export type RetouchInput = {
   /** Storage path in `product-images`, already uploaded by the browser and
    *  verified by the route to sit inside the caller's own workspace. */
   sourcePath: string;
   resolution?: string;
-  /** "original" (default) keeps the source shape; anything else must be a
-   *  framing the model declares. */
+  /** "original" (default) keeps the source photo's own shape — no ratio is
+   *  imposed on the edit; anything else must be a framing the model declares
+   *  and is sent exactly. */
   format?: string;
   /** Results per run the panel showed the price for. */
   quotedOutputs?: number;
@@ -251,14 +230,13 @@ export async function runRetouch(
 
   const resolution = (model.resolutions.includes(input.resolution ?? "") ? input.resolution : model.resolutions[0]) as Resolution;
 
-  let aspectRatio: AspectRatio;
-  if (input.format && input.format !== "original" && model.ratios.includes(input.format)) {
-    aspectRatio = input.format as AspectRatio;
-  } else {
-    const { data: blob } = await supabase.storage.from("product-images").download(input.sourcePath);
-    if (!blob) return { ok: false, error: "source_unavailable" };
-    aspectRatio = await ratioOfSource(Buffer.from(await blob.arrayBuffer()), model.ratios);
-  }
+  // "Oryginalny" is NOT a ratio GrovBase picks: snapping a 4:3 or 3:2 photo
+  // to the nearest of a handful of ratios (1:1, 16:9…) forced the model to
+  // re-frame the scene. "auto" sends no ratio, and the edit keeps the shape
+  // of the photo it was given. A framing the customer chose is sent exactly.
+  const aspectRatio: AspectRatio = input.format && input.format !== "original" && model.ratios.includes(input.format)
+    ? input.format as AspectRatio
+    : "auto";
 
   // THE INSTRUCTION: a published workflow or prompt from Admin → Narzędzia i
   // silniki when there is one, otherwise the built-in RETOUCH_PROMPT exactly

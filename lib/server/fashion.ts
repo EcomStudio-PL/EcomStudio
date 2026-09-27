@@ -38,8 +38,9 @@ import { RATIO_SHAPE, type AspectRatio, type Resolution } from "@/lib/ai/types";
  */
 
 /** Nano Banana Pro. The identifier is the provider's, and it is the one thing
- *  here that a rename in the admin panel must not break. */
-export const FASHION_MODEL_IDENTIFIER = "gemini-3-pro-image-preview";
+ *  here that a rename in the admin panel must not break. Gemini 3 Pro Image's
+ *  generally available code (migration 0131 moved the row off the preview). */
+export const FASHION_MODEL_IDENTIFIER = "gemini-3-pro-image";
 
 export type FashionModelInfo = {
   id: string;

@@ -294,7 +294,7 @@ async function main() {
   const retouchDb = (row: Row | null) => {
     const d = new FakeDb();
     d.tables.ai_models = [
-      { id: "m-default", model_identifier: "gemini-3-pro-image-preview", active: true, supported_resolutions: ["1K"], supported_aspect_ratios: ["1:1"], pricing: { "1K": 7 }, credit_cost: 7, ai_providers: { active: true } },
+      { id: "m-default", model_identifier: "gemini-3-pro-image", active: true, supported_resolutions: ["1K"], supported_aspect_ratios: ["1:1"], pricing: { "1K": 7 }, credit_cost: 7, ai_providers: { active: true } },
       { id: "m2", model_identifier: "gpt-image-2", active: true, supported_resolutions: ["1K"], supported_aspect_ratios: ["1:1"], pricing: { "1K": 4 }, credit_cost: 4, ai_providers: { active: true } },
     ];
     d.tables.app_settings = [];

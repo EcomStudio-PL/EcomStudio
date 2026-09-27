@@ -290,7 +290,7 @@ function setup() {
   resetGeneration();
   visionCalls.length = 0; visionControl.fail = []; visionControl.handler = () => ({ output: "OUT" });
   fakeModels.clear();
-  fakeModels.set("m-main", { providerSlug: "google", identifier: "gemini-3-pro-image-preview", costMicros: 40_000 });
+  fakeModels.set("m-main", { providerSlug: "google", identifier: "gemini-3-pro-image", costMicros: 40_000 });
   fakeModels.set("m-back", { providerSlug: "openai", identifier: "gpt-image-1", costMicros: 60_000 });
   const db = newDb();
   db.storage.set(`product-images/${WS}/in/photo.jpg`, Buffer.from("CUSTOMER_PHOTO"));

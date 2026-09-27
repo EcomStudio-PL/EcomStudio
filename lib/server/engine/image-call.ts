@@ -5,7 +5,6 @@ import {
   ProviderError, effectiveQuality, modelQualities,
   type AspectRatio, type GeneratedImage, type Quality, type ReferenceImage, type Resolution,
 } from "@/lib/ai/types";
-import { buildFidelityInstructions } from "@/lib/ai/product-lock";
 import { unitCost, type Cost, type UnitPrice } from "@/lib/ai/usage-cost";
 import { isRetriable } from "@/lib/ai/workflow-values";
 import {
@@ -24,8 +23,11 @@ import {
  * start. It returns the image, the executor that REALLY answered (after any
  * fallback) and one trace entry per request actually sent.
  *
- * Product Lock: every call carries the fidelity contract; references are the
- * images the step was given (the seller's photos or an earlier step's image).
+ * The step's prompt is an admin's text: it reaches the model exactly as
+ * compiled, with nothing appended — the Product Lock only where the admin
+ * wrote {{fidelity_rules}} in the step. References are the images the step
+ * was given (the seller's untouched photos or an earlier step's image), sent
+ * through the same adapter and request builder as every other image call.
  */
 
 export type ImageCallInput = {
@@ -70,15 +72,15 @@ export async function callImageModel(supabase: Client, input: ImageCallInput): P
     const resolutions = (model.supported_resolutions ?? ["1K"]) as Resolution[];
     const resolution = input.resolution && resolutions.includes(input.resolution) ? input.resolution : resolutions[0];
     const ratios = (model.supported_aspect_ratios?.length ? model.supported_aspect_ratios : adapter.capabilities.ratios ?? ["1:1"]) as AspectRatio[];
-    const aspectRatio = ratios.includes(input.aspectRatio) ? input.aspectRatio : (ratios[0] ?? "1:1");
+    // "auto" with an image attached, on an engine that keeps the input's
+    // shape: no ratio is imposed on the edit (as on the single-call path).
+    const inputShaped = input.aspectRatio === "auto" && adapter.capabilities.inputShapedOutput === true && input.references.length > 0;
+    const aspectRatio = inputShaped || ratios.includes(input.aspectRatio) ? input.aspectRatio : (ratios[0] ?? "1:1");
     const quality = effectiveQuality(model, input.quality ?? undefined);
     const supportsRefs = adapter.capabilities.supportsReferenceImages && model.supports_reference_images;
     // A model that cannot carry the references would lose the Product Lock.
     if (input.references.length > 0 && !supportsRefs) { lastError = "references_unsupported"; continue; }
     const refs = supportsRefs ? input.references.slice(0, model.max_reference_images || 6) : [];
-    const fidelity = `${buildFidelityInstructions()}${refs.length
-      ? `\n\nREFERENCE IMAGES: the ${refs.length} attached image(s) show the product (or the previous step's image of it). The product must match them exactly.`
-      : ""}`;
     const callMs = adapter.worstCaseMs?.(1) ?? PROVIDER_CALL_BUDGET_MS;
     const priceOf = (images: number) => unitCost(input.unitPrices, providerSlug, model.model_identifier, "image", images, {
       resolution: resolution ?? null, quality: quality ?? null,
@@ -98,7 +100,7 @@ export async function callImageModel(supabase: Client, input: ImageCallInput): P
         const result = await withProviderLimit(providerSlug, () => adapter.generate(model, {
           prompt: input.prompt, aspectRatio, resolution, quantity: 1,
           quality: quality && modelQualities(model).includes(quality) ? quality : undefined,
-          referenceImages: refs, productLock: { fidelityInstructions: fidelity },
+          referenceImages: refs, productLock: { fidelityInstructions: "" },
           deadlineAt: input.deadlineAt,
         }, { apiKey, baseUrl }));
         const image = result.images[0];

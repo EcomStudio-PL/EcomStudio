@@ -27,6 +27,8 @@ import { startWorkflowRun } from "@/lib/server/engine/workflow";
 import { driveAfterResponse } from "@/lib/server/engine/drive";
 import { retouchModel } from "@/lib/server/retouch";
 import { fashionModel } from "@/lib/server/fashion";
+import { buildRequestManifest } from "@/lib/server/engine/request-manifest";
+import type { RequestManifest } from "@/lib/ai/request-manifest";
 
 /**
  * AI ENGINE — the admin actions this upgrade adds next to app/actions/
@@ -518,7 +520,7 @@ export type DryRunCheck = { key: string; status: "ok" | "warn" | "fail"; params?
  * compiles it with sample values and checks every dependency a real run has.
  * It makes no provider call and spends nothing; the result says so.
  */
-export async function dryRunEngineAction(toolKey: string): Promise<Result & { checks?: DryRunCheck[] }> {
+export async function dryRunEngineAction(toolKey: string): Promise<Result & { checks?: DryRunCheck[]; manifest?: RequestManifest | null }> {
   try {
     const { supabase } = await requireAdmin();
     if (!isAiToolKey(toolKey)) return { ok: false, error: "unknown_tool" };
@@ -615,7 +617,12 @@ export async function dryRunEngineAction(toolKey: string): Promise<Result & { ch
       checks.push({ key: "knowledge", status: (approved ?? 0) > 0 ? "ok" : "warn", params: { sets: setIds.length, approved: approved ?? 0, pending: pending ?? 0 } });
     }
     checks.push({ key: "noPaidCall", status: "ok" });
-    return { ok: true, checks };
+
+    // The request a real run would send, from the same code that sends it
+    // (image tools only — the ones with a model of their own).
+    const imageModel = await toolImageModel(supabase, toolKey);
+    const manifest = imageModel ? await buildRequestManifest(supabase, toolKey, { modelId: imageModel.id, fallbackId: imageModel.fallbackId }) : null;
+    return { ok: true, checks, manifest };
   } catch { return { ok: false, error: "generic" }; }
 }
 

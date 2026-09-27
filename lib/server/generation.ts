@@ -10,9 +10,11 @@ import { dispatchToken } from "@/lib/server/integrations";
 import { getAdapter } from "@/lib/ai/registry";
 import {
   ALL_ASPECT_RATIOS, ProviderError, effectiveQuality, modelQualities, priceFor, priceForResolution,
-  type AspectRatio, type GeneratedImage, type ImageProviderAdapter, type Quality, type Resolution, type ReferenceImage,
+  type AspectRatio, type GeneratedImage, type ImageProviderAdapter, type Quality, type Resolution,
 } from "@/lib/ai/types";
 import { buildFidelityInstructions } from "@/lib/ai/product-lock";
+import { describeProviderRequest, promptLength, type PromptPolicy } from "@/lib/ai/request-manifest";
+import { prepareReferenceImage, referenceFingerprint, type PreparedReference } from "@/lib/server/reference-image";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
 import { recordProviderCalls, type ProviderCall } from "@/lib/server/ai-usage";
@@ -97,6 +99,30 @@ export type GenerateInput = {
    * charge even when the text sent to the provider would differ.
    */
   dedupePrompt?: string;
+  /**
+   * WHOSE TEXT THE MODEL READS — and therefore what may be added to it.
+   *
+   *   exact         an admin's published GrovBase prompt (compiled). The
+   *                 provider receives that text and nothing else: no Product
+   *                 Lock, no product context. The admin places
+   *                 {{fidelity_rules}} where they want the lock.
+   *   product_lock  a customer's own prompt or GrovShot's planned one: the
+   *                 Product Lock contract and the product context follow it,
+   *                 exactly as they always have.
+   *
+   * Absent: `exact` when an engine prompt is given, `product_lock` otherwise.
+   */
+  promptPolicy?: PromptPolicy;
+  /**
+   * THE TOOL'S OWN LIMITS from Admin → Narzędzia i silniki ("Limit czasu",
+   * "Próby na modelu głównym"), when the caller is a configured tool. The
+   * panel is the truth: a tool set to one attempt gets one attempt, a tool
+   * set to 120 s gets 120 s per request. Absent: the platform defaults
+   * (the adapter's own cap, MAX_ATTEMPTS_PER_PROVIDER). The route budget
+   * still bounds both.
+   */
+  callTimeoutMs?: number;
+  maxAttempts?: number;
 };
 
 export type GenerateOutput =
@@ -228,7 +254,14 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   const adapterRatios = adapter.capabilities.ratios ?? ["1:1", "4:5", "16:9", "9:16"];
   const modelRatios = (model.supported_aspect_ratios?.length ? model.supported_aspect_ratios : adapterRatios)
     .filter((r) => (adapterRatios as string[]).includes(r));
-  const aspectRatio = (modelRatios.includes(input.aspectRatio)
+  // "auto" WITH THE PHOTO ATTACHED, on an engine that keeps the input's shape
+  // when no ratio is sent (a Gemini edit): nothing is imposed, the edit keeps
+  // the source photo's own framing. Anywhere else "auto" is not a shape this
+  // engine has, and snaps like any other unsupported ratio.
+  const inputShaped = input.aspectRatio === "auto" && adapter.capabilities.inputShapedOutput === true
+    && input.referencePaths.length > 0
+    && adapter.capabilities.supportsReferenceImages && model.supports_reference_images;
+  const aspectRatio = (inputShaped || modelRatios.includes(input.aspectRatio)
     ? input.aspectRatio
     : modelRatios[0] ?? "1:1") as AspectRatio;
 
@@ -295,6 +328,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   const promptText = [input.prompt.trim(), input.negative?.trim() ? `AVOID: ${input.negative.trim()}` : ""]
     .filter(Boolean).join("\n");
   const providerPrompt = input.enginePrompt?.trim() ? input.enginePrompt.trim() : promptText;
+  const promptPolicy: PromptPolicy = input.promptPolicy ?? (input.enginePrompt?.trim() ? "exact" : "product_lock");
   /**
    * ONE settings object for every write to the job row. The later updates
    * (after a retry, after a fallback served) used to rebuild a smaller
@@ -404,9 +438,9 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
    * image while the prompt still announced it — the model was told to apply
    * annotations that were not attached.)
    */
-  const productRefs: ReferenceImage[] = [];
-  const inspirationRefs: ReferenceImage[] = [];
-  let markedRef: ReferenceImage | null = null;
+  const productRefs: PreparedReference[] = [];
+  const inspirationRefs: PreparedReference[] = [];
+  let markedRef: PreparedReference | null = null;
   const refsSupported = adapter.capabilities.supportsReferenceImages && model.supports_reference_images;
   if (refsSupported) {
     const maxRefs = model.max_reference_images || 6;
@@ -414,12 +448,12 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     const wantMarked = !!input.markedImagePath;
     const reserved = (inspWanted.length > 0 ? Math.min(2, inspWanted.length) : 0) + (wantMarked ? 1 : 0);
     const productBudget = reserved > 0 ? Math.max(1, maxRefs - reserved) : maxRefs;
+    // The stored original as uploaded — no resize, crop or recompression;
+    // MIME from the bytes (lib/server/reference-image).
     const download = async (path: string) => {
       const { data: blob } = await supabase.storage.from("product-images").download(path);
       if (!blob) return null;
-      const buf = Buffer.from(await blob.arrayBuffer());
-      const ext = path.split(".").pop()?.toLowerCase();
-      return { base64: buf.toString("base64"), mime: ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg" };
+      return prepareReferenceImage(Buffer.from(await blob.arrayBuffer()), path);
     };
     // The prompt engine hands over 3-6 role-assigned references; the cap comes
     // from the model config so the extra verified angles actually reach the
@@ -435,11 +469,27 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     if (wantMarked) markedRef = await download(input.markedImagePath!);
   }
 
+  /*
+    THE PHOTO NEVER SILENTLY DISAPPEARS. A request that names product photos
+    for an engine that takes them, and gets none of them back from storage,
+    would otherwise go out as text-to-image — a Retusz "edit" drawn from
+    nothing, a generator shot with no Product Lock reference. It is refused
+    and refunded instead.
+  */
+  if (refsSupported && input.referencePaths.length > 0 && productRefs.length === 0) {
+    await failUsage(supabase, { serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet.id, error: "source_unavailable" });
+    await supabase.from("generation_jobs").update({
+      status: "failed", error_message: "source_unavailable", error_class: "source_unavailable",
+      completed_at: new Date().toISOString(),
+    }).eq("id", job.id);
+    return { ok: false, error: "source_unavailable" };
+  }
+
   /** Fit the three roles into ONE model's capacity: the product keeps at
    *  least one slot, the marked correction outranks inspiration, and the
    *  marked image is always LAST so "the final attached image" is true. */
   const fitRefs = (capacity: number) => {
-    if (capacity <= 0) return { list: [] as ReferenceImage[], products: 0, inspiration: 0, marked: false };
+    if (capacity <= 0) return { list: [] as PreparedReference[], products: 0, inspiration: 0, marked: false };
     const extras = (markedRef ? 1 : 0) + Math.min(2, inspirationRefs.length);
     const reserve = Math.max(0, Math.min(capacity - 1, extras));
     const products = productRefs.slice(0, Math.max(1, capacity - reserve));
@@ -455,7 +505,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
 
   /** The protected block that rides beside the Product Lock. It states only
    *  what this exact request carries — never a role that was trimmed. */
-  const buildFidelity = (fit: ReturnType<typeof fitRefs>) => {
+  const buildAttachmentContracts = (fit: ReturnType<typeof fitRefs>) => {
     // Inspiration steers the scene, never the product.
     const inspirationContract = fit.inspiration > 0
       ? `\n\nINSPIRATION IMAGES: attached image(s) ${fit.products + 1}–${fit.products + fit.inspiration} are style and scene inspiration ONLY. Take mood, lighting, environment, framing and atmosphere from them. The PRODUCT itself must match ONLY the first ${fit.products} product reference image(s) exactly — never copy products, shapes, colors, labels or branding from the inspiration images.`
@@ -465,7 +515,25 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     const markedContract = fit.marked
       ? `\n\nMARKED GUIDANCE IMAGE: the FINAL attached image is a copy of the previously generated photo with the customer's hand-drawn annotations on it (strokes, boxes, circles, lines, arrows, highlighted regions). The annotations only indicate WHERE the requested corrections apply. The drawn marks themselves are NOT part of the product or the scene — never render them, their colors or their shapes in the output. Apply the customer's corrections in the marked regions and keep the product and the rest of the scene unchanged.`
       : "";
-    return `${buildFidelityInstructions(productInstructions)}${productContext}${inspirationContract}${markedContract}`;
+    return `${inspirationContract}${markedContract}`;
+  };
+  const buildFidelity = (fit: ReturnType<typeof fitRefs>) =>
+    `${buildFidelityInstructions(productInstructions)}${productContext}${buildAttachmentContracts(fit)}`;
+  /**
+   * THE TEXT THE PROVIDER RECEIVES for one candidate — the only place it is
+   * composed. `exact`: the admin's prompt as published, plus nothing — except
+   * the two attachment notes when an inspiration or a marked image really is
+   * attached (they describe what the extra images are, and an engine prompt
+   * cannot know about them); Retusz and Moda never carry either. Otherwise:
+   * the prompt, then the Product Lock and product context, as always.
+   */
+  const composeProviderText = (fit: ReturnType<typeof fitRefs>) => {
+    if (promptPolicy === "exact") {
+      const notes = buildAttachmentContracts(fit);
+      return { text: notes ? `${providerPrompt}${notes}` : providerPrompt, lock: "" };
+    }
+    const lock = buildFidelity(fit);
+    return { text: `${providerPrompt}\n\n${lock}`, lock };
   };
 
   // How many references the PRIMARY model would carry — the reference-capable
@@ -494,6 +562,8 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   const health = await getProviderHealth(supabase);
   const candidateIds = [input.modelId, ...(input.fallbackModelIds ?? [])]
     .filter((id, i, arr) => arr.indexOf(id) === i);
+  const maxAttempts = Math.min(Math.max(Math.trunc(input.maxAttempts ?? MAX_ATTEMPTS_PER_PROVIDER) || 1, 1), MAX_ATTEMPTS_PER_PROVIDER);
+  const callTimeoutMs = input.callTimeoutMs && input.callTimeoutMs > 0 ? Math.trunc(input.callTimeoutMs) : undefined;
 
   type Attempt = {
     provider: string; model: string; attempt: number;
@@ -528,6 +598,8 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
    *  across retries so a run that exhausts them still delivers what exists
    *  rather than paying for it twice. */
   let lastPartial: GeneratedImage[] | null = null;
+  /** The request the last candidate was sent (settings.provider_request). */
+  let lastRequest: Record<string, unknown> | null = null;
 
   for (const candidateId of candidateIds) {
     if (outOfTime) break;
@@ -554,7 +626,10 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     const cAdapterRatios = cAdapter.capabilities.ratios ?? ["1:1", "4:5", "16:9", "9:16"];
     const cModelRatios = (cModel.supported_aspect_ratios?.length ? cModel.supported_aspect_ratios : cAdapterRatios)
       .filter((r) => (cAdapterRatios as string[]).includes(r));
-    if (candidateId !== input.modelId && !cModelRatios.includes(aspectRatio)) {
+    const cRatioOk = aspectRatio === "auto"
+      ? cAdapter.capabilities.inputShapedOutput === true || cModelRatios.includes("auto")
+      : cModelRatios.includes(aspectRatio);
+    if (candidateId !== input.modelId && !cRatioOk) {
       attempts.push({ provider: cProviderSlug, model: cModel.model_identifier, attempt: 0, error: "ratio_unsupported" });
       continue;
     }
@@ -583,7 +658,35 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     // Each candidate gets its own fit AND its own contract, so the prompt can
     // never describe an attachment this model did not receive.
     const cFit = supportsRefs ? fitRefs(cModel.max_reference_images || 6) : fitRefs(0);
-    const cFidelity = buildFidelity(cFit);
+    const cText = composeProviderText(cFit);
+    const cRequest = {
+      prompt: cText.text, aspectRatio, resolution: cResolution,
+      // A fallback engine only receives the quality if IT declares it.
+      quality: quality && modelQualities(cModel).includes(quality) ? quality : undefined,
+      quantity, referenceImages: cFit.list, productLock: { fidelityInstructions: cText.lock },
+      // The adapter cuts its own timeouts against this. A provider that
+      // goes quiet is abandoned before the platform kills the function,
+      // which is what keeps the refund below reachable.
+      deadlineAt,
+      callTimeoutMs,
+    };
+    // What this candidate is really asked — recorded on the job whatever happens.
+    const cShape = describeProviderRequest(cProviderSlug, cModel, cRequest);
+    lastRequest = {
+      provider: cProviderSlug, model_identifier: cModel.model_identifier, model_id: cModel.id,
+      fallback_used: candidateId !== input.modelId,
+      operation: cShape.operation,
+      prompt_policy: promptPolicy, fidelity_appended: cText.lock !== "",
+      prompt_chars: promptLength(cText.text),
+      prompt_sha256: createHash("sha256").update(cText.text).digest("hex"),
+      aspect_ratio_requested: input.aspectRatio, aspect_ratio_sent: cShape.aspectRatio,
+      resolution: cResolution ?? null, image_size_sent: cShape.imageSize,
+      inputs: cFit.list.map(referenceFingerprint),
+      // The tool's own per-request limit, or null = the adapter's ceiling below.
+      call_timeout_ms: callTimeoutMs ?? null,
+      adapter_ceiling_ms: cAdapter.worstCaseMs?.(1) ?? PROVIDER_CALL_BUDGET_MS,
+      max_attempts: maxAttempts, budget_ms: GENERATION_BUDGET_MS,
+    };
 
     /*
       HOW MUCH TIME ONE ATTEMPT NEEDS — asked, not assumed.
@@ -603,9 +706,14 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       time for at least one" is the honest precondition, and demanding the
       absolute worst case would refuse four-image runs that almost always fit.
     */
-    const cCallMs = cAdapter.worstCaseMs?.(1) ?? PROVIDER_CALL_BUDGET_MS;
+    // A tool's own shorter limit shortens the gate too: an attempt is started
+    // when one request of the length the tool allows still fits.
+    const cCallMs = Math.min(
+      cAdapter.worstCaseMs?.(1) ?? PROVIDER_CALL_BUDGET_MS,
+      callTimeoutMs ? callTimeoutMs + 5_000 : Number.POSITIVE_INFINITY,
+    );
 
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_PROVIDER; attempt++) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       /*
         Fast failures are still retried; slow ones are not. That is the honest
         policy: a call that cannot finish before the route dies is not a retry,
@@ -626,16 +734,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       }
       const attemptStartedAt = Date.now();
       try {
-        result = await withProviderLimit(cProviderSlug, () => cAdapter.generate(cModel, {
-          prompt: providerPrompt, aspectRatio, resolution: cResolution,
-          // A fallback engine only receives the quality if IT declares it.
-          quality: quality && modelQualities(cModel).includes(quality) ? quality : undefined,
-          quantity, referenceImages: cFit.list, productLock: { fidelityInstructions: cFidelity },
-          // The adapter cuts its own timeouts against this. A provider that
-          // goes quiet is abandoned before the platform kills the function,
-          // which is what keeps the refund below reachable.
-          deadlineAt,
-        }, { apiKey: cApiKey, baseUrl: cBaseUrl }));
+        result = await withProviderLimit(cProviderSlug, () => cAdapter.generate(cModel, cRequest, { apiKey: cApiKey, baseUrl: cBaseUrl }));
         served = { model: cModel, providerSlug: cProviderSlug };
         traceCall({
           providerSlug: cProviderSlug, model: cModel, ok: true, images: result.images.length,
@@ -697,7 +796,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
           served = { model: cModel, providerSlug: cProviderSlug };
           return true;
         };
-        const spent = !pe.retriable || attempt === MAX_ATTEMPTS_PER_PROVIDER;
+        const spent = !pe.retriable || attempt === maxAttempts;
         if (spent) { takePartial(); break; } // delivered, or on to the next candidate
         // Sleeping into the deadline wastes the time the refund needs.
         const delay = retryDelayMs(attempt, pe.upstream?.retryAfterMs);
@@ -720,6 +819,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       settings: {
         ...jobSettings,
         attempts,
+        provider_request: lastRequest,
       } as never,
     }).eq("id", job.id);
     await supabase.from("notifications").insert({
@@ -763,17 +863,18 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     return { ok: false, error: safe };
   }
 
-  // The job records whoever actually delivered, plus the attempt trail.
+  // The job records whoever actually delivered, the attempt trail and the
+  // request that delivered (model identifier, ratio and size sent, prompt
+  // policy, input fingerprints) — the truth, not the configuration.
   const model2 = served.model;
-  if (served.model.id !== model.id || attempts.length > 0) {
-    await supabase.from("generation_jobs").update({
-      model_id: served.model.id, provider_slug: served.providerSlug,
-      settings: {
-        ...jobSettings,
-        attempts,
-      } as never,
-    }).eq("id", job.id);
-  }
+  await supabase.from("generation_jobs").update({
+    model_id: served.model.id, provider_slug: served.providerSlug,
+    settings: {
+      ...jobSettings,
+      ...(attempts.length > 0 ? { attempts } : {}),
+      provider_request: lastRequest,
+    } as never,
+  }).eq("id", job.id);
 
   // Store outputs + records
   const { data: generation } = await supabase.from("generations").insert({

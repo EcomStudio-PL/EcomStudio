@@ -207,6 +207,11 @@ export type CompileResult =
  * One pass over the template. Every placeholder is either replaced by its
  * (sanitised) value, by its fallback, by nothing (optional), or the whole
  * compile fails. The output is never partially filled.
+ *
+ * The compiler is not a second author: outside the placeholders the admin's
+ * text is kept exactly. Only when an optional variable came out EMPTY is the
+ * gap it left closed (runs of blank lines folded, the ends trimmed) — the one
+ * change that exists because of the substitution itself.
  */
 export function compileTemplate(template: string, defs: VariableDef[], values: CompileValues): CompileResult {
   if (!template.trim()) return { ok: false, error: "empty_template", missing: [], unknown: [] };
@@ -237,7 +242,8 @@ export function compileTemplate(template: string, defs: VariableDef[], values: C
     return "";
   });
   if (missing.size > 0) return { ok: false, error: "variable_missing", missing: [...missing], unknown: [] };
-  return { ok: true, text: text.replace(/\n{3,}/g, "\n\n").trim(), used: [...used], skipped: [...skipped] };
+  const tidied = skipped.size > 0 ? text.replace(/\n{3,}/g, "\n\n").trim() : text;
+  return { ok: true, text: tidied, used: [...used], skipped: [...skipped] };
 }
 
 /** Sample values for the admin compile preview — never used at runtime. */

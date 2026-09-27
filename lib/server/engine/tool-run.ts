@@ -116,9 +116,18 @@ async function runEngineImageToolMetered(
     // single-call path below, which refuses honestly when it has no prompt.
   }
 
-  const published = engine && (engine.mode === "grovbase" || engine.mode === "hybrid")
-    ? engine.systemPrompt?.trim() ? engine.systemPrompt : null
-    : null;
+  const engineMode = engine && (engine.mode === "grovbase" || engine.mode === "hybrid");
+  const published = engineMode ? engine.systemPrompt?.trim() ? engine.systemPrompt : null : null;
+  // A version IS published but could not be opened: never swap in the
+  // built-in instruction behind the admin's back — the customer would get a
+  // different prompt than the one the panel shows. Refused, nothing charged.
+  if (engineMode && !published && engine.promptVersion !== null) {
+    await recordEngineRun(supabase, {
+      toolKey: input.toolKey, workspaceId, userId, mode: engine.mode, promptVersion: engine.promptVersion,
+      modelId: input.generation.modelId, status: "blocked", error: "prompt_unavailable", durationMs: Date.now() - started,
+    });
+    return { ok: false, error: "prompt_unavailable" };
+  }
   const template = published ?? input.builtInPrompt;
   if (!template || !template.trim()) return { ok: false, error: "prompt_unconfigured" };
 
@@ -160,6 +169,16 @@ async function runEngineImageToolMetered(
     referencePaths: input.referencePaths,
     hidePromptText: true,
     dedupePrompt: `engine:${input.toolKey}:p${published ? engine?.promptVersion ?? 0 : "builtin"}:${inputHash}`,
+    // THE TOOL'S PROMPT IS THE WHOLE INSTRUCTION: the provider receives the
+    // compiled text and nothing appended to it (the lock only where the admin
+    // wrote {{fidelity_rules}}). That holds for Retusz's built-in instruction
+    // too — it carries its own "keep the framing" rules, and the generic lock
+    // (written for NEW product photos: "the camera is creative") contradicted
+    // exactly those on an edit.
+    promptPolicy: "exact",
+    // The panel's "Limit czasu" and "Próby na modelu głównym" are what the
+    // image call really gets (clamped to the route budget) — not a label.
+    ...(engine ? { callTimeoutMs: engine.timeoutMs, maxAttempts: engine.maxAttempts } : {}),
   });
   await recordEngineRun(supabase, {
     ...trace,
@@ -209,8 +228,10 @@ export type GeneratorEngine =
  * in hybrid with nothing published, this returns `enginePrompt: null` and the
  * generator behaves exactly as it always has.
  *
- * Product Lock is untouched either way: runGeneration appends the fidelity
- * contract to whatever text reaches the provider.
+ * The engine prompt reaches the provider as written (runGeneration treats an
+ * engine prompt as `exact`): the Product Lock only where the admin placed
+ * {{fidelity_rules}}. In 'user' mode nothing changes — the customer's prompt
+ * still carries the lock.
  */
 export async function prepareGeneratorEngine(
   supabase: Client, userId: string, workspaceId: string,

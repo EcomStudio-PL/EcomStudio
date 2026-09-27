@@ -1,6 +1,7 @@
 import "server-only";
 import type { AiModelRecord, GenerationRequest, GenerationResult, ImageProviderAdapter, ProviderCredential } from "../types";
 import { ProviderError, sanitizeUpstreamMessage, timeoutFor } from "../types";
+import { buildGeminiImageRequest } from "./google-request";
 
 /**
  * Google's 429 body decides everything: a per-minute quota violation is a
@@ -51,10 +52,20 @@ async function classifyGoogleError(res: Response): Promise<ProviderError> {
   return new ProviderError("provider_error", res.status >= 500, `http_${res.status}`, upstream);
 }
 
-/** Google Gemini image generation (gemini-2.5-flash-image family) via the
- *  REST generateContent endpoint. Reference images go inline as base64;
- *  the model returns inline base64 images. One image per call — quantity
- *  is handled by sequential calls so a partial failure can still refund. */
+/** Google Gemini image models (Nano Banana family) via the REST
+ *  generateContent endpoint. The body comes from buildGeminiImageRequest —
+ *  the one request builder every caller shares. Reference images go inline
+ *  as base64; the model returns inline base64 images. One image per call —
+ *  quantity is handled by sequential calls so a partial failure can still
+ *  refund. */
+/**
+ * ONE CALL'S CEILING. A reasoning image model (Gemini 3 Pro Image) thinks
+ * before it draws, and a 4K edit legitimately takes far longer than a 1K
+ * one. This protects the route from a hung request; it is not a quality
+ * knob, and it is never shorter than such a call needs. The route budget
+ * (GENERATION_BUDGET_MS) still bounds it from above.
+ */
+export const GOOGLE_CALL_CAP_MS = 180_000;
 /** Below this there is no realistic chance of an image coming back, so the
  *  loop stops rather than spending a call it knows will time out. Generous
  *  enough that a healthy call is never refused; small enough that it only
@@ -70,6 +81,8 @@ export const googleAdapter: ImageProviderAdapter = {
     resolutions: [], maxQuantity: 4, supportsReferenceImages: true,
     ratios: ["1:1", "3:4", "4:5", "16:9", "9:16"],
     exactRatios: ["1:1", "3:4", "4:5", "16:9", "9:16"],
+    // An edit with no ratio sent keeps the input photo's own shape.
+    inputShapedOutput: true,
   },
 
   /**
@@ -84,24 +97,16 @@ export const googleAdapter: ImageProviderAdapter = {
    * knows its own shape; the runner should not have to guess it.
    */
   worstCaseMs(quantity: number): number {
-    return Math.max(1, quantity) * 95_000; // the 90 s below, plus the round trip
+    return Math.max(1, quantity) * (GOOGLE_CALL_CAP_MS + 5_000); // the cap, plus the round trip
   },
 
   async generate(model: AiModelRecord, req: GenerationRequest, cred: ProviderCredential): Promise<GenerationResult> {
     const base = cred.baseUrl?.replace(/\/$/, "") || "https://generativelanguage.googleapis.com";
     const url = `${base}/v1beta/models/${model.model_identifier}:generateContent?key=${encodeURIComponent(cred.apiKey)}`;
 
-    const parts: Record<string, unknown>[] = [
-      ...req.referenceImages.map((r) => ({ inlineData: { mimeType: r.mime, data: r.base64 } })),
-      { text: `${req.prompt}\n\n${req.productLock.fidelityInstructions}` },
-    ];
-
-    // Gemini 3 image models accept an explicit output size; the 2.5 flash
-    // image model only knows aspect ratio.
-    const imageConfig: Record<string, unknown> = { aspectRatio: req.aspectRatio };
-    if (req.resolution && (model.supported_resolutions ?? []).includes(req.resolution) && req.resolution !== "1K") {
-      imageConfig.imageSize = req.resolution;
-    }
+    // The prompt goes out verbatim — see buildGeminiImageRequest.
+    const { body } = buildGeminiImageRequest(model, req);
+    const payload = JSON.stringify(body);
 
     // QUANTITY IS N SEPARATE PAID CALLS, so a failure at call 4 of 4 must not
     // throw away — and make the runner buy again — the three images Google has
@@ -118,7 +123,7 @@ export const googleAdapter: ImageProviderAdapter = {
       // request. Stopping here hands back what was produced through the
       // partial path below; running on would be killed by the platform with
       // the charge already taken and nobody left to refund it.
-      const budget = timeoutFor(90_000, req.deadlineAt);
+      const budget = timeoutFor(req.callTimeoutMs ?? GOOGLE_CALL_CAP_MS, req.deadlineAt);
       /*
         A FLOOR, NOT JUST A SIGN TEST.
 
@@ -137,13 +142,7 @@ export const googleAdapter: ImageProviderAdapter = {
         const res = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ role: "user", parts }],
-            generationConfig: {
-              responseModalities: ["IMAGE"],
-              imageConfig,
-            },
-          }),
+          body: payload,
           signal: AbortSignal.timeout(budget),
         }).catch((e) => {
           throw new ProviderError(e?.name === "TimeoutError" ? "provider_timeout" : "provider_unreachable", true);

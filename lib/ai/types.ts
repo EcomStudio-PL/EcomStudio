@@ -113,7 +113,16 @@ export type ProviderCredential = { apiKey: string; baseUrl?: string | null };
 export type ReferenceImage = { base64: string; mime: string };
 
 export interface GenerationRequest {
+  /**
+   * THE EXACT TEXT THE MODEL RECEIVES. Adapters send it verbatim: they never
+   * prepend, append or rewrite anything. Whatever the runner decided the
+   * provider should read (an admin's published prompt byte for byte, or a
+   * customer prompt with the Product Lock) is already in here.
+   */
   prompt: string;
+  /** "auto" is only passed to an adapter that declared `inputShapedOutput`
+   *  and only with a reference attached: the provider keeps the input
+   *  image's own shape instead of being told a ratio. */
   aspectRatio: AspectRatio;
   resolution?: Resolution;
   /** Only ever set to a value the model declared in `metadata.qualities`;
@@ -122,7 +131,13 @@ export interface GenerationRequest {
   quantity: number;
   referenceImages: ReferenceImage[];
   productLock: {
-    /** Instructions the provider MUST preserve: shape, proportions, colors, item count, buttons, ports, labels, accessories, materials, scale. */
+    /**
+     * The fidelity contract the runner FOLDED INTO `prompt` for this request
+     * (shape, proportions, colors, item count, buttons, ports, labels,
+     * accessories, materials, scale), or "" when it folded in nothing — an
+     * admin's published prompt carries it only where the admin placed
+     * {{fidelity_rules}}. Kept for the trace; an adapter never appends it.
+     */
     fidelityInstructions: string;
   };
   /**
@@ -139,6 +154,12 @@ export interface GenerationRequest {
    * inside a request (a script, a test).
    */
   deadlineAt?: number;
+  /**
+   * The per-request ceiling the tool's admin set ("Limit czasu"), when the
+   * caller carries one. Absent = the adapter's own cap. Either way the
+   * request is also cut against `deadlineAt`, so it never outlives the route.
+   */
+  callTimeoutMs?: number;
 }
 
 /**
@@ -189,6 +210,12 @@ export interface ImageProviderAdapter {
      * exact.
      */
     exactRatios?: AspectRatio[];
+    /**
+     * The provider keeps the INPUT image's shape when no ratio is sent (a
+     * Gemini image edit does). With a reference attached, "auto" then means
+     * "the photo's own framing" instead of a ratio GrovBase picked.
+     */
+    inputShapedOutput?: boolean;
   };
   /**
    * THE WORST CASE FOR ONE generate() CALL, IN MILLISECONDS.
