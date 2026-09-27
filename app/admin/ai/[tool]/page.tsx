@@ -29,10 +29,10 @@ import { ToolModelPicker } from "@/components/admin/tool-models";
 import { KnowledgeImport, KnowledgeReview, ToolKnowledge, type ReviewItem } from "@/components/admin/tool-knowledge";
 import { WorkflowBuilder } from "@/components/admin/workflow-builder";
 import { WorkflowTestPanel } from "@/components/admin/workflow-test";
+import { ToolTabs } from "@/components/admin/tool-tabs";
 import { EngineDryRun, KnowledgeStrategyForm } from "@/components/admin/engine-panels";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { formatDate } from "@/lib/utils";
-import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -110,19 +110,7 @@ export default async function ToolWorkspace({ params, searchParams }: {
         }
       />
 
-      <nav aria-label={t("aicc.tabsLabel")} data-tool-tabs
-        className="thin-scroll -mx-1 mb-5 flex snap-x gap-1 overflow-x-auto overscroll-x-contain px-1 pb-1.5">
-        {tabs.map((key) => (
-          <Link key={key} href={`/admin/ai/${row.key}?tab=${key}`} scroll={false}
-            aria-current={key === tab ? "page" : undefined}
-            className={cn(
-              "inline-flex h-9 shrink-0 snap-start items-center whitespace-nowrap rounded-lg px-3 text-[13px] font-semibold transition-colors",
-              key === tab ? "bg-raised text-ink" : "text-muted hover:text-ink",
-            )}>
-            {t(`aicc.tab.${key}`)}
-          </Link>
-        ))}
-      </nav>
+      <ToolTabs toolKey={row.key} tabs={tabs} active={tab} label={t("aicc.tabsLabel")} t={t} />
 
       {tab === "basics" && <BasicsTab supabase={supabase} t={t} row={row} config={config} />}
       {tab === "engine" && <EngineTab supabase={supabase} t={t} row={row} config={config} locale={locale} />}

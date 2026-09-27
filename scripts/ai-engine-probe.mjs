@@ -46,8 +46,8 @@ const versions = [
   { id: "v1", version: 1, status: "superseded", summary: null, reason: "Start", source: "manual", createdAt: "2026-09-01T10:00:00Z", publishedAt: "2026-09-01T10:00:00Z", authorName: null },
 ];
 const wfVersions = [
-  { id: "w2", version: 2, status: "published", summary: "Analiza + obraz", reason: "Test", stepCount: 3, createdAt: "2026-09-12T10:00:00Z", publishedAt: "2026-09-12T10:00:00Z", authorName: "Anna Admin" },
-  { id: "w1", version: 1, status: "superseded", summary: null, reason: "Start", stepCount: 1, createdAt: "2026-09-02T10:00:00Z", publishedAt: "2026-09-02T10:00:00Z", authorName: null },
+  { id: "w2", version: 2, status: "published", summary: "Analiza + obraz", reason: "Test", stepCount: 3, maxOutputs: 1, createdAt: "2026-09-12T10:00:00Z", publishedAt: "2026-09-12T10:00:00Z", authorName: "Anna Admin" },
+  { id: "w1", version: 1, status: "superseded", summary: null, reason: "Start", stepCount: 1, maxOutputs: 1, createdAt: "2026-09-02T10:00:00Z", publishedAt: "2026-09-02T10:00:00Z", authorName: null },
 ];
 const review = [{
   id: "r1", setName: "Katalog AGD 2026 — bardzo długa nazwa zestawu, która musi się zawijać", beforeUrl: null, afterUrl: null,
@@ -78,7 +78,7 @@ export default async function Probe() {
                   <div className="pt-4">
                     <ToolPromptEditor toolKey="fashion_flat_lay" versions={versions} locale={locale} hasEngine />
                     <div className="mt-6 border-t border-line pt-5">
-                      <WorkflowBuilder toolKey="fashion_flat_lay" versions={wfVersions} models={[{ id: "m1", name: "Nano Banana Pro — bardzo długa nazwa modelu" }]} locale={locale} active={false} />
+                      <WorkflowBuilder toolKey="fashion_flat_lay" versions={wfVersions} models={[{ id: "m1", name: "Nano Banana Pro — bardzo długa nazwa modelu", refs: true }]} locale={locale} enabled={false} />
                     </div>
                   </div></Card>
                 <Card className="p-4 sm:p-5" data-engine-section="4"><CardHeader title={"4. " + t("aicc.sec.execution")} />

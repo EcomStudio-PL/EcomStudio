@@ -259,7 +259,7 @@ async function main() {
     db.rows("app_settings").some((r) => r.key === "notifications"));
   check("API7 (key modal) the save result never carries the key", !JSON.stringify(saved).includes("sk-new-secret"));
   check("API6 (key modal) what the panel shows on reopen is the MASK only",
-    maskKey(row.last_four as string) === "•••• 9876" && !maskKey(row.last_four as string).includes("sk-new"));
+    maskKey(row.last_four as string) === "•••• 9876" && !(maskKey(row.last_four as string) ?? "").includes("sk-new"));
 
   // API5 — the Base URL is validated BEFORE the key is written: a bad host never
   // ends up holding a fresh secret (§2 "no active secret bound to a wrong endpoint").
