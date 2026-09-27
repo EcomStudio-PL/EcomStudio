@@ -7,6 +7,7 @@ import {
 } from "@/lib/ai/types";
 import { buildFidelityInstructions } from "@/lib/ai/product-lock";
 import { unitCost, type Cost, type UnitPrice } from "@/lib/ai/usage-cost";
+import { isRetriable } from "@/lib/ai/workflow-values";
 import {
   PROVIDER_CALL_BUDGET_MS, fitsInBudget, getProviderHealth, providerBlocked,
   recordProviderFailure, recordProviderSuccess, retryDelayMs, sleep, withProviderLimit,
@@ -123,7 +124,7 @@ export async function callImageModel(supabase: Client, input: ImageCallInput): P
         if (partial) return { ok: true, image: partial, providerSlug, model: model.model_identifier, modelId: model.id, attempts, cost: priceOf(1) };
         // Not retried: invalid prompt/image, content policy, auth, quota —
         // another attempt on the same provider cannot succeed.
-        if (!pe.retriable) break;
+        if (!isRetriable(pe.safeMessage, pe.retriable)) break;
         if (attempt < input.maxAttempts) {
           const delay = retryDelayMs(attempt, pe.upstream?.retryAfterMs);
           if (!fitsInBudget(Date.now() + delay, input.deadlineAt, Math.min(callMs, 60_000))) { outOfTime = true; break; }

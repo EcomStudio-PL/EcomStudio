@@ -5,6 +5,7 @@ import { getWallet } from "@/lib/services/credits";
 import { listGalleryItems } from "@/lib/server/gallery";
 import { GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
 import { retouchModel, RETOUCH_OPERATION } from "@/lib/server/retouch";
+import { engineOutputsPerRun } from "@/lib/server/engine/tool-run";
 import { RetouchWorkspace } from "@/components/retouch/workspace";
 
 export const dynamic = "force-dynamic";
@@ -25,10 +26,13 @@ export default async function RetouchPage() {
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) redirect("/home");
 
-  const [model, wallet, gallery] = await Promise.all([
+  const [model, wallet, gallery, outputsPerRun] = await Promise.all([
     retouchModel(supabase),
     getWallet(supabase, workspace.id),
     listGalleryItems(supabase, workspace.id, { limit: GALLERY_PAGE_SIZE, operation: RETOUCH_OPERATION }),
+    // Workflow ON: one photo yields the published workflow's result count,
+    // and is priced for it (the server charges exactly this).
+    engineOutputsPerRun(supabase, "retouch"),
   ]);
 
   return (
@@ -42,6 +46,7 @@ export default async function RetouchPage() {
         resolutions={model?.resolutions ?? []}
         ratios={model?.ratios ?? []}
         pricing={model?.pricing ?? {}}
+        outputsPerRun={outputsPerRun}
         initialItems={gallery.items}
         initialCursor={gallery.nextCursor}
       />

@@ -2,11 +2,13 @@ import "server-only";
 import { createHash } from "node:crypto";
 import type { Client } from "@/lib/services/workspace";
 import { TOOL_VARIABLES, appendCustomerBlock } from "@/lib/ai/prompt-variables";
-import { loadPublishedWorkflow, resolveEngine } from "@/lib/server/ai-engine";
+import { resolveEngine } from "@/lib/server/ai-engine";
 import { runGeneration, type GenerateInput, type GenerateOutput } from "@/lib/server/generation";
 import { downloadReferences, textCapableBackends } from "@/lib/server/prompt-engine";
 import { compileForTool, recordEngineRun, resolveVariables } from "@/lib/server/engine/runtime";
-import { runImageWorkflow } from "@/lib/server/engine/workflow";
+import { startWorkflowRun } from "@/lib/server/engine/workflow";
+import { loadWorkflow } from "@/lib/server/engine/workflow-store";
+import { finalStepIndex, maxOutputsOf } from "@/lib/ai/workflow-def";
 import { textMeter, type TextMeter } from "@/lib/server/ai-usage";
 
 /**
@@ -16,7 +18,9 @@ import { textMeter, type TextMeter } from "@/lib/server/ai-usage";
  * validation, its aspect-ratio logic. This decides only WHICH INSTRUCTION the
  * one billed generation receives:
  *
- *   workflow  the published workflow (analysis steps, then the image step)
+ *   workflow  Workflow ON and a published version: a persistent run is
+ *             STARTED (charged once) and returned as pending — the caller
+ *             schedules the driver and the browser polls its status
  *   grovbase  the published prompt, variables compiled
  *   neither   the tool's built-in prompt (Retusz), or `prompt_unconfigured`
  *             for a tool that has none (Moda) — never an invented one.
@@ -35,9 +39,20 @@ export type EngineToolInput = {
   expectedCost: number;
 };
 
+/** A workflow run that was started (and charged) but not finished yet. */
+export type EnginePending = {
+  ok: true; pending: true; runId: string; jobId: string | null; credits: number; expected: number;
+  productId: null; images: [];
+};
+export type EngineToolOutput = GenerateOutput | EnginePending;
+
+export function isPending(r: EngineToolOutput): r is EnginePending {
+  return r.ok && "pending" in r && r.pending === true;
+}
+
 export async function runEngineImageTool(
   supabase: Client, userId: string, workspaceId: string, input: EngineToolInput,
-): Promise<GenerateOutput> {
+): Promise<EngineToolOutput> {
   // Analysis requests made to resolve this tool's variables (and workflow
   // analyze steps) go into the provider trace; the image call traces itself
   // inside runGeneration. Tracking only — nothing about the run changes.
@@ -51,7 +66,7 @@ export async function runEngineImageTool(
 
 async function runEngineImageToolMetered(
   supabase: Client, userId: string, workspaceId: string, input: EngineToolInput, meter: TextMeter,
-): Promise<GenerateOutput> {
+): Promise<EngineToolOutput> {
   const started = Date.now();
   const engine = await resolveEngine(supabase, input.toolKey);
   const strategy = engine?.knowledgeStrategy ?? "proven";
@@ -75,22 +90,28 @@ async function runEngineImageToolMetered(
     },
   };
 
-  if (engine?.mode === "workflow") {
-    const workflow = await loadPublishedWorkflow(supabase, input.toolKey);
-    if (workflow) {
-      const out = await runImageWorkflow(supabase, {
-        toolKey: input.toolKey, workflow, hint: input.hint, resolve: resolveBase,
-        generation: {
-          ...input.generation, referencePaths: input.referencePaths,
-          dedupePrompt: `engine:${input.toolKey}:w${workflow.version}:${inputHash}`,
-        },
-        expectedCost: input.expectedCost, userId,
+  if (engine?.workflowEnabled) {
+    // The PUBLISHED version, read once: a publish that lands while this run
+    // is going changes nothing for it (the run is pinned to this version).
+    const workflow = await loadWorkflow(supabase, input.toolKey, null);
+    if (workflow && workflow.status === "published") {
+      const started = await startWorkflowRun(supabase, userId, workspaceId, {
+        toolKey: input.toolKey, workflow, hint: input.hint, referencePaths: input.referencePaths,
+        aspectRatio: input.generation.aspectRatio, resolution: input.generation.resolution ?? null,
+        quality: input.generation.quality ?? null,
+        toolModelId: input.generation.modelId, toolFallbackId: input.generation.fallbackModelIds?.[0] ?? null,
+        unitCredits: input.expectedCost, operation: input.generation.operation ?? input.toolKey,
+        knowledgeStrategy: strategy,
       });
-      return out.ok ? out.result : { ok: false, error: out.error, missingCredits: out.missingCredits };
+      if (!started.ok) return { ok: false, error: started.error, missingCredits: started.missingCredits };
+      return {
+        ok: true, pending: true, runId: started.runId, jobId: started.jobId, credits: started.credits,
+        expected: started.expected, productId: null, images: [],
+      };
     }
-    // No published workflow: a tool with a built-in prompt keeps working on
-    // it; a tool without one refuses honestly.
-    if (input.builtInPrompt === null) return { ok: false, error: "prompt_unconfigured" };
+    // Switch ON but nothing published: the tool keeps its single-call path
+    // (a tool with a built-in prompt) or refuses honestly (one without).
+    if (input.builtInPrompt === null && !(engine.systemPrompt?.trim())) return { ok: false, error: "prompt_unconfigured" };
   }
 
   const published = engine && (engine.mode === "grovbase" || engine.mode === "hybrid")
@@ -154,9 +175,23 @@ export async function engineToolConfigured(supabase: Client, toolKey: string, ha
   if (hasBuiltIn) return true;
   const engine = await resolveEngine(supabase, toolKey);
   if (!engine) return false;
-  if (engine.mode === "workflow") return (await loadPublishedWorkflow(supabase, toolKey)) !== null;
+  if (engine.workflowEnabled && (await loadWorkflow(supabase, toolKey, null))?.status === "published") return true;
   if (engine.mode === "grovbase" || engine.mode === "hybrid") return Boolean(engine.systemPrompt?.trim());
   return false;
+}
+
+/**
+ * How many results ONE click delivers (and is priced for): 1 on the normal
+ * path, the published workflow's result count when Workflow is ON. The panel
+ * multiplies its per-image price by this — the server charges the same.
+ */
+export async function engineOutputsPerRun(supabase: Client, toolKey: string): Promise<number> {
+  const engine = await resolveEngine(supabase, toolKey);
+  if (!engine?.workflowEnabled) return 1;
+  const wf = await loadWorkflow(supabase, toolKey, null);
+  if (!wf || wf.status !== "published") return 1;
+  const idx = finalStepIndex(wf.steps);
+  return idx < 0 ? 1 : maxOutputsOf(wf.steps[idx]);
 }
 
 /* ── generator (hybrid) ───────────────────────────────────────────────────*/

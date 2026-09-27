@@ -715,6 +715,76 @@ async function runPaid(
   }
 }
 
+/* ── as a workflow step ────────────────────────────────────────────────── */
+
+export type ToolStepSlug = "remove_bg" | "upscale" | "expand";
+
+export type ToolStepResult =
+  | { ok: true; bytes: Buffer; mime: string; providerSlug: string; providerLabel: string; costUsd: number | null; requestId: string | null }
+  /** `retriable`: a 429 / 5xx / timeout / network failure — worth another try.
+   *  Everything else (bad image, no key, refused) is final. */
+  | { ok: false; error: string; retriable: boolean; providerSlug: string | null };
+
+/**
+ * ONE PROVIDER CALL of an existing tool, for a workflow step. The same provider
+ * choice (first configured, cheapest first), the same geometry rules and the
+ * same post-processing as the tool itself — and NO ledger, no free allowance:
+ * the workflow charged the customer once for the whole run. The caller records
+ * the call in the provider trace.
+ */
+export async function runToolProviderStep(
+  supabase: Client, slug: ToolStepSlug, image: { bytes: Buffer; mime: string },
+  opts: { ratio?: AspectRatio; factor?: UpscaleFactor } = {},
+): Promise<ToolStepResult> {
+  let before: Facts;
+  try { before = await inspect(image.bytes); }
+  catch { return { ok: false, error: "unreadable_image", retriable: false, providerSlug: null }; }
+  if (!before.width || !before.height) return { ok: false, error: "unreadable_image", retriable: false, providerSlug: null };
+  if (image.bytes.length > MAX_INPUT_BYTES) return { ok: false, error: "image_too_large", retriable: false, providerSlug: null };
+
+  const factor: UpscaleFactor = opts.factor ?? 2;
+  let plan: ExpandPlan | null = null;
+  if (slug === "expand") {
+    plan = planExpand(before, opts.ratio ?? "1:1");
+    // Already that shape: nothing to expand — the input passes through as is.
+    if (!plan) return { ok: true, bytes: image.bytes, mime: image.mime, providerSlug: "local", providerLabel: "local", costUsd: 0, requestId: null };
+  }
+  if (slug === "upscale" && (before.width * factor > 8000 || before.height * factor > 8000)) {
+    return { ok: false, error: "image_too_large", retriable: false, providerSlug: null };
+  }
+
+  const background = slug === "remove_bg" ? await pickProvider(supabase, BACKGROUND_PROVIDERS) : null;
+  const upscaler = slug === "upscale" ? await pickProvider(supabase, UPSCALE_PROVIDERS) : null;
+  const expander = slug === "expand" ? await pickProvider(supabase, EXPAND_PROVIDERS) : null;
+  const picked = background ?? upscaler ?? expander;
+  if (!picked) return { ok: false, error: "no_provider", retriable: false, providerSlug: null };
+
+  try {
+    const request = { bytes: image.bytes, mime: image.mime };
+    const result = background
+      ? await background.provider.removeBackground(request, background.creds)
+      : upscaler
+        ? await upscaler.provider.upscale(request, { factor, width: before.width, height: before.height }, upscaler.creds)
+        : await expander!.provider.expand(request, plan!, expander!.creds);
+    let bytes = result.bytes;
+    if (slug === "upscale") {
+      const raw = await inspect(bytes);
+      const wanted = before.width * factor;
+      if (raw.width > wanted * 1.02) bytes = await resizeConvert(bytes, { format: "png", width: wanted });
+    }
+    const after = await inspect(bytes);
+    return {
+      ok: true, bytes, mime: mimeOf(after.format), providerSlug: picked.provider.slug,
+      providerLabel: picked.provider.label, costUsd: result.costUsd, requestId: result.requestId,
+    };
+  } catch (e) {
+    // The provider layer already classifies: 429, 5xx, timeout and network
+    // are retryable; auth, out-of-credit and a refused image are not.
+    const known = e instanceof ToolProviderError;
+    return { ok: false, error: known ? e.code : "provider_error", retriable: known ? e.retryable : true, providerSlug: picked.provider.slug };
+  }
+}
+
 /**
  * The panel's settings, translated into what the edit interface takes.
  *

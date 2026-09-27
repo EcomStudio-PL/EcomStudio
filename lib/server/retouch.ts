@@ -1,7 +1,7 @@
 import "server-only";
 import sharp from "sharp";
 import type { Client } from "@/lib/services/workspace";
-import { runEngineImageTool } from "@/lib/server/engine/tool-run";
+import { isPending, runEngineImageTool } from "@/lib/server/engine/tool-run";
 import { resolveEngine } from "@/lib/server/ai-engine";
 import { RATIO_SHAPE, type AspectRatio, type Resolution } from "@/lib/ai/types";
 
@@ -166,6 +166,20 @@ export async function retouchModel(supabase: Client): Promise<RetouchModelInfo |
   };
 }
 
+/**
+ * Retusz AS A WORKFLOW STEP: the instruction and model the tool itself would
+ * use for ONE image — the published GrovBase prompt when there is one, else
+ * the built-in prompt — never the retouch tool's own workflow (a workflow
+ * step can therefore not recurse). Server memory only.
+ */
+export async function retouchStepConfig(supabase: Client): Promise<{ prompt: string; modelId: string; fallbackId: string | null } | null> {
+  const [model, engine] = await Promise.all([retouchModel(supabase), resolveEngine(supabase, RETOUCH_TOOL_KEY)]);
+  if (!model) return null;
+  const published = engine && (engine.mode === "grovbase" || engine.mode === "hybrid") && engine.systemPrompt?.trim()
+    ? engine.systemPrompt : null;
+  return { prompt: published ?? RETOUCH_PROMPT, modelId: model.id, fallbackId: model.fallbackId };
+}
+
 function num(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.trunc(v) : undefined;
 }
@@ -218,6 +232,8 @@ export type RetouchInput = {
 
 export type RetouchResult =
   | { ok: true; generationId: string | null; jobId: string; url: string; path: string; credits: number }
+  /** Workflow ON: the run was started and charged; poll /api/engine/runs/{runId}. */
+  | { ok: true; pending: true; runId: string; jobId: string | null; credits: number; expected: number }
   | { ok: false; error: string; missingCredits?: number };
 
 /**
@@ -272,6 +288,9 @@ export async function runRetouch(
   });
 
   if (!result.ok) return result;
+  if (isPending(result)) {
+    return { ok: true, pending: true, runId: result.runId, jobId: result.jobId, credits: result.credits, expected: result.expected };
+  }
   const first = result.images[0];
   return {
     ok: true,

@@ -924,6 +924,9 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   await completeUsage(supabase, dispatchToken(), usage.eventId, stored.length, {
     apiCostUsdMicros: (model2.internal_cost_usd_micros ?? 0) * stored.length,
     providerRequestId: requestId,
+    // The ledger names who REALLY produced the images — a fallback included —
+    // not the pair chosen when the charge was taken.
+    executor: { providerSlug: served.providerSlug, modelSlug: model2.model_identifier },
   });
   await recordProviderCalls(supabase, providerCalls);
   await supabase.from("generation_jobs").update({

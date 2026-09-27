@@ -841,7 +841,9 @@ language sql stable security definer set search_path = public as $$
   select jsonb_build_object(
     'id', r.id, 'status', r.status, 'progress', r.progress, 'outputs', r.outputs,
     'error', r.error, 'job_id', r.job_id, 'tool_key', r.tool_key, 'credits', r.credits,
-    'created_at', r.created_at, 'finished_at', r.finished_at)
+    'created_at', r.created_at, 'finished_at', r.finished_at,
+    -- Whether an invocation is driving it right now (a poll need not start one).
+    'driving', coalesce(r.locked_until > now(), false))
     from public.ai_engine_runs r
    where r.id = p_run_id
      and r.run_kind = 'workflow'

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { driveAfterResponse } from "@/lib/server/engine/drive";
 import { createClient } from "@/lib/supabase/server";
 import { accountBlockedResponse } from "@/lib/server/account-block";
 import { featureBlockedForApi } from "@/lib/server/feature-availability";
@@ -37,6 +38,7 @@ function validPath(path: unknown, workspaceId: string): path is string {
 }
 
 export async function POST(request: Request) {
+  const startedAt = Date.now();
   const supabase = await createClient();
   // The user comes from the session, never from the body.
   const { data: { user } } = await supabase.auth.getUser();
@@ -88,5 +90,8 @@ export async function POST(request: Request) {
   const result = await runFashionTool(supabase, user.id, workspace.id, {
     tool: config.key, inputs, resolution, format, hint,
   });
+  // Workflow ON: the run is started and charged; it is driven after this
+  // response, and the panel polls its status instead of holding a request.
+  if (result.ok && "pending" in result) driveAfterResponse(supabase, result.runId, startedAt);
   return NextResponse.json(result, { status: result.ok ? 200 : 400 });
 }

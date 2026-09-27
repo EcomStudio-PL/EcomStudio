@@ -209,6 +209,9 @@ export function validateWorkflow(toolKey: string, def: WorkflowDefinition):
       const src = produced.get(input);
       const itemOfImages = s.forEach !== null && input === s.itemName && produced.get(s.forEach)?.outputKind === "image";
       if (!itemOfImages && (!src || src.outputKind !== "image")) return fail("input_unknown", [input]);
+      // A tool works on ONE image: a collection (an earlier FOR EACH) has to
+      // be iterated with FOR EACH, not handed over whole.
+      if (!itemOfImages && s.operation === "tool" && src?.forEach !== null) return fail("input_unknown", [input]);
     }
     if ((s.operation === "image_edit" || s.operation === "tool") && input === "none") return fail("input_required");
 

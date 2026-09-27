@@ -11,6 +11,7 @@ import type { GenModel } from "@/components/genv3/types";
 import { findCategory } from "@/lib/categories";
 import { FASHION_TOOLS } from "@/lib/fashion-tools";
 import { fashionModel, fashionToolAvailable } from "@/lib/server/fashion";
+import { engineOutputsPerRun } from "@/lib/server/engine/tool-run";
 import type { FashionRuntimeData } from "@/components/category/workflow-runtime";
 
 export const dynamic = "force-dynamic";
@@ -69,12 +70,14 @@ export default async function WorkflowPage({ params }: {
   if (category.key === "moda") {
     const model = await fashionModel(supabase);
     const perTool = await Promise.all(FASHION_TOOLS.map(async (tool) => {
-      const [available, items] = await Promise.all([
+      const [available, items, outputsPerRun] = await Promise.all([
         fashionToolAvailable(supabase, tool.toolKey),
         listGalleryItems(supabase, workspace.id, { limit: GALLERY_PAGE_SIZE, operation: tool.operation }),
+        engineOutputsPerRun(supabase, tool.toolKey),
       ]);
       return [tool.key, {
         available: Boolean(model) && available,
+        outputsPerRun,
         initialItems: items.items,
         initialCursor: items.nextCursor,
       }] as const;

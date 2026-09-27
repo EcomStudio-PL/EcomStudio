@@ -56,6 +56,8 @@ export type FashionRuntimeData = {
   /** Per tool: can it run, and what has it made before. */
   tools: Record<string, {
     available: boolean;
+    /** Results one run delivers (1, or the published workflow's count). */
+    outputsPerRun: number;
     initialItems: GalleryItem[];
     initialCursor: string | null;
   }>;
@@ -143,6 +145,7 @@ export function WorkflowRuntime({
           workspaceId={workspaceId}
           credits={credits}
           available={fashion.tools[workflow.key]?.available ?? false}
+          outputsPerRun={fashion.tools[workflow.key]?.outputsPerRun ?? 1}
           resolutions={fashion.resolutions}
           ratios={fashion.ratios}
           pricing={fashion.pricing}

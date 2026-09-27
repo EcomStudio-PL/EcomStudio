@@ -102,6 +102,14 @@ export async function completeUsage(
     /** REAL provider cost of this call, in USD micros. Recorded, never guessed. */
     apiCostUsdMicros?: number;
     providerRequestId?: string | null;
+    /**
+     * WHO REALLY SERVED the call (after any fallback), when the caller knows.
+     * Given, it is written over the provider/model chosen at the start (the
+     * requested pair is kept in the metadata); `null` means "could not be
+     * determined" and is recorded as unknown — never guessed. Omitted, the
+     * start's pair stays, exactly as before (migration 0129).
+     */
+    executor?: { providerSlug: string | null; modelSlug: string | null };
   },
 ) {
   if (!serverToken) return;
@@ -121,13 +129,18 @@ export async function completeUsage(
   // seller could write an arbitrary provider cost onto their own event and make
   // the economics report say whatever they liked.
   for (let attempt = 0; attempt < 2; attempt++) {
-    const { error } = await supabase.rpc("usage_event_complete", {
+    const base = {
       p_token: serverToken,
       p_event_id: eventId,
       p_result_count: resultCount,
       p_api_cost_usd_micros: Math.max(0, Math.round(cost?.apiCostUsdMicros ?? 0)),
       p_request_id: cost?.providerRequestId ?? null,
-    });
+    };
+    const { error } = cost?.executor
+      ? await supabase.rpc("usage_event_complete", {
+        ...base, p_provider_slug: cost.executor.providerSlug, p_model_slug: cost.executor.modelSlug,
+      })
+      : await supabase.rpc("usage_event_complete", base);
     if (!error) return;
     if (attempt === 0) await new Promise((r) => setTimeout(r, 250));
   }

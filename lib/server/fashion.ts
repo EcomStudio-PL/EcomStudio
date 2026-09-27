@@ -1,7 +1,7 @@
 import "server-only";
 import sharp from "sharp";
 import type { Client } from "@/lib/services/workspace";
-import { engineToolConfigured, runEngineImageTool } from "@/lib/server/engine/tool-run";
+import { engineToolConfigured, isPending, runEngineImageTool } from "@/lib/server/engine/tool-run";
 import { fashionTool, type FashionToolConfig } from "@/lib/fashion-tools";
 import { RATIO_SHAPE, type AspectRatio, type Resolution } from "@/lib/ai/types";
 
@@ -140,6 +140,8 @@ export type FashionRunInput = {
 
 export type FashionRunResult =
   | { ok: true; jobId: string; url: string; path: string; credits: number }
+  /** Workflow ON: the run was started and charged; poll /api/engine/runs/{runId}. */
+  | { ok: true; pending: true; runId: string; jobId: string | null; credits: number; expected: number }
   | { ok: false; error: string; missingCredits?: number };
 
 /** Every path a run was given, in pool order — the order the provider sees. */
@@ -227,6 +229,9 @@ export async function runFashionTool(
   });
 
   if (!result.ok) return result;
+  if (isPending(result)) {
+    return { ok: true, pending: true, runId: result.runId, jobId: result.jobId, credits: result.credits, expected: result.expected };
+  }
   const first = result.images[0];
   return {
     ok: true,

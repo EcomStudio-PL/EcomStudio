@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "@/lib/notify";
 import { Loader2, RefreshCw, Sparkles, Wand2 } from "lucide-react";
+import { awaitEngineRun } from "@/lib/engine-run-client";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { PhotoUploader, DropOverlay, useFileDrop } from "@/components/genv3/uploader";
@@ -40,7 +41,7 @@ type JobState = {
  * results alone, and its card offers a retry for that one image.
  */
 export function RetouchWorkspace({
-  workspaceId, credits, available, resolutions, ratios, pricing, initialItems, initialCursor,
+  workspaceId, credits, available, resolutions, ratios, pricing, outputsPerRun = 1, initialItems, initialCursor,
 }: {
   workspaceId: string;
   credits: number;
@@ -51,6 +52,9 @@ export function RetouchWorkspace({
   ratios: string[];
   /** Size → credits per image, already carrying the admin's own override. */
   pricing: Record<string, number>;
+  /** Results ONE run delivers: 1, or the published workflow's count when the
+   *  tool runs a workflow — the price below is per run, like the charge. */
+  outputsPerRun?: number;
   initialItems: GalleryItem[];
   initialCursor: string | null;
 }) {
@@ -69,7 +73,7 @@ export function RetouchWorkspace({
   const inFlight = useRef(0);
   const running = useRef(false);
 
-  const perImage = pricing[resolution] ?? Object.values(pricing)[0] ?? 0;
+  const perImage = (pricing[resolution] ?? Object.values(pricing)[0] ?? 0) * Math.max(1, outputsPerRun);
   const total = perImage * photos.length;
   const missing = Math.max(0, total - balance);
   const n = (v: number) => new Intl.NumberFormat(locale).format(v);
@@ -135,7 +139,27 @@ export function RetouchWorkspace({
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sourcePath: job.path, resolution, format }),
       });
-      const json = await res.json() as { ok: boolean; error?: string; credits?: number };
+      const json = await res.json() as {
+        ok: boolean; error?: string; credits?: number; pending?: boolean; runId?: string; expected?: number;
+      };
+      if (json.ok && json.pending && json.runId) {
+        // WORKFLOW ON: charged once for the whole run; results arrive as the
+        // run finishes. Whatever is not delivered is refunded by the server.
+        const charged = json.credits ?? 0;
+        setBalance((b) => Math.max(0, b - charged));
+        const fin = await awaitEngineRun(json.runId);
+        const expected = Math.max(1, json.expected ?? 1);
+        const delivered = fin.status === "ok" || fin.status === "partial" ? fin.images.length : 0;
+        const refund = Math.round((charged * Math.max(0, expected - delivered)) / expected);
+        if (refund > 0) setBalance((b) => b + refund);
+        if (delivered > 0) {
+          await absorb(delivered);
+          setJobs((prev) => prev.map((j) => j.key === job.key ? { ...j, status: "completed" } : j));
+          return true;
+        }
+        setJobs((prev) => prev.map((j) => j.key === job.key ? { ...j, status: "failed", error: errText(fin.error ?? undefined) } : j));
+        return false;
+      }
       if (json.ok) {
         setBalance((b) => Math.max(0, b - (json.credits ?? perImage)));
         await absorb(1);
@@ -217,7 +241,7 @@ export function RetouchWorkspace({
                   label={t("genv3.resolution")}
                   value={resolution}
                   options={resolutions.map((r) => ({
-                    value: r, label: r, meta: t("genv3.creditsShort", { n: pricing[r] ?? 0 }),
+                    value: r, label: r, meta: t("genv3.creditsShort", { n: (pricing[r] ?? 0) * Math.max(1, outputsPerRun) }),
                   }))}
                   onChange={setResolution}
                   panelWidth={210}

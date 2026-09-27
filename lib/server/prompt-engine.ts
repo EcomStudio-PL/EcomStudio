@@ -476,7 +476,9 @@ export async function runPromptSession(
   const usage = await startUsage(supabase, {
     serverToken: dispatchToken(),
     userId, workspaceId, walletId: wallet.id, serviceSlug: "prompt_generation",
-    providerSlug: "google", modelSlug: analysisModel,
+    // The provider ASKED first — the configured order, not an assumption. Who
+    // really answered is written at completion (fallback included).
+    providerSlug: backends[0]?.provider ?? undefined, modelSlug: backends[0]?.provider === "google" ? analysisModel : undefined,
     // A reused (retried) session gets a fresh ledger event — the previous one
     // is already closed as failed and must not be resurrected.
     idempotencyKey: retryable ? `psession:${session.id}:retry:${Date.now()}` : `psession:${session.id}`,
@@ -715,7 +717,13 @@ export async function runPromptSession(
     if (insertError) throw new ProviderError("session_create_failed");
     lap("saveMs");
 
-    await completeUsage(supabase, dispatchToken(), usage.eventId, rows.length);
+    // THE EXECUTOR: the last provider request that succeeded (the planner's).
+    // Unknown when the trace saw none — never assumed.
+    const answered = meter.attempts().filter((a) => a.ok);
+    const last = answered[answered.length - 1];
+    await completeUsage(supabase, dispatchToken(), usage.eventId, rows.length, {
+      executor: { providerSlug: last?.provider ?? null, modelSlug: last?.model ?? null },
+    });
     await supabase.from("prompt_sessions")
       .update({
         status: "ready", latency_ms: Date.now() - startedAt,
