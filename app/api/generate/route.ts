@@ -57,6 +57,7 @@ export async function POST(request: Request) {
     modelId: String(body.modelId ?? ""),
     prompt: String(body.prompt ?? ""),
     enginePrompt: engine.enginePrompt ?? undefined,
+    promptPolicy: engine.promptPolicy,
     negative: typeof body.negative === "string" ? body.negative : undefined,
     aspectRatio: body.aspectRatio,
     resolution: body.resolution,

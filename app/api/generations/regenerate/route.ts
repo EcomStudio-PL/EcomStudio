@@ -178,6 +178,7 @@ export async function POST(request: Request) {
   const result = await runGeneration(supabase, user.id, workspace.id, {
     modelId: modelId ?? job.model_id ?? "",
     enginePrompt: engine.enginePrompt ?? undefined,
+    promptPolicy: engine.promptPolicy,
     // Only a client-chosen model must pass the custom-visibility gate; the
     // job's own original model keeps working even if later hidden.
     requireCustomVisible: !!modelId,

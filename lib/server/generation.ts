@@ -13,7 +13,7 @@ import {
   type AspectRatio, type GeneratedImage, type ImageProviderAdapter, type Quality, type Resolution,
 } from "@/lib/ai/types";
 import { buildFidelityInstructions } from "@/lib/ai/product-lock";
-import { describeProviderRequest, promptLength, type PromptPolicy } from "@/lib/ai/request-manifest";
+import { describeProviderRequest, effectiveCallTimeout, promptLength, type PromptPolicy } from "@/lib/ai/request-manifest";
 import { prepareReferenceImage, referenceFingerprint, type PreparedReference } from "@/lib/server/reference-image";
 import { promptDigest } from "@/lib/server/prompt-digest";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
@@ -111,7 +111,9 @@ export type GenerateInput = {
    *                 Product Lock contract and the product context follow it,
    *                 exactly as they always have.
    *
-   * Absent: `exact` when an engine prompt is given, `product_lock` otherwise.
+   * Absent: `product_lock` — only a caller that owns the whole instruction
+   * (a tool's prompt, a generator template that places {{fidelity_rules}})
+   * asks for `exact`.
    */
   promptPolicy?: PromptPolicy;
   /**
@@ -133,6 +135,9 @@ export type GenerateOutput =
   | { ok: false; error: string; missingCredits?: number };
 
 const RATIOS = new Set<string>(ALL_ASPECT_RATIOS);
+
+/** Time that must remain to START an attempt (see the provider loop). */
+const ATTEMPT_GATE_MS = 95_000;
 
 /** Product photos a job may carry — the same ceiling the panel enforces
  *  ("Dodaj zdjęcia (max. 10)"). Providers still trim to their own limit. */
@@ -329,7 +334,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   const promptText = [input.prompt.trim(), input.negative?.trim() ? `AVOID: ${input.negative.trim()}` : ""]
     .filter(Boolean).join("\n");
   const providerPrompt = input.enginePrompt?.trim() ? input.enginePrompt.trim() : promptText;
-  const promptPolicy: PromptPolicy = input.promptPolicy ?? (input.enginePrompt?.trim() ? "exact" : "product_lock");
+  const promptPolicy: PromptPolicy = input.promptPolicy ?? "product_lock";
   /**
    * ONE settings object for every write to the job row. The later updates
    * (after a retry, after a fallback served) used to rebuild a smaller
@@ -563,8 +568,11 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   const health = await getProviderHealth(supabase);
   const candidateIds = [input.modelId, ...(input.fallbackModelIds ?? [])]
     .filter((id, i, arr) => arr.indexOf(id) === i);
+  // "Próby na modelu głównym" is what its label says: attempts on the PRIMARY.
+  // A fallback, when enabled, keeps the platform's own retry count.
   const maxAttempts = Math.min(Math.max(Math.trunc(input.maxAttempts ?? MAX_ATTEMPTS_PER_PROVIDER) || 1, 1), MAX_ATTEMPTS_PER_PROVIDER);
-  const callTimeoutMs = input.callTimeoutMs && input.callTimeoutMs > 0 ? Math.trunc(input.callTimeoutMs) : undefined;
+  const attemptsFor = (candidateId: string) => (candidateId === input.modelId ? maxAttempts : MAX_ATTEMPTS_PER_PROVIDER);
+  const callTimeoutMs = effectiveCallTimeout(input.callTimeoutMs);
 
   type Attempt = {
     provider: string; model: string; attempt: number;
@@ -627,8 +635,11 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     const cAdapterRatios = cAdapter.capabilities.ratios ?? ["1:1", "4:5", "16:9", "9:16"];
     const cModelRatios = (cModel.supported_aspect_ratios?.length ? cModel.supported_aspect_ratios : cAdapterRatios)
       .filter((r) => (cAdapterRatios as string[]).includes(r));
+    // "auto" means "keep the photo's shape" only on an engine that is sent
+    // the photo: a candidate without it would draw at its own default shape.
+    const cCarriesPhoto = primaryFit.list.length > 0 && supportsRefs;
     const cRatioOk = aspectRatio === "auto"
-      ? cAdapter.capabilities.inputShapedOutput === true || cModelRatios.includes("auto")
+      ? (cAdapter.capabilities.inputShapedOutput === true && cCarriesPhoto) || cModelRatios.includes("auto")
       : cModelRatios.includes(aspectRatio);
     if (candidateId !== input.modelId && !cRatioOk) {
       attempts.push({ provider: cProviderSlug, model: cModel.model_identifier, attempt: 0, error: "ratio_unsupported" });
@@ -673,7 +684,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     };
     // What this candidate is really asked — recorded on the job whatever happens.
     const cShape = describeProviderRequest(cProviderSlug, cModel, cRequest);
-    lastRequest = {
+    const cRecord = {
       provider: cProviderSlug, model_identifier: cModel.model_identifier, model_id: cModel.id,
       fallback_used: candidateId !== input.modelId,
       operation: cShape.operation,
@@ -687,7 +698,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       // The tool's own per-request limit, or null = the adapter's ceiling below.
       call_timeout_ms: callTimeoutMs ?? null,
       adapter_ceiling_ms: cAdapter.worstCaseMs?.(1) ?? PROVIDER_CALL_BUDGET_MS,
-      max_attempts: maxAttempts, budget_ms: GENERATION_BUDGET_MS,
+      max_attempts: attemptsFor(candidateId), budget_ms: GENERATION_BUDGET_MS,
     };
 
     /*
@@ -710,12 +721,18 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     */
     // A tool's own shorter limit shortens the gate too: an attempt is started
     // when one request of the length the tool allows still fits.
+    // The gate asks for an ORDINARY call's worth of time (capped at 95 s), not
+    // the adapter's worst case: the adapter already cuts every call at the
+    // deadline, and demanding a 185 s window would forbid any retry or
+    // fallback that starts after the first minute.
     const cCallMs = Math.min(
       cAdapter.worstCaseMs?.(1) ?? PROVIDER_CALL_BUDGET_MS,
       callTimeoutMs ? callTimeoutMs + 5_000 : Number.POSITIVE_INFINITY,
+      ATTEMPT_GATE_MS,
     );
+    const cMaxAttempts = attemptsFor(candidateId);
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    for (let attempt = 1; attempt <= cMaxAttempts; attempt++) {
       /*
         Fast failures are still retried; slow ones are not. That is the honest
         policy: a call that cannot finish before the route dies is not a retry,
@@ -735,6 +752,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         break;
       }
       const attemptStartedAt = Date.now();
+      lastRequest = cRecord;
       try {
         result = await withProviderLimit(cProviderSlug, () => cAdapter.generate(cModel, cRequest, { apiKey: cApiKey, baseUrl: cBaseUrl }));
         served = { model: cModel, providerSlug: cProviderSlug };
@@ -798,7 +816,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
           served = { model: cModel, providerSlug: cProviderSlug };
           return true;
         };
-        const spent = !pe.retriable || attempt === maxAttempts;
+        const spent = !pe.retriable || attempt === cMaxAttempts;
         if (spent) { takePartial(); break; } // delivered, or on to the next candidate
         // Sleeping into the deadline wastes the time the refund needs.
         const delay = retryDelayMs(attempt, pe.upstream?.retryAfterMs);

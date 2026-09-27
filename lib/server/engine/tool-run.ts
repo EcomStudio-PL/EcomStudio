@@ -224,7 +224,12 @@ export async function engineOutputsPerRun(supabase: Client, toolKey: string): Pr
 /* ── generator (hybrid) ───────────────────────────────────────────────────*/
 
 export type GeneratorEngine =
-  | { ok: true; enginePrompt: string | null; finish: (result: GenerateOutput) => Promise<void> }
+  | {
+      ok: true; enginePrompt: string | null; finish: (result: GenerateOutput) => Promise<void>;
+      /** "exact" only when the admin placed {{fidelity_rules}} themselves;
+       *  otherwise the generator's Product Lock and product context follow. */
+      promptPolicy?: "exact" | "product_lock";
+    }
   | { ok: false; error: string };
 
 /**
@@ -234,10 +239,11 @@ export type GeneratorEngine =
  * in hybrid with nothing published, this returns `enginePrompt: null` and the
  * generator behaves exactly as it always has.
  *
- * The engine prompt reaches the provider as written (runGeneration treats an
- * engine prompt as `exact`): the Product Lock only where the admin placed
- * {{fidelity_rules}}. In 'user' mode nothing changes — the customer's prompt
- * still carries the lock.
+ * The generator draws NEW scenes of the customer's product, so its Product
+ * Lock and the customer's product text keep following the prompt (policy
+ * product_lock) — unless the admin placed {{fidelity_rules}} in the template
+ * themselves, in which case the text goes out exactly as compiled. In 'user'
+ * mode nothing changes.
  */
 export async function prepareGeneratorEngine(
   supabase: Client, userId: string, workspaceId: string,
@@ -296,6 +302,7 @@ export async function prepareGeneratorEngine(
   return {
     ok: true,
     enginePrompt: text,
+    promptPolicy: /\{\{\s*fidelity_rules\b/.test(template) ? "exact" : "product_lock",
     finish: (result) => recordEngineRun(supabase, {
       ...trace,
       status: result.ok ? "ok" : "failed",

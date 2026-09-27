@@ -30,11 +30,25 @@ export function describeProviderRequest(
     const plan = buildGeminiImageRequest(model, req);
     return { operation: plan.operation, aspectRatio: plan.aspectRatio, imageSize: plan.imageSize };
   }
+  // Other providers receive "auto" as a value of their own (OpenAI's size
+  // "auto": the provider picks), so it is recorded as sent.
   return {
     operation: req.referenceImages.length > 0 ? "IMAGE_EDIT" : "IMAGE_GENERATION",
-    aspectRatio: req.aspectRatio === "auto" ? null : req.aspectRatio,
+    aspectRatio: req.aspectRatio,
     imageSize: req.resolution ?? null,
   };
+}
+
+/**
+ * The per-request limit a tool's "Limit czasu" really gives. Never below
+ * 30 s: an image model cannot answer sooner, and a shorter limit would only
+ * make every call time out (the panel accepts 5 s). Undefined = the adapter's
+ * own ceiling. The route budget still bounds it from above.
+ */
+export const MIN_CALL_TIMEOUT_MS = 30_000;
+export function effectiveCallTimeout(ms: number | null | undefined): number | undefined {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms <= 0) return undefined;
+  return Math.max(MIN_CALL_TIMEOUT_MS, Math.trunc(ms));
 }
 
 /** Code points, the unit the prompt editor counts in. */
@@ -72,9 +86,10 @@ export type RequestManifest = {
   };
   config: {
     operation: "IMAGE_EDIT" | "IMAGE_GENERATION";
-    /** "input_photo": nothing sent, the output keeps the photo's shape;
+    /** "input_photo": nothing sent, the output keeps the photo's shape (Gemini);
+     *  "provider_choice": "auto" sent, the provider picks (non-Gemini models);
      *  "nearest_supported": the photo's shape snapped to a listed ratio. */
-    ratioWhenOriginal: "input_photo" | "nearest_supported";
+    ratioWhenOriginal: "input_photo" | "provider_choice" | "nearest_supported";
     ratios: string[];
     /** Each size the customer can pick → what imageSize carries (null = not sent). */
     sizes: { resolution: string; sent: string | null }[];

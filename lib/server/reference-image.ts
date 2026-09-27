@@ -14,9 +14,10 @@ import type { ReferenceImage } from "@/lib/ai/types";
  * Exactly two cases are changed, both only so the model sees the SAME picture
  * the customer sees, and both are recorded on the result:
  *   exif_orientation  the file is stored sideways with an EXIF "rotate me"
- *                     flag. The rotation is baked in (JPEG at quality 100 /
- *                     4:4:4, PNG and WebP losslessly) so a provider that
- *                     ignores EXIF does not edit a sideways photo.
+ *                     flag. The rotation is baked in (JPEG at quality 95 with
+ *                     the source's chroma subsampling, PNG and WebP
+ *                     losslessly) so a provider that ignores EXIF does not
+ *                     edit a sideways photo.
  *   transcoded_png    a format the provider does not accept (AVIF, GIF, TIFF)
  *                     is decoded and sent as lossless PNG — same pixels,
  *                     same dimensions.
@@ -53,7 +54,7 @@ export async function prepareReferenceImage(stored: Buffer, name: string): Promi
   });
 
   const { default: sharp } = await import("sharp");
-  let meta: { format?: string; orientation?: number; width?: number; height?: number };
+  let meta: { format?: string; orientation?: number; width?: number; height?: number; chromaSubsampling?: string };
   try {
     meta = await sharp(stored, { failOn: "none" }).metadata();
   } catch {
@@ -78,7 +79,9 @@ export async function prepareReferenceImage(stored: Buffer, name: string): Promi
       transform = "exif_orientation";
       mime = known;
       out = meta.format === "jpeg"
-        ? await pipeline.jpeg({ quality: 100, chromaSubsampling: "4:4:4" }).toBuffer()
+        // Quality 95 at the source's own chroma subsampling: visually the same
+        // photo at about its stored size (quality 100 / 4:4:4 tripled it).
+        ? await pipeline.jpeg({ quality: 95, chromaSubsampling: meta.chromaSubsampling === "4:4:4" ? "4:4:4" : "4:2:0" }).toBuffer()
         : meta.format === "webp"
           ? await pipeline.webp({ lossless: true }).toBuffer()
           : await pipeline.png().toBuffer();

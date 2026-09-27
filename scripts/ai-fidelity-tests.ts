@@ -22,6 +22,8 @@ import { runRetouch, retouchStepConfig, RETOUCH_MODEL_IDENTIFIER, RETOUCH_OPERAT
 import { promptDigest } from "@/lib/server/prompt-digest";
 import { FASHION_MODEL_IDENTIFIER } from "@/lib/server/fashion";
 import { callImageModel } from "@/lib/server/engine/image-call";
+import { prepareGeneratorEngine } from "@/lib/server/engine/tool-run";
+import { runGeneration } from "@/lib/server/generation";
 import { buildGeminiImageRequest, geminiImageSize } from "@/lib/ai/providers/google-request";
 import { buildFidelityInstructions } from "@/lib/ai/product-lock";
 import { compileTemplate, TOOL_VARIABLES } from "@/lib/ai/prompt-variables";
@@ -250,6 +252,7 @@ async function main() {
       ["{{hint?}}\n\nText\n\n\n\nkeep", {}, "Text\n\n\n\nkeep"],
       ["Text\n\n\n\nkeep\n\n{{hint?}}", {}, "Text\n\n\n\nkeep"],
       ["  lead {{tool_name}} trail  ", { tool_name: "iron" }, "  lead iron trail  "],
+      ["A\n\n{{hint?}}\n\n{{knowledge_scene?}}\n\nB", {}, "A\n\nB"],
     ];
     const gapFail = gaps.filter(([t, v, want]) => { const r = compileTemplate(t, defs, v); return !r.ok || r.text !== want; });
     check("only the gap an EMPTIED optional variable leaves is closed; the admin's other spacing stays", gapFail.length === 0, gapFail);
@@ -284,6 +287,7 @@ async function main() {
     check("a PNG named .jpg is sent as image/png, bytes untouched", misnamed.mime === "image/png" && misnamed.sha256 === sha(png) && misnamed.transform === "none");
     const sideways = await sharp(photo).withMetadata({ orientation: 6 }).jpeg({ quality: 95 }).toBuffer();
     const upright = await prepareReferenceImage(sideways, "phone.jpg");
+    check("…and the rotated photo is not blown up (≤ 1.5× the stored size)", upright.bytes <= sideways.length * 1.5, { stored: sideways.length, sent: upright.bytes });
     check("EXIF-rotated photo: rotation baked in (1000×1500), recorded as exif_orientation",
       upright.transform === "exif_orientation" && upright.width === 1000 && upright.height === 1500 && upright.sourceSha256 === sha(sideways) && upright.sha256 !== upright.sourceSha256, upright.transform);
     const big = await sharp({ create: { width: 3000, height: 3000, channels: 3, background: "#123" } }).png({ compressionLevel: 0 }).toBuffer();
@@ -363,6 +367,16 @@ async function main() {
     const ok = await retouch(db, "w/r/src.jpg");
     check("a successful result is never re-rolled (one request)", ok.res.ok && sent.length === 1);
     check("the panel's timeout reaches the request (120 s recorded, adapter cap 180 s)", ok.pr?.call_timeout_ms === 120_000 && Number(ok.pr?.adapter_ceiling_ms) >= 180_000, ok.pr);
+    g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3, timeoutMs: 5_000 });
+    const short = await retouch(db, "w/r/src.jpg");
+    check("a 5 s panel limit is raised to the 30 s floor (an image call cannot answer sooner)", short.res.ok && short.pr?.call_timeout_ms === 30_000, short.pr?.call_timeout_ms);
+    script = [503, 503, 200];
+    g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3, maxAttempts: 1, fallbackEnabled: true, fallbackModelId: NB2_ID });
+    const fb = await retouch(db, "w/r/src.jpg");
+    check("fallback ON: primary gets its 1 attempt, then the fallback (with its own retries) serves",
+      fb.res.ok && sent.length === 3 && /gemini-3-pro-image:/.test(sent[0]!.url) && /gemini-3\.1-flash-image:/.test(sent[2]!.url)
+      && fb.pr?.fallback_used === true && fb.pr?.model_identifier === "gemini-3.1-flash-image", sent.map((s) => s.url.replace(/\?.*/, "")));
+    script = [];
     check("the Google adapter uses the tool's timeout, not a fixed 90 s", /timeoutFor\(req\.callTimeoutMs \?\? GOOGLE_CALL_CAP_MS/.test(read("lib/ai/providers/google.ts")) && !/90_000/.test(read("lib/ai/providers/google.ts")));
   }
 
@@ -421,6 +435,36 @@ async function main() {
     const adapters = ["lib/ai/providers/google.ts", "lib/ai/providers/openai.ts", "lib/ai/providers/fal.ts"].map(read).join("\n");
     check("no adapter appends fidelityInstructions to the prompt", !/fidelityInstructions\}/.test(adapters) && !/prompt\}\\n\\n\$\{req\.productLock/.test(adapters));
     check("no other file builds a Gemini generateContent body", !/responseModalities/.test(read("lib/server/engine/image-call.ts") + read("lib/server/retouch.ts") + read("lib/server/fashion.ts") + read("lib/server/generation.ts")));
+  }
+
+  console.log("\nGENERATOR — customer-facing scenes keep the Product Lock");
+  {
+    const db = freshDb(); db.files.set("w/g/p.jpg", photo);
+    g.__fidelityEngine = engine({ toolKey: "generator", mode: "hybrid", systemPrompt: "Studio packshot instruction.", promptVersion: 2 });
+    const plain = await prepareGeneratorEngine(fakeSupabase(db) as unknown as FakeClient, "u", "w", {
+      userPrompt: "na marmurowym blacie", negative: null, productDescription: "Kubek 300 ml", aspectRatio: "1:1", resolution: "1K", referencePaths: ["w/g/p.jpg"],
+    });
+    check("hybrid template without {{fidelity_rules}} → product_lock policy", plain.ok && plain.promptPolicy === "product_lock");
+    g.__fidelityEngine = engine({ toolKey: "generator", mode: "hybrid", systemPrompt: "Instr.\n{{fidelity_rules}}", promptVersion: 3 });
+    const placed = await prepareGeneratorEngine(fakeSupabase(db) as unknown as FakeClient, "u", "w", {
+      userPrompt: "x", negative: null, productDescription: null, aspectRatio: "1:1", resolution: "1K", referencePaths: [],
+    });
+    check("…the admin placed {{fidelity_rules}} → exact (no second copy)", placed.ok && placed.promptPolicy === "exact");
+    sent = [];
+    const gen = await runGeneration(fakeSupabase(db) as unknown as FakeClient, "u", "w", {
+      modelId: PRO_ID, prompt: "na marmurowym blacie", enginePrompt: plain.ok ? plain.enginePrompt ?? undefined : undefined,
+      promptPolicy: plain.ok ? plain.promptPolicy : undefined, productDescription: "Kubek 300 ml",
+      aspectRatio: "1:1", resolution: "1K", quantity: 1, referencePaths: ["w/g/p.jpg"], referenceImageIds: [],
+    });
+    const text = sent[0] ? textOf(sent[0])[0]?.text ?? "" : "";
+    check("generator run: engine text, then the Product Lock and the customer's product text",
+      gen.ok && text.startsWith("Studio packshot instruction.") && text.includes(buildFidelityInstructions().slice(0, 40)) && text.includes("Kubek 300 ml"), text.slice(0, 80));
+    sent = [];
+    await runGeneration(fakeSupabase(db) as unknown as FakeClient, "u", "w", {
+      modelId: PRO_ID, prompt: "zwykły prompt klienta", aspectRatio: "1:1", resolution: "1K", quantity: 1, referencePaths: ["w/g/p.jpg"], referenceImageIds: [],
+    });
+    check("a caller that asks for nothing gets product_lock (exact is opt-in only)", (sent[0] ? textOf(sent[0])[0]?.text ?? "" : "").includes(buildFidelityInstructions().slice(0, 40)));
+    g.__fidelityEngine = null;
   }
 
   console.log("\nADMIN MANIFEST (Testuj konfigurację) — computed, no paid call");

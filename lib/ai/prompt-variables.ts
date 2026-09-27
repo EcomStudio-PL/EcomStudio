@@ -176,7 +176,7 @@ export function sanitizeValue(value: string, def: Pick<VariableDef, "render" | "
   // Fold look-alikes first (fullwidth brackets → ASCII) and drop invisible
   // format characters (zero-width space/joiners, BOM), so a marker cannot be
   // smuggled in a form the model reads but the checks below do not.
-  let v = stripControls(value.normalize("NFKC")).replace(/[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF\uF8FE\uF8FF]/g, "");
+  let v = stripControls(value.normalize("NFKC")).replace(/[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, "").replace(/\u{10FFFD}/gu, "");
   // Our delimiters and the placeholder grammar can never be forged from data.
   // Removal is repeated until nothing changes: a single pass could itself
   // assemble a new marker out of the pieces around a removed one.
@@ -246,13 +246,15 @@ export function compileTemplate(template: string, defs: VariableDef[], values: C
   return { ok: true, text: closeGaps(text), used: [...used], skipped: [...skipped] };
 }
 
-/** Marks where an optional variable came out empty (private-use code points:
- *  never typed in a prompt, and stripped from any value that carried them). */
-const GAP = "\u{F8FF}\u{F8FE}";
+/** Marks where an optional variable came out empty (a supplementary
+ *  private-use code point: never typed in a prompt, and stripped from any
+ *  value that carried it). */
+const GAP = "\u{10FFFD}";
 
 function closeGaps(text: string): string {
   if (!text.includes(GAP)) return text;
-  return text.replace(/\n*\u{F8FF}\u{F8FE}\n*/gu, (m: string, offset: number, whole: string) => {
+  // Adjacent emptied variables form ONE gap, closed once.
+  return text.replace(/\n*(?:\u{10FFFD}\n*)+/gu, (m: string, offset: number, whole: string) => {
     if (offset === 0 || offset + m.length === whole.length) return "";
     const breaks = m.split("\n").length - 1;
     return breaks >= 2 ? "\n\n" : breaks === 1 ? "\n" : "";

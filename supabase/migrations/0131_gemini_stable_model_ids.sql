@@ -16,10 +16,15 @@
 --   · "Nano Banana 2" → gemini-3.1-flash-image (what that name means at Google)
 --   · "Nano Banana Pro" → gemini-3-pro-image (GA)
 --
--- The first update frees the id the second one takes — (provider_id,
--- model_identifier) is unique. Each update only touches a row still carrying
--- the old id, so re-applying this file is a no-op, and a database seeded
--- differently (DEV, a fresh project) is left alone.
+-- The first update frees the id the second one takes, and each refuses to
+-- run if the target id already exists, so no provider ever ends up with two
+-- rows for one model. Each update only touches a row still carrying the old
+-- id, so re-applying this file is a no-op, and a database seeded differently
+-- (DEV, a fresh project) is left alone.
+--
+-- ai_unit_prices is keyed by the provider's own model string, not by row, so
+-- a price for "gemini-3-pro-image" already describes Nano Banana Pro GA and
+-- stays as it is (PROD holds no Gemini unit prices at the time of writing).
 --
 -- app_settings.generation.provider_priority names models as
 -- "provider:identifier"; its entries follow the rows they meant, in order.

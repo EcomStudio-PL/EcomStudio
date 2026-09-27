@@ -5,7 +5,7 @@ import { resolveEngine } from "@/lib/server/ai-engine";
 import { TOOL_VARIABLES, parsePlaceholders, sampleValues } from "@/lib/ai/prompt-variables";
 import { compileForTool } from "@/lib/server/engine/runtime";
 import {
-  describeProviderRequest, promptLength, type LastRun, type RequestManifest,
+  describeProviderRequest, effectiveCallTimeout, promptLength, type LastRun, type RequestManifest,
 } from "@/lib/ai/request-manifest";
 import type { Resolution } from "@/lib/ai/types";
 import { GENERATION_BUDGET_MS, MAX_ATTEMPTS_PER_PROVIDER } from "@/lib/server/provider-router";
@@ -98,10 +98,10 @@ export async function buildRequestManifest(
   const resolutions = primary?.supported_resolutions?.length ? primary.supported_resolutions : ["1K"];
   const config: RequestManifest["config"] = {
     operation: probe(undefined)?.operation ?? "IMAGE_EDIT",
-    ratioWhenOriginal: meta?.snaps ? "nearest_supported" : "input_photo",
+    ratioWhenOriginal: meta?.snaps ? "nearest_supported" : primary && slugOf(primary) === "google" ? "input_photo" : "provider_choice",
     ratios: primary?.supported_aspect_ratios ?? [],
     sizes: resolutions.map((r) => ({ resolution: r, sent: probe(r as Resolution)?.imageSize ?? null })),
-    timeoutMs: engine?.timeoutMs ?? null,
+    timeoutMs: effectiveCallTimeout(engine?.timeoutMs) ?? null,
     maxAttempts: Math.min(Math.max(engine?.maxAttempts ?? MAX_ATTEMPTS_PER_PROVIDER, 1), MAX_ATTEMPTS_PER_PROVIDER),
     budgetMs: GENERATION_BUDGET_MS,
   };
