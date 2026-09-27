@@ -1,7 +1,7 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
 import { decryptSecret, decryptWith, encryptWith, encryptionAvailable } from "@/lib/server/crypto";
-import { dispatchToken } from "@/lib/server/server-token";
+import { dispatchToken, promptKeyToken } from "@/lib/server/server-token";
 
 /**
  * THE PROMPT KEY — one key for every piece of GrovBase prompt content.
@@ -10,9 +10,12 @@ import { dispatchToken } from "@/lib/server/server-token";
  * knowledge hints and engine rules are sealed with AES-256-GCM under ONE
  * master key held in Supabase Vault (`grovbase.prompts.master_key_v1`,
  * migration 0130). The database creates it once with a CSPRNG and hands it to
- * the server only — the proof-of-server token, never a browser, never an
- * admin session. No environment variable is involved: a deploy that loses one
- * can no longer lock the prompt editor.
+ * the server only — against the prompt-key token (promptKeyToken), whose hash
+ * the database pins on the server's first call. Never a browser, never an
+ * admin session: the dispatch token an admin can reach is not enough. No new
+ * environment variable is involved — the token derives from the server secret
+ * the deployment already has — so a deploy cannot lock the prompt editor by
+ * missing one.
  *
  * Ciphertext keeps the format the columns always had (base64 ciphertext, iv,
  * tag), so nothing about storage changes. Rows sealed before this with
@@ -70,10 +73,12 @@ export function resetPromptKeyCache(): void {
 }
 
 async function fetchKey(supabase: Client): Promise<string | null> {
-  const token = dispatchToken();
-  if (!token) return null;
+  const keyToken = promptKeyToken();
+  if (!keyToken) return null;
   try {
-    const { data, error } = await supabase.rpc("prompt_master_key", { p_token: token });
+    // The dispatch token only matters on the very first call ever, when the
+    // database pins the prompt-key token (it proves the pinner is the server).
+    const { data, error } = await supabase.rpc("prompt_master_key", { p_token: dispatchToken(), p_key_token: keyToken });
     if (error || typeof data !== "string" || !KEY_HEX.test(data)) return null;
     return data;
   } catch {
@@ -93,6 +98,17 @@ export async function promptKeyHex(supabase: Client): Promise<string | null> {
  *  stay synchronous so they can run inside ordinary loops. Never throws. */
 export async function promptKeyring(supabase: Client): Promise<PromptKeyring> {
   return keyringFor(await promptKeyHex(supabase));
+}
+
+/**
+ * Why a row did not open. With the Vault key in hand, only a row sealed with
+ * a key that no longer exists (or damaged bytes) fails — that row really is
+ * unreadable. Without the Vault key nothing can be said about the row: the
+ * key is what is missing, and the admin is told that instead of being told
+ * an intact prompt is lost.
+ */
+export function unopenedError(ring: PromptKeyring): "legacy_unreadable" | "prompt_key_unavailable" {
+  return ring.canSeal ? "legacy_unreadable" : "prompt_key_unavailable";
 }
 
 /** Build a keyring around a known key (or none). Exported for tests. */

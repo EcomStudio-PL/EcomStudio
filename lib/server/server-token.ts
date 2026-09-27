@@ -77,3 +77,19 @@ export function dispatchToken(): string | null {
   if (!secret) return null;
   return createHash("sha256").update(`grovbase-notify-dispatch:${secret}`).digest("hex");
 }
+
+/**
+ * The prompt master key's OWN proof-of-server (migration 0130).
+ *
+ * Same server secret, a different label — and, unlike dispatchToken, this
+ * value is never written anywhere: not to Vault for the newsletter worker,
+ * not as a hash into app_settings. The database keeps only sha256 of it,
+ * pinned on the server's first call in a Vault name no session can read or
+ * rewrite. An admin session can read or re-publish the dispatch token; it
+ * cannot derive this one from it.
+ */
+export function promptKeyToken(): string | null {
+  const secret = serverSecret();
+  if (!secret) return null;
+  return createHash("sha256").update(`grovbase-prompt-key:${secret}`).digest("hex");
+}

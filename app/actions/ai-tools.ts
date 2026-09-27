@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/services/audit";
 import { openPrompt, sealPrompt } from "@/lib/server/ai-engine";
-import { PromptKeyError } from "@/lib/server/prompt-vault";
+import { PromptKeyError, unopenedError } from "@/lib/server/prompt-vault";
 import { adminPromptKeyring } from "@/lib/server/prompt-vault-admin";
 import {
   ENGINE_MODES, MODEL_ASSIGNMENT_RUNTIME, TOOL_ENGINE_MODES, isAiToolKey, type EngineMode, type ToolConfigSection,
@@ -301,7 +301,7 @@ type StoredVersion = {
 async function republishSealed(
   supabase: Awaited<ReturnType<typeof requireAdmin>>["supabase"],
   row: StoredVersion, text: string, reason: string, sealedBody: { ciphertext: string; iv: string; authTag: string },
-): Promise<{ ok: true; version: number } | { ok: false; error: string }> {
+): Promise<{ ok: true; version: number; id: string | null } | { ok: false; error: string }> {
   const { data, error } = await supabase.rpc("ai_save_tool_prompt", {
     p_tool_key: row.tool_key,
     p_body_encrypted: sealedBody.ciphertext,
@@ -313,9 +313,9 @@ async function republishSealed(
     p_publish: true,
   });
   if (error) return { ok: false, error: "generic" };
-  const result = data as { ok?: boolean; error?: string; version?: number } | null;
+  const result = data as { ok?: boolean; error?: string; version?: number; id?: string } | null;
   if (!result?.ok || typeof result.version !== "number") return { ok: false, error: result?.error ?? "generic" };
-  return { ok: true, version: result.version };
+  return { ok: true, version: result.version, id: typeof result.id === "string" ? result.id : null };
 }
 
 export async function publishPromptVersionAction(id: string, reason: string): Promise<Result & { version?: number }> {
@@ -331,16 +331,22 @@ export async function publishPromptVersionAction(id: string, reason: string): Pr
     const ring = await adminPromptKeyring(supabase);
     // The same variable gate as a direct publish, applied to the stored draft.
     const opened = openPrompt(ring, draft);
-    if (opened === null) return { ok: false, error: "legacy_unreadable" };
+    if (opened === null) return { ok: false, error: unopenedError(ring) };
     if (unresolvable(draft.tool_key, opened.text).length > 0 || malformedPlaceholders(opened.text).length > 0) {
       return { ok: false, error: "variable_unknown" };
     }
 
     let version: number | undefined;
+    let publishedId = id;
     if (opened.source === "legacy") {
       const moved = await republishSealed(supabase, draft, opened.text, reason.trim(), sealPrompt(ring, opened.text));
       if (!moved.ok) return moved;
       version = moved.version;
+      publishedId = moved.id ?? id;
+      // The draft has been published — as its re-sealed copy. It is closed
+      // like any published draft would be (superseded, not deleted, bytes
+      // untouched), so it cannot be published a second time.
+      await supabase.from("ai_tool_prompts").update({ status: "superseded" }).eq("id", id).eq("status", "draft");
     } else {
       const { data, error } = await supabase.rpc("ai_publish_tool_prompt", { p_id: id, p_reason: reason.trim() });
       if (error) return { ok: false, error: "generic" };
@@ -351,7 +357,7 @@ export async function publishPromptVersionAction(id: string, reason: string): Pr
 
     await logAudit(supabase, {
       actorId: adminId, action: "ai_tool.prompt_published",
-      entityType: "ai_tool_prompt", entityId: id,
+      entityType: "ai_tool_prompt", entityId: publishedId,
       after: { reason: reason.trim(), version, ...(opened.source === "legacy" ? { resealed_from: draft.version } : {}) },
     });
     refresh(draft.tool_key);
@@ -369,7 +375,7 @@ export async function restorePromptVersionAction(id: string, reason: string): Pr
     // silently ignores. Refused; the admin pastes the prompt as a new version.
     const ring = await adminPromptKeyring(supabase);
     const opened = openPrompt(ring, src);
-    if (opened === null) return { ok: false, error: "legacy_unreadable" };
+    if (opened === null) return { ok: false, error: unopenedError(ring) };
     if (unresolvable(src.tool_key, opened.text).length > 0 || malformedPlaceholders(opened.text).length > 0) {
       return { ok: false, error: "variable_unknown" };
     }
@@ -418,7 +424,7 @@ export async function readPromptBodyAction(id: string): Promise<Result & { body?
     if (!data) return { ok: false, error: "not_found" };
     const ring = await adminPromptKeyring(supabase);
     const opened = openPrompt(ring, data);
-    if (opened === null) return { ok: false, error: "legacy_unreadable" };
+    if (opened === null) return { ok: false, error: unopenedError(ring) };
     const body = opened.text;
     return { ok: true, body, legacy: opened.source === "legacy" };
   } catch (e) { return { ok: false, error: promptFailure(e) }; }

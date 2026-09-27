@@ -15,10 +15,28 @@
 --     first calls, the Vault's unique name index backs it up, and a stored key
 --     is never overwritten or rotated in place (every prompt sealed with it
 --     would become unreadable);
---   · handed out ONLY to the server — proof-of-server token (server_call_ok,
---     0077). Not to an anonymous caller, not to a customer, and deliberately
---     not to an admin's browser session either: admins read PROMPTS through
---     server actions, never the key that opens all of them.
+--   · handed out ONLY to the server. Not to an anonymous caller, not to a
+--     customer, and deliberately not to an admin's browser session either:
+--     admins read PROMPTS through server actions, never the key that opens
+--     all of them.
+--
+-- WHY NOT JUST server_call_ok. The generic proof-of-server (0077) is checked
+-- against app_settings.notifications->>'dispatch_hash', which an admin session
+-- may write (the self-heal after a server-key rotation depends on it), and the
+-- dispatch token itself sits in Vault for the newsletter worker, where an
+-- admin session may read it. Both are fine for what they guard today — an
+-- admin can do those things anyway — but they would hand an admin's browser
+-- this key. So the key answers to its OWN token: derived by the server from
+-- the same server secret under a different label, never stored anywhere, and
+-- verified against sha256 of it PINNED in the reserved Vault namespace on the
+-- server's first call. No session can read or rewrite the pin; the first call
+-- itself still has to pass server_call_ok, so no customer can ever pin.
+--
+-- Rotating GROVBASE_SERVER_KEY (a manual deploy change in itself) changes the
+-- key token; the operator then clears the pin once, in the SQL editor:
+--   select public.prompt_key_unpin();
+-- and the server's next call pins its new identity. The master key and every
+-- prompt sealed with it are untouched by that.
 --
 -- Each prompt row keeps its own columns and format (base64 ciphertext / iv /
 -- tag) — no schema change, no new column, no second storage path. Rows sealed
@@ -86,32 +104,109 @@ begin
 end $$;
 revoke all on function public.prompt_master_key_ensure() from public, anon, authenticated;
 
-/* ── 3. the server's door ─────────────────────────────────────────────────*/
+/* ── 3. the server's pin, owner-only ──────────────────────────────────────*/
 
--- VOLATILE on purpose: PostgREST runs STABLE functions read-only, and the
--- first call may have to create the key.
-create or replace function public.prompt_master_key(p_token text)
+-- The pinned verifier: sha256 of the server's prompt-key token. Read with a
+-- null claim; with a claim, pinned if (and only if) nothing is pinned yet —
+-- the same lock-then-recheck as the key itself, so concurrent first calls
+-- converge on one pin. A pin is never replaced here.
+create or replace function public.prompt_key_verifier(p_claim text)
 returns text
 language plpgsql
 volatile
 security definer
 set search_path = public, vault, extensions
 as $$
+declare
+  c_name constant text := 'grovbase.prompts.server_verifier_v1';
+  v_pin text;
+begin
+  select s.decrypted_secret into v_pin from vault.decrypted_secrets s where s.name = c_name;
+  if v_pin is null and p_claim is not null then
+    perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(c_name, 0));
+    select s.decrypted_secret into v_pin from vault.decrypted_secrets s where s.name = c_name;
+    if v_pin is null then
+      begin
+        perform vault.create_secret(p_claim, c_name,
+          'GrovBase: sha256 of the server token that may fetch the prompt master key. Cleared only by prompt_key_unpin() after a server-key rotation.');
+        v_pin := p_claim;
+      exception when unique_violation then
+        select s.decrypted_secret into v_pin from vault.decrypted_secrets s where s.name = c_name;
+        if v_pin is null then raise; end if;
+      end;
+    end if;
+  end if;
+  return v_pin;
+end $$;
+revoke all on function public.prompt_key_verifier(text) from public, anon, authenticated;
+
+-- The operator's reset after rotating the server key. Not callable by any
+-- client role — the SQL editor (postgres) only. Touches the pin, never the key.
+create or replace function public.prompt_key_unpin()
+returns boolean
+language plpgsql
+volatile
+security definer
+set search_path = public, vault, extensions
+as $$
+declare
+  v_hit integer;
+begin
+  delete from vault.secrets where name = 'grovbase.prompts.server_verifier_v1';
+  get diagnostics v_hit = row_count;
+  return v_hit > 0;
+end $$;
+revoke all on function public.prompt_key_unpin() from public, anon, authenticated;
+
+/* ── 4. the server's door ─────────────────────────────────────────────────*/
+
+-- An earlier draft of this file took the dispatch token alone.
+drop function if exists public.prompt_master_key(text);
+
+-- VOLATILE on purpose: PostgREST runs STABLE functions read-only, and the
+-- first call may have to create the key (and the pin).
+--
+--   p_token      the dispatch token — consulted ONLY for the very first call,
+--                to prove that whoever pins is the server;
+--   p_key_token  the prompt-key token, checked against the pin every time.
+create or replace function public.prompt_master_key(p_token text, p_key_token text)
+returns text
+language plpgsql
+volatile
+security definer
+set search_path = public, vault, extensions
+as $$
+declare
+  v_hash text;
+  v_pin text;
 begin
   -- Gate first: an unauthorised caller learns nothing, not even whether a key
   -- exists yet.
-  if not public.server_call_ok(p_token) then
+  if p_key_token is null or length(p_key_token) < 32 then
+    raise exception 'forbidden';
+  end if;
+  v_hash := pg_catalog.encode(extensions.digest(p_key_token, 'sha256'), 'hex');
+  v_pin := public.prompt_key_verifier(null);
+  if v_pin is null then
+    -- Nothing pinned yet: only a proven server may pin its identity, and the
+    -- pin must not be the dispatch token (whose hash is admin-writable).
+    if not public.server_call_ok(p_token) or p_key_token = p_token then
+      raise exception 'forbidden';
+    end if;
+    v_pin := public.prompt_key_verifier(v_hash);
+  end if;
+  if v_pin is distinct from v_hash then
     raise exception 'forbidden';
   end if;
   return public.prompt_master_key_ensure();
 end $$;
-revoke all on function public.prompt_master_key(text) from public, anon;
-grant execute on function public.prompt_master_key(text) to authenticated;
+revoke all on function public.prompt_master_key(text, text) from public, anon;
+grant execute on function public.prompt_master_key(text, text) to authenticated;
 
-comment on function public.prompt_master_key(text) is
-  'The Vault-held prompt-content master key (64 hex), created on first use. Proof-of-server token only: never an anonymous caller, a customer or an admin browser session. Never returns any other vault secret.';
+comment on function public.prompt_master_key(text, text) is
+  'The Vault-held prompt-content master key (64 hex), created on first use. Server only: the caller must present the prompt-key token whose sha256 is pinned in Vault (pinned on the first call, which must also pass server_call_ok). Never an anonymous caller, a customer or an admin browser session. Never returns any other vault secret.';
 
-/* ── 4. the generic secret functions refuse the reserved namespace ────────*/
+/* ── 5. the generic secret functions refuse the reserved namespace ────────*/
 
 create or replace function public.secret_put(p_name text, p_value text)
 returns void
@@ -243,7 +338,7 @@ end $$;
 revoke all on function public.secret_read_many(text[], text) from public;
 grant execute on function public.secret_read_many(text[], text) to anon, authenticated;
 
-/* ── 5. the key exists from the moment this migration is applied ──────────*/
+/* ── 6. the key exists from the moment this migration is applied ──────────*/
 
 -- Generated here, at apply time, inside the database — the file holds only the
 -- expression, never a value. Every later caller finds it; the lazy path above
@@ -251,7 +346,9 @@ grant execute on function public.secret_read_many(text[], text) to anon, authent
 do $$ begin perform public.prompt_master_key_ensure(); end $$;
 
 -- ROLLBACK (manual): re-apply the secret_* bodies from 0078/0079/0080, then
---   drop function if exists public.prompt_master_key(text);
+--   drop function if exists public.prompt_master_key(text, text);
+--   drop function if exists public.prompt_key_unpin();
+--   drop function if exists public.prompt_key_verifier(text);
 --   drop function if exists public.prompt_master_key_ensure();
 --   drop function if exists public.secret_name_reserved(text);
 -- and DO NOT delete the vault secret while any prompt is sealed with it.

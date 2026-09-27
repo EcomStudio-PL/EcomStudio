@@ -17,8 +17,10 @@
  * Run: npm run test:promptvault
  */
 import { createHash, randomBytes } from "node:crypto";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { encryptWith } from "@/lib/server/crypto";
-import { dispatchToken } from "@/lib/server/server-token";
+import { dispatchToken, promptKeyToken } from "@/lib/server/server-token";
 import { resetPromptKeyCache } from "@/lib/server/prompt-vault";
 import { withKeyStates } from "@/lib/server/prompt-vault-admin";
 import { resolveEngine, resolveSystemPrompt } from "@/lib/server/ai-engine";
@@ -51,6 +53,7 @@ delete process.env.GROVBASE_INTEGRATIONS_ENCRYPTION_KEY;
 
 type Row = Record<string, unknown>;
 const VAULT_NAME = "grovbase.prompts.master_key_v1";
+const PIN_NAME = "grovbase.prompts.server_verifier_v1";
 const ADMIN = "00000000-0000-4000-8000-00000000000a";
 const CUSTOMER = "00000000-0000-4000-8000-00000000000c";
 
@@ -157,8 +160,18 @@ async function rpc(db: Db, name: string, a: Row): Promise<{ data: unknown; error
   const nextVersion = (tool: string) => Math.max(0, ...prompts.filter((p) => p.tool_key === tool).map((p) => p.version as number)) + 1;
   switch (name) {
     case "prompt_master_key": {
+      // Migration 0130: the key token is checked against the PIN; the
+      // dispatch token only matters for the very first (pinning) call.
       db.keyCalls++;
-      if (!tokenOk(db, a.p_token)) return { data: null, error: { message: "forbidden", code: "P0001" } };
+      const forbidden = { data: null, error: { message: "forbidden", code: "P0001" } };
+      const kt = a.p_key_token;
+      if (typeof kt !== "string" || kt.length < 32) return forbidden;
+      let pin = db.vault.get(PIN_NAME);
+      if (!pin) {
+        if (!tokenOk(db, a.p_token) || kt === a.p_token) return forbidden;
+        pin = sha(kt); db.vault.set(PIN_NAME, pin);
+      }
+      if (pin !== sha(kt)) return forbidden;
       let key = db.vault.get(VAULT_NAME);
       if (!key) { key = randomBytes(32).toString("hex"); db.vault.set(VAULT_NAME, key); db.keyCreations++; }
       db.keyReturns.push(key);
@@ -358,6 +371,23 @@ async function main() {
   check("T5 Retusz with its own variables publishes", retouchOk.ok === true, retouchOk);
 
   console.log("\n6/7/8. WHO CAN READ WHAT");
+  // A router request can ask for one segment and skip the layouts above it,
+  // so the admin layout is not a lock for a page that decrypts with the
+  // SERVER's authority (RLS lets a customer read their own ciphertext). Every
+  // admin page that opens prompt content must check the role itself, before
+  // it fetches or opens anything.
+  const pages: string[] = [];
+  const walk = (d: string) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else if (f === "page.tsx") pages.push(p); } };
+  walk("app/admin");
+  const decrypting = pages.filter((p) => /promptKeyring\(|adminPromptKeyring\(|decryptConceptPayload\(|\.open\(\{/.test(readFileSync(p, "utf8")));
+  const gated = decrypting.filter((p) => {
+    const src = readFileSync(p, "utf8");
+    const gate = src.search(/profile\?\.role !== "admin"\) notFound\(\)/);
+    const firstRead = Math.min(...[/\.from\("/, /promptKeyring\(/, /decryptConceptPayload\(/].map((r) => { const i = src.search(r); return i < 0 ? Infinity : i; }));
+    return gate >= 0 && gate < firstRead;
+  });
+  check("T6 every admin page that opens prompt content checks the admin role itself, before any read", decrypting.length >= 1
+    && gated.length === decrypting.length, { decrypting, gated });
   const anyId = String(db.tables.ai_tool_prompts[0].id);
   db.user = null;
   const anonRead = await readPromptBodyAction(anyId);
@@ -375,11 +405,13 @@ async function main() {
   check("T8 customer: direct select of prompt rows is empty (RLS)", ((await supa.from("ai_tool_prompts").select("body_encrypted")).data ?? []).length === 0);
   check("T8 customer: the runtime read without the server token returns nothing",
     ((await supa.rpc("ai_tool_runtime", { p_tool_key: "generator", p_token: "guess" })).data as unknown[]).length === 0);
-  const keyTry = await supa.rpc("prompt_master_key", { p_token: "guess" });
+  const keyTry = await supa.rpc("prompt_master_key", { p_token: "guess", p_key_token: "guess".repeat(8) });
   check("T8 customer: the key door refuses a guessed token", keyTry.error?.message === "forbidden" && keyTry.data === null);
   db.user = ADMIN;
-  const adminNoToken = await supa.rpc("prompt_master_key", { p_token: null });
-  check("T8 even an ADMIN session gets no key without the server token", adminNoToken.error?.message === "forbidden" && adminNoToken.data === null);
+  // The dispatch token is reachable from an admin session (it sits in Vault
+  // for the newsletter worker) — it must not open the key door.
+  const adminDispatch = await supa.rpc("prompt_master_key", { p_token: dispatchToken(), p_key_token: dispatchToken() ?? "" });
+  check("T8 even an ADMIN session holding the dispatch token gets no key", adminDispatch.error?.message === "forbidden" && adminDispatch.data === null);
 
   console.log("\n9. ADMIN save / publish / restore — covered above; history carries no body");
   const hist = await withKeyStates(supa, await readPromptHistory(supa, "generator"));
@@ -434,7 +466,12 @@ async function main() {
   const movedRow = db.tables.ai_tool_prompts.find((p) => p.tool_key === "fashion_flat_lay" && p.status === "published")!;
   check("T11 publishing it re-seals the SAME text under the Vault key as a new version", moved.ok === true && moved.version === 4
     && movedRow.body_encrypted !== legacySealed.ciphertext, moved);
-  check("T11 the legacy draft stays in history untouched", db.tables.ai_tool_prompts.find((p) => p.id === "legacy-draft")?.body_encrypted === legacySealed.ciphertext);
+  const oldDraft = db.tables.ai_tool_prompts.find((p) => p.id === "legacy-draft");
+  check("T11 the legacy draft stays in history, bytes untouched, closed (superseded)", oldDraft?.body_encrypted === legacySealed.ciphertext
+    && oldDraft?.status === "superseded", oldDraft?.status);
+  const again = await publishPromptVersionAction("legacy-draft", "drugi raz");
+  check("T11 the same legacy draft cannot be published a second time", again.ok === false && again.error === "not_draft"
+    && db.tables.ai_tool_prompts.filter((p) => p.tool_key === "fashion_flat_lay").length === 4, again);
   delete process.env.APP_ENCRYPTION_KEY;
   resetPromptKeyCache();
   const movedRead = await readPromptBodyAction(String(movedRow.id));
@@ -488,7 +525,8 @@ async function main() {
   console.log("\n13. THE KEY DOOR");
   db = makeDb(); supa = install(db); resetPromptKeyCache();
   await Promise.all(Array.from({ length: 10 }, () => savePromptAction({ toolKey: "generator", body: "rownolegle", summary: null, reason: null, publish: false })));
-  check("13 ten concurrent first saves converge on ONE key", db.vault.size === 1 && new Set(db.keyReturns).size === 1);
+  check("13 ten concurrent first saves converge on ONE key (and one pin)", db.keyCreations === 1 && new Set(db.keyReturns).size === 1
+    && [...db.vault.keys()].sort().join() === [PIN_NAME, VAULT_NAME].sort().join());
   const callsBefore = db.keyCalls;
   await savePromptAction({ toolKey: "generator", body: "cache", summary: null, reason: null, publish: false });
   check("13 the key is cached per server instance (no Vault round trip per save)", db.keyCalls === callsBefore);
@@ -508,6 +546,47 @@ async function main() {
   check("13 no reachable key → prompt_key_unavailable, nothing stored", noKey.ok === false && noKey.error === "prompt_key_unavailable"
     && db.tables.ai_tool_prompts.length === 0, noKey);
   check("13 the error names no key, no ciphertext", !JSON.stringify(noKey).match(/[0-9a-f]{64}/));
+
+  console.log("\n13b. THE PIN — an admin session can reach the dispatch token, never the key");
+  db = makeDb(); supa = install(db); resetPromptKeyCache();
+  db.user = CUSTOMER;
+  const custFirst = await supa.rpc("prompt_master_key", { p_token: "guess", p_key_token: "c".repeat(64) });
+  check("13b nothing pinned yet: a customer cannot pin (no server proof)", custFirst.error?.message === "forbidden" && !db.vault.has(PIN_NAME));
+  db.user = ADMIN;
+  const same = await supa.rpc("prompt_master_key", { p_token: dispatchToken(), p_key_token: dispatchToken() ?? "" });
+  check("13b the dispatch token can never be pinned as the key token", same.error?.message === "forbidden" && !db.vault.has(PIN_NAME));
+  const first = await savePromptAction({ toolKey: "generator", body: "pierwszy", summary: null, reason: null, publish: false });
+  check("13b the server's first call pins sha256(prompt-key token)", first.ok === true && db.vault.get(PIN_NAME) === sha(promptKeyToken() ?? ""));
+  // An admin session forges the published dispatch hash for a token it
+  // picked — the generic proof-of-server accepts that; the key door must not.
+  (db.tables.app_settings[0].value as Row).dispatch_hash = sha("x".repeat(40));
+  const forged = await supa.rpc("prompt_master_key", { p_token: "x".repeat(40), p_key_token: "y".repeat(40) });
+  const forgedSame = await supa.rpc("prompt_master_key", { p_token: "x".repeat(40), p_key_token: "x".repeat(40) });
+  check("13b a forged dispatch hash opens nothing once pinned", forged.data === null && forgedSame.data === null
+    && forged.error?.message === "forbidden" && db.vault.get(PIN_NAME) === sha(promptKeyToken() ?? ""));
+  // …and the server is not affected by it: the pin, not the hash, is checked.
+  resetPromptKeyCache();
+  const stillWorks = await readPromptBodyAction(String(db.tables.ai_tool_prompts[0].id));
+  check("13b the server still opens prompts with the dispatch hash stale/forged", stillWorks.ok === true && stillWorks.body === "pierwszy", stillWorks);
+  // A rotated server secret: the key is unavailable (honestly reported, the
+  // stored rows are NOT called lost) until the operator clears the pin.
+  (db.tables.app_settings[0].value as Row).dispatch_hash = sha(dispatchToken() ?? "");
+  const rotateKey = process.env.GROVBASE_SERVER_KEY;
+  process.env.GROVBASE_SERVER_KEY = "grovbase-test-server-key-ROTATED-00000000";
+  resetPromptKeyCache();
+  const rotatedSave = await savePromptAction({ toolKey: "generator", body: "po rotacji", summary: null, reason: null, publish: false });
+  const rotatedRead = await readPromptBodyAction(String(db.tables.ai_tool_prompts[0].id));
+  const rotatedStates = await withKeyStates(supa, await readPromptHistory(supa, "generator"));
+  check("13b after a server-key rotation the save says prompt_key_unavailable", rotatedSave.ok === false && rotatedSave.error === "prompt_key_unavailable", rotatedSave);
+  check("13b …and an intact prompt is NOT reported as lost (no legacy_unreadable)", rotatedRead.ok === false && rotatedRead.error === "prompt_key_unavailable", rotatedRead);
+  check("13b …and the history shows no 'unreadable' badge for intact rows", rotatedStates.every((v) => v.keyState === undefined), rotatedStates.map((v) => v.keyState));
+  db.vault.delete(PIN_NAME); // select public.prompt_key_unpin(); — the operator, in the SQL editor
+  resetPromptKeyCache();
+  const repinned = await readPromptBodyAction(String(db.tables.ai_tool_prompts[0].id));
+  check("13b after the operator unpins, the new server identity pins and every prompt opens", repinned.ok === true && repinned.body === "pierwszy"
+    && db.vault.get(PIN_NAME) === sha(promptKeyToken() ?? ""), repinned);
+  process.env.GROVBASE_SERVER_KEY = rotateKey;
+  resetPromptKeyCache();
 
   console.log(failed ? `\n${failed} FAILED` : "\nAll prompt-vault tests passed.");
   process.exit(failed ? 1 : 0);

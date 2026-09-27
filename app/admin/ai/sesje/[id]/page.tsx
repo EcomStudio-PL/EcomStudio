@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/services/workspace";
+import { enforceLoginSecurity } from "@/lib/server/login-security";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { decryptConceptPayload } from "@/lib/server/prompt-engine";
@@ -17,14 +19,25 @@ export const dynamic = "force-dynamic";
  * ADMIN — one concept session, prompts INCLUDED.
  *
  * This page is the single place the hidden prompts become readable again:
- * the admin layout has already verified the role, the page runs on the
- * server, and the ciphertext is decrypted here with the Vault-held prompt key
- * (fetched once for the page, never sent to the browser).
- * Nothing on this route is reachable by a customer.
+ * the page runs on the server, and the ciphertext is decrypted here with the
+ * Vault-held prompt key (fetched once for the page, never sent to the browser).
+ *
+ * THE ROLE IS CHECKED HERE, NOT ONLY IN THE ADMIN LAYOUT. A router request can
+ * name the segment it wants rendered, and a layout above that segment is then
+ * not run — the admin layout alone is a door, not a lock. RLS lets a customer
+ * read their OWN session's ciphertext, and the key comes from the server's
+ * token, so without this check a crafted request would get the plaintext.
+ * Anyone who is not an admin (or has not passed the step-up gate) gets a 404
+ * before a single row is fetched or opened.
  */
 export default async function AdminConceptSessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) notFound();
+  const [gate, profile] = await Promise.all([enforceLoginSecurity(supabase), getProfile(supabase, user.id)]);
+  if (gate || profile?.role !== "admin") notFound();
+
   const { dict } = await getDictionary();
   const t = makeT(dict);
 

@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/services/audit";
 import { openPrompt, sealPrompt } from "@/lib/server/ai-engine";
-import { PromptKeyError, promptKeyring } from "@/lib/server/prompt-vault";
+import { PromptKeyError, promptKeyring, unopenedError } from "@/lib/server/prompt-vault";
 import { adminPromptKeyring } from "@/lib/server/prompt-vault-admin";
 import { buildHintCiphertext, embedTexts } from "@/lib/server/knowledge";
 import { textCapableBackends } from "@/lib/server/prompt-engine";
@@ -299,13 +299,14 @@ export async function readWorkflowAction(id: string): Promise<Result & {
         .eq("workflow_id", id).order("position"),
     ]);
     if (!wf || !steps?.length) return { ok: false, error: "not_found" };
-    const ring = await promptKeyring(supabase);
+    const ring = await adminPromptKeyring(supabase);
     const opened: { s: (typeof steps)[number]; prompt: string }[] = [];
     for (const s of steps) {
       const prompt = openPrompt(ring, { body_encrypted: s.prompt_encrypted, body_iv: s.prompt_iv, body_tag: s.prompt_tag })?.text ?? null;
       // A step sealed with a key that no longer exists: the version cannot be
-      // opened, but saving a new one is never blocked by it.
-      if (prompt === null) return { ok: false, error: "legacy_unreadable" };
+      // opened, but saving a new one is never blocked by it. (No Vault key at
+      // all is reported as exactly that, not as a lost prompt.)
+      if (prompt === null) return { ok: false, error: unopenedError(ring) };
       opened.push({ s, prompt });
     }
     const legacy = opened.some(({ s }) => s.operation === "analyze" || s.operation === "generate_image");

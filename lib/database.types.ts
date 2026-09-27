@@ -7067,10 +7067,10 @@ export type Database = {
         Returns: { name: string; value: string | null }[]
       }
       /* The Vault-held prompt-content key (migration 0130), created on first
-         use. Proof-of-server token only — no browser and no admin session
-         ever receives it. */
+         use. Server only: p_key_token must match the pin (sha256) the server
+         set on its first call; no browser and no admin session receives it. */
       prompt_master_key: {
-        Args: { p_token: string | null }
+        Args: { p_token: string | null; p_key_token: string }
         Returns: string
       }
       /* Tool popularity (migration 0082). The counting half is SECURITY DEFINER
