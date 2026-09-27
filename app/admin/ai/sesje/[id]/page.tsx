@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { decryptConceptPayload } from "@/lib/server/prompt-engine";
+import { promptKeyring } from "@/lib/server/prompt-vault";
 import { signImageUrls } from "@/lib/services/images";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/surface";
@@ -17,7 +18,8 @@ export const dynamic = "force-dynamic";
  *
  * This page is the single place the hidden prompts become readable again:
  * the admin layout has already verified the role, the page runs on the
- * server, and the ciphertext is decrypted here with the server-only key.
+ * server, and the ciphertext is decrypted here with the Vault-held prompt key
+ * (fetched once for the page, never sent to the browser).
  * Nothing on this route is reachable by a customer.
  */
 export default async function AdminConceptSessionPage({ params }: { params: Promise<{ id: string }> }) {
@@ -39,6 +41,7 @@ export default async function AdminConceptSessionPage({ params }: { params: Prom
     .order("priority", { ascending: true });
 
   const urls = await signImageUrls(supabase, session.reference_paths ?? []);
+  const ring = await promptKeyring(supabase);
   const paths = session.reference_paths ?? [];
 
   return (
@@ -53,7 +56,7 @@ export default async function AdminConceptSessionPage({ params }: { params: Prom
 
       <div className="space-y-4">
         {(prompts ?? []).map((p, i) => {
-          const payload = decryptConceptPayload(p);
+          const payload = decryptConceptPayload(ring, p);
           // Legacy rows may still carry plaintext from before the lockdown.
           const promptText = payload?.prompt ?? (p.prompt_text || null);
           const negativeText = payload?.negative || null;

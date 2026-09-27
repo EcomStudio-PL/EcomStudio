@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { unzipSafe, isZipError, type ZipEntry } from "@/lib/server/unzip";
 import { buildHintCiphertext, embedTexts } from "@/lib/server/knowledge";
+import { adminPromptKeyring } from "@/lib/server/prompt-vault-admin";
 import { extractCandidates, readPdf, type PdfCandidate } from "@/lib/server/knowledge-pdf";
 import type { Client } from "@/lib/services/workspace";
 
@@ -57,6 +58,14 @@ export async function POST(request: Request) {
   }
   if (!isPdf && !/\.zip$/i.test(file.name) && !/zip/.test(file.type)) {
     return NextResponse.json({ ok: false, error: "unsupported_format" }, { status: 415 });
+  }
+  // A ZIP's paired examples are approved on import, each with a hint sealed
+  // under the Vault prompt key. Without the key they would be stored as
+  // "approved" yet never retrievable — so the import is refused up front,
+  // before anything is created. A PDF only yields pending candidates.
+  const ring = await adminPromptKeyring(supabase);
+  if (!isPdf && !ring.canSeal) {
+    return NextResponse.json({ ok: false, error: "prompt_key_unavailable" }, { status: 503 });
   }
   const givenName = String(form.get("name") ?? "").trim().slice(0, 160);
   // WHICH TOOL THE SET SERVES. The tool page sends its own key (or "none");
@@ -230,7 +239,7 @@ export async function POST(request: Request) {
       // A photo without its pair is a guess about what it shows: pending, no
       // hint, not retrievable until an admin approves it.
       const paired = Boolean(refPath && genPath);
-      const hint = paired ? buildHintCiphertext({ category: s(meta.category, 120) || null, ...fields }) : null;
+      const hint = paired ? buildHintCiphertext(ring, { category: s(meta.category, 120) || null, ...fields }) : null;
       rows.push({
         set_id: setId,
         reference_path: refPath,

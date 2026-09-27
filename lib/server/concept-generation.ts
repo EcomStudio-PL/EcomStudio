@@ -4,6 +4,7 @@ import { getUsableModels, type UsableModel } from "@/lib/ai/router";
 import { effectiveQuality, modelQualities, priceFor, priceForResolution, type AspectRatio, type Quality, type Resolution } from "@/lib/ai/types";
 import { runGeneration } from "@/lib/server/generation";
 import { decryptConceptPayload } from "@/lib/server/prompt-engine";
+import { promptKeyring } from "@/lib/server/prompt-vault";
 
 /**
  * CONCEPT → IMAGE.
@@ -196,7 +197,7 @@ export async function generateFromConcept(
     basePrompt = (concept.prompt_text ?? "").trim();
     if (!basePrompt) return { ok: false, error: "invalid_input" };
   } else {
-    const payload = decryptConceptPayload(concept);
+    const payload = decryptConceptPayload(await promptKeyring(supabase), concept);
     if (!payload) return { ok: false, error: "concept_locked" };
     basePrompt = payload.prompt;
   }

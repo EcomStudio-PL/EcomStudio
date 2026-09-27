@@ -214,7 +214,8 @@ function ReviewCard({ toolKey, item }: { toolKey: string; item: ReviewItem }) {
         tags: tags.split(",").map((x) => x.trim()).filter(Boolean), swap, toolKey,
       });
       if (res.ok) { toast.success(decision === "approve" ? t("aicc.knowledge.approved") : t("aicc.knowledge.rejected")); router.refresh(); }
-      else toast.error(res.error === "nothing_to_learn" ? t("aicc.knowledge.nothingToLearn") : t("common.error"));
+      else toast.error(res.error === "nothing_to_learn" ? t("aicc.knowledge.nothingToLearn")
+        : res.error === "prompt_key_unavailable" ? t("aicc.err.promptKey") : t("common.error"));
     });
   }
 

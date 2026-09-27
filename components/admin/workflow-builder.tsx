@@ -47,15 +47,17 @@ type T = (k: string, v?: Record<string, string | number>) => string;
 
 function wfError(t: T, error?: string, step?: number, names?: string[]): string {
   const where = step ? ` (${t("aicc.wf.step", { n: step })})` : "";
-  const key = `aicc.wf2.err.${error ?? "generic"}`;
-  const msg = t(key, { names: (names ?? []).join(", ") });
-  if (msg !== key) return msg + where;
+  // The codes shared with the prompt editor first: a missing translation
+  // never returns its key (makeT humanizes it), so a lookup cannot be used to
+  // test whether a workflow-specific message exists.
   switch (error) {
     case "reason_required": return t("aicc.err.reasonRequired");
-    case "encryption_unavailable": return t("aicc.err.encryption");
-    case "decrypt_failed": return t("aicc.err.decrypt");
+    case "prompt_key_unavailable": return t("aicc.err.promptKey");
+    case "legacy_unreadable": return t("aicc.err.legacyUnreadable");
     case "too_long": return t("aicc.err.tooLong") + where;
-    default: return t("common.error");
+    case "forbidden": return t("aicc.err.forbidden");
+    case undefined: case "generic": return t("common.error");
+    default: return t(`aicc.wf2.err.${error}`, { names: (names ?? []).join(", ") }) + where;
   }
 }
 

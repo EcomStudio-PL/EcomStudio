@@ -2,7 +2,7 @@ import "server-only";
 import type { Json } from "@/lib/database.types";
 import type { Client } from "@/lib/services/workspace";
 import { dispatchToken } from "@/lib/server/integrations";
-import { decryptSecret, encryptionAvailable } from "@/lib/server/crypto";
+import { promptKeyring } from "@/lib/server/prompt-vault";
 import {
   STEP_TIMEOUT_DEFAULT_MS, TOOL_STEP_SLUGS, fromV1,
   type OutputKind, type StepOperation, type ToolStepSlug, type WorkflowStepDef,
@@ -51,7 +51,7 @@ const provider = (p: string | null) => (p === "openai" || p === "google" ? p : n
  */
 export async function loadWorkflow(supabase: Client, toolKey: string, workflowId: string | null): Promise<LoadedWorkflow | null> {
   const token = dispatchToken();
-  if (!token || !encryptionAvailable()) return null;
+  if (!token) return null;
   try {
     const { data, error } = await supabase.rpc("ai_tool_workflow_read", {
       p_token: token, p_tool_key: toolKey, p_workflow_id: workflowId,
@@ -59,9 +59,11 @@ export async function loadWorkflow(supabase: Client, toolKey: string, workflowId
     const rows = (data ?? []) as ReadRow[];
     if (error || rows.length === 0) return null;
     rows.sort((a, b) => a.position - b.position);
-    const open = (r: ReadRow): string | null => {
-      try { return decryptSecret(r.prompt_encrypted, r.prompt_iv, r.prompt_tag); } catch { return null; }
-    };
+    // Step prompts open with the Vault-held prompt key (legacy env-key rows
+    // too, while that key exists) — fetched once for the whole version.
+    const ring = await promptKeyring(supabase);
+    const open = (r: ReadRow): string | null =>
+      ring.open({ ciphertext: r.prompt_encrypted, iv: r.prompt_iv, authTag: r.prompt_tag })?.text ?? null;
     const legacy = rows.some((r) => r.operation === "analyze" || r.operation === "generate_image");
     let steps: WorkflowStepDef[];
     if (legacy) {

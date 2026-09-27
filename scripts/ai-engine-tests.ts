@@ -109,7 +109,9 @@ async function main() {
     const res = await run(s);
     check("P1 a 39 000-character prompt reaches the model byte-for-byte", res.ok && generationCalls[0]?.prompt === long);
     check("P1 the editor and the action share the 40 000 limit",
-      read("components/admin/tool-prompt.tsx").includes("PROMPT_LIMIT = 40000") && read("app/actions/ai-tools.ts").includes("body.length > 40000"));
+      read("components/admin/tool-prompt.tsx").includes("PROMPT_LIMIT = 40000") && /const PROMPT_MAX = 40000;/.test(read("app/actions/ai-tools.ts"))
+      && read("app/actions/ai-tools.ts").includes("Array.from(body).length > PROMPT_MAX")
+      && read("components/admin/tool-prompt.tsx").includes("const chars = promptChars(draft.body)"));
 
     reset();
     const noPrompt = await run(baseState());

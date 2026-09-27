@@ -13,6 +13,8 @@ import type { UsableModel } from "../lib/ai/router";
 import { synthesizeScenes, diversityViolations, clampRefs, type PlannedScene } from "../lib/ai/engine/scenes";
 import { composeFinalPrompt, validateFinalPrompt, MASTER_PREFIX } from "../lib/ai/engine/template-prompt";
 import { retryDelayMs } from "../lib/server/provider-router";
+import { keyringFor, PromptKeyError } from "../lib/server/prompt-vault";
+import { encryptSecret } from "../lib/server/crypto";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail?: string) {
@@ -51,16 +53,33 @@ check("validator accepts assembled prompts", [p1, p2, p3, ph].every((p) => valid
 check("validator rejects a bare fragment", !validateFinalPrompt("szara sofa w salonie"));
 check("validator rejects a rewritten template", !validateFinalPrompt(p1.replace("Sceneria:", "Klimat:")));
 
-console.log("\nC. HIDDEN PROMPT — encrypt → store → decrypt round trip");
-const sealed = encryptConceptPayload(p1, "");
+console.log("\nC. HIDDEN PROMPT — encrypt → store → decrypt round trip (Vault prompt key)");
+// The keyring a request gets from Vault (prompt_master_key, migration 0130);
+// a throwaway key here, never a real one.
+const ring = keyringFor("f".repeat(64));
+const sealed = encryptConceptPayload(ring, p1, "");
 check("ciphertext is not the plaintext", !sealed.ciphertext.includes("Sceneria"));
-const opened = decryptConceptPayload({ prompt_encrypted: sealed.ciphertext, prompt_iv: sealed.iv, prompt_tag: sealed.authTag });
+const opened = decryptConceptPayload(ring, { prompt_encrypted: sealed.ciphertext, prompt_iv: sealed.iv, prompt_tag: sealed.authTag });
 check("round trip restores the prompt", opened?.prompt === p1);
 check("no negative rides along", opened?.negative === "");
-check("missing columns decrypt to null", decryptConceptPayload({ prompt_encrypted: null, prompt_iv: null, prompt_tag: null }) === null);
-check("tampered ciphertext decrypts to null", decryptConceptPayload({
+check("missing columns decrypt to null", decryptConceptPayload(ring, { prompt_encrypted: null, prompt_iv: null, prompt_tag: null }) === null);
+check("tampered ciphertext decrypts to null", decryptConceptPayload(ring, {
   prompt_encrypted: sealed.ciphertext.slice(0, -4) + "AAAA", prompt_iv: sealed.iv, prompt_tag: sealed.authTag,
 }) === null);
+check("a different Vault key cannot open it", decryptConceptPayload(keyringFor("e".repeat(64)), {
+  prompt_encrypted: sealed.ciphertext, prompt_iv: sealed.iv, prompt_tag: sealed.authTag,
+}) === null);
+{
+  // A card sealed before the Vault key, with APP_ENCRYPTION_KEY (legacy):
+  // still opens while that variable exists — never re-sealed with it.
+  const legacy = encryptSecret(JSON.stringify({ p: p2, n: "" }));
+  check("a legacy env-key card still opens", decryptConceptPayload(ring, {
+    prompt_encrypted: legacy.ciphertext, prompt_iv: legacy.iv, prompt_tag: legacy.authTag,
+  })?.prompt === p2);
+  let threw = false;
+  try { encryptConceptPayload(keyringFor(null), p1, ""); } catch (e) { threw = e instanceof PromptKeyError; }
+  check("no Vault key → sealing refuses (never falls back to the env key)", threw);
+}
 
 console.log("\nD. EXACT COUNT — synthesis fills every missing slot, diversity holds");
 const existing: PlannedScene[] = [{

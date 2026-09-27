@@ -2,8 +2,9 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/services/audit";
-import { encryptionAvailable } from "@/lib/server/crypto";
 import { openPrompt, sealPrompt } from "@/lib/server/ai-engine";
+import { PromptKeyError, promptKeyring } from "@/lib/server/prompt-vault";
+import { adminPromptKeyring } from "@/lib/server/prompt-vault-admin";
 import { buildHintCiphertext, embedTexts } from "@/lib/server/knowledge";
 import { textCapableBackends } from "@/lib/server/prompt-engine";
 import { getUsableModels } from "@/lib/ai/router";
@@ -87,7 +88,9 @@ export async function compilePreviewAction(input: {
   try {
     await requireAdmin();
     if (!isAiToolKey(input.toolKey)) return { ok: false, error: "unknown_tool", ...empty };
-    const body = String(input.body ?? "").slice(0, PROMPT_MAX_CHARS);
+    // Characters as the editor counts them (code points), so an emoji is not
+    // split in half at the limit.
+    const body = Array.from(String(input.body ?? "")).slice(0, PROMPT_MAX_CHARS).join("");
     const wf = input.workflow;
     const defs = wf && Array.isArray(wf.steps) && Number.isInteger(wf.index)
       ? stepVariables(input.toolKey, wf.steps.map(normaliseStep), wf.index)
@@ -196,15 +199,18 @@ export async function saveWorkflowAction(input: {
     const { supabase, adminId } = await requireAdmin();
     if (!isAiToolKey(input.toolKey) || !toolSupportsWorkflow(input.toolKey)) return { ok: false, error: "workflow_unsupported" };
     if (input.publish && !input.reason?.trim()) return { ok: false, error: "reason_required" };
-    if (!encryptionAvailable()) return { ok: false, error: "encryption_unavailable" };
     const concurrency = Math.trunc(Number(input.concurrency) || 3);
     const invalid = await validateDefinition(supabase, input.toolKey, input.steps ?? [], concurrency);
     if (invalid) return { ok: false, ...invalid };
 
+    // Step prompts are sealed with the Vault-held prompt key (migration 0130),
+    // fetched once for the whole definition.
+    const ring = await adminPromptKeyring(supabase);
+    if (!ring.canSeal) return { ok: false, error: "prompt_key_unavailable" };
     const payload = input.steps.map(normaliseStep).map((s) => {
       // A tool step may carry no instruction of its own; an empty sealed body
       // would be indistinguishable from a broken one, so it seals one space.
-      const sealed = sealPrompt(s.prompt.trim() || " ");
+      const sealed = sealPrompt(ring, s.prompt.trim() || " ");
       return {
         name: s.name, enabled: s.enabled, operation: s.operation, output_kind: s.outputKind,
         use_images: s.inputImage !== "none",
@@ -240,7 +246,7 @@ export async function saveWorkflowAction(input: {
     });
     refresh(input.toolKey);
     return { ok: true, version: result.version, id: result.id };
-  } catch { return { ok: false, error: "generic" }; }
+  } catch (e) { return { ok: false, error: e instanceof PromptKeyError ? "prompt_key_unavailable" : "generic" }; }
 }
 
 export async function publishWorkflowAction(id: string, reason: string): Promise<Result> {
@@ -293,10 +299,13 @@ export async function readWorkflowAction(id: string): Promise<Result & {
         .eq("workflow_id", id).order("position"),
     ]);
     if (!wf || !steps?.length) return { ok: false, error: "not_found" };
+    const ring = await promptKeyring(supabase);
     const opened: { s: (typeof steps)[number]; prompt: string }[] = [];
     for (const s of steps) {
-      const prompt = openPrompt({ body_encrypted: s.prompt_encrypted, body_iv: s.prompt_iv, body_tag: s.prompt_tag });
-      if (prompt === null) return { ok: false, error: "decrypt_failed" };
+      const prompt = openPrompt(ring, { body_encrypted: s.prompt_encrypted, body_iv: s.prompt_iv, body_tag: s.prompt_tag })?.text ?? null;
+      // A step sealed with a key that no longer exists: the version cannot be
+      // opened, but saving a new one is never blocked by it.
+      if (prompt === null) return { ok: false, error: "legacy_unreadable" };
       opened.push({ s, prompt });
     }
     const legacy = opened.some(({ s }) => s.operation === "analyze" || s.operation === "generate_image");
@@ -552,7 +561,7 @@ export async function dryRunEngineAction(toolKey: string): Promise<Result & { ch
         const builtIn = toolKey === "retouch" || toolKey === "prompts" || toolKey === "generator";
         checks.push({ key: builtIn ? "builtInUsed" : "promptMissing", status: builtIn || tool?.workflow_enabled ? "warn" : "fail" });
       } else {
-        const body = openPrompt(p);
+        const body = openPrompt(await promptKeyring(supabase), p)?.text ?? null;
         if (body === null) checks.push({ key: "decrypt", status: "fail" });
         else {
           checks.push({ key: "promptPublished", status: "ok", params: { version: p.version, chars: body.length } });
@@ -652,7 +661,9 @@ export async function reviewKnowledgeExampleAction(input: {
     if (input.swap) { row.reference_path = ex.generated_path; row.generated_path = ex.reference_path; }
     const set = ex.knowledge_sets as unknown as { product_category: string | null; product_description: string | null } | null;
     if (input.decision === "approve") {
-      const hint = buildHintCiphertext({
+      const ring = await adminPromptKeyring(supabase);
+      if (!ring.canSeal) return { ok: false, error: "prompt_key_unavailable" };
+      const hint = buildHintCiphertext(ring, {
         category: fields.product_category ?? set?.product_category ?? null,
         prompt_used: fields.prompt_used, scene: fields.scene,
         what_worked: ex.what_worked, what_failed: ex.what_failed, correction: ex.correction,

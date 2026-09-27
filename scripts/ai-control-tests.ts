@@ -89,13 +89,17 @@ console.log("C. the hidden prompt stays on the server");
   check("the runtime read is token-guarded", engine.includes("dispatchToken()")
     && engine.includes("ai_tool_runtime"));
   check("the history query never selects a body", !/select\([^)]*body_encrypted/.test(service));
-  // Two call sites open a body: the editor's read (the only one that RETURNS
-  // it) and the publish gate that checks a stored draft's placeholders.
-  check("only one action returns a body", (actions.match(/openPrompt\(/g) ?? []).length === 2
-    && (actions.match(/return \{ ok: true, body \}/g) ?? []).length === 1);
+  // Three call sites open a body: the editor's read (the only one that
+  // RETURNS it), and the publish and restore gates that check a stored
+  // version's placeholders and which key sealed it.
+  check("only one action returns a body", (actions.match(/openPrompt\(/g) ?? []).length === 3
+    && (actions.match(/return \{ ok: true, body[ ,]/g) ?? []).length === 1);
   check("the editor receives versions, never bodies", !/body:\s*/.test(page)
     && editor.includes("readPromptBodyAction"));
-  check("a body is sealed before it is stored", actions.includes("sealPrompt(body)"));
+  // Sealed with the Vault-held prompt key (migration 0130) — never with an
+  // environment variable, and never without an admin session first.
+  check("a body is sealed before it is stored", actions.includes("sealPrompt(ring, body)")
+    && actions.includes("adminPromptKeyring(supabase)") && !/encryptionAvailable|encryptSecret/.test(actions));
   check("publishing records the reason, not the text",
     /after: \{ version: result\.version, reason/.test(actions));
 }

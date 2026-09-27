@@ -388,7 +388,7 @@ function ExampleCard({ ex, urls, onGone }: {
     });
     setBusy(false);
     if (res.ok) toast.success(t("common.saved"));
-    else toast.error(t("common.error"));
+    else toast.error(res.error === "prompt_key_unavailable" ? t("aicc.err.promptKey") : t("common.error"));
   }
 
   async function remove() {
@@ -551,7 +551,7 @@ function RuleEditor({ rule, onClose }: { rule?: EngineRuleView; onClose: () => v
     });
     setBusy(false);
     if (res.ok) { toast.success(t("common.saved")); onClose(); router.refresh(); }
-    else toast.error(res.error === "encryption_unavailable" ? t("admin.engine.encryptionUnavailable") : t("common.error"));
+    else toast.error(res.error === "prompt_key_unavailable" ? t("aicc.err.promptKey") : t("common.error"));
   }
 
   async function remove() {

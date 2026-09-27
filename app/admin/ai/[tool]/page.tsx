@@ -25,6 +25,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ToolConfigForm } from "@/components/admin/tool-basics";
 import { PromptDraftProvider, ToolPromptEditor, ToolPromptHistory } from "@/components/admin/tool-prompt";
+import { withKeyStates } from "@/lib/server/prompt-vault-admin";
 import { ToolModelPicker } from "@/components/admin/tool-models";
 import { KnowledgeImport, KnowledgeReview, ToolKnowledge, type ReviewItem } from "@/components/admin/tool-knowledge";
 import { WorkflowBuilder } from "@/components/admin/workflow-builder";
@@ -210,7 +211,7 @@ async function EngineTab({ supabase, t, row, config, locale }: WithConfig & { lo
     );
   }
   const supportsWorkflow = toolSupportsWorkflow(row.key);
-  const versions = await readPromptHistory(supabase, row.key);
+  const versions = await withKeyStates(supabase, await readPromptHistory(supabase, row.key));
   const defs = TOOL_VARIABLES[row.key] ?? [];
 
   return (

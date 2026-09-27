@@ -1,13 +1,14 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
-import { decryptSecret, encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
 import { dispatchToken } from "@/lib/server/integrations";
+import { promptKeyring, type PromptKeyring, type Sealed } from "@/lib/server/prompt-vault";
 import type { EngineMode } from "@/lib/services/ai-tools";
 
 /**
  * THE ENGINE, AT RUNTIME.
  *
- * A tool's hidden prompt is GrovBase IP, so it is stored encrypted and read
+ * A tool's hidden prompt is GrovBase IP, so it is stored encrypted — under the
+ * Vault-held prompt key (lib/server/prompt-vault.ts, migration 0130) — and read
  * through a token-guarded SECURITY DEFINER function — the same pattern the
  * notification dispatch already uses. A customer's session, holding the anon
  * key every browser has, cannot call it: the database compares sha256(token)
@@ -63,14 +64,13 @@ export async function resolveEngine(supabase: Client, toolKey: string): Promise<
     if (error || !row) return null;
 
     let systemPrompt: string | null = null;
-    if (row.prompt_encrypted && row.prompt_iv && row.prompt_tag && encryptionAvailable()) {
-      try {
-        systemPrompt = decryptSecret(row.prompt_encrypted, row.prompt_iv, row.prompt_tag);
-      } catch {
-        // A prompt that cannot be opened is treated as absent. Running the
-        // tool on its built-in behaviour beats failing the customer's request.
-        systemPrompt = null;
-      }
+    if (row.prompt_encrypted && row.prompt_iv && row.prompt_tag) {
+      // The keyring never throws: a key that cannot be fetched, like a body
+      // that cannot be opened, leaves the prompt absent while the rest of the
+      // configuration (models, mode, workflow switch) still applies. Running
+      // the tool on its built-in behaviour beats failing the customer's request.
+      const ring = await promptKeyring(supabase);
+      systemPrompt = ring.open({ ciphertext: row.prompt_encrypted, iv: row.prompt_iv, authTag: row.prompt_tag })?.text ?? null;
     }
 
     return {
@@ -108,17 +108,17 @@ export async function resolveSystemPrompt(supabase: Client, toolKey: string): Pr
   return engine.systemPrompt;
 }
 
-/** Seal a prompt body for storage. Used by the admin publish action only. */
-export function sealPrompt(body: string): { ciphertext: string; iv: string; authTag: string } {
-  return encryptSecret(body);
+/** Seal a prompt body for storage, under the Vault prompt key. Admin write
+ *  paths only; throws PromptKeyError when the key cannot be obtained. */
+export function sealPrompt(ring: PromptKeyring, body: string): Sealed {
+  return ring.seal(body);
 }
 
-/** Open a stored body for the admin editor. Admin-authorised callers only. */
-export function openPrompt(row: { body_encrypted: string; body_iv: string; body_tag: string }): string | null {
-  if (!encryptionAvailable()) return null;
-  try {
-    return decryptSecret(row.body_encrypted, row.body_iv, row.body_tag);
-  } catch {
-    return null;
-  }
+/** Open a stored body for the admin editor. Admin-authorised callers only.
+ *  Null when no available key opens it (a legacy row whose key is gone). */
+export function openPrompt(
+  ring: PromptKeyring,
+  row: { body_encrypted: string; body_iv: string; body_tag: string },
+): { text: string; source: "vault" | "legacy" } | null {
+  return ring.open({ ciphertext: row.body_encrypted, iv: row.body_iv, authTag: row.body_tag });
 }

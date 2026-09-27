@@ -66,12 +66,23 @@ function useDraft() {
   return ctx;
 }
 
+/** Characters as a person counts them: an emoji is one, not two UTF-16
+ *  units — the same count the server enforces the limit with. */
+export function promptChars(body: string): number {
+  let n = 0;
+  for (const _ of body) n++;
+  return n;
+}
+
 function promptError(t: (k: string) => string, error?: string): string {
   return error === "reason_required" ? t("aicc.err.reasonRequired")
-    : error === "encryption_unavailable" ? t("aicc.err.encryption")
+    : error === "prompt_key_unavailable" ? t("aicc.err.promptKey")
+    : error === "legacy_unreadable" ? t("aicc.err.legacyUnreadable")
     : error === "too_long" ? t("aicc.err.tooLong")
     : error === "variable_unknown" ? t("aicc.err.variableUnknown")
-    : error === "decrypt_failed" ? t("aicc.err.decrypt")
+    : error === "empty_body" ? t("aicc.err.emptyBody")
+    : error === "not_draft" ? t("aicc.err.notDraft")
+    : error === "forbidden" ? t("aicc.err.forbidden")
     : t("common.error");
 }
 
@@ -89,7 +100,7 @@ export function ToolPromptEditor({ toolKey, versions, locale, hasEngine }: {
   const [pending, start] = useTransition();
   const [preview, setPreview] = useState<CompilePreview | null>(null);
   const published = versions.find((v) => v.status === "published");
-  const chars = draft.body.length;
+  const chars = promptChars(draft.body);
   const over = chars > PROMPT_LIMIT;
 
   function insert(token: string) {
@@ -271,7 +282,7 @@ export function ToolPromptHistory({ versions, locale }: { versions: PromptVersio
     start(async () => {
       const res = await readPromptBodyAction(row.id);
       if (!res.ok || res.body === undefined) {
-        toast.error(res.error === "decrypt_failed" ? t("aicc.err.decrypt") : t("common.error"));
+        toast.error(promptError(t, res.error));
         return;
       }
       if (mode === "view") setLoaded({ version: row.version, body: res.body });
@@ -289,7 +300,9 @@ export function ToolPromptHistory({ versions, locale }: { versions: PromptVersio
         ? await publishPromptVersionAction(confirm.row.id, reason)
         : await restorePromptVersionAction(confirm.row.id, reason);
       if (res.ok) {
-        toast.success(t("common.saved"));
+        toast.success(confirm.kind === "publish"
+          ? t("aicc.prompt.published", { n: res.version ?? confirm.row.version })
+          : t("aicc.prompt.restored", { n: res.version ?? 0 }));
         setConfirm(null);
         setReason("");
         router.refresh();
@@ -320,6 +333,14 @@ export function ToolPromptHistory({ versions, locale }: { versions: PromptVersio
                   {t(`aicc.prompt.status.${v.status}`)}
                 </Badge>
                 {v.source === "knowledge" && <Badge tone="accent">{t("aicc.prompt.fromKnowledge")}</Badge>}
+                {/* Sealed with the old env key: still readable, moved to the
+                    Vault key on publish or restore — or gone for good. */}
+                {v.keyState === "legacy" && (
+                  <span title={t("aicc.prompt.keyLegacyHint")}><Badge tone="warning">{t("aicc.prompt.keyLegacy")}</Badge></span>
+                )}
+                {v.keyState === "unreadable" && (
+                  <span title={t("aicc.err.legacyUnreadable")}><Badge tone="danger">{t("aicc.prompt.keyUnreadable")}</Badge></span>
+                )}
                 <span className="min-w-0 truncate text-xs text-muted">
                   {v.summary || v.reason || "—"}
                 </span>
@@ -329,20 +350,20 @@ export function ToolPromptHistory({ versions, locale }: { versions: PromptVersio
                 <RelativeTime at={v.publishedAt ?? v.createdAt} locale={locale} t={t} />
               </span>
               <span className="flex shrink-0 flex-wrap gap-1">
-                <Button size="sm" variant="ghost" disabled={pending} onClick={() => loadInto(v, "view")}
+                <Button size="sm" variant="ghost" disabled={pending || v.keyState === "unreadable"} onClick={() => loadInto(v, "view")}
                   aria-label={t("aicc.prompt.viewTitle", { n: v.version })}>
                   <Eye size={14} aria-hidden />
                 </Button>
-                <Button size="sm" variant="ghost" disabled={pending} onClick={() => loadInto(v, "edit")}>
+                <Button size="sm" variant="ghost" disabled={pending || v.keyState === "unreadable"} onClick={() => loadInto(v, "edit")}>
                   {t("common.edit")}
                 </Button>
-                {v.status === "draft" && (
+                {v.status === "draft" && v.keyState !== "unreadable" && (
                   <Button size="sm" variant="secondary" disabled={pending}
                     onClick={() => { setReason(v.reason ?? ""); setConfirm({ kind: "publish", row: v }); }}>
                     {t("aicc.prompt.publish")}
                   </Button>
                 )}
-                {v.status === "superseded" && (
+                {v.status === "superseded" && v.keyState !== "unreadable" && (
                   <Button size="sm" variant="secondary" disabled={pending}
                     onClick={() => { setReason(""); setConfirm({ kind: "restore", row: v }); }}>
                     <RotateCcw size={14} aria-hidden />

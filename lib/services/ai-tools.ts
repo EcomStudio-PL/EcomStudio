@@ -427,6 +427,11 @@ export type PromptVersionRow = {
   createdAt: string;
   publishedAt: string | null;
   authorName: string | null;
+  /** Which key opens this version — filled server-side by the admin page
+   *  (lib/server/prompt-vault-admin.ts), never a body: "vault" (the current
+   *  key), "legacy" (the old env key, still present) or "unreadable" (a key
+   *  that no longer exists — the text cannot be recovered). */
+  keyState?: "vault" | "legacy" | "unreadable";
 };
 
 export async function readPromptHistory(supabase: Client, toolKey: string): Promise<PromptVersionRow[]> {

@@ -2,7 +2,7 @@ import "server-only";
 import { readTokenPrices, recordProviderCalls } from "@/lib/server/ai-usage";
 import { tokenCost } from "@/lib/ai/usage-cost";
 import type { Client } from "@/lib/services/workspace";
-import { decryptSecret, encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
+import { promptKeyring, type PromptKeyring, type Sealed } from "@/lib/server/prompt-vault";
 import { readProviderKey } from "@/lib/server/provider-credentials";
 import { dispatchToken } from "@/lib/server/integrations";
 import { rankCandidates, type KnowledgeStrategy } from "@/lib/ai/knowledge-ranking";
@@ -14,8 +14,9 @@ import { rankCandidates, type KnowledgeStrategy } from "@/lib/ai/knowledge-ranki
  * pull through PostgREST is ciphertext (see migration 0042): the definer
  * RPCs return encrypted hints/rules and the plaintext exists only behind
  * admin-only RLS. Decryption happens here, server-side, with the same
- * APP_ENCRYPTION_KEY that seals concept prompts — a customer calling the
- * RPCs directly holds bytes they cannot read.
+ * Vault-held prompt key that seals every other prompt (migration 0130,
+ * lib/server/prompt-vault.ts) — a customer calling the RPCs directly holds
+ * bytes they cannot read.
  *
  * All functions are failure-safe: no key, no OpenAI credential, no vector —
  * the engine simply plans without hints, never errors.
@@ -78,14 +79,14 @@ export async function embedTexts(
 /** Distill one example into the engine-facing hint and seal it. The hint is
  *  intentionally terse: what to reproduce, what to avoid, how it was fixed —
  *  never the whole historical prompt verbatim. */
-export function buildHintCiphertext(example: {
+export function buildHintCiphertext(ring: PromptKeyring, example: {
   category?: string | null;
   prompt_used?: string | null;
   what_worked?: string | null;
   what_failed?: string | null;
   correction?: string | null;
   scene?: string | null;
-}): { ciphertext: string; iv: string; authTag: string } | null {
+}): Sealed | null {
   const parts: string[] = [];
   if (example.scene?.trim()) parts.push(`Scena: ${example.scene.trim().slice(0, 240)}`);
   if (example.what_worked?.trim()) parts.push(`Sprawdziło się: ${example.what_worked.trim()}`);
@@ -93,9 +94,12 @@ export function buildHintCiphertext(example: {
   if (example.correction?.trim()) parts.push(`Poprawka: ${example.correction.trim()}`);
   if (example.prompt_used?.trim()) parts.push(`Fragment działającego promptu: ${example.prompt_used.trim().slice(0, 240)}`);
   const text = parts.join(" · ").slice(0, 700);
-  if (!text || !encryptionAvailable()) return null;
+  // Nothing to learn → null. Something to learn but no key → PromptKeyError
+  // from seal(): a caller must never mistake "could not seal" for "empty"
+  // and write a null over a working hint.
+  if (!text) return null;
   const prefix = example.category?.trim() ? `[${example.category.trim().slice(0, 60)}] ` : "";
-  return encryptSecret(prefix + text);
+  return ring.seal(prefix + text);
 }
 
 export type KnowledgeHints = { hints: string[]; exampleIds: string[] };
@@ -106,7 +110,8 @@ export async function retrieveKnowledgeHints(
 ): Promise<KnowledgeHints> {
   const empty: KnowledgeHints = { hints: [], exampleIds: [] };
   try {
-    if (!queryText.trim() || !encryptionAvailable()) return empty;
+    const ring = await promptKeyring(supabase);
+    if (!queryText.trim() || !ring.canOpen) return empty;
     const embedded = await embedTexts(supabase, [queryText]);
     const vector = embedded?.[0];
     if (!vector) return empty;
@@ -125,11 +130,10 @@ export async function retrieveKnowledgeHints(
     const hints: string[] = [];
     const ids: string[] = [];
     for (const r of rows) {
-      if (!r.hint_encrypted || !r.hint_iv || !r.hint_tag) continue;
-      try {
-        hints.push(decryptSecret(r.hint_encrypted, r.hint_iv, r.hint_tag));
-        ids.push(r.id);
-      } catch { /* sealed with an older key — skip */ }
+      const hint = ring.open({ ciphertext: r.hint_encrypted, iv: r.hint_iv, authTag: r.hint_tag });
+      if (!hint) continue; // sealed with a key that no longer exists — skip
+      hints.push(hint.text);
+      ids.push(r.id);
       if (hints.length >= topK) break;
     }
     return { hints, exampleIds: ids };
@@ -163,7 +167,8 @@ export async function retrieveToolKnowledge(
 ): Promise<ToolKnowledge> {
   const empty: ToolKnowledge = { hints: [], exampleIds: [], scene: null, sceneExampleId: null };
   try {
-    if (!encryptionAvailable() || !queryText.trim()) return empty;
+    const ring = await promptKeyring(supabase);
+    if (!ring.canOpen || !queryText.trim()) return empty;
     // Relevance first, as the original matcher: no query vector (no OpenAI
     // credential, no text) means no hints — never "some hint, unrelated".
     const vector = (await embedTexts(supabase, [queryText]))?.[0] ?? null;
@@ -194,11 +199,11 @@ export async function retrieveToolKnowledge(
     for (const c of ranked) {
       const r = byId.get(c.id);
       if (!r) continue;
-      try {
-        hints.push(decryptSecret(r.hint_encrypted, r.hint_iv, r.hint_tag));
-        ids.push(r.id);
-        if (!scene && r.scene?.trim()) { scene = r.scene.trim(); sceneExampleId = r.id; }
-      } catch { /* sealed with an older key — skip */ }
+      const hint = ring.open({ ciphertext: r.hint_encrypted, iv: r.hint_iv, authTag: r.hint_tag });
+      if (!hint) continue; // sealed with a key that no longer exists — skip
+      hints.push(hint.text);
+      ids.push(r.id);
+      if (!scene && r.scene?.trim()) { scene = r.scene.trim(); sceneExampleId = r.id; }
     }
     return { hints, exampleIds: ids, scene, sceneExampleId };
   } catch {
@@ -209,7 +214,8 @@ export async function retrieveToolKnowledge(
 /** Admin-authored engine directives, decrypted, priority order, bounded. */
 export async function getEngineRuleDirectives(supabase: Client): Promise<string[]> {
   try {
-    if (!encryptionAvailable()) return [];
+    const ring = await promptKeyring(supabase);
+    if (!ring.canOpen) return [];
     const { data } = await supabase.rpc("engine_rules_read", { p_token: dispatchToken() });
     const rows = (data ?? []) as {
       id: string;
@@ -218,17 +224,16 @@ export async function getEngineRuleDirectives(supabase: Client): Promise<string[
     const out: string[] = [];
     let budget = 1200;
     for (const r of rows) {
-      if (!r.content_encrypted || !r.content_iv || !r.content_tag) continue;
-      try {
-        const text = decryptSecret(r.content_encrypted, r.content_iv, r.content_tag).slice(0, 400);
-        // A long high-priority rule must not starve the shorter ones behind
-        // it: skip what does not fit, keep filling the budget.
-        if (text.length > budget) continue;
-        budget -= text.length;
-        // The "Unikaj:" framing is sealed into the ciphertext at save time,
-        // so the RPC never has to hand the rule taxonomy to the client.
-        out.push(text);
-      } catch { /* older key — skip */ }
+      const opened = ring.open({ ciphertext: r.content_encrypted, iv: r.content_iv, authTag: r.content_tag });
+      if (!opened) continue; // sealed with a key that no longer exists — skip
+      const text = opened.text.slice(0, 400);
+      // A long high-priority rule must not starve the shorter ones behind
+      // it: skip what does not fit, keep filling the budget.
+      if (text.length > budget) continue;
+      budget -= text.length;
+      // The "Unikaj:" framing is sealed into the ciphertext at save time,
+      // so the RPC never has to hand the rule taxonomy to the client.
+      out.push(text);
     }
     return out;
   } catch {

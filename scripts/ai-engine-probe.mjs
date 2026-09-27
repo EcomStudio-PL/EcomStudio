@@ -43,7 +43,8 @@ export const dynamic = "force-dynamic";
 const versions = [
   { id: "v3", version: 3, status: "draft", summary: "Dłuższy prompt z wiedzą", reason: null, source: "manual", createdAt: "2026-09-20T10:00:00Z", publishedAt: null, authorName: "Anna Admin" },
   { id: "v2", version: 2, status: "published", summary: "Poprawka tła", reason: "Lepsze cienie", source: "manual", createdAt: "2026-09-10T10:00:00Z", publishedAt: "2026-09-11T10:00:00Z", authorName: "Anna Admin" },
-  { id: "v1", version: 1, status: "superseded", summary: null, reason: "Start", source: "manual", createdAt: "2026-09-01T10:00:00Z", publishedAt: "2026-09-01T10:00:00Z", authorName: null },
+  { id: "v1", version: 1, status: "superseded", summary: null, reason: "Start", source: "manual", createdAt: "2026-09-01T10:00:00Z", publishedAt: "2026-09-01T10:00:00Z", authorName: null, keyState: "legacy" as const },
+  { id: "v0", version: 0, status: "superseded", summary: "Sprzed sejfu", reason: "Start", source: "manual", createdAt: "2026-08-01T10:00:00Z", publishedAt: "2026-08-01T10:00:00Z", authorName: null, keyState: "unreadable" as const },
 ];
 const wfVersions = [
   { id: "w2", version: 2, status: "published", summary: "Analiza + obraz", reason: "Test", stepCount: 3, maxOutputs: 1, createdAt: "2026-09-12T10:00:00Z", publishedAt: "2026-09-12T10:00:00Z", authorName: "Anna Admin" },
@@ -142,6 +143,29 @@ for (const theme of ["light", "dark"]) {
     const box = await ta.boundingBox();
     check(`${tag}: the prompt editor is tall and fits`, !!box && box.height >= 200 && box.x >= 0 && box.x + box.width <= width + 1, box);
     check(`${tag}: the character counter is shown`, await page.locator("[data-prompt-counter]").isVisible());
+    // THE EDITOR IS NEVER DEAD: no encryption-key banner, the textarea takes
+    // text, and Save/Publish enable as soon as body (+ reason) are there.
+    check(`${tag}: the old "Brak klucza szyfrowania" message is gone`, !(await page.content()).includes("Brak klucza szyfrowania"));
+    check(`${tag}: the prompt textarea is enabled`, await ta.isEnabled());
+    await ta.fill("TEST GROVBASE {{product_description}} 😀😀");
+    const counter = await page.locator("[data-prompt-counter]").innerText();
+    check(`${tag}: emoji count as one character each (40, not 42 UTF-16 units)`, /^\D*40\D/.test(counter), counter);
+    await page.locator("#summary").fill("Retusz 1.0");
+    await page.locator("#reason").fill("Test systemu promptów");
+    const saveDraft = page.locator("[data-engine-section='2'] button", { hasText: /Zapisz szkic|Save draft|Entwurf speichern/ }).first();
+    const publishBtn = page.locator("[data-engine-section='2'] button", { hasText: /Opublikuj|Publish|Veröffentlich/ }).first();
+    check(`${tag}: Zapisz szkic and Opublikuj are enabled`, (await saveDraft.isEnabled()) && (await publishBtn.isEnabled()));
+    // Key states in the history: legacy is labelled, unreadable is labelled
+    // and cannot be opened, published or restored.
+    const hist = page.locator("[data-prompt-history]");
+    check(`${tag}: the old-key version is labelled`, (await hist.innerText()).match(/Stary klucz|Old key|Alter Schlüssel/) !== null);
+    const unreadableRow = hist.locator("li", { hasText: "v0" }).first();
+    check(`${tag}: the unreadable version is labelled`, (await unreadableRow.innerText()).match(/Nieczytelna|Unreadable|Nicht lesbar/) !== null);
+    const rowButtons = unreadableRow.locator("button");
+    const enabledInRow = await rowButtons.evaluateAll((els) => els.filter((b) => !b.disabled).length);
+    check(`${tag}: an unreadable version offers no enabled action`, enabledInRow === 0, enabledInRow);
+    const hOver = await hist.evaluate((el) => el.scrollWidth - el.clientWidth);
+    check(`${tag}: the history with badges does not overflow`, hOver <= 1, hOver);
     // A chip inserts at the cursor.
     await ta.fill("Start  koniec");
     await ta.evaluate((el) => el.setSelectionRange(6, 6));
@@ -159,18 +183,33 @@ for (const theme of ["light", "dark"]) {
       return !hit || !(hit === el || el.contains(hit) || hit.contains(el));
     });
     check(`${tag}: publish is not covered by a sticky or fixed bar`, !covered);
-    // Workflow: add an analysis step before the image step.
-    const before = await page.locator("[data-workflow-builder] [data-step]").count();
-    await page.locator("[data-workflow-builder] button", { hasText: /Dodaj krok|Add an analysis|Analyseschritt/ }).click();
-    const after = await page.locator("[data-workflow-builder] [data-step]").count();
-    const lastIsImage = await page.locator("[data-workflow-builder] [data-step]").last().innerText();
-    check(`${tag}: a step is added before the image step`, after === before + 1 && /Generacja obrazu|Image generation|Bildgenerierung/.test(lastIsImage));
+    // Workflow: the v1 "add an analysis step" button. The v2 builder (vertical
+    // steps, typed outputs) replaced it and has its own probe —
+    // scripts/workflow-probe.mjs — so this check runs only against a v1 UI
+    // and says plainly when it is skipped.
+    const addV1 = page.locator("[data-workflow-builder] button", { hasText: /Dodaj krok analizy|Add an analysis|Analyseschritt/ });
+    if (await addV1.count()) {
+      const before = await page.locator("[data-workflow-builder] [data-step]").count();
+      await addV1.first().click();
+      const after = await page.locator("[data-workflow-builder] [data-step]").count();
+      const lastIsImage = await page.locator("[data-workflow-builder] [data-step]").last().innerText();
+      check(`${tag}: a step is added before the image step`, after === before + 1 && /Generacja obrazu|Image generation|Bildgenerierung/.test(lastIsImage));
+    } else if (width === WIDTHS[0] && theme === "light") {
+      console.log("  - workflow v1 add-step check skipped: v2 builder, covered by scripts/workflow-probe.mjs");
+    }
     const stepOver = await page.evaluate(() => [...document.querySelectorAll("[data-step]")].some((el) => el.scrollWidth > el.clientWidth + 1));
     check(`${tag}: step cards do not overflow`, !stepOver);
     const reviewBox = await page.locator("[data-review-item]").boundingBox();
     check(`${tag}: the review card fits`, !!reviewBox && reviewBox.x + reviewBox.width <= width + 1);
-    const strip = await page.locator("[data-result-feedback]").boundingBox();
-    check(`${tag}: the 👍/👎 strip fits`, !!strip && strip.width <= width);
+    // The customer's 👍/👎 strip renders only once it has read the viewer's
+    // own vote from the database; this harness has none, so it is checked
+    // only when it actually rendered, and says so otherwise.
+    if (await page.locator("[data-result-feedback]").count()) {
+      const strip = await page.locator("[data-result-feedback]").boundingBox();
+      check(`${tag}: the 👍/👎 strip fits`, !!strip && strip.width <= width);
+    } else if (width === WIDTHS[0] && theme === "light") {
+      console.log("  - 👍/👎 strip not rendered without a session — fit check skipped");
+    }
     const over2 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     check(`${tag}: still no sideways scroll after edits`, over2 <= 1, over2);
     check(`${tag}: no client errors`, errors.length === 0, errors.slice(0, 2));

@@ -1,16 +1,18 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { encryptSecret, encryptionAvailable } from "@/lib/server/crypto";
+import { PromptKeyError } from "@/lib/server/prompt-vault";
+import { adminPromptKeyring } from "@/lib/server/prompt-vault-admin";
 import { buildHintCiphertext, embedTexts } from "@/lib/server/knowledge";
 
 /**
  * AI ENGINE — admin actions for the knowledge base, prompt rules and the
  * engine version history. Everything here runs behind requireAdmin AND the
  * admin-only RLS from migration 0042; every mutation lands in the activity
- * log. Rule/hint plaintext is written alongside its AES-256-GCM ciphertext —
- * the ENGINE (running under a customer session) can only ever read the
- * ciphertext through the definer RPCs.
+ * log. Rule/hint plaintext is written alongside its AES-256-GCM ciphertext,
+ * sealed with the Vault-held prompt key (migration 0130) — the ENGINE
+ * (running under a customer session) can only ever read the ciphertext
+ * through the definer RPCs.
  */
 
 type Result = { ok: boolean; error?: string };
@@ -99,8 +101,11 @@ export async function updateKnowledgeExampleAction(id: string, patch: {
     };
     const set = current.knowledge_sets as unknown as { product_category: string | null; product_description: string | null } | null;
     // Curation edits change what the engine should learn → the sealed hint
-    // is rebuilt from the new plaintext in the same write.
-    const hint = buildHintCiphertext({ category: set?.product_category ?? null, ...fields });
+    // is rebuilt from the new plaintext in the same write. Without the prompt
+    // key the edit is refused rather than written with a null hint, which
+    // would silently drop the example from retrieval.
+    const ring = await adminPromptKeyring(supabase);
+    const hint = buildHintCiphertext(ring, { category: set?.product_category ?? null, ...fields });
     const row: Record<string, unknown> = {
       ...fields,
       hint_encrypted: hint?.ciphertext ?? null,
@@ -132,7 +137,7 @@ export async function updateKnowledgeExampleAction(id: string, patch: {
     await logAdmin(supabase, "admin.knowledge_example_updated", "knowledge_example", id);
     revalidatePath("/admin/ai/wiedza");
     return { ok: true };
-  } catch { return { ok: false, error: "generic" }; }
+  } catch (e) { return { ok: false, error: e instanceof PromptKeyError ? "prompt_key_unavailable" : "generic" }; }
 }
 
 export async function deleteKnowledgeExampleAction(id: string): Promise<Result> {
@@ -158,7 +163,6 @@ export async function saveEngineRuleAction(input: {
 }): Promise<Result> {
   try {
     const { supabase, adminId } = await requireAdmin();
-    if (!encryptionAvailable()) return { ok: false, error: "encryption_unavailable" };
     const name = s(input.name, 120);
     const content = s(input.content, 1000);
     if (!name || !content) return { ok: false, error: "invalid" };
@@ -166,7 +170,8 @@ export async function saveEngineRuleAction(input: {
     const priority = Math.min(Math.max(Math.trunc(Number(input.priority) || 100), 1), 999);
     // The engine-facing framing is sealed WITH the rule, so the retrieval RPC
     // hands the customer's session ciphertext only — not the rule taxonomy.
-    const sealed = encryptSecret(ruleType === "avoid" ? `Unikaj: ${content}` : content);
+    const ring = await adminPromptKeyring(supabase);
+    const sealed = ring.seal(ruleType === "avoid" ? `Unikaj: ${content}` : content);
     const row = {
       name, rule_type: ruleType, content,
       content_encrypted: sealed.ciphertext, content_iv: sealed.iv, content_tag: sealed.authTag,
@@ -192,7 +197,7 @@ export async function saveEngineRuleAction(input: {
     revalidatePath("/admin/ai/wiedza");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: e instanceof Error && e.message === "encryption_key_missing" ? "encryption_unavailable" : "generic" };
+    return { ok: false, error: e instanceof PromptKeyError ? "prompt_key_unavailable" : "generic" };
   }
 }
 

@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash } from "crypto";
 import type { Client } from "@/lib/services/workspace";
-import { decryptSecret, encryptSecret } from "@/lib/server/crypto";
+import { promptKeyring, type PromptKeyring, type Sealed } from "@/lib/server/prompt-vault";
 import { readProviderKey } from "@/lib/server/provider-credentials";
 import { dispatchToken } from "@/lib/server/integrations";
 import {
@@ -100,7 +100,8 @@ const SESSION_FALLBACK_LABEL = "Sesja generowania";
 /**
  * The seller-facing concept payload that IS allowed to leave the server.
  * There is deliberately no field for the prompt: everything internal travels
- * only as AES-256-GCM ciphertext in the encrypted columns.
+ * only as AES-256-GCM ciphertext in the encrypted columns, sealed with the
+ * Vault-held prompt key (migration 0130, lib/server/prompt-vault.ts).
  */
 export type ConceptPayloadMeta = {
   /** prompt_template_version */
@@ -114,17 +115,18 @@ export type ConceptPayloadMeta = {
 };
 
 export function encryptConceptPayload(
-  prompt: string, negative: string, meta?: ConceptPayloadMeta,
-): { ciphertext: string; iv: string; authTag: string } {
-  return encryptSecret(JSON.stringify({ p: prompt, n: negative, ...(meta ?? {}) }));
+  ring: PromptKeyring, prompt: string, negative: string, meta?: ConceptPayloadMeta,
+): Sealed {
+  return ring.seal(JSON.stringify({ p: prompt, n: negative, ...(meta ?? {}) }));
 }
 
-export function decryptConceptPayload(row: {
+export function decryptConceptPayload(ring: PromptKeyring, row: {
   prompt_encrypted: string | null; prompt_iv: string | null; prompt_tag: string | null;
 }): { prompt: string; negative: string; meta: ConceptPayloadMeta } | null {
-  if (!row.prompt_encrypted || !row.prompt_iv || !row.prompt_tag) return null;
+  const opened = ring.open({ ciphertext: row.prompt_encrypted, iv: row.prompt_iv, authTag: row.prompt_tag });
+  if (!opened) return null;
   try {
-    const parsed = JSON.parse(decryptSecret(row.prompt_encrypted, row.prompt_iv, row.prompt_tag)) as
+    const parsed = JSON.parse(opened.text) as
       { p?: string; n?: string } & ConceptPayloadMeta;
     if (typeof parsed.p !== "string" || !parsed.p) return null;
     return {
@@ -352,6 +354,11 @@ export async function runPromptSession(
   const analysisModel = await getAnalysisModel(supabase);
   let backends = await getVisionBackends(supabase, analysisModel);
   if (backends.length === 0) return { ok: false, error: "analysis_unavailable" };
+  // Every card's prompt is sealed with the Vault prompt key. Checked HERE,
+  // before any session row, charge or paid planner call: a key that cannot be
+  // reached must not cost the provider a planner run it can never store.
+  const ring = await promptKeyring(supabase);
+  if (!ring.canSeal) return { ok: false, error: "encryption_unavailable" };
   // The engine configuration is read ONCE: a template published while this
   // session runs does not change the prompts this session writes.
   const engine = await resolveEngine(supabase, "prompts");
@@ -670,7 +677,7 @@ export async function runPromptSession(
     const rows = scenes.map((scene, idx) => {
       if (template && templateValues) {
         const prompt = compileGrovshotPrompt(template, templateValues, scene);
-        const sealed = encryptConceptPayload(prompt, "", { tv: PROMPT_TEMPLATE_VERSION });
+        const sealed = encryptConceptPayload(ring, prompt, "", { tv: PROMPT_TEMPLATE_VERSION });
         return promptRow(scene, idx, sealed);
       }
       let prompt = composeFinalPrompt({
@@ -689,7 +696,7 @@ export async function runPromptSession(
           humanPresence: scene.human_presence,
         });
       }
-      const sealed = encryptConceptPayload(prompt, "", { tv: PROMPT_TEMPLATE_VERSION });
+      const sealed = encryptConceptPayload(ring, prompt, "", { tv: PROMPT_TEMPLATE_VERSION });
       return promptRow(scene, idx, sealed);
     });
     function promptRow(scene: PlannedScene, idx: number, sealed: { ciphertext: string; iv: string; authTag: string }) {
@@ -814,6 +821,10 @@ export async function regeneratePrompt(
   });
   const backends = meter.wrap(await getVisionBackends(supabase, analysisModel));
   if (backends.length === 0) return { ok: false, error: "analysis_unavailable" };
+  // The new card is sealed with the Vault prompt key — checked before the
+  // paid planner call, for the same reason as a whole session.
+  const ring = await promptKeyring(supabase);
+  if (!ring.canSeal) return { ok: false, error: "encryption_unavailable" };
 
   const { data: siblings } = await supabase
     .from("generated_prompts").select("id, concept_name").eq("session_id", session.id);
@@ -849,7 +860,7 @@ export async function regeneratePrompt(
           resolution: session.resolution,
         },
       });
-      const sealed = encryptConceptPayload(compileGrovshotPrompt(template, values, scene), "", { tv: PROMPT_TEMPLATE_VERSION });
+      const sealed = encryptConceptPayload(ring, compileGrovshotPrompt(template, values, scene), "", { tv: PROMPT_TEMPLATE_VERSION });
       await supabase.from("generated_prompts").update({
         concept_name: scene.title, shot_type: "scene", scene_type: null,
         customer_title: scene.title,
@@ -877,7 +888,7 @@ export async function regeneratePrompt(
         humanPresence: scene.human_presence,
       });
     }
-    const sealed = encryptConceptPayload(finalPrompt, "", { tv: PROMPT_TEMPLATE_VERSION });
+    const sealed = encryptConceptPayload(ring, finalPrompt, "", { tv: PROMPT_TEMPLATE_VERSION });
     await supabase.from("generated_prompts").update({
       concept_name: scene.title, shot_type: "scene", scene_type: null,
       customer_title: scene.title,

@@ -7066,6 +7066,13 @@ export type Database = {
         Args: { p_names: string[]; p_token?: string | null }
         Returns: { name: string; value: string | null }[]
       }
+      /* The Vault-held prompt-content key (migration 0130), created on first
+         use. Proof-of-server token only — no browser and no admin session
+         ever receives it. */
+      prompt_master_key: {
+        Args: { p_token: string | null }
+        Returns: string
+      }
       /* Tool popularity (migration 0082). The counting half is SECURITY DEFINER
          because usage_events is fenced to one workspace by RLS and the ranking
          is product-wide; the storing half is, because the weekly job has no
