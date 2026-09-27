@@ -109,9 +109,9 @@ async function runEngineImageToolMetered(
         expected: started.expected, productId: null, images: [],
       };
     }
-    // Switch ON but nothing published: the tool keeps its single-call path
-    // (a tool with a built-in prompt) or refuses honestly (one without).
-    if (input.builtInPrompt === null && !(engine.systemPrompt?.trim())) return { ok: false, error: "prompt_unconfigured" };
+    // Switch ON but nothing published (the switch refuses to turn on without
+    // a published version, so this is a safety net): the tool keeps its
+    // single-call path below, which refuses honestly when it has no prompt.
   }
 
   const published = engine && (engine.mode === "grovbase" || engine.mode === "hybrid")

@@ -99,9 +99,17 @@ export type WorkflowDefinition = {
 const IDENT = /^[a-z][a-z0-9_]{0,39}$/;
 const TEXT_MODEL = /^[a-z0-9][a-z0-9.\-]{0,79}$/;
 
+/**
+ * Tool variables a step may PRODUCE instead: the AI-derived product analysis.
+ * A workflow that names a step's output `product_analysis` replaces the
+ * built-in automatic analysis with its own step (the brief's example flow), and
+ * the name then follows the same earlier-steps-only rule as any output.
+ */
+export const SHADOWABLE = new Set(["product_analysis"]);
+
 /** Names a workflow may not take: the tool's own variables and the v1 names. */
 export function reservedNames(toolKey: string): Set<string> {
-  const names = new Set((TOOL_VARIABLES[toolKey] ?? []).map((d) => d.key));
+  const names = new Set((TOOL_VARIABLES[toolKey] ?? []).map((d) => d.key).filter((k) => !SHADOWABLE.has(k)));
   for (const n of ["previous", "customer", "none", "item", "input", "output"]) names.add(n);
   for (let i = 1; i <= MAX_STEPS; i++) names.add(`step${i}`);
   return names;
@@ -119,7 +127,10 @@ export const isCollection = (s: Pick<WorkflowStepDef, "outputKind" | "forEach">)
  * the step's own FOR EACH item.
  */
 export function stepVariables(toolKey: string, steps: readonly WorkflowStepDef[], index: number): VariableDef[] {
-  const base = TOOL_VARIABLES[toolKey] ?? [];
+  // A tool variable a step produces is that step's output everywhere in the
+  // workflow — never the automatic value, and never before the step ran.
+  const produced = new Set(steps.map((s) => s.outputName));
+  const base = (TOOL_VARIABLES[toolKey] ?? []).filter((d) => !produced.has(d.key));
   const earlier: VariableDef[] = steps.slice(0, index)
     .filter((s) => IDENT.test(s.outputName))
     .map((s) => ({

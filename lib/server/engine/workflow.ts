@@ -280,7 +280,11 @@ export async function driveWorkflowRun(
     actorKind: ctx.actorKind, consumer: ctx.consumer, userId: ctx.userId, workspaceId: ctx.workspaceId,
     toolKey: run.tool_key, usageEventId: run.usage_event_id, jobId: run.job_id, runRef: runId,
   });
-  const resolved = await resolveVariables(wf.steps.map((s) => s.prompt), {
+  // A variable a step PRODUCES (product_analysis) is never resolved
+  // automatically as well: its references are the step's output.
+  const produced = new Set(wf.steps.map((s) => s.outputName));
+  const unshadowed = (p: string) => p.replace(/\{\{\s*([a-z][a-z0-9_]*)[^}]*\}\}/g, (m, name: string) => (produced.has(name) ? "" : m));
+  const resolved = await resolveVariables(wf.steps.map((s) => unshadowed(s.prompt)), {
     supabase, workspaceId: ctx.workspaceId, toolKey: run.tool_key, strategy: input.knowledge_strategy,
     seed: `${run.tool_key}:${runId}`, referencePaths: input.reference_paths,
     images: customerImages, backends: async () => meter.wrap(await rawBackends()),

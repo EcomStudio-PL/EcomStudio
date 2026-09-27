@@ -257,6 +257,29 @@ async function main() {
     row.last_test_status === null && row.last_image_test_status === null && row.last_success_at === null && row.last_error_at === null);
   check("save: publishes the server-token hash so the runtime can read the key",
     db.rows("app_settings").some((r) => r.key === "notifications"));
+  check("API7 (key modal) the save result never carries the key", !JSON.stringify(saved).includes("sk-new-secret"));
+  check("API6 (key modal) what the panel shows on reopen is the MASK only",
+    maskKey(row.last_four as string) === "•••• 9876" && !maskKey(row.last_four as string).includes("sk-new"));
+
+  // API5 — the Base URL is validated BEFORE the key is written: a bad host never
+  // ends up holding a fresh secret (§2 "no active secret bound to a wrong endpoint").
+  for (const bad of ["http://api.example.com", "https://127.0.0.1/v1", "https://localhost/v1", "https://user:pw@api.example.com", "https://intranet/v1", "https://api.example.com/v1?x=1"]) {
+    db = providerDb({ key: null }); g.__apiFakeDb = db;
+    const r = await saveProviderCredentialAction("p1", "sk-bad-host-1234", bad);
+    check(`API5 bad Base URL refused before any write: ${bad}`,
+      !r.ok && r.error === "base_url_invalid" && !db.rpcCalls.some((c) => c.name === "secret_put")
+      && !db.rows("ai_provider_credentials").some((row) => row.last_four === "1234"),
+      { r, calls: db.rpcCalls.map((c) => c.name), rows: db.rows("ai_provider_credentials").length });
+  }
+  db = providerDb({ key: null }); g.__apiFakeDb = db;
+  const withHost = await saveProviderCredentialAction("p1", "sk-host-ok-5555", "https://gateway.example.com/v1/");
+  check("API5 a valid Base URL is stored normalised with the key",
+    withHost.ok && db.rows("ai_provider_credentials")[0].base_url === "https://gateway.example.com/v1");
+  const noHost = await saveProviderCredentialAction("p1", "sk-host-ok-6666", "");
+  check("API5 an empty Base URL clears the host (default endpoint) with the new key",
+    noHost.ok && db.rows("ai_provider_credentials")[0].base_url === null && db.rows("ai_provider_credentials")[0].last_four === "6666");
+  db = providerDb({ key: null }); g.__apiFakeDb = db;
+
   const del = await deleteProviderCredentialAction("p1");
   check("delete: clears the vault secret too", del.ok && db.rpcCalls.some((c) => c.name === "secret_clear" && c.args.p_name === "grovbase.provider.p1"));
   check("delete: row gone", db.rows("ai_provider_credentials").length === 0);

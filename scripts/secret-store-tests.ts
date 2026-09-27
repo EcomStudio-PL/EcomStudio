@@ -479,6 +479,7 @@ const NOT_A_CREDENTIAL: Record<string, string> = {
   "lib/server/crypto.ts": "the primitive itself",
   "lib/server/knowledge.ts": "knowledge-base row content, encrypted at rest",
   "lib/server/ai-engine.ts": "prompt bodies, encrypted at rest",
+  "lib/server/engine/workflow-store.ts": "workflow step prompts, encrypted at rest (same envelope as ai-engine.ts)",
   "lib/server/signup-guard.ts": "uses the key as a hash salt, never decrypts; fails open",
   "lib/server/mailer.ts": "takes the plaintext its caller already resolved",
 };

@@ -129,18 +129,20 @@ export async function completeUsage(
   // seller could write an arbitrary provider cost onto their own event and make
   // the economics report say whatever they liked.
   for (let attempt = 0; attempt < 2; attempt++) {
-    const base = {
-      p_token: serverToken,
-      p_event_id: eventId,
-      p_result_count: resultCount,
-      p_api_cost_usd_micros: Math.max(0, Math.round(cost?.apiCostUsdMicros ?? 0)),
-      p_request_id: cost?.providerRequestId ?? null,
-    };
+    const apiCost = Math.max(0, Math.round(cost?.apiCostUsdMicros ?? 0));
+    const requestId = cost?.providerRequestId ?? null;
+    // Two literal calls, not one built object: every gated RPC names its token
+    // where the call is made (the ledger security suite reads exactly that).
     const { error } = cost?.executor
       ? await supabase.rpc("usage_event_complete", {
-        ...base, p_provider_slug: cost.executor.providerSlug, p_model_slug: cost.executor.modelSlug,
+        p_token: serverToken, p_event_id: eventId, p_result_count: resultCount,
+        p_api_cost_usd_micros: apiCost, p_request_id: requestId,
+        p_provider_slug: cost.executor.providerSlug, p_model_slug: cost.executor.modelSlug,
       })
-      : await supabase.rpc("usage_event_complete", base);
+      : await supabase.rpc("usage_event_complete", {
+        p_token: serverToken, p_event_id: eventId, p_result_count: resultCount,
+        p_api_cost_usd_micros: apiCost, p_request_id: requestId,
+      });
     if (!error) return;
     if (attempt === 0) await new Promise((r) => setTimeout(r, 250));
   }

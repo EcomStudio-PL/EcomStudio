@@ -127,7 +127,10 @@ check("the prompt comes from the admin system",
     && /const engine = await resolveEngine\(supabase, input\.toolKey\)/.test(toolRun));
 check("an absent prompt is refused, not substituted",
   /if \(!template \|\| !template\.trim\(\)\) return \{ ok: false, error: "prompt_unconfigured" \}/.test(toolRun)
-    && /if \(input\.builtInPrompt === null\) return \{ ok: false, error: "prompt_unconfigured" \}/.test(toolRun));
+    // Moda has no built-in prompt: `published ?? builtInPrompt` is null, and
+    // the line above refuses — the workflow switch cannot bypass it (a switch
+    // with nothing published falls through to this same path).
+    && /const template = published \?\? input\.builtInPrompt;/.test(toolRun));
 // A long string literal in this file would be a built-in prompt by another name.
 const longLiterals = (stripComments(server).match(/`[^`]{200,}`/g) ?? []).length;
 check("the server module carries no prompt text of its own", longLiterals === 0);

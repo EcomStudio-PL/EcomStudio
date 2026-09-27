@@ -211,85 +211,11 @@ async function main() {
 
   console.log("W — workflow");
   {
-    const step = (name: string, operation: "analyze" | "generate_image", prompt: string, extra: Partial<{ enabled: boolean; condition: string; max_attempts: number }> = {}) => ({
-      name, operation, output_kind: operation === "analyze" ? "analysis" : "image", enabled: true, prompt, ...extra,
-    });
-    reset();
-    const s1 = baseState({ mode: "workflow", workflow: { version: 1, steps: [step("img", "generate_image", "Tylko obraz")] } });
-    const r1 = await run(s1);
-    check("W1 a single-step workflow still works", r1.ok && generationCalls.length === 1 && generationCalls[0].prompt === "Tylko obraz");
-
-    reset();
-    const s2 = baseState({ mode: "workflow", workflow: { version: 5, steps: [
-      step("a", "analyze", "Krok A"),
-      step("b", "analyze", "Krok B dostaje: {{previous}}"),
-      step("img", "generate_image", "Obraz z {{step1}} oraz {{step2}}"),
-    ] } });
-    s2.afterWorkflowRead = () => { s2.workflow = { version: 6, steps: [step("img", "generate_image", "PODMIENIONE W TRAKCIE")] }; };
-    const r2 = await run(s2);
-    check("W2 three steps run in order", visionCalls.length === 2 && visionCalls[0].system.startsWith("Krok A") && visionCalls[1].system.startsWith("Krok B"));
-    check("W3 step 2 receives step 1's output", visionCalls[1].system.includes("OUT1"));
-    const imgPrompt = generationCalls[0]?.prompt ?? "";
-    check("W4 step 3 receives the right inputs", imgPrompt.includes("OUT1") && imgPrompt.includes("OUT2"), imgPrompt);
-    check("W4 previous outputs are fenced as DATA", imgPrompt.includes(DATA_OPEN));
-    check("P4/W a publish during the run does not change the run", !imgPrompt.includes("PODMIENIONE"));
-    check("W6 the customer gets only the final result", r2.ok && JSON.stringify(r2).indexOf("OUT1") === -1 && Object.keys(r2).sort().join(",") === "credits,images,jobId,ok,productId");
-    check("W8 the run is traced with its workflow version", s2.runs[0]?.workflow_version === 5 && s2.runs[0]?.status === "ok");
-    check("every analysis step carries the Product Lock rules", visionCalls.every((v) => v.system.includes("PRODUCT LOCK")));
-
-    reset();
-    const s7 = baseState({ mode: "workflow", workflow: { version: 2, steps: [
-      step("a", "analyze", "Analiza", { max_attempts: 3 }),
-      step("img", "generate_image", "Obraz {{previous}}"),
-    ] } });
-    visionControl.failNext = 2;
-    const r7 = await run(s7);
-    check("W7 internal retries happen", visionCalls.length === 3 && r7.ok);
-    check("W7 …and cost the customer exactly one charge", generationCalls.length === 1);
-    const steps7 = s7.runs[0]?.steps as { attempts: number }[];
-    check("W7 the retry is recorded in the trace", steps7?.[0]?.attempts === 3);
-    check("W7 the workflow runner never touches the ledger", !/usage_event|startUsage|apply_credit/.test(read("lib/server/engine/workflow.ts") + read("lib/server/engine/runtime.ts")));
-
-    reset();
-    const s10 = baseState({ mode: "workflow", workflow: { version: 3, steps: [
-      step("off", "analyze", "Wyłączony", { enabled: false }),
-      step("cond", "analyze", "Tylko z hintem", { condition: "if_hint" }),
-      step("img", "generate_image", "Obraz"),
-    ] } });
-    await run(s10, { hint: "" });
-    const steps10 = s10.runs[0]?.steps as { status: string; reason?: string }[];
-    check("W10 a disabled step is skipped deterministically", visionCalls.length === 0 && steps10[0].status === "skipped" && steps10[0].reason === "disabled");
-    check("a step whose condition is not met is skipped", steps10[1].status === "skipped" && steps10[1].reason === "condition");
-
-    reset();
-    const sK = baseState({ mode: "workflow", workflow: { version: 4, steps: [step("a", "analyze", "A"), step("img", "generate_image", "B {{previous}}")] } });
-    await run(sK, { hint: "h" });
-    const k1 = generationCalls[0]?.dedupePrompt;
-    visionControl.counter = 40; // a second identical click gets a DIFFERENT step output
-    await run(sK, { hint: "h" });
-    const k2 = generationCalls[1]?.dedupePrompt;
-    check("a double submit hashes to the same ledger key even when step outputs differ", !!k1 && k1 === k2 && generationCalls[0].prompt !== generationCalls[1].prompt);
-
-    reset();
-    const sOv = baseState({ mode: "workflow", workflow: { version: 1, steps: [{ ...step("img", "generate_image", "B"), model_id: "other-model" }] } });
-    const rOv = await run(sOv);
-    check("an image-step model override that the quote does not cover is refused before any charge", !rOv.ok && rOv.error === "model_unavailable" && generationCalls.length === 0);
-
-    reset();
-    const sFail = baseState({ mode: "workflow", workflow: { version: 1, steps: [step("a", "analyze", "A"), step("img", "generate_image", "B")] } });
-    visionControl.failNext = 9;
-    const rFail = await run(sFail);
-    check("a failed step stops the run before the image step (no charge)", !rFail.ok && rFail.error === "workflow_step_failed" && generationCalls.length === 0);
-
-    reset();
-    const sPoor = baseState({ mode: "workflow", balance: 3, workflow: { version: 1, steps: [step("a", "analyze", "A"), step("img", "generate_image", "B")] } });
-    const rPoor = await run(sPoor);
-    check("no analysis is spent for a customer who cannot pay", !rPoor.ok && rPoor.error === "insufficient_credits" && visionCalls.length === 0);
-
-    reset();
-    const sNone = await run(baseState({ mode: "workflow" }));
-    check("workflow mode with nothing published refuses honestly (Moda)", !sNone.ok && sNone.error === "prompt_unconfigured" && generationCalls.length === 0);
-
+    // The v1 synchronous workflow runner is gone: workflows now run as
+    // persistent, resumable runs (lib/server/engine/workflow.ts). Their
+    // behaviour — order, output → input, fan-out, retry, one charge, executor,
+    // cost, versions, leaks — is proven by scripts/workflow-v2-tests.ts
+    // (npm run test:workflow2) and the SQL by test:workflow2:sql.
     const fashionRoute = read("app/api/fashion/route.ts");
     check("W5 the customer route reads no workflow, step, model or prompt field", !/body\.(workflow|steps|modelId|prompt|system|enginePrompt)/.test(fashionRoute));
   }

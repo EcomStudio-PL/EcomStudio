@@ -7,3 +7,5 @@ export async function runGeneration(_s: unknown, _u: string, _w: string, input: 
   generationCalls.push(input);
   return { ok: true, jobId: "job-1", productId: null, images: [{ url: "https://x/1.png", path: "ws/job-1/0.png" }], credits: 7 };
 }
+/** The workflow runtime's model resolver — not exercised by this suite. */
+export async function resolveModelCandidate(): Promise<null> { return null; }

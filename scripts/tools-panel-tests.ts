@@ -35,7 +35,7 @@ import { CATEGORIES, categoryGates, categoryPath, offeredWorkflows } from "@/lib
 import { DEFAULT_LAYOUT, hubSectionsFor, type ToolsLayout } from "@/lib/tool-layout";
 import { homeModel } from "@/lib/home-sections";
 import {
-  AI_TOOL_KEYS, MODEL_PRICED, mergeToolConfig, toolTabs, type ToolConfigValues,
+  AI_TOOL_KEYS, MODEL_PRICED, mergeToolConfig, toolTabs, MODEL_ASSIGNMENT_RUNTIME, type ToolConfigValues,
 } from "@/lib/services/ai-tools";
 import {
   PANEL_GROUPS, categoryOf, coveredCards, customerExposure, panelGroupOf, panelKind,
@@ -131,8 +131,12 @@ console.log("\nB. the six scenarios, read with the rules the customer side rende
     homeModel(live, false).startHref === "/prompts");
 
   // 2 — local tool without an engine
-  check("2 local tool: no engine tab and no model tab to fake",
-    !toolTabs({ key: "compress", engineMode: "off", serviceSlug: "tool_compress" }).some((t) => t === "engine" || t === "models"));
+  // "Modele, API i koszty" now also holds a billed tool's costs and history
+  // (the old Ekonomia/Historia tabs), so a local tool with a service gets it —
+  // with the honest "local processing" path and no model picker to fake.
+  check("2 local tool: no engine tab, no workflow tab, and no model picker to fake",
+    !toolTabs({ key: "compress", engineMode: "off", serviceSlug: "tool_compress" }).some((t) => t === "engine" || t === "workflow")
+    && !MODEL_ASSIGNMENT_RUNTIME.has("compress"));
   check("2 …the panel says 'local processing' for exactly that case",
     read("components/admin/tool-registry.tsx").includes('tool.category === "local" ? "aicc.panel.localNote"'));
   check("2 …listed on /tools, not on Start by default (Start is a curated set — its switch can add it)",
