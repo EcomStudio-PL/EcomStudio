@@ -2,6 +2,7 @@ import "server-only";
 import type { AiModelRecord, GenerationRequest, GenerationResult, ImageProviderAdapter, ProviderCredential } from "../types";
 import { ProviderError, sanitizeUpstreamMessage, timeoutFor } from "../types";
 import { buildGeminiImageRequest, pickGeminiFinalImage, retouchContractViolation, type GeminiResponse } from "./google-request";
+import { captureGeminiBoundary } from "./google-boundary";
 
 /**
  * Google's 429 body decides everything: a per-minute quota violation is a
@@ -114,6 +115,9 @@ export const googleAdapter: ImageProviderAdapter = {
       if (violation) throw new ProviderError("retouch_request_contract_failed", false, violation);
     }
     const payload = JSON.stringify(body);
+    // NETWORK BOUNDARY (Retusz): read back from `payload` — the exact string
+    // passed to fetch below — never from what the builder meant to send.
+    const boundary = req.strictSingleImage ? captureGeminiBoundary(url, payload, model.model_identifier) : undefined;
 
     // QUANTITY IS N SEPARATE PAID CALLS, so a failure at call 4 of 4 must not
     // throw away — and make the runner buy again — the three images Google has
@@ -169,9 +173,13 @@ export const googleAdapter: ImageProviderAdapter = {
         if (!pick.image) throw new ProviderError("provider_empty_result", false, pick.finishReason ?? undefined);
         images.push({
           base64: pick.image.data, mime: pick.image.mimeType,
-          response: { imageParts: pick.imageParts, thoughtImagesSkipped: pick.thoughtImages, finishReason: pick.finishReason },
+          response: {
+            imageParts: pick.imageParts, thoughtImagesSkipped: pick.thoughtImages, finishReason: pick.finishReason,
+            ...(boundary ? { candidates: pick.candidates, parts: pick.parts, pickedPartIndex: pick.pickedPartIndex } : {}),
+          },
         });
       } catch (e) {
+        if (boundary && e instanceof ProviderError) e.boundary = boundary;
         // The FIRST call failing means nothing was produced and nothing was
         // billed, so it throws clean and the runner retries and falls back
         // exactly as it does today.
@@ -183,6 +191,7 @@ export const googleAdapter: ImageProviderAdapter = {
     return {
       images,
       usage: inputTokens === undefined && outputTokens === undefined ? undefined : { inputTokens, outputTokens },
+      ...(boundary ? { providerMetadata: { network_boundary: boundary } } : {}),
     };
   },
 };

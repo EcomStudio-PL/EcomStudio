@@ -73,8 +73,13 @@ console.log("B. a tool only gets the tabs it can answer for");
   check("no service and no model means no costs tab", !unbilled.includes("models"));
   const retouchTabs = toolTabs({ key: "retouch", engineMode: "grovbase", serviceSlug: "image_generation" });
   check("a workflow-capable tool gets the WORKFLOW tab", retouchTabs.includes("workflow"));
+  // Retusz is stateless (STATELESS_TOOL_KEYS): no knowledge tab. A Moda tool
+  // shows the full order.
+  check("Retusz: Podstawowe · Silnik · Workflow · Modele, API i koszty — no Wiedza (stateless)",
+    JSON.stringify(retouchTabs) === JSON.stringify(["basics", "engine", "workflow", "models"]));
+  const flatLayTabs = toolTabs({ key: "fashion_flat_lay", engineMode: "grovbase", serviceSlug: "image_generation" });
   check("the tab order is Podstawowe · Silnik · Workflow · Modele, API i koszty · Wiedza",
-    JSON.stringify(retouchTabs) === JSON.stringify(["basics", "engine", "workflow", "models", "knowledge"]));
+    JSON.stringify(flatLayTabs) === JSON.stringify(["basics", "engine", "workflow", "models", "knowledge"]), flatLayTabs.join(","));
 }
 
 console.log("C. the hidden prompt stays on the server");

@@ -194,7 +194,14 @@ export type GeneratedImage = {
   /** What the provider's response carried around this image (recorded on the
    *  job, never used to change it): image parts in total, interim drafts that
    *  were skipped, and the finish reason. */
-  response?: { imageParts: number; thoughtImagesSkipped: number; finishReason: string | null };
+  response?: {
+    imageParts: number; thoughtImagesSkipped: number; finishReason: string | null;
+    /** Retusz diagnostics: candidates in the response, every part as flags
+     *  (no text, no bytes) and which part was kept. */
+    candidates?: number;
+    parts?: { text: boolean; thought: boolean; inlineData: boolean; mimeType: string | null }[];
+    pickedPartIndex?: number | null;
+  };
 };
 
 export interface GenerationResult {
@@ -288,6 +295,9 @@ export class ProviderError extends Error {
   ) {
     super(safeMessage);
   }
+  /** Retusz: what the request that failed carried at the network boundary
+   *  (see captureGeminiBoundary) — admin record only. */
+  boundary?: Record<string, unknown>;
 }
 
 /** Strip anything secret-shaped out of an upstream message before it is

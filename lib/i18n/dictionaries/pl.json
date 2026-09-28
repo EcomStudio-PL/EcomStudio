@@ -5313,7 +5313,8 @@
     "test.manifest.st.contract": "Kontrakt requestu spełniony",
     "test.manifest.st.promptVersion": "Wersja promptu",
     "test.manifest.st.promptChain": "Prompt rozwiązany = wysłany",
-    "test.manifest.st.payload": "Payload (sanitized — bez klucza, prompt jako skrót, obraz jako SHA-256)"
+    "test.manifest.st.payload": "Payload (sanitized — bez klucza, prompt jako skrót, obraz jako SHA-256)",
+    "test.manifest.st.boundary": "Granica sieciowa — odczyt dokładnego body HTTP wysłanego do Google (SHA-256 promptu i zdjęcia; tylko admin)"
   },
   "batch": {
     "viewLabel": "Widok",

@@ -118,7 +118,7 @@ export async function buildRequestManifest(
 
 async function lastRunOf(supabase: Client, operation: string, publishedDigest: string | null): Promise<LastRun | null> {
   const { data: job } = await supabase.from("generation_jobs")
-    .select("created_at, status, settings")
+    .select("id, created_at, status, settings")
     .eq("settings->>operation", operation)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -131,6 +131,9 @@ async function lastRunOf(supabase: Client, operation: string, publishedDigest: s
   const b = (v: unknown) => (typeof v === "boolean" ? v : null);
   const recorded = str(r.prompt_digest);
   const inputs = Array.isArray(r.inputs) ? r.inputs : [];
+  // Admin-only engine-run row of this job (RLS: admins read ai_engine_runs).
+  const { data: run } = r.sanitized_payload === undefined ? { data: null } : await supabase.from("ai_engine_runs")
+    .select("network_boundary").eq("job_id", job.id).limit(1).maybeSingle();
   return {
     at: job.created_at, status: job.status,
     provider: str(r.provider), identifier: str(r.model_identifier), fallbackUsed: b(r.fallback_used),
@@ -145,6 +148,7 @@ async function lastRunOf(supabase: Client, operation: string, publishedDigest: s
       promptChainEqual: typeof r.resolved_prompt_digest === "string" ? r.resolved_prompt_digest === r.provider_prompt_digest : null,
       variables: Array.isArray(r.prompt_variables) ? r.prompt_variables.filter((v): v is string => typeof v === "string") : [],
       payload: r.sanitized_payload,
+      boundary: (run as { network_boundary?: unknown } | null)?.network_boundary ?? null,
     },
     matchesPublished: recorded && publishedDigest ? recorded === publishedDigest : null,
     ratioRequested: str(r.aspect_ratio_requested), ratioSent: str(r.aspect_ratio_sent),

@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import type { Client } from "@/lib/services/workspace";
+import type { Json } from "@/lib/database.types";
 import { dispatchToken } from "@/lib/server/integrations";
 import { callVisionJson, type VisionBackend } from "@/lib/ai/engine/vision";
 import { ProviderError, type ReferenceImage } from "@/lib/ai/types";
@@ -203,6 +204,9 @@ export type EngineRunRecord = {
   apiCostUsdMicros?: number | null;
   durationMs?: number | null;
   engineVersion?: string;
+  /** Retusz: the request as sent to the provider (captureGeminiBoundary +
+   *  the prompt chain). Admin-only table; no key, no prompt text, no bytes. */
+  networkBoundary?: Record<string, unknown> | null;
 };
 
 /** Write the admin-only trace. Best-effort: tracing must never fail a run. */
@@ -233,6 +237,7 @@ export async function recordEngineRun(supabase: Client, run: EngineRunRecord): P
         credits: run.credits ?? null,
         api_cost_usd_micros: run.apiCostUsdMicros ?? null,
         duration_ms: run.durationMs ?? null,
+        ...(run.networkBoundary ? { network_boundary: run.networkBoundary as Json } : {}),
       },
     });
   } catch { /* trace is best-effort */ }

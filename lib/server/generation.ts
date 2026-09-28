@@ -131,8 +131,8 @@ export type GenerateInput = {
 export type GenerateOutput =
   // `productId` is null for the generator's normal, catalogue-free path — the
   // type says so rather than asserting a string that is not there.
-  | { ok: true; jobId: string; productId: string | null; images: { url: string; path: string }[]; credits: number }
-  | { ok: false; error: string; missingCredits?: number };
+  | { ok: true; jobId: string; productId: string | null; images: { url: string; path: string }[]; credits: number; networkBoundary?: Record<string, unknown> }
+  | { ok: false; error: string; missingCredits?: number; networkBoundary?: Record<string, unknown> };
 
 const RATIOS = new Set<string>(ALL_ASPECT_RATIOS);
 
@@ -594,6 +594,15 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   let lastPartial: GeneratedImage[] | null = null;
   /** The request the last candidate was sent (settings.provider_request). */
   let lastRequest: Record<string, unknown> | null = null;
+  /** Retusz: the request as it crossed the network boundary (the adapter's
+   *  read-back of the exact body sent) + the stored photo it came from. */
+  let lastBoundary: Record<string, unknown> | undefined;
+  const withSource = (b: unknown, src: PreparedReference | null): Record<string, unknown> | undefined =>
+    b && typeof b === "object" ? {
+      ...(b as Record<string, unknown>),
+      input_original_sha256: src?.sourceSha256 ?? null, input_original_bytes: src?.sourceBytes ?? null,
+      input_transform: src?.transform ?? null,
+    } : undefined;
 
   for (const candidateId of candidateIds) {
     if (outOfTime) break;
@@ -764,6 +773,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       lastRequest = cRecord;
       try {
         result = await withProviderLimit(cProviderSlug, () => cAdapter.generate(cModel, cRequest, { apiKey: cApiKey, baseUrl: cBaseUrl }));
+        lastBoundary = withSource(result.providerMetadata?.network_boundary, cSource) ?? lastBoundary;
         served = { model: cModel, providerSlug: cProviderSlug };
         traceCall({
           providerSlug: cProviderSlug, model: cModel, ok: true, images: result.images.length,
@@ -776,6 +786,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       } catch (e) {
         const pe = e instanceof ProviderError ? e : new ProviderError("provider_error");
         lastError = pe;
+        lastBoundary = withSource(pe.boundary, cSource) ?? lastBoundary;
         traceCall({
           providerSlug: cProviderSlug, model: cModel, ok: false, images: pe.partial?.length ?? 0,
           ms: Date.now() - attemptStartedAt, errorCode: pe.safeMessage,
@@ -889,7 +900,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         new Date().toISOString().slice(0, 13),
       ),
     }));
-    return { ok: false, error: safe };
+    return { ok: false, error: safe, ...(lastBoundary ? { networkBoundary: lastBoundary } : {}) };
   }
 
   // The job records whoever actually delivered, the attempt trail and the
@@ -956,6 +967,12 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         provider_image_parts: img.response?.imageParts ?? null,
         provider_thought_images_skipped: img.response?.thoughtImagesSkipped ?? null,
         provider_finish_reason: img.response?.finishReason ?? null,
+        // Retusz: the response's shape (flags only) and which part was kept.
+        ...(img.response?.parts ? {
+          provider_candidates: img.response.candidates ?? null,
+          provider_parts: img.response.parts,
+          provider_picked_part_index: img.response.pickedPartIndex ?? null,
+        } : {}),
         stored_width: dims.width ?? null, stored_height: dims.height ?? null,
         stored_bytes: storedBytes?.length ?? null, stored_sha256: storedSha,
         stored_equals_provider: storedSha === null ? null : storedSha === providerSha,
@@ -1111,7 +1128,10 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   // Only entries that actually got a signed URL go back to the caller — an
   // asset whose signing failed still exists in the library and will sign on
   // the next page load.
-  return { ok: true, jobId: job.id, productId, images: stored.filter((s) => s.url), credits: charged };
+  return {
+    ok: true, jobId: job.id, productId, images: stored.filter((s) => s.url), credits: charged,
+    ...(lastBoundary ? { networkBoundary: { ...lastBoundary, response: providerOutput } } : {}),
+  };
 }
 
 /** Resolve one fallback candidate: active model + active provider + adapter

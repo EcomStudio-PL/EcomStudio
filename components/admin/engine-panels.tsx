@@ -221,6 +221,12 @@ function ManifestView({ m }: { m: RequestManifest }) {
             <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all text-[11px] leading-relaxed">{JSON.stringify(st.payload, null, 2)}</pre>
           </div>
         )}
+        {st?.boundary !== undefined && st?.boundary !== null && (
+          <div className="rounded-xl bg-raised px-3.5 py-2.5 lg:col-span-2" data-manifest-boundary>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">{k("st.boundary")}</p>
+            <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all text-[11px] leading-relaxed">{JSON.stringify(st.boundary, null, 2)}</pre>
+          </div>
+        )}
         <div className="rounded-xl bg-raised px-3.5 py-2.5">
           <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">{k("image")}</p>
           <p className="text-[12.5px] leading-relaxed">{k("imageRule")}</p>

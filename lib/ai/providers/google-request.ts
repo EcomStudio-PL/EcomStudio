@@ -94,19 +94,33 @@ export type GeminiPick = {
   /** Interim (thought) images the response carried and were NOT kept. */
   thoughtImages: number;
   finishReason: string | null;
+  /** Candidates in the response (only the first is ever read). */
+  candidates: number;
+  /** Every part of the first candidate, as flags only — no text, no bytes. */
+  parts: { text: boolean; thought: boolean; inlineData: boolean; mimeType: string | null }[];
+  /** Index in `parts` of the image kept, or null when none was. */
+  pickedPartIndex: number | null;
 };
 
 export function pickGeminiFinalImage(json: GeminiResponse): GeminiPick {
   const cand = json.candidates?.[0];
   const parts = cand?.content?.parts ?? [];
+  let picked: number | null = null;
+  parts.forEach((p, i) => { if (p.inlineData?.data && p.thought !== true) picked = i; });
   const images = parts.filter((p) => p.inlineData?.data);
   const finals = images.filter((p) => p.thought !== true);
-  const last = finals[finals.length - 1]?.inlineData;
+  const last = picked === null ? undefined : parts[picked]?.inlineData;
   return {
     image: last?.data ? { mimeType: last.mimeType || "image/png", data: last.data } : null,
     imageParts: images.length,
     thoughtImages: images.length - finals.length,
     finishReason: cand?.finishReason ?? null,
+    candidates: json.candidates?.length ?? 0,
+    parts: parts.map((p) => ({
+      text: typeof p.text === "string", thought: p.thought === true,
+      inlineData: Boolean(p.inlineData?.data), mimeType: p.inlineData?.mimeType ?? null,
+    })),
+    pickedPartIndex: picked,
   };
 }
 

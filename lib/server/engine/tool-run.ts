@@ -191,9 +191,23 @@ async function runEngineImageToolMetered(
     jobId: result.ok ? result.jobId : null,
     credits: result.ok ? result.credits : null,
     durationMs: Date.now() - started,
+    // Admin-only (ai_engine_runs): the prompt chain in plain SHA-256 next to
+    // what the adapter read back from the exact HTTP body it sent.
+    ...(result.networkBoundary ? {
+      networkBoundary: {
+        prompt_source: "published", prompt_version: engine?.promptVersion ?? null,
+        published_prompt_length: Array.from(template).length, published_prompt_utf8_bytes: Buffer.byteLength(template),
+        published_prompt_sha256: sha256(template),
+        resolved_prompt_length: Array.from(prompt).length, resolved_prompt_utf8_bytes: Buffer.byteLength(prompt),
+        resolved_prompt_sha256: sha256(prompt),
+        ...result.networkBoundary,
+      },
+    } : {}),
   });
   return result;
 }
+
+const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
 /** Whether a prompt-driven tool can run at all right now (for its panel). */
 export async function engineToolConfigured(supabase: Client, toolKey: string, hasBuiltIn: boolean): Promise<boolean> {

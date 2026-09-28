@@ -28,6 +28,8 @@ export type ReferenceTransform = "none" | "exif_orientation" | "transcoded_png";
 export type PreparedReference = ReferenceImage & {
   /** sha256 of the bytes as stored (what the customer uploaded). */
   sourceSha256: string;
+  /** size of the bytes as stored. */
+  sourceBytes: number;
   /** sha256 of the bytes actually sent — equal to sourceSha256 when untouched. */
   sha256: string;
   bytes: number;
@@ -54,7 +56,7 @@ function mimeFromName(name: string): string {
 export async function prepareReferenceImage(stored: Buffer, name: string, opts: { exact?: boolean } = {}): Promise<PreparedReference> {
   const sourceSha256 = sha(stored);
   const untouched = (mime: string, width: number | null, height: number | null): PreparedReference => ({
-    base64: stored.toString("base64"), mime, sourceSha256, sha256: sourceSha256,
+    base64: stored.toString("base64"), mime, sourceSha256, sourceBytes: stored.length, sha256: sourceSha256,
     bytes: stored.length, width, height, transform: "none",
   });
 
@@ -98,7 +100,7 @@ export async function prepareReferenceImage(stored: Buffer, name: string, opts: 
     const outMeta = await sharp(out).metadata();
     const outSha = sha(out);
     return {
-      base64: out.toString("base64"), mime, sourceSha256, sha256: outSha, bytes: out.length,
+      base64: out.toString("base64"), mime, sourceSha256, sourceBytes: stored.length, sha256: outSha, bytes: out.length,
       width: outMeta.width ?? null, height: outMeta.height ?? null, transform,
     };
   } catch {

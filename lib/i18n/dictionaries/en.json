@@ -5313,7 +5313,8 @@
     "test.manifest.st.contract": "Request contract met",
     "test.manifest.st.promptVersion": "Prompt version",
     "test.manifest.st.promptChain": "Resolved prompt = sent",
-    "test.manifest.st.payload": "Payload (sanitized — no key, prompt as digest, image as SHA-256)"
+    "test.manifest.st.payload": "Payload (sanitized — no key, prompt as digest, image as SHA-256)",
+    "test.manifest.st.boundary": "Network boundary — read-back of the exact HTTP body sent to Google (prompt and image SHA-256; admin only)"
   },
   "batch": {
     "viewLabel": "View",

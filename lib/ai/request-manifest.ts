@@ -156,5 +156,8 @@ export type LastRun = {
     promptVersion: number | null; promptChainEqual: boolean | null; variables: string[];
     /** The sanitised JSON body (prompt → chars + keyed digest, image → SHA-256 + bytes). */
     payload: unknown;
+    /** ai_engine_runs.network_boundary of this job (admin-only): the adapter's
+     *  read-back of the exact HTTP body + the plain-SHA-256 prompt chain. */
+    boundary: unknown;
   };
 };

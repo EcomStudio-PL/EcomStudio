@@ -319,6 +319,7 @@ export type Database = {
           workflow_id: string | null
           workflow_version: number | null
           model_id: string | null
+          network_boundary: Json | null
           model_label: string | null
           steps: Json
           knowledge_example_ids: string[]
@@ -356,6 +357,7 @@ export type Database = {
           workflow_id?: string | null
           workflow_version?: number | null
           model_id?: string | null
+          network_boundary?: Json | null
           model_label?: string | null
           steps?: Json
           knowledge_example_ids?: string[]
@@ -393,6 +395,7 @@ export type Database = {
           workflow_id?: string | null
           workflow_version?: number | null
           model_id?: string | null
+          network_boundary?: Json | null
           model_label?: string | null
           steps?: Json
           knowledge_example_ids?: string[]

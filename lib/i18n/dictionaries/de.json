@@ -5313,7 +5313,8 @@
     "test.manifest.st.contract": "Anfragevertrag erfüllt",
     "test.manifest.st.promptVersion": "Prompt-Version",
     "test.manifest.st.promptChain": "Aufgelöster Prompt = gesendet",
-    "test.manifest.st.payload": "Payload (bereinigt — kein Schlüssel, Prompt als Digest, Bild als SHA-256)"
+    "test.manifest.st.payload": "Payload (bereinigt — kein Schlüssel, Prompt als Digest, Bild als SHA-256)",
+    "test.manifest.st.boundary": "Netzwerkgrenze — Rücklesung des exakt an Google gesendeten HTTP-Bodys (SHA-256 von Prompt und Bild; nur Admin)"
   },
   "batch": {
     "viewLabel": "Ansicht",
