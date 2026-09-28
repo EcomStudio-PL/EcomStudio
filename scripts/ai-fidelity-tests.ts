@@ -24,7 +24,7 @@ import { FASHION_MODEL_IDENTIFIER } from "@/lib/server/fashion";
 import { callImageModel } from "@/lib/server/engine/image-call";
 import { prepareGeneratorEngine } from "@/lib/server/engine/tool-run";
 import { runGeneration } from "@/lib/server/generation";
-import { GEMINI_IMAGE_ASPECT_RATIOS, buildGeminiImageRequest, geminiImageSize, pickGeminiFinalImage, retouchContractViolation } from "@/lib/ai/providers/google-request";
+import { GEMINI_IMAGE_ASPECT_RATIOS, buildGeminiImageRequest, buildRetouchInteraction, geminiImageSize, pickGeminiFinalImage, pickInteractionFinalImage, retouchInteractionViolation } from "@/lib/ai/providers/google-request";
 import { googleAdapter } from "@/lib/ai/providers/google";
 import { resolveOriginalAspectRatio } from "@/lib/ai/aspect-ratio";
 import { RATIO_SHAPE, type AspectRatio } from "@/lib/ai/types";
@@ -168,11 +168,21 @@ type FakeClient = Parameters<typeof runRetouch>[0];
 
 /* ── the network ─────────────────────────────────────────────────────────*/
 
-type Sent = { url: string; body: {
+type Sent = { url: string; api: "generateContent" | "interactions"; raw: Record<string, unknown>; headers: Record<string, string>; body: {
   contents: { role: string; parts: ({ text: string } | { inlineData: { mimeType: string; data: string } })[] }[];
   generationConfig: { responseModalities: string[]; imageConfig: { aspectRatio?: string; imageSize?: string }; [k: string]: unknown };
   [k: string]: unknown;
 } };
+/** Retusz goes through the Interactions API: its body is recorded raw AND
+ *  mapped onto the generateContent shape the older assertions read (parts in
+ *  the same order, the same bytes; no generation config because none is sent). */
+function asContents(raw: Record<string, unknown>): Sent["body"] {
+  const input = (raw.input ?? []) as { type: string; text?: string; data?: string; mime_type?: string }[];
+  return {
+    contents: [{ role: "user", parts: input.map((c) => c.type === "text" ? { text: c.text ?? "" } : { inlineData: { mimeType: c.mime_type ?? "", data: c.data ?? "" } }) }],
+    generationConfig: { responseModalities: (raw.response_modalities as string[] | undefined)?.map((m) => m.toUpperCase()) ?? [], imageConfig: {} },
+  };
+}
 let sent: Sent[] = [];
 let script: number[] = [];      // HTTP statuses to answer, in order (200 = an image)
 let outPng = "";
@@ -182,10 +192,26 @@ const realFetch = globalThis.fetch;
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   if (!url.includes("generativelanguage.googleapis.com")) return realFetch(input, init);
-  sent.push({ url, body: JSON.parse(String(init?.body)) });
+  const raw = JSON.parse(String(init?.body)) as Record<string, unknown>;
+  const interactions = url.split("?")[0]!.endsWith("/v1beta/interactions");
+  sent.push({
+    url, api: interactions ? "interactions" : "generateContent", raw, headers: (init?.headers ?? {}) as Record<string, string>,
+    body: interactions ? asContents(raw) : raw as Sent["body"],
+  });
   const status = script.shift() ?? 200;
   if (status !== 200) {
     return new Response(JSON.stringify({ error: { status: "UNAVAILABLE", message: "overloaded", details: [{ retryDelay: "0.01s" }] } }), { status });
+  }
+  if (interactions) {
+    // Interactions shape: drafts live in `thought` steps, finals in model_output.
+    const parts = (responseParts ?? [{ inlineData: { mimeType: "image/png", data: outPng } }]) as { inlineData?: { mimeType?: string; data?: string }; thought?: boolean; text?: string }[];
+    const steps = parts.map((p) => p.thought
+      ? { type: "thought", signature: "sig", summary: p.inlineData ? [{ type: "image", data: p.inlineData.data, mime_type: p.inlineData.mimeType }] : [{ type: "text", text: p.text ?? "" }] }
+      : { type: "model_output", content: [p.inlineData ? { type: "image", data: p.inlineData.data, mime_type: p.inlineData.mimeType } : { type: "text", text: p.text ?? "" }] });
+    return new Response(JSON.stringify({
+      id: "int-1", status: "completed", steps: [{ type: "user_input", content: [] }, ...steps],
+      usage: { total_input_tokens: 1000, total_output_tokens: 1200 },
+    }), { status: 200, headers: { "content-type": "application/json" } });
   }
   return new Response(JSON.stringify({
     candidates: [{ finishReason: "STOP", content: { parts: responseParts ?? [{ inlineData: { mimeType: "image/png", data: outPng } }] } }],
@@ -259,7 +285,8 @@ async function main() {
     g.__fidelityEngine = engine({ systemPrompt: "Zdjęć: {{image_count}}.\n\n\n\nFormat {{aspect_ratio}}, {{resolution}}.", promptVersion: 5 });
     await retouch(db2, "w/r/src.jpg");
     const t2 = sent[0] ? textOf(sent[0])[0]?.text : undefined;
-    check("system variables are substituted and the admin's blank lines are kept", t2 === "Zdjęć: 1.\n\n\n\nFormat auto, 2K.", t2);
+    // Retusz sends no size: {{resolution}} is the size it is billed at (1K).
+    check("system variables are substituted and the admin's blank lines are kept", t2 === "Zdjęć: 1.\n\n\n\nFormat auto, 1K.", t2);
     const defs = TOOL_VARIABLES.fashion_flat_lay ?? [];
     const gaps: [string, Record<string, string>, string][] = [
       ["A {{hint?}}\n\n\n\nB", {}, "A \n\nB"],
@@ -318,7 +345,9 @@ async function main() {
     const db = freshDb(); db.files.set("w/r/src.jpg", photo);
     g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
     const { pr } = await retouch(db, "w/r/src.jpg");
-    check("the URL calls models/gemini-3-pro-image:generateContent", /\/v1beta\/models\/gemini-3-pro-image:generateContent\?/.test(sent[0]?.url ?? ""), sent[0]?.url.replace(/key=[^&]+/, "key=…"));
+    check("Retusz calls POST /v1beta/interactions (Interactions API), model gemini-3-pro-image in the body",
+      sent[0]?.api === "interactions" && sent[0]?.url === "https://generativelanguage.googleapis.com/v1beta/interactions" && sent[0]?.raw.model === "gemini-3-pro-image", sent[0]?.url);
+    check("the key travels in x-goog-api-key — never in the URL", !/key=/.test(sent[0]?.url ?? "") && typeof sent[0]?.headers["x-goog-api-key"] === "string");
     check("the job names google / gemini-3-pro-image / its model row", pr?.provider === "google" && pr?.model_identifier === "gemini-3-pro-image" && pr?.model_id === PRO_ID, pr);
     const mig = read("supabase/migrations/0131_gemini_stable_model_ids.sql");
     check("migration 0131 renames in place (no insert, no delete)", /update public\.ai_models/.test(mig) && !/insert into public\.ai_models|delete from public\.ai_models/i.test(mig));
@@ -330,38 +359,26 @@ async function main() {
     g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
     const { pr } = await retouch(db, "w/r/src.jpg");
     check("recorded operation IMAGE_EDIT with the photo attached", pr?.operation === "IMAGE_EDIT" && imagesOf(sent[0]!).length === 1);
-    check("responseModalities is exactly [IMAGE]", JSON.stringify(sent[0]?.body.generationConfig.responseModalities) === '["IMAGE"]');
+    check("response_modalities is exactly [image] and store is false", JSON.stringify(sent[0]?.raw.response_modalities) === '["image"]' && sent[0]?.raw.store === false);
     const db2 = freshDb();
     g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
     const gone = await retouch(db2, "w/r/missing.jpg");
     check("a source that cannot be read is refused — never sent as text-to-image", !gone.res.ok && sent.length === 0 && (gone.res as { error?: string }).error === "source_unavailable", gone.res);
   }
 
-  console.log("\nT11 / T12 ASPECT RATIO — 'Oryginalny' = the photo's own shape, stated; a chosen one sent exactly");
+  console.log("\nT11 / T12 / T13 NO RATIO, NO SIZE — Retusz sends neither, whatever the browser asks");
   {
-    const db = freshDb(); db.files.set("w/r/src.jpg", photo);
-    g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
-    const auto = await retouch(db, "w/r/src.jpg", { format: "original" });
-    check("original (1500×1000 photo): imageConfig has NO aspectRatio field (provider picks from the reference)", !("aspectRatio" in (sent[0]?.body.generationConfig.imageConfig ?? {})), sent[0]?.body.generationConfig);
-    check("recorded: requested auto → ORIGINAL_OMITTED, sent null; source 1500×1000 recorded for diagnostics only",
-      auto.pr?.aspect_ratio_requested === "auto" && auto.pr?.aspect_ratio_sent === null && auto.pr?.aspect_ratio_mode === "ORIGINAL_OMITTED"
-      && auto.pr?.source_width === 1500 && auto.pr?.source_height === 1000 && auto.pr?.source_aspect_ratio === 1.5 && auto.pr?.resolved_aspect_ratio === null, auto.pr);
-    const expl = await retouch(db, "w/r/src.jpg", { format: "4:5" });
-    check("chosen 4:5 → imageConfig.aspectRatio '4:5'", sent[0]?.body.generationConfig.imageConfig.aspectRatio === "4:5");
-    check("recorded: requested 4:5 → sent 4:5, mode USER_SELECTED, resolved 4:5", expl.pr?.aspect_ratio_requested === "4:5" && expl.pr?.aspect_ratio_sent === "4:5" && expl.pr?.aspect_ratio_mode === "USER_SELECTED" && expl.pr?.resolved_aspect_ratio === "4:5", expl.pr);
-    const odd = await retouch(db, "w/r/src.jpg", { format: "7:3" });
-    check("a ratio the model does not list falls back to 'Oryginalny' (no field), not to a guess", !("aspectRatio" in (sent[0]?.body.generationConfig.imageConfig ?? {})) && odd.res.ok && odd.pr?.aspect_ratio_mode === "ORIGINAL_OMITTED");
-  }
-
-  console.log("\nT13 SIZE — the size picked is the size Google is asked for");
-  {
-    for (const size of ["1K", "2K", "4K"]) {
+    for (const opts of [{ format: "original" }, { format: "4:5" }, { format: "7:3" }, { resolution: "2K" }, { resolution: "4K", format: "16:9" }]) {
       const db = freshDb(); db.files.set("w/r/src.jpg", photo);
       g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
-      const { pr } = await retouch(db, "w/r/src.jpg", { resolution: size });
-      check(`${size} → imageConfig.imageSize '${size}' (recorded ${size})`, sent[0]?.body.generationConfig.imageConfig.imageSize === size && pr?.image_size_sent === size && pr?.resolution === size, sent[0]?.body.generationConfig);
+      const r = await retouch(db, "w/r/src.jpg", opts);
+      const label = JSON.stringify(opts);
+      check(`${label}: no generation_config at all (no aspect_ratio, no image_size) in the body`, r.res.ok && !("generation_config" in (sent[0]?.raw ?? {})) && !JSON.stringify(sent[0]?.raw).includes("aspect") && !JSON.stringify(sent[0]?.raw).includes("image_size"), sent[0]?.raw && Object.keys(sent[0].raw));
+      check(`${label}: recorded ORIGINAL_OMITTED, sent null; size billed/recorded 1K, image_size_sent null`,
+        r.pr?.aspect_ratio_requested === "auto" && r.pr?.aspect_ratio_sent === null && r.pr?.aspect_ratio_mode === "ORIGINAL_OMITTED"
+        && r.pr?.resolution === "1K" && r.pr?.image_size_sent === null, r.pr);
     }
-    check("a single-size model (2.5 Flash Image) is never sent imageSize", geminiImageSize({ supported_resolutions: ["1K"] }, "1K") === null);
+    check("a single-size model (2.5 Flash Image) is never sent imageSize (other tools)", geminiImageSize({ supported_resolutions: ["1K"] }, "1K") === null);
   }
 
   console.log("\nT14 FALLBACK OFF / RETRIES — the panel's settings are what happens");
@@ -372,12 +389,12 @@ async function main() {
     resetLedger();
     const one = await retouch(db, "w/r/src.jpg");
     check("…a failed run is reserved then released: ledger start → fail, never complete", ledger() === '["start","fail"]', ledger());
-    check("fallback OFF + 1 attempt: a 503 is NOT retried and NO other model is called", !one.res.ok && sent.length === 1 && sent.every((s) => s.url.includes("/gemini-3-pro-image:")), sent.map((s) => s.url.replace(/\?.*/, "")));
+    check("fallback OFF + 1 attempt: a 503 is NOT retried and NO other model is called", !one.res.ok && sent.length === 1 && sent.every((s) => s.raw.model === "gemini-3-pro-image"), sent.map((s) => s.raw.model));
     check("…the failure records fallback_used false, max_attempts 1", one.pr?.fallback_used === false && one.pr?.max_attempts === 1, one.pr);
     script = [503, 200];
     g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3, maxAttempts: 2 });
     const two = await retouch(db, "w/r/src.jpg");
-    check("2 attempts: a 503 is retried once, on the SAME model, same body", two.res.ok && sent.length === 2 && sent[0]!.url === sent[1]!.url && JSON.stringify(sent[0]!.body) === JSON.stringify(sent[1]!.body));
+    check("Retusz ignores 'Próby: 2' — a 503 is NOT retried: exactly 1 request, max_attempts recorded 1", !two.res.ok && sent.length === 1 && two.pr?.max_attempts === 1, { n: sent.length, a: two.pr?.max_attempts });
     script = [400];
     g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3, maxAttempts: 3 });
     resetLedger();
@@ -394,11 +411,8 @@ async function main() {
     script = [503, 503, 200];
     g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3, maxAttempts: 1, fallbackEnabled: true, fallbackModelId: NB2_ID });
     const fb = await retouch(db, "w/r/src.jpg");
-    check("fallback ON: primary gets its 1 attempt, then the fallback (with its own retries) serves",
-      fb.res.ok && sent.length === 3 && /gemini-3-pro-image:/.test(sent[0]!.url) && /gemini-3\.1-flash-image:/.test(sent[2]!.url)
-      && fb.pr?.fallback_used === true && fb.pr?.model_identifier === "gemini-3.1-flash-image", sent.map((s) => s.url.replace(/\?.*/, "")));
-    check("…and no request (primary or fallback) carries an aspectRatio for 'Oryginalny'",
-      sent.every((x) => !("aspectRatio" in x.body.generationConfig.imageConfig)) && fb.pr?.aspect_ratio_mode === "ORIGINAL_OMITTED", sent.map((x) => x.body.generationConfig.imageConfig));
+    check("Retusz with fallback switched ON in the panel: still 1 request to gemini-3-pro-image, no other model",
+      !fb.res.ok && sent.length === 1 && sent[0]!.raw.model === "gemini-3-pro-image" && fb.pr?.fallback_used === false, sent.map((s) => s.raw.model));
     script = [];
     check("the Google adapter uses the tool's timeout, not a fixed 90 s", /timeoutFor\(req\.callTimeoutMs \?\? GOOGLE_CALL_CAP_MS/.test(read("lib/ai/providers/google.ts")) && !/90_000/.test(read("lib/ai/providers/google.ts")));
   }
@@ -510,23 +524,20 @@ async function main() {
     g.__fidelityEngine = null;
   }
 
-  console.log("\nTEST G — 2K vs 4K: the requests differ ONLY in imageSize");
+  console.log("\nTEST G — Retusz ignores a requested 2K / 4K: the requests are byte-identical, no size sent");
   {
-    const bodies: Record<string, unknown>[] = [];
+    const bodies: string[] = [];
     const recs: Row[] = [];
     for (const size of ["2K", "4K"]) {
       const db = freshDb(); db.files.set("w/r/src.jpg", photo);
       g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
       const { pr } = await retouch(db, "w/r/src.jpg", { resolution: size });
-      bodies.push(JSON.parse(JSON.stringify(sent[0]!.body)));
+      bodies.push(JSON.stringify(sent[0]!.raw));
       recs.push(pr as Row);
     }
-    const strip = (b: Record<string, unknown>) => { const c = JSON.parse(JSON.stringify(b)); delete c.generationConfig.imageConfig.imageSize; return JSON.stringify(c); };
-    check("bodies identical except imageConfig.imageSize (2K vs 4K)", strip(bodies[0]!) === strip(bodies[1]!)
-      && (bodies[0] as { generationConfig: { imageConfig: { imageSize: string } } }).generationConfig.imageConfig.imageSize === "2K"
-      && (bodies[1] as { generationConfig: { imageConfig: { imageSize: string } } }).generationConfig.imageConfig.imageSize === "4K");
-    const same = ["provider", "model_identifier", "operation", "prompt_digest", "aspect_ratio_sent", "fallback_used"].every((k) => JSON.stringify(recs[0]![k]) === JSON.stringify(recs[1]![k]));
-    check("records: same provider, model, operation, prompt digest, ratio, fallback=false; same input hash", same && recs[0]!.fallback_used === false
+    check("2K and 4K requests produce the SAME body, with no size in it", bodies[0] === bodies[1] && !bodies[0]!.includes("image_size") && !bodies[0]!.includes("imageSize"));
+    const same = ["provider", "model_identifier", "operation", "prompt_digest", "aspect_ratio_sent", "fallback_used", "image_size_sent", "resolution"].every((k) => JSON.stringify(recs[0]![k]) === JSON.stringify(recs[1]![k]));
+    check("records: same provider, model, operation, prompt digest, ratio, size (1K, none sent), fallback=false; same input hash", same && recs[0]!.fallback_used === false
       && JSON.stringify((recs[0]!.inputs as Row[])[0]!.sent_sha256) === JSON.stringify((recs[1]!.inputs as Row[])[0]!.sent_sha256));
   }
 
@@ -537,8 +548,8 @@ async function main() {
     const { job } = await retouch(db, "w/r/src.jpg", { resolution: "4K" });
     const out = (((job?.settings ?? {}) as Row).provider_output as Row[] | undefined)?.[0];
     const provided = Buffer.from(outPng, "base64");
-    check("provider_output: requested 4K, provider WxH = stored WxH, bytes equal, not transformed",
-      out?.requested_image_size === "4K" && out?.provider_returned_width === out?.stored_width && out?.provider_returned_height === out?.stored_height
+    check("provider_output: no size requested (null), provider WxH = stored WxH, bytes equal, not transformed",
+      out?.requested_image_size === null && out?.provider_returned_width === out?.stored_width && out?.provider_returned_height === out?.stored_height
       && out?.provider_bytes === provided.length && out?.stored_bytes === provided.length && out?.provider_sha256 === sha(provided) && out?.transformed_after_provider === false, out);
   }
 
@@ -558,7 +569,9 @@ async function main() {
     const { res, job } = await retouch(db, "w/r/src.jpg");
     const out = (((job?.settings ?? {}) as Row).provider_output as Row[] | undefined)?.[0];
     check("the stored image is the FINAL one (not the first draft)", res.ok && out?.provider_sha256 === sha(Buffer.from(fin, "base64")) && out?.provider_sha256 !== sha(Buffer.from(d1, "base64")), out);
-    check("recorded: 3 image parts, 2 drafts skipped, finishReason STOP", out?.provider_image_parts === 3 && out?.provider_thought_images_skipped === 2 && out?.provider_finish_reason === "STOP", out);
+    check("recorded: 3 images (2 in thought steps, skipped), status completed, the kept one is the model_output image",
+      out?.provider_image_parts === 3 && out?.provider_thought_images_skipped === 2 && out?.provider_finish_reason === "completed"
+      && JSON.stringify(out?.provider_picked_step) === "[4,0]" && (out?.provider_steps as Row[] | undefined)?.[4]?.type === "model_output", out);
     responseParts = [{ inlineData: { mimeType: "image/png", data: d1 }, thought: true }];
     resetLedger();
     const onlyDraft = await retouch(db, "w/r/src.jpg");
@@ -570,7 +583,9 @@ async function main() {
     const out2 = (((two.job?.settings ?? {}) as Row).provider_output as Row[] | undefined)?.[0];
     check("two unflagged images → the LAST one (Google's final image comes last)", out2?.provider_sha256 === sha(Buffer.from(fin, "base64")), out2);
     responseParts = null;
-    check("the adapter no longer takes the first inlineData part", !/parts\?\.find\(\(p\) => p\.inlineData\)/.test(read("lib/ai/providers/google.ts")) && /pickGeminiFinalImage\(json\)/.test(read("lib/ai/providers/google.ts")));
+    check("the adapter no longer takes the first inlineData part; Retusz uses the SDK's output_image rule",
+      !/parts\?\.find\(\(p\) => p\.inlineData\)/.test(read("lib/ai/providers/google.ts")) && /pickGeminiFinalImage\(json\)/.test(read("lib/ai/providers/google.ts"))
+      && /pickInteractionFinalImage\(json\)/.test(read("lib/ai/providers/google.ts")));
   }
 
   console.log("\nORIGINAL RATIO — resolveOriginalAspectRatio: the photo's nearest OFFICIAL Gemini ratio");
@@ -613,45 +628,24 @@ async function main() {
     check("mirror property: resolve(h, w) is the portrait twin of resolve(w, h) (log metric symmetry)", mirrorOk);
 
     // ── RUNTIME CONTRACT (the helper above is diagnostics only) ──────────────
-    // §15 KEY REGRESSION: Oryginalny + 933×700 + 4K must NOT carry aspectRatio
-    // "4:3" (30b6f7c did, and PROD results got worse) — nor any other ratio.
+    // §15 KEY REGRESSION: Oryginalny + 933×700 must NOT carry aspectRatio
+    // "4:3" (30b6f7c did, and PROD results got worse) — nor any other ratio,
+    // and Retusz now sends no size either: 1K / 2K / 4K requests are identical.
     const prodShape = await sharp({ create: { width: 933, height: 700, channels: 3, background: "#a86" } }).png().toBuffer();
-    const bodies: Sent["body"][] = []; const recs: Row[] = [];
-    for (const size of ["1K", "2K", "4K"]) {
+    const raws: string[] = []; const recs: Row[] = [];
+    for (const [size, format] of [["1K", "original"], ["2K", "original"], ["4K", "original"], ["4K", "4:5"], ["4K", "16:9"]] as const) {
       const db = freshDb(); db.files.set("w/r/prod.png", prodShape);
       g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
-      const { pr } = await retouch(db, "w/r/prod.png", { resolution: size, format: "original" });
-      bodies.push(JSON.parse(JSON.stringify(sent[0]!.body))); recs.push(pr as Row);
+      const { pr } = await retouch(db, "w/r/prod.png", { resolution: size, format });
+      raws.push(JSON.stringify(sent[0]!.raw)); recs.push(pr as Row);
     }
-    check("REGRESSION: Oryginalny + 933×700 + 4K → NO aspectRatio (not '4:3', not anything)",
-      !("aspectRatio" in bodies[2]!.generationConfig.imageConfig) && !JSON.stringify(bodies[2]).includes('"4:3"'), bodies[2]!.generationConfig);
-    check("…nor at 1K / 2K", bodies.every((b) => !("aspectRatio" in b.generationConfig.imageConfig)));
-    // Structural diff 2K vs 4K (and 1K vs 4K): the only differing path is imageSize.
-    const diffPaths = (a: unknown, b: unknown, path = ""): string[] => {
-      if (a && b && typeof a === "object" && typeof b === "object") {
-        const keys = [...new Set([...Object.keys(a as Row), ...Object.keys(b as Row)])];
-        return keys.flatMap((k) => diffPaths((a as Row)[k], (b as Row)[k], path ? `${path}.${k}` : k));
-      }
-      return a === b ? [] : [`${path}: ${JSON.stringify(a)} → ${JSON.stringify(b)}`];
-    };
-    const d24 = diffPaths(bodies[1], bodies[2]);
-    const d14 = diffPaths(bodies[0], bodies[2]);
-    console.log(`    structural diff 2K→4K: ${d24.join("; ")}`);
-    console.log(`    structural diff 1K→4K: ${d14.join("; ")}`);
-    check("2K vs 4K body: the ONLY difference is generationConfig.imageConfig.imageSize \"2K\" → \"4K\"", JSON.stringify(d24) === JSON.stringify(['generationConfig.imageConfig.imageSize: "2K" → "4K"']), d24);
-    check("1K vs 4K body: the ONLY difference is imageSize", JSON.stringify(d14) === JSON.stringify(['generationConfig.imageConfig.imageSize: "1K" → "4K"']), d14);
-    check("imageSize values are exactly the official strings 1K / 2K / 4K", bodies.map((b) => b.generationConfig.imageConfig.imageSize).join() === "1K,2K,4K");
+    check("REGRESSION: 933×700 → NO aspect ratio anywhere in the body (not '4:3', not a picked 4:5/16:9)",
+      raws.every((r) => !r.includes("aspect") && !r.includes('"4:3"') && !r.includes('"4:5"') && !r.includes('"16:9"')));
+    check("1K / 2K / 4K / 4:5 / 16:9 requests → five byte-identical bodies (size and framing are not sent)", new Set(raws).size === 1);
     check("recorded: ORIGINAL_OMITTED, sent null, source 933×700 kept for diagnostics", recs.every((r) => r.aspect_ratio_mode === "ORIGINAL_OMITTED" && r.aspect_ratio_sent === null && r.source_width === 933 && r.source_height === 700), recs);
-    check("the photo itself is not touched (bytes sent === bytes uploaded)", sha(Buffer.from(imagesOf({ url: "", body: bodies[2]! })[0]!.inlineData.data, "base64")) === sha(prodShape));
+    check("the photo itself is not touched (bytes sent === bytes uploaded)", sha(Buffer.from(String((JSON.parse(raws[2]!).input as Row[])[1]!.data), "base64")) === sha(prodShape));
     check("no runtime code derives a ratio (resolveOriginalAspectRatio is never called outside diagnostics/tests)",
       !/resolveOriginalAspectRatio\(/.test(read("lib/server/generation.ts") + read("lib/server/retouch.ts") + read("lib/server/engine/tool-run.ts") + read("lib/ai/providers/google.ts") + read("lib/ai/providers/google-request.ts")));
-    // A ratio the customer explicitly picks is sent exactly.
-    for (const pick of ["1:1", "4:5", "16:9"]) {
-      const db = freshDb(); db.files.set("w/r/prod.png", prodShape);
-      g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
-      const { pr } = await retouch(db, "w/r/prod.png", { resolution: "4K", format: pick });
-      check(`USER_SELECTED ${pick} → aspectRatio "${pick}" exactly`, sent[0]?.body.generationConfig.imageConfig.aspectRatio === pick && pr?.aspect_ratio_mode === "USER_SELECTED", pr);
-    }
     // The generator's "auto" is unchanged too.
     const dbG = freshDb(); dbG.files.set("w/g/p.jpg", photo); sent = [];
     const gen = await runGeneration(fakeSupabase(dbG) as unknown as FakeClient, "u", "w", {
@@ -684,6 +678,18 @@ async function main() {
     const counted = pick([txt("plan", true), img("T1", true), img("T2", true), img("F")]);
     check("counts: 3 image parts, 2 drafts skipped, finishReason STOP", counted.imageParts === 3 && counted.thoughtImages === 2 && counted.finishReason === "STOP", counted);
     check("no candidates → none", pickGeminiFinalImage({}).image === null && pickGeminiFinalImage({ candidates: [] }).image === null);
+    // Interactions API (Retusz): the SDK's output_image rule.
+    const out = (id: string) => ({ type: "model_output", content: [{ type: "image", data: id, mime_type: "image/png" }] });
+    const thought = (id: string) => ({ type: "thought", signature: "s", summary: [{ type: "image" }] , _id: id });
+    const ip = (steps: Record<string, unknown>[]) => pickInteractionFinalImage({ status: "completed", steps: steps as never });
+    const icases: [string, Record<string, unknown>[], string | null][] = [
+      ["[user, thought img, output F] → F", [{ type: "user_input" }, thought("T"), out("F")], "F"],
+      ["[user, output A, output F] → the LAST (F)", [{ type: "user_input" }, out("A"), out("F")], "F"],
+      ["[user, thought only] → none (fail + refund)", [{ type: "user_input" }, thought("T")], null],
+      ["[output text only] → none", [{ type: "model_output", content: [{ type: "text", text: "hi" }] }], null],
+      ["[output from an EARLIER turn, user, thought] → none (never an earlier turn's image)", [out("OLD"), { type: "user_input" }, thought("T")], null],
+    ];
+    for (const [name, st, want] of icases) check(`interactions: ${name}`, (ip(st).image?.data ?? null) === want, ip(st));
   }
 
   console.log("\nMEDIA RESOLUTION — nothing lowers the input; the field is left UNSPECIFIED (the model default)");
@@ -691,10 +697,10 @@ async function main() {
     const db = freshDb(); db.files.set("w/r/src.jpg", photo);
     g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
     await retouch(db, "w/r/src.jpg");
-    const b = sent[0]!.body;
-    check("no mediaResolution in generationConfig", !("mediaResolution" in b.generationConfig));
-    check("the image part carries only { inlineData: { mimeType, data } } (no per-part mediaResolution)",
-      JSON.stringify(Object.keys(b.contents[0]!.parts[1]!)) === '["inlineData"]' && JSON.stringify(Object.keys((b.contents[0]!.parts[1] as { inlineData: Row }).inlineData).sort()) === '["data","mimeType"]');
+    const b = sent[0]!.raw;
+    check("no generation_config / media resolution in the Retusz body", !("generation_config" in b) && !JSON.stringify(b).includes("resolution"));
+    check("the image item carries only { type, data, mime_type } (no per-item resolution)",
+      JSON.stringify(Object.keys((b.input as Row[])[1]!).sort()) === '["data","mime_type","type"]');
     const src = ["lib", "app", "components"].map((d) => {
       // Assignments or enum values in code — not the admin panel's label key "mediaResolution".
       try { return require("node:child_process").execSync(`grep -rnE "MEDIA_RESOLUTION_|mediaResolution\\s*:|media_resolution" --include=*.ts --include=*.tsx ${d} || true`, { cwd: process.cwd() }).toString(); } catch { return ""; }
@@ -706,51 +712,47 @@ async function main() {
     const canon = (v: unknown): unknown => Array.isArray(v) ? v.map(canon)
       : v && typeof v === "object" ? Object.fromEntries(Object.keys(v as Row).sort().map((k) => [k, canon((v as Row)[k])])) : v;
     const eq = (a: unknown, b: unknown) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
-    // §14: A/B/C = Original at 1K/2K/4K (the reference has NO aspectRatio
-    // field), D = 4:5 at 4K. Written literally, not via the builder.
+    // A/B/C/D = what the browser asks (1K/2K/4K, a 4:5 pick): Retusz sends
+    // the same minimal Interactions body every time. Written literally below.
     const prodShape = await sharp({ create: { width: 933, height: 700, channels: 3, background: "#a86" } }).png().toBuffer();
-    const cases: { name: string; src: Buffer; mime: string; resolution: string; format: string; imageConfig: Row }[] = [
-      { name: "A Original 1K (933×700)", src: prodShape, mime: "image/png", resolution: "1K", format: "original", imageConfig: { imageSize: "1K" } },
-      { name: "B Original 2K (933×700)", src: prodShape, mime: "image/png", resolution: "2K", format: "original", imageConfig: { imageSize: "2K" } },
-      { name: "C Original 4K (933×700)", src: prodShape, mime: "image/png", resolution: "4K", format: "original", imageConfig: { imageSize: "4K" } },
-      { name: "D 4:5 4K (1500×1000)", src: photo, mime: "image/jpeg", resolution: "4K", format: "4:5", imageConfig: { aspectRatio: "4:5", imageSize: "4K" } },
+    const cases: { name: string; src: Buffer; mime: string; resolution: string; format: string }[] = [
+      { name: "A Original 1K (933×700)", src: prodShape, mime: "image/png", resolution: "1K", format: "original" },
+      { name: "B Original 2K (933×700)", src: prodShape, mime: "image/png", resolution: "2K", format: "original" },
+      { name: "C Original 4K (933×700)", src: prodShape, mime: "image/png", resolution: "4K", format: "original" },
+      { name: "D 4:5 4K asked (1500×1000)", src: photo, mime: "image/jpeg", resolution: "4K", format: "4:5" },
     ];
     for (const cs of cases) {
       const db = freshDb(); db.files.set("w/r/src.jpg", cs.src);
       g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
       await retouch(db, "w/r/src.jpg", { resolution: cs.resolution, format: cs.format });
       const A = sent[0]!;
-      // B — what a person would send by hand, straight from Google's REST
-      // image-edit example: the same photo bytes, the same prompt, the same
-      // model, the same size/ratio. Written out literally, NOT via the builder.
+      // B — Google's cookbook image edit through the Interactions API,
+      // written out literally (NOT via the builder).
       const B = {
-        url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image:generateContent",
+        url: "https://generativelanguage.googleapis.com/v1beta/interactions",
         body: {
-          // Google's official single-image edit example: prompt FIRST, image second.
-          contents: [{ role: "user", parts: [{ text: EXACT }, { inlineData: { mimeType: cs.mime, data: cs.src.toString("base64") } }] }],
-          generationConfig: { responseModalities: ["IMAGE"], imageConfig: cs.imageConfig },
+          model: "gemini-3-pro-image",
+          input: [{ type: "text", text: EXACT }, { type: "image", data: cs.src.toString("base64"), mime_type: cs.mime }],
+          response_modalities: ["image"],
+          store: false,
         },
       };
-      const noKey = (u: string) => u.replace(/\?.*$/, "");      // secrets normalised away
-      const aImg = imagesOf(A)[0]?.inlineData;
+      const input = (A.raw.input ?? []) as Row[];
       const flags = {
-        PROMPT_EQUAL: textOf(A).length === 1 && textOf(A)[0]!.text === EXACT,
-        INPUT_SHA_EQUAL: !!aImg && sha(Buffer.from(aImg.data, "base64")) === sha(cs.src) && aImg.mimeType === cs.mime,
-        MODEL_EQUAL: noKey(A.url) === B.url,
-        ASPECT_RATIO_EQUAL: A.body.generationConfig.imageConfig.aspectRatio === B.body.generationConfig.imageConfig.aspectRatio,
-        IMAGE_SIZE_EQUAL: A.body.generationConfig.imageConfig.imageSize === B.body.generationConfig.imageConfig.imageSize,
-        GENERATION_CONFIG_EQUAL: eq(A.body.generationConfig, B.body.generationConfig),
-        PARTS_EQUAL: eq(A.body.contents, B.body.contents),
-        BODY_EQUAL: eq(A.body, B.body) && Object.keys(A.body).sort().join() === "contents,generationConfig",
-        PROMPT_SHA_EQUAL: sha(textOf(A)[0]?.text ?? "") === sha(EXACT),
-        HIDDEN_TEXT: !(textOf(A).length === 1 && textOf(A)[0]!.text === EXACT && Object.keys(A.body).sort().join() === "contents,generationConfig"),
+        PROMPT_EQUAL: input.length === 2 && input[0]!.text === EXACT,
+        INPUT_SHA_EQUAL: sha(Buffer.from(String(input[1]?.data ?? ""), "base64")) === sha(cs.src) && input[1]?.mime_type === cs.mime,
+        ENDPOINT_EQUAL: A.url === B.url,
+        MODEL_EQUAL: A.raw.model === B.body.model,
+        STORE_FALSE: A.raw.store === false,
+        BODY_BYTE_EQUAL: JSON.stringify(A.raw) === JSON.stringify(B.body),
+        BODY_EQUAL: eq(A.raw, B.body),
+        HIDDEN_TEXT: !(input.filter((c) => c.type === "text").length === 1),
+        ASPECT_RATIO_OR_SIZE_PRESENT: /aspect|image_size|generation_config/.test(JSON.stringify(A.raw)),
         POSTPROCESSING: false as boolean,
-        ...(cs.format === "original" ? { ASPECT_RATIO_FIELD_PRESENT: "aspectRatio" in A.body.generationConfig.imageConfig } : {}),
       };
-      // Output side of the same run: stored bytes === provider bytes, read back.
       const out = ((([...db.jobs.values()].pop()?.settings ?? {}) as Row).provider_output as Row[] | undefined)?.[0];
       flags.POSTPROCESSING = !(out?.stored_equals_provider === true && out?.transformed_after_provider === false);
-      const mustBeFalse = new Set(["HIDDEN_TEXT", "POSTPROCESSING", "ASPECT_RATIO_FIELD_PRESENT"]);
+      const mustBeFalse = new Set(["HIDDEN_TEXT", "POSTPROCESSING", "ASPECT_RATIO_OR_SIZE_PRESENT"]);
       console.log(`    ${cs.name}: ${Object.entries(flags).map(([k, v]) => `${k}=${v}`).join("  ")}`);
       check(`parity ${cs.name}: every invariant holds`, Object.entries(flags).every(([k, v]) => (mustBeFalse.has(k) ? v === false : v === true)), flags);
     }
@@ -758,18 +760,18 @@ async function main() {
 
   console.log("\nINDEPENDENT BASELINE + STATELESSNESS — Retusz vs Google's minimal official request (no production builder used)");
   {
-    // The baseline is written by hand from Google's REST schema. Nothing here
-    // imports or calls buildGeminiImageRequest.
+    // The baseline is written by hand from Google's Interactions schema
+    // (cookbook image edit). Nothing here imports or calls the builder.
     const prodShape = await sharp({ create: { width: 933, height: 700, channels: 3, background: "#a86" } }).png().toBuffer();
     const baseline = {
-      url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image:generateContent",
+      url: "https://generativelanguage.googleapis.com/v1beta/interactions",
       body: {
-        contents: [{ role: "user", parts: [{ text: EXACT }, { inlineData: { mimeType: "image/png", data: prodShape.toString("base64") } }] }],
-        generationConfig: { responseModalities: ["IMAGE"], imageConfig: { imageSize: "4K" } },
+        model: "gemini-3-pro-image",
+        input: [{ type: "text", text: EXACT }, { type: "image", data: prodShape.toString("base64"), mime_type: "image/png" }],
+        response_modalities: ["image"],
+        store: false,
       },
     };
-    const paths = (v: unknown, pre = ""): string[] => v && typeof v === "object" && !Array.isArray(v)
-      ? Object.keys(v as Row).flatMap((k) => paths((v as Row)[k], pre ? `${pre}.${k}` : k)) : [pre];
     const runs: Sent[] = [];
     const db = freshDb(); db.files.set("w/r/prod.png", prodShape); db.files.set("w/r/other.png", photo);
     g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
@@ -779,44 +781,36 @@ async function main() {
     await retouch(db, "w/r/prod.png", { resolution: "4K", format: "original" }); runs.push(sent[0]!);
     await retouch(db, "w/r/prod.png", { resolution: "4K", format: "original" }); runs.push(sent[0]!);
     const A = runs[0]!;
-    const parts = A.body.contents[0]!.parts;
-    const gPaths = new Set(paths({ ...A.body, contents: undefined }).filter((x) => !x.startsWith("contents")));
-    const bPaths = new Set(paths({ ...baseline.body, contents: undefined }).filter((x) => !x.startsWith("contents")));
+    const input = A.raw.input as Row[];
     const report = {
-      MODEL_ENDPOINT_EQUAL: A.url.replace(/\?.*$/, "") === baseline.url,
-      TOP_LEVEL_FIELDS: Object.keys(A.body).sort().join(","),
-      EXTRA_FIELDS_IN_GROVBASE: [...gPaths].filter((x) => !bPaths.has(x)),
-      MISSING_FIELDS: [...bPaths].filter((x) => !gPaths.has(x)),
-      CONTENTS_COUNT: A.body.contents.length,
-      ROLE: A.body.contents[0]!.role,
-      PARTS_COUNT: parts.length,
-      HISTORY_ITEMS: A.body.contents.length - 1,
-      INPUT_IMAGE_COUNT: parts.filter((x) => "inlineData" in x).length,
-      PROMPT_PART_INDEX: parts.findIndex((x) => "text" in x),
-      IMAGE_PART_INDEX: parts.findIndex((x) => "inlineData" in x),
-      PROMPT_SHA_EQUAL: sha((parts[0] as { text: string }).text) === sha(EXACT),
-      IMAGE_SHA_EQUAL: sha(Buffer.from((parts[1] as { inlineData: { data: string } }).inlineData.data, "base64")) === sha(prodShape),
-      MIME: (parts[1] as { inlineData: { mimeType: string } }).inlineData.mimeType,
-      BODY_EQUAL_TO_BASELINE: JSON.stringify(A.body) === JSON.stringify(baseline.body),
+      ENDPOINT_EQUAL: A.url === baseline.url,
+      FIELDS: Object.keys(A.raw).join(","),
+      STORE: A.raw.store,
+      PREVIOUS_INTERACTION: "previous_interaction_id" in A.raw,
+      INPUT_COUNT: input.length,
+      INPUT_ORDER: input.map((c) => c.type).join(","),
+      INPUT_IMAGE_COUNT: input.filter((c) => c.type === "image").length,
+      PROMPT_SHA_EQUAL: sha(String(input[0]!.text)) === sha(EXACT),
+      IMAGE_SHA_EQUAL: sha(Buffer.from(String(input[1]!.data), "base64")) === sha(prodShape),
+      MIME: input[1]!.mime_type,
+      BODY_EQUAL_TO_BASELINE: JSON.stringify(A.raw) === JSON.stringify(baseline.body),
     };
     console.log("    " + JSON.stringify(report));
-    check("baseline: endpoint/model equal, top-level = contents,generationConfig", report.MODEL_ENDPOINT_EQUAL && report.TOP_LEVEL_FIELDS === "contents,generationConfig");
-    check("baseline: EXTRA_FIELDS_IN_GROVBASE = [], MISSING_FIELDS = []", report.EXTRA_FIELDS_IN_GROVBASE.length === 0 && report.MISSING_FIELDS.length === 0, report);
-    check("baseline: 1 user content, 2 parts, HISTORY_ITEMS 0, INPUT_IMAGE_COUNT 1, PROMPT_PART_INDEX 0, IMAGE_PART_INDEX 1",
-      report.CONTENTS_COUNT === 1 && report.ROLE === "user" && report.PARTS_COUNT === 2 && report.HISTORY_ITEMS === 0
-      && report.INPUT_IMAGE_COUNT === 1 && report.PROMPT_PART_INDEX === 0 && report.IMAGE_PART_INDEX === 1, report);
-    check("baseline: prompt SHA, image SHA, MIME image/png equal; body byte-identical to the hand-written request",
-      report.PROMPT_SHA_EQUAL && report.IMAGE_SHA_EQUAL && report.MIME === "image/png" && report.BODY_EQUAL_TO_BASELINE, report);
-    check("stateless: two consecutive runs send byte-identical bodies (nothing carried over from the earlier job)", JSON.stringify(runs[0]!.body) === JSON.stringify(runs[1]!.body));
-    check("stateless: the earlier job's photo and 4:5 never appear", !JSON.stringify(runs[0]!.body).includes(photo.toString("base64").slice(0, 200)) && !JSON.stringify(runs[0]!.body).includes('"4:5"'));
-    // (generations / generation_assets are touched only to STORE this run's output, after the call.)
+    check("baseline: endpoint equal, fields = model,input,response_modalities,store; store false; no previous interaction",
+      report.ENDPOINT_EQUAL && report.FIELDS === "model,input,response_modalities,store" && report.STORE === false && report.PREVIOUS_INTERACTION === false, report);
+    check("baseline: input [text, image], 1 image, prompt SHA + image SHA + MIME equal; body byte-identical to the hand-written request",
+      report.INPUT_COUNT === 2 && report.INPUT_ORDER === "text,image" && report.INPUT_IMAGE_COUNT === 1
+      && report.PROMPT_SHA_EQUAL && report.IMAGE_SHA_EQUAL && report.MIME === "image/png" && report.BODY_EQUAL_TO_BASELINE, report);
+    check("stateless: two consecutive runs send byte-identical bodies (nothing carried over from the earlier job)", JSON.stringify(runs[0]!.raw) === JSON.stringify(runs[1]!.raw));
+    check("stateless: the earlier job's photo and 4:5 never appear", !JSON.stringify(runs[0]!.raw).includes(photo.toString("base64").slice(0, 200)) && !JSON.stringify(runs[0]!.raw).includes('"4:5"'));
     check("stateless: no knowledge / feedback / examples table touched during a Retusz run",
       !db.tables.some((t) => /knowledge|feedback|example/.test(t)), [...new Set(db.tables)]);
     const src = ["lib/ai/providers/google.ts", "lib/ai/providers/google-request.ts", "lib/server/generation.ts", "lib/server/retouch.ts", "lib/server/engine/tool-run.ts"].map(read).join("\n");
-    check("no chat / session / history / interactions API on the image path", !/chats\.create|startChat|start_chat|sendMessage|getHistory|previous_interaction|previousInteraction|\/interactions/.test(src));
-    check("the other tools keep [image…, prompt] (only Retusz asks promptFirst)",
+    check("no chat / session API; nothing ever SETS previous_interaction_id, the builder writes store: false",
+      !/chats\.create|startChat|start_chat|sendMessage|getHistory|previous_interaction_id\s*:|previousInteractionId\s*:/.test(src) && /store: false,/.test(read("lib/ai/providers/google-request.ts")));
+    check("the other tools keep generateContent and [image…, prompt]; only Retusz sets strictSingleImage",
       buildGeminiImageRequest({ supported_resolutions: ["2K"] }, { prompt: "x", aspectRatio: "auto", resolution: "2K", referenceImages: [{ base64: "QQ==", mime: "image/png" }] }).body.contents[0]!.parts[0]!.hasOwnProperty("inlineData")
-      && /promptFirst: true/.test(read("lib/server/retouch.ts")) && !/promptFirst/.test(read("lib/server/fashion.ts") + read("lib/server/concept-generation.ts") + read("lib/server/engine/image-call.ts")));
+      && /strictSingleImage: true/.test(read("lib/server/retouch.ts")) && !/strictSingleImage|promptFirst/.test(read("lib/server/fashion.ts") + read("lib/server/concept-generation.ts") + read("lib/server/engine/image-call.ts")));
   }
   console.log("\nHARD AUDIT — raw input bytes, prompt chain, runtime contract (no paid call)");
   {
@@ -826,7 +820,7 @@ async function main() {
     const db = freshDb(); db.files.set("w/r/phone.jpg", sideways);
     g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
     const { pr } = await retouch(db, "w/r/phone.jpg");
-    const sentImg = imagesOf(sent[0]!)[0]!.inlineData;
+    const sentImg = imagesOf(sent[0]!)[0]!.inlineData; // (mapped from the raw Interactions input)
     check("EXIF-rotated phone photo: bytes sent === bytes uploaded (no re-encode, no ICC/sRGB conversion)",
       sha(Buffer.from(sentImg.data, "base64")) === sha(sideways) && sentImg.mimeType === "image/jpeg", pr?.inputs);
     const inp = (pr?.inputs as Row[])[0]!;
@@ -841,8 +835,8 @@ async function main() {
       && pr?.provider_prompt_digest === promptDigest(EXACT) && JSON.stringify(pr?.prompt_variables) === "[]" && pr?.strict_single_image === true, pr);
     g.__fidelityEngine = engine({ systemPrompt: "A {{resolution}} B", promptVersion: 4 });
     const withVar = await retouch(db, "w/r/phone.jpg", { resolution: "4K" });
-    check("with an explicit variable: published ≠ resolved, resolved === provider, variables = [resolution]",
-      withVar.pr?.published_prompt_digest === promptDigest("A {{resolution}} B") && withVar.pr?.resolved_prompt_digest === promptDigest("A 4K B")
+    check("with an explicit variable: published ≠ resolved, resolved === provider, variables = [resolution] (the billed 1K, not the asked 4K)",
+      withVar.pr?.published_prompt_digest === promptDigest("A {{resolution}} B") && withVar.pr?.resolved_prompt_digest === promptDigest("A 1K B")
       && withVar.pr?.provider_prompt_digest === withVar.pr?.resolved_prompt_digest && JSON.stringify(withVar.pr?.prompt_variables) === '["resolution"]', withVar.pr);
 
     // (3) Runtime prompt parity: a mismatch is refused BEFORE the job/charge/call.
@@ -858,32 +852,41 @@ async function main() {
 
     // (4) Adapter contract, on the exact body about to be sent.
     const req = (over: Record<string, unknown> = {}) => ({
-      prompt: "P", aspectRatio: "auto" as const, resolution: "2K" as const, quantity: 1, promptFirst: true, strictSingleImage: true,
+      prompt: "P", aspectRatio: "auto" as const, quantity: 1, strictSingleImage: true,
       referenceImages: [{ base64: "QUJD", mime: "image/png" }], productLock: { fidelityInstructions: "" }, ...over,
     });
-    const model = { supported_resolutions: ["1K", "2K", "4K"] };
-    const ok = buildGeminiImageRequest(model, req()).body;
-    check("contract: the real Retusz body passes", retouchContractViolation(ok, req()) === null);
-    check("contract: an extra systemInstruction is refused", retouchContractViolation({ ...ok, systemInstruction: { parts: [] } } as typeof ok, req()) === "top_level_fields");
-    check("contract: a second content (history) is refused", retouchContractViolation({ ...ok, contents: [...ok.contents, ...ok.contents] }, req()) === "contents_count");
-    check("contract: [image, text] order is refused", retouchContractViolation({ ...ok, contents: [{ role: "user", parts: [...ok.contents[0]!.parts].reverse() }] }, req()) === "parts_order");
-    check("contract: an appended text part is refused", retouchContractViolation({ ...ok, contents: [{ role: "user", parts: [...ok.contents[0]!.parts, { text: "extra" }] }] }, req()) === "parts_count");
-    check("contract: text ≠ prompt is refused", retouchContractViolation(ok, req({ prompt: "Q" })) === "prompt_mismatch");
-    check("contract: extra generationConfig field (temperature) is refused",
-      retouchContractViolation({ ...ok, generationConfig: { ...ok.generationConfig, temperature: 1 } as typeof ok.generationConfig }, req()) === "generation_config_fields");
+    const M = "gemini-3-pro-image";
+    const ok = buildRetouchInteraction({ model_identifier: M }, req()) as unknown as Row;
+    const v = (b: Row, r = req()) => retouchInteractionViolation(b, r, M);
+    check("contract: the real Retusz body passes", v(ok) === null);
+    check("contract: system_instruction is refused", v({ ...ok, system_instruction: "x" }) === "top_level_fields");
+    check("contract: previous_interaction_id (history) is refused", v({ ...ok, previous_interaction_id: "int-0" }) === "top_level_fields");
+    check("contract: store true (or missing) is refused", v({ ...ok, store: true }) === "store");
+    check("contract: generation_config (image_size / aspect_ratio) is refused", v({ ...ok, generation_config: { image_generation_config: { image_size: "2K" } } }) === "top_level_fields");
+    check("contract: tools are refused", v({ ...ok, tools: [{ type: "google_search" }] }) === "top_level_fields");
+    check("contract: [image, text] order is refused", v({ ...ok, input: [...(ok.input as Row[])].reverse() }) === "input_order");
+    check("contract: an appended text item is refused", v({ ...ok, input: [...(ok.input as Row[]), { type: "text", text: "extra" }] }) === "input_count");
+    check("contract: text ≠ prompt is refused (one byte off, e.g. a trimmed space)", v(ok, req({ prompt: "P " })) === "prompt_mismatch");
+    check("contract: a different model is refused", v({ ...ok, model: "gemini-3.1-flash-image" }) === "model");
     sent = [];
     let threw = "";
     try {
-      await googleAdapter.generate({ model_identifier: "gemini-3-pro-image", supported_resolutions: ["2K"] } as never,
+      await googleAdapter.generate({ model_identifier: M, supported_resolutions: ["2K"] } as never,
         req({ referenceImages: [{ base64: "QUJD", mime: "image/png" }, { base64: "REVG", mime: "image/png" }] }) as never,
         { apiKey: "k", baseUrl: null } as never);
     } catch (e) { threw = (e as { safeMessage?: string }).safeMessage ?? String(e); }
     check("adapter: two input images under the Retusz contract → refused, NO HTTP call", threw === "retouch_request_contract_failed" && sent.length === 0, threw);
+    threw = "";
+    try {
+      await googleAdapter.generate({ model_identifier: M, supported_resolutions: ["2K"] } as never,
+        req({ strictInputSha256: "0".repeat(64) }) as never, { apiKey: "k", baseUrl: null } as never);
+    } catch (e) { threw = `${(e as { safeMessage?: string }).safeMessage}/${(e as { providerCode?: string }).providerCode}`; }
+    check("adapter: photo in the body ≠ stored original (sha) → refused, NO HTTP call", threw === "retouch_request_contract_failed/image_sha_mismatch" && sent.length === 0, threw);
 
     // (5) Nothing about the tool reaches the model: no name, slug, description or operation.
     g.__fidelityEngine = engine({ systemPrompt: "Zrób tło białe.", promptVersion: 5 });
     await retouch(db, "w/r/phone.jpg");
-    const bodyText = JSON.stringify(sent[0]!.body).replace(/"data":"[^"]*"/, '"data":"…"');
+    const bodyText = JSON.stringify(sent[0]!.raw).replace(/"data":"[^"]*"/, '"data":"…"');
     check("the body carries no tool name/slug/description/operation (Retusz, retouch, packshot, IMAGE_EDIT, GrovBase)",
       !/retusz|retouch|packshot|image_edit|grovbase|białym tle|white background/i.test(bodyText), bodyText.slice(0, 300));
     check("the only text in the body is the published prompt", textOf(sent[0]!).length === 1 && textOf(sent[0]!)[0]!.text === "Zrób tło białe.");
@@ -897,17 +900,16 @@ async function main() {
     g.__fidelityEngine = engine({ systemPrompt: PROMPT, promptVersion: 5 });
     const { res, pr } = await retouch(db, "w/r/glass.jpg", { resolution: "4K", format: "original" });
     check("run ok; the only text sent is the published prompt, byte for byte (SHA equal)", res.ok && textOf(sent[0]!).length === 1 && sha(textOf(sent[0]!)[0]!.text) === sha(PROMPT));
-    check("diagnostics: history 0, images 1, texts 1, knowledge 0, examples 0, feedback 0, no systemInstruction, stateless, contract ok",
-      pr?.history_count === 0 && pr?.image_count === 1 && pr?.text_part_count === 1 && pr?.knowledge_count === 0 && pr?.examples_count === 0
+    check("diagnostics: interactions endpoint, store false, history 0, images 1, texts 1, knowledge 0, examples 0, feedback 0, no systemInstruction, stateless, contract ok",
+      pr?.endpoint === "v1beta/interactions" && pr?.store === false && pr?.history_count === 0 && pr?.image_count === 1 && pr?.text_part_count === 1 && pr?.knowledge_count === 0 && pr?.examples_count === 0
       && pr?.feedback_count === 0 && pr?.system_instruction === false && pr?.stateless === true && pr?.contract_ok === true && pr?.parts_order === "text_then_image", pr);
-    const sp = pr?.sanitized_payload as { contents: { role: string; parts: Row[] }[]; generationConfig: Row } | undefined;
-    const spText = (sp?.contents[0]?.parts[0]?.text ?? {}) as Row;
-    const spImg = (sp?.contents[0]?.parts[1]?.inlineData ?? {}) as Row;
-    check("sanitised payload: [text{chars,digest}, inlineData{mimeType,sha256,bytes}], generationConfig {IMAGE, imageSize 4K}, no aspectRatio",
-      sp?.contents.length === 1 && sp.contents[0]!.role === "user" && sp.contents[0]!.parts.length === 2
+    const sp = pr?.sanitized_payload as { model: string; input: Row[]; response_modalities: string[]; store: boolean } | undefined;
+    const spText = (sp?.input[0]?.text ?? {}) as Row;
+    check("sanitised payload: {model, input:[text{chars,digest}, image{mime,sha256,bytes}], response_modalities [image], store false} — no size, no ratio",
+      sp?.model === "gemini-3-pro-image" && sp.input.length === 2 && sp.input[0]!.type === "text" && sp.input[1]!.type === "image"
       && spText.chars === Array.from(PROMPT).length && spText.digest === promptDigest(PROMPT)
-      && spImg.sha256 === PHOTO_SHA && spImg.bytes === photo.length && spImg.mimeType === "image/jpeg"
-      && JSON.stringify(sp.generationConfig) === '{"responseModalities":["IMAGE"],"imageConfig":{"imageSize":"4K"}}', sp);
+      && sp.input[1]!.sha256 === PHOTO_SHA && sp.input[1]!.bytes === photo.length && sp.input[1]!.mime_type === "image/jpeg"
+      && JSON.stringify(sp.response_modalities) === '["image"]' && sp.store === false && Object.keys(sp).join() === "model,input,response_modalities,store", sp);
     check("sanitised payload holds no prompt text and no image bytes", !JSON.stringify(pr).includes("Przekształć") && !JSON.stringify(pr).includes(photo.toString("base64").slice(0, 64)));
     check("prompt chain: published === resolved === provider (keyed digests), version 5, no variables",
       pr?.published_prompt_digest === promptDigest(PROMPT) && pr?.resolved_prompt_digest === pr?.provider_prompt_digest && pr?.provider_prompt_digest === promptDigest(PROMPT)
@@ -938,7 +940,7 @@ async function main() {
       const db = freshDb(); db.files.set("w/r/src.jpg", photo);
       g.__fidelityEngine = engine({ systemPrompt, promptVersion: systemPrompt === null ? null : 3 });
       const r = await retouch(db, "w/r/src.jpg", opts);
-      return { ...r, text: sent[0] ? textOf(sent[0])[0]?.text : undefined, body: sent[0]?.body, calls: sent.length };
+      return { ...r, text: sent[0] ? textOf(sent[0])[0]?.text : undefined, body: sent[0]?.body, raw: sent[0]?.raw, calls: sent.length };
     };
     const a = await one(EXACT);
     check("A. publishedPrompt === finalPrompt (no variables)", a.text === EXACT);
@@ -961,13 +963,11 @@ async function main() {
       });
       check("E. user prompt: exact string equality (whitespace, dashes, Polish letters kept)", textOf(sent[0]!)[0]?.text === USER, textOf(sent[0]!)[0]?.text);
     }
-    check("F. input: sha(upload) === sha(provider input)", sha(Buffer.from(imagesOf({ url: "", body: a.body! })[0]!.inlineData.data, "base64")) === PHOTO_SHA);
+    check("F. input: sha(upload) === sha(provider input)", sha(Buffer.from(String(((a.raw?.input ?? []) as Row[])[1]?.data ?? ""), "base64")) === PHOTO_SHA);
     check("G. Google payload parity — see §9 above (all invariants true)", true);
     const h2 = await one(EXACT, { resolution: "2K" }); const h4 = await one(EXACT, { resolution: "4K" });
-    const drop = (x: unknown) => { const cc = JSON.parse(JSON.stringify(x)); delete cc.generationConfig.imageConfig.imageSize; return JSON.stringify(cc); };
-    check("H. 2K/4K: the only difference is imageSize", drop(h2.body) === drop(h4.body) && h2.body!.generationConfig.imageConfig.imageSize === "2K" && h4.body!.generationConfig.imageConfig.imageSize === "4K");
-    check("I. Oryginalny: NO aspectRatio field, at 2K and at 4K",
-      [a, h2, h4].every((x) => !("aspectRatio" in x.body!.generationConfig.imageConfig)));
+    check("H. Retusz sends no size: a 2K and a 4K request are byte-identical", JSON.stringify(h2.raw) === JSON.stringify(h4.raw) && !/image_size/.test(JSON.stringify(h4.raw)));
+    check("I. Oryginalny: NO aspect ratio anywhere", [a, h2, h4].every((x) => !/aspect/.test(JSON.stringify(x.raw))));
     const out = (((a.job?.settings ?? {}) as Row).provider_output as Row[] | undefined)?.[0];
     const url = (a.res as { url?: string }).url ?? "";
     check("J. output: provider SHA === SHA read back from storage (the file Pobierz serves), same path",
@@ -979,7 +979,7 @@ async function main() {
       script = [503, 503, 503];
       await retouch(db, "w/r/src.jpg");
       script = [];
-      check("K. fallback OFF: every attempt on gemini-3-pro-image, never another model", sent.length === 3 && sent.every((x) => /\/gemini-3-pro-image:generateContent/.test(x.url)));
+      check("K. Retusz: 'Próby: 3' + three 503s → exactly ONE request, to gemini-3-pro-image", sent.length === 1 && sent[0]!.raw.model === "gemini-3-pro-image", sent.length);
     }
     const code = ["lib/server/retouch.ts", "lib/server/engine/tool-run.ts", "lib/server/generation.ts", "lib/server/engine/image-call.ts",
       "lib/ai/providers/google.ts", "lib/ai/providers/google-request.ts", "lib/ai/providers/openai.ts", "lib/ai/providers/fal.ts",
@@ -1006,9 +1006,9 @@ async function main() {
     check("prompt: published v3, exact, identical, sha matches, nothing appended, no knowledge",
       m.prompt.source === "published" && m.prompt.version === 3 && m.prompt.policy === "exact" && m.prompt.identical === true
       && m.prompt.sha256 === sha(EXACT) && m.prompt.appended.length === 0 && m.prompt.knowledge.length === 0, m.prompt);
-    check("config: IMAGE_EDIT, original → not sent (provider picks from the photo), sizes 1K/2K/4K sent as chosen, 120 s, 1 attempt",
-      m.config.operation === "IMAGE_EDIT" && m.config.ratioWhenOriginal === "input_photo"
-      && m.config.sizes.map((s) => `${s.resolution}=${s.sent}`).join() === "1K=1K,2K=2K,4K=4K"
+    check("config: IMAGE_EDIT, original → not sent, NO size sent at any setting, no ratio offered, 120 s, 1 attempt",
+      m.config.operation === "IMAGE_EDIT" && m.config.ratioWhenOriginal === "input_photo" && m.config.ratios.length === 0
+      && m.config.sizes.every((s) => s.sent === null)
       && m.config.timeoutMs === 120_000 && m.config.maxAttempts === 1, m.config);
     check("the manifest carries no prompt text", !JSON.stringify(m).includes("GROVBASE_EXACT"));
     check("workflow OFF is reported as such", m.workflowEnabled === false);

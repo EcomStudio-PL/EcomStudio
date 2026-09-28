@@ -116,3 +116,102 @@ export function captureGeminiBoundary(url: string, payload: string, model: strin
     strict_stateless: strict,
   };
 }
+
+/* ── Retusz: the Interactions API request ────────────────────────────────── */
+
+const INTERACTION_FIELDS = ["model", "input", "response_modalities", "store"];
+
+export type InteractionBoundary = {
+  provider: "google";
+  api: "interactions";
+  model: string;
+  api_version: string | null;
+  endpoint: string;
+  method: "POST";
+  /** Header NAMES only — the key header's value is never recorded. */
+  request_headers: string[];
+  request_field_names: string[];
+  request_body_sha256: string;
+  request_body_bytes: number;
+  store: unknown;
+  previous_interaction_id_present: boolean;
+  history_count: number;
+  input_length: number;
+  input_order: string[];
+  text_parts_count: number;
+  image_parts_count: number;
+  system_instruction_present: boolean;
+  tools_count: number;
+  generation_config_present: boolean;
+  safety_settings_present: boolean;
+  response_modalities: unknown;
+  aspect_ratio: string;
+  image_size: string;
+  provider_prompt_length: number | null;
+  provider_prompt_utf8_bytes: number | null;
+  provider_prompt_sha256: string | null;
+  provider_inputs: { mime_type: string; bytes: number; sha256: string }[];
+  extra_fields: string[];
+  extra_text_parts: number;
+  stateless: boolean;
+  strict_stateless: boolean;
+};
+
+/** Read back from the exact string handed to fetch (and the header names
+ *  sent with it). `url` never carries the key on this path. */
+export function captureInteractionBoundary(url: string, headerNames: string[], payload: string, model: string): InteractionBoundary {
+  const u = new URL(url);
+  const body = JSON.parse(payload) as Record<string, unknown>;
+  const input = Array.isArray(body.input) ? (body.input as Record<string, unknown>[]) : typeof body.input === "string" ? [{ type: "text", text: body.input }] : [];
+  const extra = Object.keys(body).filter((k) => !INTERACTION_FIELDS.includes(k));
+  input.forEach((c, i) => {
+    const allowed = c.type === "text" ? ["type", "text"] : c.type === "image" ? ["type", "data", "mime_type"] : [];
+    for (const k of Object.keys(c)) if (!allowed.includes(k)) extra.push(`input[${i}].${k}`);
+  });
+  const texts = input.filter((c) => c.type === "text").map((c) => String(c.text ?? ""));
+  const images = input.filter((c) => c.type === "image").map((c) => {
+    const bytes = Buffer.from(String(c.data ?? ""), "base64");
+    return { mime_type: String(c.mime_type ?? ""), bytes: bytes.length, sha256: sha(bytes) };
+  });
+  const config = (body.generation_config ?? {}) as Record<string, unknown>;
+  const imageConfig = (config.image_generation_config ?? config.image_config ?? {}) as Record<string, unknown>;
+  const prompt = texts.length === 1 ? texts[0]! : null;
+  const previous = body.previous_interaction_id !== undefined;
+  const stateless = body.store === false && !previous;
+  return {
+    provider: "google",
+    api: "interactions",
+    model,
+    api_version: /^\/(v\d+[a-z0-9]*)\//.exec(u.pathname)?.[1] ?? null,
+    endpoint: `${u.origin}${u.pathname}`,
+    method: "POST",
+    request_headers: headerNames.map((h) => h.toLowerCase()).sort(),
+    request_field_names: Object.keys(body),
+    request_body_sha256: sha(payload),
+    request_body_bytes: Buffer.byteLength(payload),
+    store: body.store,
+    previous_interaction_id_present: previous,
+    history_count: previous ? 1 : 0,
+    input_length: input.length,
+    input_order: input.map((c) => String(c.type ?? "?")),
+    text_parts_count: texts.length,
+    image_parts_count: images.length,
+    system_instruction_present: "system_instruction" in body,
+    tools_count: Array.isArray(body.tools) ? body.tools.length : 0,
+    generation_config_present: "generation_config" in body,
+    safety_settings_present: "safety_settings" in body,
+    response_modalities: body.response_modalities ?? null,
+    aspect_ratio: typeof imageConfig.aspect_ratio === "string" ? imageConfig.aspect_ratio : "OMITTED",
+    image_size: typeof imageConfig.image_size === "string" ? imageConfig.image_size : "OMITTED",
+    provider_prompt_length: prompt === null ? null : Array.from(prompt).length,
+    provider_prompt_utf8_bytes: prompt === null ? null : Buffer.byteLength(prompt),
+    provider_prompt_sha256: prompt === null ? null : sha(prompt),
+    provider_inputs: images,
+    extra_fields: extra,
+    extra_text_parts: Math.max(0, texts.length - 1),
+    stateless,
+    strict_stateless: stateless && extra.length === 0 && input.length === 2
+      && input[0]?.type === "text" && input[1]?.type === "image"
+      && JSON.stringify(body.response_modalities) === '["image"]',
+  };
+}

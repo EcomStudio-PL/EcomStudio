@@ -20,11 +20,11 @@ import type { AspectRatio, Resolution } from "@/lib/ai/types";
  * stores the output in the generation bucket and refunds on failure.
  *
  * WHAT THE MODEL RECEIVES, with a prompt published in Admin → Narzędzia i
- * silniki: the original uploaded photo (untouched bytes) + that prompt, byte
- * for byte + the size the customer chose + the framing the customer chose —
- * or, for "Oryginalny", no aspectRatio at all (the provider picks the shape
- * from the reference photo). Nothing else: no Product Lock, no built-in text, no knowledge the
- * prompt did not ask for.
+ * silniki: ONE stateless Interactions API call (store:false, no previous
+ * interaction) carrying that prompt byte for byte and the original uploaded
+ * photo (untouched bytes). No image size, no aspect ratio (Google's default
+ * size, the photo's own shape), no fallback, no retry. Nothing else: no
+ * Product Lock, no built-in text, no knowledge, no ratings.
  */
 
 /** The model this tool runs on when the panel assigns none. Resolved by its
@@ -137,14 +137,24 @@ export function retouchPrice(model: RetouchModelInfo, resolution: string): numbe
   return model.pricing[resolution] ?? Object.values(model.pricing)[0] ?? 0;
 }
 
+/**
+ * RETUSZ SENDS NO SIZE (diagnostic stage): the request carries no image size
+ * and no aspect ratio, so Google renders at its own default — 1K — in the
+ * photo's own shape. The run is priced and recorded at that size; the 1K/2K/4K
+ * and framing pickers are hidden until they return as a separate stage.
+ */
+export const RETOUCH_DEFAULT_RESOLUTION = "1K";
+export function retouchRunResolution(model: RetouchModelInfo): string {
+  return model.resolutions.includes(RETOUCH_DEFAULT_RESOLUTION) ? RETOUCH_DEFAULT_RESOLUTION : model.resolutions[0] ?? RETOUCH_DEFAULT_RESOLUTION;
+}
+
 export type RetouchInput = {
   /** Storage path in `product-images`, already uploaded by the browser and
    *  verified by the route to sit inside the caller's own workspace. */
   sourcePath: string;
+  /** Accepted for compatibility and IGNORED: Retusz currently sends no size
+   *  and no framing (RETOUCH_DEFAULT_RESOLUTION). */
   resolution?: string;
-  /** "original" (default) keeps the source photo's own shape — no ratio is
-   *  imposed on the edit; anything else must be a framing the model declares
-   *  and is sent exactly. */
   format?: string;
   /** Results per run the panel showed the price for. */
   quotedOutputs?: number;
@@ -167,15 +177,12 @@ export async function runRetouch(
   const model = await retouchModel(supabase);
   if (!model) return { ok: false, error: "model_unavailable" };
 
-  const resolution = (model.resolutions.includes(input.resolution ?? "") ? input.resolution : model.resolutions[0]) as Resolution;
-
-  // "Oryginalny" = NO aspectRatio field: Google's documented default picks
-  // the shape from the reference photo. GrovBase neither snaps nor derives a
-  // ratio (a derived 4:3 etc. was tried in 30b6f7c and made PROD results
-  // worse — reverted). A framing the customer chose is sent exactly.
-  const aspectRatio: AspectRatio = input.format && input.format !== "original" && model.ratios.includes(input.format)
-    ? input.format as AspectRatio
-    : "auto";
+  // The customer's size and framing are NOT used at this stage (see
+  // RETOUCH_DEFAULT_RESOLUTION): the request carries neither field. The size
+  // below only prices and labels the run.
+  const resolution = retouchRunResolution(model) as Resolution;
+  // "Oryginalny" only: no aspectRatio is sent, nothing is derived or snapped.
+  const aspectRatio: AspectRatio = "auto";
 
   // THE INSTRUCTION: the published workflow or prompt from Admin → Narzędzia
   // i silniki — or a refusal (prompt_unconfigured) when nothing is published.
@@ -188,15 +195,11 @@ export async function runRetouch(
     quotedOutputs: input.quotedOutputs,
     generation: {
       modelId: model.id,
-      // runGeneration tries it only when the primary cannot serve, under the
-      // same reservation, and skips it when it cannot take the references
-      // (Product Lock) or render the paid size.
-      ...(model.fallbackId ? { fallbackModelIds: [model.fallbackId] } : {}),
+      // No fallback model: Retusz is one model, one request.
       aspectRatio,
-      // Google's single-image edit example: [prompt, image].
-      promptFirst: true,
-      // The stored photo bytes as-is (no EXIF re-encode — what a direct API
-      // call with the same file sends) + the adapter's pre-send contract check.
+      // The Google adapter's own Retusz path: ONE stateless Interactions call
+      // (store:false) carrying [the published prompt, the stored photo bytes
+      // as-is], checked on the serialised body before the HTTP call.
       strictSingleImage: true,
       resolution,
       quantity: 1,

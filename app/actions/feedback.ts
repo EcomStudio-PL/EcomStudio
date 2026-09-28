@@ -2,6 +2,16 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 
+/** Retusz is stateless: its results take no rating of any kind (the panel
+ *  shows none; this refuses a direct call too). */
+const STATELESS_OPERATIONS = new Set(["image_retouch"]);
+type Db = Awaited<ReturnType<typeof createClient>>;
+async function jobIsStateless(supabase: Db, jobId: string): Promise<boolean> {
+  const { data } = await supabase.from("generation_jobs").select("settings").eq("id", jobId).maybeSingle();
+  const op = (data?.settings as { operation?: unknown } | null)?.operation;
+  return typeof op === "string" && STATELESS_OPERATIONS.has(op);
+}
+
 const ISSUES = new Set([
   "wrong_product", "wrong_color", "wrong_quantity", "wrong_anatomy",
   "wrong_scale", "bad_scene", "bad_quality", "other",
@@ -22,6 +32,7 @@ export async function submitGenerationFeedbackAction(input: {
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) return { ok: false };
   if (input.verdict !== "accepted" && input.verdict !== "regenerate") return { ok: false };
+  if (await jobIsStateless(supabase, input.jobId)) return { ok: false };
 
   const { error } = await supabase.from("generation_feedback").insert({
     workspace_id: workspace.id,
@@ -58,6 +69,8 @@ export async function voteResultAction(input: {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "unauthenticated" };
+  const { data: gen } = await supabase.from("generations").select("job_id").eq("id", input.generationId).maybeSingle();
+  if (gen?.job_id && await jobIsStateless(supabase, gen.job_id)) return { ok: false, error: "not_supported" };
   const { data, error } = await supabase.rpc("generation_feedback_submit", {
     p_generation_id: input.generationId,
     p_verdict: input.verdict,

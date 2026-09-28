@@ -137,12 +137,15 @@ export interface GenerationRequest {
    */
   promptFirst?: boolean;
   /**
-   * Retusz contract, checked by the adapter on the FINAL body right before
-   * the HTTP call: 1 user content, exactly [text === prompt, the one image],
-   * no other top-level or generation fields. A mismatch is refused (no call,
-   * the reservation is released) instead of sent.
+   * RETUSZ: the Google adapter takes its own path — one stateless Interactions
+   * API call (store:false) with exactly [the prompt, the one photo], checked
+   * on the serialised body right before the HTTP call. A mismatch is refused
+   * (no call, the reservation is released) instead of sent.
    */
   strictSingleImage?: boolean;
+  /** Retusz: SHA-256 of the stored original; the photo inside the body about
+   *  to be sent must hash to it, or the call is refused. */
+  strictInputSha256?: string;
   productLock: {
     /**
      * The fidelity contract the runner FOLDED INTO `prompt` for this request
@@ -196,11 +199,10 @@ export type GeneratedImage = {
    *  were skipped, and the finish reason. */
   response?: {
     imageParts: number; thoughtImagesSkipped: number; finishReason: string | null;
-    /** Retusz diagnostics: candidates in the response, every part as flags
-     *  (no text, no bytes) and which part was kept. */
-    candidates?: number;
-    parts?: { text: boolean; thought: boolean; inlineData: boolean; mimeType: string | null }[];
-    pickedPartIndex?: number | null;
+    /** Retusz (Interactions API): every step of the response as types only
+     *  (no text, no bytes) and [step, content] of the image kept. */
+    steps?: { type: string; content: { type: string; mimeType: string | null }[] }[];
+    pickedStep?: [number, number] | null;
   };
 };
 

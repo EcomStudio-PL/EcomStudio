@@ -314,7 +314,11 @@ async function main() {
   const withFb = await retouchModel(retouchDb(rt("m2", "m-default", true)) as unknown as Parameters<typeof retouchModel>[0]);
   check("API6 fallback used only when configured AND enabled", withFb?.fallbackId === "m-default");
   const retouchSrc = code("lib/server/retouch.ts");
-  check("API6 fallback reaches runGeneration only through fallbackModelIds", /fallbackModelIds: \[model\.fallbackId\]/.test(retouchSrc));
+  // Retusz is one model, one request: the panel's fallback is reported (the
+  // workflow step config still reads it) but never handed to runGeneration,
+  // and runGeneration ignores fallbacks for strictSingleImage anyway.
+  check("API6 Retusz never passes a fallback to runGeneration (one model, one request)",
+    !/fallbackModelIds/.test(retouchSrc) && /strict \? \[input\.modelId\]/.test(code("lib/server/generation.ts")));
   const actionsSrc = code("app/actions/ai-tools.ts");
   check("assignments for a runtime-read tool must be reference-capable image models", /model_incompatible/.test(actionsSrc) && /MODEL_ASSIGNMENT_RUNTIME\.has/.test(actionsSrc));
   check("a failed clear stops the model save (no insert on top)", /if \(clearError\) return/.test(actionsSrc));

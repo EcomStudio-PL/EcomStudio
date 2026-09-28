@@ -99,8 +99,10 @@ export async function buildRequestManifest(
   const config: RequestManifest["config"] = {
     operation: probe(undefined)?.operation ?? "IMAGE_EDIT",
     ratioWhenOriginal: meta?.snaps ? "nearest_supported" : primary && slugOf(primary) === "google" ? "input_photo" : "provider_choice",
-    ratios: primary?.supported_aspect_ratios ?? [],
-    sizes: resolutions.map((r) => ({ resolution: r, sent: probe(r as Resolution)?.imageSize ?? null })),
+    // Retusz sends neither a ratio nor a size (Interactions body, no
+    // generation_config): none is offered and none is sent.
+    ratios: toolKey === "retouch" ? [] : primary?.supported_aspect_ratios ?? [],
+    sizes: resolutions.map((r) => ({ resolution: r, sent: toolKey === "retouch" ? null : probe(r as Resolution)?.imageSize ?? null })),
     timeoutMs: effectiveCallTimeout(engine?.timeoutMs) ?? null,
     maxAttempts: Math.min(Math.max(engine?.maxAttempts ?? MAX_ATTEMPTS_PER_PROVIDER, 1), MAX_ATTEMPTS_PER_PROVIDER),
     budgetMs: GENERATION_BUDGET_MS,

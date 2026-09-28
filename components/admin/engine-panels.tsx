@@ -155,6 +155,52 @@ function ManifestView({ m }: { m: RequestManifest }) {
       ],
     });
   }
+  // RETUSZ NETWORK BOUNDARY — read back from the exact HTTP body the adapter
+  // sent (ai_engine_runs.network_boundary, admin-only). Full SHA-256s, so they
+  // can be compared with a hash computed outside GrovBase.
+  const nb = (st?.boundary && typeof st.boundary === "object" ? st.boundary : null) as Record<string, unknown> | null;
+  if (last && recorded && st && nb) {
+    const v = (x: unknown) => x === null || x === undefined || x === "" ? "—" : String(x);
+    const inputs = Array.isArray(nb.provider_inputs) ? (nb.provider_inputs as { sha256?: string }[]) : [];
+    const omitted = (x: unknown) => x === "OMITTED" ? k("nb.omitted") : v(x);
+    const promptEqual = typeof nb.provider_prompt_sha256 === "string"
+      && nb.provider_prompt_sha256 === nb.published_prompt_sha256 && nb.provider_prompt_sha256 === nb.resolved_prompt_sha256;
+    sections.push({
+      title: k("nb.title"),
+      rows: [
+        [k("nb.model"), v(nb.model)],
+        [k("nb.endpoint"), `${v(nb.method)} ${v(nb.endpoint)}`],
+        [k("nb.stateless"), yesNo(nb.stateless === true)],
+        [k("nb.store"), v(nb.store)],
+        [k("nb.previous"), nb.previous_interaction_id_present ? k("yes") : k("nb.none")],
+        [k("nb.imageCount"), v(nb.image_parts_count)],
+        [k("nb.promptSource"), nb.prompt_source === "published" ? k("nb.promptSourceValue") : v(nb.prompt_source)],
+        [k("nb.promptVersion"), nb.prompt_version === null || nb.prompt_version === undefined ? "—" : `v${String(nb.prompt_version)}`],
+        [k("nb.promptLength"), k("nb.promptLengthValue", { chars: v(nb.published_prompt_length), bytes: v(nb.published_prompt_utf8_bytes) })],
+        [k("nb.promptSha"), v(nb.published_prompt_sha256)],
+        [k("nb.resolvedSha"), v(nb.resolved_prompt_sha256)],
+        [k("nb.providerSha"), v(nb.provider_prompt_sha256)],
+        [k("nb.promptEqual"), yesNo(promptEqual)],
+        [k("nb.uploadSha"), v(nb.input_original_sha256)],
+        [k("nb.providerImageSha"), v(inputs[0]?.sha256)],
+        [k("nb.imageEqual"), yesNo(typeof nb.input_original_sha256 === "string" && inputs.length === 1 && inputs[0]?.sha256 === nb.input_original_sha256)],
+        [k("nb.history"), v(nb.history_count)],
+        [k("nb.knowledge"), v(st.knowledgeCount)],
+        [k("nb.examples"), v(st.examplesCount)],
+        [k("nb.feedback"), v(st.feedbackCount)],
+        [k("nb.systemInstruction"), nb.system_instruction_present ? k("yes") : k("nb.none")],
+        [k("nb.additionalText"), v(nb.extra_text_parts)],
+        [k("nb.tools"), v(nb.tools_count)],
+        [k("nb.aspectRatio"), omitted(nb.aspect_ratio)],
+        [k("nb.imageSize"), omitted(nb.image_size)],
+        [k("nb.fallback"), v(nb.fallback)],
+        [k("nb.calls"), v(nb.total_provider_calls)],
+        [k("nb.fields"), Array.isArray(nb.request_field_names) ? nb.request_field_names.join(", ") : "—"],
+        [k("nb.headers"), Array.isArray(nb.request_headers) ? nb.request_headers.join(", ") : "—"],
+        [k("nb.contract"), nb.contract_ok === true ? k("yes") : `${k("no")} (${v(nb.contract_violation)})`],
+      ],
+    });
+  }
   if (last && recorded) {
     sections.push({
       title: k("last"),

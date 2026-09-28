@@ -1,8 +1,11 @@
 import "server-only";
 import type { AiModelRecord, GenerationRequest, GenerationResult, ImageProviderAdapter, ProviderCredential } from "../types";
 import { ProviderError, sanitizeUpstreamMessage, timeoutFor } from "../types";
-import { buildGeminiImageRequest, pickGeminiFinalImage, retouchContractViolation, type GeminiResponse } from "./google-request";
-import { captureGeminiBoundary } from "./google-boundary";
+import {
+  INTERACTIONS_API_REVISION, INTERACTIONS_PATH, buildGeminiImageRequest, buildRetouchInteraction, pickGeminiFinalImage,
+  pickInteractionFinalImage, retouchInteractionViolation, type GeminiResponse, type InteractionResponse,
+} from "./google-request";
+import { captureInteractionBoundary } from "./google-boundary";
 
 /**
  * Google's 429 body decides everything: a per-minute quota violation is a
@@ -102,22 +105,14 @@ export const googleAdapter: ImageProviderAdapter = {
   },
 
   async generate(model: AiModelRecord, req: GenerationRequest, cred: ProviderCredential): Promise<GenerationResult> {
+    // RETUSZ: its own minimal, stateless path (Interactions API, store:false).
+    if (req.strictSingleImage) return generateRetouch(model, req, cred);
     const base = cred.baseUrl?.replace(/\/$/, "") || "https://generativelanguage.googleapis.com";
     const url = `${base}/v1beta/models/${model.model_identifier}:generateContent?key=${encodeURIComponent(cred.apiKey)}`;
 
     // The prompt goes out verbatim — see buildGeminiImageRequest.
     const { body } = buildGeminiImageRequest(model, req);
-    // RETUSZ CONTRACT — checked on the exact body about to be sent. A body
-    // that is anything but [text === prompt, the one image] is refused here:
-    // no HTTP call, and the runner releases the reservation.
-    if (req.strictSingleImage) {
-      const violation = retouchContractViolation(body, req);
-      if (violation) throw new ProviderError("retouch_request_contract_failed", false, violation);
-    }
     const payload = JSON.stringify(body);
-    // NETWORK BOUNDARY (Retusz): read back from `payload` — the exact string
-    // passed to fetch below — never from what the builder meant to send.
-    const boundary = req.strictSingleImage ? captureGeminiBoundary(url, payload, model.model_identifier) : undefined;
 
     // QUANTITY IS N SEPARATE PAID CALLS, so a failure at call 4 of 4 must not
     // throw away — and make the runner buy again — the three images Google has
@@ -173,13 +168,9 @@ export const googleAdapter: ImageProviderAdapter = {
         if (!pick.image) throw new ProviderError("provider_empty_result", false, pick.finishReason ?? undefined);
         images.push({
           base64: pick.image.data, mime: pick.image.mimeType,
-          response: {
-            imageParts: pick.imageParts, thoughtImagesSkipped: pick.thoughtImages, finishReason: pick.finishReason,
-            ...(boundary ? { candidates: pick.candidates, parts: pick.parts, pickedPartIndex: pick.pickedPartIndex } : {}),
-          },
+          response: { imageParts: pick.imageParts, thoughtImagesSkipped: pick.thoughtImages, finishReason: pick.finishReason },
         });
       } catch (e) {
-        if (boundary && e instanceof ProviderError) e.boundary = boundary;
         // The FIRST call failing means nothing was produced and nothing was
         // billed, so it throws clean and the runner retries and falls back
         // exactly as it does today.
@@ -191,7 +182,67 @@ export const googleAdapter: ImageProviderAdapter = {
     return {
       images,
       usage: inputTokens === undefined && outputTokens === undefined ? undefined : { inputTokens, outputTokens },
-      ...(boundary ? { providerMetadata: { network_boundary: boundary } } : {}),
     };
   },
 };
+
+/**
+ * RETUSZ — ONE STATELESS INTERACTION.
+ *
+ * POST /v1beta/interactions with the body buildRetouchInteraction makes
+ * (model + [prompt, photo] + response_modalities image + store:false). The
+ * key travels in `x-goog-api-key` (as the official SDKs send it), never in
+ * the URL. Exactly one HTTP request: no loop, no retry here.
+ *
+ * Before the request: the string about to be sent is parsed back and must be
+ * exactly [the prompt, the photo] (retouchInteractionViolation), and the
+ * photo inside it must hash to the stored original (strictInputSha256). Any
+ * mismatch → `retouch_request_contract_failed`, no HTTP call; the runner
+ * releases the reservation.
+ */
+async function generateRetouch(model: AiModelRecord, req: GenerationRequest, cred: ProviderCredential): Promise<GenerationResult> {
+  const base = cred.baseUrl?.replace(/\/$/, "") || "https://generativelanguage.googleapis.com";
+  const url = `${base}${INTERACTIONS_PATH}`;
+  const payload = JSON.stringify(buildRetouchInteraction(model, req));
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-goog-api-key": cred.apiKey,
+    "Api-Revision": INTERACTIONS_API_REVISION,
+  };
+  // NETWORK BOUNDARY: read back from `payload`, the exact string sent below.
+  const captured = captureInteractionBoundary(url, Object.keys(headers), payload, model.model_identifier);
+  const violation = retouchInteractionViolation(JSON.parse(payload) as Record<string, unknown>, req, model.model_identifier)
+    ?? (req.quantity !== 1 ? "quantity" : null)
+    ?? (req.strictInputSha256 && captured.provider_inputs[0]?.sha256 !== req.strictInputSha256 ? "image_sha_mismatch" : null);
+  const boundary: Record<string, unknown> = { ...captured, contract_ok: violation === null, contract_violation: violation, http_requests: 0 };
+  const fail = (e: ProviderError): never => { e.boundary = boundary; throw e; };
+  if (violation) fail(new ProviderError("retouch_request_contract_failed", false, violation));
+
+  const budget = timeoutFor(req.callTimeoutMs ?? GOOGLE_CALL_CAP_MS, req.deadlineAt);
+  if (budget <= MIN_USEFUL_CALL_MS) fail(new ProviderError("provider_timeout", true));
+  boundary.http_requests = 1;
+  const res = await fetch(url, { method: "POST", headers, body: payload, signal: AbortSignal.timeout(budget) })
+    .catch((e) => fail(new ProviderError(e?.name === "TimeoutError" ? "provider_timeout" : "provider_unreachable", true)));
+  if (!res.ok) fail(await classifyGoogleError(res));
+  const json = (await res.json().catch(() => ({}))) as InteractionResponse;
+  // The final image by the SDK's own output_image rule; drafts (thought
+  // steps) are never kept.
+  const pick = pickInteractionFinalImage(json);
+  if (!pick.image) fail(new ProviderError("provider_empty_result", false, pick.status ?? undefined));
+  const u = json.usage;
+  return {
+    images: [{
+      base64: pick.image!.data, mime: pick.image!.mimeType,
+      response: {
+        imageParts: pick.outputImages + pick.thoughtImages, thoughtImagesSkipped: pick.thoughtImages, finishReason: pick.status,
+        steps: pick.steps, pickedStep: pick.picked,
+      },
+    }],
+    usage: u ? {
+      inputTokens: u.total_input_tokens,
+      outputTokens: u.total_output_tokens === undefined && u.total_thought_tokens === undefined
+        ? undefined : (u.total_output_tokens ?? 0) + (u.total_thought_tokens ?? 0),
+    } : undefined,
+    providerMetadata: { network_boundary: boundary },
+  };
+}

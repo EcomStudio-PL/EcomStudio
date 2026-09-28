@@ -179,3 +179,133 @@ export function buildGeminiImageRequest(model: ModelShape, req: RequestShape): G
     },
   };
 }
+
+/* ── RETUSZ: the Interactions API ────────────────────────────────────────── */
+
+/**
+ * RETUSZ GOES THROUGH THE INTERACTIONS API — one stateless call.
+ *
+ * Google's current primary API for Gemini (gemini-skills `gemini-api-dev`,
+ * 2026-09; the Nano Banana cookbook edits images through
+ * `client.interactions.create`). Retusz is the only caller; every other tool
+ * keeps generateContent above.
+ *
+ * The body is the minimum the official image-editing example sends:
+ *   model               gemini-3-pro-image
+ *   input               [ {type:"text", text: PROMPT}, {type:"image", data, mime_type} ]
+ *                       — the cookbook's order for an edit: the instruction,
+ *                       then the photo
+ *   response_modalities ["image"] — "if you only want an image" (cookbook)
+ *   store               false — interactions are STORED by default; false
+ *                       opts out and makes previous_interaction_id impossible
+ * Nothing else: no previous_interaction_id, system_instruction,
+ * generation_config (so no image size, no aspect ratio, no thinking level),
+ * tools, safety_settings or labels.
+ */
+export const INTERACTIONS_PATH = "/v1beta/interactions";
+/** REST revision the official migration checklist says to send
+ *  (`Api-Revision`; the same value is google-genai's GOOGLE_GENAI_API_REVISION). */
+export const INTERACTIONS_API_REVISION = "2026-05-20";
+
+export type RetouchInteractionBody = {
+  model: string;
+  input: [{ type: "text"; text: string }, { type: "image"; data: string; mime_type: string }];
+  response_modalities: ["image"];
+  store: false;
+};
+
+export function buildRetouchInteraction(
+  model: Pick<AiModelRecord, "model_identifier">,
+  req: Pick<GenerationRequest, "prompt" | "referenceImages">,
+): RetouchInteractionBody {
+  const image = req.referenceImages[0];
+  return {
+    model: model.model_identifier,
+    input: [
+      { type: "text", text: req.prompt },
+      { type: "image", data: image?.base64 ?? "", mime_type: image?.mime ?? "" },
+    ],
+    response_modalities: ["image"],
+    store: false,
+  };
+}
+
+/**
+ * The Retusz contract, checked on the body AS SERIALISED (the string about to
+ * be sent, parsed back): exactly {model, input, response_modalities, store},
+ * store false, input exactly [the prompt byte for byte, the one image
+ * byte for byte]. Returns the first violation, or null.
+ */
+export function retouchInteractionViolation(
+  body: Record<string, unknown>,
+  req: Pick<GenerationRequest, "prompt" | "referenceImages">,
+  modelIdentifier: string,
+): string | null {
+  if (Object.keys(body).sort().join(",") !== "input,model,response_modalities,store") return "top_level_fields";
+  if (body.model !== modelIdentifier) return "model";
+  if (body.store !== false) return "store";
+  if (JSON.stringify(body.response_modalities) !== '["image"]') return "response_modalities";
+  if (req.referenceImages.length !== 1) return "input_image_count";
+  const input = body.input;
+  if (!Array.isArray(input) || input.length !== 2) return "input_count";
+  const [text, image] = input as Record<string, unknown>[];
+  if (text?.type !== "text" || image?.type !== "image") return "input_order";
+  if (Object.keys(text).sort().join(",") !== "text,type") return "text_fields";
+  if (Object.keys(image).sort().join(",") !== "data,mime_type,type") return "image_fields";
+  if (text.text !== req.prompt) return "prompt_mismatch";
+  if (image.data !== req.referenceImages[0]!.base64 || image.mime_type !== req.referenceImages[0]!.mime) return "image_mismatch";
+  return null;
+}
+
+/**
+ * The image to keep from an interaction — the official SDK's `output_image`
+ * rule (google-genai 2.25 / @google/genai 2.24): walking the steps back to the
+ * last `user_input`, the LAST `image` inside a `model_output` step. Interim
+ * images live in `thought` steps and are never kept. A response without a
+ * final image is empty (the run is refunded).
+ */
+export type InteractionResponse = {
+  status?: string;
+  steps?: { type?: string; content?: { type?: string; data?: string; mime_type?: string; text?: string }[]; summary?: { type?: string }[] }[];
+  usage?: { total_input_tokens?: number; total_output_tokens?: number; total_thought_tokens?: number };
+};
+export type InteractionPick = {
+  image: { mimeType: string; data: string } | null;
+  status: string | null;
+  steps: { type: string; content: { type: string; mimeType: string | null }[] }[];
+  /** [step index, content index] of the image kept. */
+  picked: [number, number] | null;
+  /** Images seen in model_output steps, and in thought steps (never kept). */
+  outputImages: number;
+  thoughtImages: number;
+};
+
+export function pickInteractionFinalImage(json: InteractionResponse): InteractionPick {
+  const steps = json.steps ?? [];
+  let picked: [number, number] | null = null;
+  for (let i = steps.length - 1; i >= 0 && !picked; i--) {
+    const step = steps[i]!;
+    if (step.type === "user_input") break;
+    if (step.type !== "model_output" || !step.content) continue;
+    for (let j = step.content.length - 1; j >= 0; j--) {
+      if (step.content[j]?.type === "image" && step.content[j]?.data) { picked = [i, j]; break; }
+    }
+  }
+  const content = picked ? steps[picked[0]]!.content![picked[1]]! : null;
+  let outputImages = 0, thoughtImages = 0;
+  for (const s of steps) {
+    if (s.type === "model_output") outputImages += (s.content ?? []).filter((c) => c.type === "image").length;
+    if (s.type === "thought") thoughtImages += (s.summary ?? []).filter((c) => c.type === "image").length;
+  }
+  return {
+    image: content?.data ? { mimeType: content.mime_type || "image/png", data: content.data } : null,
+    status: json.status ?? null,
+    steps: steps.map((s) => ({
+      type: s.type ?? "?",
+      content: [...(s.content ?? []), ...(s.summary ?? [])].map((c) => ({ type: c.type ?? "?", mimeType: (c as { mime_type?: string }).mime_type ?? null })),
+    })),
+    picked,
+    outputImages,
+    thoughtImages,
+  };
+}

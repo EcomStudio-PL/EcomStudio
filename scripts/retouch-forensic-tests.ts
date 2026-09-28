@@ -1,19 +1,27 @@
 /**
- * RETUSZ FORENSIC — the real path from "Retuszuj" to the socket, compared with
- * an INDEPENDENT hand-written request (scripts/retouch-baseline.ts).
+ * RETUSZ FORENSIC — one click, followed from the panel to the socket:
  *
- *   B = the exact string GrovBase hands to fetch, captured here, after
- *       runRetouch → runEngineImageTool → runGeneration → googleAdapter.
- *   A = baselineBody(): the same prompt, the same file, the same size — built
- *       without a single line of application code.
+ *   UI (components/retouch/workspace.tsx: what the browser POSTs)
+ *   → POST /api/retouch (the REAL route handler)
+ *   → runRetouch → runEngineImageTool → runGeneration → googleAdapter
+ *   → the exact string handed to fetch   (captured here: "B")
  *
- * A and B are compared as bytes and as structures. The admin-only
- * network-boundary record is checked against B, and the stored output against
- * the provider's final (non-thought) image.
+ * compared with an INDEPENDENT hand-written request (scripts/retouch-baseline.ts,
+ * Google's cookbook image edit via the Interactions API: "A").
+ *
+ * Only the route's surroundings are stubbed (session, account block, feature
+ * switch, workspace lookup, workflow driver — scripts/stubs/forensic-*.ts),
+ * plus the database and storage. Everything from runRetouch to fetch is the
+ * production code.
+ *
+ * Expected, printed per run:
+ *   PROMPT_EQUAL=true IMAGE_EQUAL=true STATELESS=true ADDITIONAL_TEXT=0
+ *   HISTORY=0 KNOWLEDGE=0 FEEDBACK=0 SYSTEM_INSTRUCTION=NONE
+ *   IMAGE_SIZE=OMITTED ASPECT_RATIO=OMITTED PROVIDER_CALLS=1
  *
  * Run: npm run test:retouchforensic
- * Optional: RETUSZ_PROMPT_FILE=<path> also runs the chain with a real prompt
- * kept outside the repository (GrovBase prompts are never committed).
+ * Optional: RETUSZ_PROMPT_FILE=<path> also runs a real prompt kept outside the
+ * repository (GrovBase prompts are never committed).
  */
 import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
@@ -21,8 +29,8 @@ import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import sharp from "sharp";
 import type { EngineConfig } from "@/lib/server/ai-engine";
-import { runRetouch } from "@/lib/server/retouch";
-import { captureGeminiBoundary } from "@/lib/ai/providers/google-boundary";
+import { POST as retouchRoute } from "@/app/api/retouch/route";
+import { captureInteractionBoundary } from "@/lib/ai/providers/google-boundary";
 import { baselineBody, BASELINE_ENDPOINT } from "./retouch-baseline";
 
 let failed = 0;
@@ -32,14 +40,15 @@ function check(name: string, ok: boolean, detail?: unknown) {
   else { failed++; console.log(`  ✗ ${name}`); if (detail !== undefined) console.log("      ", typeof detail === "string" ? detail.slice(0, 600) : JSON.stringify(detail).slice(0, 600)); }
 }
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
+const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
-/* ── an in-memory PROD: one model row, the storage bucket, the job rows ───*/
+/* ── an in-memory PROD: model rows, the storage bucket, the job rows ─────── */
 
 type Row = Record<string, unknown>;
 const PRO_ID = "m-pro";
 const FB_ID = "m-fb";
-type Db = { files: Map<string, Buffer>; jobs: Map<string, Row>; engineRuns: Row[]; tables: string[] };
-function freshDb(): Db { return { files: new Map(), jobs: new Map(), engineRuns: [], tables: [] }; }
+type Db = { files: Map<string, Buffer>; jobs: Map<string, Row>; engineRuns: Row[]; tables: string[]; ledger: string[] };
+function freshDb(): Db { return { files: new Map(), jobs: new Map(), engineRuns: [], tables: [], ledger: [] }; }
 const models: Row[] = [PRO_ID, FB_ID].map((id) => ({
   id, name: id, display_name: id, model_identifier: id === PRO_ID ? "gemini-3-pro-image" : "gemini-3.1-flash-image",
   active: true, supports_reference_images: true, max_reference_images: 6,
@@ -113,29 +122,26 @@ function fakeSupabase(db: Db) {
     },
   };
 }
-type FakeClient = Parameters<typeof runRetouch>[0];
 
-/* ── the socket: every Google request, as the raw string that was sent ────*/
+/* ── the socket: every Google request, as the raw string that was sent ───── */
 
-type Wire = { url: string; body: string };
+type Wire = { url: string; body: string; headers: Record<string, string> };
 let wire: Wire[] = [];
 let statuses: number[] = [];
-let responseParts: Row[] = [];
+let responseSteps: Row[] = [];
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   if (!url.includes("generativelanguage.googleapis.com")) return realFetch(input, init);
   if (typeof init?.body !== "string") throw new Error("body is not a string");
-  wire.push({ url, body: init.body });
+  wire.push({ url, body: init.body, headers: (init.headers ?? {}) as Record<string, string> });
   const status = statuses.shift() ?? 200;
   if (status !== 200) return new Response(JSON.stringify({ error: { status: "UNAVAILABLE", message: "overloaded" } }), { status });
-  return new Response(JSON.stringify({
-    candidates: [{ finishReason: "STOP", content: { parts: responseParts } }],
-    usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 1200 },
-  }), { status: 200, headers: { "content-type": "application/json" } });
+  return new Response(JSON.stringify({ id: "int-1", status: "completed", steps: [{ type: "user_input", content: [] }, ...responseSteps] }),
+    { status: 200, headers: { "content-type": "application/json" } });
 }) as typeof fetch;
 
-const g = globalThis as unknown as { __fidelityEngine?: EngineConfig | null };
+const g = globalThis as unknown as { __fidelityEngine?: EngineConfig | null; __forensicClient?: unknown; __forensicUser?: { id: string } | null; __fidelityLedger?: string[] };
 function engine(over: Partial<EngineConfig>): EngineConfig {
   return {
     toolKey: "retouch", mode: "grovbase", serviceSlug: "image_edit", allowModelChoice: false,
@@ -144,11 +150,16 @@ function engine(over: Partial<EngineConfig>): EngineConfig {
   };
 }
 
-async function run(db: Db, path: string, opts: { format: string; resolution: string }) {
-  wire = [];
-  const res = await runRetouch(fakeSupabase(db) as unknown as FakeClient, "u", "w", { sourcePath: path, ...opts });
+/** One click: the browser's POST, through the REAL route handler. */
+async function click(db: Db, body: Row) {
+  wire = []; g.__fidelityLedger = [];
+  g.__forensicClient = fakeSupabase(db); g.__forensicUser = { id: "u" };
+  const res = await retouchRoute(new Request("https://grovbase.test/api/retouch", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  }));
+  const json = await res.json() as Row;
   const job = [...db.jobs.values()].pop() ?? {};
-  return { res, job, engineRun: db.engineRuns[db.engineRuns.length - 1] ?? {} };
+  return { status: res.status, json, job, pr: ((job.settings ?? {}) as Row).provider_request as Row | undefined, run: db.engineRuns[db.engineRuns.length - 1] ?? {} };
 }
 
 async function main() {
@@ -158,117 +169,178 @@ async function main() {
     .jpeg({ quality: 90 }).withMetadata({ orientation: 6 }).toBuffer();
   const draft = await sharp({ create: { width: 64, height: 48, channels: 3, background: "#f00" } }).jpeg().toBuffer();
   const final = await sharp({ create: { width: 96, height: 128, channels: 3, background: "#0a0" } }).jpeg().toBuffer();
-  responseParts = [
-    { text: "thinking…", thought: true },
-    { inlineData: { mimeType: "image/jpeg", data: draft.toString("base64") }, thought: true },
-    { inlineData: { mimeType: "image/jpeg", data: final.toString("base64") } },
+  responseSteps = [
+    { type: "thought", signature: "sig", summary: [{ type: "text", text: "planning" }, { type: "image", data: draft.toString("base64"), mime_type: "image/jpeg" }] },
+    { type: "model_output", content: [{ type: "image", data: final.toString("base64"), mime_type: "image/jpeg" }] },
   ];
+  const SRC = "w/retouch-x/src.jpg";
 
-  // Tricky on purpose: Polish letters, a no-break space, an en dash, CRLF,
-  // brackets that look like markers, trailing spaces and a final newline.
+  console.log("\nU0  THE PANEL — what the browser sends on 'Retuszuj'");
+  const ui = read("components/retouch/workspace.tsx");
+  const uiBody = /fetch\("\/api\/retouch",[\s\S]*?body: JSON\.stringify\((\{[^)]*\})\)/.exec(ui)?.[1] ?? "";
+  check("the panel POSTs only { sourcePath, expectedOutputs } — no size, no framing, no prompt",
+    uiBody.replace(/\s+/g, " ") === "{ sourcePath: job.path, expectedOutputs: outputsPerRun }", uiBody);
+  check("the panel renders no resolution / format picker (shows the 'temporarily unavailable' note instead)",
+    !/testId="resolution"|testId="format"/.test(ui) && /data-retouch-settings-locked/.test(ui) && /retouch\.settingsLockedBody/.test(ui));
+  check("the panel shows no 👍/👎 on Retusz results; the server refuses them too",
+    /item\.operation !== "image_retouch" && <ResultFeedback/.test(read("components/genv3/image-details.tsx"))
+    && /STATELESS_OPERATIONS = new Set\(\["image_retouch"\]\)/.test(read("app/actions/feedback.ts")));
+
+  // Tricky on purpose: Polish letters, a no-break space, an em dash, CRLF,
+  // marker-like brackets, inner and trailing spaces, a final newline.
   const SYNTHETIC = "[ZADANIE]\r\nPrzekształć zdjęcie — zachowaj produkt 1:1.\n\nDATA: none · AVOID: none  \n";
   const prompts: [string, string][] = [["synthetic", SYNTHETIC]];
   const real = process.env.RETUSZ_PROMPT_FILE;
   if (real && existsSync(real)) prompts.push(["real (RETUSZ_PROMPT_FILE)", readFileSync(real, "utf8").replace(/\n$/, "")]);
 
   for (const [label, PROMPT] of prompts) {
-    console.log(`\nF1–F7  2K + ORYGINALNY — prompt: ${label} (${Array.from(PROMPT).length} chars, sha256 ${sha(PROMPT).slice(0, 16)}…)`);
-    const db = freshDb(); db.files.set("w/retouch-x/src.jpg", photo);
+    console.log(`\nF1  ONE CLICK → ONE REQUEST — prompt: ${label} (${Array.from(PROMPT).length} chars, sha256 ${sha(PROMPT).slice(0, 16)}…)`);
+    const db = freshDb(); db.files.set(SRC, photo);
     g.__fidelityEngine = engine({ systemPrompt: PROMPT, promptVersion: 5 });
-    const { res, job, engineRun } = await run(db, "w/retouch-x/src.jpg", { format: "original", resolution: "2K" });
-    check("the run succeeded", res.ok, res);
+    const { status, json, job, pr, run } = await click(db, { sourcePath: SRC, expectedOutputs: 1 });
+    check("the route answered 200 ok", status === 200 && json.ok === true, json);
     check("exactly ONE HTTP request left GrovBase", wire.length === 1, wire.length);
     const B = wire[0]?.body ?? "";
-    const A = baselineBody({ prompt: PROMPT, image: photo, mimeType: "image/jpeg", imageSize: "2K" });
+    const A = baselineBody({ prompt: PROMPT, image: photo, mimeType: "image/jpeg" });
     check("A == B byte for byte (independent baseline vs the string handed to fetch)", A === B,
       A === B ? undefined : { aBytes: A.length, bBytes: B.length, firstDiff: [...A].findIndex((c, i) => c !== B[i]) });
     check("A == B as structures", isDeepStrictEqual(JSON.parse(A), JSON.parse(B)));
-    check("endpoint == the documented one (+ ?key=, never in the body)", (wire[0]?.url ?? "").split("?")[0] === BASELINE_ENDPOINT && !B.includes("test-key"), wire[0]?.url.split("?")[0]);
+    check("POST https://generativelanguage.googleapis.com/v1beta/interactions — no key in the URL", wire[0]?.url === BASELINE_ENDPOINT, wire[0]?.url);
+    check("headers: Content-Type, x-goog-api-key, Api-Revision — nothing else", Object.keys(wire[0]?.headers ?? {}).sort().join() === "Api-Revision,Content-Type,x-goog-api-key");
 
-    const nb = (engineRun.network_boundary ?? {}) as Row;
-    check("the engine run carries the network-boundary record", Object.keys(nb).length > 0, engineRun);
-    check("PROMPT: published sha256 == resolved sha256 == provider sha256 == sha256(prompt)",
-      nb.published_prompt_sha256 === sha(PROMPT) && nb.resolved_prompt_sha256 === sha(PROMPT) && nb.provider_prompt_sha256 === sha(PROMPT), nb);
-    check("PROMPT: lengths equal at every step (chars and UTF-8 bytes)",
+    const nb = (run.network_boundary ?? {}) as Row;
+    const sent = JSON.parse(B) as Row;
+    const input = sent.input as Row[];
+    const flags = {
+      PROMPT_EQUAL: nb.published_prompt_sha256 === sha(PROMPT) && nb.resolved_prompt_sha256 === sha(PROMPT) && nb.provider_prompt_sha256 === sha(PROMPT) && input[0]!.text === PROMPT,
+      IMAGE_EQUAL: nb.input_original_sha256 === sha(photo) && (nb.provider_inputs as Row[])[0]?.sha256 === sha(photo) && sha(Buffer.from(String(input[1]!.data), "base64")) === sha(photo),
+      STATELESS: nb.stateless === true && nb.store === false && nb.previous_interaction_id_present === false && !("previous_interaction_id" in sent),
+      ADDITIONAL_TEXT: nb.extra_text_parts,
+      HISTORY: nb.history_count,
+      KNOWLEDGE: pr?.knowledge_count,
+      EXAMPLES: pr?.examples_count,
+      FEEDBACK: pr?.feedback_count,
+      SYSTEM_INSTRUCTION: nb.system_instruction_present === false && !("system_instruction" in sent) ? "NONE" : "PRESENT",
+      TOOLS: nb.tools_count,
+      IMAGE_SIZE: nb.image_size,
+      ASPECT_RATIO: nb.aspect_ratio,
+      FALLBACK: nb.fallback,
+      PROVIDER_CALLS: nb.total_provider_calls,
+    };
+    console.log("    " + Object.entries(flags).map(([k, v]) => `${k}=${v}`).join("  "));
+    check("EXPECTED: PROMPT_EQUAL IMAGE_EQUAL STATELESS; ADDITIONAL_TEXT HISTORY KNOWLEDGE EXAMPLES FEEDBACK TOOLS = 0; SYSTEM_INSTRUCTION NONE; IMAGE_SIZE / ASPECT_RATIO OMITTED; FALLBACK OFF; PROVIDER_CALLS 1",
+      flags.PROMPT_EQUAL && flags.IMAGE_EQUAL && flags.STATELESS && flags.ADDITIONAL_TEXT === 0 && flags.HISTORY === 0
+      && flags.KNOWLEDGE === 0 && flags.EXAMPLES === 0 && flags.FEEDBACK === 0 && flags.TOOLS === 0 && flags.SYSTEM_INSTRUCTION === "NONE"
+      && flags.IMAGE_SIZE === "OMITTED" && flags.ASPECT_RATIO === "OMITTED" && flags.FALLBACK === "OFF" && flags.PROVIDER_CALLS === 1, flags);
+    check("REQUEST FIELD NAMES = [model, input, response_modalities, store]; STRICT_STATELESS; EXTRA_FIELDS []",
+      JSON.stringify(nb.request_field_names) === '["model","input","response_modalities","store"]' && nb.strict_stateless === true && JSON.stringify(nb.extra_fields) === "[]", nb.request_field_names);
+    check("model gemini-3-pro-image, API v1beta, body sha256 recorded == sha256 of the string sent",
+      nb.model === "gemini-3-pro-image" && nb.api_version === "v1beta" && nb.request_body_sha256 === sha(B) && nb.request_body_bytes === Buffer.byteLength(B));
+    check("prompt lengths equal at every step (chars and UTF-8 bytes)",
       nb.published_prompt_length === Array.from(PROMPT).length && nb.resolved_prompt_length === nb.published_prompt_length
       && nb.provider_prompt_length === nb.published_prompt_length && nb.provider_prompt_utf8_bytes === Buffer.byteLength(PROMPT));
-    const inputs = (nb.provider_inputs ?? []) as Row[];
-    check("IMAGE: stored original sha256 == sha256 inside the HTTP body == upload", nb.input_original_sha256 === sha(photo) && inputs[0]?.sha256 === sha(photo) && inputs.length === 1, { nb: nb.input_original_sha256, sent: inputs[0]?.sha256 });
-    check("IMAGE: same byte count, mime image/jpeg, transform none", nb.input_original_bytes === photo.length && inputs[0]?.bytes === photo.length && inputs[0]?.mime_type === "image/jpeg" && nb.input_transform === "none");
-    const sentImg = Buffer.from((JSON.parse(B).contents[0].parts[1].inlineData.data as string), "base64");
-    check("IMAGE: the EXIF orientation flag is still in the bytes sent (nothing re-encoded)", (await sharp(sentImg).metadata()).orientation === 6);
-    check("REQUEST: body sha256 recorded == sha256 of the string sent", nb.request_body_sha256 === sha(B) && nb.request_body_bytes === Buffer.byteLength(B));
-    check("REQUEST: model gemini-3-pro-image, API v1beta, endpoint recorded without the key",
-      nb.model === "gemini-3-pro-image" && nb.api_version === "v1beta" && nb.endpoint === BASELINE_ENDPOINT && !JSON.stringify(nb).includes("key="), { m: nb.model, v: nb.api_version, e: nb.endpoint });
-    check("REQUEST: 1 content, role user, parts [text, inlineData], 1 text + 1 image, history 0",
-      nb.contents_length === 1 && JSON.stringify(nb.roles) === '["user"]' && JSON.stringify(nb.parts_order) === '["text","inlineData"]'
-      && nb.text_parts_count === 1 && nb.image_parts_count === 1 && nb.history_count === 0, nb);
-    check("REQUEST: no systemInstruction, tools, toolConfig, safetySettings, cachedContent",
-      !nb.system_instruction_present && !nb.tools_present && !nb.tool_config_present && !nb.safety_settings_present && !nb.cached_content_present);
-    check("REQUEST: EXTRA_FIELDS = [], EXTRA_TEXT_PARTS = 0, STRICT_STATELESS = true",
-      JSON.stringify(nb.extra_fields) === "[]" && nb.extra_text_parts === 0 && nb.strict_stateless === true, nb.extra_fields);
-    check("CONFIG: generationConfig EXACTLY {responseModalities:[IMAGE], imageConfig:{imageSize:2K}} — no aspectRatio",
-      JSON.stringify(nb.generation_config) === '{"responseModalities":["IMAGE"],"imageConfig":{"imageSize":"2K"}}', nb.generation_config);
-    check("PRIVACY: the customer-readable job row holds no plain SHA-256 of the prompt and no prompt text",
+    check("the EXIF orientation flag is still in the bytes sent (nothing re-encoded); transform none",
+      (await sharp(Buffer.from(String(input[1]!.data), "base64")).metadata()).orientation === 6 && nb.input_transform === "none");
+    check("PRIVACY: no API key anywhere in the record (headers recorded by NAME only)",
+      JSON.stringify(nb.request_headers) === '["api-revision","content-type","x-goog-api-key"]' && !JSON.stringify(nb).includes(String(wire[0]?.headers["x-goog-api-key"])));
+    check("PRIVACY: the customer-readable job row holds no plain SHA-256 of the prompt, no prompt text",
       !JSON.stringify(job).includes(sha(PROMPT)) && !JSON.stringify(job).includes(PROMPT.slice(0, 20)));
     check("PRIVACY: the admin record holds no prompt text and no image bytes",
       !JSON.stringify(nb).includes(PROMPT.slice(0, 20)) && !JSON.stringify(nb).includes(photo.toString("base64").slice(0, 40)));
 
     const out = (((job.settings ?? {}) as Row).provider_output ?? []) as Row[];
     const stored = db.files.get(String(out[0]?.stored_path ?? ""));
-    check("OUTPUT: 1 candidate, 3 parts (thought text, thought image, final image), part #2 kept",
-      out[0]?.provider_candidates === 1 && (out[0]?.provider_parts as Row[] | undefined)?.length === 3 && out[0]?.provider_picked_part_index === 2, out[0]);
-    check("OUTPUT: stored bytes == the provider's FINAL image, byte for byte (never the draft)", !!stored && sha(stored) === sha(final) && sha(stored) !== sha(draft));
-    check("OUTPUT: provider sha256 == stored sha256, no transform after the provider",
-      out[0]?.provider_sha256 === sha(final) && out[0]?.stored_equals_provider === true && out[0]?.transformed_after_provider === false);
-    check("OUTPUT: the input photo is not what was stored (no blend/composite with the original)", !!stored && sha(stored) !== sha(photo));
+    check("OUTPUT: stored bytes == the provider's FINAL (model_output) image — never the thought draft",
+      !!stored && sha(stored) === sha(final) && sha(stored) !== sha(draft) && JSON.stringify(out[0]?.provider_picked_step) === "[2,0]", out[0]);
+    check("OUTPUT: provider sha256 == stored sha256, no transform, not the input photo",
+      out[0]?.provider_sha256 === sha(final) && out[0]?.stored_equals_provider === true && out[0]?.transformed_after_provider === false && sha(stored ?? Buffer.alloc(0)) !== sha(photo));
+    check("CREDITS: one charge, completed (ledger start → complete)", JSON.stringify(g.__fidelityLedger) === '["start","complete"]', g.__fidelityLedger);
   }
 
-  console.log("\nF8  A CHOSEN FORMAT is sent exactly (3:4, 2K)");
+  console.log("\nF2  THE BROWSER CANNOT ADD A SIZE OR A FRAMING");
   {
-    const db = freshDb(); db.files.set("w/r/src.jpg", photo);
+    const db = freshDb(); db.files.set(SRC, photo);
     g.__fidelityEngine = engine({ systemPrompt: SYNTHETIC, promptVersion: 5 });
-    await run(db, "w/r/src.jpg", { format: "3:4", resolution: "2K" });
-    const A = baselineBody({ prompt: SYNTHETIC, image: photo, mimeType: "image/jpeg", imageSize: "2K", aspectRatio: "3:4" });
-    check("A == B byte for byte with aspectRatio 3:4", wire[0]?.body === A);
+    await click(db, { sourcePath: SRC, expectedOutputs: 1 });
+    const clean = wire[0]?.body;
+    await click(db, { sourcePath: SRC, expectedOutputs: 1, resolution: "4K", format: "16:9" });
+    check("a hand-crafted { resolution: 4K, format: 16:9 } POST produces the SAME body (nothing added)", wire.length === 1 && wire[0]?.body === clean);
   }
 
-  console.log("\nF9  ONE ATTEMPT, NO FALLBACK");
+  console.log("\nF3  ONE REQUEST — no retry, no fallback, whatever the panel says");
   {
-    const db = freshDb(); db.files.set("w/r/src.jpg", photo);
-    // Even with a fallback row assigned but fallback OFF, and a retriable 503:
-    g.__fidelityEngine = engine({ systemPrompt: SYNTHETIC, promptVersion: 5, fallbackModelId: FB_ID, fallbackEnabled: false });
-    statuses = [503, 200, 200];
-    const { res, engineRun } = await run(db, "w/r/src.jpg", { format: "original", resolution: "2K" });
+    const db = freshDb(); db.files.set(SRC, photo);
+    g.__fidelityEngine = engine({ systemPrompt: SYNTHETIC, promptVersion: 5, maxAttempts: 3, fallbackEnabled: true, fallbackModelId: FB_ID });
+    statuses = [503, 503, 503];
+    const r = await click(db, { sourcePath: SRC, expectedOutputs: 1 });
     statuses = [];
-    check("a 503 is NOT retried and NOT sent to another model — exactly 1 request", wire.length === 1 && !res.ok, { n: wire.length, res });
-    check("the only request went to gemini-3-pro-image", (wire[0]?.url ?? "").includes("/models/gemini-3-pro-image:generateContent"));
-    const nb = (engineRun.network_boundary ?? {}) as Row;
-    check("…and the failed run still records what crossed the boundary", nb.request_body_sha256 === sha(wire[0]?.body ?? ""), nb);
+    check("a 503 with 'Próby: 3' + fallback ON → exactly 1 request, to gemini-3-pro-image, refused + refunded",
+      wire.length === 1 && JSON.parse(wire[0]!.body).model === "gemini-3-pro-image" && r.json.ok === false && JSON.stringify(g.__fidelityLedger) === '["start","fail"]', { n: wire.length, ledger: g.__fidelityLedger });
+    check("…and the failed run still records PROVIDER_CALLS 1 at the boundary", (r.run.network_boundary as Row | undefined)?.total_provider_calls === 1, r.run.network_boundary);
+    responseSteps = [{ type: "thought", signature: "s", summary: [{ type: "image", data: draft.toString("base64"), mime_type: "image/jpeg" }] }];
+    const empty = await click(db, { sourcePath: SRC, expectedOutputs: 1 });
+    check("no final image (thought draft only) → ERROR + refund, the draft is never stored",
+      empty.json.ok === false && empty.json.error === "provider_empty_result" && JSON.stringify(g.__fidelityLedger) === '["start","fail"]' && wire.length === 1, empty.json);
+    responseSteps = [{ type: "model_output", content: [{ type: "image", data: final.toString("base64"), mime_type: "image/jpeg" }] }];
   }
 
-  console.log("\nF10 THE CAPTURE IS NOT A RUBBER STAMP — it reads the string, not the builder");
+  console.log("\nF4  THE COMPARISON CATCHES EVERY KIND OF TAMPERING (applied to the real body B)");
   {
-    const body = JSON.parse(baselineBody({ prompt: "p", image: photo, mimeType: "image/jpeg", imageSize: "2K" }));
-    body.systemInstruction = { parts: [{ text: "hidden" }] };
-    body.contents[0].parts.push({ text: "appended" });
-    body.generationConfig.temperature = 0.2;
-    body.contents.unshift({ role: "model", parts: [{ text: "earlier turn" }] });
-    const nb = captureGeminiBoundary(`${BASELINE_ENDPOINT}?key=SECRET`, JSON.stringify(body), "gemini-3-pro-image");
-    check("systemInstruction, an extra text part, a sampling knob and a history turn are all reported",
-      nb.system_instruction_present && nb.extra_text_parts === 1 && nb.history_count === 1
-      && nb.extra_fields.includes("systemInstruction") && nb.extra_fields.includes("generationConfig.temperature") && nb.strict_stateless === false, nb);
-    check("the API key never lands in the record", !JSON.stringify(nb).includes("SECRET"));
+    const db = freshDb(); db.files.set(SRC, photo);
+    g.__fidelityEngine = engine({ systemPrompt: SYNTHETIC, promptVersion: 5 });
+    await click(db, { sourcePath: SRC, expectedOutputs: 1 });
+    const B = wire[0]!.body;
+    const A = baselineBody({ prompt: SYNTHETIC, image: photo, mimeType: "image/jpeg" });
+    const other = await sharp(photo).jpeg({ quality: 80 }).toBuffer();
+    const tamper: [string, (b: Row) => void][] = [
+      ["adds text (a prefix)", (b) => { (b.input as Row[])[0]!.text = "Retouch this image. " + String((b.input as Row[])[0]!.text); }],
+      ["adds text (an extra part)", (b) => { (b.input as Row[]).push({ type: "text", text: "preserve composition" }); }],
+      ["removes text", (b) => { (b.input as Row[])[0]!.text = String((b.input as Row[])[0]!.text).slice(0, -3); }],
+      ["trims", (b) => { (b.input as Row[])[0]!.text = String((b.input as Row[])[0]!.text).trim(); }],
+      ["changes whitespace (NBSP → space)", (b) => { (b.input as Row[])[0]!.text = String((b.input as Row[])[0]!.text).replace(" ", " "); }],
+      ["normalises CRLF", (b) => { (b.input as Row[])[0]!.text = String((b.input as Row[])[0]!.text).replace(/\r\n/g, "\n"); }],
+      ["changes the image (re-encode)", (b) => { (b.input as Row[])[1]!.data = other.toString("base64"); }],
+      ["adds history", (b) => { b.previous_interaction_id = "int-0"; }],
+      ["stores the interaction", (b) => { b.store = true; }],
+      ["adds systemInstruction", (b) => { b.system_instruction = "You are a retoucher."; }],
+      ["adds imageSize", (b) => { b.generation_config = { image_generation_config: { image_size: "2K" } }; }],
+      ["adds aspectRatio", (b) => { b.generation_config = { image_generation_config: { aspect_ratio: "4:3" } }; }],
+      ["adds tools", (b) => { b.tools = [{ type: "google_search" }]; }],
+      ["adds knowledge/feedback as text", (b) => { (b.input as Row[]).splice(1, 0, { type: "text", text: "DATA: liked examples…" }); }],
+      ["switches the model (fallback)", (b) => { b.model = "gemini-3.1-flash-image"; }],
+    ];
+    for (const [name, fn] of tamper) {
+      const t = JSON.parse(B) as Row; fn(t);
+      const T = JSON.stringify(t);
+      const cap = captureInteractionBoundary(BASELINE_ENDPOINT, ["content-type"], T, String(t.model));
+      const flagged = cap.strict_stateless === false || cap.provider_prompt_sha256 !== sha(SYNTHETIC) || cap.provider_inputs[0]?.sha256 !== sha(photo) || cap.image_size !== "OMITTED" || cap.aspect_ratio !== "OMITTED" || t.model !== "gemini-3-pro-image";
+      check(`detects: ${name}`, T !== A && flagged);
+    }
+    check("…while the untouched B equals A", A === B);
+    // (A second request is caught by F3: the wire is counted, not assumed.)
   }
 
-  console.log("\nF11 THE BASELINE IS INDEPENDENT");
+  console.log("\nF5  STATELESS ACROSS CLICKS");
   {
-    const src = readFileSync(join(process.cwd(), "scripts/retouch-baseline.ts"), "utf8");
+    const db = freshDb(); db.files.set(SRC, photo); db.files.set("w/retouch-x/other.jpg", await sharp(photo).rotate(90).jpeg().toBuffer());
+    g.__fidelityEngine = engine({ systemPrompt: SYNTHETIC, promptVersion: 5 });
+    await click(db, { sourcePath: "w/retouch-x/other.jpg", expectedOutputs: 1 });
+    db.tables.length = 0;
+    await click(db, { sourcePath: SRC, expectedOutputs: 1 }); const first = wire[0]!.body;
+    await click(db, { sourcePath: SRC, expectedOutputs: 1 }); const again = wire[0]!.body;
+    check("the same photo twice → byte-identical bodies (nothing carried over from earlier jobs)", first === again && first === baselineBody({ prompt: SYNTHETIC, image: photo, mimeType: "image/jpeg" }));
+    check("no knowledge / feedback / examples table is read on a Retusz click", !db.tables.some((t) => /knowledge|feedback|example/.test(t)), [...new Set(db.tables)]);
+  }
+
+  console.log("\nF6  THE BASELINE IS INDEPENDENT");
+  {
+    const src = read("scripts/retouch-baseline.ts");
     check("scripts/retouch-baseline.ts imports nothing (no builder, adapter, runGeneration, prompt engine)", !/^\s*import\s/m.test(src) && !/require\(/.test(src));
   }
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);
+  console.log("All Retusz forensic tests passed.");
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

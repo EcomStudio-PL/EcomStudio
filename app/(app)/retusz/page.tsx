@@ -4,7 +4,7 @@ import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { listGalleryItems } from "@/lib/server/gallery";
 import { GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
-import { retouchModel, RETOUCH_OPERATION } from "@/lib/server/retouch";
+import { retouchModel, retouchPrice, retouchRunResolution, RETOUCH_OPERATION } from "@/lib/server/retouch";
 import { engineOutputsPerRun, engineToolConfigured } from "@/lib/server/engine/tool-run";
 import { RetouchWorkspace } from "@/components/retouch/workspace";
 
@@ -13,8 +13,8 @@ export const dynamic = "force-dynamic";
 /**
  * RETUSZ ZDJĘĆ — the tool page.
  *
- * Everything the panel needs is resolved here: the sizes and framings the
- * engine really offers, the price per image straight from the model config
+ * Everything the panel needs is resolved here: the price per image (the
+ * default size — Retusz sends no size for now) straight from the model config
  * (with the admin's `app_settings.retouch` override applied), the wallet and
  * this workspace's previous retouches. The model itself is never named to
  * the customer — they bought a retouch, not a provider.
@@ -46,9 +46,9 @@ export default async function RetouchPage() {
         workspaceId={workspace.id}
         credits={wallet?.balance ?? 0}
         available={!!model && configured}
-        resolutions={model?.resolutions ?? []}
-        ratios={model?.ratios ?? []}
-        pricing={model?.pricing ?? {}}
+        // One price: the run is billed at the default size it renders at
+        // (no size is sent while the size picker is withheld).
+        price={model ? retouchPrice(model, retouchRunResolution(model)) : 0}
         outputsPerRun={outputsPerRun}
         initialItems={gallery.items}
         initialCursor={gallery.nextCursor}

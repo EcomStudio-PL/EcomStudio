@@ -13,7 +13,7 @@ import {
   type AspectRatio, type GeneratedImage, type ImageProviderAdapter, type Quality, type Resolution,
 } from "@/lib/ai/types";
 import { describeProviderRequest, effectiveCallTimeout, promptLength } from "@/lib/ai/request-manifest";
-import { buildGeminiImageRequest, retouchContractViolation } from "@/lib/ai/providers/google-request";
+import { buildRetouchInteraction, retouchInteractionViolation } from "@/lib/ai/providers/google-request";
 import { sourceAspect } from "@/lib/ai/aspect-ratio";
 import { prepareReferenceImage, referenceFingerprint, type PreparedReference } from "@/lib/server/reference-image";
 import { promptDigest } from "@/lib/server/prompt-digest";
@@ -551,11 +551,14 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   const deadlineAt = invocationStartedAt + GENERATION_BUDGET_MS;
   let outOfTime = false;
   const health = await getProviderHealth(supabase);
-  const candidateIds = [input.modelId, ...(input.fallbackModelIds ?? [])]
+  // RETUSZ: one model, one attempt, one request — no fallback, whatever the
+  // panel or the caller passed.
+  const strict = input.strictSingleImage === true;
+  const candidateIds = (strict ? [input.modelId] : [input.modelId, ...(input.fallbackModelIds ?? [])])
     .filter((id, i, arr) => arr.indexOf(id) === i);
   // "Próby na modelu głównym" is what its label says: attempts on the PRIMARY.
   // A fallback, when enabled, keeps the platform's own retry count.
-  const maxAttempts = Math.min(Math.max(Math.trunc(input.maxAttempts ?? MAX_ATTEMPTS_PER_PROVIDER) || 1, 1), MAX_ATTEMPTS_PER_PROVIDER);
+  const maxAttempts = strict ? 1 : Math.min(Math.max(Math.trunc(input.maxAttempts ?? MAX_ATTEMPTS_PER_PROVIDER) || 1, 1), MAX_ATTEMPTS_PER_PROVIDER);
   const attemptsFor = (candidateId: string) => (candidateId === input.modelId ? maxAttempts : MAX_ATTEMPTS_PER_PROVIDER);
   const callTimeoutMs = effectiveCallTimeout(input.callTimeoutMs);
 
@@ -602,6 +605,9 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       ...(b as Record<string, unknown>),
       input_original_sha256: src?.sourceSha256 ?? null, input_original_bytes: src?.sourceBytes ?? null,
       input_transform: src?.transform ?? null,
+      // HTTP requests the adapter actually sent (one attempt, no fallback).
+      total_provider_calls: (b as { http_requests?: number }).http_requests ?? null,
+      fallback: "OFF", fallback_used: false,
     } : undefined;
 
   for (const candidateId of candidateIds) {
@@ -671,6 +677,9 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     const cRequest = {
       prompt: finalPrompt, aspectRatio, resolution: cResolution, promptFirst: input.promptFirst === true,
       strictSingleImage: input.strictSingleImage === true,
+      // Retusz: the photo in the body must hash to the stored original (a
+      // format Google does not take is the one sanctioned transcode).
+      ...(strict && cFit.list[0] ? { strictInputSha256: cFit.list[0].transform === "none" ? cFit.list[0].sourceSha256 : cFit.list[0].sha256 } : {}),
       // A fallback engine only receives the quality if IT declares it.
       quality: quality && modelQualities(cModel).includes(quality) ? quality : undefined,
       quantity, referenceImages: cFit.list, productLock: { fidelityInstructions: "" },
@@ -681,12 +690,14 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       callTimeoutMs,
     };
     // What this candidate is really asked — recorded on the job whatever happens.
-    const cShape = describeProviderRequest(cProviderSlug, cModel, cRequest);
+    // Retusz sends neither a size nor a ratio (Interactions body, see
+    // buildRetouchInteraction); everything else is described by the builder.
+    const cShape = strict ? { operation: "IMAGE_EDIT" as const, aspectRatio: null, imageSize: null } : describeProviderRequest(cProviderSlug, cModel, cRequest);
     const cRecord = {
       provider: cProviderSlug, model_identifier: cModel.model_identifier, model_id: cModel.id,
       fallback_used: candidateId !== input.modelId,
       operation: cShape.operation,
-      parts_order: cFit.list.length === 0 ? "text" : input.promptFirst ? "text_then_image" : "image_then_text",
+      parts_order: cFit.list.length === 0 ? "text" : strict || input.promptFirst ? "text_then_image" : "image_then_text",
       prompt_policy: "exact", fidelity_appended: false,
       prompt_chars: promptLength(finalPrompt),
       // Keyed, not a bare hash: this row is readable by the customer.
@@ -968,10 +979,9 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         provider_thought_images_skipped: img.response?.thoughtImagesSkipped ?? null,
         provider_finish_reason: img.response?.finishReason ?? null,
         // Retusz: the response's shape (flags only) and which part was kept.
-        ...(img.response?.parts ? {
-          provider_candidates: img.response.candidates ?? null,
-          provider_parts: img.response.parts,
-          provider_picked_part_index: img.response.pickedPartIndex ?? null,
+        ...(img.response?.steps ? {
+          provider_steps: img.response.steps,
+          provider_picked_step: img.response.pickedStep ?? null,
         } : {}),
         stored_width: dims.width ?? null, stored_height: dims.height ?? null,
         stored_bytes: storedBytes?.length ?? null, stored_sha256: storedSha,
@@ -1177,41 +1187,43 @@ function buildProductContext(name: string, description: string | null, extraInfo
 
 /**
  * What the Google adapter will send for a Retusz candidate — built by the same
- * builder, then sanitised for the job record (readable by the customer): the
- * prompt appears only as its length and keyed digest, the image as its
- * SHA-256 and size. No key, no prompt text, no image bytes.
+ * builder (the Interactions body), then sanitised for the job record
+ * (readable by the customer): the prompt appears only as its length and keyed
+ * digest, the image as its SHA-256 and size. No key, no prompt text, no bytes.
  */
 function statelessDiagnostics(
-  model: Parameters<typeof buildGeminiImageRequest>[0],
-  req: Parameters<typeof buildGeminiImageRequest>[1] & { referenceImages: { base64: string; mime: string }[] },
+  model: { model_identifier: string },
+  req: { prompt: string; referenceImages: { base64: string; mime: string }[] },
   finalPrompt: string,
   contract: { knowledgeCount?: number; examplesCount?: number } | undefined,
 ): Record<string, unknown> {
-  const { body } = buildGeminiImageRequest(model, req);
-  const violation = retouchContractViolation(body, req);
-  const payload = {
-    ...body,
-    contents: body.contents.map((c) => ({
-      role: c.role,
-      parts: c.parts.map((p) => ("text" in p
-        ? { text: { chars: promptLength(p.text), digest: promptDigest(p.text) } }
-        : { inlineData: { mimeType: p.inlineData.mimeType, sha256: createHash("sha256").update(Buffer.from(p.inlineData.data, "base64")).digest("hex"), bytes: Buffer.from(p.inlineData.data, "base64").length } })),
-    })),
-  };
-  const parts = body.contents[0]?.parts ?? [];
+  const body = buildRetouchInteraction(model, req);
+  const violation = retouchInteractionViolation(body as unknown as Record<string, unknown>, req, model.model_identifier);
+  const bytes = Buffer.from(body.input[1].data, "base64");
   return {
-    endpoint: "v1beta/models/{model}:generateContent",
-    history_count: Math.max(0, body.contents.length - 1),
-    image_count: parts.filter((p) => "inlineData" in p).length,
-    text_part_count: parts.filter((p) => "text" in p).length,
+    endpoint: "v1beta/interactions",
+    api: "interactions",
+    store: body.store,
+    previous_interaction: null,
+    history_count: 0,
+    image_count: body.input.filter((c) => c.type === "image").length,
+    text_part_count: body.input.filter((c) => c.type === "text").length,
     knowledge_count: contract?.knowledgeCount ?? 0, examples_count: contract?.examplesCount ?? 0,
     // Nothing on this path reads ratings (no knowledge variable can be placed).
     feedback_count: 0,
-    system_instruction: "systemInstruction" in body,
-    generation_config: body.generationConfig,
-    stateless: body.contents.length === 1 && !("systemInstruction" in body) && !(contract?.knowledgeCount),
-    prompt_equals_final: parts.some((p) => "text" in p && p.text === finalPrompt),
+    system_instruction: false,
+    generation_config: null,
+    stateless: body.store === false && !(contract?.knowledgeCount),
+    prompt_equals_final: body.input[0].text === finalPrompt,
     contract_ok: violation === null, contract_violation: violation,
-    sanitized_payload: payload,
+    sanitized_payload: {
+      model: body.model,
+      input: [
+        { type: "text", text: { chars: promptLength(body.input[0].text), digest: promptDigest(body.input[0].text) } },
+        { type: "image", mime_type: body.input[1].mime_type, sha256: createHash("sha256").update(bytes).digest("hex"), bytes: bytes.length },
+      ],
+      response_modalities: body.response_modalities,
+      store: body.store,
+    },
   };
 }
