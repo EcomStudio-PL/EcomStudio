@@ -98,7 +98,7 @@ export type RequestManifest = {
     /** "input_photo": nothing sent, the output keeps the photo's shape (Gemini);
      *  "provider_choice": "auto" sent, the provider picks (non-Gemini models);
      *  "nearest_supported": the photo's shape snapped to a listed ratio. */
-    ratioWhenOriginal: "input_photo" | "provider_choice" | "nearest_supported" | "original_derived";
+    ratioWhenOriginal: "input_photo" | "provider_choice" | "nearest_supported";
     ratios: string[];
     /** Each size the customer can pick → what imageSize carries (null = not sent). */
     sizes: { resolution: string; sent: string | null }[];
@@ -133,7 +133,7 @@ export type LastRun = {
     /** Informational only — a small source is never blocked or changed. */
     megapixels: number | null; lowResolution: boolean;
   }[];
-  /** How the sent ratio was decided (USER_SELECTED / ORIGINAL_DERIVED / UNSET) and from what. */
+  /** How the sent ratio was decided (USER_SELECTED / ORIGINAL_OMITTED / PROVIDER_AUTO) and from what. */
   aspectMode: string | null;
   sourceAspect: number | null;
   resolvedAspect: string | null;

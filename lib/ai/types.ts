@@ -222,13 +222,6 @@ export interface ImageProviderAdapter {
      * "the photo's own framing" instead of a ratio GrovBase picked.
      */
     inputShapedOutput?: boolean;
-    /**
-     * EVERY ratio the endpoint officially accepts as an explicit output shape.
-     * Used only to translate "Oryginalny" into the source photo's own shape
-     * (resolveOriginalAspectRatio) when a tool asks for that; the customer's
-     * picker still offers `ratios` ∩ the model row. Absent = no translation.
-     */
-    officialRatios?: AspectRatio[];
   };
   /**
    * THE WORST CASE FOR ONE generate() CALL, IN MILLISECONDS.

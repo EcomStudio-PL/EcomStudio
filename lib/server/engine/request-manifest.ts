@@ -36,11 +36,10 @@ type ModelRow = {
   ai_providers: { slug: string } | { slug: string }[] | null;
 };
 
-function operationOf(toolKey: string): { op: string; hint: boolean; snaps: boolean; derives: boolean } | null {
-  // Retusz states "Oryginalny" as the official ratio nearest the photo.
-  if (toolKey === "retouch") return { op: RETOUCH_OPERATION, hint: false, snaps: false, derives: true };
+function operationOf(toolKey: string): { op: string; hint: boolean; snaps: boolean } | null {
+  if (toolKey === "retouch") return { op: RETOUCH_OPERATION, hint: false, snaps: false };
   const f = FASHION_TOOLS.find((x) => x.toolKey === toolKey);
-  return f ? { op: f.operation, hint: f.showHint, snaps: true, derives: false } : null;
+  return f ? { op: f.operation, hint: f.showHint, snaps: true } : null;
 }
 
 export async function buildRequestManifest(
@@ -99,7 +98,7 @@ export async function buildRequestManifest(
   const resolutions = primary?.supported_resolutions?.length ? primary.supported_resolutions : ["1K"];
   const config: RequestManifest["config"] = {
     operation: probe(undefined)?.operation ?? "IMAGE_EDIT",
-    ratioWhenOriginal: meta?.derives ? "original_derived" : meta?.snaps ? "nearest_supported" : primary && slugOf(primary) === "google" ? "input_photo" : "provider_choice",
+    ratioWhenOriginal: meta?.snaps ? "nearest_supported" : primary && slugOf(primary) === "google" ? "input_photo" : "provider_choice",
     ratios: primary?.supported_aspect_ratios ?? [],
     sizes: resolutions.map((r) => ({ resolution: r, sent: probe(r as Resolution)?.imageSize ?? null })),
     timeoutMs: effectiveCallTimeout(engine?.timeoutMs) ?? null,
