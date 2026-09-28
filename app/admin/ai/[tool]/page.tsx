@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { STATELESS_TOOL_KEYS } from "@/lib/ai/prompt-variables";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -253,7 +254,8 @@ async function EngineTab({ supabase, t, row, config, locale }: WithConfig & { lo
         <Section n={4} title={t("aicc.sec.execution")} sub={t("aicc.engine.sub")}>
           <div className="space-y-6">
             <ToolConfigForm section="engine" part="execution" initial={config} services={[]} />
-            <KnowledgeStrategyForm toolKey={row.key} initial={row.knowledgeStrategy ?? "proven"} />
+            {/* A stateless tool (Retusz) never selects examples — no strategy. */}
+            {!STATELESS_TOOL_KEYS.has(row.key) && <KnowledgeStrategyForm toolKey={row.key} initial={row.knowledgeStrategy ?? "proven"} />}
           </div>
         </Section>
 

@@ -367,7 +367,10 @@ async function main() {
   check("T5 Retusz has no {{product_description}}: publish refused by the existing variable gate, never saved",
     retouchPub.ok === false && retouchPub.error === "variable_unknown"
     && !db.tables.ai_tool_prompts.some((p) => p.tool_key === "retouch"), retouchPub);
-  const retouchOk = await savePromptAction({ toolKey: "retouch", body: "RETUSZ v1 {{tool_name}} {{aspect_ratio}} {{fidelity_rules?}}", summary: "Retusz 1.0", reason: "Test systemu promptów", publish: true });
+  // Retusz is stateless: its tool name / knowledge / analysis cannot be placed.
+  const retouchNamed = await savePromptAction({ toolKey: "retouch", body: "RETUSZ {{tool_name}}", summary: null, reason: "x", publish: true });
+  check("T5 Retusz: {{tool_name}} refused by the publish gate (the model never learns the tool's name)", retouchNamed.ok === false && retouchNamed.error === "variable_unknown", retouchNamed);
+  const retouchOk = await savePromptAction({ toolKey: "retouch", body: "RETUSZ v1 {{aspect_ratio}} {{fidelity_rules?}}", summary: "Retusz 1.0", reason: "Test systemu promptów", publish: true });
   check("T5 Retusz with its own variables publishes", retouchOk.ok === true, retouchOk);
 
   console.log("\n6/7/8. WHO CAN READ WHAT");

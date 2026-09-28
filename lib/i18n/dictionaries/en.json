@@ -5303,7 +5303,17 @@
     "test.manifest.aspectSourceValue": "{r} → {to}",
     "test.manifest.inputQuality": "Source quality",
     "test.manifest.megapixels": "{mp} MP",
-    "test.manifest.lowSource": "LOW SOURCE RESOLUTION (informational)"
+    "test.manifest.lowSource": "LOW SOURCE RESOLUTION (informational)",
+    "test.manifest.stateless": "Retouch request (stateless)",
+    "test.manifest.st.partsOrder": "Parts order",
+    "test.manifest.st.counts": "History / images / texts / knowledge / examples / feedback",
+    "test.manifest.st.countsValue": "{h} / {i} / {t} / {kn} / {ex} / {fb}",
+    "test.manifest.st.systemInstruction": "systemInstruction",
+    "test.manifest.st.stateless": "Stateless task",
+    "test.manifest.st.contract": "Request contract met",
+    "test.manifest.st.promptVersion": "Prompt version",
+    "test.manifest.st.promptChain": "Resolved prompt = sent",
+    "test.manifest.st.payload": "Payload (sanitized — no key, prompt as digest, image as SHA-256)"
   },
   "batch": {
     "viewLabel": "View",

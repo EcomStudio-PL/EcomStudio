@@ -5303,7 +5303,17 @@
     "test.manifest.aspectSourceValue": "{r} → {to}",
     "test.manifest.inputQuality": "Jakość źródła",
     "test.manifest.megapixels": "{mp} MP",
-    "test.manifest.lowSource": "NISKA ROZDZIELCZOŚĆ ŹRÓDŁA (informacyjnie)"
+    "test.manifest.lowSource": "NISKA ROZDZIELCZOŚĆ ŹRÓDŁA (informacyjnie)",
+    "test.manifest.stateless": "Request Retuszu (stateless)",
+    "test.manifest.st.partsOrder": "Kolejność części",
+    "test.manifest.st.counts": "Historia / obrazy / teksty / wiedza / przykłady / feedback",
+    "test.manifest.st.countsValue": "{h} / {i} / {t} / {kn} / {ex} / {fb}",
+    "test.manifest.st.systemInstruction": "systemInstruction",
+    "test.manifest.st.stateless": "Zadanie bezstanowe",
+    "test.manifest.st.contract": "Kontrakt requestu spełniony",
+    "test.manifest.st.promptVersion": "Wersja promptu",
+    "test.manifest.st.promptChain": "Prompt rozwiązany = wysłany",
+    "test.manifest.st.payload": "Payload (sanitized — bez klucza, prompt jako skrót, obraz jako SHA-256)"
   },
   "batch": {
     "viewLabel": "Widok",

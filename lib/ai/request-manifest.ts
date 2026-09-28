@@ -148,4 +148,13 @@ export type LastRun = {
   }[];
   /** The keyed digest of the final prompt as sent (settings.provider_request). */
   digest: string | null;
+  /** Retusz stateless-request diagnostics (null for other tools / older jobs). */
+  stateless: null | {
+    partsOrder: string | null; historyCount: number | null; imageCount: number | null; textPartCount: number | null;
+    knowledgeCount: number | null; examplesCount: number | null; feedbackCount: number | null;
+    systemInstruction: boolean | null; stateless: boolean | null; contractOk: boolean | null; contractViolation: string | null;
+    promptVersion: number | null; promptChainEqual: boolean | null; variables: string[];
+    /** The sanitised JSON body (prompt → chars + keyed digest, image → SHA-256 + bytes). */
+    payload: unknown;
+  };
 };

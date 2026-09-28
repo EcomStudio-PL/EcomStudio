@@ -83,6 +83,13 @@ const IMAGE_EDIT_COMMON: VariableDef[] = [
 ];
 
 /**
+ * Tools whose every run is an independent task: no knowledge, examples,
+ * feedback ranking or earlier results can reach the request, and the admin
+ * and customer UIs hide those controls for them.
+ */
+export const STATELESS_TOOL_KEYS: ReadonlySet<string> = new Set(["retouch"]);
+
+/**
  * What each tool's server path can really provide. Tools without an entry
  * have no prompt engine at all (local and provider tools).
  */
@@ -99,7 +106,10 @@ export const TOOL_VARIABLES: Record<string, VariableDef[]> = {
     V.user_prompt, V.negative_prompt, V.product_description, V.aspect_ratio, V.resolution,
     V.fidelity_rules, V.knowledge_hints, V.knowledge_scene,
   ],
-  retouch: IMAGE_EDIT_COMMON,
+  // Retusz is a STATELESS single call: only plain system values may be placed
+  // — no tool name, no image analysis, no knowledge/examples (those carry
+  // earlier runs and ratings into the request).
+  retouch: [V.aspect_ratio, V.resolution, V.image_count, V.fidelity_rules],
   fashion_ghost_mannequin: [...IMAGE_EDIT_COMMON, V.hint],
   fashion_flat_lay: [...IMAGE_EDIT_COMMON, V.hint],
   fashion_iron: IMAGE_EDIT_COMMON,

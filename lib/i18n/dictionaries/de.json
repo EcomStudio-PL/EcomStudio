@@ -5303,7 +5303,17 @@
     "test.manifest.aspectSourceValue": "{r} → {to}",
     "test.manifest.inputQuality": "Quellqualität",
     "test.manifest.megapixels": "{mp} MP",
-    "test.manifest.lowSource": "NIEDRIGE QUELLAUFLÖSUNG (nur Hinweis)"
+    "test.manifest.lowSource": "NIEDRIGE QUELLAUFLÖSUNG (nur Hinweis)",
+    "test.manifest.stateless": "Retusche-Anfrage (zustandslos)",
+    "test.manifest.st.partsOrder": "Reihenfolge der Teile",
+    "test.manifest.st.counts": "Verlauf / Bilder / Texte / Wissen / Beispiele / Feedback",
+    "test.manifest.st.countsValue": "{h} / {i} / {t} / {kn} / {ex} / {fb}",
+    "test.manifest.st.systemInstruction": "systemInstruction",
+    "test.manifest.st.stateless": "Zustandslose Aufgabe",
+    "test.manifest.st.contract": "Anfragevertrag erfüllt",
+    "test.manifest.st.promptVersion": "Prompt-Version",
+    "test.manifest.st.promptChain": "Aufgelöster Prompt = gesendet",
+    "test.manifest.st.payload": "Payload (bereinigt — kein Schlüssel, Prompt als Digest, Bild als SHA-256)"
   },
   "batch": {
     "viewLabel": "Ansicht",

@@ -472,7 +472,8 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
           </div>
 
           {/* 👍 / 👎 — one vote per result, stored server-side; ranking only. */}
-          {item.generationId && <ResultFeedback key={item.generationId} generationId={item.generationId} />}
+          {/* Not on Retusz: each run is an independent task, ratings feed nothing. */}
+          {item.generationId && item.operation !== "image_retouch" && <ResultFeedback key={item.generationId} generationId={item.generationId} />}
 
           {/* The one thing this panel exists to lead to, at full width. */}
           {canRegenerate && (

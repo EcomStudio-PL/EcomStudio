@@ -13,6 +13,7 @@ import {
   type AspectRatio, type GeneratedImage, type ImageProviderAdapter, type Quality, type Resolution,
 } from "@/lib/ai/types";
 import { describeProviderRequest, effectiveCallTimeout, promptLength } from "@/lib/ai/request-manifest";
+import { buildGeminiImageRequest, retouchContractViolation } from "@/lib/ai/providers/google-request";
 import { sourceAspect } from "@/lib/ai/aspect-ratio";
 import { prepareReferenceImage, referenceFingerprint, type PreparedReference } from "@/lib/server/reference-image";
 import { promptDigest } from "@/lib/server/prompt-digest";
@@ -47,7 +48,10 @@ export type GenerateInput = {
    * present, the text about to be sent must equal it EXACTLY or the run is
    * refused before anything is reserved (retouch_prompt_parity_failed).
    */
-  promptContract?: { resolved: string; publishedDigest: string | null; version: number | null; variables: string[] };
+  promptContract?: {
+    resolved: string; publishedDigest: string | null; version: number | null; variables: string[];
+    knowledgeCount?: number; examplesCount?: number;
+  };
   resolution?: Resolution;
   /** Render quality ("Jakość"), honoured only when the model declares it in
    *  metadata.qualities — anything else is dropped, never guessed. */
@@ -688,6 +692,10 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         prompt_variables: input.promptContract.variables,
         strict_single_image: input.strictSingleImage === true,
       } : {}),
+      // STATELESS REQUEST DIAGNOSTICS (Retusz): the exact body shape sent,
+      // sanitised (prompt → length + keyed digest, image → SHA-256 + bytes),
+      // and the counts that must all be zero for an independent task.
+      ...(input.strictSingleImage && cProviderSlug === "google" ? statelessDiagnostics(cModel, cRequest, finalPrompt, input.promptContract) : {}),
       aspect_ratio_requested: input.aspectRatio, aspect_ratio_sent: cShape.aspectRatio,
       // The customer's explicit pick, or "Oryginalny" with the field omitted.
       aspect_ratio_mode: input.aspectRatio !== "auto" ? "USER_SELECTED" : cShape.aspectRatio === null ? "ORIGINAL_OMITTED" : "PROVIDER_AUTO",
@@ -1145,4 +1153,45 @@ function buildProductContext(name: string, description: string | null, extraInfo
   if (description) parts.push(`Description: ${description.slice(0, 1200)}`);
   if (extraInfo) parts.push(`Additional information: ${extraInfo.slice(0, 2500)}`);
   return parts.join("\n");
+}
+
+/**
+ * What the Google adapter will send for a Retusz candidate — built by the same
+ * builder, then sanitised for the job record (readable by the customer): the
+ * prompt appears only as its length and keyed digest, the image as its
+ * SHA-256 and size. No key, no prompt text, no image bytes.
+ */
+function statelessDiagnostics(
+  model: Parameters<typeof buildGeminiImageRequest>[0],
+  req: Parameters<typeof buildGeminiImageRequest>[1] & { referenceImages: { base64: string; mime: string }[] },
+  finalPrompt: string,
+  contract: { knowledgeCount?: number; examplesCount?: number } | undefined,
+): Record<string, unknown> {
+  const { body } = buildGeminiImageRequest(model, req);
+  const violation = retouchContractViolation(body, req);
+  const payload = {
+    ...body,
+    contents: body.contents.map((c) => ({
+      role: c.role,
+      parts: c.parts.map((p) => ("text" in p
+        ? { text: { chars: promptLength(p.text), digest: promptDigest(p.text) } }
+        : { inlineData: { mimeType: p.inlineData.mimeType, sha256: createHash("sha256").update(Buffer.from(p.inlineData.data, "base64")).digest("hex"), bytes: Buffer.from(p.inlineData.data, "base64").length } })),
+    })),
+  };
+  const parts = body.contents[0]?.parts ?? [];
+  return {
+    endpoint: "v1beta/models/{model}:generateContent",
+    history_count: Math.max(0, body.contents.length - 1),
+    image_count: parts.filter((p) => "inlineData" in p).length,
+    text_part_count: parts.filter((p) => "text" in p).length,
+    knowledge_count: contract?.knowledgeCount ?? 0, examples_count: contract?.examplesCount ?? 0,
+    // Nothing on this path reads ratings (no knowledge variable can be placed).
+    feedback_count: 0,
+    system_instruction: "systemInstruction" in body,
+    generation_config: body.generationConfig,
+    stateless: body.contents.length === 1 && !("systemInstruction" in body) && !(contract?.knowledgeCount),
+    prompt_equals_final: parts.some((p) => "text" in p && p.text === finalPrompt),
+    contract_ok: violation === null, contract_violation: violation,
+    sanitized_payload: payload,
+  };
 }

@@ -174,6 +174,10 @@ async function runEngineImageToolMetered(
     promptContract: {
       resolved: prompt ?? "", publishedDigest: promptDigest(template ?? ""),
       version: engine?.promptVersion ?? null, variables: compiled.used,
+      // What else could have reached the request from earlier runs — 0 for a
+      // stateless tool, whose template cannot even place those variables.
+      knowledgeCount: (knowledge?.exampleIds.length ?? 0) + (knowledge?.sceneExampleId ? 1 : 0),
+      examplesCount: knowledge?.exampleIds.length ?? 0,
     },
     dedupePrompt: `engine:${input.toolKey}:p${engine?.promptVersion ?? 0}:${inputHash}`,
     // The panel's "Limit czasu" and "Próby na modelu głównym" are what the

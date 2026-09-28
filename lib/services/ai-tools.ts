@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { STATELESS_TOOL_KEYS } from "@/lib/ai/prompt-variables";
 import type { Database } from "@/lib/database.types";
 import {
   FEATURE_REGISTRY, type FeatureKey, type FeatureStatus, type FeatureDescriptor,
@@ -212,7 +213,8 @@ export function toolTabs(row: { key: AiToolKey; engineMode: EngineMode; serviceS
   if (toolSupportsWorkflow(row.key)) tabs.push("workflow");
   // Models, the execution path, costs and run history — one tab.
   if (modelDriven || row.serviceSlug) tabs.push("models");
-  if (row.engineMode !== "off") tabs.push("knowledge");
+  // A stateless tool (Retusz) takes no knowledge/examples — no tab for them.
+  if (row.engineMode !== "off" && !STATELESS_TOOL_KEYS.has(row.key)) tabs.push("knowledge");
   return tabs;
 }
 

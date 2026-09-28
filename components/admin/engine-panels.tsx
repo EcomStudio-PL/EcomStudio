@@ -136,6 +136,25 @@ function ManifestView({ m }: { m: RequestManifest }) {
       ],
     },
   ];
+  const st = last?.stateless ?? null;
+  if (last && recorded && st) {
+    sections.push({
+      title: k("stateless"),
+      rows: [
+        [k("st.partsOrder"), st.partsOrder ?? "—"],
+        [k("st.counts"), k("st.countsValue", {
+          h: st.historyCount ?? "?", i: st.imageCount ?? "?", t: st.textPartCount ?? "?",
+          kn: st.knowledgeCount ?? "?", ex: st.examplesCount ?? "?", fb: st.feedbackCount ?? "?",
+        })],
+        [k("st.systemInstruction"), yesNo(st.systemInstruction)],
+        [k("st.stateless"), yesNo(st.stateless)],
+        [k("st.contract"), st.contractOk ? k("yes") : `${k("no")} (${st.contractViolation ?? "?"})`],
+        [k("st.promptVersion"), st.promptVersion === null ? "—" : `v${st.promptVersion}`],
+        [k("st.promptChain"), yesNo(st.promptChainEqual)],
+        [k("variables"), st.variables.length ? st.variables.map((v) => `{{${v}}}`).join(", ") : "—"],
+      ],
+    });
+  }
   if (last && recorded) {
     sections.push({
       title: k("last"),
@@ -196,6 +215,12 @@ function ManifestView({ m }: { m: RequestManifest }) {
             </dl>
           </div>
         ))}
+        {st?.payload !== undefined && st?.payload !== null && (
+          <div className="rounded-xl bg-raised px-3.5 py-2.5 lg:col-span-2" data-manifest-payload>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">{k("st.payload")}</p>
+            <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all text-[11px] leading-relaxed">{JSON.stringify(st.payload, null, 2)}</pre>
+          </div>
+        )}
         <div className="rounded-xl bg-raised px-3.5 py-2.5">
           <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">{k("image")}</p>
           <p className="text-[12.5px] leading-relaxed">{k("imageRule")}</p>

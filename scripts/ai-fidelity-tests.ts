@@ -32,6 +32,7 @@ import { buildFidelityInstructions } from "@/lib/ai/product-lock";
 import { compileTemplate, TOOL_VARIABLES } from "@/lib/ai/prompt-variables";
 import { prepareReferenceImage } from "@/lib/server/reference-image";
 import { buildRequestManifest } from "@/lib/server/engine/request-manifest";
+import { toolTabs } from "@/lib/services/ai-tools";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -255,10 +256,10 @@ async function main() {
     const text = sent[0] ? textOf(sent[0])[0]?.text : undefined;
     check("'TEST {{fidelity_rules}}' → 'TEST ' + the lock, nothing more", text === `TEST ${buildFidelityInstructions()}`, text?.slice(0, 120));
     const db2 = freshDb(); db2.files.set("w/r/src.jpg", photo);
-    g.__fidelityEngine = engine({ systemPrompt: "Retusz: {{tool_name}}.\n\n\n\nFormat {{aspect_ratio}}, {{resolution}}.", promptVersion: 5 });
+    g.__fidelityEngine = engine({ systemPrompt: "Zdjęć: {{image_count}}.\n\n\n\nFormat {{aspect_ratio}}, {{resolution}}.", promptVersion: 5 });
     await retouch(db2, "w/r/src.jpg");
     const t2 = sent[0] ? textOf(sent[0])[0]?.text : undefined;
-    check("system variables are substituted and the admin's blank lines are kept", t2 === "Retusz: retouch.\n\n\n\nFormat auto, 2K.", t2);
+    check("system variables are substituted and the admin's blank lines are kept", t2 === "Zdjęć: 1.\n\n\n\nFormat auto, 2K.", t2);
     const defs = TOOL_VARIABLES.fashion_flat_lay ?? [];
     const gaps: [string, Record<string, string>, string][] = [
       ["A {{hint?}}\n\n\n\nB", {}, "A \n\nB"],
@@ -886,6 +887,50 @@ async function main() {
     check("the body carries no tool name/slug/description/operation (Retusz, retouch, packshot, IMAGE_EDIT, GrovBase)",
       !/retusz|retouch|packshot|image_edit|grovbase|białym tle|white background/i.test(bodyText), bodyText.slice(0, 300));
     check("the only text in the body is the published prompt", textOf(sent[0]!).length === 1 && textOf(sent[0]!)[0]!.text === "Zrób tło białe.");
+  }
+  console.log("\nSTATELESS RETUSZ — the customer's prompt 1:1, no knowledge/examples/feedback, sanitised payload recorded");
+  {
+    // A long, real-shaped Polish prompt with a trailing space inside and no
+    // final newline — sent byte for byte.
+    const PROMPT = "[ZADANIE]\nPrzekształć dostarczone zdjęcie produktu w wysokiej klasy wizualizację sprzedażową premium do e-commerce. Czysto białe tło. Doświetl wszystkie obecnie zacienione miejsca i elementy. \n\n[WAŻNE OGRANICZENIA]\n- nie zmieniaj projektu produktu\n- zachowaj zgodność z prawdziwym produktem, ale pokaż go w estetyce premium CGI";
+    const db = freshDb(); db.files.set("w/r/glass.jpg", photo);
+    g.__fidelityEngine = engine({ systemPrompt: PROMPT, promptVersion: 5 });
+    const { res, pr } = await retouch(db, "w/r/glass.jpg", { resolution: "4K", format: "original" });
+    check("run ok; the only text sent is the published prompt, byte for byte (SHA equal)", res.ok && textOf(sent[0]!).length === 1 && sha(textOf(sent[0]!)[0]!.text) === sha(PROMPT));
+    check("diagnostics: history 0, images 1, texts 1, knowledge 0, examples 0, feedback 0, no systemInstruction, stateless, contract ok",
+      pr?.history_count === 0 && pr?.image_count === 1 && pr?.text_part_count === 1 && pr?.knowledge_count === 0 && pr?.examples_count === 0
+      && pr?.feedback_count === 0 && pr?.system_instruction === false && pr?.stateless === true && pr?.contract_ok === true && pr?.parts_order === "text_then_image", pr);
+    const sp = pr?.sanitized_payload as { contents: { role: string; parts: Row[] }[]; generationConfig: Row } | undefined;
+    const spText = (sp?.contents[0]?.parts[0]?.text ?? {}) as Row;
+    const spImg = (sp?.contents[0]?.parts[1]?.inlineData ?? {}) as Row;
+    check("sanitised payload: [text{chars,digest}, inlineData{mimeType,sha256,bytes}], generationConfig {IMAGE, imageSize 4K}, no aspectRatio",
+      sp?.contents.length === 1 && sp.contents[0]!.role === "user" && sp.contents[0]!.parts.length === 2
+      && spText.chars === Array.from(PROMPT).length && spText.digest === promptDigest(PROMPT)
+      && spImg.sha256 === PHOTO_SHA && spImg.bytes === photo.length && spImg.mimeType === "image/jpeg"
+      && JSON.stringify(sp.generationConfig) === '{"responseModalities":["IMAGE"],"imageConfig":{"imageSize":"4K"}}', sp);
+    check("sanitised payload holds no prompt text and no image bytes", !JSON.stringify(pr).includes("Przekształć") && !JSON.stringify(pr).includes(photo.toString("base64").slice(0, 64)));
+    check("prompt chain: published === resolved === provider (keyed digests), version 5, no variables",
+      pr?.published_prompt_digest === promptDigest(PROMPT) && pr?.resolved_prompt_digest === pr?.provider_prompt_digest && pr?.provider_prompt_digest === promptDigest(PROMPT)
+      && pr?.prompt_version === 5 && JSON.stringify(pr?.prompt_variables) === "[]");
+    const m = await buildRequestManifest(fakeSupabase(db) as unknown as FakeClient, "retouch", { modelId: PRO_ID, fallbackId: null });
+    check("admin last run shows the stateless block + payload", m.lastRun?.stateless?.stateless === true && m.lastRun.stateless.contractOk === true
+      && m.lastRun.stateless.historyCount === 0 && m.lastRun.stateless.promptChainEqual === true && m.lastRun.stateless.payload !== null, m.lastRun?.stateless);
+
+    // Variables that would bring earlier runs, ratings, an analysis call or
+    // the tool's own name into the request cannot be used on Retusz at all.
+    for (const v of ["knowledge_hints", "knowledge_scene", "product_analysis", "tool_name"]) {
+      resetLedger(); sent = [];
+      g.__fidelityEngine = engine({ systemPrompt: `Zrób packshot. {{${v}}}`, promptVersion: 6 });
+      const r = await retouch(db, "w/r/glass.jpg");
+      check(`Retusz template with {{${v}}} → refused, 0 calls, 0 credits (no knowledge/examples/analysis/tool name)`,
+        !r.res.ok && sent.length === 0 && ledger() === "[]" && !db.tables.some((t) => /knowledge|feedback/.test(t)), r.res);
+    }
+    check("Retusz keeps only plain system variables", (TOOL_VARIABLES.retouch ?? []).map((d) => d.key).join() === "aspect_ratio,resolution,image_count,fidelity_rules");
+    check("admin: Retusz has no knowledge tab (no example selection / strategy)", !toolTabs({ key: "retouch", engineMode: "grovbase", serviceSlug: "image_edit" }).includes("knowledge")
+      && toolTabs({ key: "fashion_flat_lay", engineMode: "grovbase", serviceSlug: "image_edit" }).includes("knowledge"));
+    check("customer UI: no 👍/👎 on Retusz results; admin hides the knowledge strategy for Retusz",
+      /item\.operation !== "image_retouch" && <ResultFeedback/.test(read("components/genv3/image-details.tsx"))
+      && /!STATELESS_TOOL_KEYS\.has\(row\.key\) && <KnowledgeStrategyForm/.test(read("app/admin/ai/[tool]/page.tsx")));
   }
   console.log("\n§15 CHECKLIST A–L");
   {
