@@ -38,6 +38,16 @@ export type GenerateInput = {
   aspectRatio: AspectRatio;
   /** Gemini part order [prompt, image] (Retusz) instead of [image…, prompt]. */
   promptFirst?: boolean;
+  /** Retusz: send the stored photo bytes as-is (no EXIF re-encode) and let the
+   *  adapter enforce the single-image request contract before the call. */
+  strictSingleImage?: boolean;
+  /**
+   * The resolved published prompt as the tool compiled it, with the keyed
+   * digest of the published template and the variables substituted. When
+   * present, the text about to be sent must equal it EXACTLY or the run is
+   * refused before anything is reserved (retouch_prompt_parity_failed).
+   */
+  promptContract?: { resolved: string; publishedDigest: string | null; version: number | null; variables: string[] };
   resolution?: Resolution;
   /** Render quality ("Jakość"), honoured only when the model declares it in
    *  metadata.qualities — anything else is dropped, never guessed. */
@@ -319,6 +329,12 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   // checks above use trim; the value sent does not.)
   const promptText = input.negative?.trim() ? `${input.prompt}\nAVOID: ${input.negative.trim()}` : input.prompt;
   const providerPrompt = input.enginePrompt?.trim() ? input.enginePrompt : promptText;
+  // RUNTIME PROMPT PARITY (Retusz): what goes to the provider must be exactly
+  // the resolved published prompt. Checked BEFORE the job, the charge or any
+  // call — a mismatch is a GrovBase bug and must never reach the model.
+  if (input.promptContract && providerPrompt !== input.promptContract.resolved) {
+    return { ok: false, error: "retouch_prompt_parity_failed" };
+  }
   /**
    * ONE settings object for every write to the job row. The later updates
    * (after a retry, after a fallback served) used to rebuild a smaller
@@ -443,7 +459,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     const download = async (path: string) => {
       const { data: blob } = await supabase.storage.from("product-images").download(path);
       if (!blob) return null;
-      return prepareReferenceImage(Buffer.from(await blob.arrayBuffer()), path);
+      return prepareReferenceImage(Buffer.from(await blob.arrayBuffer()), path, { exact: input.strictSingleImage === true });
     };
     // The prompt engine hands over 3-6 role-assigned references; the cap comes
     // from the model config so the extra verified angles actually reach the
@@ -641,6 +657,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     const cSource = cFit.list[0] ?? null;
     const cRequest = {
       prompt: finalPrompt, aspectRatio, resolution: cResolution, promptFirst: input.promptFirst === true,
+      strictSingleImage: input.strictSingleImage === true,
       // A fallback engine only receives the quality if IT declares it.
       quality: quality && modelQualities(cModel).includes(quality) ? quality : undefined,
       quantity, referenceImages: cFit.list, productLock: { fidelityInstructions: "" },
@@ -661,6 +678,16 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       prompt_chars: promptLength(finalPrompt),
       // Keyed, not a bare hash: this row is readable by the customer.
       prompt_digest: promptDigest(finalPrompt),
+      // Retusz prompt chain, keyed digests only: published template →
+      // resolved (explicit variables) → text in the provider body.
+      ...(input.promptContract ? {
+        prompt_version: input.promptContract.version,
+        published_prompt_digest: input.promptContract.publishedDigest,
+        resolved_prompt_digest: promptDigest(input.promptContract.resolved),
+        provider_prompt_digest: promptDigest(finalPrompt),
+        prompt_variables: input.promptContract.variables,
+        strict_single_image: input.strictSingleImage === true,
+      } : {}),
       aspect_ratio_requested: input.aspectRatio, aspect_ratio_sent: cShape.aspectRatio,
       // The customer's explicit pick, or "Oryginalny" with the field omitted.
       aspect_ratio_mode: input.aspectRatio !== "auto" ? "USER_SELECTED" : cShape.aspectRatio === null ? "ORIGINAL_OMITTED" : "PROVIDER_AUTO",

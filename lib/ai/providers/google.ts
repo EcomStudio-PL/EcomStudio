@@ -1,7 +1,7 @@
 import "server-only";
 import type { AiModelRecord, GenerationRequest, GenerationResult, ImageProviderAdapter, ProviderCredential } from "../types";
 import { ProviderError, sanitizeUpstreamMessage, timeoutFor } from "../types";
-import { buildGeminiImageRequest, pickGeminiFinalImage, type GeminiResponse } from "./google-request";
+import { buildGeminiImageRequest, pickGeminiFinalImage, retouchContractViolation, type GeminiResponse } from "./google-request";
 
 /**
  * Google's 429 body decides everything: a per-minute quota violation is a
@@ -106,6 +106,13 @@ export const googleAdapter: ImageProviderAdapter = {
 
     // The prompt goes out verbatim — see buildGeminiImageRequest.
     const { body } = buildGeminiImageRequest(model, req);
+    // RETUSZ CONTRACT — checked on the exact body about to be sent. A body
+    // that is anything but [text === prompt, the one image] is refused here:
+    // no HTTP call, and the runner releases the reservation.
+    if (req.strictSingleImage) {
+      const violation = retouchContractViolation(body, req);
+      if (violation) throw new ProviderError("retouch_request_contract_failed", false, violation);
+    }
     const payload = JSON.stringify(body);
 
     // QUANTITY IS N SEPARATE PAID CALLS, so a failure at call 4 of 4 must not

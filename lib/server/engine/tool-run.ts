@@ -1,4 +1,5 @@
 import "server-only";
+import { promptDigest } from "@/lib/server/prompt-digest";
 import { createHash } from "node:crypto";
 import type { Client } from "@/lib/services/workspace";
 import { TOOL_VARIABLES } from "@/lib/ai/prompt-variables";
@@ -168,6 +169,12 @@ async function runEngineImageToolMetered(
     prompt,
     referencePaths: input.referencePaths,
     hidePromptText: true,
+    // The resolved published prompt is the ONLY text the provider may get;
+    // runGeneration refuses (before charging) if what it would send differs.
+    promptContract: {
+      resolved: prompt ?? "", publishedDigest: promptDigest(template ?? ""),
+      version: engine?.promptVersion ?? null, variables: compiled.used,
+    },
     dedupePrompt: `engine:${input.toolKey}:p${engine?.promptVersion ?? 0}:${inputHash}`,
     // The panel's "Limit czasu" and "Próby na modelu głównym" are what the
     // image call really gets (clamped to the route budget) — not a label.

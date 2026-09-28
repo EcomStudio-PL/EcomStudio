@@ -136,6 +136,13 @@ export interface GenerationRequest {
    * (the order every other tool has always sent).
    */
   promptFirst?: boolean;
+  /**
+   * Retusz contract, checked by the adapter on the FINAL body right before
+   * the HTTP call: 1 user content, exactly [text === prompt, the one image],
+   * no other top-level or generation fields. A mismatch is refused (no call,
+   * the reservation is released) instead of sent.
+   */
+  strictSingleImage?: boolean;
   productLock: {
     /**
      * The fidelity contract the runner FOLDED INTO `prompt` for this request

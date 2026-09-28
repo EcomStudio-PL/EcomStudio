@@ -57,7 +57,7 @@ export type GeminiImagePlan = {
 };
 
 type ModelShape = Pick<AiModelRecord, "supported_resolutions">;
-type RequestShape = Pick<GenerationRequest, "prompt" | "aspectRatio" | "resolution" | "referenceImages" | "promptFirst">;
+type RequestShape = Pick<GenerationRequest, "prompt" | "aspectRatio" | "resolution" | "referenceImages" | "promptFirst" | "strictSingleImage">;
 
 /** The size to send: the chosen one, when the model offers any choice of
  *  size (an explicit "1K" included). A model that only knows one size (the
@@ -108,6 +108,36 @@ export function pickGeminiFinalImage(json: GeminiResponse): GeminiPick {
     thoughtImages: images.length - finals.length,
     finishReason: cand?.finishReason ?? null,
   };
+}
+
+/**
+ * The Retusz request contract, on a built body: exactly one user content with
+ * exactly [ { text === req.prompt }, { inlineData === the one input image } ],
+ * top-level keys contents + generationConfig only, generationConfig keys
+ * responseModalities + imageConfig only, imageConfig ⊆ {aspectRatio, imageSize}.
+ * Returns the first violation, or null.
+ */
+export function retouchContractViolation(
+  body: GeminiImageBody,
+  req: Pick<GenerationRequest, "prompt" | "referenceImages">,
+): string | null {
+  const keys = (o: object) => Object.keys(o).sort().join(",");
+  if (keys(body) !== "contents,generationConfig") return "top_level_fields";
+  if (body.contents.length !== 1) return "contents_count";
+  const c = body.contents[0]!;
+  if (c.role !== "user") return "role";
+  if (req.referenceImages.length !== 1) return "input_image_count";
+  const texts = c.parts.filter((p) => "text" in p);
+  const images = c.parts.filter((p) => "inlineData" in p);
+  if (c.parts.length !== 2 || texts.length !== 1 || images.length !== 1) return "parts_count";
+  if (!("text" in c.parts[0]!) || !("inlineData" in c.parts[1]!)) return "parts_order";
+  if ((c.parts[0] as { text: string }).text !== req.prompt) return "prompt_mismatch";
+  const img = (c.parts[1] as { inlineData: { mimeType: string; data: string } }).inlineData;
+  if (img.data !== req.referenceImages[0]!.base64 || img.mimeType !== req.referenceImages[0]!.mime) return "image_mismatch";
+  if (keys(body.generationConfig) !== "imageConfig,responseModalities") return "generation_config_fields";
+  if (JSON.stringify(body.generationConfig.responseModalities) !== '["IMAGE"]') return "response_modalities";
+  if (Object.keys(body.generationConfig.imageConfig).some((k) => k !== "aspectRatio" && k !== "imageSize")) return "image_config_fields";
+  return null;
 }
 
 export function buildGeminiImageRequest(model: ModelShape, req: RequestShape): GeminiImagePlan {

@@ -24,7 +24,8 @@ import { FASHION_MODEL_IDENTIFIER } from "@/lib/server/fashion";
 import { callImageModel } from "@/lib/server/engine/image-call";
 import { prepareGeneratorEngine } from "@/lib/server/engine/tool-run";
 import { runGeneration } from "@/lib/server/generation";
-import { GEMINI_IMAGE_ASPECT_RATIOS, buildGeminiImageRequest, geminiImageSize, pickGeminiFinalImage } from "@/lib/ai/providers/google-request";
+import { GEMINI_IMAGE_ASPECT_RATIOS, buildGeminiImageRequest, geminiImageSize, pickGeminiFinalImage, retouchContractViolation } from "@/lib/ai/providers/google-request";
+import { googleAdapter } from "@/lib/ai/providers/google";
 import { resolveOriginalAspectRatio } from "@/lib/ai/aspect-ratio";
 import { RATIO_SHAPE, type AspectRatio } from "@/lib/ai/types";
 import { buildFidelityInstructions } from "@/lib/ai/product-lock";
@@ -815,6 +816,76 @@ async function main() {
     check("the other tools keep [image…, prompt] (only Retusz asks promptFirst)",
       buildGeminiImageRequest({ supported_resolutions: ["2K"] }, { prompt: "x", aspectRatio: "auto", resolution: "2K", referenceImages: [{ base64: "QQ==", mime: "image/png" }] }).body.contents[0]!.parts[0]!.hasOwnProperty("inlineData")
       && /promptFirst: true/.test(read("lib/server/retouch.ts")) && !/promptFirst/.test(read("lib/server/fashion.ts") + read("lib/server/concept-generation.ts") + read("lib/server/engine/image-call.ts")));
+  }
+  console.log("\nHARD AUDIT — raw input bytes, prompt chain, runtime contract (no paid call)");
+  {
+    // (1) A phone photo stored sideways (EXIF orientation 6): Retusz sends the
+    // STORED bytes — exactly what a direct Google call with that file sends.
+    const sideways = await sharp(photo).withMetadata({ orientation: 6 }).jpeg({ quality: 90 }).toBuffer();
+    const db = freshDb(); db.files.set("w/r/phone.jpg", sideways);
+    g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
+    const { pr } = await retouch(db, "w/r/phone.jpg");
+    const sentImg = imagesOf(sent[0]!)[0]!.inlineData;
+    check("EXIF-rotated phone photo: bytes sent === bytes uploaded (no re-encode, no ICC/sRGB conversion)",
+      sha(Buffer.from(sentImg.data, "base64")) === sha(sideways) && sentImg.mimeType === "image/jpeg", pr?.inputs);
+    const inp = (pr?.inputs as Row[])[0]!;
+    check("…recorded transform none, source_sha256 === sent_sha256", inp.transform === "none" && inp.source_sha256 === inp.sent_sha256 && inp.sent_sha256 === sha(sideways), inp);
+    const other = await prepareReferenceImage(sideways, "phone.jpg");
+    check("other tools keep their behaviour (default prepareReferenceImage still bakes the rotation)", other.transform === "exif_orientation");
+
+    // (2) Prompt chain recorded on the job: published → resolved → provider.
+    check("job records prompt_version and keyed digests published / resolved / provider",
+      pr?.prompt_version === 3 && typeof pr?.published_prompt_digest === "string"
+      && pr?.published_prompt_digest === pr?.resolved_prompt_digest && pr?.resolved_prompt_digest === pr?.provider_prompt_digest
+      && pr?.provider_prompt_digest === promptDigest(EXACT) && JSON.stringify(pr?.prompt_variables) === "[]" && pr?.strict_single_image === true, pr);
+    g.__fidelityEngine = engine({ systemPrompt: "A {{resolution}} B", promptVersion: 4 });
+    const withVar = await retouch(db, "w/r/phone.jpg", { resolution: "4K" });
+    check("with an explicit variable: published ≠ resolved, resolved === provider, variables = [resolution]",
+      withVar.pr?.published_prompt_digest === promptDigest("A {{resolution}} B") && withVar.pr?.resolved_prompt_digest === promptDigest("A 4K B")
+      && withVar.pr?.provider_prompt_digest === withVar.pr?.resolved_prompt_digest && JSON.stringify(withVar.pr?.prompt_variables) === '["resolution"]', withVar.pr);
+
+    // (3) Runtime prompt parity: a mismatch is refused BEFORE the job/charge/call.
+    resetLedger(); sent = [];
+    const dbP = freshDb(); dbP.files.set("w/r/p.jpg", photo);
+    const bad = await runGeneration(fakeSupabase(dbP) as unknown as FakeClient, "u", "w", {
+      modelId: PRO_ID, prompt: "TEXT ABOUT TO BE SENT", aspectRatio: "auto", resolution: "2K", quantity: 1,
+      referencePaths: ["w/r/p.jpg"], referenceImageIds: [], strictSingleImage: true, promptFirst: true,
+      promptContract: { resolved: "THE PUBLISHED PROMPT", publishedDigest: null, version: 3, variables: [] },
+    });
+    check("prompt parity failure → retouch_prompt_parity_failed, 0 provider calls, 0 credits, no job",
+      !bad.ok && bad.error === "retouch_prompt_parity_failed" && sent.length === 0 && ledger() === "[]" && dbP.jobs.size === 0, { bad, ledger: ledger() });
+
+    // (4) Adapter contract, on the exact body about to be sent.
+    const req = (over: Record<string, unknown> = {}) => ({
+      prompt: "P", aspectRatio: "auto" as const, resolution: "2K" as const, quantity: 1, promptFirst: true, strictSingleImage: true,
+      referenceImages: [{ base64: "QUJD", mime: "image/png" }], productLock: { fidelityInstructions: "" }, ...over,
+    });
+    const model = { supported_resolutions: ["1K", "2K", "4K"] };
+    const ok = buildGeminiImageRequest(model, req()).body;
+    check("contract: the real Retusz body passes", retouchContractViolation(ok, req()) === null);
+    check("contract: an extra systemInstruction is refused", retouchContractViolation({ ...ok, systemInstruction: { parts: [] } } as typeof ok, req()) === "top_level_fields");
+    check("contract: a second content (history) is refused", retouchContractViolation({ ...ok, contents: [...ok.contents, ...ok.contents] }, req()) === "contents_count");
+    check("contract: [image, text] order is refused", retouchContractViolation({ ...ok, contents: [{ role: "user", parts: [...ok.contents[0]!.parts].reverse() }] }, req()) === "parts_order");
+    check("contract: an appended text part is refused", retouchContractViolation({ ...ok, contents: [{ role: "user", parts: [...ok.contents[0]!.parts, { text: "extra" }] }] }, req()) === "parts_count");
+    check("contract: text ≠ prompt is refused", retouchContractViolation(ok, req({ prompt: "Q" })) === "prompt_mismatch");
+    check("contract: extra generationConfig field (temperature) is refused",
+      retouchContractViolation({ ...ok, generationConfig: { ...ok.generationConfig, temperature: 1 } as typeof ok.generationConfig }, req()) === "generation_config_fields");
+    sent = [];
+    let threw = "";
+    try {
+      await googleAdapter.generate({ model_identifier: "gemini-3-pro-image", supported_resolutions: ["2K"] } as never,
+        req({ referenceImages: [{ base64: "QUJD", mime: "image/png" }, { base64: "REVG", mime: "image/png" }] }) as never,
+        { apiKey: "k", baseUrl: null } as never);
+    } catch (e) { threw = (e as { safeMessage?: string }).safeMessage ?? String(e); }
+    check("adapter: two input images under the Retusz contract → refused, NO HTTP call", threw === "retouch_request_contract_failed" && sent.length === 0, threw);
+
+    // (5) Nothing about the tool reaches the model: no name, slug, description or operation.
+    g.__fidelityEngine = engine({ systemPrompt: "Zrób tło białe.", promptVersion: 5 });
+    await retouch(db, "w/r/phone.jpg");
+    const bodyText = JSON.stringify(sent[0]!.body).replace(/"data":"[^"]*"/, '"data":"…"');
+    check("the body carries no tool name/slug/description/operation (Retusz, retouch, packshot, IMAGE_EDIT, GrovBase)",
+      !/retusz|retouch|packshot|image_edit|grovbase|białym tle|white background/i.test(bodyText), bodyText.slice(0, 300));
+    check("the only text in the body is the published prompt", textOf(sent[0]!).length === 1 && textOf(sent[0]!)[0]!.text === "Zrób tło białe.");
   }
   console.log("\n§15 CHECKLIST A–L");
   {

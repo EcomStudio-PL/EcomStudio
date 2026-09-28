@@ -195,6 +195,9 @@ export async function runRetouch(
       aspectRatio,
       // Google's single-image edit example: [prompt, image].
       promptFirst: true,
+      // The stored photo bytes as-is (no EXIF re-encode — what a direct API
+      // call with the same file sends) + the adapter's pre-send contract check.
+      strictSingleImage: true,
       resolution,
       quantity: 1,
       referenceImageIds: [],

@@ -46,7 +46,12 @@ function mimeFromName(name: string): string {
     : ext === "heic" ? "image/heic" : ext === "heif" ? "image/heif" : "image/jpeg";
 }
 
-export async function prepareReferenceImage(stored: Buffer, name: string): Promise<PreparedReference> {
+/**
+ * `exact` (Retusz): a JPEG/PNG/WebP goes out as the stored bytes EVEN WITH an
+ * EXIF orientation flag — exactly what a direct Google API call with the same
+ * file sends. Only a format Google does not accept is still transcoded.
+ */
+export async function prepareReferenceImage(stored: Buffer, name: string, opts: { exact?: boolean } = {}): Promise<PreparedReference> {
   const sourceSha256 = sha(stored);
   const untouched = (mime: string, width: number | null, height: number | null): PreparedReference => ({
     base64: stored.toString("base64"), mime, sourceSha256, sha256: sourceSha256,
@@ -68,7 +73,7 @@ export async function prepareReferenceImage(stored: Buffer, name: string): Promi
   const known = meta.format ? SENDABLE[meta.format] : undefined;
 
   // The normal case: a JPEG, PNG or WebP shown the way it is stored.
-  if (known && orientation <= 1) return untouched(known, w, h);
+  if (known && (orientation <= 1 || opts.exact)) return untouched(known, w, h);
 
   try {
     const pipeline = sharp(stored, { failOn: "none" }).rotate();
