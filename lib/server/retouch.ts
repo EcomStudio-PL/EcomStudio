@@ -193,6 +193,8 @@ export async function runRetouch(
       // (Product Lock) or render the paid size.
       ...(model.fallbackId ? { fallbackModelIds: [model.fallbackId] } : {}),
       aspectRatio,
+      // Google's single-image edit example: [prompt, image].
+      promptFirst: true,
       resolution,
       quantity: 1,
       referenceImageIds: [],

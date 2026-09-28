@@ -287,7 +287,8 @@ async function main() {
     const { pr } = await retouch(db, "w/r/src.jpg");
     const imgs = sent[0] ? imagesOf(sent[0]) : [];
     const sentBytes = Buffer.from(imgs[0]?.inlineData.data ?? "", "base64");
-    check("one inline image, before the text (Google's edit order)", imgs.length === 1 && "inlineData" in (sent[0]?.body.contents[0]!.parts[0] ?? {}));
+    check("Retusz: [prompt, image] — Google's single-image edit order; exactly 2 parts", imgs.length === 1 && sent[0]?.body.contents[0]!.parts.length === 2
+      && "text" in (sent[0]?.body.contents[0]!.parts[0] ?? {}) && "inlineData" in (sent[0]?.body.contents[0]!.parts[1] ?? {}));
     check("sha256(sent bytes) === sha256(uploaded file)", sha(sentBytes) === PHOTO_SHA);
     check("no resize: same length, same 1500×1000", sentBytes.length === photo.length && (await sharp(sentBytes).metadata()).width === 1500);
     check("MIME from the bytes: image/jpeg", imgs[0]?.inlineData.mimeType === "image/jpeg");
@@ -691,7 +692,7 @@ async function main() {
     const b = sent[0]!.body;
     check("no mediaResolution in generationConfig", !("mediaResolution" in b.generationConfig));
     check("the image part carries only { inlineData: { mimeType, data } } (no per-part mediaResolution)",
-      JSON.stringify(Object.keys(b.contents[0]!.parts[0]!)) === '["inlineData"]' && JSON.stringify(Object.keys((b.contents[0]!.parts[0] as { inlineData: Row }).inlineData).sort()) === '["data","mimeType"]');
+      JSON.stringify(Object.keys(b.contents[0]!.parts[1]!)) === '["inlineData"]' && JSON.stringify(Object.keys((b.contents[0]!.parts[1] as { inlineData: Row }).inlineData).sort()) === '["data","mimeType"]');
     const src = ["lib", "app", "components"].map((d) => {
       // Assignments or enum values in code — not the admin panel's label key "mediaResolution".
       try { return require("node:child_process").execSync(`grep -rnE "MEDIA_RESOLUTION_|mediaResolution\\s*:|media_resolution" --include=*.ts --include=*.tsx ${d} || true`, { cwd: process.cwd() }).toString(); } catch { return ""; }
@@ -723,7 +724,8 @@ async function main() {
       const B = {
         url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image:generateContent",
         body: {
-          contents: [{ role: "user", parts: [{ inlineData: { mimeType: cs.mime, data: cs.src.toString("base64") } }, { text: EXACT }] }],
+          // Google's official single-image edit example: prompt FIRST, image second.
+          contents: [{ role: "user", parts: [{ text: EXACT }, { inlineData: { mimeType: cs.mime, data: cs.src.toString("base64") } }] }],
           generationConfig: { responseModalities: ["IMAGE"], imageConfig: cs.imageConfig },
         },
       };
@@ -752,6 +754,68 @@ async function main() {
     }
   }
 
+  console.log("\nINDEPENDENT BASELINE + STATELESSNESS — Retusz vs Google's minimal official request (no production builder used)");
+  {
+    // The baseline is written by hand from Google's REST schema. Nothing here
+    // imports or calls buildGeminiImageRequest.
+    const prodShape = await sharp({ create: { width: 933, height: 700, channels: 3, background: "#a86" } }).png().toBuffer();
+    const baseline = {
+      url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image:generateContent",
+      body: {
+        contents: [{ role: "user", parts: [{ text: EXACT }, { inlineData: { mimeType: "image/png", data: prodShape.toString("base64") } }] }],
+        generationConfig: { responseModalities: ["IMAGE"], imageConfig: { imageSize: "4K" } },
+      },
+    };
+    const paths = (v: unknown, pre = ""): string[] => v && typeof v === "object" && !Array.isArray(v)
+      ? Object.keys(v as Row).flatMap((k) => paths((v as Row)[k], pre ? `${pre}.${k}` : k)) : [pre];
+    const runs: Sent[] = [];
+    const db = freshDb(); db.files.set("w/r/prod.png", prodShape); db.files.set("w/r/other.png", photo);
+    g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
+    // An earlier, different job in the same workspace — nothing of it may leak into the next one.
+    await retouch(db, "w/r/other.png", { resolution: "2K", format: "4:5" });
+    db.tables.length = 0;
+    await retouch(db, "w/r/prod.png", { resolution: "4K", format: "original" }); runs.push(sent[0]!);
+    await retouch(db, "w/r/prod.png", { resolution: "4K", format: "original" }); runs.push(sent[0]!);
+    const A = runs[0]!;
+    const parts = A.body.contents[0]!.parts;
+    const gPaths = new Set(paths({ ...A.body, contents: undefined }).filter((x) => !x.startsWith("contents")));
+    const bPaths = new Set(paths({ ...baseline.body, contents: undefined }).filter((x) => !x.startsWith("contents")));
+    const report = {
+      MODEL_ENDPOINT_EQUAL: A.url.replace(/\?.*$/, "") === baseline.url,
+      TOP_LEVEL_FIELDS: Object.keys(A.body).sort().join(","),
+      EXTRA_FIELDS_IN_GROVBASE: [...gPaths].filter((x) => !bPaths.has(x)),
+      MISSING_FIELDS: [...bPaths].filter((x) => !gPaths.has(x)),
+      CONTENTS_COUNT: A.body.contents.length,
+      ROLE: A.body.contents[0]!.role,
+      PARTS_COUNT: parts.length,
+      HISTORY_ITEMS: A.body.contents.length - 1,
+      INPUT_IMAGE_COUNT: parts.filter((x) => "inlineData" in x).length,
+      PROMPT_PART_INDEX: parts.findIndex((x) => "text" in x),
+      IMAGE_PART_INDEX: parts.findIndex((x) => "inlineData" in x),
+      PROMPT_SHA_EQUAL: sha((parts[0] as { text: string }).text) === sha(EXACT),
+      IMAGE_SHA_EQUAL: sha(Buffer.from((parts[1] as { inlineData: { data: string } }).inlineData.data, "base64")) === sha(prodShape),
+      MIME: (parts[1] as { inlineData: { mimeType: string } }).inlineData.mimeType,
+      BODY_EQUAL_TO_BASELINE: JSON.stringify(A.body) === JSON.stringify(baseline.body),
+    };
+    console.log("    " + JSON.stringify(report));
+    check("baseline: endpoint/model equal, top-level = contents,generationConfig", report.MODEL_ENDPOINT_EQUAL && report.TOP_LEVEL_FIELDS === "contents,generationConfig");
+    check("baseline: EXTRA_FIELDS_IN_GROVBASE = [], MISSING_FIELDS = []", report.EXTRA_FIELDS_IN_GROVBASE.length === 0 && report.MISSING_FIELDS.length === 0, report);
+    check("baseline: 1 user content, 2 parts, HISTORY_ITEMS 0, INPUT_IMAGE_COUNT 1, PROMPT_PART_INDEX 0, IMAGE_PART_INDEX 1",
+      report.CONTENTS_COUNT === 1 && report.ROLE === "user" && report.PARTS_COUNT === 2 && report.HISTORY_ITEMS === 0
+      && report.INPUT_IMAGE_COUNT === 1 && report.PROMPT_PART_INDEX === 0 && report.IMAGE_PART_INDEX === 1, report);
+    check("baseline: prompt SHA, image SHA, MIME image/png equal; body byte-identical to the hand-written request",
+      report.PROMPT_SHA_EQUAL && report.IMAGE_SHA_EQUAL && report.MIME === "image/png" && report.BODY_EQUAL_TO_BASELINE, report);
+    check("stateless: two consecutive runs send byte-identical bodies (nothing carried over from the earlier job)", JSON.stringify(runs[0]!.body) === JSON.stringify(runs[1]!.body));
+    check("stateless: the earlier job's photo and 4:5 never appear", !JSON.stringify(runs[0]!.body).includes(photo.toString("base64").slice(0, 200)) && !JSON.stringify(runs[0]!.body).includes('"4:5"'));
+    // (generations / generation_assets are touched only to STORE this run's output, after the call.)
+    check("stateless: no knowledge / feedback / examples table touched during a Retusz run",
+      !db.tables.some((t) => /knowledge|feedback|example/.test(t)), [...new Set(db.tables)]);
+    const src = ["lib/ai/providers/google.ts", "lib/ai/providers/google-request.ts", "lib/server/generation.ts", "lib/server/retouch.ts", "lib/server/engine/tool-run.ts"].map(read).join("\n");
+    check("no chat / session / history / interactions API on the image path", !/chats\.create|startChat|start_chat|sendMessage|getHistory|previous_interaction|previousInteraction|\/interactions/.test(src));
+    check("the other tools keep [image…, prompt] (only Retusz asks promptFirst)",
+      buildGeminiImageRequest({ supported_resolutions: ["2K"] }, { prompt: "x", aspectRatio: "auto", resolution: "2K", referenceImages: [{ base64: "QQ==", mime: "image/png" }] }).body.contents[0]!.parts[0]!.hasOwnProperty("inlineData")
+      && /promptFirst: true/.test(read("lib/server/retouch.ts")) && !/promptFirst/.test(read("lib/server/fashion.ts") + read("lib/server/concept-generation.ts") + read("lib/server/engine/image-call.ts")));
+  }
   console.log("\n§15 CHECKLIST A–L");
   {
     const one = async (systemPrompt: string | null, opts: { resolution?: string; format?: string } = {}) => {

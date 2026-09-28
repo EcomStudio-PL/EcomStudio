@@ -24,7 +24,7 @@ export type ProviderRequestShape = {
 export function describeProviderRequest(
   providerSlug: string,
   model: Pick<AiModelRecord, "supported_resolutions">,
-  req: Pick<GenerationRequest, "prompt" | "aspectRatio" | "resolution" | "referenceImages">,
+  req: Pick<GenerationRequest, "prompt" | "aspectRatio" | "resolution" | "referenceImages" | "promptFirst">,
 ): ProviderRequestShape {
   if (providerSlug === "google") {
     const plan = buildGeminiImageRequest(model, req);

@@ -36,6 +36,8 @@ export type GenerateInput = {
   prompt: string;
   negative?: string;
   aspectRatio: AspectRatio;
+  /** Gemini part order [prompt, image] (Retusz) instead of [image…, prompt]. */
+  promptFirst?: boolean;
   resolution?: Resolution;
   /** Render quality ("Jakość"), honoured only when the model declares it in
    *  metadata.qualities — anything else is dropped, never guessed. */
@@ -638,7 +640,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     // (Google's documented default). Nothing is derived from these numbers.
     const cSource = cFit.list[0] ?? null;
     const cRequest = {
-      prompt: finalPrompt, aspectRatio, resolution: cResolution,
+      prompt: finalPrompt, aspectRatio, resolution: cResolution, promptFirst: input.promptFirst === true,
       // A fallback engine only receives the quality if IT declares it.
       quality: quality && modelQualities(cModel).includes(quality) ? quality : undefined,
       quantity, referenceImages: cFit.list, productLock: { fidelityInstructions: "" },
@@ -654,6 +656,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       provider: cProviderSlug, model_identifier: cModel.model_identifier, model_id: cModel.id,
       fallback_used: candidateId !== input.modelId,
       operation: cShape.operation,
+      parts_order: cFit.list.length === 0 ? "text" : input.promptFirst ? "text_then_image" : "image_then_text",
       prompt_policy: "exact", fidelity_appended: false,
       prompt_chars: promptLength(finalPrompt),
       // Keyed, not a bare hash: this row is readable by the customer.

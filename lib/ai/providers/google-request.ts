@@ -57,7 +57,7 @@ export type GeminiImagePlan = {
 };
 
 type ModelShape = Pick<AiModelRecord, "supported_resolutions">;
-type RequestShape = Pick<GenerationRequest, "prompt" | "aspectRatio" | "resolution" | "referenceImages">;
+type RequestShape = Pick<GenerationRequest, "prompt" | "aspectRatio" | "resolution" | "referenceImages" | "promptFirst">;
 
 /** The size to send: the chosen one, when the model offers any choice of
  *  size (an explicit "1K" included). A model that only knows one size (the
@@ -115,6 +115,7 @@ export function buildGeminiImageRequest(model: ModelShape, req: RequestShape): G
   const aspectRatio = req.aspectRatio === "auto" ? null : req.aspectRatio;
   const imageSize = geminiImageSize(model, req.resolution ?? null);
   const imageConfig: GeminiImageBody["generationConfig"]["imageConfig"] = {};
+  const images: GeminiPart[] = req.referenceImages.map((r) => ({ inlineData: { mimeType: r.mime, data: r.base64 } }));
   if (aspectRatio) imageConfig.aspectRatio = aspectRatio;
   if (imageSize) imageConfig.imageSize = imageSize;
   return {
@@ -124,10 +125,11 @@ export function buildGeminiImageRequest(model: ModelShape, req: RequestShape): G
     body: {
       contents: [{
         role: "user",
-        parts: [
-          ...req.referenceImages.map((r) => ({ inlineData: { mimeType: r.mime, data: r.base64 } })),
-          { text: req.prompt },
-        ],
+        // promptFirst (Retusz): Google's single-image edit example —
+        // [prompt, image]. Otherwise the images first, then the prompt.
+        parts: req.promptFirst
+          ? [{ text: req.prompt }, ...images]
+          : [...images, { text: req.prompt }],
       }],
       generationConfig: { responseModalities: ["IMAGE"], imageConfig },
     },

@@ -130,6 +130,12 @@ export interface GenerationRequest {
   quality?: Quality;
   quantity: number;
   referenceImages: ReferenceImage[];
+  /**
+   * Part order for a Gemini request: true = [text, image…] (Google's own
+   * single-image edit example — used by Retusz), absent = [image…, text]
+   * (the order every other tool has always sent).
+   */
+  promptFirst?: boolean;
   productLock: {
     /**
      * The fidelity contract the runner FOLDED INTO `prompt` for this request
