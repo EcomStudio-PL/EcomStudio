@@ -198,28 +198,45 @@ export function buildGeminiImageRequest(model: ModelShape, req: RequestShape): G
  *   response_modalities ["image"] — "if you only want an image" (cookbook)
  *   store               false — interactions are STORED by default; false
  *                       opts out and makes previous_interaction_id impossible
+ * and, LAST (so every byte before it is the pre-2K/4K request unchanged):
+ *   response_format     {type:"image", image_size: "2K"|"4K", aspect_ratio?}
+ *                       — the official image output config (SDK 2.25
+ *                       ImageResponseFormat). aspect_ratio is OMITTED for
+ *                       "Oryginalny" (the photo's own shape); otherwise the
+ *                       ratio the customer picked, never a derived one.
  * Nothing else: no previous_interaction_id, system_instruction,
- * generation_config (so no image size, no aspect ratio, no thinking level),
- * tools, safety_settings or labels.
+ * generation_config, tools, safety_settings or labels. The size and ratio
+ * never enter the prompt.
  */
 export const INTERACTIONS_PATH = "/v1beta/interactions";
 /** REST revision the official migration checklist says to send
  *  (`Api-Revision`; the same value is google-genai's GOOGLE_GENAI_API_REVISION). */
 export const INTERACTIONS_API_REVISION = "2026-05-20";
 
+/** The output sizes Retusz may request — the customer picks one; 1K is not
+ *  offered and is never sent. */
+export const RETOUCH_IMAGE_SIZES = ["2K", "4K"] as const;
+
+export type RetouchResponseFormat = { type: "image"; image_size: string; aspect_ratio?: string };
+
 export type RetouchInteractionBody = {
   model: string;
   input: [{ type: "text"; text: string }, { type: "image"; data: string; mime_type: string }];
   response_modalities: ["image"];
   store: false;
+  response_format?: RetouchResponseFormat;
 };
+
+type RetouchRequestShape = Pick<GenerationRequest, "prompt" | "referenceImages"> & Partial<Pick<GenerationRequest, "resolution" | "aspectRatio">>;
+
+const isRetouchSize = (s: unknown): s is string => (RETOUCH_IMAGE_SIZES as readonly unknown[]).includes(s);
 
 export function buildRetouchInteraction(
   model: Pick<AiModelRecord, "model_identifier">,
-  req: Pick<GenerationRequest, "prompt" | "referenceImages">,
+  req: RetouchRequestShape,
 ): RetouchInteractionBody {
   const image = req.referenceImages[0];
-  return {
+  const body: RetouchInteractionBody = {
     model: model.model_identifier,
     input: [
       { type: "text", text: req.prompt },
@@ -228,23 +245,48 @@ export function buildRetouchInteraction(
     response_modalities: ["image"],
     store: false,
   };
+  // The output config, appended after `store`: the chosen size, and the
+  // chosen ratio unless "Oryginalny" (auto) — then the field is absent.
+  if (isRetouchSize(req.resolution)) {
+    body.response_format = req.aspectRatio && req.aspectRatio !== "auto"
+      ? { type: "image", image_size: req.resolution, aspect_ratio: req.aspectRatio }
+      : { type: "image", image_size: req.resolution };
+  }
+  return body;
 }
 
 /**
  * The Retusz contract, checked on the body AS SERIALISED (the string about to
- * be sent, parsed back): exactly {model, input, response_modalities, store},
- * store false, input exactly [the prompt byte for byte, the one image
- * byte for byte]. Returns the first violation, or null.
+ * be sent, parsed back): exactly {model, input, response_modalities, store}
+ * plus — only when a 2K/4K size was chosen — `response_format`, store false,
+ * input exactly [the prompt byte for byte, the one image byte for byte].
+ * response_format must be exactly {type:"image", image_size: the chosen size}
+ * plus aspect_ratio === the chosen ratio (one of the official ones), or no
+ * aspect_ratio for "Oryginalny". A ratio that cannot be sent is a violation,
+ * never silently dropped. Returns the first violation, or null.
  */
 export function retouchInteractionViolation(
   body: Record<string, unknown>,
-  req: Pick<GenerationRequest, "prompt" | "referenceImages">,
+  req: RetouchRequestShape,
   modelIdentifier: string,
 ): string | null {
-  if (Object.keys(body).sort().join(",") !== "input,model,response_modalities,store") return "top_level_fields";
+  const sized = isRetouchSize(req.resolution);
+  const ratio = req.aspectRatio && req.aspectRatio !== "auto" ? req.aspectRatio : null;
+  const fields = sized ? "input,model,response_format,response_modalities,store" : "input,model,response_modalities,store";
+  if (Object.keys(body).sort().join(",") !== fields) return "top_level_fields";
   if (body.model !== modelIdentifier) return "model";
   if (body.store !== false) return "store";
   if (JSON.stringify(body.response_modalities) !== '["image"]') return "response_modalities";
+  if (ratio && !sized) return "aspect_ratio";
+  if (sized) {
+    const rf = body.response_format;
+    if (!rf || typeof rf !== "object" || Array.isArray(rf)) return "response_format";
+    const f = rf as Record<string, unknown>;
+    if (Object.keys(f).sort().join(",") !== (ratio ? "aspect_ratio,image_size,type" : "image_size,type")) return "response_format";
+    if (f.type !== "image") return "response_format";
+    if (f.image_size !== req.resolution) return "image_size";
+    if (ratio && (f.aspect_ratio !== ratio || !GEMINI_IMAGE_ASPECT_RATIOS.includes(ratio as AspectRatio))) return "aspect_ratio";
+  }
   if (req.referenceImages.length !== 1) return "input_image_count";
   const input = body.input;
   if (!Array.isArray(input) || input.length !== 2) return "input_count";

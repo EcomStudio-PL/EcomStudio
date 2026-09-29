@@ -119,7 +119,10 @@ export function captureGeminiBoundary(url: string, payload: string, model: strin
 
 /* ── Retusz: the Interactions API request ────────────────────────────────── */
 
-const INTERACTION_FIELDS = ["model", "input", "response_modalities", "store"];
+const INTERACTION_FIELDS = ["model", "input", "response_modalities", "store", "response_format"];
+/** The only keys an image response_format may carry here (no delivery,
+ *  no mime_type). */
+const RESPONSE_FORMAT_FIELDS = ["type", "image_size", "aspect_ratio"];
 
 export type InteractionBoundary = {
   provider: "google";
@@ -173,8 +176,22 @@ export function captureInteractionBoundary(url: string, headerNames: string[], p
     const bytes = Buffer.from(String(c.data ?? ""), "base64");
     return { mime_type: String(c.mime_type ?? ""), bytes: bytes.length, sha256: sha(bytes) };
   });
-  const config = (body.generation_config ?? {}) as Record<string, unknown>;
-  const imageConfig = (config.image_generation_config ?? config.image_config ?? {}) as Record<string, unknown>;
+  // The output config: ONE response_format object of type "image" with
+  // string image_size / aspect_ratio. Anything else (an array, another type,
+  // delivery, mime_type, a non-string value, a generation_config) is extra.
+  const rf = body.response_format;
+  let imageConfig: Record<string, unknown> = {};
+  if (rf !== undefined) {
+    if (!rf || typeof rf !== "object" || Array.isArray(rf)) extra.push("response_format:shape");
+    else {
+      imageConfig = rf as Record<string, unknown>;
+      for (const k of Object.keys(imageConfig)) if (!RESPONSE_FORMAT_FIELDS.includes(k)) extra.push(`response_format.${k}`);
+      if (imageConfig.type !== "image") extra.push("response_format.type");
+      for (const k of ["image_size", "aspect_ratio"]) {
+        if (k in imageConfig && typeof imageConfig[k] !== "string") extra.push(`response_format.${k}:${typeof imageConfig[k]}`);
+      }
+    }
+  }
   const prompt = texts.length === 1 ? texts[0]! : null;
   const previous = body.previous_interaction_id !== undefined;
   const stateless = body.store === false && !previous;

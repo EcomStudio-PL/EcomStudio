@@ -2,13 +2,15 @@
 import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "@/lib/notify";
-import { Info, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { Loader2, RefreshCw, Sparkles, Wand2 } from "lucide-react";
 import { awaitEngineRun } from "@/lib/engine-run-client";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
 import { PhotoUploader, DropOverlay, useFileDrop } from "@/components/genv3/uploader";
 import { GenerationGallery } from "@/components/genv3/gallery";
+import { Dropdown } from "@/components/ui/dropdown";
 import { InfoHint } from "@/components/ui/hint";
+import { RatioValue, ratioIcon, ratioName } from "@/components/genv3/ratio-options";
 import { cn } from "@/lib/utils";
 import type { GalleryItem, UploadedRef } from "@/components/genv3/types";
 
@@ -30,9 +32,8 @@ type JobState = {
 /**
  * RETUSZ ZDJĘĆ — the tool's screen.
  *
- * Deliberately simpler than the generator: photos, the price and the button.
- * Size and framing are NOT offered at this stage — the request carries
- * neither (Google's default size, the photo's own shape); the panel says so. No prompt (GrovBase writes it, server-side), no engine
+ * Deliberately simpler than the generator: photos, two settings, the price
+ * and the button. No prompt (GrovBase writes it, server-side), no engine
  * picker (the customer bought a retouch, not a provider), no session type.
  *
  * Every photo is its own request, so six photos are six independent jobs:
@@ -40,15 +41,17 @@ type JobState = {
  * results alone, and its card offers a retry for that one image.
  */
 export function RetouchWorkspace({
-  workspaceId, credits, available, price, outputsPerRun = 1, initialItems, initialCursor,
+  workspaceId, credits, available, resolutions, ratios, pricing, outputsPerRun = 1, initialItems, initialCursor,
 }: {
   workspaceId: string;
   credits: number;
   /** False when no engine is configured — the panel says so instead of
    *  offering a button that cannot work. */
   available: boolean;
-  /** Credits per image (the default-size price, admin override applied). */
-  price: number;
+  resolutions: string[];
+  ratios: string[];
+  /** Size → credits per image, already carrying the admin's own override. */
+  pricing: Record<string, number>;
   /** Results ONE run delivers: 1, or the published workflow's count when the
    *  tool runs a workflow — the price below is per run, like the charge. */
   outputsPerRun?: number;
@@ -58,6 +61,8 @@ export function RetouchWorkspace({
   const { t, locale } = useI18n();
   const [photos, setPhotos] = useState<UploadedRef[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [resolution, setResolution] = useState(() => (resolutions.includes("2K") ? "2K" : resolutions[0] ?? "1K"));
+  const [format, setFormat] = useState("original");
   const [jobs, setJobs] = useState<JobState[]>([]);
   const [busy, setBusy] = useState(false);
   const [balance, setBalance] = useState(credits);
@@ -68,7 +73,7 @@ export function RetouchWorkspace({
   const inFlight = useRef(0);
   const running = useRef(false);
 
-  const perImage = price * Math.max(1, outputsPerRun);
+  const perImage = (pricing[resolution] ?? Object.values(pricing)[0] ?? 0) * Math.max(1, outputsPerRun);
   const total = perImage * photos.length;
   const missing = Math.max(0, total - balance);
   const n = (v: number) => new Intl.NumberFormat(locale).format(v);
@@ -132,9 +137,7 @@ export function RetouchWorkspace({
     try {
       const res = await fetch("/api/retouch", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        // The photo only: no size, no framing, no prompt — the server decides
-        // none of them from the browser.
-        body: JSON.stringify({ sourcePath: job.path, expectedOutputs: outputsPerRun }),
+        body: JSON.stringify({ sourcePath: job.path, resolution, format, expectedOutputs: outputsPerRun }),
       });
       const json = await res.json() as {
         ok: boolean; error?: string; credits?: number; pending?: boolean; runId?: string; expected?: number;
@@ -169,7 +172,7 @@ export function RetouchWorkspace({
       setJobs((prev) => prev.map((j) => j.key === job.key ? { ...j, status: "failed", error: t("common.error") } : j));
       return false;
     }
-  }, [perImage, outputsPerRun, absorb, errText, t]);
+  }, [resolution, format, perImage, outputsPerRun, absorb, errText, t]);
 
   async function retouchAll() {
     // Guarded against the double click that would otherwise pay twice.
@@ -230,13 +233,46 @@ export function RetouchWorkspace({
             label={t("retouch.photos", { n: MAX_PHOTOS })}
           />
 
-          {/* Size and framing: temporarily not offered — the request sends
-              neither (Google's default size, the photo's own shape). */}
-          <section data-retouch-settings-locked className="flex items-start gap-2 rounded-xl border border-line bg-sunken/50 p-3">
-            <Info size={14} aria-hidden className="mt-0.5 shrink-0 text-muted" />
-            <div className="min-w-0">
-              <p className="text-[12.5px] font-semibold tracking-tight">{t("retouch.settingsLockedTitle")}</p>
-              <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">{t("retouch.settingsLockedBody")}</p>
+          <section>
+            <div className="grid grid-cols-2 gap-2 [&>*]:min-w-0">
+              <div className="rounded-xl border border-line bg-sunken/50 p-2">
+                <Dropdown
+                  testId="resolution"
+                  label={t("genv3.resolution")}
+                  value={resolution}
+                  options={resolutions.map((r) => ({
+                    value: r, label: r, meta: t("genv3.creditsShort", { n: (pricing[r] ?? 0) * Math.max(1, outputsPerRun) }),
+                  }))}
+                  onChange={setResolution}
+                  panelWidth={210}
+                />
+              </div>
+              <div className="rounded-xl border border-line bg-sunken/50 p-2">
+                <Dropdown
+                  testId="format"
+                  label={t("genv3.format")}
+                  value={format}
+                  options={[
+                    {
+                      value: "original",
+                      label: t("retouch.formatOriginal"),
+                      sub: t("retouch.formatOriginalSub"),
+                      icon: <Wand2 size={13} aria-hidden />,
+                    },
+                    ...ratios.map((r) => ({
+                      value: r, label: ratioName(t, r), icon: ratioIcon(r),
+                    })),
+                  ]}
+                  onChange={setFormat}
+                  panelWidth={262}
+                  renderValue={() => format === "original" ? (
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <Wand2 size={13} aria-hidden className="shrink-0 text-muted" />
+                      <span className="min-w-0 truncate">{t("retouch.formatOriginal")}</span>
+                    </span>
+                  ) : <RatioValue t={t} ratio={format} />}
+                />
+              </div>
             </div>
           </section>
 

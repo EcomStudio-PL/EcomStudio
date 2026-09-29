@@ -271,6 +271,11 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   const aspectRatio = (inputShaped || modelRatios.includes(input.aspectRatio)
     ? input.aspectRatio
     : modelRatios[0] ?? "1:1") as AspectRatio;
+  // RETUSZ NEVER SNAPS: the size and framing sent are exactly the ones asked
+  // for, or the run is refused here — before any job, charge or call.
+  if (input.strictSingleImage && (resolution !== input.resolution || aspectRatio !== input.aspectRatio)) {
+    return { ok: false, error: "retouch_config_parity_failed" };
+  }
 
   // Quality is a parameter of the model, so it is accepted only if THIS
   // model declared it; a stray value from the client is dropped rather than
@@ -708,9 +713,13 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       callTimeoutMs,
     };
     // What this candidate is really asked — recorded on the job whatever happens.
-    // Retusz sends neither a size nor a ratio (Interactions body, see
-    // buildRetouchInteraction); everything else is described by the builder.
-    const cShape = strict ? { operation: "IMAGE_EDIT" as const, aspectRatio: null, imageSize: null } : describeProviderRequest(cProviderSlug, cModel, cRequest);
+    // Retusz: the size and ratio in the Interactions body's response_format
+    // (buildRetouchInteraction — no ratio for "Oryginalny"); everything else
+    // is described by its own builder.
+    const cFormat = strict ? buildRetouchInteraction(cModel, cRequest).response_format : undefined;
+    const cShape = strict
+      ? { operation: "IMAGE_EDIT" as const, aspectRatio: cFormat?.aspect_ratio ?? null, imageSize: cFormat?.image_size ?? null }
+      : describeProviderRequest(cProviderSlug, cModel, cRequest);
     const cRecord = {
       provider: cProviderSlug, model_identifier: cModel.model_identifier, model_id: cModel.id,
       fallback_used: candidateId !== input.modelId,
@@ -1220,7 +1229,7 @@ function buildProductContext(name: string, description: string | null, extraInfo
  */
 function statelessDiagnostics(
   model: { model_identifier: string },
-  req: { prompt: string; referenceImages: { base64: string; mime: string }[] },
+  req: { prompt: string; referenceImages: { base64: string; mime: string }[]; resolution?: Resolution; aspectRatio?: AspectRatio },
   finalPrompt: string,
   contract: { knowledgeCount?: number; examplesCount?: number } | undefined,
 ): Record<string, unknown> {
@@ -1251,6 +1260,8 @@ function statelessDiagnostics(
       ],
       response_modalities: body.response_modalities,
       store: body.store,
+      // The output config (size, and ratio unless "Oryginalny") — no text.
+      ...(body.response_format ? { response_format: body.response_format } : {}),
     },
   };
 }

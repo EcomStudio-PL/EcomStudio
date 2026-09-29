@@ -3501,8 +3501,6 @@
     "photos": "Add photos (max. {n})",
     "formatOriginal": "Original",
     "formatOriginalSub": "Keep the source framing",
-    "settingsLockedTitle": "Resolution and format: original",
-    "settingsLockedBody": "Choosing 1K / 2K / 4K and the framing is temporarily unavailable. Your photo reaches the model unchanged and the result keeps its natural proportions at the model's default resolution.",
     "cardTitle": "Automatic AI retouch",
     "cardBody": "The AI improves lighting, cleanliness, materials and presentation while keeping the product's real look and framing.",
     "cardHint": "The retouch removes flaws, fixes the light and gives the product the look of a premium packshot on a clean white background.",

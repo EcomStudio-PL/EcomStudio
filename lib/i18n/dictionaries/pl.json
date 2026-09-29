@@ -3501,8 +3501,6 @@
     "photos": "Dodaj zdjęcia (max. {n})",
     "formatOriginal": "Oryginalny",
     "formatOriginalSub": "Zachowaj kadr zdjęcia",
-    "settingsLockedTitle": "Rozdzielczość i format: oryginalne",
-    "settingsLockedBody": "Wybór 1K / 2K / 4K i proporcji jest tymczasowo niedostępny. Zdjęcie trafia do modelu bez zmian, a wynik zachowuje jego naturalne proporcje w domyślnej rozdzielczości modelu.",
     "cardTitle": "Automatyczny retusz AI",
     "cardBody": "AI poprawi oświetlenie, czystość, materiały i prezentację produktu, zachowując jego rzeczywisty wygląd i kadr.",
     "cardHint": "Retusz usuwa niedoskonałości zdjęcia, poprawia światło i nadaje produktowi wygląd profesjonalnego packshotu premium na czystym białym tle.",

@@ -3,6 +3,8 @@ import type { Client } from "@/lib/services/workspace";
 import { isPending, runEngineImageTool } from "@/lib/server/engine/tool-run";
 import { resolveEngine } from "@/lib/server/ai-engine";
 import type { AspectRatio, Resolution } from "@/lib/ai/types";
+import { getAdapter } from "@/lib/ai/registry";
+import { GEMINI_IMAGE_ASPECT_RATIOS, RETOUCH_IMAGE_SIZES } from "@/lib/ai/providers/google-request";
 
 /**
  * RETUSZ ZDJĘĆ — GrovBase's own retouch pass.
@@ -22,9 +24,11 @@ import type { AspectRatio, Resolution } from "@/lib/ai/types";
  * WHAT THE MODEL RECEIVES, with a prompt published in Admin → Narzędzia i
  * silniki: ONE stateless Interactions API call (store:false, no previous
  * interaction) carrying that prompt byte for byte and the original uploaded
- * photo (untouched bytes). No image size, no aspect ratio (Google's default
- * size, the photo's own shape), no fallback, no retry. Nothing else: no
- * Product Lock, no built-in text, no knowledge, no ratings.
+ * photo (untouched bytes), plus the output config the customer picked:
+ * response_format {type:"image", image_size 2K|4K, aspect_ratio} — with no
+ * aspect_ratio for "Oryginalny" (the photo's own shape). No fallback, no
+ * retry. Nothing else: no Product Lock, no built-in text, no knowledge, no
+ * ratings; the size and ratio never enter the prompt.
  */
 
 /** The model this tool runs on when the panel assigns none. Resolved by its
@@ -56,6 +60,9 @@ export type RetouchModelInfo = {
   pricing: Record<string, number>;
   /** The fallback assigned in Admin → Narzędzia i silniki, when enabled there. */
   fallbackId: string | null;
+  /** Workflow ON in the panel: the run goes through the published workflow,
+   *  which keeps the pre-2K/4K values (see runRetouch). */
+  workflowEnabled: boolean;
 };
 
 type SettingsRow = { price_per_image?: unknown; price_1k?: unknown; price_2k?: unknown; price_4k?: unknown };
@@ -106,6 +113,7 @@ export async function retouchModel(supabase: Client): Promise<RetouchModelInfo |
     ratios: model.supported_aspect_ratios ?? ["1:1"],
     pricing,
     fallbackId,
+    workflowEnabled: engine?.workflowEnabled === true,
   };
 }
 
@@ -138,23 +146,40 @@ export function retouchPrice(model: RetouchModelInfo, resolution: string): numbe
 }
 
 /**
- * RETUSZ SENDS NO SIZE (diagnostic stage): the request carries no image size
- * and no aspect ratio, so Google renders at its own default — 1K — in the
- * photo's own shape. The run is priced and recorded at that size; the 1K/2K/4K
- * and framing pickers are hidden until they return as a separate stage.
+ * THE CUSTOMER'S OUTPUT CHOICE: quality 2K or 4K (default 2K; 1K is not
+ * offered) and the format — "original" (no aspect_ratio sent: the photo's own
+ * shape) or one ratio this model renders from Google's official list. Both go
+ * to Google as response_format only; neither ever enters the prompt.
  */
-export const RETOUCH_DEFAULT_RESOLUTION = "1K";
-export function retouchRunResolution(model: RetouchModelInfo): string {
-  return model.resolutions.includes(RETOUCH_DEFAULT_RESOLUTION) ? RETOUCH_DEFAULT_RESOLUTION : model.resolutions[0] ?? RETOUCH_DEFAULT_RESOLUTION;
+export const RETOUCH_DEFAULT_RESOLUTION = "2K";
+export const RETOUCH_FORMAT_ORIGINAL = "original";
+
+/** The sizes the picker offers: 2K/4K, as far as the model has them. */
+export function retouchSizes(model: RetouchModelInfo): string[] {
+  return RETOUCH_IMAGE_SIZES.filter((s) => model.resolutions.includes(s));
+}
+
+/** The ratios the picker offers: the model's, that the Google adapter draws
+ *  and that are on Google's official list. Never a derived one. */
+export function retouchRatios(model: RetouchModelInfo): string[] {
+  const adapter: readonly string[] = getAdapter("google")?.capabilities.ratios ?? [];
+  return model.ratios.filter((r) => adapter.includes(r) && (GEMINI_IMAGE_ASPECT_RATIOS as readonly string[]).includes(r));
+}
+
+/** The pre-2K/4K run values, kept for Workflow ON only (the published
+ *  workflow path is not part of this change): the model's 1K, "auto". */
+export function retouchWorkflowSize(model: RetouchModelInfo): string {
+  return model.resolutions.includes("1K") ? "1K" : model.resolutions[0] ?? "1K";
 }
 
 export type RetouchInput = {
   /** Storage path in `product-images`, already uploaded by the browser and
    *  verified by the route to sit inside the caller's own workspace. */
   sourcePath: string;
-  /** Accepted for compatibility and IGNORED: Retusz currently sends no size
-   *  and no framing (RETOUCH_DEFAULT_RESOLUTION). */
+  /** "2K" | "4K" — missing means 2K; any other value is refused. */
   resolution?: string;
+  /** "original" | one of retouchRatios — missing means "original"; any other
+   *  value is refused (never snapped to a near ratio). */
   format?: string;
   /** Results per run the panel showed the price for. */
   quotedOutputs?: number;
@@ -177,12 +202,18 @@ export async function runRetouch(
   const model = await retouchModel(supabase);
   if (!model) return { ok: false, error: "model_unavailable" };
 
-  // The customer's size and framing are NOT used at this stage (see
-  // RETOUCH_DEFAULT_RESOLUTION): the request carries neither field. The size
-  // below only prices and labels the run.
-  const resolution = retouchRunResolution(model) as Resolution;
-  // "Oryginalny" only: no aspectRatio is sent, nothing is derived or snapped.
-  const aspectRatio: AspectRatio = "auto";
+  // The customer's size and format, validated against what is offered —
+  // anything else is refused, never replaced by a near value. "Oryginalny"
+  // = "auto" = no aspect_ratio in the request. Workflow ON keeps its
+  // pre-2K/4K values (1K, "auto").
+  const requestedSize = input.resolution ?? RETOUCH_DEFAULT_RESOLUTION;
+  const requestedFormat = input.format ?? RETOUCH_FORMAT_ORIGINAL;
+  if (!model.workflowEnabled) {
+    if (!retouchSizes(model).includes(requestedSize)) return { ok: false, error: "invalid_input" };
+    if (requestedFormat !== RETOUCH_FORMAT_ORIGINAL && !retouchRatios(model).includes(requestedFormat)) return { ok: false, error: "invalid_input" };
+  }
+  const resolution = (model.workflowEnabled ? retouchWorkflowSize(model) : requestedSize) as Resolution;
+  const aspectRatio = (model.workflowEnabled || requestedFormat === RETOUCH_FORMAT_ORIGINAL ? "auto" : requestedFormat) as AspectRatio;
 
   // THE INSTRUCTION: the published workflow or prompt from Admin → Narzędzia
   // i silniki — or a refusal (prompt_unconfigured) when nothing is published.

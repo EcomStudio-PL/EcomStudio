@@ -16,6 +16,7 @@
  * Run: npm run test:fidelity
  */
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import sharp from "sharp";
 import type { EngineConfig } from "@/lib/server/ai-engine";
 import { runRetouch, retouchStepConfig, RETOUCH_MODEL_IDENTIFIER, RETOUCH_OPERATION } from "@/lib/server/retouch";
@@ -285,8 +286,9 @@ async function main() {
     g.__fidelityEngine = engine({ systemPrompt: "Zdjęć: {{image_count}}.\n\n\n\nFormat {{aspect_ratio}}, {{resolution}}.", promptVersion: 5 });
     await retouch(db2, "w/r/src.jpg");
     const t2 = sent[0] ? textOf(sent[0])[0]?.text : undefined;
-    // Retusz sends no size: {{resolution}} is the size it is billed at (1K).
-    check("system variables are substituted and the admin's blank lines are kept", t2 === "Zdjęć: 1.\n\n\n\nFormat auto, 1K.", t2);
+    // Only because THIS template places them: {{resolution}} is the size sent
+    // (the default 2K), {{aspect_ratio}} "auto" for Oryginalny.
+    check("system variables are substituted and the admin's blank lines are kept", t2 === "Zdjęć: 1.\n\n\n\nFormat auto, 2K.", t2);
     const defs = TOOL_VARIABLES.fashion_flat_lay ?? [];
     const gaps: [string, Record<string, string>, string][] = [
       ["A {{hint?}}\n\n\n\nB", {}, "A \n\nB"],
@@ -366,17 +368,30 @@ async function main() {
     check("a source that cannot be read is refused — never sent as text-to-image", !gone.res.ok && sent.length === 0 && (gone.res as { error?: string }).error === "source_unavailable", gone.res);
   }
 
-  console.log("\nT11 / T12 / T13 NO RATIO, NO SIZE — Retusz sends neither, whatever the browser asks");
+  console.log("\nT11 / T12 / T13 SIZE + FORMAT — exactly what the customer picked, in response_format only");
   {
-    for (const opts of [{ format: "original" }, { format: "4:5" }, { format: "7:3" }, { resolution: "2K" }, { resolution: "4K", format: "16:9" }]) {
+    const cases: [Row, Row | null, string | null][] = [
+      [{ format: "original" }, { type: "image", image_size: "2K" }, null],
+      [{ resolution: "2K" }, { type: "image", image_size: "2K" }, null],
+      [{ format: "4:5" }, { type: "image", image_size: "2K", aspect_ratio: "4:5" }, "4:5"],
+      [{ resolution: "4K", format: "16:9" }, { type: "image", image_size: "4K", aspect_ratio: "16:9" }, "16:9"],
+      [{ format: "7:3" }, null, null],
+      [{ resolution: "1K" }, null, null],
+    ];
+    for (const [opts, want, ratio] of cases) {
       const db = freshDb(); db.files.set("w/r/src.jpg", photo);
       g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
-      const r = await retouch(db, "w/r/src.jpg", opts);
+      const r = await retouch(db, "w/r/src.jpg", opts as { format?: string; resolution?: string });
       const label = JSON.stringify(opts);
-      check(`${label}: no generation_config at all (no aspect_ratio, no image_size) in the body`, r.res.ok && !("generation_config" in (sent[0]?.raw ?? {})) && !JSON.stringify(sent[0]?.raw).includes("aspect") && !JSON.stringify(sent[0]?.raw).includes("image_size"), sent[0]?.raw && Object.keys(sent[0].raw));
-      check(`${label}: recorded ORIGINAL_OMITTED, sent null; size billed/recorded 1K, image_size_sent null`,
-        r.pr?.aspect_ratio_requested === "auto" && r.pr?.aspect_ratio_sent === null && r.pr?.aspect_ratio_mode === "ORIGINAL_OMITTED"
-        && r.pr?.resolution === "1K" && r.pr?.image_size_sent === null, r.pr);
+      if (!want) {
+        check(`${label}: refused invalid_input before anything is sent or reserved (never snapped)`, !r.res.ok && (r.res as { error?: string }).error === "invalid_input" && sent.length === 0 && !r.job, r.res);
+        continue;
+      }
+      check(`${label}: response_format ${JSON.stringify(want)}; no generation_config`,
+        r.res.ok && isDeepStrictEqual(sent[0]?.raw.response_format, want) && !("generation_config" in (sent[0]?.raw ?? {})), sent[0]?.raw.response_format);
+      check(`${label}: recorded ${ratio ? "USER_SELECTED " + ratio : "ORIGINAL_OMITTED, ratio sent null"}; size ${want.image_size} billed + sent`,
+        r.pr?.aspect_ratio_requested === (ratio ?? "auto") && r.pr?.aspect_ratio_sent === ratio && r.pr?.aspect_ratio_mode === (ratio ? "USER_SELECTED" : "ORIGINAL_OMITTED")
+        && r.pr?.resolution === want.image_size && r.pr?.image_size_sent === want.image_size, r.pr);
     }
     check("a single-size model (2.5 Flash Image) is never sent imageSize (other tools)", geminiImageSize({ supported_resolutions: ["1K"] }, "1K") === null);
   }
@@ -524,7 +539,7 @@ async function main() {
     g.__fidelityEngine = null;
   }
 
-  console.log("\nTEST G — Retusz ignores a requested 2K / 4K: the requests are byte-identical, no size sent");
+  console.log("\nTEST G — Retusz 2K vs 4K: the bodies differ ONLY in response_format.image_size");
   {
     const bodies: string[] = [];
     const recs: Row[] = [];
@@ -535,9 +550,11 @@ async function main() {
       bodies.push(JSON.stringify(sent[0]!.raw));
       recs.push(pr as Row);
     }
-    check("2K and 4K requests produce the SAME body, with no size in it", bodies[0] === bodies[1] && !bodies[0]!.includes("image_size") && !bodies[0]!.includes("imageSize"));
-    const same = ["provider", "model_identifier", "operation", "prompt_digest", "aspect_ratio_sent", "fallback_used", "image_size_sent", "resolution"].every((k) => JSON.stringify(recs[0]![k]) === JSON.stringify(recs[1]![k]));
-    check("records: same provider, model, operation, prompt digest, ratio, size (1K, none sent), fallback=false; same input hash", same && recs[0]!.fallback_used === false
+    check("2K and 4K bodies are identical except image_size (\"2K\" → \"4K\")",
+      bodies[0] !== bodies[1] && bodies[0]!.replace('"image_size":"2K"', '"image_size":"4K"') === bodies[1] && !bodies[0]!.includes("imageSize"));
+    const same = ["provider", "model_identifier", "operation", "prompt_digest", "aspect_ratio_sent", "fallback_used"].every((k) => JSON.stringify(recs[0]![k]) === JSON.stringify(recs[1]![k]));
+    check("records: same provider, model, operation, prompt digest, ratio, fallback=false, same input hash; size 2K vs 4K sent", same && recs[0]!.fallback_used === false
+      && recs[0]!.image_size_sent === "2K" && recs[1]!.image_size_sent === "4K" && recs[0]!.resolution === "2K" && recs[1]!.resolution === "4K"
       && JSON.stringify((recs[0]!.inputs as Row[])[0]!.sent_sha256) === JSON.stringify((recs[1]!.inputs as Row[])[0]!.sent_sha256));
   }
 
@@ -548,8 +565,8 @@ async function main() {
     const { job } = await retouch(db, "w/r/src.jpg", { resolution: "4K" });
     const out = (((job?.settings ?? {}) as Row).provider_output as Row[] | undefined)?.[0];
     const provided = Buffer.from(outPng, "base64");
-    check("provider_output: no size requested (null), provider WxH = stored WxH, bytes equal, not transformed",
-      out?.requested_image_size === null && out?.provider_returned_width === out?.stored_width && out?.provider_returned_height === out?.stored_height
+    check("provider_output: 4K requested, provider WxH = stored WxH, bytes equal, not transformed (no resize / upscale)",
+      out?.requested_image_size === "4K" && out?.provider_returned_width === out?.stored_width && out?.provider_returned_height === out?.stored_height
       && out?.provider_bytes === provided.length && out?.stored_bytes === provided.length && out?.provider_sha256 === sha(provided) && out?.transformed_after_provider === false, out);
   }
 
@@ -629,20 +646,26 @@ async function main() {
 
     // ── RUNTIME CONTRACT (the helper above is diagnostics only) ──────────────
     // §15 KEY REGRESSION: Oryginalny + 933×700 must NOT carry aspectRatio
-    // "4:3" (30b6f7c did, and PROD results got worse) — nor any other ratio,
-    // and Retusz now sends no size either: 1K / 2K / 4K requests are identical.
+    // "4:3" (30b6f7c did, and PROD results got worse) — nor any other ratio.
+    // A ratio is sent ONLY when the customer picked it, exactly as picked.
     const prodShape = await sharp({ create: { width: 933, height: 700, channels: 3, background: "#a86" } }).png().toBuffer();
     const raws: string[] = []; const recs: Row[] = [];
-    for (const [size, format] of [["1K", "original"], ["2K", "original"], ["4K", "original"], ["4K", "4:5"], ["4K", "16:9"]] as const) {
+    const matrix = [["2K", "original"], ["4K", "original"], ["2K", "4:5"], ["4K", "16:9"]] as const;
+    for (const [size, format] of matrix) {
       const db = freshDb(); db.files.set("w/r/prod.png", prodShape);
       g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
       const { pr } = await retouch(db, "w/r/prod.png", { resolution: size, format });
       raws.push(JSON.stringify(sent[0]!.raw)); recs.push(pr as Row);
     }
-    check("REGRESSION: 933×700 → NO aspect ratio anywhere in the body (not '4:3', not a picked 4:5/16:9)",
-      raws.every((r) => !r.includes("aspect") && !r.includes('"4:3"') && !r.includes('"4:5"') && !r.includes('"16:9"')));
-    check("1K / 2K / 4K / 4:5 / 16:9 requests → five byte-identical bodies (size and framing are not sent)", new Set(raws).size === 1);
-    check("recorded: ORIGINAL_OMITTED, sent null, source 933×700 kept for diagnostics", recs.every((r) => r.aspect_ratio_mode === "ORIGINAL_OMITTED" && r.aspect_ratio_sent === null && r.source_width === 933 && r.source_height === 700), recs);
+    check("REGRESSION: 933×700 Oryginalny (2K and 4K) → NO aspect ratio anywhere in the body (never a derived '4:3')",
+      [raws[0]!, raws[1]!].every((r) => !r.includes("aspect") && !r.includes('"4:3"')));
+    check("a picked 4:5 / 16:9 is sent exactly as picked — never '4:3', never snapped",
+      JSON.parse(raws[2]!).response_format.aspect_ratio === "4:5" && JSON.parse(raws[3]!).response_format.aspect_ratio === "16:9" && raws.every((r) => !r.includes('"4:3"')));
+    check("2K vs 4K Oryginalny → bodies identical except image_size", raws[0]!.replace('"image_size":"2K"', '"image_size":"4K"') === raws[1]);
+    check("recorded: ORIGINAL_OMITTED / USER_SELECTED as picked, source 933×700 kept for diagnostics",
+      recs[0]!.aspect_ratio_mode === "ORIGINAL_OMITTED" && recs[0]!.aspect_ratio_sent === null && recs[1]!.aspect_ratio_mode === "ORIGINAL_OMITTED"
+      && recs[2]!.aspect_ratio_mode === "USER_SELECTED" && recs[2]!.aspect_ratio_sent === "4:5" && recs[3]!.aspect_ratio_sent === "16:9"
+      && recs.every((r) => r.source_width === 933 && r.source_height === 700), recs);
     check("the photo itself is not touched (bytes sent === bytes uploaded)", sha(Buffer.from(String((JSON.parse(raws[2]!).input as Row[])[1]!.data), "base64")) === sha(prodShape));
     check("no runtime code derives a ratio (resolveOriginalAspectRatio is never called outside diagnostics/tests)",
       !/resolveOriginalAspectRatio\(/.test(read("lib/server/generation.ts") + read("lib/server/retouch.ts") + read("lib/server/engine/tool-run.ts") + read("lib/ai/providers/google.ts") + read("lib/ai/providers/google-request.ts")));
@@ -712,14 +735,14 @@ async function main() {
     const canon = (v: unknown): unknown => Array.isArray(v) ? v.map(canon)
       : v && typeof v === "object" ? Object.fromEntries(Object.keys(v as Row).sort().map((k) => [k, canon((v as Row)[k])])) : v;
     const eq = (a: unknown, b: unknown) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
-    // A/B/C/D = what the browser asks (1K/2K/4K, a 4:5 pick): Retusz sends
-    // the same minimal Interactions body every time. Written literally below.
+    // A/B/C/D = what the browser asks (2K/4K, Oryginalny or a picked ratio):
+    // the minimal Interactions body + the output config, written literally below.
     const prodShape = await sharp({ create: { width: 933, height: 700, channels: 3, background: "#a86" } }).png().toBuffer();
     const cases: { name: string; src: Buffer; mime: string; resolution: string; format: string }[] = [
-      { name: "A Original 1K (933×700)", src: prodShape, mime: "image/png", resolution: "1K", format: "original" },
-      { name: "B Original 2K (933×700)", src: prodShape, mime: "image/png", resolution: "2K", format: "original" },
-      { name: "C Original 4K (933×700)", src: prodShape, mime: "image/png", resolution: "4K", format: "original" },
-      { name: "D 4:5 4K asked (1500×1000)", src: photo, mime: "image/jpeg", resolution: "4K", format: "4:5" },
+      { name: "A Original 2K (933×700)", src: prodShape, mime: "image/png", resolution: "2K", format: "original" },
+      { name: "B Original 4K (933×700)", src: prodShape, mime: "image/png", resolution: "4K", format: "original" },
+      { name: "C 4:5 2K (1500×1000)", src: photo, mime: "image/jpeg", resolution: "2K", format: "4:5" },
+      { name: "D 16:9 4K (1500×1000)", src: photo, mime: "image/jpeg", resolution: "4K", format: "16:9" },
     ];
     for (const cs of cases) {
       const db = freshDb(); db.files.set("w/r/src.jpg", cs.src);
@@ -735,6 +758,9 @@ async function main() {
           input: [{ type: "text", text: EXACT }, { type: "image", data: cs.src.toString("base64"), mime_type: cs.mime }],
           response_modalities: ["image"],
           store: false,
+          response_format: cs.format === "original"
+            ? { type: "image", image_size: cs.resolution }
+            : { type: "image", image_size: cs.resolution, aspect_ratio: cs.format },
         },
       };
       const input = (A.raw.input ?? []) as Row[];
@@ -747,12 +773,13 @@ async function main() {
         BODY_BYTE_EQUAL: JSON.stringify(A.raw) === JSON.stringify(B.body),
         BODY_EQUAL: eq(A.raw, B.body),
         HIDDEN_TEXT: !(input.filter((c) => c.type === "text").length === 1),
-        ASPECT_RATIO_OR_SIZE_PRESENT: /aspect|image_size|generation_config/.test(JSON.stringify(A.raw)),
+        OUTPUT_CONFIG_EQUAL: eq(A.raw.response_format, B.body.response_format),
+        GENERATION_CONFIG_PRESENT: "generation_config" in A.raw,
         POSTPROCESSING: false as boolean,
       };
       const out = ((([...db.jobs.values()].pop()?.settings ?? {}) as Row).provider_output as Row[] | undefined)?.[0];
       flags.POSTPROCESSING = !(out?.stored_equals_provider === true && out?.transformed_after_provider === false);
-      const mustBeFalse = new Set(["HIDDEN_TEXT", "POSTPROCESSING", "ASPECT_RATIO_OR_SIZE_PRESENT"]);
+      const mustBeFalse = new Set(["HIDDEN_TEXT", "POSTPROCESSING", "GENERATION_CONFIG_PRESENT"]);
       console.log(`    ${cs.name}: ${Object.entries(flags).map(([k, v]) => `${k}=${v}`).join("  ")}`);
       check(`parity ${cs.name}: every invariant holds`, Object.entries(flags).every(([k, v]) => (mustBeFalse.has(k) ? v === false : v === true)), flags);
     }
@@ -770,6 +797,7 @@ async function main() {
         input: [{ type: "text", text: EXACT }, { type: "image", data: prodShape.toString("base64"), mime_type: "image/png" }],
         response_modalities: ["image"],
         store: false,
+        response_format: { type: "image", image_size: "4K" },
       },
     };
     const runs: Sent[] = [];
@@ -796,8 +824,8 @@ async function main() {
       BODY_EQUAL_TO_BASELINE: JSON.stringify(A.raw) === JSON.stringify(baseline.body),
     };
     console.log("    " + JSON.stringify(report));
-    check("baseline: endpoint equal, fields = model,input,response_modalities,store; store false; no previous interaction",
-      report.ENDPOINT_EQUAL && report.FIELDS === "model,input,response_modalities,store" && report.STORE === false && report.PREVIOUS_INTERACTION === false, report);
+    check("baseline: endpoint equal, fields = model,input,response_modalities,store,response_format; store false; no previous interaction",
+      report.ENDPOINT_EQUAL && report.FIELDS === "model,input,response_modalities,store,response_format" && report.STORE === false && report.PREVIOUS_INTERACTION === false, report);
     check("baseline: input [text, image], 1 image, prompt SHA + image SHA + MIME equal; body byte-identical to the hand-written request",
       report.INPUT_COUNT === 2 && report.INPUT_ORDER === "text,image" && report.INPUT_IMAGE_COUNT === 1
       && report.PROMPT_SHA_EQUAL && report.IMAGE_SHA_EQUAL && report.MIME === "image/png" && report.BODY_EQUAL_TO_BASELINE, report);
@@ -835,8 +863,8 @@ async function main() {
       && pr?.provider_prompt_digest === promptDigest(EXACT) && JSON.stringify(pr?.prompt_variables) === "[]" && pr?.strict_single_image === true, pr);
     g.__fidelityEngine = engine({ systemPrompt: "A {{resolution}} B", promptVersion: 4 });
     const withVar = await retouch(db, "w/r/phone.jpg", { resolution: "4K" });
-    check("with an explicit variable: published ≠ resolved, resolved === provider, variables = [resolution] (the billed 1K, not the asked 4K)",
-      withVar.pr?.published_prompt_digest === promptDigest("A {{resolution}} B") && withVar.pr?.resolved_prompt_digest === promptDigest("A 1K B")
+    check("with an explicit variable: published ≠ resolved, resolved === provider, variables = [resolution] (the 4K asked and sent)",
+      withVar.pr?.published_prompt_digest === promptDigest("A {{resolution}} B") && withVar.pr?.resolved_prompt_digest === promptDigest("A 4K B")
       && withVar.pr?.provider_prompt_digest === withVar.pr?.resolved_prompt_digest && JSON.stringify(withVar.pr?.prompt_variables) === '["resolution"]', withVar.pr);
 
     // (3) Runtime prompt parity: a mismatch is refused BEFORE the job/charge/call.
@@ -868,6 +896,39 @@ async function main() {
     check("contract: an appended text item is refused", v({ ...ok, input: [...(ok.input as Row[]), { type: "text", text: "extra" }] }) === "input_count");
     check("contract: text ≠ prompt is refused (one byte off, e.g. a trimmed space)", v(ok, req({ prompt: "P " })) === "prompt_mismatch");
     check("contract: a different model is refused", v({ ...ok, model: "gemini-3.1-flash-image" }) === "model");
+    // response_format — only the chosen 2K/4K and, unless Oryginalny, the chosen official ratio.
+    const r2 = req({ resolution: "2K" }), r4r = req({ resolution: "4K", aspectRatio: "4:5" });
+    const ok2 = buildRetouchInteraction({ model_identifier: M }, r2) as unknown as Row;
+    const ok4r = buildRetouchInteraction({ model_identifier: M }, r4r) as unknown as Row;
+    check("contract: 2K Oryginalny body = …store:false + response_format {type,image_size 2K} and passes",
+      JSON.stringify(ok2.response_format) === '{"type":"image","image_size":"2K"}' && Object.keys(ok2).join() === "model,input,response_modalities,store,response_format" && v(ok2, r2) === null);
+    check("contract: 4K + 4:5 body passes with aspect_ratio 4:5", JSON.stringify(ok4r.response_format) === '{"type":"image","image_size":"4K","aspect_ratio":"4:5"}' && v(ok4r, r4r) === null);
+    check("contract: a response_format the run did not ask for is refused", v(ok2, req()) === "top_level_fields");
+    check("contract: a missing response_format for a sized run is refused", v(ok, r2) === "top_level_fields");
+    check("contract: image_size ≠ the chosen size is refused", v({ ...ok2, response_format: { type: "image", image_size: "4K" } }, r2) === "image_size");
+    check("contract: an aspect_ratio added to Oryginalny is refused", v({ ...ok2, response_format: { type: "image", image_size: "2K", aspect_ratio: "4:3" } }, r2) === "response_format");
+    check("contract: a ratio ≠ the chosen one is refused", v({ ...ok4r, response_format: { type: "image", image_size: "4K", aspect_ratio: "4:3" } }, r4r) === "aspect_ratio");
+    check("contract: a ratio outside Google's official list is refused", v(buildRetouchInteraction({ model_identifier: M }, req({ resolution: "2K", aspectRatio: "7:3" })) as unknown as Row, req({ resolution: "2K", aspectRatio: "7:3" })) === "aspect_ratio");
+    check("contract: a ratio without a size (nothing to carry it) is refused, never dropped", v(ok, req({ aspectRatio: "4:5" })) === "aspect_ratio");
+    check("contract: delivery / mime_type / another type in response_format are refused",
+      v({ ...ok2, response_format: { type: "image", image_size: "2K", delivery: "inline" } }, r2) === "response_format"
+      && v({ ...ok2, response_format: { type: "text", image_size: "2K" } }, r2) === "response_format"
+      && v({ ...ok2, response_format: [{ type: "image", image_size: "2K" }] }, r2) === "response_format");
+    check("contract: 1K is never built into a request (no response_format; 1K is not offered)", !("response_format" in (buildRetouchInteraction({ model_identifier: M }, req({ resolution: "1K" })) as unknown as Row)));
+    // generation.ts refuses, before any job/charge/call, a size or ratio the model would snap.
+    resetLedger(); sent = [];
+    const dbS = freshDb(); dbS.files.set("w/r/p.jpg", photo);
+    const snap = await runGeneration(fakeSupabase(dbS) as unknown as FakeClient, "u", "w", {
+      modelId: PRO_ID, prompt: "P", aspectRatio: "3:2", resolution: "2K", quantity: 1,
+      referencePaths: ["w/r/p.jpg"], referenceImageIds: [], strictSingleImage: true, promptFirst: true,
+    });
+    const snapRes = await runGeneration(fakeSupabase(dbS) as unknown as FakeClient, "u", "w", {
+      modelId: PRO_ID, prompt: "P", aspectRatio: "auto", resolution: "8K" as never, quantity: 1,
+      referencePaths: ["w/r/p.jpg"], referenceImageIds: [], strictSingleImage: true, promptFirst: true,
+    });
+    check("runGeneration (strict): a ratio or size the model would snap → retouch_config_parity_failed, 0 calls, 0 credits, no job",
+      !snap.ok && snap.error === "retouch_config_parity_failed" && !snapRes.ok && snapRes.error === "retouch_config_parity_failed"
+      && sent.length === 0 && ledger() === "[]" && dbS.jobs.size === 0, { snap, snapRes });
     sent = [];
     let threw = "";
     try {
@@ -903,13 +964,14 @@ async function main() {
     check("diagnostics: interactions endpoint, store false, history 0, images 1, texts 1, knowledge 0, examples 0, feedback 0, no systemInstruction, stateless, contract ok",
       pr?.endpoint === "v1beta/interactions" && pr?.store === false && pr?.history_count === 0 && pr?.image_count === 1 && pr?.text_part_count === 1 && pr?.knowledge_count === 0 && pr?.examples_count === 0
       && pr?.feedback_count === 0 && pr?.system_instruction === false && pr?.stateless === true && pr?.contract_ok === true && pr?.parts_order === "text_then_image", pr);
-    const sp = pr?.sanitized_payload as { model: string; input: Row[]; response_modalities: string[]; store: boolean } | undefined;
+    const sp = pr?.sanitized_payload as { model: string; input: Row[]; response_modalities: string[]; store: boolean; response_format?: Row } | undefined;
     const spText = (sp?.input[0]?.text ?? {}) as Row;
-    check("sanitised payload: {model, input:[text{chars,digest}, image{mime,sha256,bytes}], response_modalities [image], store false} — no size, no ratio",
+    check("sanitised payload: {model, input:[text{chars,digest}, image{mime,sha256,bytes}], response_modalities [image], store false, response_format {image, 4K}} — no ratio (Oryginalny)",
       sp?.model === "gemini-3-pro-image" && sp.input.length === 2 && sp.input[0]!.type === "text" && sp.input[1]!.type === "image"
       && spText.chars === Array.from(PROMPT).length && spText.digest === promptDigest(PROMPT)
       && sp.input[1]!.sha256 === PHOTO_SHA && sp.input[1]!.bytes === photo.length && sp.input[1]!.mime_type === "image/jpeg"
-      && JSON.stringify(sp.response_modalities) === '["image"]' && sp.store === false && Object.keys(sp).join() === "model,input,response_modalities,store", sp);
+      && JSON.stringify(sp.response_modalities) === '["image"]' && sp.store === false && Object.keys(sp).join() === "model,input,response_modalities,store,response_format"
+      && JSON.stringify(sp.response_format) === '{"type":"image","image_size":"4K"}', sp);
     check("sanitised payload holds no prompt text and no image bytes", !JSON.stringify(pr).includes("Przekształć") && !JSON.stringify(pr).includes(photo.toString("base64").slice(0, 64)));
     check("prompt chain: published === resolved === provider (keyed digests), version 5, no variables",
       pr?.published_prompt_digest === promptDigest(PROMPT) && pr?.resolved_prompt_digest === pr?.provider_prompt_digest && pr?.provider_prompt_digest === promptDigest(PROMPT)
@@ -966,7 +1028,7 @@ async function main() {
     check("F. input: sha(upload) === sha(provider input)", sha(Buffer.from(String(((a.raw?.input ?? []) as Row[])[1]?.data ?? ""), "base64")) === PHOTO_SHA);
     check("G. Google payload parity — see §9 above (all invariants true)", true);
     const h2 = await one(EXACT, { resolution: "2K" }); const h4 = await one(EXACT, { resolution: "4K" });
-    check("H. Retusz sends no size: a 2K and a 4K request are byte-identical", JSON.stringify(h2.raw) === JSON.stringify(h4.raw) && !/image_size/.test(JSON.stringify(h4.raw)));
+    check("H. 2K / 4K: the requests differ ONLY in response_format.image_size", JSON.stringify(h2.raw).replace('"image_size":"2K"', '"image_size":"4K"') === JSON.stringify(h4.raw) && /"image_size":"4K"/.test(JSON.stringify(h4.raw)));
     check("I. Oryginalny: NO aspect ratio anywhere", [a, h2, h4].every((x) => !/aspect/.test(JSON.stringify(x.raw))));
     const out = (((a.job?.settings ?? {}) as Row).provider_output as Row[] | undefined)?.[0];
     const url = (a.res as { url?: string }).url ?? "";
@@ -1006,9 +1068,9 @@ async function main() {
     check("prompt: published v3, exact, identical, sha matches, nothing appended, no knowledge",
       m.prompt.source === "published" && m.prompt.version === 3 && m.prompt.policy === "exact" && m.prompt.identical === true
       && m.prompt.sha256 === sha(EXACT) && m.prompt.appended.length === 0 && m.prompt.knowledge.length === 0, m.prompt);
-    check("config: IMAGE_EDIT, original → not sent, NO size sent at any setting, no ratio offered, 120 s, 1 attempt",
-      m.config.operation === "IMAGE_EDIT" && m.config.ratioWhenOriginal === "input_photo" && m.config.ratios.length === 0
-      && m.config.sizes.every((s) => s.sent === null)
+    check("config: IMAGE_EDIT, original → not sent, 1K not sent / 2K and 4K sent as themselves, the model's official ratios offered, 120 s, 1 attempt",
+      m.config.operation === "IMAGE_EDIT" && m.config.ratioWhenOriginal === "input_photo" && JSON.stringify(m.config.ratios) === '["1:1","4:5","16:9","9:16","3:4"]'
+      && JSON.stringify(m.config.sizes) === '[{"resolution":"1K","sent":null},{"resolution":"2K","sent":"2K"},{"resolution":"4K","sent":"4K"}]'
       && m.config.timeoutMs === 120_000 && m.config.maxAttempts === 1, m.config);
     check("the manifest carries no prompt text", !JSON.stringify(m).includes("GROVBASE_EXACT"));
     check("workflow OFF is reported as such", m.workflowEnabled === false);

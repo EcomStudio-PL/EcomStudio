@@ -12,10 +12,16 @@
  *     "input": [ { "type": "text", "text": PROMPT },
  *                { "type": "image", "data": BASE64, "mime_type": MIME } ],
  *     "response_modalities": ["image"],
- *     "store": false }
+ *     "store": false,
+ *     "response_format": { "type": "image", "image_size": "2K"|"4K",
+ *                          "aspect_ratio": RATIO } }   ← only with a size;
+ *                                                       no aspect_ratio for
+ *                                                       "Oryginalny"
  *
- * No image size, no aspect ratio, no system instruction, no tools, no
- * previous interaction. On purpose this file imports NOTHING from the
+ * response_format is the official image output config (Interactions API
+ * ImageResponseFormat, SDK 2.25). Without a size the body is exactly the
+ * pre-2K/4K request. No system instruction, no tools, no previous
+ * interaction. On purpose this file imports NOTHING from the
  * application — no builder, no adapter, no runGeneration, no prompt engine.
  * It is the "A" the forensic test compares GrovBase's real HTTP body ("B")
  * against; if it shared code with production it would share its mistakes.
@@ -30,6 +36,10 @@ export type BaselineInput = {
   /** The original file, exactly as uploaded. */
   image: Buffer;
   mimeType: string;
+  /** "2K" | "4K" — omitted: no response_format at all. */
+  imageSize?: string;
+  /** A ratio such as "4:5" — omitted: "Oryginalny", no aspect_ratio. */
+  aspectRatio?: string;
 };
 
 export function baselineBody(input: BaselineInput): string {
@@ -41,5 +51,10 @@ export function baselineBody(input: BaselineInput): string {
     ],
     response_modalities: ["image"],
     store: false,
+    ...(input.imageSize ? {
+      response_format: input.aspectRatio
+        ? { type: "image", image_size: input.imageSize, aspect_ratio: input.aspectRatio }
+        : { type: "image", image_size: input.imageSize },
+    } : {}),
   });
 }

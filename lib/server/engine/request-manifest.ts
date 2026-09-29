@@ -8,6 +8,8 @@ import {
   LOW_SOURCE_MEGAPIXELS, describeProviderRequest, effectiveCallTimeout, promptLength, type LastRun, type RequestManifest,
 } from "@/lib/ai/request-manifest";
 import type { Resolution } from "@/lib/ai/types";
+import { getAdapter } from "@/lib/ai/registry";
+import { GEMINI_IMAGE_ASPECT_RATIOS, buildRetouchInteraction } from "@/lib/ai/providers/google-request";
 import { GENERATION_BUDGET_MS, MAX_ATTEMPTS_PER_PROVIDER } from "@/lib/server/provider-router";
 import { RETOUCH_OPERATION } from "@/lib/server/retouch";
 import { FASHION_TOOLS } from "@/lib/fashion-tools";
@@ -99,10 +101,18 @@ export async function buildRequestManifest(
   const config: RequestManifest["config"] = {
     operation: probe(undefined)?.operation ?? "IMAGE_EDIT",
     ratioWhenOriginal: meta?.snaps ? "nearest_supported" : primary && slugOf(primary) === "google" ? "input_photo" : "provider_choice",
-    // Retusz sends neither a ratio nor a size (Interactions body, no
-    // generation_config): none is offered and none is sent.
-    ratios: toolKey === "retouch" ? [] : primary?.supported_aspect_ratios ?? [],
-    sizes: resolutions.map((r) => ({ resolution: r, sent: toolKey === "retouch" ? null : probe(r as Resolution)?.imageSize ?? null })),
+    // Retusz: the Interactions body's response_format — 2K/4K sent as
+    // image_size (1K is not offered, nothing sent), the ratios offered are the
+    // model's that Google officially renders ("Oryginalny" sends none).
+    ratios: toolKey === "retouch"
+      ? (primary?.supported_aspect_ratios ?? []).filter((r) => (getAdapter("google")?.capabilities.ratios as readonly string[] | undefined ?? []).includes(r) && (GEMINI_IMAGE_ASPECT_RATIOS as readonly string[]).includes(r))
+      : primary?.supported_aspect_ratios ?? [],
+    sizes: resolutions.map((r) => ({
+      resolution: r,
+      sent: toolKey === "retouch"
+        ? buildRetouchInteraction({ model_identifier: "" }, { prompt: "", referenceImages: [], resolution: r as Resolution, aspectRatio: "auto" }).response_format?.image_size ?? null
+        : probe(r as Resolution)?.imageSize ?? null,
+    })),
     timeoutMs: effectiveCallTimeout(engine?.timeoutMs) ?? null,
     maxAttempts: Math.min(Math.max(engine?.maxAttempts ?? MAX_ATTEMPTS_PER_PROVIDER, 1), MAX_ATTEMPTS_PER_PROVIDER),
     budgetMs: GENERATION_BUDGET_MS,

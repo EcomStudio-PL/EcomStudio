@@ -3501,8 +3501,6 @@
     "photos": "Fotos hinzufügen (max. {n})",
     "formatOriginal": "Original",
     "formatOriginalSub": "Bildausschnitt beibehalten",
-    "settingsLockedTitle": "Auflösung und Format: original",
-    "settingsLockedBody": "Die Wahl von 1K / 2K / 4K und des Seitenverhältnisses ist vorübergehend nicht verfügbar. Ihr Foto erreicht das Modell unverändert, das Ergebnis behält seine natürlichen Proportionen in der Standardauflösung des Modells.",
     "cardTitle": "Automatische KI-Retusche",
     "cardBody": "Die KI verbessert Licht, Sauberkeit, Materialien und Präsentation und behält das echte Aussehen und den Ausschnitt bei.",
     "cardHint": "Die Retusche entfernt Mängel, korrigiert das Licht und gibt dem Produkt den Look eines Premium-Packshots auf reinweißem Hintergrund.",

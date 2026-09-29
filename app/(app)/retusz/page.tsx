@@ -4,7 +4,7 @@ import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { getWallet } from "@/lib/services/credits";
 import { listGalleryItems } from "@/lib/server/gallery";
 import { GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
-import { retouchModel, retouchPrice, retouchRunResolution, RETOUCH_OPERATION } from "@/lib/server/retouch";
+import { retouchModel, retouchPrice, retouchRatios, retouchSizes, retouchWorkflowSize, RETOUCH_OPERATION } from "@/lib/server/retouch";
 import { engineOutputsPerRun, engineToolConfigured } from "@/lib/server/engine/tool-run";
 import { RetouchWorkspace } from "@/components/retouch/workspace";
 
@@ -13,8 +13,8 @@ export const dynamic = "force-dynamic";
 /**
  * RETUSZ ZDJĘĆ — the tool page.
  *
- * Everything the panel needs is resolved here: the price per image (the
- * default size — Retusz sends no size for now) straight from the model config
+ * Everything the panel needs is resolved here: the price per image at each
+ * offered size (2K / 4K) straight from the model config
  * (with the admin's `app_settings.retouch` override applied), the wallet and
  * this workspace's previous retouches. The model itself is never named to
  * the customer — they bought a retouch, not a provider.
@@ -46,9 +46,11 @@ export default async function RetouchPage() {
         workspaceId={workspace.id}
         credits={wallet?.balance ?? 0}
         available={!!model && configured}
-        // One price: the run is billed at the default size it renders at
-        // (no size is sent while the size picker is withheld).
-        price={model ? retouchPrice(model, retouchRunResolution(model)) : 0}
+        // 2K / 4K only (no 1K), and the ratios Google renders for this model.
+        // Workflow ON keeps its 1K price (the workflow path is unchanged).
+        resolutions={model ? (model.workflowEnabled ? [retouchWorkflowSize(model)] : retouchSizes(model)) : []}
+        ratios={model && !model.workflowEnabled ? retouchRatios(model) : []}
+        pricing={model ? Object.fromEntries((model.workflowEnabled ? [retouchWorkflowSize(model)] : retouchSizes(model)).map((r) => [r, retouchPrice(model, r)])) : {}}
         outputsPerRun={outputsPerRun}
         initialItems={gallery.items}
         initialCursor={gallery.nextCursor}
