@@ -44,7 +44,6 @@ export default async function GeneratorPage({ searchParams }: {
     description: m.description, pricing: m.pricing,
     resolutions: m.resolutions, ratios: m.ratios, exactRatios: m.exactRatios,
     maxOutputs: m.maxQuantity, supportsRefs: m.supportsReferenceImages,
-    surcharge: m.engineSurcharge,
     qualities: m.qualities, qualityPricing: m.qualityPricing,
   }));
 
@@ -72,8 +71,8 @@ export default async function GeneratorPage({ searchParams }: {
         active="custom"
         engineLabel={t("genv3.modeManaged")}
         customLabel={t("genv3.modeCustom")}
-        engineCost={priceOptions[0]?.costEcom ?? null}
-        customCost={priceOptions[0]?.costCustom ?? null}
+        engineCost={priceOptions[0]?.cost ?? null}
+        customCost={priceOptions[0]?.cost ?? null}
         perShotLabel={(n) => t("genv3.perPhoto", { n })}
       />
       <GeneratorWorkspace

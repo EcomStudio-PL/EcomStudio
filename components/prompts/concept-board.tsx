@@ -18,30 +18,25 @@ export type ConceptModelChoice = {
   id: string;
   name: string;
   badge: string | null;
-  costCustom: number;
-  costEcom: number;
-  /** Base credits per output size, so a 2K session quotes the 2K price. */
+  /** Credits for one image at the model's default size. */
+  cost: number;
+  /** Credits per output size, so a 2K session quotes the 2K price. */
   pricing: Record<string, number>;
-  ecomSurcharge: number;
 };
 
 /**
  * ONE price function for every label on the board.
  *
  * The server charges `originCost(model, origin, session.resolution)`, so a 2K
- * session costs the 2K price. Any label that quoted `costEcom` instead would
+ * session costs the 2K price. Any label that quoted `cost` instead would
  * show the model's cheapest size while the wallet lost more — so the retake
  * menu, the card's model select, the bulk sheet and the totals all come
  * through here. An unsupported size falls back exactly as the server does.
+ * The origin of the card's prompt never changes the price.
  */
-function modelPrice(
-  m: ConceptModelChoice | undefined, origin: string, resolution?: string | null,
-): number {
+function modelPrice(m: ConceptModelChoice | undefined, resolution?: string | null): number {
   if (!m) return 0;
-  const base = (resolution && m.pricing[resolution] !== undefined)
-    ? m.pricing[resolution]
-    : (origin === "custom" ? m.costCustom : m.costEcom - m.ecomSurcharge);
-  return origin === "custom" ? base : base + m.ecomSurcharge;
+  return (resolution && m.pricing[resolution] !== undefined) ? m.pricing[resolution] : m.cost;
 }
 
 export type ConceptCardData = {
@@ -116,9 +111,9 @@ export function ConceptBoard({ concepts, models, balance, engineReady, initialMo
 
   const modelById = useMemo(() => new Map(models.map((m) => [m.id, m])), [models]);
 
-  const priceOf = (m: ConceptModelChoice | undefined, origin: string) => modelPrice(m, origin, resolution);
+  const priceOf = (m: ConceptModelChoice | undefined) => modelPrice(m, resolution);
   const costFor = (c: ConceptCardData, modelId?: string) =>
-    priceOf(modelById.get(modelId ?? chosen[c.id]) ?? models[0], c.origin);
+    priceOf(modelById.get(modelId ?? chosen[c.id]) ?? models[0]);
 
   const stateOf = (c: ConceptCardData): CardState => {
     const s = live[c.id]?.state;
@@ -304,7 +299,7 @@ export function ConceptBoard({ concepts, models, balance, engineReady, initialMo
       <Modal open={bulkOpen} onClose={() => setBulkOpen(false)} title={t("concepts.chooseModel")}>
         <div className="space-y-2">
           {models.map((m) => {
-            const per = priceOf(m, pending[0]?.origin ?? "ecomstudio");
+            const per = priceOf(m);
             return (
               <button key={m.id} type="button" onClick={() => setBulkModelId(m.id)}
                 aria-pressed={bulkModelId === m.id}
@@ -442,7 +437,7 @@ function ConceptCard({ c, state, url, error, models, chosenId, cost, generatedWi
                     onClick={() => { setRetakeOpen(false); onGenerate(); }} />
                   {models.filter((m) => m.id !== chosenId).map((m) => (
                     <MenuItem key={m.id} icon={Sparkles}
-                      label={t("concepts.retakeWith", { model: m.name, n: modelPrice(m, c.origin, resolution) })}
+                      label={t("concepts.retakeWith", { model: m.name, n: modelPrice(m, resolution) })}
                       onClick={() => { setRetakeOpen(false); onPickModel(m.id); onGenerate(m.id); }} />
                   ))}
                 </div>
@@ -534,7 +529,7 @@ function ConceptCard({ c, state, url, error, models, chosenId, cost, generatedWi
               >
                 {models.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.name} · {modelPrice(m, c.origin, resolution)} kr.
+                    {m.name} · {modelPrice(m, resolution)} kr.
                   </option>
                 ))}
               </Select>

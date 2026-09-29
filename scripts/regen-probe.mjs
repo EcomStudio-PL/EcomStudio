@@ -62,7 +62,7 @@ function model(id: string, name: string, badge: string | null): GenModel {
   return {
     id, name, badge, badgeTone: null, description: null,
     pricing: { "1K": 48 }, resolutions: ["1K"], ratios: ["1:1", "3:2"], exactRatios: ["1:1"],
-    maxOutputs: 4, supportsRefs: true, surcharge: 5, qualities: ["medium", "high"],
+    maxOutputs: 4, supportsRefs: true, qualities: ["medium", "high"],
     qualityPricing: { high: { "1K": 53 } },
   };
 }

@@ -5,7 +5,7 @@ import {
   ProviderError, effectiveQuality, modelQualities,
   type AspectRatio, type GeneratedImage, type Quality, type ReferenceImage, type Resolution,
 } from "@/lib/ai/types";
-import { unitCost, type Cost, type UnitPrice } from "@/lib/ai/usage-cost";
+import { imageCallCost, type Cost, type TokenPrice, type UnitPrice } from "@/lib/ai/usage-cost";
 import { isRetriable } from "@/lib/ai/workflow-values";
 import {
   PROVIDER_CALL_BUDGET_MS, fitsInBudget, getProviderHealth, providerBlocked,
@@ -41,11 +41,18 @@ export type ImageCallInput = {
   /** Epoch ms the call must be back by (the invocation budget, not a quality cap). */
   deadlineAt: number;
   unitPrices: readonly UnitPrice[];
+  /** Prices the input/thinking tokens a response reports; absent = unpriced. */
+  tokenPrices?: readonly TokenPrice[];
 };
 
 export type ImageAttempt = {
   providerSlug: string; model: string; ok: boolean; ms: number; errorCode?: string;
-  cost: Cost; inputTokens?: number | null; outputTokens?: number | null;
+  /** Official per-image price + reported input/thinking tokens. */
+  cost: Cost;
+  /** The official per-image price alone (what `cost` is compared with). */
+  baseCost?: Cost;
+  resolution?: string | null;
+  inputTokens?: number | null; outputTokens?: number | null; thoughtTokens?: number | null;
 };
 
 export type ImageCallResult =
@@ -82,10 +89,12 @@ export async function callImageModel(supabase: Client, input: ImageCallInput): P
     if (input.references.length > 0 && !supportsRefs) { lastError = "references_unsupported"; continue; }
     const refs = supportsRefs ? input.references.slice(0, model.max_reference_images || 6) : [];
     const callMs = adapter.worstCaseMs?.(1) ?? PROVIDER_CALL_BUDGET_MS;
-    const priceOf = (images: number) => unitCost(input.unitPrices, providerSlug, model.model_identifier, "image", images, {
-      resolution: resolution ?? null, quality: quality ?? null,
-      perImageFallbackUsdMicros: (model as { internal_cost_usd_micros?: number | null }).internal_cost_usd_micros ?? null,
-    });
+    const priceOf = (images: number, usage?: { inputTokens?: number; thoughtTokens?: number }) =>
+      imageCallCost(input.unitPrices, input.tokenPrices ?? [], providerSlug, model.model_identifier, images, {
+        resolution: resolution ?? null, quality: quality ?? null,
+        perImageFallbackUsdMicros: (model as { internal_cost_usd_micros?: number | null }).internal_cost_usd_micros ?? null,
+        inputTokens: usage?.inputTokens ?? null, thoughtTokens: usage?.thoughtTokens ?? null,
+      });
 
     for (let attempt = 1; attempt <= Math.max(1, input.maxAttempts); attempt++) {
       // A provider call is only STARTED when at least one image's worth of
@@ -104,11 +113,14 @@ export async function callImageModel(supabase: Client, input: ImageCallInput): P
           deadlineAt: input.deadlineAt,
         }, { apiKey, baseUrl }));
         const image = result.images[0];
-        const cost = priceOf(result.images.length);
+        const price = priceOf(result.images.length, result.usage);
+        const cost = price.total;
         attempts.push({
           providerSlug, model: model.model_identifier, ok: Boolean(image), ms: Date.now() - started, cost,
+          baseCost: price.base, resolution: resolution ?? null,
           errorCode: image ? undefined : "provider_empty_result",
           inputTokens: result.usage?.inputTokens ?? null, outputTokens: result.usage?.outputTokens ?? null,
+          thoughtTokens: result.usage?.thoughtTokens ?? null,
         });
         if (!image) { lastError = "provider_empty_result"; break; }
         if (health.get(providerSlug) && health.get(providerSlug)!.state !== "healthy") await recordProviderSuccess(supabase, providerSlug);
@@ -117,13 +129,16 @@ export async function callImageModel(supabase: Client, input: ImageCallInput): P
         const pe = e instanceof ProviderError ? e : new ProviderError("provider_error", true);
         lastError = pe.safeMessage;
         const partial = pe.partial?.[0];
+        const failedPrice = priceOf(pe.partial?.length ?? 0, pe.usage);
         attempts.push({
           providerSlug, model: model.model_identifier, ok: Boolean(partial), ms: Date.now() - started,
-          errorCode: pe.safeMessage, cost: priceOf(pe.partial?.length ?? 0),
+          errorCode: pe.safeMessage, cost: failedPrice.total, baseCost: failedPrice.base, resolution: resolution ?? null,
+          inputTokens: pe.usage?.inputTokens ?? null, outputTokens: pe.usage?.outputTokens ?? null,
+          thoughtTokens: pe.usage?.thoughtTokens ?? null,
         });
         await recordProviderFailure(supabase, providerSlug, pe);
         // An image the provider already produced (and billed) is kept.
-        if (partial) return { ok: true, image: partial, providerSlug, model: model.model_identifier, modelId: model.id, attempts, cost: priceOf(1) };
+        if (partial) return { ok: true, image: partial, providerSlug, model: model.model_identifier, modelId: model.id, attempts, cost: failedPrice.total };
         // Not retried: invalid prompt/image, content policy, auth, quota —
         // another attempt on the same provider cannot succeed.
         if (!isRetriable(pe.safeMessage, pe.retriable)) break;

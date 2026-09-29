@@ -807,8 +807,6 @@
     "pricingPerResHint": "Empty field = variant unavailable. Filled variants become the 1K/2K/4K buttons in the Studio.",
     "kpiUsers": "Customers",
     "costSourceOfTruth": "The API cost configured here is the source of truth for new generations. Historical events keep the cost captured at execution time — changing a price today never rewrites past economics.",
-    "perGeneration": "Per generation",
-    "apiCostCfg": "API cost (configured)",
     "snapshotNote": "Changes apply to future generations only.",
     "unavailable": {
       "provider_quota": "Unavailable — provider quota/billing",
@@ -872,9 +870,6 @@
       "fallback1": "Fallback #1",
       "fallback2": "Fallback #2"
     },
-    "ecomSurcharge": "GrovBase surcharge (cr)",
-    "ecomSurchargeHint": "GrovBase prompt: total {total} cr ≈ {pln}",
-    "ecomPriceShort": "GrovBase: {n} cr",
     "planner": {
       "title": "Shot planner",
       "sub": "The analysis & scene engine — independent of image models. Fallback runs only when you enable it.",
@@ -929,7 +924,26 @@
     "stripeSyncProblemHint": "The price has not been confirmed in Stripe, so this item is not on sale right now. Try again.",
     "stripeLastSync": "Last sync",
     "stripeRetry": "Retry",
-    "stripeSyncFailed": "Could not sync with Stripe."
+    "stripeSyncFailed": "Could not sync with Stripe.",
+    "flatApiCost": "Flat API cost (USD / image)",
+    "flatApiCostHint": "Used only for qualities with no official price under Costs → Unit prices.",
+    "costTable": {
+      "title": "One image per quality — Google cost, customer price, margin",
+      "quality": "Quality",
+      "apiUsd": "Google cost (USD)",
+      "apiPln": "Cost (PLN)",
+      "credits": "Customer price",
+      "revenue": "Revenue (PLN)",
+      "margin": "Margin (PLN)",
+      "marginPct": "Margin %",
+      "source": {
+        "unit": "official price list",
+        "flat": "flat cost"
+      },
+      "tokens": "Base cost = the official output-image price. A job's real cost adds input tokens (${in} / 1M) and thinking (${out} / 1M) only when Google returns usage — see History.",
+      "noTokens": "Base cost = the official output-image price. No token price set — reported tokens are not added.",
+      "fx": "Revenue = credits × {credit}. The USD/PLN rate {fx} is for cost analysis only."
+    }
   },
   "support": {
     "title": "Support & messages",
@@ -4426,8 +4440,8 @@
     "engine.title": "Engine configuration",
     "engine.sub": "Where the instructions come from, and how failed requests are treated.",
     "engine.timeout": "Timeout (seconds)",
-    "engine.attempts": "Attempts on the primary model",
-    "engine.attemptsHint": "Every extra attempt is another invoice from the provider.",
+    "engine.attempts": "Attempts on each model",
+    "engine.attemptsHint": "Max paid calls per image on each model — primary and fallback. 1 = one call; every extra attempt is another invoice from the provider.",
     "basics.service": "Billing service",
     "basics.noService": "Not billed",
     "basics.serviceHint": "Prices live in the service catalogue — here you only choose which row this tool bills.",
@@ -5049,6 +5063,12 @@
     "econ.units.request": "{n} calls",
     "econ.units.page": "{n} pages",
     "econ.customerPaid": "Customer paid",
+    "econ.thinking": "thinking {n}",
+    "econ.baseCost": "Base cost (official)",
+    "econ.realCost": "Real cost",
+    "econ.noUsage": "the provider returned no usage — cost = base",
+    "econ.listRevenue": "Revenue (list price)",
+    "econ.listMargin": "margin",
     "econ.revenueKind.paid": "from purchased credits",
     "econ.revenueKind.bonus": "bonus credits — revenue 0",
     "econ.revenueKind.free": "free use",

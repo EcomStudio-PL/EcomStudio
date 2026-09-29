@@ -257,13 +257,15 @@ export async function runImageStep(
     maxAttempts: step.maxAttempts,
     deadlineAt: Math.min(ctx.deadlineAt, Date.now() + step.timeoutMs),
     unitPrices: ctx.unitPrices,
+    tokenPrices: ctx.tokenPrices,
   });
   for (const a of out.attempts) {
     ctx.trace.push({
       ...traceBase(ctx), providerSlug: a.providerSlug, model: a.model,
       status: a.ok ? "succeeded" : "failed", errorCode: a.ok ? null : (a.errorCode ?? "provider_error"),
-      units: a.ok ? 1 : 0, unitKind: "image",
-      inputTokens: a.inputTokens ?? null, outputTokens: a.outputTokens ?? null, cost: a.cost, durationMs: a.ms,
+      units: a.ok ? 1 : 0, unitKind: "image", resolution: a.resolution ?? null,
+      inputTokens: a.inputTokens ?? null, outputTokens: a.outputTokens ?? null, thoughtTokens: a.thoughtTokens ?? null,
+      cost: a.cost, baseCost: a.baseCost ?? null, durationMs: a.ms,
     });
   }
   const cost = sumCost(out.attempts.map((a) => a.cost));

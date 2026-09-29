@@ -119,8 +119,8 @@ export function RegenerateModal({ item, models, balance, onClose, onDone }: {
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
   }, [onClose, busy]);
 
-  // Cost preview mirrors the server's originCost: base price at this image's
-  // resolution, plus the engine surcharge for managed generations. The quote
+  // Cost preview mirrors the server's originCost: the model's price at this
+  // image's resolution (and quality), the same for either origin. The quote
   // is keyed on the REAL model id that served this image — when that model is
   // no longer offered here, no price is invented: the customer must pick one.
   const sameModel = useMemo(

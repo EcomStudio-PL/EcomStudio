@@ -50,6 +50,12 @@ export type CallRow = {
   cost_usd_micros: number | null;
   cost_basis: string;
   duration_ms: number | null;
+  /** 0133 onwards (older rows: absent/null). Thinking share of output_tokens. */
+  thought_tokens?: number | null;
+  /** Image calls: official per-image price × images, without tokens. */
+  base_cost_usd_micros?: number | null;
+  /** Size the image call was priced at. */
+  resolution?: string | null;
 };
 
 /** The usage_events columns this module reads. */
@@ -147,6 +153,24 @@ export function margin(revenue: Revenue, cost: Money, usdToPln: number): { cents
   const costCents = usdMicrosToPlnCents(cost.usdMicros, usdToPln);
   const cents = revenue.cents - costCents;
   return { cents, percent: revenue.cents > 0 ? (cents / revenue.cents) * 100 : null };
+}
+
+/**
+ * Margin at LIST PRICE: revenue_pln = credits charged × the credit's list
+ * price; margin = revenue_pln − provider_cost_pln (USD at the analytics FX
+ * rate). Read next to `margin`, which only counts money actually paid (a
+ * bonus credit earns 0 there). Unknown cost → no margin; 0 credits → no
+ * revenue and no percent.
+ */
+export function listMargin(
+  credits: number, cost: Money, plnPerCredit: number, usdToPln: number,
+): { listRevenueCents: number | null; listMarginCents: number | null; listMarginPercent: number | null } {
+  const revenue = credits > 0 ? Math.round(credits * plnPerCredit * 100) : 0;
+  if (cost.basis === "unknown" || cost.usdMicros == null) {
+    return { listRevenueCents: credits > 0 ? revenue : null, listMarginCents: null, listMarginPercent: null };
+  }
+  const cents = revenue - usdMicrosToPlnCents(cost.usdMicros, usdToPln);
+  return { listRevenueCents: revenue, listMarginCents: cents, listMarginPercent: revenue > 0 ? (cents / revenue) * 100 : null };
 }
 
 export function usdMicrosToPlnCents(usdMicros: number, usdToPln: number): number {

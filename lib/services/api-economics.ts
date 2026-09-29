@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import { billingFrom } from "@/lib/images/pricing";
 import {
-  aggregate, eventCost, eventRevenue, eventTool, keptCents, margin, sumCosts, warsawDayStart,
+  aggregate, eventCost, eventRevenue, eventTool, keptCents, listMargin, margin, sumCosts, warsawDayStart,
   SETTLED_PAYMENT, type Aggregate, type CallRow, type CostBasis, type EventRow, type Revenue,
   type RunLine, type WorkspaceMoney,
 } from "@/lib/api-economics";
@@ -20,7 +20,7 @@ const PAGE = 1000;
 const MAX_ROWS = 20_000;
 
 const EVENT_COLUMNS = "id, created_at, workspace_id, user_id, service_slug, provider_slug, model_slug, status, credits_charged, result_count, actual_api_cost_usd_micros, api_cost_usd_micros_snapshot, metadata";
-const CALL_COLUMNS = "id, created_at, actor_kind, consumer, tool_key, usage_event_id, provider_slug, model, status, request_count, input_tokens, output_tokens, units, unit_kind, cost_usd_micros, cost_basis, duration_ms";
+const CALL_COLUMNS = "id, created_at, actor_kind, consumer, tool_key, usage_event_id, provider_slug, model, status, request_count, input_tokens, output_tokens, units, unit_kind, cost_usd_micros, cost_basis, duration_ms, thought_tokens, base_cost_usd_micros, resolution";
 
 /** Page through a query so PostgREST's row cap never truncates silently. */
 async function pages<T>(fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<{ rows: T[]; truncated: boolean }> {
@@ -96,8 +96,14 @@ async function toolMaps(db: Client): Promise<{ serviceToTool: Map<string, string
 }
 
 async function usdToPln(db: Client): Promise<number> {
+  return (await billing(db)).usdToPln;
+}
+
+/** The analytics FX rate and the list price of one credit (admin billing). */
+async function billing(db: Client): Promise<{ usdToPln: number; plnPerCredit: number }> {
   const { data } = await db.from("app_settings").select("value").eq("key", "billing").maybeSingle();
-  return billingFrom(data?.value).usdToPln;
+  const b = billingFrom(data?.value);
+  return { usdToPln: b.usdToPln, plnPerCredit: b.plnPerCredit };
 }
 
 type Lines = {
@@ -107,12 +113,14 @@ type Lines = {
   system: CallRow[];
   truncated: boolean;
   usdToPln: number;
+  plnPerCredit: number;
 };
 
 async function buildLines(db: Client, since: Date): Promise<Lines> {
-  const [events, calls, maps, rate] = await Promise.all([
-    readEvents(db, since), readCalls(db, since), toolMaps(db), usdToPln(db),
+  const [events, calls, maps, bill] = await Promise.all([
+    readEvents(db, since), readCalls(db, since), toolMaps(db), billing(db),
   ]);
+  const rate = bill.usdToPln;
   const callsByEvent = new Map<string, CallRow[]>();
   const system: CallRow[] = [];
   for (const c of calls.rows) {
@@ -131,7 +139,7 @@ async function buildLines(db: Client, since: Date): Promise<Lines> {
       toolKey: eventTool(e, own, maps.serviceToTool, maps.toolKeys),
     };
   });
-  return { lines, system, truncated: events.truncated || calls.truncated, usdToPln: rate };
+  return { lines, system, truncated: events.truncated || calls.truncated, usdToPln: rate, plnPerCredit: bill.plnPerCredit };
 }
 
 /* ── Usage history ────────────────────────────────────────────────────────*/
@@ -154,8 +162,21 @@ export type HistoryRow = {
   marginPercent: number | null;
   inputTokens: number | null;
   outputTokens: number | null;
+  /** Thinking tokens the provider reported (priced at the text rate). */
+  thoughtTokens: number | null;
   units: number | null;
   unitKind: string | null;
+  /** Size(s) the image calls were priced at, e.g. "1K". */
+  resolution: string | null;
+  /** Official per-image price × images alone — the base the real cost
+   *  (`costUsdMicros`, which adds reported input/thinking tokens) is read
+   *  against. Null for runs recorded before 0133 or with no image price. */
+  baseCostUsdMicros: number | null;
+  /** Credits × the credit's list price, and the margin against the provider
+   *  cost at that price (revenue_pln − provider_cost_pln). */
+  listRevenueCents: number | null;
+  listMarginCents: number | null;
+  listMarginPercent: number | null;
 };
 
 export type HistoryFilter = { toolKey?: string | null; provider?: string | null; days?: number; limit?: number };
@@ -163,7 +184,7 @@ export type HistoryFilter = { toolKey?: string | null; provider?: string | null;
 export async function readUsageHistory(db: Client, filter: HistoryFilter = {}): Promise<{ rows: HistoryRow[]; truncated: boolean; usdToPln: number }> {
   const days = Math.min(90, Math.max(1, filter.days ?? 30));
   const since = new Date(Date.now() - days * 86_400_000);
-  const { lines, system, truncated, usdToPln: rate } = await buildLines(db, since);
+  const { lines, system, truncated, usdToPln: rate, plnPerCredit } = await buildLines(db, since);
 
   const runRows: HistoryRow[] = lines.map((l) => {
     const served = l.calls.find((c) => c.status === "succeeded") ?? l.calls[0];
@@ -171,19 +192,30 @@ export async function readUsageHistory(db: Client, filter: HistoryFilter = {}): 
     const tokensIn = l.calls.reduce((s, c) => s + (c.input_tokens ?? 0), 0);
     const tokensOut = l.calls.reduce((s, c) => s + (c.output_tokens ?? 0), 0);
     const hasTokens = l.calls.some((c) => c.input_tokens != null || c.output_tokens != null);
+    const thought = l.calls.some((c) => c.thought_tokens != null)
+      ? l.calls.reduce((s, c) => s + (c.thought_tokens ?? 0), 0) : null;
+    const base = l.calls.some((c) => c.base_cost_usd_micros != null)
+      ? l.calls.reduce((s, c) => s + (c.base_cost_usd_micros ?? 0), 0) : null;
+    const sizes = [...new Set(l.calls.map((c) => c.resolution).filter((r): r is string => !!r))];
     const units = l.calls.reduce((s, c) => s + Number(c.units ?? 0), 0);
+    const credits = l.revenue.kind === "refunded" ? 0 : l.event.credits_charged;
+    const list = listMargin(credits, l.cost, plnPerCredit, rate);
     return {
       id: l.event.id, at: l.event.created_at, kind: "run",
       toolKey: l.toolKey, consumer: served?.consumer ?? null,
       provider: served?.provider_slug ?? l.event.provider_slug,
       model: served?.model ?? l.event.model_slug,
       requests: l.calls.length ? l.calls.reduce((s, c) => s + c.request_count, 0) : 1,
-      status: l.event.status, credits: l.revenue.kind === "refunded" ? 0 : l.event.credits_charged,
+      status: l.event.status, credits,
       costUsdMicros: l.cost.usdMicros, costBasis: l.cost.basis, revenue: l.revenue,
       marginCents: m.cents, marginPercent: m.percent,
       inputTokens: hasTokens ? tokensIn : null, outputTokens: hasTokens ? tokensOut : null,
+      thoughtTokens: thought,
       units: l.calls.some((c) => c.units != null) ? units : null,
       unitKind: l.calls.find((c) => c.unit_kind)?.unit_kind ?? null,
+      resolution: sizes.length ? sizes.join("/") : null,
+      baseCostUsdMicros: base,
+      ...list,
     };
   });
   const sysRows: HistoryRow[] = system.map((c) => ({
@@ -192,7 +224,10 @@ export async function readUsageHistory(db: Client, filter: HistoryFilter = {}): 
     requests: c.request_count, status: c.status, credits: 0,
     costUsdMicros: c.cost_usd_micros, costBasis: c.cost_basis === "actual" || c.cost_basis === "estimated" ? c.cost_basis : "unknown",
     revenue: { kind: "system", cents: 0 }, marginCents: null, marginPercent: null,
-    inputTokens: c.input_tokens, outputTokens: c.output_tokens, units: c.units, unitKind: c.unit_kind,
+    inputTokens: c.input_tokens, outputTokens: c.output_tokens, thoughtTokens: c.thought_tokens ?? null,
+    units: c.units, unitKind: c.unit_kind,
+    resolution: c.resolution ?? null, baseCostUsdMicros: c.base_cost_usd_micros ?? null,
+    listRevenueCents: null, listMarginCents: null, listMarginPercent: null,
   }));
 
   let rows = [...runRows, ...sysRows].sort((a, b) => b.at.localeCompare(a.at));

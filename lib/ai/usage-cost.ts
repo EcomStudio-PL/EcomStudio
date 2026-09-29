@@ -114,6 +114,39 @@ export function unitCost(
   return UNKNOWN_COST;
 }
 
+/**
+ * ONE IMAGE-MODEL CALL — what it cost us, split the way the admin reads it.
+ *
+ *   base   images × the official per-image output price for the size rendered
+ *          (ai_unit_prices; without a row, the model's flat per-image cost).
+ *          For Nano Banana Pro: 1K $0.134 · 2K $0.134 · 4K $0.24.
+ *   total  base + the provider-REPORTED input tokens × the input rate + the
+ *          provider-REPORTED thinking tokens × the text-output rate
+ *          (ai_token_prices). Only what the response actually carried is
+ *          priced: no usage, or no token price → total = base, never a guess.
+ *
+ * Image output tokens are NOT priced again: the per-image price IS the image
+ * output (1120 tokens at 1K/2K, 2000 at 4K × $120/M).
+ */
+export type ImageCallCost = { base: Cost; total: Cost; tokensPriced: boolean };
+
+export function imageCallCost(
+  unitPrices: readonly UnitPrice[], tokenPrices: readonly TokenPrice[],
+  providerSlug: string, model: string, images: number,
+  opts: {
+    resolution?: string | null; quality?: string | null; perImageFallbackUsdMicros?: number | null;
+    inputTokens?: number | null; thoughtTokens?: number | null;
+  } = {},
+): ImageCallCost {
+  const base = unitCost(unitPrices, providerSlug, model, "image", images, opts);
+  const input = opts.inputTokens ?? null;
+  const thought = opts.thoughtTokens ?? null;
+  const price = input == null && thought == null ? null : findTokenPrice(tokenPrices, providerSlug, model);
+  if (!price || base.basis === "unknown") return { base, total: base, tokensPriced: false };
+  const extra = (Math.max(0, input ?? 0) * price.inputPerMTok + Math.max(0, thought ?? 0) * price.outputPerMTok) / 1_000_000;
+  return { base, total: { basis: base.basis, usdMicros: base.usdMicros + Math.round(extra) }, tokensPriced: true };
+}
+
 /** Sum a set of costs: the known part, and how many were unknown. */
 export function sumKnownCosts(costs: readonly Cost[]): { usdMicros: number; unknown: number } {
   let usdMicros = 0; let unknown = 0;

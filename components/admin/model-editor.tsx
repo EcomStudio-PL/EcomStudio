@@ -17,7 +17,13 @@ export type ModelView = {
   description: string | null; providerName: string;
   display_name: string | null; badge: string | null; sort_order: number;
   pricing: Record<string, number>; supported_resolutions: string[];
-  ecom_surcharge_credits: number;
+  /** Official provider price of ONE output image per size (USD micros), from
+   *  the unit price list (Koszty → Ceny jednostkowe); "flat" = no row for the
+   *  size, the model's flat per-image cost stands in; null = nothing known. */
+  officialCost: Record<string, { usdMicros: number | null; source: "unit" | "flat" }>;
+  /** Token rates that price the input/thinking usage a response reports
+   *  (USD per 1M); null = none set, reported tokens stay unpriced. */
+  tokenRates: { inputUsdPerM: number; outputUsdPerM: number } | null;
   supported_aspect_ratios: string[];
   badge_tone: string | null;
   max_outputs: number | null;
@@ -62,16 +68,22 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
     max_refs: String(m.max_reference_images),
     description: m.description ?? "",
     active: m.active,
-    ecom_surcharge: String(m.ecom_surcharge_credits),
     pricing: Object.fromEntries(RES_TIERS.map((r) => [r, m.pricing[r] != null ? String(m.pricing[r]) : ""])),
   });
 
   const fmtPln = (v: number) =>
     new Intl.NumberFormat(locale === "pl" ? "pl-PL" : "en-GB", { style: "currency", currency: "PLN" }).format(v);
-  const userPln = m.credit_cost * plnPerCredit;
-  const costPln = (m.internal_cost_usd_micros / 1_000_000) * usdToPln;
-  const marginPln = userPln - costPln;
-  const marginPct = userPln > 0 ? Math.round((marginPln / userPln) * 100) : 0;
+  const fmtUsd = (micros: number) => `$${(micros / 1_000_000).toFixed(micros % 10_000 === 0 ? 2 : 3)}`;
+  // The row quotes the model's DEFAULT size: its customer price against the
+  // official provider price for that size. Revenue = credits × the credit's
+  // list price; cost = USD × the analytics FX rate. Margin = revenue − cost.
+  const rowRes = m.supported_resolutions[0] ?? "1K";
+  const rowCredits = m.pricing[rowRes] ?? m.credit_cost;
+  const rowCost = m.officialCost[rowRes]?.usdMicros ?? null;
+  const userPln = rowCredits * plnPerCredit;
+  const costPln = rowCost == null ? null : (rowCost / 1_000_000) * usdToPln;
+  const marginPln = costPln == null ? null : userPln - costPln;
+  const marginPct = marginPln == null || userPln <= 0 ? null : Math.round((marginPln / userPln) * 100);
 
   function save() {
     start(async () => {
@@ -102,7 +114,6 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
         quality_tier: form.quality_tier,
         speed_tier: form.speed_tier,
         max_reference_images: parseInt(form.max_refs || "0", 10),
-        ecom_surcharge_credits: parseInt(form.ecom_surcharge || "0", 10),
         description: form.description.trim() || null,
         active: form.active,
         ...(resolutions.length > 0 ? { pricing, supported_resolutions: resolutions } : {}),
@@ -127,17 +138,19 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
           </p>
         </div>
         <div className="hidden text-right sm:block">
-          <p className="text-sm font-semibold tabular-nums text-accent">{m.credit_cost} kr</p>
-          <p className="text-xs tabular-nums text-faint">
-            {t("admin.ecomPriceShort", { n: m.credit_cost + m.ecom_surcharge_credits })} · ≈ {fmtPln((m.credit_cost + m.ecom_surcharge_credits) * plnPerCredit)}
-          </p>
+          <p className="text-sm font-semibold tabular-nums text-accent">{rowRes} · {rowCredits} kr</p>
+          <p className="text-xs tabular-nums text-faint">≈ {fmtPln(userPln)}</p>
         </div>
         <div className="hidden text-right md:block">
-          <p className="text-xs tabular-nums text-muted">{t("admin.internalCost")}: {fmtPln(costPln)}</p>
           <p className="text-xs tabular-nums text-muted">
-            {t("admin.margin")}: <span className={cn("font-medium", marginPct >= 30 ? "text-ink" : "text-accent2")}>
-              {fmtPln(marginPln)} / {marginPct}%
-            </span>
+            {t("admin.internalCost")}: {rowCost == null ? "—" : `${fmtUsd(rowCost)} ≈ ${fmtPln(costPln ?? 0)}`}
+          </p>
+          <p className="text-xs tabular-nums text-muted">
+            {t("admin.margin")}: {marginPln == null ? "—" : (
+              <span className={cn("font-medium", (marginPct ?? 0) >= 30 ? "text-ink" : "text-accent2")}>
+                {fmtPln(marginPln)}{marginPct != null ? ` / ${marginPct}%` : ""}
+              </span>
+            )}
           </p>
         </div>
         {m.active
@@ -262,19 +275,9 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
             <Input type="number" min={0} value={form.credit_cost} onChange={(e) => setForm({ ...form, credit_cost: e.target.value })} />
           </div>
           <div>
-            <Label>{t("admin.internalCost")} (USD)</Label>
+            <Label>{t("admin.flatApiCost")}</Label>
             <Input type="number" min={0} step="0.001" value={form.internal_usd} onChange={(e) => setForm({ ...form, internal_usd: e.target.value })} />
-          </div>
-          <div>
-            <Label>{t("admin.ecomSurcharge")}</Label>
-            <Input type="number" min={0} value={form.ecom_surcharge}
-              onChange={(e) => setForm({ ...form, ecom_surcharge: e.target.value })} />
-            <p className="mt-1 text-[11px] text-faint">
-              {t("admin.ecomSurchargeHint", {
-                total: parseInt(form.credit_cost || "0", 10) + parseInt(form.ecom_surcharge || "0", 10),
-                pln: fmtPln((parseInt(form.credit_cost || "0", 10) + parseInt(form.ecom_surcharge || "0", 10)) * plnPerCredit),
-              })}
-            </p>
+            <p className="mt-1 text-[11px] text-faint">{t("admin.flatApiCostHint")}</p>
           </div>
           <div>
             <Label>{t("admin.qualityTier")}</Label>
@@ -303,25 +306,17 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
             <Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
         </div>
-        <div className="mt-4 rounded-xl bg-raised px-4 py-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-faint">{t("admin.perGeneration")}</p>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-5">
-            <Econ label={t("admin.apiCostCfg")} value={`$${(parseFloat(form.internal_usd || "0")).toFixed(4)}`} />
-            <Econ label={t("admin.userCost")} value={`${parseInt(form.credit_cost || "0", 10)} kr`} />
-            <Econ label={t("econ.revenue")} value={fmtPln(parseInt(form.credit_cost || "0", 10) * plnPerCredit)} />
-            <Econ label={t("econ.apiCost")} value={fmtPln(parseFloat(form.internal_usd || "0") * usdToPln)} tone="warm" />
-            <Econ
-              label={t("econ.margin")}
-              value={(() => {
-                const rev = parseInt(form.credit_cost || "0", 10) * plnPerCredit;
-                const cost = parseFloat(form.internal_usd || "0") * usdToPln;
-                return rev > 0 ? `${fmtPln(rev - cost)} / ${Math.round(((rev - cost) / rev) * 1000) / 10}%` : "—";
-              })()}
-              tone="good"
-            />
-          </div>
-          <p className="mt-2 text-[11px] text-faint">{t("admin.snapshotNote")}</p>
-        </div>
+        <QualityEconomics
+          rows={RES_TIERS.filter((r) => (form.pricing[r] ?? "").trim() !== "").map((r) => {
+            const official = m.officialCost[r];
+            // A size with no official row is costed at the flat price being
+            // edited here, exactly as the recorder will cost it.
+            const flat = Math.round(parseFloat(form.internal_usd || "0") * 1_000_000);
+            const usdMicros = official?.source === "unit" ? official.usdMicros : flat > 0 ? flat : null;
+            return { res: r, credits: parseInt(form.pricing[r] || "0", 10), usdMicros, source: official?.source === "unit" ? "unit" : "flat" };
+          })}
+          tokenRates={m.tokenRates} usdToPln={usdToPln} plnPerCredit={plnPerCredit} fmtPln={fmtPln} />
+        <p className="mt-2 text-[11px] text-faint">{t("admin.snapshotNote")}</p>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
           <Button disabled={pending} onClick={save}>{t("common.save")}</Button>
@@ -331,12 +326,68 @@ export function ModelRow({ m, usdToPln, plnPerCredit, locale }: {
   );
 }
 
-function Econ({ label, value, tone }: { label: string; value: string; tone?: "warm" | "good" }) {
+/**
+ * ONE IMAGE, PER QUALITY: the official provider price, the customer's credits,
+ * the revenue those credits are worth at the credit's list price, and the
+ * margin between them. Nothing is added on top of the model price — there is
+ * no "GrovBase surcharge" any more. The USD→PLN rate converts the cost for
+ * this analysis only; it never sets a customer price.
+ */
+function QualityEconomics({ rows, tokenRates, usdToPln, plnPerCredit, fmtPln }: {
+  rows: { res: string; credits: number; usdMicros: number | null; source: "unit" | "flat" }[];
+  tokenRates: { inputUsdPerM: number; outputUsdPerM: number } | null;
+  usdToPln: number; plnPerCredit: number; fmtPln: (v: number) => string;
+}) {
+  const { t } = useI18n();
+  if (rows.length === 0) return null;
   return (
-    <div>
-      <p className="text-[10px] uppercase tracking-wide text-muted">{label}</p>
-      <p className={cn("font-display text-sm font-semibold tabular-nums",
-        tone === "warm" && "text-accent2", tone === "good" && "text-accent")}>{value}</p>
+    <div className="mt-4 rounded-xl bg-raised px-4 py-3" data-quality-economics>
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-faint">{t("admin.costTable.title")}</p>
+      <div className="table-scroll thin-scroll -mx-1 overflow-x-auto px-1">
+        <table className="w-full min-w-[560px] text-xs">
+          <thead>
+            <tr className="text-left text-[10px] uppercase tracking-wide text-muted">
+              <th className="py-1 pr-3 font-semibold">{t("admin.costTable.quality")}</th>
+              <th className="py-1 pr-3 text-right font-semibold">{t("admin.costTable.apiUsd")}</th>
+              <th className="py-1 pr-3 text-right font-semibold">{t("admin.costTable.apiPln")}</th>
+              <th className="py-1 pr-3 text-right font-semibold">{t("admin.costTable.credits")}</th>
+              <th className="py-1 pr-3 text-right font-semibold">{t("admin.costTable.revenue")}</th>
+              <th className="py-1 pr-3 text-right font-semibold">{t("admin.costTable.margin")}</th>
+              <th className="py-1 text-right font-semibold">{t("admin.costTable.marginPct")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const revenue = r.credits * plnPerCredit;
+              const cost = r.usdMicros == null ? null : (r.usdMicros / 1_000_000) * usdToPln;
+              const margin = cost == null ? null : revenue - cost;
+              const pct = margin == null || revenue <= 0 ? null : Math.round((margin / revenue) * 1000) / 10;
+              return (
+                <tr key={r.res} className="border-t border-line/60 tabular-nums" data-quality={r.res}>
+                  <td className="py-1.5 pr-3 font-semibold">{r.res}</td>
+                  <td className="py-1.5 pr-3 text-right">
+                    {r.usdMicros == null ? "—" : `$${(r.usdMicros / 1_000_000).toFixed(4)}`}
+                    <span className="block text-[10px] text-faint">{t(`admin.costTable.source.${r.source}`)}</span>
+                  </td>
+                  <td className="py-1.5 pr-3 text-right text-accent2">{cost == null ? "—" : fmtPln(cost)}</td>
+                  <td className="py-1.5 pr-3 text-right">{r.credits} kr</td>
+                  <td className="py-1.5 pr-3 text-right">{fmtPln(revenue)}</td>
+                  <td className={cn("py-1.5 pr-3 text-right font-semibold", margin != null && margin < 0 ? "text-danger" : "text-accent")}>
+                    {margin == null ? "—" : fmtPln(margin)}
+                  </td>
+                  <td className="py-1.5 text-right">{pct == null ? "—" : `${pct}%`}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-[11px] leading-relaxed text-faint">
+        {tokenRates
+          ? t("admin.costTable.tokens", { in: tokenRates.inputUsdPerM.toFixed(2), out: tokenRates.outputUsdPerM.toFixed(2) })
+          : t("admin.costTable.noTokens")}
+        {" "}{t("admin.costTable.fx", { fx: usdToPln.toFixed(2), credit: fmtPln(plnPerCredit) })}
+      </p>
     </div>
   );
 }

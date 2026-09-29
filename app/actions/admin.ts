@@ -99,9 +99,6 @@ export async function updateModelFullAction(modelId: string, patch: {
   display_name?: string; badge?: string | null; sort_order?: number;
   model_identifier?: string; pricing?: Record<string, number>;
   supported_resolutions?: string[];
-  /** GrovBase Prompt Engine surcharge in credits, added on top of the base
-   *  price when a generation uses our hidden prompt. */
-  ecom_surcharge_credits?: number;
   // Generator V3 config:
   badge_tone?: string | null;
   supported_aspect_ratios?: string[];
@@ -122,12 +119,9 @@ export async function updateModelFullAction(modelId: string, patch: {
       patch.supported_resolutions = patch.supported_resolutions.filter((r) => ["1K", "2K", "4K"].includes(r));
       if (patch.supported_resolutions.length === 0) return { ok: false, error: "invalid" };
     }
-    if (patch.ecom_surcharge_credits != null) {
-      if (!Number.isFinite(patch.ecom_surcharge_credits) || patch.ecom_surcharge_credits < 0 || patch.ecom_surcharge_credits > 10000) {
-        return { ok: false, error: "invalid" };
-      }
-      patch.ecom_surcharge_credits = Math.trunc(patch.ecom_surcharge_credits);
-    }
+    // The "GrovBase surcharge" is gone (0133): a GrovBase prompt costs what the
+    // model costs. A stale form that still posts it is not written.
+    delete (patch as { ecom_surcharge_credits?: unknown }).ecom_surcharge_credits;
     // Badge tones are named after their meaning now (success / accent / danger
     // / info / neutral). A form that still submits one of the old colour names
     // is normalised rather than rejected — an admin editing a model's price

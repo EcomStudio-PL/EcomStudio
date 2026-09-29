@@ -124,6 +124,7 @@ export const googleAdapter: ImageProviderAdapter = {
     // Summed over the per-image requests, from each response's usageMetadata.
     let inputTokens: number | undefined;
     let outputTokens: number | undefined;
+    let thoughtTokens: number | undefined;
     for (let i = 0; i < req.quantity; i++) {
       // THE DEADLINE IS CHECKED PER IMAGE, because each image is its own
       // request. Stopping here hands back what was produced through the
@@ -142,7 +143,9 @@ export const googleAdapter: ImageProviderAdapter = {
       */
       if (budget <= MIN_USEFUL_CALL_MS) {
         if (images.length === 0) throw new ProviderError("provider_timeout", true);
-        throw new ProviderError("provider_timeout", true, undefined, undefined, images);
+        const floor = new ProviderError("provider_timeout", true, undefined, undefined, images);
+        if (inputTokens !== undefined || outputTokens !== undefined) floor.usage = { inputTokens, outputTokens, thoughtTokens };
+        throw floor;
       }
       try {
         const res = await fetch(url, {
@@ -162,10 +165,15 @@ export const googleAdapter: ImageProviderAdapter = {
         if (typeof meta?.candidatesTokenCount === "number" || typeof meta?.thoughtsTokenCount === "number") {
           outputTokens = (outputTokens ?? 0) + (meta?.candidatesTokenCount ?? 0) + (meta?.thoughtsTokenCount ?? 0);
         }
+        if (typeof meta?.thoughtsTokenCount === "number") thoughtTokens = (thoughtTokens ?? 0) + meta.thoughtsTokenCount;
         // The FINAL render — interim thought images are skipped (see
         // pickGeminiFinalImage); what the response carried is recorded.
         const pick = pickGeminiFinalImage(json);
-        if (!pick.image) throw new ProviderError("provider_empty_result", false, pick.finishReason ?? undefined);
+        if (!pick.image) {
+          const empty = new ProviderError("provider_empty_result", false, pick.finishReason ?? undefined);
+          empty.usage = inputTokens === undefined && outputTokens === undefined ? undefined : { inputTokens, outputTokens, thoughtTokens };
+          throw empty;
+        }
         images.push({
           base64: pick.image.data, mime: pick.image.mimeType,
           response: { imageParts: pick.imageParts, thoughtImagesSkipped: pick.thoughtImages, finishReason: pick.finishReason },
@@ -174,14 +182,22 @@ export const googleAdapter: ImageProviderAdapter = {
         // The FIRST call failing means nothing was produced and nothing was
         // billed, so it throws clean and the runner retries and falls back
         // exactly as it does today.
-        if (images.length === 0) throw e;
-        if (e instanceof ProviderError) { e.partial = images; throw e; }
-        throw new ProviderError("provider_error", false, undefined, undefined, images);
+        // What the responses so far REPORTED travels with the failure, so the
+        // billed tokens are recorded rather than lost (response data only).
+        const reported = inputTokens === undefined && outputTokens === undefined ? undefined : { inputTokens, outputTokens, thoughtTokens };
+        if (images.length === 0) {
+          if (e instanceof ProviderError && reported) e.usage = reported;
+          throw e;
+        }
+        if (e instanceof ProviderError) { e.partial = images; if (reported) e.usage = reported; throw e; }
+        const wrapped = new ProviderError("provider_error", false, undefined, undefined, images);
+        if (reported) wrapped.usage = reported;
+        throw wrapped;
       }
     }
     return {
       images,
-      usage: inputTokens === undefined && outputTokens === undefined ? undefined : { inputTokens, outputTokens },
+      usage: inputTokens === undefined && outputTokens === undefined ? undefined : { inputTokens, outputTokens, thoughtTokens },
     };
   },
 };
@@ -228,8 +244,19 @@ async function generateRetouch(model: AiModelRecord, req: GenerationRequest, cre
   // The final image by the SDK's own output_image rule; drafts (thought
   // steps) are never kept.
   const pick = pickInteractionFinalImage(json);
-  if (!pick.image) fail(new ProviderError("provider_empty_result", false, pick.status ?? undefined));
   const u = json.usage;
+  const usage: GenerationResult["usage"] = u ? {
+    inputTokens: u.total_input_tokens,
+    outputTokens: u.total_output_tokens === undefined && u.total_thought_tokens === undefined
+      ? undefined : (u.total_output_tokens ?? 0) + (u.total_thought_tokens ?? 0),
+    thoughtTokens: u.total_thought_tokens,
+  } : undefined;
+  if (!pick.image) {
+    // A billed answer with no final image: its reported tokens still count.
+    const empty = new ProviderError("provider_empty_result", false, pick.status ?? undefined);
+    empty.usage = usage;
+    fail(empty);
+  }
   return {
     images: [{
       base64: pick.image!.data, mime: pick.image!.mimeType,
@@ -238,11 +265,7 @@ async function generateRetouch(model: AiModelRecord, req: GenerationRequest, cre
         steps: pick.steps, pickedStep: pick.picked,
       },
     }],
-    usage: u ? {
-      inputTokens: u.total_input_tokens,
-      outputTokens: u.total_output_tokens === undefined && u.total_thought_tokens === undefined
-        ? undefined : (u.total_output_tokens ?? 0) + (u.total_thought_tokens ?? 0),
-    } : undefined,
+    usage,
     providerMetadata: { network_boundary: boundary },
   };
 }

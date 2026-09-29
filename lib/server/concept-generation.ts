@@ -3,6 +3,7 @@ import type { Client } from "@/lib/services/workspace";
 import { getUsableModels, type UsableModel } from "@/lib/ai/router";
 import { effectiveQuality, modelQualities, priceFor, priceForResolution, type AspectRatio, type Quality, type Resolution } from "@/lib/ai/types";
 import { runGeneration } from "@/lib/server/generation";
+import { toolMaxAttempts } from "@/lib/server/ai-engine";
 import { decryptConceptPayload } from "@/lib/server/prompt-engine";
 import { promptKeyring } from "@/lib/server/prompt-vault";
 
@@ -77,18 +78,19 @@ export function conceptUnitCost(model: UsableModel): number {
   return priceFor(model, res, effectiveQuality(model));
 }
 
-/** One image-model choice as the customer sees it: display identity plus BOTH
- *  prices — own prompt (base credits) and GrovBase prompt (base + engine
- *  surcharge). Ordered like the routing chain, default first. */
+/** One image-model choice as the customer sees it: display identity plus its
+ *  price. ONE price whoever wrote the prompt — the model's own per-size
+ *  (per-quality) credits; nothing is added for a GrovBase prompt. Ordered like
+ *  the routing chain, default first. */
 export type ConceptModelOption = {
   id: string;
   name: string;
   badge: string | null;
   badgeTone: string | null;
   description: string | null;
-  costCustom: number;
-  costEcom: number;
-  /** Base credits per output size, straight from the admin price table. */
+  /** Credits for one image at the model's default size and quality. */
+  cost: number;
+  /** Credits per output size, straight from the admin price table. */
   pricing: Record<string, number>;
   /** Sizes this engine actually renders — the toolbar shows nothing else. */
   resolutions: string[];
@@ -97,12 +99,9 @@ export type ConceptModelOption = {
   /** The subset it renders exactly; the rest are served at the nearest
    *  shape and the picker marks them. */
   exactRatios: string[];
-  /** Credits added on top of the base price when GrovBase writes the
-   *  prompt; zero for the customer's own prompt. */
-  ecomSurcharge: number;
   /** Render qualities the customer may pick; empty = no "Jakość" field. */
   qualities: string[];
-  /** quality → size → base credits (before the engine surcharge). */
+  /** quality → size → credits. */
   qualityPricing: Record<string, Record<string, number>>;
 };
 
@@ -113,8 +112,6 @@ export async function conceptModelOptions(supabase: Client): Promise<ConceptMode
     // chain itself stays complete so fallbacks are unaffected.
     .filter((m) => (m as { visible_managed?: boolean }).visible_managed !== false)
     .map((m) => {
-      const base = conceptUnitCost(m);
-      const surcharge = (m as { ecom_surcharge_credits?: number }).ecom_surcharge_credits ?? 0;
       const pricing: Record<string, number> = {};
       for (const r of m.supported_resolutions ?? []) pricing[r] = priceForResolution(m, r);
       const qualities = modelQualities(m);
@@ -130,32 +127,29 @@ export async function conceptModelOptions(supabase: Client): Promise<ConceptMode
         badge: m.badge,
         badgeTone: (m as { badge_tone?: string | null }).badge_tone ?? null,
         description: m.description,
-        costCustom: base,
-        costEcom: base + Math.max(0, surcharge),
+        cost: conceptUnitCost(m),
         pricing,
         resolutions: m.supported_resolutions ?? [],
         ratios: m.capabilities_ui.ratios,
         exactRatios: m.capabilities_ui.ratios.filter((r) => m.capabilities_ui.exactRatios.includes(r)),
-        ecomSurcharge: Math.max(0, surcharge),
         qualities,
         qualityPricing,
       };
     });
 }
 
-/** Price of one generation for a given origin and output size. An unknown or
- *  unsupported size falls back to the model's default, exactly like the
- *  generation path itself — the quote can never promise a cheaper render than
- *  the one that will actually run. */
+/** Price of one generation at an output size: the model's own per-size
+ *  (per-quality) credits, the same whoever wrote the prompt — `origin` no
+ *  longer changes the price (the "GrovBase surcharge" is gone, 0133). An
+ *  unknown or unsupported size falls back to the model's default, exactly like
+ *  the generation path itself — the quote can never promise a cheaper render
+ *  than the one that will actually run. */
 export function originCost(
-  model: UsableModel, origin: "ecomstudio" | "custom", resolution?: string | null, quality?: Quality | null,
+  model: UsableModel, _origin: "ecomstudio" | "custom", resolution?: string | null, quality?: Quality | null,
 ): number {
   const supported = model.supported_resolutions ?? [];
   const res = resolution && supported.includes(resolution) ? resolution : supported[0] ?? "1K";
-  const base = priceFor(model, res, effectiveQuality(model, quality));
-  if (origin === "custom") return base;
-  const surcharge = (model as { ecom_surcharge_credits?: number }).ecom_surcharge_credits ?? 0;
-  return base + Math.max(0, surcharge);
+  return priceFor(model, res, effectiveQuality(model, quality));
 }
 
 
@@ -275,6 +269,8 @@ export async function generateFromConcept(
       .map((m) => m.id);
 
   const credits = originCost(model, origin, resolution, quality);
+  // The panel's "Próby" for GrovShot: 1 = one paid request per image per model.
+  const maxAttempts = await toolMaxAttempts(supabase, "prompts");
   const result = await runGeneration(supabase, userId, workspaceId, {
     modelId: model.id,
     fallbackModelIds,
@@ -294,6 +290,7 @@ export async function generateFromConcept(
     parentJobId: isRetake ? concept.last_job_id ?? undefined : undefined,
     promptOrigin: origin,
     costOverride: credits,
+    maxAttempts,
   });
   if (!result.ok) return result;
 
@@ -304,6 +301,7 @@ export async function generateFromConcept(
     ...(opts?.modelId ? { model_id: opts.modelId } : {}),
   }).eq("id", concept.id);
 
-  return { ok: true, jobId: result.jobId, images: result.images, credits, modelName: model.display_name || model.name };
+  // What the ledger actually charged (the quote less any refund), not the quote.
+  return { ok: true, jobId: result.jobId, images: result.images, credits: result.credits, modelName: model.display_name || model.name };
 }
 

@@ -38,8 +38,6 @@ export type ClientModel = {
   supportsReferenceImages: boolean;
   supportsNegativePrompt: boolean;
   maxReferenceImages: number;
-  /** Credits added per image when the GrovBase engine writes the prompt. */
-  engineSurcharge: number;
   /** Render qualities the customer may pick; empty = the model has no such
    *  knob and the UI shows no field for it. */
   qualities: string[];
@@ -146,7 +144,6 @@ export function toClientModel(m: UsableModel): ClientModel {
     supportsReferenceImages: m.capabilities_ui.supportsReferenceImages,
     supportsNegativePrompt: m.supports_negative_prompt,
     maxReferenceImages: m.max_reference_images,
-    engineSurcharge: Math.max(0, (m as { ecom_surcharge_credits?: number }).ecom_surcharge_credits ?? 0),
     qualities,
     qualityPricing,
   };

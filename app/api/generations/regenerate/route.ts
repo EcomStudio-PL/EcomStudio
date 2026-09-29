@@ -6,6 +6,7 @@ import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { generateFromConcept } from "@/lib/server/concept-generation";
 import { runGeneration } from "@/lib/server/generation";
 import { prepareGeneratorEngine } from "@/lib/server/engine/tool-run";
+import { toolMaxAttempts } from "@/lib/server/ai-engine";
 import { QUALITIES, type AspectRatio, type Quality, type Resolution } from "@/lib/ai/types";
 
 export const maxDuration = 300;
@@ -15,7 +16,7 @@ export const dynamic = "force-dynamic";
  * REGENERUJ OBRAZ — one endpoint for both worlds.
  *
  * A generation born from an engine concept re-runs through the concept path
- * (hidden prompt decrypted server-side, engine surcharge included, customer
+ * (hidden prompt decrypted server-side, priced at the model's own price, customer
  * correction riding as an appendix). A custom-prompt generation re-runs its
  * own stored prompt with the correction appended. Either way the server owns
  * the price, the prompt and the references — the browser sends ids and, at
@@ -86,7 +87,7 @@ export async function POST(request: Request) {
   const jobQuality = (QUALITIES as readonly string[]).includes(String(job.settings?.quality ?? ""))
     ? (job.settings!.quality as Quality) : undefined;
 
-  // ENGINE CONCEPT — the hidden-prompt path handles pricing (surcharge),
+  // ENGINE CONCEPT — the hidden-prompt path handles pricing (model price),
   // references, variation and the customer's correction. A custom-origin job
   // always re-runs its own stored prompt, even if it carries a prompt link.
   if (job.prompt_id && job.prompt_origin !== "custom") {
@@ -169,10 +170,13 @@ export async function POST(request: Request) {
   const prompt = instruction ? `${basePrompt}\n\n${instruction}` : basePrompt;
 
   // The same hybrid wrapper as the first run (a no-op unless one is published).
-  const engine = await prepareGeneratorEngine(supabase, user.id, workspace.id, {
-    userPrompt: prompt, negative: null, productDescription: null,
-    aspectRatio: job.aspect_ratio || "1:1", resolution: job.resolution ?? null, referencePaths,
-  });
+  const [engine, maxAttempts] = await Promise.all([
+    prepareGeneratorEngine(supabase, user.id, workspace.id, {
+      userPrompt: prompt, negative: null, productDescription: null,
+      aspectRatio: job.aspect_ratio || "1:1", resolution: job.resolution ?? null, referencePaths,
+    }),
+    toolMaxAttempts(supabase, "generator"),
+  ]);
   if (!engine.ok) return NextResponse.json({ ok: false, error: engine.error }, { status: 400 });
 
   const result = await runGeneration(supabase, user.id, workspace.id, {
@@ -193,6 +197,7 @@ export async function POST(request: Request) {
     markedImagePath,
     parentJobId: job.id,
     promptOrigin: "custom",
+    maxAttempts,
   });
   await engine.finish(result);
   return NextResponse.json(result, { status: result.ok ? 200 : result.error === "insufficient_credits" ? 402 : 400 });

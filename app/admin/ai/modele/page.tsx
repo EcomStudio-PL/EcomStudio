@@ -11,6 +11,8 @@ import { maskKey, providerState } from "@/lib/provider-status";
 import { monthStart, readBudgetStatus } from "@/lib/services/ai-economics";
 import { grovnewsEconomics, readToolEconomics, readUsageHistory } from "@/lib/services/api-economics";
 import { readTokenPriceRows, readUnitPriceRows } from "@/lib/services/token-prices";
+import { findTokenPrice, findUnitPrice, type TokenPrice, type UnitPrice } from "@/lib/ai/usage-cost";
+import { billingFrom } from "@/lib/images/pricing";
 import { formatPln, ToolEconomicsTable, UsageHistoryList } from "@/components/admin/api-economics";
 import { TokenPriceEditor } from "@/components/admin/token-prices";
 import { UnitPriceEditor } from "@/components/admin/unit-prices";
@@ -243,13 +245,26 @@ async function ToolBackends({ supabase, t }: Ctx) {
 /* ── MODELE ───────────────────────────────────────────────────────────────*/
 
 async function ModelsTab({ supabase, t, locale }: Ctx & { locale: string }) {
-  const [{ data: models }, { data: billing }, { data: generation }, { data: assignments }] =
+  const [{ data: models }, { data: billing }, { data: generation }, { data: assignments }, { data: unitRows }, { data: tokenRows }] =
     await Promise.all([
       supabase.from("ai_models").select("*, ai_providers(name, slug)").order("sort_order"),
       supabase.from("app_settings").select("value").eq("key", "billing").maybeSingle(),
       supabase.from("app_settings").select("value").eq("key", "generation").maybeSingle(),
       supabase.from("ai_tool_models").select("tool_key, model_id, role"),
+      supabase.from("ai_unit_prices").select("provider_slug, model, unit_kind, resolution, quality, usd_micros_per_unit").eq("unit_kind", "image"),
+      supabase.from("ai_token_prices").select("provider_slug, model, input_usd_micros_per_mtok, output_usd_micros_per_mtok"),
     ]);
+  // The official per-image price of every size, as the cost recorder will
+  // apply it (lib/ai/usage-cost.ts): the most specific unit price, else the
+  // model's flat per-image cost.
+  const unitPrices: UnitPrice[] = (unitRows ?? []).map((r) => ({
+    providerSlug: r.provider_slug, model: r.model, unitKind: "image", resolution: r.resolution, quality: r.quality,
+    usdMicrosPerUnit: Number(r.usd_micros_per_unit),
+  }));
+  const tokenPrices: TokenPrice[] = (tokenRows ?? []).map((r) => ({
+    providerSlug: r.provider_slug, model: r.model,
+    inputPerMTok: Number(r.input_usd_micros_per_mtok), outputPerMTok: Number(r.output_usd_micros_per_mtok),
+  }));
 
   const genCfg = (generation?.value ?? {}) as {
     provider_priority?: string[]; planner_provider?: string; planner_fallback?: string;
@@ -262,9 +277,9 @@ async function ModelsTab({ supabase, t, locale }: Ctx & { locale: string }) {
     }))
     .filter((o, i, arr) => arr.findIndex((x) => x.key === o.key) === i);
 
-  const b = (billing?.value ?? {}) as { price_per_100_credits?: number; usd_to_pln?: number };
-  const plnPerCredit = (b.price_per_100_credits ?? 19) / 100;
-  const usdToPln = b.usd_to_pln ?? 4.0;
+  // Admin billing settings: the credit's list price (revenue) and the USD→PLN
+  // rate — the latter converts provider cost for analysis only, never a price.
+  const { plnPerCredit, usdToPln } = billingFrom(billing?.value);
 
   // Which tools name this model. The answer to "can I turn this off".
   const usedBy = new Map<string, string[]>();
@@ -274,7 +289,17 @@ async function ModelsTab({ supabase, t, locale }: Ctx & { locale: string }) {
     usedBy.set(a.model_id, list);
   }
 
-  const views: ModelView[] = (models ?? []).map((m) => ({
+  const views: ModelView[] = (models ?? []).map((m) => {
+    const slug = (m.ai_providers as { slug?: string } | null)?.slug ?? "";
+    const officialCost: ModelView["officialCost"] = {};
+    for (const r of ["1K", "2K", "4K"]) {
+      const unit = findUnitPrice(unitPrices, slug, m.model_identifier, "image", r, null);
+      officialCost[r] = unit
+        ? { usdMicros: unit.usdMicrosPerUnit, source: "unit" }
+        : { usdMicros: m.internal_cost_usd_micros > 0 ? m.internal_cost_usd_micros : null, source: "flat" };
+    }
+    const tp = findTokenPrice(tokenPrices, slug, m.model_identifier);
+    return {
     id: m.id, name: m.name, model_identifier: m.model_identifier, type: m.type, active: m.active,
     credit_cost: m.credit_cost, internal_cost_usd_micros: m.internal_cost_usd_micros,
     quality_tier: m.quality_tier, speed_tier: m.speed_tier,
@@ -284,7 +309,8 @@ async function ModelsTab({ supabase, t, locale }: Ctx & { locale: string }) {
     pricing: (m.pricing ?? {}) as Record<string, number>,
     supported_resolutions: m.supported_resolutions ?? ["1K"],
     providerName: m.ai_providers?.name ?? "—",
-    ecom_surcharge_credits: (m as { ecom_surcharge_credits?: number }).ecom_surcharge_credits ?? 0,
+    officialCost,
+    tokenRates: tp ? { inputUsdPerM: tp.inputPerMTok / 1_000_000, outputUsdPerM: tp.outputPerMTok / 1_000_000 } : null,
     supported_aspect_ratios: m.supported_aspect_ratios ?? [],
     badge_tone: (m as { badge_tone?: string | null }).badge_tone ?? null,
     max_outputs: (m as { max_outputs?: number | null }).max_outputs ?? null,
@@ -292,7 +318,8 @@ async function ModelsTab({ supabase, t, locale }: Ctx & { locale: string }) {
     visible_custom: (m as { visible_custom?: boolean }).visible_custom !== false,
     unavailableReason: (m.metadata as { unavailable_reason?: string } | null)?.unavailable_reason ?? null,
     unavailableNote: (m.metadata as { unavailable_note?: string } | null)?.unavailable_note ?? null,
-  }));
+    };
+  });
 
   return (
     <div>

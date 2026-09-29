@@ -798,6 +798,9 @@ export type Database = {
           user_id: string | null
           workspace_id: string | null
           cached_input_tokens: number | null
+          thought_tokens: number | null
+          base_cost_usd_micros: number | null
+          resolution: string | null
         }
         Insert: {
           actor_kind: string
@@ -824,6 +827,9 @@ export type Database = {
           user_id?: string | null
           workspace_id?: string | null
           cached_input_tokens?: number | null
+          thought_tokens?: number | null
+          base_cost_usd_micros?: number | null
+          resolution?: string | null
         }
         Update: {
           actor_kind?: string
@@ -850,6 +856,9 @@ export type Database = {
           user_id?: string | null
           workspace_id?: string | null
           cached_input_tokens?: number | null
+          thought_tokens?: number | null
+          base_cost_usd_micros?: number | null
+          resolution?: string | null
         }
         Relationships: []
       }

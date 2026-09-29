@@ -47,7 +47,7 @@ export default async function PromptsPage({ searchParams }: {
     id: m.id, name: m.name, badge: m.badge, badgeTone: m.badgeTone,
     description: m.description, pricing: m.pricing,
     resolutions: m.resolutions, ratios: m.ratios, exactRatios: m.exactRatios,
-    maxOutputs: 1, supportsRefs: true, surcharge: m.ecomSurcharge,
+    maxOutputs: 1, supportsRefs: true,
     qualities: m.qualities, qualityPricing: m.qualityPricing,
   }));
 
@@ -68,8 +68,8 @@ export default async function PromptsPage({ searchParams }: {
         active="engine"
         engineLabel={t("genv3.modeManaged")}
         customLabel={t("genv3.modeCustom")}
-        engineCost={modelOptions[0]?.costEcom ?? null}
-        customCost={modelOptions[0]?.costCustom ?? null}
+        engineCost={modelOptions[0]?.cost ?? null}
+        customCost={modelOptions[0]?.cost ?? null}
         perShotLabel={(n) => t("genv3.perPhoto", { n })}
       />
       <GeneratorWorkspace

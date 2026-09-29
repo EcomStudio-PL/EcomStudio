@@ -807,8 +807,6 @@
     "pricingPerResHint": "Puste pole = wariant niedostępny. Wypełnione warianty tworzą przyciski 1K/2K/4K w Studio.",
     "kpiUsers": "Klienci",
     "costSourceOfTruth": "Konfiguracja kosztów API tutaj jest źródłem prawdy dla nowych generacji. Historyczne zdarzenia zachowują koszt z momentu wykonania — zmiana ceny dziś nie przepisuje wcześniejszej ekonomiki.",
-    "perGeneration": "Na jedną generację",
-    "apiCostCfg": "Koszt API (konfig.)",
     "snapshotNote": "Zmiana wpływa tylko na przyszłe generacje.",
     "unavailable": {
       "provider_quota": "Niedostępny — limit/billing dostawcy",
@@ -872,9 +870,6 @@
       "fallback1": "Fallback #1",
       "fallback2": "Fallback #2"
     },
-    "ecomSurcharge": "Dopłata GrovBase (kr)",
-    "ecomSurchargeHint": "Prompt GrovBase: razem {total} kr ≈ {pln}",
-    "ecomPriceShort": "GrovBase: {n} kr",
     "planner": {
       "title": "Planner ujęć",
       "sub": "Silnik analizy i scen — niezależny od modeli obrazów. Fallback działa tylko, gdy go włączysz.",
@@ -929,7 +924,26 @@
     "stripeSyncProblemHint": "Cena nie została potwierdzona w Stripe, więc ta pozycja nie jest teraz na sprzedaż. Spróbuj ponownie.",
     "stripeLastSync": "Ostatnia synchronizacja",
     "stripeRetry": "Ponów",
-    "stripeSyncFailed": "Nie udało się zsynchronizować ze Stripe."
+    "stripeSyncFailed": "Nie udało się zsynchronizować ze Stripe.",
+    "flatApiCost": "Koszt płaski API (USD / obraz)",
+    "flatApiCostHint": "Używany tylko dla jakości bez oficjalnej ceny w Koszty → Ceny jednostkowe.",
+    "costTable": {
+      "title": "Jeden obraz wg jakości — koszt Google, cena klienta, marża",
+      "quality": "Jakość",
+      "apiUsd": "Koszt Google (USD)",
+      "apiPln": "Koszt (zł)",
+      "credits": "Cena klienta",
+      "revenue": "Przychód (zł)",
+      "margin": "Marża (zł)",
+      "marginPct": "Marża %",
+      "source": {
+        "unit": "oficjalny cennik",
+        "flat": "koszt płaski"
+      },
+      "tokens": "Koszt bazowy = oficjalna cena obrazu wyjściowego. Rzeczywisty koszt joba dolicza tokeny wejścia (${in} / 1M) i thinking (${out} / 1M) tylko wtedy, gdy Google zwróci usage — widać go w Historii.",
+      "noTokens": "Koszt bazowy = oficjalna cena obrazu wyjściowego. Brak cennika tokenów — tokeny z usage nie są doliczane.",
+      "fx": "Przychód = kredyty × {credit}. Kurs USD/PLN {fx} służy wyłącznie do analizy kosztu."
+    }
   },
   "support": {
     "title": "Pomoc i wiadomości",
@@ -4426,8 +4440,8 @@
     "engine.title": "Konfiguracja silnika",
     "engine.sub": "Skąd biorą się instrukcje i jak traktujemy nieudane żądania.",
     "engine.timeout": "Limit czasu (sekundy)",
-    "engine.attempts": "Próby na modelu głównym",
-    "engine.attemptsHint": "Każda dodatkowa próba to kolejna opłata u dostawcy.",
+    "engine.attempts": "Próby na każdym modelu",
+    "engine.attemptsHint": "Maks. płatnych wywołań na obraz na każdym modelu — głównym i zapasowym. 1 = jedno wywołanie; każda dodatkowa próba to kolejna opłata u dostawcy.",
     "basics.service": "Usługa rozliczeniowa",
     "basics.noService": "Bez rozliczenia",
     "basics.serviceHint": "Cennik pochodzi z katalogu usług — tutaj wybierasz tylko, którym wierszem rozlicza się to narzędzie.",
@@ -5049,6 +5063,12 @@
     "econ.units.request": "{n} wyw.",
     "econ.units.page": "{n} str.",
     "econ.customerPaid": "Klient zapłacił",
+    "econ.thinking": "thinking {n}",
+    "econ.baseCost": "Koszt bazowy (oficjalny)",
+    "econ.realCost": "Koszt rzeczywisty",
+    "econ.noUsage": "dostawca nie zwrócił usage — koszt = bazowy",
+    "econ.listRevenue": "Przychód (cennik)",
+    "econ.listMargin": "marża",
     "econ.revenueKind.paid": "z zakupionych kredytów",
     "econ.revenueKind.bonus": "kredyty bonusowe — przychód 0",
     "econ.revenueKind.free": "darmowe użycie",

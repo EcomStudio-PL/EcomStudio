@@ -19,8 +19,8 @@ import { prepareReferenceImage, referenceFingerprint, type PreparedReference } f
 import { promptDigest } from "@/lib/server/prompt-digest";
 import { buildDedupeKey, notify } from "@/lib/server/notify";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
-import { recordProviderCalls, type ProviderCall } from "@/lib/server/ai-usage";
-import { imageCost } from "@/lib/ai/usage-cost";
+import { readTokenPrices, readUnitPrices, recordProviderCalls, type ProviderCall } from "@/lib/server/ai-usage";
+import { imageCallCost, sumKnownCosts } from "@/lib/ai/usage-cost";
 import {
   GENERATION_BUDGET_MS, MAX_ATTEMPTS_PER_PROVIDER, PROVIDER_CALL_BUDGET_MS,
   fitsInBudget, getProviderHealth, providerBlocked,
@@ -87,11 +87,12 @@ export type GenerateInput = {
   /** Concept regeneration lineage, recorded on the job row. */
   parentJobId?: string;
   conceptId?: string;
-  /** Where the prompt came from — prices differ: "custom" charges the model's
-   *  base credits, "ecomstudio" adds the admin-configured engine surcharge. */
+  /** Where the prompt came from (recorded on the job). It does not change the
+   *  price: both origins pay the model's per-size, per-quality credits. */
   promptOrigin?: "ecomstudio" | "custom";
-  /** Full credit price decided by the caller (base + surcharge). The server
-   *  still verifies balance and reserves exactly this amount. */
+  /** Full credit price decided by the caller (a tool's per-size price). It
+   *  can only raise the model price, never lower it; the server still
+   *  verifies balance and reserves exactly this amount. */
   costOverride?: number;
   /** Set by routes serving customer model choices: a model the admin hid
    *  from the custom generator cannot be requested by id. */
@@ -556,10 +557,13 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   const strict = input.strictSingleImage === true;
   const candidateIds = (strict ? [input.modelId] : [input.modelId, ...(input.fallbackModelIds ?? [])])
     .filter((id, i, arr) => arr.indexOf(id) === i);
-  // "Próby na modelu głównym" is what its label says: attempts on the PRIMARY.
-  // A fallback, when enabled, keeps the platform's own retry count.
+  // "Próby" is the ceiling on paid requests per image on EACH model: the
+  // primary and — when a fallback is enabled — every stand-in. With the panel
+  // at 1, one image costs at most one request per model; nothing retries it
+  // behind the admin's back. A caller that passes nothing (an admin test)
+  // keeps the platform's own retry count.
   const maxAttempts = strict ? 1 : Math.min(Math.max(Math.trunc(input.maxAttempts ?? MAX_ATTEMPTS_PER_PROVIDER) || 1, 1), MAX_ATTEMPTS_PER_PROVIDER);
-  const attemptsFor = (candidateId: string) => (candidateId === input.modelId ? maxAttempts : MAX_ATTEMPTS_PER_PROVIDER);
+  const attemptsFor = (_candidateId: string) => maxAttempts;
   const callTimeoutMs = effectiveCallTimeout(input.callTimeoutMs);
 
   type Attempt = {
@@ -575,19 +579,33 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
     never changes what the customer is charged or refunded.
   */
   const providerCalls: ProviderCall[] = [];
+  // PROVIDER COST of each call: the official per-image price for the size
+  // rendered (ai_unit_prices, else the model's flat cost) plus the input and
+  // thinking tokens the response itself reported (ai_token_prices) — never a
+  // guessed figure. Read once per run; empty lists on any failure.
+  const [unitPrices, tokenPrices] = await Promise.all([readUnitPrices(supabase), readTokenPrices(supabase)]);
   const traceCall = (c: {
     providerSlug: string; model: { model_identifier: string; internal_cost_usd_micros: number | null };
     ok: boolean; images: number; ms: number; errorCode?: string;
-    usage?: { inputTokens?: number; outputTokens?: number };
-  }) => providerCalls.push({
-    actorKind: "customer", consumer: "generation", userId, workspaceId,
-    toolKey: generationToolKey(input), jobId: job.id, usageEventId: usage.eventId,
-    providerSlug: c.providerSlug, model: c.model.model_identifier,
-    status: c.ok ? "succeeded" : "failed", errorCode: c.ok ? null : (c.errorCode ?? "provider_error"),
-    units: c.images, unitKind: "image",
-    inputTokens: c.usage?.inputTokens ?? null, outputTokens: c.usage?.outputTokens ?? null,
-    cost: imageCost(c.model.internal_cost_usd_micros, c.images), durationMs: c.ms,
-  });
+    resolution?: string | null; quality?: string | null;
+    usage?: { inputTokens?: number; outputTokens?: number; thoughtTokens?: number };
+  }) => {
+    const price = imageCallCost(unitPrices, tokenPrices, c.providerSlug, c.model.model_identifier, c.images, {
+      resolution: c.resolution ?? null, quality: c.quality ?? null,
+      perImageFallbackUsdMicros: c.model.internal_cost_usd_micros,
+      inputTokens: c.usage?.inputTokens ?? null, thoughtTokens: c.usage?.thoughtTokens ?? null,
+    });
+    providerCalls.push({
+      actorKind: "customer", consumer: "generation", userId, workspaceId,
+      toolKey: generationToolKey(input), jobId: job.id, usageEventId: usage.eventId,
+      providerSlug: c.providerSlug, model: c.model.model_identifier,
+      status: c.ok ? "succeeded" : "failed", errorCode: c.ok ? null : (c.errorCode ?? "provider_error"),
+      units: c.images, unitKind: "image", resolution: c.resolution ?? null,
+      inputTokens: c.usage?.inputTokens ?? null, outputTokens: c.usage?.outputTokens ?? null,
+      thoughtTokens: c.usage?.thoughtTokens ?? null,
+      cost: price.total, baseCost: price.base, durationMs: c.ms,
+    });
+  };
   let result: Awaited<ReturnType<ImageProviderAdapter["generate"]>> | null = null;
   let served: { model: typeof model; providerSlug: string } | null = null;
   let lastError: ProviderError | null = null;
@@ -789,6 +807,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         traceCall({
           providerSlug: cProviderSlug, model: cModel, ok: true, images: result.images.length,
           ms: Date.now() - attemptStartedAt, usage: result.usage,
+          resolution: cRequest.resolution ?? null, quality: cRequest.quality ?? null,
         });
         if (health.get(cProviderSlug) && health.get(cProviderSlug)!.state !== "healthy") {
           await recordProviderSuccess(supabase, cProviderSlug);
@@ -800,7 +819,8 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         lastBoundary = withSource(pe.boundary, cSource) ?? lastBoundary;
         traceCall({
           providerSlug: cProviderSlug, model: cModel, ok: false, images: pe.partial?.length ?? 0,
-          ms: Date.now() - attemptStartedAt, errorCode: pe.safeMessage,
+          ms: Date.now() - attemptStartedAt, errorCode: pe.safeMessage, usage: pe.usage,
+          resolution: cRequest.resolution ?? null, quality: cRequest.quality ?? null,
         });
         attempts.push({
           provider: cProviderSlug, model: cModel.model_identifier, attempt,
@@ -862,7 +882,11 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
 
   if (!result || !served) {
     const safe = lastError?.safeMessage ?? "provider_error";
-    await failUsage(supabase, { serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet.id, error: safe });
+    // The customer is refunded; what the calls cost us is still recorded.
+    await failUsage(supabase, {
+      serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet.id, error: safe,
+      apiCostUsdMicros: sumKnownCosts(providerCalls.map((c) => c.cost)).usdMicros,
+    });
     await recordProviderCalls(supabase, providerCalls);
     await supabase.from("generation_jobs").update({
       status: "failed", error_message: safe, error_class: safe,
@@ -1083,7 +1107,10 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   }
 
   if (stored.length === 0) {
-    await failUsage(supabase, { serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet.id, error: "storage_failed" });
+    await failUsage(supabase, {
+      serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet.id, error: "storage_failed",
+      apiCostUsdMicros: sumKnownCosts(providerCalls.map((c) => c.cost)).usdMicros,
+    });
     await recordProviderCalls(supabase, providerCalls);
     await supabase.from("generation_jobs").update({
       status: "failed", error_message: "storage_failed", error_class: "storage_failed",
@@ -1107,13 +1134,13 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   }
   const charged = cost - refunded;
 
-  // REAL provider cost of this call: the admin-maintained per-image cost of
-  // this exact model multiplied by the images the provider actually
-  // delivered. Recorded on the event so admin margin reporting is built from
-  // facts rather than from the catalog estimate.
+  // PROVIDER COST of this run (provider_cost_usd, kept apart from the
+  // credits charged): the sum of every call actually sent — the official
+  // per-image price for the size rendered, plus the input/thinking tokens the
+  // responses reported. The same figures ai_provider_calls records per call.
   const requestId = (result.providerMetadata?.requestId as string | undefined) ?? null;
   await completeUsage(supabase, dispatchToken(), usage.eventId, stored.length, {
-    apiCostUsdMicros: (model2.internal_cost_usd_micros ?? 0) * stored.length,
+    apiCostUsdMicros: sumKnownCosts(providerCalls.map((c) => c.cost)).usdMicros,
     providerRequestId: requestId,
     // The ledger names who REALLY produced the images — a fallback included —
     // not the pair chosen when the charge was taken.

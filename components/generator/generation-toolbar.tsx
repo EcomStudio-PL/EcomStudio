@@ -35,8 +35,6 @@ export type ToolbarModel = {
   pricing: Record<string, number>;
   resolutions: string[];
   ratios: string[];
-  /** Added to the base price when GrovBase writes the prompt. */
-  ecomSurcharge: number;
 };
 
 export type ToolbarState = {
@@ -120,12 +118,12 @@ export function GenerationToolbar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model?.id, ratios.join(), resolutions.join()]);
 
-  const priceAt = (m: ToolbarModel | null, res: string, mode: ToolbarState["mode"]) => {
+  // One price in both modes: a GrovBase prompt costs what the model costs.
+  const priceAt = (m: ToolbarModel | null, res: string) => {
     if (!m) return 0;
-    const base = m.pricing[res] ?? Object.values(m.pricing)[0] ?? 0;
-    return base + (mode === "engine" ? m.ecomSurcharge : 0);
+    return m.pricing[res] ?? Object.values(m.pricing)[0] ?? 0;
   };
-  const perShot = priceAt(model, state.resolution, state.mode);
+  const perShot = priceAt(model, state.resolution);
   const count = billableCount ?? state.shots;
   const total = perShot * count;
   const n = (v: number) => new Intl.NumberFormat(locale).format(v);
@@ -238,7 +236,7 @@ export function GenerationToolbar({
                 </span>
                 <span className="mt-1 block text-[11.5px] leading-relaxed text-muted">{t(`gtb.mode_${m}Sub`)}</span>
                 <span className="mt-1.5 block text-[11px] font-bold tabular-nums text-accent">
-                  {t("concepts.perShot", { n: priceAt(model, state.resolution, m) })}
+                  {t("concepts.perShot", { n: priceAt(model, state.resolution) })}
                 </span>
               </button>
             ))}
@@ -266,7 +264,7 @@ export function GenerationToolbar({
                   </span>
                   <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
                     <span className="text-[11.5px] font-bold tabular-nums text-accent">
-                      {t("concepts.perShot", { n: priceAt(m, state.resolution, state.mode) })}
+                      {t("concepts.perShot", { n: priceAt(m, state.resolution) })}
                     </span>
                     {m.badge && (
                       <span className="rounded-full bg-raised px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-muted">
@@ -304,7 +302,7 @@ export function GenerationToolbar({
                 r === state.resolution ? "is-selected" : "border-line hover:bg-raised")}>
               <span className={cn("block text-[14px] font-bold", r === state.resolution ? "text-accent" : "text-ink")}>{r}</span>
               <span className="mt-0.5 block text-[10.5px] tabular-nums text-faint">
-                {t("concepts.perShot", { n: priceAt(model, r, state.mode) })}
+                {t("concepts.perShot", { n: priceAt(model, r) })}
               </span>
             </button>
           ))}

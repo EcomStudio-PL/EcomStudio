@@ -807,8 +807,6 @@
     "pricingPerResHint": "Leeres Feld = Variante nicht verfügbar. Ausgefüllte Varianten werden zu den 1K/2K/4K-Buttons im Studio.",
     "kpiUsers": "Kunden",
     "costSourceOfTruth": "Die hier konfigurierten API-Kosten sind die Quelle der Wahrheit für neue Generierungen. Historische Ereignisse behalten die Kosten zum Ausführungszeitpunkt.",
-    "perGeneration": "Pro Generierung",
-    "apiCostCfg": "API-Kosten (konfiguriert)",
     "snapshotNote": "Änderungen gelten nur für künftige Generierungen.",
     "unavailable": {
       "provider_quota": "Nicht verfügbar — Kontingent/Billing",
@@ -872,9 +870,6 @@
       "fallback1": "Fallback #1",
       "fallback2": "Fallback #2"
     },
-    "ecomSurcharge": "GrovBase-Aufschlag (Kr)",
-    "ecomSurchargeHint": "GrovBase-Prompt: gesamt {total} Kr ≈ {pln}",
-    "ecomPriceShort": "GrovBase: {n} Kr",
     "planner": {
       "title": "Aufnahmen-Planner",
       "sub": "Analyse- und Szenen-Engine — unabhängig von Bildmodellen. Fallback läuft nur, wenn du ihn aktivierst.",
@@ -929,7 +924,26 @@
     "stripeSyncProblemHint": "Der Preis wurde in Stripe nicht bestätigt, daher ist dieser Eintrag gerade nicht im Verkauf. Bitte erneut versuchen.",
     "stripeLastSync": "Letzte Synchronisierung",
     "stripeRetry": "Erneut",
-    "stripeSyncFailed": "Synchronisierung mit Stripe fehlgeschlagen."
+    "stripeSyncFailed": "Synchronisierung mit Stripe fehlgeschlagen.",
+    "flatApiCost": "Pauschale API-Kosten (USD / Bild)",
+    "flatApiCostHint": "Nur für Qualitäten ohne offiziellen Preis unter Kosten → Stückpreise.",
+    "costTable": {
+      "title": "Ein Bild je Qualität — Google-Kosten, Kundenpreis, Marge",
+      "quality": "Qualität",
+      "apiUsd": "Google-Kosten (USD)",
+      "apiPln": "Kosten (PLN)",
+      "credits": "Kundenpreis",
+      "revenue": "Umsatz (PLN)",
+      "margin": "Marge (PLN)",
+      "marginPct": "Marge %",
+      "source": {
+        "unit": "offizielle Preisliste",
+        "flat": "Pauschalkosten"
+      },
+      "tokens": "Basiskosten = offizieller Preis des Ausgabebilds. Die realen Job-Kosten addieren Eingabe-Tokens (${in} / 1M) und Thinking (${out} / 1M) nur, wenn Google Usage liefert — siehe Verlauf.",
+      "noTokens": "Basiskosten = offizieller Preis des Ausgabebilds. Kein Tokenpreis gesetzt — gemeldete Tokens werden nicht addiert.",
+      "fx": "Umsatz = Credits × {credit}. Der USD/PLN-Kurs {fx} dient nur der Kostenanalyse."
+    }
   },
   "support": {
     "title": "Support & Nachrichten",
@@ -4426,8 +4440,8 @@
     "engine.title": "Engine-Konfiguration",
     "engine.sub": "Woher die Anweisungen kommen und wie fehlgeschlagene Anfragen behandelt werden.",
     "engine.timeout": "Zeitlimit (Sekunden)",
-    "engine.attempts": "Versuche am Hauptmodell",
-    "engine.attemptsHint": "Jeder zusätzliche Versuch ist eine weitere Rechnung des Anbieters.",
+    "engine.attempts": "Versuche je Modell",
+    "engine.attemptsHint": "Max. bezahlte Aufrufe pro Bild je Modell — Haupt- und Ersatzmodell. 1 = ein Aufruf; jeder zusätzliche Versuch ist eine weitere Rechnung des Anbieters.",
     "basics.service": "Abrechnungsdienst",
     "basics.noService": "Nicht abgerechnet",
     "basics.serviceHint": "Die Preise stehen im Dienstkatalog — hier wählen Sie nur, über welche Zeile dieses Werkzeug abrechnet.",
@@ -5049,6 +5063,12 @@
     "econ.units.request": "{n} Aufr.",
     "econ.units.page": "{n} S.",
     "econ.customerPaid": "Kunde zahlte",
+    "econ.thinking": "Thinking {n}",
+    "econ.baseCost": "Basiskosten (offiziell)",
+    "econ.realCost": "Reale Kosten",
+    "econ.noUsage": "Anbieter lieferte keine Usage — Kosten = Basis",
+    "econ.listRevenue": "Umsatz (Listenpreis)",
+    "econ.listMargin": "Marge",
     "econ.revenueKind.paid": "aus gekauften Credits",
     "econ.revenueKind.bonus": "Bonus-Credits — Umsatz 0",
     "econ.revenueKind.free": "kostenlose Nutzung",

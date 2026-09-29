@@ -42,9 +42,18 @@ export type ProviderCall = {
   inputTokens?: number | null;
   outputTokens?: number | null;
   cachedInputTokens?: number | null;
+  /** Of `outputTokens`, the thinking share (image models report it apart). */
+  thoughtTokens?: number | null;
   units?: number | null;
   unitKind?: "image" | "second" | "request" | "page" | null;
+  /** Output size the call was priced at ("1K" / "2K" / "4K"), image calls. */
+  resolution?: string | null;
+  /** What this call cost. For an image call: base + reported input/thinking
+   *  tokens (imageCallCost); otherwise tokens × price or unit × price. */
   cost: Cost;
+  /** Image calls: the official per-image price × images alone — what the
+   *  admin compares `cost` against. Absent for any other call. */
+  baseCost?: Cost | null;
   durationMs?: number | null;
 };
 
@@ -67,10 +76,13 @@ export function toRow(c: ProviderCall): { [key: string]: Json } {
     input_tokens: c.inputTokens ?? null,
     output_tokens: c.outputTokens ?? null,
     cached_input_tokens: c.cachedInputTokens ?? null,
+    thought_tokens: c.thoughtTokens ?? null,
     units: c.units ?? null,
     unit_kind: c.units == null ? null : (c.unitKind ?? null),
     cost_basis: c.cost.basis,
     cost_usd_micros: c.cost.basis === "unknown" ? null : c.cost.usdMicros,
+    base_cost_usd_micros: !c.baseCost || c.baseCost.basis === "unknown" ? null : c.baseCost.usdMicros,
+    resolution: c.resolution ?? null,
     duration_ms: c.durationMs == null ? null : Math.max(0, Math.round(c.durationMs)),
   };
 }

@@ -102,27 +102,28 @@ const genSrc = readFileSync("lib/server/concept-generation.ts", "utf8");
 check("a retake adds no variation text of its own", !/variationInstruction|Kolejne podejście/.test(genSrc));
 check("the customer's correction goes in as their own words", /instruction \? `\$\{basePrompt\}\\n\\n\$\{instruction\}` : basePrompt/.test(genSrc));
 
-console.log("\nF. DUAL PRICING — custom pays base, GrovBase adds the surcharge");
+console.log("\nF. ONE PRICE — a GrovBase prompt costs exactly what the model costs (no surcharge, 0133)");
+// A stale row that still carries the old 0031 surcharge must change nothing.
 const fakeModel = {
   credit_cost: 4, pricing: { "1K": 4 }, supported_resolutions: ["1K"],
   ecom_surcharge_credits: 49,
 } as unknown as UsableModel;
-check("custom prompt pays the base price", originCost(fakeModel, "custom") === 4);
-check("GrovBase prompt adds the surcharge", originCost(fakeModel, "ecomstudio") === 53);
-const negSurcharge = { ...fakeModel, ecom_surcharge_credits: -5 } as unknown as UsableModel;
-check("negative surcharge never discounts", originCost(negSurcharge, "ecomstudio") === 4);
+check("custom prompt pays the model price", originCost(fakeModel, "custom") === 4);
+check("GrovBase prompt pays the SAME price (legacy surcharge ignored)", originCost(fakeModel, "ecomstudio") === 4);
 
-// The toolbar lets a seller pick 2K/4K where the engine offers it; the quote
-// and the charge must both move, and an unsupported size must fall back the
-// same way the generation path does rather than quoting a cheaper render.
-const multiRes = {
-  credit_cost: 4, pricing: { "1K": 4, "2K": 9, "4K": 20 },
-  supported_resolutions: ["1K", "2K", "4K"], ecom_surcharge_credits: 49,
+// Nano Banana Pro as sold: 1K 7 · 2K 7 · 4K 12 — whichever origin.
+const nbPro = {
+  credit_cost: 7, pricing: { "1K": 7, "2K": 7, "4K": 12 },
+  supported_resolutions: ["1K", "2K", "4K"], ecom_surcharge_credits: 46,
 } as unknown as UsableModel;
-check("2K costs the 2K price", originCost(multiRes, "custom", "2K") === 9);
-check("4K adds the surcharge on the 4K price", originCost(multiRes, "ecomstudio", "4K") === 69);
+for (const [res, want] of [["1K", 7], ["2K", 7], ["4K", 12]] as const) {
+  check(`Nano Banana Pro ${res} = ${want} kr for a GrovBase prompt (was ${want + 46})`, originCost(nbPro, "ecomstudio", res) === want);
+  check(`Nano Banana Pro ${res} = ${want} kr for the customer's own prompt`, originCost(nbPro, "custom", res) === want);
+}
+check("53 credits can no longer come out of the concept price", ["1K", "2K", "4K"].every((r) => originCost(nbPro, "ecomstudio", r) < 53));
 check("an unsupported size falls back to the default", originCost(fakeModel, "custom", "4K") === 4);
-check("no size means the model default", originCost(multiRes, "custom") === 4);
+check("no size means the model default", originCost(nbPro, "ecomstudio") === 7);
+check("the server never reads the surcharge column", !/ecom_surcharge_credits/.test(genSrc));
 
 console.log("\nG. RETRY PACING — backoff grows, Retry-After wins");
 const d1 = retryDelayMs(1), d2 = retryDelayMs(2), d3 = retryDelayMs(3);

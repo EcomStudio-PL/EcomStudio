@@ -210,8 +210,11 @@ export interface GenerationResult {
   images: GeneratedImage[];
   providerMetadata?: Record<string, unknown>;
   /** Tokens as the provider's own response reported them — absent when it
-   *  reported none. Never estimated by an adapter. */
-  usage?: { inputTokens?: number; outputTokens?: number };
+   *  reported none. Never estimated by an adapter. `outputTokens` is every
+   *  output token (image + text + thinking); `thoughtTokens` is the thinking
+   *  share of it, reported separately because it is billed at the text rate
+   *  while the image is billed per image. */
+  usage?: { inputTokens?: number; outputTokens?: number; thoughtTokens?: number };
 }
 
 /**
@@ -300,6 +303,10 @@ export class ProviderError extends Error {
   /** Retusz: what the request that failed carried at the network boundary
    *  (see captureGeminiBoundary) — admin record only. */
   boundary?: Record<string, unknown>;
+  /** Tokens the provider's responses REPORTED before this error (a billed
+   *  empty answer, the images of a partial batch). Lets the runner record
+   *  what the failed call really cost instead of dropping it. */
+  usage?: GenerationResult["usage"];
 }
 
 /** Strip anything secret-shaped out of an upstream message before it is

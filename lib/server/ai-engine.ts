@@ -94,6 +94,24 @@ export async function resolveEngine(supabase: Client, toolKey: string): Promise<
 }
 
 /**
+ * The admin's "Próby na modelu głównym" for a tool — how many paid requests
+ * one image may cost on each model. Read WITHOUT opening the tool's prompt
+ * (the attempt count is all these callers need). Undefined when the
+ * configuration cannot be read; the runner then keeps its own default.
+ */
+export async function toolMaxAttempts(supabase: Client, toolKey: string): Promise<number | undefined> {
+  const token = dispatchToken();
+  if (!token) return undefined;
+  try {
+    const { data, error } = await supabase.rpc("ai_tool_runtime", { p_tool_key: toolKey, p_token: token });
+    const n = data?.[0]?.max_attempts;
+    return !error && typeof n === "number" && Number.isFinite(n) && n >= 1 ? Math.trunc(n) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * The system prompt a tool should run with, or null to keep the built-in one.
  *
  * Modes decide whether a hidden prompt applies at all: 'user' means the

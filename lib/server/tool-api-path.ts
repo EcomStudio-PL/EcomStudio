@@ -64,7 +64,9 @@ const MODEL_COLUMNS = "id, model_identifier, name, display_name, active, interna
 const toPath = (m: ModelRow | null | undefined, prices: readonly UnitPrice[] = []): PathModel | null => {
   if (!m) return null;
   const providerSlug = m.ai_providers?.slug ?? "?";
-  const listed = findUnitPrice(prices, providerSlug, m.model_identifier, "image", "*", "*");
+  // Quoted at the default output size (1K): per-size official rows (0133)
+  // match it first, a catch-all row still matches after them.
+  const listed = findUnitPrice(prices, providerSlug, m.model_identifier, "image", "1K", "*");
   const flat = m.internal_cost_usd_micros && m.internal_cost_usd_micros > 0 ? m.internal_cost_usd_micros : null;
   return {
     id: m.id,

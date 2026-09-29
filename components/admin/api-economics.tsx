@@ -22,7 +22,8 @@ export function formatPln(cents: number | null, locale: string): string {
 export function formatUsd(micros: number | null, locale: string): string {
   if (micros == null) return "—";
   return new Intl.NumberFormat(intlLocale(locale), {
-    style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: micros < 100_000 ? 4 : 2,
+    // $0.134 is an official price, not $0.13: sub-cent digits are kept.
+    style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: micros < 100_000 || micros % 10_000 !== 0 ? 4 : 2,
   }).format(micros / 1_000_000);
 }
 
@@ -160,12 +161,25 @@ export function UsageHistoryList({ rows, usdToPln, locale, t, toolLabel }: {
               {" · "}{t("aicc.econ.requests", { n: r.requests })}
               {r.inputTokens != null || r.outputTokens != null
                 ? ` · ${t("aicc.econ.tokens", { in: r.inputTokens ?? 0, out: r.outputTokens ?? 0 })}` : ""}
+              {r.thoughtTokens != null ? ` · ${t("aicc.econ.thinking", { n: r.thoughtTokens })}` : ""}
               {r.units != null && r.unitKind ? ` · ${t(`aicc.econ.units.${r.unitKind}`, { n: r.units })}` : ""}
+              {r.resolution ? ` · ${r.resolution}` : ""}
             </p>
           </div>
-          <div className="min-w-0">
-            <span className="text-faint">{t("aicc.econ.apiCost")}: </span>
-            <CostCell usdMicros={r.costUsdMicros} basis={r.costBasis} usdToPln={usdToPln} locale={locale} t={t} />
+          <div className="min-w-0 space-y-0.5">
+            {r.baseCostUsdMicros != null && (
+              <p data-base-cost>
+                <span className="text-faint">{t("aicc.econ.baseCost")}: </span>
+                <span className="tabular-nums">{formatUsd(r.baseCostUsdMicros, locale)}</span>
+              </p>
+            )}
+            <p>
+              <span className="text-faint">{r.baseCostUsdMicros != null ? t("aicc.econ.realCost") : t("aicc.econ.apiCost")}: </span>
+              <CostCell usdMicros={r.costUsdMicros} basis={r.costBasis} usdToPln={usdToPln} locale={locale} t={t} />
+              {r.baseCostUsdMicros != null && r.inputTokens == null && r.thoughtTokens == null && (
+                <span className="text-[11px] text-faint"> · {t("aicc.econ.noUsage")}</span>
+              )}
+            </p>
           </div>
           <div className="min-w-0 space-y-0.5">
             <p>
@@ -178,6 +192,14 @@ export function UsageHistoryList({ rows, usdToPln, locale, t, toolLabel }: {
               <span className="text-faint">{t("aicc.econ.margin")}: </span>
               <MarginCell cents={r.marginCents} percent={r.marginPercent} locale={locale} />
             </p>
+            {r.listRevenueCents != null && (
+              <p data-list-margin>
+                <span className="text-faint">{t("aicc.econ.listRevenue")}: </span>
+                <span className="tabular-nums">{formatPln(r.listRevenueCents, locale)}</span>
+                <span className="text-faint"> · {t("aicc.econ.listMargin")}: </span>
+                <MarginCell cents={r.listMarginCents} percent={r.listMarginPercent} locale={locale} />
+              </p>
+            )}
           </div>
         </li>
       ))}

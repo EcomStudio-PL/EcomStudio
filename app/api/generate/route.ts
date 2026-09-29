@@ -5,6 +5,7 @@ import { featureBlockedForApi } from "@/lib/server/feature-availability";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { runGeneration, type GenerateInput } from "@/lib/server/generation";
 import { prepareGeneratorEngine } from "@/lib/server/engine/tool-run";
+import { toolMaxAttempts } from "@/lib/server/ai-engine";
 import { QUALITIES, type Quality } from "@/lib/ai/types";
 
 export const maxDuration = 300;
@@ -43,14 +44,18 @@ export async function POST(request: Request) {
   // instruction wraps the customer's prompt as separated data. Server-side
   // only — the body cannot choose, see or replace it. With nothing published
   // this is a no-op and the generator runs exactly as before.
-  const engine = await prepareGeneratorEngine(supabase, user.id, workspace.id, {
-    userPrompt: String(body.prompt ?? ""),
-    negative: typeof body.negative === "string" ? body.negative : null,
-    productDescription: productDescription ?? null,
-    aspectRatio: String(body.aspectRatio ?? ""),
-    resolution: typeof body.resolution === "string" ? body.resolution : null,
-    referencePaths,
-  });
+  const [engine, maxAttempts] = await Promise.all([
+    prepareGeneratorEngine(supabase, user.id, workspace.id, {
+      userPrompt: String(body.prompt ?? ""),
+      negative: typeof body.negative === "string" ? body.negative : null,
+      productDescription: productDescription ?? null,
+      aspectRatio: String(body.aspectRatio ?? ""),
+      resolution: typeof body.resolution === "string" ? body.resolution : null,
+      referencePaths,
+    }),
+    // The panel's "Próby" for the generator: 1 = one paid request per image.
+    toolMaxAttempts(supabase, "generator"),
+  ]);
   if (!engine.ok) return NextResponse.json({ ok: false, error: engine.error }, { status: 400 });
 
   const result = await runGeneration(supabase, user.id, workspace.id, {
@@ -74,6 +79,7 @@ export async function POST(request: Request) {
     referencePaths,
     referenceImageIds: (body.referenceImageIds ?? []).filter((x) => typeof x === "string"),
     inspirationPaths: (body.inspirationPaths ?? []).filter((p) => typeof p === "string" && p.startsWith(`${workspace.id}/`)).slice(0, 5),
+    maxAttempts,
   });
   await engine.finish(result);
   return NextResponse.json(result, { status: result.ok ? 200 : 400 });

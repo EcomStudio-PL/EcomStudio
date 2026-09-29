@@ -24,8 +24,6 @@ export type GenModel = {
   /** Max images per run for this model (adapter ∧ admin cap). */
   maxOutputs: number;
   supportsRefs: boolean;
-  /** Credits added per image when the GrovBase engine writes the prompt. */
-  surcharge: number;
   /** Render qualities this model lets the customer pick ("Jakość"). Empty
    *  for every model without the knob — then no field is shown at all. */
   qualities: string[];
@@ -34,13 +32,13 @@ export type GenModel = {
 };
 
 /** Credits for ONE image at the given size (and quality, where the model has
- *  one) — managed mode adds the engine surcharge, exactly like the server's
- *  originCost. */
-export function unitPrice(m: GenModel | undefined, resolution: string, mode: GenMode, quality?: string): number {
+ *  one) — the same in both modes, exactly like the server's originCost: a
+ *  GrovBase prompt costs no more than the customer's own. `mode` is kept for
+ *  the callers' signatures only. */
+export function unitPrice(m: GenModel | undefined, resolution: string, _mode: GenMode, quality?: string): number {
   if (!m) return 0;
   const byQuality = quality ? m.qualityPricing?.[quality]?.[resolution] : undefined;
-  const base = byQuality ?? m.pricing[resolution] ?? Object.values(m.pricing)[0] ?? 0;
-  return base + (mode === "managed" ? m.surcharge : 0);
+  return byQuality ?? m.pricing[resolution] ?? Object.values(m.pricing)[0] ?? 0;
 }
 
 /** Snap a value to the model's capability list (first entry when absent). */
