@@ -361,7 +361,8 @@ async function main() {
     g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
     const { pr } = await retouch(db, "w/r/src.jpg");
     check("recorded operation IMAGE_EDIT with the photo attached", pr?.operation === "IMAGE_EDIT" && imagesOf(sent[0]!).length === 1);
-    check("response_modalities is exactly [image] and store is false", JSON.stringify(sent[0]?.raw.response_modalities) === '["image"]' && sent[0]?.raw.store === false);
+    check("response_modalities ABSENT (deprecated); the image output comes from response_format {type:image}; store false",
+      !("response_modalities" in (sent[0]?.raw ?? {})) && (sent[0]?.raw.response_format as Row | undefined)?.type === "image" && sent[0]?.raw.store === false);
     const db2 = freshDb();
     g.__fidelityEngine = engine({ systemPrompt: EXACT, promptVersion: 3 });
     const gone = await retouch(db2, "w/r/missing.jpg");
@@ -756,11 +757,10 @@ async function main() {
         body: {
           model: "gemini-3-pro-image",
           input: [{ type: "text", text: EXACT }, { type: "image", data: cs.src.toString("base64"), mime_type: cs.mime }],
-          response_modalities: ["image"],
-          store: false,
           response_format: cs.format === "original"
             ? { type: "image", image_size: cs.resolution }
             : { type: "image", image_size: cs.resolution, aspect_ratio: cs.format },
+          store: false,
         },
       };
       const input = (A.raw.input ?? []) as Row[];
@@ -795,9 +795,8 @@ async function main() {
       body: {
         model: "gemini-3-pro-image",
         input: [{ type: "text", text: EXACT }, { type: "image", data: prodShape.toString("base64"), mime_type: "image/png" }],
-        response_modalities: ["image"],
-        store: false,
         response_format: { type: "image", image_size: "4K" },
+        store: false,
       },
     };
     const runs: Sent[] = [];
@@ -824,8 +823,8 @@ async function main() {
       BODY_EQUAL_TO_BASELINE: JSON.stringify(A.raw) === JSON.stringify(baseline.body),
     };
     console.log("    " + JSON.stringify(report));
-    check("baseline: endpoint equal, fields = model,input,response_modalities,store,response_format; store false; no previous interaction",
-      report.ENDPOINT_EQUAL && report.FIELDS === "model,input,response_modalities,store,response_format" && report.STORE === false && report.PREVIOUS_INTERACTION === false, report);
+    check("baseline: endpoint equal, fields = model,input,response_format,store (no response_modalities); store false; no previous interaction",
+      report.ENDPOINT_EQUAL && report.FIELDS === "model,input,response_format,store" && report.STORE === false && report.PREVIOUS_INTERACTION === false, report);
     check("baseline: input [text, image], 1 image, prompt SHA + image SHA + MIME equal; body byte-identical to the hand-written request",
       report.INPUT_COUNT === 2 && report.INPUT_ORDER === "text,image" && report.INPUT_IMAGE_COUNT === 1
       && report.PROMPT_SHA_EQUAL && report.IMAGE_SHA_EQUAL && report.MIME === "image/png" && report.BODY_EQUAL_TO_BASELINE, report);
@@ -880,7 +879,7 @@ async function main() {
 
     // (4) Adapter contract, on the exact body about to be sent.
     const req = (over: Record<string, unknown> = {}) => ({
-      prompt: "P", aspectRatio: "auto" as const, quantity: 1, strictSingleImage: true,
+      prompt: "P", aspectRatio: "auto" as const, resolution: "2K" as const, quantity: 1, strictSingleImage: true,
       referenceImages: [{ base64: "QUJD", mime: "image/png" }], productLock: { fidelityInstructions: "" }, ...over,
     });
     const M = "gemini-3-pro-image";
@@ -901,15 +900,19 @@ async function main() {
     const ok2 = buildRetouchInteraction({ model_identifier: M }, r2) as unknown as Row;
     const ok4r = buildRetouchInteraction({ model_identifier: M }, r4r) as unknown as Row;
     check("contract: 2K Oryginalny body = …store:false + response_format {type,image_size 2K} and passes",
-      JSON.stringify(ok2.response_format) === '{"type":"image","image_size":"2K"}' && Object.keys(ok2).join() === "model,input,response_modalities,store,response_format" && v(ok2, r2) === null);
+      JSON.stringify(ok2.response_format) === '{"type":"image","image_size":"2K"}' && Object.keys(ok2).join() === "model,input,response_format,store" && v(ok2, r2) === null);
     check("contract: 4K + 4:5 body passes with aspect_ratio 4:5", JSON.stringify(ok4r.response_format) === '{"type":"image","image_size":"4K","aspect_ratio":"4:5"}' && v(ok4r, r4r) === null);
-    check("contract: a response_format the run did not ask for is refused", v(ok2, req()) === "top_level_fields");
-    check("contract: a missing response_format for a sized run is refused", v(ok, r2) === "top_level_fields");
+    const unsized = req({ resolution: undefined });
+    const noFormat = buildRetouchInteraction({ model_identifier: M }, unsized) as unknown as Row;
+    check("contract: a run without a 2K/4K size is refused — no request goes out without an image output config",
+      !("response_format" in noFormat) && v(noFormat, unsized) === "top_level_fields" && v(ok2, unsized) === "image_size");
+    check("contract: a missing response_format for a sized run is refused", v(noFormat, r2) === "top_level_fields");
+    check("contract: response_modalities sent again (a second output mechanism) is refused", v({ ...ok2, response_modalities: ["image"] }, r2) === "top_level_fields");
     check("contract: image_size ≠ the chosen size is refused", v({ ...ok2, response_format: { type: "image", image_size: "4K" } }, r2) === "image_size");
     check("contract: an aspect_ratio added to Oryginalny is refused", v({ ...ok2, response_format: { type: "image", image_size: "2K", aspect_ratio: "4:3" } }, r2) === "response_format");
     check("contract: a ratio ≠ the chosen one is refused", v({ ...ok4r, response_format: { type: "image", image_size: "4K", aspect_ratio: "4:3" } }, r4r) === "aspect_ratio");
     check("contract: a ratio outside Google's official list is refused", v(buildRetouchInteraction({ model_identifier: M }, req({ resolution: "2K", aspectRatio: "7:3" })) as unknown as Row, req({ resolution: "2K", aspectRatio: "7:3" })) === "aspect_ratio");
-    check("contract: a ratio without a size (nothing to carry it) is refused, never dropped", v(ok, req({ aspectRatio: "4:5" })) === "aspect_ratio");
+    check("contract: a ratio without a size (nothing to carry it) is refused, never dropped", v(ok, req({ aspectRatio: "4:5", resolution: undefined })) === "aspect_ratio");
     check("contract: delivery / mime_type / another type in response_format are refused",
       v({ ...ok2, response_format: { type: "image", image_size: "2K", delivery: "inline" } }, r2) === "response_format"
       && v({ ...ok2, response_format: { type: "text", image_size: "2K" } }, r2) === "response_format"
@@ -964,13 +967,13 @@ async function main() {
     check("diagnostics: interactions endpoint, store false, history 0, images 1, texts 1, knowledge 0, examples 0, feedback 0, no systemInstruction, stateless, contract ok",
       pr?.endpoint === "v1beta/interactions" && pr?.store === false && pr?.history_count === 0 && pr?.image_count === 1 && pr?.text_part_count === 1 && pr?.knowledge_count === 0 && pr?.examples_count === 0
       && pr?.feedback_count === 0 && pr?.system_instruction === false && pr?.stateless === true && pr?.contract_ok === true && pr?.parts_order === "text_then_image", pr);
-    const sp = pr?.sanitized_payload as { model: string; input: Row[]; response_modalities: string[]; store: boolean; response_format?: Row } | undefined;
+    const sp = pr?.sanitized_payload as { model: string; input: Row[]; store: boolean; response_format?: Row } | undefined;
     const spText = (sp?.input[0]?.text ?? {}) as Row;
-    check("sanitised payload: {model, input:[text{chars,digest}, image{mime,sha256,bytes}], response_modalities [image], store false, response_format {image, 4K}} — no ratio (Oryginalny)",
+    check("sanitised payload: {model, input:[text{chars,digest}, image{mime,sha256,bytes}], response_format {image, 4K}, store false} — no response_modalities, no ratio (Oryginalny)",
       sp?.model === "gemini-3-pro-image" && sp.input.length === 2 && sp.input[0]!.type === "text" && sp.input[1]!.type === "image"
       && spText.chars === Array.from(PROMPT).length && spText.digest === promptDigest(PROMPT)
       && sp.input[1]!.sha256 === PHOTO_SHA && sp.input[1]!.bytes === photo.length && sp.input[1]!.mime_type === "image/jpeg"
-      && JSON.stringify(sp.response_modalities) === '["image"]' && sp.store === false && Object.keys(sp).join() === "model,input,response_modalities,store,response_format"
+      && sp.store === false && Object.keys(sp).join() === "model,input,response_format,store"
       && JSON.stringify(sp.response_format) === '{"type":"image","image_size":"4K"}', sp);
     check("sanitised payload holds no prompt text and no image bytes", !JSON.stringify(pr).includes("Przekształć") && !JSON.stringify(pr).includes(photo.toString("base64").slice(0, 64)));
     check("prompt chain: published === resolved === provider (keyed digests), version 5, no variables",

@@ -119,7 +119,9 @@ export function captureGeminiBoundary(url: string, payload: string, model: strin
 
 /* ── Retusz: the Interactions API request ────────────────────────────────── */
 
-const INTERACTION_FIELDS = ["model", "input", "response_modalities", "store", "response_format"];
+// response_modalities is NOT allowed (deprecated; response_format alone sets
+// the image output) — sent, it shows up as an extra field.
+const INTERACTION_FIELDS = ["model", "input", "response_format", "store"];
 /** The only keys an image response_format may carry here (no delivery,
  *  no mime_type). */
 const RESPONSE_FORMAT_FIELDS = ["type", "image_size", "aspect_ratio"];
@@ -229,6 +231,6 @@ export function captureInteractionBoundary(url: string, headerNames: string[], p
     stateless,
     strict_stateless: stateless && extra.length === 0 && input.length === 2
       && input[0]?.type === "text" && input[1]?.type === "image"
-      && JSON.stringify(body.response_modalities) === '["image"]',
+      && imageConfig.type === "image" && typeof imageConfig.image_size === "string",
   };
 }

@@ -19,9 +19,11 @@
  *   HISTORY=0 KNOWLEDGE=0 FEEDBACK=0 SYSTEM_INSTRUCTION=NONE
  *   IMAGE_SIZE=2K|4K ASPECT_RATIO=OMITTED|<ratio> PROVIDER_CALLS=1
  *
- * 2K / 4K + FORMAT (A–D): the ONLY difference from the pre-patch request
- * (GOLDEN, recorded from the production code at 5113398) is the trailing
- * `,"response_format":{…}` — every byte before it is the golden body.
+ * 2K / 4K + FORMAT (A–D) against the GOOD request (GOLDEN, recorded from the
+ * production code at 5113398): model, input (prompt + photo, byte for byte),
+ * store are identical; the output is configured ONLY by response_format
+ * {type:image, image_size, aspect_ratio?} — the deprecated
+ * response_modalities is no longer sent (never two output mechanisms).
  *
  * Run: npm run test:retouchforensic
  * Optional: RETUSZ_PROMPT_FILE=<path> also runs a real prompt kept outside the
@@ -51,8 +53,14 @@ const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex")
  *  so a changed fixture cannot pass silently. */
 const GOLDEN_PRE_PATCH_BODY_SHA256 = "50d96cdd5c7dfdbdb72d559bf03c61cfcc76daf489c70f6d9612877cb34cdfba";
 const GOLDEN_PHOTO_SHA256 = "f291079907b7a7069703c6a5c691271894f412719dc524b8c22c58f2ff980d3e";
-/** B minus the one allowed addition — what must equal the golden body. */
-const withoutResponseFormat = (b: string) => b.replace(/,"response_format":\{[^{}]*\}\}$/, "}");
+/** The GOOD request, written literally in its pre-2K/4K shape (its sha256
+ *  must be the golden one — proof the comparison uses the real thing). */
+const goodOldBody = (prompt: string, image: Buffer, mime: string) => JSON.stringify({
+  model: "gemini-3-pro-image",
+  input: [{ type: "text", text: prompt }, { type: "image", data: image.toString("base64"), mime_type: mime }],
+  response_modalities: ["image"],
+  store: false,
+});
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
 /* ── an in-memory PROD: model rows, the storage bucket, the job rows ─────── */
@@ -253,8 +261,9 @@ async function main() {
       flags.PROMPT_EQUAL && flags.IMAGE_EQUAL && flags.STATELESS && flags.ADDITIONAL_TEXT === 0 && flags.HISTORY === 0
       && flags.KNOWLEDGE === 0 && flags.EXAMPLES === 0 && flags.FEEDBACK === 0 && flags.TOOLS === 0 && flags.SYSTEM_INSTRUCTION === "NONE"
       && flags.IMAGE_SIZE === "2K" && flags.ASPECT_RATIO === "OMITTED" && flags.FALLBACK === "OFF" && flags.PROVIDER_CALLS === 1, flags);
-    check("REQUEST FIELD NAMES = [model, input, response_modalities, store, response_format]; STRICT_STATELESS; EXTRA_FIELDS []",
-      JSON.stringify(nb.request_field_names) === '["model","input","response_modalities","store","response_format"]' && nb.strict_stateless === true && JSON.stringify(nb.extra_fields) === "[]", nb.request_field_names);
+    check("REQUEST FIELD NAMES = [model, input, response_format, store] — response_modalities ABSENT; STRICT_STATELESS; EXTRA_FIELDS []",
+      JSON.stringify(nb.request_field_names) === '["model","input","response_format","store"]' && nb.response_modalities === null && !("response_modalities" in sent)
+      && nb.strict_stateless === true && JSON.stringify(nb.extra_fields) === "[]", nb.request_field_names);
     check("model gemini-3-pro-image, API v1beta, body sha256 recorded == sha256 of the string sent",
       nb.model === "gemini-3-pro-image" && nb.api_version === "v1beta" && nb.request_body_sha256 === sha(B) && nb.request_body_bytes === Buffer.byteLength(B));
     check("prompt lengths equal at every step (chars and UTF-8 bytes)",
@@ -281,8 +290,9 @@ async function main() {
   console.log("\nF1b 2K / 4K + FORMAT — cases A–D, each against the GOLDEN pre-patch request");
   {
     check("GOLDEN fixture: the test photo is the one the golden body was recorded with", sha(photo) === GOLDEN_PHOTO_SHA256, sha(photo));
-    const golden = baselineBody({ prompt: SYNTHETIC, image: photo, mimeType: "image/jpeg" });
-    check("GOLDEN: the independent baseline without a size == the pre-patch body (sha256 50d96cdd…)", sha(golden) === GOLDEN_PRE_PATCH_BODY_SHA256, sha(golden));
+    const golden = goodOldBody(SYNTHETIC, photo, "image/jpeg");
+    check("GOLDEN: the good pre-2K/4K request, written literally == the recorded body (sha256 50d96cdd…)", sha(golden) === GOLDEN_PRE_PATCH_BODY_SHA256, sha(golden));
+    const good = JSON.parse(golden) as Row;
     const cases: { name: string; resolution: string; format: string; size: string; ratio: string | null; credits: number }[] = [
       { name: "A  2K + Oryginalny", resolution: "2K", format: "original", size: "2K", ratio: null, credits: 7 },
       { name: "B  4K + Oryginalny", resolution: "4K", format: "original", size: "4K", ratio: null, credits: 12 },
@@ -306,8 +316,12 @@ async function main() {
         isDeepStrictEqual(rf, expectedRf) && (c.ratio !== null || !("aspect_ratio" in (rf ?? {}))), rf);
       check(`${c.name}: B == independent baseline A (size${c.ratio ? " + ratio" : ""}) byte for byte`,
         B === baselineBody({ prompt: SYNTHETIC, image: photo, mimeType: "image/jpeg", imageSize: c.size, aspectRatio: c.ratio ?? undefined }));
-      check(`${c.name}: B minus response_format == GOLDEN pre-patch body byte for byte (the ONLY diff is the output config)`,
-        withoutResponseFormat(B) === golden && sha(withoutResponseFormat(B)) === GOLDEN_PRE_PATCH_BODY_SHA256 && B.startsWith(golden.slice(0, -1) + ',"response_format":'));
+      check(`${c.name}: vs GOLDEN — model, input (bytes), store identical; response_modalities ABSENT; response_format the only output config`,
+        sent.model === good.model && JSON.stringify(sent.input) === JSON.stringify(good.input) && sent.store === good.store
+        && !("response_modalities" in sent) && JSON.stringify(Object.keys(sent)) === '["model","input","response_format","store"]'
+        && golden.startsWith(B.slice(0, B.indexOf(',"response_format":')) + ',"response_modalities":["image"],"store":false}'));
+      check(`${c.name}: previous_interaction_id / system_instruction / tools / generation_config ABSENT`,
+        !["previous_interaction_id", "system_instruction", "tools", "generation_config", "safety_settings"].some((k) => k in sent));
       check(`${c.name}: PROMPT SHA == pre-patch, INPUT IMAGE SHA == pre-patch (the stored original)`,
         nb.provider_prompt_sha256 === sha(SYNTHETIC) && nb.published_prompt_sha256 === sha(SYNTHETIC) && (sent.input as Row[])[0]?.text === SYNTHETIC
         && (nb.provider_inputs as Row[])[0]?.sha256 === GOLDEN_PHOTO_SHA256 && nb.input_original_sha256 === GOLDEN_PHOTO_SHA256);
@@ -390,6 +404,7 @@ async function main() {
       ["response_format of another type", (b) => { (b.response_format as Row).type = "text"; }],
       ["adds generation_config.image_config (deprecated)", (b) => { b.generation_config = { image_config: { image_size: "2K" } }; }],
       ["adds tools", (b) => { b.tools = [{ type: "google_search" }]; }],
+      ["sends response_modalities again (a second output mechanism)", (b) => { b.response_modalities = ["image"]; }],
       ["adds knowledge/feedback as text", (b) => { (b.input as Row[]).splice(1, 0, { type: "text", text: "DATA: liked examples…" }); }],
       ["switches the model (fallback)", (b) => { b.model = "gemini-3.1-flash-image"; }],
     ];

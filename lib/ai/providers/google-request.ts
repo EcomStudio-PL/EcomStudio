@@ -195,18 +195,20 @@ export function buildGeminiImageRequest(model: ModelShape, req: RequestShape): G
  *   input               [ {type:"text", text: PROMPT}, {type:"image", data, mime_type} ]
  *                       — the cookbook's order for an edit: the instruction,
  *                       then the photo
- *   response_modalities ["image"] — "if you only want an image" (cookbook)
+ *   response_format     {type:"image", image_size: "2K"|"4K", aspect_ratio?}
+ *                       — the canonical image output config (Interactions
+ *                       ImageResponseFormat). It alone says "an image": the
+ *                       older `response_modalities` is deprecated in the SDK
+ *                       ("migrate away from it") and is NOT sent — never two
+ *                       output mechanisms at once. aspect_ratio is OMITTED
+ *                       for "Oryginalny" (the photo's own shape); otherwise
+ *                       the ratio the customer picked, never a derived one.
  *   store               false — interactions are STORED by default; false
  *                       opts out and makes previous_interaction_id impossible
- * and, LAST (so every byte before it is the pre-2K/4K request unchanged):
- *   response_format     {type:"image", image_size: "2K"|"4K", aspect_ratio?}
- *                       — the official image output config (SDK 2.25
- *                       ImageResponseFormat). aspect_ratio is OMITTED for
- *                       "Oryginalny" (the photo's own shape); otherwise the
- *                       ratio the customer picked, never a derived one.
- * Nothing else: no previous_interaction_id, system_instruction,
- * generation_config, tools, safety_settings or labels. The size and ratio
- * never enter the prompt.
+ * Nothing else: no response_modalities, previous_interaction_id,
+ * system_instruction, generation_config, tools, safety_settings or labels.
+ * The size and ratio never enter the prompt. A request without a 2K/4K
+ * response_format is never sent (the contract below refuses it).
  */
 export const INTERACTIONS_PATH = "/v1beta/interactions";
 /** REST revision the official migration checklist says to send
@@ -222,9 +224,8 @@ export type RetouchResponseFormat = { type: "image"; image_size: string; aspect_
 export type RetouchInteractionBody = {
   model: string;
   input: [{ type: "text"; text: string }, { type: "image"; data: string; mime_type: string }];
-  response_modalities: ["image"];
-  store: false;
   response_format?: RetouchResponseFormat;
+  store: false;
 };
 
 type RetouchRequestShape = Pick<GenerationRequest, "prompt" | "referenceImages"> & Partial<Pick<GenerationRequest, "resolution" | "aspectRatio">>;
@@ -236,32 +237,32 @@ export function buildRetouchInteraction(
   req: RetouchRequestShape,
 ): RetouchInteractionBody {
   const image = req.referenceImages[0];
-  const body: RetouchInteractionBody = {
+  // The output config: the chosen size, and the chosen ratio unless
+  // "Oryginalny" (auto) — then aspect_ratio is absent. No size → no config,
+  // and the contract refuses the request before any HTTP call.
+  const format: RetouchResponseFormat | undefined = isRetouchSize(req.resolution)
+    ? req.aspectRatio && req.aspectRatio !== "auto"
+      ? { type: "image", image_size: req.resolution, aspect_ratio: req.aspectRatio }
+      : { type: "image", image_size: req.resolution }
+    : undefined;
+  return {
     model: model.model_identifier,
     input: [
       { type: "text", text: req.prompt },
       { type: "image", data: image?.base64 ?? "", mime_type: image?.mime ?? "" },
     ],
-    response_modalities: ["image"],
+    ...(format ? { response_format: format } : {}),
     store: false,
   };
-  // The output config, appended after `store`: the chosen size, and the
-  // chosen ratio unless "Oryginalny" (auto) — then the field is absent.
-  if (isRetouchSize(req.resolution)) {
-    body.response_format = req.aspectRatio && req.aspectRatio !== "auto"
-      ? { type: "image", image_size: req.resolution, aspect_ratio: req.aspectRatio }
-      : { type: "image", image_size: req.resolution };
-  }
-  return body;
 }
 
 /**
  * The Retusz contract, checked on the body AS SERIALISED (the string about to
- * be sent, parsed back): exactly {model, input, response_modalities, store}
- * plus — only when a 2K/4K size was chosen — `response_format`, store false,
- * input exactly [the prompt byte for byte, the one image byte for byte].
- * response_format must be exactly {type:"image", image_size: the chosen size}
- * plus aspect_ratio === the chosen ratio (one of the official ones), or no
+ * be sent, parsed back): exactly {model, input, response_format, store} — no
+ * response_modalities —, store false, input exactly [the prompt byte for
+ * byte, the one image byte for byte], a 2K/4K size chosen. response_format
+ * must be exactly {type:"image", image_size: the chosen size} plus
+ * aspect_ratio === the chosen ratio (one of the official ones), or no
  * aspect_ratio for "Oryginalny". A ratio that cannot be sent is a violation,
  * never silently dropped. Returns the first violation, or null.
  */
@@ -272,13 +273,12 @@ export function retouchInteractionViolation(
 ): string | null {
   const sized = isRetouchSize(req.resolution);
   const ratio = req.aspectRatio && req.aspectRatio !== "auto" ? req.aspectRatio : null;
-  const fields = sized ? "input,model,response_format,response_modalities,store" : "input,model,response_modalities,store";
-  if (Object.keys(body).sort().join(",") !== fields) return "top_level_fields";
+  if (Object.keys(body).sort().join(",") !== "input,model,response_format,store") return "top_level_fields";
   if (body.model !== modelIdentifier) return "model";
   if (body.store !== false) return "store";
-  if (JSON.stringify(body.response_modalities) !== '["image"]') return "response_modalities";
   if (ratio && !sized) return "aspect_ratio";
-  if (sized) {
+  if (!sized) return "image_size";
+  {
     const rf = body.response_format;
     if (!rf || typeof rf !== "object" || Array.isArray(rf)) return "response_format";
     const f = rf as Record<string, unknown>;

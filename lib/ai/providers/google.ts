@@ -206,8 +206,8 @@ export const googleAdapter: ImageProviderAdapter = {
  * RETUSZ — ONE STATELESS INTERACTION.
  *
  * POST /v1beta/interactions with the body buildRetouchInteraction makes
- * (model + [prompt, photo] + response_modalities image + store:false +
- * response_format {type:image, image_size 2K|4K, aspect_ratio?}). The
+ * (model + [prompt, photo] + response_format {type:image, image_size 2K|4K,
+ * aspect_ratio?} + store:false; no response_modalities). The
  * key travels in `x-goog-api-key` (as the official SDKs send it), never in
  * the URL. Exactly one HTTP request: no loop, no retry here.
  *

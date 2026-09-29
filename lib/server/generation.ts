@@ -1258,10 +1258,9 @@ function statelessDiagnostics(
         { type: "text", text: { chars: promptLength(body.input[0].text), digest: promptDigest(body.input[0].text) } },
         { type: "image", mime_type: body.input[1].mime_type, sha256: createHash("sha256").update(bytes).digest("hex"), bytes: bytes.length },
       ],
-      response_modalities: body.response_modalities,
-      store: body.store,
       // The output config (size, and ratio unless "Oryginalny") — no text.
       ...(body.response_format ? { response_format: body.response_format } : {}),
+      store: body.store,
     },
   };
 }
