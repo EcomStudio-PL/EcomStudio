@@ -237,6 +237,12 @@ function ManifestView({ m }: { m: RequestManifest }) {
           [k("outputSha"), `${short(o.providerSha256)} → ${o.storedSha256 === null ? "—" : o.storedEqual ? "=" : short(o.storedSha256)}`],
           [k("outputEqual"), yesNo(o.storedEqual)],
           [k("drafts"), o.imageParts === null ? "—" : k("draftsValue", { parts: o.imageParts, skipped: o.thoughtSkipped ?? 0, reason: o.finishReason ?? "—" })],
+          ...(o.postprocess ? [[k("delivery"), k("deliveryValue", {
+            pw: o.providerWidth ?? "?", ph: o.providerHeight ?? "?", dw: o.deliveredWidth ?? "?", dh: o.deliveredHeight ?? "?",
+            quality: o.deliveredQuality ?? "—",
+            format: !o.deliveredAspect || o.deliveredAspect === "auto" ? k("deliveryAuto") : o.deliveredAspect,
+            post: k(o.postprocess === "deterministic_resize_canvas" ? "postprocessCanvas" : "postprocessResize"),
+          })] as [string, string]] : []),
         ]),
       ],
     });

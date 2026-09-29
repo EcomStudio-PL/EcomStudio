@@ -17,13 +17,12 @@
  * Expected, printed per run:
  *   PROMPT_EQUAL=true IMAGE_EQUAL=true STATELESS=true ADDITIONAL_TEXT=0
  *   HISTORY=0 KNOWLEDGE=0 FEEDBACK=0 SYSTEM_INSTRUCTION=NONE
- *   IMAGE_SIZE=2K|4K ASPECT_RATIO=OMITTED|<ratio> PROVIDER_CALLS=1
+ *   IMAGE_SIZE=OMITTED ASPECT_RATIO=OMITTED PROVIDER_CALLS=1
  *
- * 2K / 4K + FORMAT (A–D) against the GOOD request (GOLDEN, recorded from the
- * production code at 5113398): model, input (prompt + photo, byte for byte),
- * store are identical; the output is configured ONLY by response_format
- * {type:image, image_size, aspect_ratio?} — the deprecated
- * response_modalities is no longer sent (never two output mechanisms).
+ * 2K / 4K + FORMAT (A–D): the Gemini request is the launch-safe GOLDEN
+ * request (recorded from the production code at 5113398) BYTE FOR BYTE,
+ * whatever the customer picks; the pick shapes only the DELIVERED file
+ * (lib/server/retouch-delivery.ts: deterministic resize + white canvas).
  *
  * Run: npm run test:retouchforensic
  * Optional: RETUSZ_PROMPT_FILE=<path> also runs a real prompt kept outside the
@@ -38,6 +37,7 @@ import type { EngineConfig } from "@/lib/server/ai-engine";
 import { POST as retouchRoute } from "@/app/api/retouch/route";
 import { captureInteractionBoundary } from "@/lib/ai/providers/google-boundary";
 import { retouchInteractionViolation } from "@/lib/ai/providers/google-request";
+import { deliverRetouch } from "@/lib/server/retouch-delivery";
 import { baselineBody, BASELINE_ENDPOINT } from "./retouch-baseline";
 
 let failed = 0;
@@ -47,6 +47,8 @@ function check(name: string, ok: boolean, detail?: unknown) {
   else { failed++; console.log(`  ✗ ${name}`); if (detail !== undefined) console.log("      ", typeof detail === "string" ? detail.slice(0, 600) : JSON.stringify(detail).slice(0, 600)); }
 }
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
+// A test-only server key, so the provider-call telemetry (cost rows) is written to the fake DB.
+process.env.GROVBASE_SERVER_KEY = process.env.GROVBASE_SERVER_KEY ?? "forensic-test-key-0123456789abcdef0123456789";
 /** GOLDEN BASELINE — the Retusz body the production code sent BEFORE the
  *  2K/4K + format patch (commit 5113398), for the synthetic prompt and the
  *  test photo below, recorded by running that code. Its photo's sha256 too,
@@ -68,8 +70,8 @@ const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 type Row = Record<string, unknown>;
 const PRO_ID = "m-pro";
 const FB_ID = "m-fb";
-type Db = { files: Map<string, Buffer>; jobs: Map<string, Row>; engineRuns: Row[]; tables: string[]; ledger: string[] };
-function freshDb(): Db { return { files: new Map(), jobs: new Map(), engineRuns: [], tables: [], ledger: [] }; }
+type Db = { files: Map<string, Buffer>; jobs: Map<string, Row>; engineRuns: Row[]; tables: string[]; ledger: string[]; calls: Row[] };
+function freshDb(): Db { return { files: new Map(), jobs: new Map(), engineRuns: [], tables: [], ledger: [], calls: [] }; }
 const models: Row[] = [PRO_ID, FB_ID].map((id) => ({
   id, name: id, display_name: id, model_identifier: id === PRO_ID ? "gemini-3-pro-image" : "gemini-3.1-flash-image",
   active: true, supports_reference_images: true, max_reference_images: 6,
@@ -129,6 +131,7 @@ function fakeSupabase(db: Db) {
     rpc: async (name: string, args?: Row) => {
       if (name === "provider_credential_read") return { data: [{ base_url: null }], error: null };
       if (name === "ai_engine_run_record") db.engineRuns.push((args?.p_run ?? {}) as Row);
+      if (name === "ai_provider_call_record") db.calls.push(...((args?.p_calls ?? []) as Row[]));
       return { data: null, error: null };
     },
     storage: {
@@ -230,7 +233,7 @@ async function main() {
     check("the route answered 200 ok", status === 200 && json.ok === true, json);
     check("exactly ONE HTTP request left GrovBase", wire.length === 1, wire.length);
     const B = wire[0]?.body ?? "";
-    const A = baselineBody({ prompt: PROMPT, image: photo, mimeType: "image/jpeg", imageSize: "2K" });
+    const A = baselineBody({ prompt: PROMPT, image: photo, mimeType: "image/jpeg" });
     check("A == B byte for byte (independent baseline vs the string handed to fetch)", A === B,
       A === B ? undefined : { aBytes: A.length, bBytes: B.length, firstDiff: [...A].findIndex((c, i) => c !== B[i]) });
     check("A == B as structures", isDeepStrictEqual(JSON.parse(A), JSON.parse(B)));
@@ -257,12 +260,12 @@ async function main() {
       PROVIDER_CALLS: nb.total_provider_calls,
     };
     console.log("    " + Object.entries(flags).map(([k, v]) => `${k}=${v}`).join("  "));
-    check("EXPECTED: PROMPT_EQUAL IMAGE_EQUAL STATELESS; ADDITIONAL_TEXT HISTORY KNOWLEDGE EXAMPLES FEEDBACK TOOLS = 0; SYSTEM_INSTRUCTION NONE; IMAGE_SIZE 2K; ASPECT_RATIO OMITTED; FALLBACK OFF; PROVIDER_CALLS 1",
+    check("EXPECTED: PROMPT_EQUAL IMAGE_EQUAL STATELESS; ADDITIONAL_TEXT HISTORY KNOWLEDGE EXAMPLES FEEDBACK TOOLS = 0; SYSTEM_INSTRUCTION NONE; IMAGE_SIZE / ASPECT_RATIO OMITTED; FALLBACK OFF; PROVIDER_CALLS 1",
       flags.PROMPT_EQUAL && flags.IMAGE_EQUAL && flags.STATELESS && flags.ADDITIONAL_TEXT === 0 && flags.HISTORY === 0
       && flags.KNOWLEDGE === 0 && flags.EXAMPLES === 0 && flags.FEEDBACK === 0 && flags.TOOLS === 0 && flags.SYSTEM_INSTRUCTION === "NONE"
-      && flags.IMAGE_SIZE === "2K" && flags.ASPECT_RATIO === "OMITTED" && flags.FALLBACK === "OFF" && flags.PROVIDER_CALLS === 1, flags);
-    check("REQUEST FIELD NAMES = [model, input, response_format, store] — response_modalities ABSENT; STRICT_STATELESS; EXTRA_FIELDS []",
-      JSON.stringify(nb.request_field_names) === '["model","input","response_format","store"]' && nb.response_modalities === null && !("response_modalities" in sent)
+      && flags.IMAGE_SIZE === "OMITTED" && flags.ASPECT_RATIO === "OMITTED" && flags.FALLBACK === "OFF" && flags.PROVIDER_CALLS === 1, flags);
+    check("REQUEST FIELD NAMES = [model, input, response_modalities, store] (no response_format); STRICT_STATELESS; EXTRA_FIELDS []",
+      JSON.stringify(nb.request_field_names) === '["model","input","response_modalities","store"]' && !("response_format" in sent)
       && nb.strict_stateless === true && JSON.stringify(nb.extra_fields) === "[]", nb.request_field_names);
     check("model gemini-3-pro-image, API v1beta, body sha256 recorded == sha256 of the string sent",
       nb.model === "gemini-3-pro-image" && nb.api_version === "v1beta" && nb.request_body_sha256 === sha(B) && nb.request_body_bytes === Buffer.byteLength(B));
@@ -280,14 +283,16 @@ async function main() {
 
     const out = (((job.settings ?? {}) as Row).provider_output ?? []) as Row[];
     const stored = db.files.get(String(out[0]?.stored_path ?? ""));
-    check("OUTPUT: stored bytes == the provider's FINAL (model_output) image — never the thought draft",
-      !!stored && sha(stored) === sha(final) && sha(stored) !== sha(draft) && JSON.stringify(out[0]?.provider_picked_step) === "[2,0]", out[0]);
-    check("OUTPUT: provider sha256 == stored sha256, no transform, not the input photo",
-      out[0]?.provider_sha256 === sha(final) && out[0]?.stored_equals_provider === true && out[0]?.transformed_after_provider === false && sha(stored ?? Buffer.alloc(0)) !== sha(photo));
+    check("OUTPUT: the provider's FINAL (model_output) image was taken — never the thought draft (provider sha recorded)",
+      out[0]?.provider_sha256 === sha(final) && out[0]?.provider_sha256 !== sha(draft) && JSON.stringify(out[0]?.provider_picked_step) === "[2,0]", out[0]);
+    check("OUTPUT: the stored file is the 2K delivery of it (96×128 → 1536×2048, resize only), not the input photo",
+      !!stored && out[0]?.transformed_after_provider === true && out[0]?.postprocess === "deterministic_resize"
+      && out[0]?.provider_returned_width === 96 && out[0]?.provider_returned_height === 128
+      && out[0]?.stored_width === 1536 && out[0]?.stored_height === 2048 && sha(stored ?? Buffer.alloc(0)) !== sha(photo), out[0]);
     check("CREDITS: one charge, completed (ledger start → complete)", JSON.stringify(g.__fidelityLedger) === '["start","complete"]', g.__fidelityLedger);
   }
 
-  console.log("\nF1b 2K / 4K + FORMAT — cases A–D, each against the GOLDEN pre-patch request");
+  console.log("\nF1b 2K / 4K + FORMAT — cases A–D: the Gemini request is the GOLDEN one, byte for byte");
   {
     check("GOLDEN fixture: the test photo is the one the golden body was recorded with", sha(photo) === GOLDEN_PHOTO_SHA256, sha(photo));
     const golden = goodOldBody(SYNTHETIC, photo, "image/jpeg");
@@ -299,47 +304,87 @@ async function main() {
       { name: "C  2K + 4:5", resolution: "2K", format: "4:5", size: "2K", ratio: "4:5", credits: 7 },
       { name: "D  4K + 16:9", resolution: "4K", format: "16:9", size: "4K", ratio: "16:9", credits: 12 },
     ];
+    // Provider output fixture 96×128 (3:4) → the delivered size per case.
+    const deliveredDims: Record<string, [number, number]> = { A: [1536, 2048], B: [3072, 4096], C: [1638, 2048], D: [4096, 2304] };
+    const bodies: string[] = [];
     for (const c of cases) {
       const db = freshDb(); db.files.set(SRC, photo);
       g.__fidelityEngine = engine({ systemPrompt: SYNTHETIC, promptVersion: 5, maxAttempts: 3, fallbackEnabled: true, fallbackModelId: FB_ID });
       const { status, json, job, pr, run } = await click(db, { sourcePath: SRC, resolution: c.resolution, format: c.format, expectedOutputs: 1 });
       const B = wire[0]?.body ?? "";
+      bodies.push(B);
       const sent = (B ? JSON.parse(B) : {}) as Row;
       const nb = (run.network_boundary ?? {}) as Row;
-      const rf = sent.response_format as Row | undefined;
-      const expectedRf = c.ratio ? { type: "image", image_size: c.size, aspect_ratio: c.ratio } : { type: "image", image_size: c.size };
       const out = (((job.settings ?? {}) as Row).provider_output ?? []) as Row[];
-      console.log(`    ${c.name}: response_format=${JSON.stringify(rf)} credits=${json.credits}`);
+      const [dw, dh] = deliveredDims[c.name[0]!]!;
+      console.log(`    ${c.name}: provider body sha256 ${sha(B).slice(0, 16)}… · delivered ${out[0]?.stored_width}×${out[0]?.stored_height} · credits ${json.credits}`);
       check(`${c.name}: 200 ok, exactly ONE request (fallback ON + Próby 3 in the panel), store:false`,
         status === 200 && json.ok === true && wire.length === 1 && sent.store === false && sent.model === "gemini-3-pro-image", { status, n: wire.length, json });
-      check(`${c.name}: response_format == ${JSON.stringify(expectedRf)}${c.ratio ? "" : " (aspect_ratio ABSENT)"}`,
-        isDeepStrictEqual(rf, expectedRf) && (c.ratio !== null || !("aspect_ratio" in (rf ?? {}))), rf);
-      check(`${c.name}: B == independent baseline A (size${c.ratio ? " + ratio" : ""}) byte for byte`,
-        B === baselineBody({ prompt: SYNTHETIC, image: photo, mimeType: "image/jpeg", imageSize: c.size, aspectRatio: c.ratio ?? undefined }));
-      check(`${c.name}: vs GOLDEN — model, input (bytes), store identical; response_modalities ABSENT; response_format the only output config`,
-        sent.model === good.model && JSON.stringify(sent.input) === JSON.stringify(good.input) && sent.store === good.store
-        && !("response_modalities" in sent) && JSON.stringify(Object.keys(sent)) === '["model","input","response_format","store"]'
-        && golden.startsWith(B.slice(0, B.indexOf(',"response_format":')) + ',"response_modalities":["image"],"store":false}'));
-      check(`${c.name}: previous_interaction_id / system_instruction / tools / generation_config ABSENT`,
-        !["previous_interaction_id", "system_instruction", "tools", "generation_config", "safety_settings"].some((k) => k in sent));
+      check(`${c.name}: PROVIDER REQUEST == GOLDEN good request BYTE FOR BYTE (sha256 50d96cdd…)`,
+        B === golden && sha(B) === GOLDEN_PRE_PATCH_BODY_SHA256, { sha: sha(B) });
+      check(`${c.name}: response_modalities ["image"] SAME; response_format / image_size / aspect_ratio / generation_config ABSENT`,
+        JSON.stringify(sent.response_modalities) === '["image"]' && !("response_format" in sent) && !("generation_config" in sent) && !/image_size|aspect_ratio/.test(B));
+      check(`${c.name}: previous_interaction_id / system_instruction / tools ABSENT`,
+        !["previous_interaction_id", "system_instruction", "tools", "safety_settings"].some((k) => k in sent));
       check(`${c.name}: PROMPT SHA == pre-patch, INPUT IMAGE SHA == pre-patch (the stored original)`,
         nb.provider_prompt_sha256 === sha(SYNTHETIC) && nb.published_prompt_sha256 === sha(SYNTHETIC) && (sent.input as Row[])[0]?.text === SYNTHETIC
         && (nb.provider_inputs as Row[])[0]?.sha256 === GOLDEN_PHOTO_SHA256 && nb.input_original_sha256 === GOLDEN_PHOTO_SHA256);
-      check(`${c.name}: the size / ratio never reach the prompt (no text part mentions them)`,
-        (sent.input as Row[]).filter((p) => p.type === "text").length === 1 && !String((sent.input as Row[])[0]?.text).includes(c.size));
       check(`${c.name}: STATELESS, HISTORY 0, KNOWLEDGE 0, FEEDBACK 0, SYSTEM_INSTRUCTION NONE, no hidden text, FALLBACK OFF, PROVIDER_CALLS 1`,
-        nb.stateless === true && nb.strict_stateless === true && nb.previous_interaction_id_present === false && !("previous_interaction_id" in sent)
+        nb.stateless === true && nb.strict_stateless === true && nb.previous_interaction_id_present === false
         && nb.history_count === 0 && pr?.knowledge_count === 0 && pr?.examples_count === 0 && pr?.feedback_count === 0
-        && nb.system_instruction_present === false && !("system_instruction" in sent) && nb.extra_text_parts === 0 && nb.tools_count === 0
+        && nb.system_instruction_present === false && nb.extra_text_parts === 0 && nb.tools_count === 0
         && JSON.stringify(nb.extra_fields) === "[]" && nb.fallback === "OFF" && nb.total_provider_calls === 1, nb);
-      check(`${c.name}: boundary + job record IMAGE_SIZE ${c.size}, ASPECT_RATIO ${c.ratio ?? "OMITTED"}`,
-        nb.image_size === c.size && nb.aspect_ratio === (c.ratio ?? "OMITTED") && pr?.image_size_sent === c.size
-        && pr?.aspect_ratio_sent === c.ratio && pr?.aspect_ratio_mode === (c.ratio ? "USER_SELECTED" : "ORIGINAL_OMITTED"), { nb: [nb.image_size, nb.aspect_ratio], pr: [pr?.image_size_sent, pr?.aspect_ratio_sent, pr?.aspect_ratio_mode] });
-      check(`${c.name}: no output postprocessing — stored bytes == provider's final image`,
-        out[0]?.stored_equals_provider === true && out[0]?.transformed_after_provider === false && out[0]?.provider_sha256 === sha(final), out[0]);
+      check(`${c.name}: boundary + job record IMAGE_SIZE / ASPECT_RATIO OMITTED (nothing sent), provider size DEFAULT`,
+        nb.image_size === "OMITTED" && nb.aspect_ratio === "OMITTED" && pr?.image_size_sent === null && pr?.aspect_ratio_sent === null
+        && pr?.provider_requested_size === "DEFAULT", { nb: [nb.image_size, nb.aspect_ratio], pr: [pr?.image_size_sent, pr?.aspect_ratio_sent] });
+      check(`${c.name}: DELIVERED ${dw}×${dh} (${c.size}, ${c.ratio ?? "Oryginalny"}) from provider 96×128 — ${c.ratio ? "resize + white canvas" : "resize only"}, no AI, recorded`,
+        out[0]?.provider_returned_width === 96 && out[0]?.provider_returned_height === 128 && out[0]?.provider_sha256 === sha(final)
+        && out[0]?.delivered_width === dw && out[0]?.delivered_height === dh && out[0]?.stored_width === dw && out[0]?.stored_height === dh
+        && out[0]?.delivered_quality === c.size && out[0]?.delivered_aspect_ratio === (c.ratio ?? "auto")
+        && out[0]?.postprocess === (c.ratio ? "deterministic_resize_canvas" : "deterministic_resize") && out[0]?.transformed_after_provider === true, out[0]);
+      check(`${c.name}: PROVIDER COST priced at the REAL request (Google default size 1K, not ${c.size})`,
+        db.calls.length === 1 && db.calls[0]?.resolution === "1K", db.calls.map((x) => x.resolution));
       check(`${c.name}: CREDITS ${c.credits} (one charge, completed)`,
         json.credits === c.credits && JSON.stringify(g.__fidelityLedger) === '["start","complete"]', { credits: json.credits, ledger: g.__fidelityLedger });
     }
+    check("A–D: the choice of quality and format changes NOT ONE BYTE of the Gemini request (4 identical SHA-256)", new Set(bodies.map(sha)).size === 1);
+  }
+
+  console.log("\nPOSTPROCESS (test B) — a 1024×1024 provider image, deterministic, no crop");
+  {
+    // Four 64-px coloured corner markers on grey: every marker must survive
+    // at its mapped position, and the added canvas must be white.
+    const corner = (c: string) => ({ input: { create: { width: 64, height: 64, channels: 3 as const, background: c } } });
+    const src = await sharp({ create: { width: 1024, height: 1024, channels: 3, background: "#808080" } })
+      .composite([{ ...corner("#ff0000"), top: 0, left: 0 }, { ...corner("#00ff00"), top: 0, left: 960 }, { ...corner("#0000ff"), top: 960, left: 0 }, { ...corner("#ffff00"), top: 960, left: 960 }])
+      .png().toBuffer();
+    const px = async (b: Buffer, x: number, y: number) => {
+      const { data } = await sharp(b).extract({ left: x, top: y, width: 1, height: 1 }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+      return [data[0]!, data[1]!, data[2]!];
+    };
+    const near = (a: number[], b: number[]) => a.every((v, i) => Math.abs(v - b[i]!) <= 12);
+    const RED = [255, 0, 0], GREEN = [0, 255, 0], BLUE = [0, 0, 255], YELLOW = [255, 255, 0], WHITE_ = [255, 255, 255];
+    const cases: [string, "2K" | "4K", string, number, number][] = [
+      ["2K Auto", "2K", "auto", 2048, 2048], ["4K Auto", "4K", "auto", 4096, 4096],
+      ["2K 4:5", "2K", "4:5", 1638, 2048], ["4K 16:9", "4K", "16:9", 4096, 2304],
+    ];
+    for (const [name, size, ratio, w, h] of cases) {
+      const d = await deliverRetouch(src, "image/png", size, ratio);
+      const meta = await sharp(d.bytes).metadata();
+      // The image occupies a centred square of side min(w,h); corners 8px inside it.
+      const side = Math.min(w, h), ox = Math.round((w - side) / 2), oy = Math.round((h - side) / 2), m = Math.round(side * 0.03);
+      const ok = await Promise.all([
+        px(d.bytes, ox + m, oy + m).then((p) => near(p, RED)),
+        px(d.bytes, ox + side - 1 - m, oy + m).then((p) => near(p, GREEN)),
+        px(d.bytes, ox + m, oy + side - 1 - m).then((p) => near(p, BLUE)),
+        px(d.bytes, ox + side - 1 - m, oy + side - 1 - m).then((p) => near(p, YELLOW)),
+      ]);
+      const padOk = ratio === "auto" ? true : w > h ? near(await px(d.bytes, 2, Math.round(h / 2)), WHITE_) : near(await px(d.bytes, Math.round(w / 2), 2), WHITE_);
+      check(`${name} → ${w}×${h}${ratio === "auto" ? "" : `, ${ratio} canvas`}; all 4 corners of the image kept (zero crop)${ratio === "auto" ? "" : "; padding white"}`,
+        d.width === w && d.height === h && meta.width === w && meta.height === h && ok.every(Boolean) && padOk, { d: [d.width, d.height], ok, padOk });
+    }
+    const a = await deliverRetouch(src, "image/png", "4K", "16:9"), b2 = await deliverRetouch(src, "image/png", "4K", "16:9");
+    check("deterministic: the same input gives byte-identical output", sha(a.bytes) === sha(b2.bytes));
   }
 
   console.log("\nF2  THE BROWSER CANNOT SEND ANYTHING OUTSIDE THE OFFER");
@@ -382,7 +427,7 @@ async function main() {
     g.__fidelityEngine = engine({ systemPrompt: SYNTHETIC, promptVersion: 5 });
     await click(db, { sourcePath: SRC, resolution: "2K", format: "original", expectedOutputs: 1 });
     const B = wire[0]!.body;
-    const A = baselineBody({ prompt: SYNTHETIC, image: photo, mimeType: "image/jpeg", imageSize: "2K" });
+    const A = baselineBody({ prompt: SYNTHETIC, image: photo, mimeType: "image/jpeg" });
     const other = await sharp(photo).jpeg({ quality: 80 }).toBuffer();
     const tamper: [string, (b: Row) => void][] = [
       ["adds text (a prefix)", (b) => { (b.input as Row[])[0]!.text = "Retouch this image. " + String((b.input as Row[])[0]!.text); }],
@@ -395,16 +440,12 @@ async function main() {
       ["adds history", (b) => { b.previous_interaction_id = "int-0"; }],
       ["stores the interaction", (b) => { b.store = true; }],
       ["adds systemInstruction", (b) => { b.system_instruction = "You are a retoucher."; }],
-      ["changes image_size (2K → 4K)", (b) => { (b.response_format as Row).image_size = "4K"; }],
-      ["changes image_size (2K → 1K)", (b) => { (b.response_format as Row).image_size = "1K"; }],
-      ["adds aspect_ratio to Oryginalny", (b) => { (b.response_format as Row).aspect_ratio = "4:3"; }],
-      ["drops response_format", (b) => { delete b.response_format; }],
-      ["adds delivery / mime_type to response_format", (b) => { (b.response_format as Row).delivery = "inline"; (b.response_format as Row).mime_type = "image/png"; }],
-      ["response_format as an array", (b) => { b.response_format = [b.response_format]; }],
-      ["response_format of another type", (b) => { (b.response_format as Row).type = "text"; }],
-      ["adds generation_config.image_config (deprecated)", (b) => { b.generation_config = { image_config: { image_size: "2K" } }; }],
+      ["adds response_format image_size 4K", (b) => { b.response_format = { type: "image", image_size: "4K" }; }],
+      ["adds response_format aspect_ratio 4:5", (b) => { b.response_format = { type: "image", image_size: "2K", aspect_ratio: "4:5" }; }],
+      ["adds imageSize (generation_config)", (b) => { b.generation_config = { image_generation_config: { image_size: "2K" } }; }],
+      ["adds aspectRatio (generation_config)", (b) => { b.generation_config = { image_generation_config: { aspect_ratio: "4:3" } }; }],
+      ["drops response_modalities", (b) => { delete b.response_modalities; }],
       ["adds tools", (b) => { b.tools = [{ type: "google_search" }]; }],
-      ["sends response_modalities again (a second output mechanism)", (b) => { b.response_modalities = ["image"]; }],
       ["adds knowledge/feedback as text", (b) => { (b.input as Row[]).splice(1, 0, { type: "text", text: "DATA: liked examples…" }); }],
       ["switches the model (fallback)", (b) => { b.model = "gemini-3.1-flash-image"; }],
     ];
@@ -412,14 +453,14 @@ async function main() {
       const t = JSON.parse(B) as Row; fn(t);
       const T = JSON.stringify(t);
       const cap = captureInteractionBoundary(BASELINE_ENDPOINT, ["content-type"], T, String(t.model));
-      const flagged = cap.strict_stateless === false || cap.provider_prompt_sha256 !== sha(SYNTHETIC) || cap.provider_inputs[0]?.sha256 !== sha(photo) || cap.image_size !== "2K" || cap.aspect_ratio !== "OMITTED" || t.model !== "gemini-3-pro-image";
+      const flagged = cap.strict_stateless === false || cap.provider_prompt_sha256 !== sha(SYNTHETIC) || cap.provider_inputs[0]?.sha256 !== sha(photo) || cap.image_size !== "OMITTED" || cap.aspect_ratio !== "OMITTED" || t.model !== "gemini-3-pro-image";
       // …and the adapter's own pre-HTTP guard refuses it (retouch_request_contract_failed).
-      const refused = retouchInteractionViolation(t, { prompt: SYNTHETIC, referenceImages: [{ base64: photo.toString("base64"), mime: "image/jpeg" }], resolution: "2K", aspectRatio: "auto" }, "gemini-3-pro-image") !== null
+      const refused = retouchInteractionViolation(t, { prompt: SYNTHETIC, referenceImages: [{ base64: photo.toString("base64"), mime: "image/jpeg" }] }, "gemini-3-pro-image") !== null
         || name === "changes the image (re-encode)"; // caught by strictInputSha256 in the adapter
       check(`detects: ${name}`, T !== A && flagged && refused);
     }
     check("…while the untouched B equals A, and the guard accepts it", A === B
-      && retouchInteractionViolation(JSON.parse(B), { prompt: SYNTHETIC, referenceImages: [{ base64: photo.toString("base64"), mime: "image/jpeg" }], resolution: "2K", aspectRatio: "auto" }, "gemini-3-pro-image") === null);
+      && retouchInteractionViolation(JSON.parse(B), { prompt: SYNTHETIC, referenceImages: [{ base64: photo.toString("base64"), mime: "image/jpeg" }] }, "gemini-3-pro-image") === null);
     // (A second request is caught by F3: the wire is counted, not assumed.)
   }
 
@@ -431,7 +472,7 @@ async function main() {
     db.tables.length = 0;
     await click(db, { sourcePath: SRC, expectedOutputs: 1 }); const first = wire[0]!.body;
     await click(db, { sourcePath: SRC, expectedOutputs: 1 }); const again = wire[0]!.body;
-    check("the same photo twice → byte-identical bodies (nothing carried over from earlier jobs)", first === again && first === baselineBody({ prompt: SYNTHETIC, image: photo, mimeType: "image/jpeg", imageSize: "2K" }));
+    check("the same photo twice → byte-identical bodies (nothing carried over from earlier jobs)", first === again && first === baselineBody({ prompt: SYNTHETIC, image: photo, mimeType: "image/jpeg" }));
     check("no knowledge / feedback / examples table is read on a Retusz click", !db.tables.some((t) => /knowledge|feedback|example/.test(t)), [...new Set(db.tables)]);
   }
 

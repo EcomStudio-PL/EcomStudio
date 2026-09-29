@@ -9,7 +9,7 @@ import {
 } from "@/lib/ai/request-manifest";
 import type { Resolution } from "@/lib/ai/types";
 import { getAdapter } from "@/lib/ai/registry";
-import { GEMINI_IMAGE_ASPECT_RATIOS, buildRetouchInteraction } from "@/lib/ai/providers/google-request";
+import { GEMINI_IMAGE_ASPECT_RATIOS } from "@/lib/ai/providers/google-request";
 import { GENERATION_BUDGET_MS, MAX_ATTEMPTS_PER_PROVIDER } from "@/lib/server/provider-router";
 import { RETOUCH_OPERATION } from "@/lib/server/retouch";
 import { FASHION_TOOLS } from "@/lib/fashion-tools";
@@ -101,17 +101,15 @@ export async function buildRequestManifest(
   const config: RequestManifest["config"] = {
     operation: probe(undefined)?.operation ?? "IMAGE_EDIT",
     ratioWhenOriginal: meta?.snaps ? "nearest_supported" : primary && slugOf(primary) === "google" ? "input_photo" : "provider_choice",
-    // Retusz: the Interactions body's response_format — 2K/4K sent as
-    // image_size (1K is not offered, nothing sent), the ratios offered are the
-    // model's that Google officially renders ("Oryginalny" sends none).
+    // Retusz: Google is sent NO size and NO ratio (the launch-safe request);
+    // the offered 2K/4K and ratios shape the delivered file afterwards
+    // (retouch-delivery.ts), so every size shows "not sent".
     ratios: toolKey === "retouch"
       ? (primary?.supported_aspect_ratios ?? []).filter((r) => (getAdapter("google")?.capabilities.ratios as readonly string[] | undefined ?? []).includes(r) && (GEMINI_IMAGE_ASPECT_RATIOS as readonly string[]).includes(r))
       : primary?.supported_aspect_ratios ?? [],
     sizes: resolutions.map((r) => ({
       resolution: r,
-      sent: toolKey === "retouch"
-        ? buildRetouchInteraction({ model_identifier: "" }, { prompt: "", referenceImages: [], resolution: r as Resolution, aspectRatio: "auto" }).response_format?.image_size ?? null
-        : probe(r as Resolution)?.imageSize ?? null,
+      sent: toolKey === "retouch" ? null : probe(r as Resolution)?.imageSize ?? null,
     })),
     timeoutMs: effectiveCallTimeout(engine?.timeoutMs) ?? null,
     maxAttempts: Math.min(Math.max(engine?.maxAttempts ?? MAX_ATTEMPTS_PER_PROVIDER, 1), MAX_ATTEMPTS_PER_PROVIDER),
@@ -175,6 +173,8 @@ async function lastRunOf(supabase: Client, operation: string, publishedDigest: s
         storedWidth: n(x.stored_width), storedHeight: n(x.stored_height), storedBytes: n(x.stored_bytes), transformed: b(x.transformed_after_provider),
         providerSha256: str(x.provider_sha256), storedSha256: str(x.stored_sha256), storedEqual: b(x.stored_equals_provider),
         imageParts: n(x.provider_image_parts), thoughtSkipped: n(x.provider_thought_images_skipped), finishReason: str(x.provider_finish_reason),
+        deliveredQuality: str(x.delivered_quality), deliveredAspect: str(x.delivered_aspect_ratio),
+        deliveredWidth: n(x.delivered_width), deliveredHeight: n(x.delivered_height), postprocess: str(x.postprocess),
       };
     }),
     inputs: inputs.map((i) => {

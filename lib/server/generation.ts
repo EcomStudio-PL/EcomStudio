@@ -21,6 +21,7 @@ import { buildDedupeKey, notify } from "@/lib/server/notify";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
 import { readTokenPrices, readUnitPrices, recordProviderCalls, type ProviderCall } from "@/lib/server/ai-usage";
 import { imageCallCost, sumKnownCosts } from "@/lib/ai/usage-cost";
+import { deliverRetouch, isRetouchDeliverySize, type RetouchDelivered } from "@/lib/server/retouch-delivery";
 import {
   GENERATION_BUDGET_MS, MAX_ATTEMPTS_PER_PROVIDER, PROVIDER_CALL_BUDGET_MS,
   fitsInBudget, getProviderHealth, providerBlocked,
@@ -271,8 +272,9 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   const aspectRatio = (inputShaped || modelRatios.includes(input.aspectRatio)
     ? input.aspectRatio
     : modelRatios[0] ?? "1:1") as AspectRatio;
-  // RETUSZ NEVER SNAPS: the size and framing sent are exactly the ones asked
-  // for, or the run is refused here — before any job, charge or call.
+  // RETUSZ NEVER SNAPS the customer's delivery size / format: exactly the
+  // ones asked for, or the run is refused here — before any job, charge or
+  // call. (Neither reaches Google; they shape the delivered file.)
   if (input.strictSingleImage && (resolution !== input.resolution || aspectRatio !== input.aspectRatio)) {
     return { ok: false, error: "retouch_config_parity_failed" };
   }
@@ -589,6 +591,10 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   // thinking tokens the response itself reported (ai_token_prices) — never a
   // guessed figure. Read once per run; empty lists on any failure.
   const [unitPrices, tokenPrices] = await Promise.all([readUnitPrices(supabase), readTokenPrices(supabase)]);
+  // Retusz sends Google NO image_size (the launch-safe request), so Google
+  // renders at its default size and bills that — the call is priced at it,
+  // never at the 2K/4K the customer's FILE is delivered in afterwards.
+  const RETOUCH_PROVIDER_SIZE = "1K";
   const traceCall = (c: {
     providerSlug: string; model: { model_identifier: string; internal_cost_usd_micros: number | null };
     ok: boolean; images: number; ms: number; errorCode?: string;
@@ -713,13 +719,9 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       callTimeoutMs,
     };
     // What this candidate is really asked — recorded on the job whatever happens.
-    // Retusz: the size and ratio in the Interactions body's response_format
-    // (buildRetouchInteraction — no ratio for "Oryginalny"); everything else
-    // is described by its own builder.
-    const cFormat = strict ? buildRetouchInteraction(cModel, cRequest).response_format : undefined;
-    const cShape = strict
-      ? { operation: "IMAGE_EDIT" as const, aspectRatio: cFormat?.aspect_ratio ?? null, imageSize: cFormat?.image_size ?? null }
-      : describeProviderRequest(cProviderSlug, cModel, cRequest);
+    // Retusz sends neither a size nor a ratio (Interactions body, see
+    // buildRetouchInteraction); everything else is described by the builder.
+    const cShape = strict ? { operation: "IMAGE_EDIT" as const, aspectRatio: null, imageSize: null } : describeProviderRequest(cProviderSlug, cModel, cRequest);
     const cRecord = {
       provider: cProviderSlug, model_identifier: cModel.model_identifier, model_id: cModel.id,
       fallback_used: candidateId !== input.modelId,
@@ -743,13 +745,21 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       // sanitised (prompt → length + keyed digest, image → SHA-256 + bytes),
       // and the counts that must all be zero for an independent task.
       ...(input.strictSingleImage && cProviderSlug === "google" ? statelessDiagnostics(cModel, cRequest, finalPrompt, input.promptContract) : {}),
-      aspect_ratio_requested: input.aspectRatio, aspect_ratio_sent: cShape.aspectRatio,
+      // Retusz asks Google for NO ratio ("auto"); the customer's format is the
+      // delivered_aspect_ratio above, applied after generation.
+      aspect_ratio_requested: strict ? "auto" : input.aspectRatio, aspect_ratio_sent: cShape.aspectRatio,
       // The customer's explicit pick, or "Oryginalny" with the field omitted.
-      aspect_ratio_mode: input.aspectRatio !== "auto" ? "USER_SELECTED" : cShape.aspectRatio === null ? "ORIGINAL_OMITTED" : "PROVIDER_AUTO",
+      aspect_ratio_mode: !strict && input.aspectRatio !== "auto" ? "USER_SELECTED" : cShape.aspectRatio === null ? "ORIGINAL_OMITTED" : "PROVIDER_AUTO",
       source_width: cSource?.width ?? null, source_height: cSource?.height ?? null,
       source_aspect_ratio: sourceAspect(cSource?.width, cSource?.height),
       resolved_aspect_ratio: cShape.aspectRatio,
       resolution: cResolution ?? null, image_size_sent: cShape.imageSize,
+      // Retusz: Google is asked for its DEFAULT size (nothing sent); the
+      // customer's quality/format shape the delivered file afterwards.
+      ...(strict ? {
+        provider_requested_size: "DEFAULT",
+        delivered_quality: cResolution ?? null, delivered_aspect_ratio: input.aspectRatio,
+      } : {}),
       inputs: cFit.list.map(referenceFingerprint),
       // The tool's own per-request limit, or null = the adapter's ceiling below.
       call_timeout_ms: callTimeoutMs ?? null,
@@ -816,7 +826,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         traceCall({
           providerSlug: cProviderSlug, model: cModel, ok: true, images: result.images.length,
           ms: Date.now() - attemptStartedAt, usage: result.usage,
-          resolution: cRequest.resolution ?? null, quality: cRequest.quality ?? null,
+          resolution: strict ? RETOUCH_PROVIDER_SIZE : cRequest.resolution ?? null, quality: cRequest.quality ?? null,
         });
         if (health.get(cProviderSlug) && health.get(cProviderSlug)!.state !== "healthy") {
           await recordProviderSuccess(supabase, cProviderSlug);
@@ -829,7 +839,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
         traceCall({
           providerSlug: cProviderSlug, model: cModel, ok: false, images: pe.partial?.length ?? 0,
           ms: Date.now() - attemptStartedAt, errorCode: pe.safeMessage, usage: pe.usage,
-          resolution: cRequest.resolution ?? null, quality: cRequest.quality ?? null,
+          resolution: strict ? RETOUCH_PROVIDER_SIZE : cRequest.resolution ?? null, quality: cRequest.quality ?? null,
         });
         attempts.push({
           provider: cProviderSlug, model: cModel.model_identifier, attempt,
@@ -969,7 +979,9 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
   /** THE OUTPUT AS THE PROVIDER RETURNED IT vs AS STORED — one entry per
    *  image. The stored object IS the provider's bytes (no resize, no
    *  re-encode; previews/thumbnails are separate derived files), which this
-   *  record proves per job rather than asserts. */
+   *  record proves per job rather than asserts — except Retusz, whose file
+   *  is the DELIVERED 2K/4K + format version (retouch-delivery.ts), recorded
+   *  next to the provider's own dimensions and hash. */
   const providerOutput: Record<string, unknown>[] = [];
   let idx = 0;
   for (const img of result.images) {
@@ -984,6 +996,19 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       }
     }
     if (!bytes) continue;
+    // RETUSZ DELIVERY: the provider's final image is fingerprinted as it
+    // arrived, THEN the customer's 2K/4K + format are applied locally
+    // (deterministic resize + white canvas, no crop, no AI). The customer's
+    // file is the delivered one; the provider's is recorded, not re-sent.
+    const providerBytes = bytes;
+    const providerMime = mime;
+    let delivered: RetouchDelivered | null = null;
+    if (strict && isRetouchDeliverySize(resolution)) {
+      delivered = await deliverRetouch(bytes, mime, resolution, input.aspectRatio).catch(() => null);
+      if (!delivered) continue;
+      bytes = delivered.bytes;
+      mime = delivered.mime;
+    }
     const ext = mime.includes("webp") ? "webp" : mime.includes("jpeg") ? "jpg" : "png";
     const path = `${workspaceId}/${job.id}/${idx}.${ext}`;
     const { error: upErr } = await supabase.storage.from("generation-assets")
@@ -994,10 +1019,11 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       let dims: { width?: number; height?: number } = { width: img.width, height: img.height };
       try {
         const { default: sharp } = await import("sharp");
-        const meta = await sharp(bytes, { failOn: "none" }).metadata();
+        const meta = await sharp(providerBytes, { failOn: "none" }).metadata();
         if (meta.width && meta.height) dims = { width: meta.width, height: meta.height };
       } catch { /* the model's own figures stand */ }
-      const providerSha = createHash("sha256").update(bytes).digest("hex");
+      const providerSha = createHash("sha256").update(providerBytes).digest("hex");
+      const storedDims = delivered ? { width: delivered.width, height: delivered.height } : dims;
       // READ BACK what storage holds — the object "Pobierz" serves — so the
       // record proves provider bytes === downloadable original, per job.
       const { data: back } = await supabase.storage.from("generation-assets").download(path);
@@ -1006,7 +1032,7 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
       providerOutput.push({
         requested_image_size: (lastRequest?.image_size_sent as string | null | undefined) ?? null,
         provider_returned_width: dims.width ?? null, provider_returned_height: dims.height ?? null,
-        provider_mime: mime, provider_bytes: bytes.length, provider_sha256: providerSha,
+        provider_mime: providerMime, provider_bytes: providerBytes.length, provider_sha256: providerSha,
         // What the response carried: interim (thought) drafts are never kept.
         provider_image_parts: img.response?.imageParts ?? null,
         provider_thought_images_skipped: img.response?.thoughtImagesSkipped ?? null,
@@ -1016,14 +1042,21 @@ export async function runGeneration(supabase: Client, userId: string, workspaceI
           provider_steps: img.response.steps,
           provider_picked_step: img.response.pickedStep ?? null,
         } : {}),
-        stored_width: dims.width ?? null, stored_height: dims.height ?? null,
+        stored_width: storedDims.width ?? null, stored_height: storedDims.height ?? null,
         stored_bytes: storedBytes?.length ?? null, stored_sha256: storedSha,
         stored_equals_provider: storedSha === null ? null : storedSha === providerSha,
-        stored_path: path, transformed_after_provider: false,
+        stored_path: path, transformed_after_provider: delivered !== null,
+        // Retusz delivery: provider output vs the file the customer gets.
+        ...(delivered ? {
+          provider_requested_size: "DEFAULT",
+          delivered_quality: resolution, delivered_aspect_ratio: input.aspectRatio,
+          delivered_width: delivered.width, delivered_height: delivered.height,
+          delivered_mime: delivered.mime, postprocess: delivered.postprocess,
+        } : {}),
       });
       const { data: assetRow } = await supabase.from("generation_assets").insert({
         generation_id: generation.id, asset_type: "image", storage_path: path,
-        width: dims.width ?? null, height: dims.height ?? null,
+        width: storedDims.width ?? null, height: storedDims.height ?? null,
         metadata: { provider: served.providerSlug, model: model2.model_identifier },
       }).select("id").single();
 
@@ -1229,7 +1262,7 @@ function buildProductContext(name: string, description: string | null, extraInfo
  */
 function statelessDiagnostics(
   model: { model_identifier: string },
-  req: { prompt: string; referenceImages: { base64: string; mime: string }[]; resolution?: Resolution; aspectRatio?: AspectRatio },
+  req: { prompt: string; referenceImages: { base64: string; mime: string }[] },
   finalPrompt: string,
   contract: { knowledgeCount?: number; examplesCount?: number } | undefined,
 ): Record<string, unknown> {
@@ -1258,8 +1291,7 @@ function statelessDiagnostics(
         { type: "text", text: { chars: promptLength(body.input[0].text), digest: promptDigest(body.input[0].text) } },
         { type: "image", mime_type: body.input[1].mime_type, sha256: createHash("sha256").update(bytes).digest("hex"), bytes: bytes.length },
       ],
-      // The output config (size, and ratio unless "Oryginalny") — no text.
-      ...(body.response_format ? { response_format: body.response_format } : {}),
+      response_modalities: body.response_modalities,
       store: body.store,
     },
   };

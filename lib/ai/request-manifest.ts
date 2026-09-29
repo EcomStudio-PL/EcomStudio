@@ -145,6 +145,9 @@ export type LastRun = {
     providerSha256: string | null; storedSha256: string | null; storedEqual: boolean | null;
     /** Image parts the response carried / interim (thought) drafts skipped / finish reason. */
     imageParts: number | null; thoughtSkipped: number | null; finishReason: string | null;
+    /** Retusz delivery: the customer's quality / format applied after generation. */
+    deliveredQuality: string | null; deliveredAspect: string | null;
+    deliveredWidth: number | null; deliveredHeight: number | null; postprocess: string | null;
   }[];
   /** The keyed digest of the final prompt as sent (settings.provider_request). */
   digest: string | null;

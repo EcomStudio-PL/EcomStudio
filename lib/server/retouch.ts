@@ -4,7 +4,8 @@ import { isPending, runEngineImageTool } from "@/lib/server/engine/tool-run";
 import { resolveEngine } from "@/lib/server/ai-engine";
 import type { AspectRatio, Resolution } from "@/lib/ai/types";
 import { getAdapter } from "@/lib/ai/registry";
-import { GEMINI_IMAGE_ASPECT_RATIOS, RETOUCH_IMAGE_SIZES } from "@/lib/ai/providers/google-request";
+import { GEMINI_IMAGE_ASPECT_RATIOS } from "@/lib/ai/providers/google-request";
+import { RETOUCH_DELIVERY_SIZES } from "@/lib/server/retouch-delivery";
 
 /**
  * RETUSZ ZDJĘĆ — GrovBase's own retouch pass.
@@ -24,11 +25,14 @@ import { GEMINI_IMAGE_ASPECT_RATIOS, RETOUCH_IMAGE_SIZES } from "@/lib/ai/provid
  * WHAT THE MODEL RECEIVES, with a prompt published in Admin → Narzędzia i
  * silniki: ONE stateless Interactions API call (store:false, no previous
  * interaction) carrying that prompt byte for byte and the original uploaded
- * photo (untouched bytes), plus the output config the customer picked:
- * response_format {type:"image", image_size 2K|4K, aspect_ratio} — with no
- * aspect_ratio for "Oryginalny" (the photo's own shape). No fallback, no
- * retry. Nothing else: no Product Lock, no built-in text, no knowledge, no
- * ratings; the size and ratio never enter the prompt.
+ * photo (untouched bytes) — the launch-safe request of 18ad7a8 / 5113398:
+ * {model, input:[text, image], response_modalities:["image"], store:false}.
+ * No image size, no aspect ratio, no fallback, no retry. Nothing else: no
+ * Product Lock, no built-in text, no knowledge, no ratings.
+ *
+ * The customer's 2K / 4K and format are applied AFTER the answer, to the
+ * final file only (lib/server/retouch-delivery.ts: deterministic resize +
+ * white canvas, never a crop, never a second model call).
  */
 
 /** The model this tool runs on when the panel assigns none. Resolved by its
@@ -146,17 +150,17 @@ export function retouchPrice(model: RetouchModelInfo, resolution: string): numbe
 }
 
 /**
- * THE CUSTOMER'S OUTPUT CHOICE: quality 2K or 4K (default 2K; 1K is not
- * offered) and the format — "original" (no aspect_ratio sent: the photo's own
- * shape) or one ratio this model renders from Google's official list. Both go
- * to Google as response_format only; neither ever enters the prompt.
+ * THE CUSTOMER'S DELIVERY CHOICE: quality 2K or 4K (default 2K; 1K is not
+ * offered) and the format — "original" (the generated image's own shape) or
+ * one ratio from the offered list. Neither reaches Google nor the prompt:
+ * both shape the delivered file after generation (retouch-delivery.ts).
  */
 export const RETOUCH_DEFAULT_RESOLUTION = "2K";
 export const RETOUCH_FORMAT_ORIGINAL = "original";
 
 /** The sizes the picker offers: 2K/4K, as far as the model has them. */
 export function retouchSizes(model: RetouchModelInfo): string[] {
-  return RETOUCH_IMAGE_SIZES.filter((s) => model.resolutions.includes(s));
+  return RETOUCH_DELIVERY_SIZES.filter((s) => model.resolutions.includes(s));
 }
 
 /** The ratios the picker offers: the model's, that the Google adapter draws
@@ -204,8 +208,10 @@ export async function runRetouch(
 
   // The customer's size and format, validated against what is offered —
   // anything else is refused, never replaced by a near value. "Oryginalny"
-  // = "auto" = no aspect_ratio in the request. Workflow ON keeps its
-  // pre-2K/4K values (1K, "auto").
+  // = "auto" = the generated image's own shape. These two values reach
+  // runGeneration ONLY to shape the delivered file after generation — the
+  // Gemini request carries neither. Workflow ON keeps its pre-2K/4K values
+  // (1K, "auto").
   const requestedSize = input.resolution ?? RETOUCH_DEFAULT_RESOLUTION;
   const requestedFormat = input.format ?? RETOUCH_FORMAT_ORIGINAL;
   if (!model.workflowEnabled) {
@@ -230,7 +236,8 @@ export async function runRetouch(
       aspectRatio,
       // The Google adapter's own Retusz path: ONE stateless Interactions call
       // (store:false) carrying [the published prompt, the stored photo bytes
-      // as-is], checked on the serialised body before the HTTP call.
+      // as-is], checked on the serialised body before the HTTP call; the
+      // 2K/4K + format below are applied to the result (retouch-delivery.ts).
       strictSingleImage: true,
       resolution,
       quantity: 1,

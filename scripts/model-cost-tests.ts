@@ -120,14 +120,14 @@ async function main() {
     }), { status: 200, headers: { "content-type": "application/json" } });
   }) as typeof fetch;
   const rx = await googleAdapter.generate({ model_identifier: NB_PRO, supported_resolutions: ["1K", "2K", "4K"] } as never, {
-    prompt: "P", aspectRatio: "auto", resolution: "2K", quantity: 1, strictSingleImage: true,
+    prompt: "P", aspectRatio: "auto", quantity: 1, strictSingleImage: true,
     referenceImages: [{ base64: "QUJD", mime: "image/png" }], productLock: { fidelityInstructions: "" },
   } as never, { apiKey: "k", baseUrl: null } as never);
   check("Interactions (Retusz): input 700, output 1120+210, thinking 210",
     rx.usage?.inputTokens === 700 && rx.usage?.outputTokens === 1330 && rx.usage?.thoughtTokens === 210, rx.usage);
   const rxBody = JSON.parse(bodies[0] ?? "{}") as Record<string, unknown>;
-  check("Retusz request is exactly {model, input, response_format, store:false} (no response_modalities) — one request",
-    bodies.length === 1 && JSON.stringify(Object.keys(rxBody)) === JSON.stringify(["model", "input", "response_format", "store"]) && rxBody.store === false, Object.keys(rxBody));
+  check("Retusz request is still exactly {model, input, response_modalities, store:false} — one request",
+    bodies.length === 1 && JSON.stringify(Object.keys(rxBody)) === JSON.stringify(["model", "input", "response_modalities", "store"]) && rxBody.store === false, Object.keys(rxBody));
   // A billed answer with NO final image (e.g. a safety stop): its reported
   // tokens travel with the error, so the failed call is not recorded as $0.
   globalThis.fetch = (async () => new Response(JSON.stringify({
@@ -151,8 +151,8 @@ async function main() {
   }), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
   let rxErr: { safeMessage?: string; usage?: { inputTokens?: number; thoughtTokens?: number } } = {};
   try {
-    await googleAdapter.generate({ model_identifier: NB_PRO, supported_resolutions: ["1K", "2K", "4K"] } as never, {
-      prompt: "P", aspectRatio: "auto", resolution: "4K", quantity: 1, strictSingleImage: true,
+    await googleAdapter.generate({ model_identifier: NB_PRO, supported_resolutions: ["1K"] } as never, {
+      prompt: "P", aspectRatio: "auto", quantity: 1, strictSingleImage: true,
       referenceImages: [{ base64: "QUJD", mime: "image/png" }], productLock: { fidelityInstructions: "" },
     } as never, { apiKey: "k", baseUrl: null } as never);
   } catch (e) { rxErr = e as typeof rxErr; }
@@ -185,8 +185,9 @@ async function main() {
   const gsrc = code("lib/server/generation.ts");
   check("ledger cost = sum of the traced calls (not flat internal cost × images)",
     /apiCostUsdMicros: sumKnownCosts\(providerCalls\.map\(\(c\) => c\.cost\)\)\.usdMicros/.test(gsrc) && !/internal_cost_usd_micros \?\? 0\) \* stored\.length/.test(gsrc));
-  check("every call is priced with the official size price + reported tokens", /imageCallCost\(unitPrices, tokenPrices/.test(gsrc)
-    && /resolution: cRequest\.resolution/.test(gsrc));
+  check("every call is priced with the official size price of the REAL request + reported tokens (Retusz: Google's default size, nothing sent)",
+    /imageCallCost\(unitPrices, tokenPrices/.test(gsrc)
+    && /resolution: strict \? RETOUCH_PROVIDER_SIZE : cRequest\.resolution/.test(gsrc) && /const RETOUCH_PROVIDER_SIZE = "1K";/.test(gsrc));
   check("one startUsage per run (one charge)", (gsrc.match(/await startUsage\(/g) ?? []).length === 1);
   check("a refunded run still records what its calls cost (both failure paths)",
     (gsrc.match(/error: (safe|"storage_failed"),\n\s*apiCostUsdMicros: sumKnownCosts\(providerCalls\.map\(\(c\) => c\.cost\)\)\.usdMicros/g) ?? []).length === 2);
