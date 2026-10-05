@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/services/audit";
+import { normaliseSearchTags } from "@/lib/search-tags";
 import { openPrompt, sealPrompt } from "@/lib/server/ai-engine";
 import { PromptKeyError, unopenedError } from "@/lib/server/prompt-vault";
 import { adminPromptKeyring } from "@/lib/server/prompt-vault-admin";
@@ -162,6 +163,40 @@ export async function saveToolConfigAction(input: {
         ...(owns("service_slug") ? { service_slug: input.serviceSlug } : {}) },
     });
     refresh(input.toolKey);
+    return { ok: true };
+  } catch { return { ok: false, error: "generic" }; }
+}
+
+/* ── search tags (global search metadata) ─────────────────────────────────*/
+
+/**
+ * TAGI WYSZUKIWANIA — extra phrases that find this tool in the global search.
+ * Search metadata ONLY: nothing here reaches a prompt, a model or a request,
+ * and it changes no availability (the palette filters with menuVisible()
+ * before matching). Normalised by the same rule the editor uses: trimmed, no
+ * empties, ≤ 60 characters, no case/diacritic duplicates, at most 30.
+ */
+export async function saveToolSearchTagsAction(toolKey: string, tags: unknown): Promise<Result> {
+  try {
+    if (!isAiToolKey(toolKey)) return { ok: false, error: "unknown_tool" };
+    if (!Array.isArray(tags)) return { ok: false, error: "search_tags_invalid" };
+    const { supabase, adminId } = await requireAdmin();
+    const searchTags = normaliseSearchTags(tags);
+    const { error } = await supabase.from("ai_tools").upsert({
+      tool_key: toolKey,
+      search_tags: searchTags,
+      updated_at: new Date().toISOString(),
+      updated_by: adminId,
+    });
+    if (error) return { ok: false, error: "generic" };
+    await logAudit(supabase, {
+      actorId: adminId, action: "ai_tool.search_tags_saved",
+      entityType: "ai_tool", entityId: toolKey,
+      after: { search_tags: searchTags },
+    });
+    refresh(toolKey);
+    // The customer bars read the tags in their layouts.
+    revalidatePath("/", "layout");
     return { ok: true };
   } catch { return { ok: false, error: "generic" }; }
 }

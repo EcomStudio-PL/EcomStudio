@@ -12,6 +12,7 @@ import { bannerSlotKey } from "@/lib/media-slots";
 import { homeModel } from "@/lib/home-sections";
 import { menuItemKeys } from "@/lib/tool-layout";
 import { getToolsLayout } from "@/lib/server/tool-layout";
+import { readToolSearchTags } from "@/lib/server/tool-search-tags";
 import { MegaTopbar } from "@/components/layout/mega-topbar";
 import { DrawerProvider } from "@/components/layout/shell-context";
 import { ProductHome } from "./product-home";
@@ -66,6 +67,8 @@ export async function ProductSurface({ scope = "page" }: {
         // which knows this file is an app-scoped surface.
         getScopedDictionary("app"),
         user ? memberChrome(supabase, user.id) : Promise.resolve(null),
+        // Admin search tags for the bar's global search (metadata only).
+        readToolSearchTags(supabase),
       ])
     : null;
 
@@ -88,7 +91,7 @@ export async function ProductSurface({ scope = "page" }: {
     <ProductHome signedIn={signedIn} model={model} slots={slots} t={t} banners={banners} locale={locale} />
   );
   if (!chrome) return body;
-  const [popularity, { dict: appDict }, member] = await chrome;
+  const [popularity, { dict: appDict }, member, searchTags] = await chrome;
 
   return (
     <I18nScope dict={appDict}>
@@ -111,6 +114,7 @@ export async function ProductSurface({ scope = "page" }: {
           availability={availability}
           menuItems={menuItemKeys(layout)}
           popularTools={popularity.keys}
+          searchTags={searchTags}
         />
 
         <main className="mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-[var(--page-x)] pb-16 pt-4 sm:px-6 sm:pt-5 lg:px-8 lg:pt-6 xl:px-10">

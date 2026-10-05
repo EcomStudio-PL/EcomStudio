@@ -79,8 +79,13 @@ function cspDirectives(configSrc: string): string {
 }
 
 const ID = "G-CW61S1HTSF";
-const events = (dl: unknown[]) => dl.filter((e) => Array.isArray(e) && e[0] === "event");
-const configs = (dl: unknown[]) => dl.filter((e) => Array.isArray(e) && e[0] === "config");
+/** gtag.js runs a queue entry as a command ONLY when it is an `arguments`
+ *  object (Google's `function gtag(){dataLayer.push(arguments)}`); an array is
+ *  not a command — the production bug this suite now guards. */
+const isArgs = (e: unknown) => Object.prototype.toString.call(e) === "[object Arguments]";
+const cmd = (e: unknown): unknown[] | null => (isArgs(e) ? Array.from(e as ArrayLike<unknown>) : null);
+const events = (dl: unknown[]) => dl.map(cmd).filter((e): e is unknown[] => !!e && e[0] === "event");
+const configs = (dl: unknown[]) => dl.map(cmd).filter((e): e is unknown[] => !!e && e[0] === "config");
 
 async function main() {
   console.log("A. IS IT ON AT ALL");
@@ -113,7 +118,9 @@ async function main() {
       JSON.stringify(configs(dl)[0]).includes('"send_page_view":false'),
       JSON.stringify(configs(dl)[0]));
     check("js is sent before config, as Google's snippet does",
-      Array.isArray(dl[0]) && (dl[0] as unknown[])[0] === "js");
+      cmd(dl[0])?.[0] === "js" && cmd(dl[1])?.[0] === "config");
+    check("EVERY entry is an `arguments` object (gtag.js ignores arrays as commands) — the GA4 no-data root cause",
+      dl.length === 2 && dl.every((e) => isArgs(e) && !Array.isArray(e)), dl.map((e) => Object.prototype.toString.call(e)).join());
   }
 
   console.log("\nC. ONE PAGE_VIEW PER VISIT — NOT TWO, NOT NONE");

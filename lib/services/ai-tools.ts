@@ -262,6 +262,8 @@ export type ToolRow = {
   timeoutMs: number;
   maxAttempts: number;
   notes: string | null;
+  /** Admin search aliases for the global search (metadata only). */
+  searchTags: string[];
   knowledgeSets: number;
   /** Newest usage event for this tool's service, and how the last 30 days went. */
   lastRunAt: string | null;
@@ -374,6 +376,7 @@ export async function readToolRegistry(
       timeoutMs: row?.timeout_ms ?? 120000,
       maxAttempts: row?.max_attempts ?? 1,
       notes: row?.notes ?? null,
+      searchTags: row?.search_tags ?? [],
       knowledgeSets: knowledgeCount.get(key) ?? 0,
       lastRunAt: stats?.last ?? null,
       runs30d: stats?.runs ?? 0,

@@ -134,6 +134,7 @@ export type Database = {
           updated_by: string | null
           knowledge_strategy: string
           workflow_enabled: boolean
+          search_tags: string[]
         }
         Insert: {
           tool_key: string
@@ -148,6 +149,7 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
           workflow_enabled?: boolean
+          search_tags?: string[]
         }
         Update: {
           tool_key?: string
@@ -162,6 +164,7 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
           workflow_enabled?: boolean
+          search_tags?: string[]
         }
         Relationships: []
       }
@@ -7547,6 +7550,13 @@ export type Database = {
           usage_key: string
           usage_kind: string
           usage_label: string
+        }[]
+      }
+      tool_search_tags: {
+        Args: never
+        Returns: {
+          tool_key: string
+          search_tags: string[]
         }[]
       }
       media_slots_resolve: {

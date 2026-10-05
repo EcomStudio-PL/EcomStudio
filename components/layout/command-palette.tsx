@@ -76,7 +76,7 @@ const POPULAR_COUNT = 6;
  */
 export function CommandPalette({
   isAdmin, navAdmin, availability, popular: popularKeys, wide = false, iconOnly = false,
-  localOnly = false,
+  localOnly = false, searchTags,
 }: {
   isAdmin: boolean; wide?: boolean;
   /**
@@ -105,6 +105,10 @@ export function CommandPalette({
   popular?: readonly FeatureKey[];
   /** Icon-only trigger for the mobile top bar; the overlay is full-screen. */
   iconOnly?: boolean;
+  /** Admin search tags per tool key (ai_tools.search_tags) — extra phrases
+   *  that FIND a visible tool. Matching only: the visibility filter below runs
+   *  first, so a tag can never surface a hidden or disabled tool. */
+  searchTags?: Readonly<Record<string, readonly string[]>>;
 }) {
   // The bar mounts two triggers — a wide field for desktop and an icon for
   // phones — but only ONE may own Ctrl/⌘K, or the shortcut opens two
@@ -324,8 +328,8 @@ export function CommandPalette({
   // scan over a few dozen short strings, which is why no keystroke here
   // touches the network and none of it needs debouncing.
   const toolIndex = useMemo(
-    () => buildToolIndex(SEARCHABLE.filter((e) => menuVisible(avail, e.href, seesRestricted)), t),
-    [t, avail, seesRestricted],
+    () => buildToolIndex(SEARCHABLE.filter((e) => menuVisible(avail, e.href, seesRestricted)), t, searchTags),
+    [t, avail, seesRestricted, searchTags],
   );
 
   const entryRow = useCallback((entry: ToolEntry): Row => ({

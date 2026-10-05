@@ -78,6 +78,8 @@ async function main() {
 
   check("the tag is requested exactly once", tagRequests === 1, String(tagRequests));
   check("dataLayer exists", Array.isArray(dl) && dl.length > 0, JSON.stringify(dl));
+  check("every entry is an `arguments` object (gtag.js runs only those as commands)",
+    await page.evaluate(() => (window.dataLayer ?? []).every((e) => Object.prototype.toString.call(e) === "[object Arguments]")));
   check("with exactly one config", configs(dl).length === 1, String(configs(dl).length));
   check(`and it names ${ID}`, configs(dl)[0]?.[1] === ID, JSON.stringify(configs(dl)[0]));
   check("with send_page_view disabled",

@@ -222,6 +222,7 @@ export function RetouchWorkspace({
       <div className="flex min-w-0 flex-col gap-3 lg:h-full lg:min-h-0 lg:overflow-y-auto">
         <div className="panel thin-scroll min-h-0 flex-1 space-y-5 overflow-y-auto rounded-2xl p-4 sm:p-5 lg:pb-6">
           <PhotoUploader
+            preview
             items={photos}
             max={MAX_PHOTOS}
             uploading={uploading}

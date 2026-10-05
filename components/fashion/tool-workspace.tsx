@@ -385,6 +385,7 @@ export function FashionToolWorkspace({
               longer decides it. */}
           {config.slots.map((slot, index) => (
             <PhotoUploader
+              preview
               key={slot.key}
               items={pools[slot.key] ?? []}
               max={slot.max}

@@ -39,7 +39,7 @@ import { useOptionalAuthDialog } from "@/components/auth/auth-dialog-context";
  * belongs to the hover target, not empty page. Opening is instant on hover
  * and on click; closing waits 200 ms so the pointer can travel.
  */
-export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdmin, notifications = [], unread = 0, availability, menuItems, popularTools, guest = false, menu: hasMenu = true, brandHref = "/home" }: {
+export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdmin, notifications = [], unread = 0, availability, menuItems, popularTools, searchTags, guest = false, menu: hasMenu = true, brandHref = "/home" }: {
   name: string; email?: string; credits: number; plan: string; isAdmin?: boolean;
   /**
    * NOBODY IS SIGNED IN.
@@ -78,6 +78,8 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
   /** The weekly tool-usage ranking, handed straight to the search overlay so
    *  pressing the magnifier fetches nothing. See lib/server/tool-popularity.ts. */
   popularTools?: readonly FeatureKey[];
+  /** Admin search tags for the global search (metadata only). */
+  searchTags?: Readonly<Record<string, readonly string[]>>;
 }) {
   const { t } = useI18n();
   const { setOpen: setDrawerOpen } = useDrawer();
@@ -204,7 +206,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
               )}
             </div>
           ))}
-          <div className="ml-1.5"><CommandPalette isAdmin={isAdmin} navAdmin={seesRestricted} availability={avail} popular={popularTools} localOnly={guest} wide /></div>
+          <div className="ml-1.5"><CommandPalette isAdmin={isAdmin} navAdmin={seesRestricted} availability={avail} popular={popularTools} searchTags={searchTags} localOnly={guest} wide /></div>
         </nav>
 
         <div className="min-w-0 flex-1" />
@@ -241,7 +243,7 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
         )}
 
         {/* Mobile search icon — the palette opens as a full overlay. */}
-        <div className="lg:hidden"><CommandPalette isAdmin={isAdmin} navAdmin={seesRestricted} availability={avail} popular={popularTools} localOnly={guest} iconOnly /></div>
+        <div className="lg:hidden"><CommandPalette isAdmin={isAdmin} navAdmin={seesRestricted} availability={avail} popular={popularTools} searchTags={searchTags} localOnly={guest} iconOnly /></div>
 
         <div className="hidden sm:block"><ThemeToggle /></div>
 

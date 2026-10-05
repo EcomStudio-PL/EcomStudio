@@ -48,6 +48,7 @@ export function ProductRefsSection({ refs, uploading, max, onUpload, onRemove }:
   // state one wide dropzone, the same one Retusz shows.
   return (
     <PhotoUploader
+      preview
       items={refs}
       max={max}
       uploading={uploading}

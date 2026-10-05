@@ -173,5 +173,26 @@ console.log("L. the copy each tool shows is its own");
   }
 }
 
+/* ── read-only thumbnail preview ─────────────────────────────────────────── */
+{
+  const up = read("components/genv3/uploader.tsx");
+  const lb = read("components/ui/image-lightbox.tsx");
+  check("preview: opt-in prop on PhotoUploader", /preview\?: boolean/.test(up));
+  check("preview: the thumbnail opens it, the remove button never does",
+    /data-photo-preview/.test(up) && /onClick=\{\(e\) => \{ e\.stopPropagation\(\); onRemove\(i\); \}\}/.test(up));
+  check("preview: shows only the display url (never the File, the path or the bytes)",
+    /images=\{items\.map\(\(r\) => \(\{ key: r\.key, src: r\.url \}\)\)\}/.test(up));
+  check("preview: the lightbox never revokes, uploads, fetches or reorders",
+    !/revokeObjectURL|fetch\(|FormData|onFiles|onRemove|\.sort\(|splice\(/.test(lb));
+  check("preview: Escape, arrows, backdrop and X close/step; a counter shows n / N",
+    /"Escape"/.test(lb) && /"ArrowLeft"/.test(lb) && /"ArrowRight"/.test(lb)
+    && /cursor-zoom-out/.test(lb) && /\{current \+ 1\} \/ \{count\}/.test(lb) && /object-contain/.test(lb));
+  check("preview: portalled to <body> and focus returns to the opener",
+    /createPortal\(/.test(lb) && /opener\.focus\(\)/.test(lb));
+  for (const f of ["components/genv3/sections.tsx", "components/fashion/tool-workspace.tsx", "components/retouch/workspace.tsx"]) {
+    check(`preview: enabled in ${f}`, /<PhotoUploader[\s\S]{0,400}?\bpreview\b/.test(read(f)));
+  }
+}
+
 console.log(failures === 0 ? "\nAll file-drop tests passed." : `\n${failures} file-drop test(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

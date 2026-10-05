@@ -8,6 +8,7 @@ import {
   acceptFiles, filesFromClipboard as clipboardFiles, type IntakeLimits,
 } from "@/lib/images/file-intake";
 import { FileDropOverlay, useFileDrop as useSharedFileDrop } from "@/components/ui/file-drop";
+import { ImageLightbox } from "@/components/ui/image-lightbox";
 
 export const UPLOAD_ACCEPT = "image/jpeg,image/png,image/webp,image/avif";
 
@@ -84,7 +85,7 @@ export const DropOverlay = FileDropOverlay;
  */
 export function PhotoUploader({
   items, max, uploading, label, hint, counter = true, compact, capturePaste, dropTarget,
-  onFiles, onRemove, columns = 4, zone, zoneLabel, zoneDense,
+  onFiles, onRemove, columns = 4, zone, zoneLabel, zoneDense, preview,
 }: {
   items: UploadedRef[];
   max: number;
@@ -139,11 +140,18 @@ export function PhotoUploader({
    *  would only push them down. Off by default — the inspiration strip stays
    *  the compact grid it is. */
   zone?: boolean;
+  /** Opt-in: a click (or Enter/Space) on a thumbnail opens a READ-ONLY big
+   *  preview. Purely presentational — it only shows `url`; it never touches
+   *  the files, their order, the upload state or any request. Off by
+   *  default, so every other uploader renders exactly as before. */
+  preview?: boolean;
 }) {
   const { t } = useI18n();
   const fileRef = useRef<HTMLInputElement>(null);
   const full = items.length >= max;
   const bigZone = !!zone && items.length === 0;
+  const [viewIndex, setViewIndex] = useState<number | null>(null);
+  const closePreview = useCallback(() => setViewIndex(null), []);
 
   const take = useCallback((list: FileList | File[] | null | undefined) => {
     const { files } = normalizeFiles(list);
@@ -155,7 +163,8 @@ export function PhotoUploader({
   useEffect(() => {
     if (!capturePaste) return;
     const onPaste = (e: ClipboardEvent) => {
-      if (full || uploading) return;
+      // Nothing is uploaded behind an open preview.
+      if (full || uploading || viewIndex !== null) return;
       const el = document.activeElement as HTMLElement | null;
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
       const files = filesFromClipboard(e);
@@ -166,7 +175,7 @@ export function PhotoUploader({
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
-  }, [capturePaste, full, uploading, onFiles]);
+  }, [capturePaste, full, uploading, onFiles, viewIndex]);
 
   return (
     <section data-drop-target={dropTarget}>
@@ -212,11 +221,20 @@ export function PhotoUploader({
       <div className={cn("grid gap-2 [&>*]:min-w-0", columns === 5 ? "grid-cols-5" : "grid-cols-4 sm:grid-cols-5")}>
         {items.map((r, i) => (
           <div key={r.key} className="group relative aspect-square overflow-hidden rounded-xl ring-1 ring-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={r.url} alt="" className="h-full w-full object-cover" loading="lazy" />
+            {preview ? (
+              <button type="button" onClick={() => setViewIndex(i)} data-photo-preview
+                aria-label={t("genv3.thumbAria", { n: i + 1 })}
+                className="block h-full w-full cursor-zoom-in focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={r.url} alt="" className="h-full w-full object-cover" loading="lazy" />
+              </button>
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={r.url} alt="" className="h-full w-full object-cover" loading="lazy" />
+            )}
             <button type="button" aria-label={t("common.delete")}
-              onClick={() => onRemove(i)}
-              className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white opacity-0 transition-opacity duration-200 focus-visible:opacity-100 group-hover:opacity-100">
+              onClick={(e) => { e.stopPropagation(); onRemove(i); }}
+              className="absolute right-1 top-1 z-10 rounded-full bg-black/60 p-1 text-white opacity-0 transition-opacity duration-200 focus-visible:opacity-100 group-hover:opacity-100">
               <X size={10} aria-hidden />
             </button>
           </div>
@@ -234,6 +252,11 @@ export function PhotoUploader({
 
       {!compact && (
         <p className="mt-1.5 text-[10.5px] leading-relaxed text-faint">{hint ?? t("genv3.uploadWays")}</p>
+      )}
+
+      {preview && (
+        <ImageLightbox images={items.map((r) => ({ key: r.key, src: r.url }))}
+          index={viewIndex} onIndex={setViewIndex} onClose={closePreview} />
       )}
     </section>
   );

@@ -20,6 +20,7 @@ import { blockStateOf } from "@/lib/server/account-block";
 import { formatInstant } from "@/lib/utils";
 import { makeT } from "@/lib/i18n/t";
 import { MegaTopbar } from "@/components/layout/mega-topbar";
+import { readToolSearchTags } from "@/lib/server/tool-search-tags";
 import { CustomerDrawer } from "@/components/layout/customer-drawer";
 import { CustomerBottomNav } from "@/components/layout/customer-bottom-nav";
 import { DrawerProvider } from "@/components/layout/shell-context";
@@ -126,7 +127,7 @@ export default async function AppLayout({ children, searchParams }: {
   // below from re-introducing a serial await.
   const [
     { dict: appDict }, { dict: clientDict }, wallet, { data: sub }, { data: freePlan }, { data: notifs },
-    availability, navAdmin, bonusConfig, campaignStart, popularity, toolsLayout,
+    availability, navAdmin, bonusConfig, campaignStart, popularity, toolsLayout, searchTags,
   ] = await Promise.all([
     getDictionary(),
     // The customer app's own namespaces, on top of what the root layout already
@@ -159,6 +160,9 @@ export default async function AppLayout({ children, searchParams }: {
     // The catalogue layout decides which tools the menu lists. Same settings
     // table, same batch; an unreadable row is the shipped default.
     getToolsLayout(supabase),
+    // Admin search tags for the global search (search metadata only). Same
+    // batch; any error is "no tags" and the search behaves as before.
+    readToolSearchTags(supabase),
   ]);
   const menuItems = menuItemKeys(toolsLayout);
   const t0 = makeT(appDict);
@@ -209,7 +213,7 @@ export default async function AppLayout({ children, searchParams }: {
           itself stops scrolling. Every other page keeps min-h-dvh and
           scrolls normally. */}
       <div className="app-shell flex min-h-dvh w-full min-w-0 flex-col">
-        <MegaTopbar name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} notifications={notifs ?? []} unread={unread} availability={availability} navAdmin={navAdmin} menuItems={menuItems} popularTools={popularity.keys} />
+        <MegaTopbar name={displayName} email={profile.email} credits={wallet?.balance ?? 0} plan={planName} isAdmin={isAdmin} notifications={notifs ?? []} unread={unread} availability={availability} navAdmin={navAdmin} menuItems={menuItems} popularTools={popularity.keys} searchTags={searchTags} />
         {/* Full-width work surface. The bottom padding is DERIVED from the
             chrome tokens, so the fixed navigation can never cover the last
             element on the page — the defect that showed up on every phone

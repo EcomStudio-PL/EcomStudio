@@ -25,6 +25,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ToolConfigForm } from "@/components/admin/tool-basics";
+import { ToolSearchTagsForm } from "@/components/admin/tool-search-tags";
 import { PromptDraftProvider, ToolPromptEditor, ToolPromptHistory } from "@/components/admin/tool-prompt";
 import { withKeyStates } from "@/lib/server/prompt-vault-admin";
 import { ToolModelPicker } from "@/components/admin/tool-models";
@@ -144,6 +145,10 @@ async function BasicsTab({ supabase, t, row, config }: WithConfig) {
           </p>
         )}
         <ToolConfigForm section="basics" initial={config} services={services} />
+        {/* Search metadata only — never on the customer's card, never to AI. */}
+        <div className="mt-6 border-t border-line pt-5">
+          <ToolSearchTagsForm toolKey={row.key} initial={row.searchTags} />
+        </div>
       </Card>
 
       <Card className="p-5">

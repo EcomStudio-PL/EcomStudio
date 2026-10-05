@@ -27,10 +27,10 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   SEARCHABLE, TOOL_CARDS, TOOL_SECTIONS, buildToolIndex, matchTools, normalise,
-  splitPopular, ALL_TOOLS_HREF,
+  splitPopular, ALL_TOOLS_HREF, normaliseSearchTags, SEARCH_TAGS_MAX, SEARCH_TAG_MAX_CHARS,
 } from "@/lib/tool-search";
 import { DOCK_SLOTS, dockSlotActive } from "@/lib/bottom-nav";
-import { allDefaults, type AvailabilityMap, type FeatureKey } from "@/lib/features";
+import { allDefaults, menuVisible, type AvailabilityMap, type FeatureKey } from "@/lib/features";
 import { FALLBACK_ORDER } from "@/lib/server/tool-popularity";
 
 let failed = 0;
@@ -202,6 +202,70 @@ check("a name beating an alias: “kom” puts Kompresja first",
   matchTools(indexFor("pl"), "kom").slice(0, 3).map((e) => e.id).join(", "));
 check("an empty query matches nothing", matchTools(indexFor("pl"), "   ").length === 0);
 check("nonsense matches nothing", matchTools(indexFor("pl"), "qzxqzx").length === 0);
+
+/* ── admin search tags (0134) ────────────────────────────────────────────── */
+
+const TAGS = { retouch: ["obróbka zdjęć"] } as const;
+const tagged = buildToolIndex(SEARCHABLE, (key) => lookup(dicts.pl, key) ?? "", TAGS);
+for (const term of ["obróbka zdjęć", "obrobka zdjec", "obróbka", "zdjec", "OBRÓBKA  ZDJĘĆ", "zdjęć obróbka"]) {
+  const hits = matchTools(tagged, term).map((e) => e.id);
+  check(`tag „obróbka zdjęć” on Retusz: “${term}” finds retouch`, hits.includes("retouch"),
+    `got: ${hits.slice(0, 6).join(", ") || "(nothing)"}`);
+}
+check("…and without the tag, “obróbka” does not invent Retusz",
+  !matchTools(indexFor("pl"), "obróbka").some((e) => e.id === "retouch"));
+check("the tag removed: the old search is unchanged, entry for entry",
+  JSON.stringify(buildToolIndex(SEARCHABLE, (key) => lookup(dicts.pl, key) ?? "", {})) === JSON.stringify(indexFor("pl"))
+  && ["retusz", "tło", "kompresja", "moda"].every((term) =>
+    JSON.stringify(matchTools(buildToolIndex(SEARCHABLE, (key) => lookup(dicts.pl, key) ?? "", {}), term).map((e) => e.id))
+    === JSON.stringify(matchTools(indexFor("pl"), term).map((e) => e.id))));
+check("a tag never outranks a name: “kom” still puts Kompresja first with a „kompozycja” tag on Retusz",
+  matchTools(buildToolIndex(SEARCHABLE, (key) => lookup(dicts.pl, key) ?? "", { retouch: ["kompozycja"] }), "kom")[0]?.id === "compress");
+check("a tag on an unknown key is ignored",
+  JSON.stringify(buildToolIndex(SEARCHABLE, (key) => lookup(dicts.pl, key) ?? "", { nope: ["x"] })) === JSON.stringify(indexFor("pl")));
+
+// Tags never bypass availability: the palette filters with menuVisible BEFORE
+// it builds the index, so a hidden/disabled tool has no row to match.
+const base = allDefaults();
+for (const [label, state] of [
+  ["DISABLED", { ...base.retouch, status: "DISABLED" as const }],
+  ["hidden from menu", { ...base.retouch, hiddenFromMenu: true }],
+] as const) {
+  const map: AvailabilityMap = { ...base, retouch: state };
+  const visible = buildToolIndex(SEARCHABLE.filter((e) => menuVisible(map, e.href, false)),
+    (key) => lookup(dicts.pl, key) ?? "", TAGS);
+  check(`a ${label} Retusz is not found through its tag by a customer`,
+    !matchTools(visible, "obróbka zdjęć").some((e) => e.id === "retouch"));
+}
+const palette = fs.readFileSync("components/layout/command-palette.tsx", "utf8");
+check("the palette filters with menuVisible before indexing the tags",
+  /buildToolIndex\(SEARCHABLE\.filter\(\(e\) => menuVisible\(avail, e\.href, seesRestricted\)\), t, searchTags\)/.test(palette));
+
+check("normaliseSearchTags: trims, drops empties, de-dupes case/diacritics",
+  JSON.stringify(normaliseSearchTags(["  Obróbka  zdjęć ", "", "   ", "OBROBKA ZDJEC", "packshot", 7, null]))
+  === JSON.stringify(["Obróbka zdjęć", "packshot"]));
+check(`normaliseSearchTags: at most ${SEARCH_TAGS_MAX} tags`,
+  normaliseSearchTags(Array.from({ length: 50 }, (_, i) => `tag ${i}`)).length === SEARCH_TAGS_MAX);
+check(`normaliseSearchTags: at most ${SEARCH_TAG_MAX_CHARS} characters each`,
+  normaliseSearchTags(["x".repeat(200)])[0]?.length === SEARCH_TAG_MAX_CHARS);
+check("normaliseSearchTags: not an array → nothing", normaliseSearchTags("obróbka").length === 0);
+
+const action = fs.readFileSync("app/actions/ai-tools.ts", "utf8");
+const saveTags = action.slice(action.indexOf("export async function saveToolSearchTagsAction"));
+check("the save action is admin-only, normalised and audited",
+  /requireAdmin\(\)/.test(saveTags.slice(0, 1200)) && /normaliseSearchTags\(/.test(saveTags.slice(0, 1200))
+  && /logAudit\(/.test(saveTags.slice(0, 1600)));
+const migration = fs.readFileSync("supabase/migrations/0134_tool_search_tags.sql", "utf8");
+check("migration: backward-compatible column with default '{}' and a tags-only reader",
+  /search_tags text\[\] not null default '\{\}'/.test(migration)
+  && /returns table \(tool_key text, search_tags text\[\]\)/.test(migration));
+// Tags are search metadata only — nothing on the generation/prompt side reads them.
+const leaks = ["lib/ai", "lib/server/prompt-engine.ts", "lib/server/generation.ts", "app/api"].flatMap((p) => {
+  const walk = (f: string): string[] => fs.statSync(f).isDirectory()
+    ? fs.readdirSync(f).flatMap((n) => walk(path.join(f, n))) : /\.(ts|tsx)$/.test(f) ? [f] : [];
+  return fs.existsSync(p) ? walk(p) : [];
+}).filter((f) => /search_tags|searchTags/.test(fs.readFileSync(f, "utf8")));
+check("no AI/prompt/API code reads the search tags", leaks.length === 0, leaks.join(", "));
 
 /* ── the two lists are always full ───────────────────────────────────────── */
 

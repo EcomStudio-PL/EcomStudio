@@ -3,6 +3,7 @@ import { PenLine, Sparkles } from "lucide-react";
 import { CATEGORIES, VIDEO_ICON, categoryPath, workflowHref, type CategoryAccent } from "./categories";
 import { IMAGE_EDIT, IMAGE_EDIT_MORE, editLabelKey } from "./topnav";
 import { TOOLS } from "./images/tools";
+import { normalise } from "./search-tags";
 import {
   FEATURE_REGISTRY, featureForHref, featureForToolSlug, menuVisible,
   type AvailabilityMap, type FeatureKey,
@@ -204,16 +205,9 @@ export const ALL_TOOLS_HREF =
 
 /* ── matching ─────────────────────────────────────────────────────────────── */
 
-/** Accent-insensitive, case-insensitive. "tlo" has to find "tło". */
-export function normalise(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    // Combining marks. Polish ł has no decomposition, so it is mapped by hand
-    // below — without it "tlo" misses "tło", which is the brief's own example.
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/ł/g, "l");
-}
+// normalise() and the search-tag rules live in ./search-tags (no registry
+// imports), so the admin tag editor does not pull in the whole tool catalogue.
+export { normalise, normaliseSearchTags, SEARCH_TAGS_MAX, SEARCH_TAG_MAX_CHARS } from "./search-tags";
 
 /** One tool's searchable text, already normalised. Built by the caller once
  *  per language, never per keystroke. */
@@ -222,13 +216,19 @@ export type ToolIndexEntry = { entry: ToolEntry; name: string; haystack: string 
 export function buildToolIndex(
   entries: readonly ToolEntry[],
   t: (key: string) => string,
+  /** Admin search tags per tool id (FeatureKey). Optional: without them the
+   *  index is exactly what it always was. */
+  searchTags?: Readonly<Record<string, readonly string[]>>,
 ): ToolIndexEntry[] {
   return entries.map((entry) => {
     const name = normalise(t(entry.nameKey));
     // The words list is a translated, comma-separated string: aliases, the
     // category it belongs to, and what a seller would actually type.
     const words = normalise(t(entry.wordsKey)).replace(/,/g, " ");
-    return { entry, name, haystack: `${name} ${normalise(t(entry.descKey))} ${words}` };
+    // Tags are matched like the words list (one tag per " | " so a phrase
+    // never runs into the next one).
+    const tags = (searchTags?.[entry.id] ?? []).map(normalise).join(" | ");
+    return { entry, name, haystack: `${name} ${normalise(t(entry.descKey))} ${words}${tags ? ` | ${tags}` : ""}` };
   });
 }
 
@@ -244,12 +244,16 @@ export function buildToolIndex(
 export function matchTools(index: readonly ToolIndexEntry[], query: string): ToolEntry[] {
   const term = normalise(query.trim());
   if (!term) return [];
+  const words = term.split(" ").filter(Boolean);
   const scored: { entry: ToolEntry; score: number }[] = [];
   for (const row of index) {
     const score = row.name.startsWith(term) ? 0
       : row.name.includes(term) ? 1
         : row.haystack.includes(term) ? 2
-          : -1;
+          // Several words in any order ("zdjęć obróbka"): recall only, ranked
+          // after every hit the old rules already found.
+          : words.length > 1 && words.every((w) => row.haystack.includes(w)) ? 3
+            : -1;
     if (score >= 0) scored.push({ entry: row.entry, score });
   }
   // Stable within a score: the registry order the index was built in.

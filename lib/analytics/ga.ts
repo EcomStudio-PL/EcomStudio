@@ -83,9 +83,25 @@ export function sanitizePageLocation(href: string): string {
 
 /* ── THE COMMAND QUEUE ─────────────────────────────────────────────────── */
 
-/** What gtag.js consumes. Each entry is an `arguments` object in Google's own
- *  snippet; an array is the same shape to gtag.js, which reads it by index. */
+/** What gtag.js consumes. */
 export type DataLayer = unknown[];
+
+/**
+ * THE gtag SHIM — Google's own `function gtag(){dataLayer.push(arguments);}`.
+ *
+ * gtag.js executes a queue entry as a COMMAND ("js", "config", "event") only
+ * when it is an `arguments` object. A plain array looks the same by index but
+ * is not treated as a gtag command, so nothing is configured and no hit is
+ * ever sent. That was the production bug: this module pushed arrays, the tag
+ * loaded, and GA4 reported "no data received". So every command goes through
+ * this function, which pushes the real `arguments` object.
+ */
+export function makeGtag(dataLayer: DataLayer): (...args: unknown[]) => void {
+  return function gtag(..._args: unknown[]) {
+    // eslint-disable-next-line prefer-rest-params -- gtag.js needs the arguments object itself
+    dataLayer.push(arguments);
+  };
+}
 
 export type Tracker = {
   /** `js` + `config`, exactly once per document however often this is called. */
@@ -152,13 +168,14 @@ export function createTracker(
   let started = false;
   let lastUrl: string | null = null;
   let pending: unknown = null;
+  const gtag = makeGtag(dataLayer);
 
   return {
     init() {
       if (started || !gaEnabled(id)) return;
       started = true;
-      dataLayer.push(["js", new Date()]);
-      dataLayer.push(["config", id, { send_page_view: false }]);
+      gtag("js", new Date());
+      gtag("config", id, { send_page_view: false });
     },
     pageView(href, title) {
       if (!gaEnabled(id)) return;
@@ -172,10 +189,10 @@ export function createTracker(
         // theme toggle and a refocus, none of which is a visit.
         if (location === lastUrl) return;
         lastUrl = location;
-        dataLayer.push(["event", "page_view", {
+        gtag("event", "page_view", {
           page_location: location,
           ...(title ? { page_title: title } : {}),
-        }]);
+        });
       }, settleMs);
     },
   };

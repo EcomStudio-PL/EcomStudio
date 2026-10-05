@@ -60,11 +60,13 @@ console.log("\n4. ONE page_view ON FIRST LOAD — NOT TWO");
 {
   has("gtag.js is told not to send its own", "send_page_view:!1");
   check("config is guarded, so a remount cannot send a second one",
-    src.includes("init(){!u&&o(t)&&(u=!0"), "`u` is the once-flag");
+    /init\(\)\{!(\w)&&\w\(\w\)&&\(\1=!0/.test(src), "a once-flag guards init()");
+  check("commands are pushed as `arguments` objects (gtag.js ignores arrays — the GA4 no-data bug)",
+    src.includes("push(arguments)") && !src.includes('push(["js"') && !src.includes('push(["config"'));
   check("js is queued before config, as Google's snippet does",
-    src.indexOf('push(["js"') < src.indexOf('push(["config"'));
+    src.indexOf('("js",new Date') > -1 && src.indexOf('("js",new Date') < src.indexOf('("config",'));
   check("the page_view comes from the app's own path",
-    src.includes('push(["event","page_view"'));
+    src.includes('("event","page_view"'));
 }
 
 console.log("\n5. ONE page_view PER NAVIGATION, NO DUPLICATES");
