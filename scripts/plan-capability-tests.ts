@@ -287,8 +287,11 @@ async function main() {
     check("an annual price above twelve months never advertises a negative saving",
       annualSavingPct([{ priceCents: 4900, annualPriceCents: 70000 }]) === 0);
 
-    // The invented coefficient must be gone from the markup.
-    const board = codeOnly(read("components/plan/pricing-board.tsx"));
+    // The invented coefficient must be gone from the markup. Since the 2026-10
+    // redesign the period arithmetic lives in components/plan/pricing-model.ts
+    // and the board calls it — read both.
+    const board = codeOnly(read("components/plan/pricing-board.tsx"))
+      + codeOnly(read("components/plan/pricing-model.ts"));
     check("the ten-for-twelve coefficient is gone",
       !/ANNUAL_MONTHS_PAID/.test(board) && !/ANNUAL_PCT/.test(board),
       "the annual price was `priceCents * 10 / 12`, a discount invented in the component");
@@ -297,9 +300,13 @@ async function main() {
     check("the toggle is rendered only when annual billing is available",
       /\{annualAvailable && \(/.test(board));
     check("a zero saving renders no badge", /annualPct > 0 && \(/.test(board));
-    check("the figures follow annualOn, not the raw toggle state",
-      /const annualOn = annual && annualAvailable/.test(board)
-      && /annual=\{annualOn\}/.test(board));
+    // The derived period, not the raw toggle state, drives every figure: the
+    // state is read only through `active`, which is monthly unless annual is
+    // really available.
+    check("the figures follow the derived period, not the raw toggle state",
+      /const active: BillingPeriod = annualAvailable \? period : "monthly"/.test(board)
+      && /period=\{active\}/.test(board)
+      && !/period=\{period\}/.test(board));
 
     const page = codeOnly(read("app/(app)/plan/page.tsx"));
     check("/plan passes the stored annual price through",

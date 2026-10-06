@@ -3103,6 +3103,9 @@
     "row.operator": "Tryb operatora",
     "row.imageTools": "Narzędzia obrazu",
     "row.video": "Wideo AI",
+    "row.support": "Wsparcie",
+    "row.dedicatedSupport": "Dedykowane wsparcie",
+    "row.commercial": "Komercyjne wykorzystanie",
     "unlimited": "bez limitu",
     "seatsOne": "1 osoba",
     "seats": "{n} osób",
@@ -3110,7 +3113,31 @@
     "paidNote": "Więcej możliwości do tworzenia regularnych treści.",
     "topNote": "Najlepszy wybór dla firm i twórców treści.",
     "maxNote": "Pełna moc GrovBase dla wymagających zespołów.",
-    "seatsFew": "{n} osoby"
+    "seatsFew": "{n} osoby",
+    "tier": {
+      "business": "Business"
+    },
+    "tagline": {
+      "starter": "Dla indywidualnych twórców",
+      "pro": "Dla profesjonalistów",
+      "business": "Dla zespołów i agencji",
+      "default": "Plan abonamentowy GrovBase"
+    },
+    "currentFree": "Twój obecny plan: {name} · {n} kredytów/mies.",
+    "perCreditApprox": "~{price} za 1 kredyt",
+    "billedYearly": "rozliczane rocznie: {price}",
+    "saveYearly": "Oszczędzasz {price} rocznie",
+    "moreCredits": "{n}× więcej kredytów niż {plan}",
+    "creditsPerMonth": "{n} kredytów / mies.",
+    "detail": {
+      "renews": "odnawiane co miesiąc",
+      "bonus": "w tym {n} kredytów bonusu",
+      "imageTools": "wszystkie dostępne narzędzia"
+    },
+    "support": {
+      "standard": "Standardowe",
+      "dedicated": "Dedykowane"
+    }
   },
   "packs": {
     "title": "Pakiety kredytów",
@@ -3154,7 +3181,14 @@
     "manageBillingSub": "Karty, faktury i subskrypcja — w panelu Stripe.",
     "portalNoCustomer": "Ta przestrzeń nie ma jeszcze historii płatności.",
     "alreadySubscribed": "Ta przestrzeń ma już aktywną subskrypcję. Zmień plan w panelu płatności.",
-    "planNotPurchasable": "Tego planu nie można kupić."
+    "planNotPurchasable": "Tego planu nie można kupić.",
+    "perCreditApprox": "~{price} za 1 kredyt",
+    "referenceBasis": "Ceny przekreślone i rabaty liczone względem ceny za kredyt w najmniejszym pakiecie ({price}).",
+    "customInput": "Liczba kredytów",
+    "customRange": "od {min} do {max}",
+    "nextStep": "Dodaj jeszcze {n} kredytów, aby uzyskać {pct}",
+    "nextStepAction": "Dodaj",
+    "atBest": "Najniższa cena za kredyt w tym zakresie"
   },
   "mobilenav": {
     "home": "Start",

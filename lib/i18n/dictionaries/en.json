@@ -3103,6 +3103,9 @@
     "row.operator": "Operator mode",
     "row.imageTools": "Image tools",
     "row.video": "AI video",
+    "row.support": "Support",
+    "row.dedicatedSupport": "Dedicated support",
+    "row.commercial": "Commercial use",
     "unlimited": "unlimited",
     "seatsOne": "1 person",
     "seats": "{n} people",
@@ -3110,7 +3113,31 @@
     "paidNote": "More room to create content regularly.",
     "topNote": "The best fit for businesses and content creators.",
     "maxNote": "The full power of GrovBase for demanding teams.",
-    "seatsFew": "{n} people"
+    "seatsFew": "{n} people",
+    "tier": {
+      "business": "Business"
+    },
+    "tagline": {
+      "starter": "For individual creators",
+      "pro": "For professionals",
+      "business": "For teams and agencies",
+      "default": "GrovBase subscription plan"
+    },
+    "currentFree": "Your current plan: {name} · {n} credits/mo.",
+    "perCreditApprox": "~{price} per credit",
+    "billedYearly": "billed annually: {price}",
+    "saveYearly": "You save {price} a year",
+    "moreCredits": "{n}× more credits than {plan}",
+    "creditsPerMonth": "{n} credits / mo",
+    "detail": {
+      "renews": "renewed every month",
+      "bonus": "including {n} bonus credits",
+      "imageTools": "all available tools"
+    },
+    "support": {
+      "standard": "Standard",
+      "dedicated": "Dedicated"
+    }
   },
   "packs": {
     "title": "Credit packages",
@@ -3154,7 +3181,14 @@
     "manageBillingSub": "Cards, invoices and your subscription — in the Stripe portal.",
     "portalNoCustomer": "This workspace has no billing history yet.",
     "alreadySubscribed": "This workspace already has an active subscription. Change the plan in the billing portal.",
-    "planNotPurchasable": "This plan cannot be purchased."
+    "planNotPurchasable": "This plan cannot be purchased.",
+    "perCreditApprox": "~{price} per credit",
+    "referenceBasis": "Struck-through prices and discounts are measured against the per-credit price of the smallest pack ({price}).",
+    "customInput": "Number of credits",
+    "customRange": "from {min} to {max}",
+    "nextStep": "Add {n} more credits to get {pct}",
+    "nextStepAction": "Add",
+    "atBest": "Lowest price per credit in this range"
   },
   "mobilenav": {
     "home": "Home",

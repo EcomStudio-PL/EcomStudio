@@ -283,7 +283,11 @@ async function main() {
     })(), "a cheaper larger amount would be an arbitrage");
 
     // ONE implementation, shared. The slider used to carry its own copy.
-    const board = codeOnly(read("components/plan/pricing-board.tsx"));
+    // The cennik's arithmetic lives in components/plan/pricing-model.ts since
+    // the 2026-10 redesign; the board calls it. Read both, so the invariant
+    // holds wherever the slider's quote is computed.
+    const board = codeOnly(read("components/plan/pricing-board.tsx"))
+      + codeOnly(read("components/plan/pricing-model.ts"));
     check("the slider uses the shared rate card",
       /priceForCredits\(/.test(board) && !/function priceFor\(/.test(board));
     const billing = codeOnly(read("lib/server/billing.ts"));
@@ -1045,7 +1049,9 @@ async function main() {
       "an unhandled rejection shows nothing at all, which nobody can act on");
 
     // L5 — DISPLAYED PRICE == CHARGED PRICE, TO THE GROSZ.
-    const board = codeOnly(read("components/plan/pricing-board.tsx"));
+    // The formatter moved into components/plan/pricing-model.ts (2026-10).
+    const board = codeOnly(read("components/plan/pricing-board.tsx"))
+      + codeOnly(read("components/plan/pricing-model.ts"));
     check("the formatter shows grosze when there are grosze",
       /cents % 100 === 0 \? 0 : 2/.test(board),
       "79,49 rendered as '79 zl' is a quote the checkout does not honour");

@@ -2,7 +2,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
-import { PageHeader } from "@/components/ui/page-header";
 import { PricingBoard, type PackCard, type PlanCard } from "@/components/plan/pricing-board";
 import { parsePlanCapabilities } from "@/lib/plans/capabilities";
 import { paymentsEnabled } from "@/lib/stripe/config";
@@ -89,7 +88,17 @@ export default async function PlanPage({ searchParams }: {
 
   return (
     <div>
-      <PageHeader overline={t("plans.overline")} title={t("plans.title")} sub={t("plans.sub")} />
+      {/* The pricing page's own heading: the same overline / headline / one
+          line as every PageHeader, set larger (36–40px on desktop) because on
+          this page the headline introduces the prices, and kept short so the
+          plans start above the fold. */}
+      <header className="mb-7 sm:mb-9">
+        <p className="overline mb-2">{t("plans.overline")}</p>
+        <h1 className="font-display text-[1.875rem] font-semibold leading-[1.08] tracking-[-0.03em] sm:text-[2.25rem] lg:text-[2.5rem]">
+          {t("plans.title")}
+        </h1>
+        <p className="mt-2 max-w-2xl text-[15px] leading-relaxed text-muted">{t("plans.sub")}</p>
+      </header>
       {checkout && <CheckoutNotice status={checkout} />}
       {/* Whether this deployment holds BOTH Stripe secrets. Read on the
           server; a client cannot be asked whether payments work. */}

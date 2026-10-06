@@ -1,32 +1,47 @@
 "use client";
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Crown, FileText, Minus, Rocket, ShieldCheck, Sparkles, Star, Users, Zap } from "lucide-react";
+import {
+  BadgeCheck, Check, Clapperboard, Headphones, ImageIcon, ShieldCheck, Star, UserCog, Users, X, Zap,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Diamond } from "@/components/layout/credits-control";
 import { cn } from "@/lib/utils";
 import type { PlanCapabilities } from "@/lib/plans/capabilities";
-import { annualBillingAvailable, annualMonthlyCents, annualSavingPct } from "@/lib/plans/pricing";
-import { creditLadder, customCreditsRange, priceForCredits } from "@/lib/plans/credit-price";
+import { annualBillingAvailable, annualSavingPct } from "@/lib/plans/pricing";
+import { CreditCoinStack } from "./credit-coin-stack";
+import {
+  PRICING_PAGE, planPresentation, serviceLevel, type PlanTone,
+} from "./pricing-config";
+import {
+  annualSavingCents, clampCredits, coinLevel, creditMultiple, creditsCheckoutHref, customQuote,
+  customRange, formatCount, formatMoney, formatMultiple, formatPerCredit, initialBillingPeriod,
+  isPaidPlan, nextStepHint, packCheckoutHref, packLadder, packQuote, planCheckoutHref,
+  planMonthlyCents, planPerCreditCents, referenceRate, seatLabel, sliderMarks,
+  type BillingPeriod,
+} from "./pricing-model";
 
 /**
- * CENNIK — plans, the comparison, the credit packs and a custom amount, on
- * one page, because that is the order the questions arrive in: which plan,
- * how do they differ, and what if I just need credits this once.
+ * CENNIK — three paid plans, the comparison, the credit packs and a custom
+ * amount, in the order the questions arrive: which plan, how do they differ,
+ * and what if I just need credits this once.
  *
- * EVERY NUMBER ON THIS PAGE COMES FROM THE DATABASE. The plan prices and
- * capabilities are `subscription_plans` rows; the packs are `credit_packages`
- * rows; the custom slider prices by interpolating the real pack ladder rather
- * than inventing a rate card. There is no struck-through "old price" anywhere
- * because GrovBase does not store one, and a discount off a price that never
- * existed is a lie told in a currency.
+ * EVERY NUMBER ON THIS PAGE IS A DATABASE ROW. Plan prices, credits and
+ * capabilities are `subscription_plans`; the packs are `credit_packages`; the
+ * custom amount is priced by `priceForCredits` — the function the checkout
+ * charges with (components/plan/pricing-model.ts). Looks and words live in
+ * components/plan/pricing-config.ts; money never does.
  *
- * CHECKOUT IS REAL, AND IT IS STILL HONEST WHEN IT IS NOT. Every buy button
- * is driven by `paymentsEnabled` — whether this deployment actually holds
- * both Stripe secrets — and by whether the row it sells is mapped to a Stripe
- * price. A deployment that cannot take money says so on the button instead of
- * offering one that fails at the till. Nothing here fakes a purchase.
+ * CHECKOUT IS UNCHANGED. A buy button navigates to /checkout with an INTENT —
+ * a plan id + period, a pack id, or a number of credits — byte-for-byte the
+ * URLs this page has always sent; /checkout prices it on the server. Every
+ * button is gated by `paymentsEnabled` (both Stripe secrets present) and by
+ * whether the row is mapped to a Stripe price, so nothing here offers a sale
+ * the till would refuse.
+ *
+ * THE FREE TIER IS NOT A CARD. It is the absence of a subscription, never for
+ * sale; a customer on it reads one quiet line above the cards instead.
  */
 
 export type PlanCard = {
@@ -64,24 +79,12 @@ export type PackCard = {
   mapped: boolean;
 };
 
+type T = (key: string, vars?: Record<string, string | number>) => string;
+
 /**
- * ONE PLACE WHERE A BUY BUTTON BECOMES A NAVIGATION.
- *
- * It used to call a server action, receive a stripe.com URL and hand the
- * customer to another origin with `window.location.assign`. The payment sheet
- * now lives inside GrovBase, so a buy button does the ordinary thing a link
- * does: it goes to /checkout, in the same app, with the app's own chrome.
- *
- * THE URL CARRIES AN INTENT, NEVER A PRICE. A plan id, a pack id, or a number
- * of credits — all three name something the server looks up. A customer who
- * edits the address bar can change what they are buying to another real,
- * active, correctly priced thing, and can never change what it costs.
- *
- * REFUSALS MOVED WITH IT. /checkout prices the order before it renders and
- * bounces back to /plan?checkout=<reason> when the answer is no, so the
- * refusal is read where the alternatives are, rather than as a toast on a page
- * the customer is about to leave. `router.push` rather than a hard assign:
- * this is the same origin now, and a client navigation keeps the shell.
+ * ONE PLACE WHERE A BUY BUTTON BECOMES A NAVIGATION — to /checkout, in the
+ * same app. The URL carries an intent, never a price; /checkout prices it
+ * before it renders and bounces back to /plan?checkout=<reason> on a refusal.
  */
 function useCheckout() {
   const router = useRouter();
@@ -92,214 +95,258 @@ function useCheckout() {
   return { pending, go };
 }
 
-/** A visual step per tier so the row reads as a climb, not four copies. */
-const TIER_ICON: LucideIcon[] = [Sparkles, Zap, Crown, Rocket];
-const TIER_NOTE = ["plans.freeNote", "plans.paidNote", "plans.topNote", "plans.maxNote"];
-
 const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
 const flag = (v: unknown): boolean => v === true;
 
-/**
- * "2 osób" is wrong in Polish and the app is Polish first, so the seat count
- * picks its own form: 1 → osoba, 2-4 → osoby, 5+ → osób — minus the 12-14
- * exception, which is the case every naive plural rule gets wrong.
- */
-function seatLabel(
-  seats: number,
-  t: (k: string, v?: Record<string, string | number>) => string,
-): string {
-  if (seats < 0) return t("plans.unlimited");
-  if (seats === 1) return t("plans.seatsOne");
-  const last = seats % 10;
-  const teen = seats % 100 >= 12 && seats % 100 <= 14;
-  return last >= 2 && last <= 4 && !teen
-    ? t("plans.seatsFew", { n: seats })
-    : t("plans.seats", { n: seats });
-}
+/* ── tones: one accent family per plan, drawn from the theme tokens ───────*/
+
+const TONE_TILE: Record<PlanTone, CSSProperties> = {
+  // Cool and calm — a safe start.
+  starter: { background: "rgb(var(--info) / 0.12)", color: "rgb(var(--info))", boxShadow: "inset 0 0 0 1px rgb(var(--info) / 0.22)" },
+  pro: {
+    backgroundImage: "linear-gradient(135deg, rgb(var(--accent-strong)), rgb(var(--accent)) 55%, rgb(var(--accent-glow)))",
+    color: "#fff",
+    boxShadow: "0 8px 20px -10px rgb(var(--accent) / 0.9)",
+  },
+  // Prestige: deep indigo with a gold mark — the price anchor.
+  business: {
+    backgroundImage: "linear-gradient(140deg, rgb(var(--indigo) / 0.95), rgb(var(--purple) / 0.75))",
+    color: "rgb(var(--caution))",
+    boxShadow: "0 8px 20px -12px rgb(var(--indigo) / 0.9), inset 0 0 0 1px rgb(255 255 255 / 0.12)",
+  },
+  neutral: { background: "rgb(var(--raised))", color: "rgb(var(--muted))" },
+};
+
+/** PRO: a magenta → violet gradient frame around an opaque card, soft glow. */
+const PRO_CARD: CSSProperties = {
+  border: "1.5px solid transparent",
+  background: [
+    "linear-gradient(168deg, rgb(var(--accent) / 0.13), rgb(var(--violet) / 0.05) 42%, transparent 70%) padding-box",
+    "linear-gradient(rgb(var(--surface)), rgb(var(--surface))) padding-box",
+    "linear-gradient(140deg, rgb(var(--accent-glow)), rgb(var(--accent)) 45%, rgb(var(--violet))) border-box",
+  ].join(", "),
+  boxShadow: "0 34px 80px -42px rgb(var(--accent) / 0.85), 0 14px 30px -24px rgb(var(--violet) / 0.6)",
+};
+
+/** BUSINESS: the standard panel with an indigo wash and edge. */
+const BUSINESS_WASH: CSSProperties = {
+  background: "linear-gradient(165deg, rgb(var(--indigo) / 0.11), rgb(var(--indigo) / 0.025) 45%, transparent 72%)",
+  boxShadow: "inset 0 0 0 1px rgb(var(--indigo) / 0.28)",
+};
+
+/** A small chip: success text on a light success tint (AA in both themes). */
+const SAVE_CHIP = "rounded-md bg-[rgb(var(--success)/0.1)] px-1.5 py-0.5 text-[11.5px] font-semibold text-success tabular-nums";
 
 export function PricingBoard({ plans, packs, currentSlug, paymentsEnabled = false }: {
   plans: PlanCard[]; packs: PackCard[]; currentSlug: string;
   /** Whether this deployment can actually take a payment. Server-decided. */
   paymentsEnabled?: boolean;
 }) {
-  const { t, locale } = useI18n();
-  const [annual, setAnnual] = useState(false);
+  const { t } = useI18n();
 
-  // ANNUAL BILLING IS DATA, NOT A COEFFICIENT. The toggle appears only when
+  const paid = useMemo(() => plans.filter(isPaidPlan), [plans]);
+  const free = useMemo(() => plans.find((p) => !isPaidPlan(p)) ?? null, [plans]);
+
+  // ANNUAL BILLING IS DATA, NOT A COEFFICIENT. The control appears only when
   // every paid plan carries a real `annual_price_cents`; until then the page
-  // quotes monthly prices and says nothing about a year, because there is no
-  // yearly price to say. `annualOn` — not `annual` — drives the figures, so a
-  // stale state value can never quote a price that does not exist.
+  // quotes monthly prices and says nothing about a year. `period` defaults to
+  // the config's preference ONLY when annual is really on offer, and `active`
+  // — not `period` — drives every figure, so a stale state can never quote a
+  // yearly price that does not exist.
   const annualAvailable = useMemo(() => annualBillingAvailable(plans), [plans]);
   const annualPct = useMemo(() => annualSavingPct(plans), [plans]);
-  const annualOn = annual && annualAvailable;
+  const [period, setPeriod] = useState<BillingPeriod>(
+    () => initialBillingPeriod(PRICING_PAGE.defaultBillingPeriod, annualAvailable),
+  );
+  const active: BillingPeriod = annualAvailable ? period : "monthly";
 
-  const n = (v: number) => new Intl.NumberFormat(locale).format(v);
-  // THE PRICE SHOWN MUST BE THE PRICE CHARGED, TO THE GROSZ.
-  //
-  // This rounded to whole units unconditionally, so a package priced at 79,49
-  // displayed as "79 zł" while Stripe charged 79,49 — a quote the checkout
-  // does not honour, which is precisely what the whole rate-card design exists
-  // to prevent. Whole amounts still render without a decimal tail; anything
-  // with grosze shows them.
-  const money = (cents: number, currency: string, digits?: number) => {
-    const fraction = digits ?? (cents % 100 === 0 ? 0 : 2);
-    return new Intl.NumberFormat(locale, {
-      style: "currency", currency,
-      minimumFractionDigits: fraction, maximumFractionDigits: fraction,
-    }).format(cents / 100);
-  };
+  const onPaidPlan = paid.some((p) => p.slug === currentSlug);
+  const reference = paid.find((p) => p.slug === PRICING_PAGE.benefitReferenceSlug);
 
   return (
-    <div className="space-y-6">
-      <PlanSection plans={plans} currentSlug={currentSlug} annual={annualOn} setAnnual={setAnnual}
-        annualAvailable={annualAvailable} annualPct={annualPct} paymentsEnabled={paymentsEnabled}
-        t={t} n={n} money={money} />
-      <ComparisonSection plans={plans} t={t} n={n} />
+    <div className="space-y-8 sm:space-y-10">
+      <section data-pricing-plans>
+        {(annualAvailable || (!onPaidPlan && free)) && (
+          <div className="mb-7 flex flex-col items-center gap-3 sm:mb-9">
+            {annualAvailable && (
+              <BillingToggle period={active} onChange={setPeriod} annualPct={annualPct} t={t} />
+            )}
+            {/* The free tier, said once and quietly — not sold as a card. */}
+            {!onPaidPlan && free && (
+              <p data-current-free
+                className="inline-flex items-center gap-2 rounded-full border border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.2))] bg-[rgb(var(--surface)/0.7)] px-3.5 py-1.5 text-center text-[13px] text-muted">
+                <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-[rgb(var(--success))]" />
+                {t("plans.currentFree", { name: free.name, n: formatCount(free.monthlyCredits + free.bonusCredits) })}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Three columns from lg. The rows are a SUBGRID, so name, price, CTA,
+            features and the closing box line up across all three cards. Below
+            lg the cards stack, featured first. */}
+        <div className="mx-auto grid max-w-xl gap-5 lg:max-w-none lg:grid-cols-3 lg:grid-rows-[auto_auto_auto_1fr_auto] lg:gap-x-5 lg:gap-y-0 lg:pt-4">
+          {paid.map((p) => (
+            <PlanColumn key={p.id} plan={p} period={active} isCurrent={p.slug === currentSlug}
+              paymentsEnabled={paymentsEnabled} reference={p.featured ? reference : undefined} t={t} />
+          ))}
+        </div>
+      </section>
+
+      <ComparisonSection plans={paid} period={active} t={t} />
+
       {packs.length > 0 && (
-        <TopUpSection packs={packs} paymentsEnabled={paymentsEnabled} t={t} n={n} money={money} />
+        <TopUpSection packs={packs} paymentsEnabled={paymentsEnabled} t={t} />
       )}
     </div>
   );
 }
 
-/* ── 1. PLANS ─────────────────────────────────────────────────────────────*/
+/* ── billing period ───────────────────────────────────────────────────────*/
 
-function PlanSection({ plans, currentSlug, annual, setAnnual, annualAvailable, annualPct, paymentsEnabled, t, n, money }: {
-  plans: PlanCard[]; currentSlug: string; annual: boolean; setAnnual: (v: boolean) => void;
-  annualAvailable: boolean; annualPct: number; paymentsEnabled: boolean;
-  t: (k: string, v?: Record<string, string | number>) => string;
-  n: (v: number) => string;
-  money: (cents: number, currency: string, digits?: number) => string;
+function BillingToggle({ period, onChange, annualPct, t }: {
+  period: BillingPeriod; onChange: (p: BillingPeriod) => void; annualPct: number; t: T;
 }) {
   return (
-    <section data-pricing-plans>
-      {/* The toggle is centred above the row, as one control: the word, then
-          the two states, then what the annual one is worth. It is rendered
-          ONLY when every paid plan has a stored annual price — an empty
-          `annual_price_cents` means the yearly offer has not been decided,
-          and a control for a price nobody set is a promise the checkout
-          cannot keep. */}
-      {annualAvailable && (
-      <div className="mb-5 flex justify-center">
-        <div className="flex items-center gap-1 rounded-2xl border border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*0.9))] bg-sunken/80 p-1">
-          <span className="px-3 text-[12.5px] font-medium text-muted">{t("plans.billing")}</span>
-          {([false, true] as const).map((v) => (
-            <button key={String(v)} type="button" onClick={() => setAnnual(v)}
-              aria-pressed={annual === v} data-billing={v ? "annual" : "monthly"}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-xl px-4 py-1.5 text-[13px] font-semibold transition-all duration-200",
-                annual === v ? "bg-[rgb(var(--accent))] text-white shadow-[0_8px_20px_-10px_rgb(var(--accent))]" : "text-muted hover:text-ink",
-              )}>
-              {t(v ? "plans.annual" : "plans.monthly")}
-              {v && annualPct > 0 && (
-                <span className={cn(
-                  "rounded-md px-1.5 py-0.5 text-[10.5px] font-bold",
-                  annual ? "bg-white/20 text-white" : "bg-[rgb(var(--success)/0.16)] text-success",
-                )}>
-                  {/* The SMALLEST real saving across the paid plans. One badge
-                      sits above four columns, so anything larger would
-                      overstate at least one of them. */}
-                  {t("plans.annualOff", { n: annualPct })}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-      )}
-
-      <div className="grid gap-3.5 [&>*]:min-w-0 sm:grid-cols-2 xl:grid-cols-4">
-        {plans.map((p, i) => (
-          <PlanColumn key={p.id} plan={p} index={i} annual={annual}
-            isCurrent={p.slug === currentSlug} paymentsEnabled={paymentsEnabled}
-            t={t} n={n} money={money} />
-        ))}
-      </div>
-    </section>
+    <div role="group" aria-label={t("plans.billing")} data-billing-toggle
+      className="inline-flex items-center gap-1 rounded-full border border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.2))] bg-sunken/80 p-1">
+      {(["monthly", "annual"] as const).map((v) => {
+        const on = period === v;
+        return (
+          <button key={v} type="button" onClick={() => onChange(v)} aria-pressed={on} data-billing={v}
+            className={cn(
+              "inline-flex h-9 items-center gap-2 rounded-full px-4 text-[13.5px] font-semibold transition-all duration-200",
+              on ? "bg-surface text-ink shadow-e2 ring-1 ring-[rgb(var(--accent)/0.45)]" : "text-muted hover:text-ink",
+            )}>
+            {t(v === "annual" ? "plans.annual" : "plans.monthly")}
+            {v === "annual" && annualPct > 0 && (
+              // The SMALLEST real saving across the paid plans — one badge sits
+              // above three columns and must not overstate any of them.
+              <span className={SAVE_CHIP}>{t("plans.annualOff", { n: annualPct })}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
-function PlanColumn({ plan: p, index, annual, isCurrent, paymentsEnabled, t, n, money }: {
-  plan: PlanCard; index: number; annual: boolean; isCurrent: boolean; paymentsEnabled: boolean;
-  t: (k: string, v?: Record<string, string | number>) => string;
-  n: (v: number) => string;
-  money: (cents: number, currency: string, digits?: number) => string;
+/* ── 1. PLAN CARDS ────────────────────────────────────────────────────────*/
+
+function PlanColumn({ plan: p, period, isCurrent, paymentsEnabled, reference, t }: {
+  plan: PlanCard; period: BillingPeriod; isCurrent: boolean; paymentsEnabled: boolean;
+  /** The plan the featured card's "N× more credits" line compares against. */
+  reference: PlanCard | undefined;
+  t: T;
 }) {
-  const Icon = TIER_ICON[Math.min(index, TIER_ICON.length - 1)];
-  const free = p.priceCents === 0;
-  // The annual figure comes from the stored yearly total divided by twelve.
-  // It used to be `priceCents * 10 / 12` — a discount invented in the markup.
-  const effective = annual ? annualMonthlyCents(p) : p.priceCents;
-  const total = p.monthlyCredits + p.bonusCredits;
-  // What a credit costs on this plan — the number that actually compares two
-  // plans, and it is division, not marketing.
-  const perCredit = total > 0 && effective > 0 ? (effective / 100 / total).toFixed(2) : null;
-  const rows = planRows(p, t, n);
+  const view = planPresentation(p.slug);
+  const Icon = view.icon;
+  const NoteIcon = view.noteIcon;
+  const name = view.nameKey ? t(view.nameKey) : p.name;
+  const annual = period === "annual";
+  const monthly = planMonthlyCents(p, period);
+  const perCredit = planPerCreditCents(p, period);
+  const multiple = p.featured ? creditMultiple(p, reference) : null;
+  const saving = annual && p.featured ? annualSavingCents(p) : null;
   const { pending, go } = useCheckout();
   // Payable = this deployment can charge AND this period has a Stripe price.
   const payable = paymentsEnabled && (annual ? p.annualMapped : p.monthlyMapped);
-  const canBuy = payable && !free && !isCurrent;
+  const canBuy = payable && !isCurrent;
+  const featured = p.featured;
+  const tone = featured ? "pro" : view.tone;
 
   return (
-    <article data-plan={p.slug} className={cn(
-      "panel relative flex flex-col overflow-hidden rounded-2xl p-5",
-      p.featured && "ring-2 ring-[rgb(var(--accent)/0.6)] shadow-[0_28px_60px_-30px_rgb(var(--accent)/0.85)] xl:-translate-y-1.5",
-    )}>
-      {p.featured && (
-        <>
-          <span aria-hidden className="pointer-events-none absolute inset-0"
-            style={{ background: "linear-gradient(165deg, rgb(var(--accent) / 0.20), rgb(var(--violet) / 0.09) 55%, transparent)" }} />
-          <span data-plan-badge
-            className="relative mb-3 inline-flex w-fit items-center gap-1 rounded-full bg-[rgb(var(--accent))] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-white">
-            <Star size={10} className="fill-current" aria-hidden />
-            {t("plans.mostPopular")}
+    <article data-plan={p.slug} data-featured={featured || undefined}
+      className={cn(
+        "relative flex flex-col rounded-2xl p-5 sm:p-6 lg:row-span-5 lg:grid lg:grid-rows-subgrid",
+        featured
+          ? "order-first pt-7 transition-transform duration-300 sm:pt-8 lg:order-none lg:-translate-y-3 motion-safe:lg:hover:-translate-y-4"
+          : "panel panel-interactive",
+      )}
+      style={featured ? PRO_CARD : undefined}>
+      {tone === "business" && (
+        <span aria-hidden className="pointer-events-none absolute inset-0 rounded-[inherit]" style={BUSINESS_WASH} />
+      )}
+      {featured && (
+        <span data-plan-badge
+          className="absolute -top-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-[rgb(var(--accent-strong))] px-3 py-1 text-[10.5px] font-bold uppercase tracking-[0.12em] text-white shadow-[0_8px_18px_-8px_rgb(var(--accent)/0.9)] ring-[3px] ring-[rgb(var(--bg))]">
+          <Star size={11} className="fill-current" aria-hidden />
+          {t("plans.mostPopular")}
+        </span>
+      )}
+
+      {/* 1 — name, mark, audience */}
+      <header className="relative">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-display text-[15px] font-bold uppercase tracking-[0.14em] sm:text-base">{name}</h2>
+          <span aria-hidden className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={TONE_TILE[tone]}>
+            <Icon size={18} strokeWidth={2.2} />
           </span>
-        </>
-      )}
+        </div>
+        <p className="mt-1.5 text-[13.5px] leading-snug text-muted">{t(view.taglineKey)}</p>
+      </header>
 
-      <div className="relative flex items-center justify-between gap-2">
-        <h3 className="font-display text-[15px] font-bold uppercase tracking-[0.06em]">{p.name}</h3>
-        <span aria-hidden className={cn("flex h-8 w-8 items-center justify-center rounded-lg",
-          p.featured ? "bg-[rgb(var(--accent)/0.2)] text-accent" : "bg-raised text-muted")}>
-          <Icon size={15} />
-        </span>
-      </div>
-      {p.description && (
-        <p className="relative mt-1 text-[12px] leading-snug text-muted">{p.description}</p>
-      )}
-
-      <div className="relative mt-4 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="font-display text-[2rem] font-semibold leading-none tracking-tight">
-          {money(effective, p.currency)}
-        </span>
-        {!free && <span className="text-[12px] font-medium text-muted">{t("plans.perMonth")}</span>}
-        {annual && !free && (
-          <span className="text-[13px] font-semibold text-faint line-through">{money(p.priceCents, p.currency)}</span>
+      {/* 2 — price */}
+      <div className="relative mt-5">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          {/* Keyed by period: switching billing re-mounts the figure, which
+              fades in (and simply appears under reduced motion). */}
+          <span key={`${p.id}-${period}`} data-plan-price
+            className="metric animate-fade text-[2.5rem] leading-none sm:text-[2.75rem]">
+            {formatMoney(monthly, p.currency)}
+          </span>
+          <span className="text-[14px] font-medium text-muted">{t("plans.perMonth")}</span>
+          {annual && monthly < p.priceCents && (
+            <s className="text-[15px] font-medium text-muted">{formatMoney(p.priceCents, p.currency)}</s>
+          )}
+        </div>
+        {perCredit !== null && (
+          <p className="mt-2 text-[13px] text-muted">
+            {t("plans.perCreditApprox", { price: formatPerCredit(perCredit, p.currency) })}
+          </p>
+        )}
+        {annual && p.annualPriceCents > 0 && (
+          <p className="mt-0.5 text-[13px] text-muted">
+            {t("plans.billedYearly", { price: formatMoney(p.annualPriceCents, p.currency) })}
+          </p>
+        )}
+        {(multiple !== null || saving !== null) && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {multiple !== null && reference && (
+              <span data-plan-benefit
+                className="inline-flex items-center gap-1 rounded-full bg-[rgb(var(--accent)/0.1)] px-2.5 py-1 text-[12px] font-semibold text-[rgb(var(--accent-strong))] ring-1 ring-[rgb(var(--accent)/0.22)] dark:text-accent">
+                <Zap size={12} aria-hidden className="shrink-0" />
+                {t("plans.moreCredits", {
+                  n: formatMultiple(multiple),
+                  plan: planPresentation(reference.slug).nameKey ? t(planPresentation(reference.slug).nameKey!) : reference.name,
+                })}
+              </span>
+            )}
+            {saving !== null && (
+              <span className={cn(SAVE_CHIP, "rounded-full px-2.5 py-1")}>
+                {t("plans.saveYearly", { price: formatMoney(saving, p.currency) })}
+              </span>
+            )}
+          </div>
         )}
       </div>
-      {perCredit && (
-        <p className="relative mt-1 text-[11.5px] text-faint">{t("plans.perCredit", { n: perCredit })}</p>
-      )}
-      {annual && !free && (
-        <p className="relative mt-0.5 text-[11.5px] text-faint">{t("plans.billedAnnually")}</p>
-      )}
 
-      <div className="relative mt-4">
-        {/* The free tier is the ABSENCE of a subscription, not a 0 zł one, so
-            it is never for sale. A plan with no Stripe price is not for sale
-            either — the checkout would refuse it, and a button that fails at
-            the till is worse than one that says "not available". */}
-        <button
+      {/* 3 — CTA. PRO's is the page's only filled gradient button. */}
+      <div className="relative mt-5">
+        <button type="button"
           disabled={!canBuy || pending}
-          onClick={() => go(`/checkout?kind=subscription&plan=${p.id}&period=${annual ? "annual" : "monthly"}`)}
+          onClick={() => go(planCheckoutHref(p.id, period))}
           data-plan-cta
           className={cn(
-            "h-11 w-full rounded-xl text-sm font-semibold transition-opacity",
-            !canBuy || pending ? "opacity-70" : "",
+            "h-12 w-full rounded-xl text-[14.5px] font-semibold transition-all duration-200",
             isCurrent
-              ? "bg-[rgb(var(--success)/0.14)] text-success ring-1 ring-[rgb(var(--success)/0.4)]"
-              : p.featured ? "cta" : "border border-line text-muted",
+              ? "bg-[rgb(var(--success)/0.12)] text-success ring-1 ring-[rgb(var(--success)/0.4)]"
+              : featured
+                ? "cta"
+                : tone === "business"
+                  ? "border border-[rgb(var(--indigo)/0.45)] bg-[rgb(var(--indigo)/0.08)] text-ink hover:border-[rgb(var(--indigo)/0.7)] hover:bg-[rgb(var(--indigo)/0.14)]"
+                  : "border border-line-strong bg-surface/60 text-ink hover:border-[rgb(var(--accent)/0.45)] hover:bg-raised",
+            (!canBuy || pending) && !isCurrent && "cursor-not-allowed opacity-60",
           )}>
           {isCurrent
             ? t("plans.current")
@@ -309,128 +356,186 @@ function PlanColumn({ plan: p, index, annual, isCurrent, paymentsEnabled, t, n, 
         </button>
       </div>
 
-      <ul className="relative mt-4 space-y-1.5">
-        {rows.map((r) => (
-          <li key={r.label} className="flex items-start gap-2 text-[12.5px] leading-snug">
-            {r.on
-              ? <Check size={13} aria-hidden strokeWidth={3}
-                  className={cn("mt-0.5 shrink-0", p.featured ? "text-accent" : "text-success")} />
-              : <Minus size={13} aria-hidden strokeWidth={3} className="mt-0.5 shrink-0 text-faint" />}
-            <span className={r.on ? "text-ink/85" : "text-faint"}>
-              {r.label}
-              {r.detail && <span className="block text-[11px] text-faint">{r.detail}</span>}
+      {/* 4 — what is in it */}
+      <ul className="relative mt-6 space-y-3">
+        {planFeatures(p, t).map((r) => (
+          <li key={r.key} data-feature={r.key} data-on={r.on || undefined}
+            className="flex items-start gap-2.5 text-[13.5px] leading-snug">
+            <span aria-hidden className={cn(
+              "mt-px flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full",
+              r.on
+                ? featured ? "bg-[rgb(var(--accent)/0.14)] text-[rgb(var(--accent-strong))] dark:text-accent" : "bg-[rgb(var(--success)/0.12)] text-success"
+                : "bg-[rgb(var(--ink)/0.06)] text-muted",
+            )}>
+              {r.on ? <Check size={11} strokeWidth={3.2} /> : <X size={11} strokeWidth={3} />}
+            </span>
+            <span className="min-w-0">
+              <span className={cn("block", r.on ? "font-medium text-ink" : "text-muted")}>
+                <span className="sr-only">{r.on ? "✓ " : "✕ "}</span>
+                {r.label}
+              </span>
+              {r.detail && <span className="mt-0.5 block text-[12px] text-muted">{r.detail}</span>}
             </span>
           </li>
         ))}
       </ul>
 
-      {/* The quiet closing line the reference puts in a tinted box. It says
-          who the tier is FOR — never a repeat of the descriptor above or of a
-          row already in the list. */}
-      <div className="relative mt-auto pt-4">
-        <p className="rounded-xl bg-[rgb(var(--ink)/0.05)] px-3 py-2.5 text-[11.5px] leading-relaxed text-muted">
-          {t(TIER_NOTE[Math.min(index, TIER_NOTE.length - 1)])}
-        </p>
+      {/* 5 — who it is for */}
+      <div className="relative mt-6">
+        <div className={cn(
+          "flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 text-[12.5px] leading-relaxed",
+          featured
+            ? "bg-[rgb(var(--accent)/0.08)] text-ink/85 ring-1 ring-[rgb(var(--accent)/0.18)]"
+            : "bg-[rgb(var(--ink)/0.045)] text-muted",
+        )}>
+          <p>{t(view.noteKey)}</p>
+          <span aria-hidden className="shrink-0" style={{ color: featured ? "rgb(var(--caution))" : tone === "business" ? "rgb(var(--caution))" : "rgb(var(--info))" }}>
+            <NoteIcon size={17} strokeWidth={2.1} />
+          </span>
+        </div>
       </div>
     </article>
   );
 }
 
-/** The capability list for one plan — read from the row, never assumed. */
-function planRows(p: PlanCard, t: (k: string, v?: Record<string, string | number>) => string, n: (v: number) => string) {
+/**
+ * The capability list for one plan — read from the row (and the service
+ * levels in pricing-config.ts), never assumed. Every card lists the same rows,
+ * so ✓ and ✕ compare like with like.
+ */
+function planFeatures(p: PlanCard, t: T) {
   const seats = num(p.capabilities.workspace_members);
+  const service = serviceLevel(p.slug);
   return [
     {
-      label: t("plans.creditsMo", { n: n(p.monthlyCredits) }),
-      detail: p.bonusCredits > 0 ? `+${n(p.bonusCredits)}` : null,
-      on: p.monthlyCredits > 0,
+      key: "credits",
+      label: t("plans.creditsPerMonth", { n: formatCount(p.monthlyCredits + p.bonusCredits) }),
+      detail: p.bonusCredits > 0
+        ? t("plans.detail.bonus", { n: formatCount(p.bonusCredits) })
+        : t("plans.detail.renews"),
+      on: p.monthlyCredits + p.bonusCredits > 0,
     },
-    { label: t("plans.row.imageTools"), detail: null, on: true },
+    { key: "imageTools", label: t("plans.row.imageTools"), detail: t("plans.detail.imageTools"), on: true },
     {
+      key: "seats",
       label: t("plans.row.seats"),
       detail: seats === null ? null : seatLabel(seats, t),
       on: seats !== null && (seats < 0 || seats > 1),
     },
-    { label: t("plans.row.priority"), detail: null, on: flag(p.capabilities.priority_queue) },
-    { label: t("plans.row.operator"), detail: null, on: flag(p.capabilities.operator_mode) },
+    { key: "priority", label: t("plans.row.priority"), detail: null, on: flag(p.capabilities.priority_queue) },
+    { key: "operator", label: t("plans.row.operator"), detail: null, on: flag(p.capabilities.operator_mode) },
+    {
+      key: "dedicatedSupport",
+      label: t("plans.row.dedicatedSupport"),
+      detail: null,
+      on: service?.supportKey === "plans.support.dedicated",
+    },
   ];
 }
 
 /* ── 2. COMPARISON ────────────────────────────────────────────────────────*/
 
-function ComparisonSection({ plans, t, n }: {
-  plans: PlanCard[];
-  t: (k: string, v?: Record<string, string | number>) => string;
-  n: (v: number) => string;
-}) {
-  const rows = useMemo(() => [
+type Cell = boolean | string;
+
+function ComparisonSection({ plans, period, t }: { plans: PlanCard[]; period: BillingPeriod; t: T }) {
+  const rows = useMemo<{ key: string; label: string; icon: LucideIcon | "diamond"; cell: (p: PlanCard) => Cell }[]>(() => [
     {
-      key: "credits",
-      label: t("plans.row.credits"),
-      icon: Diamond,
-      cell: (p: PlanCard) => n(p.monthlyCredits + p.bonusCredits),
+      key: "credits", label: t("plans.row.credits"), icon: "diamond",
+      cell: (p) => formatCount(p.monthlyCredits + p.bonusCredits),
     },
     {
       key: "seats", label: t("plans.row.seats"), icon: Users,
-      cell: (p: PlanCard) => {
+      cell: (p) => {
         const s = num(p.capabilities.workspace_members);
         return s === null ? "—" : seatLabel(s, t);
       },
     },
-    { key: "imageTools", label: t("plans.row.imageTools"), icon: Sparkles, cell: () => true },
-    { key: "priority", label: t("plans.row.priority"), icon: Zap, cell: (p: PlanCard) => flag(p.capabilities.priority_queue) },
-    { key: "operator", label: t("plans.row.operator"), icon: ShieldCheck, cell: (p: PlanCard) => flag(p.capabilities.operator_mode) },
+    { key: "imageTools", label: t("plans.row.imageTools"), icon: ImageIcon, cell: () => true },
     // No video backend exists on any plan; the row says so rather than
-    // showing four ticks for something nobody can run.
-    { key: "video", label: t("plans.row.video"), icon: FileText, cell: () => t("features.badgeSoon") },
-  ], [t, n]);
+    // showing ticks for something nobody can run.
+    { key: "video", label: t("plans.row.video"), icon: Clapperboard, cell: () => t("features.badgeSoon") },
+    { key: "priority", label: t("plans.row.priority"), icon: Zap, cell: (p) => flag(p.capabilities.priority_queue) },
+    { key: "operator", label: t("plans.row.operator"), icon: UserCog, cell: (p) => flag(p.capabilities.operator_mode) },
+    {
+      key: "support", label: t("plans.row.support"), icon: Headphones,
+      cell: (p) => {
+        const s = serviceLevel(p.slug);
+        return s ? t(s.supportKey) : "—";
+      },
+    },
+    {
+      key: "commercial", label: t("plans.row.commercial"), icon: BadgeCheck,
+      cell: (p) => serviceLevel(p.slug)?.commercialUse ?? false,
+    },
+  ], [t]);
+
+  if (plans.length === 0) return null;
+  const last = rows.length - 1;
 
   return (
-    <section data-pricing-compare className="panel rounded-2xl p-4 sm:p-5">
-      <h2 className="font-display text-[16px] font-semibold tracking-tight">{t("plans.compareTitle")}</h2>
-      {/* The TABLE scrolls, never the page: a four-column comparison cannot
-          fit 360px, and a page that slides sideways is broken, not responsive. */}
-      <div className="thin-scroll mt-3 overflow-x-auto">
-        <table className="w-full min-w-[560px] border-collapse text-[12.5px]">
+    <section data-pricing-compare className="panel rounded-2xl p-4 sm:p-6">
+      <h2 className="font-display text-[20px] font-semibold tracking-tight sm:text-[22px]">{t("plans.compareTitle")}</h2>
+      {/* The TABLE scrolls, never the page: on a phone the first column stays
+          put while the plan columns slide under it (sticky only where the
+          table can actually scroll, so the desktop panel's light is not
+          painted over). `contain: paint` keeps the wide table out of the
+          page's own overflow measurement. */}
+      <div className="thin-scroll -mx-4 mt-4 overflow-x-auto px-4 [contain:paint] sm:mx-0 sm:px-0">
+        <table className="w-full min-w-[580px] border-separate border-spacing-0 text-[13.5px]">
           <thead>
-            <tr className="border-b border-line">
-              <th scope="col" className="w-[38%] py-2 pr-3 text-left font-semibold text-muted">
+            <tr>
+              <th scope="col"
+                className="w-[30%] py-3 pr-3 text-left text-[12px] font-semibold uppercase tracking-[0.1em] text-muted max-md:sticky max-md:left-0 max-md:z-10 max-md:bg-[rgb(var(--surface))]">
                 {t("plans.compareFeature")}
               </th>
-              {plans.map((p) => (
-                <th key={p.id} scope="col" className={cn(
-                  "px-2 py-2 text-center font-semibold",
-                  p.featured && "bg-[rgb(var(--accent)/0.08)]",
-                )}>
-                  <span className="block text-[13px] font-bold uppercase tracking-[0.05em]">{p.name}</span>
-                  <span className="block text-[11px] font-medium text-faint">
-                    {p.priceCents === 0 ? "0 zł" : `${Math.round(p.priceCents / 100)} zł`}
-                  </span>
-                </th>
-              ))}
+              {plans.map((p) => {
+                const view = planPresentation(p.slug);
+                return (
+                  <th key={p.id} scope="col" data-compare-plan={p.slug}
+                    className={cn(
+                      "px-3 py-3 text-center align-bottom",
+                      p.featured && "rounded-t-xl border-x-[1.5px] border-t-[1.5px] border-[rgb(var(--accent)/0.55)] bg-[rgb(var(--accent)/0.08)]",
+                    )}>
+                    <span className="block font-display text-[14px] font-bold uppercase tracking-[0.12em]">
+                      {view.nameKey ? t(view.nameKey) : p.name}
+                    </span>
+                    <span key={`${p.id}-${period}`} className="animate-fade mt-0.5 block text-[12.5px] font-medium text-muted tabular-nums">
+                      {formatMoney(planMonthlyCents(p, period), p.currency)} {t("plans.perMonth")}
+                    </span>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.key} className="border-b border-line last:border-0">
-                <th scope="row" className="py-2.5 pr-3 text-left font-medium">
-                  <span className="flex items-center gap-2 text-muted">
-                    <r.icon size={13} aria-hidden className="shrink-0 text-faint" />
+            {rows.map((r, i) => (
+              <tr key={r.key} data-compare-row={r.key} className="group">
+                <th scope="row"
+                  className={cn(
+                    "py-3 pr-3 text-left font-medium max-md:sticky max-md:left-0 max-md:z-10 max-md:bg-[rgb(var(--surface))]",
+                    "border-t border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*0.9))]",
+                  )}>
+                  <span className="flex items-center gap-2.5 text-ink/90">
+                    <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[rgb(var(--ink)/0.05)] text-muted">
+                      {r.icon === "diamond" ? <Diamond size={8} /> : <r.icon size={14} />}
+                    </span>
                     {r.label}
                   </span>
                 </th>
                 {plans.map((p) => {
                   const v = r.cell(p);
                   return (
-                    <td key={p.id} className={cn(
-                      "px-2 py-2.5 text-center tabular-nums",
-                      p.featured && "bg-[rgb(var(--accent)/0.06)]",
-                    )}>
+                    <td key={p.id}
+                      className={cn(
+                        "border-t border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*0.9))] px-3 py-3 text-center tabular-nums transition-colors group-hover:bg-[rgb(var(--ink)/0.025)]",
+                        p.featured && "border-x-[1.5px] border-x-[rgb(var(--accent)/0.55)] bg-[rgb(var(--accent)/0.06)] group-hover:bg-[rgb(var(--accent)/0.09)]",
+                        p.featured && i === last && "rounded-b-xl border-b-[1.5px] border-b-[rgb(var(--accent)/0.55)]",
+                      )}>
                       {v === true
-                        ? <Check size={14} aria-hidden strokeWidth={3} className="mx-auto text-success" />
+                        ? <span className="inline-flex items-center justify-center"><Check size={16} strokeWidth={3} aria-hidden className="text-success" /><span className="sr-only">✓</span></span>
                         : v === false
-                          ? <Minus size={14} aria-hidden strokeWidth={3} className="mx-auto text-faint" />
-                          : <span className="text-ink/85">{v}</span>}
+                          ? <span className="inline-flex items-center justify-center"><X size={15} strokeWidth={2.6} aria-hidden className="text-muted" /><span className="sr-only">✕</span></span>
+                          : <span className={cn("font-medium", r.key === "video" ? "text-muted" : "text-ink")}>{v}</span>}
                     </td>
                   );
                 })}
@@ -445,221 +550,308 @@ function ComparisonSection({ plans, t, n }: {
 
 /* ── 3. CREDIT PACKS + CUSTOM AMOUNT ──────────────────────────────────────*/
 
-function TopUpSection({ packs, paymentsEnabled, t, n, money }: {
-  packs: PackCard[]; paymentsEnabled: boolean;
-  t: (k: string, v?: Record<string, string | number>) => string;
-  n: (v: number) => string;
-  money: (cents: number, currency: string, digits?: number) => string;
-}) {
+function TopUpSection({ packs, paymentsEnabled, t }: { packs: PackCard[]; paymentsEnabled: boolean; t: T }) {
   const { pending, go } = useCheckout();
-  // Largest first, the way a top-up list is read — you arrive knowing roughly
-  // how much you need and scan down to it.
-  const ladder = useMemo(
-    () => [...packs].sort((a, b) => (b.credits + b.bonusCredits) - (a.credits + a.bonusCredits)),
-    [packs],
-  );
-  // The reference rate: the smallest pack. Every "-N%" on this page is measured
-  // against it and says so, because GrovBase stores no former price to discount.
-  const base = useMemo(() => {
-    const smallest = [...packs].sort((a, b) => (a.credits + a.bonusCredits) - (b.credits + b.bonusCredits))[0];
-    return smallest ? smallest.priceCents / (smallest.credits + smallest.bonusCredits) : 0;
-  }, [packs]);
+  const ladder = useMemo(() => packLadder(packs), [packs]);
+  const rate = useMemo(() => referenceRate(ladder), [ladder]);
   const currency = packs[0]?.currency ?? "PLN";
 
+  // Largest first, the way a top-up list is read; the coin stack grows with
+  // the pack's rank among them.
+  const byTotal = useMemo(
+    () => [...packs].sort((a, b) => (a.credits + a.bonusCredits) - (b.credits + b.bonusCredits)),
+    [packs],
+  );
+  const ladderDesc = useMemo(() => [...byTotal].reverse(), [byTotal]);
+  // BEST VALUE is a fact, not a pick: the pack with the lowest price per
+  // credit (ties → the larger one).
+  const bestId = useMemo(() => {
+    let best: PackCard | null = null;
+    for (const p of byTotal) {
+      const per = p.priceCents / (p.credits + p.bonusCredits);
+      if (!best || per <= best.priceCents / (best.credits + best.bonusCredits)) best = p;
+    }
+    return best?.id ?? null;
+  }, [byTotal]);
+
   return (
-    <section data-pricing-topup className="panel rounded-2xl p-4 sm:p-5">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h2 className="flex items-center gap-2 font-display text-[16px] font-semibold tracking-tight">
-          <span aria-hidden className="flex h-7 w-7 items-center justify-center rounded-lg bg-[rgb(var(--accent)/0.16)] text-accent">
-            <Diamond size={13} />
-          </span>
-          {t("packs.topUpTitle")}
-        </h2>
-        <p className="text-[12.5px] text-muted">{t("packs.topUpSub")}</p>
-      </div>
+    <section data-pricing-topup className="panel rounded-2xl p-4 sm:p-6">
+      <header className="flex items-center gap-3.5">
+        <span aria-hidden className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[rgb(var(--accent)/0.1)] ring-1 ring-[rgb(var(--accent)/0.22)]">
+          <CreditCoinStack level={3} size={34} />
+        </span>
+        <div className="min-w-0">
+          <h2 className="font-display text-[20px] font-semibold tracking-tight sm:text-[22px]">{t("packs.topUpTitle")}</h2>
+          <p className="text-[13.5px] text-muted">{t("packs.topUpSub")}</p>
+        </div>
+      </header>
 
-      <div className="mt-4 grid gap-3.5 [&>*]:min-w-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        {/* LEFT — the fixed packs, one row each. */}
-        <ul className="space-y-2">
-          {ladder.map((p) => {
-            const total = p.credits + p.bonusCredits;
-            const per = p.priceCents / total;
-            const off = base > 0 ? Math.round((1 - per / base) * 100) : 0;
-            return (
-              // A grid, not a flex row: at 360px an icon, a two-line label, a
-              // price and a button do not share one line, and the label was
-              // breaking mid-word to make room. The button drops to its own
-              // row on a phone and rejoins the line from `sm`.
-              <li key={p.id} data-pack={p.id} className={cn(
-                "relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-xl border p-3",
-                "sm:grid-cols-[auto_minmax(0,1fr)_auto_auto]",
-                p.featured
-                  ? "border-[rgb(var(--accent)/0.55)] bg-[rgb(var(--accent)/0.07)]"
-                  : "border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*0.8))] bg-[rgb(var(--surface)/0.5)]",
-              )}>
-                {p.featured && (
-                  <span className="absolute -top-2 left-3 rounded-md bg-[rgb(var(--success))] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-white">
-                    {t("packs.bestValue")}
-                  </span>
-                )}
-                <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[rgb(var(--accent)/0.14)] text-accent">
-                  <Diamond size={14} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13.5px] font-semibold [overflow-wrap:normal]">
-                    {n(p.credits)}&nbsp;{t("packs.customCredits")}
-                    {p.bonusCredits > 0 && <span className="text-success"> +{n(p.bonusCredits)}</span>}
-                  </p>
-                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11.5px] text-faint">
-                    <span>{t("packs.perCredit", { n: (per / 100).toFixed(2) })}</span>
-                    {off > 0 && (
-                      <span className="rounded-md bg-[rgb(var(--success)/0.16)] px-1.5 py-0.5 font-semibold text-success">
-                        {t("packs.save", { n: off })}
-                      </span>
-                    )}
-                  </p>
-                </div>
-                <p className="shrink-0 font-display text-[17px] font-semibold tracking-tight">
-                  {money(p.priceCents, p.currency)}
-                </p>
-                <button
-                  disabled={!paymentsEnabled || !p.mapped || pending}
-                  onClick={() => go(`/checkout?kind=package&pack=${p.id}`)}
-                  data-pack-buy
+      <div className="mt-6 grid gap-5 [&>*]:min-w-0 lg:grid-cols-2 lg:gap-6">
+        {/* LEFT — the fixed packs, largest first. */}
+        <div>
+          <ul className="space-y-3">
+            {ladderDesc.map((p) => {
+              const q = packQuote(p, rate);
+              const best = p.id === bestId;
+              const level = coinLevel(byTotal.indexOf(p), byTotal.length, PRICING_PAGE.coinStackMax);
+              const disabled = !paymentsEnabled || !p.mapped || pending;
+              return (
+                // A grid, not a flex row: at 360px the coins, a two-line label,
+                // the price and the button do not share one line — the button
+                // drops to its own row on a phone and rejoins from `sm`.
+                <li key={p.id} data-pack={p.id} data-best={best || undefined}
                   className={cn(
-                    "col-span-3 h-9 shrink-0 rounded-lg px-3.5 text-[12.5px] font-semibold transition-opacity sm:col-span-1",
-                    !paymentsEnabled || !p.mapped || pending ? "opacity-70" : "",
-                    p.featured ? "cta" : "border border-line text-muted",
+                    "relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3.5 gap-y-3 rounded-xl border p-3.5 transition-colors sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:p-4",
+                    best
+                      ? "border-[rgb(var(--accent)/0.55)] bg-[rgb(var(--accent)/0.06)] shadow-[0_16px_36px_-26px_rgb(var(--accent)/0.9)]"
+                      : "border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.1))] bg-[rgb(var(--surface)/0.6)] hover:border-[rgb(var(--accent)/0.3)]",
                   )}>
-                  {pending ? t("packs.redirecting")
-                    : !paymentsEnabled || !p.mapped ? t("packs.unavailable")
-                      : t("packs.buy")}
-                </button>
-              </li>
-            );
-          })}
-          <li className="flex items-center gap-2 pt-1 text-[11.5px] text-faint">
-            <Diamond size={11} />
+                  {best && (
+                    <span data-best-badge
+                      className="absolute -top-2.5 left-4 rounded-md bg-[rgb(var(--accent-strong))] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-white shadow-[0_6px_14px_-6px_rgb(var(--accent)/0.9)]">
+                      {t("packs.bestValue")}
+                    </span>
+                  )}
+                  <CreditCoinStack level={level} size={44} />
+                  <div className="min-w-0">
+                    <p className="text-[15px] font-semibold leading-tight">
+                      {formatCount(p.credits)}&nbsp;{t("packs.customCredits")}
+                      {p.bonusCredits > 0 && (
+                        <span className="ml-1 font-semibold text-success">+{formatCount(p.bonusCredits)}</span>
+                      )}
+                    </p>
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-muted">
+                      <span>{t("packs.perCreditApprox", { price: formatPerCredit(q.perCredit, p.currency) })}</span>
+                      {q.offPct > 0 && <span className={SAVE_CHIP}>{t("packs.save", { n: q.offPct })}</span>}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    {q.referenceCents !== null && (
+                      <s data-pack-reference className="block text-[12.5px] text-muted tabular-nums">
+                        {formatMoney(q.referenceCents, p.currency)}
+                      </s>
+                    )}
+                    <p data-pack-price className="metric text-[20px] leading-tight">{formatMoney(p.priceCents, p.currency)}</p>
+                  </div>
+                  <button type="button"
+                    disabled={disabled}
+                    onClick={() => go(packCheckoutHref(p.id))}
+                    data-pack-buy
+                    className={cn(
+                      "col-span-3 h-10 shrink-0 rounded-xl px-4 text-[13.5px] font-semibold transition-all duration-200 sm:col-span-1",
+                      best ? "cta" : "border border-line-strong bg-surface/60 text-ink hover:border-[rgb(var(--accent)/0.45)] hover:bg-raised",
+                      disabled && "cursor-not-allowed opacity-60",
+                    )}>
+                    {pending ? t("packs.redirecting")
+                      : !paymentsEnabled || !p.mapped ? t("packs.unavailable")
+                        : t("packs.buy")}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-4 flex items-start gap-2 text-[13px] text-muted">
+            <ShieldCheck size={16} aria-hidden className="mt-px shrink-0 text-success" />
             {t("packs.noExpiry")}
-          </li>
-          <li className="text-[11px] leading-relaxed text-faint">{t("packs.saveBasis")}</li>
-        </ul>
+          </p>
+          {rate > 0 && (
+            <p className="mt-2 text-[12px] leading-relaxed text-muted">
+              {t("packs.referenceBasis", { price: formatPerCredit(rate, currency) })}
+            </p>
+          )}
+        </div>
 
-        {/* RIGHT — any amount, priced off the same ladder. */}
-        <CustomAmount packs={packs} base={base} currency={currency}
-          paymentsEnabled={paymentsEnabled} t={t} n={n} money={money} />
+        {/* RIGHT — any amount, priced off the same ladder the checkout uses. */}
+        <CustomAmount packs={packs} currency={currency} paymentsEnabled={paymentsEnabled} t={t} />
       </div>
     </section>
   );
 }
 
+/** Thumb diameter of the custom slider — the marks are placed against it. */
+const THUMB = 22;
+
+const RANGE_CLASS = cn(
+  "relative h-2 w-full cursor-pointer appearance-none rounded-full bg-transparent outline-none",
+  "focus-visible:ring-4 focus-visible:ring-[rgb(var(--accent)/0.22)]",
+  "[&::-webkit-slider-thumb]:h-[22px] [&::-webkit-slider-thumb]:w-[22px] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full",
+  "[&::-webkit-slider-thumb]:border-[3px] [&::-webkit-slider-thumb]:border-solid [&::-webkit-slider-thumb]:border-[rgb(var(--accent))] [&::-webkit-slider-thumb]:bg-white",
+  "[&::-webkit-slider-thumb]:shadow-[0_2px_10px_rgb(0_0_0/0.28),0_0_0_4px_rgb(var(--accent)/0.16)] [&::-webkit-slider-thumb]:transition-transform active:[&::-webkit-slider-thumb]:scale-110",
+  "[&::-moz-range-thumb]:h-[16px] [&::-moz-range-thumb]:w-[16px] [&::-moz-range-thumb]:cursor-grab [&::-moz-range-thumb]:rounded-full",
+  "[&::-moz-range-thumb]:border-[3px] [&::-moz-range-thumb]:border-solid [&::-moz-range-thumb]:border-[rgb(var(--accent))] [&::-moz-range-thumb]:bg-white",
+  "[&::-moz-range-thumb]:shadow-[0_2px_10px_rgb(0_0_0/0.28),0_0_0_4px_rgb(var(--accent)/0.16)]",
+  "[&::-moz-range-track]:bg-transparent",
+);
+
 /**
- * Any number of credits between the smallest and the largest pack.
+ * Any number of credits within the rate card's range.
  *
- * The price is INTERPOLATED ALONG THE REAL PACK LADDER — between the two packs
- * that bracket the chosen amount — so the curve a customer sees on the slider
- * is the same curve the fixed packs are on. Nothing here is a made-up rate.
+ * THE SAME RATE CARD THE SERVER CHARGES AGAINST: `customQuote` calls
+ * `priceForCredits`, which `validateCustomCredits` on the server uses for the
+ * Stripe amount. The slider steps in the server's step; the number field
+ * accepts any whole number in range — the server accepts exactly those too.
  */
-function CustomAmount({ packs, base, currency, paymentsEnabled, t, n, money }: {
-  packs: PackCard[]; base: number; currency: string; paymentsEnabled: boolean;
-  t: (k: string, v?: Record<string, string | number>) => string;
-  n: (v: number) => string;
-  money: (cents: number, currency: string, digits?: number) => string;
+function CustomAmount({ packs, currency, paymentsEnabled, t }: {
+  packs: PackCard[]; currency: string; paymentsEnabled: boolean; t: T;
 }) {
-  // THE SAME RATE CARD THE SERVER CHARGES AGAINST. This slider used to carry
-  // its own copy of the ladder, the bounds and the interpolation; a customer
-  // could then be quoted one price here and charged another by the checkout.
-  // Both sides now call lib/plans/credit-price.ts, so they cannot disagree.
-  const ladder = useMemo(
-    () => creditLadder(packs.map((p) => ({
-      credits: p.credits, bonus_credits: p.bonusCredits, price_cents: p.priceCents,
-    }))),
-    [packs],
-  );
-  const range = useMemo(() => customCreditsRange(ladder), [ladder]);
+  const ladder = useMemo(() => packLadder(packs), [packs]);
+  const range = useMemo(() => customRange(ladder), [ladder]);
+  const marks = useMemo(() => sliderMarks(ladder), [ladder]);
   const min = range?.min ?? 0;
   const max = range?.max ?? 0;
   const step = range?.step ?? 50;
+
   const [credits, setCredits] = useState(() => {
     // Open on the featured pack when there is one — the amount most people take.
     const featured = packs.find((p) => p.featured);
-    return featured ? featured.credits + featured.bonusCredits : Math.round((min + max) / 2);
+    const start = featured ? featured.credits + featured.bonusCredits : Math.round((min + max) / 2);
+    return range ? clampCredits(start, range, min) : start;
   });
+  const [draft, setDraft] = useState<string | null>(null);
 
   const { pending, go } = useCheckout();
-  const cents = useMemo(() => priceForCredits(credits, ladder), [credits, ladder]);
-  const per = credits > 0 ? cents / credits : 0;
-  const off = base > 0 && per > 0 ? Math.round((1 - per / base) * 100) : 0;
+  const quote = useMemo(() => customQuote(credits, ladder), [credits, ladder]);
+  const hint = useMemo(() => nextStepHint(credits, ladder), [credits, ladder]);
 
-  if (max <= min) return null;
+  if (!range || max <= min) return null;
+
+  const fill = ((credits - min) / (max - min)) * 100;
+  const commit = (raw: string) => {
+    const next = clampCredits(Number(raw.replace(/\s/g, "")), range, credits);
+    setCredits(next);
+    setDraft(null);
+  };
 
   return (
-    <div data-pricing-custom className="flex flex-col rounded-xl border border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*0.8))] bg-[rgb(var(--surface)/0.5)] p-4">
-      <p className="text-[13.5px] font-semibold">{t("packs.customTitle")}</p>
-      <p className="mt-0.5 text-[11.5px] text-muted">{t("packs.customSub")}</p>
+    <div data-pricing-custom
+      className="flex flex-col rounded-2xl border border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.1))] bg-[rgb(var(--surface)/0.6)] p-4 sm:p-5">
+      <h3 className="font-display text-[17px] font-semibold tracking-tight">{t("packs.customTitle")}</h3>
+      <p className="mt-0.5 text-[13px] text-muted">{t("packs.customSub")}</p>
 
-      <p className="mt-4 flex flex-wrap items-baseline gap-2">
-        <span data-custom-credits className="font-display text-[2.1rem] font-semibold leading-none tracking-tight text-accent tabular-nums">
-          {n(credits)}
-        </span>
-        <span className="text-[13px] font-medium text-muted">{t("packs.customCredits")}</span>
-      </p>
-      <p className="mt-1 flex flex-wrap items-center gap-2 text-[11.5px] text-faint">
-        <span>{t("packs.perCredit", { n: (per / 100).toFixed(2) })}</span>
-        {off > 0 && (
-          <span className="rounded-md bg-[rgb(var(--success)/0.16)] px-1.5 py-0.5 font-semibold text-success">
-            {t("packs.save", { n: off })}
+      <div className="mt-4 rounded-xl bg-[rgb(var(--accent)/0.07)] px-4 py-3.5 ring-1 ring-[rgb(var(--accent)/0.18)]">
+        <p className="flex flex-wrap items-baseline gap-x-2">
+          <span data-custom-credits className="metric text-[2.5rem] leading-none text-[rgb(var(--accent-strong))] dark:text-accent">
+            {formatCount(credits)}
           </span>
-        )}
-      </p>
-
-      <label htmlFor="custom-credits" className="sr-only">{t("packs.customTitle")}</label>
-      <input
-        id="custom-credits" type="range" min={min} max={max} step={step} value={credits}
-        onChange={(e) => setCredits(Number(e.target.value))}
-        data-custom-slider
-        className="mt-4 h-9 w-full cursor-pointer accent-[rgb(var(--accent))]"
-      />
-      <div className="flex items-center justify-between text-[11px] text-faint tabular-nums">
-        <span className="flex items-center gap-1"><Diamond size={10} />{n(min)}</span>
-        <span className="flex items-center gap-1">{n(max)}<Diamond size={10} /></span>
+          <span className="text-[14px] font-medium text-muted">{t("packs.customCredits")}</span>
+        </p>
+        <p className="mt-1.5 flex flex-wrap items-center gap-2 text-[13px] text-muted">
+          <span>{t("packs.perCreditApprox", { price: formatPerCredit(quote.perCredit, currency) })}</span>
+          {quote.offPct > 0 && <span className={SAVE_CHIP}>{t("packs.save", { n: quote.offPct })}</span>}
+        </p>
       </div>
-      <p className="mt-2 text-center text-[11px] text-faint">{t("packs.suggested", { n: n(credits) })}</p>
 
-      <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-[rgb(var(--ink)/0.06)] px-3 py-2.5">
-        <span className="text-[12.5px] font-medium text-muted">{t("packs.toPay")}</span>
-        <span data-custom-price className="font-display text-[19px] font-semibold tracking-tight">
-          {money(cents, currency)}
+      {/* The slider: gradient fill up to the thumb, ticks at the rate card's
+          real points (the packs), min and max at the ends. */}
+      <div className="mt-6">
+        <div className="relative">
+          <input
+            id="custom-credits" type="range" min={min} max={max} step={step} value={credits}
+            onChange={(e) => { setCredits(Number(e.target.value)); setDraft(null); }}
+            aria-label={t("packs.customTitle")}
+            aria-valuetext={`${formatCount(credits)} ${t("packs.customCredits")} — ${formatMoney(quote.cents, currency)}`}
+            data-custom-slider
+            className={RANGE_CLASS}
+            style={{
+              background: `linear-gradient(90deg, rgb(var(--accent-strong)), rgb(var(--accent)) 60%, rgb(var(--accent-glow))) 0 0 / ${fill}% 100% no-repeat, rgb(var(--ink) / 0.12)`,
+            }}
+          />
+          <div aria-hidden className="pointer-events-none relative mt-2 h-2">
+            {marks.filter((m) => m.at > min && m.at < max).map((m) => (
+              <span key={m.at} data-slider-mark={m.at}
+                className={cn("absolute top-0 h-2 w-[2px] -translate-x-1/2 rounded-full",
+                  credits >= m.at ? "bg-[rgb(var(--accent)/0.75)]" : "bg-[rgb(var(--ink)/0.22)]")}
+                style={{ left: `calc(${m.pct}% + ${THUMB / 2 - (m.pct / 100) * THUMB}px)` }} />
+            ))}
+          </div>
+        </div>
+        <div className="mt-1 flex items-center justify-between text-[12px] text-muted tabular-nums">
+          <span className="flex items-center gap-1.5"><Diamond size={7} />{formatCount(min)}</span>
+          <span className="flex items-center gap-1.5">{formatCount(max)}<Diamond size={7} /></span>
+        </div>
+      </div>
+
+      {/* Typing a number is the second way in — any whole number in range. */}
+      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <label htmlFor="custom-credits-input" className="text-[13px] font-medium text-muted">{t("packs.customInput")}</label>
+        <input id="custom-credits-input" type="number" inputMode="numeric" min={min} max={max} step={1}
+          value={draft ?? String(credits)}
+          onChange={(e) => {
+            const raw = e.target.value;
+            setDraft(raw);
+            const n = Number(raw);
+            if (Number.isInteger(n) && n >= min && n <= max) setCredits(n);
+          }}
+          onBlur={(e) => commit(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") commit((e.target as HTMLInputElement).value); }}
+          data-custom-input
+          className="h-10 w-28 rounded-xl border border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.2))] bg-sunken/70 px-3 text-[14px] font-semibold tabular-nums text-ink outline-none transition focus:border-[rgb(var(--accent)/0.55)] focus:bg-surface focus:ring-4 focus:ring-[rgb(var(--accent)/0.14)]"
+        />
+        <span className="text-[12px] text-muted">{t("packs.customRange", { min: formatCount(min), max: formatCount(max) })}</span>
+      </div>
+
+      {/* The next real step up the rate card, computed — not a tier table. */}
+      <div className="mt-3 min-h-[2.25rem]">
+        {hint ? (
+          <p data-next-step className="flex items-start gap-2 text-[13px] leading-snug text-ink/85">
+            <Zap size={13} aria-hidden className="mt-[3px] shrink-0 text-[rgb(var(--accent-strong))] dark:text-accent" />
+            <span className="min-w-0 flex-1">
+              {t("packs.nextStep", { n: formatCount(hint.add), pct: t("packs.save", { n: hint.offPct }) })}
+            </span>
+            <button type="button" onClick={() => { setCredits(hint.at); setDraft(null); }}
+              className="-my-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-[12.5px] font-semibold text-[rgb(var(--accent-strong))] underline-offset-2 hover:underline dark:text-accent">
+              {t("packs.nextStepAction")}
+            </button>
+          </p>
+        ) : (
+          <p className="flex items-center gap-2 text-[13px] text-muted">
+            <Check size={13} aria-hidden className="shrink-0 text-success" />
+            {t("packs.atBest")}
+          </p>
+        )}
+      </div>
+
+      <div className="mt-3 flex items-end justify-between gap-3 rounded-xl bg-[rgb(var(--ink)/0.05)] px-4 py-3.5">
+        <span className="pb-1 text-[13.5px] font-medium text-muted">{t("packs.toPay")}</span>
+        <span className="text-right">
+          {quote.referenceCents !== null && (
+            <s data-custom-reference className="block text-[13px] text-muted tabular-nums">
+              {formatMoney(quote.referenceCents, currency)}
+            </s>
+          )}
+          <span data-custom-price className="metric block text-[1.75rem] leading-none">
+            {formatMoney(quote.cents, currency)}
+          </span>
         </span>
       </div>
 
-      <ul className="mt-3 space-y-1.5 text-[11.5px] text-muted">
+      <ul className="mt-4 space-y-2 text-[13px] text-muted">
         {[t("packs.instant"), t("packs.secure"), t("packs.invoice")].map((line) => (
-          <li key={line} className="flex items-center gap-1.5">
-            <Check size={11} aria-hidden strokeWidth={3} className="shrink-0 text-success" />
+          <li key={line} className="flex items-center gap-2">
+            <Check size={14} aria-hidden strokeWidth={3} className="shrink-0 text-success" />
             {line}
           </li>
         ))}
       </ul>
 
-      <div className="mt-auto pt-3">
+      <div className="mt-auto pt-5">
         {/* A custom amount needs NO Stripe price — the line item is built
-            server-side from the same rate card this slider reads — so the only
+            server-side from the same rate card this panel reads — so the only
             question is whether this deployment can charge at all. */}
-        <button
+        <button type="button"
           disabled={!paymentsEnabled || pending}
-          onClick={() => go(`/checkout?kind=credits&n=${credits}`)}
+          onClick={() => go(creditsCheckoutHref(credits))}
           data-custom-buy
           className={cn(
-            "cta h-11 w-full rounded-xl text-sm font-semibold transition-opacity",
-            !paymentsEnabled || pending ? "opacity-70" : "",
+            "cta h-12 w-full rounded-xl text-[15px] font-semibold",
+            (!paymentsEnabled || pending) && "cursor-not-allowed opacity-60",
           )}>
           {pending ? t("packs.redirecting")
             : !paymentsEnabled ? t("packs.unavailable")
-              : t("packs.buyN", { n: n(credits) })}
+              : t("packs.buyN", { n: formatCount(credits) })}
         </button>
         {!paymentsEnabled && (
-          <p className="mt-1.5 text-center text-[11px] text-faint">{t("packs.soon")}</p>
+          <p className="mt-2 text-center text-[12px] text-muted">{t("packs.soon")}</p>
         )}
       </div>
     </div>

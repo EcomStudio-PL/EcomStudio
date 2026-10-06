@@ -3103,6 +3103,9 @@
     "row.operator": "Operator-Modus",
     "row.imageTools": "Bild-Werkzeuge",
     "row.video": "KI-Video",
+    "row.support": "Support",
+    "row.dedicatedSupport": "Persönlicher Support",
+    "row.commercial": "Kommerzielle Nutzung",
     "unlimited": "unbegrenzt",
     "seatsOne": "1 Person",
     "seats": "{n} Personen",
@@ -3110,7 +3113,31 @@
     "paidNote": "Mehr Spielraum für regelmäßige Inhalte.",
     "topNote": "Die beste Wahl für Firmen und Content-Creator.",
     "maxNote": "Die volle Leistung von GrovBase für anspruchsvolle Teams.",
-    "seatsFew": "{n} Personen"
+    "seatsFew": "{n} Personen",
+    "tier": {
+      "business": "Business"
+    },
+    "tagline": {
+      "starter": "Für einzelne Creator",
+      "pro": "Für Profis",
+      "business": "Für Teams und Agenturen",
+      "default": "GrovBase-Abonnement"
+    },
+    "currentFree": "Dein aktueller Tarif: {name} · {n} Credits/Mon.",
+    "perCreditApprox": "~{price} pro Credit",
+    "billedYearly": "jährlich abgerechnet: {price}",
+    "saveYearly": "Du sparst {price} pro Jahr",
+    "moreCredits": "{n}× mehr Credits als {plan}",
+    "creditsPerMonth": "{n} Credits / Mon.",
+    "detail": {
+      "renews": "monatlich erneuert",
+      "bonus": "inklusive {n} Bonus-Credits",
+      "imageTools": "alle verfügbaren Werkzeuge"
+    },
+    "support": {
+      "standard": "Standard",
+      "dedicated": "Persönlich"
+    }
   },
   "packs": {
     "title": "Credit-Pakete",
@@ -3154,7 +3181,14 @@
     "manageBillingSub": "Karten, Rechnungen und Abo — im Stripe-Portal.",
     "portalNoCustomer": "Dieser Workspace hat noch keine Zahlungshistorie.",
     "alreadySubscribed": "Dieser Workspace hat bereits ein aktives Abo. Ändere den Plan im Zahlungsportal.",
-    "planNotPurchasable": "Dieser Plan kann nicht gekauft werden."
+    "planNotPurchasable": "Dieser Plan kann nicht gekauft werden.",
+    "perCreditApprox": "~{price} pro Credit",
+    "referenceBasis": "Durchgestrichene Preise und Rabate beziehen sich auf den Credit-Preis im kleinsten Paket ({price}).",
+    "customInput": "Anzahl Credits",
+    "customRange": "von {min} bis {max}",
+    "nextStep": "Noch {n} Credits hinzufügen für {pct}",
+    "nextStepAction": "Hinzufügen",
+    "atBest": "Niedrigster Preis pro Credit in diesem Bereich"
   },
   "mobilenav": {
     "home": "Start",
