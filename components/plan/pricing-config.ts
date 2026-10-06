@@ -97,12 +97,25 @@ export const SERVICE_LEVELS: Readonly<Record<string, ServiceLevel>> = {
 
 export const serviceLevel = (slug: string): ServiceLevel | null => SERVICE_LEVELS[slug] ?? null;
 
+/**
+ * CAPABILITIES THAT ARE SOLD BUT NOT YET RUNNING. The plan rows carry them
+ * ({workspace_members, priority_queue, operator_mode}) and the admin edits
+ * them, but no code consumes them yet: there is no member invitation, no
+ * plan-aware queue and no operator mode. Until there is, the page shows the
+ * plan's value with a "Wkrótce" mark instead of a ✓ — the same honesty the
+ * video row already has. Remove a key from this list the day its feature
+ * ships; the ✓ comes back from the data on its own.
+ */
+export const COMING_SOON_CAPABILITIES: readonly string[] = ["workspace_members", "priority_queue", "operator_mode"];
+
+export const isComingSoon = (capability: string) => COMING_SOON_CAPABILITIES.includes(capability);
+
 /** Page-level presentation switches. */
 export const PRICING_PAGE = {
   /**
    * The period the page OPENS on. The brief prefers "annual"; it is applied
-   * only when every paid plan has a real stored annual price
-   * (lib/plans/pricing.ts `annualBillingAvailable`) — otherwise the page opens
+   * only when every paid plan has a real stored annual price AND a Stripe
+   * annual Price (pricing-model.ts `annualOnOffer`) — otherwise the page opens
    * on monthly, because an annual default with no annual price would quote a
    * figure nobody set. Set to "monthly" to stop defaulting to annual even once
    * annual prices exist.

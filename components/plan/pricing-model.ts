@@ -16,7 +16,7 @@
  * ones the page has always sent to /checkout — scripts/plan-page-tests.ts holds
  * them to that.
  */
-import { annualMonthlyCents } from "@/lib/plans/pricing";
+import { annualBillingAvailable, annualMonthlyCents } from "@/lib/plans/pricing";
 import {
   creditLadder, customCreditsRange, priceForCredits,
   type LadderStep,
@@ -137,6 +137,16 @@ export function initialBillingPeriod(preferred: BillingPeriod, annualAvailable: 
   return preferred === "annual" && annualAvailable ? "annual" : "monthly";
 }
 
+/**
+ * Whether the page offers annual billing at all: every paid plan needs a real
+ * yearly price in its row AND a Stripe annual Price behind it. A stored price
+ * without a Price would show a toggle whose every button is disabled — so the
+ * toggle, and the annual default, wait for both.
+ */
+export function annualOnOffer(plans: (PlanMoney & { annualMapped: boolean })[]): boolean {
+  return annualBillingAvailable(plans) && plans.filter(isPaidPlan).every((p) => p.annualMapped);
+}
+
 /* ── seats, in Polish plural ───────────────────────────────────────────────*/
 
 type T = (key: string, vars?: Record<string, string | number>) => string;
@@ -148,11 +158,29 @@ type T = (key: string, vars?: Record<string, string | number>) => string;
 export function seatLabel(seats: number, t: T): string {
   if (seats < 0) return t("plans.unlimited");
   if (seats === 1) return t("plans.seatsOne");
-  const last = seats % 10;
-  const teen = seats % 100 >= 12 && seats % 100 <= 14;
-  return last >= 2 && last <= 4 && !teen
+  return isFewForm(seats)
     ? t("plans.seatsFew", { n: formatCount(seats) })
     : t("plans.seats", { n: formatCount(seats) });
+}
+
+/**
+ * Polish counts 2-4 (not 12-14) with the "few" form: "1 152 kredyty", but
+ * "550 kredytów". The slider only lands on multiples of 50, the typed field on
+ * any whole number — so the word follows the number. (EN/DE carry the same
+ * word in both keys.)
+ */
+export function isFewForm(n: number): boolean {
+  const last = n % 10;
+  const teen = n % 100 >= 12 && n % 100 <= 14;
+  return last >= 2 && last <= 4 && !teen;
+}
+
+export function creditsWord(n: number, t: T): string {
+  return t(isFewForm(n) ? "packs.creditsFew" : "packs.customCredits");
+}
+
+export function buyCreditsLabel(n: number, t: T): string {
+  return t(isFewForm(n) ? "packs.buyNFew" : "packs.buyN", { n: formatCount(n) });
 }
 
 /* ── credit packs and the custom amount ────────────────────────────────────*/
@@ -225,6 +253,18 @@ export const customRange = customCreditsRange;
 export function clampCredits(value: number, range: { min: number; max: number }, fallback: number): number {
   if (!Number.isFinite(value)) return fallback;
   return Math.min(range.max, Math.max(range.min, Math.round(value)));
+}
+
+/**
+ * What the typed field becomes when it is committed (blur / Enter). An empty
+ * or non-whole entry is not an amount, so the last valid one stays — without
+ * this, Number("") is 0 and a cleared field would quietly become the minimum.
+ * A whole number is clamped into range; spaces ("1 200") are ignored.
+ */
+export function committedCredits(raw: string, range: { min: number; max: number }, current: number): number {
+  const cleaned = raw.replace(/\s/g, "");
+  const n = cleaned === "" ? Number.NaN : Number(cleaned);
+  return Number.isInteger(n) ? clampCredits(n, range, current) : current;
 }
 
 /**

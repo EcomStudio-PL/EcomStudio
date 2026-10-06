@@ -40,13 +40,13 @@ import { creditLadder, validateCustomCredits } from "@/lib/plans/credit-price";
 import { annualBillingAvailable, annualMonthlyCents } from "@/lib/plans/pricing";
 import { parsePlanCapabilities } from "@/lib/plans/capabilities";
 import {
-  annualSavingCents, clampCredits, coinLevel, creditMultiple, creditsCheckoutHref, customQuote, customRange,
+  annualOnOffer, annualSavingCents, buyCreditsLabel, clampCredits, coinLevel, committedCredits, creditsWord, creditMultiple, creditsCheckoutHref, customQuote, customRange,
   formatCount, formatMoney, formatPerCredit, initialBillingPeriod, isPaidPlan, nextStepHint,
   packCheckoutHref, packLadder, packQuote, planCheckoutHref, planMonthlyCents, planPerCreditCents,
   referenceRate, sliderMarks,
 } from "@/components/plan/pricing-model";
 import {
-  FALLBACK_PLAN, PLAN_PRESENTATION, PRICING_PAGE, SERVICE_LEVELS, planPresentation,
+  COMING_SOON_CAPABILITIES, FALLBACK_PLAN, PLAN_PRESENTATION, PRICING_PAGE, SERVICE_LEVELS, isComingSoon, planPresentation,
 } from "@/components/plan/pricing-config";
 
 let failures = 0;
@@ -133,6 +133,7 @@ const toPackCard = (p: PackRow) => ({
   priceCents: p.price_cents, currency: p.currency, featured: p.featured, badge: p.badge,
   mapped: Boolean(p.stripe_price_id),
 });
+type PackCard = ReturnType<typeof toPackCard>;
 
 /* ── a catalogue that answers the server's reads, the way Postgres would ──*/
 
@@ -282,14 +283,18 @@ async function main() {
         formatMoney(planMonthlyCents(p, "monthly"), p.currency).replace(/\s/g, " ") === PLAN_PRICES[p.slug]);
     }
 
-    // C2 — every pack.
+    // C2 — every pack, through ONE parity predicate (C6 proves it can fail).
+    type PackQ = Awaited<ReturnType<typeof quote>>;
+    const packParity = (card: PackCard, q: PackQ): boolean => {
+      const row = PROD_PACKS.find((r) => r.id === card.id);
+      return Boolean(row) && q.ok && q.quote.amountCents === card.priceCents
+        && q.quote.stripePriceId === row!.stripe_price_id && q.quote.packageId === row!.id
+        && q.quote.credits === card.credits + card.bonusCredits && q.quote.currency === card.currency;
+    };
     for (const p of packs) {
-      const row = PROD_PACKS.find((r) => r.id === p.id)!;
       const q = await quote(packCheckoutHref(p.id));
       check(`pack ${p.name}: shown ${formatMoney(p.priceCents, p.currency)} = quoted, same Price / pack / credits`,
-        q.ok && q.quote.amountCents === p.priceCents && q.quote.stripePriceId === row.stripe_price_id
-        && q.quote.packageId === row.id && q.quote.credits === p.credits + p.bonusCredits
-        && q.quote.currency === p.currency, JSON.stringify(q));
+        packParity(p, q), JSON.stringify(q));
       check(`pack ${p.name}: the quote the row shows is its own price`, packQuote(p, referenceRate(ladder)).cents === p.priceCents);
     }
 
@@ -333,23 +338,40 @@ async function main() {
       /planCheckoutHref\(p\.id, period\)/.test(board) && /packCheckoutHref\(p\.id\)/.test(board)
       && /creditsCheckoutHref\(credits\)/.test(board) && !/\/checkout\?/.test(board));
     const setters = [...board.matchAll(/setCredits\(([^;]+?)\);/g)].map((m) => m[1].trim());
-    const allowed = [/^Number\(e\.target\.value\)$/, /^n$/, /^next$/, /^hint\.at$/];
+    const allowed = [/^Number\(e\.target\.value\)$/, /^n$/, /^committedCredits\(raw, range, credits\)$/, /^hint\.at$/];
     check("every way `credits` is set is slider / validated typed / clamped / a ladder point",
       setters.length >= 4 && setters.every((s) => allowed.some((r) => r.test(s))), setters.join(" | "));
     check("a typed value is applied live only when it is a whole number in range",
       /Number\.isInteger\(n\) && n >= min && n <= max\) setCredits\(n\)/.test(board));
-    check("…and committed through clampCredits", /const next = clampCredits\(/.test(board));
+    check("…and committed through committedCredits", /setCredits\(committedCredits\(raw, range, credits\)\)/.test(board));
+    // What a committed (blur / Enter) entry becomes: a cleared or junk field
+    // keeps the last amount — it must not fall to the minimum.
+    const COMMITS: [string, number][] = [["", 777], ["   ", 777], ["abc", 777], ["12.5", 777], ["1e2", 100],
+      ["1 200", 1200], ["5000", 3000], ["12", 100], ["-40", 100], ["0", 100], ["550", 550]];
+    for (const [raw, want] of COMMITS) {
+      const got = committedCredits(raw, range, 777);
+      check(`commit ${JSON.stringify(raw)} (from 777) → ${want}`, got === want, String(got));
+    }
     check("the custom quote is the shared one (priceForCredits through customQuote)",
       /customQuote\(credits, ladder\)/.test(board)
       && /priceForCredits\(credits, ladder\)/.test(codeOnly(read("components/plan/pricing-model.ts"))));
     check("the slider ladder is built from ALL active packs the page received",
       /packLadder\(packs\)/.test(board) && !/packs\.filter\(/.test(board));
 
-    // C6 — the comparator is not vacuous: a 1 gr drift is caught.
-    const drifted = { ...packs[1], priceCents: packs[1].priceCents + 1 };
-    const q = await quote(packCheckoutHref(drifted.id));
-    check("self-check: a +1 gr drift in what the page shows would fail the parity",
-      q.ok && q.quote.amountCents !== drifted.priceCents);
+    // C6 — the predicate C2 relies on is not vacuous: the original card
+    // passes it, and every single-field drift fails it.
+    const base = packs[1];
+    const q = await quote(packCheckoutHref(base.id));
+    check("self-check: the untouched card passes the parity predicate", packParity(base, q));
+    const drifts: [string, PackCard][] = [
+      ["+1 gr price", { ...base, priceCents: base.priceCents + 1 }],
+      ["+1 credit", { ...base, credits: base.credits + 1 }],
+      ["+1 bonus", { ...base, bonusCredits: base.bonusCredits + 1 }],
+      ["currency", { ...base, currency: "EUR" }],
+    ];
+    for (const [what, card] of drifts) {
+      check(`self-check: a ${what} drift fails the parity predicate`, !packParity(card, q));
+    }
   }
 
   console.log("\nD. ANNUAL — ONLY WHEN A REAL ANNUAL PRICE IS STORED");
@@ -367,6 +389,9 @@ async function main() {
       /const active: BillingPeriod = annualAvailable \? period : "monthly"/.test(board)
       && /initialBillingPeriod\(PRICING_PAGE\.defaultBillingPeriod, annualAvailable\)/.test(board));
     check("the billing control renders only when annual is available", /\{annualAvailable && \(/.test(board));
+    check("annual is offered only with stored yearly prices AND Stripe annual Prices",
+      /const annualAvailable = useMemo\(\(\) => annualOnOffer\(plans\), \[plans\]\)/.test(board));
+    check("production: annual is not on offer", !annualOnOffer(plans));
 
     // A catalogue with annual prices set on every paid plan.
     const ANNUAL: Record<string, [number, string]> = {
@@ -378,7 +403,11 @@ async function main() {
     } : p));
     const aCards = annualPlans.map(toPlanCard);
     const aDb = catalogueDb(annualPlans, PROD_PACKS);
-    check("annual catalogue: annual billing is available", annualBillingAvailable(aCards));
+    check("annual catalogue: annual billing is available", annualBillingAvailable(aCards) && annualOnOffer(aCards));
+    check("yearly prices without Stripe annual Prices are NOT on offer",
+      !annualOnOffer(aCards.map((c) => ({ ...c, annualMapped: false }))));
+    check("…nor when a single paid plan lacks its annual Price",
+      !annualOnOffer(aCards.map((c) => (c.slug === "pro" ? { ...c, annualMapped: false } : c))));
     check("annual catalogue: the page opens on annual",
       initialBillingPeriod(PRICING_PAGE.defaultBillingPeriod, true) === "annual");
     for (const p of aCards.filter(isPaidPlan)) {
@@ -407,11 +436,23 @@ async function main() {
       /const paid = useMemo\(\(\) => plans\.filter\(isPaidPlan\)/.test(board) && /paid\.map\(\(p\) => \(\s*<PlanColumn/.test(board));
     check("the Free notice reads the free row's own name and credits",
       /t\("plans\.currentFree", \{ name: free\.name, n: formatCount\(free\.monthlyCredits \+ free\.bonusCredits\) \}\)/.test(board));
-    check("…and shows only to a workspace on no paid plan", /\{!onPaidPlan && free && \(/.test(board));
+    check("…and shows only to a workspace on the free plan",
+      /const onFree = free !== null && currentSlug === free\.slug/.test(board) && /\{onFree && free && \(/.test(board));
     check("the current plan's card says so and does not sell", /isCurrent\s*\?\s*t\("plans\.current"\)/.test(board)
       && /const canBuy = payable && !isCurrent/.test(board));
     check("`agency` is displayed through a label key", planPresentation("agency").nameKey === "plans.tier.business");
     check("the card keeps the internal slug as its identity", /data-plan=\{p\.slug\}/.test(board));
+    // Capabilities with no consumer in the app are "Wkrótce", never ✓.
+    check("seats, priority queue and operator mode are listed as not yet running",
+      ["workspace_members", "priority_queue", "operator_mode"].every(isComingSoon) && COMING_SOON_CAPABILITIES.length === 3);
+    check("card rows carrying such a capability are marked soon, not ✓",
+      /soon: r\.on && isComingSoon\(CAPABILITY_OF_ROW\[r\.key\] \?\? ""\)/.test(board)
+      && /seats: "workspace_members", priority: "priority_queue", operator: "operator_mode"/.test(board)
+      && /data-on=\{\(r\.on && !r\.soon\) \|\| undefined\}/.test(board));
+    check("comparison cells for them go through the same switch",
+      /soonFlag\(p\.capabilities\.priority_queue, "priority_queue"\)/.test(board)
+      && /soonFlag\(p\.capabilities\.operator_mode, "operator_mode"\)/.test(board)
+      && /isComingSoon\("workspace_members"\) \? \{ soon: seatLabel\(s, t\) \}/.test(board));
     const pl = JSON.parse(read("lib/i18n/dictionaries/pl.json"));
     check("PL label for agency is BUSINESS (rendered uppercase)", pl.plans.tier.business === "Business");
     check("starter/pro keep their database names (no override)",
@@ -489,6 +530,20 @@ async function main() {
       [0, 1, 2, 3].map((i) => coinLevel(i, 4)).join(",") === "1,2,4,5");
     check("the custom slider steps in the server's step (50) from 100 to 3 000",
       range.min === 100 && range.max === 3000 && range.step === 50);
+    // Polish plural for the amount — typed amounts can end in 2-4.
+    const plDict = JSON.parse(read("lib/i18n/dictionaries/pl.json"));
+    const tPl = (key: string, vars?: Record<string, string | number>) => {
+      const [ns, ...rest] = key.split(".");
+      let out = String(plDict[ns][rest.join(".")]);
+      for (const [k, v] of Object.entries(vars ?? {})) out = out.replace(`{${k}}`, String(v));
+      return out;
+    };
+    const FORMS: [number, string][] = [[550, "kredytów"], [1152, "kredyty"], [104, "kredyty"], [112, "kredytów"],
+      [1000, "kredytów"], [3000, "kredytów"], [2523, "kredyty"]];
+    for (const [n, word] of FORMS) check(`${formatCount(n)} ${word}`, creditsWord(n, tPl) === word);
+    check("the buy button agrees: \"Kup 1 152 kredyty\" / \"Kup 550 kredytów\"",
+      buyCreditsLabel(1152, tPl).replace(/\s/g, " ") === "Kup 1 152 kredyty"
+      && buyCreditsLabel(550, tPl) === "Kup 550 kredytów");
   }
 
   console.log("\nJ. /plan STILL FEEDS THE BOARD THE SAME ROWS");

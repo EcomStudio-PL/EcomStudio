@@ -2,20 +2,21 @@
 import { useCallback, useMemo, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import {
-  BadgeCheck, Check, Clapperboard, Headphones, ImageIcon, ShieldCheck, Star, UserCog, Users, X, Zap,
+  BadgeCheck, Check, Clapperboard, Clock, Headphones, ImageIcon, ShieldCheck, Star, UserCog, Users, X, Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Diamond } from "@/components/layout/credits-control";
 import { cn } from "@/lib/utils";
 import type { PlanCapabilities } from "@/lib/plans/capabilities";
-import { annualBillingAvailable, annualSavingPct } from "@/lib/plans/pricing";
+import { annualSavingPct } from "@/lib/plans/pricing";
 import { CreditCoinStack } from "./credit-coin-stack";
 import {
-  PRICING_PAGE, planPresentation, serviceLevel, type PlanTone,
+  PRICING_PAGE, isComingSoon, planPresentation, serviceLevel, type PlanTone,
 } from "./pricing-config";
 import {
-  annualSavingCents, clampCredits, coinLevel, creditMultiple, creditsCheckoutHref, customQuote,
+  annualOnOffer, annualSavingCents, buyCreditsLabel, clampCredits, coinLevel, committedCredits, creditMultiple, creditsCheckoutHref,
+  creditsWord, customQuote,
   customRange, formatCount, formatMoney, formatMultiple, formatPerCredit, initialBillingPeriod,
   isPaidPlan, nextStepHint, packCheckoutHref, packLadder, packQuote, planCheckoutHref,
   planMonthlyCents, planPerCreditCents, referenceRate, seatLabel, sliderMarks,
@@ -97,6 +98,9 @@ function useCheckout() {
 
 const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
 const flag = (v: unknown): boolean => v === true;
+/** A flag the plan carries, shown as "Wkrótce" while no code consumes it. */
+const soonFlag = (v: unknown, capability: string): boolean | { soon: null } =>
+  flag(v) && isComingSoon(capability) ? { soon: null } : flag(v);
 
 /* ── tones: one accent family per plan, drawn from the theme tokens ───────*/
 
@@ -134,8 +138,13 @@ const BUSINESS_WASH: CSSProperties = {
   boxShadow: "inset 0 0 0 1px rgb(var(--indigo) / 0.28)",
 };
 
-/** A small chip: success text on a light success tint (AA in both themes). */
-const SAVE_CHIP = "rounded-md bg-[rgb(var(--success)/0.1)] px-1.5 py-0.5 text-[11.5px] font-semibold text-success tabular-nums";
+/** A small chip: success text on a light success tint. The light-theme text is
+ *  a shade darker than --success so it keeps 4.5:1 on the accent-washed rows. */
+const SAVE_CHIP = "rounded-md bg-[rgb(var(--success)/0.1)] px-1.5 py-0.5 text-[11.5px] font-semibold text-[rgb(11_94_52)] tabular-nums dark:text-success";
+
+/** The page's gradient buttons start from --accent-strong, so white labels
+ *  keep AA contrast across the whole face (the shared .cta is untouched). */
+const CTA_AA = "cta [--accent:var(--accent-strong)]";
 
 export function PricingBoard({ plans, packs, currentSlug, paymentsEnabled = false }: {
   plans: PlanCard[]; packs: PackCard[]; currentSlug: string;
@@ -150,29 +159,30 @@ export function PricingBoard({ plans, packs, currentSlug, paymentsEnabled = fals
   // ANNUAL BILLING IS DATA, NOT A COEFFICIENT. The control appears only when
   // every paid plan carries a real `annual_price_cents`; until then the page
   // quotes monthly prices and says nothing about a year. `period` defaults to
-  // the config's preference ONLY when annual is really on offer, and `active`
+  // the config's preference ONLY when annual is really on offer — a yearly
+  // price in the row AND a Stripe annual Price behind every paid plan — and `active`
   // — not `period` — drives every figure, so a stale state can never quote a
   // yearly price that does not exist.
-  const annualAvailable = useMemo(() => annualBillingAvailable(plans), [plans]);
+  const annualAvailable = useMemo(() => annualOnOffer(plans), [plans]);
   const annualPct = useMemo(() => annualSavingPct(plans), [plans]);
   const [period, setPeriod] = useState<BillingPeriod>(
     () => initialBillingPeriod(PRICING_PAGE.defaultBillingPeriod, annualAvailable),
   );
   const active: BillingPeriod = annualAvailable ? period : "monthly";
 
-  const onPaidPlan = paid.some((p) => p.slug === currentSlug);
+  const onFree = free !== null && currentSlug === free.slug;
   const reference = paid.find((p) => p.slug === PRICING_PAGE.benefitReferenceSlug);
 
   return (
     <div className="space-y-8 sm:space-y-10">
       <section data-pricing-plans>
-        {(annualAvailable || (!onPaidPlan && free)) && (
+        {(annualAvailable || onFree) && (
           <div className="mb-7 flex flex-col items-center gap-3 sm:mb-9">
             {annualAvailable && (
               <BillingToggle period={active} onChange={setPeriod} annualPct={annualPct} t={t} />
             )}
             {/* The free tier, said once and quietly — not sold as a card. */}
-            {!onPaidPlan && free && (
+            {onFree && free && (
               <p data-current-free
                 className="inline-flex items-center gap-2 rounded-full border border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.2))] bg-[rgb(var(--surface)/0.7)] px-3.5 py-1.5 text-center text-[13px] text-muted">
                 <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-[rgb(var(--success))]" />
@@ -184,7 +194,8 @@ export function PricingBoard({ plans, packs, currentSlug, paymentsEnabled = fals
 
         {/* Three columns from lg. The rows are a SUBGRID, so name, price, CTA,
             features and the closing box line up across all three cards. Below
-            lg the cards stack, featured first. */}
+            lg the cards stack in DOM order (Starter, PRO, Business) — the order the
+            keyboard follows. */}
         <div className="mx-auto grid max-w-xl gap-5 lg:max-w-none lg:grid-cols-3 lg:grid-rows-[auto_auto_auto_1fr_auto] lg:gap-x-5 lg:gap-y-0 lg:pt-4">
           {paid.map((p) => (
             <PlanColumn key={p.id} plan={p} period={active} isCurrent={p.slug === currentSlug}
@@ -260,7 +271,7 @@ function PlanColumn({ plan: p, period, isCurrent, paymentsEnabled, reference, t 
       className={cn(
         "relative flex flex-col rounded-2xl p-5 sm:p-6 lg:row-span-5 lg:grid lg:grid-rows-subgrid",
         featured
-          ? "order-first pt-7 transition-transform duration-300 sm:pt-8 lg:order-none lg:-translate-y-3 motion-safe:lg:hover:-translate-y-4"
+          ? "mt-3 pt-7 transition-transform duration-300 sm:pt-8 lg:mt-0 lg:-translate-y-3 motion-safe:lg:hover:-translate-y-4"
           : "panel panel-interactive",
       )}
       style={featured ? PRO_CARD : undefined}>
@@ -297,7 +308,7 @@ function PlanColumn({ plan: p, period, isCurrent, paymentsEnabled, reference, t 
           </span>
           <span className="text-[14px] font-medium text-muted">{t("plans.perMonth")}</span>
           {annual && monthly < p.priceCents && (
-            <s className="text-[15px] font-medium text-muted">{formatMoney(p.priceCents, p.currency)}</s>
+            <s className="text-[15px] font-medium text-muted"><span className="sr-only">{t("packs.regularPrice")} </span>{formatMoney(p.priceCents, p.currency)}</s>
           )}
         </div>
         {perCredit !== null && (
@@ -342,7 +353,7 @@ function PlanColumn({ plan: p, period, isCurrent, paymentsEnabled, reference, t 
             isCurrent
               ? "bg-[rgb(var(--success)/0.12)] text-success ring-1 ring-[rgb(var(--success)/0.4)]"
               : featured
-                ? "cta"
+                ? CTA_AA
                 : tone === "business"
                   ? "border border-[rgb(var(--indigo)/0.45)] bg-[rgb(var(--indigo)/0.08)] text-ink hover:border-[rgb(var(--indigo)/0.7)] hover:bg-[rgb(var(--indigo)/0.14)]"
                   : "border border-line-strong bg-surface/60 text-ink hover:border-[rgb(var(--accent)/0.45)] hover:bg-raised",
@@ -359,20 +370,23 @@ function PlanColumn({ plan: p, period, isCurrent, paymentsEnabled, reference, t 
       {/* 4 — what is in it */}
       <ul className="relative mt-6 space-y-3">
         {planFeatures(p, t).map((r) => (
-          <li key={r.key} data-feature={r.key} data-on={r.on || undefined}
+          <li key={r.key} data-feature={r.key} data-on={(r.on && !r.soon) || undefined} data-soon={r.soon || undefined}
             className="flex items-start gap-2.5 text-[13.5px] leading-snug">
             <span aria-hidden className={cn(
               "mt-px flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full",
-              r.on
-                ? featured ? "bg-[rgb(var(--accent)/0.14)] text-[rgb(var(--accent-strong))] dark:text-accent" : "bg-[rgb(var(--success)/0.12)] text-success"
-                : "bg-[rgb(var(--ink)/0.06)] text-muted",
+              r.soon
+                ? "bg-[rgb(var(--caution)/0.14)] text-[rgb(var(--caution))]"
+                : r.on
+                  ? featured ? "bg-[rgb(var(--accent)/0.14)] text-[rgb(var(--accent-strong))] dark:text-accent" : "bg-[rgb(var(--success)/0.12)] text-success"
+                  : "bg-[rgb(var(--ink)/0.06)] text-muted",
             )}>
-              {r.on ? <Check size={11} strokeWidth={3.2} /> : <X size={11} strokeWidth={3} />}
+              {r.soon ? <Clock size={11} strokeWidth={2.8} /> : r.on ? <Check size={11} strokeWidth={3.2} /> : <X size={11} strokeWidth={3} />}
             </span>
             <span className="min-w-0">
-              <span className={cn("block", r.on ? "font-medium text-ink" : "text-muted")}>
-                <span className="sr-only">{r.on ? "✓ " : "✕ "}</span>
+              <span className={cn("block", r.on && !r.soon ? "font-medium text-ink" : "text-muted")}>
+                <span className="sr-only">{r.soon ? "" : r.on ? "✓ " : "✕ "}</span>
                 {r.label}
+                {r.soon && <SoonMark t={t} className="ml-1.5" />}
               </span>
               {r.detail && <span className="mt-0.5 block text-[12px] text-muted">{r.detail}</span>}
             </span>
@@ -398,10 +412,21 @@ function PlanColumn({ plan: p, period, isCurrent, paymentsEnabled, reference, t 
   );
 }
 
+/** "Wkrótce" — a capability the plan carries but the app does not run yet. */
+function SoonMark({ t, className }: { t: T; className?: string }) {
+  return (
+    <span data-soon-mark
+      className={cn("inline-block rounded-md bg-[rgb(var(--caution)/0.14)] px-1.5 py-px align-[1px] text-[10.5px] font-semibold uppercase tracking-[0.06em] text-ink/75", className)}>
+      {t("features.badgeSoon")}
+    </span>
+  );
+}
+
 /**
  * The capability list for one plan — read from the row (and the service
  * levels in pricing-config.ts), never assumed. Every card lists the same rows,
- * so ✓ and ✕ compare like with like.
+ * so ✓ and ✕ compare like with like; a capability no code consumes yet
+ * (`COMING_SOON_CAPABILITIES`) is marked "Wkrótce" instead of ✓.
  */
 function planFeatures(p: PlanCard, t: T) {
   const seats = num(p.capabilities.workspace_members);
@@ -415,7 +440,7 @@ function planFeatures(p: PlanCard, t: T) {
         : t("plans.detail.renews"),
       on: p.monthlyCredits + p.bonusCredits > 0,
     },
-    { key: "imageTools", label: t("plans.row.imageTools"), detail: t("plans.detail.imageTools"), on: true },
+    { key: "imageTools", label: t("plans.row.imageTools"), detail: t("plans.detail.imageTools"), on: true, soon: false },
     {
       key: "seats",
       label: t("plans.row.seats"),
@@ -430,12 +455,18 @@ function planFeatures(p: PlanCard, t: T) {
       detail: null,
       on: service?.supportKey === "plans.support.dedicated",
     },
-  ];
+  ].map((r) => ({ ...r, soon: r.on && isComingSoon(CAPABILITY_OF_ROW[r.key] ?? "") }));
 }
+
+/** Which stored capability a feature / comparison row reads. */
+const CAPABILITY_OF_ROW: Readonly<Record<string, string>> = {
+  seats: "workspace_members", priority: "priority_queue", operator: "operator_mode",
+};
 
 /* ── 2. COMPARISON ────────────────────────────────────────────────────────*/
 
-type Cell = boolean | string;
+/** ✓ / ✕, a value, or a value (or nothing) the app does not run yet. */
+type Cell = boolean | string | { soon: string | null };
 
 function ComparisonSection({ plans, period, t }: { plans: PlanCard[]; period: BillingPeriod; t: T }) {
   const rows = useMemo<{ key: string; label: string; icon: LucideIcon | "diamond"; cell: (p: PlanCard) => Cell }[]>(() => [
@@ -447,15 +478,16 @@ function ComparisonSection({ plans, period, t }: { plans: PlanCard[]; period: Bi
       key: "seats", label: t("plans.row.seats"), icon: Users,
       cell: (p) => {
         const s = num(p.capabilities.workspace_members);
-        return s === null ? "—" : seatLabel(s, t);
+        if (s === null) return "—";
+        return (s < 0 || s > 1) && isComingSoon("workspace_members") ? { soon: seatLabel(s, t) } : seatLabel(s, t);
       },
     },
     { key: "imageTools", label: t("plans.row.imageTools"), icon: ImageIcon, cell: () => true },
     // No video backend exists on any plan; the row says so rather than
     // showing ticks for something nobody can run.
-    { key: "video", label: t("plans.row.video"), icon: Clapperboard, cell: () => t("features.badgeSoon") },
-    { key: "priority", label: t("plans.row.priority"), icon: Zap, cell: (p) => flag(p.capabilities.priority_queue) },
-    { key: "operator", label: t("plans.row.operator"), icon: UserCog, cell: (p) => flag(p.capabilities.operator_mode) },
+    { key: "video", label: t("plans.row.video"), icon: Clapperboard, cell: () => ({ soon: null }) },
+    { key: "priority", label: t("plans.row.priority"), icon: Zap, cell: (p) => soonFlag(p.capabilities.priority_queue, "priority_queue") },
+    { key: "operator", label: t("plans.row.operator"), icon: UserCog, cell: (p) => soonFlag(p.capabilities.operator_mode, "operator_mode") },
     {
       key: "support", label: t("plans.row.support"), icon: Headphones,
       cell: (p) => {
@@ -535,7 +567,12 @@ function ComparisonSection({ plans, period, t }: { plans: PlanCard[]; period: Bi
                         ? <span className="inline-flex items-center justify-center"><Check size={16} strokeWidth={3} aria-hidden className="text-success" /><span className="sr-only">✓</span></span>
                         : v === false
                           ? <span className="inline-flex items-center justify-center"><X size={15} strokeWidth={2.6} aria-hidden className="text-muted" /><span className="sr-only">✕</span></span>
-                          : <span className={cn("font-medium", r.key === "video" ? "text-muted" : "text-ink")}>{v}</span>}
+                          : typeof v === "object"
+                            ? <span data-soon-cell className="inline-flex flex-col items-center gap-1">
+                                {v.soon && <span className="font-medium text-muted">{v.soon}</span>}
+                                <SoonMark t={t} />
+                              </span>
+                            : <span className="font-medium text-ink">{v}</span>}
                     </td>
                   );
                 })}
@@ -615,9 +652,10 @@ function TopUpSection({ packs, paymentsEnabled, t }: { packs: PackCard[]; paymen
                   <CreditCoinStack level={level} size={44} />
                   <div className="min-w-0">
                     <p className="text-[15px] font-semibold leading-tight">
-                      {formatCount(p.credits)}&nbsp;{t("packs.customCredits")}
+                      <span className="whitespace-nowrap">{formatCount(p.credits)}</span>{" "}
+                      <span className="whitespace-nowrap">{creditsWord(p.credits, t)}</span>
                       {p.bonusCredits > 0 && (
-                        <span className="ml-1 font-semibold text-success">+{formatCount(p.bonusCredits)}</span>
+                        <span className="ml-1 whitespace-nowrap font-semibold text-success">+{formatCount(p.bonusCredits)}</span>
                       )}
                     </p>
                     <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-muted">
@@ -628,7 +666,7 @@ function TopUpSection({ packs, paymentsEnabled, t }: { packs: PackCard[]; paymen
                   <div className="text-right">
                     {q.referenceCents !== null && (
                       <s data-pack-reference className="block text-[12.5px] text-muted tabular-nums">
-                        {formatMoney(q.referenceCents, p.currency)}
+                        <span className="sr-only">{t("packs.regularPrice")} </span>{formatMoney(q.referenceCents, p.currency)}
                       </s>
                     )}
                     <p data-pack-price className="metric text-[20px] leading-tight">{formatMoney(p.priceCents, p.currency)}</p>
@@ -639,7 +677,9 @@ function TopUpSection({ packs, paymentsEnabled, t }: { packs: PackCard[]; paymen
                     data-pack-buy
                     className={cn(
                       "col-span-3 h-10 shrink-0 rounded-xl px-4 text-[13.5px] font-semibold transition-all duration-200 sm:col-span-1",
-                      best ? "cta" : "border border-line-strong bg-surface/60 text-ink hover:border-[rgb(var(--accent)/0.45)] hover:bg-raised",
+                      best
+                        ? "border border-[rgb(var(--accent)/0.55)] bg-[rgb(var(--accent)/0.08)] text-[rgb(var(--accent-strong))] hover:bg-[rgb(var(--accent)/0.14)] dark:text-accent"
+                        : "border border-line-strong bg-surface/60 text-ink hover:border-[rgb(var(--accent)/0.45)] hover:bg-raised",
                       disabled && "cursor-not-allowed opacity-60",
                     )}>
                     {pending ? t("packs.redirecting")
@@ -717,8 +757,7 @@ function CustomAmount({ packs, currency, paymentsEnabled, t }: {
 
   const fill = ((credits - min) / (max - min)) * 100;
   const commit = (raw: string) => {
-    const next = clampCredits(Number(raw.replace(/\s/g, "")), range, credits);
-    setCredits(next);
+    setCredits(committedCredits(raw, range, credits));
     setDraft(null);
   };
 
@@ -733,7 +772,7 @@ function CustomAmount({ packs, currency, paymentsEnabled, t }: {
           <span data-custom-credits className="metric text-[2.5rem] leading-none text-[rgb(var(--accent-strong))] dark:text-accent">
             {formatCount(credits)}
           </span>
-          <span className="text-[14px] font-medium text-muted">{t("packs.customCredits")}</span>
+          <span className="text-[14px] font-medium text-muted">{creditsWord(credits, t)}</span>
         </p>
         <p className="mt-1.5 flex flex-wrap items-center gap-2 text-[13px] text-muted">
           <span>{t("packs.perCreditApprox", { price: formatPerCredit(quote.perCredit, currency) })}</span>
@@ -749,7 +788,7 @@ function CustomAmount({ packs, currency, paymentsEnabled, t }: {
             id="custom-credits" type="range" min={min} max={max} step={step} value={credits}
             onChange={(e) => { setCredits(Number(e.target.value)); setDraft(null); }}
             aria-label={t("packs.customTitle")}
-            aria-valuetext={`${formatCount(credits)} ${t("packs.customCredits")} — ${formatMoney(quote.cents, currency)}`}
+            aria-valuetext={`${formatCount(credits)} ${creditsWord(credits, t)} — ${formatMoney(quote.cents, currency)}`}
             data-custom-slider
             className={RANGE_CLASS}
             style={{
@@ -816,7 +855,7 @@ function CustomAmount({ packs, currency, paymentsEnabled, t }: {
         <span className="text-right">
           {quote.referenceCents !== null && (
             <s data-custom-reference className="block text-[13px] text-muted tabular-nums">
-              {formatMoney(quote.referenceCents, currency)}
+              <span className="sr-only">{t("packs.regularPrice")} </span>{formatMoney(quote.referenceCents, currency)}
             </s>
           )}
           <span data-custom-price className="metric block text-[1.75rem] leading-none">
@@ -843,12 +882,12 @@ function CustomAmount({ packs, currency, paymentsEnabled, t }: {
           onClick={() => go(creditsCheckoutHref(credits))}
           data-custom-buy
           className={cn(
-            "cta h-12 w-full rounded-xl text-[15px] font-semibold",
+            CTA_AA, "h-12 w-full rounded-xl text-[15px] font-semibold",
             (!paymentsEnabled || pending) && "cursor-not-allowed opacity-60",
           )}>
           {pending ? t("packs.redirecting")
             : !paymentsEnabled ? t("packs.unavailable")
-              : t("packs.buyN", { n: formatCount(credits) })}
+              : buyCreditsLabel(credits, t)}
         </button>
         {!paymentsEnabled && (
           <p className="mt-2 text-center text-[12px] text-muted">{t("packs.soon")}</p>
