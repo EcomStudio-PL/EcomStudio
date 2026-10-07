@@ -372,8 +372,8 @@ section("THE START: THE SHARED HOME, ITS CATEGORY DOORS THROUGH THE FORWARD");
 // that each opens through the forward that asks the switchboard, and wears the
 // category's own card slot.
 const home = code(`${APP}/home/page.tsx`);
-check("the Start renders the shared Home, not a dashboard of its own",
-  /<ProductSurface scope="shell" \/>/.test(home) && !/CategoryGrid|#kategorie/.test(home));
+check("the Start renders the seller home, not a dashboard of its own",
+  /<SellerHome \/>/.test(home) && !/CategoryGrid|#kategorie/.test(home));
 {
   const model = homeModel(ALL_ACTIVE);
   const categoryCards = [...model.rail, ...model.chips, ...model.effects].filter((c) => c.key.startsWith("cat:"));

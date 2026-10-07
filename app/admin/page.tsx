@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { KpiCard, RevenueChart } from "@/components/admin/dashboard-kpi";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { cn } from "@/lib/utils";
+import { INTEREST_KEYS, interestLabelKey } from "@/lib/seller-home-config";
 import { ArrowRight, Coins, Users, Wand2, Wallet } from "lucide-react";
 
 /**
@@ -38,7 +39,13 @@ export default async function AdminDashboard({ searchParams }: {
   const supabase = await createClient();
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
-  const [data, counts] = await Promise.all([readDashboard(supabase, range), adminCounts(supabase)]);
+  const [data, counts, { data: interest }] = await Promise.all([
+    readDashboard(supabase, range),
+    adminCounts(supabase),
+    // "Powiadom mnie" on /home — demand per coming-soon feature (0135).
+    supabase.rpc("feature_interest_counts"),
+  ]);
+  const interestBy = new Map((interest ?? []).map((r) => [r.feature_key, Number(r.interested)]));
 
   const hintFor = (days: number) => t("admin.vsPrevious", { n: days });
 
@@ -192,6 +199,21 @@ export default async function AdminDashboard({ searchParams }: {
           <MiniFact label={t("admin.statCreditsUsed")} value={counts.creditsUsed} />
           <MiniFact label={t("admin.statJobs")} value={counts.jobs} />
         </div>
+      </div>
+
+      {/* ROW 6 — what customers are waiting for: one figure per coming-soon
+          feature, from the /home "Powiadom mnie" button. */}
+      <div className="panel mt-4 rounded-2xl px-4 py-3.5 sm:px-5" data-admin-interest>
+        <p className="overline mb-2.5 text-[9.5px]">{t("admin.interest.title")}</p>
+        {interestBy.size === 0 ? (
+          <p className="text-[13px] text-muted">{t("admin.interest.empty")}</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-5">
+            {INTEREST_KEYS.map((k) => (
+              <MiniFact key={k} label={t(interestLabelKey(k))} value={interestBy.get(k) ?? 0} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -186,8 +186,10 @@ check("a video tool keeps its play mark once an operator dresses it (clip or sti
 section("D. ONE IMPLEMENTATION: /start, /home AND \"/\"");
 
 const homePage = code("app/(app)/home/page.tsx");
-check("the signed-in Start renders the shared Home in the app shell",
-  /<ProductSurface scope="shell" \/>/.test(homePage));
+// /home has its OWN body since the seller-home redesign (components/seller-home):
+// the public "/" and /start keep ProductSurface → ProductHome, asserted below.
+check("the signed-in Start renders the seller home in the app shell, not the public surface",
+  /<SellerHome \/>/.test(homePage) && !/ProductSurface|ProductHome/.test(homePage));
 check("…and nothing of the old dashboard (stats, greeting, tip, recent work)",
   !/getWallet|listAssets|Greeting|TipBanner|HeroArt|generations|createSignedUrls/.test(homePage));
 check("the old dashboard's components are deleted",

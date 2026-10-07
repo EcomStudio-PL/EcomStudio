@@ -506,6 +506,8 @@
     }
   },
   "admin": {
+    "interest.title": "Interesse: Demnächst",
+    "interest.empty": "Noch niemand hat „Benachrichtigen“ geklickt.",
     "title": "Admin-Bereich",
     "backToApp": "Zurück zur App",
     "nav": {
@@ -7830,6 +7832,219 @@
       },
       "publishHour": "Veröffentlichung um {hour}",
       "sendHour": "Versand um {hour}"
+    }
+  },
+  "sellerHome": {
+    "hero": {
+      "title": "Produktfoto hochladen — fertiges Allegro-Vorschaubild erhalten",
+      "sub": "Ohne Grafiker, ohne Prompts. In wenigen Sekunden fertig."
+    },
+    "tasksLabel": "Was möchtest du mit dem Foto machen?",
+    "task": {
+      "popular": "Am häufigsten gewählt",
+      "allegro": {
+        "name": "Allegro-Vorschaubild",
+        "effect": "Ein quadratisches Vorschaubild für das erste Angebotsfoto."
+      },
+      "packshot": {
+        "name": "Packshot auf hellem Hintergrund",
+        "effect": "Ein sauberes Produkt auf einfarbigem, hellem Hintergrund."
+      },
+      "lifestyle": {
+        "name": "Lifestyle-Foto",
+        "effect": "Dein Produkt in einer natürlichen, passenden Umgebung."
+      },
+      "mannequin": {
+        "name": "Unsichtbare Schaufensterpuppe",
+        "effect": "Kleidung mit Ghost-Mannequin-Effekt — ohne Model und Puppe."
+      },
+      "set": {
+        "name": "Angebotsset",
+        "effect": "Ein einheitliches Set an Aufnahmen für ein Angebot."
+      }
+    },
+    "unit": {
+      "thumbnail": {
+        "one": "Vorschaubild",
+        "few": "Vorschaubilder",
+        "many": "Vorschaubilder"
+      },
+      "packshot": {
+        "one": "Packshot",
+        "few": "Packshots",
+        "many": "Packshots"
+      },
+      "lifestyle": {
+        "one": "Lifestyle-Foto",
+        "few": "Lifestyle-Fotos",
+        "many": "Lifestyle-Fotos"
+      },
+      "photo": {
+        "one": "Foto",
+        "few": "Fotos",
+        "many": "Fotos"
+      }
+    },
+    "slot": {
+      "taskPair": "{name} — vorher/nachher",
+      "size": "{w}×{h} px",
+      "before": "Foto vorher",
+      "after": "Ergebnis nachher",
+      "tool": "{name} — Vorschau"
+    },
+    "before": "Vorher",
+    "after": "Nachher",
+    "upload": {
+      "title": "Produktfoto hierher ziehen oder klicken, um es auszuwählen",
+      "hint": "JPG, PNG, WebP oder AVIF · bis 10 MB",
+      "ready": "Foto bereit — drücke „Generieren“.",
+      "change": "Foto ändern",
+      "remove": "Foto entfernen"
+    },
+    "generate": "Generieren",
+    "press": {
+      "shots": "Standardmäßig {shots} Aufnahmen · {total} Cr. ({per} Cr. pro Bild). Die Anzahl änderst du im nächsten Schritt.",
+      "single": "{per} Cr. pro Bild.",
+      "free": "Kostenlos.",
+      "next": "Das Foto geht an das Werkzeug — dort siehst du den Preis, bevor etwas startet.",
+      "open": "Wir öffnen das Werkzeug — dort fügst du das Foto hinzu."
+    },
+    "unavailable": "Die Generierung ist vorübergehend nicht verfügbar.",
+    "credits": {
+      "one": "Du hast {n} Credit",
+      "few": "Du hast {n} Credits",
+      "many": "Du hast {n} Credits",
+      "approx": "ca. {n} {unit}"
+    },
+    "cost": {
+      "free": "Kostenlos",
+      "perImage": "{n} Cr. / Bild"
+    },
+    "samples": "Kein Foto? Probiere ein Beispiel",
+    "sampleTry": "Mit Beispiel ausprobieren: {name}",
+    "sampleEmpty": "Beispiel folgt · {w}×{h} px",
+    "sample": {
+      "p1": "Beispiel 1",
+      "p2": "Beispiel 2",
+      "p3": "Beispiel 3",
+      "p4": "Beispiel 4"
+    },
+    "notes": {
+      "toggle": "Zusätzliche Hinweise (optional)",
+      "nextStep": "Du musst nichts schreiben. Wenn du möchtest, beschreibst du jede Aufnahme im nächsten Schritt, vor dem Generieren.",
+      "inTool": "Du musst nichts schreiben. Details gibst du bei Bedarf im Werkzeug an."
+    },
+    "noCredits": {
+      "title": "Nicht genug Credits",
+      "body": "Du hast {balance} Cr., ein Bild in dieser Aufgabe kostet {per} Cr. Wähle, wie es weitergeht.",
+      "perMonth": "/ Mon.",
+      "proCredits": "{n} Credits jeden Monat",
+      "proCta": "PRO wählen",
+      "topupTitle": "Credits aufladen",
+      "topupBody": "Ein einmaliges Paket, kein Abo. Credits verfallen nicht.",
+      "topupCta": "Pakete ansehen"
+    },
+    "channel": {
+      "title": "Wo verkaufst du?",
+      "sub": "Wir passen den ersten Schritt an deinen Verkaufskanal an.",
+      "allegro": "Allegro",
+      "amazon": "Amazon",
+      "own_store": "Eigener Shop",
+      "multi": "Mehrere Kanäle"
+    },
+    "gallery": {
+      "title": "Sieh, was du aus deinem Foto machst",
+      "sub": "Ziehe den Regler, um vorher und nachher zu vergleichen.",
+      "filters": "Nach Branche filtern",
+      "slider": "Vorher-nachher-Vergleich: {name}",
+      "doSame": "Genauso machen"
+    },
+    "industry": {
+      "all": "Alle",
+      "home_garden": "Haus & Garten",
+      "tools": "Werkzeuge",
+      "beauty": "Beauty",
+      "fashion": "Mode",
+      "automotive": "Auto",
+      "pets": "Haustiere"
+    },
+    "anchor": {
+      "label": "Was es kostet",
+      "thumbnail": "Vorschaubild beim Grafiker: {designer} · bei GrovBase: ca. {ours}",
+      "lifestyle": "Set aus 5 Lifestyle-Fotos: {designer} beim Grafiker · ca. {ours} bei GrovBase",
+      "plans": "Pläne ansehen"
+    },
+    "tools": {
+      "title": "Alle Werkzeuge",
+      "use": "Nutzen",
+      "adminOnly": "Für Kunden nicht verfügbar"
+    },
+    "group": {
+      "product": "Produktfotos",
+      "fashion": "Mode",
+      "edit": "Bearbeitung & Retusche"
+    },
+    "tool": {
+      "thumbnail": {
+        "name": "Vorschaubild",
+        "desc": "Ein Bildausschnitt für das erste Angebotsfoto."
+      },
+      "packshot": {
+        "name": "Packshot",
+        "desc": "Ein sauberes Produkt auf einfarbigem Hintergrund."
+      },
+      "whiteBg": {
+        "name": "Weißer Hintergrund",
+        "desc": "Das Produkt auf sauberem, weißem Hintergrund."
+      },
+      "aiBackground": {
+        "name": "KI-Hintergrund",
+        "desc": "Ein neuer, zum Produkt passender Hintergrund."
+      },
+      "aiShadow": {
+        "name": "KI-Schatten",
+        "desc": "Ein natürlicher Schatten unter dem Produkt."
+      },
+      "context": {
+        "name": "Im Kontext",
+        "desc": "Das Produkt in natürlicher Umgebung."
+      },
+      "grovshot": {
+        "name": "Grovshot-Generator",
+        "desc": "Ein Produktshooting aus deinem Foto."
+      },
+      "custom": {
+        "name": "Eigener Prompt",
+        "desc": "Beschreibe genau, was du brauchst."
+      },
+      "mannequin": {
+        "name": "Unsichtbare Schaufensterpuppe",
+        "desc": "Kleidung ohne Model und Puppe."
+      },
+      "moda": {
+        "name": "Mode",
+        "desc": "Werkzeuge für Kleidung und Accessoires."
+      },
+      "retouch": {
+        "name": "Fotoretusche",
+        "desc": "Ein normales Foto in Premium-Packshot-Qualität."
+      }
+    },
+    "soon": {
+      "title": "Demnächst",
+      "sub": "Klicke „Benachrichtigen“ — wir melden uns, sobald es bereit ist.",
+      "notify": "Benachrichtigen",
+      "saved": "Gespeichert",
+      "ugc": "Produkt-UGC",
+      "video": "Produktvideo",
+      "ads": "Anzeigen",
+      "social": "Social Media",
+      "mailing": "Mailing"
+    },
+    "recent": {
+      "title": "Letzte Projekte",
+      "all": "Alle ansehen",
+      "repeat": "Mit neuem Produkt wiederholen"
     }
   }
 }

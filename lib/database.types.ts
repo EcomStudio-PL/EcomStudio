@@ -1851,6 +1851,27 @@ export type Database = {
         }
         Relationships: []
       }
+      feature_interest: {
+        Row: {
+          created_at: string
+          feature_key: string
+          user_id: string
+          workspace_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          feature_key: string
+          user_id: string
+          workspace_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          feature_key?: string
+          user_id?: string
+          workspace_id?: string | null
+        }
+        Relationships: []
+      }
       feature_flags: {
         Row: {
           created_at: string
@@ -5029,6 +5050,8 @@ export type Database = {
           marketing_consent_at: string | null
           phone: string | null
           role: Database["public"]["Enums"]["user_role"]
+          seller_channel: string | null
+          seller_channel_asked_at: string | null
           tax_id: string | null
           updated_at: string
         }
@@ -5061,6 +5084,8 @@ export type Database = {
           marketing_consent_at?: string | null
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          seller_channel?: string | null
+          seller_channel_asked_at?: string | null
           tax_id?: string | null
           updated_at?: string
         }
@@ -5093,6 +5118,8 @@ export type Database = {
           marketing_consent_at?: string | null
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
+          seller_channel?: string | null
+          seller_channel_asked_at?: string | null
           tax_id?: string | null
           updated_at?: string
         }
@@ -6386,6 +6413,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      feature_interest_counts: {
+        Args: never
+        Returns: { feature_key: string; interested: number }[]
+      }
       stripe_settle_payment: {
         Args: {
           p_token: string | null

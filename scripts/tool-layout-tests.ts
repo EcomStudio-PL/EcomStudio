@@ -389,8 +389,10 @@ console.log("\nK. two thumbnail frames on Start and /tools: the 2336×1744 photo
   check("the shipped example photos are contained too (card tiles and the GrovShot frames)",
     art.includes('className="object-contain"') && !/className="object-cover"\s*\/>/.test(code(art).replace(/blur-xl[^"]*"/g, ""))
     && banner.includes("aspectRatio: PHOTO_THUMB_RATIO") && banner.includes("<WholeImage"));
-  check("the Start skeleton reserves photo frames (2336/1744)",
-    skeleton.includes("aspect-[2336/1744]") && !/aspect-\[(5\/4|16\/9|4\/5|1\/1|16\/10)\]/.test(skeleton));
+  // /home's skeleton follows the seller home (components/seller-home), whose
+  // task cards and tool cards are 4:3 MediaSlots.
+  check("the Start skeleton reserves the seller home's 4:3 frames",
+    skeleton.includes("aspect-[4/3]") && !/aspect-\[(5\/4|16\/9|4\/5|1\/1|16\/10)\]/.test(skeleton));
   check("no other shape is left on a Start or /tools thumbnail",
     ![art, cards, home, catalogue, gallery, banner, skeleton, thumb].some((src) => /["\[](5\/4|1\/1|4\/5|16\/9|16\/10)["\]]/.test(code(src))));
 

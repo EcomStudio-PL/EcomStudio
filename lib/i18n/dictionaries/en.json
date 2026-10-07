@@ -506,6 +506,8 @@
     }
   },
   "admin": {
+    "interest.title": "Interest: Coming soon",
+    "interest.empty": "Nobody has clicked “Notify me” yet.",
     "title": "Admin panel",
     "backToApp": "Back to app",
     "nav": {
@@ -7830,6 +7832,219 @@
       },
       "publishHour": "Published at {hour}",
       "sendHour": "Sent at {hour}"
+    }
+  },
+  "sellerHome": {
+    "hero": {
+      "title": "Drop in a product photo — get a ready Allegro thumbnail",
+      "sub": "No designer, no prompts. Ready in under a minute."
+    },
+    "tasksLabel": "What do you want to do with the photo?",
+    "task": {
+      "popular": "Most popular",
+      "allegro": {
+        "name": "Allegro thumbnail",
+        "effect": "A square thumbnail for the listing's first photo."
+      },
+      "packshot": {
+        "name": "Packshot on a light background",
+        "effect": "A clean product on a plain, light background."
+      },
+      "lifestyle": {
+        "name": "Lifestyle photo",
+        "effect": "Your product in a natural, matching setting."
+      },
+      "mannequin": {
+        "name": "Invisible mannequin",
+        "effect": "Clothing with the ghost-mannequin effect — no model, no mannequin."
+      },
+      "set": {
+        "name": "Listing set",
+        "effect": "A consistent set of shots for one listing."
+      }
+    },
+    "unit": {
+      "thumbnail": {
+        "one": "thumbnail",
+        "few": "thumbnails",
+        "many": "thumbnails"
+      },
+      "packshot": {
+        "one": "packshot",
+        "few": "packshots",
+        "many": "packshots"
+      },
+      "lifestyle": {
+        "one": "lifestyle photo",
+        "few": "lifestyle photos",
+        "many": "lifestyle photos"
+      },
+      "photo": {
+        "one": "photo",
+        "few": "photos",
+        "many": "photos"
+      }
+    },
+    "slot": {
+      "taskPair": "{name} — before/after",
+      "size": "{w}×{h} px",
+      "before": "Photo before",
+      "after": "Result after",
+      "tool": "{name} — thumbnail"
+    },
+    "before": "Before",
+    "after": "After",
+    "upload": {
+      "title": "Drag a product photo here or click to choose",
+      "hint": "JPG, PNG, WebP or AVIF · up to 10 MB",
+      "ready": "Photo ready — press “Generate”.",
+      "change": "Change photo",
+      "remove": "Remove photo"
+    },
+    "generate": "Generate",
+    "press": {
+      "shots": "{shots} shots by default · {total} cr. ({per} cr. per image). You can change the number of shots in the next step.",
+      "single": "{per} cr. per image.",
+      "free": "Free.",
+      "next": "The photo goes to the tool — you will see the price there before anything starts.",
+      "open": "We will open the tool — add the photo there."
+    },
+    "unavailable": "Generation is temporarily unavailable.",
+    "credits": {
+      "one": "You have {n} credit",
+      "few": "You have {n} credits",
+      "many": "You have {n} credits",
+      "approx": "about {n} {unit}"
+    },
+    "cost": {
+      "free": "Free",
+      "perImage": "{n} cr. / image"
+    },
+    "samples": "No photo? Try an example",
+    "sampleTry": "Try with an example: {name}",
+    "sampleEmpty": "Example coming soon · {w}×{h} px",
+    "sample": {
+      "p1": "Example 1",
+      "p2": "Example 2",
+      "p3": "Example 3",
+      "p4": "Example 4"
+    },
+    "notes": {
+      "toggle": "Additional notes (optional)",
+      "nextStep": "You don't have to write anything. If you like, you can describe each shot in the next step, before generating.",
+      "inTool": "You don't have to write anything. Add details in the tool if needed."
+    },
+    "noCredits": {
+      "title": "Not enough credits",
+      "body": "You have {balance} cr., and one image in this task costs {per} cr. Choose how to continue.",
+      "perMonth": "/ mo.",
+      "proCredits": "{n} credits every month",
+      "proCta": "Choose PRO",
+      "topupTitle": "Top up credits",
+      "topupBody": "A one-off pack, no subscription. Credits never expire.",
+      "topupCta": "See packs"
+    },
+    "channel": {
+      "title": "Where do you sell?",
+      "sub": "We will tailor the first step to your sales channel.",
+      "allegro": "Allegro",
+      "amazon": "Amazon",
+      "own_store": "My own store",
+      "multi": "Several channels"
+    },
+    "gallery": {
+      "title": "See what you can make from your photo",
+      "sub": "Drag the slider to compare before and after.",
+      "filters": "Filter by industry",
+      "slider": "Before and after comparison: {name}",
+      "doSame": "Do the same"
+    },
+    "industry": {
+      "all": "All",
+      "home_garden": "Home & garden",
+      "tools": "Tools",
+      "beauty": "Beauty",
+      "fashion": "Fashion",
+      "automotive": "Automotive",
+      "pets": "Pets"
+    },
+    "anchor": {
+      "label": "What it costs",
+      "thumbnail": "Thumbnail from a designer: {designer} · in GrovBase: about {ours}",
+      "lifestyle": "Set of 5 lifestyle photos: {designer} from a designer · about {ours} in GrovBase",
+      "plans": "See plans"
+    },
+    "tools": {
+      "title": "All tools",
+      "use": "Use",
+      "adminOnly": "Not available to customers"
+    },
+    "group": {
+      "product": "Product photos",
+      "fashion": "Fashion",
+      "edit": "Editing & retouch"
+    },
+    "tool": {
+      "thumbnail": {
+        "name": "Thumbnail",
+        "desc": "A frame for the listing's first photo."
+      },
+      "packshot": {
+        "name": "Packshot",
+        "desc": "A clean product on a plain background."
+      },
+      "whiteBg": {
+        "name": "White background",
+        "desc": "The product on a clean, white background."
+      },
+      "aiBackground": {
+        "name": "AI background",
+        "desc": "A new background matched to the product."
+      },
+      "aiShadow": {
+        "name": "AI shadow",
+        "desc": "A natural shadow under the product."
+      },
+      "context": {
+        "name": "In context",
+        "desc": "The product in a natural setting."
+      },
+      "grovshot": {
+        "name": "Grovshot generator",
+        "desc": "A product shoot from your photo."
+      },
+      "custom": {
+        "name": "Own prompt",
+        "desc": "Describe exactly what you need."
+      },
+      "mannequin": {
+        "name": "Invisible mannequin",
+        "desc": "Clothing without a model or mannequin."
+      },
+      "moda": {
+        "name": "Fashion",
+        "desc": "Tools for clothing and accessories."
+      },
+      "retouch": {
+        "name": "Photo retouch",
+        "desc": "An ordinary photo at premium packshot quality."
+      }
+    },
+    "soon": {
+      "title": "Coming soon",
+      "sub": "Click “Notify me” — we will let you know when it is ready.",
+      "notify": "Notify me",
+      "saved": "Saved",
+      "ugc": "Product UGC",
+      "video": "Product video",
+      "ads": "Ads",
+      "social": "Social media",
+      "mailing": "Mailing"
+    },
+    "recent": {
+      "title": "Recent projects",
+      "all": "See all",
+      "repeat": "Repeat with a new product"
     }
   }
 }

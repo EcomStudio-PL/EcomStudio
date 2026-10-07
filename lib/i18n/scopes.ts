@@ -90,6 +90,7 @@ const app = [
   "retouch",
   "scene",
   "search",
+  "sellerHome",
   "studio",
   "support",
   "toolsearch",
@@ -129,6 +130,7 @@ const admin = [
   "reg",
   "resize",
   "roles",
+  "sellerHome",
   "svc",
   "time",
 ] as const;

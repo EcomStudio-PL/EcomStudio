@@ -11,6 +11,7 @@ import {
 import { ModelSelect } from "@/components/genv3/model-select";
 import { InspirationLibraryModal } from "@/components/genv3/inspiration-library";
 import { DropOverlay, useFileDrop } from "@/components/genv3/uploader";
+import { useHomeHandoff } from "@/lib/home-handoff";
 import { cn } from "@/lib/utils";
 import {
   defaultRatio, snapQuality, snapRatio, snapTo, unitPrice,
@@ -167,6 +168,12 @@ export function GeneratorWorkspace({
       if (inFlight.current === 0) setUploading(false);
     }
   }
+
+  // A photo chosen on /home for this screen arrives here once and goes through
+  // the SAME upload as a picked one (lib/home-handoff.ts). Nothing else from
+  // /home — no prompt, no settings — and nothing starts by itself: the seller
+  // still sees the price and presses this screen's own button.
+  useHomeHandoff((file) => { void upload([file], "refs"); });
 
   /**
    * A PICK FROM THE GROVBASE LIBRARY, TURNED INTO AN ORDINARY UPLOAD.
