@@ -21,10 +21,16 @@ alter table public.profiles
   add column if not exists seller_channel text,
   add column if not exists seller_channel_asked_at timestamptz;
 
-alter table public.profiles drop constraint if exists profiles_seller_channel_check;
-alter table public.profiles add constraint profiles_seller_channel_check check (
-  seller_channel is null or seller_channel in ('allegro', 'amazon', 'own_store', 'multi')
-);
+-- Idempotent without DROP: each object is created only when it is missing.
+do $do$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'profiles_seller_channel_check' and conrelid = 'public.profiles'::regclass) then
+    alter table public.profiles add constraint profiles_seller_channel_check check (
+      seller_channel is null or seller_channel in ('allegro', 'amazon', 'own_store', 'multi')
+    );
+  end if;
+end
+$do$;
 
 comment on column public.profiles.seller_channel is
   'Where the seller sells (asked once on /home): allegro | amazon | own_store | multi. Presentation only — picks the default /home task.';
@@ -47,18 +53,23 @@ comment on table public.feature_interest is
 
 alter table public.feature_interest enable row level security;
 
-drop policy if exists "feature_interest_select_own_or_admin" on public.feature_interest;
-create policy "feature_interest_select_own_or_admin" on public.feature_interest
-  for select to authenticated
-  using (user_id = (select auth.uid()) or (select public.is_admin()));
-
-drop policy if exists "feature_interest_insert_own" on public.feature_interest;
-create policy "feature_interest_insert_own" on public.feature_interest
-  for insert to authenticated
-  with check (
-    user_id = (select auth.uid())
-    and (workspace_id is null or public.is_workspace_member(workspace_id))
-  );
+do $do$
+begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'feature_interest' and policyname = 'feature_interest_select_own_or_admin') then
+    create policy "feature_interest_select_own_or_admin" on public.feature_interest
+      for select to authenticated
+      using (user_id = (select auth.uid()) or (select public.is_admin()));
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'feature_interest' and policyname = 'feature_interest_insert_own') then
+    create policy "feature_interest_insert_own" on public.feature_interest
+      for insert to authenticated
+      with check (
+        user_id = (select auth.uid())
+        and (workspace_id is null or public.is_workspace_member(workspace_id))
+      );
+  end if;
+end
+$do$;
 
 -- No update and no delete policy: a registration is a fact, not a setting.
 revoke all on public.feature_interest from anon;
