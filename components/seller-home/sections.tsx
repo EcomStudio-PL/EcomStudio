@@ -11,7 +11,11 @@ import { EmptySlot, MediaSlot } from "./media-slot";
 
 type T = (key: string, vars?: Record<string, string | number>) => string;
 
-const dateFmt = new Intl.DateTimeFormat("pl-PL", { day: "numeric", month: "short" });
+const INTL_LOCALE: Record<string, string> = { pl: "pl-PL", en: "en-GB", de: "de-DE" };
+/** In the viewer's language, on Polish time — the server renders this, so its
+ *  own zone (UTC on Vercel) must not decide which day a late job falls on. */
+const dateFmt = (locale: string) =>
+  new Intl.DateTimeFormat(INTL_LOCALE[locale] ?? "pl-PL", { day: "numeric", month: "short", timeZone: "Europe/Warsaw" });
 
 /* ── "Ostatnie projekty" ──────────────────────────────────────────────────*/
 
@@ -20,8 +24,9 @@ const dateFmt = new Intl.DateTimeFormat("pl-PL", { day: "numeric", month: "short
  * first screen on a desktop. "Powtórz z nowym produktem" opens the SAME tool,
  * empty: nothing of the old job (photo, prompt, settings) is carried over.
  */
-export function RecentProjects({ items, t }: { items: RecentCard[]; t: T }) {
+export function RecentProjects({ items, locale, t }: { items: RecentCard[]; locale: string; t: T }) {
   if (items.length === 0) return null;
+  const fmt = dateFmt(locale);
   return (
     <section aria-labelledby="seller-recent-title" data-seller-recent>
       <div className="flex items-baseline justify-between gap-3">
@@ -32,22 +37,30 @@ export function RecentProjects({ items, t }: { items: RecentCard[]; t: T }) {
           {t("sellerHome.recent.all")}
         </Link>
       </div>
-      <ul className="rail-x-sm mt-3 sm:grid sm:grid-cols-3 sm:gap-3 lg:grid-cols-6" data-recent-count={items.length}>
-        {items.map((r) => (
+      {/* One short row: a thumbnail beside its label (not a tall card), so the
+          hero's upload still sits in the first screen on a laptop. */}
+      <ul className="rail-x-sm mt-3 sm:grid sm:grid-cols-2 sm:gap-2.5 lg:grid-cols-4" data-recent-count={items.length}>
+        {items.map((r, i) => (
           <li key={r.id} data-recent-item
-            className="flex w-[42vw] max-w-[11rem] shrink-0 snap-start flex-col overflow-hidden rounded-xl border border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.3))] bg-[rgb(var(--surface))] sm:w-auto sm:max-w-none">
-            <div className="relative aspect-[4/3] bg-[rgb(var(--ink)/0.04)]">
+            className={cn(
+              "flex w-[68vw] max-w-[17rem] shrink-0 snap-start items-stretch overflow-hidden rounded-xl border border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.3))] bg-[rgb(var(--surface))] sm:w-auto sm:max-w-none",
+              i >= 4 && "sm:hidden",
+            )}>
+            <div className="relative w-[4.75rem] shrink-0 bg-[rgb(var(--ink)/0.04)] sm:w-[5.25rem]">
               {/* Small derivative from the Library's projection; plain <img>
                   because these are signed storage URLs. */}
               <img src={r.thumbUrl} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
             </div>
-            <div className="flex flex-1 flex-col gap-1.5 p-2.5">
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-2.5 py-2">
               <p className="truncate text-[12.5px] font-semibold text-ink">{t(r.labelKey)}</p>
-              <p className="text-[11.5px] text-muted">{dateFmt.format(new Date(r.createdAt))}</p>
-              <Link href={r.href} data-repeat={r.href}
-                className="mt-auto inline-flex items-start gap-1 text-[12px] font-semibold leading-snug text-accent-strong hover:underline dark:text-accent">
-                <RotateCcw size={12} aria-hidden className="mt-[3px] shrink-0" /> <span>{t("sellerHome.recent.repeat")}</span>
-              </Link>
+              <p className="text-[11.5px] text-muted">{fmt.format(new Date(r.createdAt))}</p>
+              {/* Only while that tool runs — never a link into "Wkrótce". */}
+              {r.repeat && (
+                <Link href={r.href} data-repeat={r.href}
+                  className="mt-auto inline-flex items-start gap-1 pt-1 text-[12px] font-semibold leading-snug text-accent-strong hover:underline dark:text-accent">
+                  <RotateCcw size={12} aria-hidden className="mt-[3px] shrink-0" /> <span>{t("sellerHome.recent.repeat")}</span>
+                </Link>
+              )}
             </div>
           </li>
         ))}
@@ -67,11 +80,14 @@ export function RecentProjects({ items, t }: { items: RecentCard[]; t: T }) {
 export function PriceAnchor({ tasks, centsPerCredit, currency, t }: {
   tasks: ResolvedTask[]; centsPerCredit: number | null; currency: string; t: T;
 }) {
+  // The designer prices are złoty: against any other currency the comparison
+  // would be meaningless, so the bar is left out rather than converted.
+  if (currency !== "PLN") return null;
   const lines = PRICE_ANCHORS.flatMap((a) => {
     const task = taskByKey(tasks, a.task as HeroTaskKey);
     const ours = anchorCents(a.images, task?.credits ?? null, centsPerCredit);
     if (ours === null) return [];
-    return [{ key: a.key, text: t(a.labelKey, { designer: formatMoney(a.designerCents, currency), ours: formatMoney(ours, currency) }) }];
+    return [{ key: a.key, text: t(a.labelKey, { designer: formatMoney(a.designerCents, "PLN"), ours: formatMoney(ours, currency) }) }];
   });
   if (lines.length === 0) return null;
   return (
@@ -120,7 +136,7 @@ export function AllTools({ groups, slots, t }: {
                 const name = t(tool.nameKey);
                 const empty = (
                   <div className="relative aspect-[4/3]">
-                    <EmptySlot label={t("sellerHome.slot.tool", { name })} hint={t("sellerHome.slot.size", { w: 1200, h: 900 })} />
+                    <EmptySlot label={t("sellerHome.slot.tool", { name })} hint={t("sellerHome.slot.size", { w: tool.media.width, h: tool.media.height })} />
                   </div>
                 );
                 return (
@@ -130,13 +146,16 @@ export function AllTools({ groups, slots, t }: {
                         "panel panel-interactive group flex h-full flex-col overflow-hidden rounded-2xl",
                         tool.adminOnly && "opacity-70",
                       )}>
-                      {tool.mediaSrc
-                        ? <MediaSlot ratio="4/3" media={{ configKey: tool.mediaKey, src: tool.mediaSrc, width: 1200, height: 900 }}
+                      {/* Illustration only — the card's name is its label. */}
+                      <div aria-hidden>
+                      {tool.media.src
+                        ? <MediaSlot ratio="4/3" media={tool.media}
                             label={name} hint="" sizes="(max-width: 767px) 46vw, (max-width: 1023px) 30vw, 17rem" />
                         : tool.slotKey
                           ? <SlotMedia slot={tool.slotKey} slots={slots} ratio="4/3" whole
                               sizes="(max-width: 767px) 46vw, (max-width: 1023px) 30vw, 17rem" fallback={empty} />
                           : empty}
+                      </div>
                       <div className="flex flex-1 flex-col gap-1 p-3">
                         <p className="text-[14.5px] font-semibold leading-tight text-ink">{name}</p>
                         <p className="line-clamp-2 text-[12.5px] leading-snug text-muted">{t(tool.descKey)}</p>

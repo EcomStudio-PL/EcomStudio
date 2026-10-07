@@ -37,7 +37,9 @@ export function SellerHero({ tasks, defaultTask, balance, pro }: {
   const { t } = useI18n();
   const router = useRouter();
   const selectedKey = useSelectedTask(defaultTask);
-  const task = taskByKey(tasks, selectedKey);
+  // A remembered pick whose tool has since gone offline falls back to the
+  // page's default, then to the first live task — never to "nothing selected".
+  const task = taskByKey(tasks, selectedKey) ?? taskByKey(tasks, defaultTask) ?? tasks.find((x) => x.available) ?? null;
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [over, setOver] = useState(false);
@@ -115,50 +117,48 @@ export function SellerHero({ tasks, defaultTask, balance, pro }: {
           the same check the tools use (lib/images/file-intake.ts). */}
       <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_17.5rem]">
         <div
-          id={UPLOAD_ID}
-          role="button"
-          tabIndex={0}
-          aria-describedby={`${UPLOAD_ID}-hint`}
-          aria-label={file ? t("sellerHome.upload.change") : t("sellerHome.upload.title")}
           data-seller-upload
           data-over={over || undefined}
-          onClick={() => inputRef.current?.click()}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); inputRef.current?.click(); } }}
           onDragEnter={(e) => { if (dragCarriesFiles(e.nativeEvent)) { e.preventDefault(); setOver(true); } }}
           onDragOver={(e) => { if (dragCarriesFiles(e.nativeEvent)) e.preventDefault(); }}
           onDragLeave={(e) => { if (e.currentTarget === e.target) setOver(false); }}
           onDrop={onDrop}
           className={cn(
-            "group relative flex min-h-[10.5rem] cursor-pointer items-center gap-4 rounded-2xl border-2 border-dashed px-5 py-5 transition-colors duration-200 sm:min-h-[11.5rem] sm:px-7",
+            "group relative flex min-h-[10.5rem] items-center gap-4 rounded-2xl border-2 border-dashed px-5 py-5 transition-colors duration-200 sm:min-h-[11.5rem] sm:px-7",
             "border-[rgb(var(--accent)/0.32)] bg-[rgb(var(--surface)/0.7)] hover:border-[rgb(var(--accent)/0.6)] hover:bg-[rgb(var(--accent)/0.035)]",
             "data-[over]:border-[rgb(var(--accent))] data-[over]:bg-[rgb(var(--accent)/0.06)]",
-            "focus-visible:border-[rgb(var(--accent))] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgb(var(--accent)/0.16)]",
           )}>
-          <input ref={inputRef} type="file" accept={ACCEPT} className="sr-only" tabIndex={-1}
+          <input ref={inputRef} type="file" accept={ACCEPT} className="sr-only" tabIndex={-1} aria-hidden
             onChange={(e) => { take(e.target.files); e.target.value = ""; }} />
+          {/* The whole zone is ONE real button (click, Enter, Space); the
+              remove button sits beside it, never inside it. */}
+          <button id={UPLOAD_ID} type="button" onClick={() => inputRef.current?.click()}
+            aria-label={file ? t("sellerHome.upload.change") : t("sellerHome.upload.title")}
+            aria-describedby={`${UPLOAD_ID}-hint`}
+            className="absolute -inset-[2px] z-0 cursor-pointer rounded-2xl focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgb(var(--accent)/0.35)]" />
           {file && preview ? (
             <>
               {/* A local object URL of the chosen file — not an optimisable asset. */}
-              <img src={preview} alt="" className="h-24 w-24 shrink-0 rounded-xl object-cover shadow-e1 sm:h-28 sm:w-28" />
-              <div className="min-w-0 flex-1">
+              <img src={preview} alt="" className="pointer-events-none relative h-24 w-24 shrink-0 rounded-xl object-cover shadow-e1 sm:h-28 sm:w-28" />
+              <div className="pointer-events-none relative min-w-0 flex-1">
                 <p className="truncate text-[15px] font-semibold text-ink">{file.name}</p>
-                <p className="mt-0.5 text-[13px] text-muted">{t("sellerHome.upload.ready")}</p>
-                <span className="mt-2 inline-flex items-center gap-1.5 text-[13px] font-medium text-accent-strong dark:text-accent">
-                  <RefreshCw size={13} aria-hidden /> {t("sellerHome.upload.change")}
+                <p id={`${UPLOAD_ID}-hint`} className="mt-0.5 text-[13px] text-muted">{t("sellerHome.upload.ready")}</p>
+                <span aria-hidden className="mt-2 inline-flex items-center gap-1.5 text-[13px] font-medium text-accent-strong dark:text-accent">
+                  <RefreshCw size={13} /> {t("sellerHome.upload.change")}
                 </span>
               </div>
               <button type="button" aria-label={t("sellerHome.upload.remove")}
-                onClick={(e) => { e.stopPropagation(); setFile(null); }}
-                className="absolute right-2.5 top-2.5 flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-ink">
+                onClick={() => setFile(null)}
+                className="absolute right-2.5 top-2.5 z-10 flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-ink">
                 <X size={15} aria-hidden />
               </button>
             </>
           ) : (
-            <div className="mx-auto flex flex-col items-center text-center">
+            <div className="pointer-events-none relative mx-auto flex flex-col items-center text-center">
               <span aria-hidden className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[rgb(var(--accent)/0.1)] text-accent-strong transition-transform duration-200 group-hover:-translate-y-0.5 dark:text-accent motion-reduce:transform-none">
                 <ImagePlus size={22} strokeWidth={1.9} />
               </span>
-              <p className="mt-3 text-[15px] font-semibold text-ink sm:text-base">{t("sellerHome.upload.title")}</p>
+              <p aria-hidden className="mt-3 text-[15px] font-semibold text-ink sm:text-base">{t("sellerHome.upload.title")}</p>
               <p id={`${UPLOAD_ID}-hint`} className="mt-1 text-[13px] text-muted">{t("sellerHome.upload.hint")}</p>
             </div>
           )}
@@ -198,8 +198,10 @@ export function SellerHero({ tasks, defaultTask, balance, pro }: {
 }
 
 function pressLine(t: (k: string, v?: Record<string, string | number>) => string, task: ResolvedTask): string {
+  // A screen that does not take the photo is just opened — say that first.
+  if (!task.handoff) return t("sellerHome.press.open");
   const per = task.credits;
-  if (per === null) return task.handoff ? t("sellerHome.press.next") : t("sellerHome.press.open");
+  if (per === null) return t("sellerHome.press.next");
   if (per === 0) return t("sellerHome.press.free");
   if (task.shots && task.shots > 1) {
     return t("sellerHome.press.shots", { shots: task.shots, total: formatCount(task.shots * per), per: formatCount(per) });
@@ -244,12 +246,15 @@ function TaskPicker({ tasks, selected }: { tasks: ResolvedTask[]; selected: Hero
                 : "border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.4))] hover:border-[rgb(var(--accent)/0.45)] motion-safe:hover:-translate-y-0.5",
               !task.available && "cursor-not-allowed opacity-55",
             )}>
+            {/* Pictures illustrate; the card's name says what it is. */}
+            <span aria-hidden className="contents">
             <MediaSlot ratio="4/3" pair={task.media}
               label={t("sellerHome.slot.taskPair", { name: t(task.nameKey) })}
               hint={t("sellerHome.slot.size", { w: task.media.after.width, h: task.media.after.height })}
               pairLabels={{ before: t("sellerHome.before"), after: t("sellerHome.after") }}
               sizes="(max-width: 639px) 72vw, (max-width: 1023px) 45vw, 18rem"
               priority />
+            </span>
             {task.badgeKey && (
               <span className="absolute left-2.5 top-2.5 rounded-full bg-[rgb(var(--accent-strong))] px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-[0.08em] text-white shadow-[0_6px_14px_-6px_rgb(var(--accent)/0.9)]">
                 {t(task.badgeKey)}
@@ -285,6 +290,7 @@ export function costLabel(t: (k: string, v?: Record<string, string | number>) =>
 
 function Samples({ onRun, disabled }: { onRun: (src: string) => void; disabled: boolean }) {
   const { t } = useI18n();
+  const anyEmpty = SAMPLES.some((s) => !s.media.src);
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2" data-seller-samples>
       <span className="text-[13px] text-muted">{t("sellerHome.samples")}</span>
@@ -299,7 +305,7 @@ function Samples({ onRun, disabled }: { onRun: (src: string) => void; disabled: 
               <MediaSlot ratio="1/1" media={s.media} label={label} hint="" sizes="48px" compact className="h-full w-full" />
             </button>
           ) : (
-            <span key={s.key} title={t("sellerHome.sampleEmpty", { w: s.media.width, h: s.media.height })}
+            <span key={s.key} aria-hidden title={t("sellerHome.sampleEmpty", { w: s.media.width, h: s.media.height })}
               className="relative h-12 w-12 overflow-hidden rounded-xl border border-dashed border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*2))]"
               data-sample-empty={s.media.configKey}>
               <MediaSlot ratio="1/1" label={label} hint="" compact className="h-full w-full" />
@@ -307,6 +313,8 @@ function Samples({ onRun, disabled }: { onRun: (src: string) => void; disabled: 
           );
         })}
       </div>
+      {/* Not a dead control: an example without its photo says so. */}
+      {anyEmpty && <span className="text-[12px] font-medium text-muted" data-samples-soon>{t("sellerHome.samplesSoon")}</span>}
     </div>
   );
 }

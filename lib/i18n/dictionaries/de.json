@@ -508,6 +508,7 @@
   "admin": {
     "interest.title": "Interesse: Demnächst",
     "interest.empty": "Noch niemand hat „Benachrichtigen“ geklickt.",
+    "interest.error": "Die Anzahl der Anmeldungen konnte nicht geladen werden.",
     "title": "Admin-Bereich",
     "backToApp": "Zurück zur App",
     "nav": {
@@ -4645,10 +4646,10 @@
     "panel.na.tools": "Der Werkzeuge-Tab hat keine eigene Karte für dieses Modul.",
     "panel.na.home": "Die Startseite zeigt eine kuratierte Auswahl — dieses ist nicht dabei.",
     "panel.na.menu": "Die Menüs haben keinen schaltbaren Eintrag für dieses Modul — seine Links, falls vorhanden, werden immer angezeigt.",
-    "panel.home.rail": "Leiste oben",
-    "panel.home.chips": "Schnellauswahl",
-    "panel.home.effects": "Effekte",
-    "panel.home.video": "Video",
+    "panel.home.rail": "Leiste oben (/start)",
+    "panel.home.chips": "Schnellauswahl (/start)",
+    "panel.home.effects": "Effekte (/start)",
+    "panel.home.video": "Video (/start)",
     "panel.windowPreview": "Die Vorschau zeigt den Zustand während des Zeitfensters.",
     "panel.categoryNote": "Das Ausblenden oder Deaktivieren einer Kategorie löscht ihre Werkzeuge nicht — sie kehren mit ihr zurück.",
     "panel.coversNote": "Diese Einträge haben keinen eigenen Status — sie übernehmen den Status dieses Eintrags. Wo Kunden sie sehen, stellst du mit ihren Schaltern oben ein.",
@@ -7837,7 +7838,7 @@
   "sellerHome": {
     "hero": {
       "title": "Produktfoto hochladen — fertiges Allegro-Vorschaubild erhalten",
-      "sub": "Ohne Grafiker, ohne Prompts. In wenigen Sekunden fertig."
+      "sub": "Ohne Grafiker, ohne Prompts. In unter einer Minute fertig."
     },
     "tasksLabel": "Was möchtest du mit dem Foto machen?",
     "task": {
@@ -7923,6 +7924,7 @@
     "samples": "Kein Foto? Probiere ein Beispiel",
     "sampleTry": "Mit Beispiel ausprobieren: {name}",
     "sampleEmpty": "Beispiel folgt · {w}×{h} px",
+    "samplesSoon": "Beispiele folgen",
     "sample": {
       "p1": "Beispiel 1",
       "p2": "Beispiel 2",

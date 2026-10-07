@@ -173,9 +173,21 @@ check("…and never starts a generation", !/router\.push|stashHomeUpload|fetch\(
 /* ── 16–17. availability ──────────────────────────────────────────────────*/
 
 section("16–17. THE SWITCHBOARD AND EACH TOOL'S RUNTIME DECIDE WHAT IS LIVE");
-check("16: every item passes menuVisible + its status badge before it can be live",
-  /menuVisible\(availability, item\.gates \?\? item\.href, isAdmin\) && itemBadge\(availability, item\) === null/.test(loader)
+check("16: every item passes /tools' own reachability + its status badge before it can be live",
+  /itemReachable\(availability, item, isAdmin\) && itemBadge\(availability, item\) === null/.test(loader)
   && /menuVisible\(availability, gates, isAdmin\)/.test(loader));
+check("…an item taken off /tools by the layout switchboard is not in the grid either",
+  /getToolsLayout\(supabase\)/.test(loader) && /layout\.flags\[t\.item\]\?\.tools === false/.test(loader));
+check("…each price is ONE click as the tool's own screen shows it (Workflow results × per image; Własny prompt's own model)",
+  /engineOutputsPerRun\(supabase, "retouch"\)/.test(loader) && /engineOutputsPerRun\(supabase, f\.toolKey\)/.test(loader)
+  && /customModels\(usable\)\.map\(toClientModel\)\[0\]/.test(loader));
+check("…a remembered task that went offline falls back to the default, then the first live one",
+  /taskByKey\(tasks, selectedKey\) \?\? taskByKey\(tasks, defaultTask\) \?\? tasks\.find\(\(x\) => x\.available\)/.test(hero));
+check("…„Powtórz” only for a tool that runs now; „Nadchodzi” drops a module once it is live",
+  /repeat: repeatable\(route\.href\)/.test(loader) && /\{r\.repeat && \(/.test(code("components/seller-home/sections.tsx"))
+  && /menuBadge\(availability, INTEREST_GATES\[k\]\) !== null/.test(loader));
+check("…the PRO button goes to checkout only when Stripe would sell it and no plan is live yet",
+  /sellable\(plan, "monthly"\)/.test(loader) && /\(activeSub\.data \?\? \[\]\)\.length === 0/.test(loader));
 check("…and each tool's own runtime check (engine, toolCatalogue, Retusz prompt, Moda tool)",
   /managedLive/.test(loader) && /entry\?\.available/.test(loader) && /retouchConfigured/.test(loader) && /fashionOn\.get\(wf\)/.test(loader));
 check("…customers never see an unavailable tool card; admins see it marked",
@@ -208,6 +220,9 @@ check("19: asked only of a seller with 0 generations who was never asked", shoul
 check("…not while the welcome-bonus dialog is due, nor when the bonus survey already answered",
   !shouldAskChannel({ ...base, bonusPending: true }) && !shouldAskChannel({ ...base, surveyChannel: "amazon" }));
 check("…the loader uses that very rule", /shouldAskChannel\(\{/.test(loader));
+check("…„0 generations” is a real count of the workspace's generations; an unreadable count never asks",
+  /from\("generations"\)\.select\("id", \{ count: "exact", head: true \}\)/.test(loader)
+  && /generationCount\.error \? null/.test(loader) && /counted \?\? Math\.max\(items\.length, 1\)/.test(loader));
 check("…the survey's answer maps onto ours", channelFromSurvey(["allegro"]) === "allegro" && channelFromSurvey(["shopify"]) === "own_store"
   && channelFromSurvey(["allegro", "amazon"]) === "multi" && channelFromSurvey(["not_selling_yet"]) === null);
 check("…channel → default task", CHANNEL_DEFAULT_TASK.allegro === "allegro" && CHANNEL_DEFAULT_TASK.amazon === "packshot"

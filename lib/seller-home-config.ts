@@ -289,6 +289,15 @@ export type InterestKey = (typeof INTEREST_KEYS)[number];
 export const isInterestKey = (v: unknown): v is InterestKey =>
   typeof v === "string" && (INTEREST_KEYS as readonly string[]).includes(v);
 export const interestLabelKey = (k: InterestKey) => `sellerHome.soon.${k}`;
+/** The module route each one waits for — once that module is live (no
+ *  "Wkrótce" / maintenance / off), it is no longer "coming" and its chip goes. */
+export const INTEREST_GATES: Readonly<Record<InterestKey, string>> = {
+  ugc: "/wideo",
+  video: "/wideo",
+  ads: "/k/social",
+  social: "/k/social",
+  mailing: "/k/mailing",
+};
 
 /* ── "Gdzie sprzedajesz?" ─────────────────────────────────────────────────*/
 

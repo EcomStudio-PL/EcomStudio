@@ -508,6 +508,7 @@
   "admin": {
     "interest.title": "Zainteresowanie: Nadchodzi",
     "interest.empty": "Nikt jeszcze nie kliknął „Powiadom mnie”.",
+    "interest.error": "Nie udało się wczytać liczby zgłoszeń.",
     "title": "Panel administratora",
     "backToApp": "Wróć do aplikacji",
     "nav": {
@@ -4645,10 +4646,10 @@
     "panel.na.tools": "Zakładka Narzędzia nie ma osobnej karty tego modułu.",
     "panel.na.home": "Strona Start pokazuje wybrany zestaw kart — tego w nim nie ma.",
     "panel.na.menu": "Menu nie ma przełączanej pozycji tego modułu — jego linki (jeśli są) pokazują się zawsze.",
-    "panel.home.rail": "Pasek u góry",
-    "panel.home.chips": "Szybkie wybory",
-    "panel.home.effects": "Efekty",
-    "panel.home.video": "Wideo",
+    "panel.home.rail": "Pasek u góry (/start)",
+    "panel.home.chips": "Szybkie wybory (/start)",
+    "panel.home.effects": "Efekty (/start)",
+    "panel.home.video": "Wideo (/start)",
     "panel.windowPreview": "Podgląd pokazuje stan w czasie obowiązywania okna czasowego.",
     "panel.categoryNote": "Ukrycie albo wyłączenie kategorii nie usuwa jej narzędzi — wracają razem z nią.",
     "panel.coversNote": "Te pozycje nie mają własnego statusu — dziedziczą status tej pozycji. Gdzie klient je widzi, ustawiasz ich przełącznikami powyżej.",
@@ -7923,6 +7924,7 @@
     "samples": "Nie masz zdjęcia? Wypróbuj na przykładzie",
     "sampleTry": "Wypróbuj na przykładzie: {name}",
     "sampleEmpty": "Przykład wkrótce · {w}×{h} px",
+    "samplesSoon": "Przykłady wkrótce",
     "sample": {
       "p1": "Przykład 1",
       "p2": "Przykład 2",

@@ -39,7 +39,7 @@ export default async function AdminDashboard({ searchParams }: {
   const supabase = await createClient();
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
-  const [data, counts, { data: interest }] = await Promise.all([
+  const [data, counts, { data: interest, error: interestError }] = await Promise.all([
     readDashboard(supabase, range),
     adminCounts(supabase),
     // "Powiadom mnie" on /home — demand per coming-soon feature (0135).
@@ -205,7 +205,9 @@ export default async function AdminDashboard({ searchParams }: {
           feature, from the /home "Powiadom mnie" button. */}
       <div className="panel mt-4 rounded-2xl px-4 py-3.5 sm:px-5" data-admin-interest>
         <p className="overline mb-2.5 text-[9.5px]">{t("admin.interest.title")}</p>
-        {interestBy.size === 0 ? (
+        {interestError ? (
+          <p className="text-[13px] text-muted">{t("admin.interest.error")}</p>
+        ) : interestBy.size === 0 ? (
           <p className="text-[13px] text-muted">{t("admin.interest.empty")}</p>
         ) : (
           <div className="grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-5">

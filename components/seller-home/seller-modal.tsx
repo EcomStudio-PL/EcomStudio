@@ -1,12 +1,14 @@
 "use client";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Globe2, Layers, ShoppingBag, Store } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
+import { toast } from "@/lib/notify";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
 import { saveSellerChannelAction } from "@/app/actions/seller-home";
 import { CHANNEL_DEFAULT_TASK, SELLER_CHANNELS, channelLabelKey, type SellerChannel } from "@/lib/seller-home-config";
 import { setSelectedTask } from "./task-store";
+import { useDialogFocus } from "./dialog-focus";
 
 const ICON: Record<SellerChannel, typeof Store> = {
   allegro: ShoppingBag, amazon: Globe2, own_store: Store, multi: Layers,
@@ -27,12 +29,19 @@ export function SellerChannelModal({ ask }: { ask: boolean }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
+  const body = useRef<HTMLDivElement>(null);
   useEffect(() => { if (ask) setOpen(true); }, [ask]);
+  useDialogFocus(open, body);
 
   const choose = (channel: SellerChannel) => {
     setSelectedTask(CHANNEL_DEFAULT_TASK[channel]);
     setOpen(false);
-    start(async () => { await saveSellerChannelAction(channel); });
+    start(async () => {
+      // The pick already applies on this page; a failed save only means the
+      // question may come back next time — say so instead of failing silently.
+      const res = await saveSellerChannelAction(channel);
+      if (!res.ok) toast.error(t("common.error"));
+    });
   };
   const dismiss = () => {
     setOpen(false);
@@ -41,6 +50,7 @@ export function SellerChannelModal({ ask }: { ask: boolean }) {
 
   return (
     <Modal open={open} onClose={dismiss} title={t("sellerHome.channel.title")} portal>
+      <div ref={body}>
       <p className="-mt-2 text-[14px] text-muted">{t("sellerHome.channel.sub")}</p>
       <div role="group" aria-label={t("sellerHome.channel.title")} className="mt-4 grid grid-cols-2 gap-2.5" data-seller-channel>
         {SELLER_CHANNELS.map((c) => {
@@ -56,6 +66,7 @@ export function SellerChannelModal({ ask }: { ask: boolean }) {
             </button>
           );
         })}
+      </div>
       </div>
     </Modal>
   );

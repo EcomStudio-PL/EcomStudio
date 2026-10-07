@@ -53,13 +53,13 @@ export async function SellerHome() {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-9 sm:space-y-12" data-seller-home data-returning={returning || undefined}>
       {data.banners.length > 0 && <DashboardBanner banners={data.banners} slots={data.slots} locale={locale} />}
-      {returning && <RecentProjects items={data.recent} t={t} />}
+      {returning && <RecentProjects items={data.recent} locale={locale} t={t} />}
       {hero}
       {!returning && galleryEl}
       {anchor}
       {tools}
       {returning && galleryEl}
-      <ComingSoon saved={data.interests} />
+      <ComingSoon keys={data.soon} saved={data.interests} />
       <SellerChannelModal ask={data.askChannel} />
     </div>
   );

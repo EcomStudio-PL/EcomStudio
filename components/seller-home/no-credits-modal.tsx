@@ -1,9 +1,11 @@
 "use client";
+import { useRef } from "react";
 import Link from "next/link";
 import { Coins, Crown } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { Modal } from "@/components/ui/modal";
 import { formatCount, formatMoney, planCheckoutHref } from "@/components/plan/pricing-model";
+import { useDialogFocus } from "./dialog-focus";
 
 /** What the dialog shows of the PRO plan — read from subscription_plans. */
 export type ProOfferView = {
@@ -32,9 +34,12 @@ export function NoCreditsModal({ open, onClose, balance, perImage, pro }: {
   pro: ProOfferView | null;
 }) {
   const { t } = useI18n();
+  const body = useRef<HTMLDivElement>(null);
+  useDialogFocus(open, body);
   const proHref = pro?.payable ? planCheckoutHref(pro.id, "monthly") : "/plan";
   return (
     <Modal open={open} onClose={onClose} title={t("sellerHome.noCredits.title")} portal wide>
+      <div ref={body}>
       <p className="text-[14px] leading-relaxed text-muted" data-no-credits>
         {t("sellerHome.noCredits.body", { balance: formatCount(balance), per: formatCount(perImage ?? 0) })}
       </p>
@@ -65,6 +70,7 @@ export function NoCreditsModal({ open, onClose, balance, perImage, pro }: {
             {t("sellerHome.noCredits.topupCta")}
           </span>
         </Link>
+      </div>
       </div>
     </Modal>
   );

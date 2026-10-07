@@ -508,6 +508,7 @@
   "admin": {
     "interest.title": "Interest: Coming soon",
     "interest.empty": "Nobody has clicked “Notify me” yet.",
+    "interest.error": "Could not load the sign-up counts.",
     "title": "Admin panel",
     "backToApp": "Back to app",
     "nav": {
@@ -4645,10 +4646,10 @@
     "panel.na.tools": "The Tools tab has no card of its own for this module.",
     "panel.na.home": "The Start page shows a curated set of cards — this is not one of them.",
     "panel.na.menu": "The menus have no switchable entry for this module — its links, if any, are always shown.",
-    "panel.home.rail": "Top rail",
-    "panel.home.chips": "Quick picks",
-    "panel.home.effects": "Effects",
-    "panel.home.video": "Video",
+    "panel.home.rail": "Top rail (/start)",
+    "panel.home.chips": "Quick picks (/start)",
+    "panel.home.effects": "Effects (/start)",
+    "panel.home.video": "Video (/start)",
     "panel.windowPreview": "The preview shows the state while the time window applies.",
     "panel.categoryNote": "Hiding or disabling a category does not delete its tools — they come back with it.",
     "panel.coversNote": "These items have no status of their own — they inherit this entry's status. Where customers see them is set with their switches above.",
@@ -7923,6 +7924,7 @@
     "samples": "No photo? Try an example",
     "sampleTry": "Try with an example: {name}",
     "sampleEmpty": "Example coming soon · {w}×{h} px",
+    "samplesSoon": "Examples coming soon",
     "sample": {
       "p1": "Example 1",
       "p2": "Example 2",
