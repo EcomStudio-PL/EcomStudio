@@ -29,14 +29,16 @@ export function StatusBadge({ status, t, className }: { status: ItemStatus; t: T
 }
 
 /** A link to the tool while it is live; an inert element otherwise. */
-export function ToolLink({ state, className, ariaLabel, children, ...rest }: {
+export function ToolLink({ state, className, ariaLabel, tabIndex, children, ...rest }: {
   state: ItemState | null | undefined;
   className?: string;
   ariaLabel?: string;
+  /** -1 for a drawing-only copy of a card (the looping carousel's). */
+  tabIndex?: number;
   children: React.ReactNode;
 } & Record<`data-${string}`, string | number | boolean | undefined>) {
   if (state?.status === "live") {
-    return <Link href={state.href} aria-label={ariaLabel} className={className} {...rest}>{children}</Link>;
+    return <Link href={state.href} aria-label={ariaLabel} tabIndex={tabIndex} className={className} {...rest}>{children}</Link>;
   }
   return (
     <span aria-disabled="true" className={cn(className, "cursor-default")} {...rest}>

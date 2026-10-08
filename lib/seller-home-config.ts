@@ -307,8 +307,10 @@ export const SHOWCASE: ShowcaseDef = {
 
 export type GalleryTileDef = { media: MediaSrc };
 
-/** A masonry rhythm: mostly marketplace squares, some portraits. */
-const THUMB_SHAPES: readonly Size[] = [SQUARE, PORTRAIT_4_5, SQUARE, SQUARE, PORTRAIT_4_5];
+/** A marketplace thumbnail: square (1:1), recommended 1200×1200 px — every
+ *  Miniaturki slot. The grid shows each one in a 1:1 frame; a file of
+ *  another shape is cropped by the frame (object-cover), never stretched. */
+export const THUMBNAIL_SQUARE: Size = { width: 1200, height: 1200 };
 
 export const THUMBNAILS = {
   item: "ecommerce.thumbnail",
@@ -317,7 +319,7 @@ export const THUMBNAILS = {
   tryKey: "sellerHome.thumbs.try",
   ctaKey: "sellerHome.thumbs.cta",
   tiles: Array.from({ length: 20 }, (_, i): GalleryTileDef => ({
-    media: img(`homeMedia.thumbnails.${i + 1}`, THUMB_SHAPES[i % THUMB_SHAPES.length]),
+    media: img(`homeMedia.thumbnails.${i + 1}`, THUMBNAIL_SQUARE),
   })),
 } as const;
 

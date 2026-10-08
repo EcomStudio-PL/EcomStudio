@@ -39,6 +39,7 @@ import { EmptyArt, MediaSlot } from "@/components/seller-home/media-slot";
 import { BeforeAfter } from "@/components/seller-home/before-after";
 import { GalleryCta, StatusBadge, ToolLink, TryLink } from "@/components/seller-home/parts";
 import { PromoBanner, SessionsSection, ThumbnailsSection } from "@/components/seller-home/sections";
+import { ToolCarousel } from "@/components/seller-home/tool-carousel";
 import { findCategory } from "@/lib/categories";
 import type { SlotMap } from "@/lib/server/media-slots";
 import type { Client } from "@/lib/services/workspace";
@@ -69,13 +70,14 @@ const LIVE: Record<string, ItemState> = {
 };
 
 const SH_FILES = [
-  "seller-home.tsx", "tool-carousel.tsx", "upload-tile.tsx", "sections.tsx", "rail.tsx", "parts.tsx",
+  "seller-home.tsx", "tool-carousel.tsx", "upload-tile.tsx", "sections.tsx", "rail.tsx", "loop-rail.tsx", "parts.tsx",
   "coming-soon.tsx", "seller-modal.tsx", "no-credits-modal.tsx", "media-slot.tsx", "before-after.tsx", "task-store.ts",
 ];
 const SH = SH_FILES.map((f) => code(`components/seller-home/${f}`)).join("\n");
 const body = code("components/seller-home/seller-home.tsx");
 const upload = code("components/seller-home/upload-tile.tsx");
 const rail = code("components/seller-home/rail.tsx");
+const loopRail = code("components/seller-home/loop-rail.tsx");
 const sections = code("components/seller-home/sections.tsx");
 const carousel = code("components/seller-home/tool-carousel.tsx");
 const loader = code("lib/server/seller-home.ts");
@@ -166,8 +168,9 @@ section("3. THE TOOL CAROUSEL");
 check("the spec's order: Miniaturka, Grovshot, Manekin, Retusz, Tło AI, Cień AI, Białe tło, W kontekście, Moda, Packshot, Własny prompt",
   CAROUSEL.map((c) => c.item).join(",") === "ecommerce.thumbnail,generator,moda.ghostMannequin,retouch,ai_background,ai_shadow,white_bg,ecommerce.context,cat:moda,ecommerce.packshot,custom");
 check("…every tile is a real catalogue item (or a real category)", CAROUSEL.every((c) => c.item.startsWith("cat:") || Boolean(catalogItem(c.item))));
-check("3.5 tiles on a desktop, 2.5 on a tablet, about 1.2 on a phone", /lg:\[--rail-cols:3\.5\]/.test(carousel)
-  && /sm:\[--rail-cols:2\.5\]/.test(carousel) && /\[--rail-cols:1\.18\]/.test(carousel));
+check("4.5 tiles on a desktop, 2.5 on a tablet, about 1.2 on a phone (the gaps unchanged)", /lg:\[--rail-cols:4\.5\]/.test(carousel)
+  && /sm:\[--rail-cols:2\.5\]/.test(carousel) && /\[--rail-cols:1\.18\]/.test(carousel) && !/--rail-cols:3\.5/.test(carousel)
+  && /\[--rail-gap:10px\] sm:\[--rail-cols:2\.5\] sm:\[--rail-gap:12px\] lg:\[--rail-cols:4\.5\] lg:\[--rail-gap:14px\]/.test(carousel));
 check("…a card is (100% − whole gaps) ÷ cols wide", /w-\[calc\(\(100%_-_\(var\(--rail-cols\)_-_1\)_\*_var\(--rail-gap\)\)_\/_var\(--rail-cols\)\)\]/.test(rail));
 check("arrows, scroll-snap, swipe (native scroll) and ←/→ between cards", /data-rail-prev/.test(rail) && /data-rail-next/.test(rail)
   && /snap-x snap-mandatory/.test(rail) && /overflow-x-auto/.test(rail) && /ArrowRight/.test(rail) && /ArrowLeft/.test(rail));
@@ -190,6 +193,79 @@ check("…an admin's card picture fills an empty tile; the shipped example only 
   && Object.values(SHIPPED_TOOL_PHOTO).every((p) => existsSync(`public${p}`)));
 check("…a whole live tile is the link; small name + one line under the picture", /<ToolLink key=\{def\.item\} state=\{state\}/.test(carousel)
   && /text-\[13px\] font-semibold/.test(carousel) && /text-\[12px\] leading-snug text-muted/.test(carousel));
+
+/* ── 3b. the endless loop ─────────────────────────────────────────────────*/
+
+section("3b. THE TOOL CAROUSEL GOES ROUND — BOTH WAYS, NO END");
+check("five or more tools: the looping rail; fewer: the plain Rail, no copies",
+  /const LOOP_MIN = 5;/.test(carousel) && /tiles\.length >= LOOP_MIN\s*\? <LoopRail /.test(carousel) && /: <Rail \{\.\.\.rail\}>/.test(carousel));
+check("…the before/after row and the featured tools keep the plain Rail", (sections.match(/<Rail /g) ?? []).length === 2 && !/LoopRail/.test(sections));
+check("the loop is one copy of the list on either side of the real cards: [copies] [cards] [copies]",
+  /\{ready && copy\("before"\)\}/.test(loopRail) && /data-loop-item=\{i\}/.test(loopRail) && /\{copy\("after"\)\}/.test(loopRail));
+check("…copies are aria-hidden drawings, out of the Tab order (links tabIndex -1), no tile key of their own",
+  /aria-hidden="true" data-loop-clone=\{side\}/.test(loopRail) && /tabIndex=\{copy && live \? -1 : undefined\}/.test(carousel)
+  && /copy \? \{ "data-carousel-clone": def\.item \} : \{ "data-carousel-tile": def\.item \}/.test(carousel)
+  && /tabIndex=\{tabIndex\}/.test(code("components/seller-home/parts.tsx")));
+check("…a press on a copy never leaves the focus on it (it still opens the tool)", /data-loop-clone=\{side\} onMouseDown=\{\(e\) => e\.preventDefault\(\)\}/.test(loopRail));
+check("…a copy never preloads its picture (only the first real cards may)", /priority=\{!copy && index < 5\}/.test(carousel));
+check("the copies before the list come after hydration, and the strip moves by their width in the same frame (no SSR jump)",
+  /useLayoutEffect\(\(\) => \{ setReady\(true\); \}, \[\]\)/.test(loopRail) && /positioned\.current = true;\s*jump\(g\.track, g\.track\.scrollLeft \+ g\.origin\)/.test(loopRail));
+check("at rest over the copies the strip moves — instantly, by one list's width — onto the real cards",
+  /const twins = /.test(loopRail) && /\[pos - g\.period, pos \+ g\.period\]/.test(loopRail) && /behavior: "instant"/.test(loopRail)
+  && /at >= -0\.5 && at < n - 0\.5/.test(loopRail));
+check("…rest = `scrollend`, or no scroll event and no finger for a moment (never mid-swipe, never mid-glide)",
+  /addEventListener\("scrollend", onEnd\)/.test(loopRail) && /const SETTLE_MS = 140;/.test(loopRail) && /if \(touchRef\.current\) return true;/.test(loopRail)
+  && /performance\.now\(\) < glidingRef\.current/.test(loopRail));
+check("…a card is a whole number of pixels where round() exists, so the move is exact to the pixel",
+  /supports-\[width:round\(down,1px,1px\)\]:\[&>\*\]:w-\[round\(down,calc\(/.test(loopRail));
+check("arrows: always both, one card per press; leaving the real cards first makes the invisible move",
+  !/edge\./.test(loopRail) && /onClick=\{\(\) => step\(-1\)\}/.test(loopRail) && /onClick=\{\(\) => step\(1\)\}/.test(loopRail)
+  && /\(targetRef\.current \?\? Math\.round\(\(track\.scrollLeft - origin\) \/ pitch\)\) \+ dir/.test(loopRail)
+  && /while \(target < 0\) \{ left \+= period; target \+= n; \}/.test(loopRail) && /while \(target > n - 1\) \{ left -= period; target -= n; \}/.test(loopRail));
+check("…same arrows, same place, same look as the plain Rail (hidden on a phone, as before: swipe there)",
+  loopRail.includes(rail.match(/const arrow = "[^"]+";/)?.[0] ?? "∅") && /data-rail-prev/.test(loopRail) && /data-rail-next/.test(loopRail));
+check("…reduced motion: no glide, the strip is simply there", /prefers-reduced-motion: reduce/.test(loopRail) && /reduce \? "instant" : "smooth"/.test(loopRail));
+check("←/→ on a card: its neighbour, the last card's being the first, stepping over cards that do not open; the real card comes into view",
+  /const k = \(\(pos % n\) \+ n\) % n;/.test(loopRail) && /target\.focus\(\{ preventScroll: true \}\)/.test(loopRail) && /reveal\(k, dir\)/.test(loopRail)
+  && /closest\("input, textarea, select"\)\) return;/.test(loopRail));
+check("a new width puts the same real card back at the left edge; a height change (a font) does nothing",
+  /if \(track\.clientWidth === width\) return;/.test(loopRail) && /new ResizeObserver/.test(loopRail));
+check("every listener is removed on unmount, each added once",
+  ["scroll", "scrollend", "touchstart", "touchend", "touchcancel", "wheel"].every((ev) =>
+    (loopRail.match(new RegExp(`addEventListener\\("${ev}"`, "g")) ?? []).length === 1
+    && (loopRail.match(new RegExp(`removeEventListener\\("${ev}"`, "g")) ?? []).length === 1)
+  && /ro\?\.disconnect\(\)/.test(loopRail) && /window\.clearTimeout\(timerRef\.current\);\s*track\.removeEventListener/.test(loopRail));
+check("no carousel library: native scrolling and scroll-snap, like Rail", !/from "(embla|swiper|keen-slider|react-slick|flickity)/.test(loopRail)
+  && /snap-x snap-mandatory/.test(loopRail) && /overflow-x-auto/.test(loopRail));
+{
+  const carouselData = (hide: readonly string[] = []) => ({
+    balance: 0, uploadTools: [], toolSlots: {}, channel: null, askChannel: false, interests: [], soon: [], pro: null,
+    banners: [], slots: new Map(), isAdmin: false,
+    items: Object.fromEntries(CAROUSEL.filter((c) => !hide.includes(c.item)).map((c) =>
+      [c.item, S(c.item, `/t/${c.item}`, c.item === "moda.ghostMannequin" ? "soon" : c.item === "custom" ? "maintenance" : "live", 4)])),
+  }) as unknown as Parameters<typeof ToolCarousel>[0]["data"];
+  const out = html(createElement(ToolCarousel, { data: carouselData(), t: T }));
+  const realTiles = (out.match(/data-carousel-tile="/g) ?? []).length;
+  const copyTiles = (out.match(/data-carousel-clone="/g) ?? []).length;
+  const copyLinks = out.match(/<a [^>]*data-carousel-clone="[^"]*"[^>]*>/g) ?? [];
+  const realLinks = out.match(/<a [^>]*data-carousel-tile="[^"]*"[^>]*>/g) ?? [];
+  check("server render: the 11 real cards once, the copies after them (the ones before come with hydration)",
+    /data-loop-rail/.test(out) && realTiles === 11 && copyTiles === 11 && (out.match(/data-loop-clone="after"/g) ?? []).length === 11
+    && !/data-loop-clone="before"/.test(out));
+  check("…every copy link is tabindex=-1 inside aria-hidden; no real link is", copyLinks.length === 9 && copyLinks.every((a) => /tabindex="-1"/i.test(a))
+    && realLinks.length === 9 && realLinks.every((a) => !/tabindex/i.test(a))
+    && (out.match(/aria-hidden="true" data-loop-clone="after"/g) ?? []).length === 11);
+  check("…a not-live tool is inert in its copy too (badge, no href); a copy opens the same tool as its card",
+    /<span aria-disabled="true"[^>]*data-carousel-clone="moda\.ghostMannequin"/.test(out) && /<span aria-disabled="true"[^>]*data-carousel-clone="custom"/.test(out)
+    && copyLinks.every((a) => { const key = a.match(/data-carousel-clone="([^"]*)"/)?.[1]; return a.includes(`href="/t/${key}"`); }));
+  check("…no id anywhere in the carousel (copies cannot duplicate one)", !/\sid="/.test(out));
+  const hidden = html(createElement(ToolCarousel, { data: carouselData(["retouch", "ai_shadow"]), t: T }));
+  check("…a hidden tool is gone from the cards AND the copies", !/"retouch"|"ai_shadow"/.test(hidden.replace(/href="[^"]*"/g, ""))
+    && (hidden.match(/data-carousel-tile="/g) ?? []).length === 9 && (hidden.match(/data-carousel-clone="/g) ?? []).length === 9);
+  const few = html(createElement(ToolCarousel, { data: carouselData(CAROUSEL.slice(4).map((c) => c.item)), t: T }));
+  check("…four tools: the plain Rail — no loop, no copies, nothing twice",
+    !/data-loop-rail/.test(few) && !/data-carousel-clone/.test(few) && (few.match(/data-carousel-tile="/g) ?? []).length === 4);
+}
 
 /* ── 4. media slots ───────────────────────────────────────────────────────*/
 
@@ -373,8 +449,32 @@ check("three banners, one reusable component", Object.keys(PROMO_BANNERS).join("
 check("showcase: ~40/60 split, 12 results 3 × 4 fading into the panel, one button, no heading",
   /lg:grid-cols-\[2fr_3fr\]/.test(sections) && SHOWCASE.gallery.length === 12 && /cols="columns-2 sm:columns-3"/.test(sections)
   && Boolean(catalogItem(SHOWCASE.item)));
-check("Miniaturki: 20 tiles, 5 / 3 / 2 columns, faded last row, one button to the thumbnail tool",
-  THUMBNAILS.tiles.length === 20 && /columns-2 sm:columns-3 lg:columns-5/.test(sections) && THUMBNAILS.item === "ecommerce.thumbnail");
+check("Miniaturki: 20 square tiles in an even grid — 5 / 3 / 2 columns, 4 rows on a desktop, one button to the thumbnail tool",
+  THUMBNAILS.tiles.length === 20 && /\[--sq-cols:2\]/.test(sections) && /sm:\[--sq-cols:3\]/.test(sections) && /lg:\[--sq-cols:5\]/.test(sections)
+  && /lg:\[--sq-rows:4\]/.test(sections) && /grid-cols-\[repeat\(var\(--sq-cols\),minmax\(0,1fr\)\)\] gap-\[var\(--sq-gap\)\]/.test(sections)
+  && THUMBNAILS.item === "ecommerce.thumbnail" && /<SquareGallery tiles=\{THUMBNAILS\.tiles\}/.test(sections) && !/columns-2 sm:columns-3 lg:columns-5/.test(sections));
+check("…every slot is 1:1, recommended 1200×1200; keys 1–20 unchanged, nothing filled in, nothing else in the list",
+  THUMBNAILS.tiles.every((t, i) => t.media.configKey === `homeMedia.thumbnails.${i + 1}` && t.media.kind === "image"
+    && t.media.width === 1200 && t.media.height === 1200 && t.media.src === null)
+  && assetList().filter((r) => r.section === "7 Miniaturki").length === 20);
+check("…the window is whole rows tall from its own width (no layout shift); the rows past it stay in the page",
+  /\[container-type:inline-size\]/.test(sections) && /h-\[calc\(var\(--sq-rows\)_\*_\(\(100cqw_-_\(var\(--sq-cols\)_-_1\)_\*_var\(--sq-gap\)\)_\/_var\(--sq-cols\)\)_\+_\(var\(--sq-rows\)_-_1\)_\*_var\(--sq-gap\)\)\]/.test(sections));
+check("…the last row melts into the page — a mask (the real background in either theme), never a painted white",
+  /\[mask-image:linear-gradient\(to_bottom,black_58%,[^\]]*transparent_99%\)\]/.test(sections) && /lg:\[mask-image:linear-gradient\(to_bottom,black_70%,[^\]]*transparent_99%\)\]/.test(sections)
+  && !/function SquareGallery[\s\S]*?(bg-white|from-white|#fff)[\s\S]*?\n}\n/.test(sections));
+{
+  const thumbs = html(createElement(ThumbnailsSection, { items: { "ecommerce.thumbnail": LIVE["ecommerce.thumbnail"] }, t: T }));
+  const frames = thumbs.match(/<span[^>]*data-config-key="homeMedia\.thumbnails\.\d+"[^>]*>/g) ?? [];
+  check("…rendered: 20 frames, every one aspect-ratio 1/1, every hint 1200×1200",
+    frames.length === 20 && frames.every((f) => /aspect-ratio:1\/1/.test(f)) && (thumbs.match(/sellerHome\.slot\.size\(1200,1200\)/g) ?? []).length === 20);
+  check("…the heading, its line and „Wypróbuj” unchanged; the button sits on the fade, above it",
+    /id="seller-thumbs-title"[^>]*>sellerHome\.thumbs\.title</.test(thumbs) && />sellerHome\.thumbs\.sub</.test(thumbs) && /sellerHome\.thumbs\.try/.test(thumbs)
+    && /absolute inset-x-0 bottom-\[5%\] z-\[1\] flex justify-center[^>]*>[\s\S]*sellerHome\.thumbs\.cta/.test(thumbs));
+}
+check("no other slot changed format: every slot outside Miniaturki is byte-for-byte the last release's (key, kind, size)",
+  createHash("sha256").update(JSON.stringify(assetList().filter((r) => !r.section.startsWith("7 "))
+    .map((r) => [r.section, r.media.configKey, r.media.kind, r.media.width, r.media.height]))).digest("hex")
+    === "cfb689940af98baa584c3234ef80c7fa1d5bdec89dc4661aba02901956eb68ca");
 check("fading galleries: a fixed window (no layout shift) and a mask, CSS columns (nothing stretched)",
   /\[mask-image:linear-gradient\(to_bottom,black_72%,transparent_99%\)\]/.test(sections) && /break-inside-avoid/.test(sections));
 const shapes = new Set(SESSIONS.tiles.map((t) => `${t.media.width}/${t.media.height}`));

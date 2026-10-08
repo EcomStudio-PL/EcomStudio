@@ -170,7 +170,7 @@ export function PromoBanner({ def, items, t }: { def: PromoBannerDef; items: Ite
   );
 }
 
-/* ── the fading masonry gallery (Showcase, Miniaturki, Sesje) ─────────────*/
+/* ── the fading masonry gallery (Showcase, Sesje) ─────────────────────────*/
 
 /**
  * A masonry of slots that FADES into whatever is behind it: the window shows
@@ -241,6 +241,46 @@ export function Showcase({ items, t }: { items: ItemStates; t: T }) {
 
 /* ── 7. Miniaturki ────────────────────────────────────────────────────────*/
 
+/**
+ * Miniaturki's own gallery: an even grid of SQUARE thumbnails, as a
+ * marketplace shows them — 5 columns on a desktop, 3 on a tablet, 2 on a
+ * phone; every tile 1:1, every gap the same. The window is exactly whole rows
+ * tall (4 on a desktop — all twenty — 3 below), worked out from its own width
+ * (container units), so it never depends on what loaded; the rows past it
+ * stay in the page, under the fade. The last row melts into whatever is
+ * behind the section — a mask, so it is the real page background in either
+ * theme — and the button sits on that fade.
+ */
+function SquareGallery({ tiles, label, cta, t }: {
+  tiles: readonly GalleryTileDef[];
+  label: string;
+  cta: React.ReactNode;
+  t: T;
+}) {
+  return (
+    <div className="relative [container-type:inline-size]">
+      <div data-square-gallery
+        className={cn(
+          "relative overflow-hidden [--sq-cols:2] [--sq-gap:8px] [--sq-rows:3] sm:[--sq-cols:3] sm:[--sq-gap:10px] lg:[--sq-cols:5] lg:[--sq-rows:4]",
+          "h-[calc(var(--sq-rows)_*_((100cqw_-_(var(--sq-cols)_-_1)_*_var(--sq-gap))_/_var(--sq-cols))_+_(var(--sq-rows)_-_1)_*_var(--sq-gap))]",
+          "[mask-image:linear-gradient(to_bottom,black_58%,rgb(0_0_0/0.78)_70%,rgb(0_0_0/0.4)_84%,transparent_99%)]",
+          "lg:[mask-image:linear-gradient(to_bottom,black_70%,rgb(0_0_0/0.78)_79%,rgb(0_0_0/0.4)_89%,transparent_99%)]",
+        )}>
+        <div className="grid grid-cols-[repeat(var(--sq-cols),minmax(0,1fr))] gap-[var(--sq-gap)]">
+          {tiles.map((tile, i) => (
+            <div key={tile.media.configKey} className="overflow-hidden rounded-xl" data-square-tile>
+              <MediaSlot media={tile.media} ratio="1/1" tone={i}
+                sizes="(max-width: 639px) 46vw, (max-width: 1023px) 31vw, 19vw"
+                label={`${label} ${String(i + 1).padStart(2, "0")}`} hint={size(t, tile.media.width, tile.media.height)} />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="absolute inset-x-0 bottom-[5%] z-[1] flex justify-center">{cta}</div>
+    </div>
+  );
+}
+
 export function ThumbnailsSection({ items, t }: { items: ItemStates; t: T }) {
   const state = items[THUMBNAILS.item];
   // The section is the thumbnail tool's: gone when the viewer may not see it.
@@ -249,9 +289,7 @@ export function ThumbnailsSection({ items, t }: { items: ItemStates; t: T }) {
     <section className="relative" aria-labelledby="seller-thumbs-title" data-seller-thumbnails>
       <SectionHead id="seller-thumbs-title" title={t(THUMBNAILS.titleKey)} sub={t(THUMBNAILS.subKey)}
         action={<TryLink state={state} label={t(THUMBNAILS.tryKey)} />} />
-      <FadeGallery tiles={THUMBNAILS.tiles} label={t("sellerHome.slot.thumbnail")}
-        cols="columns-2 sm:columns-3 lg:columns-5" window="aspect-[2/2.7] sm:aspect-[3/3.3] lg:aspect-[5/3.75]"
-        sizes="(max-width: 639px) 46vw, (max-width: 1023px) 31vw, 19vw" t={t}
+      <SquareGallery tiles={THUMBNAILS.tiles} label={t("sellerHome.slot.thumbnail")} t={t}
         cta={<GalleryCta state={state} label={t(THUMBNAILS.ctaKey)} />} />
     </section>
   );
