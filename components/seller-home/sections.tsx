@@ -263,8 +263,9 @@ function SquareGallery({ tiles, label, cta, t }: {
         className={cn(
           "relative overflow-hidden [--sq-cols:2] [--sq-gap:8px] [--sq-rows:3] sm:[--sq-cols:3] sm:[--sq-gap:10px] lg:[--sq-cols:5] lg:[--sq-rows:4]",
           "h-[calc(var(--sq-rows)_*_((100cqw_-_(var(--sq-cols)_-_1)_*_var(--sq-gap))_/_var(--sq-cols))_+_(var(--sq-rows)_-_1)_*_var(--sq-gap))]",
-          "[mask-image:linear-gradient(to_bottom,black_58%,rgb(0_0_0/0.78)_70%,rgb(0_0_0/0.4)_84%,transparent_99%)]",
-          "lg:[mask-image:linear-gradient(to_bottom,black_70%,rgb(0_0_0/0.78)_79%,rgb(0_0_0/0.4)_89%,transparent_99%)]",
+          // The fade starts where the last row does (3 rows: ~67.5%, 4: ~75.5%).
+          "[mask-image:linear-gradient(to_bottom,black_67%,rgb(0_0_0/0.8)_76%,rgb(0_0_0/0.4)_88%,transparent_99%)]",
+          "lg:[mask-image:linear-gradient(to_bottom,black_75%,rgb(0_0_0/0.8)_82%,rgb(0_0_0/0.4)_91%,transparent_99%)]",
         )}>
         <div className="grid grid-cols-[repeat(var(--sq-cols),minmax(0,1fr))] gap-[var(--sq-gap)]">
           {tiles.map((tile, i) => (

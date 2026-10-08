@@ -206,35 +206,49 @@ check("…copies are aria-hidden drawings, out of the Tab order (links tabIndex 
   /aria-hidden="true" data-loop-clone=\{side\}/.test(loopRail) && /tabIndex=\{copy && live \? -1 : undefined\}/.test(carousel)
   && /copy \? \{ "data-carousel-clone": def\.item \} : \{ "data-carousel-tile": def\.item \}/.test(carousel)
   && /tabIndex=\{tabIndex\}/.test(code("components/seller-home/parts.tsx")));
-check("…a press on a copy never leaves the focus on it (it still opens the tool)", /data-loop-clone=\{side\} onMouseDown=\{\(e\) => e\.preventDefault\(\)\}/.test(loopRail));
+check("…a pointer's focus never stays on a copy, yet a copy drags and clicks like its card (no mousedown preventDefault)",
+  /if \(el && track\.contains\(el\) && el\.closest\("\[data-loop-clone\]"\)\) el\.blur\(\);/.test(loopRail) && !/onMouseDown/.test(loopRail)
+  && !/addEventListener\("focusin"/.test(loopRail));
+check("…anything focusable a copy renders later (a clip's controls) gets tabindex -1 too",
+  /"video", "audio", "iframe", "\[tabindex\]"/.test(loopRail) && /new MutationObserver\(quiet\)/.test(loopRail) && /setAttribute\("tabindex", "-1"\)/.test(loopRail));
 check("…a copy never preloads its picture (only the first real cards may)", /priority=\{!copy && index < 5\}/.test(carousel));
 check("the copies before the list come after hydration, and the strip moves by their width in the same frame (no SSR jump)",
   /useLayoutEffect\(\(\) => \{ setReady\(true\); \}, \[\]\)/.test(loopRail) && /positioned\.current = true;\s*jump\(g\.track, g\.track\.scrollLeft \+ g\.origin\)/.test(loopRail));
-check("at rest over the copies the strip moves — instantly, by one list's width — onto the real cards",
-  /const twins = /.test(loopRail) && /\[pos - g\.period, pos \+ g\.period\]/.test(loopRail) && /behavior: "instant"/.test(loopRail)
-  && /at >= -0\.5 && at < n - 0\.5/.test(loopRail));
-check("…rest = `scrollend`, or no scroll event and no finger for a moment (never mid-swipe, never mid-glide)",
-  /addEventListener\("scrollend", onEnd\)/.test(loopRail) && /const SETTLE_MS = 140;/.test(loopRail) && /if \(touchRef\.current\) return true;/.test(loopRail)
-  && /performance\.now\(\) < glidingRef\.current/.test(loopRail));
-check("…a card is a whole number of pixels where round() exists, so the move is exact to the pixel",
-  /supports-\[width:round\(down,1px,1px\)\]:\[&>\*\]:w-\[round\(down,calc\(/.test(loopRail));
-check("arrows: always both, one card per press; leaving the real cards first makes the invisible move",
+check("at rest over the copies the strip moves — instantly, by one list's width — onto the real cards (the focused one kept in view)",
+  /const options = \[near, near - n, near \+ n\]\.filter\(\(i\) => fits\(g, i\)\)/.test(loopRail) && /behavior: "instant"/.test(loopRail)
+  && /options\.find\(\(i\) => shows\(g, i, focus\)\)/.test(loopRail) && /options\.find\(\(i\) => i >= 0 && i <= n - 1\)/.test(loopRail));
+check("…stopped between two cards (only possible at the strip's very ends): eased onto the nearest card, never snapped with a jump",
+  /if \(Math\.abs\(at - near\) > 0\.02\) \{ glideTo\(at, near, ALIGN_MS\); return; \}/.test(loopRail));
+check("…rest = `scrollend`, or no scroll event, no finger and no held button for a moment (a click is never lost to a move)",
+  /addEventListener\("scrollend", onEnd\)/.test(loopRail) && /const SETTLE_MS = 140;/.test(loopRail)
+  && /if \(touchRef\.current \|\| pressRef\.current \|\| glideRef\.current\) return;/.test(loopRail)
+  && /if \(e\.pointerType !== "touch"\) pressRef\.current = true;/.test(loopRail));
+check("…card + gap a multiple of 4px where round() exists, so the move between twins is exact on 1×/1.25×/1.5×/2×/3× screens",
+  /supports-\[width:round\(down,1px,1px\)\]:\[&>\*\]:w-\[calc\(round\(nearest,calc\(.*_\+_var\(--rail-gap\)\),4px\)_-_var\(--rail-gap\)\)\]/.test(loopRail));
+check("arrows: always both, one card per press, presses add up; the glide is drawn by its own frames, snap off, every frame at the identical spot inside the range",
   !/edge\./.test(loopRail) && /onClick=\{\(\) => step\(-1\)\}/.test(loopRail) && /onClick=\{\(\) => step\(1\)\}/.test(loopRail)
-  && /\(targetRef\.current \?\? Math\.round\(\(track\.scrollLeft - origin\) \/ pitch\)\) \+ dir/.test(loopRail)
-  && /while \(target < 0\) \{ left \+= period; target \+= n; \}/.test(loopRail) && /while \(target > n - 1\) \{ left -= period; target -= n; \}/.test(loopRail));
+  && /glideTo\(from, \(glide \? glide\.to : Math\.round\(from\)\) \+ dir, STEP_MS\)/.test(loopRail)
+  && /track\.style\.scrollSnapType = "none";/.test(loopRail) && /jump\(g\.track, place\(g, glide\.at\)\)/.test(loopRail)
+  && /while \(left > g\.max \+ 0\.5\) left -= g\.period;/.test(loopRail) && /while \(left < -0\.5\) left \+= g\.period;/.test(loopRail));
 check("…same arrows, same place, same look as the plain Rail (hidden on a phone, as before: swipe there)",
   loopRail.includes(rail.match(/const arrow = "[^"]+";/)?.[0] ?? "∅") && /data-rail-prev/.test(loopRail) && /data-rail-next/.test(loopRail));
-check("…reduced motion: no glide, the strip is simply there", /prefers-reduced-motion: reduce/.test(loopRail) && /reduce \? "instant" : "smooth"/.test(loopRail));
+check("…reduced motion: no glide, the strip is simply there", /prefers-reduced-motion: reduce/.test(loopRail) && /const d = reducedMotion\(\) \? 0 : duration;/.test(loopRail));
+check("…a press during a glide carries its speed on (Hermite curve), never faster than an ease-out, never backwards",
+  /const curve = \(g: Glide, s: number\) =>/.test(loopRail) && /Math\.min\(Math\.max\(Math\.abs\(prev\.v\), Math\.abs\(span\) \/ d\), \(3 \* Math\.abs\(span\)\) \/ d\)/.test(loopRail));
+check("…a finger or a sideways wheel takes over from a glide; a glide in flight is where ←/→ aim from",
+  /touchRef\.current = true; stopGlide\(\);/.test(loopRail) && /if \(e\.deltaX !== 0 \|\| e\.shiftKey\) stopGlide\(\);/.test(loopRail)
+  && /const rest = glide \? glide\.to : Math\.round\(now\);/.test(loopRail));
 check("←/→ on a card: its neighbour, the last card's being the first, stepping over cards that do not open; the real card comes into view",
-  /const k = \(\(pos % n\) \+ n\) % n;/.test(loopRail) && /target\.focus\(\{ preventScroll: true \}\)/.test(loopRail) && /reveal\(k, dir\)/.test(loopRail)
+  /const k = \(\(\(at \+ dir \* s\) % n\) \+ n\) % n;/.test(loopRail) && /target\.focus\(\{ preventScroll: true \}\)/.test(loopRail) && /reveal\(k, dir\)/.test(loopRail)
   && /closest\("input, textarea, select"\)\) return;/.test(loopRail));
 check("a new width puts the same real card back at the left edge; a height change (a font) does nothing",
   /if \(track\.clientWidth === width\) return;/.test(loopRail) && /new ResizeObserver/.test(loopRail));
-check("every listener is removed on unmount, each added once",
-  ["scroll", "scrollend", "touchstart", "touchend", "touchcancel", "wheel"].every((ev) =>
+check("every listener is removed on unmount, each added once; a glide in flight is cancelled",
+  ["scroll", "scrollend", "touchstart", "touchend", "touchcancel", "wheel", "pointerdown", "pointerup", "pointercancel", "dragend"].every((ev) =>
     (loopRail.match(new RegExp(`addEventListener\\("${ev}"`, "g")) ?? []).length === 1
     && (loopRail.match(new RegExp(`removeEventListener\\("${ev}"`, "g")) ?? []).length === 1)
-  && /ro\?\.disconnect\(\)/.test(loopRail) && /window\.clearTimeout\(timerRef\.current\);\s*track\.removeEventListener/.test(loopRail));
+  && /ro\?\.disconnect\(\)/.test(loopRail) && /mo\?\.disconnect\(\)/.test(loopRail)
+  && /window\.clearTimeout\(timerRef\.current\);\s*stopGlide\(\);\s*track\.removeEventListener/.test(loopRail));
 check("no carousel library: native scrolling and scroll-snap, like Rail", !/from "(embla|swiper|keen-slider|react-slick|flickity)/.test(loopRail)
   && /snap-x snap-mandatory/.test(loopRail) && /overflow-x-auto/.test(loopRail));
 {
@@ -460,7 +474,7 @@ check("…every slot is 1:1, recommended 1200×1200; keys 1–20 unchanged, noth
 check("…the window is whole rows tall from its own width (no layout shift); the rows past it stay in the page",
   /\[container-type:inline-size\]/.test(sections) && /h-\[calc\(var\(--sq-rows\)_\*_\(\(100cqw_-_\(var\(--sq-cols\)_-_1\)_\*_var\(--sq-gap\)\)_\/_var\(--sq-cols\)\)_\+_\(var\(--sq-rows\)_-_1\)_\*_var\(--sq-gap\)\)\]/.test(sections));
 check("…the last row melts into the page — a mask (the real background in either theme), never a painted white",
-  /\[mask-image:linear-gradient\(to_bottom,black_58%,[^\]]*transparent_99%\)\]/.test(sections) && /lg:\[mask-image:linear-gradient\(to_bottom,black_70%,[^\]]*transparent_99%\)\]/.test(sections)
+  /\[mask-image:linear-gradient\(to_bottom,black_67%,[^\]]*transparent_99%\)\]/.test(sections) && /lg:\[mask-image:linear-gradient\(to_bottom,black_75%,[^\]]*transparent_99%\)\]/.test(sections)
   && !/function SquareGallery[\s\S]*?(bg-white|from-white|#fff)[\s\S]*?\n}\n/.test(sections));
 {
   const thumbs = html(createElement(ThumbnailsSection, { items: { "ecommerce.thumbnail": LIVE["ecommerce.thumbnail"] }, t: T }));
