@@ -7,28 +7,27 @@ import { conceptModelOptions } from "@/lib/server/concept-generation";
 import { fashionModel, fashionPrice, fashionToolAvailable } from "@/lib/server/fashion";
 import { engineOutputsPerRun, engineToolConfigured } from "@/lib/server/engine/tool-run";
 import { RETOUCH_DEFAULT_RESOLUTION, retouchModel, retouchPrice, retouchWorkflowSize } from "@/lib/server/retouch";
-import { listGalleryItems, type GalleryItem } from "@/lib/server/gallery";
 import { loadBanners, loadSlots, type LiveBanner, type SlotMap } from "@/lib/server/media-slots";
-import { bannerSlotKey, toolSlotKey, workflowSlotKey } from "@/lib/media-slots";
+import { bannerSlotKey, categorySlotKey, toolSlotKey, workflowSlotKey } from "@/lib/media-slots";
 import { getBonusConfig, getCampaignStart, readOffer, toView } from "@/lib/server/welcome-bonus";
 import { paymentsEnabled } from "@/lib/stripe/config";
 import { sellable } from "@/lib/server/stripe-pricing";
 import { getToolsLayout } from "@/lib/server/tool-layout";
 import { customModels, getUsableModels, toClientModel } from "@/lib/ai/router";
-import { menuBadge, menuVisible, routeReachable } from "@/lib/features";
+import { menuBadge, menuVisible, routeReachable, type MenuBadge } from "@/lib/features";
 import { catalogItem } from "@/lib/tool-cards";
 import { itemBadge, itemReachable } from "@/lib/tool-layout";
 import { CATEGORIES, categoryGates, categoryHref, findCategory } from "@/lib/categories";
 import { FASHION_TOOLS } from "@/lib/fashion-tools";
 import { snapQuality, unitPrice, type GenModel } from "@/components/genv3/types";
-import { planPerCreditCents } from "@/components/plan/pricing-model";
 import {
-  ANCHOR_PLAN_SLUG, HERO_TASKS, INTEREST_GATES, INTEREST_KEYS, RECENT_MAX, TOOL_GROUPS,
-  isInterestKey, isSellerChannel, type InterestKey, type MediaSrc, type SellerChannel,
+  BEFORE_AFTER, CAROUSEL, FEATURED, INTEREST_GATES, INTEREST_KEYS, PROMO_BANNERS, SESSIONS, SHOWCASE,
+  THUMBNAILS, UPLOAD_TOOLS,
+  isInterestKey, isSellerChannel, type InterestKey, type SellerChannel,
 } from "@/lib/seller-home-config";
 import {
-  channelFromSurvey, recentCards, recentRoute, resolveHeroTasks, shouldAskChannel,
-  type ItemState, type ResolvedTask,
+  channelFromSurvey, resolveUploadTools, shouldAskChannel,
+  type ItemState, type ItemStates, type ItemStatus, type UploadToolView,
 } from "@/lib/seller-home-model";
 
 /**
@@ -36,40 +35,21 @@ import {
  *
  * Nothing here decides a price or an availability of its own: each tool is
  * asked through the SAME helper its own screen uses —
- *   managed presets / Grovshot / Własny prompt → conceptModelOptions + unitPrice
- *     (the generator workspace's default model, size and quality)
+ *   managed presets / Grovshot → conceptModelOptions + unitPrice (the
+ *     generator workspace's default model, size and quality)
+ *   Własny prompt → its own model list (customModels)
  *   image tools (Białe tło, Tło AI, Cień AI, …) → toolCatalogue()
  *   Retusz → retouchModel + retouchPrice at its default size (read only —
  *     nothing of Retusz runs from here)
  *   Moda tools → fashionModel + fashionToolAvailable
- * and every item first passes the switchboard (itemReachable + its badge), so a
- * module an operator switched off or marked "Wkrótce" is never offered as
- * live here.
+ * and every item first passes the switchboard (itemReachable + its badge) and
+ * the /tools layout's "Narzędzia" flag, so a module an operator switched off,
+ * hid or marked "Wkrótce" is never offered as live here.
  *
  * Reads only. The page that renders this writes nothing; the two writes /home
  * can make (seller channel, "Powiadom mnie") are server actions in
  * app/actions/seller-home.ts.
  */
-
-export type ToolCardState = ItemState & {
-  nameKey: string;
-  descKey: string;
-  /** Picture from config, else an admin-filled media slot of the same tool. */
-  media: MediaSrc;
-  slotKey: string | null;
-  /** Listed to an admin although customers do not see it. */
-  adminOnly: boolean;
-};
-
-export type RecentCard = {
-  id: string;
-  thumbUrl: string;
-  createdAt: string;
-  href: string;
-  labelKey: string;
-  /** "Powtórz z nowym produktem" only when that tool runs right now. */
-  repeat: boolean;
-};
 
 export type ProOffer = {
   id: string;
@@ -85,33 +65,60 @@ export type ProOffer = {
 
 export type SellerHomeData = {
   balance: number;
-  tasks: ResolvedTask[];
-  tools: { key: string; titleKey: string; tools: ToolCardState[] }[];
-  recent: RecentCard[];
-  generations: number;
+  /** Every catalogue item the page references, for this viewer. An item the
+   *  viewer must not see at all (switched off, taken off /tools) is absent. */
+  items: ItemStates;
+  uploadTools: UploadToolView[];
+  /** item key → the admin media slot (Admin → Media) that dresses its card,
+   *  only for slots an admin actually filled. */
+  toolSlots: Readonly<Record<string, string>>;
   channel: SellerChannel | null;
   askChannel: boolean;
   interests: InterestKey[];
   /** "Nadchodzi" chips: only modules that are not live yet. */
   soon: InterestKey[];
-  /** Grosze per credit on the anchor plan; null when the row is missing. */
-  centsPerCredit: number | null;
-  currency: string;
   pro: ProOffer | null;
   banners: LiveBanner[];
   slots: SlotMap;
   isAdmin: boolean;
-  bonusPending: boolean;
 };
-
-const PRESS_SHOTS_DEFAULT = 5;
 
 function emptyData(): SellerHomeData {
   return {
-    balance: 0, tasks: resolveHeroTasks({}), tools: [], recent: [], generations: 0, channel: null,
-    askChannel: false, interests: [], soon: [], centsPerCredit: null, currency: "PLN", pro: null,
-    banners: [], slots: new Map(), isAdmin: false, bonusPending: false,
+    balance: 0, items: {}, uploadTools: [], toolSlots: {}, channel: null, askChannel: false,
+    interests: [], soon: [], pro: null, banners: [], slots: new Map(), isAdmin: false,
   };
+}
+
+/** Every catalogue item any section references. */
+export function referencedItems(): string[] {
+  const keys = new Set<string>();
+  CAROUSEL.forEach((c) => keys.add(c.item));
+  UPLOAD_TOOLS.forEach((u) => keys.add(u.item));
+  BEFORE_AFTER.forEach((b) => keys.add(b.item));
+  Object.values(PROMO_BANNERS).forEach((b) => { if (b.item) keys.add(b.item); });
+  keys.add(SHOWCASE.item);
+  keys.add(THUMBNAILS.item);
+  keys.add(SESSIONS.studio.item);
+  keys.add(SESSIONS.outdoor.item);
+  FEATURED.forEach((f) => keys.add(f.item));
+  return [...keys];
+}
+
+/** The admin media slot that dresses an item's card (Admin → Media). */
+export function adminSlotKey(item: string): string | null {
+  if (item.startsWith("cat:")) return categorySlotKey(item.slice(4));
+  const [cat, wf] = item.split(".");
+  if (wf && findCategory(cat)) return workflowSlotKey(cat, wf);
+  return toolSlotKey(item);
+}
+
+/** The status a switchboard badge means, before the runtime is asked. */
+function statusOfBadge(badge: MenuBadge): ItemStatus | null {
+  if (badge === "soon") return "soon";
+  if (badge === "maintenance") return "maintenance";
+  if (badge === "disabled") return "disabled";
+  return null;
 }
 
 export async function loadSellerHome(supabase: Client, user: {
@@ -125,7 +132,7 @@ export async function loadSellerHome(supabase: Client, user: {
 
   const [
     wallet, availability, isAdmin, catalogue, modelOptions, usable, engineRows, keyed,
-    retouch, retouchConfigured, retouchOutputs, fashion, fashionAvail, planRow, activeSub, gallery,
+    retouch, retouchConfigured, retouchOutputs, fashion, fashionAvail, planRow, activeSub,
     generationCount, interestRows, surveyRow, bonusConfig, offer, campaignStart, banners, layout,
   ] = await Promise.all([
     getWallet(supabase, workspace.id),
@@ -148,13 +155,10 @@ export async function loadSellerHome(supabase: Client, user: {
     Promise.all(FASHION_TOOLS.map(async (f) => [f.key, await fashionToolAvailable(supabase, f.toolKey), await engineOutputsPerRun(supabase, f.toolKey)] as const)),
     supabase.from("subscription_plans")
       .select("id, name, price_cents, monthly_credits, bonus_credits, currency, stripe_price_id_monthly, stripe_price_monthly_cents, stripe_sync_status, active")
-      .eq("slug", ANCHOR_PLAN_SLUG).eq("active", true).maybeSingle(),
+      .eq("slug", "pro").eq("active", true).maybeSingle(),
     // The same "already subscribed" read /plan makes.
     supabase.from("subscriptions").select("id").eq("workspace_id", workspace.id).eq("status", "active").limit(1),
-    // The Library's own projection (thumb derivatives, prompt-safe columns).
-    listGalleryItems(supabase, workspace.id, { limit: 24, assetType: "image" }),
-    // "New seller" = no generation at all in this workspace — counted, not
-    // inferred from a page of thumbnails.
+    // "New seller" = no generation at all in this workspace — counted.
     supabase.from("generations").select("id", { count: "exact", head: true }).eq("workspace_id", workspace.id),
     supabase.from("feature_interest").select("feature_key").eq("user_id", user.id),
     supabase.from("onboarding_survey_responses").select("answer")
@@ -165,7 +169,7 @@ export async function loadSellerHome(supabase: Client, user: {
     getCampaignStart(supabase),
     loadBanners(supabase, "dashboard"),
     // The switchboard's "Narzędzia" flag: an item an operator took off /tools
-    // is not offered in the tools grid here either.
+    // is not offered here either.
     getToolsLayout(supabase),
   ]);
 
@@ -207,116 +211,84 @@ export async function loadSellerHome(supabase: Client, user: {
   const fashionUnit = fashion && fashionSize ? fashionPrice(fashion, fashionSize) : null;
   const fashionOn = new Map(fashionAvail.map(([k, on]) => [k, on]));
   const fashionRuns = new Map(fashionAvail.map(([k, , n]) => [k, n]));
+  const isFashionTool = (wf: string) => FASHION_TOOLS.some((f) => f.key === wf);
 
-  const ecommerce = findCategory("ecommerce");
-  const shotsOf = (wf: string) => ecommerce?.workflows.find((w) => w.key === wf)?.shots ?? PRESS_SHOTS_DEFAULT;
+  /** The switchboard's verdict if it has one; otherwise whether it runs. */
+  const status = (gate: ItemStatus | null, runs: boolean): ItemStatus => gate ?? (runs ? "live" : "unavailable");
 
   function itemState(key: string): ItemState | null {
     if (key.startsWith("cat:")) {
       const cat = CATEGORIES.find((c) => c.key === key.slice(4));
       if (!cat) return null;
       const gates = categoryGates(cat);
-      const open = menuVisible(availability, gates, isAdmin) && !cat.soon
-        && menuBadge(availability, gates) === null;
-      const anyTool = cat.key === "moda"
-        ? Boolean(fashion) && FASHION_TOOLS.some((f) => fashionOn.get(f.key))
-        : true;
-      return { key, href: categoryHref(cat), available: open && anyTool, credits: null, shots: null };
+      if (!menuVisible(availability, gates, isAdmin)) return null;
+      const gate = cat.soon ? "soon" : statusOfBadge(menuBadge(availability, gates));
+      // Something in the category must run — a managed preset or a Moda tool.
+      const anyTool = managedLive || (Boolean(fashion) && FASHION_TOOLS.some((f) => fashionOn.get(f.key)));
+      return { key, href: categoryHref(cat), status: status(gate, anyTool), credits: null };
     }
     const item = catalogItem(key);
     if (!item) return null;
-    // The same "may this viewer see it" /tools asks (itemReachable), plus no
-    // badge: a "Wkrótce" or maintenance item is never offered as live here.
-    const open = itemReachable(availability, item, isAdmin) && itemBadge(availability, item) === null;
+    // The same "may this viewer see it" /tools asks, and its badge: a switched
+    // off item is gone for a customer, "Wkrótce"/maintenance stay, badged.
+    if (!itemReachable(availability, item, isAdmin)) return null;
+    // Taken off /tools by the layout switchboard → not here either.
+    if (layout.flags[key]?.tools === false && !isAdmin) return null;
+    const gate = statusOfBadge(itemBadge(availability, item));
     const href = item.href;
     if (href === "/retusz") {
-      return { key, href, available: open && Boolean(retouch) && retouchConfigured, credits: retouchCredits, shots: 1 };
-    }
-    if (href.startsWith("/k/moda/")) {
-      const wf = href.slice("/k/moda/".length);
-      return {
-        key, href, available: open && Boolean(fashion) && Boolean(fashionOn.get(wf)),
-        credits: times(fashionUnit, fashionRuns.get(wf) ?? 1), shots: null,
-      };
+      return { key, href, status: status(gate, Boolean(retouch) && retouchConfigured), credits: retouchCredits };
     }
     if (href.startsWith("/k/")) {
-      const wf = href.split("/")[3] ?? "";
-      return { key, href, available: open && managedLive, credits: managedUnit, shots: shotsOf(wf) };
+      const [, , cat, wf = ""] = href.split("/");
+      if (cat === "moda" && isFashionTool(wf)) {
+        return {
+          key, href, status: status(gate, Boolean(fashion) && Boolean(fashionOn.get(wf))),
+          credits: times(fashionUnit, fashionRuns.get(wf) ?? 1),
+        };
+      }
+      // A managed preset (the e-commerce workflows, the Moda street session…).
+      const category = findCategory(cat);
+      const workflow = category?.workflows.find((w) => w.key === wf);
+      const exists = Boolean(workflow) && !workflow?.soon && !category?.soon;
+      return { key, href, status: status(gate, exists && managedLive), credits: managedUnit };
     }
-    if (href === "/prompts") {
-      return { key, href, available: open && managedLive, credits: managedUnit, shots: PRESS_SHOTS_DEFAULT };
-    }
+    if (href === "/prompts") return { key, href, status: status(gate, managedLive), credits: managedUnit };
     if (href === "/generator") {
-      return { key, href, available: open && customUnit !== null && customUnit > 0, credits: customUnit, shots: 1 };
+      return { key, href, status: status(gate, customUnit !== null && customUnit > 0), credits: customUnit };
     }
     // Image tools and the editor's shortcuts: the catalogue /tools reads.
     const slug = item.slug ?? key;
     const entry = catalogue.find((c) => c.slug === slug);
-    return { key, href, available: open && Boolean(entry?.available), credits: entry ? entry.credits : null, shots: null };
+    // An editor shortcut without a catalogue row is the free, local editor.
+    const runs = entry ? entry.available : href.startsWith("/tools/editor");
+    return { key, href, status: status(gate, runs), credits: entry ? entry.credits : 0 };
   }
 
-  const keys = new Set<string>();
-  for (const t of HERO_TASKS) {
-    t.items.forEach((k) => keys.add(k));
-    t.replaceWith?.items.forEach((k) => keys.add(k));
-  }
-  for (const g of TOOL_GROUPS) g.tools.forEach((t) => keys.add(t.item));
-  const states: Record<string, ItemState> = {};
-  for (const k of keys) {
+  const items: Record<string, ItemState> = {};
+  for (const k of referencedItems()) {
     const s = itemState(k);
-    if (s) states[k] = s;
+    // A customer never sees a switched-off item; an admin sees it, marked.
+    if (s && (s.status !== "disabled" || isAdmin)) items[k] = s;
   }
-  const tasks = resolveHeroTasks(states);
+  const uploadTools = resolveUploadTools(items);
 
-  /** Can "Powtórz" open its tool live right now? The item's own state where
-   *  the page already knows it, else the route's switch (open, no badge). */
-  const repeatable = (href: string): boolean => {
-    const known = Object.values(states).find((st) => st.href === href);
-    if (known) return known.available;
-    return routeReachable(availability, href, false) && menuBadge(availability, href) === null;
-  };
+  /* ── admin card pictures for the tools on the page ──────────────────── */
 
-  /* ── the tools grid ─────────────────────────────────────────────────── */
-
-  const slotKeyFor = (k: string): string | null => {
-    if (k.startsWith("cat:")) return null;
-    const [cat, wf] = k.split(".");
-    if (wf && findCategory(cat)) return workflowSlotKey(cat, wf);
-    return toolSlotKey(k);
-  };
-  const tools = TOOL_GROUPS.map((g) => ({
-    key: g.key,
-    titleKey: g.titleKey,
-    tools: g.tools.flatMap((t): ToolCardState[] => {
-      const s = states[t.item];
-      if (!s) return [];
-      // Taken off /tools by the layout switchboard → not here either.
-      if (!t.item.startsWith("cat:") && layout.flags[t.item]?.tools === false) return [];
-      // A customer sees only what runs; an admin sees the rest, marked.
-      if (!s.available && !isAdmin) return [];
-      return [{
-        ...s, nameKey: t.nameKey, descKey: t.descKey,
-        media: t.media, slotKey: slotKeyFor(t.item),
-        adminOnly: !s.available,
-      }];
-    }),
-  })).filter((g) => g.tools.length > 0);
+  const wanted: Record<string, string> = {};
+  for (const k of Object.keys(items)) {
+    const slot = adminSlotKey(k);
+    if (slot) wanted[k] = slot;
+  }
+  const slots = await loadSlots(supabase, [...Object.values(wanted), ...banners.map((b) => bannerSlotKey(b.key))]);
+  // Only the slots an admin actually filled.
+  const toolSlots = Object.fromEntries(Object.entries(wanted).filter(([, slot]) => slots.has(slot)));
 
   /* ── the seller ─────────────────────────────────────────────────────── */
 
-  const items: GalleryItem[] = gallery.items;
-  const recent: RecentCard[] = recentCards(items, RECENT_MAX).map((i) => {
-    const route = recentRoute(i);
-    return {
-      id: i.generationId, thumbUrl: i.thumbUrl, createdAt: i.createdAt, href: route.href, labelKey: route.labelKey,
-      repeat: repeatable(route.href),
-    };
-  });
   // Unknown count (read failed) → treated as "not new": the question is
   // skipped rather than asked of someone who may have generated already.
-  const counted = generationCount.error ? null : generationCount.count;
-  const generations = counted ?? Math.max(items.length, 1);
-
+  const generations = generationCount.error ? 1 : (generationCount.count ?? 1);
   const storedChannel = isSellerChannel(profile.seller_channel) ? profile.seller_channel : null;
   const surveyAnswer = (surveyRow.data?.answer ?? null) as string[] | null;
   const surveyChannel = channelFromSurvey(surveyAnswer);
@@ -331,50 +303,35 @@ export async function loadSellerHome(supabase: Client, user: {
   });
 
   const interests = (interestRows.data ?? []).map((r) => r.feature_key).filter(isInterestKey);
-  // A module that is live (no badge at all) is no longer "coming".
-  const soon = INTEREST_KEYS.filter((k) => menuBadge(availability, INTEREST_GATES[k]) !== null);
+  // A module that is live (no badge, reachable) is no longer "coming".
+  const soon = INTEREST_KEYS.filter((k) => menuBadge(availability, INTEREST_GATES[k]) !== null
+    || !routeReachable(availability, INTEREST_GATES[k], false));
 
-  /* ── money ──────────────────────────────────────────────────────────── */
+  /* ── the no-credits offer ───────────────────────────────────────────── */
 
   const plan = planRow.data;
-  const centsPerCredit = plan
-    ? planPerCreditCents({
-        priceCents: plan.price_cents, annualPriceCents: 0,
-        monthlyCredits: plan.monthly_credits, bonusCredits: plan.bonus_credits,
-      }, "monthly")
-    : null;
   const pro: ProOffer | null = plan ? {
     id: plan.id,
     name: plan.name,
     priceCents: plan.price_cents,
-    credits: plan.monthly_credits + (plan.bonus_credits),
+    credits: plan.monthly_credits + plan.bonus_credits,
     currency: plan.currency,
     payable: paymentsEnabled() && Boolean(plan.stripe_price_id_monthly) && sellable(plan, "monthly")
       && !activeSub.error && (activeSub.data ?? []).length === 0,
   } : null;
 
-  const slotKeys = [
-    ...tools.flatMap((g) => g.tools.map((t) => t.slotKey).filter((k): k is string => Boolean(k))),
-    ...banners.map((b) => bannerSlotKey(b.key)),
-  ];
-  const slots = await loadSlots(supabase, slotKeys);
-
   return {
     balance: wallet?.balance ?? 0,
-    tasks,
-    tools,
-    recent,
-    generations,
+    items,
+    uploadTools,
+    toolSlots,
     channel: storedChannel ?? surveyChannel,
     askChannel,
     interests,
     soon,
-    centsPerCredit,
-    currency: plan?.currency ?? "PLN",
     pro,
     banners,
     slots,
     isAdmin,
-    bonusPending,
   };
 }

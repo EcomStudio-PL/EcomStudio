@@ -40,30 +40,30 @@ export function ComingSoon({ keys, saved }: {
 
   if (keys.length === 0) return null;
   return (
-    <section aria-labelledby="seller-soon-title" data-seller-soon>
-      <h2 id="seller-soon-title" className="font-display text-[1.25rem] font-semibold tracking-tight sm:text-[1.375rem]">
+    <section className="relative" aria-labelledby="seller-soon-title" data-seller-soon>
+      <h2 id="seller-soon-title" className="font-display text-[13px] font-bold uppercase tracking-[0.07em] text-ink sm:text-[14px]">
         {t("sellerHome.soon.title")}
       </h2>
-      <p className="mt-1 text-[14px] text-muted">{t("sellerHome.soon.sub")}</p>
-      <ul className="mt-3 flex flex-wrap gap-2">
+      <p className="mt-0.5 text-[12px] text-muted sm:text-[12.5px]">{t("sellerHome.soon.sub")}</p>
+      <ul className="mt-2.5 flex flex-wrap gap-2">
         {keys.map((key) => {
           const on = done.has(key);
           return (
             <li key={key} data-soon={key}
-              className="inline-flex max-w-full items-center justify-between gap-2 rounded-xl border border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.3))] bg-[rgb(var(--surface)/0.6)] py-1.5 pl-3.5 pr-1.5 max-sm:w-full">
-              <span className="min-w-0 text-[14px] font-medium text-ink">{t(interestLabelKey(key))}</span>
+              className="inline-flex max-w-full items-center justify-between gap-2 rounded-xl border border-[rgb(var(--hairline)/calc(var(--hairline-alpha)*1.3))] bg-[rgb(var(--surface)/0.6)] py-1 pl-3 pr-1 max-sm:w-full">
+              <span className="min-w-0 text-[13px] font-medium text-ink">{t(interestLabelKey(key))}</span>
               {/* Saved stays focusable (aria-disabled, not disabled) so focus
                   is not lost from under a keyboard user who just pressed it. */}
               <button type="button" onClick={() => notify(key)} aria-disabled={on || busy === key}
                 aria-label={`${t(interestLabelKey(key))}: ${on ? t("sellerHome.soon.saved") : t("sellerHome.soon.notify")}`}
                 data-notify={key} data-saved={on || undefined}
                 className={cn(
-                  "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] font-semibold transition-colors",
+                  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-semibold transition-colors",
                   on
                     ? "bg-[rgb(var(--success)/0.12)] text-[rgb(11_94_52)] dark:text-success"
                     : "text-accent-strong hover:bg-[rgb(var(--accent)/0.08)] dark:text-accent",
                 )}>
-                {on ? <Check size={14} strokeWidth={3} aria-hidden /> : <Bell size={14} aria-hidden />}
+                {on ? <Check size={13} strokeWidth={3} aria-hidden /> : <Bell size={13} aria-hidden />}
                 {on ? t("sellerHome.soon.saved") : t("sellerHome.soon.notify")}
               </button>
             </li>

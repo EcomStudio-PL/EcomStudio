@@ -6,8 +6,8 @@ import { toast } from "@/lib/notify";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
 import { saveSellerChannelAction } from "@/app/actions/seller-home";
-import { CHANNEL_DEFAULT_TASK, SELLER_CHANNELS, channelLabelKey, type SellerChannel } from "@/lib/seller-home-config";
-import { setSelectedTask } from "./task-store";
+import { CHANNEL_DEFAULT_TOOL, SELLER_CHANNELS, channelLabelKey, type SellerChannel } from "@/lib/seller-home-config";
+import { setSelectedTool } from "./task-store";
 import { useDialogFocus } from "./dialog-focus";
 
 const ICON: Record<SellerChannel, typeof Store> = {
@@ -17,7 +17,7 @@ const ICON: Record<SellerChannel, typeof Store> = {
 /**
  * "GDZIE SPRZEDAJESZ?" — one question, once, for a seller with no generation
  * yet. The answer goes to the profile (seller_channel) and pre-selects the
- * matching hero task right away; closing it records that it was asked, so it
+ * matching upload tool right away; closing it records that it was asked, so it
  * never comes back. The server decides whether to ask (lib/server/seller-home)
  * — it is not asked while the welcome-bonus dialog is due, nor when the bonus
  * survey already answered it.
@@ -34,7 +34,7 @@ export function SellerChannelModal({ ask }: { ask: boolean }) {
   useDialogFocus(open, body);
 
   const choose = (channel: SellerChannel) => {
-    setSelectedTask(CHANNEL_DEFAULT_TASK[channel]);
+    setSelectedTool(CHANNEL_DEFAULT_TOOL[channel]);
     setOpen(false);
     start(async () => {
       // The pick already applies on this page; a failed save only means the

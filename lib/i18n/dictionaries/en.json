@@ -7836,106 +7836,38 @@
     }
   },
   "sellerHome": {
-    "hero": {
-      "title": "Drop in a product photo — get a ready Allegro thumbnail",
-      "sub": "No designer, no prompts. Ready in under a minute."
-    },
-    "tasksLabel": "What do you want to do with the photo?",
-    "task": {
-      "popular": "Most popular",
-      "allegro": {
-        "name": "Allegro thumbnail",
-        "effect": "A square thumbnail for the listing's first photo."
-      },
-      "packshot": {
-        "name": "Packshot on a light background",
-        "effect": "A clean product on a plain, light background."
-      },
-      "lifestyle": {
-        "name": "Lifestyle photo",
-        "effect": "Your product in a natural, matching setting."
-      },
-      "mannequin": {
-        "name": "Invisible mannequin",
-        "effect": "Clothing with the ghost-mannequin effect — no model, no mannequin."
-      },
-      "set": {
-        "name": "Listing set",
-        "effect": "A consistent set of shots for one listing."
-      }
-    },
-    "unit": {
-      "thumbnail": {
-        "one": "thumbnail",
-        "few": "thumbnails",
-        "many": "thumbnails"
-      },
-      "packshot": {
-        "one": "packshot",
-        "few": "packshots",
-        "many": "packshots"
-      },
-      "lifestyle": {
-        "one": "lifestyle photo",
-        "few": "lifestyle photos",
-        "many": "lifestyle photos"
-      },
-      "photo": {
-        "one": "photo",
-        "few": "photos",
-        "many": "photos"
-      }
-    },
     "slot": {
-      "taskPair": "{name} — before/after",
       "size": "{w}×{h} px",
-      "before": "Photo before",
-      "after": "Result after",
-      "tool": "{name} — thumbnail"
+      "before": "Before photo",
+      "after": "After",
+      "banner": "Banner",
+      "showcase": "Showcase — video or image",
+      "result": "Result",
+      "thumbnail": "Thumbnail",
+      "session": "Session"
     },
     "before": "Before",
     "after": "After",
     "upload": {
-      "title": "Drag a product photo here or click to choose",
-      "hint": "JPG, PNG, WebP or AVIF · up to 10 MB",
-      "ready": "Photo ready — press “Generate”.",
+      "lead": {
+        "default": "Drop in a product photo and describe what you want to create",
+        "thumbnail": "Drop in a product photo — we'll turn it into a listing thumbnail",
+        "outdoor": "Drop in a product photo — we'll take it to an outdoor session",
+        "retouch": "Bring a product photo up to premium packshot quality"
+      },
+      "create": "Create",
+      "pick": "Choose a product photo",
+      "open": "Open the tool",
       "change": "Change photo",
-      "remove": "Remove photo"
-    },
-    "generate": "Generate",
-    "press": {
-      "shots": "{shots} shots by default · {total} cr. ({per} cr. per image). You can change the number of shots in the next step.",
-      "single": "{per} cr. per image.",
-      "free": "Free.",
-      "next": "The photo goes to the tool — you will see the price there before anything starts.",
-      "open": "We will open the tool — add the photo there."
-    },
-    "unavailable": "Generation is temporarily unavailable.",
-    "credits": {
-      "one": "You have {n} credit",
-      "few": "You have {n} credits",
-      "many": "You have {n} credits",
-      "approx": "about {n} {unit}"
-    },
-    "cost": {
-      "free": "Free",
-      "perImage": "{n} cr. / image"
+      "remove": "Remove photo",
+      "opensTool": "You add the photo in the tool that “Create” opens.",
+      "unavailable": "These tools are unavailable right now.",
+      "toolsLabel": "Choose a tool"
     },
     "samples": "No photo? Try an example",
-    "sampleTry": "Try with an example: {name}",
+    "sampleTry": "Use example {n}",
     "sampleEmpty": "Example coming soon · {w}×{h} px",
     "samplesSoon": "Examples coming soon",
-    "sample": {
-      "p1": "Example 1",
-      "p2": "Example 2",
-      "p3": "Example 3",
-      "p4": "Example 4"
-    },
-    "notes": {
-      "toggle": "Additional notes (optional)",
-      "nextStep": "You don't have to write anything. If you like, you can describe each shot in the next step, before generating.",
-      "inTool": "You don't have to write anything. Add details in the tool if needed."
-    },
     "noCredits": {
       "title": "Not enough credits",
       "body": "You have {balance} cr., and one image in this task costs {per} cr. Choose how to continue.",
@@ -7954,37 +7886,13 @@
       "own_store": "My own store",
       "multi": "Several channels"
     },
-    "gallery": {
-      "title": "See what you can make from your photo",
-      "sub": "Drag the slider to compare before and after.",
-      "filters": "Filter by industry",
-      "slider": "Before and after comparison: {name}",
-      "doSame": "Do the same"
-    },
     "industry": {
-      "all": "All",
       "home_garden": "Home & garden",
       "tools": "Tools",
       "beauty": "Beauty",
       "fashion": "Fashion",
       "automotive": "Automotive",
       "pets": "Pets"
-    },
-    "anchor": {
-      "label": "What it costs",
-      "thumbnail": "Thumbnail from a designer: {designer} · in GrovBase: about {ours}",
-      "lifestyle": "Set of 5 lifestyle photos: {designer} from a designer · about {ours} in GrovBase",
-      "plans": "See plans"
-    },
-    "tools": {
-      "title": "All tools",
-      "use": "Use",
-      "adminOnly": "Not available to customers"
-    },
-    "group": {
-      "product": "Product photos",
-      "fashion": "Fashion",
-      "edit": "Editing & retouch"
     },
     "tool": {
       "thumbnail": {
@@ -8043,10 +7951,80 @@
       "social": "Social media",
       "mailing": "Mailing"
     },
-    "recent": {
-      "title": "Recent projects",
-      "all": "See all",
-      "repeat": "Repeat with a new product"
+    "pageTitle": "Start — the GrovBase product photo studio",
+    "carousel": {
+      "label": "GrovBase tools",
+      "prev": "Previous",
+      "next": "Next"
+    },
+    "status": {
+      "soon": "Coming soon",
+      "maintenance": "Maintenance",
+      "unavailable": "Unavailable",
+      "disabled": "Disabled"
+    },
+    "pill": {
+      "retouch": "Photo retouch",
+      "thumbnail": "Thumbnail",
+      "outdoor": "Outdoor session"
+    },
+    "ba": {
+      "title": "Before / after",
+      "sub": "Drag the slider to compare the photo before and after.",
+      "slider": "Before and after: {name}"
+    },
+    "promo": {
+      "label": "Promotion",
+      "1": {
+        "badge": "Grovshot generator",
+        "title": "From a phone photo to a campaign",
+        "sub": "One product photo, a whole product session.",
+        "cta": "Try Grovshot"
+      },
+      "2": {
+        "badge": "Custom prompt",
+        "title": "Describe the scene in your own words",
+        "sub": "Framing, light and mood — exactly as you want them.",
+        "cta": "Write a prompt"
+      },
+      "3": {
+        "badge": "Listing set",
+        "title": "A complete photo set for one listing",
+        "sub": "Consistent shots of your product from every side.",
+        "cta": "Create a set"
+      }
+    },
+    "showcase": {
+      "label": "Photo retouch — results",
+      "cta": "Try the tool"
+    },
+    "thumbs": {
+      "title": "Thumbnails",
+      "sub": "Shots that stop the scroll on a listing page.",
+      "try": "Try it",
+      "cta": "Create a thumbnail"
+    },
+    "sessions": {
+      "title": "Product sessions",
+      "sub": "Studio or outdoors — one photo, a whole session.",
+      "studio": "Studio session",
+      "outdoor": "Outdoor session"
+    },
+    "featured": {
+      "title": "Fashion tools",
+      "sub": "Clothing ready for your store — no model, no iron.",
+      "mannequin": {
+        "name": "Invisible mannequin",
+        "sub": "A professional garment photo with no visible model."
+      },
+      "flatlay": {
+        "name": "Flat lay",
+        "sub": "The product arranged neatly as a flat lay."
+      },
+      "iron": {
+        "name": "Iron it",
+        "sub": "Creases smoothed out for a better garment presentation."
+      }
     }
   }
 }

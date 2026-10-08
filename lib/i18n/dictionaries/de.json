@@ -7836,106 +7836,38 @@
     }
   },
   "sellerHome": {
-    "hero": {
-      "title": "Produktfoto hochladen — fertiges Allegro-Vorschaubild erhalten",
-      "sub": "Ohne Grafiker, ohne Prompts. In unter einer Minute fertig."
-    },
-    "tasksLabel": "Was möchtest du mit dem Foto machen?",
-    "task": {
-      "popular": "Am häufigsten gewählt",
-      "allegro": {
-        "name": "Allegro-Vorschaubild",
-        "effect": "Ein quadratisches Vorschaubild für das erste Angebotsfoto."
-      },
-      "packshot": {
-        "name": "Packshot auf hellem Hintergrund",
-        "effect": "Ein sauberes Produkt auf einfarbigem, hellem Hintergrund."
-      },
-      "lifestyle": {
-        "name": "Lifestyle-Foto",
-        "effect": "Dein Produkt in einer natürlichen, passenden Umgebung."
-      },
-      "mannequin": {
-        "name": "Unsichtbare Schaufensterpuppe",
-        "effect": "Kleidung mit Ghost-Mannequin-Effekt — ohne Model und Puppe."
-      },
-      "set": {
-        "name": "Angebotsset",
-        "effect": "Ein einheitliches Set an Aufnahmen für ein Angebot."
-      }
-    },
-    "unit": {
-      "thumbnail": {
-        "one": "Vorschaubild",
-        "few": "Vorschaubilder",
-        "many": "Vorschaubilder"
-      },
-      "packshot": {
-        "one": "Packshot",
-        "few": "Packshots",
-        "many": "Packshots"
-      },
-      "lifestyle": {
-        "one": "Lifestyle-Foto",
-        "few": "Lifestyle-Fotos",
-        "many": "Lifestyle-Fotos"
-      },
-      "photo": {
-        "one": "Foto",
-        "few": "Fotos",
-        "many": "Fotos"
-      }
-    },
     "slot": {
-      "taskPair": "{name} — vorher/nachher",
       "size": "{w}×{h} px",
-      "before": "Foto vorher",
-      "after": "Ergebnis nachher",
-      "tool": "{name} — Vorschau"
+      "before": "Vorher-Foto",
+      "after": "Nachher",
+      "banner": "Banner",
+      "showcase": "Showcase — Video oder Bild",
+      "result": "Ergebnis",
+      "thumbnail": "Vorschaubild",
+      "session": "Shooting"
     },
     "before": "Vorher",
     "after": "Nachher",
     "upload": {
-      "title": "Produktfoto hierher ziehen oder klicken, um es auszuwählen",
-      "hint": "JPG, PNG, WebP oder AVIF · bis 10 MB",
-      "ready": "Foto bereit — drücke „Generieren“.",
+      "lead": {
+        "default": "Produktfoto hochladen und beschreiben, was du erstellen möchtest",
+        "thumbnail": "Produktfoto hochladen — wir machen daraus ein Vorschaubild für dein Angebot",
+        "outdoor": "Produktfoto hochladen — wir bringen es in ein Outdoor-Shooting",
+        "retouch": "Bring dein Produktfoto auf Premium-Packshot-Qualität"
+      },
+      "create": "Erstellen",
+      "pick": "Produktfoto auswählen",
+      "open": "Werkzeug öffnen",
       "change": "Foto ändern",
-      "remove": "Foto entfernen"
-    },
-    "generate": "Generieren",
-    "press": {
-      "shots": "Standardmäßig {shots} Aufnahmen · {total} Cr. ({per} Cr. pro Bild). Die Anzahl änderst du im nächsten Schritt.",
-      "single": "{per} Cr. pro Bild.",
-      "free": "Kostenlos.",
-      "next": "Das Foto geht an das Werkzeug — dort siehst du den Preis, bevor etwas startet.",
-      "open": "Wir öffnen das Werkzeug — dort fügst du das Foto hinzu."
-    },
-    "unavailable": "Die Generierung ist vorübergehend nicht verfügbar.",
-    "credits": {
-      "one": "Du hast {n} Credit",
-      "few": "Du hast {n} Credits",
-      "many": "Du hast {n} Credits",
-      "approx": "ca. {n} {unit}"
-    },
-    "cost": {
-      "free": "Kostenlos",
-      "perImage": "{n} Cr. / Bild"
+      "remove": "Foto entfernen",
+      "opensTool": "Das Foto fügst du im Werkzeug hinzu, das „Erstellen“ öffnet.",
+      "unavailable": "Diese Werkzeuge sind gerade nicht verfügbar.",
+      "toolsLabel": "Werkzeug wählen"
     },
     "samples": "Kein Foto? Probiere ein Beispiel",
-    "sampleTry": "Mit Beispiel ausprobieren: {name}",
+    "sampleTry": "Beispiel {n} verwenden",
     "sampleEmpty": "Beispiel folgt · {w}×{h} px",
     "samplesSoon": "Beispiele folgen",
-    "sample": {
-      "p1": "Beispiel 1",
-      "p2": "Beispiel 2",
-      "p3": "Beispiel 3",
-      "p4": "Beispiel 4"
-    },
-    "notes": {
-      "toggle": "Zusätzliche Hinweise (optional)",
-      "nextStep": "Du musst nichts schreiben. Wenn du möchtest, beschreibst du jede Aufnahme im nächsten Schritt, vor dem Generieren.",
-      "inTool": "Du musst nichts schreiben. Details gibst du bei Bedarf im Werkzeug an."
-    },
     "noCredits": {
       "title": "Nicht genug Credits",
       "body": "Du hast {balance} Cr., ein Bild in dieser Aufgabe kostet {per} Cr. Wähle, wie es weitergeht.",
@@ -7954,37 +7886,13 @@
       "own_store": "Eigener Shop",
       "multi": "Mehrere Kanäle"
     },
-    "gallery": {
-      "title": "Sieh, was du aus deinem Foto machst",
-      "sub": "Ziehe den Regler, um vorher und nachher zu vergleichen.",
-      "filters": "Nach Branche filtern",
-      "slider": "Vorher-nachher-Vergleich: {name}",
-      "doSame": "Genauso machen"
-    },
     "industry": {
-      "all": "Alle",
       "home_garden": "Haus & Garten",
       "tools": "Werkzeuge",
       "beauty": "Beauty",
       "fashion": "Mode",
       "automotive": "Auto",
       "pets": "Haustiere"
-    },
-    "anchor": {
-      "label": "Was es kostet",
-      "thumbnail": "Vorschaubild beim Grafiker: {designer} · bei GrovBase: ca. {ours}",
-      "lifestyle": "Set aus 5 Lifestyle-Fotos: {designer} beim Grafiker · ca. {ours} bei GrovBase",
-      "plans": "Pläne ansehen"
-    },
-    "tools": {
-      "title": "Alle Werkzeuge",
-      "use": "Nutzen",
-      "adminOnly": "Für Kunden nicht verfügbar"
-    },
-    "group": {
-      "product": "Produktfotos",
-      "fashion": "Mode",
-      "edit": "Bearbeitung & Retusche"
     },
     "tool": {
       "thumbnail": {
@@ -8043,10 +7951,80 @@
       "social": "Social Media",
       "mailing": "Mailing"
     },
-    "recent": {
-      "title": "Letzte Projekte",
-      "all": "Alle ansehen",
-      "repeat": "Mit neuem Produkt wiederholen"
+    "pageTitle": "Start — das Produktfoto-Studio von GrovBase",
+    "carousel": {
+      "label": "GrovBase-Werkzeuge",
+      "prev": "Zurück",
+      "next": "Weiter"
+    },
+    "status": {
+      "soon": "Demnächst",
+      "maintenance": "Wartung",
+      "unavailable": "Nicht verfügbar",
+      "disabled": "Deaktiviert"
+    },
+    "pill": {
+      "retouch": "Fotoretusche",
+      "thumbnail": "Vorschaubild",
+      "outdoor": "Outdoor-Shooting"
+    },
+    "ba": {
+      "title": "Vorher / nachher",
+      "sub": "Schieberegler ziehen, um vorher und nachher zu vergleichen.",
+      "slider": "Vorher und nachher: {name}"
+    },
+    "promo": {
+      "label": "Aktion",
+      "1": {
+        "badge": "Grovshot-Generator",
+        "title": "Vom Handyfoto zur Kampagne",
+        "sub": "Ein Produktfoto, ein ganzes Produktshooting.",
+        "cta": "Grovshot testen"
+      },
+      "2": {
+        "badge": "Eigener Prompt",
+        "title": "Beschreibe die Szene mit eigenen Worten",
+        "sub": "Bildausschnitt, Licht und Stimmung — genau wie gewünscht.",
+        "cta": "Prompt schreiben"
+      },
+      "3": {
+        "badge": "Angebotsset",
+        "title": "Ein komplettes Fotoset für ein Angebot",
+        "sub": "Einheitliche Aufnahmen deines Produkts von allen Seiten.",
+        "cta": "Set erstellen"
+      }
+    },
+    "showcase": {
+      "label": "Fotoretusche — Ergebnisse",
+      "cta": "Werkzeug testen"
+    },
+    "thumbs": {
+      "title": "Vorschaubilder",
+      "sub": "Bilder, die in der Angebotsliste auffallen.",
+      "try": "Testen",
+      "cta": "Vorschaubild erstellen"
+    },
+    "sessions": {
+      "title": "Produktshootings",
+      "sub": "Studio oder draußen — ein Foto, ein ganzes Shooting.",
+      "studio": "Studio-Shooting",
+      "outdoor": "Outdoor-Shooting"
+    },
+    "featured": {
+      "title": "Werkzeuge für Mode",
+      "sub": "Kleidung bereit für den Shop — ohne Model, ohne Bügeleisen.",
+      "mannequin": {
+        "name": "Unsichtbare Schaufensterpuppe",
+        "sub": "Ein professionelles Kleidungsfoto ohne sichtbares Model."
+      },
+      "flatlay": {
+        "name": "Flat Lay",
+        "sub": "Das Produkt ästhetisch als Flat Lay arrangiert."
+      },
+      "iron": {
+        "name": "Bügeln",
+        "sub": "Geglättete Falten für eine bessere Präsentation."
+      }
     }
   }
 }
