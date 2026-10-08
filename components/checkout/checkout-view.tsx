@@ -104,6 +104,7 @@ function HostedFallback({ request, quote }: { request: Record<string, unknown>; 
     notify.error(t(
       res.reason === "already_subscribed" ? "packs.alreadySubscribed"
       : res.reason === "plan_required" ? "pricing.notice.planRequired"
+      : res.reason === "plan_inactive" ? "pricing.notice.planInactive"
       : res.reason === "offer_expired" ? "pricing.notice.offerExpired"
       : res.reason === "invalid_credits" ? "packs.checkoutInvalidCredits"
       : res.reason === "plan_not_purchasable" ? "packs.planNotPurchasable"
@@ -531,17 +532,29 @@ function PaymentPanel({ quote, returnUrl, reference }: {
    * NOTHING IS GRANTED HERE. A `succeeded` PaymentIntent in this callback is
    * not credits in an account — it is a reason to go and ask.
    */
-  const confirm = useCallback(async () => {
-    if (!stripe || !elements || busy) return;
+  // `refused` closes a wallet sheet (Apple Pay / Google Pay) that is waiting
+  // for an answer: every early return below must call it, or the sheet spins
+  // until the wallet's own timeout with the reason hidden behind it.
+  const confirm = useCallback(async (refused?: () => void) => {
+    if (!stripe || !elements || busy) { refused?.(); return; }
     setBusy(true);
     // A TOP-UP IS FOR A LIVE PLAN AT THE MOMENT OF PAYING, not only when the
     // page opened. The server re-asks Stripe and cancels the intent if the
-    // plan has ended since; nothing is confirmed after a refusal.
+    // plan has ended since; nothing is confirmed after a refusal — and a
+    // re-check that could not run (a dropped connection, a redeploy) refuses
+    // too, instead of leaving the button spinning.
     if ((quote.kind === "credit_package" || quote.kind === "custom_credits") && reference) {
-      const still = await recheckTopupAction(reference);
+      let still: Awaited<ReturnType<typeof recheckTopupAction>>;
+      try {
+        still = await recheckTopupAction(reference);
+      } catch {
+        still = { ok: false, reason: "plan_check_failed" };
+      }
       if (!still.ok) {
         setBusy(false);
+        refused?.();
         notify.error(t(still.reason === "plan_required" ? "pricing.notice.planRequired"
+          : still.reason === "plan_inactive" ? "pricing.notice.planInactive"
           : still.reason === "stripe_unauthorized" ? "packs.checkoutUnavailable" : "packs.checkoutFailed"));
         return;
       }
@@ -569,7 +582,7 @@ function PaymentPanel({ quote, returnUrl, reference }: {
       <div className={cn(!wallets && "hidden")}>
         <ExpressCheckoutElement
           onReady={(e) => setWallets(Boolean(e.availablePaymentMethods))}
-          onConfirm={confirm}
+          onConfirm={(event) => { void confirm(() => event.paymentFailed({ reason: "fail" })); }}
           options={{ buttonHeight: 44 }}
         />
         <div className="relative my-4 text-center">
@@ -651,7 +664,7 @@ function PaymentPanel({ quote, returnUrl, reference }: {
       )}>
         <button
           type="button"
-          onClick={confirm}
+          onClick={() => { void confirm(); }}
           disabled={!stripe || !ready || busy}
           className="cta h-12 w-full rounded-xl text-sm font-semibold transition-opacity disabled:opacity-70"
         >
@@ -757,6 +770,7 @@ function Refusal({ reason, kind }: { reason: string; kind: Quote["kind"] }) {
     : reason === "already_subscribed" ? "packs.alreadySubscribed"
     // No active paid plan: top-ups are for subscribers, checked on the server.
     : reason === "plan_required" ? "pricing.notice.planRequired"
+    : reason === "plan_inactive" ? "pricing.notice.planInactive"
     : reason === "offer_expired" ? "pricing.notice.offerExpired"
     : reason === "invalid_credits" ? "packs.checkoutInvalidCredits"
     : reason === "plan_not_purchasable" ? "packs.planNotPurchasable"

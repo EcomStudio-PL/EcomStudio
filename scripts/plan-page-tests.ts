@@ -235,7 +235,7 @@ const viewerOf = (state: "anon" | "free" | "allowed" | "check_failed" | "past_du
     : state === "past_due" ? { plan_id: PRO.id, status: "past_due" } : null,
   gate: state === "anon" ? null
     : state === "allowed" ? { ok: true, planId: PRO.id, provider: "stripe", providerSubscriptionId: "sub_live" }
-    : { ok: false, reason: state === "check_failed" ? "plan_check_failed" : "plan_required" },
+    : { ok: false, reason: state === "check_failed" ? "plan_check_failed" : state === "past_due" ? "plan_inactive" : "plan_required" },
   plan: { slug: null, centsPerCredit: null },
   cost: null,
   ...extra,
@@ -274,12 +274,12 @@ async function main() {
     const REPINNED: [string, string][] = [
       // + recheckTopupAction: the pre-confirm re-check (was 9b8ab0ca… before the task).
       ["app/actions/checkout.ts", "86d870410f3cb2dbcaead0f3af84131f3dd3fb0032bed4b434f0e926c10574ea"],
-      ["lib/server/checkout.ts", "b0b21db8c558f2dc536a5857fe3295ba6919a24c2c5e749d5dcf120b5da696f9"],
-      ["lib/server/billing.ts", "e8323616a043ac4a2205cd8ceec50309eb3cae1811962559c419d59eb8d41031"],
+      ["lib/server/checkout.ts", "d8ad102ad3c1dec1b846c0b88cf78d4de01a741c1fd09db0a1f38d8410261210"],
+      ["lib/server/billing.ts", "836b6f2b9df42c9d5e594622d1dad5f07d776607a4e601338228f3eb5b20e55d"],
       ["lib/server/pricing-offer.ts", "d9f9a176fee0e4942d1ea65ded19942400e064db5babd7ac60c8dfdcbb64eedf"],
       ["lib/server/stripe-migrate.ts", "96eb6003a8409745870ee1ef72df2b7aee3acfcbb154504b1cf6c2286e59e4d7"],
-      ["components/checkout/checkout-view.tsx", "28a62117ae94d77d40439989b41de9c3a732ac945f211499f82b2f8d438ea067"],
-      ["components/plan/checkout-notice.tsx", "3bbf679b6a1275d84d5605c44c1144b87f27d98162bb5327ff7f8ae55ccff54c"],
+      ["components/checkout/checkout-view.tsx", "9e8b67cd334f00f87a9fa037d434baec82c37eab3a28b137d5fc05cf37543e88"],
+      ["components/plan/checkout-notice.tsx", "2828b7bece18d56cdf46a38c771c4c699914da8c62d6dc0ccf5627f51f0be75d"],
     ];
     for (const [file, digest] of REPINNED) check(`${file} is the reviewed version`, sha(file) === digest, `sha256 ${sha(file)}`);
     const checkout = codeOnly(read("lib/server/checkout.ts"));
@@ -424,20 +424,24 @@ async function main() {
     const pack = PROD_PACKS[0];
     const states: [string, Sub[], string][] = [
       ["no subscription (Free / anonymous workspace)", [], "plan_required"],
-      ["trialing", [sub("trialing")], "plan_required"],
-      ["past_due", [sub("past_due")], "plan_required"],
+      // A live but not paid-up subscription: "inactive" (manage it), not "none" (buy one).
+      ["trialing", [sub("trialing")], "plan_inactive"],
+      ["past_due", [sub("past_due")], "plan_inactive"],
       ["canceled", [sub("canceled")], "plan_required"],
       ["incomplete", [sub("incomplete")], "plan_required"],
       ["incomplete_expired", [sub("incomplete_expired")], "plan_required"],
       ["unpaid", [sub("unpaid")], "plan_required"],
       ["paused", [sub("paused")], "plan_required"],
-      ["active but the paid period has ended (stale webhook)", [sub("active", PAST)], "plan_required"],
-      ["active with no period end recorded", [sub("active", null)], "plan_required"],
+      ["active but the paid period has ended (stale webhook)", [sub("active", PAST)], "plan_inactive"],
+      ["active with no period end recorded", [sub("active", null)], "plan_inactive"],
+      ["a lapsed active row next to a canceled one", [sub("active", PAST), sub("canceled")], "plan_inactive"],
+      ["a running active row wins over a past_due one", [sub("past_due"), sub("active", FUTURE)], "ok"],
       ["another workspace's active plan", [sub("active", FUTURE, { workspace_id: "ws-other" })], "plan_required"],
     ];
     for (const [what, subs, reason] of states) {
       const a = await quote(packCheckoutHref(pack.id), subs);
       const b = await quote(creditsCheckoutHref(1000), subs);
+      if (reason === "ok") { check(`${what}: allowed`, a.ok && b.ok, JSON.stringify([a, b])); continue; }
       check(`${what}: pack and custom amount refused (${reason})`,
         !a.ok && a.reason === reason && !b.ok && b.reason === reason, JSON.stringify([a, b]));
     }
@@ -458,6 +462,10 @@ async function main() {
     let res = await beginCheckout(db([sub("active")]), WS, null, { kind: "credit_package", packageId: pack.id });
     check("begin: DB says active, Stripe says canceled → plan_required, no PaymentIntent",
       !res.ok && res.reason === "plan_required" && !seen.some((c) => c.path === "/payment_intents"), JSON.stringify(res));
+    seen = installStripe({ subStatus: "past_due" });
+    res = await beginCheckout(db([sub("active")]), WS, null, { kind: "credit_package", packageId: pack.id });
+    check("begin: DB says active, Stripe says past_due → plan_inactive, no PaymentIntent",
+      !res.ok && res.reason === "plan_inactive" && !seen.some((c) => c.path === "/payment_intents"), JSON.stringify(res));
     seen = installStripe({ subFails: true });
     res = await beginCheckout(db([sub("active")]), WS, null, { kind: "custom_credits", credits: 1000 });
     check("begin: Stripe lookup fails → plan_check_failed, no PaymentIntent",
@@ -508,6 +516,10 @@ async function main() {
     check("recheck: plan ended → plan_required, and the intent is cancelled (idempotently, as abandoned)",
       !ended.ok && ended.reason === "plan_required" && cancel?.body.cancellation_reason === "abandoned" && cancel?.key === "cancel:pi_abc",
       JSON.stringify({ ended, cancel }));
+    seen = installStripe({ intent: mine });
+    const lapsed = await recheckTopup(db([sub("past_due")]), WS, "pi_abc");
+    check("recheck: plan past_due → plan_inactive, and the intent is cancelled too",
+      !lapsed.ok && lapsed.reason === "plan_inactive" && seen.some((c) => c.path === "/payment_intents/pi_abc/cancel"));
     seen = installStripe({ intent: mine, subStatus: "canceled" });
     const stripeEnded = await recheckTopup(db([sub("active")]), WS, "pi_abc");
     check("recheck: DB active but Stripe says canceled → plan_required + cancelled",
@@ -534,6 +546,15 @@ async function main() {
     const view = codeOnly(read("components/checkout/checkout-view.tsx"));
     check("the checkout re-checks a top-up BEFORE stripe.confirmPayment",
       /recheckTopupAction\(/.test(view) && view.indexOf("recheckTopupAction(") < view.indexOf("stripe.confirmPayment("));
+    check("a re-check that throws (network, redeploy) refuses instead of leaving the button spinning",
+      /try \{\s*still = await recheckTopupAction\(reference\);\s*\} catch \{\s*still = \{ ok: false, reason: "plan_check_failed" \};/.test(view));
+    check("a wallet sheet (Apple Pay / Google Pay) is told the payment failed on every early return",
+      /onConfirm=\{\(event\) => \{ void confirm\(\(\) => event\.paymentFailed\(\{ reason: "fail" \}\)\); \}\}/.test(view)
+      && /if \(!stripe \|\| !elements \|\| busy\) \{ refused\?\.\(\); return; \}/.test(view)
+      && /setBusy\(false\);\s*refused\?\.\(\);/.test(view));
+    check("every surface names an inactive plan as such (toast, refusal box, hosted fallback, /plan notice)",
+      (view.match(/"plan_inactive" \? "pricing\.notice\.planInactive"/g) ?? []).length === 3
+      && /plan_inactive: "pricing\.notice\.planInactive"/.test(read("components/plan/checkout-notice.tsx")));
 
     const unsynced = PROD_PACKS.map((p, i) => (i === 0 ? { ...p, stripe_sync_status: "failed" } : p));
     const hpUnsynced = await createPackageCheckout(catalogueDb(PROD_PLANS, unsynced, [sub("active")]), WS, null, pack.id);
@@ -658,6 +679,20 @@ async function main() {
       threw === "pricing_catalogue_unavailable" && existsSync("app/plany/error.tsx") && existsSync("app/(app)/error.tsx"));
     const loaded = await loadPricingPage(catalogueDb(PROD_PLANS, PROD_PACKS));
     check("…and a readable one loads (visitor view)", loaded.plans.length === 3 && loaded.viewer.topups === "anonymous");
+    const mig = codeOnly(read("supabase/migrations/0137_public_catalogue_read.sql").replace(/--.*$/gm, ""));
+    check("0137: a visitor reads active plans/packs through a policy that never mentions is_admin(); nothing dropped",
+      /create policy "plans_select_public" on public\.subscription_plans for select\s+to anon\s+using \(active = true\);/.test(mig)
+      && /create policy "pkg_select_public" on public\.credit_packages for select\s+to anon\s+using \(active = true\);/.test(mig)
+      && /alter policy "plans_admin_write" on public\.subscription_plans\s+to authenticated/.test(mig)
+      && /alter policy "pkg_admin_write" on public\.credit_packages\s+to authenticated/.test(mig)
+      && /alter policy "plans_select" on public\.subscription_plans\s+to authenticated/.test(mig)
+      && /alter policy "pkg_select_active" on public\.credit_packages\s+to authenticated/.test(mig)
+      && !/\bdrop\b|\brevoke\b|grant execute on function public\.is_admin/i.test(mig));
+    check("0137 is proven on a real Postgres (scripts/public-catalogue-sql-tests.sh, npm run test:pubcatalogue:sql)",
+      existsSync("scripts/public-catalogue-sql-tests.sh") && /"test:pubcatalogue:sql"/.test(read("package.json")));
+    const errorPage = codeOnly(read("app/plany/error.tsx"));
+    check("the error page's retry re-fetches the server payload before resetting",
+      /startTransition\(\(\) => \{ router\.refresh\(\); reset\(\); \}\)/.test(errorPage) && /onClick=\{retry\}/.test(errorPage));
     check("subscriber: allowed, PRO marked as current", subscriber.viewer.topups === "allowed" && subscriber.viewer.currentSlug === "pro");
     check("three paid cards; Free is only a note", subscriber.plans.map((p) => p.slug).join(",") === "starter,pro,agency" && subscriber.free?.name === "Free");
     check("pack cards 800 / 500 / 300 / 200 / 100 with coins 5 → 1",

@@ -3330,6 +3330,7 @@
     },
     "notice": {
       "planRequired": "Credit top-ups are available with an active paid plan. Choose a plan to add credits.",
+      "planInactive": "Your plan is not active right now, so top-ups are paused. Check your subscription in Settings → Subscriptions.",
       "annualUnavailable": "Yearly billing is not available yet.",
       "offerExpired": "The launch offer has ended. Refresh the page to see current prices."
     },

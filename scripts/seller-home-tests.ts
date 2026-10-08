@@ -531,13 +531,13 @@ check("/home has no generation path: no AI route, no provider, no prompt",
 const PAY: readonly [string, string][] = [
   // Re-pinned by the /plany task (top-up gate, tier contract, offer switches).
   // The old pricing board is gone: /plan and /plany share components/plan/pricing-page.tsx.
-  ["lib/server/checkout.ts", "b0b21db8c558f2dc536a5857fe3295ba6919a24c2c5e749d5dcf120b5da696f9"],
+  ["lib/server/checkout.ts", "d8ad102ad3c1dec1b846c0b88cf78d4de01a741c1fd09db0a1f38d8410261210"],
   ["lib/server/stripe-webhook.ts", "e9a03ea46af4bb7d5c91332969154e4b111b4c1634fbbe124a1ba6b8e03c95d2"],
   ["lib/stripe/config.ts", "0679ce3f018add12ead081c8a667511be4237661d15b9a024fb9ec578ed71df1"],
   ["components/plan/pricing-model.ts", "c696e3d3361e8f884eaa6e7b4835f5dea1db542c27ebbc6e98ae807de456e503"],
   ["components/plan/pricing-config.ts", "bc0bec120515ef7fb6ef7146ea456c5e67fba7250da7aadee96201e4d4c59233"],
   ["components/plan/credit-coin-stack.tsx", "e3dd4c91b1917edd8872c3105633c30f170513a97034ea90f59e102caa00247b"],
-  ["components/plan/checkout-notice.tsx", "3bbf679b6a1275d84d5605c44c1144b87f27d98162bb5327ff7f8ae55ccff54c"],
+  ["components/plan/checkout-notice.tsx", "2828b7bece18d56cdf46a38c771c4c699914da8c62d6dc0ccf5627f51f0be75d"],
 ];
 for (const [file, digest] of PAY) check(`${file} unchanged`, sha(readFileSync(file)) === digest);
 check("the no-credits dialog only links to the existing checkout intent and /plan",

@@ -566,7 +566,9 @@ export async function recheckTopup(
     return { ok: false, reason: "unknown_payment" };
   }
   const live = await confirmTopupPlanLive(supabase, workspace);
-  if (live.ok || live.reason !== "plan_required") return live;
+  // Ended or not paid-up: the intent must not be payable any more. A failed
+  // lookup cancels nothing on a guess.
+  if (live.ok || (live.reason !== "plan_required" && live.reason !== "plan_inactive")) return live;
   if (["requires_payment_method", "requires_confirmation", "requires_action"].includes(intent.status)) {
     try {
       await stripePost(`/payment_intents/${intent.id}/cancel`, { cancellation_reason: "abandoned" }, `cancel:${intent.id}`);

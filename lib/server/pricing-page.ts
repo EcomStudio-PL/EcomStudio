@@ -162,7 +162,7 @@ export function buildPricingPage(input: {
     topups: !facts.signedIn || !facts.gate ? "anonymous"
       : facts.gate.ok ? "allowed"
       : facts.gate.reason === "plan_check_failed" ? "check_failed"
-      : facts.live ? "plan_inactive"
+      : facts.gate.reason === "plan_inactive" || facts.live ? "plan_inactive"
       : "no_plan",
   };
 

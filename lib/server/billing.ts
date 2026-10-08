@@ -81,13 +81,18 @@ export type CheckoutRefusal =
 /**
  * Why a top-up was refused before any payment was created.
  *
- *   plan_required      the workspace has no ACTIVE paid plan (or its period
- *                      has run out, or Stripe says it is no longer active);
+ *   plan_required      the workspace has no paid plan at all (or Stripe says
+ *                      it has ended) — the way forward is to choose one;
+ *   plan_inactive      a subscription EXISTS but is not active and paid-up
+ *                      right now (trialing, past_due, or `active` with a
+ *                      period that has run out). Choosing a plan would be
+ *                      refused as a second subscription, so the customer is
+ *                      sent to the subscription settings instead;
  *   plan_check_failed  the plan could not be read — a database or Stripe
  *                      error. Fails closed, and says "try again", because an
  *                      active subscriber must not be told they have no plan.
  */
-export type TopupGateRefusal = "plan_required" | "plan_check_failed";
+export type TopupGateRefusal = "plan_required" | "plan_inactive" | "plan_check_failed";
 /** What the live (Stripe) half of the gate can add: a key that may not read
  *  subscriptions is a configuration state, reported as such — never as "try
  *  again" and never as "you have no plan". */
@@ -179,7 +184,8 @@ export type TopupGate =
  *
  * WHAT COUNTS: a `subscriptions` row of this workspace with status `active`
  * whose paid period has not run out. Every other status is refused, and on
- * purpose:
+ * purpose (a live but not-paid-up row — trialing, past_due, a lapsed period —
+ * as `plan_inactive`, anything else as `plan_required`):
  *
  *   trialing            never created by this app (no trial_period_days); a
  *                       dashboard-made trial has not paid anything yet;
@@ -209,21 +215,26 @@ export async function requireActivePaidPlan(
   if (!PRICING_OFFER.topups.requireActivePlan) {
     return { ok: true, planId: "", provider: "", providerSubscriptionId: null };
   }
+  // The statuses that block buying a second subscription (beginSubscription's
+  // own set): one of them without a paid-up period is "inactive", not "none".
   const { data, error } = await supabase
     .from("subscriptions")
     .select("plan_id, status, current_period_end, provider, provider_subscription_id")
     .eq("workspace_id", workspace.id)
-    .eq("status", "active")
+    .in("status", ["active", "trialing", "past_due"])
     .order("current_period_end", { ascending: false })
-    .limit(1);
+    .limit(10);
   if (error) {
     console.error("billing.plan_gate", "lookup_failed", error.code ?? "-");
     return { ok: false, reason: "plan_check_failed" };
   }
-  const row = data?.[0];
-  if (!row || row.status !== "active") return { ok: false, reason: "plan_required" };
-  const end = row.current_period_end ? Date.parse(row.current_period_end) : Number.NaN;
-  if (!Number.isFinite(end) || end <= now) return { ok: false, reason: "plan_required" };
+  const rows = data ?? [];
+  const row = rows.find((r) => {
+    if (r.status !== "active") return false;
+    const end = r.current_period_end ? Date.parse(r.current_period_end) : Number.NaN;
+    return Number.isFinite(end) && end > now;
+  });
+  if (!row) return { ok: false, reason: rows.length > 0 ? "plan_inactive" : "plan_required" };
   return {
     ok: true, planId: row.plan_id, provider: row.provider ?? "",
     providerSubscriptionId: row.provider_subscription_id ?? null,
@@ -258,7 +269,8 @@ export async function confirmTopupPlanLive(
     const sub = await stripeGet<{ id: string; status: string }>(
       `/subscriptions/${encodeURIComponent(gate.providerSubscriptionId)}`, {},
     );
-    return sub.status === "active" ? { ok: true } : { ok: false, reason: "plan_required" };
+    return sub.status === "active" ? { ok: true }
+      : { ok: false, reason: sub.status === "trialing" || sub.status === "past_due" ? "plan_inactive" : "plan_required" };
   } catch (e) {
     logStripeFailure("plan_gate:live", e);
     if (e instanceof StripeApiError && e.unauthorized) return { ok: false, reason: "stripe_unauthorized" };

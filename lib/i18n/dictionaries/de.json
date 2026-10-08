@@ -3330,6 +3330,7 @@
     },
     "notice": {
       "planRequired": "Credit-Aufladungen sind mit einem aktiven bezahlten Plan verfügbar. Wähle einen Plan, um Credits nachzukaufen.",
+      "planInactive": "Dein Plan ist gerade nicht aktiv, daher sind Aufladungen pausiert. Prüfe dein Abo unter Einstellungen → Abonnements.",
       "annualUnavailable": "Die jährliche Zahlung ist noch nicht verfügbar.",
       "offerExpired": "Das Startangebot ist beendet. Lade die Seite neu, um die aktuellen Preise zu sehen."
     },

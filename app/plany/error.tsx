@@ -1,6 +1,7 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AlertTriangle, RotateCw } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 
@@ -14,6 +15,11 @@ import { useI18n } from "@/lib/i18n/provider";
  */
 export default function PricingError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   const { t } = useI18n();
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  // The failure happened on the SERVER: `reset` alone re-renders the same
+  // cached payload and fails again. Fetch the page anew, then reset.
+  const retry = () => startTransition(() => { router.refresh(); reset(); });
   useEffect(() => {
     // The digest and the route only — the same line app/(app)/error.tsx logs.
     console.error("pricing-error", {
@@ -36,9 +42,9 @@ export default function PricingError({ error, reset }: { error: Error & { digest
           <p className="mt-2 font-mono text-[11px] text-muted">{t("common.errorRef", { code: error.digest })}</p>
         ) : null}
         <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
-          <button type="button" onClick={reset}
-            className="cta inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold">
-            <RotateCw size={15} aria-hidden />
+          <button type="button" onClick={retry} disabled={pending} aria-busy={pending}
+            className="cta inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold disabled:opacity-70">
+            <RotateCw size={15} aria-hidden className={pending ? "animate-spin motion-reduce:animate-none" : undefined} />
             {t("common.retry")}
           </button>
           <Link href="/"

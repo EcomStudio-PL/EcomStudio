@@ -51,6 +51,9 @@ const REFUSAL_COPY: Record<string, string> = {
   // Top-ups are sold to active paid plans only — the server refused, and the
   // page says why instead of looking like a dead button.
   plan_required: "pricing.notice.planRequired",
+  // A subscription exists but is not active and paid-up: the way back is the
+  // subscription settings, not a second plan (the checkout would refuse it).
+  plan_inactive: "pricing.notice.planInactive",
   plan_check_failed: "packs.checkoutFailed",
   annual_unavailable: "pricing.notice.annualUnavailable",
   offer_expired: "pricing.notice.offerExpired",

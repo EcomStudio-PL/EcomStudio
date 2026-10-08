@@ -3330,6 +3330,7 @@
     },
     "notice": {
       "planRequired": "Doładowania kredytów są dostępne z aktywnym planem płatnym. Wybierz plan, aby dokupić kredyty.",
+      "planInactive": "Twój plan nie jest teraz aktywny, więc doładowania są wstrzymane. Sprawdź stan subskrypcji w Ustawieniach → Subskrypcje.",
       "annualUnavailable": "Płatność roczna nie jest jeszcze dostępna.",
       "offerExpired": "Oferta premierowa się zakończyła. Odśwież stronę, aby zobaczyć aktualne ceny."
     },
