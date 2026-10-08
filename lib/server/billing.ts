@@ -72,7 +72,7 @@ export class ServerKeyMissingError extends Error {
 export type CheckoutRefusal =
   | "payments_disabled" | "unknown_package" | "unknown_plan" | "plan_not_purchasable"
   | "not_mapped" | "no_customer" | "invalid_credits" | "no_server_key"
-  | "already_subscribed" | "stripe_error" | "price_out_of_sync" | TopupGateRefusal
+  | "already_subscribed" | "stripe_error" | "price_out_of_sync" | TopupLiveRefusal
   /** Annual billing is not on sale (lib/server/pricing-offer.ts). */
   | "annual_unavailable"
   /** The premiere ended and the plan still carries its premiere price. */
@@ -88,6 +88,10 @@ export type CheckoutRefusal =
  *                      active subscriber must not be told they have no plan.
  */
 export type TopupGateRefusal = "plan_required" | "plan_check_failed";
+/** What the live (Stripe) half of the gate can add: a key that may not read
+ *  subscriptions is a configuration state, reported as such — never as "try
+ *  again" and never as "you have no plan". */
+export type TopupLiveRefusal = TopupGateRefusal | "stripe_unauthorized";
 
 export type CheckoutResult =
   | { ok: true; url: string; sessionId: string }
@@ -245,7 +249,7 @@ export async function confirmTopupPlanLive(
   supabase: Client, workspace: WorkspaceRef,
   /** The database answer, when the caller has just read it. */
   known?: TopupGate,
-): Promise<{ ok: true } | { ok: false; reason: TopupGateRefusal }> {
+): Promise<{ ok: true } | { ok: false; reason: TopupLiveRefusal }> {
   const gate = known ?? await requireActivePaidPlan(supabase, workspace);
   if (!gate.ok) return gate;
   if (!PRICING_OFFER.topups.requireActivePlan) return { ok: true };
@@ -257,9 +261,17 @@ export async function confirmTopupPlanLive(
     return sub.status === "active" ? { ok: true } : { ok: false, reason: "plan_required" };
   } catch (e) {
     logStripeFailure("plan_gate:live", e);
+    if (e instanceof StripeApiError && e.unauthorized) return { ok: false, reason: "stripe_unauthorized" };
     return { ok: false, reason: "plan_check_failed" };
   }
 }
+
+/**
+ * A hosted top-up session lives 31 minutes, not Stripe's default 24 hours:
+ * eligibility is judged when the session is created, and a plan can end while
+ * a tab stays open. 30 minutes is Stripe's minimum; one more absorbs clock skew.
+ */
+const topupSessionExpiry = () => Math.floor(Date.now() / 1000) + 31 * 60;
 
 /** The buyer's plan, for per-plan top-up prices. Read only when such prices
  *  are configured; an unreadable (withdrawn) plan gets the common price. */
@@ -329,6 +341,7 @@ export async function createPackageCheckout(
     const session = await stripePost<StripeCheckoutSession>("/checkout/sessions", {
       mode: "payment",
       customer,
+      expires_at: topupSessionExpiry(),
       // The PRICE ID from the mapping, so the amount is Stripe's copy of the
       // database's number. Nothing in this call carries a price.
       line_items: [{ price: pack.stripe_price_id, quantity: 1 }],
@@ -410,6 +423,7 @@ export async function createCustomCreditsCheckout(
     const session = await stripePost<StripeCheckoutSession>("/checkout/sessions", {
       mode: "payment",
       customer,
+      expires_at: topupSessionExpiry(),
       line_items: [{
         quantity: 1,
         price_data: {

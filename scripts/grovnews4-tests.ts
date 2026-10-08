@@ -237,7 +237,7 @@ async function main() {
     check("robots: /grovnews and its subtree kept out (not every path starting 'grovnews'), /blog left open, no whole-site Disallow",
       /"\/grovnews\$", "\/grovnews\/",/.test(robots) && !/"\/grovnews",/.test(robots) && !/"\/blog/.test(robots)
       && /allow: "\/"/.test(robots) && /sitemap: absoluteUrl\("\/sitemap\.xml"\)/.test(robots));
-    check("a CMS page named 'blog' is not listed twice (the static route owns /blog)", /new Set\(\["home", "blog"\]\)/.test(sitemap));
+    check("a CMS page named 'blog' is not listed twice (the static route owns /blog)", /new Set\(\["home", "blog"(, "[a-z-]+")*\]\)/.test(sitemap));
     check("a failed public read is thrown, never cached as 'no articles'; the sitemap and related cards degrade, the rest stands",
       (code(read("lib/server/grovnews-blog.ts")).match(/if \(error\) throw new Error\(/g) ?? []).length === 3 && /getBlogSitemap\(\)\.catch\(\(\) => \[\]\)/.test(sitemap)
       && /getBlogFeed\(null, 60\)\.catch\(\(\) => \[\]\)/.test(read("app/blog/[slug]/page.tsx")));

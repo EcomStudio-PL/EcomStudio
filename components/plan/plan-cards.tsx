@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { Gate } from "@/components/home/gate";
 import { Diamond } from "@/components/layout/credits-control";
 import {
-  annualSavingCents, formatCount, formatMoney, formatPerCredit, planCheckoutHref,
+  annualSavingCents, creditsWord, formatCount, formatMoney, formatPerCredit, isFewForm, planCheckoutHref,
   planCredits, planMonthlyCents, planPerCreditCents, seatLabel, type BillingPeriod,
 } from "./pricing-model";
 import {
@@ -59,14 +59,14 @@ const STARTER: Theme = {
   },
   name: "text-ink",
   sub: "text-muted",
-  badge: "bg-[rgb(var(--info)/0.12)] text-[rgb(var(--info))] ring-1 ring-[rgb(var(--info)/0.22)]",
+  badge: "bg-[rgb(var(--info)/0.12)] text-[rgb(29_78_216)] ring-1 ring-[rgb(var(--info)/0.22)] dark:text-[rgb(var(--info))]",
   icon: "text-[rgb(var(--info))]",
   iconStyle: { background: "rgb(var(--info) / 0.12)", boxShadow: "inset 0 0 0 1px rgb(var(--info) / 0.22)" },
   box: "bg-[rgb(var(--info)/0.07)] ring-1 ring-[rgb(var(--info)/0.16)]",
   cta: "border border-line-strong bg-surface text-ink hover:bg-raised",
   check: "text-[rgb(var(--info))]",
   soon: "bg-raised text-muted ring-1 ring-line",
-  group: "text-faint",
+  group: "text-muted",
   highlight: "",
   divider: "border-line",
 };
@@ -85,7 +85,7 @@ const THEMES: Record<PlanTone, Theme> = {
       boxShadow: "0 40px 90px -38px rgb(176 0 172 / 0.85), 0 18px 40px -26px rgb(92 34 196 / 0.7), inset 0 0 0 1px rgb(255 255 255 / 0.16)",
     },
     name: "text-white",
-    sub: "text-white/85",
+    sub: "text-white/95",
     badge: "bg-white text-[rgb(140_0_140)] shadow-[0_6px_18px_-8px_rgb(0_0_0/0.45)]",
     icon: "text-white",
     iconStyle: { background: "rgb(255 255 255 / 0.16)", boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.28)" },
@@ -93,7 +93,7 @@ const THEMES: Record<PlanTone, Theme> = {
     cta: "bg-white text-[rgb(140_0_140)] shadow-[0_14px_30px_-14px_rgb(0_0_0/0.55)] hover:bg-white/95",
     check: "text-white",
     soon: "bg-white/15 text-white ring-1 ring-white/25",
-    group: "text-white/75",
+    group: "text-white/90",
     highlight: "rounded-2xl bg-white/[0.1] p-4 ring-1 ring-white/15",
     divider: "border-white/15",
   },
@@ -198,6 +198,9 @@ function PlanCard({ plan, period, data, layout, onChangeHint }: {
   const cta = planCta(plan, period, data, t, name);
   const highlights = look.highlights;
   const cost = data.imageCost;
+  // "≈ 171 zdjęć", but "≈ 42 zdjęcia" — the noun follows the number.
+  const approx = (size: "2k" | "4k", n: number) =>
+    t(`pricing.plan.approx${size}${isFewForm(n) ? "Few" : ""}`, { n: formatCount(n) });
 
   const ctaClass = cn(
     "flex h-12 w-full items-center justify-center rounded-xl px-4 text-[15px] font-semibold transition-[background-color,box-shadow,transform] duration-200",
@@ -242,13 +245,13 @@ function PlanCard({ plan, period, data, layout, onChangeHint }: {
         <p className="flex flex-wrap items-baseline gap-x-1.5 font-display text-[1.1875rem] font-semibold leading-tight">
           <span className="self-center"><Diamond size={10} /></span>
           <span className="tabular-nums">{formatCount(credits)}</span>
-          <span>{t("pricing.plan.creditsUnit")}</span>
+          <span>{creditsWord(credits, t)}</span>
           <span className={cn("text-[14px] font-medium", theme.sub)}>{t("pricing.plan.perMonth")}</span>
         </p>
         {cost ? (
           <ul className={cn("mt-1.5 space-y-0.5 text-[13.5px] leading-snug", theme.sub)}>
-            {cost.k2 !== null && <li data-approx="2k">{t("pricing.plan.approx2k", { n: formatCount(Math.floor(credits / cost.k2)) })}</li>}
-            {cost.k4 !== null && <li data-approx="4k">{t("pricing.plan.approx4k", { n: formatCount(Math.floor(credits / cost.k4)) })}</li>}
+            {cost.k2 !== null && <li data-approx="2k">{approx("2k", Math.floor(credits / cost.k2))}</li>}
+            {cost.k4 !== null && <li data-approx="4k">{approx("4k", Math.floor(credits / cost.k4))}</li>}
           </ul>
         ) : (
           <p className={cn("mt-1.5 text-[13px] leading-snug", theme.sub)}>{t("pricing.plan.costVisible")}</p>

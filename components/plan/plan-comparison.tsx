@@ -64,7 +64,7 @@ export function PlanComparison({ plans, period, data, onChangeHint }: {
           <thead>
             <tr>
               <th scope="col"
-                className="sticky left-0 z-20 w-[132px] bg-surface px-3 py-4 text-left align-bottom sm:w-[34%] sm:px-4 text-[12px] font-semibold uppercase tracking-[0.12em] text-faint lg:top-[calc(var(--header-h)+8px)] lg:rounded-tl-[24px]">
+                className="sticky left-0 z-20 w-[132px] bg-surface px-3 py-4 text-left align-bottom sm:w-[34%] sm:px-4 text-[12px] font-semibold uppercase tracking-[0.12em] text-muted lg:top-[calc(var(--header-h)+8px)] lg:rounded-tl-[24px]">
                 {t("pricing.compare.feature")}
               </th>
               {plans.map((plan) => {
@@ -98,7 +98,7 @@ export function PlanComparison({ plans, period, data, onChangeHint }: {
                         <span className="inline-flex flex-col items-center gap-1">
                           <span className="inline-flex h-9 items-center rounded-lg px-2 text-[12px] font-medium text-muted">{cta.label}</span>
                           {cta.hint === "change" && (
-                            <button type="button" onClick={onChangeHint} className="text-[12px] font-medium text-accent underline-offset-2 hover:underline">
+                            <button type="button" onClick={onChangeHint} className="text-[12px] font-medium text-[rgb(var(--accent-strong))] underline-offset-2 hover:underline dark:text-[rgb(var(--accent-glow))]">
                               {t("pricing.plan.changeHint")}
                             </button>
                           )}
@@ -118,7 +118,7 @@ export function PlanComparison({ plans, period, data, onChangeHint }: {
                 <Fragment key={group.key}>
                   <tr hidden={visible.length === 0}>
                     <th scope="colgroup" colSpan={plans.length + 1}
-                      className="sticky left-0 bg-surface px-4 pb-2 pt-5 text-left text-[11px] font-bold uppercase tracking-[0.14em] text-faint">
+                      className="sticky left-0 bg-surface px-4 pb-2 pt-5 text-left text-[11px] font-bold uppercase tracking-[0.14em] text-muted">
                       {t(group.titleKey)}
                     </th>
                   </tr>

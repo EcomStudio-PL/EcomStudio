@@ -8,7 +8,7 @@ import {
 } from "@/lib/stripe/client";
 import {
   resolveStripeCustomer, ServerKeyMissingError, requireActivePaidPlan, confirmTopupPlanLive,
-  topupPlanContext, type TopupGateRefusal,
+  topupPlanContext, type TopupGateRefusal, type TopupLiveRefusal,
 } from "@/lib/server/billing";
 import { sellable } from "@/lib/server/stripe-pricing";
 import {
@@ -536,6 +536,48 @@ export async function beginCheckout(
   }
 }
 
+/**
+ * THE LAST LOOK BEFORE A TOP-UP IS CONFIRMED.
+ *
+ * The PaymentIntent is created when /checkout opens; the customer may confirm
+ * it much later. Right before `stripe.confirmPayment`, the page asks this: is
+ * the plan still live? If Stripe says no, the intent is CANCELLED — so a tab
+ * left open past the end of a plan cannot buy a top-up through this page. A
+ * failed lookup refuses without cancelling (the customer may simply retry).
+ *
+ * Only an intent this workspace created for a top-up is looked at; anything
+ * else answers as if it did not exist. Nothing here grants or charges.
+ */
+export async function recheckTopup(
+  supabase: Client, workspace: WorkspaceRef, reference: string,
+): Promise<{ ok: true } | { ok: false; reason: TopupLiveRefusal | "unknown_payment" }> {
+  if (!stripeCredentials()) return { ok: false, reason: "plan_check_failed" };
+  if (!/^pi_[A-Za-z0-9_]+$/.test(reference)) return { ok: false, reason: "unknown_payment" };
+  let intent: { id: string; status: string; metadata?: Record<string, string> | null };
+  try {
+    intent = await stripeGet(`/payment_intents/${reference}`, {});
+  } catch (e) {
+    console.error("checkout.recheck", JSON.stringify({ workspace: workspace.id, intent: reference,
+      status: e instanceof StripeApiError ? e.status : null }));
+    return { ok: false, reason: e instanceof StripeApiError && e.unauthorized ? "stripe_unauthorized" : "plan_check_failed" };
+  }
+  const type = intent.metadata?.type;
+  if (intent.metadata?.grovbase_workspace_id !== workspace.id || (type !== "credit_package" && type !== "custom_credits")) {
+    return { ok: false, reason: "unknown_payment" };
+  }
+  const live = await confirmTopupPlanLive(supabase, workspace);
+  if (live.ok || live.reason !== "plan_required") return live;
+  if (["requires_payment_method", "requires_confirmation", "requires_action"].includes(intent.status)) {
+    try {
+      await stripePost(`/payment_intents/${intent.id}/cancel`, { cancellation_reason: "abandoned" }, `cancel:${intent.id}`);
+    } catch (e) {
+      console.error("checkout.recheck_cancel", JSON.stringify({ workspace: workspace.id, intent: intent.id,
+        status: e instanceof StripeApiError ? e.status : null }));
+    }
+  }
+  return live;
+}
+
 /** The internal id this request names — a package, a plan, or a credit count. */
 function targetOf(req: CheckoutRequest): string {
   return req.kind === "credit_package" ? req.packageId
@@ -593,7 +635,8 @@ async function beginOneOff(
   // A FRESH KEY PER ATTEMPT, on purpose. A deterministic key would be wrong in
   // both directions here: it would refuse a customer who legitimately buys the
   // same pack twice in a day, and it would hand back a stale intent to someone
-  // who abandoned one and came back. Abandoned intents cost nothing and expire.
+  // who abandoned one and came back. Abandoned intents charge nothing (they do
+  // not expire on their own; `recheckTopup` cancels one whose plan has ended).
   //
   // Paying twice is prevented where it actually matters — at settlement, where
   // `payments (provider, provider_payment_id)` makes one PaymentIntent grant

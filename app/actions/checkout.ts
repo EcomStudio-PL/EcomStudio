@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import {
-  quoteCheckout, beginCheckout, checkoutStatus,
+  quoteCheckout, beginCheckout, checkoutStatus, recheckTopup,
   type CheckoutRequest, type QuoteResult, type BeginResult, type StatusResult,
 } from "@/lib/server/checkout";
 import { normaliseCode } from "@/lib/server/grovnews-billing";
@@ -111,6 +111,17 @@ export async function checkoutStatusAction(reference: unknown): Promise<StatusRe
     return { state: "unknown", amountCents: null, currency: null, credits: null, kind: null };
   }
   return checkoutStatus(ctx.supabase, ctx.workspace, reference);
+}
+
+/**
+ * Right before a top-up is confirmed: is the plan still live? If not, the
+ * server cancels the open PaymentIntent and the page shows why. The reference
+ * is checked against this workspace inside the service.
+ */
+export async function recheckTopupAction(reference: unknown): Promise<Awaited<ReturnType<typeof recheckTopup>>> {
+  const ctx = await context();
+  if (!ctx || typeof reference !== "string") return { ok: false, reason: "plan_check_failed" };
+  return recheckTopup(ctx.supabase, ctx.workspace, reference);
 }
 
 /* ── invoice details ───────────────────────────────────────────────────────*/

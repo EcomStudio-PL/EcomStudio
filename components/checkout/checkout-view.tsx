@@ -12,7 +12,7 @@ import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { Input, Label } from "@/components/ui/input";
 import {
-  beginCheckoutAction, saveCheckoutInvoiceAction, type InvoiceDetails,
+  beginCheckoutAction, recheckTopupAction, saveCheckoutInvoiceAction, type InvoiceDetails,
 } from "@/app/actions/checkout";
 import {
   startPackageCheckoutAction, startCustomCreditsCheckoutAction, startPlanCheckoutAction,
@@ -109,6 +109,7 @@ function HostedFallback({ request, quote }: { request: Record<string, unknown>; 
       : res.reason === "plan_not_purchasable" ? "packs.planNotPurchasable"
       : res.reason === "payments_disabled" || res.reason === "not_mapped"
         || res.reason === "price_out_of_sync" || res.reason === "annual_unavailable"
+        || res.reason === "stripe_unauthorized"
         ? "packs.checkoutUnavailable"
         : "packs.checkoutFailed",
     ));
@@ -158,7 +159,7 @@ function Ready({
 
   // CREATE THE PAYMENT ONCE PER PAGE. React 18 runs effects twice in
   // development; without this guard that is two PaymentIntents for one visit —
-  // harmless (an abandoned intent expires) but noisy on a live account.
+  // harmless (an abandoned intent charges nothing) but noisy on a live account.
   useEffect(() => {
     if (started.current) return;
     started.current = true;
@@ -533,6 +534,18 @@ function PaymentPanel({ quote, returnUrl, reference }: {
   const confirm = useCallback(async () => {
     if (!stripe || !elements || busy) return;
     setBusy(true);
+    // A TOP-UP IS FOR A LIVE PLAN AT THE MOMENT OF PAYING, not only when the
+    // page opened. The server re-asks Stripe and cancels the intent if the
+    // plan has ended since; nothing is confirmed after a refusal.
+    if ((quote.kind === "credit_package" || quote.kind === "custom_credits") && reference) {
+      const still = await recheckTopupAction(reference);
+      if (!still.ok) {
+        setBusy(false);
+        notify.error(t(still.reason === "plan_required" ? "pricing.notice.planRequired"
+          : still.reason === "stripe_unauthorized" ? "packs.checkoutUnavailable" : "packs.checkoutFailed"));
+        return;
+      }
+    }
     const { error } = await stripe.confirmPayment({
       elements,
       confirmParams: { return_url: returnUrl },
@@ -546,7 +559,7 @@ function PaymentPanel({ quote, returnUrl, reference }: {
       return;
     }
     router.push(reference ? `/checkout/status?ref=${reference}` : "/checkout/status");
-  }, [stripe, elements, busy, returnUrl, reference, router, t]);
+  }, [stripe, elements, busy, returnUrl, reference, router, t, quote.kind]);
 
   return (
     <div className="space-y-4">

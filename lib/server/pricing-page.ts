@@ -63,7 +63,7 @@ export async function loadPricingPage(supabase: Client): Promise<PricingPageData
   const { data: { user } } = await supabase.auth.getUser();
   const workspace = user ? await getCurrentWorkspace(supabase, user.id) : null;
 
-  const [{ data: planRows }, { data: packRows }, liveSub, gate, costRow] = await Promise.all([
+  const [{ data: planRows, error: planError }, { data: packRows, error: packError }, liveSub, gate, costRow] = await Promise.all([
     supabase.from("subscription_plans").select(PLAN_COLUMNS).eq("active", true).order("sort_order"),
     supabase.from("credit_packages").select(PACK_COLUMNS).eq("active", true).order("sort_order"),
     workspace
@@ -78,6 +78,10 @@ export async function loadPricingPage(supabase: Client): Promise<PricingPageData
         .eq("model_identifier", PRICING_PAGE.costReferenceModel).eq("active", true).limit(1)
       : Promise.resolve({ data: null }),
   ]);
+  // An unreadable catalogue is an outage, not an empty offer: a page of "not
+  // on sale" cards would be a false statement. The route's error boundary
+  // says so instead.
+  if (planError || packError) throw new Error("pricing_catalogue_unavailable");
   const plan = gate?.ok ? await topupPlanContext(supabase, gate.planId) : { slug: null, centsPerCredit: null };
 
   return buildPricingPage({
@@ -152,9 +156,13 @@ export function buildPricingPage(input: {
     signedIn: facts.signedIn,
     currentSlug: facts.live ? plans.find((p) => p.id === facts.live?.plan_id)?.slug ?? null : null,
     hasLiveSubscription: Boolean(facts.live),
+    // A subscription that exists but is not active and paid-up right now
+    // (past_due, trialing, a lapsed period) is "plan_inactive": the fix is in
+    // the subscription settings, not in buying a second plan.
     topups: !facts.signedIn || !facts.gate ? "anonymous"
       : facts.gate.ok ? "allowed"
       : facts.gate.reason === "plan_check_failed" ? "check_failed"
+      : facts.live ? "plan_inactive"
       : "no_plan",
   };
 

@@ -61,7 +61,7 @@ export type PricingViewer = {
   /** A live subscription (active / trialing / past_due) blocks a second one. */
   hasLiveSubscription: boolean;
   /** The server's top-up decision for this workspace. */
-  topups: "allowed" | "anonymous" | "no_plan" | "check_failed";
+  topups: "allowed" | "anonymous" | "no_plan" | "plan_inactive" | "check_failed";
 };
 
 export type PricingPageData = {

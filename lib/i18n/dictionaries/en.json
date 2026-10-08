@@ -3236,10 +3236,11 @@
         "business": "For teams",
         "default": "Plan"
       },
-      "creditsUnit": "credits",
       "perMonth": "/ mo",
       "approx2k": "≈ {n} product photos in 2K",
       "approx4k": "≈ {n} photos in 4K",
+      "approx2kFew": "≈ {n} product photos in 2K",
+      "approx4kFew": "≈ {n} photos in 4K",
       "approxBasis": "Photo counts are an estimate at the {model} price: 2K = {k2} cr., 4K = {k4} cr. per photo. Other tools and models may cost differently.",
       "costVisible": "You see the credit cost of every generation before you run it.",
       "perCredit": "≈ {price} per credit",
@@ -3321,7 +3322,10 @@
         "title": "Top-ups come with an active plan",
         "sub": "Choose a plan — then you can add credits whenever you need them.",
         "cta": "Choose a plan",
-        "checkFailed": "We could not check your plan. Please refresh the page in a moment."
+        "checkFailed": "We could not check your plan. Please refresh the page in a moment.",
+        "inactiveTitle": "Your plan is not active right now",
+        "inactiveSub": "Top-ups return once your subscription is active and paid again. Check its status in settings.",
+        "inactiveCta": "Manage subscription"
       }
     },
     "notice": {
@@ -8045,7 +8049,7 @@
       "proCredits": "{n} credits every month",
       "proCta": "Choose PRO",
       "topupTitle": "Top up credits",
-      "topupBody": "A one-off pack, no subscription. Credits never expire.",
+      "topupBody": "Top-ups come with an active plan. Credits never expire.",
       "topupCta": "See packs"
     },
     "channel": {

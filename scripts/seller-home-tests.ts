@@ -488,8 +488,14 @@ check("…RLS: a user inserts and reads only their own rows; admins read all",
 check("…the demand readout runs under the caller's RLS (security invoker)", /security invoker/.test(mig) && /feature_interest_counts/.test(code("app/admin/page.tsx")));
 check("…the table's CHECK lists the five features", INTEREST_KEYS.every((k) => mig.includes(`'${k}'`)));
 check("…nothing here uses a service-role key", !/service_role|SERVICE_ROLE|createAdminClient/.test(actions + code("lib/services/seller-home.ts") + loader + SH));
-check("no database change in this redesign: supabase/migrations is untouched and has no new file",
-  !gitChanged("supabase/migrations") && execFileSync("git", ["ls-files", "--others", "--exclude-standard", "supabase/migrations"], { encoding: "utf8" }).trim() === "");
+// The redesign is the released range b631919..f579637 (3634db4 + f579637).
+// Later tasks may add migrations of their own (0136 reserves the /plany slug);
+// what this pins is that the /home redesign itself brought none.
+check("no database change in this redesign: b631919..f579637 touches no migration",
+  (() => {
+    try { execFileSync("git", ["diff", "--quiet", "b631919", "f579637", "--", "supabase/migrations"], { stdio: "ignore" }); return true; }
+    catch { return false; }
+  })());
 
 /* ── 11. AI, Stripe, Retusz ───────────────────────────────────────────────*/
 
@@ -525,7 +531,7 @@ check("/home has no generation path: no AI route, no provider, no prompt",
 const PAY: readonly [string, string][] = [
   // Re-pinned by the /plany task (top-up gate, tier contract, offer switches).
   // The old pricing board is gone: /plan and /plany share components/plan/pricing-page.tsx.
-  ["lib/server/checkout.ts", "49d970698bf41b3b1b4ea691370698b99cb89f2a9636cd32389e91b732af9982"],
+  ["lib/server/checkout.ts", "b0b21db8c558f2dc536a5857fe3295ba6919a24c2c5e749d5dcf120b5da696f9"],
   ["lib/server/stripe-webhook.ts", "e9a03ea46af4bb7d5c91332969154e4b111b4c1634fbbe124a1ba6b8e03c95d2"],
   ["lib/stripe/config.ts", "0679ce3f018add12ead081c8a667511be4237661d15b9a024fb9ec578ed71df1"],
   ["components/plan/pricing-model.ts", "c696e3d3361e8f884eaa6e7b4835f5dea1db542c27ebbc6e98ae807de456e503"],

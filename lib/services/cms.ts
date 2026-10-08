@@ -143,6 +143,8 @@ export const RESERVED = [
   "blog",
   // /profile forwards to /settings?tab=profile (0127).
   "profile",
+  // The public pricing page /plany is a static route (0136).
+  "plany",
 ];
 
 export type SlugProblem = "empty" | "shape" | "reserved" | "taken" | null;

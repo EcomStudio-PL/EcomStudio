@@ -25,7 +25,7 @@ export function PricingFaq({ premiere, open, onOpen }: {
 
   return (
     <div>
-      <p className="text-center text-[12px] font-bold uppercase tracking-[0.16em] text-faint">{t("pricing.faq.overline")}</p>
+      <p className="text-center text-[12px] font-bold uppercase tracking-[0.16em] text-muted">{t("pricing.faq.overline")}</p>
       <h2 className="sr-only">{t("pricing.faq.title")}</h2>
       <div className="mt-4 divide-y divide-line overflow-hidden rounded-[24px] border border-line bg-surface">
         {items.map((item) => {

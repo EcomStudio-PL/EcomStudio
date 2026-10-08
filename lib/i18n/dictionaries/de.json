@@ -3236,10 +3236,11 @@
         "business": "Für Teams",
         "default": "Plan"
       },
-      "creditsUnit": "Credits",
       "perMonth": "/ Mon.",
       "approx2k": "≈ {n} Produktfotos in 2K",
       "approx4k": "≈ {n} Fotos in 4K",
+      "approx2kFew": "≈ {n} Produktfotos in 2K",
+      "approx4kFew": "≈ {n} Fotos in 4K",
       "approxBasis": "Die Fotoanzahl ist eine Schätzung zum Preis von {model}: 2K = {k2} Cr., 4K = {k4} Cr. pro Foto. Andere Tools und Modelle können anders kosten.",
       "costVisible": "Die Credit-Kosten jeder Generierung siehst du, bevor du sie startest.",
       "perCredit": "≈ {price} pro Credit",
@@ -3321,7 +3322,10 @@
         "title": "Aufladungen gibt es mit einem aktiven Plan",
         "sub": "Wähle einen Plan — danach kannst du jederzeit Credits nachkaufen.",
         "cta": "Plan wählen",
-        "checkFailed": "Wir konnten deinen Plan nicht prüfen. Bitte lade die Seite gleich neu."
+        "checkFailed": "Wir konnten deinen Plan nicht prüfen. Bitte lade die Seite gleich neu.",
+        "inactiveTitle": "Dein Plan ist gerade nicht aktiv",
+        "inactiveSub": "Aufladungen sind wieder möglich, sobald dein Abo aktiv und bezahlt ist. Prüfe den Status in den Einstellungen.",
+        "inactiveCta": "Abo verwalten"
       }
     },
     "notice": {
@@ -8045,7 +8049,7 @@
       "proCredits": "{n} Credits jeden Monat",
       "proCta": "PRO wählen",
       "topupTitle": "Credits aufladen",
-      "topupBody": "Ein einmaliges Paket, kein Abo. Credits verfallen nicht.",
+      "topupBody": "Aufladungen gibt es mit einem aktiven Tarif. Credits verfallen nicht.",
       "topupCta": "Pakete ansehen"
     },
     "channel": {

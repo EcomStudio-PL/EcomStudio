@@ -3236,10 +3236,11 @@
         "business": "Dla zespołów",
         "default": "Plan"
       },
-      "creditsUnit": "kredytów",
       "perMonth": "/ mies.",
       "approx2k": "≈ {n} zdjęć produktowych w 2K",
       "approx4k": "≈ {n} zdjęć w 4K",
+      "approx2kFew": "≈ {n} zdjęcia produktowe w 2K",
+      "approx4kFew": "≈ {n} zdjęcia w 4K",
       "approxBasis": "Liczby zdjęć to szacunek przy cenie modelu {model}: 2K = {k2} kr., 4K = {k4} kr. za zdjęcie. Inne narzędzia i modele mogą kosztować inaczej.",
       "costVisible": "Koszt każdej generacji w kredytach widzisz przed jej uruchomieniem.",
       "perCredit": "≈ {price} za 1 kredyt",
@@ -3321,7 +3322,10 @@
         "title": "Doładowania dostępne z aktywnym planem",
         "sub": "Wybierz plan — potem dokupisz kredyty w dowolnym momencie.",
         "cta": "Wybierz plan",
-        "checkFailed": "Nie udało się sprawdzić Twojego planu. Odśwież stronę za chwilę."
+        "checkFailed": "Nie udało się sprawdzić Twojego planu. Odśwież stronę za chwilę.",
+        "inactiveTitle": "Twój plan nie jest teraz aktywny",
+        "inactiveSub": "Doładowania wrócą, gdy subskrypcja znów będzie aktywna i opłacona. Sprawdź jej stan w ustawieniach.",
+        "inactiveCta": "Zarządzaj subskrypcją"
       }
     },
     "notice": {
@@ -8045,7 +8049,7 @@
       "proCredits": "{n} kredytów co miesiąc",
       "proCta": "Wybierz PRO",
       "topupTitle": "Doładuj kredyty",
-      "topupBody": "Jednorazowy pakiet, bez abonamentu. Kredyty nie wygasają.",
+      "topupBody": "Doładowania są dostępne z aktywnym planem. Kredyty nie wygasają.",
       "topupCta": "Zobacz pakiety"
     },
     "channel": {

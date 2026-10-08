@@ -113,7 +113,7 @@ export async function PricingSurface({ scope, notice = null }: {
         </main>
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(ld) }} />
         <footer className="border-t border-line">
-          <div className="mx-auto flex w-full max-w-[var(--content-max)] flex-wrap items-center justify-between gap-3 px-[var(--page-x)] py-5 text-[12px] text-faint sm:px-6 lg:px-8">
+          <div className="mx-auto flex w-full max-w-[var(--content-max)] flex-wrap items-center justify-between gap-3 px-[var(--page-x)] py-5 text-[12px] text-muted sm:px-6 lg:px-8">
             <span>© {new Date().getFullYear()} GrovBase</span>
             <nav className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
               <Link href="/regulamin" className="transition-colors duration-200 hover:text-ink">{t("launch.terms")}</Link>

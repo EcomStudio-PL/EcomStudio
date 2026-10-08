@@ -41,7 +41,7 @@ process.env.STRIPE_SECRET_KEY ??= ["sk", "test", "0".repeat(28)].join("_");
 process.env.STRIPE_WEBHOOK_SECRET ??= "whsec_ZmFrZV90ZXN0X3NlY3JldF9ub3RfYV9yZWFsX29uZQ";
 process.env.GROVBASE_SERVER_KEY ??= "test-server-key-not-a-real-one-0123456789";
 
-import { beginCheckout, quoteCheckout, type CheckoutRequest } from "@/lib/server/checkout";
+import { beginCheckout, quoteCheckout, recheckTopup, type CheckoutRequest } from "@/lib/server/checkout";
 import {
   createCustomCreditsCheckout, createPackageCheckout, createPlanCheckout, requireActivePaidPlan,
 } from "@/lib/server/billing";
@@ -49,11 +49,11 @@ import {
   PACK_SLOTS, PRICING_OFFER, TOPUP_TIERS, approvedPriceValid, isPriceLocked, offeredCustomAmounts,
   premiereExpiredFor, premiereMetadata, premiereState, priceTopup, topupMarginPercent, type PricingOffer,
 } from "@/lib/server/pricing-offer";
-import { buildPricingPage, type PackRowFull, type PlanRow, type ViewerFacts } from "@/lib/server/pricing-page";
+import { buildPricingPage, loadPricingPage, type PackRowFull, type PlanRow, type ViewerFacts } from "@/lib/server/pricing-page";
 import { creditLadder, validateCustomCredits } from "@/lib/plans/credit-price";
 import { annualSavingPct } from "@/lib/plans/pricing";
 import {
-  creditsCheckoutHref, formatCount, formatMoney, formatPerCredit, packCheckoutHref, planCheckoutHref,
+  creditsCheckoutHref, formatCount, formatMoney, formatPerCredit, isFewForm, packCheckoutHref, planCheckoutHref,
 } from "@/components/plan/pricing-model";
 import {
   CARD_ORDER, CARD_ORDER_PHONE, COMPARE_GROUPS, COMPARE_INITIAL_ROWS, FAQ, PRICING_PAGE, featureOn, planPresentation,
@@ -132,11 +132,12 @@ const sub = (status: string, end: string | null = FUTURE, extra: Partial<Sub> = 
 /* ── a catalogue that answers the server's reads, the way Postgres would ──*/
 
 type Row = Record<string, unknown>;
-function catalogueDb(plans: Plan[], packs: Pack[], subs: Sub[] = [], opts: { subsError?: boolean } = {}) {
+function catalogueDb(plans: Plan[], packs: Pack[], subs: Sub[] = [], opts: { subsError?: boolean; catalogueError?: boolean } = {}) {
   const build = (name: string, rows: Row[]) => {
     const filters: [string, (v: unknown) => boolean][] = [];
     const matching = () => rows.filter((r) => filters.every(([k, f]) => f(r[k])));
-    const result = () => (name === "subscriptions" && opts.subsError
+    const result = () => ((name === "subscriptions" && opts.subsError)
+      || (opts.catalogueError && (name === "subscription_plans" || name === "credit_packages"))
       ? { data: null, error: { code: "57014" } }
       : { data: matching(), error: null });
     const q = {
@@ -185,8 +186,9 @@ function parseIntent(href: string): CheckoutRequest | null {
 
 /* ── a fake Stripe: records calls, answers what checkout asks ─────────────*/
 
-type Call = { method: string; path: string; body: Record<string, string> };
-function installStripe(opts: { subStatus?: string; subFails?: boolean } = {}): Call[] {
+type Call = { method: string; path: string; body: Record<string, string>; key: string | null };
+type FakeIntent = { status: string; metadata: Record<string, string> };
+function installStripe(opts: { subStatus?: string; subFails?: boolean; subHttp?: number; intent?: FakeIntent } = {}): Call[] {
   const seen: Call[] = [];
   globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
     const path = String(url).replace("https://api.stripe.com/v1", "").split("?")[0];
@@ -199,10 +201,18 @@ function installStripe(opts: { subStatus?: string; subFails?: boolean } = {}): C
         body[decodeURIComponent(k)] = decodeURIComponent(v ?? "");
       }
     }
-    seen.push({ method, path, body });
+    const headers = new Headers(init?.headers);
+    seen.push({ method, path, body, key: headers.get("Idempotency-Key") });
     if (method === "GET" && path.startsWith("/subscriptions/")) {
+      if (opts.subHttp) return new Response(JSON.stringify({ error: { message: "no" } }), { status: opts.subHttp });
       if (opts.subFails) return new Response(JSON.stringify({ error: { message: "boom" } }), { status: 500 });
       return new Response(JSON.stringify({ id: path.split("/")[2], status: opts.subStatus ?? "active" }), { status: 200 });
+    }
+    if (method === "GET" && /^\/payment_intents\/pi_[A-Za-z0-9_]+$/.test(path) && opts.intent) {
+      return new Response(JSON.stringify({ id: path.split("/")[2], ...opts.intent }), { status: 200 });
+    }
+    if (method === "POST" && /^\/payment_intents\/pi_[A-Za-z0-9_]+\/cancel$/.test(path)) {
+      return new Response(JSON.stringify({ id: path.split("/")[2], status: "canceled" }), { status: 200 });
     }
     if (method === "POST" && path === "/payment_intents") {
       return new Response(JSON.stringify({
@@ -219,9 +229,10 @@ function installStripe(opts: { subStatus?: string; subFails?: boolean } = {}): C
 }
 
 const NOW = Date.parse("2026-10-08T12:00:00+02:00");
-const viewerOf = (state: "anon" | "free" | "allowed" | "check_failed", extra: Partial<ViewerFacts> = {}): ViewerFacts => ({
+const viewerOf = (state: "anon" | "free" | "allowed" | "check_failed" | "past_due", extra: Partial<ViewerFacts> = {}): ViewerFacts => ({
   signedIn: state !== "anon",
-  live: state === "allowed" ? { plan_id: PRO.id, status: "active" } : null,
+  live: state === "allowed" ? { plan_id: PRO.id, status: "active" }
+    : state === "past_due" ? { plan_id: PRO.id, status: "past_due" } : null,
   gate: state === "anon" ? null
     : state === "allowed" ? { ok: true, planId: PRO.id, provider: "stripe", providerSubscriptionId: "sub_live" }
     : { ok: false, reason: state === "check_failed" ? "plan_check_failed" : "plan_required" },
@@ -240,7 +251,6 @@ async function main() {
   {
     // Untouched by the /plany task: byte-identical to the pre-task release (f579637).
     const FROZEN: [string, string][] = [
-      ["app/actions/checkout.ts", "9b8ab0caa75e32de658126353fb731d431f006bf83839f456057a54b33a659bd"],
       ["app/(app)/checkout/page.tsx", "2fca9f8520c44682ebc3669a497ef31a0a0b3b2957f40284359d14c72f31a8c8"],
       ["lib/plans/credit-price.ts", "c3ebca6452053a0157eee7bf0fd8c1bdc767593f2e082941951ba02b30aff95c"],
       ["lib/plans/pricing.ts", "6c6ddf4d5784f236eaff740efed5bc23538b2ce44118b92cf9f24b5df2e1c3fa"],
@@ -262,11 +272,13 @@ async function main() {
     // switches, refusal copy). Re-pinned here so any further change is a
     // decision, not an accident.
     const REPINNED: [string, string][] = [
-      ["lib/server/checkout.ts", "49d970698bf41b3b1b4ea691370698b99cb89f2a9636cd32389e91b732af9982"],
-      ["lib/server/billing.ts", "c6b31f1cc0c972a6f0745e55c075700ca5ce4a676db6cc93360a809c00433ea7"],
+      // + recheckTopupAction: the pre-confirm re-check (was 9b8ab0ca… before the task).
+      ["app/actions/checkout.ts", "86d870410f3cb2dbcaead0f3af84131f3dd3fb0032bed4b434f0e926c10574ea"],
+      ["lib/server/checkout.ts", "b0b21db8c558f2dc536a5857fe3295ba6919a24c2c5e749d5dcf120b5da696f9"],
+      ["lib/server/billing.ts", "e8323616a043ac4a2205cd8ceec50309eb3cae1811962559c419d59eb8d41031"],
       ["lib/server/pricing-offer.ts", "d9f9a176fee0e4942d1ea65ded19942400e064db5babd7ac60c8dfdcbb64eedf"],
       ["lib/server/stripe-migrate.ts", "96eb6003a8409745870ee1ef72df2b7aee3acfcbb154504b1cf6c2286e59e4d7"],
-      ["components/checkout/checkout-view.tsx", "69baefa7254150b91dae896946048710bf125fbd0c32b521648942066676474c"],
+      ["components/checkout/checkout-view.tsx", "28a62117ae94d77d40439989b41de9c3a732ac945f211499f82b2f8d438ea067"],
       ["components/plan/checkout-notice.tsx", "3bbf679b6a1275d84d5605c44c1144b87f27d98162bb5327ff7f8ae55ccff54c"],
     ];
     for (const [file, digest] of REPINNED) check(`${file} is the reviewed version`, sha(file) === digest, `sha256 ${sha(file)}`);
@@ -470,6 +482,59 @@ async function main() {
     seen = installStripe();
     const hcBad = await createCustomCreditsCheckout(db([sub("active")]), WS, null, 1001);
     check("hosted fallback: an amount between tiers is refused", !hcBad.ok && hcBad.reason === "invalid_credits");
+    const expiry = Number(session?.body.expires_at);
+    const nowS = Math.floor(Date.now() / 1000);
+    check("hosted top-up sessions expire in 31 minutes, not Stripe's 24 hours (the plan is judged at creation)",
+      expiry >= nowS + 30 * 60 && expiry <= nowS + 32 * 60, String(session?.body.expires_at));
+    seen = installStripe();
+    await createPackageCheckout(db([sub("active")]), WS, null, pack.id);
+    const packSession = seen.find((c) => c.path === "/checkout/sessions");
+    check("…the pack session too", Number(packSession?.body.expires_at) >= nowS + 30 * 60 && Number(packSession?.body.expires_at) <= nowS + 32 * 60);
+    seen = installStripe({ subHttp: 401 });
+    res = await beginCheckout(db([sub("active")]), WS, null, { kind: "credit_package", packageId: pack.id });
+    check("begin: a rejected Stripe key on the live plan check says so (stripe_unauthorized), no PaymentIntent",
+      !res.ok && res.reason === "stripe_unauthorized" && !seen.some((c) => c.path === "/payment_intents"), JSON.stringify(res));
+
+    // THE RACE: a PaymentIntent created while the plan was live, confirmed
+    // after it ended. The page re-checks right before confirming, and an
+    // intent whose plan has ended is cancelled — it can no longer be paid.
+    const mine = { status: "requires_payment_method", metadata: { grovbase_workspace_id: "ws-0000", type: "credit_package" } };
+    seen = installStripe({ intent: mine });
+    const live = await recheckTopup(db([sub("active")]), WS, "pi_abc");
+    check("recheck: plan still active → ok, nothing cancelled", live.ok && !seen.some((c) => c.path.endsWith("/cancel")));
+    seen = installStripe({ intent: mine });
+    const ended = await recheckTopup(db([]), WS, "pi_abc");
+    const cancel = seen.find((c) => c.method === "POST" && c.path === "/payment_intents/pi_abc/cancel");
+    check("recheck: plan ended → plan_required, and the intent is cancelled (idempotently, as abandoned)",
+      !ended.ok && ended.reason === "plan_required" && cancel?.body.cancellation_reason === "abandoned" && cancel?.key === "cancel:pi_abc",
+      JSON.stringify({ ended, cancel }));
+    seen = installStripe({ intent: mine, subStatus: "canceled" });
+    const stripeEnded = await recheckTopup(db([sub("active")]), WS, "pi_abc");
+    check("recheck: DB active but Stripe says canceled → plan_required + cancelled",
+      !stripeEnded.ok && stripeEnded.reason === "plan_required" && seen.some((c) => c.path === "/payment_intents/pi_abc/cancel"));
+    seen = installStripe({ intent: mine, subFails: true });
+    const unknownState = await recheckTopup(db([sub("active")]), WS, "pi_abc");
+    check("recheck: Stripe lookup fails → refused (plan_check_failed), but nothing cancelled on a guess",
+      !unknownState.ok && unknownState.reason === "plan_check_failed" && !seen.some((c) => c.path.endsWith("/cancel")));
+    seen = installStripe({ intent: { ...mine, status: "succeeded" } });
+    await recheckTopup(db([]), WS, "pi_abc");
+    check("recheck: an intent already paid is never cancelled", !seen.some((c) => c.path.endsWith("/cancel")));
+    seen = installStripe({ intent: { ...mine, metadata: { grovbase_workspace_id: "ws-other", type: "credit_package" } } });
+    const foreign = await recheckTopup(db([]), WS, "pi_abc");
+    check("recheck: another workspace's intent → unknown_payment, untouched",
+      !foreign.ok && foreign.reason === "unknown_payment" && !seen.some((c) => c.path.endsWith("/cancel")));
+    seen = installStripe({ intent: { ...mine, metadata: { grovbase_workspace_id: "ws-0000", type: "subscription" } } });
+    const notTopup = await recheckTopup(db([]), WS, "pi_abc");
+    check("recheck: a non-top-up intent → unknown_payment, untouched",
+      !notTopup.ok && notTopup.reason === "unknown_payment" && !seen.some((c) => c.path.endsWith("/cancel")));
+    seen = installStripe({ intent: mine });
+    const junk = await recheckTopup(db([]), WS, "cs_../../customers");
+    check("recheck: a reference that is not a PaymentIntent id is refused before any Stripe call",
+      !junk.ok && junk.reason === "unknown_payment" && seen.length === 0);
+    const view = codeOnly(read("components/checkout/checkout-view.tsx"));
+    check("the checkout re-checks a top-up BEFORE stripe.confirmPayment",
+      /recheckTopupAction\(/.test(view) && view.indexOf("recheckTopupAction(") < view.indexOf("stripe.confirmPayment("));
+
     const unsynced = PROD_PACKS.map((p, i) => (i === 0 ? { ...p, stripe_sync_status: "failed" } : p));
     const hpUnsynced = await createPackageCheckout(catalogueDb(PROD_PLANS, unsynced, [sub("active")]), WS, null, pack.id);
     check("hosted fallback now applies the same price-parity rule", !hpUnsynced.ok && hpUnsynced.reason === "price_out_of_sync");
@@ -583,6 +648,16 @@ async function main() {
       && !/balance|email|wallet|workspace_id|ws-0000/i.test(JSON.stringify(anon)));
     check("free user: locked as 'no_plan'", page("free").viewer.topups === "no_plan");
     check("lookup failure: locked as 'check_failed'", page("check_failed").viewer.topups === "check_failed");
+    check("a subscription that exists but is not active (past_due): 'plan_inactive', not 'choose a plan'",
+      page("past_due").viewer.topups === "plan_inactive" && page("past_due").viewer.hasLiveSubscription);
+    let threw = "";
+    try {
+      await loadPricingPage(catalogueDb(PROD_PLANS, PROD_PACKS, [], { catalogueError: true }));
+    } catch (e) { threw = e instanceof Error ? e.message : String(e); }
+    check("an unreadable catalogue throws to the error boundary — never a page of 'not on sale' cards",
+      threw === "pricing_catalogue_unavailable" && existsSync("app/plany/error.tsx") && existsSync("app/(app)/error.tsx"));
+    const loaded = await loadPricingPage(catalogueDb(PROD_PLANS, PROD_PACKS));
+    check("…and a readable one loads (visitor view)", loaded.plans.length === 3 && loaded.viewer.topups === "anonymous");
     check("subscriber: allowed, PRO marked as current", subscriber.viewer.topups === "allowed" && subscriber.viewer.currentSlug === "pro");
     check("three paid cards; Free is only a note", subscriber.plans.map((p) => p.slug).join(",") === "starter,pro,agency" && subscriber.free?.name === "Free");
     check("pack cards 800 / 500 / 300 / 200 / 100 with coins 5 → 1",
@@ -603,6 +678,11 @@ async function main() {
     check("signed in: image counts come from the model's real per-size price",
       counted.imageCost?.k2 === 7 && counted.imageCost?.k4 === 12 && counted.imageCost?.model === "Nano Banana Pro");
     check("PRO: ≈ 171 photos in 2K, ≈ 100 in 4K (1 200 credits)", Math.floor(1200 / 7) === 171 && Math.floor(1200 / 12) === 100);
+    const pl = JSON.parse(read("lib/i18n/dictionaries/pl.json"));
+    check("Polish plural: '≈ 42 zdjęcia', '≈ 171 zdjęć' — the few-form keys exist and are chosen by the number",
+      isFewForm(42) && !isFewForm(171) && !isFewForm(12) && /zdjęcia/.test(pl.pricing.plan.approx2kFew) && /zdjęć/.test(pl.pricing.plan.approx2k)
+      && /approx\$\{size\}\$\{isFewForm\(n\) \? "Few" : ""\}/.test(read("components/plan/plan-cards.tsx")));
+    check("the plan's credit word follows the number too (creditsWord)", /creditsWord\(credits, t\)/.test(read("components/plan/plan-cards.tsx")));
     const cards = codeOnly(read("components/plan/plan-cards.tsx"));
     check("the card divides the plan's credits by that price, nothing else",
       /Math\.floor\(credits \/ cost\.k2\)/.test(cards) && /Math\.floor\(credits \/ cost\.k4\)/.test(cards));
@@ -704,6 +784,11 @@ async function main() {
     check("the lock is the server's decision, and the locked content is inert",
       /const locked = data\.viewer\.topups !== "allowed"/.test(topups) && /inert=\{locked\}/.test(topups));
     check("an unpriced tier has no buy button", /tier\.href \? \(/.test(topups) && /disabled data-custom-buy/.test(topups));
+    check("the slider tells a screen reader the price, or that the stop is not on sale yet",
+      /pricing\.topups\.tierSoon/.test(topups.slice(topups.indexOf("const valueText"), topups.indexOf("if (!tier)")))
+      && /aria-describedby="topup-tier-unit"/.test(topups) && /id="topup-tier-unit"/.test(topups));
+    check("an inactive subscription is sent to its settings, not to buy a second plan",
+      /const inactive = reason === "plan_inactive"/.test(topups) && /href="\/settings\?tab=subscriptions"/.test(topups));
     const pageSrc = codeOnly(read("components/plan/pricing-page.tsx"));
     check("'Kup kredyty' scrolls to the top-ups under the sticky bar, honouring reduced motion",
       /go\(A\.topups\)/.test(pageSrc) && /prefers-reduced-motion: reduce/.test(pageSrc) && /scroll-mt-\[calc\(var\(--header-h\)/.test(pageSrc));

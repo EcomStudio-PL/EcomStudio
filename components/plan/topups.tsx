@@ -52,7 +52,7 @@ export function TopUps({ data, onChoosePlan }: { data: PricingPageData; onChoose
         {data.paymentsEnabled ? t("pricing.topups.noExpiry") : t("pricing.topups.paymentsOff")}
       </p>
       {data.packs.some((p) => p.savePct !== null) && (
-        <p className="mt-1 text-center text-[12px] text-faint">{t("pricing.topups.saveBasis")}</p>
+        <p className="mt-1 text-center text-[12px] text-muted">{t("pricing.topups.saveBasis")}</p>
       )}
     </div>
   );
@@ -143,8 +143,10 @@ function CustomAmount({ tiers, currency, className }: { tiers: PricingTierView[]
   const tier = tiers[index];
   const last = tiers.length - 1;
   const pct = last > 0 ? (index / last) * 100 : 0;
+  // What a screen reader hears on each stop: the amount, then its price — or
+  // that the stop is not on sale yet, so a silent "—" is never the answer.
   const valueText = useMemo(() => tier
-    ? `${formatCount(tier.credits)} ${creditsWord(tier.credits, t)}${tier.amountCents !== null ? `, ${formatMoney(tier.amountCents, currency)}` : ""}`
+    ? `${formatCount(tier.credits)} ${creditsWord(tier.credits, t)}, ${tier.amountCents !== null ? formatMoney(tier.amountCents, currency) : t("pricing.topups.tierSoon")}`
     : "", [tier, t, currency]);
   if (!tier) return null;
 
@@ -161,7 +163,7 @@ function CustomAmount({ tiers, currency, className }: { tiers: PricingTierView[]
           </span>
           <span className="text-[15px] font-medium text-muted">{creditsWord(tier.credits, t)}</span>
         </p>
-        <p className="pb-1 text-[13px] text-muted">
+        <p id="topup-tier-unit" className="pb-1 text-[13px] text-muted">
           {tier.perCreditCents !== null
             ? t("pricing.topups.perCredit", { price: formatPerCredit(tier.perCreditCents, currency) })
             : t("pricing.topups.tierSoon")}
@@ -176,6 +178,7 @@ function CustomAmount({ tiers, currency, className }: { tiers: PricingTierView[]
         <input id="topup-tier" type="range" min={0} max={last} step={1} value={index}
           onChange={(e) => setIndex(Number(e.target.value))}
           aria-valuetext={valueText}
+          aria-describedby="topup-tier-unit"
           data-tier-slider
           className={RANGE_CLASS}
           style={{
@@ -195,7 +198,7 @@ function CustomAmount({ tiers, currency, className }: { tiers: PricingTierView[]
       <div className="mt-5 rounded-2xl bg-raised/70 px-4 py-3.5 ring-1 ring-line">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-faint">{t("pricing.topups.toPay")}</p>
+            <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">{t("pricing.topups.toPay")}</p>
             {tier.savePct !== null && (
               <p className="mt-1 text-[12px] font-semibold text-[rgb(var(--accent-strong))] dark:text-[rgb(var(--accent-glow))]">
                 {t("pricing.topups.save", { n: tier.savePct })}
@@ -246,6 +249,10 @@ const RANGE_CLASS = cn(
 function LockOverlay({ reason, onChoosePlan }: { reason: PricingPageData["viewer"]["topups"]; onChoosePlan: () => void }) {
   const { t } = useI18n();
   const failed = reason === "check_failed";
+  // A subscription exists but is not active right now (past_due, a lapsed
+  // period): choosing a plan would be a second subscription, which the
+  // checkout refuses — the way back is the subscription settings.
+  const inactive = reason === "plan_inactive";
   return (
     <div data-topups-lock className="absolute inset-0 z-10 flex items-start justify-center p-4 pt-16 sm:items-center sm:pt-4">
       <div role="note" className="w-full max-w-sm rounded-3xl border border-line bg-surface/95 p-6 text-center shadow-[0_30px_80px_-30px_rgb(0_0_0/0.45)] backdrop-blur">
@@ -254,12 +261,19 @@ function LockOverlay({ reason, onChoosePlan }: { reason: PricingPageData["viewer
           <Lock size={20} aria-hidden />
         </span>
         <p className="mt-4 font-display text-[1.125rem] font-semibold leading-snug">
-          {t(failed ? "pricing.topups.locked.checkFailed" : "pricing.topups.locked.title")}
+          {t(failed ? "pricing.topups.locked.checkFailed" : inactive ? "pricing.topups.locked.inactiveTitle" : "pricing.topups.locked.title")}
         </p>
-        {!failed && <p className="mt-1.5 text-[14px] leading-relaxed text-muted">{t("pricing.topups.locked.sub")}</p>}
         {!failed && (
-          <button type="button" onClick={onChoosePlan} data-topups-choose
-            className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-xl px-5 text-[15px] font-semibold cta [--accent:var(--accent-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--accent))] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(var(--surface))]">
+          <p className="mt-1.5 text-[14px] leading-relaxed text-muted">
+            {t(inactive ? "pricing.topups.locked.inactiveSub" : "pricing.topups.locked.sub")}
+          </p>
+        )}
+        {inactive ? (
+          <Link href="/settings?tab=subscriptions" data-topups-manage className={LOCK_CTA}>
+            {t("pricing.topups.locked.inactiveCta")}
+          </Link>
+        ) : !failed && (
+          <button type="button" onClick={onChoosePlan} data-topups-choose className={LOCK_CTA}>
             {t("pricing.topups.locked.cta")}
           </button>
         )}
@@ -267,3 +281,5 @@ function LockOverlay({ reason, onChoosePlan }: { reason: PricingPageData["viewer
     </div>
   );
 }
+
+const LOCK_CTA = "mt-5 inline-flex h-11 w-full items-center justify-center rounded-xl px-5 text-[15px] font-semibold cta [--accent:var(--accent-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--accent))] focus-visible:ring-offset-2 focus-visible:ring-offset-[rgb(var(--surface))]";
