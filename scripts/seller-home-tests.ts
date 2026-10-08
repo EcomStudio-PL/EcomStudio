@@ -206,9 +206,12 @@ check("…copies are aria-hidden drawings, out of the Tab order (links tabIndex 
   /aria-hidden="true" data-loop-clone=\{side\}/.test(loopRail) && /tabIndex=\{copy && live \? -1 : undefined\}/.test(carousel)
   && /copy \? \{ "data-carousel-clone": def\.item \} : \{ "data-carousel-tile": def\.item \}/.test(carousel)
   && /tabIndex=\{tabIndex\}/.test(code("components/seller-home/parts.tsx")));
-check("…a pointer's focus never stays on a copy, yet a copy drags and clicks like its card (no mousedown preventDefault)",
+check("…a pointer's focus never stays on a copy (a mouse's dropped on release, a tap's at once), yet a copy drags and clicks like its card",
   /if \(el && track\.contains\(el\) && el\.closest\("\[data-loop-clone\]"\)\) el\.blur\(\);/.test(loopRail) && !/onMouseDown/.test(loopRail)
-  && !/addEventListener\("focusin"/.test(loopRail));
+  && /if \(el\.closest\("\[data-loop-clone\]"\)\) \{ if \(!pressRef\.current\) el\.blur\(\); return; \}/.test(loopRail)
+  && /const onContextMenu = \(\) => \{ onRelease\(\); dropCopyFocus\(\); \};/.test(loopRail));
+check("…Tab onto a real card the browser left half out of view brings it in (keyboard focus only)",
+  /if \(keyRef\.current \|\| !el\.matches\(":focus-visible"\)\) return;/.test(loopRail) && /if \(!shows\(g, at, k\)\) reveal\(k, k < at \? -1 : 1\);/.test(loopRail));
 check("…anything focusable a copy renders later (a clip's controls) gets tabindex -1 too",
   /"video", "audio", "iframe", "\[tabindex\]"/.test(loopRail) && /new MutationObserver\(quiet\)/.test(loopRail) && /setAttribute\("tabindex", "-1"\)/.test(loopRail));
 check("…a copy never preloads its picture (only the first real cards may)", /priority=\{!copy && index < 5\}/.test(carousel));
@@ -222,7 +225,7 @@ check("…stopped between two cards (only possible at the strip's very ends): ea
 check("…rest = `scrollend`, or no scroll event, no finger and no held button for a moment (a click is never lost to a move)",
   /addEventListener\("scrollend", onEnd\)/.test(loopRail) && /const SETTLE_MS = 140;/.test(loopRail)
   && /if \(touchRef\.current \|\| pressRef\.current \|\| glideRef\.current\) return;/.test(loopRail)
-  && /if \(e\.pointerType !== "touch"\) pressRef\.current = true;/.test(loopRail));
+  && /if \(e\.pointerType === "touch" \|\| e\.button !== 0\) return;\s*pressRef\.current = true;\s*if \(haltGlide\(\)\) track\.style\.scrollSnapType = "none";/.test(loopRail));
 check("…card + gap a multiple of 4px where round() exists, so the move between twins is exact on 1×/1.25×/1.5×/2×/3× screens",
   /supports-\[width:round\(down,1px,1px\)\]:\[&>\*\]:w-\[calc\(round\(nearest,calc\(.*_\+_var\(--rail-gap\)\),4px\)_-_var\(--rail-gap\)\)\]/.test(loopRail));
 check("arrows: always both, one card per press, presses add up; the glide is drawn by its own frames, snap off, every frame at the identical spot inside the range",
@@ -235,20 +238,27 @@ check("…same arrows, same place, same look as the plain Rail (hidden on a phon
 check("…reduced motion: no glide, the strip is simply there", /prefers-reduced-motion: reduce/.test(loopRail) && /const d = reducedMotion\(\) \? 0 : duration;/.test(loopRail));
 check("…a press during a glide carries its speed on (Hermite curve), never faster than an ease-out, never backwards",
   /const curve = \(g: Glide, s: number\) =>/.test(loopRail) && /Math\.min\(Math\.max\(Math\.abs\(prev\.v\), Math\.abs\(span\) \/ d\), \(3 \* Math\.abs\(span\)\) \/ d\)/.test(loopRail));
-check("…a finger or a sideways wheel takes over from a glide; a glide in flight is where ←/→ aim from",
-  /touchRef\.current = true; stopGlide\(\);/.test(loopRail) && /if \(e\.deltaX !== 0 \|\| e\.shiftKey\) stopGlide\(\);/.test(loopRail)
-  && /const rest = glide \? glide\.to : Math\.round\(now\);/.test(loopRail));
+check("…a finger or a sideways wheel takes the strip: a glide stops where it is, snapping stays off (nothing jumps under the hand), and out over the copies the strip is first moved back invisibly",
+  /touchRef\.current = true; window\.clearTimeout\(timerRef\.current\); takeOver\(\);/.test(loopRail) && /if \(e\.deltaX !== 0 \|\| e\.shiftKey\) takeOver\(\);/.test(loopRail)
+  && /const shift = at < -0\.5 \? n : at >= n - 0\.5 \? -n : 0;/.test(loopRail) && !/stopGlide/.test(loopRail)
+  && /if \(g\.track\.style\.scrollSnapType\) g\.track\.style\.scrollSnapType = "";/.test(loopRail));
+check("…once the finger moves, snapping comes back on (the browser snaps at the swipe's end): one card per swipe, however fast",
+  /const onTouchMove = \(\) => \{ if \(track\.style\.scrollSnapType\) track\.style\.scrollSnapType = ""; \};/.test(loopRail));
+check("…←/→ aim from where a running glide will rest, and always glide the way the focus moved (never backwards, never a lap)",
+  /const rest = glide \? glide\.to : Math\.round\(now\);/.test(loopRail) && /const start = dir > 0 \? end - ahead : end \+ \(\(n - ahead\) % n\);/.test(loopRail));
+check("…every frame of a glide moves (the clock read in the frame, not the frame's older timestamp)",
+  /Math\.min\(1, \(performance\.now\(\) - glide\.start\) \/ glide\.duration\)/.test(loopRail));
 check("←/→ on a card: its neighbour, the last card's being the first, stepping over cards that do not open; the real card comes into view",
   /const k = \(\(\(at \+ dir \* s\) % n\) \+ n\) % n;/.test(loopRail) && /target\.focus\(\{ preventScroll: true \}\)/.test(loopRail) && /reveal\(k, dir\)/.test(loopRail)
   && /closest\("input, textarea, select"\)\) return;/.test(loopRail));
 check("a new width puts the same real card back at the left edge; a height change (a font) does nothing",
   /if \(track\.clientWidth === width\) return;/.test(loopRail) && /new ResizeObserver/.test(loopRail));
 check("every listener is removed on unmount, each added once; a glide in flight is cancelled",
-  ["scroll", "scrollend", "touchstart", "touchend", "touchcancel", "wheel", "pointerdown", "pointerup", "pointercancel", "dragend"].every((ev) =>
+  ["scroll", "scrollend", "touchstart", "touchmove", "touchend", "touchcancel", "wheel", "pointerdown", "contextmenu", "focusin", "pointerup", "pointercancel", "dragend"].every((ev) =>
     (loopRail.match(new RegExp(`addEventListener\\("${ev}"`, "g")) ?? []).length === 1
     && (loopRail.match(new RegExp(`removeEventListener\\("${ev}"`, "g")) ?? []).length === 1)
   && /ro\?\.disconnect\(\)/.test(loopRail) && /mo\?\.disconnect\(\)/.test(loopRail)
-  && /window\.clearTimeout\(timerRef\.current\);\s*stopGlide\(\);\s*track\.removeEventListener/.test(loopRail));
+  && /window\.clearTimeout\(timerRef\.current\);\s*haltGlide\(\);\s*track\.removeEventListener/.test(loopRail));
 check("no carousel library: native scrolling and scroll-snap, like Rail", !/from "(embla|swiper|keen-slider|react-slick|flickity)/.test(loopRail)
   && /snap-x snap-mandatory/.test(loopRail) && /overflow-x-auto/.test(loopRail));
 {

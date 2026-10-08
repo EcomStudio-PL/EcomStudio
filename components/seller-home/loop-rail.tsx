@@ -130,6 +130,8 @@ export function LoopRail({ label, role, prevLabel, nextLabel, className, arrowTo
   const pressRef = useRef(false);
   const timerRef = useRef<number | undefined>(undefined);
   const settleRef = useRef<() => void>(() => {});
+  /** ←/→ is moving the focus (it brings the card in itself). */
+  const keyRef = useRef(false);
 
   const geometry = useCallback((): Geometry | null => {
     const track = trackRef.current;
@@ -156,13 +158,16 @@ export function LoopRail({ label, role, prevLabel, nextLabel, className, arrowTo
     return cards.findIndex((c) => c.contains(document.activeElement));
   }, []);
 
-  /** Stop a glide where it is (a hand took over); scroll-snap back on. */
-  const stopGlide = useCallback(() => {
+  /** Stop a glide right where it is. Scroll-snap stays off: put back between
+   *  two cards it would yank the strip to the nearer edge at once — under a
+   *  finger, onto another card. It comes back on when the strip is at rest on
+   *  a card (settle). True if a glide was running. */
+  const haltGlide = useCallback((): boolean => {
     const glide = glideRef.current;
-    if (!glide) return;
+    if (!glide) return false;
     cancelAnimationFrame(glide.frame);
     glideRef.current = null;
-    if (trackRef.current) trackRef.current.style.scrollSnapType = "";
+    return true;
   }, []);
 
   /**
@@ -187,11 +192,13 @@ export function LoopRail({ label, role, prevLabel, nextLabel, className, arrowTo
     } else if (prev && d > 0) v0 = prev.v;
     const glide: Glide = { from, to, v0, at: from, v: v0, start: performance.now(), duration: d, frame: 0 };
     glideRef.current = glide;
-    const frame = (now: number) => {
+    const frame = () => {
       if (glideRef.current !== glide) return;
       const g = geometry();
-      if (!g) { stopGlide(); return; }
-      const t = glide.duration > 0 ? Math.min(1, Math.max(0, (now - glide.start) / glide.duration)) : 1;
+      if (!g) { haltGlide(); return; }
+      // The clock read now, not the frame's timestamp (which may be older
+      // than the press): every frame of a glide moves.
+      const t = glide.duration > 0 ? Math.min(1, (performance.now() - glide.start) / glide.duration) : 1;
       if (t < 1) ({ at: glide.at, v: glide.v } = curve(glide, t));
       else { glide.at = glide.to; glide.v = 0; }
       jump(g.track, place(g, glide.at));
@@ -200,9 +207,9 @@ export function LoopRail({ label, role, prevLabel, nextLabel, className, arrowTo
       g.track.style.scrollSnapType = "";
       settleRef.current();
     };
-    if (glide.duration === 0) frame(performance.now());
+    if (glide.duration === 0) frame();
     else glide.frame = requestAnimationFrame(frame);
-  }, [geometry, stopGlide]);
+  }, [geometry, haltGlide]);
 
   /**
    * AT REST: stand on the real cards. Of the views identical to this one,
@@ -222,8 +229,56 @@ export function LoopRail({ label, role, prevLabel, nextLabel, className, arrowTo
     const best = (focus >= 0 ? options.find((i) => shows(g, i, focus)) : undefined)
       ?? options.find((i) => i >= 0 && i <= n - 1) ?? near;
     if (Math.abs(g.origin + best * g.pitch - g.track.scrollLeft) > 0.5) jump(g.track, g.origin + best * g.pitch);
+    // On a card's edge: scroll-snap back on (if a hand had it off), nothing moves.
+    if (g.track.style.scrollSnapType) g.track.style.scrollSnapType = "";
     indexRef.current = ((best % n) + n) % n;
   }, [geometry, glideTo, focusedCard, n]);
+
+  /**
+   * A finger or a sideways wheel takes the strip: a glide stops right where
+   * it is, and if the strip is out over the copies it is first moved —
+   * invisibly, by one list's width, scroll-snap off so the move is exact —
+   * back over the real cards, so a run of quick swipes never meets the end of
+   * the strip, however many there are before it ever comes to rest.
+   */
+  const takeOver = useCallback(() => {
+    const halted = haltGlide();
+    const g = geometry();
+    if (!g) return;
+    const at = where(g);
+    const shift = at < -0.5 ? n : at >= n - 0.5 ? -n : 0;
+    if (shift && Math.abs(at - Math.round(at)) > 0.02) g.track.style.scrollSnapType = "none";
+    if (shift) jump(g.track, g.origin + (at + shift) * g.pitch);
+    if (halted) g.track.style.scrollSnapType = "none";
+  }, [geometry, haltGlide, n]);
+
+  /** Bring real card k into view after the focus moved to it, coming in from
+   *  the side the focus moved towards (dir) — the real card, never a copy. */
+  const reveal = useCallback((k: number, dir: -1 | 1) => {
+    const g = geometry();
+    if (!g) return;
+    const glide = glideRef.current;
+    // Where the strip is going to rest (a glide's end, or here).
+    const now = glide ? glide.at : where(g);
+    const rest = glide ? glide.to : Math.round(now);
+    // That rest — or its twin one list away — may already show the card…
+    let end = [rest, rest - n, rest + n].find((i) => fits(g, i) && shows(g, i, k));
+    // …else card k at the right edge (moving right) or the left (moving left).
+    if (end === undefined) {
+      const whole = Math.max(1, Math.floor((g.track.clientWidth + g.gap) / g.pitch + 0.01));
+      end = dir > 0 ? k - (whole - 1) : k;
+    }
+    // Glide from the identical view that lies less than one list behind the
+    // end in the direction the focus moved: never backwards, never a lap.
+    const ahead = (((end - now) % n) + n) % n;
+    const start = dir > 0 ? end - ahead : end + ((n - ahead) % n);
+    if (!glide && Math.abs(start - end) < 0.001) {
+      if (Math.abs(g.origin + end * g.pitch - g.track.scrollLeft) > 0.5) jump(g.track, g.origin + end * g.pitch);
+      indexRef.current = ((end % n) + n) % n;
+      return;
+    }
+    glideTo(start, end, STEP_MS);
+  }, [geometry, glideTo, n]);
 
   useEffect(() => { settleRef.current = settle; }, [settle]);
 
@@ -249,29 +304,59 @@ export function LoopRail({ label, role, prevLabel, nextLabel, className, arrowTo
       timerRef.current = window.setTimeout(() => settleRef.current(), SETTLE_MS);
     };
     const onEnd = () => { window.clearTimeout(timerRef.current); settleRef.current(); };
-    // A finger or a sideways wheel takes over from a glide.
-    const onTouchStart = () => { touchRef.current = true; stopGlide(); window.clearTimeout(timerRef.current); };
+    // A finger or a sideways wheel takes the strip (see takeOver).
+    const onTouchStart = () => { touchRef.current = true; window.clearTimeout(timerRef.current); takeOver(); };
+    // Once the finger moves, the browser is scrolling with it and snaps only
+    // when the swipe ends: snapping can come back on — so a swipe begun over a
+    // halted glide or the invisible move still lands on a card's edge, one card
+    // per swipe, like any other.
+    const onTouchMove = () => { if (track.style.scrollSnapType) track.style.scrollSnapType = ""; };
     const onTouchEnd = () => { touchRef.current = false; later(); };
-    const onWheel = (e: WheelEvent) => { if (e.deltaX !== 0 || e.shiftKey) stopGlide(); };
-    // A held mouse button: the strip never moves under it, so a press and its
-    // release are on the same card and the click is never lost.
-    const onPointerDown = (e: PointerEvent) => { if (e.pointerType !== "touch") pressRef.current = true; };
+    const onWheel = (e: WheelEvent) => { if (e.deltaX !== 0 || e.shiftKey) takeOver(); };
+    // A held (main) mouse button: a glide stops and nothing settles under it,
+    // so a press and its release are on the same card and the click is never
+    // lost. Not moved over the copies: the card under the button must stay.
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.pointerType === "touch" || e.button !== 0) return;
+      pressRef.current = true;
+      if (haltGlide()) track.style.scrollSnapType = "none";
+    };
     const onRelease = () => { if (pressRef.current) { pressRef.current = false; later(); } };
     // A pointer's focus never stays on a copy (Tab cannot reach one at all):
-    // dropped when the press ends — not during it, which would cancel the
-    // link's own drag and turn a drag into a click.
-    const onPointerUp = () => {
-      onRelease();
+    // a mouse's is dropped when the press ends — not during it, which would
+    // cancel the link's own drag and turn a drag into a click; a tap's (which
+    // arrives after the finger has lifted) at once.
+    const dropCopyFocus = () => {
       const el = document.activeElement as HTMLElement | null;
       if (el && track.contains(el) && el.closest("[data-loop-clone]")) el.blur();
+    };
+    const onPointerUp = () => { onRelease(); dropCopyFocus(); };
+    // A context menu swallows the release (and may follow a ctrl-click).
+    const onContextMenu = () => { onRelease(); dropCopyFocus(); };
+    const onFocusIn = (e: FocusEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (!el) return;
+      if (el.closest("[data-loop-clone]")) { if (!pressRef.current) el.blur(); return; }
+      // Tab onto a real card the browser left half out of view: bring it in.
+      if (keyRef.current || !el.matches(":focus-visible")) return;
+      requestAnimationFrame(() => {
+        const k = focusedCard();
+        const g = geometry();
+        if (k < 0 || !g || glideRef.current) return;
+        const at = where(g);
+        if (!shows(g, at, k)) reveal(k, k < at ? -1 : 1);
+      });
     };
     track.addEventListener("scroll", later, { passive: true });
     track.addEventListener("scrollend", onEnd);
     track.addEventListener("touchstart", onTouchStart, { passive: true });
+    track.addEventListener("touchmove", onTouchMove, { passive: true });
     track.addEventListener("touchend", onTouchEnd, { passive: true });
     track.addEventListener("touchcancel", onTouchEnd, { passive: true });
     track.addEventListener("wheel", onWheel, { passive: true });
     track.addEventListener("pointerdown", onPointerDown, { passive: true });
+    track.addEventListener("contextmenu", onContextMenu);
+    track.addEventListener("focusin", onFocusIn);
     window.addEventListener("pointerup", onPointerUp, { passive: true });
     window.addEventListener("pointercancel", onRelease, { passive: true });
     window.addEventListener("dragend", onPointerUp, { passive: true });
@@ -292,32 +377,36 @@ export function LoopRail({ label, role, prevLabel, nextLabel, className, arrowTo
       ? new ResizeObserver(() => {
         if (track.clientWidth === width) return;
         width = track.clientWidth;
-        if (touchRef.current || glideRef.current) return;
+        if (touchRef.current || pressRef.current || glideRef.current) return;
         const g = geometry();
         if (!g) return;
         const focus = focusedCard();
         const at = focus >= 0 && !shows(g, indexRef.current, focus) ? focus : indexRef.current;
         jump(g.track, g.origin + at * g.pitch);
+        g.track.style.scrollSnapType = "";
       })
       : null;
     ro?.observe(track);
     return () => {
       window.clearTimeout(timerRef.current);
-      stopGlide();
+      haltGlide();
       track.removeEventListener("scroll", later);
       track.removeEventListener("scrollend", onEnd);
       track.removeEventListener("touchstart", onTouchStart);
+      track.removeEventListener("touchmove", onTouchMove);
       track.removeEventListener("touchend", onTouchEnd);
       track.removeEventListener("touchcancel", onTouchEnd);
       track.removeEventListener("wheel", onWheel);
       track.removeEventListener("pointerdown", onPointerDown);
+      track.removeEventListener("contextmenu", onContextMenu);
+      track.removeEventListener("focusin", onFocusIn);
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onRelease);
       window.removeEventListener("dragend", onPointerUp);
       mo?.disconnect();
       ro?.disconnect();
     };
-  }, [ready, geometry, focusedCard, stopGlide]);
+  }, [ready, geometry, focusedCard, haltGlide, takeOver, reveal]);
 
   /** One card left or right, round and round; presses add up. */
   const step = (dir: -1 | 1) => {
@@ -328,31 +417,6 @@ export function LoopRail({ label, role, prevLabel, nextLabel, className, arrowTo
     glideTo(from, (glide ? glide.to : Math.round(from)) + dir, STEP_MS);
   };
 
-  /** Bring real card k into view after the focus moved to it, coming in from
-   *  the side the focus moved towards (dir) — the real card, never a copy. */
-  const reveal = (k: number, dir: -1 | 1) => {
-    const g = geometry();
-    if (!g) return;
-    const glide = glideRef.current;
-    // Where the strip is going to rest (a glide's end, or here).
-    const now = glide ? glide.at : where(g);
-    const rest = glide ? glide.to : Math.round(now);
-    // That rest — or its twin one list away — may already show the card…
-    let end = [rest, rest - n, rest + n].find((i) => fits(g, i) && shows(g, i, k));
-    // …else card k at the right edge (moving right) or the left (moving left).
-    if (end === undefined) {
-      const whole = Math.max(1, Math.floor((g.track.clientWidth + g.gap) / g.pitch + 0.01));
-      end = dir > 0 ? k - (whole - 1) : k;
-    }
-    // Glide from whichever identical view lies nearest: the short way round.
-    const start = now + n * Math.round((end - now) / n);
-    if (!glide && Math.abs(start - end) < 0.001) {
-      if (Math.abs(g.origin + end * g.pitch - g.track.scrollLeft) > 0.5) jump(g.track, g.origin + end * g.pitch);
-      indexRef.current = ((end % n) + n) % n;
-      return;
-    }
-    glideTo(start, end, STEP_MS);
-  };
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
@@ -370,7 +434,9 @@ export function LoopRail({ label, role, prevLabel, nextLabel, className, arrowTo
       const target = card.matches(FOCUSABLE) ? card : card.querySelector<HTMLElement>(FOCUSABLE);
       if (!target) continue;
       e.preventDefault();
+      keyRef.current = true;
       target.focus({ preventScroll: true });
+      keyRef.current = false;
       reveal(k, dir);
       return;
     }
