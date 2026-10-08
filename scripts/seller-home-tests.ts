@@ -104,13 +104,27 @@ const FROZEN: readonly [string, string][] = [
   ["app/(app)/dashboard/layout.tsx", "091b1dad18ba00fa61c921d1969667191cb53626a046f6c3c184e3cc9805c4c6"],
   ["app/(app)/home/layout.tsx", "091b1dad18ba00fa61c921d1969667191cb53626a046f6c3c184e3cc9805c4c6"],
   ["app/(app)/layout.tsx", "fc003f788c68cbc3f26bdf516905d845a4d21a7b9abf1bbc37fa66e205826129"],
-  ["components/layout/mega-topbar.tsx", "913fe0c30674ddd6651a6025bbb646859c08a92f9a462dcc59df672690d7937a"],
   ["components/layout/customer-bottom-nav.tsx", "4c89edd41c3847467491bd290760b35ad69e92cd7695038d6edc1429297922d2"],
   ["components/layout/customer-drawer.tsx", "758aba86c7ee1a6fc88419038386d0bdde1b4b2949dd765630111e59482d6f1c"],
   ["components/feedback/feedback-cta.tsx", "d2406baf43ee849094e94fe01cc9a1620c1e01a354cd62a6049832cc2c1690a2"],
   ["middleware.ts", "4f7eb9dbae73a29d4a225b54f84dd509bc04ca7592fefa361b0b4a40e6864761"],
 ];
 for (const [file, digest] of FROZEN) check(`${file} unchanged`, sha(readFileSync(file)) === digest);
+// THE HEADER CHANGED BY ONE LINK, AND ONLY THAT. The /plany task (public
+// cennik) sends a VISITOR's "Plany" to /plany instead of the login-gated /plan
+// and lights the item on either path. Undo exactly that and the file is
+// byte-identical to the frozen release — no other pixel of the bar moved.
+{
+  const bar = readFileSync("components/layout/mega-topbar.tsx", "utf8");
+  const PLANY_NOTE = "          // A visitor goes to the PUBLIC cennik; /plan sits behind the login.\n";
+  const restored = bar
+    .replace(PLANY_NOTE, "")
+    .replace('<Link href={guest ? "/plany" : "/plan"}', '<Link href="/plan"')
+    .replace('isNavActive(pathname, "/plan") || isNavActive(pathname, "/plany")\n                ? "bg-[rgb(var(--accent)/0.14)] text-ink" : "text-muted hover:bg-raised hover:text-ink",',
+      'isNavActive(pathname, "/plan") ? "bg-[rgb(var(--accent)/0.14)] text-ink" : "text-muted hover:bg-raised hover:text-ink",');
+  check("components/layout/mega-topbar.tsx differs only by the visitor's cennik link",
+    sha(restored) === "913fe0c30674ddd6651a6025bbb646859c08a92f9a462dcc59df672690d7937a" && restored !== bar);
+}
 // The shared media components and globals are pinned against git, not a
 // literal: the redesign reuses them and must not edit them.
 check("…the shared media components, tool-thumb and globals.css are byte-identical to the last release",
@@ -509,14 +523,15 @@ check("…which feeds the screen's own upload and starts nothing", /useHomeHando
 check("/home has no generation path: no AI route, no provider, no prompt",
   !/\/api\/(generate|concepts|prompts|tools|retouch)|runGeneration|lib\/ai\/|prompt_text/.test(SH + code("lib/home-handoff.ts")));
 const PAY: readonly [string, string][] = [
-  ["lib/server/checkout.ts", "a821fd4514e04b5cf566a49dcd5bb25343e2325c17f49b888a047ce85f096468"],
+  // Re-pinned by the /plany task (top-up gate, tier contract, offer switches).
+  // The old pricing board is gone: /plan and /plany share components/plan/pricing-page.tsx.
+  ["lib/server/checkout.ts", "49d970698bf41b3b1b4ea691370698b99cb89f2a9636cd32389e91b732af9982"],
   ["lib/server/stripe-webhook.ts", "e9a03ea46af4bb7d5c91332969154e4b111b4c1634fbbe124a1ba6b8e03c95d2"],
   ["lib/stripe/config.ts", "0679ce3f018add12ead081c8a667511be4237661d15b9a024fb9ec578ed71df1"],
-  ["components/plan/pricing-board.tsx", "780ee8f6eafd14beab47bf3467faa5b9e02f7ee188d7aa35e5d18fa608807ee5"],
   ["components/plan/pricing-model.ts", "c696e3d3361e8f884eaa6e7b4835f5dea1db542c27ebbc6e98ae807de456e503"],
-  ["components/plan/pricing-config.ts", "82d606625319075f0bb29e4e79e6aa6867f1995c8262c1015ab547127a10b814"],
+  ["components/plan/pricing-config.ts", "bc0bec120515ef7fb6ef7146ea456c5e67fba7250da7aadee96201e4d4c59233"],
   ["components/plan/credit-coin-stack.tsx", "e3dd4c91b1917edd8872c3105633c30f170513a97034ea90f59e102caa00247b"],
-  ["components/plan/checkout-notice.tsx", "a7c5a455369ccb2bd99bdab0a5a8779f0c07f8d9b176f32bfd93f9315c0f2813"],
+  ["components/plan/checkout-notice.tsx", "3bbf679b6a1275d84d5605c44c1144b87f27d98162bb5327ff7f8ae55ccff54c"],
 ];
 for (const [file, digest] of PAY) check(`${file} unchanged`, sha(readFileSync(file)) === digest);
 check("the no-credits dialog only links to the existing checkout intent and /plan",

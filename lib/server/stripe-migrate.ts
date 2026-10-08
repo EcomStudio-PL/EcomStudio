@@ -2,6 +2,7 @@ import "server-only";
 import type { Client } from "@/lib/services/workspace";
 import { stripeGet, stripePost, StripeApiError } from "@/lib/stripe/client";
 import type { PricePeriod } from "@/lib/server/stripe-pricing";
+import { isPriceLocked } from "@/lib/server/pricing-offer";
 
 /**
  * MOVING PEOPLE WHO ARE ALREADY PAYING ONTO A NEW PRICE.
@@ -42,6 +43,7 @@ type StripeSubscription = {
   id: string;
   status: string;
   items?: { data?: StripeSubscriptionItem[] };
+  metadata?: Record<string, string> | null;
 };
 
 /** The plan's current mapping and displayed price for a period. */
@@ -138,6 +140,9 @@ export async function migrateSubscriptionsToCurrentPrice(
       // it fresh rather than storing it: an item id can change, and a stale one
       // would silently create a SECOND item and bill both.
       const sub = await stripeGet<StripeSubscription>(`/subscriptions/${subId}`, {});
+      // A PREMIERE PRICE LOCK IS A PROMISE: "you keep this price until you
+      // cancel or change plan". A bulk migration is neither, so it skips them.
+      if (isPriceLocked(sub.metadata)) { continue; }
       const item = sub.items?.data?.[0];
       if (!item?.id) { failed += 1; continue; }
       if (item.price?.id === target) { continue; }

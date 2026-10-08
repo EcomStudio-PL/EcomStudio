@@ -12,12 +12,14 @@ import { blogPath } from "@/lib/grovnews-blog";
  * auth pages and the legal documents — and nothing else.
  */
 /** Slugs the fixed list already owns or that are not public pages. */
-const RESERVED_SLUGS = new Set(["home", "blog"]);
+const RESERVED_SLUGS = new Set(["home", "blog", "plany", "cennik"]);
 
 const PUBLIC_ROUTES = [
   { path: "/", priority: 1, changeFrequency: "weekly" as const },
   { path: "/login", priority: 0.5, changeFrequency: "monthly" as const },
   { path: "/register", priority: 0.6, changeFrequency: "monthly" as const },
+  // The public cennik. /cennik redirects here and is not listed.
+  { path: "/plany", priority: 0.8, changeFrequency: "weekly" as const },
   { path: "/polityka-prywatnosci", priority: 0.3, changeFrequency: "yearly" as const },
   { path: "/regulamin", priority: 0.3, changeFrequency: "yearly" as const },
 ];

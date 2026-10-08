@@ -3186,7 +3186,7 @@
     "manageBilling": "Zarządzaj płatnościami",
     "manageBillingSub": "Karty, faktury i subskrypcja — w panelu Stripe.",
     "portalNoCustomer": "Ta przestrzeń nie ma jeszcze historii płatności.",
-    "alreadySubscribed": "Ta przestrzeń ma już aktywną subskrypcję. Zmień plan w panelu płatności.",
+    "alreadySubscribed": "Ta przestrzeń ma już aktywną subskrypcję. Aby zmienić plan, napisz do nas — przeprowadzimy zmianę.",
     "planNotPurchasable": "Tego planu nie można kupić.",
     "perCreditApprox": "~{price} za 1 kredyt",
     "referenceBasis": "Ceny przekreślone i rabaty liczone względem ceny za kredyt w najmniejszym pakiecie ({price}).",
@@ -3195,6 +3195,176 @@
     "nextStep": "Dodaj jeszcze {n} kredytów, aby uzyskać {pct}",
     "nextStepAction": "Dodaj",
     "atBest": "Najniższa cena za kredyt w tym zakresie"
+  },
+  "pricing": {
+    "meta": {
+      "title": "Plany i cennik",
+      "description": "Plany GrovBase dla sprzedawców e-commerce: STARTER, PRO i BUSINESS. Kredyty co miesiąc na zdjęcia produktowe AI, porównanie planów, doładowania kredytów i odpowiedzi na najczęstsze pytania."
+    },
+    "title": "Wybierz plan",
+    "sub": "Kredyty co miesiąc na zdjęcia produktowe AI — koszt każdej generacji widzisz, zanim ją uruchomisz.",
+    "soon": "Wkrótce",
+    "buyCredits": "Kup kredyty",
+    "period": {
+      "monthly": "Miesięcznie",
+      "annual": "Rocznie",
+      "annualSave": "−{n}%",
+      "annualSoon": "wkrótce",
+      "annualSoonHint": "Płatność roczna będzie dostępna wkrótce."
+    },
+    "premiere": {
+      "badge": "Cena premierowa",
+      "title": "Dołącz przed końcem października i zachowaj cenę premierową",
+      "sub": "Zachowasz tę cenę przy kolejnych odnowieniach, dopóki nie anulujesz lub nie zmienisz planu.",
+      "endsIn": "Oferta kończy się za",
+      "days": "DNI",
+      "hours": "GODZ.",
+      "minutes": "MIN.",
+      "seconds": "SEK.",
+      "endsOn": "Oferta kończy się {date} (czas polski)."
+    },
+    "plan": {
+      "audience": {
+        "starter": "Dla sprzedawców, którzy zaczynają",
+        "pro": "Dla sklepów, które publikują regularnie",
+        "business": "Dla zespołów, agencji i dużych katalogów",
+        "default": "Plan abonamentowy GrovBase"
+      },
+      "badge": {
+        "starter": "Na start",
+        "pro": "Najpopularniejszy",
+        "business": "Dla zespołów",
+        "default": "Plan"
+      },
+      "creditsUnit": "kredytów",
+      "perMonth": "/ mies.",
+      "approx2k": "≈ {n} zdjęć produktowych w 2K",
+      "approx4k": "≈ {n} zdjęć w 4K",
+      "approxBasis": "Liczby zdjęć to szacunek przy cenie modelu {model}: 2K = {k2} kr., 4K = {k4} kr. za zdjęcie. Inne narzędzia i modele mogą kosztować inaczej.",
+      "costVisible": "Koszt każdej generacji w kredytach widzisz przed jej uruchomieniem.",
+      "perCredit": "≈ {price} za 1 kredyt",
+      "billedYearly": "{price} płatne rocznie",
+      "saveYearly": "oszczędzasz {price}",
+      "choose": "Wybierz {name}",
+      "current": "Twój obecny plan",
+      "hasPlan": "Masz już aktywny plan",
+      "changeHint": "Jak zmienić plan?",
+      "unavailable": "Chwilowo niedostępny"
+    },
+    "group": {
+      "highlights": "Wyróżnione możliwości",
+      "tools": "Narzędzia",
+      "output": "Generowanie i eksport",
+      "team": "Zespół i kontrola",
+      "support": "Wsparcie i licencja"
+    },
+    "feat": {
+      "creditsMonthly": "Kredyty co miesiąc",
+      "creditPrice": "Cena 1 kredytu w planie",
+      "noExpiry": "Kredyty nie wygasają",
+      "topups": "Doładowania kredytów w każdej chwili",
+      "allTools": "Wszystkie narzędzia obrazu",
+      "customPrompts": "Własne prompty",
+      "video": "Wideo AI",
+      "quality": "Jakość 2K i 4K",
+      "library": "Biblioteka i historia wyników",
+      "seats": "Miejsca w zespole",
+      "priority": "Priorytetowa kolejka",
+      "operator": "Tryb operatora",
+      "supportEmail": "Wsparcie e-mail",
+      "supportDedicated": "Dedykowane wsparcie",
+      "commercial": "Użytek komercyjny"
+    },
+    "free": "{name} — bez opłat. Comiesięczne kredyty i doładowania są dostępne w planach płatnych.",
+    "compare": {
+      "title": "Porównanie planów",
+      "feature": "Funkcja",
+      "choose": "Wybierz",
+      "showAll": "Pokaż wszystkie funkcje",
+      "showLess": "Zwiń porównanie",
+      "yes": "Tak",
+      "no": "Nie",
+      "group": {
+        "credits": "Kredyty",
+        "imageTools": "Narzędzia obrazu",
+        "video": "Wideo",
+        "output": "Generowanie i eksport",
+        "team": "Zespół",
+        "support": "Wsparcie",
+        "license": "Licencja"
+      }
+    },
+    "topups": {
+      "title": "Doładuj kredyty",
+      "sub": "Więcej kredytów = niższa cena za 1 kredyt",
+      "bonus": "+{n} bonus",
+      "total": "Łącznie {n} kredytów",
+      "perCredit": "{price} / kredyt",
+      "save": "−{n}% za kredyt",
+      "saveBasis": "Oszczędność liczona względem ceny za kredyt w pakiecie 100 kredytów.",
+      "best": "Best value",
+      "buy": "Kup",
+      "soonPrice": "Cena wkrótce",
+      "noExpiry": "Kredyty nie wygasają i trafiają na konto zaraz po potwierdzeniu płatności.",
+      "paymentsOff": "Płatności nie są jeszcze włączone.",
+      "customTitle": "Własna liczba kredytów",
+      "customSub": "Im więcej wybierzesz, tym mniej płacisz za 1 kredyt.",
+      "toPay": "Kwota do zapłaty",
+      "tierSoon": "Ten próg będzie dostępny wkrótce",
+      "sliderLabel": "Liczba kredytów",
+      "check": {
+        "instant": "Natychmiastowe doładowanie",
+        "secure": "Bezpieczna płatność przez Stripe",
+        "noExpiry": "Kredyty nie wygasają"
+      },
+      "locked": {
+        "title": "Doładowania dostępne z aktywnym planem",
+        "sub": "Wybierz plan — potem dokupisz kredyty w dowolnym momencie.",
+        "cta": "Wybierz plan",
+        "checkFailed": "Nie udało się sprawdzić Twojego planu. Odśwież stronę za chwilę."
+      }
+    },
+    "notice": {
+      "planRequired": "Doładowania kredytów są dostępne z aktywnym planem płatnym. Wybierz plan, aby dokupić kredyty.",
+      "annualUnavailable": "Płatność roczna nie jest jeszcze dostępna.",
+      "offerExpired": "Oferta premierowa się zakończyła. Odśwież stronę, aby zobaczyć aktualne ceny."
+    },
+    "faq": {
+      "overline": "Najczęstsze pytania",
+      "title": "Najczęstsze pytania o plany i płatności",
+      "credits": {
+        "q": "Jak działają kredyty?",
+        "a": "Kredyty to waluta GrovBase: każde narzędzie pokazuje swój koszt w kredytach, zanim uruchomisz generowanie, a cena zależy od narzędzia i jakości (np. 2K lub 4K). Kredyty pobieramy przy generowaniu — jeśli generacja się nie uda, wracają na Twoje konto automatycznie."
+      },
+      "renewal": {
+        "q": "Czy subskrypcja odnawia się automatycznie?",
+        "a": "Tak — plan odnawia się co miesiąc, a po każdej opłaconej płatności dodajemy kredyty z planu. Subskrypcję anulujesz w panelu płatności Stripe: plan działa do końca opłaconego okresu, a kredyty zostają na koncie."
+      },
+      "methods": {
+        "q": "Z jakich metod płatności mogę skorzystać?",
+        "a": "Płatności obsługuje Stripe. Plan opłacisz kartą płatniczą, a jednorazowe doładowania także BLIKiem. Formularz płatności pokazuje metody dostępne na Twoim urządzeniu, w tym portfele takie jak Apple Pay czy Google Pay."
+      },
+      "topups": {
+        "q": "Jak mogę kupić dodatkowe kredyty?",
+        "a": "Doładowania są dostępne dla aktywnych planów płatnych: w sekcji „Doładuj kredyty” wybierz pakiet albo własną liczbę kredytów. Kredyty z doładowania nie wygasają i trafiają na konto po potwierdzeniu płatności."
+      },
+      "refunds": {
+        "q": "Czy istnieje możliwość zwrotu?",
+        "a": "Każdą prośbę o zwrot płatności rozpatrujemy indywidualnie — napisz do nas przez stronę kontaktu. Kredyty za generacje, które się nie udały, wracają na konto automatycznie."
+      },
+      "howMany": {
+        "q": "Ile obrazów lub wideo mogę wygenerować?",
+        "a": "To zależy od narzędzia i jakości: koszt każdej generacji widzisz w kredytach, zanim ją uruchomisz, więc łatwo przeliczysz swój plan. Generowanie wideo jest w przygotowaniu i nie jest jeszcze dostępne."
+      },
+      "change": {
+        "q": "Czy po zakupie mogę zmienić subskrypcję?",
+        "a": "Samodzielna zmiana planu w panelu nie jest jeszcze dostępna. Napisz do nas, a przeprowadzimy zmianę — albo anuluj obecny plan i po zakończeniu opłaconego okresu wybierz nowy."
+      },
+      "premiere": {
+        "q": "Jak działa cena premierowa?",
+        "a": "Jeśli kupisz plan przed końcem oferty, zachowasz jego cenę premierową przy kolejnych odnowieniach — dopóki nie anulujesz subskrypcji lub nie zmienisz planu. Po zakończeniu oferty nowe subskrypcje mają cenę regularną."
+      }
+    }
   },
   "mobilenav": {
     "home": "Start",

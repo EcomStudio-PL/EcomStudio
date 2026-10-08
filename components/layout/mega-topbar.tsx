@@ -217,12 +217,14 @@ export function MegaTopbar({ name, email, credits, plan, isAdmin = false, navAdm
             that prompted it. The language switch left this bar for the account
             popover — three flags of permanent chrome for a choice made once. */}
         {menuVisible(avail, "/plan", seesRestricted) && (
-          <Link href="/plan"
+          // A visitor goes to the PUBLIC cennik; /plan sits behind the login.
+          <Link href={guest ? "/plany" : "/plan"}
             className={cn(
               "hidden h-9 items-center rounded-xl px-3 text-sm font-semibold transition-colors duration-200 lg:inline-flex",
               // Segment-aware, so a future /plans or /planner cannot light
               // "Plany" — `startsWith` had no boundary. Same rule as the menus.
-              isNavActive(pathname, "/plan") ? "bg-[rgb(var(--accent)/0.14)] text-ink" : "text-muted hover:bg-raised hover:text-ink",
+              isNavActive(pathname, "/plan") || isNavActive(pathname, "/plany")
+                ? "bg-[rgb(var(--accent)/0.14)] text-ink" : "text-muted hover:bg-raised hover:text-ink",
             )}>
             {t("nav.plans")}
           </Link>

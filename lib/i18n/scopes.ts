@@ -83,6 +83,7 @@ const app = [
   "notif",
   "packs",
   "plans",
+  "pricing",
   "products",
   "prompts",
   "psess",

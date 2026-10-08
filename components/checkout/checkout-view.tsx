@@ -103,9 +103,12 @@ function HostedFallback({ request, quote }: { request: Record<string, unknown>; 
     setBusy(false);
     notify.error(t(
       res.reason === "already_subscribed" ? "packs.alreadySubscribed"
+      : res.reason === "plan_required" ? "pricing.notice.planRequired"
+      : res.reason === "offer_expired" ? "pricing.notice.offerExpired"
       : res.reason === "invalid_credits" ? "packs.checkoutInvalidCredits"
       : res.reason === "plan_not_purchasable" ? "packs.planNotPurchasable"
       : res.reason === "payments_disabled" || res.reason === "not_mapped"
+        || res.reason === "price_out_of_sync" || res.reason === "annual_unavailable"
         ? "packs.checkoutUnavailable"
         : "packs.checkoutFailed",
     ));
@@ -739,6 +742,9 @@ function Refusal({ reason, kind }: { reason: string; kind: Quote["kind"] }) {
     : reason === "in_progress" ? "checkout.grovnewsInProgress"
     : reason.startsWith("code_") ? `checkout.codeRefused.${reason}`
     : reason === "already_subscribed" ? "packs.alreadySubscribed"
+    // No active paid plan: top-ups are for subscribers, checked on the server.
+    : reason === "plan_required" ? "pricing.notice.planRequired"
+    : reason === "offer_expired" ? "pricing.notice.offerExpired"
     : reason === "invalid_credits" ? "packs.checkoutInvalidCredits"
     : reason === "plan_not_purchasable" ? "packs.planNotPurchasable"
     // `stripe_unauthorized` belongs in THIS group, not in "try again", and the
@@ -749,7 +755,7 @@ function Refusal({ reason, kind }: { reason: string; kind: Quote["kind"] }) {
     // where an operator can act on it; the customer gets the truth at their
     // level of it.
     : reason === "price_out_of_sync" || reason === "not_mapped" || reason === "grovnews_unavailable"
-      || reason === "payments_disabled" || reason === "stripe_unauthorized"
+      || reason === "payments_disabled" || reason === "stripe_unauthorized" || reason === "annual_unavailable"
       ? "packs.checkoutUnavailable"
       : "packs.checkoutFailed";
   return (

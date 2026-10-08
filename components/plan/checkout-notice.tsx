@@ -48,6 +48,12 @@ const REFUSAL_COPY: Record<string, string> = {
   // moment, so it reads as "unavailable" and never as "try again" — which is
   // advice that cannot work until somebody changes the key.
   stripe_unauthorized: "packs.checkoutUnavailable",
+  // Top-ups are sold to active paid plans only — the server refused, and the
+  // page says why instead of looking like a dead button.
+  plan_required: "pricing.notice.planRequired",
+  plan_check_failed: "packs.checkoutFailed",
+  annual_unavailable: "pricing.notice.annualUnavailable",
+  offer_expired: "pricing.notice.offerExpired",
 };
 
 export type CheckoutStatus = "success" | "cancelled" | keyof typeof REFUSAL_COPY;

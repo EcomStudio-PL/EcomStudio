@@ -372,8 +372,11 @@ async function main() {
     const src = codeOnly(read("lib/server/checkout.ts"));
     check("the checkout service never reads an amount from its request",
       !/req\.(amount|amountCents|price|unit_amount)/.test(src));
+    // Through priceTopup (lib/server/pricing-offer.ts), which only accepts the
+    // offered tiers and prices them with validateCustomCredits.
     check("custom credits are re-validated server-side on every begin",
-      /validateCustomCredits\(/.test(src));
+      /priceTopup\(req\.credits/.test(src)
+      && /validateCustomCredits\(/.test(codeOnly(read("lib/server/pricing-offer.ts"))));
     const action = codeOnly(read("app/actions/checkout.ts"));
     check("the action rebuilds the request from a known shape",
       /function sanitise\(/.test(action),
@@ -659,6 +662,10 @@ async function main() {
         if (method === "GET" && path === "/subscriptions") {
           return new Response(JSON.stringify({ data: [] }), { status: 200 });
         }
+        // The top-up gate asks Stripe whether the workspace's plan is live.
+        if (method === "GET" && path === "/subscriptions/sub_live") {
+          return new Response(JSON.stringify({ id: "sub_live", status: "active" }), { status: 200 });
+        }
         if (method === "POST" && path === "/subscriptions") {
           return new Response(JSON.stringify({
             id: "sub_stub", status: "incomplete",
@@ -686,8 +693,15 @@ async function main() {
         stripe_sync_status: "synced" },
     ];
 
-    /** Answers the four reads beginCheckout makes, the way Postgres would. */
-    function checkoutDb() {
+    /**
+     * Answers the reads beginCheckout makes, the way Postgres would. Top-ups
+     * are sold only to a workspace with an ACTIVE paid plan (lib/server/
+     * billing.ts requireActivePaidPlan), so the one-off attempts run with one;
+     * the plan attempt runs without, or it would be `already_subscribed`.
+     */
+    const ACTIVE_SUB = [{ workspace_id: "ws-0000", plan_id: "plan-starter", status: "active",
+      current_period_end: "2099-01-01T00:00:00Z", provider: "stripe", provider_subscription_id: "sub_live" }];
+    function checkoutDb(withPlan = false) {
       const build = (rows: Row[]) => {
         const filters: Record<string, unknown> = {};
         const matching = () => rows.filter((r) =>
@@ -696,6 +710,7 @@ async function main() {
           select: () => q,
           eq: (col: string, val: unknown) => { filters[col] = val; return q; },
           in: () => q,
+          order: () => q,
           limit: () => Promise.resolve({ data: matching(), error: null }),
           maybeSingle: () => Promise.resolve({ data: matching()[0] ?? null, error: null }),
           // `custom_credits` awaits the builder itself rather than calling a
@@ -709,6 +724,7 @@ async function main() {
         from: (name: string) => build(
           name === "credit_packages" ? PACKS
           : name === "subscription_plans" ? PLANS
+          : name === "subscriptions" && withPlan ? ACTIVE_SUB
           : [],
         ),
         rpc: async (fn: string) =>
@@ -719,12 +735,12 @@ async function main() {
     const WS = { id: "ws-0000", name: "Test Workspace" };
 
     /** Run one checkout with console.error captured. */
-    async function attempt(req: Parameters<typeof beginCheckout>[3]) {
+    async function attempt(req: Parameters<typeof beginCheckout>[3], withPlan = req.kind !== "subscription") {
       const logged: string[] = [];
       const original = console.error;
       console.error = (...args: unknown[]) => { logged.push(args.map(String).join(" ")); };
       try {
-        const res = await beginCheckout(checkoutDb(), WS, "buyer@example.test", req);
+        const res = await beginCheckout(checkoutDb(withPlan), WS, "buyer@example.test", req);
         return { res, logged };
       } finally { console.error = original; }
     }
@@ -752,7 +768,8 @@ async function main() {
 
     // 3. AND CUSTOM CREDITS, which take the same branch.
     installSplitStripe();
-    const custom = await attempt({ kind: "custom_credits", credits: 400 });
+    // 300: an offered amount (a pack slot with no pack row) inside the ladder.
+    const custom = await attempt({ kind: "custom_credits", credits: 300 });
     check("custom credits are refused the same way",
       !custom.res.ok && custom.res.reason === "stripe_unauthorized",
       custom.res.ok ? "succeeded" : custom.res.reason);

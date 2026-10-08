@@ -1661,7 +1661,9 @@ const recOf = (v: unknown) => (v && typeof v === "object" ? v : {}) as Record<st
     const now = slugsOf(latest);
     check(`C3 the latest migration defining cms_slug_is_reserved (${latest}) has 'blog' and all ${first.length} earlier slugs`,
       first.length === 29 && now.includes("blog") && first.every((s) => now.includes(s)) && now.length === 30, JSON.stringify({ defining, missing: first.filter((s) => !now.includes(s)) }));
-    check("C3 app/sitemap.ts still reserves [\"home\", \"blog\"]", /const RESERVED_SLUGS = new Set\(\["home", "blog"\]\);/.test(read("app/sitemap.ts")));
+    // /plany and /cennik joined the list with the public cennik; "home" and
+    // "blog" must still be the first two.
+    check("C3 app/sitemap.ts still reserves [\"home\", \"blog\"]", /const RESERVED_SLUGS = new Set\(\["home", "blog"(, "[a-z-]+")*\]\);/.test(read("app/sitemap.ts")));
   }
 
   /* ── Z ─────────────────────────────────────────────────────────────────────── */

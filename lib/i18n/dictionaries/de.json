@@ -3186,7 +3186,7 @@
     "manageBilling": "Zahlungen verwalten",
     "manageBillingSub": "Karten, Rechnungen und Abo — im Stripe-Portal.",
     "portalNoCustomer": "Dieser Workspace hat noch keine Zahlungshistorie.",
-    "alreadySubscribed": "Dieser Workspace hat bereits ein aktives Abo. Ändere den Plan im Zahlungsportal.",
+    "alreadySubscribed": "Dieser Workspace hat bereits ein aktives Abo. Für einen Planwechsel schreib uns – wir stellen ihn für dich um.",
     "planNotPurchasable": "Dieser Plan kann nicht gekauft werden.",
     "perCreditApprox": "~{price} pro Credit",
     "referenceBasis": "Durchgestrichene Preise und Rabate beziehen sich auf den Credit-Preis im kleinsten Paket ({price}).",
@@ -3195,6 +3195,176 @@
     "nextStep": "Noch {n} Credits hinzufügen für {pct}",
     "nextStepAction": "Hinzufügen",
     "atBest": "Niedrigster Preis pro Credit in diesem Bereich"
+  },
+  "pricing": {
+    "meta": {
+      "title": "Pläne und Preise",
+      "description": "GrovBase-Pläne für E-Commerce-Händler: STARTER, PRO und BUSINESS. Monatliche Credits für KI-Produktfotos, ein Planvergleich, Credit-Aufladungen und Antworten auf häufige Fragen."
+    },
+    "title": "Wähle einen Plan",
+    "sub": "Monatliche Credits für KI-Produktfotos — die Kosten jeder Generierung siehst du, bevor du sie startest.",
+    "soon": "Bald",
+    "buyCredits": "Credits kaufen",
+    "period": {
+      "monthly": "Monatlich",
+      "annual": "Jährlich",
+      "annualSave": "−{n}%",
+      "annualSoon": "bald",
+      "annualSoonHint": "Die jährliche Zahlung ist bald verfügbar."
+    },
+    "premiere": {
+      "badge": "Startpreis",
+      "title": "Starte vor Ende Oktober und behalte den Startpreis",
+      "sub": "Du behältst diesen Preis bei jeder Verlängerung, bis du kündigst oder den Plan wechselst.",
+      "endsIn": "Angebot endet in",
+      "days": "TAGE",
+      "hours": "STD.",
+      "minutes": "MIN.",
+      "seconds": "SEK.",
+      "endsOn": "Das Angebot endet am {date} (polnische Zeit)."
+    },
+    "plan": {
+      "audience": {
+        "starter": "Für Händler, die gerade starten",
+        "pro": "Für Shops, die regelmäßig veröffentlichen",
+        "business": "Für Teams, Agenturen und große Kataloge",
+        "default": "GrovBase-Abo"
+      },
+      "badge": {
+        "starter": "Für den Start",
+        "pro": "Am beliebtesten",
+        "business": "Für Teams",
+        "default": "Plan"
+      },
+      "creditsUnit": "Credits",
+      "perMonth": "/ Mon.",
+      "approx2k": "≈ {n} Produktfotos in 2K",
+      "approx4k": "≈ {n} Fotos in 4K",
+      "approxBasis": "Die Fotoanzahl ist eine Schätzung zum Preis von {model}: 2K = {k2} Cr., 4K = {k4} Cr. pro Foto. Andere Tools und Modelle können anders kosten.",
+      "costVisible": "Die Credit-Kosten jeder Generierung siehst du, bevor du sie startest.",
+      "perCredit": "≈ {price} pro Credit",
+      "billedYearly": "{price} jährlich abgerechnet",
+      "saveYearly": "du sparst {price}",
+      "choose": "{name} wählen",
+      "current": "Dein aktueller Plan",
+      "hasPlan": "Du hast bereits einen aktiven Plan",
+      "changeHint": "Wie wechsle ich den Plan?",
+      "unavailable": "Vorübergehend nicht verfügbar"
+    },
+    "group": {
+      "highlights": "Highlights",
+      "tools": "Tools",
+      "output": "Generierung und Export",
+      "team": "Team und Kontrolle",
+      "support": "Support und Lizenz"
+    },
+    "feat": {
+      "creditsMonthly": "Credits jeden Monat",
+      "creditPrice": "Preis für 1 Credit im Plan",
+      "noExpiry": "Credits verfallen nicht",
+      "topups": "Credit-Aufladungen jederzeit",
+      "allTools": "Alle Bild-Tools",
+      "customPrompts": "Eigene Prompts",
+      "video": "KI-Video",
+      "quality": "Qualität 2K und 4K",
+      "library": "Bibliothek und Ergebnisverlauf",
+      "seats": "Team-Plätze",
+      "priority": "Prioritäts-Warteschlange",
+      "operator": "Operator-Modus",
+      "supportEmail": "E-Mail-Support",
+      "supportDedicated": "Persönlicher Support",
+      "commercial": "Kommerzielle Nutzung"
+    },
+    "free": "{name} — kostenlos. Monatliche Credits und Aufladungen gibt es in den bezahlten Plänen.",
+    "compare": {
+      "title": "Pläne im Vergleich",
+      "feature": "Funktion",
+      "choose": "Wählen",
+      "showAll": "Alle Funktionen anzeigen",
+      "showLess": "Vergleich einklappen",
+      "yes": "Ja",
+      "no": "Nein",
+      "group": {
+        "credits": "Credits",
+        "imageTools": "Bild-Tools",
+        "video": "Video",
+        "output": "Generierung und Export",
+        "team": "Team",
+        "support": "Support",
+        "license": "Lizenz"
+      }
+    },
+    "topups": {
+      "title": "Credits aufladen",
+      "sub": "Mehr Credits = niedrigerer Preis pro Credit",
+      "bonus": "+{n} Bonus",
+      "total": "Insgesamt {n} Credits",
+      "perCredit": "{price} / Credit",
+      "save": "−{n}% pro Credit",
+      "saveBasis": "Die Ersparnis bezieht sich auf den Preis pro Credit im 100-Credit-Paket.",
+      "best": "Best value",
+      "buy": "Kaufen",
+      "soonPrice": "Preis folgt bald",
+      "noExpiry": "Credits verfallen nicht und landen auf deinem Konto, sobald die Zahlung bestätigt ist.",
+      "paymentsOff": "Zahlungen sind noch nicht aktiviert.",
+      "customTitle": "Eigene Anzahl Credits",
+      "customSub": "Je mehr du wählst, desto weniger zahlst du pro Credit.",
+      "toPay": "Zu zahlender Betrag",
+      "tierSoon": "Diese Stufe ist bald verfügbar",
+      "sliderLabel": "Anzahl Credits",
+      "check": {
+        "instant": "Sofortige Aufladung",
+        "secure": "Sichere Zahlung über Stripe",
+        "noExpiry": "Credits verfallen nicht"
+      },
+      "locked": {
+        "title": "Aufladungen gibt es mit einem aktiven Plan",
+        "sub": "Wähle einen Plan — danach kannst du jederzeit Credits nachkaufen.",
+        "cta": "Plan wählen",
+        "checkFailed": "Wir konnten deinen Plan nicht prüfen. Bitte lade die Seite gleich neu."
+      }
+    },
+    "notice": {
+      "planRequired": "Credit-Aufladungen sind mit einem aktiven bezahlten Plan verfügbar. Wähle einen Plan, um Credits nachzukaufen.",
+      "annualUnavailable": "Die jährliche Zahlung ist noch nicht verfügbar.",
+      "offerExpired": "Das Startangebot ist beendet. Lade die Seite neu, um die aktuellen Preise zu sehen."
+    },
+    "faq": {
+      "overline": "Häufige Fragen",
+      "title": "Häufige Fragen zu Plänen und Zahlungen",
+      "credits": {
+        "q": "Wie funktionieren Credits?",
+        "a": "Credits sind die Währung von GrovBase: Jedes Tool zeigt seine Kosten in Credits, bevor du eine Generierung startest, und der Preis hängt vom Tool und der Qualität ab (z. B. 2K oder 4K). Credits werden beim Generieren abgebucht — schlägt eine Generierung fehl, gehen sie automatisch auf dein Konto zurück."
+      },
+      "renewal": {
+        "q": "Verlängert sich das Abo automatisch?",
+        "a": "Ja — der Plan verlängert sich jeden Monat, und nach jeder bezahlten Zahlung schreiben wir die Credits des Plans gut. Du kündigst im Stripe-Zahlungsportal: Der Plan bleibt bis zum Ende des bezahlten Zeitraums aktiv, und deine Credits bleiben auf dem Konto."
+      },
+      "methods": {
+        "q": "Welche Zahlungsmethoden kann ich nutzen?",
+        "a": "Zahlungen laufen über Stripe. Einen Plan bezahlst du per Karte, einmalige Aufladungen auch mit BLIK. Das Zahlungsformular zeigt die auf deinem Gerät verfügbaren Methoden, darunter Wallets wie Apple Pay oder Google Pay."
+      },
+      "topups": {
+        "q": "Wie kann ich zusätzliche Credits kaufen?",
+        "a": "Aufladungen gibt es für aktive bezahlte Pläne: Wähle unter „Credits aufladen“ ein Paket oder eine eigene Anzahl Credits. Aufgeladene Credits verfallen nicht und landen nach Bestätigung der Zahlung auf deinem Konto."
+      },
+      "refunds": {
+        "q": "Gibt es eine Rückerstattung?",
+        "a": "Jede Anfrage auf Rückerstattung prüfen wir einzeln — schreib uns über die Kontaktseite. Credits für fehlgeschlagene Generierungen gehen automatisch auf dein Konto zurück."
+      },
+      "howMany": {
+        "q": "Wie viele Bilder oder Videos kann ich generieren?",
+        "a": "Das hängt vom Tool und der Qualität ab: Die Credit-Kosten jeder Generierung siehst du, bevor du sie startest, so kannst du deinen Plan leicht umrechnen. Die Videogenerierung ist in Vorbereitung und noch nicht verfügbar."
+      },
+      "change": {
+        "q": "Kann ich mein Abo nach dem Kauf ändern?",
+        "a": "Ein selbstständiger Planwechsel im Panel ist noch nicht verfügbar. Schreib uns, und wir stellen den Plan um — oder kündige den aktuellen Plan und wähle nach Ende des bezahlten Zeitraums einen neuen."
+      },
+      "premiere": {
+        "q": "Wie funktioniert der Startpreis?",
+        "a": "Wenn du einen Plan vor Ende des Angebots kaufst, behältst du seinen Startpreis bei jeder Verlängerung — bis du das Abo kündigst oder den Plan wechselst. Nach Ende des Angebots gilt für neue Abos der reguläre Preis."
+      }
+    }
   },
   "mobilenav": {
     "home": "Start",

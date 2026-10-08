@@ -143,5 +143,11 @@ const nextConfig = {
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },
+  // THE CENNIK HAS ONE ADDRESS: /plany. The old /cennik (a never-published
+  // CMS draft, so a 404 today) answers 308 there — permanent, method-keeping,
+  // and before the middleware, so it cannot be shadowed by a CMS row.
+  async redirects() {
+    return [{ source: "/cennik", destination: "/plany", permanent: true }];
+  },
 };
 export default nextConfig;

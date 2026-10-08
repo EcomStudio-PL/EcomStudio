@@ -9,7 +9,10 @@ import { absoluteUrl } from "@/lib/site";
  */
 const PRIVATE = [
   "/admin", "/api/", "/auth/", "/home", "/dashboard", "/generator", "/library",
-  "/prompts", "/history", "/credits", "/plan", "/settings",
+  "/prompts", "/history", "/credits", "/settings",
+  // The in-app cennik and its subtree only — NOT every path that starts
+  // "/plan": the public cennik is /plany and must stay crawlable.
+  "/plan$", "/plan/", "/plan?",
   // /profile only forwards to /settings?tab=profile — the page and its subtree,
   // not every public slug that merely starts "profile".
   "/profile$", "/profile/",

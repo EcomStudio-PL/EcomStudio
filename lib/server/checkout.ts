@@ -6,9 +6,14 @@ import { stripeCredentials, paymentsEnabled } from "@/lib/stripe/config";
 import {
   stripePost, stripeGet, StripeApiError, StripeNotConfiguredError, type FormValue,
 } from "@/lib/stripe/client";
-import { creditLadder, validateCustomCredits } from "@/lib/plans/credit-price";
-import { resolveStripeCustomer, ServerKeyMissingError } from "@/lib/server/billing";
+import {
+  resolveStripeCustomer, ServerKeyMissingError, requireActivePaidPlan, confirmTopupPlanLive,
+  topupPlanContext, type TopupGateRefusal,
+} from "@/lib/server/billing";
 import { sellable } from "@/lib/server/stripe-pricing";
+import {
+  annualOnSale, premiereExpiredFor, premiereMetadata, priceTopup,
+} from "@/lib/server/pricing-offer";
 import {
   beginGrovNewsSubscription, grovNewsPaidFor, grovNewsSellable, readGrovNewsBilling, resolveLaunchCode,
   type CodeRefusal, type ResolvedCode,
@@ -150,7 +155,13 @@ export type QuoteRefusal =
   /** The displayed price is not provably what Stripe would charge. */
   | "price_out_of_sync"
   /** GrovNews Premium is not on sale right now (sales off, or no confirmed Price). */
-  | "grovnews_unavailable";
+  | "grovnews_unavailable"
+  /** A top-up without an active paid plan, or the plan could not be checked. */
+  | TopupGateRefusal
+  /** Annual billing is not on sale (lib/server/pricing-offer.ts). */
+  | "annual_unavailable"
+  /** The premiere ended and the plan still carries its premiere price. */
+  | "offer_expired";
 
 export type QuoteResult = { ok: true; quote: Quote } | { ok: false; reason: QuoteRefusal };
 
@@ -207,6 +218,14 @@ async function priceOrder(
 
   if (req.kind === "grovnews") return priceGrovNews(supabase);
 
+  // TOP-UPS ONLY WITH AN ACTIVE PAID PLAN. Here, before either top-up branch,
+  // so the page render, the quote action and the begin (which re-prices
+  // through this function) all meet the same rule. See requireActivePaidPlan.
+  const gate = req.kind === "credit_package" || req.kind === "custom_credits"
+    ? await requireActivePaidPlan(supabase, workspace)
+    : null;
+  if (gate && !gate.ok) return { ok: false, reason: gate.reason };
+
   if (req.kind === "credit_package") {
     const { data: pack } = await supabase
       .from("credit_packages")
@@ -239,9 +258,10 @@ async function priceOrder(
   }
 
   if (req.kind === "custom_credits") {
-    // THE RATE CARD IS THE PACKS. Same function the slider uses in the browser,
-    // so the preview and the charge are produced by one piece of code — and
-    // only this side's answer reaches Stripe.
+    // THE RATE CARD IS THE PACKS, and the price is `priceTopup` — the same
+    // function the /plany page renders its tier and pack prices with, so the
+    // figure on the card and the charge are one computation, and only this
+    // side's answer reaches Stripe.
     const { data: packs } = await supabase
       .from("credit_packages")
       .select("credits, bonus_credits, price_cents, currency, stripe_price_cents, stripe_sync_status")
@@ -253,8 +273,12 @@ async function priceOrder(
     if (rows.length === 0 || !rows.every((p) => sellable(p))) {
       return { ok: false, reason: "price_out_of_sync" };
     }
-    const ladder = creditLadder(rows);
-    const q = validateCustomCredits(req.credits, ladder);
+    // Only the OFFERED amounts (the ten tiers, and pack slots without a pack
+    // row): anything else — 250, 1 001, 999 999 — is refused, not rounded.
+    const plan = await topupPlanContext(supabase, gate?.ok ? gate.planId : "");
+    const q = priceTopup(req.credits, {
+      packs: rows, planSlug: plan.slug, planCentsPerCredit: plan.centsPerCredit,
+    });
     if (!q.ok) return { ok: false, reason: "invalid_credits" };
 
     return {
@@ -284,12 +308,19 @@ async function priceOrder(
   const period: BillingPeriod = req.period === "annual" ? "annual" : "monthly";
   const { data: plan } = await supabase
     .from("subscription_plans")
-    .select("id, name, description, price_cents, annual_price_cents, currency, monthly_credits, bonus_credits, features, stripe_price_id_monthly, stripe_price_id_annual, stripe_price_monthly_cents, stripe_price_annual_cents, stripe_sync_status")
+    .select("id, slug, name, description, price_cents, annual_price_cents, currency, monthly_credits, bonus_credits, features, stripe_price_id_monthly, stripe_price_id_annual, stripe_price_monthly_cents, stripe_price_annual_cents, stripe_sync_status")
     .eq("id", req.planId).eq("active", true).maybeSingle();
   if (!plan) return { ok: false, reason: "unknown_plan" };
   // The free tier is the ABSENCE of a subscription, not a 0 zł one — selling it
   // would create a subscription that bills nothing forever.
   if (plan.price_cents <= 0) return { ok: false, reason: "plan_not_purchasable" };
+  // ANNUAL IS NOT ON SALE, even with a synced annual Price: the webhook grants
+  // one month of credits per paid invoice, so a yearly invoice would buy a year
+  // and grant a month. lib/server/pricing-offer.ts holds the switch.
+  if (period === "annual" && !annualOnSale()) return { ok: false, reason: "annual_unavailable" };
+  // An expired premiere is never granted by a page left open: after the
+  // deadline a plan still at its premiere price is refused until it is moved.
+  if (premiereExpiredFor(plan.slug, plan.price_cents, Date.now())) return { ok: false, reason: "offer_expired" };
 
   const priceId = period === "annual" ? plan.stripe_price_id_annual : plan.stripe_price_id_monthly;
   if (!priceId) return { ok: false, reason: "not_mapped" };
@@ -461,6 +492,21 @@ export async function beginCheckout(
 
   const creds = stripeCredentials();
   if (!creds) return { ok: false, reason: "payments_disabled" };
+
+  // A TOP-UP IS CREATED ONLY FOR A PLAN STRIPE ITSELF CALLS ACTIVE. The quote
+  // above read GrovBase's copy of the subscription; this asks the source, so a
+  // plan cancelled a moment ago (its webhook not yet processed) does not buy
+  // one more top-up. Fails closed.
+  if (quote.kind === "credit_package" || quote.kind === "custom_credits") {
+    const live = await confirmTopupPlanLive(supabase, workspace);
+    if (!live.ok) {
+      console.error("checkout.refused", JSON.stringify({
+        stage: "status" satisfies Stage, kind: req.kind, workspace: workspace.id,
+        target: targetOf(req), reason: live.reason,
+      }));
+      return live;
+    }
+  }
 
   // The stage is tracked rather than inferred, because the failing call and the
   // catch block are several frames apart and "begin" told nobody anything.
@@ -639,6 +685,9 @@ async function beginSubscription(
     billing_period: quote.period ?? "monthly",
     // The webhook marks this code used when the first invoice is PAID.
     ...(code ? { grovbase_launch_code_id: code.codeId } : {}),
+    // Only while the premiere runs (off today): this subscription keeps its
+    // Price through renewals, and the admin migration leaves it there.
+    ...premiereMetadata(Date.now()),
   };
 
   const sub = await stripePost<StripeSubscription>("/subscriptions", {

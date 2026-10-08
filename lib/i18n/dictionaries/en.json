@@ -3186,7 +3186,7 @@
     "manageBilling": "Manage billing",
     "manageBillingSub": "Cards, invoices and your subscription — in the Stripe portal.",
     "portalNoCustomer": "This workspace has no billing history yet.",
-    "alreadySubscribed": "This workspace already has an active subscription. Change the plan in the billing portal.",
+    "alreadySubscribed": "This workspace already has an active subscription. To change plans, contact us and we will make the switch.",
     "planNotPurchasable": "This plan cannot be purchased.",
     "perCreditApprox": "~{price} per credit",
     "referenceBasis": "Struck-through prices and discounts are measured against the per-credit price of the smallest pack ({price}).",
@@ -3195,6 +3195,176 @@
     "nextStep": "Add {n} more credits to get {pct}",
     "nextStepAction": "Add",
     "atBest": "Lowest price per credit in this range"
+  },
+  "pricing": {
+    "meta": {
+      "title": "Plans and pricing",
+      "description": "GrovBase plans for e-commerce sellers: STARTER, PRO and BUSINESS. Monthly credits for AI product photos, a plan comparison, credit top-ups and answers to common questions."
+    },
+    "title": "Choose a plan",
+    "sub": "Monthly credits for AI product photos — you see the cost of every generation before you run it.",
+    "soon": "Soon",
+    "buyCredits": "Buy credits",
+    "period": {
+      "monthly": "Monthly",
+      "annual": "Yearly",
+      "annualSave": "−{n}%",
+      "annualSoon": "soon",
+      "annualSoonHint": "Yearly billing will be available soon."
+    },
+    "premiere": {
+      "badge": "Launch price",
+      "title": "Join before the end of October and keep the launch price",
+      "sub": "You keep this price on every renewal until you cancel or change your plan.",
+      "endsIn": "Offer ends in",
+      "days": "DAYS",
+      "hours": "HRS",
+      "minutes": "MIN",
+      "seconds": "SEC",
+      "endsOn": "The offer ends on {date} (Polish time)."
+    },
+    "plan": {
+      "audience": {
+        "starter": "For sellers who are just starting",
+        "pro": "For shops that publish regularly",
+        "business": "For teams, agencies and large catalogues",
+        "default": "GrovBase subscription plan"
+      },
+      "badge": {
+        "starter": "To start",
+        "pro": "Most popular",
+        "business": "For teams",
+        "default": "Plan"
+      },
+      "creditsUnit": "credits",
+      "perMonth": "/ mo",
+      "approx2k": "≈ {n} product photos in 2K",
+      "approx4k": "≈ {n} photos in 4K",
+      "approxBasis": "Photo counts are an estimate at the {model} price: 2K = {k2} cr., 4K = {k4} cr. per photo. Other tools and models may cost differently.",
+      "costVisible": "You see the credit cost of every generation before you run it.",
+      "perCredit": "≈ {price} per credit",
+      "billedYearly": "{price} billed yearly",
+      "saveYearly": "you save {price}",
+      "choose": "Choose {name}",
+      "current": "Your current plan",
+      "hasPlan": "You already have an active plan",
+      "changeHint": "How do I change plans?",
+      "unavailable": "Temporarily unavailable"
+    },
+    "group": {
+      "highlights": "Highlights",
+      "tools": "Tools",
+      "output": "Generation and export",
+      "team": "Team and control",
+      "support": "Support and licence"
+    },
+    "feat": {
+      "creditsMonthly": "Credits every month",
+      "creditPrice": "Price of 1 credit on the plan",
+      "noExpiry": "Credits never expire",
+      "topups": "Credit top-ups any time",
+      "allTools": "All image tools",
+      "customPrompts": "Your own prompts",
+      "video": "AI video",
+      "quality": "2K and 4K quality",
+      "library": "Library and result history",
+      "seats": "Team seats",
+      "priority": "Priority queue",
+      "operator": "Operator mode",
+      "supportEmail": "Email support",
+      "supportDedicated": "Dedicated support",
+      "commercial": "Commercial use"
+    },
+    "free": "{name} — no charge. Monthly credits and top-ups come with the paid plans.",
+    "compare": {
+      "title": "Compare plans",
+      "feature": "Feature",
+      "choose": "Choose",
+      "showAll": "Show all features",
+      "showLess": "Collapse comparison",
+      "yes": "Yes",
+      "no": "No",
+      "group": {
+        "credits": "Credits",
+        "imageTools": "Image tools",
+        "video": "Video",
+        "output": "Generation and export",
+        "team": "Team",
+        "support": "Support",
+        "license": "Licence"
+      }
+    },
+    "topups": {
+      "title": "Top up credits",
+      "sub": "More credits = a lower price per credit",
+      "bonus": "+{n} bonus",
+      "total": "{n} credits in total",
+      "perCredit": "{price} / credit",
+      "save": "−{n}% per credit",
+      "saveBasis": "Savings are measured against the price per credit in the 100-credit pack.",
+      "best": "Best value",
+      "buy": "Buy",
+      "soonPrice": "Price coming soon",
+      "noExpiry": "Credits never expire and reach your account as soon as the payment is confirmed.",
+      "paymentsOff": "Payments are not enabled yet.",
+      "customTitle": "Custom amount of credits",
+      "customSub": "The more you choose, the less you pay per credit.",
+      "toPay": "Amount to pay",
+      "tierSoon": "This amount will be available soon",
+      "sliderLabel": "Number of credits",
+      "check": {
+        "instant": "Instant top-up",
+        "secure": "Secure payment with Stripe",
+        "noExpiry": "Credits never expire"
+      },
+      "locked": {
+        "title": "Top-ups come with an active plan",
+        "sub": "Choose a plan — then you can add credits whenever you need them.",
+        "cta": "Choose a plan",
+        "checkFailed": "We could not check your plan. Please refresh the page in a moment."
+      }
+    },
+    "notice": {
+      "planRequired": "Credit top-ups are available with an active paid plan. Choose a plan to add credits.",
+      "annualUnavailable": "Yearly billing is not available yet.",
+      "offerExpired": "The launch offer has ended. Refresh the page to see current prices."
+    },
+    "faq": {
+      "overline": "Frequently asked questions",
+      "title": "Frequently asked questions about plans and payments",
+      "credits": {
+        "q": "How do credits work?",
+        "a": "Credits are GrovBase's currency: every tool shows its cost in credits before you start a generation, and the price depends on the tool and the quality (for example 2K or 4K). Credits are taken when you generate — if a generation fails, they go back to your account automatically."
+      },
+      "renewal": {
+        "q": "Does the subscription renew automatically?",
+        "a": "Yes — the plan renews every month, and after each paid payment we add the plan's credits. You cancel in the Stripe billing portal: the plan stays active until the end of the paid period, and your credits stay in your account."
+      },
+      "methods": {
+        "q": "Which payment methods can I use?",
+        "a": "Payments are handled by Stripe. You pay for a plan by card, and one-off top-ups also with BLIK. The payment form shows the methods available on your device, including wallets such as Apple Pay or Google Pay."
+      },
+      "topups": {
+        "q": "How can I buy extra credits?",
+        "a": "Top-ups are available on active paid plans: in “Top up credits”, choose a pack or a custom amount of credits. Top-up credits never expire and reach your account once the payment is confirmed."
+      },
+      "refunds": {
+        "q": "Can I get a refund?",
+        "a": "We review every refund request individually — write to us through the contact page. Credits for generations that failed go back to your account automatically."
+      },
+      "howMany": {
+        "q": "How many images or videos can I generate?",
+        "a": "It depends on the tool and the quality: you see the credit cost of each generation before you run it, so it is easy to work out what your plan covers. Video generation is in preparation and not available yet."
+      },
+      "change": {
+        "q": "Can I change my subscription after buying?",
+        "a": "Changing your plan yourself in the panel is not available yet. Write to us and we will make the switch — or cancel your current plan and choose a new one once the paid period ends."
+      },
+      "premiere": {
+        "q": "How does the launch price work?",
+        "a": "If you buy a plan before the offer ends, you keep its launch price on every renewal — until you cancel the subscription or change the plan. After the offer ends, new subscriptions are at the regular price."
+      }
+    }
   },
   "mobilenav": {
     "home": "Home",

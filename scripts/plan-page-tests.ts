@@ -1,33 +1,39 @@
 /**
- * /plan — THE CENNIK REDESIGN MAY CHANGE HOW PRICES LOOK, NEVER WHAT IS CHARGED.
+ * /plany + /plan — THE CENNIK MAY CHANGE HOW PRICES LOOK, NEVER WHAT IS CHARGED.
  *
- * The 2026-10 redesign rewrote components/plan/pricing-board.tsx and moved the
- * page's arithmetic into components/plan/pricing-model.ts. This suite is the
- * gate that says the money did not move with it:
+ * The 2026-10 /plany task replaced the pricing board with one shared page
+ * (components/plan/pricing-page.tsx) rendered at the public /plany and the
+ * in-app /plan from ONE server loader (lib/server/pricing-page.ts), and added
+ * three server rules: top-ups only with an active paid plan, top-ups only in
+ * the offered amounts, and offer switches (annual, premiere) that start OFF.
  *
- *   A. THE MONEY PATH IS FROZEN. Every file between a buy button and Stripe —
- *      the /checkout page and its URL parser, the server quote, the actions,
- *      the rate card, the webhook, the Stripe client — hashes exactly as it
- *      did before the redesign (2fea8e5). A deliberate server change must
- *      update these pins consciously; an accidental one fails here.
- *   B. SAME INTENTS. For every production plan, period, pack and every custom
- *      amount the page can produce, the new link is byte-for-byte the link
- *      the old board built.
- *   C. DISPLAYED = QUOTED. Each link is parsed the way /checkout parses it and
- *      priced by the REAL `quoteCheckout` (lib/server/checkout.ts) over the
- *      production catalogue: the server's amount, currency, Stripe Price,
- *      plan/pack id and credits equal what the page shows, to the grosz.
- *   D. ANNUAL is offered and charged only when a real annual price is stored.
- *   E. FREE is never a card and never for sale; BUSINESS is a label on `agency`.
- *   F. The presentation config holds no money; the copy promises nothing the
- *      checkout does not do; numbers are written the Polish way.
+ *   A. THE MONEY PATH. Files the task did not need stay byte-identical (the
+ *      webhook, the ledger path, Stripe client, actions, /checkout page). The
+ *      files it changed are re-pinned deliberately.
+ *   B. SAME INTENTS. Every buy link the page builds is the old link shape:
+ *      ids and quantities only, never an amount.
+ *   C. DISPLAYED = QUOTED. With an active plan, every plan, pack, pack slot and
+ *      tier the page shows is priced by the REAL `quoteCheckout` over the
+ *      production catalogue to the grosz, and the PaymentIntent asks Stripe
+ *      for exactly that amount.
+ *   D. ANNUAL — refused by the server while the offer switch is off, even
+ *      with synced annual Prices; offered by the page only when on sale.
+ *   E. TOP-UPS NEED AN ACTIVE PAID PLAN — refused on every server path
+ *      (quote, begin, both hosted actions) for every other state.
+ *   F. TIERS AND SLOTS — exactly the ten tiers and five slots; nothing between
+ *      them; no extrapolation; approved prices only with validated margins.
+ *   G. PREMIERE — off; server-clocked; grandfathering metadata only while on.
+ *   H. THE PAGE'S DATA — what a visitor, a free user and a subscriber see.
+ *   I. ROUTING — /plany public, /cennik 308, /plan compatible, SEO.
+ *   J. CONFIG AND COPY — no money in presentation, no fake promise.
+ *   K. UI CONTRACT — the slider, the lock, the gate, the fold, the FAQ.
  *
- * No network, no database, no Stripe, no payment.
+ * No network, no database, no Stripe, no payment. `fetch` is a local fake.
  *
  * Run:  npm run test:planpage
  */
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 // ASSEMBLED, NEVER WRITTEN OUT — a literal key shape would trip the repo-wide
 // secret scan in scripts/stripe-tests.ts (same convention as billing-sync-tests).
@@ -35,19 +41,25 @@ process.env.STRIPE_SECRET_KEY ??= ["sk", "test", "0".repeat(28)].join("_");
 process.env.STRIPE_WEBHOOK_SECRET ??= "whsec_ZmFrZV90ZXN0X3NlY3JldF9ub3RfYV9yZWFsX29uZQ";
 process.env.GROVBASE_SERVER_KEY ??= "test-server-key-not-a-real-one-0123456789";
 
-import { quoteCheckout, type CheckoutRequest } from "@/lib/server/checkout";
-import { creditLadder, validateCustomCredits } from "@/lib/plans/credit-price";
-import { annualBillingAvailable, annualMonthlyCents } from "@/lib/plans/pricing";
-import { parsePlanCapabilities } from "@/lib/plans/capabilities";
+import { beginCheckout, quoteCheckout, type CheckoutRequest } from "@/lib/server/checkout";
 import {
-  annualOnOffer, annualSavingCents, buyCreditsLabel, clampCredits, coinLevel, committedCredits, creditsWord, creditMultiple, creditsCheckoutHref, customQuote, customRange,
-  formatCount, formatMoney, formatPerCredit, initialBillingPeriod, isPaidPlan, nextStepHint,
-  packCheckoutHref, packLadder, packQuote, planCheckoutHref, planMonthlyCents, planPerCreditCents,
-  referenceRate, sliderMarks,
+  createCustomCreditsCheckout, createPackageCheckout, createPlanCheckout, requireActivePaidPlan,
+} from "@/lib/server/billing";
+import {
+  PACK_SLOTS, PRICING_OFFER, TOPUP_TIERS, approvedPriceValid, isPriceLocked, offeredCustomAmounts,
+  premiereExpiredFor, premiereMetadata, premiereState, priceTopup, topupMarginPercent, type PricingOffer,
+} from "@/lib/server/pricing-offer";
+import { buildPricingPage, type PackRowFull, type PlanRow, type ViewerFacts } from "@/lib/server/pricing-page";
+import { creditLadder, validateCustomCredits } from "@/lib/plans/credit-price";
+import { annualSavingPct } from "@/lib/plans/pricing";
+import {
+  creditsCheckoutHref, formatCount, formatMoney, formatPerCredit, packCheckoutHref, planCheckoutHref,
 } from "@/components/plan/pricing-model";
 import {
-  COMING_SOON_CAPABILITIES, FALLBACK_PLAN, PLAN_PRESENTATION, PRICING_PAGE, SERVICE_LEVELS, isComingSoon, planPresentation,
+  CARD_ORDER, CARD_ORDER_PHONE, COMPARE_GROUPS, COMPARE_INITIAL_ROWS, FAQ, PRICING_PAGE, featureOn, planPresentation,
 } from "@/components/plan/pricing-config";
+import { isProtectedPath } from "@/lib/supabase/middleware";
+import { checkoutNotice } from "@/lib/checkout-notice-param";
 
 let failures = 0;
 let passes = 0;
@@ -57,29 +69,19 @@ function check(name: string, ok: boolean, detail = "") {
   console.log(`  ✗ ${name}${detail ? `\n      ${detail}` : ""}`);
 }
 const read = (p: string) => readFileSync(p, "utf8");
+const sha = (p: string) => createHash("sha256").update(readFileSync(p)).digest("hex");
 /** Source with comments stripped, so a check never matches a comment. */
 const codeOnly = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+const nb = (s: string) => s.replace(/[\u00a0\u202f]/g, " ");
 
-/* ── the production catalogue, as PROD held it on 2026-10-06 ──────────────*/
+/* ── the production catalogue, as PROD held it on 2026-10-08 ──────────────*/
 // Prices, credits, capabilities, flags and Stripe ids are PROD's. Pack ids are
 // PROD's; plan ids are stand-ins (any stable id works — the link carries it).
 
-type PlanRow = {
-  id: string; slug: string; name: string; description: string | null;
-  price_cents: number; annual_price_cents: number; currency: string;
-  monthly_credits: number; bonus_credits: number; featured: boolean; active: boolean; sort_order: number;
-  features: Record<string, number | boolean>;
-  stripe_price_id_monthly: string | null; stripe_price_id_annual: string | null;
-  stripe_price_monthly_cents: number | null; stripe_price_annual_cents: number | null;
-  stripe_sync_status: string;
-};
-type PackRow = {
-  id: string; name: string; description: string | null; credits: number; bonus_credits: number;
-  price_cents: number; currency: string; featured: boolean; badge: string | null; active: boolean; sort_order: number;
-  stripe_price_id: string | null; stripe_price_cents: number | null; stripe_sync_status: string;
-};
+type Plan = PlanRow & { active: boolean; sort_order: number };
+type Pack = PackRowFull & { name: string; description: string | null; active: boolean; sort_order: number };
 
-const PROD_PLANS: PlanRow[] = [
+const PROD_PLANS: Plan[] = [
   { id: "c0f1e9d6-0000-4000-8000-00000000f4ee", slug: "free", name: "Free", description: null, price_cents: 0,
     annual_price_cents: 0, currency: "PLN", monthly_credits: 25, bonus_credits: 0, featured: false, active: true,
     sort_order: 0, features: { products: 5, workspace_members: 1 }, stripe_price_id_monthly: null,
@@ -102,74 +104,65 @@ const PROD_PLANS: PlanRow[] = [
     stripe_price_monthly_cents: 99900, stripe_price_annual_cents: null, stripe_sync_status: "synced" },
 ];
 
-const PROD_PACKS: PackRow[] = [
+const PROD_PACKS: Pack[] = [
   { id: "f86d4f98-14bb-45e6-a867-5700fc7baf65", name: "Start", description: null, credits: 100, bonus_credits: 0,
-    price_cents: 1900, currency: "PLN", featured: false, badge: null, active: true, sort_order: 0,
+    price_cents: 1900, currency: "PLN", active: true, sort_order: 0,
     stripe_price_id: "price_1UIFY7POBRMZKbwYbmcEKrBA", stripe_price_cents: 1900, stripe_sync_status: "synced" },
   { id: "69f5fc50-5328-4ee6-b5f8-4ce1014c1aad", name: "Standard", description: null, credits: 500, bonus_credits: 50,
-    price_cents: 7900, currency: "PLN", featured: true, badge: "Najpopularniejszy", active: true, sort_order: 1,
+    price_cents: 7900, currency: "PLN", active: true, sort_order: 1,
     stripe_price_id: "price_1UIFYAPOBRMZKbwYYpqxc1ou", stripe_price_cents: 7900, stripe_sync_status: "synced" },
   { id: "d5e9b0d0-9497-4511-b66f-82a808751c8b", name: "Pro", description: null, credits: 1000, bonus_credits: 150,
-    price_cents: 13900, currency: "PLN", featured: false, badge: null, active: true, sort_order: 2,
+    price_cents: 13900, currency: "PLN", active: true, sort_order: 2,
     stripe_price_id: "price_1UIFYGPOBRMZKbwYUO5EZGYF", stripe_price_cents: 13900, stripe_sync_status: "synced" },
   { id: "f0e44f7c-9768-48e6-b753-79544fb3646d", name: "Business", description: null, credits: 2500, bonus_credits: 500,
-    price_cents: 29900, currency: "PLN", featured: false, badge: "Najlepsza wartość", active: true, sort_order: 3,
+    price_cents: 29900, currency: "PLN", active: true, sort_order: 3,
     stripe_price_id: "price_1UIFYJPOBRMZKbwYn7csVnEN", stripe_price_cents: 29900, stripe_sync_status: "synced" },
 ];
 
-/**
- * The cards the page builds from those rows — the SAME field mapping as
- * app/(app)/plan/page.tsx (section J pins the page's mapping lines verbatim).
- */
-const toPlanCard = (p: PlanRow) => ({
-  id: p.id, slug: p.slug, name: p.name, description: p.description,
-  priceCents: p.price_cents, annualPriceCents: p.annual_price_cents ?? 0, currency: p.currency,
-  monthlyCredits: p.monthly_credits, bonusCredits: p.bonus_credits,
-  capabilities: parsePlanCapabilities(p.features), featured: p.featured,
-  monthlyMapped: Boolean(p.stripe_price_id_monthly), annualMapped: Boolean(p.stripe_price_id_annual),
+const PRO = PROD_PLANS[2];
+const FUTURE = "2099-01-01T00:00:00Z";
+const PAST = "2020-01-01T00:00:00Z";
+type Sub = { workspace_id: string; plan_id: string; status: string; current_period_end: string | null;
+  provider: string; provider_subscription_id: string | null };
+const sub = (status: string, end: string | null = FUTURE, extra: Partial<Sub> = {}): Sub => ({
+  workspace_id: "ws-0000", plan_id: PRO.id, status, current_period_end: end,
+  provider: "stripe", provider_subscription_id: "sub_live", ...extra,
 });
-const toPackCard = (p: PackRow) => ({
-  id: p.id, name: p.name, credits: p.credits, bonusCredits: p.bonus_credits,
-  priceCents: p.price_cents, currency: p.currency, featured: p.featured, badge: p.badge,
-  mapped: Boolean(p.stripe_price_id),
-});
-type PackCard = ReturnType<typeof toPackCard>;
 
 /* ── a catalogue that answers the server's reads, the way Postgres would ──*/
 
 type Row = Record<string, unknown>;
-function catalogueDb(plans: PlanRow[], packs: PackRow[]) {
-  const build = (rows: Row[]) => {
-    const filters: Record<string, unknown> = {};
-    const matching = () => rows.filter((r) => Object.entries(filters).every(([k, v]) => r[k] === v));
+function catalogueDb(plans: Plan[], packs: Pack[], subs: Sub[] = [], opts: { subsError?: boolean } = {}) {
+  const build = (name: string, rows: Row[]) => {
+    const filters: [string, (v: unknown) => boolean][] = [];
+    const matching = () => rows.filter((r) => filters.every(([k, f]) => f(r[k])));
+    const result = () => (name === "subscriptions" && opts.subsError
+      ? { data: null, error: { code: "57014" } }
+      : { data: matching(), error: null });
     const q = {
       select: () => q,
-      eq: (col: string, val: unknown) => { filters[col] = val; return q; },
+      eq: (col: string, val: unknown) => { filters.push([col, (v) => v === val]); return q; },
+      in: (col: string, vals: unknown[]) => { filters.push([col, (v) => vals.includes(v)]); return q; },
       order: () => q,
-      in: () => q,
-      limit: () => Promise.resolve({ data: matching(), error: null }),
+      limit: () => Promise.resolve(result()),
       maybeSingle: () => Promise.resolve({ data: matching()[0] ?? null, error: null }),
-      then: (res: (v: { data: Row[]; error: null }) => unknown) =>
-        Promise.resolve({ data: matching(), error: null }).then(res),
+      then: (res: (v: unknown) => unknown) => Promise.resolve(result()).then(res),
     };
     return q;
   };
   return {
-    from: (name: string) => build(
+    from: (name: string) => build(name,
       name === "credit_packages" ? packs as unknown as Row[]
         : name === "subscription_plans" ? plans as unknown as Row[]
-          : [],
-    ),
-    rpc: async () => ({ data: null, error: null }),
+          : name === "subscriptions" ? subs as unknown as Row[]
+            : []),
+    rpc: async (fn: string) => (fn === "stripe_customer_for" ? { data: "cus_stub", error: null } : { data: null, error: null }),
     auth: { getUser: async () => ({ data: { user: null } }) },
   } as never;
 }
 const WS = { id: "ws-0000", name: "Test Workspace" } as never;
 
-/**
- * /checkout's own URL → request rule, restated (the page itself is frozen by
- * hash in section A, so this copy cannot silently diverge from it).
- */
+/** /checkout's own URL → request rule (app/(app)/checkout/page.tsx, pinned in A). */
 function parseIntent(href: string): CheckoutRequest | null {
   const url = new URL(href, "https://grovbase.com");
   const one = (k: string) => url.searchParams.get(k) ?? undefined;
@@ -190,25 +183,69 @@ function parseIntent(href: string): CheckoutRequest | null {
   return null;
 }
 
-/* ── the OLD board's links, verbatim from components/plan/pricing-board.tsx @ 2fea8e5 ─*/
-const OLD = {
-  plan: (id: string, annual: boolean) => `/checkout?kind=subscription&plan=${id}&period=${annual ? "annual" : "monthly"}`,
-  pack: (id: string) => `/checkout?kind=package&pack=${id}`,
-  credits: (n: number) => `/checkout?kind=credits&n=${n}`,
-};
+/* ── a fake Stripe: records calls, answers what checkout asks ─────────────*/
+
+type Call = { method: string; path: string; body: Record<string, string> };
+function installStripe(opts: { subStatus?: string; subFails?: boolean } = {}): Call[] {
+  const seen: Call[] = [];
+  globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
+    const path = String(url).replace("https://api.stripe.com/v1", "").split("?")[0];
+    const method = init?.method ?? "GET";
+    const body: Record<string, string> = {};
+    if (typeof init?.body === "string") {
+      for (const pair of init.body.split("&")) {
+        if (!pair) continue;
+        const [k, v] = pair.split("=");
+        body[decodeURIComponent(k)] = decodeURIComponent(v ?? "");
+      }
+    }
+    seen.push({ method, path, body });
+    if (method === "GET" && path.startsWith("/subscriptions/")) {
+      if (opts.subFails) return new Response(JSON.stringify({ error: { message: "boom" } }), { status: 500 });
+      return new Response(JSON.stringify({ id: path.split("/")[2], status: opts.subStatus ?? "active" }), { status: 200 });
+    }
+    if (method === "POST" && path === "/payment_intents") {
+      return new Response(JSON.stringify({
+        id: "pi_stub", client_secret: "pi_stub_secret_x", status: "requires_payment_method",
+        amount: Number(body.amount), currency: body.currency,
+      }), { status: 200 });
+    }
+    if (method === "POST" && path === "/checkout/sessions") {
+      return new Response(JSON.stringify({ id: "cs_stub", url: "https://checkout.stripe.com/c/cs_stub" }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ id: "cus_stub" }), { status: 200 });
+  }) as typeof fetch;
+  return seen;
+}
+
+const NOW = Date.parse("2026-10-08T12:00:00+02:00");
+const viewerOf = (state: "anon" | "free" | "allowed" | "check_failed", extra: Partial<ViewerFacts> = {}): ViewerFacts => ({
+  signedIn: state !== "anon",
+  live: state === "allowed" ? { plan_id: PRO.id, status: "active" } : null,
+  gate: state === "anon" ? null
+    : state === "allowed" ? { ok: true, planId: PRO.id, provider: "stripe", providerSubscriptionId: "sub_live" }
+    : { ok: false, reason: state === "check_failed" ? "plan_check_failed" : "plan_required" },
+  plan: { slug: null, centsPerCredit: null },
+  cost: null,
+  ...extra,
+});
+const page = (state: Parameters<typeof viewerOf>[0], opts: { payments?: boolean; offer?: PricingOffer; plans?: Plan[]; packs?: Pack[]; viewer?: Partial<ViewerFacts> } = {}) =>
+  buildPricingPage({
+    plans: opts.plans ?? PROD_PLANS, packs: opts.packs ?? PROD_PACKS, now: NOW, payments: opts.payments ?? true,
+    offer: opts.offer, viewer: viewerOf(state, opts.viewer),
+  });
 
 async function main() {
-  console.log("\nA. THE MONEY PATH IS FROZEN (sha256 vs 2fea8e5)");
+  console.log("\nA. THE MONEY PATH");
   {
+    // Untouched by the /plany task: byte-identical to the pre-task release (f579637).
     const FROZEN: [string, string][] = [
-      ["lib/server/checkout.ts", "a821fd4514e04b5cf566a49dcd5bb25343e2325c17f49b888a047ce85f096468"],
       ["app/actions/checkout.ts", "9b8ab0caa75e32de658126353fb731d431f006bf83839f456057a54b33a659bd"],
       ["app/(app)/checkout/page.tsx", "2fca9f8520c44682ebc3669a497ef31a0a0b3b2957f40284359d14c72f31a8c8"],
       ["lib/plans/credit-price.ts", "c3ebca6452053a0157eee7bf0fd8c1bdc767593f2e082941951ba02b30aff95c"],
       ["lib/plans/pricing.ts", "6c6ddf4d5784f236eaff740efed5bc23538b2ce44118b92cf9f24b5df2e1c3fa"],
       ["lib/plans/capabilities.ts", "d60ae58bcea9ba6747bb6a3ca978e36a527696b14045b80f33d2930651f19ca6"],
       ["lib/server/stripe-webhook.ts", "e9a03ea46af4bb7d5c91332969154e4b111b4c1634fbbe124a1ba6b8e03c95d2"],
-      ["lib/server/billing.ts", "55c3236a0890b39c8ea15493d9ddad2801eb34ebf76fdf1854b4b1d3dfa45ec3"],
       ["app/actions/billing.ts", "f9feeb8aad93a24806a1de1e0fbd9a3ab929c055cce382e3436f9700e4d862c2"],
       ["lib/server/stripe-pricing.ts", "41573ba733ba26854abed17270fbf310433ae16d9425acc2a176dd0b8c395efe"],
       ["lib/stripe/config.ts", "0679ce3f018add12ead081c8a667511be4237661d15b9a024fb9ec578ed71df1"],
@@ -216,267 +253,416 @@ async function main() {
       ["lib/stripe/signature.ts", "722af66f1fa0c1c11ced6d49d37d6bb18090e72df249290c8dca08b00b44b0b8"],
       ["lib/stripe/capabilities.ts", "d346fde51068e2a67dac2827b986525caf9a73f69d3fd7302d532df120f59cf7"],
       ["lib/stripe/publishable.ts", "84949ccf2061c66ebeb334e2529b3465a9dc3a7eb85ef18b16f30a6bcf8fa0bd"],
-      ["components/checkout/checkout-view.tsx", "e1eabb3c572cf66df533cc90b8425e82514c1407bd419699e03182a1fe783495"],
       ["app/api/hooks/stripe/route.ts", "12d6aa79017034b0cd8d50ee60bc946541db2eede3aa60508fbf663dfe1c3362"],
-      ["components/plan/checkout-notice.tsx", "a7c5a455369ccb2bd99bdab0a5a8779f0c07f8d9b176f32bfd93f9315c0f2813"],
       ["components/plan/billing-portal-button.tsx", "75ba0ace8f08d0f5f3cd9363f253a687338af672f1deb47958912f208ba04005"],
+      ["components/plan/pricing-model.ts", "c696e3d3361e8f884eaa6e7b4835f5dea1db542c27ebbc6e98ae807de456e503"],
     ];
-    for (const [file, sha] of FROZEN) {
-      const actual = createHash("sha256").update(readFileSync(file)).digest("hex");
-      check(`${file} unchanged`, actual === sha, `sha256 ${actual.slice(0, 16)}… ≠ pinned ${sha.slice(0, 16)}…`);
-    }
+    for (const [file, digest] of FROZEN) check(`${file} unchanged`, sha(file) === digest, `sha256 ${sha(file).slice(0, 16)}…`);
+    // Changed ON PURPOSE by the /plany task (top-up gate, tier contract, offer
+    // switches, refusal copy). Re-pinned here so any further change is a
+    // decision, not an accident.
+    const REPINNED: [string, string][] = [
+      ["lib/server/checkout.ts", "49d970698bf41b3b1b4ea691370698b99cb89f2a9636cd32389e91b732af9982"],
+      ["lib/server/billing.ts", "c6b31f1cc0c972a6f0745e55c075700ca5ce4a676db6cc93360a809c00433ea7"],
+      ["lib/server/pricing-offer.ts", "d9f9a176fee0e4942d1ea65ded19942400e064db5babd7ac60c8dfdcbb64eedf"],
+      ["lib/server/stripe-migrate.ts", "96eb6003a8409745870ee1ef72df2b7aee3acfcbb154504b1cf6c2286e59e4d7"],
+      ["components/checkout/checkout-view.tsx", "69baefa7254150b91dae896946048710bf125fbd0c32b521648942066676474c"],
+      ["components/plan/checkout-notice.tsx", "3bbf679b6a1275d84d5605c44c1144b87f27d98162bb5327ff7f8ae55ccff54c"],
+    ];
+    for (const [file, digest] of REPINNED) check(`${file} is the reviewed version`, sha(file) === digest, `sha256 ${sha(file)}`);
+    const checkout = codeOnly(read("lib/server/checkout.ts"));
+    check("the PaymentIntent is still asserted to charge exactly the quote",
+      /if \(intent\.amount !== quote\.amountCents\)/.test(checkout));
+    check("no checkout code writes the ledger or calls apply_credit_transaction",
+      !/apply_credit_transaction|stripe_settle_payment|credit_wallets/.test(checkout + codeOnly(read("lib/server/billing.ts"))
+        + codeOnly(read("lib/server/pricing-offer.ts")) + codeOnly(read("lib/server/pricing-page.ts"))));
+    check("the old pricing board is gone (one cennik, not two)", !existsSync("components/plan/pricing-board.tsx"));
   }
 
-  const plans = PROD_PLANS.map(toPlanCard);
-  const packs = PROD_PACKS.map(toPackCard);
-  const paid = plans.filter(isPaidPlan);
-  const ladder = packLadder(packs);
-  const range = customRange(ladder)!;
-  const db = catalogueDb(PROD_PLANS, PROD_PACKS);
-  const quote = async (href: string) => {
+  const db = (subs: Sub[] = [sub("active")]) => catalogueDb(PROD_PLANS, PROD_PACKS, subs);
+  const quote = async (href: string, subs?: Sub[]) => {
     const req = parseIntent(href);
     if (!req) return { ok: false as const, reason: "unparsable" };
-    return quoteCheckout(db, WS, req);
+    return quoteCheckout(db(subs), WS, req);
   };
+  const subscriber = page("allowed");
 
-  console.log("\nB. SAME INTENTS AS THE OLD BOARD");
+  console.log("\nB. SAME INTENTS — IDS AND QUANTITIES, NEVER AN AMOUNT");
   {
-    for (const p of paid) {
-      check(`${p.slug} monthly link unchanged`, planCheckoutHref(p.id, "monthly") === OLD.plan(p.id, false));
-      check(`${p.slug} annual link unchanged`, planCheckoutHref(p.id, "annual") === OLD.plan(p.id, true));
-    }
-    for (const p of packs) check(`pack ${p.name} link unchanged`, packCheckoutHref(p.id) === OLD.pack(p.id));
-    let same = 0;
-    let total = 0;
-    for (let n = range.min; n <= range.max; n += range.step) {
-      total += 1;
-      if (creditsCheckoutHref(n) === OLD.credits(n)) same += 1;
-    }
-    check(`custom-credit links unchanged for all ${total} slider stops`, same === total && total > 0, `${same}/${total}`);
-    check("links carry intents only — no amount, price or currency",
-      [...paid.map((p) => planCheckoutHref(p.id, "monthly")), ...packs.map((p) => packCheckoutHref(p.id)), creditsCheckoutHref(550)]
-        .every((h) => !/amount|price|cents|currency|zl|pln/i.test(h)));
-    check("plan links name the row id, never the slug or the display label",
-      paid.every((p) => planCheckoutHref(p.id, "monthly").includes(`plan=${p.id}`))
-      && !paid.some((p) => /agency|business/i.test(planCheckoutHref(p.id, "monthly"))));
-  }
-
-  console.log("\nC. DISPLAYED = QUOTED BY THE REAL SERVER (production catalogue)");
-  {
-    // C1 — plans, monthly.
-    for (const p of paid) {
-      const row = PROD_PLANS.find((r) => r.id === p.id)!;
-      const shown = planMonthlyCents(p, "monthly");
-      const q = await quote(planCheckoutHref(p.id, "monthly"));
-      check(`${p.slug}: shown ${formatMoney(shown, p.currency)} = quoted`,
-        q.ok && q.quote.amountCents === shown && formatMoney(q.quote.amountCents, q.quote.currency) === formatMoney(shown, p.currency),
-        JSON.stringify(q));
-      check(`${p.slug}: same Stripe Price, plan id, period, currency, credits`,
-        q.ok && q.quote.stripePriceId === row.stripe_price_id_monthly && q.quote.planId === row.id
-        && q.quote.period === "monthly" && q.quote.recurring === true && q.quote.currency === "PLN"
-        && q.quote.credits === p.monthlyCredits + p.bonusCredits);
-    }
-    // Pinned as literals, so the expectation is not computed by the code under test.
-    const PLAN_PRICES: Record<string, string> = { starter: "99 zł", pro: "299 zł", agency: "999 zł" };
-    for (const p of paid) {
-      check(`${p.slug} card reads ${PLAN_PRICES[p.slug]}`,
-        formatMoney(planMonthlyCents(p, "monthly"), p.currency).replace(/\s/g, " ") === PLAN_PRICES[p.slug]);
-    }
-
-    // C2 — every pack, through ONE parity predicate (C6 proves it can fail).
-    type PackQ = Awaited<ReturnType<typeof quote>>;
-    const packParity = (card: PackCard, q: PackQ): boolean => {
-      const row = PROD_PACKS.find((r) => r.id === card.id);
-      return Boolean(row) && q.ok && q.quote.amountCents === card.priceCents
-        && q.quote.stripePriceId === row!.stripe_price_id && q.quote.packageId === row!.id
-        && q.quote.credits === card.credits + card.bonusCredits && q.quote.currency === card.currency;
+    const OLD = {
+      plan: (id: string, annual: boolean) => `/checkout?kind=subscription&plan=${id}&period=${annual ? "annual" : "monthly"}`,
+      pack: (id: string) => `/checkout?kind=package&pack=${id}`,
+      credits: (n: number) => `/checkout?kind=credits&n=${n}`,
     };
-    for (const p of packs) {
-      const q = await quote(packCheckoutHref(p.id));
-      check(`pack ${p.name}: shown ${formatMoney(p.priceCents, p.currency)} = quoted, same Price / pack / credits`,
-        packParity(p, q), JSON.stringify(q));
-      check(`pack ${p.name}: the quote the row shows is its own price`, packQuote(p, referenceRate(ladder)).cents === p.priceCents);
+    for (const p of subscriber.plans) {
+      check(`${p.slug} monthly link is the old shape`, planCheckoutHref(p.id, "monthly") === OLD.plan(p.id, false));
     }
+    for (const p of subscriber.packs) {
+      const row = PROD_PACKS.find((r) => r.credits === p.slot);
+      const want = row ? OLD.pack(row.id) : OLD.credits(p.slot);
+      check(`pack card ${p.slot}: ${row ? "its pack row" : "a custom amount"}`, p.href === want, String(p.href));
+    }
+    for (const tier of subscriber.tiers.filter((x) => x.href)) {
+      check(`tier ${tier.credits}: a custom-credits intent`, tier.href === OLD.credits(tier.credits));
+    }
+    const hrefs = [...subscriber.packs, ...subscriber.tiers].map((x) => x.href).filter(Boolean) as string[];
+    check("no link carries an amount, a price or a currency",
+      hrefs.every((h) => !/amount|price|cents|currency|zl|pln/i.test(h)));
+    check("plan links name the row id, never the slug or the label",
+      subscriber.plans.every((p) => planCheckoutHref(p.id, "monthly").includes(`plan=${p.id}`)));
+  }
 
-    // C3 — every custom amount the slider can land on, plus typed values.
-    const samples = [100, 101, 150, 250, 333, 549, 550, 551, 777, 800, 1000, 1149, 1150, 1151, 1600, 2000, 2500, 2999, 3000];
-    const amounts = new Set<number>(samples);
-    for (let n = range.min; n <= range.max; n += range.step) amounts.add(n);
-    let agree = 0;
-    const mismatches: string[] = [];
-    for (const n of amounts) {
-      const shown = customQuote(n, ladder);
-      const q = await quote(creditsCheckoutHref(n));
-      const server = validateCustomCredits(n, creditLadder(PROD_PACKS));
-      if (q.ok && server.ok && q.quote.amountCents === shown.cents && server.amountCents === shown.cents
-        && q.quote.credits === n && q.quote.stripePriceId === null && q.quote.currency === "PLN") agree += 1;
-      else mismatches.push(`${n}: shown ${shown.cents} / quote ${q.ok ? q.quote.amountCents : q.reason}`);
+  console.log("\nC. DISPLAYED = QUOTED BY THE REAL SERVER (production catalogue, active PRO plan)");
+  {
+    for (const p of subscriber.plans) {
+      const row = PROD_PLANS.find((r) => r.id === p.id)!;
+      const q = await quote(planCheckoutHref(p.id, "monthly"), []);
+      check(`${p.slug}: shown ${formatMoney(p.priceCents, p.currency)} = quoted, same Price / plan / credits`,
+        q.ok && q.quote.amountCents === p.priceCents && q.quote.stripePriceId === row.stripe_price_id_monthly
+        && q.quote.planId === row.id && q.quote.credits === p.monthlyCredits + p.bonusCredits && q.quote.currency === "PLN",
+        JSON.stringify(q));
     }
-    check(`custom amounts: shown = quoted = validateCustomCredits for all ${amounts.size}`,
-      agree === amounts.size, mismatches.slice(0, 5).join("; "));
-    // Literal pins — the production rate card, written out by hand.
-    const PINS: [number, number][] = [[100, 1900], [150, 2600], [550, 7900], [777, 10200], [1150, 13900],
-      [1600, 17800], [2000, 21300], [2500, 25600], [3000, 29900]];
+    const PLAN_PRICES: Record<string, string> = { starter: "99 zł", pro: "299 zł", agency: "999 zł" };
+    for (const p of subscriber.plans) check(`${p.slug} card reads ${PLAN_PRICES[p.slug]}`, nb(formatMoney(p.priceCents, p.currency)) === PLAN_PRICES[p.slug]);
+
+    for (const card of subscriber.packs) {
+      if (!card.href) { check(`pack ${card.slot} has no buy link only because it has no price`, card.amountCents === null); continue; }
+      const q = await quote(card.href);
+      check(`pack ${card.slot}: shown ${formatMoney(card.amountCents ?? 0, "PLN")} = quoted (${card.slot + card.bonusCredits} credits)`,
+        q.ok && q.quote.amountCents === card.amountCents && q.quote.credits === card.slot + card.bonusCredits
+        && q.quote.currency === "PLN", JSON.stringify(q));
+    }
+    for (const tier of subscriber.tiers) {
+      const q = await quote(creditsCheckoutHref(tier.credits));
+      if (tier.amountCents === null) {
+        check(`tier ${formatCount(tier.credits)}: no price shown, and the server refuses it`,
+          !q.ok && q.reason === "invalid_credits" && tier.href === null, JSON.stringify(q));
+      } else {
+        check(`tier ${formatCount(tier.credits)}: shown ${formatMoney(tier.amountCents, "PLN")} = quoted`,
+          q.ok && q.quote.amountCents === tier.amountCents && q.quote.credits === tier.credits
+          && q.quote.stripePriceId === null, JSON.stringify(q));
+      }
+    }
+    // Literal pins — the production rate card, written out by hand, so the
+    // expectation is not computed by the code under test.
+    const PINS: [number, number | null][] = [[200, 3200], [300, 4600], [800, 10400], [1000, 12400], [3000, 29900],
+      [5000, null], [10000, null], [50000, null]];
+    const all = [...subscriber.packs.map((p) => [p.slot, p.amountCents] as const), ...subscriber.tiers.map((t) => [t.credits, t.amountCents] as const)];
     for (const [n, cents] of PINS) {
-      check(`${formatCount(n)} kredytów → ${formatMoney(cents, "PLN")}`, customQuote(n, ladder).cents === cents);
+      check(`${formatCount(n)} kredytów → ${cents === null ? "not on sale" : formatMoney(cents, "PLN")}`,
+        all.find(([c]) => c === n)?.[1] === cents);
     }
+    check("the 100 and 500 cards are the existing packs at their own prices",
+      subscriber.packs.find((p) => p.slot === 100)?.amountCents === 1900
+      && subscriber.packs.find((p) => p.slot === 500)?.amountCents === 7900
+      && subscriber.packs.find((p) => p.slot === 500)?.bonusCredits === 50);
 
-    // C4 — what a typed value becomes before it can reach a link.
-    for (const raw of [99, 3001, 0, -5, 777.4, Number.NaN, 1e9, Number.POSITIVE_INFINITY]) {
-      const v = clampCredits(raw, range, 550);
-      const q = await quote(creditsCheckoutHref(v));
-      check(`typed ${String(raw)} → ${v}: a whole number in range the server accepts`,
-        Number.isSafeInteger(v) && v >= range.min && v <= range.max && q.ok);
-    }
-    const unclamped = await quote(creditsCheckoutHref(3001));
-    check("…and an UNclamped out-of-range value would be refused (so the clamp is load-bearing)",
-      !unclamped.ok && unclamped.reason === "invalid_credits");
-
-    // C5 — the board only ever links the clamped / slider / ladder value.
-    const board = codeOnly(read("components/plan/pricing-board.tsx"));
-    check("the board builds every checkout link with the shared helpers",
-      /planCheckoutHref\(p\.id, period\)/.test(board) && /packCheckoutHref\(p\.id\)/.test(board)
-      && /creditsCheckoutHref\(credits\)/.test(board) && !/\/checkout\?/.test(board));
-    const setters = [...board.matchAll(/setCredits\(([^;]+?)\);/g)].map((m) => m[1].trim());
-    const allowed = [/^Number\(e\.target\.value\)$/, /^n$/, /^committedCredits\(raw, range, credits\)$/, /^hint\.at$/];
-    check("every way `credits` is set is slider / validated typed / clamped / a ladder point",
-      setters.length >= 4 && setters.every((s) => allowed.some((r) => r.test(s))), setters.join(" | "));
-    check("a typed value is applied live only when it is a whole number in range",
-      /Number\.isInteger\(n\) && n >= min && n <= max\) setCredits\(n\)/.test(board));
-    check("…and committed through committedCredits", /setCredits\(committedCredits\(raw, range, credits\)\)/.test(board));
-    // What a committed (blur / Enter) entry becomes: a cleared or junk field
-    // keeps the last amount — it must not fall to the minimum.
-    const COMMITS: [string, number][] = [["", 777], ["   ", 777], ["abc", 777], ["12.5", 777], ["1e2", 100],
-      ["1 200", 1200], ["5000", 3000], ["12", 100], ["-40", 100], ["0", 100], ["550", 550]];
-    for (const [raw, want] of COMMITS) {
-      const got = committedCredits(raw, range, 777);
-      check(`commit ${JSON.stringify(raw)} (from 777) → ${want}`, got === want, String(got));
-    }
-    check("the custom quote is the shared one (priceForCredits through customQuote)",
-      /customQuote\(credits, ladder\)/.test(board)
-      && /priceForCredits\(credits, ladder\)/.test(codeOnly(read("components/plan/pricing-model.ts"))));
-    check("the slider ladder is built from ALL active packs the page received",
-      /packLadder\(packs\)/.test(board) && !/packs\.filter\(/.test(board));
-
-    // C6 — the predicate C2 relies on is not vacuous: the original card
-    // passes it, and every single-field drift fails it.
-    const base = packs[1];
-    const q = await quote(packCheckoutHref(base.id));
-    check("self-check: the untouched card passes the parity predicate", packParity(base, q));
-    const drifts: [string, PackCard][] = [
-      ["+1 gr price", { ...base, priceCents: base.priceCents + 1 }],
-      ["+1 credit", { ...base, credits: base.credits + 1 }],
-      ["+1 bonus", { ...base, bonusCredits: base.bonusCredits + 1 }],
-      ["currency", { ...base, currency: "EUR" }],
-    ];
-    for (const [what, card] of drifts) {
-      check(`self-check: a ${what} drift fails the parity predicate`, !packParity(card, q));
+    // The charge itself: begin creates a PaymentIntent for exactly the quote.
+    for (const href of [subscriber.packs.find((p) => p.slot === 800)!.href!, subscriber.packs.find((p) => p.slot === 100)!.href!,
+      subscriber.tiers.find((t) => t.credits === 1000)!.href!]) {
+      const seen = installStripe();
+      const req = parseIntent(href)!;
+      const res = await beginCheckout(db(), WS, "buyer@example.test", req);
+      const pi = seen.find((c) => c.method === "POST" && c.path === "/payment_intents");
+      const shown = [...subscriber.packs.map((p) => [p.href, p.amountCents]), ...subscriber.tiers.map((t) => [t.href, t.amountCents])]
+        .find(([h]) => h === href)?.[1];
+      check(`Stripe is asked for exactly the displayed amount (${href})`,
+        res.ok && pi !== undefined && Number(pi.body.amount) === shown && pi.body.currency === "pln",
+        JSON.stringify({ res, amount: pi?.body.amount, shown }));
     }
   }
 
-  console.log("\nD. ANNUAL — ONLY WHEN A REAL ANNUAL PRICE IS STORED");
+  console.log("\nD. ANNUAL — OFF UNTIL CREDITS FOLLOW A YEARLY INVOICE");
   {
-    check("production: annual billing is not available", !annualBillingAvailable(plans));
-    check("production: the page opens on monthly although the config prefers annual",
-      PRICING_PAGE.defaultBillingPeriod === "annual"
-      && initialBillingPeriod(PRICING_PAGE.defaultBillingPeriod, annualBillingAvailable(plans)) === "monthly");
-    for (const p of paid) {
-      const q = await quote(planCheckoutHref(p.id, "annual"));
-      check(`production: a forced annual ${p.slug} checkout is refused`, !q.ok && q.reason === "not_mapped");
+    check("the offer switch is off", PRICING_OFFER.annual.enabled === false);
+    for (const p of subscriber.plans) {
+      const q = await quote(planCheckoutHref(p.id, "annual"), []);
+      check(`production: a forced annual ${p.slug} checkout is refused`, !q.ok && q.reason === "annual_unavailable", JSON.stringify(q));
     }
-    const board = codeOnly(read("components/plan/pricing-board.tsx"));
-    check("the board's figures follow the derived period (monthly unless annual is real)",
-      /const active: BillingPeriod = annualAvailable \? period : "monthly"/.test(board)
-      && /initialBillingPeriod\(PRICING_PAGE\.defaultBillingPeriod, annualAvailable\)/.test(board));
-    check("the billing control renders only when annual is available", /\{annualAvailable && \(/.test(board));
-    check("annual is offered only with stored yearly prices AND Stripe annual Prices",
-      /const annualAvailable = useMemo\(\(\) => annualOnOffer\(plans\), \[plans\]\)/.test(board));
-    check("production: annual is not on offer", !annualOnOffer(plans));
-
-    // A catalogue with annual prices set on every paid plan.
     const ANNUAL: Record<string, [number, string]> = {
       starter: [95040, "price_annual_starter"], pro: [287040, "price_annual_pro"], agency: [959040, "price_annual_agency"],
     };
     const annualPlans = PROD_PLANS.map((p) => (ANNUAL[p.slug] ? {
-      ...p, annual_price_cents: ANNUAL[p.slug][0], stripe_price_id_annual: ANNUAL[p.slug][1],
-      stripe_price_annual_cents: ANNUAL[p.slug][0],
+      ...p, annual_price_cents: ANNUAL[p.slug][0], stripe_price_id_annual: ANNUAL[p.slug][1], stripe_price_annual_cents: ANNUAL[p.slug][0],
     } : p));
-    const aCards = annualPlans.map(toPlanCard);
-    const aDb = catalogueDb(annualPlans, PROD_PACKS);
-    check("annual catalogue: annual billing is available", annualBillingAvailable(aCards) && annualOnOffer(aCards));
-    check("yearly prices without Stripe annual Prices are NOT on offer",
-      !annualOnOffer(aCards.map((c) => ({ ...c, annualMapped: false }))));
-    check("…nor when a single paid plan lacks its annual Price",
-      !annualOnOffer(aCards.map((c) => (c.slug === "pro" ? { ...c, annualMapped: false } : c))));
-    check("annual catalogue: the page opens on annual",
-      initialBillingPeriod(PRICING_PAGE.defaultBillingPeriod, true) === "annual");
-    for (const p of aCards.filter(isPaidPlan)) {
-      const req = parseIntent(planCheckoutHref(p.id, "annual"))!;
-      const q = await quoteCheckout(aDb, WS, req);
-      check(`annual ${p.slug}: charged the stored yearly total, shown ÷12, with the annual Price`,
-        q.ok && q.quote.amountCents === p.annualPriceCents && q.quote.period === "annual"
-        && q.quote.stripePriceId === ANNUAL[p.slug][1]
-        && planMonthlyCents(p, "annual") === annualMonthlyCents(p) && planMonthlyCents(p, "annual") < p.priceCents,
-        JSON.stringify(q));
-      check(`annual ${p.slug}: "Oszczędzasz" = 12 × monthly − yearly`,
-        annualSavingCents(p) === p.priceCents * 12 - p.annualPriceCents);
+    for (const p of annualPlans.filter((x) => x.price_cents > 0)) {
+      const q = await quoteCheckout(catalogueDb(annualPlans, PROD_PACKS), WS, { kind: "subscription", planId: p.id, period: "annual" });
+      check(`even with a synced annual Price, ${p.slug} annual is refused while the switch is off`,
+        !q.ok && q.reason === "annual_unavailable");
     }
-    check("no annual price → no saving line", paid.every((p) => annualSavingCents(p) === null));
+    const legacy = await createPlanCheckout(catalogueDb(annualPlans, PROD_PACKS), WS, null, annualPlans[2].id, "annual");
+    check("…and the hosted fallback refuses it too", !legacy.ok && legacy.reason === "annual_unavailable");
+    const off = page("free", { plans: annualPlans });
+    check("page: annual not on sale → no saving claimed, every card monthly",
+      !off.annual.onSale && off.annual.savingPct === 0 && off.plans.every((p) => !p.payable.annual));
+    const on = page("free", { plans: annualPlans, offer: { ...PRICING_OFFER, annual: { enabled: true } } });
+    check("page: with the switch on and real annual Prices, annual is on sale with the REAL smallest saving",
+      on.annual.onSale && on.annual.savingPct === annualSavingPct(on.plans) && on.annual.savingPct === 20);
+    const partial = page("free", { plans: annualPlans.map((p) => (p.slug === "pro" ? { ...p, stripe_price_id_annual: null } : p)),
+      offer: { ...PRICING_OFFER, annual: { enabled: true } } });
+    check("…but one plan without its annual Price keeps annual off for the whole page", !partial.annual.onSale);
+    const ui = codeOnly(read("components/plan/pricing-page.tsx"));
+    check("the annual segment is disabled unless on sale (no fake −20%)",
+      /disabled=\{!data\.annual\.onSale\}/.test(ui) && /data\.annual\.onSale && data\.annual\.savingPct > 0/.test(ui)
+      && !/−20%|-20%/.test(ui));
   }
 
-  console.log("\nE. FREE IS NOT A CARD; BUSINESS IS A LABEL ON `agency`");
+  console.log("\nE. TOP-UPS NEED AN ACTIVE PAID PLAN (server-side, every path)");
   {
-    check("the free plan is not a paid card", plans.filter(isPaidPlan).every((p) => p.slug !== "free"));
-    check("three paid cards, in the database order", paid.map((p) => p.slug).join(",") === "starter,pro,agency");
-    const freeRow = PROD_PLANS.find((p) => p.slug === "free")!;
-    const q = await quote(planCheckoutHref(freeRow.id, "monthly"));
-    check("a forced free checkout is refused", !q.ok && q.reason === "plan_not_purchasable");
-    const board = codeOnly(read("components/plan/pricing-board.tsx"));
-    check("the board renders cards for paid plans only",
-      /const paid = useMemo\(\(\) => plans\.filter\(isPaidPlan\)/.test(board) && /paid\.map\(\(p\) => \(\s*<PlanColumn/.test(board));
-    check("the Free notice reads the free row's own name and credits",
-      /t\("plans\.currentFree", \{ name: free\.name, n: formatCount\(free\.monthlyCredits \+ free\.bonusCredits\) \}\)/.test(board));
-    check("…and shows only to a workspace on the free plan",
-      /const onFree = free !== null && currentSlug === free\.slug/.test(board) && /\{onFree && free && \(/.test(board));
-    check("the current plan's card says so and does not sell", /isCurrent\s*\?\s*t\("plans\.current"\)/.test(board)
-      && /const canBuy = payable && !isCurrent/.test(board));
-    check("`agency` is displayed through a label key", planPresentation("agency").nameKey === "plans.tier.business");
-    check("the card keeps the internal slug as its identity", /data-plan=\{p\.slug\}/.test(board));
-    // Capabilities with no consumer in the app are "Wkrótce", never ✓.
-    check("seats, priority queue and operator mode are listed as not yet running",
-      ["workspace_members", "priority_queue", "operator_mode"].every(isComingSoon) && COMING_SOON_CAPABILITIES.length === 3);
-    check("card rows carrying such a capability are marked soon, not ✓",
-      /soon: r\.on && isComingSoon\(CAPABILITY_OF_ROW\[r\.key\] \?\? ""\)/.test(board)
-      && /seats: "workspace_members", priority: "priority_queue", operator: "operator_mode"/.test(board)
-      && /data-on=\{\(r\.on && !r\.soon\) \|\| undefined\}/.test(board));
-    check("comparison cells for them go through the same switch",
-      /soonFlag\(p\.capabilities\.priority_queue, "priority_queue"\)/.test(board)
-      && /soonFlag\(p\.capabilities\.operator_mode, "operator_mode"\)/.test(board)
-      && /isComingSoon\("workspace_members"\) \? \{ soon: seatLabel\(s, t\) \}/.test(board));
-    const pl = JSON.parse(read("lib/i18n/dictionaries/pl.json"));
-    check("PL label for agency is BUSINESS (rendered uppercase)", pl.plans.tier.business === "Business");
-    check("starter/pro keep their database names (no override)",
-      !PLAN_PRESENTATION.starter.nameKey && !PLAN_PRESENTATION.pro.nameKey);
-    check("an unknown slug falls back instead of breaking", planPresentation("enterprise-x") === FALLBACK_PLAN);
-    check("PRO's benefit is division of stored credits (4× Starter)",
-      creditMultiple(paid[1], paid[0]) === 4 && creditMultiple(paid[0], paid[0]) === null);
-    check("per-credit on a plan is price ÷ credits",
-      Math.abs((planPerCreditCents(paid[1], "monthly") ?? 0) - 29900 / 1200) < 1e-9);
+    const pack = PROD_PACKS[0];
+    const states: [string, Sub[], string][] = [
+      ["no subscription (Free / anonymous workspace)", [], "plan_required"],
+      ["trialing", [sub("trialing")], "plan_required"],
+      ["past_due", [sub("past_due")], "plan_required"],
+      ["canceled", [sub("canceled")], "plan_required"],
+      ["incomplete", [sub("incomplete")], "plan_required"],
+      ["incomplete_expired", [sub("incomplete_expired")], "plan_required"],
+      ["unpaid", [sub("unpaid")], "plan_required"],
+      ["paused", [sub("paused")], "plan_required"],
+      ["active but the paid period has ended (stale webhook)", [sub("active", PAST)], "plan_required"],
+      ["active with no period end recorded", [sub("active", null)], "plan_required"],
+      ["another workspace's active plan", [sub("active", FUTURE, { workspace_id: "ws-other" })], "plan_required"],
+    ];
+    for (const [what, subs, reason] of states) {
+      const a = await quote(packCheckoutHref(pack.id), subs);
+      const b = await quote(creditsCheckoutHref(1000), subs);
+      check(`${what}: pack and custom amount refused (${reason})`,
+        !a.ok && a.reason === reason && !b.ok && b.reason === reason, JSON.stringify([a, b]));
+    }
+    const failed = await quoteCheckout(catalogueDb(PROD_PLANS, PROD_PACKS, [sub("active")], { subsError: true }), WS,
+      { kind: "credit_package", packageId: pack.id });
+    check("a failed subscription lookup refuses (closed), as plan_check_failed", !failed.ok && failed.reason === "plan_check_failed");
+    const ok = await quote(packCheckoutHref(pack.id), [sub("active")]);
+    check("active + paid period running → allowed", ok.ok);
+    const cancelling = await quote(packCheckoutHref(pack.id), [sub("active", FUTURE)]);
+    check("active with cancel_at_period_end (status still active) → allowed until the period ends", cancelling.ok);
+    const planQ = await quote(planCheckoutHref(PRO.id, "monthly"), []);
+    check("a PLAN purchase is not gated — that is how a Free user gets a plan", planQ.ok);
+    const gate = await requireActivePaidPlan(db([sub("active")]), WS, NOW);
+    check("the gate never trusts a client: it takes only the session's workspace", gate.ok && gate.planId === PRO.id);
+
+    // begin: Stripe itself is asked, and a refusal creates nothing.
+    let seen = installStripe({ subStatus: "canceled" });
+    let res = await beginCheckout(db([sub("active")]), WS, null, { kind: "credit_package", packageId: pack.id });
+    check("begin: DB says active, Stripe says canceled → plan_required, no PaymentIntent",
+      !res.ok && res.reason === "plan_required" && !seen.some((c) => c.path === "/payment_intents"), JSON.stringify(res));
+    seen = installStripe({ subFails: true });
+    res = await beginCheckout(db([sub("active")]), WS, null, { kind: "custom_credits", credits: 1000 });
+    check("begin: Stripe lookup fails → plan_check_failed, no PaymentIntent",
+      !res.ok && res.reason === "plan_check_failed" && !seen.some((c) => c.path === "/payment_intents"));
+    seen = installStripe();
+    res = await beginCheckout(db([]), WS, null, { kind: "custom_credits", credits: 1000 });
+    check("begin (a manual POST with no plan): refused before any Stripe call",
+      !res.ok && res.reason === "plan_required" && seen.length === 0);
+
+    // The hosted fallback's two public actions.
+    seen = installStripe();
+    const hp = await createPackageCheckout(db([]), WS, null, pack.id);
+    const hc = await createCustomCreditsCheckout(db([]), WS, null, 1000);
+    check("hosted fallback: pack and custom refused without a plan, no session created",
+      !hp.ok && hp.reason === "plan_required" && !hc.ok && hc.reason === "plan_required"
+      && !seen.some((c) => c.path === "/checkout/sessions"));
+    seen = installStripe();
+    const hcOk = await createCustomCreditsCheckout(db([sub("active")]), WS, null, 1000);
+    const session = seen.find((c) => c.path === "/checkout/sessions");
+    check("hosted fallback with an active plan: the session charges the tier's displayed price",
+      hcOk.ok && Number(session?.body["line_items[0][price_data][unit_amount]"]) === 12400, JSON.stringify(session?.body ?? {}));
+    seen = installStripe();
+    const hcBad = await createCustomCreditsCheckout(db([sub("active")]), WS, null, 1001);
+    check("hosted fallback: an amount between tiers is refused", !hcBad.ok && hcBad.reason === "invalid_credits");
+    const unsynced = PROD_PACKS.map((p, i) => (i === 0 ? { ...p, stripe_sync_status: "failed" } : p));
+    const hpUnsynced = await createPackageCheckout(catalogueDb(PROD_PLANS, unsynced, [sub("active")]), WS, null, pack.id);
+    check("hosted fallback now applies the same price-parity rule", !hpUnsynced.ok && hpUnsynced.reason === "price_out_of_sync");
+
+    check("nothing in the guard writes: balances, history and the ledger are untouched",
+      !/\.(insert|update|upsert|delete)\(/.test(codeOnly(read("lib/server/billing.ts")).slice(
+        read("lib/server/billing.ts").indexOf("WHO MAY TOP UP"), read("lib/server/billing.ts").indexOf("THE THREE THINGS THAT CAN BE BOUGHT"))));
+    check("the webhook was not taught to refuse money (still settles credit_package / custom_credits)",
+      sha("lib/server/stripe-webhook.ts") === "e9a03ea46af4bb7d5c91332969154e4b111b4c1634fbbe124a1ba6b8e03c95d2");
   }
 
-  console.log("\nF. CONFIG HOLDS NO MONEY; COPY PROMISES NOTHING THE CHECKOUT DOES NOT DO");
+  console.log("\nF. TIERS AND PACK SLOTS — THE OFFERED AMOUNTS AND NOTHING ELSE");
+  {
+    check("exactly the ten tiers, ascending, max 50 000",
+      TOPUP_TIERS.join(",") === "1000,3000,5000,10000,15000,20000,25000,30000,40000,50000");
+    check("exactly the five pack slots, in display order", PACK_SLOTS.join(",") === "800,500,300,200,100");
+    check("a slot WITH a pack row is sold as that pack, not as a custom amount",
+      offeredCustomAmounts(PROD_PACKS).sort((a, b) => a - b).join(",") === "200,300,800,1000,3000,5000,10000,15000,20000,25000,30000,40000,50000");
+    const input = { packs: PROD_PACKS, planSlug: null, planCentsPerCredit: null };
+    for (const n of [100, 150, 250, 333, 500, 550, 777, 999, 1001, 1150, 2999, 3001, 49999, 50001, 100000]) {
+      const r = priceTopup(n, input);
+      check(`${n} is not an offered amount`, !r.ok && r.reason === "not_offered");
+    }
+    for (const bad of [0, -1000, 1000.5, Number.NaN, Number.POSITIVE_INFINITY, "1000", null, {}]) {
+      const r = priceTopup(bad, input);
+      check(`${JSON.stringify(bad) ?? String(bad)} is refused`, !r.ok);
+    }
+    // No extrapolation above the largest pack (3 000 credits incl. bonus).
+    for (const n of [5000, 10000, 50000]) {
+      const r = priceTopup(n, input);
+      check(`${n}: above the rate card — unpriced, not extrapolated`, !r.ok && r.reason === "unpriced");
+    }
+    check("the ladder price of an offered amount is validateCustomCredits' own",
+      [200, 300, 800, 1000, 3000].every((n) => {
+        const r = priceTopup(n, input); const v = validateCustomCredits(n, creditLadder(PROD_PACKS));
+        return r.ok && v.ok && r.amountCents === v.amountCents && r.source === "ladder";
+      }));
+    check("no approved prices are configured", PRICING_OFFER.topups.approvedCents === null && PRICING_OFFER.topups.perPlanCents === null);
+
+    // An approved price needs validated costs; without them it is not sold.
+    const approvedNoCosts: PricingOffer = { ...PRICING_OFFER, topups: { ...PRICING_OFFER.topups, approvedCents: { 5000: 40000 } } };
+    const r1 = priceTopup(5000, { ...input, offer: approvedNoCosts });
+    check("an approved price with no cost inputs is NOT sold (fails closed)", !r1.ok && r1.reason === "unpriced");
+    const costs = { providerCentsPerCredit: 4, paymentFeePercent: 1.5, paymentFeeFixedCents: 100, minMarginPercent: 50 };
+    const approved: PricingOffer = { ...PRICING_OFFER, topups: { ...PRICING_OFFER.topups, approvedCents: { 5000: 45000, 10000: 50000 }, costs } };
+    const ok5 = priceTopup(5000, { ...input, offer: approved });
+    check("an approved price with a margin above the minimum is sold at exactly that price",
+      ok5.ok && ok5.amountCents === 45000 && ok5.source === "approved");
+    check("margin = (price − fee − credits × cost) / price",
+      Math.abs((topupMarginPercent(5000, 45000, costs) ?? 0) - ((45000 - 675 - 100 - 20000) / 45000) * 100) < 1e-9);
+    const thin = priceTopup(10000, { ...input, offer: approved });
+    check("an approved price below the minimum margin is refused", !thin.ok && thin.reason === "unpriced");
+    const perPlan: PricingOffer = { ...approved, topups: { ...approved.topups,
+      perPlanCents: { starter: { 5000: 60000 }, pro: { 5000: 50000 }, agency: null } } };
+    const forPro = priceTopup(5000, { ...input, planSlug: "pro", offer: perPlan });
+    const forAgency = priceTopup(5000, { ...input, planSlug: "agency", offer: perPlan });
+    check("per-plan prices win for their plan, the common price applies to the others",
+      forPro.ok && forPro.amountCents === 50000 && forPro.source === "approved_plan"
+      && forAgency.ok && forAgency.amountCents === 45000 && forAgency.source === "approved");
+    const policy: PricingOffer = { ...approved, topups: { ...approved.topups, minUnitVsPlan: 1 } };
+    check("policy: a top-up credit cheaper than the buyer's plan credit is refused",
+      !approvedPriceValid(5000, 45000, 29900 / 1200, policy) && approvedPriceValid(5000, 45000, 5, policy));
+    check("…and with the policy set, an unknown plan price refuses", !approvedPriceValid(5000, 45000, null, policy));
+  }
+
+  console.log("\nG. PREMIERE — OFF, SERVER-CLOCKED, AUDITABLE");
+  {
+    check("the premiere is off", PRICING_OFFER.premiere.enabled === false && premiereState(NOW).status === "off");
+    check("…and no regular price is invented", Object.values(PRICING_OFFER.premiere.regularMonthlyCents).every((v) => v === null));
+    check("the deadline is 31 Oct 2026 23:59:59 Warsaw (CET after the 25 Oct DST change) = 22:59:59Z",
+      Date.parse(PRICING_OFFER.premiere.endsAt) === Date.UTC(2026, 9, 31, 22, 59, 59));
+    const enabledNoPrices: PricingOffer = { ...PRICING_OFFER, premiere: { ...PRICING_OFFER.premiere, enabled: true } };
+    check("switched on WITHOUT regular prices it stays off", premiereState(NOW, enabledNoPrices).status === "off");
+    const on: PricingOffer = { ...PRICING_OFFER, premiere: { ...PRICING_OFFER.premiere, enabled: true,
+      regularMonthlyCents: { starter: 12900, pro: 39900, agency: 129900 } } };
+    const end = Date.parse(on.premiere.endsAt);
+    check("on, before the deadline: active", premiereState(end - 1, on).status === "active");
+    check("on, at the deadline: ended (no reset, no client clock)", premiereState(end, on).status === "ended");
+    check("price lock metadata only while active",
+      premiereMetadata(end - 1, on).grovbase_price_lock === "premiere-2026-10" && Object.keys(premiereMetadata(end, on)).length === 0
+      && Object.keys(premiereMetadata(NOW)).length === 0);
+    check("after the deadline a plan still at its premiere price is not sold",
+      premiereExpiredFor("pro", 29900, end, on) && !premiereExpiredFor("pro", 39900, end, on) && !premiereExpiredFor("pro", 29900, end - 1, on));
+    check("…which today (off) never triggers", !premiereExpiredFor("pro", 29900, end + 1));
+    check("a locked subscription is recognised", isPriceLocked({ grovbase_price_lock: "premiere-2026-10" }) && !isPriceLocked({}) && !isPriceLocked(null));
+    const migrate = codeOnly(read("lib/server/stripe-migrate.ts"));
+    check("the admin bulk price migration skips price-locked subscriptions (grandfathering holds through renewals)",
+      /if \(isPriceLocked\(sub\.metadata\)\) \{ continue; \}/.test(migrate));
+    const checkout = codeOnly(read("lib/server/checkout.ts")); const billing = codeOnly(read("lib/server/billing.ts"));
+    check("both subscription paths tag only through premiereMetadata, on server time",
+      /\.\.\.premiereMetadata\(Date\.now\(\)\)/.test(checkout) && /\.\.\.premiereMetadata\(Date\.now\(\)\)/.test(billing));
+    const shown = page("free", { offer: on });
+    check("page: the banner gets the server's deadline and the server's now", shown.premiere?.endsAtMs === end && shown.premiere?.serverNow === NOW);
+    check("page: no banner today", page("free").premiere === null);
+    const banner = codeOnly(read("components/plan/premiere-banner.tsx"));
+    check("the countdown runs on the server/client skew, and removes itself at zero",
+      /serverNow - Date\.now\(\)/.test(banner) && /if \(left <= 0\) return null;/.test(banner));
+    check("no strike-through or fake discount anywhere in the page",
+      ["premiere-banner.tsx", "plan-cards.tsx", "topups.tsx", "pricing-page.tsx", "plan-comparison.tsx"]
+        .every((f) => !/line-through|30% OFF|−30%/.test(read(`components/plan/${f}`))));
+  }
+
+  console.log("\nH. THE PAGE'S DATA");
+  {
+    const anon = page("anon");
+    check("visitor: top-ups locked as 'anonymous', no plan, no subscription",
+      anon.viewer.topups === "anonymous" && anon.viewer.currentSlug === null && !anon.viewer.hasLiveSubscription && !anon.viewer.signedIn);
+    check("visitor: no image counts (ai_models is not readable anonymously)", anon.imageCost === null);
+    check("visitor: the data carries nothing about an account",
+      Object.keys(anon.viewer).sort().join(",") === "currentSlug,hasLiveSubscription,signedIn,topups"
+      && !/balance|email|wallet|workspace_id|ws-0000/i.test(JSON.stringify(anon)));
+    check("free user: locked as 'no_plan'", page("free").viewer.topups === "no_plan");
+    check("lookup failure: locked as 'check_failed'", page("check_failed").viewer.topups === "check_failed");
+    check("subscriber: allowed, PRO marked as current", subscriber.viewer.topups === "allowed" && subscriber.viewer.currentSlug === "pro");
+    check("three paid cards; Free is only a note", subscriber.plans.map((p) => p.slug).join(",") === "starter,pro,agency" && subscriber.free?.name === "Free");
+    check("pack cards 800 / 500 / 300 / 200 / 100 with coins 5 → 1",
+      subscriber.packs.map((p) => `${p.slot}:${p.level}`).join(",") === "800:5,500:4,300:3,200:2,100:1");
+    check("BEST VALUE is only on the lowest price per credit — the 800 card",
+      subscriber.packs.filter((p) => p.best).map((p) => p.slot).join(",") === "800");
+    check("savings compare real prices per credit with the 100 pack (none on the 100 pack itself)",
+      subscriber.packs.find((p) => p.slot === 100)?.savePct === null
+      && subscriber.packs.find((p) => p.slot === 800)?.savePct === Math.round((1 - 10400 / 800 / 19) * 100));
+    check("ten tiers on the page, exactly the offered ones", subscriber.tiers.map((t) => t.credits).join(",") === TOPUP_TIERS.join(","));
+    const off = page("allowed", { payments: false });
+    check("payments off: nothing is buyable (no link anywhere)",
+      off.plans.every((p) => !p.payable.monthly) && off.packs.every((p) => !p.href) && off.tiers.every((t) => !t.href));
+    const unsynced = page("allowed", { packs: PROD_PACKS.map((p, i) => (i === 2 ? { ...p, stripe_sync_status: "failed" } : p)) });
+    check("one unverified pack: no custom amount is priced (the checkout would refuse)",
+      unsynced.tiers.every((t) => t.amountCents === null) && unsynced.packs.filter((p) => p.slot === 800 || p.slot === 200).every((p) => p.amountCents === null));
+    const counted = page("allowed", { viewer: { cost: { display_name: "Nano Banana Pro", pricing: { "1K": 7, "2K": 7, "4K": 12 } } } });
+    check("signed in: image counts come from the model's real per-size price",
+      counted.imageCost?.k2 === 7 && counted.imageCost?.k4 === 12 && counted.imageCost?.model === "Nano Banana Pro");
+    check("PRO: ≈ 171 photos in 2K, ≈ 100 in 4K (1 200 credits)", Math.floor(1200 / 7) === 171 && Math.floor(1200 / 12) === 100);
+    const cards = codeOnly(read("components/plan/plan-cards.tsx"));
+    check("the card divides the plan's credits by that price, nothing else",
+      /Math\.floor\(credits \/ cost\.k2\)/.test(cards) && /Math\.floor\(credits \/ cost\.k4\)/.test(cards));
+  }
+
+  console.log("\nI. ROUTING AND SEO");
+  {
+    check("/plany is a public route (outside the app group)", existsSync("app/plany/page.tsx") && !existsSync("app/(app)/plany"));
+    check("/plany is not a protected path; /plan still is", !isProtectedPath("/plany") && isProtectedPath("/plan") && isProtectedPath("/plan/x"));
+    const plany = codeOnly(read("app/plany/page.tsx"));
+    const surfaceSrc = codeOnly(read("components/plan/pricing-surface.tsx"));
+    check("/plany: canonical /plany, indexable, no redirect to login",
+      /export const generateMetadata = pricingMetadata/.test(plany) && /canonical: "\/plany"/.test(surfaceSrc)
+      && !/noindex|robots:/.test(plany + surfaceSrc) && !/redirect\(/.test(plany));
+    check("/plany's title is the bare name (the layout template adds the brand once)",
+      ["pl", "en", "de"].every((l) => !/GrovBase/.test(JSON.parse(read(`lib/i18n/dictionaries/${l}.json`)).pricing.meta.title)));
+    check("/plany renders the shared surface in page scope, with no ?checkout= banner (returns land on /plan)",
+      /<PricingSurface scope="page" \/>/.test(plany) && !/checkoutNotice|searchParams/.test(plany));
+    const plan = codeOnly(read("app/(app)/plan/page.tsx"));
+    check("/plan renders the SAME surface in the app shell, canonical /plany",
+      /<PricingSurface scope="shell"/.test(plan) && /canonical: "\/plany"/.test(plan));
+    const config = read("next.config.mjs");
+    check("/cennik → /plany, permanent (308)", /\{ source: "\/cennik", destination: "\/plany", permanent: true \}/.test(config));
+    const robots = codeOnly(read("app/robots.ts"));
+    check("robots no longer blocks every path starting /plan, but still /plan, /plan/… and /plan?…",
+      !/"\/plan",/.test(robots) && /"\/plan\$", "\/plan\/", "\/plan\?"/.test(robots));
+    check("sitemap lists /plany and never /cennik", /path: "\/plany"/.test(read("app/sitemap.ts")) && !/path: "\/cennik"/.test(read("app/sitemap.ts")));
+    check("a CMS redirect cannot hijack /plany or /cennik", /"\/plany", "\/cennik"/.test(read("lib/server/redirects.ts")));
+    check("the ?checkout= notice accepts one short token or nothing",
+      checkoutNotice({ checkout: "plan_required" }) === "plan_required" && checkoutNotice({ checkout: "https://evil.example" }) === null
+      && checkoutNotice({ checkout: ["a", "b"] }) === null && checkoutNotice({}) === null);
+    const surface = codeOnly(read("components/plan/pricing-surface.tsx"));
+    const loader = codeOnly(read("lib/server/pricing-page.ts"));
+    check("a visitor costs only public reads (workspace reads only with a user)",
+      /const workspace = user \? await getCurrentWorkspace/.test(loader) && /workspace\s*\? supabase\.from\("subscriptions"\)/.test(loader)
+      && /data\.viewer\.signedIn \? memberChrome\(supabase\)/.test(surface));
+    check("no anonymous checkout: /checkout still sends a visitor to sign in",
+      /if \(!user\) redirect\(/.test(codeOnly(read("app/(app)/checkout/page.tsx"))));
+    check("a visitor's 'Wybierz plan' opens the sign-in dialog with the order as the destination",
+      /<Gate href=\{cta\.href\} signedIn=\{data\.viewer\.signedIn\}/.test(codeOnly(read("components/plan/plan-cards.tsx"))));
+    const bar = codeOnly(read("components/layout/mega-topbar.tsx"));
+    check("the header's 'Plany' sends a visitor to /plany, a member to /plan", /href=\{guest \? "\/plany" : "\/plan"\}/.test(bar));
+    check("FAQ structured data is exactly the visible questions", /"@type": "FAQPage"/.test(surface)
+      && /FAQ\.filter\(\(f\) => f\.when !== "premiere" \|\| data\.premiere\)/.test(surface));
+  }
+
+  console.log("\nJ. CONFIG AND COPY");
   {
     const config = codeOnly(read("components/plan/pricing-config.ts"));
-    check("pricing-config.ts holds no price, credit amount, discount or Stripe id",
+    check("pricing-config.ts holds no price, credit amount, discount, date or Stripe id",
       !/(price|cents|credits|amount|discount|percent|stripe)\w*\s*:\s*-?\d/i.test(config)
-      && !/price_[0-9A-Za-z]{6,}/.test(config));
-    check("service levels are words, not money",
-      Object.values(SERVICE_LEVELS).every((s) => typeof s.supportKey === "string" && typeof s.commercialUse === "boolean"));
-    const sources = codeOnly(read("components/plan/pricing-board.tsx")) + config;
-    const used = new Set([...sources.matchAll(/["'`]((?:plans|packs|features)\.[A-Za-z0-9_.]+)["'`]/g)].map((m) => m[1]));
+      && !/price_[0-9A-Za-z]{6,}/.test(config) && !/20\d\d-\d\d-\d\d/.test(config));
+    check("the offer config is server-only", read("lib/server/pricing-offer.ts").startsWith('import "server-only"'));
+    check("no client component imports the offer config",
+      ["pricing-page.tsx", "plan-cards.tsx", "plan-comparison.tsx", "topups.tsx", "pricing-faq.tsx", "premiere-banner.tsx"]
+        .every((f) => !/pricing-offer|lib\/server\//.test(codeOnly(read(`components/plan/${f}`)))));
+    check("the page computes no price (no rate card in any client component)",
+      ["pricing-page.tsx", "plan-cards.tsx", "plan-comparison.tsx", "topups.tsx"]
+        .every((f) => !/creditLadder|priceForCredits|validateCustomCredits|priceTopup/.test(codeOnly(read(`components/plan/${f}`)))));
     const dicts = Object.fromEntries((["pl", "en", "de"] as const).map((l) => [l, JSON.parse(read(`lib/i18n/dictionaries/${l}.json`))]));
-    // Mirrors lib/i18n/t.ts: at each level the REST of the path is tried as a
-    // flat dotted key first ("row.credits"), then the nesting is walked.
     const lookup = (d: unknown, key: string): unknown => {
       if (typeof d !== "object" || d === null) return undefined;
       const obj = d as Record<string, unknown>;
@@ -484,90 +670,64 @@ async function main() {
       const dot = key.indexOf(".");
       return dot < 0 ? undefined : lookup(obj[key.slice(0, dot)], key.slice(dot + 1));
     };
+    const files = ["pricing-page.tsx", "plan-cards.tsx", "plan-comparison.tsx", "topups.tsx", "pricing-faq.tsx", "premiere-banner.tsx", "pricing-config.ts", "checkout-notice.tsx"];
+    const src = files.map((f) => read(`components/plan/${f}`)).join("\n") + read("components/checkout/checkout-view.tsx");
+    const used = new Set([...src.matchAll(/["'`]((?:pricing|plans|packs)\.[A-Za-z0-9_.]+)["'`]/g)].map((m) => m[1]));
+    for (const f of FAQ) { used.add(`pricing.faq.${f.key}.q`); used.add(`pricing.faq.${f.key}.a`); }
     const missing = [...used].flatMap((k) => (["pl", "en", "de"] as const).filter((l) => typeof lookup(dicts[l], k) !== "string").map((l) => `${l}:${k}`));
     check(`every copy key the page uses exists in pl/en/de (${used.size} keys)`, missing.length === 0, missing.join(", "));
-    const promises = [...used].filter((k) => /faktur|VAT|Rechnung|invoice/i.test(String(lookup(dicts.pl, k)) + String(lookup(dicts.en, k))));
-    check("no VAT-invoice promise on /plan — the checkout issues none", promises.length === 0, promises.join(", "));
-    check("no invented annual offer copy (plans.annualNote) and no '~N ujęć' approximation (plans.approx)",
-      !used.has("plans.annualNote") && !used.has("plans.approx"));
-    check("the strike-through basis is stated under the packs",
-      /packs\.referenceBasis/.test(sources) && /formatPerCredit\(rate, currency\)/.test(sources));
-
-    // Polish numbers, written the way a price list writes them.
-    const nb = (s: string) => s.replace(/[  ]/g, " ");
-    check("1200 → \"1 200\"", nb(formatCount(1200)) === "1 200");
-    check("5000 → \"5 000\"", nb(formatCount(5000)) === "5 000");
-    check("29900 gr → \"299 zł\"", nb(formatMoney(29900, "PLN")) === "299 zł");
-    check("7949 gr → \"79,49 zł\" (grosze shown when there are grosze)", nb(formatMoney(7949, "PLN")) === "79,49 zł");
-    check("0,19 zł per credit", nb(formatPerCredit(19, "PLN")) === "0,19 zł");
-    check("~0,25 zł per credit on PRO", nb(formatPerCredit(planPerCreditCents(paid[1], "monthly")!, "PLN")) === "0,25 zł");
-    check("99 900 gr → \"999 zł\"", nb(formatMoney(99900, "PLN")) === "999 zł");
+    const texts = (["pl", "en", "de"] as const).map((l) => JSON.stringify(dicts[l].pricing));
+    check("no VAT-invoice promise", texts.every((t) => !/faktur|VAT|Rechnung|invoice/i.test(t)));
+    check("no purchase-email promise (GrovBase sends none)", texts.every((t) => !/e-mail(em)? potwierdz|confirmation email|Bestätigungs-?E-Mail|potwierdzenie zakupu/i.test(t)));
+    check("no Przelewy24 claim (not active on the account)", texts.every((t) => !/przelewy|p24/i.test(t)));
+    check("video is never promised as available", ["pl", "en", "de"].every((l) => /Wkrótce|Soon|Bald/.test(dicts[l].pricing.soon))
+      && featureOn("video", "pro", {}) === "soon");
+    check("FAQ: eight questions, the premiere one only while it runs",
+      FAQ.length === 8 && FAQ.filter((f) => f.when === "premiere").map((f) => f.key).join() === "premiere");
+    check("the false 'change your plan in the billing portal' copy is gone (the portal cannot)",
+      (["pl", "en", "de"] as const).every((l) => !/panelu płatności|billing portal|Zahlungsportal/.test(dicts[l].packs.alreadySubscribed)));
+    check("unready capabilities are 'soon', never ✓: seats, priority queue, operator mode",
+      featureOn("seats", "pro", { workspace_members: 5 }) === "soon" && featureOn("priority", "pro", { priority_queue: true }) === "soon"
+      && featureOn("operator", "agency", { operator_mode: true }) === "soon" && featureOn("operator", "pro", {}) === "no");
+    check("BUSINESS is a label on `agency`", planPresentation("agency").nameKey === "plans.tier.business" && dicts.pl.plans.tier.business === "Business");
+    check("numbers the Polish way", nb(formatCount(1200)) === "1 200" && nb(formatMoney(29900, "PLN")) === "299 zł"
+      && nb(formatPerCredit(19, "PLN")) === "0,19 zł" && nb(formatMoney(7949, "PLN")) === "79,49 zł");
   }
 
-  console.log("\nG. PACKS, BEST VALUE, THE NEXT STEP UP");
+  console.log("\nK. UI CONTRACT");
   {
-    const rate = referenceRate(ladder);
-    check("the reference rate is the smallest pack's (0,19 zł per credit)", rate === 19);
-    const quotes = packs.map((p) => ({ p, q: packQuote(p, rate) }));
-    const best = [...quotes].sort((a, b) => a.q.perCredit - b.q.perCredit)[0];
-    check("BEST VALUE = lowest price per credit = the 2 500 + 500 pack",
-      best.p.credits === 2500 && best.p.bonusCredits === 500);
-    const board = codeOnly(read("components/plan/pricing-board.tsx"));
-    check("the board computes BEST VALUE from price per credit, not from a flag",
-      /per <= best\.priceCents \/ \(best\.credits \+ best\.bonusCredits\)/.test(board));
-    check("−48% on the 2 500 + 500 pack, struck 570 zł", best.q.offPct === 48 && best.q.referenceCents === 57000);
-    check("the smallest pack shows no discount and no struck price",
-      quotes.find((x) => x.p.credits === 100)!.q.offPct === 0 && quotes.find((x) => x.p.credits === 100)!.q.referenceCents === null);
-    const hint = nextStepHint(550, ladder);
-    check("at 550: \"add 600 to get −36%\" (the next pack point)", hint?.add === 600 && hint.offPct === 36 && hint.at === 1150, JSON.stringify(hint));
-    check("at 3 000: no next step", nextStepHint(3000, ladder) === null);
-    check("hints only point at real rate-card points",
-      [100, 300, 550, 900, 2000].every((n) => { const h = nextStepHint(n, ladder); return !h || ladder.some((s) => s.credits === h.at); }));
-    const marks = sliderMarks(ladder);
-    check("slider marks sit on the four pack points, 0–100 %",
-      marks.map((m) => m.at).join(",") === "100,550,1150,3000" && marks[0].pct === 0 && marks[3].pct === 100);
-    check("coin stacks grow 1 → 5 with pack size",
-      [0, 1, 2, 3].map((i) => coinLevel(i, 4)).join(",") === "1,2,4,5");
-    check("the custom slider steps in the server's step (50) from 100 to 3 000",
-      range.min === 100 && range.max === 3000 && range.step === 50);
-    // Polish plural for the amount — typed amounts can end in 2-4.
-    const plDict = JSON.parse(read("lib/i18n/dictionaries/pl.json"));
-    const tPl = (key: string, vars?: Record<string, string | number>) => {
-      const [ns, ...rest] = key.split(".");
-      let out = String(plDict[ns][rest.join(".")]);
-      for (const [k, v] of Object.entries(vars ?? {})) out = out.replace(`{${k}}`, String(v));
-      return out;
-    };
-    const FORMS: [number, string][] = [[550, "kredytów"], [1152, "kredyty"], [104, "kredyty"], [112, "kredytów"],
-      [1000, "kredytów"], [3000, "kredytów"], [2523, "kredyty"]];
-    for (const [n, word] of FORMS) check(`${formatCount(n)} ${word}`, creditsWord(n, tPl) === word);
-    check("the buy button agrees: \"Kup 1 152 kredyty\" / \"Kup 550 kredytów\"",
-      buyCreditsLabel(1152, tPl).replace(/\s/g, " ") === "Kup 1 152 kredyty"
-      && buyCreditsLabel(550, tPl) === "Kup 550 kredytów");
-  }
-
-  console.log("\nJ. /plan STILL FEEDS THE BOARD THE SAME ROWS");
-  {
-    const page = codeOnly(read("app/(app)/plan/page.tsx"));
-    for (const [what, re] of [
-      ["active plans by sort order", /from\("subscription_plans"\)\.select\("\*"\)\.eq\("active", true\)\.order\("sort_order"\)/],
-      ["active packs by sort order", /from\("credit_packages"\)\.select\("\*"\)\.eq\("active", true\)\.order\("sort_order"\)/],
-      ["plan price", /priceCents: p\.price_cents/],
-      ["stored annual price", /annualPriceCents: p\.annual_price_cents \?\? 0/],
-      ["capabilities through the shared parser", /capabilities: parsePlanCapabilities\(p\.features\)/],
-      ["monthly Stripe mapping", /monthlyMapped: Boolean\(p\.stripe_price_id_monthly\)/],
-      ["annual Stripe mapping", /annualMapped: Boolean\(p\.stripe_price_id_annual\)/],
-      ["pack price + mapping", /priceCents: p\.price_cents, currency: p\.currency, featured: p\.featured, badge: p\.badge,\s*mapped: Boolean\(p\.stripe_price_id\)/],
-      ["the server's payments flag", /paymentsEnabled=\{paymentsEnabled\(\)\}/],
-      ["the checkout notice", /CheckoutNotice status=\{checkout\}/],
-    ] as const) {
-      check(`page.tsx: ${what}`, re.test(page));
-    }
+    const topups = codeOnly(read("components/plan/topups.tsx"));
+    check("the slider moves over tier INDEXES: min 0, max last, step 1",
+      /type="range" min=\{0\} max=\{last\} step=\{1\}/.test(topups));
+    check("no typed amount field", !/type="number"|inputMode/.test(topups));
+    check("labels show the first and last tier", /formatCount\(tiers\[0\]\.credits\)/.test(topups) && /formatCount\(tiers\[last\]\.credits\)/.test(topups));
+    check("the lock is the server's decision, and the locked content is inert",
+      /const locked = data\.viewer\.topups !== "allowed"/.test(topups) && /inert=\{locked\}/.test(topups));
+    check("an unpriced tier has no buy button", /tier\.href \? \(/.test(topups) && /disabled data-custom-buy/.test(topups));
+    const pageSrc = codeOnly(read("components/plan/pricing-page.tsx"));
+    check("'Kup kredyty' scrolls to the top-ups under the sticky bar, honouring reduced motion",
+      /go\(A\.topups\)/.test(pageSrc) && /prefers-reduced-motion: reduce/.test(pageSrc) && /scroll-mt-\[calc\(var\(--header-h\)/.test(pageSrc));
+    check("PRO first on a phone, in the middle on wide screens (two lists, matching focus order)",
+      CARD_ORDER.join() === "starter,pro,agency" && CARD_ORDER_PHONE.join() === "pro,starter,agency"
+      && /layout="phone"/.test(pageSrc) && /layout="wide"/.test(pageSrc));
+    check("one container width (1100px), FAQ narrower (700px)", /max-w-\[1100px\]/.test(pageSrc) && /max-w-\[700px\]/.test(pageSrc));
+    const cmp = codeOnly(read("components/plan/plan-comparison.tsx"));
+    check(`comparison folds to the first ${COMPARE_INITIAL_ROWS} rows, the rest are hidden (not focusable)`,
+      COMPARE_INITIAL_ROWS === 9 && /hidden=\{!open && index >= COMPARE_INITIAL_ROWS\}/.test(cmp)
+      && COMPARE_GROUPS.map((g) => g.key).join() === "credits,imageTools,video,output,team,support,license");
+    check("comparison: a real table with a pinned first column and internal scroll",
+      /<table/.test(cmp) && /sticky left-0/.test(cmp) && /overflow-x-auto/.test(cmp));
+    const faq = codeOnly(read("components/plan/pricing-faq.tsx"));
+    check("FAQ: one open at a time, buttons with aria-expanded", /const expanded = open === item\.key/.test(faq) && /aria-expanded=\{expanded\}/.test(faq));
+    check("the subscribed viewer is never offered a second subscription",
+      /if \(data\.viewer\.hasLiveSubscription\) return \{ kind: "disabled"/.test(codeOnly(read("components/plan/plan-cards.tsx"))));
+    check("PRICING_PAGE opens on monthly unless annual is on sale", PRICING_PAGE.defaultBillingPeriod === "annual"
+      && /initialBillingPeriod\(PRICING_PAGE\.defaultBillingPeriod, data\.annual\.onSale\)/.test(pageSrc));
   }
 
   console.log(failures === 0
-    ? `\nAll /plan page tests passed (${passes} checks).`
-    : `\n${failures} /plan page test(s) failed, ${passes} passed.`);
+    ? `\nAll /plany page tests passed (${passes} checks).`
+    : `\n${failures} /plany page test(s) failed, ${passes} passed.`);
   process.exit(failures === 0 ? 0 : 1);
 }
 

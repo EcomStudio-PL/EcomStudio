@@ -5,10 +5,13 @@ import { absoluteUrl } from "@/lib/site";
 import { dispatchToken } from "@/lib/server/server-token";
 import { stripeCredentials, paymentsEnabled } from "@/lib/stripe/config";
 import {
-  stripePost, StripeNotConfiguredError, StripeApiError,
+  stripePost, stripeGet, StripeNotConfiguredError, StripeApiError,
   type StripeCheckoutSession, type StripeCustomer, type StripeBillingPortalSession,
 } from "@/lib/stripe/client";
-import { creditLadder, validateCustomCredits } from "@/lib/plans/credit-price";
+import { sellable } from "@/lib/server/stripe-pricing";
+import {
+  PRICING_OFFER, annualOnSale, premiereExpiredFor, premiereMetadata, priceTopup,
+} from "@/lib/server/pricing-offer";
 
 /**
  * CHECKOUT — created on the server, priced by the server, attributed by the
@@ -69,7 +72,22 @@ export class ServerKeyMissingError extends Error {
 export type CheckoutRefusal =
   | "payments_disabled" | "unknown_package" | "unknown_plan" | "plan_not_purchasable"
   | "not_mapped" | "no_customer" | "invalid_credits" | "no_server_key"
-  | "already_subscribed" | "stripe_error";
+  | "already_subscribed" | "stripe_error" | "price_out_of_sync" | TopupGateRefusal
+  /** Annual billing is not on sale (lib/server/pricing-offer.ts). */
+  | "annual_unavailable"
+  /** The premiere ended and the plan still carries its premiere price. */
+  | "offer_expired";
+
+/**
+ * Why a top-up was refused before any payment was created.
+ *
+ *   plan_required      the workspace has no ACTIVE paid plan (or its period
+ *                      has run out, or Stripe says it is no longer active);
+ *   plan_check_failed  the plan could not be read — a database or Stripe
+ *                      error. Fails closed, and says "try again", because an
+ *                      active subscriber must not be told they have no plan.
+ */
+export type TopupGateRefusal = "plan_required" | "plan_check_failed";
 
 export type CheckoutResult =
   | { ok: true; url: string; sessionId: string }
@@ -143,6 +161,123 @@ export async function resolveStripeCustomer(
   return typeof linked === "string" && linked ? linked : null;
 }
 
+/* ── 1b. WHO MAY TOP UP ────────────────────────────────────────────────────*/
+
+export type TopupGate =
+  | { ok: true; planId: string; provider: string; providerSubscriptionId: string | null }
+  | { ok: false; reason: TopupGateRefusal };
+
+/**
+ * TOP-UPS ARE FOR PAYING SUBSCRIBERS — decided here, on the server, for every
+ * route a top-up can be started from (the embedded checkout's quote and begin,
+ * and the hosted fallback's two actions). A browser saying it has a plan is
+ * not asked; a manual POST to an action meets this function like any click.
+ *
+ * WHAT COUNTS: a `subscriptions` row of this workspace with status `active`
+ * whose paid period has not run out. Every other status is refused, and on
+ * purpose:
+ *
+ *   trialing            never created by this app (no trial_period_days); a
+ *                       dashboard-made trial has not paid anything yet;
+ *   past_due / unpaid   the plan's own invoice is failing — selling more on
+ *                       top of an unpaid one is the wrong order;
+ *   incomplete(_expired), canceled, paused — not a live paid plan.
+ *
+ * `cancel_at_period_end` keeps status `active` until the period ends, so a
+ * customer who cancelled can still top up until then — they paid for it.
+ *
+ * THE PERIOD END IS CHECKED TOO. The row moves only when the webhook runs, and
+ * events can arrive late or out of order (a stale `updated` after `deleted`
+ * revives `active`). A period that ended in the past is not a live plan
+ * whatever the status says. At the moment of payment, `confirmTopupPlanLive`
+ * additionally asks Stripe itself.
+ *
+ * No join to subscription_plans: RLS hides a withdrawn plan from members, and
+ * a subscriber on a withdrawn plan is still a subscriber. A subscription row
+ * exists only for a paid plan — the free tier is `plan_not_purchasable`.
+ *
+ * It reads; it never writes. Balances, the ledger and credits already bought
+ * are untouched — only NEW top-up purchases are refused.
+ */
+export async function requireActivePaidPlan(
+  supabase: Client, workspace: WorkspaceRef, now: number = Date.now(),
+): Promise<TopupGate> {
+  if (!PRICING_OFFER.topups.requireActivePlan) {
+    return { ok: true, planId: "", provider: "", providerSubscriptionId: null };
+  }
+  const { data, error } = await supabase
+    .from("subscriptions")
+    .select("plan_id, status, current_period_end, provider, provider_subscription_id")
+    .eq("workspace_id", workspace.id)
+    .eq("status", "active")
+    .order("current_period_end", { ascending: false })
+    .limit(1);
+  if (error) {
+    console.error("billing.plan_gate", "lookup_failed", error.code ?? "-");
+    return { ok: false, reason: "plan_check_failed" };
+  }
+  const row = data?.[0];
+  if (!row || row.status !== "active") return { ok: false, reason: "plan_required" };
+  const end = row.current_period_end ? Date.parse(row.current_period_end) : Number.NaN;
+  if (!Number.isFinite(end) || end <= now) return { ok: false, reason: "plan_required" };
+  return {
+    ok: true, planId: row.plan_id, provider: row.provider ?? "",
+    providerSubscriptionId: row.provider_subscription_id ?? null,
+  };
+}
+
+/**
+ * The same rule, asked of Stripe at the moment a top-up payment is CREATED.
+ *
+ * The database row is GrovBase's copy and trails Stripe by one webhook. A plan
+ * cancelled immediately in the dashboard still reads `active` here until
+ * `customer.subscription.deleted` lands. So the call that creates the payment
+ * asks Stripe directly; anything but `active` refuses, and a failed lookup
+ * refuses too (closed, not open).
+ *
+ * After this point a PaymentIntent exists and is settled by the webhook like
+ * any other: eligibility is judged when the order is created. A plan cancelled
+ * between that moment and the confirmation does not un-sell the credits —
+ * the webhook and the ledger are deliberately not taught to refuse money they
+ * have already taken.
+ */
+export async function confirmTopupPlanLive(
+  supabase: Client, workspace: WorkspaceRef,
+  /** The database answer, when the caller has just read it. */
+  known?: TopupGate,
+): Promise<{ ok: true } | { ok: false; reason: TopupGateRefusal }> {
+  const gate = known ?? await requireActivePaidPlan(supabase, workspace);
+  if (!gate.ok) return gate;
+  if (!PRICING_OFFER.topups.requireActivePlan) return { ok: true };
+  if (gate.provider !== "stripe" || !gate.providerSubscriptionId) return { ok: false, reason: "plan_required" };
+  try {
+    const sub = await stripeGet<{ id: string; status: string }>(
+      `/subscriptions/${encodeURIComponent(gate.providerSubscriptionId)}`, {},
+    );
+    return sub.status === "active" ? { ok: true } : { ok: false, reason: "plan_required" };
+  } catch (e) {
+    logStripeFailure("plan_gate:live", e);
+    return { ok: false, reason: "plan_check_failed" };
+  }
+}
+
+/** The buyer's plan, for per-plan top-up prices. Read only when such prices
+ *  are configured; an unreadable (withdrawn) plan gets the common price. */
+export async function topupPlanContext(
+  supabase: Client, planId: string,
+): Promise<{ slug: string | null; centsPerCredit: number | null }> {
+  if (!planId || (!PRICING_OFFER.topups.perPlanCents && PRICING_OFFER.topups.minUnitVsPlan === null)) {
+    return { slug: null, centsPerCredit: null };
+  }
+  const { data } = await supabase
+    .from("subscription_plans")
+    .select("slug, price_cents, monthly_credits, bonus_credits")
+    .eq("id", planId).maybeSingle();
+  if (!data) return { slug: null, centsPerCredit: null };
+  const credits = data.monthly_credits + data.bonus_credits;
+  return { slug: data.slug, centsPerCredit: credits > 0 ? data.price_cents / credits : null };
+}
+
 /* ── 2. THE THREE THINGS THAT CAN BE BOUGHT ────────────────────────────────*/
 
 const successUrl = () => `${absoluteUrl("/credits")}?checkout=success&session_id={CHECKOUT_SESSION_ID}`;
@@ -174,10 +309,18 @@ export async function createPackageCheckout(
   // just because someone kept the old page open.
   const { data: pack } = await supabase
     .from("credit_packages")
-    .select("id, name, credits, bonus_credits, price_cents, currency, stripe_price_id")
+    .select("id, name, credits, bonus_credits, price_cents, currency, stripe_price_id, stripe_price_cents, stripe_sync_status")
     .eq("id", packageId).eq("active", true).maybeSingle();
   if (!pack) return { ok: false, reason: "unknown_package" };
   if (!pack.stripe_price_id) return { ok: false, reason: "not_mapped" };
+  // The same parity rule the embedded checkout applies: a Price that has not
+  // proved it charges the displayed amount is not sold from this path either.
+  if (!sellable(pack)) return { ok: false, reason: "price_out_of_sync" };
+
+  // TOP-UPS NEED A LIVE PAID PLAN — this action is a public endpoint, so the
+  // rule is enforced here and not only on the page that links to it.
+  const gate = await confirmTopupPlanLive(supabase, workspace);
+  if (!gate.ok) return gate;
 
   try {
     const customer = await resolveStripeCustomer(supabase, workspace, email);
@@ -240,13 +383,25 @@ export async function createCustomCreditsCheckout(
 
   const { data: packs } = await supabase
     .from("credit_packages")
-    .select("credits, bonus_credits, price_cents, currency")
+    .select("credits, bonus_credits, price_cents, currency, stripe_price_cents, stripe_sync_status")
     .eq("active", true);
-  const ladder = creditLadder(packs ?? []);
-  const quote = validateCustomCredits(creditsRequested, ladder);
-  if (!quote.ok) return { ok: false, reason: "invalid_credits" };
+  const rows = packs ?? [];
+  // The packs are the price authority for a custom amount; unverified packs
+  // make an unverified rate card (the same rule as lib/server/checkout.ts).
+  if (rows.length === 0 || !rows.every((p) => sellable(p))) return { ok: false, reason: "price_out_of_sync" };
 
-  const currency = (packs?.[0]?.currency ?? "PLN").toLowerCase();
+  const gate = await requireActivePaidPlan(supabase, workspace);
+  if (!gate.ok) return gate;
+  // ONLY THE OFFERED AMOUNTS, priced by the one function the page uses.
+  const plan = await topupPlanContext(supabase, gate.planId);
+  const quote = priceTopup(creditsRequested, {
+    packs: rows, planSlug: plan.slug, planCentsPerCredit: plan.centsPerCredit,
+  });
+  if (!quote.ok) return { ok: false, reason: "invalid_credits" };
+  const live = await confirmTopupPlanLive(supabase, workspace, gate);
+  if (!live.ok) return live;
+
+  const currency = (rows[0]?.currency ?? "PLN").toLowerCase();
 
   try {
     const customer = await resolveStripeCustomer(supabase, workspace, email);
@@ -323,6 +478,10 @@ export async function createPlanCheckout(
   // would create a Stripe subscription that bills nothing forever and a
   // `subscriptions` row that contradicts what the app means by "free".
   if (plan.price_cents <= 0) return { ok: false, reason: "plan_not_purchasable" };
+  // Annual is not on sale until credits follow a yearly invoice correctly —
+  // even if a synced annual Price exists (lib/server/pricing-offer.ts).
+  if (billing === "annual" && !annualOnSale()) return { ok: false, reason: "annual_unavailable" };
+  if (premiereExpiredFor(plan.slug, plan.price_cents, Date.now())) return { ok: false, reason: "offer_expired" };
 
   const priceId = billing === "annual" ? plan.stripe_price_id_annual : plan.stripe_price_id_monthly;
   if (!priceId) return { ok: false, reason: "not_mapped" };
@@ -372,6 +531,9 @@ export async function createPlanCheckout(
           type: "subscription",
           grovbase_plan_id: plan.id,
           billing_period: billing,
+          // Present only while the premiere runs (off today): the record that
+          // this subscription keeps its price through renewals.
+          ...premiereMetadata(Date.now()),
         },
       },
     }, `checkout:plan:${workspace.id}:${randomUUID()}`);

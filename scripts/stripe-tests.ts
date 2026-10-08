@@ -286,12 +286,18 @@ async function main() {
     // The cennik's arithmetic lives in components/plan/pricing-model.ts since
     // the 2026-10 redesign; the board calls it. Read both, so the invariant
     // holds wherever the slider's quote is computed.
-    const board = codeOnly(read("components/plan/pricing-board.tsx"))
-      + codeOnly(read("components/plan/pricing-model.ts"));
-    check("the slider uses the shared rate card",
-      /priceForCredits\(/.test(board) && !/function priceFor\(/.test(board));
+    // Since /plany the page does not price a custom amount in the browser at
+    // all: the server loader prices every tier with `priceTopup`, which is the
+    // shared rate card, and the till charges through the same function.
+    const offer = codeOnly(read("lib/server/pricing-offer.ts"));
+    const loader = codeOnly(read("lib/server/pricing-page.ts"));
+    const topups = codeOnly(read("components/plan/topups.tsx"));
+    check("the slider's prices come from the shared rate card, on the server",
+      /validateCustomCredits\(/.test(offer) && /priceTopup\(/.test(loader)
+      && !/priceForCredits|validateCustomCredits|creditLadder|function priceFor\(/.test(topups));
     const billing = codeOnly(read("lib/server/billing.ts"));
-    check("and so does the server", /validateCustomCredits\(/.test(billing));
+    check("and so does the server", /priceTopup\(/.test(billing)
+      && /priceTopup\(/.test(codeOnly(read("lib/server/checkout.ts"))));
   }
 
   console.log("\nC. CUSTOM CREDITS — EVERY WAY A BROWSER CAN LIE");
@@ -960,8 +966,10 @@ async function main() {
 
     // K3 — THE PLAN PAGE SAYS WHAT HAPPENED.
     const planPage = codeOnly(read("app/(app)/plan/page.tsx"));
+    const pricingPage = codeOnly(read("components/plan/pricing-page.tsx"));
     check("/plan renders the checkout notice it is the success_url for",
-      /CheckoutNotice status=\{checkout\}/.test(planPage) && /searchParams/.test(planPage),
+      /notice=\{checkoutNotice\(await searchParams\)\}/.test(planPage)
+      && /<CheckoutNotice status=\{notice\} \/>/.test(pricingPage),
       "paying 299 zl and landing on an identical page is how a second click happens");
 
     // K4 — A FAILURE AT THE TILL IS WRITTEN DOWN.
@@ -1050,8 +1058,7 @@ async function main() {
 
     // L5 — DISPLAYED PRICE == CHARGED PRICE, TO THE GROSZ.
     // The formatter moved into components/plan/pricing-model.ts (2026-10).
-    const board = codeOnly(read("components/plan/pricing-board.tsx"))
-      + codeOnly(read("components/plan/pricing-model.ts"));
+    const board = codeOnly(read("components/plan/pricing-model.ts"));
     check("the formatter shows grosze when there are grosze",
       /cents % 100 === 0 \? 0 : 2/.test(board),
       "79,49 rendered as '79 zl' is a quote the checkout does not honour");

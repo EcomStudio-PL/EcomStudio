@@ -200,18 +200,22 @@ async function main() {
 
   console.log("\nE. READER AND WRITER SHARE ONE PARSER");
   {
-    const page = codeOnly(read("app/(app)/plan/page.tsx"));
+    // Since the /plany redesign the pricing page's rows are read in ONE loader
+    // (lib/server/pricing-page.ts) shared by /plany and /plan.
+    const page = codeOnly(read("lib/server/pricing-page.ts"));
     check("/plan parses with the shared parser", /parsePlanCapabilities\(p\.features\)/.test(page));
     check("/plan no longer hand-rolls the shape check",
       !/typeof p\.features === "object"/.test(page));
-    const board = codeOnly(read("components/plan/pricing-board.tsx"));
+    const types = codeOnly(read("components/plan/pricing-types.ts"));
     check("the board's card type is the shared type",
-      /capabilities:\s*PlanCapabilities/.test(board));
-    // The board reads exactly the keys the editor can write. A key it reads
+      /capabilities:\s*PlanCapabilities/.test(types));
+    // The page reads exactly the keys the editor can write. A key it reads
     // that no field writes is a row that is always empty.
+    const board = codeOnly(read("components/plan/pricing-config.ts")) + codeOnly(read("components/plan/plan-cards.tsx"))
+      + codeOnly(read("components/plan/plan-comparison.tsx"));
     for (const key of [...KNOWN_NUMERIC_CAPABILITIES, ...KNOWN_FLAG_CAPABILITIES]) {
-      if (key === "products") continue; // shown via `limits`, not a board row
-      check(`the board reads ${key}`, board.includes(`capabilities.${key}`));
+      if (key === "products") continue; // not enforced anywhere, so not shown
+      check(`the board reads ${key}`, board.includes(`capabilities.${key}`) || board.includes(`"${key}"`));
     }
   }
 
@@ -287,28 +291,25 @@ async function main() {
     check("an annual price above twelve months never advertises a negative saving",
       annualSavingPct([{ priceCents: 4900, annualPriceCents: 70000 }]) === 0);
 
-    // The invented coefficient must be gone from the markup. Since the 2026-10
-    // redesign the period arithmetic lives in components/plan/pricing-model.ts
-    // and the board calls it — read both.
-    const board = codeOnly(read("components/plan/pricing-board.tsx"))
+    // The invented coefficient must be gone from the markup. The period
+    // arithmetic lives in components/plan/pricing-model.ts and the cards call
+    // it — read all of them.
+    const board = codeOnly(read("components/plan/pricing-page.tsx"))
+      + codeOnly(read("components/plan/plan-cards.tsx"))
       + codeOnly(read("components/plan/pricing-model.ts"));
     check("the ten-for-twelve coefficient is gone",
       !/ANNUAL_MONTHS_PAID/.test(board) && !/ANNUAL_PCT/.test(board),
       "the annual price was `priceCents * 10 / 12`, a discount invented in the component");
     check("the board prices annually from the stored total",
-      /annualMonthlyCents\(p\)/.test(board));
-    check("the toggle is rendered only when annual billing is available",
-      /\{annualAvailable && \(/.test(board));
-    check("a zero saving renders no badge", /annualPct > 0 && \(/.test(board));
-    // The derived period, not the raw toggle state, drives every figure: the
-    // state is read only through `active`, which is monthly unless annual is
-    // really available.
-    check("the figures follow the derived period, not the raw toggle state",
-      /const active: BillingPeriod = annualAvailable \? period : "monthly"/.test(board)
-      && /period=\{active\}/.test(board)
-      && !/period=\{period\}/.test(board));
+      /annualMonthlyCents\(p\)/.test(board) && /planMonthlyCents\(plan, period\)/.test(board));
+    check("the annual segment can be chosen only when annual billing is on sale",
+      /disabled=\{!data\.annual\.onSale\}/.test(board)
+      && /data\.annual\.onSale && setPeriod\("annual"\)/.test(board));
+    check("a zero saving renders no badge", /data\.annual\.savingPct > 0 && \(/.test(board));
+    check("the page opens on annual only when it is on sale",
+      /initialBillingPeriod\(PRICING_PAGE\.defaultBillingPeriod, data\.annual\.onSale\)/.test(board));
 
-    const page = codeOnly(read("app/(app)/plan/page.tsx"));
+    const page = codeOnly(read("lib/server/pricing-page.ts"));
     check("/plan passes the stored annual price through",
       /annualPriceCents:\s*p\.annual_price_cents/.test(page));
   }

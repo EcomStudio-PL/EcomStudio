@@ -245,7 +245,11 @@ const adminEntries = all.filter(isAdmin);
  *
  * Section D below proves each one really does wrap itself.
  */
-const APP_SCOPED_SUBTREES = [join(ROOT, "components/home/product-surface.tsx")];
+const APP_SCOPED_SUBTREES = [
+  join(ROOT, "components/home/product-surface.tsx"),
+  // The public cennik (/plany) wears the same bar and speaks the same scope.
+  join(ROOT, "components/plan/pricing-surface.tsx"),
+];
 
 const rootClosure = closure(rootEntries, new Set(APP_SCOPED_SUBTREES));
 const appClosure = closure([...appEntries, ...APP_SCOPED_SUBTREES, join(ROOT, "app/layout.tsx")]);

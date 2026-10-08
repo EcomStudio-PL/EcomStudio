@@ -35,6 +35,8 @@ export const RESERVED_SLUGS = new Set([
   "podglad",
   // /profile forwards to the account settings' profile tab (0127).
   "profile",
+  // The public cennik owns /plany (app/plany).
+  "plany",
 ]);
 
 function textFor(seo: PageSeo, locale: string): SeoText {
