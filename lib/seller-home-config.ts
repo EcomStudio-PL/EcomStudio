@@ -64,6 +64,9 @@ export type MediaSrc = {
   /** object-position — the focus point kept when the frame crops (e.g.
    *  "50% 30%"). Defaults to the centre. */
   position?: string;
+  /** object-fit — "cover" (default) fills the frame and crops around
+   *  `position`; "contain" shows the whole file inside the frame. */
+  fit?: "cover" | "contain";
   /** Alt text. Empty = decorative (the card's own label names it). */
   alt?: string;
 };
@@ -83,8 +86,13 @@ export const WIDE_16_9: Size = { width: 1920, height: 1080 };
 export const LANDSCAPE_4_3: Size = { width: 1440, height: 1080 };
 /** Banner, desktop: about 4.7 : 1. */
 export const BANNER_WIDE: Size = { width: 2400, height: 510 };
-/** Banner, phone: square. */
+/** Banner, tablet: 5 : 2 — the desktop file, cropped around `position`. */
+export const BANNER_TABLET: Size = { width: 2000, height: 800 };
+/** Banner, phone: square (`mobileSrc`; without one the desktop file is
+ *  cropped around `position`). */
 export const BANNER_PHONE: Size = { width: 1080, height: 1080 };
+/** The banner's frame per breakpoint — phone / tablet (sm) / desktop (lg). */
+export const BANNER_FRAME = { phone: BANNER_PHONE, tablet: BANNER_TABLET, wide: BANNER_WIDE } as const;
 /** A sample PRODUCT PHOTO (an input, not a result). */
 export const SAMPLE_PHOTO: Size = { width: 1200, height: 1200 };
 
@@ -282,6 +290,9 @@ export type ShowcaseDef = {
   visual: MediaSrc;
   /** Twelve results on the right, 3 × 4, 4:3 landscape. */
   gallery: readonly MediaSrc[];
+  /** The visual's frame on a phone and a tablet (on a desktop it takes the
+   *  panel's height). */
+  frame: { phone: Size; tablet: Size };
 };
 
 export const SHOWCASE: ShowcaseDef = {
@@ -289,6 +300,7 @@ export const SHOWCASE: ShowcaseDef = {
   ctaKey: "sellerHome.showcase.cta",
   visual: vid("homeMedia.showcase.visual", PORTRAIT_4_5),
   gallery: Array.from({ length: 12 }, (_, i) => img(`homeMedia.showcase.gallery.${i + 1}`, LANDSCAPE_4_3)),
+  frame: { phone: PORTRAIT_4_5, tablet: { width: 1600, height: 1000 } },
 };
 
 /* ── 7. Miniaturki ────────────────────────────────────────────────────────*/
@@ -383,11 +395,13 @@ export const isSellerChannel = (v: unknown): v is SellerChannel =>
   typeof v === "string" && (SELLER_CHANNELS as readonly string[]).includes(v);
 export const channelLabelKey = (c: SellerChannel) => `sellerHome.channel.${c}`;
 
-/** Which upload pill a seller's channel pre-selects. */
+/** Which upload pill a seller's channel pre-selects. Miniaturka for every
+ *  channel — the spec's default; kept per channel so a later change is one
+ *  line here. */
 export const CHANNEL_DEFAULT_TOOL: Readonly<Record<SellerChannel, UploadToolKey>> = {
   allegro: "thumbnail",
   amazon: "thumbnail",
-  own_store: "outdoor",
+  own_store: "thumbnail",
   multi: "thumbnail",
 };
 
@@ -423,5 +437,15 @@ export function assetList(): AssetRow[] {
   add("8 Sesje produktowe", SESSIONS.tiles.map((t) => t.media));
   add("9 Wyróżnione narzędzia", FEATURED.map((f) => f.media));
   add("10 Baner #3", [PROMO_BANNERS.third.media]);
-  return rows;
+  // The variants of a slot: a banner's phone file, and a clip's still.
+  const variants: AssetRow[] = [];
+  Object.values(PROMO_BANNERS).forEach((b, i) => variants.push({
+    section: `${[4, 6, 10][i]} Baner #${i + 1} — telefon`,
+    media: img(`${b.media.configKey}.mobile`, BANNER_PHONE, b.media.mobileSrc ?? null),
+  }));
+  rows.filter((r) => r.media.kind === "video").forEach((r) => variants.push({
+    section: `${r.section} — poster wideo`,
+    media: img(`${r.media.configKey}.poster`, { width: r.media.width, height: r.media.height }, r.media.poster ?? null),
+  }));
+  return [...rows, ...variants];
 }

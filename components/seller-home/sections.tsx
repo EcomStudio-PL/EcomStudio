@@ -1,8 +1,9 @@
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  BEFORE_AFTER, BEFORE_AFTER_SIZE, BANNER_WIDE, FEATURED, SECTION_COPY, SESSIONS, SHOWCASE, THUMBNAILS, TOOL_TILE,
+  BEFORE_AFTER, BEFORE_AFTER_SIZE, BANNER_FRAME, FEATURED, SECTION_COPY, SESSIONS, SHOWCASE, THUMBNAILS, TOOL_TILE,
   industryKey, ratioOf,
   type GalleryTileDef, type PromoBannerDef,
 } from "@/lib/seller-home-config";
@@ -34,7 +35,7 @@ export function BeforeAfterRow({ items, t }: { items: ItemStates; t: T }) {
     <section className="relative" aria-labelledby="seller-ba-title" data-seller-before-after>
       <SectionHead id="seller-ba-title" title={t(SECTION_COPY.beforeAfter.titleKey)} sub={t(SECTION_COPY.beforeAfter.subKey)} />
       <Rail label={t(SECTION_COPY.beforeAfter.titleKey)} prevLabel={t("sellerHome.carousel.prev")} nextLabel={t("sellerHome.carousel.next")}
-        arrowTop="calc(50% - 1.4rem)"
+        role={t("sellerHome.carousel.role")} landmark={false} arrowTop="calc(50% - 1.4rem)"
         className="[--rail-cols:1.3] [--rail-gap:10px] sm:[--rail-cols:2.4] sm:[--rail-gap:12px] lg:[--rail-cols:4] lg:[--rail-gap:14px] xl:[--rail-cols:5] 2xl:[--rail-cols:6]">
         {cards.map((card, i) => {
           const state = items[card.item];
@@ -53,7 +54,8 @@ export function BeforeAfterRow({ items, t }: { items: ItemStates; t: T }) {
               <ToolLink state={state} data-ba-link={card.item}
                 className="group mt-2 flex min-w-0 items-center gap-1.5 px-0.5">
                 <span className="min-w-0">
-                  <span className="block truncate text-[13px] font-semibold leading-tight text-ink group-hover:text-accent-strong dark:group-hover:text-accent">{name}</span>
+                  <span className={cn("block truncate text-[13px] font-semibold leading-tight text-ink",
+                    state.status === "live" && "group-hover:text-accent-strong dark:group-hover:text-accent")}>{name}</span>
                   <span className="mt-0.5 block truncate text-[12px] text-muted">{t(industryKey(card.industry))}</span>
                 </span>
                 <StatusBadge status={state.status} t={t} className="ml-auto" />
@@ -89,38 +91,45 @@ const BANNER_TONES: readonly string[] = [
  */
 export function PromoBanner({ def, items, t }: { def: PromoBannerDef; items: ItemStates; t: T }) {
   const state = def.item ? items[def.item] : null;
+  // A banner about a tool this viewer may not see (switched off, off /tools)
+  // is not drawn at all — it would advertise something that is not there.
+  if (def.item && !state) return null;
   const live = state?.status === "live";
   const hasMedia = Boolean(def.media.src);
   const title = def.titleKey ? t(def.titleKey) : null;
   return (
     <section className="relative" aria-label={title ?? t("sellerHome.promo.label")} data-promo={def.key}>
       <div className={cn(
-        "relative isolate aspect-square overflow-hidden rounded-2xl sm:aspect-[5/2] lg:aspect-[47/10]",
+        "relative isolate aspect-[var(--ar-phone)] overflow-hidden rounded-2xl sm:aspect-[var(--ar-tablet)] lg:aspect-[var(--ar-wide)]",
         !hasMedia && "border border-[rgb(var(--accent)/0.26)] bg-surface",
-      )}>
+      )} style={{
+        "--ar-phone": ratioOf(BANNER_FRAME.phone), "--ar-tablet": ratioOf(BANNER_FRAME.tablet), "--ar-wide": ratioOf(BANNER_FRAME.wide),
+      } as CSSProperties}>
         {hasMedia ? (
           <>
-            <MediaSlot media={def.media} fill sizes="100vw" label="" hint="" />
+            <MediaSlot media={def.media} fill sizes="100vw" label={title ?? t("sellerHome.promo.label")} hint="" />
             {/* Legibility: darker at the edges and behind the centred copy. */}
-            <span aria-hidden className="absolute inset-0 bg-[radial-gradient(70%_90%_at_50%_50%,rgb(0_0_0/0.42),rgb(0_0_0/0.18)_70%,rgb(0_0_0/0.35))]" />
+            <span aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_90%_at_50%_50%,rgb(0_0_0/0.42),rgb(0_0_0/0.18)_70%,rgb(0_0_0/0.35))]" />
           </>
         ) : (
           <span aria-hidden className="absolute inset-0" style={{ background: BANNER_TONES[def.tone % BANNER_TONES.length] }} data-media-slot="empty" data-config-key={def.media.configKey}>
             <span className="absolute inset-0 opacity-[0.5] [background-image:linear-gradient(rgb(var(--accent)/0.07)_1px,transparent_1px),linear-gradient(90deg,rgb(var(--accent)/0.07)_1px,transparent_1px)] [background-size:44px_44px] [mask-image:radial-gradient(60%_80%_at_50%_50%,black,transparent)]" />
             <span className="absolute bottom-2.5 right-3 text-[10px] tabular-nums text-faint">
-              {t("sellerHome.slot.banner")} · {size(t, BANNER_WIDE.width, BANNER_WIDE.height)}
+              {t("sellerHome.slot.banner")} · <span className="sm:hidden">{size(t, BANNER_FRAME.phone.width, BANNER_FRAME.phone.height)}</span>
+              <span className="max-sm:hidden">{size(t, BANNER_FRAME.wide.width, BANNER_FRAME.wide.height)}</span>
             </span>
           </span>
         )}
+        {/* The copy lets pointers through to the clip; only its button takes them. */}
         <div className={cn(
-          "absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center sm:gap-2.5",
+          "pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center sm:gap-2.5",
           hasMedia ? "text-white" : "text-ink",
         )}>
           {def.badgeKey && (
             <span className={cn(
               "rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] backdrop-blur-sm",
               hasMedia
-                ? "bg-white/16 ring-1 ring-white/30"
+                ? "bg-white/15 ring-1 ring-white/30"
                 : "bg-[rgb(var(--accent)/0.10)] text-accent-strong ring-1 ring-[rgb(var(--accent)/0.30)] dark:text-accent",
             )}>
               {t(def.badgeKey)}
@@ -141,10 +150,12 @@ export function PromoBanner({ def, items, t }: { def: PromoBannerDef; items: Ite
               {t(def.subKey)}
             </p>
           )}
+          {/* Not running: no button — the badge says why. */}
+          {state && !live && <StatusBadge status={state.status} t={t} className="mt-1" />}
           {def.ctaKey && live && state && (
             <Link href={state.href} data-promo-cta={def.key}
               className={cn(
-                "mt-1 inline-flex h-10 items-center gap-2 rounded-full px-5 text-[13.5px] font-semibold transition-transform duration-200 hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0",
+                "pointer-events-auto mt-1 inline-flex h-10 items-center gap-2 rounded-full px-5 text-[13.5px] font-semibold transition-transform duration-200 hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0",
                 hasMedia
                   ? "bg-white text-[rgb(32_22_45)] shadow-[0_10px_26px_-12px_rgb(0_0_0/0.6)]"
                   : "cta",
@@ -183,7 +194,7 @@ function FadeGallery({ tiles, label, cols, window: frame, cta, sizes, toneOffset
 }) {
   return (
     <div className="relative">
-      <div className={cn("relative overflow-hidden [mask-image:linear-gradient(to_bottom,black_64%,transparent_98%)]", frame)} data-fade-gallery>
+      <div className={cn("relative overflow-hidden [mask-image:linear-gradient(to_bottom,black_72%,transparent_99%)]", frame)} data-fade-gallery>
         <div className={cn("absolute inset-x-0 top-0 gap-2 sm:gap-2.5", cols)}>
           {tiles.map((tile, i) => (
             <div key={tile.media.configKey} className="mb-2 break-inside-avoid overflow-hidden rounded-xl sm:mb-2.5">
@@ -213,7 +224,8 @@ export function Showcase({ items, t }: { items: ItemStates; t: T }) {
     <section className="relative overflow-hidden rounded-3xl border border-[rgb(var(--glass-border)/0.16)] bg-[rgb(var(--surface)/0.62)] p-2 shadow-[0_24px_60px_-40px_rgb(var(--accent)/0.6)] sm:p-2.5"
       aria-label={t("sellerHome.showcase.label")} data-seller-showcase>
       <div className="grid gap-2 sm:gap-2.5 lg:grid-cols-[2fr_3fr]">
-        <div className="relative aspect-[4/5] overflow-hidden rounded-2xl sm:aspect-[16/10] lg:aspect-auto">
+        <div className="relative aspect-[var(--ar-phone)] overflow-hidden rounded-2xl sm:aspect-[var(--ar-tablet)] lg:aspect-auto"
+          style={{ "--ar-phone": ratioOf(SHOWCASE.frame.phone), "--ar-tablet": ratioOf(SHOWCASE.frame.tablet) } as CSSProperties}>
           <MediaSlot media={visual} fill tone={2} sizes="(max-width: 1023px) 100vw, 40vw"
             label={t("sellerHome.slot.showcase")} hint={size(t, visual.width, visual.height)} />
           <StatusBadge status={state.status} t={t} className="absolute left-3 top-3" />
@@ -231,6 +243,8 @@ export function Showcase({ items, t }: { items: ItemStates; t: T }) {
 
 export function ThumbnailsSection({ items, t }: { items: ItemStates; t: T }) {
   const state = items[THUMBNAILS.item];
+  // The section is the thumbnail tool's: gone when the viewer may not see it.
+  if (!state) return null;
   return (
     <section className="relative" aria-labelledby="seller-thumbs-title" data-seller-thumbnails>
       <SectionHead id="seller-thumbs-title" title={t(THUMBNAILS.titleKey)} sub={t(THUMBNAILS.subKey)}
@@ -248,7 +262,11 @@ export function ThumbnailsSection({ items, t }: { items: ItemStates; t: T }) {
 export function SessionsSection({ items, t }: { items: ItemStates; t: T }) {
   const studio = items[SESSIONS.studio.item];
   const outdoor = items[SESSIONS.outdoor.item];
+  // Both tools out of this viewer's reach: the section has nothing to open.
+  if (!studio && !outdoor) return null;
   const button = (state: typeof studio, labelKey: string, primary: boolean) => {
+    // A tool this viewer may not see is not drawn, not even greyed out.
+    if (!state) return null;
     const label = t(labelKey);
     if (state?.status === "live") {
       return (
@@ -267,7 +285,7 @@ export function SessionsSection({ items, t }: { items: ItemStates; t: T }) {
     return (
       <span aria-disabled="true" className="inline-flex h-9 cursor-default items-center gap-1.5 rounded-full border border-line px-4 text-[13px] font-semibold text-faint">
         {label}
-        {state && <StatusBadge status={state.status} t={t} />}
+        <StatusBadge status={state.status} t={t} />
       </span>
     );
   };
@@ -306,7 +324,7 @@ export function FeaturedTools({ data, t }: { data: SellerHomeData; t: T }) {
     <section className="relative" aria-labelledby="seller-featured-title" data-seller-featured>
       <SectionHead id="seller-featured-title" title={t(SECTION_COPY.featured.titleKey)} sub={t(SECTION_COPY.featured.subKey)} />
       <Rail label={t(SECTION_COPY.featured.titleKey)} prevLabel={t("sellerHome.carousel.prev")} nextLabel={t("sellerHome.carousel.next")}
-        arrowTop="calc(50% - 1.5rem)"
+        role={t("sellerHome.carousel.role")} landmark={false} arrowTop="calc(50% - 1.5rem)"
         className="[--rail-cols:1.15] [--rail-gap:10px] sm:[--rail-cols:2.2] sm:[--rail-gap:12px] lg:[--rail-cols:3] lg:[--rail-gap:14px]">
         {cards.map((card, i) => {
           const state = data.items[card.item];
@@ -314,13 +332,17 @@ export function FeaturedTools({ data, t }: { data: SellerHomeData; t: T }) {
           const name = t(card.nameKey);
           const slot = data.toolSlots[card.item];
           return (
+            // Hover lift, rim and zoom only on a card that opens — an inert
+            // card must not look clickable.
             <ToolLink key={card.item} state={state} ariaLabel={name} data-featured={card.item}
-              className="group block min-w-0 rounded-2xl outline-offset-2 transition-transform duration-300 hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0">
-              <span className="relative block overflow-hidden rounded-2xl ring-1 ring-inset ring-[rgb(var(--glass-border)/0.14)] transition-[box-shadow] duration-300 group-hover:shadow-[0_0_0_1.5px_rgb(var(--accent)/0.55),0_20px_40px_-22px_rgb(var(--accent)/0.7)]">
+              className={cn("group block min-w-0 rounded-2xl outline-offset-2",
+                live && "transition-transform duration-300 hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0")}>
+              <span className={cn("relative block overflow-hidden rounded-2xl ring-1 ring-inset ring-[rgb(var(--glass-border)/0.14)]",
+                live && "transition-[box-shadow] duration-300 group-hover:shadow-[0_0_0_1.5px_rgb(var(--accent)/0.55),0_20px_40px_-22px_rgb(var(--accent)/0.7)]")}>
                 <MediaSlot media={card.media} ratio={ratioOf(TOOL_TILE)} tone={i + 2}
                   admin={slot ? { slot, slots: data.slots } : null} dim={!live}
                   label={name} hint={hint} sizes="(max-width: 639px) 86vw, (max-width: 1023px) 44vw, 32vw"
-                  className="transition-transform duration-700 ease-out group-hover:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover:scale-100" />
+                  className={cn(live && "transition-transform duration-700 ease-out group-hover:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover:scale-100")} />
                 <StatusBadge status={state.status} t={t} className="absolute left-2.5 top-2.5" />
               </span>
               <span className="mt-2 block truncate px-0.5 text-[14px] font-semibold leading-tight text-ink">{name}</span>

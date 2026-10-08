@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState, type PointerEvent } from "react";
 import { ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MediaPair, MediaSrc } from "@/lib/seller-home-config";
@@ -8,11 +8,16 @@ import { EmptyArt } from "./media-slot";
 /**
  * BEFORE / AFTER WITH A DRAGGABLE DIVIDER.
  *
- * The control is a real <input type="range"> laid over the whole picture and
- * made invisible: a mouse drag, a touch drag and the keyboard (arrows,
- * Home/End, Page Up/Down) all move it natively, and a screen reader announces
- * it with its label and value. `touch-action: pan-y` keeps a vertical swipe
- * scrolling the page on a phone instead of being captured by the slider.
+ * The VALUE lives in a real <input type="range"> — invisible, but focusable:
+ * the keyboard (arrows, Home/End, Page Up/Down) moves it natively and a
+ * screen reader announces its label and value.
+ *
+ * The POINTER is handled here, so the card still scrolls with its rail on a
+ * phone: a mouse drags the divider from anywhere on the picture, a finger or
+ * a pen only from the handle's 44px strip — a swipe anywhere else pans the
+ * row (the range itself takes no pointer events, or it would swallow every
+ * horizontal swipe). The strip is `touch-action: none`; the rest of the frame
+ * keeps the browser's own panning.
  *
  * It is NOT inside a link: dragging the divider must never navigate. The card
  * around it links from its caption only.
@@ -29,8 +34,28 @@ export function BeforeAfter({ pair, ratio, labels, sizes, tone = 0 }: {
   tone?: number;
 }) {
   const [pos, setPos] = useState(50);
+  const frame = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+
+  const moveTo = (clientX: number) => {
+    const box = frame.current?.getBoundingClientRect();
+    if (!box || box.width === 0) return;
+    setPos(Math.round(Math.min(100, Math.max(0, ((clientX - box.left) / box.width) * 100))));
+  };
+  const start = (e: PointerEvent<HTMLElement>) => {
+    if (e.button !== 0) return;
+    dragging.current = true;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    moveTo(e.clientX);
+    e.preventDefault();
+  };
+  const move = (e: PointerEvent<HTMLElement>) => { if (dragging.current) moveTo(e.clientX); };
+  const stop = () => { dragging.current = false; };
+
   return (
-    <div className="group/ba relative isolate w-full select-none overflow-hidden" style={{ aspectRatio: ratio }} data-before-after>
+    <div ref={frame} className="group/ba relative isolate w-full cursor-ew-resize select-none overflow-hidden" style={{ aspectRatio: ratio }} data-before-after
+      onPointerDown={(e) => { if (e.pointerType === "mouse") start(e); }}
+      onPointerMove={move} onPointerUp={stop} onPointerCancel={stop}>
       {/* AFTER — the full frame underneath. */}
       <div className="absolute inset-0">
         {pair.after.src
@@ -55,6 +80,12 @@ export function BeforeAfter({ pair, ratio, labels, sizes, tone = 0 }: {
         style={{ left: `${pos}%` }}>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 4 2 8l4 4M10 4l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </span>
+      {/* The touch grip: the handle's own strip, full height. */}
+      <span aria-hidden data-before-after-grip
+        className="absolute inset-y-0 z-30 w-11 -translate-x-1/2 cursor-ew-resize [touch-action:none]"
+        style={{ left: `${pos}%` }}
+        onPointerDown={(e) => { if (e.pointerType !== "mouse") { e.stopPropagation(); start(e); } }}
+        onPointerMove={move} onPointerUp={stop} onPointerCancel={stop} />
 
       <span className={cn(CAPTION, "left-2")}>{labels.before}</span>
       <span className={cn(CAPTION, "right-2")}>{labels.after}</span>
@@ -64,7 +95,7 @@ export function BeforeAfter({ pair, ratio, labels, sizes, tone = 0 }: {
         aria-label={labels.slider}
         aria-valuetext={`${pos}%`}
         data-before-after-range
-        className="absolute inset-0 z-20 h-full w-full cursor-ew-resize appearance-none bg-transparent opacity-0 [touch-action:pan-y]" />
+        className="pointer-events-none absolute inset-0 z-20 h-full w-full cursor-ew-resize appearance-none bg-transparent opacity-0" />
     </div>
   );
 }
@@ -77,7 +108,7 @@ function Picture({ media, sizes }: { media: MediaSrc; sizes: string }) {
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img src={media.src} alt={media.alt ?? ""} sizes={sizes} loading="lazy" decoding="async" draggable={false}
-      className="absolute inset-0 h-full w-full object-cover" style={pos} />
+      className={cn("absolute inset-0 h-full w-full", media.fit === "contain" ? "object-contain" : "object-cover")} style={pos} />
   );
 }
 

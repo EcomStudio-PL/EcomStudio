@@ -71,8 +71,8 @@ export function MediaSlot({
         {media.kind === "video"
           ? (
             <SlotVideo desktop={media.src} mobile={media.mobileSrc ?? undefined} poster={media.poster ?? undefined}
-              autoplay muted loop controls={false} fit="cover" position={media.position ?? "center"}
-              label={media.alt || undefined} />
+              autoplay muted loop controls={false} fit={media.fit ?? "cover"} position={media.position ?? "center"}
+              label={media.alt || label || undefined} />
           )
           : <ConfigImage media={media} sizes={sizes} priority={priority} />}
       </span>
@@ -108,15 +108,16 @@ export function MediaSlot({
  *  given, replaces it below 640px (art direction, not a resize). */
 function ConfigImage({ media, sizes, priority }: { media: MediaSrc; sizes: string; priority: boolean }) {
   const pos = { objectPosition: media.position ?? "center" };
+  const fit = media.fit === "contain" ? "object-contain" : "object-cover";
   const one = (src: string, cls: string) => src.startsWith("/")
     ? (
       <Image src={src} alt={media.alt ?? ""} fill sizes={sizes} priority={priority}
-        loading={priority ? undefined : "lazy"} className={cn("object-cover", cls)} style={pos} />
+        loading={priority ? undefined : "lazy"} className={cn(fit, cls)} style={pos} />
     )
     : (
       // eslint-disable-next-line @next/next/no-img-element
       <img src={src} alt={media.alt ?? ""} loading={priority ? "eager" : "lazy"} decoding="async"
-        className={cn("absolute inset-0 h-full w-full object-cover", cls)} style={pos} />
+        className={cn("absolute inset-0 h-full w-full", fit, cls)} style={pos} />
     );
   if (!media.src) return null;
   if (!media.mobileSrc) return one(media.src, "");

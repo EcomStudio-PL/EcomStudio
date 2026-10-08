@@ -68,6 +68,9 @@ export function UploadTile({ tools, defaultTool, balance, pro }: {
   const [noCredits, setNoCredits] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const depth = useRef(0);
+  // Every choice of a photo (picked, dropped, sample, removed) bumps this; a
+  // sample that finishes downloading after a newer choice is thrown away.
+  const choice = useRef(0);
 
   useEffect(() => {
     if (!file) { setPreview(null); return; }
@@ -77,6 +80,7 @@ export function UploadTile({ tools, defaultTool, balance, pro }: {
   }, [file]);
 
   const take = useCallback((list: FileList | File[] | null | undefined) => {
+    choice.current += 1;
     const res = acceptFiles(list, HOME_LIMITS, 1);
     if (res.badType > 0 && res.accepted.length === 0) toast.error(t("products.invalidType"));
     else if (res.tooLarge > 0 && res.accepted.length === 0) toast.error(t("products.tooLarge"));
@@ -86,17 +90,28 @@ export function UploadTile({ tools, defaultTool, balance, pro }: {
   /** A sample becomes the chosen photo — fetched, validated like any file. */
   const pickSample = useCallback(async (media: MediaSrc) => {
     if (!media.src) return;
+    const mine = ++choice.current;
     try {
       const res = await fetch(media.src);
       if (!res.ok) throw new Error(String(res.status));
       const blob = await res.blob();
-      const ext = (media.src.split(".").pop() || "webp").toLowerCase().split("?")[0];
+      if (mine !== choice.current) return; // the seller chose something else meanwhile
+      // The sample's own file name, so nothing language-bound reaches the UI.
+      const base = media.src.split(/[?#]/)[0].split("/").pop() || "sample.webp";
+      const ext = (base.split(".").pop() || "webp").toLowerCase();
       const type = blob.type.startsWith("image/") ? blob.type : `image/${ext === "jpg" ? "jpeg" : ext}`;
-      take([new File([blob], `przyklad.${ext}`, { type })]);
+      take([new File([blob], base, { type })]);
     } catch {
-      toast.error(t("common.error"));
+      if (mine === choice.current) toast.error(t("common.error"));
     }
   }, [take, t]);
+
+  /** Drop the chosen photo; the keyboard focus goes back to the tile. */
+  const removeFile = () => {
+    choice.current += 1;
+    setFile(null);
+    document.getElementById(UPLOAD_ID)?.focus();
+  };
 
   const handoff = Boolean(tool?.handoff);
 
@@ -178,7 +193,7 @@ export function UploadTile({ tools, defaultTool, balance, pro }: {
           <button id={UPLOAD_ID} type="button" onClick={onZone} disabled={!tool}
             aria-label={handoff ? (file ? t("sellerHome.upload.change") : t("sellerHome.upload.pick")) : t("sellerHome.upload.open")}
             aria-describedby="seller-upload-lead"
-            className="absolute inset-0 z-0 cursor-pointer rounded-2xl focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-[rgb(var(--accent)/0.35)] disabled:cursor-default" />
+            className="absolute inset-0 z-0 cursor-pointer rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[rgb(var(--accent))] disabled:cursor-default" />
 
           <div className="pointer-events-none relative flex flex-col items-center">
             {shown ? (
@@ -208,7 +223,7 @@ export function UploadTile({ tools, defaultTool, balance, pro }: {
               {!busy && <ArrowRight size={15} aria-hidden />}
             </button>
             {shown && (
-              <button type="button" onClick={() => setFile(null)} aria-label={t("sellerHome.upload.remove")}
+              <button type="button" onClick={removeFile} aria-label={t("sellerHome.upload.remove")}
                 className="flex h-10 w-10 items-center justify-center rounded-full border border-line bg-[rgb(var(--surface)/0.7)] text-muted transition-colors hover:text-ink">
                 <X size={15} aria-hidden />
               </button>

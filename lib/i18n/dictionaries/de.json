@@ -7955,7 +7955,8 @@
     "carousel": {
       "label": "GrovBase-Werkzeuge",
       "prev": "Zurück",
-      "next": "Weiter"
+      "next": "Weiter",
+      "role": "Karussell"
     },
     "status": {
       "soon": "Demnächst",

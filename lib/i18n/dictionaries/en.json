@@ -7955,7 +7955,8 @@
     "carousel": {
       "label": "GrovBase tools",
       "prev": "Previous",
-      "next": "Next"
+      "next": "Next",
+      "role": "carousel"
     },
     "status": {
       "soon": "Coming soon",
@@ -7982,7 +7983,7 @@
         "cta": "Try Grovshot"
       },
       "2": {
-        "badge": "Custom prompt",
+        "badge": "Own prompt",
         "title": "Describe the scene in your own words",
         "sub": "Framing, light and mood — exactly as you want them.",
         "cta": "Write a prompt"

@@ -17,10 +17,11 @@
  */
 import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
-  BEFORE_AFTER, CAROUSEL, CHANNEL_DEFAULT_TOOL, DEFAULT_UPLOAD_TOOL, FEATURED, HANDOFF_ROUTES, INDUSTRIES,
+  BANNER_FRAME, BEFORE_AFTER, CAROUSEL, CHANNEL_DEFAULT_TOOL, DEFAULT_UPLOAD_TOOL, FEATURED, HANDOFF_ROUTES, INDUSTRIES,
   INTEREST_KEYS, PROMO_BANNERS, SECTION_COPY, SELLER_CHANNELS, SESSIONS, SHIPPED_TOOL_PHOTO, SHOWCASE, THUMBNAILS,
   TOOL_TILE, UPLOAD_LEAD_DEFAULT, UPLOAD_TOOLS, assetList, isInterestKey, isSellerChannel, ratioOf,
   type MediaSrc,
@@ -36,8 +37,9 @@ import { catalogItem } from "@/lib/tool-cards";
 import { PHOTO_THUMB_RATIO } from "@/components/tools/tool-thumb";
 import { EmptyArt, MediaSlot } from "@/components/seller-home/media-slot";
 import { BeforeAfter } from "@/components/seller-home/before-after";
-import { StatusBadge, ToolLink } from "@/components/seller-home/parts";
-import { PromoBanner } from "@/components/seller-home/sections";
+import { GalleryCta, StatusBadge, ToolLink, TryLink } from "@/components/seller-home/parts";
+import { PromoBanner, SessionsSection, ThumbnailsSection } from "@/components/seller-home/sections";
+import { findCategory } from "@/lib/categories";
 import type { SlotMap } from "@/lib/server/media-slots";
 import type { Client } from "@/lib/services/workspace";
 
@@ -128,7 +130,7 @@ section("2. FULL WIDTH, ONE RHYTHM, THE SPEC'S ORDER");
 check("no narrow container: no max-w-5xl / max-w-6xl / 1200px wrapper on the page",
   !/max-w-(5xl|6xl|7xl)|max-w-\[1200px\]|max-width:\s*1200px/.test(body) && /w-full/.test(body));
 check("…the 40px xl shell padding is trimmed to 32px (24–32px desktop margins)", /xl:-mx-2 xl:w-\[calc\(100%\+1rem\)\]/.test(body));
-check("one --home-section-gap token: 14 / 18 / 22px", /\[--home-section-gap:14px\]/.test(body) && /md:\[--home-section-gap:18px\]/.test(body)
+check("one --home-section-gap token: 14 / 18 / 22px, switching where the margins and rails do (sm, lg)", /\[--home-section-gap:14px\]/.test(body) && /sm:\[--home-section-gap:18px\]/.test(body)
   && /lg:\[--home-section-gap:22px\]/.test(body) && /gap-\[var\(--home-section-gap\)\]/.test(body));
 check("the page clips sideways only (no body scroll, the halo is not cut vertically)", /\[overflow-x:clip\]/.test(body) && !/overflow-hidden/.test(body));
 check("no visible H1 — the H1 is screen-reader only", /<h1 className="sr-only">/.test(body) && !/text-\[2\.\d+rem\]|text-\[1\.75rem\]/.test(SH));
@@ -160,6 +162,12 @@ check("…←/→ focus the neighbour card even when the card itself is the link
 check("…a control inside a card keeps its own arrows (the before/after divider is never hijacked)",
   /closest\("input, textarea, select"\)\) return;/.test(rail));
 check("…the left arrow is gone at the start, the right one at the end", /\{!edge\.start && \(/.test(rail) && /\{!edge\.end && \(/.test(rail));
+check("…no arrow before the first measure (the server cannot know the row overflows)", /useState\(\{ start: true, end: true \}\)/.test(rail));
+check("…an arrow that disappears while focused hands the focus on, never to <body>",
+  /active === nextRef\.current/.test(rail) && /active === prevRef\.current/.test(rail) && /\.focus\(\{ preventScroll: true \}\)/.test(rail));
+check("…a translated role description, a region only when no section already is one; focus outline drawn inside the card",
+  /aria-roledescription=\{role\}/.test(rail) && /role=\{landmark \? "region" : "group"\}/.test(rail) && !/aria-roledescription="carousel"/.test(SH)
+  && (sections.match(/landmark=\{false\}/g) ?? []).length === 2 && /outline-offset-\[-3px\]/.test(rail));
 check("…smooth only without reduced motion", /prefers-reduced-motion: reduce/.test(rail) && /motion-reduce:scroll-auto/.test(rail));
 check("tiles keep the catalogue frame 2336×1744 (not 5:4 — the /tools rule)", ratioOf(TOOL_TILE) === PHOTO_THUMB_RATIO && PHOTO_THUMB_RATIO === "2336/1744"
   && /ratio=\{ratioOf\(TOOL_TILE\)\}/.test(carousel));
@@ -196,6 +204,9 @@ const adminHtml = html(createElement(MediaSlot, { media: img(null), admin: { slo
 check("an empty config slot shows the admin's card picture of that tool", /data-media-slot="admin"/.test(adminHtml) && /\/admin\/retouch\.webp/.test(adminHtml));
 const shippedHtml = html(createElement(MediaSlot, { media: img(null), shipped: "/showcase/ecommerce-thumbnail.webp", label: "x", hint: "y", sizes: "1px" }));
 check("…else a shipped example, shown whole over a blurred copy", /data-media-slot="shipped"/.test(shippedHtml) && /object-contain/.test(shippedHtml));
+const containHtml = html(createElement(MediaSlot, { media: img("/home/a.webp", { fit: "contain" }), label: "x", hint: "y", sizes: "1px" }));
+check("…`fit: \"contain\"` shows the whole file instead of cropping it", /object-contain/.test(containHtml) && !/object-cover/.test(containHtml)
+  && /object-cover/.test(filledHtml));
 check("MediaSlot reuses the existing SlotMedia / SlotVideo — no second media system",
   /from "@\/components\/media\/slot-media"/.test(code("components/seller-home/media-slot.tsx"))
   && /from "@\/components\/media\/slot-video"/.test(code("components/seller-home/media-slot.tsx")));
@@ -203,13 +214,20 @@ const ba = html(createElement(BeforeAfter, {
   pair: BEFORE_AFTER[0].media, ratio: "1080/1350", sizes: "1px",
   labels: { before: "Przed", after: "Po", slider: "Porównanie", emptyBefore: "Zdjęcie przed", emptyAfter: "Efekt po", hint: "1080×1350 px" },
 }));
-check("before/after: a labelled native range (mouse, touch, keyboard), pan-y on touch",
-  /type="range"/.test(ba) && /aria-label="Porównanie"/.test(ba) && /aria-valuetext="50%"/.test(ba) && /touch-action:pan-y/.test(ba));
+check("before/after: a labelled native range for the keyboard and screen readers",
+  /type="range"/.test(ba) && /aria-label="Porównanie"/.test(ba) && /aria-valuetext="50%"/.test(ba));
+const baSrc = code("components/seller-home/before-after.tsx");
+check("…a phone swipe over the picture pans the rail: the range takes no pointer events, only the handle's strip is touch-action:none",
+  /pointer-events-none absolute inset-0 z-20[^"]*opacity-0/.test(baSrc) && /data-before-after-grip/.test(baSrc)
+  && /\[touch-action:none\]/.test(baSrc) && !/touch-action:pan-y/.test(baSrc) && /if \(e\.pointerType === "mouse"\) start\(e\)/.test(baSrc));
 check("…the slider is NOT inside a link — only the caption links", !/<a\b/.test(ba)
   && /<BeforeAfter[\s\S]*?<\/div>\s*<ToolLink state=\{state\} data-ba-link/.test(sections));
 check("every slot in the asset list has a key, a kind and a positive size; keys unique",
   assetList().every((r) => r.media.configKey && (r.media.kind === "image" || r.media.kind === "video") && r.media.width > 0 && r.media.height > 0)
   && new Set(assetList().map((r) => r.media.configKey)).size === assetList().length, String(assetList().length));
+check("…it lists every banner's phone file and every clip's poster too",
+  Object.values(PROMO_BANNERS).every((b) => assetList().some((r) => r.media.configKey === `${b.media.configKey}.mobile`))
+  && assetList().filter((r) => r.media.kind === "video").every((v) => assetList().some((r) => r.media.configKey === `${v.media.configKey}.poster`)));
 
 /* ── 5. honesty: what does not run is not a link ──────────────────────────*/
 
@@ -220,17 +238,41 @@ const live = html(createElement(ToolLink, { state: LIVE.retouch, children: "x" }
 check("…a live tool links to its own existing route", /href="\/retusz"/.test(live));
 check("…and carries a badge that says why", statusBadge("soon") === "soon" && statusBadge("live") === null
   && /sellerHome\.status\.soon/.test(html(createElement(StatusBadge, { status: "soon", t: T }))));
-const bannerEmpty = html(createElement(PromoBanner, { def: PROMO_BANNERS.first, items: {}, t: T }));
-check("a banner whose tool is not live draws no button", !/data-promo-cta/.test(bannerEmpty) && /data-media-slot="empty"/.test(bannerEmpty));
+const bannerSoon = html(createElement(PromoBanner, { def: PROMO_BANNERS.first, items: { generator: S("generator", "/prompts", "soon", 4) }, t: T }));
+check("a banner whose tool does not run draws no button — its badge says why",
+  !/data-promo-cta/.test(bannerSoon) && /data-media-slot="empty"/.test(bannerSoon) && /sellerHome\.status\.soon/.test(bannerSoon));
+check("…a banner about a tool this viewer may not see is not drawn at all",
+  html(createElement(PromoBanner, { def: PROMO_BANNERS.first, items: {}, t: T })) === "");
 const bannerLive = html(createElement(PromoBanner, {
   def: PROMO_BANNERS.second, items: { custom: S("custom", "/generator", "live", 4) }, t: T,
 }));
 check("…a live one links its button to the tool", /data-promo-cta="promo2"/.test(bannerLive) && /href="\/generator"/.test(bannerLive));
-check("…banners: about 4.7:1 desktop, 5:2 tablet, square phone", /lg:aspect-\[47\/10\]/.test(sections) && /sm:aspect-\[5\/2\]/.test(sections) && /aspect-square/.test(sections));
-check("try links, gallery buttons and session buttons render only for a live tool",
-  /if \(state\?\.status !== "live"\) return null;[\s\S]*data-try/.test(code("components/seller-home/parts.tsx"))
-  && /if \(state\?\.status !== "live"\) return null;[\s\S]*data-gallery-cta/.test(code("components/seller-home/parts.tsx"))
-  && /if \(state\?\.status === "live"\)[\s\S]*data-session-cta/.test(sections));
+check("…banners: about 4.7:1 desktop, 5:2 tablet, square phone — frames from the config",
+  ratioOf(BANNER_FRAME.wide) === "2400/510" && ratioOf(BANNER_FRAME.tablet) === "2000/800" && ratioOf(BANNER_FRAME.phone) === "1080/1080"
+  && /aspect-\[var\(--ar-phone\)\][^"]*sm:aspect-\[var\(--ar-tablet\)\][^"]*lg:aspect-\[var\(--ar-wide\)\]/.test(sections)
+  && /"--ar-wide": ratioOf\(BANNER_FRAME\.wide\)/.test(sections) && /aspect-\[var\(--ar-phone\)\]/.test(html(createElement(PromoBanner, {
+    def: PROMO_BANNERS.second, items: { custom: S("custom", "/generator", "live", 4) }, t: T }))));
+check("…the copy layer lets pointers through to a clip; only its button takes them",
+  /pointer-events-none absolute inset-0 flex flex-col/.test(sections) && /"pointer-events-auto mt-1/.test(sections));
+const soonX = S("x", "/x", "soon", 1);
+const liveX = S("x", "/x", "live", 1);
+check("try links and gallery buttons render only for a live tool (rendered, not grepped)",
+  html(createElement(GalleryCta, { state: soonX, label: "L" })) === "" && html(createElement(TryLink, { state: soonX, label: "L" })) === ""
+  && html(createElement(GalleryCta, { state: null, label: "L" })) === "" && html(createElement(TryLink, { state: undefined, label: "L" })) === ""
+  && /href="\/x"/.test(html(createElement(GalleryCta, { state: liveX, label: "L" }))) && /href="\/x"/.test(html(createElement(TryLink, { state: liveX, label: "L" }))));
+const sessSoon = html(createElement(SessionsSection, { items: { generator: S("generator", "/prompts", "soon", 4) }, t: T }));
+check("session buttons: a link only while the tool runs; not running → badge; out of reach → not drawn",
+  !/data-session-cta/.test(sessSoon) && /aria-disabled="true"/.test(sessSoon) && /sellerHome\.status\.soon/.test(sessSoon)
+  && !/sellerHome\.sessions\.outdoor/.test(sessSoon)
+  && html(createElement(SessionsSection, { items: {}, t: T })) === ""
+  && /data-session-cta="generator"[^>]*|href="\/prompts"/.test(html(createElement(SessionsSection, { items: { generator: S("generator", "/prompts", "live", 4) }, t: T }))));
+check("Miniaturki is the thumbnail tool's section: gone when the viewer may not see that tool",
+  html(createElement(ThumbnailsSection, { items: {}, t: T })) === ""
+  && /data-seller-thumbnails/.test(html(createElement(ThumbnailsSection, { items: { "ecommerce.thumbnail": LIVE["ecommerce.thumbnail"] }, t: T }))));
+check("featured and carousel cards go through ToolLink (inert = no href), and only a live card lifts / zooms / glows on hover",
+  /<ToolLink key=\{card\.item\} state=\{state\}/.test(sections) && /<ToolLink key=\{def\.item\} state=\{state\}/.test(carousel)
+  && /live && "transition-transform duration-300 hover:-translate-y-0\.5/.test(sections) && /live && "transition-transform duration-500 ease-out group-hover:scale/.test(carousel)
+  && !/className="[^"]*group-hover:scale/.test(sections + carousel));
 
 /* ── 6. the upload tile ───────────────────────────────────────────────────*/
 
@@ -245,11 +287,27 @@ check("…five example slots per tool, each with its own config key", UPLOAD_TOO
 const tools = resolveUploadTools(LIVE);
 check("Retusz takes no handed photo; the thumbnail and outdoor screens do", tools.find((x) => x.key === "retouch")?.handoff === false
   && tools.find((x) => x.key === "thumbnail")?.handoff === true && tools.find((x) => x.key === "outdoor")?.handoff === true);
-check("…Retusz is never a handoff route; the receiving routes are generator-workspace screens",
-  !HANDOFF_ROUTES.some((r) => r.includes("retusz")) && HANDOFF_ROUTES.every((r) => r.startsWith("/k/")));
+check("…Retusz is never a handoff route; every receiving route is a workflow that renders the generator workspace (no Moda tool, nothing „soon”)",
+  !HANDOFF_ROUTES.some((r) => r.includes("retusz")) && HANDOFF_ROUTES.every((r) => {
+    const [, k, cat, wf] = r.split("/");
+    const w = findCategory(cat)?.workflows.find((x) => x.key === wf);
+    return k === "k" && Boolean(w) && !w?.tool && !w?.soon;
+  }) && HANDOFF_ROUTES.includes("/k/moda/street") && !HANDOFF_ROUTES.includes("/k/moda/ghostMannequin"));
 check("…a pill whose tool is unknown to the viewer is left out", resolveUploadTools({ retouch: LIVE.retouch }).length === 1);
-check("the default follows the seller's channel, falls back to Miniaturka, then the first live one",
-  defaultUploadTool("own_store", tools) === "outdoor" && defaultUploadTool(null, tools) === "thumbnail"
+const dead = resolveUploadTools({
+  retouch: S("retouch", "/retusz", "soon", 7),
+  "ecommerce.thumbnail": S("ecommerce.thumbnail", "/k/ecommerce/thumbnail", "unavailable", 4),
+  "moda.street": S("moda.street", "/k/moda/street", "maintenance", 4),
+});
+check("…all three known but none running: drawn with badges, none selectable, nothing handed over",
+  dead.length === 3 && dead.every((d) => !d.handoff) && defaultUploadTool(null, dead) === null
+  && selectedUploadTool(dead, "thumbnail", "thumbnail") === null);
+check("…each pill carries its tool's own price and route, which reach the no-credits check",
+  tools.find((x) => x.key === "thumbnail")?.credits === 4 && tools.find((x) => x.key === "thumbnail")?.href === "/k/ecommerce/thumbnail"
+  && tools.find((x) => x.key === "retouch")?.credits === 7
+  && /balance=\{data\.balance\}/.test(body) && /perImage=\{tool\?\.credits \?\? null\}/.test(upload));
+check("Miniaturka is the default for every channel, then the first live one",
+  SELLER_CHANNELS.every((c) => defaultUploadTool(c, tools) === "thumbnail") && defaultUploadTool(null, tools) === "thumbnail"
   && defaultUploadTool(null, resolveUploadTools({ retouch: LIVE.retouch })) === "retouch"
   && defaultUploadTool(null, resolveUploadTools({})) === null);
 check("…a remembered pick that went offline falls back — never a dead tool",
@@ -271,9 +329,14 @@ check("„Utwórz”: no credits → the no-credits dialog; no photo → the pic
   && /stashHomeUpload\(file, tool\.href\);[\s\S]{0,40}setBusy\(true\);[\s\S]{0,30}router\.push\(tool\.href\)/.test(upload));
 check("…Retusz: „Utwórz” only opens /retusz — nothing stashed, the tile says the photo is added there",
   /if \(!handoff\) \{ setBusy\(true\); router\.push\(tool\.href\); return; \}/.test(upload) && /sellerHome\.upload\.opensTool/.test(upload));
-check("picking a sample only fetches the sample and holds it — no navigation, no request, no credit",
-  /const pickSample = useCallback\(async \(media: MediaSrc\) => \{[\s\S]*?take\(\[new File/.test(upload)
-  && !/const pickSample[\s\S]*?router\.push[\s\S]*?\}, \[take, t\]\)/.test(upload));
+const pickBody = upload.slice(upload.indexOf("const pickSample"), upload.indexOf("const handoff"));
+check("picking a sample only fetches the sample and holds it — no navigation, no handoff, no request, no credit",
+  pickBody.length > 100 && /take\(\[new File/.test(pickBody) && !/router\.|stashHomeUpload|setBusy|setNoCredits|\/api\//.test(pickBody));
+check("…a slow sample never overwrites a photo chosen after it", /const mine = \+\+choice\.current;/.test(pickBody)
+  && /if \(mine !== choice\.current\) return;/.test(pickBody) && /choice\.current \+= 1;\s*const res = acceptFiles/.test(upload));
+check("…its file keeps the sample's own name (nothing language-bound in the UI)", !/przyklad/.test(upload) && /split\("\/"\)\.pop\(\)/.test(pickBody));
+check("removing the photo returns the keyboard focus to the tile", /setFile\(null\);\s*document\.getElementById\(UPLOAD_ID\)\?\.focus\(\);/.test(upload)
+  && /focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-\[rgb\(var\(--accent\)\)\]/.test(upload));
 check("drag & drop: a file or a sample onto the tile; nothing is accepted for a tool that takes no photo",
   /SAMPLE_DRAG/.test(upload) && /draggable/.test(upload) && /if \(!handoff \|\| !tool\) return;/.test(upload)
   && /dropEffect = handoff \? "copy" : "none"/.test(upload));
@@ -299,19 +362,18 @@ check("showcase: ~40/60 split, 12 results 3 × 4 fading into the panel, one butt
 check("Miniaturki: 20 tiles, 5 / 3 / 2 columns, faded last row, one button to the thumbnail tool",
   THUMBNAILS.tiles.length === 20 && /columns-2 sm:columns-3 lg:columns-5/.test(sections) && THUMBNAILS.item === "ecommerce.thumbnail");
 check("fading galleries: a fixed window (no layout shift) and a mask, CSS columns (nothing stretched)",
-  /\[mask-image:linear-gradient\(to_bottom,black_64%,transparent_98%\)\]/.test(sections) && /break-inside-avoid/.test(sections));
+  /\[mask-image:linear-gradient\(to_bottom,black_72%,transparent_99%\)\]/.test(sections) && /break-inside-avoid/.test(sections));
 const shapes = new Set(SESSIONS.tiles.map((t) => `${t.media.width}/${t.media.height}`));
 check("Sesje produktowe: 16 slots across 1:1, 16:9, 4:5, 3:4, 9:16; studio → Grovshot, plener → „Sesja zewnątrz”",
   SESSIONS.tiles.length === 16 && ["1080/1080", "1920/1080", "1080/1350", "1080/1440", "1080/1920"].every((s) => shapes.has(s))
   && SESSIONS.studio.item === "generator" && SESSIONS.outdoor.item === "moda.street");
 check("featured: Niewidzialny manekin, Leżący produkt, Wyprasuj — their real Moda tools",
   FEATURED.map((f) => f.item).join(",") === "moda.ghostMannequin,moda.flatlay,moda.iron" && FEATURED.every((f) => Boolean(catalogItem(f.item))));
-check("…hover: subtle zoom, lift and rim; a rail on phones, three across on a desktop",
+check("…hover (live cards): subtle zoom, lift and rim; a rail on phones, three across on a desktop",
   /group-hover:scale-\[1\.04\]/.test(sections) && /hover:-translate-y-0\.5/.test(sections) && /lg:\[--rail-cols:3\]/.test(sections));
 check("Nadchodzi keeps its five features and the same write", INTEREST_KEYS.join(",") === "ugc,video,ads,social,mailing"
   && /registerInterestAction\(key\)/.test(code("components/seller-home/coming-soon.tsx")));
 check("section headings are small caps 13–14px", /text-\[13px\] font-bold uppercase tracking-\[0\.07em\]/.test(code("components/seller-home/parts.tsx")));
-check("the copy keys of the headings exist in the config", Boolean(SECTION_COPY.beforeAfter.titleKey && SECTION_COPY.featured.titleKey));
 
 /* ── 8. availability ──────────────────────────────────────────────────────*/
 
@@ -349,7 +411,7 @@ check("…the loader uses that rule with a real count; an unreadable count never
   && /generationCount\.error \? 1/.test(loader));
 check("…the survey's answer maps onto ours", channelFromSurvey(["allegro"]) === "allegro" && channelFromSurvey(["shopify"]) === "own_store"
   && channelFromSurvey(["allegro", "amazon"]) === "multi" && channelFromSurvey(["not_selling_yet"]) === null);
-check("…the answer pre-selects its pill", CHANNEL_DEFAULT_TOOL.allegro === "thumbnail" && CHANNEL_DEFAULT_TOOL.own_store === "outdoor"
+check("…the answer pre-selects its pill (Miniaturka for every channel, per the spec)", SELLER_CHANNELS.every((c) => CHANNEL_DEFAULT_TOOL[c] === "thumbnail")
   && /setSelectedTool\(CHANNEL_DEFAULT_TOOL\[channel\]\)/.test(code("components/seller-home/seller-modal.tsx")));
 
 type Call = { table: string; op: string; payload?: unknown; filter?: [string, unknown]; options?: unknown };
@@ -407,11 +469,13 @@ check("the actions take the user from the session — no user id or e-mail from 
   /supabase\.auth\.getUser\(\)/.test(actions) && /export async function registerInterestAction\(feature: string\)/.test(actions)
   && /export async function saveSellerChannelAction\(channel: string \| null\)/.test(actions) && !/email/i.test(actions));
 check("…RLS: a user inserts and reads only their own rows; admins read all",
-  /user_id = \(select auth\.uid\(\)\)/.test(mig) && /using \(user_id = \(select auth\.uid\(\)\) or \(select public\.is_admin\(\)\)\)/.test(mig)
+  /with check \(\s*user_id = \(select auth\.uid\(\)\)/.test(mig) && /using \(user_id = \(select auth\.uid\(\)\) or \(select public\.is_admin\(\)\)\)/.test(mig)
   && /enable row level security/.test(mig) && !/for update|for delete/.test(mig) && /primary key \(user_id, feature_key\)/.test(mig));
+check("…the demand readout runs under the caller's RLS (security invoker)", /security invoker/.test(mig) && /feature_interest_counts/.test(code("app/admin/page.tsx")));
+check("…the table's CHECK lists the five features", INTEREST_KEYS.every((k) => mig.includes(`'${k}'`)));
 check("…nothing here uses a service-role key", !/service_role|SERVICE_ROLE|createAdminClient/.test(actions + code("lib/services/seller-home.ts") + loader + SH));
-check("no new migration for this redesign (0135 is the last /home one)", !existsSync("supabase/migrations/0136_home_visual.sql")
-  && !/0136/.test(read("lib/seller-home-config.ts")));
+check("no database change in this redesign: supabase/migrations is untouched and has no new file",
+  !gitChanged("supabase/migrations") && execFileSync("git", ["ls-files", "--others", "--exclude-standard", "supabase/migrations"], { encoding: "utf8" }).trim() === "");
 
 /* ── 11. AI, Stripe, Retusz ───────────────────────────────────────────────*/
 
@@ -509,6 +573,8 @@ for (const m of SH.matchAll(/\bt\(\s*"([A-Za-z][\w.]*)"/g)) keys.add(m[1]);
 const missing = [...keys].filter((k) => !(["pl", "en", "de"] as const).every((l) => has(dicts[l], k)));
 check(`all ${keys.size} keys exist in pl, en and de`, missing.length === 0, missing.slice(0, 8).join(", "));
 check("no Polish typed into the markup", !/>[^<{]*[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ][^<{]*</.test(SH));
+check("no numbers formatted ad hoc — Polish formatting through the pricing formatters",
+  !/toLocaleString|new Intl\.NumberFormat/.test(SH) && /formatCount|formatMoney/.test(SH));
 check("the upload tile's default sentence is the spec's", dicts.pl.sellerHome.upload.lead.default === "Wrzuć zdjęcie produktu i opisz, co chcesz stworzyć");
 check("the removed sections' copy is gone from the dictionaries",
   (["pl", "en", "de"] as const).every((l) => ["hero", "task", "anchor", "recent", "gallery", "press", "credits", "tools", "group"].every((g) => !(g in dicts[l].sellerHome))));
@@ -520,13 +586,14 @@ if (failed > 0) process.exit(1);
 
 /** Changed against the last commit on main before this redesign (b631919)? */
 function gitChanged(file: string): boolean {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
   try {
     execFileSync("git", ["diff", "--quiet", "b631919", "--", file], { stdio: "ignore" });
     return false;
-  } catch {
-    return true;
+  } catch (e) {
+    // `git diff --quiet` exits 1 when there is a difference; anything else is
+    // a broken check, not a "changed" answer.
+    if ((e as { status?: number }).status === 1) return true;
+    throw e;
   }
 }
 

@@ -8,20 +8,20 @@
  */
 export default function HomeLoading() {
   return (
-    <div aria-busy className="flex w-full min-w-0 animate-pulse flex-col gap-[14px] [overflow-x:clip] md:gap-[18px] lg:gap-[22px] xl:-mx-2 xl:w-[calc(100%+1rem)]">
-      <div className="flex gap-[10px] overflow-hidden pt-1 sm:gap-3 lg:gap-3.5">
+    <div aria-busy className="flex w-full min-w-0 animate-pulse flex-col gap-[14px] [overflow-x:clip] sm:gap-[18px] lg:gap-[22px] xl:-mx-2 xl:w-[calc(100%+1rem)]">
+      <div className="flex gap-[10px] overflow-hidden py-1 sm:gap-3 lg:gap-3.5">
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className="w-[calc((100%_-_1.8px)_/_1.18)] shrink-0 sm:w-[calc((100%_-_18px)_/_2.5)] lg:w-[calc((100%_-_35px)_/_3.5)]">
             <div className="aspect-[2336/1744] rounded-xl bg-raised/60" />
-            <div className="mt-2 h-3.5 w-1/2 rounded bg-raised/70" />
-            <div className="mt-1.5 h-3 w-2/3 rounded bg-raised/50" />
+            <div className="mt-2 h-4 w-1/2 rounded bg-raised/70" />
+            <div className="mt-0.5 h-4 w-2/3 rounded bg-raised/50" />
           </div>
         ))}
       </div>
       <div className="mx-auto w-full max-w-[56rem]">
-        <div className="h-[11rem] rounded-2xl border border-[rgb(var(--accent)/0.25)] bg-raised/40 sm:h-[12.5rem]" />
-        <div className="mx-auto mt-4 flex w-max gap-2">
-          {[0, 1, 2].map((i) => <div key={i} className="h-9 w-28 rounded-xl bg-raised/50" />)}
+        <div className="h-[12.625rem] rounded-2xl border border-[rgb(var(--accent)/0.25)] bg-raised/40 sm:h-[13.8rem]" />
+        <div className="mt-4 flex flex-wrap justify-center gap-1.5 sm:gap-2">
+          {[0, 1, 2].map((i) => <div key={i} className="h-9 w-[6.5rem] rounded-xl bg-raised/50 sm:w-28" />)}
         </div>
       </div>
     </div>

@@ -7955,7 +7955,8 @@
     "carousel": {
       "label": "Narzędzia GrovBase",
       "prev": "Poprzednie",
-      "next": "Następne"
+      "next": "Następne",
+      "role": "karuzela"
     },
     "status": {
       "soon": "Wkrótce",

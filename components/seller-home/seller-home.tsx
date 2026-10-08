@@ -65,7 +65,7 @@ export function SellerHomeView({ data, t, locale }: {
 
   return (
     <div data-seller-home
-      className="flex w-full min-w-0 flex-col gap-[var(--home-section-gap)] [--home-section-gap:14px] [overflow-x:clip] md:[--home-section-gap:18px] lg:[--home-section-gap:22px] xl:-mx-2 xl:w-[calc(100%+1rem)]">
+      className="flex w-full min-w-0 flex-col gap-[var(--home-section-gap)] [--home-section-gap:14px] [overflow-x:clip] sm:[--home-section-gap:18px] lg:[--home-section-gap:22px] xl:-mx-2 xl:w-[calc(100%+1rem)]">
       <h1 className="sr-only">{t("sellerHome.pageTitle")}</h1>
 
       <ToolCarousel data={data} t={t} />
