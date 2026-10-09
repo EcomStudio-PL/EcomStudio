@@ -211,7 +211,11 @@ check("…a pointer's focus never stays on a copy (a mouse's dropped on release,
   && /if \(el\.closest\("\[data-loop-clone\]"\)\) \{ if \(!pressRef\.current\) el\.blur\(\); return; \}/.test(loopRail)
   && /const onContextMenu = \(\) => \{ onRelease\(\); dropCopyFocus\(\); \};/.test(loopRail));
 check("…Tab onto a real card the browser left half out of view brings it in (keyboard focus only)",
-  /if \(keyRef\.current \|\| !el\.matches\(":focus-visible"\)\) return;/.test(loopRail) && /if \(!shows\(g, at, k\)\) reveal\(k, k < at \? -1 : 1\);/.test(loopRail));
+  /if \(keyRef\.current \|\| !el\.matches\(":focus-visible"\)\) return;/.test(loopRail)
+  && /if \(glideRef\.current \|\| !shows\(g, where\(g\), k\)\) reveal\(k, dir\);/.test(loopRail)
+  && /DOCUMENT_POSITION_PRECEDING\) \? -1 : 1;/.test(loopRail));
+check("…a keyboard focus no identical view shows is brought in at rest too (Tab during a glide)",
+  /if \(focus >= 0 && shown === undefined && document\.activeElement\?\.matches\(":focus-visible"\)\) \{\s*revealRef\.current\(focus, focus < best \? -1 : 1\);/.test(loopRail));
 check("…anything focusable a copy renders later (a clip's controls) gets tabindex -1 too",
   /"video", "audio", "iframe", "\[tabindex\]"/.test(loopRail) && /new MutationObserver\(quiet\)/.test(loopRail) && /setAttribute\("tabindex", "-1"\)/.test(loopRail));
 check("…a copy never preloads its picture (only the first real cards may)", /priority=\{!copy && index < 5\}/.test(carousel));
@@ -225,7 +229,10 @@ check("…stopped between two cards (only possible at the strip's very ends): ea
 check("…rest = `scrollend`, or no scroll event, no finger and no held button for a moment (a click is never lost to a move)",
   /addEventListener\("scrollend", onEnd\)/.test(loopRail) && /const SETTLE_MS = 140;/.test(loopRail)
   && /if \(touchRef\.current \|\| pressRef\.current \|\| glideRef\.current\) return;/.test(loopRail)
-  && /if \(e\.pointerType === "touch" \|\| e\.button !== 0\) return;\s*pressRef\.current = true;\s*if \(haltGlide\(\)\) track\.style\.scrollSnapType = "none";/.test(loopRail));
+  && /if \(e\.pointerType === "touch" \|\| \(e\.button !== 0 && e\.button !== 1\)\) return;\s*pressRef\.current = true;\s*if \(haltGlide\(\)\) track\.style\.scrollSnapType = "none";/.test(loopRail)
+  && /window\.addEventListener\("blur", onRelease\);/.test(loopRail));
+check("…a hold ends only when the LAST finger lifts", /const onTouchEnd = \(e: TouchEvent\) => \{\s*if \(\(e\.touches\?\.length \?\? 0\) > 0\) return;/.test(loopRail));
+check("…Alt/Cmd/Ctrl/Shift + ←/→ are left to the browser (Back/Forward)", /if \(e\.altKey \|\| e\.metaKey \|\| e\.ctrlKey \|\| e\.shiftKey\) return;/.test(loopRail));
 check("…card + gap a multiple of 4px where round() exists, so the move between twins is exact on 1×/1.25×/1.5×/2×/3× screens",
   /supports-\[width:round\(down,1px,1px\)\]:\[&>\*\]:w-\[calc\(round\(nearest,calc\(.*_\+_var\(--rail-gap\)\),4px\)_-_var\(--rail-gap\)\)\]/.test(loopRail));
 check("arrows: always both, one card per press, presses add up; the glide is drawn by its own frames, snap off, every frame at the identical spot inside the range",
@@ -239,11 +246,14 @@ check("…reduced motion: no glide, the strip is simply there", /prefers-reduced
 check("…a press during a glide carries its speed on (Hermite curve), never faster than an ease-out, never backwards",
   /const curve = \(g: Glide, s: number\) =>/.test(loopRail) && /Math\.min\(Math\.max\(Math\.abs\(prev\.v\), Math\.abs\(span\) \/ d\), \(3 \* Math\.abs\(span\)\) \/ d\)/.test(loopRail));
 check("…a finger or a sideways wheel takes the strip: a glide stops where it is, snapping stays off (nothing jumps under the hand), and out over the copies the strip is first moved back invisibly",
-  /touchRef\.current = true; window\.clearTimeout\(timerRef\.current\); takeOver\(\);/.test(loopRail) && /if \(e\.deltaX !== 0 \|\| e\.shiftKey\) takeOver\(\);/.test(loopRail)
-  && /const shift = at < -0\.5 \? n : at >= n - 0\.5 \? -n : 0;/.test(loopRail) && !/stopGlide/.test(loopRail)
-  && /if \(g\.track\.style\.scrollSnapType\) g\.track\.style\.scrollSnapType = "";/.test(loopRail));
-check("…once the finger moves, snapping comes back on (the browser snaps at the swipe's end): one card per swipe, however fast",
-  /const onTouchMove = \(\) => \{ if \(track\.style\.scrollSnapType\) track\.style\.scrollSnapType = ""; \};/.test(loopRail));
+  /touchRef\.current = true;\s*window\.clearTimeout\(timerRef\.current\);\s*takeOver\(\);/.test(loopRail) && /if \(e\.deltaX !== 0 \|\| e\.shiftKey\) takeOver\(true\);/.test(loopRail)
+  && /const edge = wheel \? n \/ 2 : 0\.5;\s*const shift = at < -edge \? n : at >= n - 1 \+ edge \? -n : 0;/.test(loopRail) && !/stopGlide/.test(loopRail));
+check("…snapping goes back on BEFORE settle's move, so the move replaces any old snap target of the browser's (same frame)",
+  /if \(restoring\) g\.track\.style\.scrollSnapType = "";\s*if \(restoring \|\| Math\.abs\(g\.origin \+ best \* g\.pitch - g\.track\.scrollLeft\) > 0\.5\) jump\(g\.track, g\.origin \+ best \* g\.pitch\);/.test(loopRail)
+  && !/glideRef\.current = null;\s*g\.track\.style\.scrollSnapType = "";/.test(loopRail));
+check("…once the strip itself scrolls with the finger, snapping comes back on (the browser snaps at the swipe's end): one card per swipe, however fast; a page swipe leaves it alone",
+  /if \(touchRef\.current && track\.style\.scrollSnapType && Math\.abs\(track\.scrollLeft - touchLeft\) > 1\) track\.style\.scrollSnapType = "";/.test(loopRail)
+  && /const onScroll = \(\) => \{ resnapUnderFinger\(\); later\(\); \};/.test(loopRail) && /const onTouchMove = resnapUnderFinger;/.test(loopRail));
 check("…←/→ aim from where a running glide will rest, and always glide the way the focus moved (never backwards, never a lap)",
   /const rest = glide \? glide\.to : Math\.round\(now\);/.test(loopRail) && /const start = dir > 0 \? end - ahead : end \+ \(\(n - ahead\) % n\);/.test(loopRail));
 check("…every frame of a glide moves (the clock read in the frame, not the frame's older timestamp)",
@@ -254,7 +264,7 @@ check("←/→ on a card: its neighbour, the last card's being the first, steppi
 check("a new width puts the same real card back at the left edge; a height change (a font) does nothing",
   /if \(track\.clientWidth === width\) return;/.test(loopRail) && /new ResizeObserver/.test(loopRail));
 check("every listener is removed on unmount, each added once; a glide in flight is cancelled",
-  ["scroll", "scrollend", "touchstart", "touchmove", "touchend", "touchcancel", "wheel", "pointerdown", "contextmenu", "focusin", "pointerup", "pointercancel", "dragend"].every((ev) =>
+  ["scroll", "scrollend", "touchstart", "touchmove", "touchend", "touchcancel", "wheel", "pointerdown", "contextmenu", "focusin", "pointerup", "pointercancel", "dragend", "blur"].every((ev) =>
     (loopRail.match(new RegExp(`addEventListener\\("${ev}"`, "g")) ?? []).length === 1
     && (loopRail.match(new RegExp(`removeEventListener\\("${ev}"`, "g")) ?? []).length === 1)
   && /ro\?\.disconnect\(\)/.test(loopRail) && /mo\?\.disconnect\(\)/.test(loopRail)

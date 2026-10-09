@@ -318,27 +318,31 @@ export function LoopRail({ label, role, prevLabel, nextLabel, className, arrowTo
       window.clearTimeout(timerRef.current);
       timerRef.current = window.setTimeout(() => settleRef.current(), SETTLE_MS);
     };
+    let touchLeft = 0;
+    // Once the strip itself is scrolling with the finger, the browser snaps
+    // only when the swipe ends: snapping can come back on — so a swipe begun
+    // over a halted glide or the invisible move still lands on a card's edge,
+    // one card per swipe, like any other. A finger moving the PAGE (up/down)
+    // leaves the strip, and its snapping, alone: settle eases it onto a card.
+    // Checked on scroll too: while a swipe scrolls, the browser may hold back
+    // touchmove events.
+    const resnapUnderFinger = () => {
+      if (touchRef.current && track.style.scrollSnapType && Math.abs(track.scrollLeft - touchLeft) > 1) track.style.scrollSnapType = "";
+    };
+    const onScroll = () => { resnapUnderFinger(); later(); };
     const onEnd = () => { window.clearTimeout(timerRef.current); settleRef.current(); };
     // A finger or a sideways wheel takes the strip (see takeOver).
-    let touchLeft = 0;
     const onTouchStart = () => {
       touchRef.current = true;
       window.clearTimeout(timerRef.current);
       takeOver();
       touchLeft = track.scrollLeft;
     };
-    // Once the strip itself is scrolling with the finger, the browser snaps
-    // only when the swipe ends: snapping can come back on — so a swipe begun
-    // over a halted glide or the invisible move still lands on a card's edge,
-    // one card per swipe, like any other. A finger moving the PAGE (up/down)
-    // leaves the strip, and its snapping, alone: settle eases it onto a card.
-    const onTouchMove = () => {
-      if (track.style.scrollSnapType && Math.abs(track.scrollLeft - touchLeft) > 1) track.style.scrollSnapType = "";
-    };
+    const onTouchMove = resnapUnderFinger;
     // Only when the last finger lifts (a second finger lifting first is not
     // the end of the hold).
     const onTouchEnd = (e: TouchEvent) => {
-      if (e.touches.length > 0) return;
+      if ((e.touches?.length ?? 0) > 0) return;
       touchRef.current = false;
       later();
     };
@@ -385,7 +389,7 @@ export function LoopRail({ label, role, prevLabel, nextLabel, className, arrowTo
         if (glideRef.current || !shows(g, where(g), k)) reveal(k, dir);
       });
     };
-    track.addEventListener("scroll", later, { passive: true });
+    track.addEventListener("scroll", onScroll, { passive: true });
     track.addEventListener("scrollend", onEnd);
     track.addEventListener("touchstart", onTouchStart, { passive: true });
     track.addEventListener("touchmove", onTouchMove, { passive: true });
@@ -429,7 +433,7 @@ export function LoopRail({ label, role, prevLabel, nextLabel, className, arrowTo
     return () => {
       window.clearTimeout(timerRef.current);
       haltGlide();
-      track.removeEventListener("scroll", later);
+      track.removeEventListener("scroll", onScroll);
       track.removeEventListener("scrollend", onEnd);
       track.removeEventListener("touchstart", onTouchStart);
       track.removeEventListener("touchmove", onTouchMove);
