@@ -20,11 +20,22 @@ export type ToolResponse = ToolBytes & {
   /** What this single call really cost us, in USD. Recorded on the ledger. */
   costUsd: number;
   requestId: string | null;
+  /** Which API answered ("v1/segment", "v2/edit") — logged with the call. */
+  endpoint?: string;
+  /** Documented response headers worth keeping with the result: the seed a
+   *  generated background used, the cutout's uncertainty score. */
+  meta?: Record<string, string>;
 };
 export type Creds = { apiKey: string; baseUrl?: string | null };
 
 export class ToolProviderError extends Error {
-  constructor(public readonly code: string, public readonly retryable = false) {
+  constructor(
+    public readonly code: string,
+    public readonly retryable = false,
+    /** The provider DID process (and bill) the request — the failure is ours
+     *  to absorb, so its cost is recorded rather than assumed to be zero. */
+    public readonly billed = false,
+  ) {
     super(code);
     this.name = "ToolProviderError";
   }
@@ -42,9 +53,16 @@ type Base = {
   vaultSlug?: string;
 };
 
+/** A cutout can come back flattened onto a colour in the same request, when
+ *  the vendor supports it — one call instead of a cutout plus a second step. */
+export type CutoutOptions = { bgColor?: string; format?: "png" | "jpg" | "webp" };
+
 export interface BackgroundRemovalProvider extends Base {
   estimateUsd(): number;
-  removeBackground(input: ToolBytes, creds: Creds): Promise<ToolResponse>;
+  /** Honours `CutoutOptions.bgColor` itself. A provider without it returns a
+   *  transparent cutout and the runner flattens the colour locally. */
+  supportsBgColor?: boolean;
+  removeBackground(input: ToolBytes, creds: Creds, opts?: CutoutOptions): Promise<ToolResponse>;
 }
 
 export interface UpscaleProvider extends Base {
@@ -90,13 +108,24 @@ export type EditOperation = (typeof EDIT_OPERATIONS)[number];
 /** Everything the edits between them can be told. Each provider reads only the
  *  fields its operation actually uses. */
 export type EditOptions = {
-  /** ai_background: a described scene, or a flat colour when no prompt is set. */
+  /** ai_background: the scene to generate — a preset's prompt resolved on the
+   *  server, or the seller's own words. Required: a flat colour is "Zmień
+   *  kolor tła", not a generative call. */
   prompt?: string;
+  /** ai_background: let the provider expand a short prompt into a full scene
+   *  description (`background.expandPrompt.mode`). */
+  expandPrompt?: boolean;
+  /** ai_background: reproduce an earlier scene (`background.seed`). */
+  seed?: number;
+  /** ai_background: an inspiration photo and how closely it steers the scene. */
+  guidance?: { image: ToolBytes; scale: number };
+  /** ai_shadow: the backdrop under the cut-out product — a colour, or none. */
   color?: string;
+  transparent?: boolean;
   /** relight: which of the model's lighting intents to apply. */
   lighting?: "auto" | "preserve" | "portrait";
-  /** ai_shadow: how hard the cast shadow should be. */
-  shadow?: "soft" | "auto";
+  /** ai_shadow: Miękki / Mocny / Unoszący się. */
+  shadow?: "soft" | "hard" | "floating";
   /** beautify: product pack-shot look, or the one tuned for food. */
   beautify?: "auto" | "food";
   /** Output encoding, so a transparent result is not silently flattened. */
@@ -139,10 +168,13 @@ async function binary(res: Response): Promise<ToolBytes> {
   return { bytes: buf, mime: res.headers.get("content-type")?.split(";")[0] || "image/png" };
 }
 
-function form(input: ToolBytes, field: string, extra: Record<string, string> = {}): FormData {
+function form(
+  input: ToolBytes, field: string, extra: Record<string, string> = {}, files: Record<string, ToolBytes> = {},
+): FormData {
   const fd = new FormData();
   fd.append(field, new Blob([new Uint8Array(input.bytes)], { type: input.mime }), "image");
   for (const [k, v] of Object.entries(extra)) fd.append(k, v);
+  for (const [k, f] of Object.entries(files)) fd.append(k, new Blob([new Uint8Array(f.bytes)], { type: f.mime }), "guidance");
   return fd;
 }
 
@@ -170,7 +202,10 @@ function form(input: ToolBytes, field: string, extra: Record<string, string> = {
  * cost engine can stop charging for a watermarked result.
  */
 
-const PHOTOROOM_EDIT_URL = "https://image-api.photoroom.com/v2/edit";
+export const PHOTOROOM_SEGMENT_URL = "https://sdk.photoroom.com/v1/segment";
+export const PHOTOROOM_EDIT_URL = "https://image-api.photoroom.com/v2/edit";
+/** Free, read-only: the plan a key belongs to and the images it has left. */
+export const PHOTOROOM_ACCOUNT_URL = "https://image-api.photoroom.com/v2/account";
 /** Per-image list price of one /v2/edit call, in USD (Plus rate). */
 export const PHOTOROOM_EDIT_USD = 0.10;
 /** Per-image list price of one /v1/segment call, in USD (Basic rate). */
@@ -183,35 +218,89 @@ export function isSandboxKey(apiKey: string): boolean {
 }
 
 /**
+ * WHICH URL ONE PHOTOROOM ENDPOINT IS CALLED AT.
+ *
+ * Photoroom's two APIs live on two hosts (sdk.photoroom.com for the cutout,
+ * image-api.photoroom.com for the editor), so one stored "base URL" cannot be
+ * the full address of both. It used to be: a URL saved in the admin panel was
+ * sent every request, whichever endpoint it named — an edit could land on the
+ * cutout endpoint and be billed as one. Now a stored value counts only as an
+ * ORIGIN (a proxy in front of Photoroom) or as the full address of the SAME
+ * endpoint; anything else falls back to Photoroom's own URL. With nothing
+ * stored — the normal case — nothing changes.
+ */
+export function photoroomUrl(baseUrl: string | null | undefined, path: "/v1/segment" | "/v2/edit", fallback: string): string {
+  const raw = baseUrl?.trim();
+  if (!raw) return fallback;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "https:") return fallback;
+    const own = u.pathname.replace(/\/+$/, "");
+    if (own === "") return `${u.origin}${path}`;
+    return own === path ? `${u.origin}${path}` : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+const isImageResponse = (res: Response) =>
+  (res.headers.get("content-type") ?? "").toLowerCase().startsWith("image/");
+
+/** Response headers Photoroom documents and the four photo tools keep. */
+function photoroomMeta(res: Response): Record<string, string> {
+  const meta: Record<string, string> = {};
+  const seed = res.headers.get("pr-ai-background-seed");
+  const uncertainty = res.headers.get("x-uncertainty-score");
+  if (seed) meta.seed = seed.slice(0, 32);
+  if (uncertainty) meta.uncertainty = uncertainty.slice(0, 16);
+  return meta;
+}
+
+/**
  * One /v2/edit call.
  *
  * `params` are sent verbatim as multipart fields, so a caller states exactly
  * the documented parameter names and nothing translates them behind its back.
  * Undefined and empty values are dropped rather than sent as "", which the API
- * would read as a real (and wrong) value.
+ * would read as a real (and wrong) value. `files` carries extra binary fields
+ * (the AI background's inspiration photo).
+ *
+ * `strict` — used by the four photo tools — turns Photoroom's
+ * `pr-unsupported-attributes` warning into a failure. Photoroom answers 200
+ * and IGNORES a field it does not support, so without this a shadow style the
+ * model does not know would come back as a plain cutout and be sold as a
+ * shadow. The call was processed, so the error is marked as billed.
  */
 export async function photoroomEdit(
   input: ToolBytes,
   params: Record<string, string | number | undefined | null>,
   creds: Creds,
+  opts: { files?: Record<string, ToolBytes>; strict?: boolean } = {},
 ): Promise<ToolResponse> {
   const fields: Record<string, string> = {};
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null || value === "") continue;
     fields[key] = String(value);
   }
-  const res = await send(creds.baseUrl?.trim() || PHOTOROOM_EDIT_URL, {
+  const res = await send(photoroomUrl(creds.baseUrl, "/v2/edit", PHOTOROOM_EDIT_URL), {
     method: "POST",
     // No Content-Type header: fetch sets the multipart boundary itself.
     headers: { "x-api-key": creds.apiKey, Accept: "image/png, image/jpeg, image/webp, application/json" },
-    body: form(input, "imageFile", fields),
+    body: form(input, "imageFile", fields, opts.files),
   });
+  if (opts.strict && res.headers.get("pr-unsupported-attributes")) {
+    throw new ToolProviderError("provider_unsupported_params", false, true);
+  }
+  // A 200 carrying JSON is not an image, whatever the bytes are called.
+  if (opts.strict && !isImageResponse(res)) throw new ToolProviderError("provider_empty_result", false, true);
   return {
     ...(await binary(res)),
     // A sandbox call costs nothing, and charging a seller credits for a
     // watermarked image would be taking money for a result they cannot use.
     costUsd: isSandboxKey(creds.apiKey) ? 0 : PHOTOROOM_EDIT_USD,
     requestId: res.headers.get("x-request-id"),
+    endpoint: "v2/edit",
+    meta: photoroomMeta(res),
   };
 }
 
@@ -256,21 +345,33 @@ const falBackground: BackgroundRemovalProvider = {
 const photoroomBackground: BackgroundRemovalProvider = {
   slug: "photoroom", label: "Photoroom", envVar: "PHOTOROOM_API_KEY", vaultSlug: "photoroom",
   keyUrl: "https://app.photoroom.com/api-dashboard",
+  supportsBgColor: true,
   estimateUsd: () => PHOTOROOM_SEGMENT_USD,
-  async removeBackground(input, creds) {
+  async removeBackground(input, creds, opts = {}) {
     // DELIBERATELY v1, not /v2/edit. Photoroom bills per image by which API
     // answered — the Remove Background rate even for a Plus subscriber — so
     // cutting out a subject here costs $0.02 instead of the $0.10 the editing
     // endpoint would charge for exactly the same cutout.
-    const res = await send(creds.baseUrl?.trim() || "https://sdk.photoroom.com/v1/segment", {
+    //
+    // `bg_color` is the same endpoint's own flatten (remove.bg-compatible,
+    // documented as "#FF00FF" or an HTML colour name): "Zmień kolor tła" is ONE
+    // request at the Basic rate, not a cutout plus a generative call.
+    const fields: Record<string, string> = { format: opts.format ?? "png" };
+    if (opts.bgColor) fields.bg_color = opts.bgColor;
+    const res = await send(photoroomUrl(creds.baseUrl, "/v1/segment", PHOTOROOM_SEGMENT_URL), {
       method: "POST",
-      headers: { "x-api-key": creds.apiKey, Accept: "image/png, application/json" },
-      body: form(input, "image_file", { format: "png" }),
+      // Images only: the endpoint can also answer JSON ({base64img}), and a
+      // JSON body saved as a "PNG" would be a broken file sold as a result.
+      headers: { "x-api-key": creds.apiKey, Accept: "image/png, image/jpeg, image/webp" },
+      body: form(input, "image_file", fields),
     });
+    if (!isImageResponse(res)) throw new ToolProviderError("provider_empty_result", false, true);
     return {
       ...(await binary(res)),
       costUsd: isSandboxKey(creds.apiKey) ? 0 : PHOTOROOM_SEGMENT_USD,
       requestId: res.headers.get("x-request-id"),
+      endpoint: "v1/segment",
+      meta: photoroomMeta(res),
     };
   },
 };
@@ -459,6 +560,23 @@ const LIGHTING_MODE: Record<string, string> = {
   portrait: "ai.optimize-portrait",
 };
 const BEAUTIFY_MODE: Record<string, string> = { auto: "ai.auto", food: "ai.food" };
+/** Miękki / Mocny / Unoszący się → Photoroom's documented shadow modes. The
+ *  newer `ai.preset-*` / `ai.auto-with-overrides` values only work with an
+ *  opt-in model header GrovBase does not send, so they are not used. */
+const SHADOW_MODE: Record<string, string> = { soft: "ai.soft", hard: "ai.hard", floating: "ai.floating" };
+
+/**
+ * CUT OUT, KEPT WHERE IT WAS.
+ *
+ * The AI background and the AI shadow both act on the cut-out product, so the
+ * background removal /v2/edit does by default is what they want — and it is
+ * stated explicitly here rather than left to a default. `referenceBox=
+ * originalImage` keeps the product at its original position and scale in the
+ * original frame ("maintain subject positioning", in Photoroom's words);
+ * without it the cutout would be re-fitted to the canvas and the seller's
+ * composition would change along with the background.
+ */
+const CUTOUT_IN_PLACE = { removeBackground: "true", referenceBox: "originalImage" } as const;
 
 const photoroomEdits: ImageEditProvider = {
   ...PHOTOROOM_BASE, label: "Photoroom — AI Edit",
@@ -473,12 +591,23 @@ const photoroomEdits: ImageEditProvider = {
     const framed = { ...common, ...WHOLE_PHOTO };
 
     if (op === "ai_background") {
-      // A described scene when the seller wrote one, a flat colour otherwise.
-      // Sending both would let the API pick, and the seller would not know
-      // which of their two answers it honoured.
-      return photoroomEdit(input, opts.prompt?.trim()
-        ? { ...common, "background.prompt": opts.prompt.trim() }
-        : { ...common, "background.color": (opts.color ?? "#FFFFFF").replace("#", "") }, creds);
+      // ONE generative call per result. The scene is a prompt — a flat
+      // colour is "Zmień kolor tła" at a fifth of the price, so it is never
+      // bought here. An inspiration photo rides along as guidance (allowed
+      // only with the cutout on, which this always is), with its strength.
+      const prompt = opts.prompt?.trim();
+      if (!prompt) throw new ToolProviderError("prompt_required");
+      return photoroomEdit(input, {
+        ...common,
+        ...CUTOUT_IN_PLACE,
+        "background.prompt": prompt,
+        "background.expandPrompt.mode": opts.expandPrompt ? "ai.auto" : "ai.never",
+        "background.seed": opts.seed,
+        "background.guidance.scale": opts.guidance ? opts.guidance.scale : undefined,
+      }, creds, {
+        strict: true,
+        files: opts.guidance ? { "background.guidance.imageFile": opts.guidance.image } : {},
+      });
     }
     if (op === "relight") {
       return photoroomEdit(input, {
@@ -486,9 +615,18 @@ const photoroomEdits: ImageEditProvider = {
       }, creds);
     }
     if (op === "ai_shadow") {
+      // The shadow is cast under the CUT-OUT product onto the backdrop the
+      // seller chose: a colour, or transparency (PNG/WebP only — a JPEG has no
+      // alpha, so a transparent request is always encoded as PNG). No scene,
+      // no relighting: only the shadow mode and the backdrop are sent.
+      const transparent = Boolean(opts.transparent);
       return photoroomEdit(input, {
-        ...common, "shadow.mode": opts.shadow === "auto" ? "ai.auto-with-overrides" : "ai.soft",
-      }, creds);
+        ...common,
+        ...CUTOUT_IN_PLACE,
+        "export.format": transparent && format === "jpeg" ? "png" : format,
+        "shadow.mode": SHADOW_MODE[opts.shadow ?? "soft"] ?? SHADOW_MODE.soft,
+        "background.color": transparent ? undefined : (opts.color ?? "#FFFFFF").replace("#", "").toUpperCase(),
+      }, creds, { strict: true });
     }
     if (op === "beautify") {
       return photoroomEdit(input, {

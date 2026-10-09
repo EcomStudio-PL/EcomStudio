@@ -638,7 +638,9 @@ const ENGINE: readonly [string, string][] = [
   ["lib/ai/providers/google-request.ts", "ebec5219ae0f40e51071c4305115c430f818573235f38737cfe71829d69a88d1"],
   ["lib/server/concept-generation.ts", "788361ea576b19dc0ef58d325b63199cdeb51b24a4bf3b64bd1e111d55cf8341"],
   ["lib/server/prompt-engine.ts", "5ce9bf1074f34e8852cd06a6440e0c9640a4471049617493d3b1b506e74baf22"],
-  ["lib/server/image-tools.ts", "85e3e9155f5264f3237f6d24702728098adeb5ea49a8de560aa7ea24ad03c452"],
+  // Re-pinned by the photo-tools task (four Photoroom panels: pinned provider,
+  // sandbox gating, deliver hook, presets). Retusz never imports this file.
+  ["lib/server/image-tools.ts", "c0bd0dc0d452447faf8900a4f982c7b10690d555e8a8b15cf08028e7568e4918"],
   ["lib/server/fashion.ts", "dcde79b33cd35e9789caa3bbc9cc4ddbf406f570d9f02ee3fe7232ad069ab139"],
   ["app/api/prompts/generate/route.ts", "37db9bd3798b9bd5c4c4fc3bdf1056d57dec296f12754fd52bd9f5f97e204b5e"],
   ["app/api/concepts/generate/route.ts", "59ac0b7670179062229aae68505186bd2513953bd1ecad1e555bedf45f588e21"],
@@ -684,8 +686,11 @@ const RETUSZ: readonly [string, string][] = [
 ];
 for (const [file, digest] of RETUSZ) check(`${file} unchanged`, sha(readFileSync(file)) === digest);
 check("Retusz is reached only by its route — never prefilled, never imported", !/RetouchWorkspace|components\/retouch|runRetouch|retouchStepConfig/.test(SH + loader));
-check("/tools' own page and catalogue are untouched", !gitChanged("app/(app)/tools/page.tsx") && !gitChanged("lib/tool-cards.ts")
-  && !gitChanged("lib/tool-layout.ts"));
+// The catalogue changed once since: the photo-tools task pointed four cards at
+// their own screens (/tools/remove_bg, white_bg, ai_background, ai_shadow).
+check("/tools' own page and layout are untouched; the catalogue only by the photo-tools task",
+  !gitChanged("app/(app)/tools/page.tsx") && !gitChanged("lib/tool-layout.ts")
+  && sha(readFileSync("lib/tool-cards.ts")) === "1a433b1509141bafab46e7142b3d1d2821ad45b89da16c94b00bc1ffb3b5a2c5");
 
 /* ── 12. handoff ──────────────────────────────────────────────────────────*/
 

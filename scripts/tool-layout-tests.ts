@@ -258,8 +258,10 @@ console.log("\nH. the routes are the ones the tools always had");
   // Every destination the brief names, as it was on the day this shipped.
   const ROUTES: Record<string, string> = {
     generator: "/prompts", custom: "/generator", retouch: "/retusz",
-    remove_bg: "/tools/editor?tool=remove-background", background: "/tools/editor?tool=background",
-    ai_background: "/tools/ai_background", shadow: "/tools/editor?tool=shadow",
+    // The four photo tools are screens of their own again (Photoroom-backed):
+    // "Usuń tło", "Zmień kolor tła", "Dodaj tło AI", "Dodaj cień".
+    remove_bg: "/tools/remove_bg", background: "/tools/white_bg",
+    ai_background: "/tools/ai_background", shadow: "/tools/ai_shadow",
     "ecommerce.thumbnail": "/k/ecommerce/thumbnail", matching: "/k/matching",
     "moda.ghostMannequin": "/k/moda/ghostMannequin", "moda.flatlay": "/k/moda/flatlay", "moda.iron": "/k/moda/iron",
     "moda.changePerson": "/k/moda/changePerson", "moda.changeFace": "/k/moda/changeFace", "moda.street": "/k/moda/street",

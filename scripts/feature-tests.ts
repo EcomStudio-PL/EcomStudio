@@ -40,6 +40,8 @@ console.log("\nA. REGISTRY — every real module is covered, the untouchable one
     "fashion_change_face",
     "prompts", "generator",
     "retouch", "editor", "resize", "compress", "tools", "tool_upscale", "tool_expand", "tool_watermark",
+    // The four photo tools — screens of their own, each separately switchable.
+    "tool_remove_bg", "tool_white_bg", "tool_ai_background", "tool_ai_shadow",
     "video", "inspirations", "credits", "support",
     // GrovNews — its own drawer row, so the switchboard owns it too.
     "grovnews",
@@ -85,12 +87,17 @@ console.log("\nA. REGISTRY — every real module is covered, the untouchable one
   // succeeds. The compiled-in default now matches what operators actually
   // shipped, which is the only way the fallback is a fact rather than a guess.
   // When a category is genuinely released, the row and this list move together.
+  //
+  // The four photo tools are the sixth kind: built, but waiting for a
+  // production Photoroom key confirmed on production. Until an operator has
+  // one, each is "Wkrótce" rather than a button that cannot run.
   const off = FEATURE_KEYS.filter((k) => defaultStatusFor(k) !== "ACTIVE");
   const expected = [
     "image_matching", "video",
     "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person",
     "fashion_change_face",
     "image_social", "image_mailing", "image_inne",
+    "tool_remove_bg", "tool_white_bg", "tool_ai_background", "tool_ai_shadow",
   ];
   check("a feature defaults to ACTIVE unless it is deliberately listed as off",
     off.length === expected.length && expected.every((k) => off.includes(k as never)), off.join(","));
@@ -137,6 +144,10 @@ console.log("\nB. HREF → FEATURE — prefixes, query stripping, no bypass surf
     ["/tools/upscale", "tool_upscale"],
     ["/tools/expand", "tool_expand"],
     ["/tools/watermark", "tool_watermark"],
+    ["/tools/remove_bg", "tool_remove_bg"],
+    ["/tools/white_bg", "tool_white_bg"],
+    ["/tools/ai_background", "tool_ai_background"],
+    ["/tools/ai_shadow", "tool_ai_shadow"],
     ["/tools", "tools"],
     ["/wideo", "video"],
     // /products was a real route until the module was withdrawn; the table

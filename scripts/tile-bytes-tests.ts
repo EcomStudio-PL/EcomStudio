@@ -187,6 +187,12 @@ async function main() {
       "app/(app)/library/page.tsx",
       // Generic helper, not a surface.
       "lib/services/images.ts",
+      // The four photo tools (tool_results, not generation_assets): the grid
+      // paints the 640 px thumbnail written at INSERT time (metadata.thumb) and
+      // falls back to the original — asserted in scripts/photo-tools-tests.ts.
+      "lib/server/photo-tools.ts",
+      // Signs the one result it just made, for the panel to show.
+      "app/api/tools/photo/route.ts",
     ]);
     const listed = new Set(SURFACES.map((s) => s.file));
 

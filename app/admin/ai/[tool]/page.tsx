@@ -7,7 +7,7 @@ import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getAvailabilityMap } from "@/lib/server/feature-availability";
 import {
-  MODEL_ASSIGNMENT_RUNTIME, isAiToolKey, readBillingServices, readPickableModels, readPromptHistory, readToolRegistry,
+  MODEL_ASSIGNMENT_RUNTIME, PHOTO_TOOL_KEYS, isAiToolKey, readBillingServices, readPickableModels, readPromptHistory, readToolRegistry,
   LEGACY_TAB, readWorkflowHistory, toolHasPromptEngine, toolSupportsWorkflow, toolTabs, type ToolTab,
 } from "@/lib/services/ai-tools";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
@@ -36,6 +36,11 @@ import { ToolTabs } from "@/components/admin/tool-tabs";
 import { EngineDryRun, KnowledgeStrategyForm } from "@/components/admin/engine-panels";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { formatDate } from "@/lib/utils";
+import { readPhotoToolUnit } from "@/lib/server/photo-tool-admin";
+import { PhotoToolEconomicsCard } from "@/components/admin/photo-tool-economics";
+import { AiBackgroundPresetsEditor } from "@/components/admin/ai-background-presets";
+import { parsePresets } from "@/lib/images/ai-background-presets";
+import type { PhotoToolSlug } from "@/lib/images/tools";
 
 export const dynamic = "force-dynamic";
 
@@ -134,7 +139,15 @@ type WithConfig = Ctx & { config: Parameters<typeof ToolConfigForm>[0]["initial"
 /* ── PODSTAWOWE ───────────────────────────────────────────────────────────*/
 
 async function BasicsTab({ supabase, t, row, config }: WithConfig) {
-  const services = await readBillingServices(supabase);
+  const [services, presets] = await Promise.all([
+    readBillingServices(supabase),
+    // "Dodaj tło AI" scenes: a private row, readable here because the viewer
+    // is an admin (settings_admin_write is FOR ALL).
+    row.key === "tool_ai_background"
+      ? supabase.from("app_settings").select("value").eq("key", "ai_background_presets").maybeSingle()
+          .then(({ data }) => parsePresets(data?.value))
+      : Promise.resolve(null),
+  ]);
 
   return (
     <div className="grid gap-4 [&>*]:min-w-0 lg:grid-cols-[1fr_320px]">
@@ -149,6 +162,13 @@ async function BasicsTab({ supabase, t, row, config }: WithConfig) {
         <div className="mt-6 border-t border-line pt-5">
           <ToolSearchTagsForm toolKey={row.key} initial={row.searchTags} />
         </div>
+        {presets && (
+          <div className="mt-6 border-t border-line pt-5">
+            <p className="text-[13px] font-semibold">{t("aicc.presets.title")}</p>
+            <p className="mb-3 mt-0.5 text-xs text-muted">{t("aicc.presets.sub")}</p>
+            <AiBackgroundPresetsEditor initial={presets} />
+          </div>
+        )}
       </Card>
 
       <Card className="p-5">
@@ -312,8 +332,10 @@ async function WorkflowTab({ supabase, t, row, locale }: Ctx & { locale: string 
 /* ── MODELE, API I KOSZTY ─────────────────────────────────────────────────*/
 
 async function ModelsTab({ supabase, t, row, config, locale }: WithConfig & { locale: string }) {
-  const [pickable, path, exec] = await Promise.all([
+  const photo = PHOTO_TOOL_KEYS.includes(row.key);
+  const [pickable, path, exec, unit] = await Promise.all([
     readPickableModels(supabase), readToolApiPath(supabase, row.key), readExecutionSummary(supabase, row.key),
+    photo ? readPhotoToolUnit(supabase, row.key.replace(/^tool_/, "") as PhotoToolSlug) : Promise.resolve(null),
   ]);
   // The picker is offered only where the runtime READS it. Elsewhere the
   // model comes from another source and is shown as such, read-only.
@@ -325,6 +347,12 @@ async function ModelsTab({ supabase, t, row, config, locale }: WithConfig & { lo
         <CardHeader title={t("aicc.exec.title")} sub={t("aicc.exec.sub")} />
         <div className="pt-4"><ExecutionPathCard exec={exec} path={path} toolKey={row.key} t={t} /></div>
       </Card>
+      {unit && (
+        <Card className="p-5">
+          <CardHeader title={t("aicc.photo.title")} sub={t("aicc.photo.sub")} />
+          <div className="pt-4"><PhotoToolEconomicsCard unit={unit} t={t} locale={locale} /></div>
+        </Card>
+      )}
       {assignable && (
         <Card className="p-5">
           <CardHeader title={t("aicc.models.title")} sub={exec.workflowEnabled && exec.workflow ? t("aicc.exec.pickerUnderWorkflow") : t("aicc.models.sub")} />

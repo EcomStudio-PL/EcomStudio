@@ -4,18 +4,19 @@ import { dispatchToken } from "@/lib/server/integrations";
 import type { Client } from "@/lib/services/workspace";
 import { startUsage, completeUsage, failUsage } from "@/lib/services/usage";
 import {
-  DEFAULT_SETTINGS, TOOLS, toolBySlug,
-  AI_SHADOW_STYLES, BACKGROUND_PROMPT_MAX, BEAUTIFY_SUBJECTS, LIGHTING_INTENTS,
-  type AspectRatio, type ToolSettings, type ToolSlug, type UpscaleFactor,
+  DEFAULT_SETTINGS, TOOLS, toolBySlug, isPhotoTool,
+  AI_SHADOW_BACKGROUNDS, AI_SHADOW_STYLES, BACKGROUND_PROMPT_MAX, BEAUTIFY_SUBJECTS, LIGHTING_INTENTS,
+  type AspectRatio, type PhotoToolSlug, type ToolSettings, type ToolSlug, type UpscaleFactor,
 } from "@/lib/images/tools";
 import { billingFrom, quote, usdToMicros, type BillingConfig, type PriceQuote } from "@/lib/images/pricing";
 import {
   ALL_TOOL_PROVIDERS, BACKGROUND_PROVIDERS, EDIT_PROVIDERS, EXPAND_PROVIDERS, UPSCALE_PROVIDERS,
-  ToolProviderError, envKey,
-  type Creds, type EditOperation, type EditOptions, type ExpandPlan, type ImageEditProvider,
+  PHOTOROOM_EDIT_URL, PHOTOROOM_SEGMENT_URL, ToolProviderError, envKey, isSandboxKey, photoroomUrl,
+  type BackgroundRemovalProvider, type Creds, type EditOperation, type EditOptions, type ExpandPlan, type ImageEditProvider,
 } from "@/lib/images/providers";
+import { parsePresets, PRESET_KEY_RE, type AiBackgroundPreset } from "@/lib/images/ai-background-presets";
 import {
-  composeEditor, compress, dropShadow, flattenToColor, inspect, resizeConvert, watermark,
+  composeEditor, compress, dropShadow, flattenToColor, hasRealTransparency, inspect, resizeConvert, watermark,
   MAX_INPUT_BYTES, type OutputFormat,
 } from "@/lib/images/local";
 import { clampEditorState } from "@/lib/images/editor-state";
@@ -132,9 +133,27 @@ async function primeVault(supabase: Client): Promise<void> {
 /** The edit provider that has a key AND does this particular operation. A
  *  vendor may implement relighting and not ghost mannequins, and a tool must
  *  never be advertised as available because some other edit is. */
-async function pickEditProvider(supabase: Client, op: EditOperation) {
-  return pickProvider(supabase, EDIT_PROVIDERS.filter((p) => p.supports(op)));
+async function pickEditProvider(supabase: Client, op: EditOperation, slug?: ToolSlug) {
+  const list = EDIT_PROVIDERS.filter((p) => p.supports(op));
+  return pickProvider(supabase, slug ? forTool(slug, list) : list);
 }
+
+/**
+ * A TOOL'S OWN PROVIDER LIST. Most paid tools take the cheapest vendor that
+ * has a key; a tool pinned to one vendor (the four photo tools are Photoroom
+ * operations) never falls through to another just because its key exists —
+ * that is how "Usuń tło" ended up on a fal key that had never once worked.
+ * Workflow steps (`runToolProviderStep`) keep the cheapest-first chain.
+ */
+function forTool<T extends ProviderBase>(slug: ToolSlug, list: T[]): T[] {
+  const pin = toolBySlug(slug)?.provider;
+  return pin ? list.filter((p) => p.slug === pin) : list;
+}
+
+/** A Photoroom key that stamps a watermark. Its results are a test, never a
+ *  customer's deliverable — see toolCatalogue and runPaid. */
+const isSandbox = (picked: { provider: ProviderBase; creds: Creds }) =>
+  picked.provider.slug === "photoroom" && isSandboxKey(picked.creds.apiKey);
 
 /** First provider in the preference list (cheapest first) that has a key. */
 async function pickProvider<T extends ProviderBase>(supabase: Client, list: T[]): Promise<{ provider: T; creds: Creds; source: KeySource } | null> {
@@ -143,6 +162,37 @@ async function pickProvider<T extends ProviderBase>(supabase: Client, list: T[])
     if (resolved) return { provider, creds: resolved.creds, source: resolved.source };
   }
   return null;
+}
+
+/**
+ * FOR THE ADMIN: where a photo tool would go right now — the same pinned pick
+ * the runner makes, the endpoint it would call, whether the key is a live or a
+ * sandbox one, and the list price of one call. Never the key itself.
+ */
+export async function photoToolPath(supabase: Client, slug: PhotoToolSlug): Promise<{
+  providerSlug: string; label: string; endpoint: string;
+  environment: "live" | "sandbox" | null; costUsd: number;
+}> {
+  const tool = toolBySlug(slug)!;
+  const operation = tool.operation as EditOperation | undefined;
+  const edit = tool.capability === "edit" && operation !== undefined;
+  const list: (BackgroundRemovalProvider | ImageEditProvider)[] = edit
+    ? forTool(slug, EDIT_PROVIDERS.filter((p) => p.supports(operation)))
+    : forTool(slug, BACKGROUND_PROVIDERS);
+  const picked = await pickProvider(supabase, list);
+  const provider = picked?.provider ?? list[0];
+  const costUsd = !provider ? 0
+    : edit ? (provider as ImageEditProvider).estimateUsd(operation) : (provider as BackgroundRemovalProvider).estimateUsd();
+  const url = edit
+    ? photoroomUrl(picked?.creds.baseUrl, "/v2/edit", PHOTOROOM_EDIT_URL)
+    : photoroomUrl(picked?.creds.baseUrl, "/v1/segment", PHOTOROOM_SEGMENT_URL);
+  return {
+    providerSlug: provider?.slug ?? "photoroom",
+    label: provider ? provider.label.split(" — ")[0] : "Photoroom",
+    endpoint: `POST ${url}`,
+    environment: picked ? (isSandbox(picked) ? "sandbox" : "live") : null,
+    costUsd,
+  };
 }
 
 /* ── catalogue + pricing ───────────────────────────────────────────────── */
@@ -155,8 +205,14 @@ export type ToolAvailability = {
   credits: number;
   /** Human label of the backend that would run it, when there is one. */
   providerLabel: string | null;
-  /** Why a paid tool cannot run. */
-  reason: "ok" | "no_provider" | "maintenance" | "disabled";
+  /** Why a paid tool cannot run. `sandbox`: the only key is a Photoroom test
+   *  key, whose watermarked results are never sold to a customer. */
+  reason: "ok" | "no_provider" | "maintenance" | "disabled" | "sandbox";
+  /** Which kind of key would answer: a live one, a sandbox (test) one, or none.
+   *  Optional so callers that build a placeholder row need not invent it. */
+  environment?: "live" | "sandbox" | null;
+  /** The run is free when the photo is already cut out ("Zmień kolor tła"). */
+  freeWhenTransparent?: boolean;
 };
 
 async function loadContext(supabase: Client) {
@@ -171,27 +227,31 @@ async function loadContext(supabase: Client) {
   };
 }
 
-/** What the Tools page renders: real availability and the real price. */
-export async function toolCatalogue(supabase: Client): Promise<ToolAvailability[]> {
+/** What the Tools page renders: real availability and the real price.
+ *
+ *  `admin`: the viewer is an operator. A Photoroom SANDBOX key is then usable
+ *  — at 0 credits, so a watermarked test result is never paid for — while for
+ *  a customer the same key means "not available": a watermarked image is not
+ *  a product GrovBase sells. */
+export async function toolCatalogue(supabase: Client, opts: { admin?: boolean } = {}): Promise<ToolAvailability[]> {
   // The catalogue read and the whole credential sweep, side by side: two
   // round trips of waiting instead of a serial walk through ten providers.
   const [{ services, billing }] = await Promise.all([loadContext(supabase), primeVault(supabase)]);
-  // One resolution per distinct edit operation, side by side with the three
-  // older capabilities. The vault is already primed, so each of these is a
-  // walk through an in-memory cache rather than a query.
-  const editOps = [...new Set(TOOLS.flatMap((t) => (t.operation ? [t.operation] : [])))];
-  const [background, upscale, expand, editEntries] = await Promise.all([
-    pickProvider(supabase, BACKGROUND_PROVIDERS),
-    pickProvider(supabase, UPSCALE_PROVIDERS),
-    pickProvider(supabase, EXPAND_PROVIDERS),
-    Promise.all(editOps.map(async (op) =>
-      [op, await pickEditProvider(supabase, op as EditOperation)] as const)),
-  ]);
-  const edits = new Map(editEntries);
+  // One resolution per tool's provider list: the vault is already primed, so
+  // each of these is a walk through an in-memory cache rather than a query.
+  // Tools that share a list (the unpinned edits, say) resolve identically.
+  const picks = await Promise.all(TOOLS.map(async (tool) => {
+    if (tool.kind === "local") return null;
+    if (tool.capability === "background") return pickProvider(supabase, forTool(tool.slug, BACKGROUND_PROVIDERS));
+    if (tool.capability === "upscale") return pickProvider(supabase, forTool(tool.slug, UPSCALE_PROVIDERS));
+    if (tool.capability === "expand") return pickProvider(supabase, forTool(tool.slug, EXPAND_PROVIDERS));
+    return tool.operation ? pickEditProvider(supabase, tool.operation as EditOperation, tool.slug) : null;
+  }));
 
-  return TOOLS.map((tool): ToolAvailability => {
+  return TOOLS.map((tool, index): ToolAvailability => {
     const service = services.get(tool.service);
     const floor = service?.credits_cost ?? 0;
+    const free = tool.freeWhenTransparent === true;
     if (service && service.enabled === false) {
       return { slug: tool.slug, kind: tool.kind, available: false, credits: 0, providerLabel: null, reason: "disabled" };
     }
@@ -201,12 +261,17 @@ export async function toolCatalogue(supabase: Client): Promise<ToolAvailability[
     if (tool.kind === "local") {
       return { slug: tool.slug, kind: "local", available: true, credits: 0, providerLabel: null, reason: "ok" };
     }
-    const picked = tool.capability === "background" ? background
-      : tool.capability === "upscale" ? upscale
-        : tool.capability === "expand" ? expand
-          : tool.operation ? edits.get(tool.operation) ?? null : null;
+    const picked = picks[index];
     if (!picked) {
-      return { slug: tool.slug, kind: "paid", available: false, credits: 0, providerLabel: null, reason: "no_provider" };
+      return { slug: tool.slug, kind: "paid", available: false, credits: 0, providerLabel: null, reason: "no_provider",
+        environment: null, freeWhenTransparent: free };
+    }
+    if (isSandbox(picked)) {
+      return opts.admin
+        ? { slug: tool.slug, kind: "paid", available: true, credits: 0, providerLabel: picked.provider.label,
+            reason: "ok", environment: "sandbox", freeWhenTransparent: free }
+        : { slug: tool.slug, kind: "paid", available: false, credits: 0, providerLabel: null, reason: "sandbox",
+            environment: "sandbox", freeWhenTransparent: free };
     }
     // Upscale is priced at its most expensive factor so the card never
     // advertises less than the seller can end up paying. An edit is priced for
@@ -221,6 +286,8 @@ export async function toolCatalogue(supabase: Client): Promise<ToolAvailability[
       credits: quote(costUsd, floor, billing).credits,
       providerLabel: picked.provider.label,
       reason: "ok",
+      environment: "live",
+      freeWhenTransparent: free,
     };
   }).sort((a, b) => (toolBySlug(a.slug)?.sortOrder ?? 0) - (toolBySlug(b.slug)?.sortOrder ?? 0));
 }
@@ -325,11 +392,14 @@ export function parseSettings<K extends ToolSlug>(tool: K, raw: unknown): ToolSe
     // prompt is free text a seller typed and everything else is a closed set.
     case "ai_background":
       return {
+        // A preset is named by KEY only — its prompt is resolved on the server
+        // and never travels to or from the browser.
+        preset: typeof r.preset === "string" && PRESET_KEY_RE.test(r.preset) ? r.preset : "",
         // Trimmed and capped before it becomes part of an outbound request.
         // Newlines out too — a prompt is one line, and a multi-line value in a
         // multipart field is a needless way to surprise the API.
         prompt: String(r.prompt ?? "").replace(/\s+/g, " ").trim().slice(0, BACKGROUND_PROMPT_MAX),
-        color: hex(r.color, d.ai_background.color),
+        guidance: Math.round(clamp(r.guidance, 0, 1, d.ai_background.guidance) * 100) / 100,
         format: pick(r.format, ["png", "jpeg", "webp"] as const, d.ai_background.format),
       } as ToolSettings[K];
     case "relight":
@@ -340,7 +410,9 @@ export function parseSettings<K extends ToolSlug>(tool: K, raw: unknown): ToolSe
     case "ai_shadow":
       return {
         style: pick(r.style, AI_SHADOW_STYLES, d.ai_shadow.style),
-        format: pick(r.format, ["png", "webp"] as const, d.ai_shadow.format),
+        background: pick(r.background, AI_SHADOW_BACKGROUNDS, d.ai_shadow.background),
+        color: hex(r.color, d.ai_shadow.color),
+        format: pick(r.format, ["png", "jpeg", "webp"] as const, d.ai_shadow.format),
       } as ToolSettings[K];
     case "beautify":
       return {
@@ -422,7 +494,34 @@ export type RunInput = {
   /** Watermark only. */
   logo?: Buffer | null;
   idempotencyKey?: string;
+  /** "Dodaj tło AI" only: an inspiration photo that steers the scene. */
+  guidance?: { bytes: Buffer; mime: string } | null;
+  /** The viewer is an operator. Only then may a Photoroom sandbox key run —
+   *  at 0 credits, labelled as a test. */
+  viewerIsAdmin?: boolean;
+  /**
+   * STORE THE RESULT BEFORE THE RUN COUNTS AS DELIVERED. Given (the photo
+   * tools' route), it is called with the finished bytes after the provider
+   * answered and BEFORE the usage event is closed as succeeded: a result that
+   * could not be stored is refunded like any other failure, and a result that
+   * WAS stored survives a refresh, a closed tab or a dropped response.
+   */
+  deliver?: (out: DeliverInput) => Promise<DeliverResult>;
 };
+
+export type DeliverInput = {
+  bytes: Buffer;
+  mime: string;
+  width: number;
+  height: number;
+  credits: number;
+  usageEventId: string | null;
+  providerSlug: string;
+  endpoint: string | null;
+  environment: "live" | "sandbox" | "local";
+  meta: Record<string, string>;
+};
+export type DeliverResult = { ok: true; id: string; path: string } | { ok: false; error: string };
 
 export type RunSuccess = {
   ok: true;
@@ -432,6 +531,9 @@ export type RunSuccess = {
   before: { width: number; height: number; bytes: number };
   after: { width: number; height: number; bytes: number };
   providerLabel: string | null;
+  /** Present when a `deliver` hook stored the result. */
+  delivered?: { id: string; path: string };
+  environment?: "live" | "sandbox" | "local";
 };
 export type RunFailure = { ok: false; error: string; missingCredits?: number };
 
@@ -452,6 +554,12 @@ export async function runTool(
   const service = services.get(tool.service);
   if (service && (service.enabled === false || service.maintenance_mode)) {
     return { ok: false, error: "tool_unavailable" };
+  }
+
+  // A photo that is ALREADY cut out needs no provider to sit on a colour:
+  // it is flattened here, for nothing, instead of buying a second cutout.
+  if (tool.freeWhenTransparent && await hasRealTransparency(input.file)) {
+    return runLocal(supabase, userId, workspaceId, tool.slug, tool.service, input, before);
   }
 
   return tool.kind === "local"
@@ -476,6 +584,15 @@ async function runLocal(
   }
 
   const after = await inspect(output);
+  let delivered: { id: string; path: string } | undefined;
+  if (input.deliver) {
+    const stored = await input.deliver({
+      bytes: output, mime: mimeOf(after.format), width: after.width, height: after.height,
+      credits: 0, usageEventId: null, providerSlug: "local", endpoint: null, environment: "local", meta: {},
+    });
+    if (!stored.ok) return { ok: false, error: stored.error };
+    delivered = { id: stored.id, path: stored.path };
+  }
   // Zero-credit run, still written to the ledger so the economics view can
   // report volume and the free/paid split without a second system.
   const usage = await startUsage(supabase, {
@@ -496,6 +613,7 @@ async function runLocal(
     before: { width: before.width, height: before.height, bytes: before.bytes },
     after: { width: after.width, height: after.height, bytes: after.bytes },
     providerLabel: null,
+    ...(delivered ? { delivered, environment: "local" as const } : {}),
   };
 }
 
@@ -566,6 +684,9 @@ async function runPaid(
   billing: BillingConfig, floorCredits: number,
 ): Promise<RunSuccess | RunFailure> {
   const capability = toolBySlug(slug)!.capability!;
+  // The four photo tools — Photoroom-pinned, delivered as a stored result,
+  // traced under their own admin key with the endpoint that answered.
+  const photo = isPhotoTool(slug);
 
   // Geometry is settled BEFORE a single credit moves, and each capability
   // resolves its own provider so the call below stays fully typed.
@@ -583,12 +704,30 @@ async function runPaid(
   }
 
   const operation = toolBySlug(slug)?.operation as EditOperation | undefined;
-  const background = capability === "background" ? await pickProvider(supabase, BACKGROUND_PROVIDERS) : null;
-  const upscaler = capability === "upscale" ? await pickProvider(supabase, UPSCALE_PROVIDERS) : null;
-  const expander = capability === "expand" ? await pickProvider(supabase, EXPAND_PROVIDERS) : null;
-  const editor = capability === "edit" && operation ? await pickEditProvider(supabase, operation) : null;
+  const background = capability === "background" ? await pickProvider(supabase, forTool(slug, BACKGROUND_PROVIDERS)) : null;
+  const upscaler = capability === "upscale" ? await pickProvider(supabase, forTool(slug, UPSCALE_PROVIDERS)) : null;
+  const expander = capability === "expand" ? await pickProvider(supabase, forTool(slug, EXPAND_PROVIDERS)) : null;
+  const editor = capability === "edit" && operation ? await pickEditProvider(supabase, operation, slug) : null;
   const picked = background ?? upscaler ?? expander ?? editor;
   if (!picked) return { ok: false, error: "no_provider" };
+
+  // A SANDBOX KEY IS A TEST, NOT A PRODUCT. Photoroom stamps every result it
+  // returns with a watermark, so a customer is refused before anything moves;
+  // an operator may run it — for 0 credits, and the result says what it is.
+  const sandbox = isSandbox(picked);
+  if (sandbox && !input.viewerIsAdmin) return { ok: false, error: "provider_sandbox" };
+
+  // Every option the provider will be sent, resolved BEFORE a credit moves:
+  // an AI background with no scene, or a preset that no longer exists, is
+  // refused here for free instead of failing after the reservation.
+  let editOptions: EditOptions = {};
+  let presetKey: string | null = null;
+  if (editor) {
+    const resolved = await editOptionsFor(supabase, slug, input);
+    if (!resolved.ok) return { ok: false, error: resolved.error };
+    editOptions = resolved.options;
+    presetKey = resolved.preset;
+  }
 
   const costUsd = background ? background.provider.estimateUsd()
     : upscaler ? upscaler.provider.estimateUsd(factor)
@@ -605,8 +744,9 @@ async function runPaid(
   // It is also last in line deliberately: a tool with no provider, or an
   // oversized image, has already been refused above. There is no point
   // spending a seller's free run on a request that was never going to happen.
+  // A sandbox test costs nothing already, so it never spends one either.
   const rules = await freeToolRules(supabase);
-  const rule = rules.get(slug);
+  const rule = sandbox ? undefined : rules.get(slug);
   let freeRemaining: number | null = null;
   // Pinned once: the release below must hand the grant back to the window the
   // claim took it from, not to whichever window the clock has moved on to.
@@ -614,7 +754,7 @@ async function runPaid(
   if (rule && freeWindowIso && planQualifies(rule, await planSlugOf(supabase, workspaceId, rule))) {
     freeRemaining = await claimFreeRun(supabase, workspaceId, slug, rule, freeWindowIso);
   }
-  const price: PriceQuote = freeRemaining === null ? priced : { ...priced, credits: 0 };
+  const price: PriceQuote = sandbox || freeRemaining !== null ? { ...priced, credits: 0 } : priced;
 
   // The claim is taken above because the PRICE depends on it, which means
   // every refusal between there and a run that actually started owes the
@@ -633,6 +773,11 @@ async function runPaid(
     return { ok: false, error: "insufficient_credits", missingCredits: price.credits - wallet.balance };
   }
 
+  // Which API answers a photo tool, named on the ledger and on the trace so
+  // the admin can see "Photoroom · v1/segment" next to every charge.
+  const endpoint = photo ? (capability === "background" ? "v1/segment" : "v2/edit") : null;
+  const environment: "live" | "sandbox" = sandbox ? "sandbox" : "live";
+
   // Reserve: credits leave the wallet now and come straight back if the
   // provider does not deliver.
   const usage = await startUsage(supabase, {
@@ -649,6 +794,8 @@ async function runPaid(
       // one on the ledger, and the whole point of the free tier is that its
       // cost is real and has to be visible in the economics view.
       ...(freeRemaining === null ? {} : { free_grant: true, free_remaining: freeRemaining }),
+      // Names and codes only — a preset is logged by its key, never its prompt.
+      ...(photo ? { endpoint, environment, ...(presetKey ? { preset: presetKey } : {}) } : {}),
     },
   });
   if (!usage.ok) { await releaseFree(); return { ok: false, error: usage.error }; }
@@ -659,23 +806,35 @@ async function runPaid(
   const callStartedAt = Date.now();
   const trace = (ok: boolean, costUsd: number | null, errorCode?: string): ProviderCall => ({
     actorKind: "customer", consumer: "image_tool", userId, workspaceId,
-    toolKey: slug === "upscale" ? "tool_upscale" : slug === "expand" ? "tool_expand" : slug,
-    usageEventId: usage.eventId, providerSlug: picked.provider.slug, model: picked.provider.label,
+    // A photo tool is booked under its admin key (tool_remove_bg …), which is
+    // what its own "Modele, API i koszty" tab reads its runs back by.
+    toolKey: photo ? serviceSlug : slug === "upscale" ? "tool_upscale" : slug === "expand" ? "tool_expand" : slug,
+    usageEventId: usage.eventId, providerSlug: picked.provider.slug,
+    model: endpoint ? `${picked.provider.label} · ${endpoint}` : picked.provider.label,
     status: ok ? "succeeded" : "failed", errorCode: ok ? null : errorCode,
     units: 1, unitKind: "request",
     cost: costUsd == null ? { basis: "unknown" } : { basis: "estimated", usdMicros: usdToMicros(costUsd) },
     durationMs: Date.now() - callStartedAt,
   });
 
+  // Set the moment the provider has answered: from then on the call is ours
+  // to pay for, whatever happens to the bytes afterwards.
+  let answered: { costUsd: number } | null = null;
   try {
     const request = { bytes: input.file, mime: input.mime };
+    // "Zmień kolor tła": the colour rides on the cutout request itself (one
+    // Basic-rate call). The provider is always asked for a lossless PNG — the
+    // seller's JPEG, when chosen, is encoded here at our own quality.
+    const colour = slug === "white_bg" ? parseSettings("white_bg", input.settings) : null;
     const result = background
-      ? await background.provider.removeBackground(request, background.creds)
+      ? await background.provider.removeBackground(request, background.creds,
+        colour && background.provider.supportsBgColor ? { bgColor: colour.color.toUpperCase(), format: "png" } : undefined)
       : upscaler
         ? await upscaler.provider.upscale(request, { factor, width: before.width, height: before.height }, upscaler.creds)
         : expander
           ? await expander.provider.expand(request, plan!, expander.creds)
-          : await editor!.provider.edit(request, operation!, editOptionsFor(slug, input.settings), editor!.creds);
+          : await editor!.provider.edit(request, operation!, editOptions, editor!.creds);
+    answered = { costUsd: result.costUsd };
 
     let bytes = result.bytes;
     // Providers with a fixed factor (Stability's fast upscaler is always 4×)
@@ -691,26 +850,81 @@ async function runPaid(
       const s = parseSettings("remove_bg", input.settings);
       if (s.format === "webp") bytes = await resizeConvert(bytes, { format: "webp", quality: 92 });
     }
+    if (colour && (!background?.provider.supportsBgColor || colour.format !== "png" || colour.padding > 0)) {
+      // A vendor without bg_color, a non-PNG export or padding: the colour is
+      // laid (or re-encoded) here — on an already flat image this only encodes.
+      bytes = await flattenToColor(bytes, {
+        color: colour.color, format: colour.format as OutputFormat,
+        quality: colour.quality, padding: colour.padding / 100,
+      });
+    }
+    if (slug === "ai_background" || slug === "ai_shadow") {
+      // Photoroom was asked for PNG; the seller's format is encoded here.
+      const s = parseSettings(slug, input.settings);
+      const transparent = slug === "ai_shadow" && parseSettings("ai_shadow", input.settings).background === "transparent";
+      const target = transparent && s.format === "jpeg" ? "png" : s.format;
+      if (target !== "png") bytes = await resizeConvert(bytes, { format: target, quality: 92 });
+    }
 
     const after = await inspect(bytes);
+    const mime = mimeOf(after.format);
+
+    // Stored BEFORE the run is booked as delivered: a result that cannot be
+    // kept is refunded like any other failure (the provider's cost stays on
+    // our side of the ledger, where it belongs).
+    let delivered: { id: string; path: string } | undefined;
+    if (input.deliver) {
+      const stored = await input.deliver({
+        bytes, mime, width: after.width, height: after.height, credits: price.credits,
+        usageEventId: usage.eventId, providerSlug: picked.provider.slug, endpoint, environment,
+        meta: result.meta ?? {},
+      });
+      if (!stored.ok) {
+        await failUsage(supabase, {
+          serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet.id,
+          error: stored.error, apiCostUsdMicros: usdToMicros(result.costUsd),
+        });
+        await recordProviderCalls(supabase, [trace(true, result.costUsd)]);
+        return { ok: false, error: stored.error };
+      }
+      delivered = { id: stored.id, path: stored.path };
+    }
+
     await completeUsage(supabase, dispatchToken(), usage.eventId, 1, {
       apiCostUsdMicros: usdToMicros(result.costUsd),
       providerRequestId: result.requestId,
     });
     await recordProviderCalls(supabase, [trace(true, result.costUsd)]);
     return {
-      ok: true, bytes, mime: mimeOf(after.format), credits: price.credits,
+      ok: true, bytes, mime, credits: price.credits,
       before: { width: before.width, height: before.height, bytes: before.bytes },
       after: { width: after.width, height: after.height, bytes: after.bytes },
       providerLabel: picked.provider.label,
+      ...(delivered ? { delivered } : {}),
+      ...(photo ? { environment } : {}),
     };
   } catch (e) {
-    const code = e instanceof ToolProviderError ? e.code : "provider_error";
+    const known = e instanceof ToolProviderError;
+    // A photo tool whose provider already answered failed on OUR side: the
+    // call was billed, the seller gets nothing and is refunded.
+    const code = photo && answered ? "processing_failed" : known ? e.code : "provider_error";
+    // WHAT THE FAILED CALL COST, told apart honestly:
+    //   billed  — the provider processed it (it answered, or it reported an
+    //             unsupported field after doing the work): the list price;
+    //   unknown — a timeout, or (photo tools) a dropped connection: the
+    //             provider may or may not have run it, so no figure is
+    //             invented — "nieznany", never a confident zero;
+    //   zero    — a refusal the provider does not bill.
+    const billedUsd = answered ? answered.costUsd
+      : known && e.billed ? (sandbox ? 0 : costUsd) : null;
+    const unknown = billedUsd == null
+      && (code === "provider_timeout" || (photo && code === "provider_unreachable"));
     // The seller keeps their credits: one idempotent refund, always.
-    await failUsage(supabase, { serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet.id, error: code, apiCostUsdMicros: 0 });
-    // A refused call is not billed by these vendors, but we do not KNOW that
-    // for a timeout — so the cost is unknown rather than a confident zero.
-    await recordProviderCalls(supabase, [trace(false, code === "provider_timeout" ? null : 0, code)]);
+    await failUsage(supabase, {
+      serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet.id, error: code,
+      apiCostUsdMicros: billedUsd == null ? 0 : usdToMicros(billedUsd),
+    });
+    await recordProviderCalls(supabase, [trace(false, billedUsd ?? (unknown ? null : 0), code)]);
     return { ok: false, error: code };
   }
 }
@@ -810,31 +1024,92 @@ async function planSlugOf(
   return plan?.slug ?? null;
 }
 
-function editOptionsFor(slug: ToolSlug, raw: unknown): EditOptions {
+type ResolvedEdit =
+  | { ok: true; options: EditOptions; preset: string | null }
+  | { ok: false; error: string };
+
+async function editOptionsFor(supabase: Client, slug: ToolSlug, input: RunInput): Promise<ResolvedEdit> {
+  const raw = input.settings;
   switch (slug) {
     case "ai_background": {
+      // THE SCENE. A preset is named by key and resolved HERE, from the
+      // operator's private list — its prompt never reaches the browser. The
+      // seller's own words go AS WRITTEN: no expansion is asked for
+      // (`ai.never`), like the generator's "Własny prompt". A preset decides
+      // that for itself (the operator's switch).
       const s = parseSettings("ai_background", raw);
-      return { prompt: s.prompt, color: s.color, format: s.format };
+      let prompt = s.prompt;
+      let expandPrompt = false;
+      let preset: string | null = null;
+      if (s.preset) {
+        const found = (await readAiBackgroundPresets(supabase)).find((p) => p.key === s.preset && p.enabled);
+        if (!found) return { ok: false, error: "preset_unavailable" };
+        prompt = found.prompt;
+        expandPrompt = found.expandPrompt;
+        preset = found.key;
+      }
+      if (!prompt) return { ok: false, error: "prompt_required" };
+      return {
+        ok: true, preset,
+        options: {
+          prompt, expandPrompt,
+          guidance: input.guidance ? { image: input.guidance, scale: s.guidance } : undefined,
+          // Always PNG from the provider — the seller's format is encoded by us.
+          format: "png",
+        },
+      };
     }
     case "relight": {
       const s = parseSettings("relight", raw);
-      return { lighting: s.intent, format: s.format };
+      return { ok: true, preset: null, options: { lighting: s.intent, format: s.format } };
     }
     case "ai_shadow": {
       const s = parseSettings("ai_shadow", raw);
-      return { shadow: s.style, format: s.format };
+      return {
+        ok: true, preset: null,
+        options: {
+          shadow: s.style,
+          transparent: s.background === "transparent",
+          color: s.background === "white" ? "#FFFFFF" : s.color,
+          format: "png",
+        },
+      };
     }
     case "beautify": {
       const s = parseSettings("beautify", raw);
-      return { beautify: s.subject, format: s.format };
+      return { ok: true, preset: null, options: { beautify: s.subject, format: s.format } };
     }
     case "uncrop":
-      return { format: parseSettings("uncrop", raw).format };
+      return { ok: true, preset: null, options: { format: parseSettings("uncrop", raw).format } };
     case "ghost_mannequin":
-      return { format: parseSettings("ghost_mannequin", raw).format };
+      return { ok: true, preset: null, options: { format: parseSettings("ghost_mannequin", raw).format } };
     default:
-      return {};
+      return { ok: true, preset: null, options: {} };
   }
+}
+
+/* ── AI background presets ─────────────────────────────────────────────── */
+
+const presetCache: { at: number; list: AiBackgroundPreset[] } = { at: 0, list: [] };
+const PRESET_TTL = 30_000;
+
+/**
+ * The operator's scene presets for "Dodaj tło AI", WITH their prompts — server
+ * only. The row is private (`app_setting_is_private`), so a customer's session
+ * cannot select it; this reads it through a SECURITY DEFINER function gated by
+ * the server token, the same way provider credentials are read. Nothing set →
+ * no presets: the panel then offers only the seller's own description.
+ */
+export async function readAiBackgroundPresets(supabase: Client): Promise<AiBackgroundPreset[]> {
+  if (Date.now() - presetCache.at < PRESET_TTL) return presetCache.list;
+  const token = dispatchToken();
+  if (!token) return [];
+  const { data, error } = await supabase.rpc("ai_background_presets_read", { p_token: token });
+  if (error) return presetCache.list;
+  const list = parsePresets(data);
+  presetCache.at = Date.now();
+  presetCache.list = list;
+  return list;
 }
 
 function mimeOf(format: string): string {

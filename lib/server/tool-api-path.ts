@@ -1,12 +1,13 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
-import { providerStatuses } from "@/lib/server/image-tools";
+import { photoToolPath, providerStatuses } from "@/lib/server/image-tools";
 import { resolveConceptModels } from "@/lib/server/concept-generation";
 import { getUsableModels } from "@/lib/ai/router";
 import { RETOUCH_MODEL_IDENTIFIER } from "@/lib/server/retouch";
 import { FASHION_MODEL_IDENTIFIER } from "@/lib/server/fashion";
 import { EXPAND_PROVIDERS, UPSCALE_PROVIDERS } from "@/lib/images/providers";
-import { apiPathKind } from "@/lib/services/ai-tools";
+import { PHOTO_TOOL_KEYS, apiPathKind } from "@/lib/services/ai-tools";
+import type { PhotoToolSlug } from "@/lib/images/tools";
 import { findUnitPrice, type UnitPrice } from "@/lib/ai/usage-cost";
 import { readUnitPrices } from "@/lib/server/ai-usage";
 
@@ -23,7 +24,8 @@ import { readUnitPrices } from "@/lib/server/ai-usage";
  *                    the provider priority, then any usable model
  *   customer_choice  the generator: the customer picks among visible models
  *   capability       upscale / expand: the first vendor with a key, in a
- *                    fixed order
+ *                    fixed order; the four photo tools: ONE pinned vendor
+ *                    (Photoroom), with the endpoint and key environment
  *   local            no API at all (sharp, on our server)
  *   none             not live yet (video)
  */
@@ -49,7 +51,11 @@ export type ToolApiPath =
   | { kind: "fixed"; primary: PathModel | null }
   | { kind: "concept_chain"; primary: PathModel | null; fallback: PathModel | null }
   | { kind: "customer_choice"; models: number; list: PathModel[] }
-  | { kind: "capability"; chain: { slug: string; label: string; configured: boolean }[] }
+  | { kind: "capability"; chain: {
+      slug: string; label: string; configured: boolean;
+      /** Photo tools: the exact endpoint called and the key's environment. */
+      endpoint?: string; environment?: "live" | "sandbox" | null;
+    }[] }
   | { kind: "local" }
   | { kind: "none" };
 
@@ -101,6 +107,14 @@ export async function readToolApiPath(supabase: Client, toolKey: string): Promis
   const tp = (m: ModelRow | null | undefined) => toPath(m, prices);
   if (kind === "local") return { kind: "local" };
   if (kind === "none") return { kind: "none" };
+
+  if (kind === "capability" && PHOTO_TOOL_KEYS.includes(toolKey)) {
+    const p = await photoToolPath(supabase, toolKey.replace(/^tool_/, "") as PhotoToolSlug);
+    return { kind: "capability", chain: [{
+      slug: p.providerSlug, label: p.label, configured: p.environment !== null,
+      endpoint: p.endpoint, environment: p.environment,
+    }] };
+  }
 
   if (kind === "capability") {
     const order = (toolKey === "tool_upscale" ? UPSCALE_PROVIDERS : EXPAND_PROVIDERS).map((p) => p.slug);

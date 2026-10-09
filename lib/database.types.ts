@@ -6846,6 +6846,7 @@ export type Database = {
         Args: { p_token: string | null; p_calls: Json }
         Returns: number
       }
+      ai_background_presets_read: { Args: { p_token: string | null }; Returns: Json }
       ai_token_prices_read: {
         Args: { p_token: string | null }
         Returns: {

@@ -834,7 +834,8 @@
       "cap": {
         "background": "usuwanie tła",
         "upscale": "upscale",
-        "expand": "rozszerzanie kadru"
+        "expand": "rozszerzanie kadru",
+        "edit": "edycja AI (tło, cień)"
       },
       "getKey": "Wygeneruj klucz",
       "keyNote": "Klucz ustawiasz zmienną środowiskową na serwerze albo wklejasz w panelu — nigdy nie trafia do przeglądarki ani do repozytorium.",
@@ -2338,12 +2339,14 @@
     "unavailable": {
       "no_provider": "Nie podłączono jeszcze dostawcy AI dla tej operacji. Napisz do nas — włączymy je, gdy tylko klucz będzie gotowy.",
       "maintenance": "Trwa przerwa techniczna. Spróbuj za chwilę.",
-      "disabled": "Narzędzie jest wyłączone w Twoim planie."
+      "disabled": "Narzędzie jest wyłączone w Twoim planie.",
+      "sandbox": "To narzędzie czeka na uruchomienie produkcyjnego dostawcy. Wkrótce będzie dostępne."
     },
     "state": {
       "no_provider": "Wkrótce",
       "maintenance": "Przerwa",
       "disabled": "Wyłączone",
+      "sandbox": "Wkrótce",
       "ok": ""
     },
     "shadowStyle": {
@@ -2532,6 +2535,118 @@
     "subject.food": "Jedzenie",
     "outFormat": "Format wyjściowy"
   },
+  "photoTool": {
+    "name": {
+      "remove_bg": "Usuń tło",
+      "white_bg": "Zmień kolor tła",
+      "ai_background": "Dodaj tło AI",
+      "ai_shadow": "Dodaj cień"
+    },
+    "body": {
+      "remove_bg": "Wycina produkt z tła i zapisuje przezroczysty PNG. Produkt zostaje nietknięty — nic nie jest generowane.",
+      "white_bg": "Kładzie produkt na jednolitym kolorze: białym, czarnym, szarym, pastelowym albo własnym HEX.",
+      "ai_background": "Generuje nową scenę wokół produktu. Sam produkt zostaje taki, jak na zdjęciu.",
+      "ai_shadow": "Dodaje realistyczny cień pod produktem — bez nowej sceny i bez zmiany światła."
+    },
+    "suffix": {
+      "remove_bg": "bez-tla",
+      "white_bg": "kolor-tla",
+      "ai_background": "tlo-ai",
+      "ai_shadow": "cien"
+    },
+    "photos": "Zdjęcia produktu (maks. {n})",
+    "dropTitle": "Upuść zdjęcia tutaj",
+    "dropSub": "Do {n} zdjęć, maks. 10 MB każde.",
+    "uploadFailed": "Nie udało się wgrać zdjęcia.",
+    "format": "Format pliku",
+    "fmt": {
+      "png": "PNG",
+      "jpeg": "JPG",
+      "webp": "WebP"
+    },
+    "fmtMeta": {
+      "png": "Bezstratny · zachowuje przezroczystość",
+      "jpeg": "Najlżejszy · bez przezroczystości",
+      "webp": "Lekki · zachowuje przezroczystość"
+    },
+    "jpegNoAlpha": "JPG nie ma przezroczystości — przy przezroczystym tle wybierz PNG albo WebP.",
+    "color": "Kolor tła",
+    "colorCustom": "Własny kolor (HEX)",
+    "colorInvalid": "Wpisz kolor w formacie #RRGGBB, np. #F5EFE6.",
+    "freeHint": "Zdjęcie, które ma już przezroczyste tło (np. z „Usuń tło”), przekolorujemy na serwerze bez AI — za darmo.",
+    "freeNote": "{n} z {total} zdjęć ma już przezroczyste tło — te są za darmo.",
+    "scene": "Scena",
+    "custom": "Własny opis",
+    "noPresets": "Gotowe sceny są chwilowo niedostępne — opisz tło własnymi słowami.",
+    "promptLabel": "Opis tła",
+    "promptHint": "Opis trafia do modelu dokładnie w takiej postaci, w jakiej go wpiszesz. Opisz tło, nie produkt.",
+    "promptPh": "np. jasny marmurowy blat, miękkie poranne światło, rozmyte rośliny w tle",
+    "inspiration": "Zdjęcie inspiracji (opcjonalnie)",
+    "inspirationHint": "Model weźmie z niego klimat, kolory i światło tła. Produkt zostaje z Twojego zdjęcia.",
+    "strength": "Siła inspiracji",
+    "shadowStyle": "Rodzaj cienia",
+    "shadow": {
+      "soft": "Miękki",
+      "hard": "Mocny",
+      "floating": "Unoszący się"
+    },
+    "shadowMeta": {
+      "soft": "Rozproszony, jak w studiu",
+      "hard": "Wyraźny, jak w pełnym słońcu",
+      "floating": "Produkt lekko nad podłożem"
+    },
+    "background": "Tło",
+    "bg": {
+      "white": "Białe",
+      "transparent": "Przezroczyste",
+      "color": "Własny kolor"
+    },
+    "cta": {
+      "remove_bg": "Usuń tło",
+      "white_bg": "Zmień kolor tła",
+      "ai_background": "Generuj tło",
+      "ai_shadow": "Dodaj cień"
+    },
+    "needPhotos": "Dodaj co najmniej jedno zdjęcie.",
+    "needColor": "Wpisz poprawny kolor HEX.",
+    "needPrompt": "Wybierz scenę albo opisz tło (min. 3 znaki).",
+    "balance": "Saldo: {n} kr.",
+    "status_queued": "W kolejce",
+    "status_processing": "Przetwarzam…",
+    "status_failed": "Nie udało się",
+    "status_completed": "Gotowe",
+    "retry": "Ponów",
+    "done": "Gotowe: {n}. Wyniki są też w Bibliotece.",
+    "someFailed": "Nie udało się przetworzyć {n} zdjęć — ich kredyty wróciły na konto.",
+    "allFailed": "Nie udało się przetworzyć zdjęć. Kredyty wróciły na konto.",
+    "results": "Wyniki",
+    "emptyTitle": "Tu pojawią się wyniki",
+    "emptyBody": "Dodaj zdjęcia, ustaw opcje i uruchom narzędzie. Każdy wynik zapisuje się automatycznie w Bibliotece.",
+    "inLibrary": "W Bibliotece",
+    "loadMore": "Pokaż starsze",
+    "compare": "Porównaj przed / po",
+    "open": "Otwórz podgląd",
+    "expired": "Podgląd wygasł — odśwież stronę.",
+    "downloadFailed": "Nie udało się pobrać pliku.",
+    "uncertain": "Model nie był pewny, co jest produktem — sprawdź krawędzie.",
+    "sandboxBadge": "Test",
+    "sandboxNote": "Tryb testowy: podłączony jest klucz sandbox Photoroom. Wyniki mają znak wodny, kosztują 0 kredytów i widzi je tylko operator — klienci widzą narzędzie jako niedostępne.",
+    "sandboxResult": "Wynik testowy (sandbox) — ze znakiem wodnym, nie do użytku produkcyjnego.",
+    "err": {
+      "duplicate_request": "To zdjęcie z tymi ustawieniami jest już przetwarzane albo właśnie powstało — sprawdź wyniki.",
+      "provider_sandbox": "Narzędzie działa teraz tylko w trybie testowym operatora.",
+      "provider_unsupported_params": "Dostawca nie przyjął tych ustawień. Kredyty wróciły na konto.",
+      "prompt_required": "Wybierz scenę albo opisz tło.",
+      "preset_unavailable": "Ta scena jest już niedostępna — wybierz inną.",
+      "rate_limited": "Za dużo zdjęć w krótkim czasie — odczekaj minutę.",
+      "storage_failed": "Nie udało się zapisać wyniku. Kredyty wróciły na konto.",
+      "source_missing": "Nie znaleziono wgranego zdjęcia — dodaj je ponownie.",
+      "feature_unavailable": "Narzędzie jest chwilowo wyłączone.",
+      "provider_empty_result": "Dostawca nie zwrócił obrazu. Kredyty wróciły na konto.",
+      "provider_error": "Dostawca zwrócił błąd. Kredyty wróciły na konto.",
+      "network_error": "Połączenie zostało przerwane. Jeśli wynik powstał, pojawi się w wynikach — jeśli nie, ponów."
+    }
+  },
   "editor": {
     "title": "Edycja obrazu",
     "sub": "Tło, cień, format, korekta i kadr w jednym miejscu.",
@@ -2693,7 +2808,7 @@
     "sec.video": "Wideo AI",
     "card.remove_bg": "Usuń lub zamień tło na dowolne",
     "card.white_bg": "Zamień zdjęcie w packshot na białym tle",
-    "card.background": "Podmień tło na inne w kilka sekund",
+    "card.background": "Jednolite tło: białe, czarne, pastelowe lub własny HEX",
     "card.shadow": "Dodaj naturalny cień pod produktem",
     "card.adjust": "Popraw jasność, kontrast i kolory",
     "card.generator": "Opisz ujęcie albo wybierz gotowy scenariusz",
@@ -5221,6 +5336,7 @@
     "providers.detail.http": "HTTP {code}",
     "providers.detail.sandbox": "klucz testowy (sandbox)",
     "providers.detail.live": "klucz produkcyjny",
+    "providers.detail.account": "{env} · plan {plan} · zostało {left} z {total} zdjęć",
     "providers.detail.reachable": "dostawca przyjął klucz (brak dedykowanego testu autoryzacji)",
     "providers.detail.network": "błąd sieci",
     "apiPath.title": "Ścieżka API",
@@ -5247,6 +5363,10 @@
     "toolName.fashion_iron": "Prasowanie ubrań",
     "toolName.fashion_change_person": "Zmiana modela",
     "toolName.fashion_change_face": "Zmiana twarzy",
+    "toolName.tool_remove_bg": "Usuń tło",
+    "toolName.tool_white_bg": "Zmień kolor tła",
+    "toolName.tool_ai_background": "Dodaj tło AI",
+    "toolName.tool_ai_shadow": "Dodaj cień",
     "econ.basis.actual": "Rzeczywisty",
     "econ.basis.estimated": "Szacowany",
     "econ.basis.unknown": "Nieznany",
@@ -5595,7 +5715,60 @@
     "test.manifest.nb.headers": "NAGŁÓWKI (tylko nazwy)",
     "test.manifest.nb.contract": "KONTRAKT",
     "test.manifest.nb.none": "BRAK",
-    "test.manifest.nb.omitted": "POMINIĘTE"
+    "test.manifest.nb.omitted": "POMINIĘTE",
+    "photo.pinned": "Narzędzie przypięte do jednego dostawcy i endpointu (bez przełączania na innych dostawców):",
+    "photo.sandbox": "sandbox",
+    "photo.title": "Ekonomia jednego zdjęcia",
+    "photo.sub": "Co jest wywoływane, ile kosztuje, ile płaci klient i jaka zostaje marża — przy cenie referencyjnej i najtańszym kredycie w sprzedaży.",
+    "photo.operation": "Operacja",
+    "photo.provider": "Dostawca",
+    "photo.endpoint": "Endpoint",
+    "photo.cost": "Koszt API (1 zdjęcie)",
+    "photo.fx": "kurs systemowy {fx} zł/$",
+    "photo.price": "Cena klienta",
+    "photo.credits": "{n} kr.",
+    "photo.floor": "minimum w katalogu usług: {n} kr.",
+    "photo.freePath": "Zdjęcie już wycięte",
+    "photo.freePathValue": "przetwarzane lokalnie, 0 kr., bez API",
+    "photo.env.live": "produkcja",
+    "photo.env.sandbox": "sandbox (znak wodny)",
+    "photo.env.none": "brak klucza",
+    "photo.col.credit": "Cena kredytu",
+    "photo.col.revenue": "Przychód",
+    "photo.col.margin": "Marża",
+    "photo.col.marginPct": "Marża %",
+    "photo.point.reference": "Cena referencyjna (Rozliczenia)",
+    "photo.point.cheapestGross": "Najtańszy kredyt — {source} (brutto)",
+    "photo.point.cheapestNet": "Najtańszy kredyt — {source} (netto, bez 23% VAT)",
+    "photo.perCredit": "kredyt",
+    "photo.proposalTitle": "Propozycja ceny (nie zmienia niczego automatycznie)",
+    "photo.proposalRule": "Najmniejsza cena spełniająca regułę marży ≥ {margin}% przy buforze {buffer}%, liczona dla najtańszego kredytu w sprzedaży.",
+    "photo.proposalValues": "Minimum: {gross} kr. (brutto) · {net} kr. (netto). Obecnie: {now} kr.",
+    "photo.proposalUnknown": "Brak aktywnych pakietów ani planów w PLN — nie da się policzyć najtańszego kredytu.",
+    "photo.proposalNote": "Cenę zmienia operator w katalogu usług:",
+    "photo.servicesLink": "Admin → Usługi",
+    "photo.runs.live": "Produkcja (30 dni)",
+    "photo.runs.sandbox": "Sandbox (30 dni)",
+    "photo.runs.local": "Lokalnie, 0 kr. (30 dni)",
+    "photo.runs.failed": "Nieudane / zwroty (30 dni)",
+    "presets.title": "Gotowe sceny „Dodaj tło AI”",
+    "presets.sub": "Nazwy widzi klient; opis sceny trafia tylko do Photoroom (background.prompt) i nigdy do przeglądarki klienta.",
+    "presets.key": "Klucz",
+    "presets.enabled": "Włączona",
+    "presets.expand": "Rozwijanie opisu przez AI",
+    "presets.expandHint": "Photoroom może rozbudować opis sceny (expandPrompt ai.auto). Wyłączone = opis wysyłany dokładnie tak, jak jest.",
+    "presets.label": "Nazwa",
+    "presets.prompt": "Opis sceny (po angielsku, wysyłany do Photoroom)",
+    "presets.up": "W górę",
+    "presets.down": "W dół",
+    "presets.add": "Dodaj scenę",
+    "presets.empty": "Brak scen — klient może tylko opisać tło własnymi słowami.",
+    "presets.note": "Klucza zapisanej sceny nie można zmienić.",
+    "presets.errKey": "Klucz: małe litery, cyfry, _ i - (do 40 znaków).",
+    "presets.errDuplicate": "Taki klucz już jest.",
+    "presets.errLabel": "Podaj nazwę po polsku.",
+    "presets.errPrompt": "Podaj opis sceny.",
+    "presets.errInvalid": "Nie zapisano — popraw zaznaczone sceny."
   },
   "batch": {
     "viewLabel": "Widok",
@@ -5750,21 +5923,25 @@
       "desc": "Nakłada logo lub znak wodny na serię zdjęć.",
       "words": "watermark, znak wodny, logo, sygnatura, podpis, ochrona"
     },
+    "tool_remove_bg": {
+      "desc": "Wycina produkt i zapisuje przezroczysty PNG.",
+      "words": "usuń tło, tło, wytnij, wycięcie, przezroczyste, png, bez tła, background, photoroom"
+    },
+    "tool_white_bg": {
+      "desc": "Jednolite tło: białe, czarne, pastelowe albo własny kolor.",
+      "words": "zmień kolor tła, kolor tła, białe tło, czarne tło, tło, pastelowe, hex, packshot, background"
+    },
+    "tool_ai_background": {
+      "desc": "Nowa scena wygenerowana wokół produktu.",
+      "words": "tło ai, dodaj tło, scena, aranżacja, wnętrze, studio, generuj tło, background"
+    },
+    "tool_ai_shadow": {
+      "desc": "Realistyczny cień pod produktem, bez zmiany sceny.",
+      "words": "dodaj cień, cień, cień ai, miękki cień, mocny cień, unoszący, shadow"
+    },
     "video": {
       "desc": "Filmy produktowe — wkrótce.",
       "words": "wideo, film, video, klip, film produktowy, animacja, ruch"
-    },
-    "remove_bg": {
-      "desc": "Wycina produkt i zostawia przezroczyste tło.",
-      "words": "usuń tło, tło, wytnij, przezroczyste, png, bez tła, background"
-    },
-    "white_bg": {
-      "desc": "Czyste białe tło wymagane przez marketplace'y.",
-      "words": "białe tło, tło, biel, allegro, amazon, marketplace, zmiana tła"
-    },
-    "shadow": {
-      "desc": "Dokłada naturalny cień pod produktem.",
-      "words": "cień, cień produktu, refleks, podstawa, realizm, tło"
     }
   },
   "newsletter": {

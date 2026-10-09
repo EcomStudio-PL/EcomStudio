@@ -116,8 +116,8 @@ check("a category with no engine yet (Matching) is ONE card — its door — not
 check("every image-tool slug the server runs has a card",
   TOOL_SLUGS.every((slug) => HUB_CARDS.some((c) => c.slug === slug
     || (slug === "editor" && c.href === "/tools/editor")
-    || (slug === "white_bg" && c.href === "/tools/editor?tool=white-background")
-    || (slug === "shadow" && c.href === "/tools/editor?tool=shadow"))),
+    // The editor's own free shadow lives inside the editor, as a section.
+    || (slug === "shadow" && c.href === "/tools/editor"))),
   TOOL_SLUGS.filter((slug) => !HUB_CARDS.some((c) => c.slug === slug)).join(", "));
 check("every entry of the EDYTUJ menu and of its 'more' list is a card",
   [...IMAGE_EDIT, ...IMAGE_EDIT_MORE].filter((e) => e.href !== "/tools").every((e) => hubHrefs.has(e.href)),
@@ -146,7 +146,19 @@ section("2. NO TOOL TWICE — BY KEY AND BY ROUTE");
 
 check("card keys are unique across the whole hub", hubKeys.size === HUB_CARDS.length,
   HUB_CARDS.map((c) => c.key).filter((k, i, a) => a.indexOf(k) !== i).join(", "));
-const liveHrefs = HUB_CARDS.filter((c) => !c.soon).map((c) => c.href);
+// TWO NAMES, ONE SCREEN — declared, not accidental. "Białe tło" is the colour
+// screen opened on white, and "Cień AI" is "Dodaj cień": the photo tools
+// became screens of their own and both pairs kept their existing keys (Start
+// tiles, media slots and stored layouts name them). The layout never places
+// a card next to its alias, which is what keeps a seller from seeing a tool
+// twice.
+const ALIASES: Record<string, string> = { white_bg: "background", ai_shadow: "shadow" };
+const liveHrefs = HUB_CARDS.filter((c) => !c.soon && !(c.key in ALIASES)).map((c) => c.href);
+check("each alias opens exactly the screen of the card it stands for",
+  Object.entries(ALIASES).every(([a, b]) => catalogItem(a)?.href === catalogItem(b)?.href));
+check("no section places a card next to its alias",
+  HUB_SECTIONS.every((s) => Object.entries(ALIASES).every(([a, b]) =>
+    !(s.cards.some((c) => c.key === a) && s.cards.some((c) => c.key === b)))));
 check("no two openable cards lead to the same screen", new Set(liveHrefs).size === liveHrefs.length,
   liveHrefs.filter((h, i, a) => a.indexOf(h) !== i).join(", "));
 check("section keys are unique", new Set(HUB_SECTIONS.map((s) => s.key)).size === HUB_SECTIONS.length);

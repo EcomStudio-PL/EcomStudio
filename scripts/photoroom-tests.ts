@@ -117,14 +117,16 @@ async function main() {
     check("uncrop sends ai.auto", lastSent!.fields["uncrop.mode"] === "ai.auto");
   }
 
-  console.log("\nD. THE EDITS THAT ACT ON THE SUBJECT LET IT BE CUT OUT");
+  console.log("\nD. THE EDITS THAT ACT ON THE SUBJECT CUT IT OUT — AND SAY SO");
   {
     const edits = photoroomOf(EDIT_PROVIDERS)!;
     await edits.edit(IMG, "ai_shadow", { shadow: "soft" }, LIVE);
-    check("a cast shadow does NOT force the background back",
-      lastSent!.fields.removeBackground === undefined, lastSent!.fields.removeBackground);
+    // "Dodaj cień" acts on the cut-out product, and /v2/edit's default is
+    // stated rather than relied on — kept in place in the original frame.
+    check("a cast shadow states the cutout explicitly, in place",
+      lastSent!.fields.removeBackground === "true" && lastSent!.fields.referenceBox === "originalImage", lastSent!.fields);
     check("shadow sends a documented mode",
-      ["ai.soft", "ai.auto-with-overrides"].includes(lastSent!.fields["shadow.mode"]),
+      ["ai.soft", "ai.hard", "ai.floating"].includes(lastSent!.fields["shadow.mode"]),
       lastSent!.fields["shadow.mode"]);
 
     await edits.edit(IMG, "ghost_mannequin", {}, LIVE);
@@ -133,20 +135,21 @@ async function main() {
     check("ghost mannequin sends ai.auto", lastSent!.fields["ghostMannequin.mode"] === "ai.auto");
   }
 
-  console.log("\nE. A DESCRIBED BACKGROUND AND A FLAT COLOUR ARE ALTERNATIVES");
+  console.log("\nE. AN AI BACKGROUND IS A SCENE; A FLAT COLOUR IS ANOTHER TOOL");
   {
     const edits = photoroomOf(EDIT_PROVIDERS)!;
     await edits.edit(IMG, "ai_background", { prompt: "marble counter", color: "#FFFFFF" }, LIVE);
-    check("a prompt wins and the colour is not also sent",
+    check("a prompt is sent and a colour is not",
       lastSent!.fields["background.prompt"] === "marble counter"
       && lastSent!.fields["background.color"] === undefined, lastSent!.fields);
 
-    await edits.edit(IMG, "ai_background", { prompt: "   ", color: "#101820" }, LIVE);
-    check("a blank prompt falls back to the colour",
-      lastSent!.fields["background.color"] === "101820"
-      && lastSent!.fields["background.prompt"] === undefined, lastSent!.fields);
-    check("the colour is sent without the leading hash",
-      !String(lastSent!.fields["background.color"]).includes("#"));
+    // A flat colour is "Zmień kolor tła" on /v1/segment at a fifth of the
+    // price — never bought as a $0.10 generative call.
+    lastSent = null;
+    let code = "";
+    try { await edits.edit(IMG, "ai_background", { prompt: "   ", color: "#101820" }, LIVE); }
+    catch (e) { code = (e as { code?: string }).code ?? ""; }
+    check("a blank prompt is refused before any request", code === "prompt_required" && lastSent === null, code);
   }
 
   console.log("\nF. A SANDBOX KEY IS FREE, AND KNOWN TO BE");

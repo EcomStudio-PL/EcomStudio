@@ -834,7 +834,8 @@
       "cap": {
         "background": "Freistellen",
         "upscale": "Upscale",
-        "expand": "Rahmenerweiterung"
+        "expand": "Rahmenerweiterung",
+        "edit": "KI-Bearbeitung (Hintergrund, Schatten)"
       },
       "getKey": "Schlüssel erzeugen",
       "keyNote": "Ein Schlüssel wird als Server-Umgebungsvariable gesetzt oder im Panel eingefügt — er erreicht nie den Browser oder das Repository.",
@@ -2338,12 +2339,14 @@
     "unavailable": {
       "no_provider": "Für diesen Vorgang ist noch kein KI-Anbieter verbunden. Es schaltet sich frei, sobald ein Schlüssel hinterlegt ist.",
       "maintenance": "Wartung läuft. Bitte gleich noch einmal versuchen.",
-      "disabled": "Dieses Werkzeug gehört nicht zu Ihrem Tarif."
+      "disabled": "Dieses Werkzeug gehört nicht zu Ihrem Tarif.",
+      "sandbox": "Dieses Werkzeug wartet auf den Start seines Produktivanbieters. Es ist bald verfügbar."
     },
     "state": {
       "no_provider": "Bald",
       "maintenance": "Wartung",
       "disabled": "Aus",
+      "sandbox": "Bald",
       "ok": ""
     },
     "shadowStyle": {
@@ -2532,6 +2535,118 @@
     "subject.food": "Food",
     "outFormat": "Ausgabeformat"
   },
+  "photoTool": {
+    "name": {
+      "remove_bg": "Hintergrund entfernen",
+      "white_bg": "Hintergrundfarbe ändern",
+      "ai_background": "KI-Hintergrund hinzufügen",
+      "ai_shadow": "Schatten hinzufügen"
+    },
+    "body": {
+      "remove_bg": "Stellt das Produkt frei und speichert ein transparentes PNG. Das Produkt bleibt unverändert — nichts wird generiert.",
+      "white_bg": "Setzt das Produkt auf eine einheitliche Farbe: Weiß, Schwarz, Grau, ein Pastellton oder ein eigener HEX-Wert.",
+      "ai_background": "Generiert eine neue Szene um das Produkt. Das Produkt selbst bleibt genau wie auf dem Foto.",
+      "ai_shadow": "Fügt einen realistischen Schatten unter dem Produkt hinzu — ohne neue Szene und ohne Lichtänderung."
+    },
+    "suffix": {
+      "remove_bg": "ohne-hintergrund",
+      "white_bg": "hintergrundfarbe",
+      "ai_background": "ki-hintergrund",
+      "ai_shadow": "schatten"
+    },
+    "photos": "Produktfotos (max. {n})",
+    "dropTitle": "Fotos hier ablegen",
+    "dropSub": "Bis zu {n} Fotos, je max. 10 MB.",
+    "uploadFailed": "Das Foto konnte nicht hochgeladen werden.",
+    "format": "Dateiformat",
+    "fmt": {
+      "png": "PNG",
+      "jpeg": "JPG",
+      "webp": "WebP"
+    },
+    "fmtMeta": {
+      "png": "Verlustfrei · behält Transparenz",
+      "jpeg": "Am kleinsten · ohne Transparenz",
+      "webp": "Leicht · behält Transparenz"
+    },
+    "jpegNoAlpha": "JPG hat keine Transparenz — wähle bei transparentem Hintergrund PNG oder WebP.",
+    "color": "Hintergrundfarbe",
+    "colorCustom": "Eigene Farbe (HEX)",
+    "colorInvalid": "Gib eine Farbe als #RRGGBB ein, z. B. #F5EFE6.",
+    "freeHint": "Ein Foto mit bereits transparentem Hintergrund (z. B. aus „Hintergrund entfernen“) färben wir auf unserem Server ohne KI um — kostenlos.",
+    "freeNote": "{n} von {total} Fotos haben bereits einen transparenten Hintergrund — diese sind kostenlos.",
+    "scene": "Szene",
+    "custom": "Eigene Beschreibung",
+    "noPresets": "Fertige Szenen sind gerade nicht verfügbar — beschreibe den Hintergrund mit eigenen Worten.",
+    "promptLabel": "Hintergrundbeschreibung",
+    "promptHint": "Deine Beschreibung geht genau so an das Modell, wie du sie eingibst. Beschreibe den Hintergrund, nicht das Produkt.",
+    "promptPh": "z. B. heller Marmortisch, weiches Morgenlicht, unscharfe Pflanzen im Hintergrund",
+    "inspiration": "Inspirationsfoto (optional)",
+    "inspirationHint": "Das Modell übernimmt daraus Stimmung, Farben und Licht des Hintergrunds. Das Produkt bleibt das aus deinem Foto.",
+    "strength": "Stärke der Inspiration",
+    "shadowStyle": "Schattenart",
+    "shadow": {
+      "soft": "Weich",
+      "hard": "Kräftig",
+      "floating": "Schwebend"
+    },
+    "shadowMeta": {
+      "soft": "Diffus, wie im Studio",
+      "hard": "Klar, wie in praller Sonne",
+      "floating": "Produkt leicht über dem Boden"
+    },
+    "background": "Hintergrund",
+    "bg": {
+      "white": "Weiß",
+      "transparent": "Transparent",
+      "color": "Eigene Farbe"
+    },
+    "cta": {
+      "remove_bg": "Hintergrund entfernen",
+      "white_bg": "Farbe ändern",
+      "ai_background": "Hintergrund generieren",
+      "ai_shadow": "Schatten hinzufügen"
+    },
+    "needPhotos": "Füge mindestens ein Foto hinzu.",
+    "needColor": "Gib eine gültige HEX-Farbe ein.",
+    "needPrompt": "Wähle eine Szene oder beschreibe den Hintergrund (mind. 3 Zeichen).",
+    "balance": "Guthaben: {n} Cr.",
+    "status_queued": "In der Warteschlange",
+    "status_processing": "Wird bearbeitet…",
+    "status_failed": "Fehlgeschlagen",
+    "status_completed": "Fertig",
+    "retry": "Wiederholen",
+    "done": "Fertig: {n}. Die Ergebnisse sind auch in der Bibliothek.",
+    "someFailed": "{n} Fotos konnten nicht bearbeitet werden — ihre Credits wurden erstattet.",
+    "allFailed": "Die Fotos konnten nicht bearbeitet werden. Deine Credits wurden erstattet.",
+    "results": "Ergebnisse",
+    "emptyTitle": "Hier erscheinen deine Ergebnisse",
+    "emptyBody": "Füge Fotos hinzu, stelle die Optionen ein und starte das Werkzeug. Jedes Ergebnis wird automatisch in der Bibliothek gespeichert.",
+    "inLibrary": "In der Bibliothek",
+    "loadMore": "Ältere anzeigen",
+    "compare": "Vorher / Nachher vergleichen",
+    "open": "Vorschau öffnen",
+    "expired": "Vorschau abgelaufen — lade die Seite neu.",
+    "downloadFailed": "Die Datei konnte nicht heruntergeladen werden.",
+    "uncertain": "Das Modell war unsicher, was das Produkt ist — prüfe die Kanten.",
+    "sandboxBadge": "Test",
+    "sandboxNote": "Testmodus: Ein Photoroom-Sandbox-Schlüssel ist verbunden. Ergebnisse haben ein Wasserzeichen, kosten 0 Credits und nur Operatoren sehen dies — Kunden sehen das Werkzeug als nicht verfügbar.",
+    "sandboxResult": "Testergebnis (Sandbox) — mit Wasserzeichen, nicht für den Produktiveinsatz.",
+    "err": {
+      "duplicate_request": "Dieses Foto mit diesen Einstellungen wird bereits bearbeitet oder wurde gerade fertig — sieh in den Ergebnissen nach.",
+      "provider_sandbox": "Dieses Werkzeug läuft derzeit nur im Testmodus für Operatoren.",
+      "provider_unsupported_params": "Der Anbieter hat diese Einstellungen nicht akzeptiert. Deine Credits wurden erstattet.",
+      "prompt_required": "Wähle eine Szene oder beschreibe den Hintergrund.",
+      "preset_unavailable": "Diese Szene ist nicht mehr verfügbar — wähle eine andere.",
+      "rate_limited": "Zu viele Fotos in kurzer Zeit — warte eine Minute.",
+      "storage_failed": "Das Ergebnis konnte nicht gespeichert werden. Deine Credits wurden erstattet.",
+      "source_missing": "Das hochgeladene Foto wurde nicht gefunden — füge es erneut hinzu.",
+      "feature_unavailable": "Dieses Werkzeug ist vorübergehend abgeschaltet.",
+      "provider_empty_result": "Der Anbieter hat kein Bild geliefert. Deine Credits wurden erstattet.",
+      "provider_error": "Der Anbieter hat einen Fehler gemeldet. Deine Credits wurden erstattet.",
+      "network_error": "Die Verbindung wurde unterbrochen. Wenn das Ergebnis entstanden ist, erscheint es in den Ergebnissen — sonst wiederhole den Vorgang."
+    }
+  },
   "editor": {
     "title": "Bildbearbeitung",
     "sub": "Hintergrund, Schatten, Format, Korrektur und Ausschnitt an einem Ort.",
@@ -2693,7 +2808,7 @@
     "sec.video": "KI-Video",
     "card.remove_bg": "Hintergrund entfernen oder beliebig ersetzen",
     "card.white_bg": "Ein Foto in einen Packshot auf Weiß verwandeln",
-    "card.background": "Den Hintergrund in Sekunden austauschen",
+    "card.background": "Einfarbiger Hintergrund: Weiß, Schwarz, Pastell oder eigener HEX",
     "card.shadow": "Einen natürlichen Schatten unter das Produkt legen",
     "card.adjust": "Helligkeit, Kontrast und Farben korrigieren",
     "card.generator": "Die Aufnahme beschreiben oder ein fertiges Szenario wählen",
@@ -5221,6 +5336,7 @@
     "providers.detail.http": "HTTP {code}",
     "providers.detail.sandbox": "Sandbox-Schlüssel",
     "providers.detail.live": "Live-Schlüssel",
+    "providers.detail.account": "{env} · Plan {plan} · {left} von {total} Bildern übrig",
     "providers.detail.reachable": "Schlüssel akzeptiert (kein eigener Auth-Endpunkt)",
     "providers.detail.network": "Netzwerkfehler",
     "apiPath.title": "API-Pfad",
@@ -5247,6 +5363,10 @@
     "toolName.fashion_iron": "Kleidung bügeln",
     "toolName.fashion_change_person": "Model wechseln",
     "toolName.fashion_change_face": "Gesicht wechseln",
+    "toolName.tool_remove_bg": "Hintergrund entfernen",
+    "toolName.tool_white_bg": "Hintergrundfarbe ändern",
+    "toolName.tool_ai_background": "KI-Hintergrund hinzufügen",
+    "toolName.tool_ai_shadow": "Schatten hinzufügen",
     "econ.basis.actual": "Tatsächlich",
     "econ.basis.estimated": "Geschätzt",
     "econ.basis.unknown": "Unbekannt",
@@ -5595,7 +5715,60 @@
     "test.manifest.nb.headers": "HEADER (nur Namen)",
     "test.manifest.nb.contract": "VERTRAG",
     "test.manifest.nb.none": "KEINE",
-    "test.manifest.nb.omitted": "WEGGELASSEN"
+    "test.manifest.nb.omitted": "WEGGELASSEN",
+    "photo.pinned": "Dieses Werkzeug ist an einen Anbieter und Endpunkt gebunden (kein Wechsel zu anderen Anbietern):",
+    "photo.sandbox": "Sandbox",
+    "photo.title": "Wirtschaftlichkeit eines Fotos",
+    "photo.sub": "Was aufgerufen wird, was es kostet, was der Kunde zahlt und welche Marge bleibt — beim Referenzpreis und beim günstigsten Credit im Verkauf.",
+    "photo.operation": "Operation",
+    "photo.provider": "Anbieter",
+    "photo.endpoint": "Endpunkt",
+    "photo.cost": "API-Kosten (1 Foto)",
+    "photo.fx": "Systemkurs {fx} PLN/$",
+    "photo.price": "Kundenpreis",
+    "photo.credits": "{n} Cr.",
+    "photo.floor": "Minimum im Leistungskatalog: {n} Cr.",
+    "photo.freePath": "Foto bereits freigestellt",
+    "photo.freePathValue": "lokal verarbeitet, 0 Cr., ohne API",
+    "photo.env.live": "Produktion",
+    "photo.env.sandbox": "Sandbox (Wasserzeichen)",
+    "photo.env.none": "kein Schlüssel",
+    "photo.col.credit": "Credit-Preis",
+    "photo.col.revenue": "Umsatz",
+    "photo.col.margin": "Marge",
+    "photo.col.marginPct": "Marge %",
+    "photo.point.reference": "Referenzpreis (Abrechnung)",
+    "photo.point.cheapestGross": "Günstigster Credit — {source} (brutto)",
+    "photo.point.cheapestNet": "Günstigster Credit — {source} (netto, ohne 23 % USt.)",
+    "photo.perCredit": "Credit",
+    "photo.proposalTitle": "Preisvorschlag (ändert nichts automatisch)",
+    "photo.proposalRule": "Der kleinste Preis, der die Margenregel ≥ {margin} % mit {buffer} % Puffer erfüllt, berechnet für den günstigsten Credit im Verkauf.",
+    "photo.proposalValues": "Minimum: {gross} Cr. (brutto) · {net} Cr. (netto). Aktuell: {now} Cr.",
+    "photo.proposalUnknown": "Keine aktiven PLN-Pakete oder -Pläne — der günstigste Credit lässt sich nicht berechnen.",
+    "photo.proposalNote": "Den Preis ändert der Operator im Leistungskatalog:",
+    "photo.servicesLink": "Admin → Leistungen",
+    "photo.runs.live": "Produktion (30 Tage)",
+    "photo.runs.sandbox": "Sandbox (30 Tage)",
+    "photo.runs.local": "Lokal, 0 Cr. (30 Tage)",
+    "photo.runs.failed": "Fehlgeschlagen / erstattet (30 Tage)",
+    "presets.title": "Szenen für „KI-Hintergrund hinzufügen“",
+    "presets.sub": "Kunden sehen die Namen; der Szenentext geht nur an Photoroom (background.prompt), nie in den Browser eines Kunden.",
+    "presets.key": "Schlüssel",
+    "presets.enabled": "Aktiv",
+    "presets.expand": "KI-Erweiterung des Textes",
+    "presets.expandHint": "Photoroom darf den Szenentext erweitern (expandPrompt ai.auto). Aus = genau so gesendet, wie geschrieben.",
+    "presets.label": "Name",
+    "presets.prompt": "Szenentext (auf Englisch, an Photoroom gesendet)",
+    "presets.up": "Nach oben",
+    "presets.down": "Nach unten",
+    "presets.add": "Szene hinzufügen",
+    "presets.empty": "Keine Szenen — Kunden können den Hintergrund nur selbst beschreiben.",
+    "presets.note": "Der Schlüssel einer gespeicherten Szene kann nicht geändert werden.",
+    "presets.errKey": "Schlüssel: Kleinbuchstaben, Ziffern, _ und - (bis 40).",
+    "presets.errDuplicate": "Diesen Schlüssel gibt es schon.",
+    "presets.errLabel": "Gib den polnischen Namen ein.",
+    "presets.errPrompt": "Gib den Szenentext ein.",
+    "presets.errInvalid": "Nicht gespeichert — korrigiere die markierten Szenen."
   },
   "batch": {
     "viewLabel": "Ansicht",
@@ -5750,21 +5923,25 @@
       "desc": "Legt Logo oder Wasserzeichen über eine Fotoserie.",
       "words": "wasserzeichen, logo, signatur, stempel, branding, schutz"
     },
+    "tool_remove_bg": {
+      "desc": "Stellt das Produkt frei und speichert ein transparentes PNG.",
+      "words": "hintergrund entfernen, hintergrund, freistellen, ausschneiden, transparent, png, ohne hintergrund, photoroom"
+    },
+    "tool_white_bg": {
+      "desc": "Ein einfarbiger Hintergrund: Weiß, Schwarz, Pastell oder eigene Farbe.",
+      "words": "hintergrundfarbe ändern, hintergrundfarbe, weißer hintergrund, schwarzer hintergrund, hintergrund, pastell, hex, packshot"
+    },
+    "tool_ai_background": {
+      "desc": "Eine neue Szene, um das Produkt herum generiert.",
+      "words": "ki-hintergrund, hintergrund hinzufügen, szene, umgebung, interieur, studio, hintergrund generieren"
+    },
+    "tool_ai_shadow": {
+      "desc": "Ein realistischer Schatten unter dem Produkt, Szene unverändert.",
+      "words": "schatten hinzufügen, schatten, ki-schatten, weicher schatten, harter schatten, schwebend"
+    },
     "video": {
       "desc": "Produktvideos — bald verfügbar.",
       "words": "video, film, clip, produktvideo, animation, bewegung"
-    },
-    "remove_bg": {
-      "desc": "Schneidet das Produkt frei und macht den Hintergrund transparent.",
-      "words": "hintergrund entfernen, hintergrund, freistellen, transparent, png, ohne hintergrund"
-    },
-    "white_bg": {
-      "desc": "Der reinweiße Hintergrund, den Marktplätze verlangen.",
-      "words": "weißer hintergrund, hintergrund, weiß, amazon, marktplatz, hintergrund ändern"
-    },
-    "shadow": {
-      "desc": "Fügt einen natürlichen Schatten unter dem Produkt hinzu.",
-      "words": "schatten, produktschatten, schlagschatten, reflexion, realismus, hintergrund"
     }
   },
   "newsletter": {

@@ -231,6 +231,38 @@ export async function flattenToColor(input: Buffer, opts: {
   return encode(pipeline.flatten({ background: color }), opts.format ?? "jpeg", opts.quality ?? 90).toBuffer();
 }
 
+/** The share of see-through pixels that makes an image a CUTOUT. A product
+ *  photo cut out of its background leaves far more than this transparent; a
+ *  photo with rounded corners or a one-pixel transparent border does not. */
+export const CUTOUT_MIN_SHARE = 0.05;
+/** Alpha at or below this counts as background. */
+export const CUTOUT_ALPHA_MAX = 16;
+
+/**
+ * DOES THIS IMAGE ALREADY HAVE A CUTOUT? An alpha CHANNEL is not enough —
+ * plenty of PNGs carry one that is fully opaque — and neither is a single
+ * transparent pixel: a photo with soft rounded corners still has its original
+ * background, and flattening it onto a colour would sell the seller their old
+ * backdrop. True only when at least 5% of the image is truly see-through.
+ * Measured on a 256 px proxy; the browser estimates the same way.
+ */
+export async function hasRealTransparency(input: Buffer): Promise<boolean> {
+  try {
+    const meta = await sharp(input, { failOn: "none" }).metadata();
+    if (!meta.hasAlpha) return false;
+    const { data, info } = await sharp(input, { failOn: "none" })
+      .resize({ width: 256, height: 256, fit: "inside", withoutEnlargement: true })
+      .ensureAlpha().extractChannel(3).raw().toBuffer({ resolveWithObject: true });
+    const total = info.width * info.height;
+    if (!total) return false;
+    let clear = 0;
+    for (let i = 0; i < data.length; i++) if (data[i] <= CUTOUT_ALPHA_MAX) clear++;
+    return clear / total >= CUTOUT_MIN_SHARE;
+  } catch {
+    return false;
+  }
+}
+
 export const SHADOW_STYLES = ["soft", "contact", "floating"] as const;
 export type ShadowStyle = (typeof SHADOW_STYLES)[number];
 

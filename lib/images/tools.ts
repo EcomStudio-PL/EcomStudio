@@ -47,6 +47,16 @@ export type ToolDefinition = {
   sortOrder: number;
   /** Only for capability "edit": the operation the provider is asked for. */
   operation?: EditOperationSlug;
+  /**
+   * The ONE vendor this tool runs on, when it is not "whichever key is
+   * cheapest". The four photo tools are sold as Photoroom operations — their
+   * price, their endpoint and their admin economics are Photoroom's — so they
+   * never fall through to another backend just because its key exists.
+   */
+  provider?: "photoroom";
+  /** A photo that already carries real transparency needs no provider call:
+   *  the colour is composited locally and the run costs nothing. */
+  freeWhenTransparent?: boolean;
 };
 
 export const TOOLS: ToolDefinition[] = [
@@ -55,8 +65,13 @@ export const TOOLS: ToolDefinition[] = [
   // exactly the same reason the other local tools are.
   { slug: "editor",    kind: "local", service: "tool_editor",    keepsAlpha: true,  sortOrder: 0 },
   { slug: "upscale",   kind: "paid",  capability: "upscale",    service: "tool_upscale",       keepsAlpha: false, sortOrder: 1 },
-  { slug: "remove_bg", kind: "paid",  capability: "background", service: "tool_remove_bg",     keepsAlpha: true,  sortOrder: 2 },
-  { slug: "white_bg",  kind: "local", service: "tool_white_bg",   keepsAlpha: false, sortOrder: 3 },
+  { slug: "remove_bg", kind: "paid",  capability: "background", service: "tool_remove_bg",     keepsAlpha: true,  sortOrder: 2,
+    provider: "photoroom" },
+  // "Zmień kolor tła": one /v1/segment call with `bg_color` — the cutout and
+  // the colour in a single Basic-rate request. A photo that is ALREADY cut out
+  // is flattened onto the colour locally instead, for nothing.
+  { slug: "white_bg",  kind: "paid",  capability: "background", service: "tool_white_bg",      keepsAlpha: false, sortOrder: 3,
+    provider: "photoroom", freeWhenTransparent: true },
   { slug: "expand",    kind: "paid",  capability: "expand",     service: "tool_expand",        keepsAlpha: false, sortOrder: 4 },
   { slug: "shadow",    kind: "local", service: "tool_shadow",    keepsAlpha: true,  sortOrder: 5 },
   { slug: "format",    kind: "local", service: "tool_format",    keepsAlpha: true,  sortOrder: 6 },
@@ -69,11 +84,11 @@ export const TOOLS: ToolDefinition[] = [
   // the result can legitimately come back cut out: a new background, a cast
   // shadow and a ghost mannequin all replace what was behind the product.
   { slug: "ai_background",   kind: "paid", capability: "edit", operation: "ai_background",
-    service: "tool_ai_background",   keepsAlpha: true,  sortOrder: 9 },
+    service: "tool_ai_background",   keepsAlpha: true,  sortOrder: 9, provider: "photoroom" },
   { slug: "relight",         kind: "paid", capability: "edit", operation: "relight",
     service: "tool_relight",         keepsAlpha: false, sortOrder: 10 },
   { slug: "ai_shadow",       kind: "paid", capability: "edit", operation: "ai_shadow",
-    service: "tool_ai_shadow",       keepsAlpha: true,  sortOrder: 11 },
+    service: "tool_ai_shadow",       keepsAlpha: true,  sortOrder: 11, provider: "photoroom" },
   { slug: "beautify",        kind: "paid", capability: "edit", operation: "beautify",
     service: "tool_beautify",        keepsAlpha: false, sortOrder: 12 },
   { slug: "uncrop",          kind: "paid", capability: "edit", operation: "uncrop",
@@ -85,6 +100,27 @@ export const TOOLS: ToolDefinition[] = [
 export function toolBySlug(slug: string): ToolDefinition | undefined {
   return TOOLS.find((t) => t.slug === slug);
 }
+
+/* ── The four photo tools ──────────────────────────────────────────────── */
+
+/**
+ * "Usuń tło", "Zmień kolor tła", "Dodaj tło AI" and "Dodaj cień" — each with a
+ * screen of its own at /tools/<slug>, all four running through the same runner,
+ * ledger and provider registry as every other tool. These are their EXISTING
+ * runner slugs; the catalogue cards keep their own keys (remove_bg, background,
+ * ai_background, shadow) and point here.
+ */
+export const PHOTO_TOOLS = ["remove_bg", "white_bg", "ai_background", "ai_shadow"] as const;
+export type PhotoToolSlug = (typeof PHOTO_TOOLS)[number];
+
+export function isPhotoTool(slug: string): slug is PhotoToolSlug {
+  return (PHOTO_TOOLS as readonly string[]).includes(slug);
+}
+
+/** Photos one batch of a photo tool may carry, and the size of each — the
+ *  same ceiling Retusz and the generator put on what goes to a provider. */
+export const PHOTO_MAX_PHOTOS = 10;
+export const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 
 /* ── Option shapes ─────────────────────────────────────────────────────── */
 
@@ -129,8 +165,26 @@ export type UpscaleFactor = (typeof UPSCALE_FACTORS)[number];
 export const LIGHTING_INTENTS = ["auto", "preserve", "portrait"] as const;
 export type LightingIntent = (typeof LIGHTING_INTENTS)[number];
 
-export const AI_SHADOW_STYLES = ["soft", "auto"] as const;
+/** Miękki / Mocny / Unoszący się — Photoroom's documented `ai.soft`,
+ *  `ai.hard` and `ai.floating`. The wire values live in providers.ts. */
+export const AI_SHADOW_STYLES = ["soft", "hard", "floating"] as const;
 export type AiShadowStyle = (typeof AI_SHADOW_STYLES)[number];
+
+/** What the shadow is cast onto. An AI shadow is drawn under a CUT-OUT
+ *  product, so the original backdrop is never kept by accident: the seller
+ *  chooses white, transparent or a colour of their own. */
+export const AI_SHADOW_BACKGROUNDS = ["white", "transparent", "color"] as const;
+export type AiShadowBackground = (typeof AI_SHADOW_BACKGROUNDS)[number];
+
+/** How closely an inspiration photo steers a generated background (0–1),
+ *  Photoroom's own default. */
+export const AI_BACKGROUND_GUIDANCE_DEFAULT = 0.6;
+
+/** "Zmień kolor tła" — the palette: white, black, greys and soft pastels. */
+export const COLOR_PALETTE = [
+  "#FFFFFF", "#000000", "#F3F4F6", "#D1D5DB", "#6B7280",
+  "#FDE2E4", "#FDEBD3", "#FFF6CC", "#DDF3E4", "#DCEBFA", "#E8E0F7", "#F5EFE6",
+] as const;
 
 export const BEAUTIFY_SUBJECTS = ["auto", "food"] as const;
 export type BeautifySubject = (typeof BEAUTIFY_SUBJECTS)[number];
@@ -155,11 +209,12 @@ export type ToolSettings = {
     margin: number; rotation: number; spacing: number;
     format: OutputFormatOption | "keep"; quality: number;
   };
-  /** An empty prompt means "flat colour" — the two are alternatives, not a
-   *  pair, because the API honours one or the other. */
-  ai_background: { prompt: string; color: string; format: "png" | "jpeg" | "webp" };
+  /** A scene: one of the operator's presets (by key — its prompt never
+   *  leaves the server) or the seller's own description. `guidance` is how
+   *  closely an optional inspiration photo steers it. */
+  ai_background: { preset: string; prompt: string; guidance: number; format: "png" | "jpeg" | "webp" };
   relight: { intent: LightingIntent; format: "png" | "jpeg" | "webp" };
-  ai_shadow: { style: AiShadowStyle; format: "png" | "webp" };
+  ai_shadow: { style: AiShadowStyle; background: AiShadowBackground; color: string; format: "png" | "jpeg" | "webp" };
   beautify: { subject: BeautifySubject; format: "png" | "jpeg" | "webp" };
   uncrop: { format: "png" | "jpeg" | "webp" };
   ghost_mannequin: { format: "png" | "webp" };
@@ -169,7 +224,9 @@ export const DEFAULT_SETTINGS: { [K in ToolSlug]: ToolSettings[K] } = {
   editor: { state: EDITOR_DEFAULTS, format: "jpeg", quality: 92 },
   upscale: { factor: 2 },
   remove_bg: { format: "png" },
-  white_bg: { color: "#FFFFFF", padding: 0, format: "jpeg", quality: 92 },
+  // PNG by default: a solid backdrop plus a lossless product — the seller
+  // chooses JPEG when the file size matters more.
+  white_bg: { color: "#FFFFFF", padding: 0, format: "png", quality: 92 },
   expand: { ratio: "1:1" },
   shadow: { style: "soft", opacity: 35, blur: 24, offsetX: 0, offsetY: 18, background: "#FFFFFF" },
   format: { format: "jpeg", width: null, height: null, quality: 90, fit: "inside" },
@@ -178,9 +235,9 @@ export const DEFAULT_SETTINGS: { [K in ToolSlug]: ToolSettings[K] } = {
     position: "bottom-right", scale: 18, opacity: 60,
     margin: 4, rotation: 0, spacing: 24, format: "keep", quality: 90,
   },
-  ai_background: { prompt: "", color: "#FFFFFF", format: "png" },
+  ai_background: { preset: "", prompt: "", guidance: AI_BACKGROUND_GUIDANCE_DEFAULT, format: "png" },
   relight: { intent: "auto", format: "jpeg" },
-  ai_shadow: { style: "soft", format: "png" },
+  ai_shadow: { style: "soft", background: "white", color: "#FFFFFF", format: "png" },
   beautify: { subject: "auto", format: "jpeg" },
   uncrop: { format: "jpeg" },
   ghost_mannequin: { format: "png" },

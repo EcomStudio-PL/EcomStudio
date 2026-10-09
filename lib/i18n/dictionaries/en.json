@@ -834,7 +834,8 @@
       "cap": {
         "background": "background removal",
         "upscale": "upscale",
-        "expand": "frame expansion"
+        "expand": "frame expansion",
+        "edit": "AI editing (background, shadow)"
       },
       "getKey": "Generate a key",
       "keyNote": "A key is set as a server environment variable or pasted in the panel — it never reaches the browser or the repository.",
@@ -2338,12 +2339,14 @@
     "unavailable": {
       "no_provider": "No AI provider is connected for this operation yet. It turns on the moment a key is in place.",
       "maintenance": "Maintenance in progress. Try again shortly.",
-      "disabled": "This tool is not part of your plan."
+      "disabled": "This tool is not part of your plan.",
+      "sandbox": "This tool is waiting for its production provider to go live. It will be available soon."
     },
     "state": {
       "no_provider": "Soon",
       "maintenance": "Maintenance",
       "disabled": "Off",
+      "sandbox": "Soon",
       "ok": ""
     },
     "shadowStyle": {
@@ -2532,6 +2535,118 @@
     "subject.food": "Food",
     "outFormat": "Output format"
   },
+  "photoTool": {
+    "name": {
+      "remove_bg": "Remove background",
+      "white_bg": "Change background colour",
+      "ai_background": "Add AI background",
+      "ai_shadow": "Add shadow"
+    },
+    "body": {
+      "remove_bg": "Cuts the product out of its background and saves a transparent PNG. The product is untouched — nothing is generated.",
+      "white_bg": "Places the product on a solid colour: white, black, grey, a pastel or your own HEX.",
+      "ai_background": "Generates a new scene around the product. The product itself stays exactly as photographed.",
+      "ai_shadow": "Adds a realistic shadow under the product — no new scene, no change to the lighting."
+    },
+    "suffix": {
+      "remove_bg": "no-background",
+      "white_bg": "background-colour",
+      "ai_background": "ai-background",
+      "ai_shadow": "shadow"
+    },
+    "photos": "Product photos (max. {n})",
+    "dropTitle": "Drop photos here",
+    "dropSub": "Up to {n} photos, max. 10 MB each.",
+    "uploadFailed": "The photo could not be uploaded.",
+    "format": "File format",
+    "fmt": {
+      "png": "PNG",
+      "jpeg": "JPG",
+      "webp": "WebP"
+    },
+    "fmtMeta": {
+      "png": "Lossless · keeps transparency",
+      "jpeg": "Smallest · no transparency",
+      "webp": "Light · keeps transparency"
+    },
+    "jpegNoAlpha": "JPG has no transparency — with a transparent background choose PNG or WebP.",
+    "color": "Background colour",
+    "colorCustom": "Custom colour (HEX)",
+    "colorInvalid": "Enter a colour as #RRGGBB, e.g. #F5EFE6.",
+    "freeHint": "A photo that already has a transparent background (e.g. from “Remove background”) is recoloured on our server without AI — free.",
+    "freeNote": "{n} of {total} photos already have a transparent background — those are free.",
+    "scene": "Scene",
+    "custom": "Own description",
+    "noPresets": "Ready-made scenes are unavailable right now — describe the background in your own words.",
+    "promptLabel": "Background description",
+    "promptHint": "Your description reaches the model exactly as you type it. Describe the background, not the product.",
+    "promptPh": "e.g. light marble countertop, soft morning light, blurred plants behind",
+    "inspiration": "Inspiration photo (optional)",
+    "inspirationHint": "The model takes the mood, colours and light of the background from it. The product stays the one from your photo.",
+    "strength": "Inspiration strength",
+    "shadowStyle": "Shadow type",
+    "shadow": {
+      "soft": "Soft",
+      "hard": "Hard",
+      "floating": "Floating"
+    },
+    "shadowMeta": {
+      "soft": "Diffused, like in a studio",
+      "hard": "Crisp, like in full sun",
+      "floating": "Product slightly above the ground"
+    },
+    "background": "Background",
+    "bg": {
+      "white": "White",
+      "transparent": "Transparent",
+      "color": "Custom colour"
+    },
+    "cta": {
+      "remove_bg": "Remove background",
+      "white_bg": "Change colour",
+      "ai_background": "Generate background",
+      "ai_shadow": "Add shadow"
+    },
+    "needPhotos": "Add at least one photo.",
+    "needColor": "Enter a valid HEX colour.",
+    "needPrompt": "Pick a scene or describe the background (min. 3 characters).",
+    "balance": "Balance: {n} cr.",
+    "status_queued": "Queued",
+    "status_processing": "Processing…",
+    "status_failed": "Failed",
+    "status_completed": "Done",
+    "retry": "Retry",
+    "done": "Done: {n}. The results are in your Library too.",
+    "someFailed": "{n} photos could not be processed — their credits were returned.",
+    "allFailed": "The photos could not be processed. Your credits were returned.",
+    "results": "Results",
+    "emptyTitle": "Your results will appear here",
+    "emptyBody": "Add photos, set the options and run the tool. Every result is saved to your Library automatically.",
+    "inLibrary": "In Library",
+    "loadMore": "Show older",
+    "compare": "Compare before / after",
+    "open": "Open preview",
+    "expired": "Preview expired — refresh the page.",
+    "downloadFailed": "The file could not be downloaded.",
+    "uncertain": "The model was unsure what the product is — check the edges.",
+    "sandboxBadge": "Test",
+    "sandboxNote": "Test mode: a Photoroom sandbox key is connected. Results are watermarked, cost 0 credits and only operators see this — customers see the tool as unavailable.",
+    "sandboxResult": "Test (sandbox) result — watermarked, not for production use.",
+    "err": {
+      "duplicate_request": "This photo with these settings is already being processed or has just been finished — check the results.",
+      "provider_sandbox": "This tool currently runs in operator test mode only.",
+      "provider_unsupported_params": "The provider did not accept these settings. Your credits were returned.",
+      "prompt_required": "Pick a scene or describe the background.",
+      "preset_unavailable": "This scene is no longer available — pick another one.",
+      "rate_limited": "Too many photos in a short time — wait a minute.",
+      "storage_failed": "The result could not be saved. Your credits were returned.",
+      "source_missing": "The uploaded photo was not found — add it again.",
+      "feature_unavailable": "This tool is temporarily switched off.",
+      "provider_empty_result": "The provider returned no image. Your credits were returned.",
+      "provider_error": "The provider returned an error. Your credits were returned.",
+      "network_error": "The connection dropped. If the result was made it will appear in the results — if not, retry."
+    }
+  },
   "editor": {
     "title": "Image editing",
     "sub": "Background, shadow, format, adjustments and framing in one place.",
@@ -2693,7 +2808,7 @@
     "sec.video": "AI video",
     "card.remove_bg": "Remove the background or swap it for any other",
     "card.white_bg": "Turn a photo into a packshot on white",
-    "card.background": "Swap the background in seconds",
+    "card.background": "A solid background: white, black, pastel or your own HEX",
     "card.shadow": "Add a natural shadow under the product",
     "card.adjust": "Fix brightness, contrast and colour",
     "card.generator": "Describe the shot or pick a ready scenario",
@@ -5221,6 +5336,7 @@
     "providers.detail.http": "HTTP {code}",
     "providers.detail.sandbox": "sandbox key",
     "providers.detail.live": "live key",
+    "providers.detail.account": "{env} · plan {plan} · {left} of {total} images left",
     "providers.detail.reachable": "key accepted (no dedicated auth endpoint)",
     "providers.detail.network": "network error",
     "apiPath.title": "API path",
@@ -5247,6 +5363,10 @@
     "toolName.fashion_iron": "Garment ironing",
     "toolName.fashion_change_person": "Change model",
     "toolName.fashion_change_face": "Change face",
+    "toolName.tool_remove_bg": "Remove background",
+    "toolName.tool_white_bg": "Change background colour",
+    "toolName.tool_ai_background": "Add AI background",
+    "toolName.tool_ai_shadow": "Add shadow",
     "econ.basis.actual": "Actual",
     "econ.basis.estimated": "Estimated",
     "econ.basis.unknown": "Unknown",
@@ -5595,7 +5715,60 @@
     "test.manifest.nb.headers": "HEADERS (names only)",
     "test.manifest.nb.contract": "CONTRACT",
     "test.manifest.nb.none": "NONE",
-    "test.manifest.nb.omitted": "OMITTED"
+    "test.manifest.nb.omitted": "OMITTED",
+    "photo.pinned": "This tool is pinned to one provider and endpoint (no switching to other providers):",
+    "photo.sandbox": "sandbox",
+    "photo.title": "Economics of one photo",
+    "photo.sub": "What is called, what it costs, what the customer pays and the margin left — at the reference price and at the cheapest credit on sale.",
+    "photo.operation": "Operation",
+    "photo.provider": "Provider",
+    "photo.endpoint": "Endpoint",
+    "photo.cost": "API cost (1 photo)",
+    "photo.fx": "system rate {fx} PLN/$",
+    "photo.price": "Customer price",
+    "photo.credits": "{n} cr.",
+    "photo.floor": "minimum in the service catalogue: {n} cr.",
+    "photo.freePath": "Photo already cut out",
+    "photo.freePathValue": "processed locally, 0 cr., no API",
+    "photo.env.live": "production",
+    "photo.env.sandbox": "sandbox (watermark)",
+    "photo.env.none": "no key",
+    "photo.col.credit": "Credit price",
+    "photo.col.revenue": "Revenue",
+    "photo.col.margin": "Margin",
+    "photo.col.marginPct": "Margin %",
+    "photo.point.reference": "Reference price (Billing)",
+    "photo.point.cheapestGross": "Cheapest credit — {source} (gross)",
+    "photo.point.cheapestNet": "Cheapest credit — {source} (net of 23% VAT)",
+    "photo.perCredit": "credit",
+    "photo.proposalTitle": "Price proposal (changes nothing automatically)",
+    "photo.proposalRule": "The smallest price meeting the margin rule ≥ {margin}% with a {buffer}% buffer, computed for the cheapest credit on sale.",
+    "photo.proposalValues": "Minimum: {gross} cr. (gross) · {net} cr. (net). Now: {now} cr.",
+    "photo.proposalUnknown": "No active PLN packs or plans — the cheapest credit cannot be computed.",
+    "photo.proposalNote": "The operator changes the price in the service catalogue:",
+    "photo.servicesLink": "Admin → Services",
+    "photo.runs.live": "Production (30 days)",
+    "photo.runs.sandbox": "Sandbox (30 days)",
+    "photo.runs.local": "Local, 0 cr. (30 days)",
+    "photo.runs.failed": "Failed / refunded (30 days)",
+    "presets.title": "“Add AI background” scenes",
+    "presets.sub": "Customers see the names; the scene text goes only to Photoroom (background.prompt), never to a customer's browser.",
+    "presets.key": "Key",
+    "presets.enabled": "Enabled",
+    "presets.expand": "AI prompt expansion",
+    "presets.expandHint": "Photoroom may expand the scene text (expandPrompt ai.auto). Off = sent exactly as written.",
+    "presets.label": "Name",
+    "presets.prompt": "Scene text (in English, sent to Photoroom)",
+    "presets.up": "Move up",
+    "presets.down": "Move down",
+    "presets.add": "Add scene",
+    "presets.empty": "No scenes — customers can only describe the background in their own words.",
+    "presets.note": "A saved scene's key cannot be changed.",
+    "presets.errKey": "Key: lowercase letters, digits, _ and - (up to 40).",
+    "presets.errDuplicate": "This key already exists.",
+    "presets.errLabel": "Enter the Polish name.",
+    "presets.errPrompt": "Enter the scene text.",
+    "presets.errInvalid": "Not saved — fix the marked scenes."
   },
   "batch": {
     "viewLabel": "View",
@@ -5750,21 +5923,25 @@
       "desc": "Stamps a logo or watermark across a batch of photos.",
       "words": "watermark, logo, signature, stamp, branding, protection"
     },
+    "tool_remove_bg": {
+      "desc": "Cuts the product out and saves a transparent PNG.",
+      "words": "remove background, background, cut out, cutout, transparent, png, no background, photoroom"
+    },
+    "tool_white_bg": {
+      "desc": "A solid background: white, black, pastel or your own colour.",
+      "words": "change background colour, background color, white background, black background, background, pastel, hex, packshot"
+    },
+    "tool_ai_background": {
+      "desc": "A new scene generated around the product.",
+      "words": "ai background, add background, scene, setting, interior, studio, generate background"
+    },
+    "tool_ai_shadow": {
+      "desc": "A realistic shadow under the product, scene unchanged.",
+      "words": "add shadow, shadow, ai shadow, soft shadow, hard shadow, floating"
+    },
     "video": {
       "desc": "Product video — coming soon.",
       "words": "video, film, clip, product video, animation, motion"
-    },
-    "remove_bg": {
-      "desc": "Cuts the product out and leaves the background transparent.",
-      "words": "remove background, background, cut out, transparent, png, no background"
-    },
-    "white_bg": {
-      "desc": "The clean white background marketplaces ask for.",
-      "words": "white background, background, white, amazon, marketplace, change background"
-    },
-    "shadow": {
-      "desc": "Adds a natural shadow under the product.",
-      "words": "shadow, product shadow, drop shadow, reflection, realism, background"
     }
   },
   "newsletter": {

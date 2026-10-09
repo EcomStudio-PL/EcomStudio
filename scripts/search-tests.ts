@@ -127,8 +127,10 @@ check(
 check("no entry id appears twice", new Set(SEARCHABLE.map((e) => e.id)).size === SEARCHABLE.length);
 check("no ranked tool points at the same route as another",
   new Set(TOOL_CARDS.map((c) => c.href)).size === TOOL_CARDS.length);
+// "Usuń tło", "Zmień kolor tła" and "Dodaj cień" were the sections; they are
+// screens of their own again, ranked like every other tool.
 check("the sections are deep links, not screens",
-  TOOL_SECTIONS.length > 0 && TOOL_SECTIONS.every((s) => s.href.includes("?")),
+  TOOL_SECTIONS.every((s) => s.href.includes("?")),
   TOOL_SECTIONS.map((s) => s.href).join(", "));
 check("a section is never ranked",
   TOOL_SECTIONS.every((s) => !TOOL_CARDS.some((c) => c.id === s.id)),
@@ -161,6 +163,10 @@ for (const [key, expected, why] of [
   ["editor", true, "hosts removal/relight, which are provider calls"],
   ["tool_upscale", true, "a paid provider call"],
   ["tool_expand", true, "a paid provider call"],
+  ["tool_remove_bg", true, "a Photoroom call"],
+  ["tool_white_bg", true, "a Photoroom call (free only on an already cut-out photo)"],
+  ["tool_ai_background", true, "a Photoroom call"],
+  ["tool_ai_shadow", true, "a Photoroom call"],
   ["compress", false, "sharp, in our own runtime"],
   ["resize", false, "sharp, in our own runtime"],
   ["tool_watermark", false, "sharp, in our own runtime"],
@@ -177,18 +183,20 @@ check("accents do not matter", normalise("TŁO") === "tlo" && normalise("Zdjęć
 
 for (const [locale, term, expected] of [
   // The brief's own examples.
-  ["pl", "tło", ["section:remove_bg", "editor"]],
-  ["pl", "tlo", ["section:remove_bg", "editor"]],
-  ["pl", "usuń tło", ["section:remove_bg"]],
+  ["pl", "tło", ["tool_remove_bg", "tool_white_bg", "editor"]],
+  ["pl", "tlo", ["tool_remove_bg", "editor"]],
+  ["pl", "usuń tło", ["tool_remove_bg"]],
   ["pl", "moda", ["image_moda"]],
   ["pl", "retusz", ["retouch"]],
   ["pl", "kompresja", ["compress"]],
   ["pl", "generuj obraz", ["prompts", "generator"]],
   ["pl", "film produktowy", ["video"]],
-  ["en", "background", ["section:remove_bg", "editor"]],
+  ["pl", "kolor tła", ["tool_white_bg"]],
+  ["pl", "cień", ["tool_ai_shadow"]],
+  ["en", "background", ["tool_remove_bg", "tool_ai_background", "editor"]],
   ["en", "compress", ["compress"]],
   ["en", "fashion", ["image_moda"]],
-  ["de", "hintergrund", ["section:remove_bg", "editor"]],
+  ["de", "hintergrund", ["tool_remove_bg", "editor"]],
   ["de", "kompression", ["compress"]],
   ["de", "mode", ["image_moda"]],
 ] as const) {

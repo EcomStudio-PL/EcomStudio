@@ -9,25 +9,29 @@ import { getWallet } from "@/lib/services/credits";
 import { getAvailabilityMap, viewerIsAdmin } from "@/lib/server/feature-availability";
 import { menuVisible } from "@/lib/features";
 import { signImageUrls } from "@/lib/services/images";
-import { toolCatalogue } from "@/lib/server/image-tools";
-import { toolBySlug } from "@/lib/images/tools";
+import { readAiBackgroundPresets, toolCatalogue } from "@/lib/server/image-tools";
+import { listPhotoResults } from "@/lib/server/photo-tools";
+import { isPhotoTool, toolBySlug, type PhotoToolSlug } from "@/lib/images/tools";
+import { publicPresets } from "@/lib/images/ai-background-presets";
 import { PageHeader } from "@/components/ui/page-header";
 import { ToolWorkbench } from "@/components/tools/workbench";
+import { PhotoToolWorkspace } from "@/components/tools/photo-tool";
 
 export const dynamic = "force-dynamic";
 
 /**
  * WHERE THE CONSOLIDATED TOOLS WENT.
  *
- * Four of the one-dial pages are now sections of the editor or of the resize
+ * Two of the one-dial pages are sections of the editor or of the resize
  * screen. Their URLs are in bookmarks, in mails and in the browser history of
  * every seller who used them, so they are not deleted — they are forwarded,
- * server-side, onto the same operation one level up. What is left below is the
- * three tools that are still a batch of their own: upscale, expand, watermark.
+ * server-side, onto the same operation one level up.
+ *
+ * "Usuń tło" (remove_bg) and "Zmień kolor tła" (white_bg) were forwarded to
+ * the editor too; they are screens of their own again — two of the four photo
+ * tools rendered below — and their old URLs now simply open them.
  */
 const MOVED: Record<string, string> = {
-  remove_bg: "/tools/editor?tool=remove-background",
-  white_bg: "/tools/editor?tool=white-background",
   shadow: "/tools/editor?tool=shadow",
   format: "/tools/resize",
 };
@@ -48,6 +52,8 @@ export default async function ToolPage({ params }: { params: Promise<{ slug: str
   if (!user) redirect("/login");
   const workspace = await getCurrentWorkspace(supabase, user.id);
   if (!workspace) redirect("/home");
+
+  if (isPhotoTool(tool.slug)) return <PhotoToolPage slug={tool.slug} workspaceId={workspace.id} />;
 
   // "Powiąż z produktem" only exists while the Produkty module does. With it
   // DISABLED the list stays empty, which removes the affordance AND the query
@@ -83,6 +89,47 @@ export default async function ToolPage({ params }: { params: Promise<{ slug: str
         providerLabel={entry.providerLabel}
         reason={entry.reason}
         balance={wallet?.balance ?? 0}
+      />
+    </div>
+  );
+}
+
+/**
+ * THE FOUR PHOTO TOOLS — Usuń tło, Zmień kolor tła, Dodaj tło AI, Dodaj cień.
+ *
+ * Each a screen of its own on the same shell as Retusz and Moda. The page
+ * hands the panel only true facts: whether the tool can run for THIS viewer
+ * (a sandbox key runs for an operator only), what one photo costs, the wallet,
+ * the preset NAMES (never their prompts) and this workspace's own results.
+ */
+async function PhotoToolPage({ slug, workspaceId }: { slug: PhotoToolSlug; workspaceId: string }) {
+  const supabase = await createClient();
+  const { locale } = await getDictionary();
+  const admin = await viewerIsAdmin(supabase);
+  const [catalogue, wallet, presets, history] = await Promise.all([
+    toolCatalogue(supabase, { admin }),
+    getWallet(supabase, workspaceId),
+    slug === "ai_background" ? readAiBackgroundPresets(supabase) : Promise.resolve([]),
+    listPhotoResults(supabase, workspaceId, slug),
+  ]);
+  const entry = catalogue.find((c) => c.slug === slug);
+
+  return (
+    // Same shell contract as Retusz and the generator: workspace tokens and the
+    // viewport-locked frame, so the cost island stays at the column's foot.
+    <div className="workspace workspace-page gen-shell pt-1">
+      <PhotoToolWorkspace
+        tool={slug}
+        workspaceId={workspaceId}
+        available={entry?.available ?? false}
+        reason={entry?.reason ?? "maintenance"}
+        environment={entry?.environment ?? null}
+        credits={entry?.credits ?? 0}
+        freeWhenTransparent={entry?.freeWhenTransparent ?? false}
+        balance={wallet?.balance ?? 0}
+        presets={publicPresets(presets, locale)}
+        initialItems={history.items}
+        initialCursor={history.nextCursor}
       />
     </div>
   );

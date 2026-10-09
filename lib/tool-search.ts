@@ -2,10 +2,10 @@ import type { LucideIcon } from "lucide-react";
 import { PenLine, Sparkles } from "lucide-react";
 import { CATEGORIES, VIDEO_ICON, categoryPath, workflowHref, type CategoryAccent } from "./categories";
 import { IMAGE_EDIT, IMAGE_EDIT_MORE, editLabelKey } from "./topnav";
-import { TOOLS } from "./images/tools";
+import { TOOLS, isPhotoTool } from "./images/tools";
 import { normalise } from "./search-tags";
 import {
-  FEATURE_REGISTRY, featureForHref, featureForToolSlug, menuVisible,
+  FEATURE_REGISTRY, featureForHref, featureForPhotoTool, featureForToolSlug, menuVisible,
   type AvailabilityMap, type FeatureKey,
 } from "./features";
 
@@ -123,7 +123,9 @@ const GENERATIVE: ReadonlySet<string> = new Set(
 
 function isAi(key: FeatureKey): boolean {
   if (GENERATIVE.has(key)) return true;
-  return TOOLS.some((t) => featureForToolSlug(t.slug) === key && t.kind === "paid");
+  // The four photo tools answer to their own switches, not the editor's.
+  return TOOLS.some((t) => t.kind === "paid"
+    && (featureForToolSlug(t.slug) === key || (isPhotoTool(t.slug) && featureForPhotoTool(t.slug) === key)));
 }
 
 /**
@@ -167,10 +169,11 @@ export const TOOL_CARD_BY_KEY: ReadonlyMap<FeatureKey, ToolCard> =
 /**
  * SECTIONS — the jobs that are real, named and findable, but are not screens.
  *
- * "Usuń tło", "Białe tło" and "Cień produktu" moved INTO the editor; each is a
- * deep link at /tools/editor?tool=…, not a page of its own. They still have to
- * be findable by name — the brief's own example is a seller typing „tło" — and
- * dropping them would mean the search knows less than the menu used to.
+ * Operations that live INSIDE a screen (a deep link at /tools/editor?tool=…)
+ * still have to be findable by name. "Usuń tło", "Zmień kolor tła" and
+ * "Dodaj cień" used to be such sections; they are screens of their own again
+ * (features with their own switches), so today this list is empty — the
+ * mechanism stays for the next operation that moves into a host screen.
  *
  * They are NOT features, so they are never ranked: a background removal already
  * counts towards the editor in usage_events, and giving a section its own place

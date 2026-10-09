@@ -93,6 +93,13 @@ export function ProviderCard({ p, locale }: { p: ProviderView; locale: string })
     const http = /^http_(\d{3})$/.exec(code);
     if (http) return t("aicc.providers.detail.http", { code: http[1] });
     if (["sandbox", "live", "reachable", "network"].includes(code)) return t(`aicc.providers.detail.${code}`);
+    // Photoroom's account endpoint: environment, plan, images left / in plan.
+    const account = /^account:(live|sandbox):([a-z0-9_-]{1,32}):(\d+):(\d+)$/.exec(code);
+    if (account) {
+      return t("aicc.providers.detail.account", {
+        env: t(`aicc.providers.detail.${account[1]}`), plan: account[2], left: account[3], total: account[4],
+      });
+    }
     if (/^[a-z_]+$/.test(code) && code !== "connected") return t(`admin.test.${code}`);
     return code;
   };

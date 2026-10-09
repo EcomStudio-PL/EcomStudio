@@ -53,6 +53,11 @@ export const FEATURE_KEYS = [
   "tool_upscale",
   "tool_expand",
   "tool_watermark",
+  // The four photo tools (Photoroom), each with its own screen and switch.
+  "tool_remove_bg",
+  "tool_white_bg",
+  "tool_ai_background",
+  "tool_ai_shadow",
   // Wideo
   "video",
   // Konto i zasoby
@@ -160,6 +165,19 @@ export const FEATURE_REGISTRY: readonly FeatureDescriptor[] = [
   { key: "tool_upscale", nameKey: "tools.upscale.name", path: "/tools/upscale", group: "edit" },
   { key: "tool_expand", nameKey: "tools.expand.name", path: "/tools/expand", group: "edit" },
   { key: "tool_watermark", nameKey: "tools.watermark.name", path: "/tools/watermark", group: "edit" },
+  // THE FOUR PHOTO TOOLS — Usuń tło, Zmień kolor tła, Dodaj tło AI, Dodaj
+  // cień. Each is a screen of its own now (they used to be sections of the
+  // editor, which keeps its own copies), so each has its own switch.
+  //
+  // THEY START AS "WKRÓTCE", ON PURPOSE. The panels, the uploads, the ledger
+  // and the provider path are finished, but they run on Photoroom, and a tool
+  // is live only once an operator has connected the key, run it, and flipped
+  // the status on the availability screen. Until then a customer sees the
+  // card badged and the screen saying so — never a button that would fail.
+  { key: "tool_remove_bg", nameKey: "tools.remove_bg.name", path: "/tools/remove_bg", group: "edit", defaultStatus: "COMING_SOON" },
+  { key: "tool_white_bg", nameKey: "hub.name.background", path: "/tools/white_bg", group: "edit", defaultStatus: "COMING_SOON" },
+  { key: "tool_ai_background", nameKey: "hub.name.ai_background", path: "/tools/ai_background", group: "edit", defaultStatus: "COMING_SOON" },
+  { key: "tool_ai_shadow", nameKey: "hub.name.shadow", path: "/tools/ai_shadow", group: "edit", defaultStatus: "COMING_SOON" },
   // ── WIDEO ────────────────────────────────────────────────────────────────
   { key: "video", nameKey: "video.title", path: "/wideo", group: "video", defaultStatus: "COMING_SOON" },
   // ── KONTO I ZASOBY ───────────────────────────────────────────────────────
@@ -240,9 +258,23 @@ export function featureForToolSlug(slug: string): FeatureKey {
     case "upscale": return "tool_upscale";
     case "expand": return "tool_expand";
     case "watermark": return "tool_watermark";
-    // remove_bg / white_bg / shadow are sections of the editor, not screens.
+    // The batch run endpoint (/api/tools/run) still serves the EDITOR's own
+    // cutout and colour steps, so for that endpoint remove_bg / white_bg /
+    // shadow stay the editor's: switching a photo tool's screen off must not
+    // take a working editor down with it. The screens use featureForPhotoTool.
     case "remove_bg": case "white_bg": case "shadow": return "editor";
     default: return "tools";
+  }
+}
+
+/** Which switch governs one of the four photo tools' OWN screen and its run
+ *  endpoint (/tools/<slug>, /api/tools/photo) — its registry entry's. */
+export function featureForPhotoTool(slug: "remove_bg" | "white_bg" | "ai_background" | "ai_shadow"): FeatureKey {
+  switch (slug) {
+    case "remove_bg": return "tool_remove_bg";
+    case "white_bg": return "tool_white_bg";
+    case "ai_background": return "tool_ai_background";
+    default: return "tool_ai_shadow";
   }
 }
 

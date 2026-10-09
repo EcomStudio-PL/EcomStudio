@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  Crop, Gauge, Maximize2, Scaling, Scissors, SlidersHorizontal, Square, Stamp,
+  Crop, Gauge, Maximize2, Palette, Scaling, Scissors, SlidersHorizontal, Square, Stamp,
   Sun, Sparkles, WandSparkles, Wrench,
 } from "lucide-react";
 import {
@@ -118,16 +118,19 @@ export const IMAGE_EDIT: readonly MegaEntry[] = [
 
 /**
  * The tools the menu no longer carries. They are still real pages — three keep
- * their own batch queue, three moved into the editor — so search must still
- * find them by name even though only the hub lists them.
+ * their own batch queue, four are the photo tools — so search must still find
+ * them by name even though only the hub lists them.
  */
 export const IMAGE_EDIT_MORE: readonly MegaEntry[] = [
   { key: "upscale", href: "/tools/upscale", icon: Maximize2 },
   { key: "expand", href: "/tools/expand", icon: Crop },
   { key: "watermark", href: "/tools/watermark", icon: Stamp },
-  { key: "remove_bg", href: "/tools/editor?tool=remove-background", icon: Scissors },
-  { key: "white_bg", href: "/tools/editor?tool=white-background", icon: Square },
-  { key: "shadow", href: "/tools/editor?tool=shadow", icon: Sun },
+  // The four photo tools — screens of their own, each its own feature, so
+  // the search lists them as tools (not editor sections) with these icons.
+  { key: "remove_bg", href: "/tools/remove_bg", icon: Scissors },
+  { key: "white_bg", href: "/tools/white_bg", icon: Square },
+  { key: "ai_background", href: "/tools/ai_background", icon: Palette },
+  { key: "ai_shadow", href: "/tools/ai_shadow", icon: Sun },
 ] as const;
 
 /**

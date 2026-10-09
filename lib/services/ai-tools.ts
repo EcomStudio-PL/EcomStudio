@@ -29,6 +29,9 @@ export const AI_TOOL_KEYS = [
   "prompts", "generator", "retouch",
   "editor", "resize", "compress",
   "tool_upscale", "tool_expand", "tool_watermark",
+  // The four photo tools — Photoroom operations with explicit parameters and
+  // no prompt engine. Each has its own page for its path, costs and history.
+  "tool_remove_bg", "tool_white_bg", "tool_ai_background", "tool_ai_shadow",
   "video",
   // Moda. Each is model-driven and prompt-driven, so each gets the full set of
   // admin tabs — this is where their prompts are written and published.
@@ -66,6 +69,7 @@ export const TOOL_ENGINE_MODES: Record<AiToolKey, readonly EngineMode[]> = {
   retouch: ["grovbase"],
   editor: ["off"], resize: ["off"], compress: ["off"], tool_watermark: ["off"],
   tool_upscale: ["off"], tool_expand: ["off"], video: ["off"],
+  tool_remove_bg: ["off"], tool_white_bg: ["off"], tool_ai_background: ["off"], tool_ai_shadow: ["off"],
   fashion_ghost_mannequin: ["grovbase"],
   fashion_flat_lay: ["grovbase"],
   fashion_iron: ["grovbase"],
@@ -100,6 +104,7 @@ const CATEGORY: Record<AiToolKey, ToolCategory> = {
   prompts: "generation", generator: "generation", retouch: "editing",
   editor: "local", resize: "local", compress: "local", tool_watermark: "local",
   tool_upscale: "editing", tool_expand: "editing", video: "video",
+  tool_remove_bg: "editing", tool_white_bg: "editing", tool_ai_background: "editing", tool_ai_shadow: "editing",
   fashion_ghost_mannequin: "generation", fashion_flat_lay: "generation",
   fashion_iron: "generation", fashion_change_person: "generation",
   fashion_change_face: "generation",
@@ -117,6 +122,9 @@ const CATEGORY: Record<AiToolKey, ToolCategory> = {
  */
 export const MODEL_ASSIGNMENT_RUNTIME: ReadonlySet<string> = new Set(["retouch"]);
 
+/** The four photo tools' registry keys, each pinned to one vendor endpoint. */
+export const PHOTO_TOOL_KEYS: readonly string[] = ["tool_remove_bg", "tool_white_bg", "tool_ai_background", "tool_ai_shadow"];
+
 /** Where a tool's model/provider really comes from at run time — the one
  *  answer the registry line, the tool page and the API-path card share. */
 export type ApiPathKind = "local" | "assigned" | "customer_choice" | "concept_chain" | "fixed" | "capability" | "none";
@@ -127,7 +135,7 @@ export function apiPathKind(toolKey: string, category?: string): ApiPathKind {
   if (toolKey === "generator") return "customer_choice";
   if (toolKey === "prompts") return "concept_chain";
   if (toolKey.startsWith("fashion_")) return "fixed";
-  if (toolKey === "tool_upscale" || toolKey === "tool_expand") return "capability";
+  if (toolKey === "tool_upscale" || toolKey === "tool_expand" || PHOTO_TOOL_KEYS.includes(toolKey)) return "capability";
   return "none";
 }
 

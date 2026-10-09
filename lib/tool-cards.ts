@@ -70,14 +70,17 @@ export const TOOL_SECTIONS: readonly ToolSectionDef[] = [
     cards: [
       { key: "retouch", href: "/retusz", icon: WandSparkles, motif: "wipe",
         titleKey: "tools.retouch.name", bodyKey: "tools.retouch.body" },
-      { key: "remove_bg", href: "/tools/editor?tool=remove-background", icon: Scissors, motif: "cutout",
+      // The four photo tools are screens of their own again (Photoroom behind
+      // them, priced per photo). "Białe tło" and "Zmień kolor tła" are one
+      // screen — white is simply its first colour — so both cards open it.
+      { key: "remove_bg", href: "/tools/remove_bg", icon: Scissors, motif: "cutout",
         titleKey: "tools.remove_bg.name", bodyKey: "hub.card.remove_bg", slug: "remove_bg" },
-      { key: "white_bg", href: "/tools/editor?tool=white-background", icon: Square, motif: "frame",
-        titleKey: "tools.white_bg.name", bodyKey: "hub.card.white_bg" },
-      { key: "background", href: "/tools/editor?tool=background", icon: Sparkles, motif: "spark",
-        titleKey: "editor.bg.color", bodyKey: "hub.card.background" },
-      { key: "shadow", href: "/tools/editor?tool=shadow", icon: Sun, motif: "shadow",
-        titleKey: "tools.shadow.name", bodyKey: "hub.card.shadow" },
+      { key: "white_bg", href: "/tools/white_bg", icon: Square, motif: "frame",
+        titleKey: "tools.white_bg.name", bodyKey: "hub.card.white_bg", slug: "white_bg" },
+      { key: "background", href: "/tools/white_bg", icon: Sparkles, motif: "spark",
+        titleKey: "editor.bg.color", bodyKey: "hub.card.background", slug: "white_bg" },
+      { key: "shadow", href: "/tools/ai_shadow", icon: Sun, motif: "shadow",
+        titleKey: "tools.shadow.name", bodyKey: "hub.card.shadow", slug: "ai_shadow" },
       { key: "adjust", href: "/tools/editor?tool=adjust", icon: Contrast, motif: "swatch",
         titleKey: "editor.s.adjust", bodyKey: "hub.card.adjust" },
       // The generative edits sit beside the local ones rather than in a

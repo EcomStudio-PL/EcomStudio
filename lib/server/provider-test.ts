@@ -1,4 +1,5 @@
 import "server-only";
+import { PHOTOROOM_ACCOUNT_URL, PHOTOROOM_SEGMENT_URL, isSandboxKey, photoroomUrl } from "@/lib/images/providers";
 
 export type TestStatus =
   | "connected" | "auth_failed" | "quota" | "rate_limited"
@@ -82,21 +83,40 @@ export async function testProviderConnection(slug: string, apiKey: string, baseU
         return done({ status: "connected", detail: res.ok ? null : "reachable" });
       }
       case "photoroom": {
-        // A PROBE THAT COSTS NOTHING. Photoroom bills per image processed and
-        // publishes no free status endpoint, so this posts a request with NO
-        // image: authentication is checked before the (absent) image, so a
-        // rejected key answers 401/403 and an accepted one 400 "no image".
-        const res = await fetch(baseUrl?.trim() || "https://sdk.photoroom.com/v1/segment", {
+        const env = isSandboxKey(apiKey) ? "sandbox" : "live";
+        // 1. THE ACCOUNT ENDPOINT — free and read-only, and it says what the
+        //    key can do: the plan (Basic = /v1/segment only, Plus = /v2/edit
+        //    too) and the images left. Asked only when no proxy URL is
+        //    stored, so a key that must go through a proxy is never sent
+        //    anywhere else.
+        if (!baseUrl?.trim()) {
+          const acc = await fetch(PHOTOROOM_ACCOUNT_URL, {
+            headers: { "x-api-key": apiKey, Accept: "application/json" }, signal: timeout,
+          });
+          if (acc.status === 401 || acc.status === 403) return done({ status: "auth_failed", detail: `http_${acc.status}` });
+          if (acc.ok) {
+            const body = await acc.json().catch(() => null) as { plan?: unknown; images?: { available?: unknown; subscription?: unknown } } | null;
+            const plan = typeof body?.plan === "string" ? body.plan.toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 32) : "";
+            const left = Number(body?.images?.available);
+            const total = Number(body?.images?.subscription);
+            if (plan && Number.isFinite(left) && Number.isFinite(total)) {
+              return done({ status: "connected", detail: `account:${env}:${plan}:${Math.max(0, Math.floor(left))}:${Math.max(0, Math.floor(total))}` });
+            }
+          }
+        }
+        // 2. A PROBE THAT COSTS NOTHING. The cutout endpoint checks the key
+        //    before the (absent) image, so a rejected key answers 401/403 and
+        //    an accepted one 400 "no image" — at the address the tools call.
+        const res = await fetch(photoroomUrl(baseUrl, "/v1/segment", PHOTOROOM_SEGMENT_URL), {
           method: "POST",
           headers: { "x-api-key": apiKey, Accept: "application/json" },
           body: new FormData(),
           signal: timeout,
         });
-        const sandbox = apiKey.trim().toLowerCase().startsWith("sandbox_");
         if (res.status === 401 || res.status === 403) return done({ status: "auth_failed", detail: `http_${res.status}` });
         if (res.status === 402) return done({ status: "quota", detail: "http_402" });
         if (res.status === 429) return done({ status: "rate_limited", detail: "http_429" });
-        if (res.status === 400 || res.ok) return done({ status: "connected", detail: sandbox ? "sandbox" : "live" });
+        if (res.status === 400 || res.ok) return done({ status: "connected", detail: env });
         return done(classify(res.status));
       }
       default:

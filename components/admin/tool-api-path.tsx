@@ -28,15 +28,23 @@ export function ToolApiPathCard({ path, t, compact = false }: { path: ToolApiPat
       )}
       {path.kind === "capability" && (
         <div className="space-y-1.5">
-          <p className="text-muted">{t("aicc.apiPath.capability")}</p>
+          <p className="text-muted">
+            {t(path.chain.some((p) => p.endpoint) ? "aicc.photo.pinned" : "aicc.apiPath.capability")}
+          </p>
           <ol className="flex flex-wrap items-center gap-1.5">
             {path.chain.map((p, i) => (
               <li key={p.slug} className="flex items-center gap-1.5">
                 {i > 0 && <span aria-hidden className="text-faint">→</span>}
                 <Badge tone={p.configured ? "success" : "neutral"} dot>{p.label}</Badge>
+                {p.environment === "sandbox" && <Badge tone="warning">{t("aicc.photo.sandbox")}</Badge>}
               </li>
             ))}
           </ol>
+          {path.chain.some((p) => p.endpoint) && (
+            <p className="break-all font-mono text-[11.5px] text-muted" data-photo-endpoint>
+              {path.chain.map((p) => p.endpoint).filter(Boolean).join(" · ")}
+            </p>
+          )}
         </div>
       )}
       {(path.kind === "assigned" || path.kind === "fixed" || path.kind === "concept_chain") && (
