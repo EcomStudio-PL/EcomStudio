@@ -1,9 +1,13 @@
 -- 0138 — THE FOUR PHOTO TOOLS: Usuń tło, Zmień kolor tła, Dodaj tło AI, Dodaj cień.
 --
 -- ADDITIVE ONLY. Nothing is dropped, no price (credits_cost) is touched, no
--- existing row loses a value it had. Safe to apply before or after the deploy
--- that uses it: the code reads every object below defensively (no ai_tools row
--- → no "Modele, API i koszty" tab; no presets row → no presets).
+-- existing row loses a value it had.
+--
+-- APPLY IT BEFORE THE DEPLOY THAT USES IT. The code reads every object below
+-- defensively (no ai_tools row → no "Modele, API i koszty" tab; no presets
+-- reader → no presets), and the admin presets editor refuses to save until
+-- the reader exists — but only this migration makes the presets row private,
+-- so it goes first.
 --
 -- 1. REGISTRY ROWS. Each tool gets its own row in the tool registry, the way
 --    tool_upscale / tool_expand already have one (0070), so it has its own

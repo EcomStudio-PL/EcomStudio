@@ -1,10 +1,11 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import sharp from "sharp";
+import sharp, { type Sharp } from "sharp";
 import type { Client } from "@/lib/services/workspace";
 import { isPhotoTool, type PhotoToolSlug } from "@/lib/images/tools";
 import type { DeliverInput, DeliverResult } from "@/lib/server/image-tools";
 import { THUMB_EDGE, THUMB_QUALITY, thumbPathFor } from "@/lib/thumbs";
+import { MAX_INPUT_BYTES } from "@/lib/images/local";
 
 /**
  * THE FOUR PHOTO TOOLS — what sits around the shared runner.
@@ -63,8 +64,16 @@ const PASS_FORMATS = new Set(["jpeg", "png", "webp"]);
  * MADE INTO AN INPUT EVERY ENDPOINT ACCEPTS — and nothing more. A JPEG, PNG
  * or WebP that is upright and within size goes as-is, byte for byte. Only an
  * AVIF (the cutout endpoint does not list it), an EXIF-rotated photo (so the
- * provider sees what the seller sees) or an oversized one is re-encoded — as
- * lossless PNG, with the proportions kept.
+ * provider sees what the seller sees) or an oversized one is re-encoded, with
+ * the proportions kept:
+ *
+ *   with transparency — PNG (lossless; a cutout's edge is the product);
+ *   opaque            — JPEG at quality 95 without chroma subsampling, which
+ *                       is visually lossless at a fraction of a PNG's size.
+ *
+ * Every encoding is held to the runner's input cap (MAX_INPUT_BYTES): a photo
+ * whose lossless form would be too heavy — a 6000 px PNG easily is — steps
+ * down to a lighter encoding of the SAME pixels rather than being refused.
  */
 export async function prepareInput(bytes: Buffer, tool: PhotoToolSlug): Promise<{ bytes: Buffer; mime: string } | null> {
   let meta: Awaited<ReturnType<ReturnType<typeof sharp>["metadata"]>>;
@@ -74,13 +83,32 @@ export async function prepareInput(bytes: Buffer, tool: PhotoToolSlug): Promise<
   const rotated = (meta.orientation ?? 1) > 1;
   const longest = Math.max(meta.width, meta.height);
   const limit = MAX_SIDE[tool];
-  if (PASS_FORMATS.has(meta.format) && !rotated && longest <= limit) {
+  if (PASS_FORMATS.has(meta.format) && !rotated && longest <= limit && bytes.length <= MAX_INPUT_BYTES) {
     return { bytes, mime: meta.format === "jpeg" ? "image/jpeg" : `image/${meta.format}` };
   }
   if (!["jpeg", "png", "webp", "avif", "heif"].includes(meta.format)) return null;
   let pipeline = sharp(bytes, { failOn: "none" }).rotate();
   if (longest > limit) pipeline = pipeline.resize({ width: limit, height: limit, fit: "inside", withoutEnlargement: true });
-  return { bytes: await pipeline.png({ compressionLevel: 6 }).toBuffer(), mime: "image/png" };
+
+  const steps: { mime: string; encode: (p: Sharp) => Sharp }[] = meta.hasAlpha
+    ? [
+      { mime: "image/png", encode: (p) => p.png({ compressionLevel: 9 }) },
+      { mime: "image/webp", encode: (p) => p.webp({ quality: 92, alphaQuality: 100 }) },
+      { mime: "image/webp", encode: (p) => p.webp({ quality: 82, alphaQuality: 100 }) },
+    ]
+    : [
+      { mime: "image/jpeg", encode: (p) => p.jpeg({ quality: 95, chromaSubsampling: "4:4:4" }) },
+      { mime: "image/jpeg", encode: (p) => p.jpeg({ quality: 90 }) },
+      { mime: "image/jpeg", encode: (p) => p.jpeg({ quality: 82 }) },
+    ];
+  let out: { bytes: Buffer; mime: string } | null = null;
+  for (const step of steps) {
+    out = { bytes: await step.encode(pipeline.clone()).toBuffer(), mime: step.mime };
+    if (out.bytes.length <= MAX_INPUT_BYTES) break;
+  }
+  // Still over the cap after the lightest step: the caller refuses it as too
+  // large (image_too_large), for free, before anything is reserved.
+  return out;
 }
 
 /** What the browser may know about a run's settings — the choices it made
@@ -90,7 +118,11 @@ export function settingsSummary(tool: PhotoToolSlug, settings: unknown): Record<
   const pick = (k: string) => (typeof s[k] === "string" ? String(s[k]).slice(0, 40) : undefined);
   const out: Record<string, string | undefined> = { format: pick("format") };
   if (tool === "white_bg") out.color = pick("color");
-  if (tool === "ai_shadow") { out.style = pick("style"); out.background = pick("background"); out.color = pick("color"); }
+  if (tool === "ai_shadow") {
+    out.style = pick("style"); out.background = pick("background");
+    // The colour only means something on a coloured background.
+    if (out.background === "color") out.color = pick("color");
+  }
   if (tool === "ai_background") {
     out.preset = pick("preset") || undefined;
     if (!out.preset) out.custom = "1";
@@ -116,6 +148,8 @@ const extOf = (mime: string) => (mime.includes("webp") ? "webp" : mime.includes(
 export function storeResult(supabase: Client, ctx: {
   workspaceId: string; userId: string; tool: PhotoToolSlug;
   sourcePath: string; guidancePath: string | null; settings: unknown;
+  /** The panel's per-press token — how a retry finds this result (findDelivered). */
+  attempt?: string;
 }): (out: DeliverInput) => Promise<DeliverResult> {
   return async (out) => {
     const path = `${ctx.workspaceId}/tools/${randomUUID()}.${extOf(out.mime)}`;
@@ -134,6 +168,7 @@ export function storeResult(supabase: Client, ctx: {
         width: out.width, height: out.height,
         ...(thumbKept ? { thumb: thumbPath } : {}),
         source_path: ctx.sourcePath,
+        ...(ctx.attempt ? { attempt: ctx.attempt } : {}),
         ...(ctx.guidancePath ? { guidance_path: ctx.guidancePath } : {}),
         environment: out.environment,
         provider: out.providerSlug,
@@ -150,6 +185,30 @@ export function storeResult(supabase: Client, ctx: {
       return { ok: false, error: "storage_failed" };
     }
     return { ok: true, id: row.id, path };
+  };
+}
+
+/**
+ * THE RESULT OF ONE PRESS, IF IT EXISTS. A press of the panel's button is one
+ * `attempt` token per photo; a retry of that photo reuses it. A row with the
+ * same photo and the same token means that request already delivered — its
+ * answer was lost, not its result — so the retry is handed that row instead
+ * of paying for a second one. No token, no lookup: nothing to match on.
+ */
+export async function findDelivered(supabase: Client, ctx: {
+  workspaceId: string; tool: PhotoToolSlug; sourcePath: string; attempt: string;
+}): Promise<{ id: string; path: string; mime: string; bytes: number; metadata: Record<string, unknown> } | null> {
+  if (!ctx.attempt) return null;
+  const { data } = await supabase.from("tool_results")
+    .select("id, storage_path, mime_type, file_size, metadata")
+    .eq("workspace_id", ctx.workspaceId).eq("tool_slug", ctx.tool)
+    .eq("metadata->>source_path", ctx.sourcePath).eq("metadata->>attempt", ctx.attempt)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (!data) return null;
+  const row = data as { id: string; storage_path: string; mime_type: string; file_size: number; metadata: unknown };
+  return {
+    id: row.id, path: row.storage_path, mime: row.mime_type, bytes: row.file_size,
+    metadata: (row.metadata && typeof row.metadata === "object" ? row.metadata : {}) as Record<string, unknown>,
   };
 }
 
@@ -179,6 +238,8 @@ export type PhotoResult = {
   /** Its storage path in the workspace's own folder — how a panel recognises
    *  the result of a request whose answer never reached it. */
   sourcePath: string | null;
+  /** The press that made it (the panel's per-press token), when known. */
+  attempt: string | null;
   width: number | null;
   height: number | null;
   mime: string;
@@ -240,6 +301,7 @@ export async function listPhotoResults(supabase: Client, workspaceId: string, to
       thumbUrl: (thumbOf(r) ? signed.get(thumbOf(r)!) : undefined) ?? signed.get(r.storage_path) ?? null,
       sourceUrl: typeof m.source_path === "string" ? signed.get(m.source_path) ?? null : null,
       sourcePath: typeof m.source_path === "string" && validSourcePath(m.source_path, workspaceId) ? m.source_path : null,
+      attempt: typeof m.attempt === "string" ? m.attempt : null,
       width: num(m.width), height: num(m.height),
       mime: r.mime_type, bytes: r.file_size, createdAt: r.created_at,
       environment: env === "live" || env === "sandbox" || env === "local" ? env : null,

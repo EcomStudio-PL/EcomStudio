@@ -243,6 +243,24 @@ export function photoroomUrl(baseUrl: string | null | undefined, path: "/v1/segm
   }
 }
 
+/**
+ * The body of a Photoroom 200. Its headers already arrived, so the image was
+ * made and billed: a body that then fails to arrive (a timeout, a dropped
+ * connection) or arrives empty is a BILLED failure — recorded at the list
+ * price, never as a confident $0. Other vendors keep the shared `binary`.
+ */
+async function photoroomBinary(res: Response): Promise<ToolBytes> {
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(await res.arrayBuffer());
+  } catch (e) {
+    const name = (e as { name?: string })?.name;
+    throw new ToolProviderError(name === "TimeoutError" || name === "AbortError" ? "provider_timeout" : "provider_unreachable", true, true);
+  }
+  if (buf.length === 0) throw new ToolProviderError("provider_empty_result", false, true);
+  return { bytes: buf, mime: res.headers.get("content-type")?.split(";")[0] || "image/png" };
+}
+
 const isImageResponse = (res: Response) =>
   (res.headers.get("content-type") ?? "").toLowerCase().startsWith("image/");
 
@@ -294,7 +312,7 @@ export async function photoroomEdit(
   // A 200 carrying JSON is not an image, whatever the bytes are called.
   if (opts.strict && !isImageResponse(res)) throw new ToolProviderError("provider_empty_result", false, true);
   return {
-    ...(await binary(res)),
+    ...(await photoroomBinary(res)),
     // A sandbox call costs nothing, and charging a seller credits for a
     // watermarked image would be taking money for a result they cannot use.
     costUsd: isSandboxKey(creds.apiKey) ? 0 : PHOTOROOM_EDIT_USD,
@@ -367,7 +385,7 @@ const photoroomBackground: BackgroundRemovalProvider = {
     });
     if (!isImageResponse(res)) throw new ToolProviderError("provider_empty_result", false, true);
     return {
-      ...(await binary(res)),
+      ...(await photoroomBinary(res)),
       costUsd: isSandboxKey(creds.apiKey) ? 0 : PHOTOROOM_SEGMENT_USD,
       requestId: res.headers.get("x-request-id"),
       endpoint: "v1/segment",

@@ -3,10 +3,10 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { accountBlockedResponse } from "@/lib/server/account-block";
 import { featureBlockedForApi } from "@/lib/server/feature-availability";
-import { featureForToolSlug } from "@/lib/features";
+import { featureForPhotoTool, featureForToolSlug } from "@/lib/features";
 import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { runTool } from "@/lib/server/image-tools";
-import { toolBySlug, MAX_UPLOAD_BYTES, ACCEPTED_MIME } from "@/lib/images/tools";
+import { toolBySlug, isPhotoTool, MAX_UPLOAD_BYTES, ACCEPTED_MIME } from "@/lib/images/tools";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -42,7 +42,14 @@ export async function POST(request: Request) {
   // Feature availability (Task 11 C): the run is refused when the module that
   // owns this tool is switched off for customers — the page gate already says
   // why, this is the belt for direct calls.
-  const blockedFeature = await featureBlockedForApi(supabase, featureForToolSlug(tool.slug));
+  const blockedFeature = await featureBlockedForApi(supabase, featureForToolSlug(tool.slug))
+    // The photo tools that live only on their own screens (Zmień kolor tła,
+    // Dodaj tło AI, Dodaj cień) answer to that screen's switch here too, so a
+    // direct call cannot reach a tool its operator turned off. Usuń tło stays
+    // the editor's alone: the editor's cutout step must not go down with it.
+    ?? (isPhotoTool(tool.slug) && tool.slug !== "remove_bg"
+      ? await featureBlockedForApi(supabase, featureForPhotoTool(tool.slug))
+      : null);
   if (blockedFeature) {
     return NextResponse.json({ ok: false, error: "feature_unavailable", feature_status: blockedFeature }, { status: 503 });
   }

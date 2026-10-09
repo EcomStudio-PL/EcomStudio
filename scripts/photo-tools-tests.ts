@@ -14,8 +14,11 @@
  *   F  photo intake (prepareInput) and the cutout check
  *   G  the price proposal maths the admin card shows
  *   H  the migration is additive and keeps the private denylist
+ *   I  a result is kept, listed, and found again by its press
+ *   J  the wiring the review fixes depend on (route, panel, presets save)
  */
 import { readFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import sharp from "sharp";
 import {
   BACKGROUND_PROVIDERS, EDIT_PROVIDERS, PHOTOROOM_EDIT_URL, PHOTOROOM_SEGMENT_URL, PHOTOROOM_EDIT_USD,
@@ -31,8 +34,9 @@ import { hasRealTransparency } from "@/lib/images/local";
 import { creditsForCost, DEFAULT_BILLING } from "@/lib/images/pricing";
 import { parseSettings, runTool, toolCatalogue, type DeliverInput } from "@/lib/server/image-tools";
 import {
-  MAX_SIDE, listPhotoResults, prepareInput, settingsSummary, storeResult, validSourcePath,
+  MAX_SIDE, findDelivered, listPhotoResults, prepareInput, settingsSummary, storeResult, validSourcePath,
 } from "@/lib/server/photo-tools";
+import { MAX_INPUT_BYTES } from "@/lib/images/local";
 
 let failures = 0;
 function check(name: string, cond: boolean, extra?: unknown) {
@@ -44,7 +48,11 @@ function check(name: string, cond: boolean, extra?: unknown) {
 
 type Sent = { url: string; headers: Record<string, string>; fields: Record<string, string>; files: string[] };
 let sent: Sent[] = [];
-type Answer = { status?: number; type?: string; headers?: Record<string, string>; body?: Uint8Array | string; throws?: string };
+type Answer = {
+  status?: number; type?: string; headers?: Record<string, string>; body?: Uint8Array | string; throws?: string;
+  /** The headers arrive (200), then the body fails mid-read with this error name. */
+  bodyFails?: string;
+};
 let answer: Answer = {};
 let OUT_PNG: Buffer = Buffer.alloc(0);
 
@@ -60,6 +68,13 @@ globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
   sent.push({ url: String(url), headers: { ...(init?.headers as Record<string, string> ?? {}) }, fields, files });
   if (answer.throws) {
     const e = new Error("stub"); e.name = answer.throws; throw e;
+  }
+  if (answer.bodyFails) {
+    const name = answer.bodyFails;
+    const broken = new ReadableStream<Uint8Array>({
+      start(c) { c.enqueue(new Uint8Array([1, 2, 3])); const e = new Error("stub body"); e.name = name; c.error(e); },
+    });
+    return new Response(broken, { status: 200, headers: { "content-type": "image/png", "x-request-id": "req_1" } });
   }
   return new Response((answer.body ?? new Uint8Array(OUT_PNG)) as BodyInit, {
     status: answer.status ?? 200,
@@ -340,6 +355,34 @@ async function main() {
       !r.ok && r.error === "storage_failed" && rpc(db, "usage_event_fail")[0]?.args.p_api_cost_usd_micros === 100000
       && rpc(db, "usage_event_complete").length === 0, { r, fail: rpc(db, "usage_event_fail")[0]?.args });
 
+    // A body that never arrives after a 200: the image was made and billed.
+    db = freshDb();
+    answer = { bodyFails: "TimeoutError" };
+    r = await run(db, "ai_shadow", JPEG, { style: "soft" }, { deliver: keeper().hook });
+    check("a 200 whose body times out → refunded, booked at list price (billed), never $0",
+      !r.ok && r.error === "provider_timeout" && rpc(db, "usage_event_fail")[0]?.args.p_api_cost_usd_micros === 100000, { r, fail: rpc(db, "usage_event_fail")[0]?.args });
+    db = freshDb();
+    answer = { bodyFails: "TypeError" };
+    r = await run(db, "remove_bg", JPEG, {}, { deliver: keeper().hook });
+    check("a 200 whose body drops → refunded, the cutout booked at $0.02",
+      !r.ok && r.error === "provider_unreachable" && rpc(db, "usage_event_fail")[0]?.args.p_api_cost_usd_micros === 20000, { r, fail: rpc(db, "usage_event_fail")[0]?.args });
+    answer = {};
+
+    // A retry of a press that already delivered: found once the key is held.
+    db = freshDb();
+    let asked = 0;
+    r = await run(db, "ai_background", JPEG, { prompt: "oak table" }, {
+      deliver: keeper().hook, alreadyDelivered: async () => { asked++; return true; },
+    });
+    check("a press that already delivered → refunded at once, no provider call",
+      !r.ok && r.error === "already_delivered" && sent.length === 0 && asked === 1
+      && rpc(db, "usage_event_fail")[0]?.args.p_api_cost_usd_micros === 0 && rpc(db, "usage_event_complete").length === 0, { r, n: sent.length });
+    check("…asked only AFTER the reservation holds the key",
+      db.rpcs.findIndex((x) => x.name === "usage_event_start") < db.rpcs.findIndex((x) => x.name === "usage_event_fail"));
+    db = freshDb();
+    r = await run(db, "ai_background", JPEG, { prompt: "oak table" }, { deliver: keeper().hook, alreadyDelivered: async () => false });
+    check("…and a press that did not deliver runs normally", r.ok && sent.length === 1, r);
+
     // Presets and prompts: resolved before any charge.
     db = freshDb();
     r = await run(db, "ai_background", JPEG, { preset: "kitchen" }, { deliver: keeper().hook });
@@ -415,6 +458,9 @@ async function main() {
     const sh = parseSettings("ai_shadow", { style: "dramatic", background: "neon", color: "red", format: "gif" });
     check("settings: unknown shadow values fall back to safe defaults",
       sh.style === "soft" && sh.background === "white" && sh.color === "#FFFFFF" && sh.format === "png", sh);
+    check("a shadow's colour is kept only on a coloured background",
+      settingsSummary("ai_shadow", { style: "soft", background: "white", color: "#123456" }).color === undefined
+      && settingsSummary("ai_shadow", { style: "soft", background: "color", color: "#123456" }).color === "#123456");
     check("the history keeps choices, never a prompt",
       JSON.stringify(settingsSummary("ai_background", { preset: "", prompt: "secret words", format: "png" })) === JSON.stringify({ format: "png", custom: "1" }));
     const page = readFileSync("app/(app)/tools/[slug]/page.tsx", "utf8");
@@ -431,7 +477,23 @@ async function main() {
     const rotated = await sharp(JPEG).withMetadata({ orientation: 6 }).jpeg().toBuffer();
     const fixed = await prepareInput(rotated, "remove_bg");
     const fm = fixed ? await sharp(fixed.bytes).metadata() : null;
-    check("an EXIF-rotated photo is turned upright, losslessly", fixed?.mime === "image/png" && fm?.width === 300 && fm?.height === 400, fm);
+    check("an EXIF-rotated opaque photo is turned upright, as a q95 4:4:4 JPEG (not a heavy PNG)",
+      fixed?.mime === "image/jpeg" && fm?.width === 300 && fm?.height === 400 && fm?.chromaSubsampling === "4:4:4", fm);
+    const rotatedCut = await sharp(CUTOUT).withMetadata({ orientation: 6 }).png().toBuffer();
+    const fixedCut = await prepareInput(rotatedCut, "remove_bg");
+    check("an EXIF-rotated cutout keeps its transparency, losslessly (PNG)",
+      fixedCut?.mime === "image/png" && (await sharp(fixedCut.bytes).metadata()).hasAlpha === true, fixedCut?.mime);
+    // A photo whose lossless form is far over the runner's 15 MB cap: noise,
+    // with alpha, re-encoded because it is rotated.
+    const side = 2400;
+    const noise = randomBytes(side * side * 4);
+    const heavy = await sharp(noise, { raw: { width: side, height: side, channels: 4 } }).withMetadata({ orientation: 3 }).png({ compressionLevel: 1 }).toBuffer();
+    const lossless = await sharp(heavy).rotate().png({ compressionLevel: 9 }).toBuffer();
+    check("(the test photo's lossless form really is over the cap)", lossless.length > MAX_INPUT_BYTES, (lossless.length / 1e6).toFixed(1));
+    const light = await prepareInput(heavy, "remove_bg");
+    check(`a re-encode never exceeds the runner's cap (${MAX_INPUT_BYTES / 1024 / 1024} MB): it steps down, same pixels`,
+      !!light && light.mime === "image/webp" && light.bytes.length <= MAX_INPUT_BYTES && (await sharp(light.bytes).metadata()).width === side,
+      { mime: light?.mime, mb: light ? (light.bytes.length / 1e6).toFixed(1) : null, inMb: (heavy.length / 1e6).toFixed(1) });
     const big = await sharp({ create: { width: 5400, height: 2000, channels: 3, background: "#888" } }).jpeg().toBuffer();
     const small = await prepareInput(big, "ai_shadow");
     const sm = small ? await sharp(small.bytes).metadata() : null;
@@ -522,6 +584,60 @@ async function main() {
       !lost.ok && removed.at(-1)?.length === 2, removed.at(-1));
     const panel = readFileSync("components/tools/photo-tool.tsx", "utf8");
     check("the panel's tiles prefer the thumbnail, falling back to the original", panel.includes("item.thumbUrl ?? item.url"));
+
+    // The press token: stored with the result, and how a retry finds it.
+    rows = []; failInsert = false;
+    const pressed = storeResult(store, { workspaceId: "w1", userId: "u1", tool: "ai_shadow", sourcePath: "w1/photo-tools/b.jpg", guidancePath: null, settings: {}, attempt: "press-1" });
+    await pressed({ bytes: big, mime: "image/png", width: 2400, height: 1600, credits: 5, usageEventId: "ev", providerSlug: "photoroom", endpoint: "v2/edit", environment: "live", meta: {} });
+    check("the row records the press token", (rows[0]?.metadata as Row | undefined)?.attempt === "press-1", rows[0]?.metadata);
+    const seen: [string, unknown][] = [];
+    const lookup = {
+      from: (table: string) => {
+        seen.push(["table", table]);
+        const q = {
+          select: () => q, order: () => q, limit: () => q,
+          eq: (k: string, v: unknown) => { seen.push([k, v]); return q; },
+          maybeSingle: async () => ({ data: { id: "r9", storage_path: "w1/tools/r9.png", mime_type: "image/png", file_size: 10, metadata: { credits: 5 } }, error: null }),
+        };
+        return q;
+      },
+    } as unknown as Parameters<typeof findDelivered>[0];
+    const found = await findDelivered(lookup, { workspaceId: "w1", tool: "ai_shadow", sourcePath: "w1/photo-tools/b.jpg", attempt: "press-1" });
+    const f = Object.fromEntries(seen);
+    check("findDelivered matches workspace, tool, photo AND press",
+      f.table === "tool_results" && f.workspace_id === "w1" && f.tool_slug === "ai_shadow"
+      && f["metadata->>source_path"] === "w1/photo-tools/b.jpg" && f["metadata->>attempt"] === "press-1" && found?.id === "r9", seen);
+    seen.length = 0;
+    check("no press token → no lookup at all",
+      (await findDelivered(lookup, { workspaceId: "w1", tool: "ai_shadow", sourcePath: "w1/photo-tools/b.jpg", attempt: "" })) === null && seen.length === 0);
+  }
+
+  console.log("\nJ. THE ROUTE, THE PANEL AND THE SAVE — WIRING THAT MUST STAY");
+  {
+    const route = readFileSync("app/api/tools/photo/route.ts", "utf8");
+    check("the photo route has no time bucket in its key", !route.includes("DEDUPE_WINDOW_MS") && /return `photo:\$\{workspaceId\}:\$\{digest\}`/.test(route));
+    check("…answers a delivered press from storage before loading anything",
+      route.indexOf("findDelivered(supabase, press)") < route.indexOf("loadSource(supabase, sourcePath)"));
+    check("…asks again once the key is held (alreadyDelivered)", route.includes("alreadyDelivered: attempt ?"));
+    check("…refuses a re-encode over the cap as image_too_large", (route.match(/bytes\.length > MAX_INPUT_BYTES/g) ?? []).length === 2);
+    const runRoute = readFileSync("app/api/tools/run/route.ts", "utf8");
+    check("/api/tools/run honours the white_bg / ai_* screens' own switches",
+      runRoute.includes("featureForPhotoTool(tool.slug)") && runRoute.includes('tool.slug !== "remove_bg"'));
+    const panel = readFileSync("components/tools/photo-tool.tsx", "utf8");
+    check("the panel validates the HEX the field shows", panel.includes("const colorOk = HEX_RE.test(hexDraft)"));
+    check("the sandbox notice needs a runnable tool", panel.includes('const sandbox = available && environment === "sandbox"'));
+    check("an unavailable tool takes no uploads and shows no price",
+      panel.includes("{available && <PhotoUploader") && panel.includes("enabled: available && !busy") && panel.includes("{!available ? ("));
+    check("a recovery matches the press, not just the photo", panel.includes("i.sourcePath === job.path && i.attempt === job.attempt"));
+    check("a retry looks before it runs", /async function retry[\s\S]{0,400}await recovered\(job\)[\s\S]{0,200}await runOne\(job\)/.test(panel));
+    check("credits come off the shown balance once per job", panel.includes("charged.current.has(job.key)"));
+    check("local previews are released", panel.includes("URL.revokeObjectURL"));
+    const action = readFileSync("app/actions/ai-background-presets.ts", "utf8");
+    check("the presets save fails closed until 0138 (probe before upsert)",
+      action.indexOf('rpc("ai_background_presets_read"') > 0 && action.indexOf('rpc("ai_background_presets_read"') < action.indexOf(".upsert(")
+      && action.includes('"migration_pending"'));
+    const sql = readFileSync("supabase/migrations/0138_photo_tools.sql", "utf8");
+    check("the migration says it goes BEFORE the deploy", sql.includes("APPLY IT BEFORE THE DEPLOY"));
   }
 
   globalThis.fetch = realFetch;

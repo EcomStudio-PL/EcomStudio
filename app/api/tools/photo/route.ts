@@ -8,9 +8,11 @@ import { getCurrentWorkspace } from "@/lib/services/workspace";
 import { rateLimit } from "@/lib/server/rate-limit";
 import { parseSettings, runTool } from "@/lib/server/image-tools";
 import {
-  PHOTO_RESULT_BUCKET, listPhotoResults, loadSource, prepareInput, storeResult, validSourcePath,
+  PHOTO_RESULT_BUCKET, findDelivered, listPhotoResults, loadSource, prepareInput, storeResult, validSourcePath,
 } from "@/lib/server/photo-tools";
 import { isPhotoTool, PHOTO_MAX_BYTES, type PhotoToolSlug } from "@/lib/images/tools";
+import { MAX_INPUT_BYTES } from "@/lib/images/local";
+import type { Client } from "@/lib/services/workspace";
 
 export const runtime = "nodejs";
 // The provider timeout (120 s) must fire INSIDE this budget, so a slow call
@@ -70,11 +72,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "invalid_input" }, { status: 400 });
   }
 
+  // A RETRY OF A PRESS THAT ALREADY DELIVERED gets that result back — free,
+  // with no provider call. (Its first answer was lost, not its result.)
+  const attempt = attemptOf(body.attempt);
+  const press = { workspaceId: workspace.id, tool, sourcePath, attempt };
+  const prior = await findDelivered(supabase, press);
+  if (prior) return recoveredResponse(supabase, prior);
+
   const raw = await loadSource(supabase, sourcePath);
   if (!raw) return NextResponse.json({ ok: false, error: "source_missing" }, { status: 404 });
   if (raw.length > PHOTO_MAX_BYTES) return NextResponse.json({ ok: false, error: "image_too_large" }, { status: 413 });
   const input = await prepareInput(raw, tool);
   if (!input) return NextResponse.json({ ok: false, error: "unsupported_format" }, { status: 415 });
+  if (input.bytes.length > MAX_INPUT_BYTES) return NextResponse.json({ ok: false, error: "image_too_large" }, { status: 413 });
 
   let guidance: { bytes: Buffer; mime: string } | null = null;
   if (guidancePath) {
@@ -83,6 +93,7 @@ export async function POST(request: Request) {
     if (g.length > PHOTO_MAX_BYTES) return NextResponse.json({ ok: false, error: "image_too_large" }, { status: 413 });
     guidance = await prepareInput(g, tool);
     if (!guidance) return NextResponse.json({ ok: false, error: "unsupported_format" }, { status: 415 });
+    if (guidance.bytes.length > MAX_INPUT_BYTES) return NextResponse.json({ ok: false, error: "image_too_large" }, { status: 413 });
   }
 
   // Normalised once: the key below and the run see the same values.
@@ -96,20 +107,25 @@ export async function POST(request: Request) {
     mime: input.mime,
     guidance,
     viewerIsAdmin: admin,
-    // DERIVED on the server, as /api/tools/run does: one uploaded photo with
-    // one set of settings, sent twice within the window (a double click, a
-    // retried request whose answer was lost), is ONE charge and ONE provider
-    // call — the second is refused as a duplicate. The panel's `attempt` (one
-    // per press of the button, reused by that photo's retry) only goes INTO
-    // the hash, so pressing the button again for a second variant is a new
-    // run, while a retry of the same press can never pay twice.
-    idempotencyKey: idempotency(workspace.id, tool, settings, sourcePath, guidancePath, attemptOf(body.attempt)),
+    // DERIVED on the server: one uploaded photo with one set of settings and
+    // one press of the button (`attempt`, reused by that photo's retry) is
+    // ONE key. While a run holds it, the same request is refused as a
+    // duplicate; once it finished, its stored result answers the retry —
+    // above, and again below once the key is held, so the gap between the
+    // two can never let a second charge through. Pressing the button again
+    // is a new token, so a second variant is a new, paid run.
+    idempotencyKey: idempotency(workspace.id, tool, settings, sourcePath, guidancePath, attempt),
+    alreadyDelivered: attempt ? async () => (await findDelivered(supabase, press)) !== null : undefined,
     deliver: storeResult(supabase, {
       workspaceId: workspace.id, userId: user.id, tool,
-      sourcePath, guidancePath, settings,
+      sourcePath, guidancePath, settings, attempt,
     }),
   });
 
+  if (!result.ok && result.error === "already_delivered") {
+    const delivered = await findDelivered(supabase, press);
+    if (delivered) return recoveredResponse(supabase, delivered);
+  }
   if (!result.ok) {
     const status = result.error === "insufficient_credits" ? 402
       : result.error === "no_provider" || result.error === "tool_unavailable" || result.error === "provider_sandbox" ? 503
@@ -161,9 +177,33 @@ export async function GET(request: Request) {
   return NextResponse.json({ ok: true, ...page }, { headers: { "Cache-Control": "no-store" } });
 }
 
-/** Five-minute buckets, as /api/tools/run: a request that never finished
- *  (its lambda killed) stops blocking an identical one after the window. */
-const DEDUPE_WINDOW_MS = 5 * 60_000;
+/**
+ * The answer for a press that already delivered: the stored result, signed,
+ * with what it was charged — the same shape as a fresh success, marked
+ * `recovered` so the panel knows no new run happened.
+ */
+async function recoveredResponse(
+  supabase: Client,
+  row: { id: string; path: string; mime: string; bytes: number; metadata: Record<string, unknown> },
+) {
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  const env = row.metadata.environment;
+  const { data: signed } = await supabase.storage.from(PHOTO_RESULT_BUCKET).createSignedUrl(row.path, 3600);
+  return NextResponse.json({
+    ok: true,
+    recovered: true,
+    credits: num(row.metadata.credits),
+    environment: env === "sandbox" || env === "local" ? env : "live",
+    result: {
+      id: row.id,
+      url: signed?.signedUrl ?? null,
+      width: num(row.metadata.width),
+      height: num(row.metadata.height),
+      mime: row.mime,
+      bytes: row.bytes,
+    },
+  });
+}
 
 /** The panel's per-press token: a short plain string, or nothing. */
 function attemptOf(raw: unknown): string {
@@ -181,5 +221,8 @@ function idempotency(
     .update(attempt)
     .digest("hex")
     .slice(0, 40);
-  return `photo:${workspaceId}:${Math.floor(Date.now() / DEDUPE_WINDOW_MS)}:${digest}`;
+  // No time bucket: a key is held only while its run is open (0101 releases
+  // it on success and on failure; the reconciler closes an abandoned one), so
+  // a bucket would only let a slow duplicate through at the boundary.
+  return `photo:${workspaceId}:${digest}`;
 }

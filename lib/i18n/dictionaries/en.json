@@ -5768,7 +5768,8 @@
     "presets.errDuplicate": "This key already exists.",
     "presets.errLabel": "Enter the Polish name.",
     "presets.errPrompt": "Enter the scene text.",
-    "presets.errInvalid": "Not saved — fix the marked scenes."
+    "presets.errInvalid": "Not saved — fix the marked scenes.",
+    "presets.errMigration": "Not saved — the database does not have migration 0138 yet, which makes the presets private."
   },
   "batch": {
     "viewLabel": "View",

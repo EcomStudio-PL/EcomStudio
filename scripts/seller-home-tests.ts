@@ -639,13 +639,16 @@ const ENGINE: readonly [string, string][] = [
   ["lib/server/concept-generation.ts", "788361ea576b19dc0ef58d325b63199cdeb51b24a4bf3b64bd1e111d55cf8341"],
   ["lib/server/prompt-engine.ts", "5ce9bf1074f34e8852cd06a6440e0c9640a4471049617493d3b1b506e74baf22"],
   // Re-pinned by the photo-tools task (four Photoroom panels: pinned provider,
-  // sandbox gating, deliver hook, presets). Retusz never imports this file.
-  ["lib/server/image-tools.ts", "c0bd0dc0d452447faf8900a4f982c7b10690d555e8a8b15cf08028e7568e4918"],
+  // sandbox gating, deliver + alreadyDelivered hooks, presets). Retusz never
+  // imports this file.
+  ["lib/server/image-tools.ts", "8574865baaf4d1c9e17189d4599b04ce6e28319d876db797e24e618f38211a32"],
   ["lib/server/fashion.ts", "dcde79b33cd35e9789caa3bbc9cc4ddbf406f570d9f02ee3fe7232ad069ab139"],
   ["app/api/prompts/generate/route.ts", "37db9bd3798b9bd5c4c4fc3bdf1056d57dec296f12754fd52bd9f5f97e204b5e"],
   ["app/api/concepts/generate/route.ts", "59ac0b7670179062229aae68505186bd2513953bd1ecad1e555bedf45f588e21"],
   ["app/api/generate/route.ts", "fa333ad425813b1e998494a046e694c63962352eabefd60e21f8addf93c36a22"],
-  ["app/api/tools/run/route.ts", "13c2727bbc3fb6751ccae1faaa31fc822869383c3a64c18687dc07dbe92af879"],
+  // Re-pinned by the photo-tools task: the white_bg / ai_* screens' own
+  // switches also gate this endpoint.
+  ["app/api/tools/run/route.ts", "8bf75acfde6ebcd36b3fbcb70318f3f081559b8c04b80ef434cb22fbe17114c6"],
   ["components/genv3/uploader.tsx", "cc7d9dbe8305d1fbdef75ae4727b1fce5f0147b1ccc7cf4e9d6e0b6ddf4d8df2"],
   ["lib/images/file-intake.ts", "1dc99c83483f3fa80527e319501edb5a35b717d92771dd72c38eda17bd9acc29"],
   ["lib/services/images.ts", "e6adba31a68d9fa9afcfe69f242a63370032bd5ce31323cf1ef60236d2a3adcf"],

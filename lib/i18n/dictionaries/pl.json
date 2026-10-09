@@ -5768,7 +5768,8 @@
     "presets.errDuplicate": "Taki klucz już jest.",
     "presets.errLabel": "Podaj nazwę po polsku.",
     "presets.errPrompt": "Podaj opis sceny.",
-    "presets.errInvalid": "Nie zapisano — popraw zaznaczone sceny."
+    "presets.errInvalid": "Nie zapisano — popraw zaznaczone sceny.",
+    "presets.errMigration": "Nie zapisano — baza nie ma jeszcze migracji 0138, która czyni presety prywatnymi."
   },
   "batch": {
     "viewLabel": "Widok",

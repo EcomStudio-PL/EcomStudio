@@ -5768,7 +5768,8 @@
     "presets.errDuplicate": "Diesen Schlüssel gibt es schon.",
     "presets.errLabel": "Gib den polnischen Namen ein.",
     "presets.errPrompt": "Gib den Szenentext ein.",
-    "presets.errInvalid": "Nicht gespeichert — korrigiere die markierten Szenen."
+    "presets.errInvalid": "Nicht gespeichert — korrigiere die markierten Szenen.",
+    "presets.errMigration": "Nicht gespeichert — der Datenbank fehlt noch Migration 0138, die die Szenen privat macht."
   },
   "batch": {
     "viewLabel": "Ansicht",

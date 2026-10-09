@@ -57,7 +57,8 @@ export function AiBackgroundPresetsEditor({ initial }: { initial: AiBackgroundPr
     start(async () => {
       const res = await saveAiBackgroundPresetsAction(rows);
       if (res.ok) { toast.success(t("common.saved")); router.refresh(); }
-      else toast.error(res.error === "invalid" ? t("aicc.presets.errInvalid") : t("common.error"));
+      else toast.error(res.error === "invalid" ? t("aicc.presets.errInvalid")
+        : res.error === "migration_pending" ? t("aicc.presets.errMigration") : t("common.error"));
     });
   }
 

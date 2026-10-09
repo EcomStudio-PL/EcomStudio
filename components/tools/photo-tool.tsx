@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Columns2, Download, FlaskConical, Library, Loader2, RefreshCw, Sparkles, TriangleAlert,
@@ -72,6 +72,8 @@ type JobState = {
 type RunResponse = {
   ok: boolean;
   error?: string;
+  /** The press had already delivered: this is that stored result, not a new run. */
+  recovered?: boolean;
   credits?: number;
   environment?: "live" | "sandbox" | "local";
   result?: { id: string; url: string | null; width: number; height: number; mime: string; bytes: number };
@@ -121,6 +123,20 @@ export function PhotoToolWorkspace({
   const [clear, setClear] = useState<Record<string, boolean>>({});
   const reserved = useRef(0);
   const inFlight = useRef(0);
+  /** Every local preview this screen made, released when it closes. */
+  const previews = useRef(new Set<string>());
+  const preview = (file: File) => {
+    const url = URL.createObjectURL(file);
+    previews.current.add(url);
+    return url;
+  };
+  const release = (url: string | undefined) => {
+    if (url && previews.current.delete(url)) URL.revokeObjectURL(url);
+  };
+  useEffect(() => {
+    const all = previews.current;
+    return () => { all.forEach((u) => URL.revokeObjectURL(u)); all.clear(); };
+  }, []);
 
   // ── settings ──────────────────────────────────────────────────────────
   const [format, setFormat] = useState<Format>("png");
@@ -143,13 +159,19 @@ export function PhotoToolWorkspace({
   const [loadingMore, setLoadingMore] = useState(false);
   const [viewing, setViewing] = useState<PhotoResult | null>(null);
   const known = useRef(new Set(initialItems.map((i) => i.id)));
+  /** Jobs whose credits are already off the displayed balance — so a result
+   *  found twice (an answer and a recovery) is never subtracted twice. */
+  const charged = useRef(new Set<string>());
   const running = useRef(false);
 
-  const sandbox = environment === "sandbox";
+  // The test-key notice is for an operator who can actually run it.
+  const sandbox = available && environment === "sandbox";
   const jpegOff = tool === "ai_shadow" && shadowBg === "transparent";
   const effectiveFormat: Format = jpegOff && format === "jpeg" ? "png" : format;
   const usesColor = tool === "white_bg" || (tool === "ai_shadow" && shadowBg === "color");
-  const colorOk = HEX_RE.test(color);
+  // What the field SAYS is what is checked: a half-typed HEX blocks the run
+  // instead of quietly running the last valid colour.
+  const colorOk = HEX_RE.test(hexDraft);
   const custom = scene === CUSTOM;
   const promptOk = tool !== "ai_background" || !custom || prompt.trim().length >= 3;
 
@@ -188,7 +210,7 @@ export function PhotoToolWorkspace({
           const isClear = await hasRealTransparency(file);
           setClear((prev) => ({ ...prev, [path]: isClear }));
         }
-        setPhotos((prev) => prev.length >= PHOTO_MAX_PHOTOS ? prev : [...prev, { key: path, path, url: URL.createObjectURL(file) }]);
+        setPhotos((prev) => prev.length >= PHOTO_MAX_PHOTOS ? prev : [...prev, { key: path, path, url: preview(file) }]);
       }
     } finally {
       reserved.current -= batch.length;
@@ -213,14 +235,15 @@ export function PhotoToolWorkspace({
     try {
       const path = await store(createClient(), file);
       if (!path) { toast.error(t("photoTool.uploadFailed")); return; }
-      setGuidance({ key: path, path, url: URL.createObjectURL(file) });
+      release(guidance?.url);
+      setGuidance({ key: path, path, url: preview(file) });
     } finally {
       setGuidanceUploading(false);
     }
   }
 
   const dragging = useFileDrop({
-    enabled: !busy,
+    enabled: available && !busy,
     onDrop: (files, event) => {
       if (files.length === 0) { toast.error(t("products.invalidType")); return; }
       // A drop on the inspiration block is the inspiration; anywhere else it
@@ -250,17 +273,21 @@ export function PhotoToolWorkspace({
   }
 
   // ── history ───────────────────────────────────────────────────────────
-  /** Pull the newest page and keep what this screen has not shown yet. */
+  /** Pull the newest page, show what this screen has not shown yet, and
+   *  return the WHOLE page — a recovery looks for its press in all of it, not
+   *  only in what is new to this screen (another photo's lookup may have
+   *  added it a moment ago). */
   const refreshHead = useCallback(async (): Promise<PhotoResult[]> => {
     try {
       const res = await fetch(`/api/tools/photo?tool=${tool}`, { cache: "no-store" });
       const json = await res.json() as { ok: boolean; items?: PhotoResult[] };
       if (!json.ok || !json.items) return [];
       const fresh = json.items.filter((i) => !known.current.has(i.id));
-      if (fresh.length === 0) return [];
-      fresh.forEach((i) => known.current.add(i.id));
-      setItems((prev) => [...fresh, ...prev]);
-      return fresh;
+      if (fresh.length > 0) {
+        fresh.forEach((i) => known.current.add(i.id));
+        setItems((prev) => [...fresh, ...prev]);
+      }
+      return json.items;
     } catch {
       return [];
     }
@@ -288,14 +315,21 @@ export function PhotoToolWorkspace({
   const update = (key: string, patch: Partial<JobState>) =>
     setJobs((prev) => prev.map((j) => j.key === key ? { ...j, ...patch } : j));
 
+  /** Take a job's credits off the displayed balance — once per job. */
+  const charge = useCallback((job: JobState, credits: number | null | undefined) => {
+    if (charged.current.has(job.key)) return;
+    charged.current.add(job.key);
+    if (credits) setBalance((b) => Math.max(0, b - credits));
+  }, []);
+
   /** Did a request whose answer never arrived still deliver? The history is
-   *  the truth: a new result made from this photo means yes. */
+   *  the truth: a result made from this photo BY THIS PRESS means yes. */
   const recovered = useCallback(async (job: JobState) => {
-    const fresh = await refreshHead();
-    const hit = fresh.find((i) => i.sourcePath === job.path);
-    if (hit && hit.credits) setBalance((b) => Math.max(0, b - (hit.credits ?? 0)));
+    const page = await refreshHead();
+    const hit = page.find((i) => i.sourcePath === job.path && i.attempt === job.attempt);
+    if (hit) charge(job, hit.credits);
     return !!hit;
-  }, [refreshHead]);
+  }, [refreshHead, charge]);
 
   const runOne = useCallback(async (job: JobState): Promise<boolean> => {
     update(job.key, { status: "processing", error: undefined });
@@ -317,12 +351,14 @@ export function PhotoToolWorkspace({
       return false;
     }
     if (json.ok && json.result) {
-      setBalance((b) => Math.max(0, b - (json.credits ?? 0)));
+      // A recovered press was paid for by its first request, whose answer
+      // never reached this screen — so it comes off the balance here, once.
+      charge(job, json.credits);
       const r = json.result;
       if (!known.current.has(r.id)) {
         known.current.add(r.id);
         setItems((prev) => [{
-          id: r.id, tool, url: r.url, thumbUrl: r.url, sourceUrl: job.url, sourcePath: job.path,
+          id: r.id, tool, url: r.url, thumbUrl: r.url, sourceUrl: job.url, sourcePath: job.path, attempt: job.attempt,
           width: r.width, height: r.height, mime: r.mime, bytes: r.bytes,
           createdAt: new Date().toISOString(), environment: json.environment ?? "live",
           credits: json.credits ?? 0, settings: summary(tool, job.settings), uncertainty: null,
@@ -337,7 +373,7 @@ export function PhotoToolWorkspace({
     }
     update(job.key, { status: "failed", error: errText(json.error) });
     return false;
-  }, [tool, errText, recovered]);
+  }, [tool, errText, recovered, charge]);
 
   async function runAll() {
     // Guarded against the double click that would otherwise pay twice.
@@ -373,7 +409,12 @@ export function PhotoToolWorkspace({
     if (running.current) return;
     running.current = true;
     setBusy(true);
-    try { await runOne(job); } finally { setBusy(false); running.current = false; }
+    try {
+      // Look first: the "failed" press may have delivered after all. The
+      // server checks too (same token), so even a miss here cannot pay twice.
+      if (await recovered(job)) { update(job.key, { status: "completed", error: undefined }); return; }
+      await runOne(job);
+    } finally { setBusy(false); running.current = false; }
   }
 
   async function download(item: PhotoResult) {
@@ -394,7 +435,7 @@ export function PhotoToolWorkspace({
             : null;
   const canRun = available && !busy && !uploading && !guidanceUploading && photos.length > 0
     && (!usesColor || colorOk) && promptOk && missing === 0;
-  const status = blocker
+  const status = !available ? null : blocker
     ?? (freeCount > 0 ? t("photoTool.freeNote", { n: freeCount, total: photos.length }) : null)
     ?? (photos.length > 0 ? t("photoTool.balance", { n: n(balance) }) : null);
   const pending = jobs.filter((j) => j.status !== "completed");
@@ -433,7 +474,13 @@ export function PhotoToolWorkspace({
             </p>
           )}
 
-          <PhotoUploader
+          {!available && (
+            <p className="rounded-xl bg-raised px-3.5 py-3 text-[12px] leading-relaxed text-muted" data-photo-unavailable>
+              {t(`tools.unavailable.${reason === "ok" ? "maintenance" : reason}`)}
+            </p>
+          )}
+
+          {available && <PhotoUploader
             preview
             items={photos}
             max={PHOTO_MAX_PHOTOS}
@@ -443,9 +490,15 @@ export function PhotoToolWorkspace({
             zone
             dropTarget="photos"
             onFiles={upload}
-            onRemove={(i) => setPhotos((prev) => prev.filter((_, j) => j !== i))}
+            onRemove={(i) => {
+              // A preview still shown by a job card or a comparison stays
+              // alive until the screen closes.
+              const gone = photos[i];
+              if (gone && !jobs.some((j) => j.url === gone.url) && !items.some((it) => it.sourceUrl === gone.url)) release(gone.url);
+              setPhotos((prev) => prev.filter((_, j) => j !== i));
+            }}
             label={t("photoTool.photos", { n: PHOTO_MAX_PHOTOS })}
-          />
+          />}
 
           {tool === "white_bg" && (
             <ColorPicker label={t("photoTool.color")} color={color} draft={hexDraft}
@@ -477,7 +530,7 @@ export function PhotoToolWorkspace({
                 )}
               </section>
 
-              <section data-drop-target="guidance">
+              {available && <section data-drop-target="guidance">
                 <PhotoUploader
                   items={guidance ? [guidance] : []}
                   max={1}
@@ -486,7 +539,7 @@ export function PhotoToolWorkspace({
                   counter={false}
                   dropTarget="guidance"
                   onFiles={uploadGuidance}
-                  onRemove={() => setGuidance(null)}
+                  onRemove={() => { release(guidance?.url); setGuidance(null); }}
                   label={<span className="flex items-center gap-1">{t("photoTool.inspiration")}<InfoHint text={t("photoTool.inspirationHint")} /></span>}
                 />
                 {guidance && (
@@ -498,7 +551,7 @@ export function PhotoToolWorkspace({
                       className="w-full accent-[rgb(var(--accent))]" />
                   </div>
                 )}
-              </section>
+              </section>}
             </>
           )}
 
@@ -533,14 +586,18 @@ export function PhotoToolWorkspace({
             <p className="text-[11px] leading-relaxed text-faint">{t("photoTool.freeHint")}</p>
           )}
 
-          {!available && (
-            <p className="rounded-xl bg-raised px-3.5 py-3 text-[12px] leading-relaxed text-muted" data-photo-unavailable>
-              {t(`tools.unavailable.${reason === "ok" ? "maintenance" : reason}`)}
-            </p>
-          )}
         </div>
 
         {/* ── The footer: price per photo, total, why not, the action ───── */}
+        {!available ? (
+          // No price on a tool that cannot run: "0 credits" would read as free.
+          <div data-cost-island className="panel relative z-20 shrink-0 rounded-2xl px-4 py-3 lg:shadow-e2">
+            <button type="button" disabled data-photo-cta
+              className="cta flex h-11 w-full cursor-not-allowed items-center justify-center gap-1.5 rounded-xl px-3 text-[13.5px] font-semibold opacity-55">
+              <Sparkles size={14} aria-hidden /><span>{t(`photoTool.cta.${tool}`)}</span>
+            </button>
+          </div>
+        ) : (
         <CostIsland perImage={credits} count={paidCount} enough={missing === 0} status={status}>
           {missing > 0 && (
             <p className="-mt-1 mb-2 text-center text-[11px]">
@@ -558,6 +615,7 @@ export function PhotoToolWorkspace({
             {!busy && total > 0 && <><span aria-hidden className="opacity-60">•</span><span className="tabular-nums">{n(total)}</span></>}
           </button>
         </CostIsland>
+        )}
       </div>
 
       {/* ── RIGHT: what is running, then everything already made ─────────── */}

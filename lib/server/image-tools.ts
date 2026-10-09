@@ -507,6 +507,14 @@ export type RunInput = {
    * WAS stored survives a refresh, a closed tab or a dropped response.
    */
   deliver?: (out: DeliverInput) => Promise<DeliverResult>;
+  /**
+   * WAS THIS VERY REQUEST ALREADY DELIVERED? Asked once the usage event holds
+   * the idempotency key and before the provider is called. A finished run
+   * releases its key (0101), but it stores its result BEFORE it does — so a
+   * retry whose first answer was lost finds that result here and is refunded
+   * at once, with no second call and no second charge.
+   */
+  alreadyDelivered?: () => Promise<boolean>;
 };
 
 export type DeliverInput = {
@@ -799,6 +807,17 @@ async function runPaid(
     },
   });
   if (!usage.ok) { await releaseFree(); return { ok: false, error: usage.error }; }
+
+  // The same request, already delivered by an earlier attempt: hand the
+  // reservation (and a free run) straight back — nothing was called.
+  if (input.alreadyDelivered && await input.alreadyDelivered()) {
+    await failUsage(supabase, {
+      serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet.id,
+      error: "already_delivered", apiCostUsdMicros: 0,
+    });
+    await releaseFree();
+    return { ok: false, error: "already_delivered" };
+  }
 
   // The provider side of this run (ai_provider_calls). The price is the
   // provider catalogue's per-call figure — an ESTIMATE, labelled as one; no
