@@ -8,7 +8,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { CLIENT_NAV, ADMIN_NAV } from "@/lib/navigation";
-import { allDefaults, menuVisible, type AvailabilityMap, type FeatureKey } from "@/lib/features";
+import { allDefaults, menuBadge, menuVisible, type AvailabilityMap, type FeatureKey } from "@/lib/features";
 import {
   ALL_TOOLS_HREF, SEARCHABLE, buildToolIndex, matchTools, splitPopular,
   type ToolEntry, type ToolFacet,
@@ -471,6 +471,22 @@ export function CommandPalette({
     } as React.CSSProperties;
   };
 
+  /** The switchboard's word for an entry that is listed but not open yet —
+   *  the same pill and labels as the menus (mega-topbar DynBadge). An Aktywny
+   *  tool carries none, whether or not its provider is wired yet. */
+  const statusPill = (href: string) => {
+    const kind = menuBadge(avail, href);
+    const label = kind === "soon" ? t("features.badgeSoon")
+      : kind === "maintenance" ? t("features.badgeMaintenance")
+        : kind === "disabled" ? t("features.badgeDisabled") : null;
+    return label ? (
+      <span data-status-pill={kind}
+        className="shrink-0 rounded-full bg-raised px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-faint">
+        {label}
+      </span>
+    ) : null;
+  };
+
   /** One of the three cards. Identical markup on both layouts. */
   const toolCard = (entry: ToolEntry, index: number) => (
     <button
@@ -504,6 +520,7 @@ export function CommandPalette({
           <entry.icon size={14} />
         </span>
         <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-ink">{t(entry.nameKey)}</span>
+        {statusPill(entry.href)}
         <ArrowRight size={15} aria-hidden
           className="shrink-0 text-faint transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-accent" />
       </span>
@@ -532,6 +549,7 @@ export function CommandPalette({
         <entry.icon size={14} />
       </span>
       <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-ink">{t(entry.nameKey)}</span>
+      {statusPill(entry.href)}
       <ArrowRight size={14} aria-hidden
         className="shrink-0 text-faint transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-accent" />
     </button>
@@ -787,6 +805,7 @@ export function CommandPalette({
                               <span className="block truncate text-[13.5px] font-medium text-ink">{row.label}</span>
                               {row.sub && <span className="block truncate text-[11.5px] text-faint">{row.sub}</span>}
                             </span>
+                            {row.section !== "yours" && statusPill(row.href)}
                             <ArrowRight size={14} aria-hidden
                               className="shrink-0 text-faint transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-accent" />
                           </button>

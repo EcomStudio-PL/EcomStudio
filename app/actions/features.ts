@@ -82,6 +82,8 @@ export async function saveFeatureAvailabilityAction(input: FeatureSaveInput): Pr
       after: { status: row.status, hidden: row.hidden_from_menu, starts_at: row.starts_at, ends_at: row.ends_at, auto_reenable: row.auto_reenable },
     });
     revalidatePath(PAGE);
+    // Every customer surface reads the switchboard: /tools, Start, the menus, the search.
+    revalidatePath("/", "layout");
     return { ok: true };
   } catch {
     return { ok: false, error: "forbidden" };
@@ -118,6 +120,8 @@ export async function batchFeatureStatusAction(keys: FeatureKey[], status: Featu
       after: { status, count: unique.length },
     });
     revalidatePath(PAGE);
+    // Every customer surface reads the switchboard: /tools, Start, the menus, the search.
+    revalidatePath("/", "layout");
     return { ok: true };
   } catch {
     return { ok: false, error: "forbidden" };
@@ -158,6 +162,8 @@ export async function batchMenuVisibilityAction(keys: FeatureKey[], hidden: bool
       after: { hidden, count: unique.length },
     });
     revalidatePath(PAGE);
+    // Every customer surface reads the switchboard: /tools, Start, the menus, the search.
+    revalidatePath("/", "layout");
     return { ok: true };
   } catch {
     return { ok: false, error: "forbidden" };

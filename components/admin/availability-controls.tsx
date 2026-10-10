@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "@/lib/notify";
 import { BadgeCheck, Eye, EyeOff, Loader2 } from "lucide-react";
@@ -18,6 +19,7 @@ import {
   setClientPreviewAction, type FeatureAdminRow,
 } from "@/app/actions/features";
 import { customerExposure, panelKind, withDraft, type ExposureRow } from "@/lib/tool-panel";
+import { notReady, readinessCause, type ToolReadiness } from "@/lib/tool-readiness-admin";
 import { DEFAULT_LAYOUT, type ToolsLayout } from "@/lib/tool-layout";
 import { cn, formatInstant } from "@/lib/utils";
 
@@ -226,6 +228,30 @@ const draftFrom = (row: FeatureAdminRow): Draft => ({
 
 const INPUT_CLS = "mt-1.5 h-10 w-full min-w-0 rounded-xl border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-[rgb(var(--accent)/0.6)]";
 
+/* ── readiness — whether a tool can run, beside whether it is published ──── */
+
+/** Under the status buttons: what an Aktywny tool that cannot run does for a
+ *  customer, and where the operator fixes it. */
+function ReadinessNote({ readiness, active }: { readiness: ToolReadiness; active: boolean }) {
+  const { t } = useI18n();
+  const service = readiness.state === "service_disabled" || readiness.state === "service_maintenance";
+  const cause = readinessCause(readiness, t);
+  const text = !active ? t("aicc.panel.readiness.other", { cause })
+    : service ? t("aicc.panel.readiness.activeService", { cause })
+      : t("aicc.panel.readiness.active", { cause });
+  return (
+    <div data-readiness={readiness.state}
+      className={cn("mt-2 rounded-xl border px-3 py-2.5 text-[12px] leading-relaxed",
+        active ? "border-[rgb(var(--warning)/0.35)] bg-[rgb(var(--warning)/0.08)] text-ink" : "border-line bg-surface text-muted")}>
+      <p>{text}</p>
+      <Link href={service ? "/admin/services" : "/admin/ai/modele?tab=dostawcy"}
+        className="mt-1.5 inline-flex font-semibold text-accent hover:opacity-80">
+        {t(service ? "aicc.panel.readiness.fixServices" : "aicc.panel.readiness.fixProviders")} →
+      </Link>
+    </div>
+  );
+}
+
 /**
  * SECTIONS "STATUS" AND "WIDOCZNOŚĆ" — one row of `feature_availability`, one
  * Save. They are two sections because they are two decisions; they share a
@@ -236,7 +262,7 @@ const INPUT_CLS = "mt-1.5 h-10 w-full min-w-0 rounded-xl border border-line bg-s
  * save elsewhere remounts it with the new values instead of leaving a stale
  * draft on screen.
  */
-export function AvailabilityEditor({ row, availability, toolsLayout = DEFAULT_LAYOUT, first, arrangement, extra, staticSoon }: {
+export function AvailabilityEditor({ row, availability, toolsLayout = DEFAULT_LAYOUT, first, arrangement, extra, staticSoon, readiness }: {
   row: FeatureAdminRow;
   /** The live switchboard — what every OTHER module is set to right now. */
   availability: AvailabilityMap;
@@ -250,6 +276,8 @@ export function AvailabilityEditor({ row, availability, toolsLayout = DEFAULT_LA
   extra?: React.ReactNode;
   /** No backend yet: customers see "Wkrótce" whatever the status says. */
   staticSoon?: boolean;
+  /** Whether the tool can actually run (lib/server/tool-readiness.ts); absent for modules. */
+  readiness?: ToolReadiness | null;
 }) {
   const { t, locale } = useI18n();
   const router = useRouter();
@@ -307,7 +335,14 @@ export function AvailabilityEditor({ row, availability, toolsLayout = DEFAULT_LA
               </button>
             ))}
           </div>
-          <p className="mt-2 text-[12px] leading-relaxed text-muted">{t(`aicc.panel.statusHint.${value.status}`)}</p>
+          {/* "Klienci mogą z niego korzystać" is only true of a tool that can
+              run; an Aktywny one that cannot says why instead. */}
+          {!(value.status === "ACTIVE" && notReady(readiness)) && (
+            <p className="mt-2 text-[12px] leading-relaxed text-muted">{t(`aicc.panel.statusHint.${value.status}`)}</p>
+          )}
+          {notReady(readiness) && (
+            <ReadinessNote readiness={readiness} active={value.status === "ACTIVE"} />
+          )}
           {staticSoon && value.status !== "DISABLED" && (
             <p className="mt-1.5 text-[12px] leading-relaxed text-accent2">{t("aicc.panel.staticSoon")}</p>
           )}

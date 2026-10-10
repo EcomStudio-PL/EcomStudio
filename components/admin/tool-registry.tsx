@@ -25,6 +25,7 @@ import { ToolModelPicker, type PickableModel } from "@/components/admin/tool-mod
 import {
   AvailabilityEditor, BulkBar, ConfigSection, PreviewToggle,
 } from "@/components/admin/availability-controls";
+import { notReady, readinessCause, type ToolReadiness } from "@/lib/tool-readiness-admin";
 import { ItemPlacements } from "@/components/admin/tools-layout";
 import { cn } from "@/lib/utils";
 
@@ -83,9 +84,11 @@ function quickMatch(q: Quick, status: FeatureStatus, hidden: boolean): boolean {
   }
 }
 
-export function ToolRegistry({ entries, availability, toolsLayout, models, services, previewing, locale, openKey }: {
+export function ToolRegistry({ entries, availability, toolsLayout, models, services, previewing, locale, openKey, readiness = {} }: {
   entries: PanelEntry[];
   availability: AvailabilityMap;
+  /** Whether each tool can actually run, beside its status (lib/server/tool-readiness.ts). */
+  readiness?: Partial<Record<FeatureKey, ToolReadiness>>;
   /** The catalogue layout in force (lib/tool-layout.ts). */
   toolsLayout: ToolsLayout;
   models: PickableModel[];
@@ -257,6 +260,7 @@ export function ToolRegistry({ entries, availability, toolsLayout, models, servi
               {g.items.map((entry) => (
                 <EntryRow key={entry.admin.key} entry={entry} locale={locale}
                   availability={availability} models={models} services={services}
+                  readiness={readiness[entry.admin.key] ?? null}
                   toolsLayout={layout} onFlags={setFlags}
                   open={open.has(entry.admin.key)} mounted={mounted.has(entry.admin.key)}
                   onOpen={() => toggleOpen(entry.admin.key)}
@@ -280,8 +284,9 @@ export function ToolRegistry({ entries, availability, toolsLayout, models, servi
 
 type T = (key: string, values?: Record<string, string | number>) => string;
 
-function EntryRow({ entry, open, mounted, onOpen, selected, onSelect, availability, toolsLayout, onFlags, models, services, locale }: {
+function EntryRow({ entry, open, mounted, onOpen, selected, onSelect, availability, toolsLayout, onFlags, models, services, locale, readiness }: {
   entry: PanelEntry;
+  readiness: ToolReadiness | null;
   open: boolean;
   /** Opened at least once: the configuration stays in the DOM, hidden, so
    *  its drafts survive a collapse. */
@@ -327,9 +332,20 @@ function EntryRow({ entry, open, mounted, onOpen, selected, onSelect, availabili
               <p id={nameId} className="truncate text-[14px] font-semibold text-ink">{t(admin.nameKey)}</p>
               <p className="truncate text-[12px] text-muted">{subLine(entry, kind, covered.length, t)}</p>
             </div>
-            <Badge tone={STATUS_TONE[live]} dot className="shrink-0">
-              {t(`featAdm.status.${live}`)}
-            </Badge>
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <Badge tone={STATUS_TONE[live]} dot>
+                {t(`featAdm.status.${live}`)}
+              </Badge>
+              {/* Published is not ready: an Aktywny tool that cannot run says
+                  why, here, not only inside its configuration. */}
+              {notReady(readiness) && (
+                <span data-readiness={readiness.state} title={readinessCause(readiness, t)}>
+                  <Badge tone={live === "ACTIVE" ? "warning" : "neutral"}>
+                    {t(`aicc.panel.readiness.badge.${readiness.state}`)}
+                  </Badge>
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
@@ -338,7 +354,7 @@ function EntryRow({ entry, open, mounted, onOpen, selected, onSelect, availabili
                 {kind === "tool" && tool ? t(`aicc.category.${tool.category}`) : t(`aicc.panel.kind.${kind}`)}
               </Badge>
               {tool && <Badge tone={ENGINE_TONE[tool.engineMode]}>{t(`aicc.engine.${tool.engineMode}`)}</Badge>}
-              {tool && <Badge tone="neutral" className="max-w-full overflow-hidden">{modelLine(tool, t)}</Badge>}
+              {tool && <Badge tone="neutral" className="max-w-full overflow-hidden">{modelLine(tool, t, readiness?.provider)}</Badge>}
               {tool && tool.promptVersion !== null && <Badge tone="neutral">v{tool.promptVersion}</Badge>}
               {tool?.workflowVersion ? <Badge tone="neutral">{t("aicc.engine.workflowShort", { n: tool.workflowVersion })}</Badge> : null}
               {tool && <span className="text-[12px] font-semibold tabular-nums text-muted">{creditsLabel(tool, t)}</span>}
@@ -387,7 +403,7 @@ function EntryRow({ entry, open, mounted, onOpen, selected, onSelect, availabili
             <div className="grid gap-3.5 lg:grid-cols-2 [&>*]:min-w-0">
               <div className="space-y-3.5">
                 <ConfigSection n={1} title={t("aicc.panel.sec.model")}>
-                  <ModelSection tool={tool} models={models} />
+                  <ModelSection tool={tool} models={models} pinned={readiness?.provider ?? null} />
                 </ConfigSection>
                 <ConfigSection n={2} title={t("aicc.panel.sec.credits")}>
                   <CreditsSection tool={tool} services={services} models={models} />
@@ -395,12 +411,12 @@ function EntryRow({ entry, open, mounted, onOpen, selected, onSelect, availabili
               </div>
               <AvailabilityEditor key={savedKey(admin)} row={admin} availability={availability}
                 toolsLayout={toolsLayout} first={3} arrangement="stack" staticSoon={staticallySoon(admin.key)}
-                extra={placements} />
+                readiness={readiness} extra={placements} />
             </div>
           ) : (
             <AvailabilityEditor key={savedKey(admin)} row={admin} availability={availability}
               toolsLayout={toolsLayout} first={1} arrangement="split" staticSoon={staticallySoon(admin.key)}
-              extra={placements} />
+              readiness={readiness} extra={placements} />
           )}
           {kind === "tool" && (
             <Link href={`/admin/ai/${admin.key}`}
@@ -441,7 +457,12 @@ function configOf(tool: ToolRow): ToolConfigValues {
   };
 }
 
-function ModelSection({ tool, models }: { tool: ToolRow; models: PickableModel[] }) {
+function ModelSection({ tool, models, pinned }: {
+  tool: ToolRow;
+  models: PickableModel[];
+  /** The one vendor this tool runs on, when it is pinned (the photo tools: Photoroom). */
+  pinned: string | null;
+}) {
   const { t } = useI18n();
   // The tabs the tool workspace offers are the controls this tool HAS: a
   // sharp tool has no engine and no model, and pretending otherwise would be
@@ -457,7 +478,7 @@ function ModelSection({ tool, models }: { tool: ToolRow; models: PickableModel[]
     <div className="space-y-4">
       <dl className="grid gap-x-4 gap-y-2 text-[13px] sm:grid-cols-[auto_minmax(0,1fr)]">
         <dt className="text-muted">{t("aicc.col.model")}</dt>
-        <dd className="min-w-0 font-medium text-ink">{modelLine(tool, t)}</dd>
+        <dd className="min-w-0 font-medium text-ink">{modelLine(tool, t, pinned)}</dd>
         {providers.length > 0 && (
           <>
             <dt className="text-muted">{t("aicc.panel.provider")}</dt>
@@ -494,7 +515,11 @@ function ModelSection({ tool, models }: { tool: ToolRow; models: PickableModel[]
         <p className="flex items-start gap-2 rounded-xl bg-raised px-3 py-2.5 text-[12.5px] leading-relaxed text-muted">
           <Cpu size={14} aria-hidden className="mt-0.5 shrink-0 text-faint" />
           <span className="min-w-0">
-            {t(tool.category === "local" ? "aicc.panel.localNote" : "aicc.panel.capabilityNote")}
+            {/* A pinned tool never falls through to another vendor's key —
+                "chosen by capability" would describe a path it does not take. */}
+            {pinned && tool.category !== "local"
+              ? t("aicc.panel.pinnedNote", { provider: pinned })
+              : t(tool.category === "local" ? "aicc.panel.localNote" : "aicc.panel.capabilityNote")}
             {tool.category !== "local" && (
               <>
                 {" "}
@@ -573,7 +598,7 @@ function CreditsSection({ tool, services, models }: {
  * module with no engine yet is not sharp, and saying so would be the kind of
  * confident wrong answer this screen exists to remove.
  */
-function modelLine(r: ToolRow, t: T): string {
+function modelLine(r: ToolRow, t: T, pinned?: string | null): string {
   // Only a tool whose runtime READS the assignment shows it as its model.
   // Everywhere else a stored assignment decides nothing, so the line names
   // the source the run really takes its model from.
@@ -588,7 +613,7 @@ function modelLine(r: ToolRow, t: T): string {
     case "customer_choice": return t("aicc.tools.customerChoice");
     case "concept_chain": return t("aicc.apiPath.conceptShort");
     case "fixed": return t("aicc.apiPath.fixedShort");
-    case "capability": return t("aicc.apiPath.capabilityShort");
+    case "capability": return pinned ? t("aicc.apiPath.pinnedShort", { provider: pinned }) : t("aicc.apiPath.capabilityShort");
     default: return r.engineMode === "off" ? t("aicc.tools.noEngine") : t("aicc.tools.noModel");
   }
 }

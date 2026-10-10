@@ -269,10 +269,11 @@ export function matchTools(index: readonly ToolIndexEntry[], query: string): Too
  * Turn a ranking into the two lists the modal renders.
  *
  * Availability is applied HERE, after ranking and before slicing, which is the
- * only order that works: a tool switched to "Wkrótce" this morning drops out
- * and the next one moves up, so the grid is always full and never offers a
- * screen the customer cannot open. The ranking is stored deeper than 3 + 6 for
- * exactly this reason.
+ * only order that works: a tool switched off (Wyłączony) or taken off the
+ * lists this morning drops out and the next one moves up, so the grid is
+ * always full and never offers a door that 404s. A "Wkrótce" or maintenance
+ * tool stays — it opens onto its own screen — and the modal marks it with the
+ * menus' pill. The ranking is stored deeper than 3 + 6 for exactly this reason.
  */
 export function splitPopular(
   keys: readonly FeatureKey[],

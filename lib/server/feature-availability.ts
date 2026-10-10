@@ -13,9 +13,11 @@ import {
  * answer "may this render / may this API run". The admin WRITE path lives in
  * app/actions/features.ts; nothing here mutates.
  *
- * Failure posture: any read problem degrades to "everything ACTIVE". The
- * availability switchboard exists to take single modules down on purpose —
- * it must never take the whole product down by accident.
+ * Failure posture: any read problem degrades to the registry defaults
+ * (allDefaults — live modules ACTIVE, the ones the code declares unfinished
+ * "Wkrótce"), never to an error. The availability switchboard exists to take
+ * single modules down on purpose — it must never take the whole product down
+ * by accident.
  */
 
 export type FeatureRow = {
@@ -40,15 +42,15 @@ export type FeatureRow = {
 export function effectiveState(row: FeatureRow | undefined, now: Date): FeatureState {
   if (!row) return ACTIVE_STATE;
   const status = row.status as FeatureStatus;
-  if (status !== "COMING_SOON" && status !== "MAINTENANCE" && status !== "DISABLED") {
-    // ACTIVE still carries the admin's menu choice: "visible" and "status" are
-    // independent settings (§28), so a feature can be live and still hidden.
-    return row.hidden_from_menu ? { ...ACTIVE_STATE, hiddenFromMenu: true } : ACTIVE_STATE;
-  }
+  // ACTIVE still carries the admin's menu choice: "visible" and "status" are
+  // independent settings (§28), so a feature can be live and still hidden —
+  // including while a restriction's window has not started or has reopened it.
+  const live = row.hidden_from_menu ? { ...ACTIVE_STATE, hiddenFromMenu: true } : ACTIVE_STATE;
+  if (status !== "COMING_SOON" && status !== "MAINTENANCE" && status !== "DISABLED") return live;
   const starts = row.starts_at ? new Date(row.starts_at) : null;
   const ends = row.ends_at ? new Date(row.ends_at) : null;
-  if (starts && !Number.isNaN(starts.getTime()) && now < starts) return ACTIVE_STATE;
-  if (ends && !Number.isNaN(ends.getTime()) && now >= ends && row.auto_reenable) return ACTIVE_STATE;
+  if (starts && !Number.isNaN(starts.getTime()) && now < starts) return live;
+  if (ends && !Number.isNaN(ends.getTime()) && now >= ends && row.auto_reenable) return live;
   const reopensAt = row.auto_reenable && ends && !Number.isNaN(ends.getTime()) && now < ends
     ? ends.toISOString() : null;
   return {

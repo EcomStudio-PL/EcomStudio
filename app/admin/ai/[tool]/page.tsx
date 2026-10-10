@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getDictionary } from "@/lib/i18n/server";
 import { makeT } from "@/lib/i18n/t";
 import { getAvailabilityMap } from "@/lib/server/feature-availability";
+import { readToolReadiness } from "@/lib/server/tool-readiness";
+import { notReady, readinessCause } from "@/lib/tool-readiness-admin";
 import {
   MODEL_ASSIGNMENT_RUNTIME, PHOTO_TOOL_KEYS, isAiToolKey, readBillingServices, readPickableModels, readPromptHistory, readToolRegistry,
   LEGACY_TAB, readWorkflowHistory, toolHasPromptEngine, toolSupportsWorkflow, toolTabs, type ToolTab,
@@ -66,10 +68,13 @@ export default async function ToolWorkspace({ params, searchParams }: {
   const { dict, locale } = await getDictionary();
   const t = makeT(dict);
 
+  // Whether the tool can actually run — read beside the switchboard, not after it.
+  const readinessP = readToolReadiness(supabase);
   const availability = await getAvailabilityMap(supabase);
   const registry = await readToolRegistry(supabase, availability);
   const row = registry.find((r) => r.key === tool);
   if (!row) notFound();
+  const readiness = (await readinessP)[row.key] ?? null;
 
   const tabs = toolTabs(row);
   // Old links (?tab=economics / ?tab=history) land on the tab that now holds them.
@@ -106,6 +111,13 @@ export default async function ToolWorkspace({ params, searchParams }: {
             <Badge tone={STATUS_TONE[row.status]} dot>
               {t(`featAdm.status.${row.status}`)}
             </Badge>
+            {notReady(readiness) && (
+              <span data-readiness={readiness.state} title={readinessCause(readiness, t)}>
+                <Badge tone={row.status === "ACTIVE" ? "warning" : "neutral"}>
+                  {t(`aicc.panel.readiness.badge.${readiness.state}`)}
+                </Badge>
+              </span>
+            )}
             <Badge tone={row.engineMode === "off" ? "neutral" : "accent"}>
               {t(`aicc.engine.${row.engineMode}`)}
             </Badge>

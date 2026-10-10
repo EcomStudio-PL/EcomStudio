@@ -7,6 +7,7 @@ import { SlotMedia } from "@/components/media/slot-media";
 import type { SlotMap } from "@/lib/server/media-slots";
 import { menuBadge, type AvailabilityMap, type MenuGate } from "@/lib/features";
 import { isVideoCard, majorityVideo } from "@/lib/tool-cards";
+import { readinessCloses } from "@/lib/tool-readiness";
 import { cn } from "@/lib/utils";
 
 /**
@@ -35,7 +36,7 @@ export type CatalogueCard = {
    *  not — its picture belongs to the category. */
   slotKey?: string | null;
   /** The tool catalogue's verdict: null when this card is a place rather than
-   *  a priced operation. */
+   *  a priced operation. Readiness, never publication — see lib/tool-readiness. */
   state?: { available: boolean; credits: number; reason: string | null } | null;
   /** Every route whose switch governs this card, when that is more than its
    *  own href — a category's workflow answers to the category AND to itself. */
@@ -156,14 +157,18 @@ function ToolCard({ card, avail, isAdmin, t, slots, vertical }: {
   /** The section's frame is 9:16 (a section of video tools, see majorityVideo). */
   vertical: boolean;
 }) {
-  // Three things can close a card: the module switchboard, the tool catalogue
-  // (no provider / maintenance), or the module having no backend at all.
-  // Admins keep every card open — they are the ones who switch modules back on.
+  // What closes a card: the operator's status (the module switchboard), the
+  // module having no backend at all, or an operator's switch in the service
+  // catalogue (disabled / maintenance). A published tool that is only waiting
+  // for its provider (no key yet, a test key) stays open and unbadged — its
+  // own screen says it cannot run yet and the run API charges nothing
+  // (lib/tool-readiness.ts). Admins keep every switchboard card open — they
+  // are the ones who switch modules back on.
   const gate: MenuGate = card.gates ?? card.href;
   const moduleBadge = isAdmin ? null : menuBadge(avail, gate);
   const blocked = Boolean(card.soon)
     || moduleBadge === "disabled" || moduleBadge === "soon" || moduleBadge === "maintenance"
-    || (card.state ? !card.state.available : false);
+    || readinessCloses(card.state);
 
   const badge = card.soon || moduleBadge === "soon"
     ? <Badge tone="accent">{t("features.badgeSoon")}</Badge>
@@ -171,9 +176,9 @@ function ToolCard({ card, avail, isAdmin, t, slots, vertical }: {
       ? <Badge tone="accent">{t("features.badgeMaintenance")}</Badge>
       : moduleBadge === "disabled"
         ? <Badge tone="neutral">{t("features.badgeDisabled")}</Badge>
-        : card.state && !card.state.available && card.state.reason
+        : readinessCloses(card.state) && card.state?.reason
           ? <Badge tone="accent">{t(`tools.state.${card.state.reason}`)}</Badge>
-          : card.state && card.state.credits > 0
+          : card.state && card.state.available && card.state.credits > 0
             ? <Badge tone="neutral">{t("tools.creditsTotal", { n: card.state.credits })}</Badge>
             : null;
 

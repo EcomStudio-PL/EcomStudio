@@ -3,6 +3,7 @@ import { getCurrentWorkspace, getProfile, type Client } from "@/lib/services/wor
 import { getWallet } from "@/lib/services/credits";
 import { getAvailabilityMap, viewerIsAdmin } from "@/lib/server/feature-availability";
 import { toolCatalogue } from "@/lib/server/image-tools";
+import { waitingForProvider } from "@/lib/tool-readiness";
 import { conceptModelOptions } from "@/lib/server/concept-generation";
 import { fashionModel, fashionPrice, fashionToolAvailable } from "@/lib/server/fashion";
 import { engineOutputsPerRun, engineToolConfigured } from "@/lib/server/engine/tool-run";
@@ -260,9 +261,13 @@ export async function loadSellerHome(supabase: Client, user: {
     // Image tools and the editor's shortcuts: the catalogue /tools reads.
     const slug = item.slug ?? key;
     const entry = catalogue.find((c) => c.slug === slug);
+    // Published and only waiting for its provider (no key yet, a test key):
+    // the door stays open, as on /tools — the tool's own screen says it cannot
+    // run yet, and no price is promised (lib/tool-readiness.ts).
+    const waiting = waitingForProvider(entry);
     // An editor shortcut without a catalogue row is the free, local editor.
-    const runs = entry ? entry.available : href.startsWith("/tools/editor");
-    return { key, href, status: status(gate, runs), credits: entry ? entry.credits : 0 };
+    const runs = entry ? entry.available || waiting : href.startsWith("/tools/editor");
+    return { key, href, status: status(gate, runs), credits: entry ? (waiting ? null : entry.credits) : 0 };
   }
 
   const items: Record<string, ItemState> = {};
