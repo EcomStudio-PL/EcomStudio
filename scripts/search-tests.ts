@@ -246,8 +246,10 @@ for (const [label, state] of [
     !matchTools(visible, "obróbka zdjęć").some((e) => e.id === "retouch"));
 }
 const palette = fs.readFileSync("components/layout/command-palette.tsx", "utf8");
+// The filter also answers to a category workflow's category (searchGate) —
+// stricter than the entry's own switch alone, never looser.
 check("the palette filters with menuVisible before indexing the tags",
-  /buildToolIndex\(SEARCHABLE\.filter\(\(e\) => menuVisible\(avail, e\.href, seesRestricted\)\), t, searchTags\)/.test(palette));
+  /buildToolIndex\(SEARCHABLE\.filter\(\(e\) => menuVisible\(avail, searchGate\(e\.href\), seesRestricted\)\), t, searchTags\)/.test(palette));
 
 check("normaliseSearchTags: trims, drops empties, de-dupes case/diacritics",
   JSON.stringify(normaliseSearchTags(["  Obróbka  zdjęć ", "", "   ", "OBROBKA ZDJEC", "packshot", 7, null]))

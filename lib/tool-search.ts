@@ -6,8 +6,21 @@ import { TOOLS, isPhotoTool } from "./images/tools";
 import { normalise } from "./search-tags";
 import {
   FEATURE_REGISTRY, featureForHref, featureForPhotoTool, featureForToolSlug, menuVisible,
-  type AvailabilityMap, type FeatureKey,
+  type AvailabilityMap, type FeatureKey, type MenuGate,
 } from "./features";
+
+/**
+ * The switches a search entry answers to. A category workflow
+ * (/k/<cat>/<wf>) answers to its category as well as to itself — its screen
+ * is gated on the category (app/(app)/k/[cat]/[wf]/layout.tsx) and its /tools
+ * card carries the same two gates — so a tool inside a "Wkrótce" category is
+ * badged, and one inside a switched-off category is not offered.
+ */
+export function searchGate(href: string): MenuGate {
+  const path = href.split(/[?#]/)[0];
+  const category = /^\/k\/[^/]+/.exec(path)?.[0];
+  return category && category !== path ? [category, href] : href;
+}
 
 /**
  * WHAT THE SEARCH KNOWS ABOUT A TOOL — an enrichment, not a second registry.
@@ -286,7 +299,7 @@ export function splitPopular(
   for (const key of keys) {
     if (seen.has(key)) continue;
     const card = TOOL_CARD_BY_KEY.get(key);
-    if (!card || !menuVisible(avail, card.href, isAdmin)) continue;
+    if (!card || !menuVisible(avail, searchGate(card.href), isAdmin)) continue;
     seen.add(key);
     usable.push(card);
   }
@@ -294,7 +307,7 @@ export function splitPopular(
   // hid most of it, still fills the grid — "nigdy pusty modal".
   for (const card of TOOL_CARDS) {
     if (usable.length >= counts.top + counts.popular) break;
-    if (seen.has(card.key) || !menuVisible(avail, card.href, isAdmin)) continue;
+    if (seen.has(card.key) || !menuVisible(avail, searchGate(card.href), isAdmin)) continue;
     seen.add(card.key);
     usable.push(card);
   }

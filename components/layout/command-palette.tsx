@@ -10,7 +10,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import { CLIENT_NAV, ADMIN_NAV } from "@/lib/navigation";
 import { allDefaults, menuBadge, menuVisible, type AvailabilityMap, type FeatureKey } from "@/lib/features";
 import {
-  ALL_TOOLS_HREF, SEARCHABLE, buildToolIndex, matchTools, splitPopular,
+  ALL_TOOLS_HREF, SEARCHABLE, buildToolIndex, matchTools, searchGate, splitPopular,
   type ToolEntry, type ToolFacet,
 } from "@/lib/tool-search";
 import { MenuVeil } from "./menu-veil";
@@ -328,7 +328,7 @@ export function CommandPalette({
   // scan over a few dozen short strings, which is why no keystroke here
   // touches the network and none of it needs debouncing.
   const toolIndex = useMemo(
-    () => buildToolIndex(SEARCHABLE.filter((e) => menuVisible(avail, e.href, seesRestricted)), t, searchTags),
+    () => buildToolIndex(SEARCHABLE.filter((e) => menuVisible(avail, searchGate(e.href), seesRestricted)), t, searchTags),
     [t, avail, seesRestricted, searchTags],
   );
 
@@ -475,7 +475,7 @@ export function CommandPalette({
    *  the same pill and labels as the menus (mega-topbar DynBadge). An Aktywny
    *  tool carries none, whether or not its provider is wired yet. */
   const statusPill = (href: string) => {
-    const kind = menuBadge(avail, href);
+    const kind = menuBadge(avail, searchGate(href));
     const label = kind === "soon" ? t("features.badgeSoon")
       : kind === "maintenance" ? t("features.badgeMaintenance")
         : kind === "disabled" ? t("features.badgeDisabled") : null;

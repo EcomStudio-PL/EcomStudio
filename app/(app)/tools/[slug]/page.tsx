@@ -78,7 +78,9 @@ export default async function ToolPage({ params }: { params: Promise<{ slug: str
         <ArrowLeft size={14} aria-hidden /> {t("nav.allTools")}
       </Link>
       <PageHeader
-        overline={entry.credits === 0 ? t("tools.free") : t("tools.creditsTotal", { n: entry.credits })}
+        // A tool that cannot run has no price to state: 0 credits would read
+        // as "Za darmo" above a panel saying it is unavailable.
+        overline={!entry.available ? undefined : entry.credits === 0 ? t("tools.free") : t("tools.creditsTotal", { n: entry.credits })}
         title={t(`tools.${tool.slug}.name`)}
         sub={t(`tools.${tool.slug}.body`)}
       />

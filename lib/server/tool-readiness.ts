@@ -1,6 +1,6 @@
 import "server-only";
 import type { Client } from "@/lib/services/workspace";
-import { featureDescriptor, featureForHref, featureForPhotoTool, type FeatureKey } from "@/lib/features";
+import { featureForPhotoTool, featureForToolSlug, type FeatureKey } from "@/lib/features";
 import { TOOLS, isPhotoTool, toolBySlug } from "@/lib/images/tools";
 import { toolCatalogue } from "@/lib/server/image-tools";
 import type { ToolReadiness } from "@/lib/tool-readiness-admin";
@@ -19,12 +19,13 @@ import type { ToolReadiness } from "@/lib/tool-readiness-admin";
  */
 
 /** The admin switch that owns a tool: a photo tool its own key; any other
- *  tool the registry entry whose route is exactly `/tools/<slug>`, if any. */
+ *  the one the run API uses (`format` → Zmień rozmiar). Tools that only ride
+ *  on the hub's or the editor's switch are skipped — one tool's provider must
+ *  not speak for a switch that governs many. */
 function featureOfTool(slug: string): FeatureKey | null {
   if (isPhotoTool(slug)) return featureForPhotoTool(slug);
-  const href = `/tools/${slug}`;
-  const key = featureForHref(href);
-  return key && featureDescriptor(key)?.path === href ? key : null;
+  const key = featureForToolSlug(slug);
+  return key === "tools" || key === "editor" ? null : key;
 }
 
 export async function readToolReadiness(supabase: Client): Promise<Partial<Record<FeatureKey, ToolReadiness>>> {
@@ -54,7 +55,8 @@ async function readinessOf(supabase: Client): Promise<Partial<Record<FeatureKey,
     if (!entry) continue;
     const pinned = toolBySlug(tool.slug)?.provider ?? null;
     const row = pinned ? rows.find((r) => r.slug === pinned) : undefined;
-    const provider = pinned ? (row?.name?.trim() || pinned.charAt(0).toUpperCase() + pinned.slice(1)) : null;
+    const nameOf = (slug: string, r?: { name: string | null }) => r?.name?.trim() || slug.charAt(0).toUpperCase() + slug.slice(1);
+    let provider = pinned ? nameOf(pinned, row) : null;
     const providerActive = row ? row.active : null;
 
     let state: ToolReadiness["state"] = "ready";
@@ -65,7 +67,13 @@ async function readinessOf(supabase: Client): Promise<Partial<Record<FeatureKey,
             // A key that exists on a provider switched off is one click away;
             // no key at all is the bigger job, so it is named first.
             : row && withKey.has(row.id) && !row.active ? "provider_inactive"
-              : "no_key";
+              // Provider on and a key saved, yet the runner found none: it was
+              // saved under a minute ago (the key cache), or it cannot be read.
+              : row && withKey.has(row.id) && row.active ? "key_pending"
+                : "no_key";
+      // Only a Photoroom key is ever a test key (isSandbox), so an unpinned
+      // tool held back by one still has a vendor to name.
+      if (state === "sandbox" && !provider) provider = nameOf("photoroom", rows.find((r) => r.slug === "photoroom"));
     }
     // One switch, several tools: the first one that cannot run is what the operator needs to know.
     const prev = out[key];

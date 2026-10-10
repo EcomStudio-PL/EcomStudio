@@ -16,6 +16,7 @@ export type ToolReadinessState =
   | "ready"
   | "no_key"
   | "provider_inactive"
+  | "key_pending"
   | "sandbox"
   | "service_disabled"
   | "service_maintenance";

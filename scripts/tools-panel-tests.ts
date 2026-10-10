@@ -462,7 +462,8 @@ console.log("\nH. every new string in PL, EN and DE");
     "tools.whole", "home.page", "creditsN", "byModel", "modelBase", "modelPriced", "modelsLink", "staticSoon",
     "storedStatus",
     // Published is not ready: the real reason an Aktywny tool cannot run.
-    "readiness.badge.no_key", "readiness.badge.provider_inactive", "readiness.badge.sandbox",
+    "readiness.badge.no_key", "readiness.badge.provider_inactive", "readiness.badge.key_pending", "readiness.badge.sandbox",
+    "readiness.cause.key_pending",
     "readiness.badge.service_disabled", "readiness.badge.service_maintenance",
     "readiness.cause.no_key", "readiness.cause.no_key_any", "readiness.cause.provider_inactive",
     "readiness.cause.sandbox", "readiness.cause.service_disabled", "readiness.cause.service_maintenance",

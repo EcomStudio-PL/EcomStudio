@@ -33,6 +33,7 @@ import { PHOTO_TOOLS, type PhotoToolSlug } from "@/lib/images/tools";
 import { WAITING_REASONS, readinessCloses, waitingForProvider } from "@/lib/tool-readiness";
 import { notReady, readinessCause, type ToolReadiness } from "@/lib/tool-readiness-admin";
 import { readToolReadiness } from "@/lib/server/tool-readiness";
+import { searchGate } from "@/lib/tool-search";
 import { ToolsCatalogue, type CatalogueCard, type CatalogueSection } from "@/components/tools/tools-catalogue";
 import { batchFeatureStatusAction, saveFeatureAvailabilityAction, type FeatureSaveInput } from "@/app/actions/features";
 import { makeT } from "@/lib/i18n/t";
@@ -291,21 +292,36 @@ async function main() {
     activeNoKey.ai_providers = [{ id: "p-photoroom", slug: "photoroom", name: "Photoroom", active: true }];
     r = await readiness(activeNoKey);
     check("an active provider without a key → no_key, provider on", PHOTO_TOOLS.every((s) => r[keyOf(s)]?.state === "no_key" && r[keyOf(s)]?.providerActive === true));
+    const pending = base();
+    pending.ai_providers = [{ id: "p-photoroom", slug: "photoroom", name: "Photoroom", active: true }];
+    pending.ai_provider_credentials = [{ provider_id: "p-photoroom", active: true }];
+    r = await readiness(pending);
+    check("provider on + key saved, yet the runner found none → key_pending, not \"no key\"",
+      PHOTO_TOOLS.every((s) => r[keyOf(s)]?.state === "key_pending"), PHOTO_TOOLS.map((s) => r[keyOf(s)]?.state));
     env.PHOTOROOM_API_KEY = "sandbox_test";
     r = await readiness(base());
     check("only a test (sandbox) key → sandbox", PHOTO_TOOLS.every((s) => r[keyOf(s)]?.state === "sandbox"));
+    check("an unpinned tool held back by the test key still names its vendor",
+      r.tool_upscale?.state === "sandbox" && r.tool_upscale?.provider === "Photoroom"
+      && !/ {2}/.test(readinessCause(r.tool_upscale, makeT(pl as never))), r.tool_upscale);
     env.PHOTOROOM_API_KEY = "live_test";
     r = await readiness(base());
     check("a live key → ready", PHOTO_TOOLS.every((s) => r[keyOf(s)]?.state === "ready"));
     const maint = base();
     maint.service_catalog = [{ slug: "tool_ai_shadow", credits_cost: 1, enabled: true, maintenance_mode: true }];
     r = await readiness(maint);
+    const formatOff = base();
+    formatOff.service_catalog = [{ slug: "tool_format", credits_cost: 0, enabled: false, maintenance_mode: false }];
+    r = await readiness(formatOff);
+    check("Zmień rozmiar (slug \"format\") is read for its own switch \"resize\"", r.resize?.state === "service_disabled", r.resize);
+    check("tools riding on the hub / editor switch never speak for it", r.tools === undefined && r.editor === undefined);
+    r = await readiness(maint);
     check("its service in maintenance → service_maintenance, the other three untouched",
       r.tool_ai_shadow?.state === "service_maintenance" && r.tool_remove_bg?.state === "ready", r);
     delete env.PHOTOROOM_API_KEY;
 
     const t = makeT(pl as never);
-    const states: ToolReadiness["state"][] = ["no_key", "provider_inactive", "sandbox", "service_disabled", "service_maintenance"];
+    const states: ToolReadiness["state"][] = ["no_key", "provider_inactive", "key_pending", "sandbox", "service_disabled", "service_maintenance"];
     for (const state of states) {
       const cause = readinessCause({ state, provider: "Photoroom", providerActive: false }, t);
       check(`PL cause for ${state} reads as a sentence, names no raw key`, cause.length > 10 && !/aicc\.|panel\./.test(cause), cause);
@@ -378,6 +394,9 @@ async function main() {
       iNoProvider > 0 && iNoProvider < tools.indexOf("freeToolRules(supabase)") && iNoProvider < tools.indexOf("startUsage(supabase"));
     check("a customer's test key → refused before anything moves",
       tools.indexOf('if (sandbox && !input.viewerIsAdmin) return { ok: false, error: "provider_sandbox" };') < tools.indexOf("startUsage(supabase"));
+    const slugPage = read("app/(app)/tools/[slug]/page.tsx");
+    check("a batch tool that cannot run states no price (never \"Za darmo\" above \"niedostępne\")",
+      /overline=\{!entry\.available \? undefined : entry\.credits === 0 \? t\("tools\.free"\)/.test(slugPage));
     const ui = read("components/tools/photo-tool.tsx");
     check("an Aktywny tool that cannot run shows the honest message and no upload/CTA",
       /\{!available && \(/.test(ui) && /tools\.unavailable\./.test(ui) && /\{available && <PhotoUploader/.test(ui));
@@ -387,10 +406,20 @@ async function main() {
   {
     const palette = read("components/layout/command-palette.tsx");
     check("search marks a Wkrótce / maintenance tool with the menus' pill", /const statusPill = \(href: string\) =>/.test(palette)
-      && /menuBadge\(avail, href\)/.test(palette) && /features\.badgeSoon/.test(palette) && /features\.badgeMaintenance/.test(palette));
+      && /menuBadge\(avail, searchGate\(href\)\)/.test(palette) && /features\.badgeSoon/.test(palette) && /features\.badgeMaintenance/.test(palette));
     check("…on the cards, the links and the result rows", (palette.match(/statusPill\(/g) ?? []).length === 3
       && /\{statusPill\(entry\.href\)\}/.test(palette) && /row\.section !== "yours" && statusPill\(row\.href\)/.test(palette));
     check("search never asks about provider keys", !/toolCatalogue|readinessCloses|waitingForProvider|no_provider/.test(palette));
+    // A Moda tool answers to its category too — as its /tools card and its page gate do.
+    const moda = mapWith([["image_moda", featureRow("image_moda", "COMING_SOON")], ["fashion_iron", featureRow("fashion_iron", "ACTIVE")]]);
+    check("searchGate: a category workflow answers to its category and itself",
+      JSON.stringify(searchGate("/k/moda/iron")) === JSON.stringify(["/k/moda", "/k/moda/iron"])
+      && searchGate("/k/moda") === "/k/moda" && searchGate("/tools/remove_bg") === "/tools/remove_bg");
+    check("search badges a tool inside a Wkrótce category \"soon\"", menuBadge(moda, searchGate("/k/moda/iron")) === "soon");
+    const modaOff = mapWith([["image_moda", featureRow("image_moda", "DISABLED")]]);
+    check("…and does not offer one inside a switched-off category", !menuVisible(modaOff, searchGate("/k/moda/iron"), false));
+    check("the palette's pill and its filter both use the gate",
+      /menuBadge\(avail, searchGate\(href\)\)/.test(palette) && /menuVisible\(avail, searchGate\(e\.href\), seesRestricted\)/.test(palette));
     const mega = read("components/layout/mega-topbar.tsx");
     check("the menus read the switchboard only — no provider readiness", !/toolCatalogue|tools\.state\.|no_provider/.test(mega));
     const seller = read("lib/server/seller-home.ts");
