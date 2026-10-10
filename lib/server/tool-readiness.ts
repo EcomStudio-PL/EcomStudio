@@ -20,12 +20,13 @@ import type { ToolReadiness } from "@/lib/tool-readiness-admin";
 
 /** The admin switch that owns a tool: a photo tool its own key; any other
  *  the one the run API uses (`format` → Zmień rozmiar). Tools that only ride
- *  on the hub's or the editor's switch are skipped — one tool's provider must
- *  not speak for a switch that governs many. */
+ *  on the hub's switch, or on the editor's (its shadow step), are skipped —
+ *  one tool's provider must not speak for a switch that governs many. The
+ *  editor itself still speaks for its own switch. */
 function featureOfTool(slug: string): FeatureKey | null {
   if (isPhotoTool(slug)) return featureForPhotoTool(slug);
   const key = featureForToolSlug(slug);
-  return key === "tools" || key === "editor" ? null : key;
+  return key === "tools" || (key === "editor" && slug !== "editor") ? null : key;
 }
 
 export async function readToolReadiness(supabase: Client): Promise<Partial<Record<FeatureKey, ToolReadiness>>> {
@@ -56,7 +57,8 @@ async function readinessOf(supabase: Client): Promise<Partial<Record<FeatureKey,
     const pinned = toolBySlug(tool.slug)?.provider ?? null;
     const row = pinned ? rows.find((r) => r.slug === pinned) : undefined;
     const nameOf = (slug: string, r?: { name: string | null }) => r?.name?.trim() || slug.charAt(0).toUpperCase() + slug.slice(1);
-    let provider = pinned ? nameOf(pinned, row) : null;
+    const provider = pinned ? nameOf(pinned, row) : null;
+    let vendor: string | null = null;
     const providerActive = row ? row.active : null;
 
     let state: ToolReadiness["state"] = "ready";
@@ -72,12 +74,13 @@ async function readinessOf(supabase: Client): Promise<Partial<Record<FeatureKey,
               : row && withKey.has(row.id) && row.active ? "key_pending"
                 : "no_key";
       // Only a Photoroom key is ever a test key (isSandbox), so an unpinned
-      // tool held back by one still has a vendor to name.
-      if (state === "sandbox" && !provider) provider = nameOf("photoroom", rows.find((r) => r.slug === "photoroom"));
+      // tool held back by one still has a vendor to name — for the cause
+      // only: `provider` stays "the vendor it is pinned to".
+      if (state === "sandbox" && !provider) vendor = nameOf("photoroom", rows.find((r) => r.slug === "photoroom"));
     }
     // One switch, several tools: the first one that cannot run is what the operator needs to know.
     const prev = out[key];
-    if (!prev || prev.state === "ready") out[key] = { state, provider, providerActive };
+    if (!prev || prev.state === "ready") out[key] = { state, provider, providerActive, ...(vendor ? { vendor } : {}) };
   }
   return out;
 }

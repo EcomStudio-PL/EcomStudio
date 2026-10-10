@@ -301,9 +301,11 @@ async function main() {
     env.PHOTOROOM_API_KEY = "sandbox_test";
     r = await readiness(base());
     check("only a test (sandbox) key → sandbox", PHOTO_TOOLS.every((s) => r[keyOf(s)]?.state === "sandbox"));
-    check("an unpinned tool held back by the test key still names its vendor",
-      r.tool_upscale?.state === "sandbox" && r.tool_upscale?.provider === "Photoroom"
+    check("an unpinned tool held back by the test key names its vendor in the cause…",
+      r.tool_upscale?.state === "sandbox" && r.tool_upscale?.vendor === "Photoroom"
+      && readinessCause(r.tool_upscale, makeT(pl as never)).includes("Photoroom")
       && !/ {2}/.test(readinessCause(r.tool_upscale, makeT(pl as never))), r.tool_upscale);
+    check("…but is never presented as pinned to it (provider stays null)", r.tool_upscale?.provider === null);
     env.PHOTOROOM_API_KEY = "live_test";
     r = await readiness(base());
     check("a live key → ready", PHOTO_TOOLS.every((s) => r[keyOf(s)]?.state === "ready"));
@@ -314,7 +316,15 @@ async function main() {
     formatOff.service_catalog = [{ slug: "tool_format", credits_cost: 0, enabled: false, maintenance_mode: false }];
     r = await readiness(formatOff);
     check("Zmień rozmiar (slug \"format\") is read for its own switch \"resize\"", r.resize?.state === "service_disabled", r.resize);
-    check("tools riding on the hub / editor switch never speak for it", r.tools === undefined && r.editor === undefined);
+    check("tools riding on the hub switch never speak for it", r.tools === undefined);
+    const shadowOff = base();
+    shadowOff.service_catalog = [{ slug: "tool_shadow", credits_cost: 0, enabled: false, maintenance_mode: false }];
+    r = await readiness(shadowOff);
+    check("the editor's shadow step never speaks for the editor switch", r.editor?.state === "ready", r.editor);
+    const editorOff = base();
+    editorOff.service_catalog = [{ slug: "tool_editor", credits_cost: 0, enabled: false, maintenance_mode: false }];
+    r = await readiness(editorOff);
+    check("…while the editor's own service still does", r.editor?.state === "service_disabled", r.editor);
     r = await readiness(maint);
     check("its service in maintenance → service_maintenance, the other three untouched",
       r.tool_ai_shadow?.state === "service_maintenance" && r.tool_remove_bg?.state === "ready", r);

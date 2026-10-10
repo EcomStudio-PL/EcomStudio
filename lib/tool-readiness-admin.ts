@@ -27,6 +27,9 @@ export type ToolReadiness = {
   provider: string | null;
   /** That vendor's switch on the Dostawcy tab; null when the tool is not pinned. */
   providerActive: boolean | null;
+  /** The vendor behind the CAUSE when the tool is not pinned to one (an
+   *  unpinned tool held back by a Photoroom test key). Never shown as "pinned". */
+  vendor?: string | null;
 };
 
 /** A tool that cannot run right now, whatever its status says. */
@@ -38,7 +41,7 @@ export function notReady(readiness: ToolReadiness | null | undefined): readiness
 export function readinessCause(
   readiness: ToolReadiness, t: (key: string, values?: Record<string, string | number>) => string,
 ): string {
-  const provider = readiness.provider ?? "";
+  const provider = readiness.provider ?? readiness.vendor ?? "";
   if (readiness.state === "no_key") {
     const base = provider ? t("aicc.panel.readiness.cause.no_key", { provider }) : t("aicc.panel.readiness.cause.no_key_any");
     return readiness.providerActive === false ? `${base}${t("aicc.panel.readiness.alsoInactive")}` : base;
