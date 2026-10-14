@@ -21,6 +21,9 @@ export type ThumbDb = {
   /** Reads/writes that fail, as `table:op` or `storage:op` (a transient
    *  PostgREST/Storage error) — what the tri-state reads are tested with. */
   faults: Set<string>;
+  /** Runs once right after the next run read is answered (a customer's
+   *  click landing between two reads of the driver). */
+  afterRunRead: (() => void) | null;
   env: {
     ready: boolean;
     blockers: string[];
@@ -50,6 +53,7 @@ export function freshDb(): ThumbDb {
     usageCalls: [],
     providerCalls: [],
     faults: new Set(),
+    afterRunRead: null,
     env: {
       ready: true, blockers: [], thumbnailCredits: 20,
       retouch: { available: true, unit: 7, resolution: "2K" },

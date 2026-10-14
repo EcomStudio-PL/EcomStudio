@@ -8611,6 +8611,7 @@
       "finish_unreadable": "Die KI-Antwort ist kein gültiges Bild. Die Kosten der Komposition wurden erstattet.",
       "finish_config": "Die Einstellungen der Nachbearbeitung sind ungültig. Die Kosten der Komposition wurden erstattet.",
       "library_failed": "Das Vorschaubild konnte nicht in der Bibliothek gespeichert werden. Die Kosten der Komposition wurden erstattet.",
+      "unavailable": "Ein vorübergehendes Verbindungsproblem — bitte versuche es gleich noch einmal. Es wurde nichts berechnet.",
       "compose_no_time": "Die Fotos konnten nicht rechtzeitig für die Komposition vorbereitet werden. Es wurde nichts berechnet — versuche es mit weniger Fotos erneut.",
       "compose_failed": "Die Komposition ist fehlgeschlagen. Für die Komposition wurde nichts berechnet.",
       "source_unavailable": "Eines der Fotos konnte nicht gelesen werden. Für die Komposition wurde nichts berechnet — versuche es erneut.",

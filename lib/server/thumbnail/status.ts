@@ -39,9 +39,13 @@ type Raw = {
 
 const STAGES: readonly string[] = ["prepare", "retouch", "compose", "finish", "done"];
 
-export async function readThumbnailRun(supabase: Client, runId: string, opts: { sign?: boolean } = {}): Promise<ThumbnailRunView | null> {
+/** The member's view of their run: null when there is no such run of
+ *  theirs, "unavailable" when it could not be read right now (the panel
+ *  keeps driving instead of giving the run up). */
+export async function readThumbnailRun(supabase: Client, runId: string, opts: { sign?: boolean } = {}): Promise<ThumbnailRunView | null | "unavailable"> {
   const { data, error } = await supabase.rpc("thumbnail_run_status", { p_run_id: runId });
-  const raw = (error ? null : data) as Raw | null;
+  if (error) return "unavailable";
+  const raw = data as Raw | null;
   if (!raw?.id) return null;
   const status = (["queued", "running", "ok", "failed"].includes(raw.status) ? raw.status : "failed") as ThumbnailRunView["status"];
   const stageRaw = String(raw.progress?.stage ?? "prepare");

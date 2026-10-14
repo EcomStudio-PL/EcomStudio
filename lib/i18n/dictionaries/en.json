@@ -8611,6 +8611,7 @@
       "finish_unreadable": "The AI response is not a valid image. The composition cost was returned.",
       "finish_config": "The finishing settings are invalid. The composition cost was returned.",
       "library_failed": "The thumbnail could not be saved to the library. The composition cost was returned.",
+      "unavailable": "A temporary connection problem — please try again in a moment. Nothing was charged.",
       "compose_no_time": "We could not prepare the photos for the composition in time. Nothing was charged — try again with fewer photos.",
       "compose_failed": "Creating the composition failed. Nothing was charged for the composition.",
       "source_unavailable": "One of the photos could not be read. Nothing was charged for the composition — try again.",

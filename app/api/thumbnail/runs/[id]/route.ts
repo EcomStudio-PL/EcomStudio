@@ -30,6 +30,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const paused = await accountBlockedResponse(supabase, user.id);
   if (paused) return paused;
   const run = await readThumbnailRun(supabase, id);
+  if (run === "unavailable") return NextResponse.json({ ok: false, error: "unavailable" }, { status: 503 });
   if (!run) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   return NextResponse.json({ ok: true, run }, { headers: { "Cache-Control": "no-store" } });
 }
@@ -56,6 +57,9 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   }
   if (advanced === "not_found") return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   const run = await readThumbnailRun(supabase, id);
+  // A read that failed is retried by the panel (not "not_found", which ends
+  // its driving for good).
+  if (run === "unavailable") return NextResponse.json({ ok: false, error: "unavailable" }, { status: 503 });
   if (!run) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   return NextResponse.json({ ok: true, run, advanced }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -9,7 +9,7 @@ import { withProviderLimit } from "@/lib/server/provider-router";
 import { prepareReferenceImage } from "@/lib/server/reference-image";
 import { runRetouch, type RetouchInput, type RetouchResult } from "@/lib/server/retouch";
 import {
-  beginStep, claimRun, finishStep, patchRun, readRun, readStepRuns,
+  beginStep, claimRun, finishStep, patchRun,
   type RunRow, type StepRunRow,
 } from "@/lib/server/engine/workflow-store";
 import { PREVIEW_EDGE, PREVIEW_QUALITY, THUMB_EDGE, THUMB_QUALITY, previewPathFor, thumbPathFor } from "@/lib/thumbs";
@@ -83,6 +83,8 @@ export const MAX_COMPOSE_LATE = 3;
 /** The lease a recovery takes on a step: short, so an unreadable answer is
  *  retried by the next call instead of being waited out. */
 const RECOVERY_LEASE_S = 30;
+/** The OpenAI lane per instance (lib/server/provider-router.ts). */
+const LANE = "openai";
 
 export type RunPhotoInput = { photos: string[]; retouch: boolean };
 
@@ -163,6 +165,9 @@ export async function startThumbnailRun(
   const reuse = retouch && reuseFrom
     ? await reusableRetouches(supabase, userId, workspaceId, reuseFrom, photos as string[])
     : (photos as string[]).map(() => null);
+  // The earlier run could not be read: not "nothing to reuse" — the
+  // customer would be quoted (and charged) for passes already paid.
+  if (!reuse) return { ok: false, error: "unavailable" };
   const quote = quoteTotal({
     photos: photos.length, retouch,
     retouchUnit: state.retouch.available ? state.retouch.unit : null,
@@ -221,13 +226,15 @@ async function freshBalance(supabase: Client, workspaceId: string): Promise<numb
  */
 async function reusableRetouches(
   supabase: Client, userId: string, workspaceId: string, runId: string, photos: string[],
-): Promise<({ job_id: string; path: string } | null)[]> {
+): Promise<({ job_id: string; path: string } | null)[] | null> {
   const none = photos.map(() => null);
-  const prev = await readRun(supabase, runId);
+  const prev = await readRunRow(supabase, runId);
+  if (prev === "unknown") return null;
   if (!prev || prev.run_kind !== "thumbnail" || prev.user_id !== userId || prev.workspace_id !== workspaceId) return none;
   const prevInput = parseInput(prev.input);
   if (!prevInput) return none;
-  const steps = await readStepRuns(supabase, runId);
+  const steps = await readSteps(supabase, runId);
+  if (!steps) return null;
   const out: ({ job_id: string; path: string } | null)[] = [];
   for (let i = 0; i < photos.length; i++) {
     const s = steps.find((x) => x.position === STEP.retouch && x.item_index === i && x.status === "succeeded");
@@ -265,7 +272,9 @@ export async function advanceThumbnailRun(
 ): Promise<AdvanceResult> {
   const deps: ThumbnailDeps = { ...DEFAULT_DEPS, ...opts.deps };
   const owner = `thumb:${randomUUID()}`;
-  const first = await readRun(supabase, runId);
+  const first = await readRunRow(supabase, runId);
+  // Unreadable is not "no such run": the browser keeps driving it.
+  if (first === "unknown") return "busy";
   if (!first || first.run_kind !== "thumbnail" || first.user_id !== userId || first.workspace_id !== workspaceId) return "not_found";
   if (first.status !== "queued" && first.status !== "running") return "finished";
   const leaseSeconds = Math.max(10, Math.ceil((opts.deadlineAt - deps.now()) / 1000) + 30);
@@ -273,12 +282,17 @@ export async function advanceThumbnailRun(
   if (!claim.claimed) return claim.reason === "finished" ? "finished" : "busy";
 
   for (let guard = 0; guard < 60; guard++) {
-    const run = await readRun(supabase, runId);
+    const run = await readRunRow(supabase, runId);
+    // A read that failed decides nothing: hand the run back for a retry.
+    if (run === "unknown") { await patchRun(supabase, runId, owner, { lease_seconds: 10 }); return "yield"; }
     if (!run || (run.status !== "queued" && run.status !== "running")) return "finished";
     const input = parseInput(run.input);
     const ctx: Ctx = { supabase, userId, workspaceId, runId, owner, deadlineAt: opts.deadlineAt, deps, run, input: input as StoredInput };
     if (!input) { await close(ctx, "failed", "invalid_input"); return "finished"; }
-    const steps = await readStepRuns(supabase, runId);
+    const steps = await readSteps(supabase, runId);
+    // Above all for the cancel below: an unreadable step list is not "no
+    // composition" — closing on it could leave a composition's charge open.
+    if (!steps) { await patchRun(supabase, runId, owner, { lease_seconds: 10 }); return "yield"; }
     // A cancel is honoured while no composition is in flight or paid for.
     // Once one is, its charge is settled first — released, or closed as
     // delivered with the result in the library — and never left open.
@@ -372,7 +386,7 @@ function outcomeOf(r: ComposeOutcome): StepOutcome {
   if (r === "busy") return "wait";
   if (r === "lost") return "lost";
   if (r === "again") return "continue";
-  if (r === "late") return "yield";
+  if (r === "late" || r === "retry") return "yield";
   return "finished";
 }
 
@@ -541,7 +555,7 @@ async function retouchAssetPath(ctx: Ctx, jobId: string): Promise<string | null 
 
 /* ── 2 · COMPOSITION, then at once 3 · FINISH + LIBRARY ──────────────────*/
 
-type ComposeOutcome = "ok" | "failed" | "busy" | "late" | "lost" | "again";
+type ComposeOutcome = "ok" | "failed" | "busy" | "late" | "lost" | "again" | "retry";
 
 type PreparedInput = { bytes: Buffer; mime: EditMime; filename: string; source: string; transform: string; sourceSha: string };
 type Prepared = { images: PreparedInput[]; paths: string[] } | { error: string };
@@ -549,8 +563,9 @@ type Prepared = { images: PreparedInput[]; paths: string[] } | { error: string }
 /**
  * THE COMPOSITION, in three phases:
  *   1. the photos are read and checked — free, outside the OpenAI lane;
- *   2. inside the lane only: the time left is judged, the step begun, every
- *      refusal made, the charge opened and the ONE call sent;
+ *   2. inside the lane only (waited for only while the call still fits): the
+ *      time left is judged, a cancel honoured, the step begun, every refusal
+ *      made, the charge opened and the ONE call sent;
  *   3. outside the lane again: the call recorded and the result delivered in
  *      the SAME invocation. The provider's answer lives in server memory only
  *      until the customer's file is in the library — a refund never leaves a
@@ -558,10 +573,47 @@ type Prepared = { images: PreparedInput[]; paths: string[] } | { error: string }
  */
 async function composeStep(ctx: Ctx, steps: StepRunRow[]): Promise<ComposeOutcome> {
   const prep = await preparePhotos(ctx, steps);
-  const sent = await withProviderLimit("openai", () => chargeAndCall(ctx, prep));
+  // A photo that cannot be used is refused without queueing for the lane.
+  const sent = "error" in prep ? await chargeAndCall(ctx, prep) : await inLane(ctx, prep);
   if (sent.kind === "recover") return recoverCompose(ctx, sent.attempts);
   if (sent.kind !== "called") return sent.kind;
   return recordAndDeliver(ctx, sent);
+}
+
+/**
+ * Phase 2 in the OpenAI lane — queued for only as long as the call and the
+ * finish would still fit. Past that the turn is given up ("late", counted);
+ * if the lane frees up later, that turn does nothing. Once phase 2 has
+ * started it is never abandoned.
+ */
+async function inLane(ctx: Ctx, prep: Prepared): Promise<Sent> {
+  const waitMs = ctx.deadlineAt - ctx.deps.now() - callBudgetMs(ctx.input) - FINISH_RESERVE_MS;
+  if (waitMs <= 0) return { kind: "late" };
+  let started = false;
+  let gaveUp = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<Sent>((resolve) => {
+    timer = setTimeout(() => {
+      if (started) return;
+      gaveUp = true;
+      resolve({ kind: "late" });
+    }, waitMs);
+    (timer as { unref?: () => void }).unref?.();
+  });
+  const turn = withProviderLimit(LANE, async (): Promise<Sent> => {
+    if (gaveUp) return { kind: "late" };
+    started = true;
+    clearTimeout(timer);
+    return chargeAndCall(ctx, prep);
+  });
+  // A turn given up still settles later; it must never surface as an
+  // unhandled rejection (the race below sees any error of a turn that ran).
+  turn.catch(() => undefined);
+  try {
+    return await Promise.race([turn, late]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -616,7 +668,7 @@ type Called = {
   kind: "called"; t0: number; jobId: string; eventId: string; wallet: string;
   promptSha256: string; images: PreparedInput[]; outcome: SunburstOutcome;
 };
-type Sent = Called | { kind: "late" | "busy" | "failed" | "lost" | "again" } | { kind: "recover"; attempts: number };
+type Sent = Called | { kind: "late" | "busy" | "failed" | "lost" | "again" | "retry" } | { kind: "recover"; attempts: number };
 
 /** Phase 2 — inside the OpenAI lane: nothing here waits for anything but
  *  the database and the one call. */
@@ -627,6 +679,11 @@ async function chargeAndCall(ctx: Ctx, prep: Prepared): Promise<Sent> {
   // call and the finish after it must still fit, judged NOW, before the step
   // is begun or anything is charged.
   if (!("error" in prep) && ctx.deadlineAt - ctx.deps.now() < callMs + FINISH_RESERVE_MS) return { kind: "late" };
+  // A cancel asked for while the photos were read or the lane was awaited
+  // is honoured NOW, before anything is begun or charged. Unreadable: retry.
+  const fresh = await readRunRow(supabase, runId);
+  if (fresh === "unknown" || !fresh) return { kind: "retry" };
+  if (fresh.error === "cancel_requested") { await close(ctx, "failed", "cancelled"); return { kind: "failed" }; }
 
   const t0 = ctx.deps.now();
   const lease = Math.max(30, Math.ceil((ctx.deadlineAt - t0) / 1000) + 30);
@@ -650,6 +707,11 @@ async function chargeAndCall(ctx: Ctx, prep: Prepared): Promise<Sent> {
     await close(ctx, "failed", code);
     return { kind: "failed" };
   };
+  // …and once more now that the step is begun: a cancel that landed in
+  // between is still honoured; from here on a cancel waits for the
+  // composition to settle (thumbnail_run_cancel sees the step running).
+  const begun = await readRunRow(supabase, runId);
+  if (begun !== "unknown" && begun?.error === "cancel_requested") return stepFail("cancelled");
   if ("error" in prep) return stepFail(prep.error);
 
   // Everything that can refuse does so BEFORE anything is charged.
@@ -808,11 +870,13 @@ async function recoverComposeStep(ctx: Ctx): Promise<ComposeOutcome> {
 
 /**
  * A composition whose invocation died during or right after the call:
- *   · its file is in the library → recorded as succeeded; the finish step
- *     then closes it as delivered (job completed, charge closed);
+ *   · delivered (its library file, or the server's "delivered" mark) →
+ *     recorded as succeeded; the finish step then closes it as delivered
+ *     (job completed, charge closed);
  *   · otherwise its answer was never stored, so there is nothing to deliver:
- *     every file of the job is removed and the charge released now (the
- *     reconciler would do the same, later). Never a second request.
+ *     every file of the job is removed and the charge released now. Never a
+ *     second request. (Left alone, the ledger's reconciler would refund it
+ *     after 30 minutes — but not remove a file; that is done here.)
  */
 async function recoverCompose(ctx: Ctx, attempts: number,
   known?: { jobId: string | null; asset: JobAsset | null }): Promise<ComposeOutcome> {
@@ -827,7 +891,7 @@ async function recoverCompose(ctx: Ctx, attempts: number,
     if (a === "unknown") return "busy";
     jobId = j; asset = a;
   }
-  if (jobId && asset) {
+  if (jobId && (asset || deliveredMark(ctx, jobId))) {
     await finishStep(supabase, runId, owner, STEP.compose, -1, {
       status: "succeeded", attempts: attempts + 1, providerSlug: "openai", model: ctx.input.config.model,
       units: 1, unitKind: "image", cost: { basis: "unknown" }, output: { job_id: jobId, recovered: true }, durationMs: 0,
@@ -873,10 +937,11 @@ type Delivery = {
 };
 
 /**
- * THE FINISH, from the answer in memory: the local 2560×2560 file under a
- * name chosen now (nobody can create it first), the library rows, the job
- * completed — and only then the charge closes. On any failure every file of
- * the job is removed and the composition refunded.
+ * THE FINISH, from the answer in memory: the job completed, the local
+ * 2560×2560 file under a name chosen now (nobody can create it first), the
+ * library rows, the server's own "delivered" mark — and only then the charge
+ * closes. On any failure every file of the job is removed and the
+ * composition refunded.
  */
 async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
   const { supabase, runId, owner, input } = ctx;
@@ -918,7 +983,23 @@ async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
   } catch (e) {
     return fail(e instanceof FinishError ? e.code : "finish_failed");
   }
-  const path = await storeNew(ctx, d.jobId, "", fin.ext, fin.bytes, fin.mime);
+  // The job is COMPLETED first — before any file or library row exists: a
+  // job whose file is in the library is always one the library shows (also
+  // when the ledger's reconciler closes its charge), and a job that cannot
+  // be marked is refunded with nothing stored.
+  const completed = await markJobCompleted(ctx, d.jobId, {
+    latency_ms: Date.now() - Date.parse(ctx.run.created_at), request_id: d.requestId,
+  }, {
+    provider_request: d.jobRequest,
+    provider_output: [{
+      provider_returned_width: d.response.width ?? null, provider_returned_height: d.response.height ?? null,
+      provider_mime: d.mime, provider_bytes: d.image.length, provider_sha256: d.response.sha256 ?? null,
+      stored_width: fin.width, stored_height: fin.height, stored_sha256: fin.sha256,
+      transformed_after_provider: true, postprocess: fin.postprocess,
+    }] as unknown as Json,
+  });
+  if (!completed) return fail("library_failed");
+  const path = await storeNew(ctx, d.jobId, fin.ext, fin.bytes, fin.mime);
   if (!path) return fail("storage_failed");
 
   const { data: gen, error: genErr } = await supabase.from("generations").insert({
@@ -931,33 +1012,17 @@ async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
   }).select("id").single();
   if (assetErr || !asset) return fail("library_failed");
 
-  // The job is COMPLETED before the charge closes: a charged result is
-  // always one the library shows. If that write cannot be made now, the
-  // charge stays open — the next call (or the reconciler, which sees the
-  // file) closes it as delivered.
-  const completed = await markJobCompleted(ctx, d.jobId, {
-    latency_ms: Date.now() - Date.parse(ctx.run.created_at), request_id: d.requestId,
-  }, {
-    provider_request: d.jobRequest,
-    provider_output: [{
-      provider_returned_width: d.response.width ?? null, provider_returned_height: d.response.height ?? null,
-      provider_mime: d.mime, provider_bytes: d.image.length, provider_sha256: d.response.sha256 ?? null,
-      stored_path: path, stored_width: fin.width, stored_height: fin.height, stored_sha256: fin.sha256,
-      transformed_after_provider: true, postprocess: fin.postprocess,
-    }] as unknown as Json,
-  });
-  if (!completed) return "busy";
-
+  // DELIVERED — recorded where only the server writes (the run), before the
+  // charge closes: library rows a member can delete never decide a refund.
+  await progress(ctx, { delivered: { job_id: d.jobId, path } });
   await completeUsage(supabase, dispatchToken(), d.eventId, 1, {
     apiCostUsdMicros: d.costMicros ?? undefined,
     providerRequestId: d.requestId,
     executor: { providerSlug: "openai", modelSlug: input.config.model },
   });
   await derivatives(supabase, asset.id, path, fin.bytes);
-  // The provider's own answer, kept next to the delivered file for quality
-  // review — written only now that it is paid for, under a fresh name.
-  const rawExt = d.mime === "image/png" ? "png" : d.mime === "image/webp" ? "webp" : "jpg";
-  const rawPath = await storeNew(ctx, d.jobId, "raw-", rawExt, d.image, d.mime).catch(() => null);
+  // The provider's own bytes are NOT kept in the customer's folder: their
+  // hash, size and dimensions are in the admin record (step output).
   await supabase.from("notifications").insert({
     user_id: ctx.userId, type: "generation_done", title: "generation_done", body: "thumbnail ×1", href: "/library",
   });
@@ -970,7 +1035,7 @@ async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
     },
   });
   const delivered = {
-    path, job_id: d.jobId, generation_id: gen.id, asset_id: asset.id, raw_path: rawPath,
+    path, job_id: d.jobId, generation_id: gen.id, asset_id: asset.id,
     width: fin.width, height: fin.height, mime: fin.mime, bytes: fin.bytes.length, sha256: fin.sha256,
     source: fin.source, inner: fin.inner, margin_px: fin.marginPx, checks: fin.checks,
     finish: { target: fin.config.target, margin_percent: fin.config.marginPercent, brightness_percent: fin.config.brightnessPercent, kernel: fin.config.kernel, format: fin.config.format },
@@ -1004,9 +1069,11 @@ async function resumeFinish(ctx: Ctx, compose: StepRunRow): Promise<ComposeOutco
   if (b.state === "failed" || b.state === "skipped") { await close(ctx, "failed", b.error ?? "finish_failed"); return "failed"; }
   if (b.state !== "run") return "busy";
 
-  if (jobId && asset) {
+  const mark = jobId ? deliveredMark(ctx, jobId) : null;
+  if (jobId && (asset || mark)) {
     // DELIVERED before the invocation died: the job is completed and the
-    // charge closed (in that order), then the run.
+    // charge closed (in that order), then the run. The server's own mark
+    // counts even when a member has deleted the library item meanwhile.
     if (!(await markJobCompleted(ctx, jobId))) return "busy";
     const event = await eventOfJob(ctx, jobId);
     if (event === "unknown") return "busy";
@@ -1015,7 +1082,9 @@ async function resumeFinish(ctx: Ctx, compose: StepRunRow): Promise<ComposeOutco
         apiCostUsdMicros: costMicros ?? undefined, executor: { providerSlug: "openai", modelSlug: ctx.input.config.model },
       });
     }
-    const delivered = { path: asset.path, job_id: jobId, width: asset.width, height: asset.height, recovered: true };
+    const delivered = {
+      path: asset?.path ?? mark?.path ?? "", job_id: jobId, width: asset?.width ?? null, height: asset?.height ?? null, recovered: true,
+    };
     await finishStep(supabase, runId, owner, STEP.finish, -1, {
       status: "succeeded", attempts: b.attempts + 1, cost: { basis: "estimated", usdMicros: 0 },
       output: delivered as unknown as Json, durationMs: 0,
@@ -1085,17 +1154,24 @@ async function markJobCompleted(ctx: Ctx, jobId: string,
 
 /** Upload under a fresh random name in the job's folder (never over an
  *  existing object): a name nobody could know before. Null on failure. */
-async function storeNew(ctx: Ctx, jobId: string, prefix: string, ext: string, bytes: Buffer, mime: string): Promise<string | null> {
+async function storeNew(ctx: Ctx, jobId: string, ext: string, bytes: Buffer, mime: string): Promise<string | null> {
   const bucket = ctx.supabase.storage.from("generation-assets");
+  const tried: string[] = [];
   for (let attempt = 0; attempt < 2; attempt++) {
-    const path = `${ctx.workspaceId}/${jobId}/${prefix}${randomUUID()}.${ext}`;
+    const path = `${ctx.workspaceId}/${jobId}/${randomUUID()}.${ext}`;
     try {
       const { error } = await bucket.upload(path, bytes, { contentType: mime, upsert: false });
-      if (!error) return path;
+      if (!error) {
+        // An earlier attempt whose answer was lost may still have written
+        // its object: not left behind as an unlisted copy.
+        if (tried.length > 0) await bucket.remove(tried).catch(() => null);
+        return path;
+      }
     } catch {
       // A fresh name next time; whatever may have been written is removed
       // with the job's folder if the delivery fails.
     }
+    tried.push(path);
   }
   return null;
 }
@@ -1111,7 +1187,10 @@ async function removeJobFiles(ctx: Ctx, jobId: string): Promise<boolean> {
     const paths = data.filter((o) => typeof o.name === "string" && o.name.length > 0).map((o) => `${folder}/${o.name}`);
     if (paths.length === 0) return true;
     const { error: rmErr } = await bucket.remove(paths);
-    return !rmErr;
+    if (rmErr) return false;
+    // Checked, not assumed: the folder must now read empty.
+    const { data: after, error: afterErr } = await bucket.list(folder, { limit: 100 });
+    return !afterErr && Array.isArray(after) && after.every((o) => !o.name);
   } catch {
     return false;
   }
@@ -1152,10 +1231,11 @@ async function syncCredits(ctx: Ctx, steps: StepRunRow[]): Promise<void> {
 }
 
 async function close(ctx: Ctx, status: "ok" | "failed", error: string | null, extra: Record<string, Json> = {}): Promise<void> {
-  const steps = await readStepRuns(ctx.supabase, ctx.runId);
+  const steps = await readSteps(ctx.supabase, ctx.runId);
   await patchRun(ctx.supabase, ctx.runId, ctx.owner, {
     status, error: error ?? "",
-    credits: retouchCredits(steps) + (status === "ok" ? ctx.input?.quote.thumbnailCredits ?? 0 : 0),
+    // Unreadable steps: the credits already kept up to date stay as they are.
+    ...(steps ? { credits: retouchCredits(steps) + (status === "ok" ? ctx.input?.quote.thumbnailCredits ?? 0 : 0) } : {}),
     progress: { ...(progressOf(ctx.run)), stage: status === "ok" ? "done" : "failed" },
     duration_ms: Math.max(0, Date.now() - Date.parse(ctx.run.created_at)),
     ...extra,
@@ -1194,6 +1274,28 @@ export function parseInput(raw: unknown): StoredInput | null {
   return i as StoredInput;
 }
 
+/** The run row: null when there is none, "unknown" when it could not be
+ *  read (workflow-store's readRun answers null for both). */
+async function readRunRow(supabase: Client, runId: string): Promise<RunRow | null | "unknown"> {
+  const { data, error } = await supabase.rpc("ai_engine_run_read", { p_token: dispatchToken() ?? "", p_run_id: runId });
+  if (error || !Array.isArray(data)) return "unknown";
+  return (data[0] as unknown as RunRow | undefined) ?? null;
+}
+
+/** The run's step rows, or null when they could not be read
+ *  (workflow-store's readStepRuns answers [] for both). */
+async function readSteps(supabase: Client, runId: string): Promise<StepRunRow[] | null> {
+  const { data, error } = await supabase.rpc("ai_engine_step_runs_read", { p_token: dispatchToken() ?? "", p_run_id: runId });
+  if (error || !Array.isArray(data)) return null;
+  return data as unknown as StepRunRow[];
+}
+
+/** The server's own record that this job's file reached the library. */
+function deliveredMark(ctx: Ctx, jobId: string): { path: string } | null {
+  const m = progressOf(ctx.run).delivered as { job_id?: unknown; path?: unknown } | null | undefined;
+  return m && typeof m === "object" && m.job_id === jobId && typeof m.path === "string" ? { path: m.path } : null;
+}
+
 async function walletId(supabase: Client, workspaceId: string): Promise<string | null> {
   const { data } = await supabase.from("credit_wallets").select("id").eq("workspace_id", workspaceId).maybeSingle();
   return data?.id ?? null;
@@ -1213,6 +1315,7 @@ async function jobFailed(ctx: Ctx, jobId: string, code: string, settingsExtra: R
   const { data: row } = await ctx.supabase.from("generation_jobs").select("settings").eq("id", jobId).maybeSingle();
   await ctx.supabase.from("generation_jobs").update({
     status: "failed", error_message: code.slice(0, 200), error_class: code.slice(0, 80), completed_at: new Date().toISOString(),
+    credits_charged: 0,
     ...(Object.keys(settingsExtra).length ? { settings: { ...((row?.settings ?? {}) as Record<string, Json>), ...settingsExtra } as Json } : {}),
   }).eq("id", jobId);
 }
