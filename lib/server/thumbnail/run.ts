@@ -13,7 +13,7 @@ import {
   type RunRow, type StepRunRow,
 } from "@/lib/server/engine/workflow-store";
 import { PREVIEW_EDGE, PREVIEW_QUALITY, THUMB_EDGE, THUMB_QUALITY, previewPathFor, thumbPathFor } from "@/lib/thumbs";
-import { EDIT_MIMES, editFilename, sha256, type EditMime } from "@/lib/ai/providers/openai-thumbnail-request";
+import { EDIT_MIMES, editFilename, sha256, type EditMime } from "@/lib/thumbnail/openai-request";
 import { callSunburst, type SunburstCallInput, type SunburstOutcome } from "@/lib/server/thumbnail/sunburst";
 import { finishThumbnail, FinishError, type FinishResult } from "@/lib/server/thumbnail/finish";
 import { openaiCredential, readPublishedPrompt, readThumbnailConfig, readThumbnailState } from "@/lib/server/thumbnail/settings";

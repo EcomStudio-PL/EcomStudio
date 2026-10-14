@@ -5,14 +5,14 @@ import {
   boundaryCollides, buildThumbnailEdit, classifyEditError, makeBoundary, parseMultipart, parseUsage, pickThumbnailImage,
   sha256, sniffImageMime, thumbnailEditViolation,
   type EditMime, type SunburstAnswer, type ThumbnailEditSpec,
-} from "@/lib/ai/providers/openai-thumbnail-request";
+} from "@/lib/thumbnail/openai-request";
 
 /**
  * MINIATURKA'S ONE PROVIDER CALL — GPT Image 2.5 Sunburst, `images.edits`.
  *
  * Exactly one HTTP request per call of this function: no retry, no second
  * request without a parameter, no other model. The body is serialised here
- * (openai-thumbnail-request.ts), then the EXACT Buffer that will be handed to
+ * (lib/thumbnail/openai-request.ts), then the EXACT Buffer that will be handed to
  * fetch is parsed back and checked against the contract — the prompt byte for
  * byte, every photo by SHA-256, in order. A mismatch is refused with no HTTP
  * call at all (`thumbnail_request_contract_failed`).

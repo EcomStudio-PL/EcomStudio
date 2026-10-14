@@ -7,7 +7,7 @@ import { readProviderKey } from "@/lib/server/provider-credentials";
 import { featureBlockedForApi } from "@/lib/server/feature-availability";
 import { engineToolConfigured } from "@/lib/server/engine/tool-run";
 import { RETOUCH_DEFAULT_RESOLUTION, retouchModel, retouchPrice, retouchSizes } from "@/lib/server/retouch";
-import { sha256 } from "@/lib/ai/providers/openai-thumbnail-request";
+import { sha256 } from "@/lib/thumbnail/openai-request";
 import {
   THUMBNAIL_REFERENCE_PROMPT_SHA256, THUMBNAIL_SERVICE, THUMBNAIL_TOOL_KEY,
   parseThumbnailConfig, type ThumbnailConfig,

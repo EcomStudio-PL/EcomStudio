@@ -16,6 +16,7 @@ import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { Switch } from "@/components/ui/record";
 import { InfoHint } from "@/components/ui/hint";
 import { cn } from "@/lib/utils";
+import { humanizeKey } from "@/lib/i18n/t";
 import { THUMBNAIL_OPERATION, THUMBNAIL_UPLOAD_MAX_BYTES, quoteTotal } from "@/lib/thumbnail/config";
 import type { ThumbnailRuntimeData } from "@/components/category/workflow-runtime";
 import type { GalleryItem, UploadedRef } from "@/components/genv3/types";
@@ -130,9 +131,11 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
   const errText = useCallback((code?: string | null) => {
     if (!code) return t("common.error");
     const base = code.includes(":") ? code.split(":").pop()! : code;
+    // makeT never echoes a missing key — it humanises it — so "is there a
+    // translation" is asked against that fallback, not against the key.
     for (const key of [`thumb.err.${code}`, `thumb.err.${base}`, `studio.err.${base}`]) {
       const v = t(key);
-      if (v && v !== key) return v;
+      if (v && v !== key && v !== humanizeKey(key)) return v;
     }
     return t("common.error");
   }, [t]);
