@@ -65,7 +65,9 @@ export const RANGES = {
   target: { min: 1024, max: 4096 },
   marginPercent: { min: 0, max: 15 },
   brightnessPercent: { min: -20, max: 20 },
-  timeoutMs: { min: 60_000, max: 240_000 },
+  // The longest call one invocation can hold: 270 s budget − 35 s for the
+  // finish − time to read the photos (lib/server/thumbnail/run.ts).
+  timeoutMs: { min: 60_000, max: 200_000 },
   /** USD per 1M tokens; anything above is a typo, not a price. */
   tokenPrice: { min: 0, max: 1000 },
 } as const;

@@ -18,6 +18,9 @@ export type ThumbDb = {
   events: Row[];
   usageCalls: { kind: "start" | "complete" | "fail"; args: Row }[];
   providerCalls: Row[];
+  /** Reads/writes that fail, as `table:op` or `storage:op` (a transient
+   *  PostgREST/Storage error) — what the tri-state reads are tested with. */
+  faults: Set<string>;
   env: {
     ready: boolean;
     blockers: string[];
@@ -46,6 +49,7 @@ export function freshDb(): ThumbDb {
     events: [],
     usageCalls: [],
     providerCalls: [],
+    faults: new Set(),
     env: {
       ready: true, blockers: [], thumbnailCredits: 20,
       retouch: { available: true, unit: 7, resolution: "2K" },

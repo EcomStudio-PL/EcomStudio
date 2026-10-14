@@ -40,7 +40,8 @@
 --      thumbnail_run_status  the customer's view of THEIR run (no model, no
 --                            prompt, no provider usage)
 --      thumbnail_runs_recent the customer's recent runs (resume after refresh)
---      thumbnail_run_cancel  the customer stops THEIR run between steps
+--      thumbnail_run_cancel  the customer stops THEIR run between steps (a
+--                            begun composition is settled by the driver first)
 --
 -- ROLLBACK (manual, in this order; nothing else depends on these objects):
 --   drop function if exists public.thumbnail_run_cancel(uuid);
@@ -57,7 +58,7 @@
 
 -- 1 ─────────────────────────────────────────────────────────────────────────
 insert into public.ai_tools (tool_key, service_slug, engine_mode, allow_model_choice, fallback_enabled, timeout_ms, max_attempts, notes)
-values ('ecommerce_thumbnail', 'tool_thumbnail', 'grovbase', false, false, 240000, 1,
+values ('ecommerce_thumbnail', 'tool_thumbnail', 'grovbase', false, false, 200000, 1,
         'Miniaturka: Retusz (opcjonalnie) → GPT Image 2.5 Sunburst → 2560×2560')
 on conflict (tool_key) do nothing;
 
@@ -257,17 +258,21 @@ revoke all on function public.thumbnail_runs_recent(uuid, integer) from public, 
 grant execute on function public.thumbnail_runs_recent(uuid, integer) to authenticated;
 
 /*
-  CANCEL — the customer's own open run. Nobody driving it (no live lease):
-  it closes at once; nothing of it is in flight, so nothing is charged.
-  Being driven: the request is recorded (`error = 'cancel_requested'`) and the
-  driver stops at its next step boundary — a step already in flight finishes
-  and is billed (its result is kept in the library). Never touches a charge.
+  CANCEL — the customer's own open run. Nobody driving it (no live lease) and
+  no composition begun: it closes at once — no charge of the run is open
+  (a Retusz pass in flight settles in Retusz's own ledger) — and its credits
+  are what its Retusz passes charged. Otherwise the request is recorded
+  (`error = 'cancel_requested'`) and the driver stops at its next step
+  boundary; a composition already begun or paid for is settled first —
+  released, or closed as delivered with its result in the library — so a
+  cancel never leaves a charge open. Never touches a charge itself.
 */
 create or replace function public.thumbnail_run_cancel(p_run_id uuid)
 returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
   v_row public.ai_engine_runs;
+  v_composing boolean;
 begin
   select * into v_row from public.ai_engine_runs
    where id = p_run_id and run_kind = 'thumbnail' and user_id = auth.uid()
@@ -278,9 +283,17 @@ begin
   if v_row.status not in ('queued', 'running') then
     return jsonb_build_object('state', 'finished', 'status', v_row.status);
   end if;
-  if v_row.locked_until is null or v_row.locked_until < now() then
+  select exists (
+    select 1 from public.ai_engine_step_runs s
+     where s.run_id = p_run_id and s."position" = 2 and s.status in ('running', 'succeeded')
+  ) into v_composing;
+  if (v_row.locked_until is null or v_row.locked_until < now()) and not v_composing then
     update public.ai_engine_runs
        set status = 'failed', error = 'cancelled', locked_until = null,
+           credits = coalesce((
+             select sum(case when (s.output->>'credits') ~ '^[0-9]+$' then (s.output->>'credits')::integer else 0 end)
+               from public.ai_engine_step_runs s
+              where s.run_id = p_run_id and s."position" = 1 and s.status = 'succeeded'), 0),
            finished_at = now(), updated_at = now()
      where id = p_run_id;
     return jsonb_build_object('state', 'cancelled');

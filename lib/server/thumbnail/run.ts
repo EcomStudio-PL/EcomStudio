@@ -19,7 +19,7 @@ import { finishThumbnail, FinishError, type FinishResult } from "@/lib/server/th
 import { openaiCredential, readPublishedPrompt, readRetouchOffer, readThumbnailConfig, readThumbnailState } from "@/lib/server/thumbnail/settings";
 import { sunburstCost, type SunburstCost } from "@/lib/thumbnail/cost";
 import {
-  OPENAI_EDIT_MAX_IMAGE_BYTES, OPENAI_EDIT_MAX_IMAGES, STEP, THUMBNAIL_OPERATION, THUMBNAIL_SERVICE, THUMBNAIL_TOOL_KEY,
+  OPENAI_EDIT_MAX_IMAGE_BYTES, OPENAI_EDIT_MAX_IMAGES, RANGES, STEP, THUMBNAIL_OPERATION, THUMBNAIL_SERVICE, THUMBNAIL_TOOL_KEY,
   quoteTotal, sizeEdge,
   type FinishConfig, type ThumbnailModel, type ThumbnailQuality, type ThumbnailQuote, type ThumbnailSize,
   type TokenPrices,
@@ -53,24 +53,36 @@ import {
  *     later; a pass that failed refunded itself.
  *   · The composition is charged at the price QUOTED when the run started,
  *     only if the balance covers it, and refunded on any failure before the
- *     finished file exists.
+ *     finished file exists. A refund always removes every file of that job
+ *     first — nothing refunded stays readable.
  *   · Nothing is ever repeated automatically: a Retusz pass or a composition
  *     whose invocation died mid-call is recovered from what it left behind
  *     (its job row, its stored output) — never sent again. A failed run is
  *     retried only by the customer, as a NEW run that reuses every Retusz
  *     result already paid for.
+ *   · A read that fails is "unknown", never "nothing there": the step waits
+ *     for the next call instead of refunding a delivery or failing a paid job.
  */
 
 /** How long one invocation may work (routes declare maxDuration = 300). */
 export const INVOCATION_BUDGET_MS = 270_000;
 /** A Retusz pass is only started with this much of the invocation left. */
 export const RETOUCH_START_MS = 245_000;
-/** Around the composition call: reading the photos, then the finish. */
+/** Before reading the photos: the call, the reading and the finish must fit. */
 const COMPOSE_OVERHEAD_MS = 50_000;
 /** Kept free after the call for the finish, the library and the ledger. */
 const FINISH_RESERVE_MS = 35_000;
 /** Retusz passes running at once — the Retusz panel's own concurrency. */
 export const RETOUCH_CONCURRENCY = 2;
+/** Photos read and prepared at once before the composition. */
+const PREP_CONCURRENCY = 4;
+/** Invocations in a row whose photos were read but whose call no longer fit:
+ *  past this the run ends (`compose_no_time`, nothing charged) instead of
+ *  spending the run's invocations on the same reading again. */
+export const MAX_COMPOSE_LATE = 3;
+/** The lease a recovery takes on a step: short, so an unreadable answer is
+ *  retried by the next call instead of being waited out. */
+const RECOVERY_LEASE_S = 30;
 
 export type RunPhotoInput = { photos: string[]; retouch: boolean };
 
@@ -108,6 +120,10 @@ export function validPhotoPath(path: unknown, workspaceId: string): path is stri
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The provider call's own timeout: the operator's setting, within the range
+ *  one invocation can hold (RANGES.timeoutMs). */
+const callBudgetMs = (input: StoredInput) => Math.min(input.config.timeout_ms, RANGES.timeoutMs.max);
 
 /* ══ START ════════════════════════════════════════════════════════════════*/
 
@@ -179,7 +195,9 @@ export async function startThumbnailRun(
       idempotency_key: `thumb:${workspaceId}:${attempt}`,
       engine_version: "thumbnail-v1",
       prompt_version: state.prompt.version,
-      credits: quote.total,
+      // What was CHARGED, kept up to date as steps are paid — nothing yet.
+      // The quote lives in the input.
+      credits: 0,
       input,
     } as unknown as Json,
   });
@@ -261,11 +279,11 @@ export async function advanceThumbnailRun(
     const ctx: Ctx = { supabase, userId, workspaceId, runId, owner, deadlineAt: opts.deadlineAt, deps, run, input: input as StoredInput };
     if (!input) { await close(ctx, "failed", "invalid_input"); return "finished"; }
     const steps = await readStepRuns(supabase, runId);
-    // A cancel is honoured between paid steps. Once the composition is paid
-    // for, it is finished and billed (its result goes to the library) — a
-    // cancel never discards work that was charged.
-    const composed = steps.some((x) => x.position === STEP.compose && x.status === "succeeded");
-    if (run.error === "cancel_requested" && !composed) { await close(ctx, "failed", "cancelled"); return "finished"; }
+    // A cancel is honoured while no composition is in flight or paid for.
+    // Once one is, its charge is settled first — released, or closed as
+    // delivered with the result in the library — and never left open.
+    const composing = steps.some((x) => x.position === STEP.compose && (x.status === "running" || x.status === "succeeded"));
+    if (run.error === "cancel_requested" && !composing) { await close(ctx, "failed", "cancelled"); return "finished"; }
 
     const next = await step(ctx, steps);
     if (next === "continue") continue;
@@ -276,24 +294,28 @@ export async function advanceThumbnailRun(
     }
     if (next === "wait") {
       // A step is still held by an earlier invocation (its lease has not run
-      // out, or its Retusz job is still being written). Keep the RUN leased
-      // for a minute: the browser's calls meanwhile are refused as "busy"
-      // without claiming — every claim counts against the run's limit of 30
-      // invocations, and a tight retry loop would spend it in seconds.
+      // out, or its Retusz job is still being written), or a read failed.
+      // Keep the RUN leased for a minute: the browser's calls meanwhile are
+      // refused as "busy" without claiming — every claim counts against the
+      // run's limit of 30 invocations, and a tight retry loop would spend it
+      // in seconds.
       await patchRun(supabase, runId, owner, { lease_seconds: 60 });
       return "busy";
     }
+    // The run's lease went to another driver: it continues from there.
+    if (next === "lost") return "busy";
     return next;
   }
   await patchRun(supabase, runId, owner, { lease_seconds: 10 });
   return "yield";
 }
 
-type StepOutcome = "continue" | "yield" | "wait" | "busy" | "finished";
+type StepOutcome = "continue" | "yield" | "wait" | "lost" | "finished";
 
 async function step(ctx: Ctx, steps: StepRunRow[]): Promise<StepOutcome> {
   const { input } = ctx;
   const left = () => ctx.deadlineAt - ctx.deps.now();
+  await syncCredits(ctx, steps);
 
   // ── 1. Retusz, per photo, in order ─────────────────────────────────────
   if (input.retouch) {
@@ -318,7 +340,7 @@ async function step(ctx: Ctx, steps: StepRunRow[]): Promise<StepOutcome> {
         }
       }
       const results = await Promise.all(batch.map((i) => retouchItem(ctx, i, steps)));
-      if (results.includes("lost")) return "finished";
+      if (results.includes("lost")) return "lost";
       if (results.includes("failed")) { await close(ctx, "failed", "retouch_failed"); return "finished"; }
       if (results.includes("busy")) return "wait";
       return "continue";
@@ -330,30 +352,71 @@ async function step(ctx: Ctx, steps: StepRunRow[]): Promise<StepOutcome> {
   if (compose?.status === "failed") { await close(ctx, "failed", compose.error_code ?? "compose_failed"); return "finished"; }
   if (compose?.status === "succeeded") {
     // Only after an invocation died between the answer and the finish.
-    const r = await resumeFinish(ctx, compose);
-    return r === "busy" ? "wait" : "finished";
+    return outcomeOf(await resumeFinish(ctx, compose));
+  }
+  if (compose?.status === "running") {
+    // Begun by an earlier invocation that is gone (or still holds it): what
+    // it left behind decides — no photos read, no time needed, no lane.
+    return outcomeOf(await recoverComposeStep(ctx));
   }
   // "Przygotowanie zdjęć" until the composition is charged and sent (the
   // photos are read and checked first); "Tworzenie kompozycji" from then.
   if (!input.retouch) await progress(ctx, { stage: "prepare" });
-  const callMs = Math.min(input.config.timeout_ms, 200_000);
-  if (left() < callMs + COMPOSE_OVERHEAD_MS) return "yield";
-  // The OpenAI lane may queue behind other calls on this instance: the time
-  // left is judged again inside it, before anything is begun or charged.
-  const r = await withProviderLimit("openai", () => composeStep(ctx, steps));
-  if (r === "late") return "yield";
+  if (left() < callBudgetMs(input) + COMPOSE_OVERHEAD_MS) return "yield";
+  const r = await composeStep(ctx, steps);
+  if (r === "late") return lateCompose(ctx);
+  return outcomeOf(r);
+}
+
+function outcomeOf(r: ComposeOutcome): StepOutcome {
   if (r === "busy") return "wait";
+  if (r === "lost") return "lost";
+  if (r === "again") return "continue";
+  if (r === "late") return "yield";
   return "finished";
+}
+
+/** The photos were read but the call no longer fitted (a slow read, or the
+ *  OpenAI lane was full): yield — a few times, then stop honestly. */
+async function lateCompose(ctx: Ctx): Promise<StepOutcome> {
+  const late = (Number(progressOf(ctx.run).compose_late) || 0) + 1;
+  if (late >= MAX_COMPOSE_LATE) { await close(ctx, "failed", "compose_no_time"); return "finished"; }
+  await progress(ctx, { compose_late: late });
+  return "yield";
 }
 
 /* ── 1 · RETUSZ ───────────────────────────────────────────────────────────*/
 
 type ItemOutcome = "ok" | "failed" | "busy" | "lost";
 
+/** What an earlier, dead invocation's pass left behind. */
+type PassRecovery =
+  | { kind: "recovered"; jobId: string; path: string; credits: number }
+  | { kind: "fail"; code: string }
+  | { kind: "fresh" };
+
 async function retouchItem(ctx: Ctx, i: number, steps: StepRunRow[]): Promise<ItemOutcome> {
   const { supabase, runId, owner, input } = ctx;
   const photo = input.photos[i];
   const t0 = ctx.deps.now();
+  const snap = steps.find((s) => s.position === STEP.retouch && s.item_index === i);
+
+  // Everything this pass depends on is READ FIRST, before the step is taken:
+  // a read that fails leaves the step as it was (no fresh lease to wait out).
+  const reused = input.reuse[i];
+  let reusedPath: string | null = null;
+  if (reused) {
+    const p = await retouchAssetPath(ctx, reused.job_id);
+    if (p === "unknown") return "busy";
+    reusedPath = p;
+  }
+  let recovery: PassRecovery | null = null;
+  if (!reused && snap?.status === "running") {
+    const r = await recoverPass(ctx, i, steps);
+    if (r === "unknown") return "busy";
+    recovery = r;
+  }
+
   const b = await beginStep(supabase, runId, owner, STEP.retouch, i, "retouch", "tool", 290);
   if (b.state === "done") return "ok";
   if (b.state === "busy") return "busy";
@@ -376,10 +439,8 @@ async function retouchItem(ctx: Ctx, i: number, steps: StepRunRow[]): Promise<It
   };
 
   // A RESULT ALREADY PAID FOR in an earlier run of this member.
-  const reused = input.reuse[i];
   if (reused) {
-    const path = await completedRetouchPath(ctx, reused.job_id);
-    if (path && path === reused.path) return ok({ job_id: reused.job_id, path, reused: true }, 0);
+    if (reusedPath && reusedPath === reused.path) return ok({ job_id: reused.job_id, path: reusedPath, reused: true }, 0);
     // Gone since (deleted from the library): not silently re-bought.
     return fail("retouch_reuse_missing");
   }
@@ -387,21 +448,13 @@ async function retouchItem(ctx: Ctx, i: number, steps: StepRunRow[]): Promise<It
   // RESUMED after the invocation died mid-pass: never send it again. What
   // the earlier call left behind decides.
   if (b.attempts > 0) {
-    const claimed = new Set(steps.filter((s) => s.position === STEP.retouch && s.item_index !== i)
-      .map((s) => outputOf(s).job_id).filter((v): v is string => typeof v === "string"));
-    const prior = await priorRetouchJob(ctx, photo, claimed);
-    // The lookup itself failed: unknown is not "nothing was charged".
-    if (prior === "unknown") return "busy";
-    if (prior?.status === "completed") {
-      const path = await completedRetouchPath(ctx, prior.id);
-      if (path) return ok({ job_id: prior.id, path, recovered: true }, prior.credits);
-      return fail("retouch_interrupted");
+    if (!recovery) {
+      const r = await recoverPass(ctx, i, steps);
+      if (r === "unknown") return "busy";
+      recovery = r;
     }
-    // This invocation holds the run's lease, so the one that started the
-    // pass is gone: a job still "processing" will never finish. A failed pass
-    // refunded itself; an interrupted one is refunded by the ledger's
-    // reconciler. Either way it is the customer's call to try again.
-    if (prior) return fail(prior.status === "failed" ? "retouch_failed" : "retouch_interrupted");
+    if (recovery.kind === "recovered") return ok({ job_id: recovery.jobId, path: recovery.path, recovered: true }, recovery.credits);
+    if (recovery.kind === "fail") return fail(recovery.code);
     // No job row at all: the earlier call never reached the ledger, so
     // nothing was charged — the pass may be made now (once).
   }
@@ -422,9 +475,37 @@ async function retouchItem(ctx: Ctx, i: number, steps: StepRunRow[]): Promise<It
   }
   if (!result.ok) return fail(`retouch:${result.error}`.slice(0, 80));
   if ("pending" in result) return fail("retouch_workflow_on");
-  const path = result.path || await completedRetouchPath(ctx, result.jobId);
+  let path: string | null = result.path || null;
+  if (!path) {
+    const p = await retouchAssetPath(ctx, result.jobId);
+    path = p === "unknown" ? null : p;
+  }
   if (!path) return fail("retouch_output_missing");
   return ok({ job_id: result.jobId, path }, result.credits);
+}
+
+/**
+ * A pass an earlier invocation began and never recorded. Its Retusz job (the
+ * newest one of this member for this photo since the run began, not claimed
+ * by another item) decides:
+ *   · its file is in the library — whether the job reads "completed" or is
+ *     still "processing" (Retusz writes the file and closes its charge before
+ *     it marks the job) — the pass is RECOVERED, never bought again;
+ *   · failed — Retusz refunded it; the run stops (the customer's call);
+ *   · no file — interrupted: the ledger's reconciler refunds it;
+ *   · no job at all — nothing was charged: the pass may be made (once).
+ */
+async function recoverPass(ctx: Ctx, i: number, steps: StepRunRow[]): Promise<PassRecovery | "unknown"> {
+  const claimed = new Set(steps.filter((s) => s.position === STEP.retouch && s.item_index !== i)
+    .map((s) => outputOf(s).job_id).filter((v): v is string => typeof v === "string"));
+  const prior = await priorRetouchJob(ctx, ctx.input.photos[i], claimed);
+  if (prior === "unknown") return "unknown";
+  if (!prior) return { kind: "fresh" };
+  if (prior.status === "failed") return { kind: "fail", code: "retouch_failed" };
+  const path = await retouchAssetPath(ctx, prior.id);
+  if (path === "unknown") return "unknown";
+  if (path) return { kind: "recovered", jobId: prior.id, path, credits: prior.credits || ctx.input.quote.retouchUnit || 0 };
+  return { kind: "fail", code: "retouch_interrupted" };
 }
 
 /** The newest Retusz job of this member for this photo since the run began. */
@@ -442,96 +523,134 @@ async function priorRetouchJob(ctx: Ctx, photo: string, exclude: Set<string>):
   return row ? { id: row.id, status: String(row.status), createdAt: row.created_at, credits: row.credits_charged ?? 0 } : null;
 }
 
-/** The stored file of a completed Retusz job in this workspace, or null. */
-async function completedRetouchPath(ctx: Ctx, jobId: string): Promise<string | null> {
-  const { data: job } = await ctx.supabase.from("generation_jobs")
+/** The stored file of a delivered Retusz job in this workspace ("completed",
+ *  or "processing" with its file written), null when there is none,
+ *  "unknown" when it could not be read. */
+async function retouchAssetPath(ctx: Ctx, jobId: string): Promise<string | null | "unknown"> {
+  const { data: job, error } = await ctx.supabase.from("generation_jobs")
     .select("id, status, workspace_id, settings").eq("id", jobId).maybeSingle();
-  if (!job || job.workspace_id !== ctx.workspaceId || job.status !== "completed") return null;
+  if (error) return "unknown";
+  if (!job || job.workspace_id !== ctx.workspaceId) return null;
+  if (job.status !== "completed" && job.status !== "processing") return null;
   const op = (job.settings as { operation?: unknown } | null)?.operation;
   if (op !== "image_retouch") return null;
-  const { data: gens } = await ctx.supabase.from("generations")
-    .select("generation_assets(storage_path)").eq("job_id", jobId).limit(1);
-  const assets = (gens?.[0] as { generation_assets?: { storage_path: string }[] } | undefined)?.generation_assets ?? [];
-  const path = assets[0]?.storage_path ?? null;
-  return path && path.startsWith(`${ctx.workspaceId}/`) ? path : null;
+  const asset = await jobAsset(ctx, jobId);
+  if (asset === "unknown") return "unknown";
+  return asset?.path ?? null;
 }
 
 /* ── 2 · COMPOSITION, then at once 3 · FINISH + LIBRARY ──────────────────*/
 
-type ComposeOutcome = "ok" | "failed" | "busy" | "late";
+type ComposeOutcome = "ok" | "failed" | "busy" | "late" | "lost" | "again";
 
 type PreparedInput = { bytes: Buffer; mime: EditMime; filename: string; source: string; transform: string; sourceSha: string };
+type Prepared = { images: PreparedInput[]; paths: string[] } | { error: string };
 
 /**
- * ONE paid call, then the delivery in the SAME invocation. The provider's
- * answer lives in server memory only until the customer's file is in the
- * library and the charge is closed — it is never written where a member
- * could read it while the charge is still open (and so could be refunded).
- * Runs inside the OpenAI lane: the time left is judged once the lane is
- * ours, before the step is begun or anything is charged.
+ * THE COMPOSITION, in three phases:
+ *   1. the photos are read and checked — free, outside the OpenAI lane;
+ *   2. inside the lane only: the time left is judged, the step begun, every
+ *      refusal made, the charge opened and the ONE call sent;
+ *   3. outside the lane again: the call recorded and the result delivered in
+ *      the SAME invocation. The provider's answer lives in server memory only
+ *      until the customer's file is in the library — a refund never leaves a
+ *      file behind.
  */
 async function composeStep(ctx: Ctx, steps: StepRunRow[]): Promise<ComposeOutcome> {
-  const { supabase, runId, owner, input } = ctx;
-  const callMs = Math.min(input.config.timeout_ms, 200_000);
-  const left = () => ctx.deadlineAt - ctx.deps.now();
-  if (left() < callMs + COMPOSE_OVERHEAD_MS) return "late";
+  const prep = await preparePhotos(ctx, steps);
+  const sent = await withProviderLimit("openai", () => chargeAndCall(ctx, prep));
+  if (sent.kind === "recover") return recoverCompose(ctx, sent.attempts);
+  if (sent.kind !== "called") return sent.kind;
+  return recordAndDeliver(ctx, sent);
+}
 
-  // The inputs, in the customer's order: the Retusz result of each photo
-  // when Retusz ran, otherwise the photo as uploaded. Reading them is free,
-  // so it happens before the step is begun.
+/**
+ * The inputs, in the customer's order: the Retusz result of each photo when
+ * Retusz ran, otherwise the photo as uploaded. Read a few at a time.
+ */
+async function preparePhotos(ctx: Ctx, steps: StepRunRow[]): Promise<Prepared> {
+  const { input } = ctx;
   const sources = input.photos.map((photo, i) => {
     if (!input.retouch) return { bucket: "product-images" as const, path: photo };
     const st = steps.find((x) => x.position === STEP.retouch && x.item_index === i && x.status === "succeeded");
     const p = outputOf(st).path;
     return typeof p === "string" ? { bucket: "generation-assets" as const, path: p } : null;
   });
-  let prepError: string | null = sources.some((x) => x === null) ? "source_unavailable" : null;
-  const images: PreparedInput[] = [];
-  for (let i = 0; i < sources.length && !prepError; i++) {
-    const src = sources[i]!;
-    if (!src.path.startsWith(`${ctx.workspaceId}/`)) { prepError = "source_unavailable"; break; }
-    const { data: blob } = await supabase.storage.from(src.bucket).download(src.path);
-    if (!blob) { prepError = "source_unavailable"; break; }
+  if (sources.some((x) => x === null || !x.path.startsWith(`${ctx.workspaceId}/`))) return { error: "source_unavailable" };
+  const images: PreparedInput[] = new Array(sources.length);
+  const state = { next: 0, error: null as string | null };
+  const worker = async () => {
+    while (state.error === null) {
+      const i = state.next++;
+      if (i >= sources.length) return;
+      const r = await prepareOne(ctx, sources[i]!, i);
+      if (typeof r === "string") { state.error ??= r; return; }
+      images[i] = r;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(PREP_CONCURRENCY, sources.length) }, worker));
+  if (state.error !== null) return { error: state.error };
+  return { images, paths: sources.map((x) => x!.path) };
+}
+
+async function prepareOne(ctx: Ctx, src: { bucket: "product-images" | "generation-assets"; path: string }, i: number): Promise<PreparedInput | string> {
+  try {
+    const { data: blob } = await ctx.supabase.storage.from(src.bucket).download(src.path);
+    if (!blob) return "source_unavailable";
     // The stored bytes as-is for PNG/JPEG/WebP — except a photo carrying an
     // EXIF orientation flag, which is turned upright the way the customer saw
     // it in the uploader; anything else (AVIF) becomes a PNG. Both recorded
     // per photo (the platform's rule outside Retusz).
     const prepared = await prepareReferenceImage(Buffer.from(await blob.arrayBuffer()), src.path);
     const mime = prepared.mime as EditMime;
-    if (!(EDIT_MIMES as readonly string[]).includes(mime)) { prepError = "source_unsupported"; break; }
+    if (!(EDIT_MIMES as readonly string[]).includes(mime)) return "source_unsupported";
     const bytes = Buffer.from(prepared.base64, "base64");
-    if (bytes.length > OPENAI_EDIT_MAX_IMAGE_BYTES) { prepError = "source_too_large"; break; }
-    images.push({ bytes, mime, filename: editFilename(i, mime), source: src.path, transform: prepared.transform, sourceSha: prepared.sourceSha256 });
+    if (bytes.length > OPENAI_EDIT_MAX_IMAGE_BYTES) return "source_too_large";
+    return { bytes, mime, filename: editFilename(i, mime), source: src.path, transform: prepared.transform, sourceSha: prepared.sourceSha256 };
+  } catch {
+    return "source_unsupported";
   }
-  // Downloads take time too: the whole call must still fit.
-  if (!prepError && left() < callMs + FINISH_RESERVE_MS) return "late";
+}
+
+type Called = {
+  kind: "called"; t0: number; jobId: string; eventId: string; wallet: string;
+  promptSha256: string; images: PreparedInput[]; outcome: SunburstOutcome;
+};
+type Sent = Called | { kind: "late" | "busy" | "failed" | "lost" | "again" } | { kind: "recover"; attempts: number };
+
+/** Phase 2 — inside the OpenAI lane: nothing here waits for anything but
+ *  the database and the one call. */
+async function chargeAndCall(ctx: Ctx, prep: Prepared): Promise<Sent> {
+  const { supabase, runId, owner, input } = ctx;
+  const callMs = callBudgetMs(input);
+  // The lane may have queued, the reading may have been slow: the whole
+  // call and the finish after it must still fit, judged NOW, before the step
+  // is begun or anything is charged.
+  if (!("error" in prep) && ctx.deadlineAt - ctx.deps.now() < callMs + FINISH_RESERVE_MS) return { kind: "late" };
 
   const t0 = ctx.deps.now();
   const lease = Math.max(30, Math.ceil((ctx.deadlineAt - t0) / 1000) + 30);
   const b = await beginStep(supabase, runId, owner, STEP.compose, -1, "compose", "image_edit", lease);
-  if (b.state === "done") return "ok";
-  if (b.state === "busy") return "busy";
-  if (b.state === "not_owner") return "failed";
+  if (b.state === "done") return { kind: "again" };
+  if (b.state === "busy") return { kind: "busy" };
+  if (b.state === "not_owner") return { kind: "lost" };
   if (b.state === "failed" || b.state === "skipped") {
     await close(ctx, "failed", b.error ?? "compose_failed");
-    return "failed";
+    return { kind: "failed" };
   }
-  if (b.state !== "run") return "busy";
+  if (b.state !== "run") return { kind: "busy" };
+  // Begun before by an invocation that is gone: recovered, never re-sent.
+  if (b.attempts > 0) return { kind: "recover", attempts: b.attempts };
 
-  // RESUMED after the invocation died mid-composition: NO automatic second
-  // request. The answer was never stored before its charge closed, so the
-  // charge is released and the customer decides.
-  if (b.attempts > 0) return recoverCompose(ctx, b.attempts);
-
-  const stepFail = async (code: string, extra: Record<string, Json> = {}) => {
+  const stepFail = async (code: string): Promise<Sent> => {
     await finishStep(supabase, runId, owner, STEP.compose, -1, {
       status: "failed", attempts: 1, providerSlug: "openai", model: input.config.model,
-      cost: { basis: "unknown" }, errorCode: code, output: extra, durationMs: ctx.deps.now() - t0,
+      cost: { basis: "unknown" }, errorCode: code, durationMs: ctx.deps.now() - t0,
     });
     await close(ctx, "failed", code);
-    return "failed" as const;
+    return { kind: "failed" };
   };
-  if (prepError) return stepFail(prepError);
+  if ("error" in prep) return stepFail(prep.error);
 
   // Everything that can refuse does so BEFORE anything is charged.
   const config = await readThumbnailConfig(supabase);
@@ -555,7 +674,7 @@ async function composeStep(ctx: Ctx, steps: StepRunRow[]): Promise<ComposeOutcom
       operation: THUMBNAIL_OPERATION,
       reference_paths: input.photos,
       retouch: input.retouch,
-      retouched_paths: input.retouch ? sources.map((x) => x!.path) : [],
+      retouched_paths: input.retouch ? prep.paths : [],
       run_id: runId,
     } as Json,
   }).select("id").single();
@@ -579,21 +698,30 @@ async function composeStep(ctx: Ctx, steps: StepRunRow[]): Promise<ComposeOutcom
   }
   await progress(ctx, { stage: "compose" });
 
-  // THE ONE CALL — its timeout measured now, inside the lane, leaving room
-  // for the finish after it.
+  // THE ONE CALL — its timeout measured now, leaving room for the finish.
   const timeoutMs = Math.max(1, Math.min(callMs, ctx.deadlineAt - ctx.deps.now() - FINISH_RESERVE_MS));
   const outcome = await ctx.deps.callSunburst({
     apiKey: cred.apiKey, baseUrl: cred.baseUrl,
     spec: {
       model: input.config.model, prompt: prompt.text, size: input.config.size, quality: input.config.quality,
-      images: images.map(({ bytes, mime, filename }) => ({ bytes, mime, filename })),
+      images: prep.images.map(({ bytes, mime, filename }) => ({ bytes, mime, filename })),
     },
-    expectedImageSha256: images.map((img) => sha256(img.bytes)),
+    expectedImageSha256: prep.images.map((img) => sha256(img.bytes)),
     timeoutMs,
   });
+  return {
+    kind: "called", t0, jobId: job.id, eventId: usage.eventId, wallet,
+    promptSha256: prompt.sha256, images: prep.images, outcome,
+  };
+}
+
+/** Phase 3 — outside the lane: the call recorded, then the delivery. */
+async function recordAndDeliver(ctx: Ctx, c: Called): Promise<ComposeOutcome> {
+  const { supabase, runId, owner, input } = ctx;
+  const { outcome } = c;
   const cost = sunburstCost(outcome.ok ? outcome.answer.usage : outcome.usage, input.config.token_prices);
   const costMicros = cost.known ? cost.usdMicros : undefined;
-  const sentImages = images.map((img, i) => ({
+  const sentImages = c.images.map((img, i) => ({
     index: i, source_path: img.source, transform: img.transform, source_sha256: img.sourceSha,
     sent_sha256: sha256(img.bytes), mime: img.mime, bytes: img.bytes.length,
   }));
@@ -601,32 +729,34 @@ async function composeStep(ctx: Ctx, steps: StepRunRow[]): Promise<ComposeOutcom
   const adminRequest: Record<string, Json> = {
     provider: "openai", endpoint: "images.edits", model: input.config.model, size: input.config.size,
     quality: input.config.quality, background: "opaque", output_format: "png", n: 1,
-    prompt_version: input.prompt.version, prompt_sha256: prompt.sha256, prompt_digest: input.prompt.digest,
+    prompt_version: input.prompt.version, prompt_sha256: c.promptSha256, prompt_digest: input.prompt.digest,
     photos: input.photos.length, retouched: input.retouch,
     boundary: (outcome.boundary ?? null) as unknown as Json, inputs: sentImages as unknown as Json,
   };
-  // The job row is readable by the workspace: keyed digest only, no plain
-  // prompt hash, no endpoint, no request-body hash.
+  // The job row is readable by the workspace: no provider, model or
+  // endpoint, no plain prompt hash, no request-body hash — the keyed digest
+  // and what was sent from the customer's own photos.
   const jobRequest: Record<string, Json> = {
-    provider: "openai", endpoint: "images.edits", model: input.config.model, size: input.config.size,
-    quality: input.config.quality, background: "opaque", output_format: "png", n: 1,
+    size: input.config.size, quality: input.config.quality, n: 1,
     prompt_version: input.prompt.version, prompt_digest: input.prompt.digest,
     photos: input.photos.length, retouched: input.retouch, inputs: sentImages as unknown as Json,
   };
 
   if (!outcome.ok) {
     await failUsage(supabase, {
-      serverToken: dispatchToken(), eventId: usage.eventId, walletId: wallet,
+      serverToken: dispatchToken(), eventId: c.eventId, walletId: c.wallet,
       error: outcome.error, apiCostUsdMicros: costMicros,
     });
-    if (!outcome.notSent) await recordCall(ctx, usage.eventId, job.id, outcome, cost);
-    await jobFailed(ctx, job.id, outcome.error, { provider_request: jobRequest });
-    return stepFail(outcome.error, {
-      request: adminRequest, http_status: outcome.httpStatus, provider_code: outcome.providerCode, request_id: outcome.requestId,
-      usage: (outcome.usage ?? null) as unknown as Json, cost_usd_micros: costMicros ?? null,
+    if (!outcome.notSent) await recordCall(ctx, c.eventId, c.jobId, outcome, cost);
+    await jobFailed(ctx, c.jobId, outcome.error, { provider_request: jobRequest });
+    await finishStep(supabase, runId, owner, STEP.compose, -1, {
+      status: "failed", attempts: 1, providerSlug: "openai", model: input.config.model,
+      cost: { basis: "unknown" }, errorCode: outcome.error, durationMs: ctx.deps.now() - c.t0,
     });
+    await close(ctx, "failed", outcome.error);
+    return "failed";
   }
-  await recordCall(ctx, usage.eventId, job.id, outcome, cost);
+  await recordCall(ctx, c.eventId, c.jobId, outcome, cost);
 
   const meta = await imageMeta(outcome.image);
   const response = {
@@ -641,7 +771,7 @@ async function composeStep(ctx: Ctx, steps: StepRunRow[]): Promise<ComposeOutcom
     units: 1, unitKind: "image",
     cost: cost.known ? { basis: "estimated", usdMicros: cost.usdMicros } : { basis: "unknown" },
     output: {
-      job_id: job.id, usage_event_id: usage.eventId, request_id: outcome.requestId,
+      job_id: c.jobId, usage_event_id: c.eventId, request_id: outcome.requestId,
       request: adminRequest,
       response: response as unknown as Json,
       usage: (outcome.answer.usage ?? null) as unknown as Json,
@@ -649,59 +779,93 @@ async function composeStep(ctx: Ctx, steps: StepRunRow[]): Promise<ComposeOutcom
       cost_breakdown: cost.known ? (cost.breakdown as unknown as Json) : null,
       cost_unknown_reason: cost.known ? null : cost.reason,
     },
-    durationMs: ctx.deps.now() - t0,
+    durationMs: ctx.deps.now() - c.t0,
   });
 
   // 3 — at once, in this invocation, while the answer is in memory.
   await progress(ctx, { stage: "finish" });
   return deliver(ctx, {
-    jobId: job.id, eventId: usage.eventId, wallet, image: outcome.image, mime: outcome.mime,
+    jobId: c.jobId, eventId: c.eventId, wallet: c.wallet, image: outcome.image, mime: outcome.mime,
     costMicros: costMicros ?? null, requestId: outcome.requestId, jobRequest, response,
   });
 }
 
+/** The composition step was found "running": an earlier invocation began it
+ *  and is gone. What it left is read before the step is taken again. */
+async function recoverComposeStep(ctx: Ctx): Promise<ComposeOutcome> {
+  const jobId = await composeJobId(ctx);
+  if (jobId === "unknown") return "busy";
+  const asset = jobId ? await jobAsset(ctx, jobId) : null;
+  if (asset === "unknown") return "busy";
+  const b = await beginStep(ctx.supabase, ctx.runId, ctx.owner, STEP.compose, -1, "compose", "image_edit", RECOVERY_LEASE_S);
+  if (b.state === "done") return "again";
+  if (b.state === "busy") return "busy";
+  if (b.state === "not_owner") return "lost";
+  if (b.state === "failed" || b.state === "skipped") { await close(ctx, "failed", b.error ?? "compose_failed"); return "failed"; }
+  if (b.state !== "run") return "busy";
+  return recoverCompose(ctx, b.attempts, { jobId, asset });
+}
+
 /**
- * A composition whose invocation died during the call: its answer was never
- * stored, so there is nothing to deliver — the charge is released now (the
- * reconciler would do the same, later). Never a second request.
+ * A composition whose invocation died during or right after the call:
+ *   · its file is in the library → recorded as succeeded; the finish step
+ *     then closes it as delivered (job completed, charge closed);
+ *   · otherwise its answer was never stored, so there is nothing to deliver:
+ *     every file of the job is removed and the charge released now (the
+ *     reconciler would do the same, later). Never a second request.
  */
-async function recoverCompose(ctx: Ctx, attempts: number): Promise<ComposeOutcome> {
+async function recoverCompose(ctx: Ctx, attempts: number,
+  known?: { jobId: string | null; asset: JobAsset | null }): Promise<ComposeOutcome> {
   const { supabase, runId, owner } = ctx;
-  const jobId = ctx.run.job_id;
-  if (jobId && await jobDelivered(ctx, jobId)) {
-    // Delivered before the step could be recorded: close as delivered.
-    const event = await eventOfJob(ctx, jobId);
-    if (event?.status === "pending") {
-      await completeUsage(supabase, dispatchToken(), event.id, 1, { executor: { providerSlug: "openai", modelSlug: ctx.input.config.model } });
-    }
+  let jobId: string | null;
+  let asset: JobAsset | null;
+  if (known) ({ jobId, asset } = known);
+  else {
+    const j = await composeJobId(ctx);
+    if (j === "unknown") return "busy";
+    const a = j ? await jobAsset(ctx, j) : null;
+    if (a === "unknown") return "busy";
+    jobId = j; asset = a;
+  }
+  if (jobId && asset) {
     await finishStep(supabase, runId, owner, STEP.compose, -1, {
       status: "succeeded", attempts: attempts + 1, providerSlug: "openai", model: ctx.input.config.model,
       units: 1, unitKind: "image", cost: { basis: "unknown" }, output: { job_id: jobId, recovered: true }, durationMs: 0,
     });
-    await closeOk(ctx, { path: await jobAssetPath(ctx, jobId) ?? "" }, null);
-    return "ok";
+    return "again";
   }
-  await releaseCompose(ctx, jobId, "compose_interrupted");
+  if (!(await releaseCompose(ctx, jobId, "compose_interrupted"))) return "busy";
   await finishStep(supabase, runId, owner, STEP.compose, -1, {
     status: "failed", attempts: attempts + 1, providerSlug: "openai", model: ctx.input.config.model,
     cost: { basis: "unknown" }, errorCode: "compose_interrupted", durationMs: 0,
   });
-  await close(ctx, "failed", "compose_interrupted");
+  await close(ctx, "failed", interruptedCode(ctx));
   return "failed";
 }
 
-/** Refund the composition's open charge (once — closed events are left as
- *  they are) and mark its job failed. */
-async function releaseCompose(ctx: Ctx, jobId: string | null, code: string): Promise<void> {
-  if (!jobId) return;
+/**
+ * RELEASE the composition: every file of its job is removed FIRST (a
+ * refunded result is never left readable), then the charge is refunded
+ * (once — closed events are left as they are) and the job marked failed.
+ * False when that could not be done now: nothing is refunded, the next call
+ * tries again.
+ */
+async function releaseCompose(ctx: Ctx, jobId: string | null, code: string): Promise<boolean> {
+  if (!jobId) return true;
+  if (!(await removeJobFiles(ctx, jobId))) return false;
   const event = await eventOfJob(ctx, jobId);
+  if (event === "unknown") return false;
   if (event?.status === "pending") {
     await failUsage(ctx.supabase, {
       serverToken: dispatchToken(), eventId: event.id, walletId: (await walletId(ctx.supabase, ctx.workspaceId)) ?? "", error: code,
     });
   }
   await jobFailed(ctx, jobId, code);
+  return true;
 }
+
+/** A composition stopped by the customer's cancel reads as cancelled. */
+const interruptedCode = (ctx: Ctx) => (ctx.run.error === "cancel_requested" ? "cancelled" : "compose_interrupted");
 
 type Delivery = {
   jobId: string; eventId: string; wallet: string; image: Buffer; mime: EditMime;
@@ -709,39 +873,44 @@ type Delivery = {
 };
 
 /**
- * THE FINISH, from the answer in memory: the local 2560×2560 file, the
- * library rows, then — and only then — the charge closes. On any failure
- * the composition is refunded and nothing is left behind for the customer.
+ * THE FINISH, from the answer in memory: the local 2560×2560 file under a
+ * name chosen now (nobody can create it first), the library rows, the job
+ * completed — and only then the charge closes. On any failure every file of
+ * the job is removed and the composition refunded.
  */
 async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
   const { supabase, runId, owner, input } = ctx;
   const t0 = ctx.deps.now();
-  const b = await beginStep(supabase, runId, owner, STEP.finish, -1, "finish", "tool", 120);
-  if (b.state === "not_owner") return "failed";
-  const fail = async (code: string) => {
+  // Begun once more on a transient error: dropping a paid answer costs the
+  // customer a refund and the operator the provider's bill.
+  let b = await beginStep(supabase, runId, owner, STEP.finish, -1, "finish", "tool", 120);
+  if (b.state === "busy") b = await beginStep(supabase, runId, owner, STEP.finish, -1, "finish", "tool", 120);
+  const begun = b.state === "run";
+  const attempts = b.state === "run" ? b.attempts : 0;
+  const fail = async (code: string): Promise<ComposeOutcome> => {
+    // Nothing paid for stays readable: the files go first; if they cannot,
+    // nothing is refunded yet and the next call releases both.
+    if (!(await removeJobFiles(ctx, d.jobId))) return "busy";
     await failUsage(supabase, {
       serverToken: dispatchToken(), eventId: d.eventId, walletId: d.wallet, error: code, apiCostUsdMicros: d.costMicros ?? undefined,
     });
     await jobFailed(ctx, d.jobId, code, { provider_request: d.jobRequest });
-    await finishStep(supabase, runId, owner, STEP.finish, -1, {
-      status: "failed", attempts: (b.state === "run" ? b.attempts : 0) + 1, cost: { basis: "estimated", usdMicros: 0 },
-      errorCode: code, durationMs: ctx.deps.now() - t0,
-    });
+    if (begun) {
+      await finishStep(supabase, runId, owner, STEP.finish, -1, {
+        status: "failed", attempts: attempts + 1, cost: { basis: "estimated", usdMicros: 0 },
+        errorCode: code, durationMs: ctx.deps.now() - t0,
+      });
+    }
     await close(ctx, "failed", code);
-    return "failed" as const;
-  };
-  if (b.state !== "run") return fail("finish_failed");
-
-  // The charge must still be open: a delivery is never made on a refunded one.
-  const event = await eventOfJob(ctx, d.jobId);
-  if (event?.status !== "pending") {
-    await jobFailed(ctx, d.jobId, "charge_closed");
-    await finishStep(supabase, runId, owner, STEP.finish, -1, {
-      status: "failed", attempts: b.attempts + 1, cost: { basis: "estimated", usdMicros: 0 }, errorCode: "charge_closed", durationMs: 0,
-    });
-    await close(ctx, "failed", "charge_closed");
     return "failed";
+  };
+  if (b.state === "not_owner") {
+    // Another driver holds the run now: it finds nothing delivered and closes
+    // it. The charge is released here already rather than left to wait.
+    await failUsage(supabase, { serverToken: dispatchToken(), eventId: d.eventId, walletId: d.wallet, error: "finish_lost" });
+    return "lost";
   }
+  if (!begun) return fail("finish_failed");
 
   let fin: FinishResult;
   try {
@@ -749,56 +918,46 @@ async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
   } catch (e) {
     return fail(e instanceof FinishError ? e.code : "finish_failed");
   }
-  const path = `${ctx.workspaceId}/${d.jobId}/0.${fin.ext}`;
-  const { error: upErr } = await supabase.storage.from("generation-assets")
-    .upload(path, fin.bytes, { contentType: fin.mime, upsert: true });
-  if (upErr) return fail("storage_failed");
+  const path = await storeNew(ctx, d.jobId, "", fin.ext, fin.bytes, fin.mime);
+  if (!path) return fail("storage_failed");
 
-  const { data: gen } = await supabase.from("generations").insert({
+  const { data: gen, error: genErr } = await supabase.from("generations").insert({
     job_id: d.jobId, workspace_id: ctx.workspaceId, quality_status: "skipped",
   }).select("id").single();
-  if (!gen) { await removeFile(ctx, path); return fail("library_failed"); }
-  const { data: asset } = await supabase.from("generation_assets").insert({
+  if (genErr || !gen) return fail("library_failed");
+  const { data: asset, error: assetErr } = await supabase.from("generation_assets").insert({
     generation_id: gen.id, asset_type: "image", storage_path: path, width: fin.width, height: fin.height,
-    metadata: { tool: THUMBNAIL_TOOL_KEY, provider: "openai", model: input.config.model, postprocess: fin.postprocess } as Json,
+    metadata: { tool: THUMBNAIL_TOOL_KEY, postprocess: fin.postprocess } as Json,
   }).select("id").single();
-  if (!asset) { await removeFile(ctx, path); return fail("library_failed"); }
-  await derivatives(supabase, asset.id, path, fin.bytes);
+  if (assetErr || !asset) return fail("library_failed");
 
-  const delivered = {
-    path, job_id: d.jobId, generation_id: gen.id, asset_id: asset.id,
-    width: fin.width, height: fin.height, mime: fin.mime, bytes: fin.bytes.length, sha256: fin.sha256,
-    source: fin.source, inner: fin.inner, margin_px: fin.marginPx, checks: fin.checks,
-    finish: { target: fin.config.target, margin_percent: fin.config.marginPercent, brightness_percent: fin.config.brightnessPercent, kernel: fin.config.kernel, format: fin.config.format },
-    postprocess: fin.postprocess,
-  };
-  const { data: jobRow } = await supabase.from("generation_jobs").select("settings").eq("id", d.jobId).maybeSingle();
-  await supabase.from("generation_jobs").update({
-    status: "completed", credits_charged: input.quote.thumbnailCredits, latency_ms: Date.now() - Date.parse(ctx.run.created_at),
-    completed_at: new Date().toISOString(), request_id: d.requestId,
-    settings: {
-      ...((jobRow?.settings ?? {}) as Record<string, Json>),
-      provider_request: d.jobRequest,
-      provider_output: [{
-        provider_returned_width: d.response.width ?? null, provider_returned_height: d.response.height ?? null,
-        provider_mime: d.mime, provider_bytes: d.image.length, provider_sha256: d.response.sha256 ?? null,
-        stored_path: path, stored_width: fin.width, stored_height: fin.height, stored_sha256: fin.sha256,
-        transformed_after_provider: true, postprocess: fin.postprocess,
-      }] as unknown as Json,
-    } as Json,
-  }).eq("id", d.jobId);
+  // The job is COMPLETED before the charge closes: a charged result is
+  // always one the library shows. If that write cannot be made now, the
+  // charge stays open — the next call (or the reconciler, which sees the
+  // file) closes it as delivered.
+  const completed = await markJobCompleted(ctx, d.jobId, {
+    latency_ms: Date.now() - Date.parse(ctx.run.created_at), request_id: d.requestId,
+  }, {
+    provider_request: d.jobRequest,
+    provider_output: [{
+      provider_returned_width: d.response.width ?? null, provider_returned_height: d.response.height ?? null,
+      provider_mime: d.mime, provider_bytes: d.image.length, provider_sha256: d.response.sha256 ?? null,
+      stored_path: path, stored_width: fin.width, stored_height: fin.height, stored_sha256: fin.sha256,
+      transformed_after_provider: true, postprocess: fin.postprocess,
+    }] as unknown as Json,
+  });
+  if (!completed) return "busy";
 
-  // The ledger closes AFTER the file and its rows exist.
   await completeUsage(supabase, dispatchToken(), d.eventId, 1, {
     apiCostUsdMicros: d.costMicros ?? undefined,
     providerRequestId: d.requestId,
     executor: { providerSlug: "openai", modelSlug: input.config.model },
   });
+  await derivatives(supabase, asset.id, path, fin.bytes);
   // The provider's own answer, kept next to the delivered file for quality
-  // review — written only now that it is paid for.
-  await supabase.storage.from("generation-assets")
-    .upload(`${ctx.workspaceId}/${d.jobId}/raw.${d.mime === "image/png" ? "png" : d.mime === "image/webp" ? "webp" : "jpg"}`, d.image, { contentType: d.mime, upsert: true })
-    .catch(() => null);
+  // review — written only now that it is paid for, under a fresh name.
+  const rawExt = d.mime === "image/png" ? "png" : d.mime === "image/webp" ? "webp" : "jpg";
+  const rawPath = await storeNew(ctx, d.jobId, "raw-", rawExt, d.image, d.mime).catch(() => null);
   await supabase.from("notifications").insert({
     user_id: ctx.userId, type: "generation_done", title: "generation_done", body: "thumbnail ×1", href: "/library",
   });
@@ -806,12 +965,19 @@ async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
     p_workspace_id: ctx.workspaceId, p_action: "generation.completed",
     p_entity_type: "generation_job", p_entity_id: d.jobId,
     p_metadata: {
-      tool: THUMBNAIL_TOOL_KEY, provider: "openai", model: input.config.model, photos: input.photos.length,
+      tool: THUMBNAIL_TOOL_KEY, photos: input.photos.length,
       retouched: input.retouch, credits: input.quote.thumbnailCredits, run_id: runId,
     },
   });
+  const delivered = {
+    path, job_id: d.jobId, generation_id: gen.id, asset_id: asset.id, raw_path: rawPath,
+    width: fin.width, height: fin.height, mime: fin.mime, bytes: fin.bytes.length, sha256: fin.sha256,
+    source: fin.source, inner: fin.inner, margin_px: fin.marginPx, checks: fin.checks,
+    finish: { target: fin.config.target, margin_percent: fin.config.marginPercent, brightness_percent: fin.config.brightnessPercent, kernel: fin.config.kernel, format: fin.config.format },
+    postprocess: fin.postprocess,
+  };
   await finishStep(supabase, runId, owner, STEP.finish, -1, {
-    status: "succeeded", attempts: b.attempts + 1, cost: { basis: "estimated", usdMicros: 0 },
+    status: "succeeded", attempts: attempts + 1, cost: { basis: "estimated", usdMicros: 0 },
     output: delivered as unknown as Json, durationMs: ctx.deps.now() - t0,
   });
   await closeOk(ctx, delivered as unknown as Record<string, unknown>, d.costMicros);
@@ -821,56 +987,134 @@ async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
 /**
  * The composition was recorded but its finish never completed (the
  * invocation died in between). The answer was only ever in memory, so:
- * delivered already → close as delivered; otherwise release the charge.
+ * delivered already → closed as delivered; otherwise released.
  */
-async function resumeFinish(ctx: Ctx, compose: StepRunRow): Promise<"ok" | "failed" | "busy"> {
+async function resumeFinish(ctx: Ctx, compose: StepRunRow): Promise<ComposeOutcome> {
   const { supabase, runId, owner } = ctx;
   const out = outputOf(compose);
   const jobId = typeof out.job_id === "string" ? out.job_id : ctx.run.job_id;
   const costMicros = typeof out.cost_usd_micros === "number" ? out.cost_usd_micros : null;
-  const b = await beginStep(supabase, runId, owner, STEP.finish, -1, "finish", "tool", 120);
+  // Read before the step is taken: an unreadable answer leaves it untouched.
+  const asset = jobId ? await jobAsset(ctx, jobId) : null;
+  if (asset === "unknown") return "busy";
+  const b = await beginStep(supabase, runId, owner, STEP.finish, -1, "finish", "tool", RECOVERY_LEASE_S);
   if (b.state === "busy") return "busy";
-  if (b.state === "not_owner") return "failed";
+  if (b.state === "not_owner") return "lost";
   if (b.state === "done") { await closeOk(ctx, outputOf({ output: b.output }), costMicros); return "ok"; }
   if (b.state === "failed" || b.state === "skipped") { await close(ctx, "failed", b.error ?? "finish_failed"); return "failed"; }
   if (b.state !== "run") return "busy";
-  if (jobId && await jobDelivered(ctx, jobId)) {
+
+  if (jobId && asset) {
+    // DELIVERED before the invocation died: the job is completed and the
+    // charge closed (in that order), then the run.
+    if (!(await markJobCompleted(ctx, jobId))) return "busy";
     const event = await eventOfJob(ctx, jobId);
+    if (event === "unknown") return "busy";
     if (event?.status === "pending") {
       await completeUsage(supabase, dispatchToken(), event.id, 1, {
         apiCostUsdMicros: costMicros ?? undefined, executor: { providerSlug: "openai", modelSlug: ctx.input.config.model },
       });
     }
-    const path = await jobAssetPath(ctx, jobId);
+    const delivered = { path: asset.path, job_id: jobId, width: asset.width, height: asset.height, recovered: true };
     await finishStep(supabase, runId, owner, STEP.finish, -1, {
       status: "succeeded", attempts: b.attempts + 1, cost: { basis: "estimated", usdMicros: 0 },
-      output: { path, job_id: jobId, recovered: true }, durationMs: 0,
+      output: delivered as unknown as Json, durationMs: 0,
     });
-    await closeOk(ctx, { path: path ?? "" }, costMicros);
+    await closeOk(ctx, delivered, costMicros);
     return "ok";
   }
-  await releaseCompose(ctx, jobId, "compose_interrupted");
+  if (!(await releaseCompose(ctx, jobId, "compose_interrupted"))) return "busy";
   await finishStep(supabase, runId, owner, STEP.finish, -1, {
     status: "failed", attempts: b.attempts + 1, cost: { basis: "estimated", usdMicros: 0 }, errorCode: "compose_interrupted", durationMs: 0,
   });
-  await close(ctx, "failed", "compose_interrupted");
+  await close(ctx, "failed", interruptedCode(ctx));
   return "failed";
 }
 
-/** Whether a job already has its file in the library. */
-async function jobDelivered(ctx: Ctx, jobId: string): Promise<boolean> {
-  return (await jobAssetPath(ctx, jobId)) !== null;
+type JobAsset = { path: string; width: number | null; height: number | null };
+
+/** The library file of a job in this workspace: null when there is none,
+ *  "unknown" when it could not be read. */
+async function jobAsset(ctx: Ctx, jobId: string): Promise<JobAsset | null | "unknown"> {
+  const { data: gens, error } = await ctx.supabase.from("generations")
+    .select("generation_assets(storage_path, width, height)").eq("job_id", jobId).limit(5);
+  if (error || !gens) return "unknown";
+  for (const g of gens as { generation_assets?: { storage_path: string; width: number | null; height: number | null }[] }[]) {
+    const a = g.generation_assets?.find((x) => typeof x.storage_path === "string" && x.storage_path.startsWith(`${ctx.workspaceId}/`));
+    if (a) return { path: a.storage_path, width: a.width ?? null, height: a.height ?? null };
+  }
+  return null;
 }
 
-async function jobAssetPath(ctx: Ctx, jobId: string): Promise<string | null> {
-  const { data: gens } = await ctx.supabase.from("generations")
-    .select("generation_assets(storage_path)").eq("job_id", jobId).limit(1);
-  const assets = (gens?.[0] as { generation_assets?: { storage_path: string }[] } | undefined)?.generation_assets ?? [];
-  return assets[0]?.storage_path ?? null;
+/** The composition's job: the run's own reference, or — when that write was
+ *  lost — the job tagged with this run. */
+async function composeJobId(ctx: Ctx): Promise<string | null | "unknown"> {
+  if (ctx.run.job_id) return ctx.run.job_id;
+  const { data, error } = await ctx.supabase.from("generation_jobs").select("id")
+    .eq("workspace_id", ctx.workspaceId).eq("user_id", ctx.userId)
+    .contains("settings", { operation: THUMBNAIL_OPERATION, run_id: ctx.runId })
+    .limit(1);
+  if (error || !data) return "unknown";
+  return data[0]?.id ?? null;
 }
 
-async function removeFile(ctx: Ctx, path: string): Promise<void> {
-  try { await ctx.supabase.storage.from("generation-assets").remove([path]); } catch { /* best effort */ }
+/**
+ * Mark a delivered composition's job completed (with its price), checked
+ * and tried twice. False when it could not be written: the caller then
+ * leaves the charge open for the next call rather than charge for a result
+ * the library would hide.
+ */
+async function markJobCompleted(ctx: Ctx, jobId: string,
+  fields: Record<string, Json> = {}, settingsExtra: Record<string, Json> = {}): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 250));
+    const { data: row, error: readErr } = await ctx.supabase.from("generation_jobs")
+      .select("status, settings").eq("id", jobId).maybeSingle();
+    if (readErr || !row) continue;
+    const extra = Object.keys(settingsExtra).length > 0;
+    if (row.status === "completed" && !extra && Object.keys(fields).length === 0) return true;
+    const { data, error } = await ctx.supabase.from("generation_jobs").update({
+      status: "completed", credits_charged: ctx.input.quote.thumbnailCredits, completed_at: new Date().toISOString(),
+      ...fields,
+      ...(extra ? { settings: { ...((row.settings ?? {}) as Record<string, Json>), ...settingsExtra } as Json } : {}),
+    }).eq("id", jobId).select("id");
+    if (!error && Array.isArray(data) && data.length === 1) return true;
+  }
+  return false;
+}
+
+/** Upload under a fresh random name in the job's folder (never over an
+ *  existing object): a name nobody could know before. Null on failure. */
+async function storeNew(ctx: Ctx, jobId: string, prefix: string, ext: string, bytes: Buffer, mime: string): Promise<string | null> {
+  const bucket = ctx.supabase.storage.from("generation-assets");
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const path = `${ctx.workspaceId}/${jobId}/${prefix}${randomUUID()}.${ext}`;
+    try {
+      const { error } = await bucket.upload(path, bytes, { contentType: mime, upsert: false });
+      if (!error) return path;
+    } catch {
+      // A fresh name next time; whatever may have been written is removed
+      // with the job's folder if the delivery fails.
+    }
+  }
+  return null;
+}
+
+/** Remove every object in the job's folder (the delivered file, its
+ *  derivatives, the raw answer). True only when the folder is known empty. */
+async function removeJobFiles(ctx: Ctx, jobId: string): Promise<boolean> {
+  const bucket = ctx.supabase.storage.from("generation-assets");
+  const folder = `${ctx.workspaceId}/${jobId}`;
+  try {
+    const { data, error } = await bucket.list(folder, { limit: 100 });
+    if (error || !data) return false;
+    const paths = data.filter((o) => typeof o.name === "string" && o.name.length > 0).map((o) => `${folder}/${o.name}`);
+    if (paths.length === 0) return true;
+    const { error: rmErr } = await bucket.remove(paths);
+    return !rmErr;
+  } catch {
+    return false;
+  }
 }
 
 async function derivatives(supabase: Client, assetId: string, path: string, bytes: Buffer): Promise<void> {
@@ -893,13 +1137,25 @@ async function derivatives(supabase: Client, assetId: string, path: string, byte
 
 /* ══ helpers ══════════════════════════════════════════════════════════════*/
 
+/** Credits actually charged by the Retusz passes of this run. */
+function retouchCredits(steps: StepRunRow[]): number {
+  return steps.filter((s) => s.position === STEP.retouch && s.status === "succeeded")
+    .reduce((n, s) => n + (Number(outputOf(s).credits) || 0), 0);
+}
+
+/** Keep the run's `credits` at what was charged so far — also for a run that
+ *  ends outside `close` (a cancel, the invocation limit). */
+async function syncCredits(ctx: Ctx, steps: StepRunRow[]): Promise<void> {
+  const paid = retouchCredits(steps);
+  if (paid === (ctx.run.credits ?? 0)) return;
+  if (await patchRun(ctx.supabase, ctx.runId, ctx.owner, { credits: paid })) ctx.run = { ...ctx.run, credits: paid };
+}
+
 async function close(ctx: Ctx, status: "ok" | "failed", error: string | null, extra: Record<string, Json> = {}): Promise<void> {
   const steps = await readStepRuns(ctx.supabase, ctx.runId);
-  const retouchCredits = steps.filter((s) => s.position === STEP.retouch && s.status === "succeeded")
-    .reduce((n, s) => n + (Number(outputOf(s).credits) || 0), 0);
   await patchRun(ctx.supabase, ctx.runId, ctx.owner, {
     status, error: error ?? "",
-    credits: retouchCredits + (status === "ok" ? ctx.input?.quote.thumbnailCredits ?? 0 : 0),
+    credits: retouchCredits(steps) + (status === "ok" ? ctx.input?.quote.thumbnailCredits ?? 0 : 0),
     progress: { ...(progressOf(ctx.run)), stage: status === "ok" ? "done" : "failed" },
     duration_ms: Math.max(0, Date.now() - Date.parse(ctx.run.created_at)),
     ...extra,
@@ -943,11 +1199,14 @@ async function walletId(supabase: Client, workspaceId: string): Promise<string |
   return data?.id ?? null;
 }
 
-async function eventOfJob(ctx: Ctx, jobId: string): Promise<{ id: string; status: string } | null> {
-  const { data } = await ctx.supabase.from("usage_events").select("id, status")
+/** The composition's ledger event: null when there is none, "unknown" when
+ *  it could not be read. */
+async function eventOfJob(ctx: Ctx, jobId: string): Promise<{ id: string; status: string } | null | "unknown"> {
+  const { data, error } = await ctx.supabase.from("usage_events").select("id, status")
     .eq("generation_job_id", jobId).eq("service_slug", THUMBNAIL_SERVICE)
     .order("created_at", { ascending: false }).limit(1);
-  return data?.[0] ? { id: data[0].id, status: data[0].status } : null;
+  if (error || !data) return "unknown";
+  return data[0] ? { id: data[0].id, status: data[0].status } : null;
 }
 
 async function jobFailed(ctx: Ctx, jobId: string, code: string, settingsExtra: Record<string, Json> = {}): Promise<void> {
