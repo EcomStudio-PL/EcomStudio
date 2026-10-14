@@ -209,7 +209,9 @@ returns jsonb
 language sql stable security definer set search_path = public as $$
   select jsonb_build_object(
     'id', r.id, 'status', r.status, 'error', r.error, 'progress', r.progress,
-    'outputs', r.outputs, 'credits', r.credits, 'job_id', r.job_id,
+    'outputs', r.outputs, 'credits', r.credits,
+    -- The final job only once it is delivered (its id names storage paths).
+    'job_id', case when r.status = 'ok' then r.job_id end,
     'created_at', r.created_at, 'finished_at', r.finished_at,
     'driving', coalesce(r.locked_until > now(), false),
     'photos', coalesce(r.input->'photos', '[]'::jsonb),
@@ -220,7 +222,7 @@ language sql stable security definer set search_path = public as $$
         'position', s."position", 'item', s.item_index, 'status', s.status,
         'error', s.error_code,
         'path', case when s."position" in (1, 3) then s.output->>'path' end,
-        'job_id', case when s."position" in (1, 3) then s.output->>'job_id' end,
+        'job_id', case when s."position" = 1 or (s."position" = 3 and s.status = 'succeeded') then s.output->>'job_id' end,
         'width', case when s."position" = 3 then s.output->'width' end,
         'height', case when s."position" = 3 then s.output->'height' end
       ) order by s."position", s.item_index)

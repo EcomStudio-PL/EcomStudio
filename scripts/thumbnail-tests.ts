@@ -610,42 +610,71 @@ async function sectionE() {
   check("E9a a failing finish → finish_failed, the composition refunded, one request", r9.status === "failed" && r9.error === "finish_failed"
     && db().events.every((e) => e.status === "refunded") && rec.sunburst.length === 1);
 
-  // E9b — time ran out right after the composition: the next call finishes
-  // from the stored answer, without asking again; charged once.
+  check("E9a nothing of the refunded composition is left in storage (no raw, no file)",
+    ![...db().storage.keys()].some((k) => /\/(raw|0)\.(png|jpg|webp)$/.test(k) && !k.includes("/thumbnail-test/")));
+
+  // E9b — the invocation died between the answer and the finish: the answer
+  // was only in memory, so the charge is released; nothing is re-sent.
   setupEnv();
   rec = { retouch: [], sunburst: [] };
   photos = await seedPhotos(1);
   const s9b = await start(photos, false);
   const runId9b = (s9b as { runId: string }).runId;
-  const base9b = depsFor(rec, await fakeRetouchFactory(rec));
-  const late: Partial<ThumbnailDeps> = { ...base9b, callSunburst: async (input) => { const out = await base9b.callSunburst!(input); db().now += 230_000; return out; } };
-  const y9 = await advanceThumbnailRun(SUPA, USER, WS, runId9b, { deadlineAt: db().now + 270_000, deps: late });
-  check("E9b (setup) the invocation yields after the composition", y9 === "yield" && db().steps.some((x) => x.run_id === runId9b && x.position === 2 && x.status === "succeeded"));
-  db().now += 11_000;
-  const r9b = await driveToEnd(runId9b, base9b);
-  check("E9b finished from the stored answer: one request, charged and completed once", r9b.status === "ok" && rec.sunburst.length === 1
-    && thumbStarts().length === 1 && charges().filter((c) => c.kind === "complete").length === 1 && db().wallet.balance === 980);
+  const job9b = id("job");
+  tableRows("generation_jobs").push({ id: job9b, workspace_id: WS, user_id: USER, status: "processing", settings: { operation: "ecommerce_thumbnail" } });
+  const ev9b = await (await import("./stubs/thumb-usage")).startUsage(null, { serverToken: "t", userId: USER, workspaceId: WS, walletId: "w", serviceSlug: "tool_thumbnail", generationJobId: job9b, idempotencyKey: `thumb:${runId9b}:compose`, creditsCharged: 20 });
+  const run9b = db().runs.get(runId9b)!; run9b.status = "running"; run9b.job_id = job9b;
+  db().steps.push({ run_id: runId9b, position: 2, item_index: -1, step_name: "compose", operation: "image_edit", status: "succeeded", attempts: 1,
+    output: { job_id: job9b, usage_event_id: (ev9b as { eventId: string }).eventId }, error_code: null, locked_until: null });
+  const r9b = await driveToEnd(runId9b, depsFor(rec, await fakeRetouchFactory(rec)));
+  check("E9b died after the answer: no second request, the charge released, nothing delivered", rec.sunburst.length === 0
+    && r9b.status === "failed" && r9b.error === "compose_interrupted" && db().events.every((e) => e.status === "refunded") && db().wallet.balance === 1000);
 
-  // E9c — the invocation died after storing the answer but before recording
-  // the step: recovered from the file, never re-sent, completed once.
+  // E9c — the invocation died after delivering but before recording the
+  // step: closed as delivered, charged once, never re-sent.
   setupEnv();
   rec = { retouch: [], sunburst: [] };
   photos = await seedPhotos(1);
   const s9c = await start(photos, false);
   const runId9c = (s9c as { runId: string }).runId;
-  const raw9c = await RAW;
-  const killAfterAnswer: Partial<ThumbnailDeps> = { ...depsFor(rec, await fakeRetouchFactory(rec)), callSunburst: async (input) => {
-    rec.sunburst.push(input);
-    // The answer reached storage, then the invocation was killed.
-    const jobId = db().runs.get(runId9c)!.job_id as string;
-    db().storage.set(`generation-assets:${WS}/${jobId}/raw.png`, raw9c);
-    throw new Error("killed after upload");
-  } };
-  await advanceThumbnailRun(SUPA, USER, WS, runId9c, { deadlineAt: db().now + 270_000, deps: killAfterAnswer }).catch(() => "crashed");
-  db().now += 600_000;
+  const job9c = id("job");
+  tableRows("generation_jobs").push({ id: job9c, workspace_id: WS, user_id: USER, status: "completed", settings: { operation: "ecommerce_thumbnail" } });
+  const gen9c = id("gen");
+  tableRows("generations").push({ id: gen9c, job_id: job9c, workspace_id: WS });
+  tableRows("generation_assets").push({ id: id("asset"), generation_id: gen9c, storage_path: `${WS}/${job9c}/0.png` });
+  await (await import("./stubs/thumb-usage")).startUsage(null, { serverToken: "t", userId: USER, workspaceId: WS, walletId: "w", serviceSlug: "tool_thumbnail", generationJobId: job9c, idempotencyKey: `thumb:${runId9c}:compose`, creditsCharged: 20 });
+  const run9c = db().runs.get(runId9c)!; run9c.status = "running"; run9c.job_id = job9c;
+  db().steps.push({ run_id: runId9c, position: 2, item_index: -1, step_name: "compose", operation: "image_edit", status: "running", attempts: 1, output: null, error_code: null, locked_until: db().now - 1 });
   const r9c = await driveToEnd(runId9c, depsFor(rec, await fakeRetouchFactory(rec)));
-  check("E9c recovered from the stored answer: no second request, delivered, charged once", r9c.status === "ok" && rec.sunburst.length === 1
+  check("E9c delivered before the crash: closed ok, charged once, no second request", r9c.status === "ok" && rec.sunburst.length === 0
     && db().events.filter((e) => e.status === "succeeded").length === 1 && db().wallet.balance === 980);
+
+  // E9d — the charge was closed (refunded) before the delivery: nothing is
+  // delivered on it.
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  const base9d = depsFor(rec, await fakeRetouchFactory(rec));
+  rec.sunburstOutcome = async (input) => {
+    const out = await callSunburst({ ...input, fetchImpl: okFetch([]) });
+    db().events.forEach((e) => { if (e.status === "pending") { e.status = "refunded"; db().wallet.balance += Number(e.credits_charged); } });
+    return out;
+  };
+  photos = await seedPhotos(1);
+  const r9d = await driveToEnd((await start(photos, false) as { runId: string }).runId, base9d);
+  check("E9d a refunded charge is never delivered on (charge_closed, no file, no library row)", r9d.status === "failed" && r9d.error === "charge_closed"
+    && tableRows("generation_assets").length === 0 && db().wallet.balance === 1000);
+
+  // E9e — cancel during the composition: the paid composition is finished
+  // and billed (never discarded with its charge left open).
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  photos = await seedPhotos(1);
+  const s9e = await start(photos, false);
+  const runId9e = (s9e as { runId: string }).runId;
+  rec.sunburstOutcome = async (input) => { db().runs.get(runId9e)!.error = "cancel_requested"; return callSunburst({ ...input, fetchImpl: okFetch([]) }); };
+  const r9e = await driveToEnd(runId9e, depsFor(rec, await fakeRetouchFactory(rec)));
+  check("E9e cancel during the composition → delivered and billed once (no orphaned charge)", r9e.status === "ok"
+    && db().events.length === 1 && db().events[0].status === "succeeded" && db().wallet.balance === 980);
 
   // E10 — died mid-Retusz after Retusz had delivered: recovered, not re-bought.
   setupEnv();
@@ -723,6 +752,30 @@ async function sectionE() {
   check("E16 a held step → 'busy', the run kept leased; the next call does not claim (no invocation spent)",
     a16 === "busy" && b16 === "busy" && Number(db().runs.get(runId16)!.invocations) === inv1 && rec.sunburst.length === 0);
 
+  // E17 — the Retusz price changed after the quote: the pass is not bought.
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  photos = await seedPhotos(2);
+  const s17 = await start(photos, true);
+  db().env.retouch = { available: true, unit: 9, resolution: "2K" };
+  const r17 = await driveToEnd((s17 as { runId: string }).runId, depsFor(rec, await fakeRetouchFactory(rec)));
+  check("E17 Retusz price changed mid-run → no pass bought at the new price, run stops", rec.retouch.length === 0 && r17.status === "failed"
+    && db().steps.some((x) => x.position === 1 && x.error_code === "price_changed") && rec.sunburst.length === 0);
+
+  // E18 — a Retusz job left "processing" by a dead invocation: decided at
+  // once (interrupted), not waited on, never re-bought.
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  photos = await seedPhotos(1);
+  const s18 = await start(photos, true);
+  const runId18 = (s18 as { runId: string }).runId;
+  tableRows("generation_jobs").push({ id: id("rjob"), workspace_id: WS, user_id: USER, status: "processing", created_at: iso(db().now),
+    settings: { operation: "image_retouch", reference_paths: [photos[0]] } });
+  db().steps.push({ run_id: runId18, position: 1, item_index: 0, step_name: "retouch", operation: "tool", status: "running", attempts: 1, output: null, error_code: null, locked_until: db().now - 1 });
+  const r18 = await driveToEnd(runId18, depsFor(rec, await fakeRetouchFactory(rec)), 3);
+  check("E18 an orphaned 'processing' Retusz job → retouch_interrupted at once, no new pass", r18.status === "failed" && rec.retouch.length === 0
+    && db().steps.some((x) => x.run_id === runId18 && x.error_code === "retouch_interrupted"));
+
   // E15 — the start refuses what it must.
   setupEnv();
   photos = await seedPhotos(2);
@@ -777,7 +830,7 @@ function sectionG() {
     "lib/ai/providers", "lib/ai/registry.ts", "lib/ai/router.ts", "lib/ai/types.ts",
     "lib/server/retouch.ts", "lib/server/retouch-delivery.ts", "lib/server/generation.ts", "lib/server/engine",
     "lib/server/reference-image.ts", "lib/server/provider-router.ts", "lib/services/usage.ts",
-    "app/api/retouch", "components/retouch", "app/(app)/retusz", "app/actions/feedback.ts",
+    "app/api/retouch", "components/retouch", "app/(app)/retusz",
     "scripts/retouch-forensic-tests.ts", "scripts/retouch-baseline.ts", "scripts/ai-fidelity-tests.ts",
   ];
   let changed: string[] = [];
@@ -797,6 +850,9 @@ function sectionG() {
     !/buildFidelityInstructions|PRODUCT_LOCK|fidelity_rules|knowledge_/.test(src));
   check("G3 the provider prompt is the published text, unaltered (no concatenation)",
     /prompt: prompt\.text,/.test(readFileSync("lib/server/thumbnail/run.ts", "utf8")) && !/prompt\.text\s*\+|\$\{prompt\.text\}/.test(src));
+  check("G5 Retusz keeps its no-rating rule verbatim (the forensic suite's own pins)",
+    /item\.operation !== "image_retouch" && <ResultFeedback/.test(readFileSync("components/genv3/image-details.tsx", "utf8"))
+    && /STATELESS_OPERATIONS = new Set\(\["image_retouch"\]\)/.test(readFileSync("app/actions/feedback.ts", "utf8")));
   check("G4 no other model can be called: the request model comes from the validated settings only",
     /model: input\.config\.model, prompt: prompt\.text/.test(readFileSync("lib/server/thumbnail/run.ts", "utf8")));
 }

@@ -21,7 +21,7 @@ import { itemBadge, itemReachable } from "@/lib/tool-layout";
 import { CATEGORIES, categoryGates, categoryHref, findCategory } from "@/lib/categories";
 import { FASHION_TOOLS } from "@/lib/fashion-tools";
 import { readThumbnailState } from "@/lib/server/thumbnail/settings";
-import { THUMBNAIL_PATH } from "@/lib/thumbnail/config";
+import { THUMBNAIL_CATEGORY, THUMBNAIL_PATH } from "@/lib/thumbnail/config";
 import { snapQuality, unitPrice, type GenModel } from "@/components/genv3/types";
 import {
   BEFORE_AFTER, CAROUSEL, FEATURED, INTEREST_GATES, INTEREST_KEYS, PROMO_BANNERS, SESSIONS, SHOWCASE,
@@ -230,7 +230,7 @@ export async function loadSellerHome(supabase: Client, user: {
       if (!menuVisible(availability, gates, isAdmin)) return null;
       const gate = cat.soon ? "soon" : statusOfBadge(menuBadge(availability, gates));
       // Something in the category must run — a managed preset or a Moda tool.
-      const anyTool = managedLive || Boolean(thumbnail?.ready)
+      const anyTool = managedLive || (cat.key === THUMBNAIL_CATEGORY && Boolean(thumbnail?.ready))
         || (Boolean(fashion) && FASHION_TOOLS.some((f) => fashionOn.get(f.key)));
       return { key, href: categoryHref(cat), status: status(gate, anyTool), credits: null };
     }

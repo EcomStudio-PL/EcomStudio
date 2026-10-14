@@ -5860,7 +5860,8 @@
         "invalid": "Ungültige Daten.",
         "migration_pending": "Zuerst muss Migration 0139 angewendet werden.",
         "generic": "Speichern fehlgeschlagen.",
-        "prompt_unconfigured": "Es gibt keinen veröffentlichten Prompt zum Freigeben."
+        "prompt_unconfigured": "Es gibt keinen veröffentlichten Prompt zum Freigeben.",
+        "prompt_changed": "Inzwischen wurde eine andere Version veröffentlicht — lade die Seite neu und prüfe sie vor der Freigabe."
       },
       "promptTitle": "Die Prompt-Version, mit der das Vorschaubild läuft",
       "promptVersion": "Veröffentlichte Version",

@@ -5,11 +5,13 @@ import { getCurrentWorkspace } from "@/lib/services/workspace";
 /** Retusz is stateless: its results take no rating of any kind (the panel
  *  shows none; this refuses a direct call too). */
 const STATELESS_OPERATIONS = new Set(["image_retouch"]);
+/** Miniaturka is stateless too (fixed prompt, no knowledge): no ratings. */
+const STATELESS_TOOL_OPERATIONS = new Set(["ecommerce_thumbnail"]);
 type Db = Awaited<ReturnType<typeof createClient>>;
 async function jobIsStateless(supabase: Db, jobId: string): Promise<boolean> {
   const { data } = await supabase.from("generation_jobs").select("settings").eq("id", jobId).maybeSingle();
   const op = (data?.settings as { operation?: unknown } | null)?.operation;
-  return typeof op === "string" && STATELESS_OPERATIONS.has(op);
+  return typeof op === "string" && (STATELESS_OPERATIONS.has(op) || STATELESS_TOOL_OPERATIONS.has(op));
 }
 
 const ISSUES = new Set([

@@ -67,13 +67,18 @@ export async function saveThumbnailSettingsAction(input: unknown): Promise<Resul
  * only on a text that is the reference or that an operator approved, so a
  * prompt can never change silently. Stores a keyed digest, never the text.
  */
-export async function approveThumbnailPromptAction(): Promise<Result> {
+export async function approveThumbnailPromptAction(expected: { version: number | null; sha256: string }): Promise<Result> {
   const admin = await requireAdmin();
   if (!admin) return { ok: false, error: "forbidden" };
   const current = await readThumbnailConfig(admin.supabase);
   if (!current) return { ok: false, error: "migration_pending" };
   const { prompt } = await readPublishedPrompt(admin.supabase, current);
   if (!prompt) return { ok: false, error: "prompt_unconfigured" };
+  // Exactly the version the operator was looking at: if another version was
+  // published meanwhile, nothing is approved.
+  if (!expected || prompt.version !== expected.version || prompt.sha256 !== expected.sha256) {
+    return { ok: false, error: "prompt_changed" };
+  }
   const next: ThumbnailConfig = {
     ...current,
     approvedPrompt: { digest: prompt.digest, version: prompt.version, approvedAt: new Date().toISOString(), approvedBy: admin.adminId },

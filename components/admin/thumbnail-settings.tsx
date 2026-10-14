@@ -177,7 +177,7 @@ export function ThumbnailPromptApproval({ published, referenceSha256, approval }
       <p className="text-[11.5px] leading-relaxed text-faint">{t("aicc.thumb.approvalNote")}</p>
       <div className="flex flex-wrap gap-2">
         {published && !published.approved && (
-          <button type="button" disabled={pending} onClick={() => act(approveThumbnailPromptAction)} data-thumbnail-approve
+          <button type="button" disabled={pending} onClick={() => act(() => approveThumbnailPromptAction({ version: published.version, sha256: published.sha256 }))} data-thumbnail-approve
             className="cta flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-semibold disabled:opacity-60">
             <ShieldCheck size={13} aria-hidden />{t("aicc.thumb.approve", { v: published.version ?? "—" })}
           </button>

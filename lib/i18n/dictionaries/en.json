@@ -5860,7 +5860,8 @@
         "invalid": "Invalid data.",
         "migration_pending": "Migration 0139 must be applied first.",
         "generic": "Could not save.",
-        "prompt_unconfigured": "There is no published prompt to approve."
+        "prompt_unconfigured": "There is no published prompt to approve.",
+        "prompt_changed": "Another version was published meanwhile — refresh the page and review it before approving."
       },
       "promptTitle": "The prompt version Thumbnail runs on",
       "promptVersion": "Published version",

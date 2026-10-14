@@ -5860,7 +5860,8 @@
         "invalid": "Nieprawidłowe dane.",
         "migration_pending": "Najpierw trzeba zastosować migrację 0139.",
         "generic": "Nie udało się zapisać.",
-        "prompt_unconfigured": "Brak opublikowanego promptu do zatwierdzenia."
+        "prompt_unconfigured": "Brak opublikowanego promptu do zatwierdzenia.",
+        "prompt_changed": "Opublikowano w międzyczasie inną wersję — odśwież stronę i sprawdź ją przed zatwierdzeniem."
       },
       "promptTitle": "Wersja promptu, która działa w Miniaturce",
       "promptVersion": "Opublikowana wersja",
