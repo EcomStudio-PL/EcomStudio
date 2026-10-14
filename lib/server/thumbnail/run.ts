@@ -270,13 +270,22 @@ export async function advanceThumbnailRun(
       await patchRun(supabase, runId, owner, { lease_seconds: 10 });
       return "yield";
     }
+    if (next === "wait") {
+      // A step is still held by an earlier invocation (its lease has not run
+      // out, or its Retusz job is still being written). Keep the RUN leased
+      // for a minute: the browser's calls meanwhile are refused as "busy"
+      // without claiming — every claim counts against the run's limit of 30
+      // invocations, and a tight retry loop would spend it in seconds.
+      await patchRun(supabase, runId, owner, { lease_seconds: 60 });
+      return "busy";
+    }
     return next;
   }
   await patchRun(supabase, runId, owner, { lease_seconds: 10 });
   return "yield";
 }
 
-type StepOutcome = "continue" | "yield" | "busy" | "finished";
+type StepOutcome = "continue" | "yield" | "wait" | "busy" | "finished";
 
 async function step(ctx: Ctx, steps: StepRunRow[]): Promise<StepOutcome> {
   const { input } = ctx;
@@ -307,7 +316,7 @@ async function step(ctx: Ctx, steps: StepRunRow[]): Promise<StepOutcome> {
       const results = await Promise.all(batch.map((i) => retouchItem(ctx, i, steps)));
       if (results.includes("lost")) return "finished";
       if (results.includes("failed")) { await close(ctx, "failed", "retouch_failed"); return "finished"; }
-      if (results.includes("busy")) return "yield";
+      if (results.includes("busy")) return "wait";
       return "continue";
     }
   }
@@ -322,7 +331,7 @@ async function step(ctx: Ctx, steps: StepRunRow[]): Promise<StepOutcome> {
     const callMs = Math.min(input.config.timeout_ms, 200_000);
     if (left() < callMs + COMPOSE_OVERHEAD_MS) return "yield";
     const r = await composeStep(ctx, steps);
-    if (r !== "ok") return r === "busy" ? "yield" : "finished";
+    if (r !== "ok") return r === "busy" ? "wait" : "finished";
     return "continue";
   }
 
@@ -330,7 +339,7 @@ async function step(ctx: Ctx, steps: StepRunRow[]): Promise<StepOutcome> {
   if (left() < FINISH_START_MS) return "yield";
   await progress(ctx, { stage: "finish", retouch_done: input.retouch ? input.photos.length : 0, retouch_total: input.retouch ? input.photos.length : 0 });
   const r = await finishStep3(ctx, compose);
-  return r === "busy" ? "yield" : "finished";
+  return r === "busy" ? "wait" : "finished";
 }
 
 /* ── 1 · RETUSZ ───────────────────────────────────────────────────────────*/

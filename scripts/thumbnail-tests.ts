@@ -707,6 +707,22 @@ async function sectionE() {
   const y = await advanceThumbnailRun(SUPA, USER, WS, (s14 as { runId: string }).runId, { deadlineAt: db().now + 100_000, deps: depsFor(rec, await fakeRetouchFactory(rec)) });
   check("E14 too little time left → yields, no request, no charge", y === "yield" && rec.sunburst.length === 0 && thumbStarts().length === 0);
 
+  // E16 — a step still held by an earlier invocation: the driver does not
+  // spin (each claim counts against the run's 30-invocation limit).
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  photos = await seedPhotos(1);
+  const s16 = await start(photos, false);
+  const runId16 = (s16 as { runId: string }).runId;
+  db().steps.push({ run_id: runId16, position: 2, item_index: -1, step_name: "compose", operation: "image_edit",
+    status: "running", attempts: 1, output: null, error_code: null, locked_until: db().now + 200_000 });
+  const a16 = await advanceThumbnailRun(SUPA, USER, WS, runId16, { deadlineAt: db().now + 270_000, deps: depsFor(rec, await fakeRetouchFactory(rec)) });
+  const inv1 = Number(db().runs.get(runId16)!.invocations);
+  db().now += 5_000;
+  const b16 = await advanceThumbnailRun(SUPA, USER, WS, runId16, { deadlineAt: db().now + 270_000, deps: depsFor(rec, await fakeRetouchFactory(rec)) });
+  check("E16 a held step → 'busy', the run kept leased; the next call does not claim (no invocation spent)",
+    a16 === "busy" && b16 === "busy" && Number(db().runs.get(runId16)!.invocations) === inv1 && rec.sunburst.length === 0);
+
   // E15 — the start refuses what it must.
   setupEnv();
   photos = await seedPhotos(2);
