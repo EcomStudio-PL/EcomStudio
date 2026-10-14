@@ -148,7 +148,7 @@ function isAi(key: FeatureKey): boolean {
 function facetOf(key: FeatureKey): ToolFacet {
   if (key === "video") return "video";
   if (key.startsWith("image_") || key.startsWith("fashion_")
-    || key === "prompts" || key === "generator") return "image";
+    || key === "ecommerce_thumbnail" || key === "prompts" || key === "generator") return "image";
   return "tools";
 }
 

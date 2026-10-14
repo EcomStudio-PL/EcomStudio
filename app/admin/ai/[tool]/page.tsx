@@ -43,6 +43,10 @@ import { PhotoToolEconomicsCard } from "@/components/admin/photo-tool-economics"
 import { AiBackgroundPresetsEditor } from "@/components/admin/ai-background-presets";
 import { parsePresets } from "@/lib/images/ai-background-presets";
 import type { PhotoToolSlug } from "@/lib/images/tools";
+import { readThumbnailAdmin } from "@/lib/server/thumbnail/admin";
+import { ThumbnailEconomics, ThumbnailPathCard, ThumbnailReadiness, ThumbnailRuns } from "@/components/admin/thumbnail-panel";
+import { ThumbnailPromptApproval, ThumbnailSettingsForm } from "@/components/admin/thumbnail-settings";
+import { THUMBNAIL_TOOL_KEY } from "@/lib/thumbnail/config";
 
 export const dynamic = "force-dynamic";
 
@@ -151,7 +155,7 @@ type WithConfig = Ctx & { config: Parameters<typeof ToolConfigForm>[0]["initial"
 /* ── PODSTAWOWE ───────────────────────────────────────────────────────────*/
 
 async function BasicsTab({ supabase, t, row, config }: WithConfig) {
-  const [services, presets] = await Promise.all([
+  const [services, presets, thumb] = await Promise.all([
     readBillingServices(supabase),
     // "Dodaj tło AI" scenes: a private row, readable here because the viewer
     // is an admin (settings_admin_write is FOR ALL).
@@ -159,9 +163,33 @@ async function BasicsTab({ supabase, t, row, config }: WithConfig) {
       ? supabase.from("app_settings").select("value").eq("key", "ai_background_presets").maybeSingle()
           .then(({ data }) => parsePresets(data?.value))
       : Promise.resolve(null),
+    row.key === THUMBNAIL_TOOL_KEY ? readThumbnailAdmin(supabase) : Promise.resolve(null),
   ]);
 
   return (
+    <div className="space-y-4">
+    {thumb && (
+      // MINIATURKA — what blocks a customer run, and the operator's settings
+      // (the price is in Admin → Usługi, the prompt on the Silnik tab).
+      <div className="grid gap-4 [&>*]:min-w-0 lg:grid-cols-[320px_1fr]" data-thumbnail-admin>
+        <Card className="p-5">
+          <CardHeader title={t("aicc.thumb.readiness")} sub={t("aicc.thumb.readinessSub")} />
+          <div className="pt-4"><ThumbnailReadiness data={thumb} t={t} /></div>
+        </Card>
+        <Card className="p-5">
+          <CardHeader title={t("aicc.thumb.settings")} sub={t("aicc.thumb.settingsSub")} />
+          <div className="pt-4">
+            {thumb.state.config
+              ? <ThumbnailSettingsForm initial={{
+                  model: thumb.state.config.model, size: thumb.state.config.size, quality: thumb.state.config.quality,
+                  maxPhotos: thumb.state.config.maxPhotos, timeoutMs: thumb.state.config.timeoutMs,
+                  finish: thumb.state.config.finish, tokenPrices: thumb.state.config.tokenPrices,
+                }} />
+              : <p className="text-[13px] text-muted">{t("thumb.blocker.config_unreadable")}</p>}
+          </div>
+        </Card>
+      </div>
+    )}
     <div className="grid gap-4 [&>*]:min-w-0 lg:grid-cols-[1fr_320px]">
       <Card className="p-5">
         {!toolHasPromptEngine(row.key) && (
@@ -206,6 +234,7 @@ async function BasicsTab({ supabase, t, row, config }: WithConfig) {
         </Link>
       </Card>
     </div>
+    </div>
   );
 }
 
@@ -249,7 +278,10 @@ async function EngineTab({ supabase, t, row, config, locale }: WithConfig & { lo
     );
   }
   const supportsWorkflow = toolSupportsWorkflow(row.key);
-  const versions = await withKeyStates(supabase, await readPromptHistory(supabase, row.key));
+  const [versions, thumb] = await Promise.all([
+    readPromptHistory(supabase, row.key).then((h) => withKeyStates(supabase, h)),
+    row.key === THUMBNAIL_TOOL_KEY ? readThumbnailAdmin(supabase) : Promise.resolve(null),
+  ]);
   const defs = TOOL_VARIABLES[row.key] ?? [];
 
   return (
@@ -268,6 +300,23 @@ async function EngineTab({ supabase, t, row, config, locale }: WithConfig & { lo
         <Section n={2} title={t("aicc.sec.prompt")} sub={t("aicc.sec.promptSub")}>
           <ToolPromptEditor toolKey={row.key} versions={versions} locale={locale}
             hasEngine={row.engineMode === "grovbase" || row.engineMode === "hybrid"} />
+          {thumb && (
+            // MINIATURKA: the published text runs only if it is the release
+            // reference or an operator approved exactly this version.
+            <div className="mt-5 border-t border-line pt-5">
+              <p className="mb-3 text-[13px] font-semibold">{t("aicc.thumb.promptTitle")}</p>
+              <ThumbnailPromptApproval
+                published={thumb.state.prompt ? {
+                  version: thumb.state.prompt.version, sha256: thumb.state.prompt.sha256,
+                  approved: thumb.state.prompt.approved, approvedBy: thumb.state.prompt.approvedBy,
+                } : null}
+                referenceSha256={thumb.referenceSha256}
+                approval={thumb.state.config?.approvedPrompt
+                  ? { version: thumb.state.config.approvedPrompt.version, approvedAt: thumb.state.config.approvedPrompt.approvedAt }
+                  : null}
+              />
+            </div>
+          )}
         </Section>
 
         <Section n={3} title={t("aicc.sec.variables")} sub={t("aicc.vars.syntax")}>
@@ -345,9 +394,10 @@ async function WorkflowTab({ supabase, t, row, locale }: Ctx & { locale: string 
 
 async function ModelsTab({ supabase, t, row, config, locale }: WithConfig & { locale: string }) {
   const photo = PHOTO_TOOL_KEYS.includes(row.key);
-  const [pickable, path, exec, unit] = await Promise.all([
+  const [pickable, path, exec, unit, thumb] = await Promise.all([
     readPickableModels(supabase), readToolApiPath(supabase, row.key), readExecutionSummary(supabase, row.key),
     photo ? readPhotoToolUnit(supabase, row.key.replace(/^tool_/, "") as PhotoToolSlug) : Promise.resolve(null),
+    row.key === THUMBNAIL_TOOL_KEY ? readThumbnailAdmin(supabase) : Promise.resolve(null),
   ]);
   // The picker is offered only where the runtime READS it. Elsewhere the
   // model comes from another source and is shown as such, read-only.
@@ -355,10 +405,28 @@ async function ModelsTab({ supabase, t, row, config, locale }: WithConfig & { lo
 
   return (
     <div className="space-y-5">
+      {thumb ? (
+        // MINIATURKA: its own request (not the shared adapters), its own money.
+        <>
+          <Card className="p-5">
+            <CardHeader title={t("aicc.exec.title")} sub={t("aicc.thumb.pathSub")} />
+            <div className="pt-4"><ThumbnailPathCard data={thumb} t={t} /></div>
+          </Card>
+          <Card className="p-5">
+            <CardHeader title={t("aicc.thumb.econTitle")} sub={t("aicc.thumb.econSub")} />
+            <div className="pt-4"><ThumbnailEconomics data={thumb} t={t} locale={locale} /></div>
+          </Card>
+          <Card className="p-5">
+            <CardHeader title={t("aicc.thumb.runsTitle")} sub={t("aicc.thumb.runsSub")} />
+            <div className="pt-4"><ThumbnailRuns data={thumb} t={t} locale={locale} /></div>
+          </Card>
+        </>
+      ) : (
       <Card className="p-5">
         <CardHeader title={t("aicc.exec.title")} sub={t("aicc.exec.sub")} />
         <div className="pt-4"><ExecutionPathCard exec={exec} path={path} toolKey={row.key} t={t} /></div>
       </Card>
+      )}
       {unit && (
         <Card className="p-5">
           <CardHeader title={t("aicc.photo.title")} sub={t("aicc.photo.sub")} />

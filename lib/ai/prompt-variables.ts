@@ -87,7 +87,7 @@ const IMAGE_EDIT_COMMON: VariableDef[] = [
  * feedback ranking or earlier results can reach the request, and the admin
  * and customer UIs hide those controls for them.
  */
-export const STATELESS_TOOL_KEYS: ReadonlySet<string> = new Set(["retouch"]);
+export const STATELESS_TOOL_KEYS: ReadonlySet<string> = new Set(["retouch", "ecommerce_thumbnail"]);
 
 /**
  * What each tool's server path can really provide. Tools without an entry
@@ -115,6 +115,10 @@ export const TOOL_VARIABLES: Record<string, VariableDef[]> = {
   fashion_iron: IMAGE_EDIT_COMMON,
   fashion_change_person: IMAGE_EDIT_COMMON,
   fashion_change_face: IMAGE_EDIT_COMMON,
+  // Miniaturka: a fixed prompt sent 1:1 — no variable of any kind may be
+  // placed, so the published text IS the request text (the publish gate
+  // refuses any {{…}}).
+  ecommerce_thumbnail: [],
 };
 
 /** Variables available inside a workflow step at `position` (1-based). */

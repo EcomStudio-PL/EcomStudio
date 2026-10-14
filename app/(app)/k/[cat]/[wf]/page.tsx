@@ -12,7 +12,12 @@ import { findCategory } from "@/lib/categories";
 import { FASHION_TOOLS } from "@/lib/fashion-tools";
 import { fashionModel, fashionToolAvailable } from "@/lib/server/fashion";
 import { engineOutputsPerRun } from "@/lib/server/engine/tool-run";
-import type { FashionRuntimeData } from "@/components/category/workflow-runtime";
+import type { FashionRuntimeData, ThumbnailRuntimeData } from "@/components/category/workflow-runtime";
+import { FeatureGate } from "@/components/feature-gate";
+import { viewerIsAdmin } from "@/lib/server/feature-availability";
+import { readThumbnailState } from "@/lib/server/thumbnail/settings";
+import { latestOpenThumbnailRun } from "@/lib/server/thumbnail/status";
+import { OPENAI_EDIT_MAX_IMAGES, THUMBNAIL_CATEGORY, THUMBNAIL_OPERATION, THUMBNAIL_WORKFLOW } from "@/lib/thumbnail/config";
 
 export const dynamic = "force-dynamic";
 
@@ -90,6 +95,35 @@ export default async function WorkflowPage({ params }: {
     };
   }
 
+  /**
+   * MINIATURKA — its own pipeline, its own data: can it run (and, for an
+   * admin, why not), its price and Retusz's, its photo limit, its own past
+   * results, and the member's run still in progress (resumed after a refresh).
+   */
+  let thumbnail: ThumbnailRuntimeData | null = null;
+  const isThumbnail = category.key === THUMBNAIL_CATEGORY && workflow.key === THUMBNAIL_WORKFLOW;
+  if (isThumbnail) {
+    const [state, items, openRunId, admin] = await Promise.all([
+      readThumbnailState(supabase),
+      listGalleryItems(supabase, workspace.id, { limit: GALLERY_PAGE_SIZE, operation: THUMBNAIL_OPERATION }),
+      latestOpenThumbnailRun(supabase, workspace.id),
+      viewerIsAdmin(supabase),
+    ]);
+    thumbnail = {
+      ready: state.ready,
+      blockers: admin ? state.blockers : [],
+      maxPhotos: Math.min(state.config?.maxPhotos ?? 10, OPENAI_EDIT_MAX_IMAGES),
+      thumbnailCredits: state.thumbnailCredits,
+      retouch: state.retouch.available
+        ? { available: true, unit: state.retouch.unit }
+        : { available: false, unit: null, reason: state.retouch.reason },
+      target: state.config?.finish.target ?? 2560,
+      openRunId,
+      initialItems: items.items,
+      initialCursor: items.nextCursor,
+    };
+  }
+
   const models: GenModel[] = modelOptions.map((m) => ({
     id: m.id, name: m.name, badge: m.badge, badgeTone: m.badgeTone,
     description: m.description, pricing: m.pricing,
@@ -98,7 +132,7 @@ export default async function WorkflowPage({ params }: {
     qualities: m.qualities, qualityPricing: m.qualityPricing,
   }));
 
-  return (
+  const screen = (
     // Same calm workspace scope as /prompts — the compact category header
     // stays (it is navigation between presets, not a marketing header).
     <div className="workspace workspace-page gen-shell">
@@ -113,7 +147,11 @@ export default async function WorkflowPage({ params }: {
         initialCursor={gallery.nextCursor}
         sessionPreviews={sessionPreviews}
         fashion={fashion}
+        thumbnail={thumbnail}
       />
     </div>
   );
+  // Miniaturka has its own switch (status, "Wkrótce", maintenance) inside the
+  // category's: the category layout gates the route, this gates the tool.
+  return isThumbnail ? <FeatureGate feature="ecommerce_thumbnail">{screen}</FeatureGate> : screen;
 }

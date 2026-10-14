@@ -37,6 +37,9 @@ export const AI_TOOL_KEYS = [
   // admin tabs — this is where their prompts are written and published.
   "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person",
   "fashion_change_face",
+  // Miniaturka: the published prompt goes 1:1 to GPT Image 2.5 Sunburst, after
+  // an optional Retusz pass per photo; finished locally to 2560×2560.
+  "ecommerce_thumbnail",
 ] as const;
 export type AiToolKey = (typeof AI_TOOL_KEYS)[number];
 
@@ -75,6 +78,7 @@ export const TOOL_ENGINE_MODES: Record<AiToolKey, readonly EngineMode[]> = {
   fashion_iron: ["grovbase"],
   fashion_change_person: ["grovbase"],
   fashion_change_face: ["grovbase"],
+  ecommerce_thumbnail: ["grovbase"],
 };
 
 /** Whether a tool has a prompt engine at all. */
@@ -108,6 +112,7 @@ const CATEGORY: Record<AiToolKey, ToolCategory> = {
   fashion_ghost_mannequin: "generation", fashion_flat_lay: "generation",
   fashion_iron: "generation", fashion_change_person: "generation",
   fashion_change_face: "generation",
+  ecommerce_thumbnail: "generation",
 };
 
 /** Which tools actually run through the ai_models path (`runGeneration`).
@@ -142,7 +147,7 @@ export function apiPathKind(toolKey: string, category?: string): ApiPathKind {
 const MODEL_DRIVEN: readonly AiToolKey[] = [
   "prompts", "generator", "retouch", "video",
   "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person",
-  "fashion_change_face",
+  "fashion_change_face", "ecommerce_thumbnail",
 ];
 
 /** One tool's `ai_tools` row as the admin forms edit it. */

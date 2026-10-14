@@ -6847,6 +6847,11 @@ export type Database = {
         Returns: number
       }
       ai_background_presets_read: { Args: { p_token: string | null }; Returns: Json }
+      thumbnail_config_read: { Args: { p_token: string | null }; Returns: Json }
+      thumbnail_run_create: { Args: { p_token: string | null; p_run: Json }; Returns: Json }
+      thumbnail_run_status: { Args: { p_run_id: string }; Returns: Json }
+      thumbnail_runs_recent: { Args: { p_workspace_id: string; p_limit: number }; Returns: Json }
+      thumbnail_run_cancel: { Args: { p_run_id: string }; Returns: Json }
       ai_token_prices_read: {
         Args: { p_token: string | null }
         Returns: {

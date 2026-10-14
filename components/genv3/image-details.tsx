@@ -84,7 +84,9 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
   }, [onClose, onIndex, index, items.length, fullscreen]);
 
-  const isTool = item.operation === "image_retouch";
+  // A GrovBase tool (Retusz, Miniaturka): the customer bought the tool's
+  // result, so the tool is named — never the provider's model behind it.
+  const isTool = item.operation === "image_retouch" || item.operation === "ecommerce_thumbnail";
   const dims = item.width && item.height ? `${item.width} × ${item.height}` : null;
   const created = useMemo(() => new Intl.DateTimeFormat(locale, { dateStyle: "long", timeStyle: "short" })
     .format(new Date(item.createdAt)), [item.createdAt, locale]);
@@ -341,7 +343,7 @@ export function ImageDetails({ items, index, onIndex, onClose, canRegenerate = t
               // A tool's engine is GrovBase's business: the customer bought
               // "Retusz zdjęć", and the provider stays in the cost log.
               isTool
-                ? { icon: Wand2, label: t("genv3.metaOrigin"), value: t("retouch.title") }
+                ? { icon: Wand2, label: t("genv3.metaOrigin"), value: item.operation === "ecommerce_thumbnail" ? t("wf.ecommerce.thumbnail.name") : t("retouch.title") }
                 : { icon: Cpu, label: t("genv3.metaModel"), value: item.model },
               { icon: Crop, label: t("genv3.metaFormat"), value: item.ratio ? ratioName(t, item.ratio) : null },
               { icon: Scaling, label: t("genv3.resolution"), value: item.resolution },

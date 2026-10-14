@@ -193,6 +193,10 @@ async function main() {
       "lib/server/photo-tools.ts",
       // Signs the one result it just made, for the panel to show.
       "app/api/tools/photo/route.ts",
+      // Miniaturka's run view: the one finished file (shown large, zoomable)
+      // and that run's own Retusz results (at most 16, opened in a lightbox).
+      // The tool's grid of past results is GenerationGallery, a surface above.
+      "lib/server/thumbnail/status.ts",
     ]);
     const listed = new Set(SURFACES.map((s) => s.file));
 

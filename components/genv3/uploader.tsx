@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ImagePlus, Loader2, Upload, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ImagePlus, Loader2, Upload, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import type { UploadedRef } from "@/components/genv3/types";
@@ -85,7 +85,7 @@ export const DropOverlay = FileDropOverlay;
  */
 export function PhotoUploader({
   items, max, uploading, label, hint, counter = true, compact, capturePaste, dropTarget,
-  onFiles, onRemove, columns = 4, zone, zoneLabel, zoneDense, preview,
+  onFiles, onRemove, onMove, columns = 4, zone, zoneLabel, zoneDense, preview,
 }: {
   items: UploadedRef[];
   max: number;
@@ -130,6 +130,10 @@ export function PhotoUploader({
   zoneDense?: boolean;
   onFiles: (files: File[]) => void;
   onRemove: (index: number) => void;
+  /** Opt-in ORDER: each tile shows its position and two arrows that move it
+   *  one place earlier / later. For a tool where the order of the photos is
+   *  part of what is sent. Absent → tiles render exactly as before. */
+  onMove?: (from: number, to: number) => void;
   columns?: 4 | 5;
   /** THE BIG ZONE. With nothing uploaded yet the block is one wide dropzone —
    *  icon, "Import", "0 / 10 zdjęć" — instead of a row of empty tiles: ten
@@ -237,6 +241,29 @@ export function PhotoUploader({
               className="absolute right-1 top-1 z-10 rounded-full bg-black/60 p-1 text-white opacity-0 transition-opacity duration-200 focus-visible:opacity-100 group-hover:opacity-100">
               <X size={10} aria-hidden />
             </button>
+            {onMove && (
+              <>
+                <span data-photo-order aria-hidden
+                  className="pointer-events-none absolute left-1 top-1 z-10 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-black/60 px-1 text-[10px] font-semibold tabular-nums text-white">
+                  {i + 1}
+                </span>
+                {/* Always visible: a phone has no hover to reveal them. */}
+                <span className="absolute inset-x-1 bottom-1 z-10 flex justify-between">
+                  <button type="button" disabled={i === 0} data-photo-move="earlier"
+                    aria-label={t("genv3.moveEarlier", { n: i + 1 })}
+                    onClick={(e) => { e.stopPropagation(); onMove(i, i - 1); }}
+                    className="rounded-full bg-black/60 p-0.5 text-white transition-opacity disabled:opacity-0">
+                    <ChevronLeft size={12} aria-hidden />
+                  </button>
+                  <button type="button" disabled={i === items.length - 1} data-photo-move="later"
+                    aria-label={t("genv3.moveLater", { n: i + 1 })}
+                    onClick={(e) => { e.stopPropagation(); onMove(i, i + 1); }}
+                    className="rounded-full bg-black/60 p-0.5 text-white transition-opacity disabled:opacity-0">
+                    <ChevronRight size={12} aria-hidden />
+                  </button>
+                </span>
+              </>
+            )}
           </div>
         ))}
         {!full && (

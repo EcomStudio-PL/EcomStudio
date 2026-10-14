@@ -6,6 +6,7 @@ import { GeneratorWorkspace } from "@/components/genv3/workspace";
 import { CATEGORY_VARIANT, DEFAULT_VARIANT, categoryPath, findCategory } from "@/lib/categories";
 import { fashionTool } from "@/lib/fashion-tools";
 import { FashionToolWorkspace } from "@/components/fashion/tool-workspace";
+import { ThumbnailWorkspace } from "@/components/thumbnail/workspace";
 import type { GalleryItem, GenModel } from "@/components/genv3/types";
 import type { SessionPreviewMap } from "@/components/genv3/sections";
 
@@ -63,9 +64,28 @@ export type FashionRuntimeData = {
   }>;
 };
 
+/** Everything Miniaturka needs, resolved once by the page (null elsewhere). */
+export type ThumbnailRuntimeData = {
+  /** Prompt published + approved, price set, OpenAI key — it can run. */
+  ready: boolean;
+  /** Why not, for an admin only (codes); empty for a customer. */
+  blockers: string[];
+  maxPhotos: number;
+  /** Credits for the composition (null = not priced yet). */
+  thumbnailCredits: number | null;
+  /** Retusz AI per photo, at Retusz's own price. */
+  retouch: { available: true; unit: number } | { available: false; unit: null; reason: string };
+  /** Edge of the delivered square, px. */
+  target: number;
+  /** A run of this member still in progress — resumed on load. */
+  openRunId: string | null;
+  initialItems: GalleryItem[];
+  initialCursor: string | null;
+};
+
 export function WorkflowRuntime({
   catSlug, initialWorkflow, models, credits, workspaceId, engineAvailable,
-  initialItems, initialCursor, sessionPreviews, fashion = null,
+  initialItems, initialCursor, sessionPreviews, fashion = null, thumbnail = null,
 }: {
   catSlug: string;
   initialWorkflow: string;
@@ -78,6 +98,8 @@ export function WorkflowRuntime({
   sessionPreviews: SessionPreviewMap;
   /** Non-null only for Moda. */
   fashion?: FashionRuntimeData | null;
+  /** Non-null only for Miniaturka (/k/ecommerce/thumbnail). */
+  thumbnail?: ThumbnailRuntimeData | null;
 }) {
   const { t } = useI18n();
   const category = findCategory(catSlug);
@@ -134,7 +156,11 @@ export function WorkflowRuntime({
           own `mb-3` is the gap to the panel, so there is no wrapper, no height
           and no margin left behind. */}
 
-      {tool && fashion ? (
+      {/* MINIATURKA — its own panel (photos → optional Retusz → one
+          composition → 2560×2560). It exists for one workflow only, so it
+          needs no per-workflow key; the two branches below keep theirs. */}
+      {thumbnail && <ThumbnailWorkspace workspaceId={workspaceId} credits={credits} data={thumbnail} />}
+      {!thumbnail && <>{tool && fashion ? (
         /* A TOOL. Keyed like the generator below, and for the same reason: the
            panel seeds its pools, its size and its framing from props once, so
            an instance the router reused across two /k/{cat}/* routes would
@@ -168,7 +194,7 @@ export function WorkflowRuntime({
         variant={CATEGORY_VARIANT[category.key] ?? DEFAULT_VARIANT}
         sessionPreviews={sessionPreviews}
       />
-      )}
+      )}</>}
     </>
   );
 }

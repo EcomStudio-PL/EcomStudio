@@ -181,8 +181,12 @@ console.log("\nB. the six scenarios, read with the rules the customer side rende
     !hubSectionsFor(live, false, hiddenSection).some((s) => s.key === "ecommerce")
     && hiddenSection.sections.find((x) => x.key === "ecommerce")!.items.length > 0);
   const eCat = CATEGORIES.find((c) => c.key === "ecommerce")!;
+  // Miniaturka answers to its own switch (ecommerce_thumbnail) inside the
+  // category, like the Moda tools: the category covers the other presets.
   check("6 …and hiding it deleted none of its tools",
-    coveredCards("image_ecommerce").length === eCat.workflows.length && offeredWorkflows(eCat).length > 0);
+    coveredCards("image_ecommerce").length === eCat.workflows.length - 1
+    && coveredCards("ecommerce_thumbnail").length === 0
+    && offeredWorkflows(eCat).length > 0);
 
   // + disabled, which must still work exactly as before
   const off = board({ image_ecommerce: { status: "DISABLED" }, tool_upscale: { status: "DISABLED" } });

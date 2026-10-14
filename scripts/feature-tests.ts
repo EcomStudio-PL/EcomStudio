@@ -38,6 +38,8 @@ console.log("\nA. REGISTRY — every real module is covered, the untouchable one
     // different prompt from "Zmiana postaci" and has to be switchable alone.
     "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person",
     "fashion_change_face",
+    // Miniaturka — its own pipeline, prompt, price and switch inside E-commerce.
+    "ecommerce_thumbnail",
     "prompts", "generator",
     "retouch", "editor", "resize", "compress", "tools", "tool_upscale", "tool_expand", "tool_watermark",
     // The four photo tools — screens of their own, each separately switchable.

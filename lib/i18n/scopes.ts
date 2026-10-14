@@ -95,6 +95,7 @@ const app = [
   "sellerHome",
   "studio",
   "support",
+  "thumb",
   "toolsearch",
   "vc",
 ] as const;
@@ -133,6 +134,7 @@ const admin = [
   "roles",
   "sellerHome",
   "svc",
+  "thumb",
   "time",
 ] as const;
 

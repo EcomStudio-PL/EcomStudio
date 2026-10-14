@@ -20,6 +20,8 @@ import { catalogItem } from "@/lib/tool-cards";
 import { itemBadge, itemReachable } from "@/lib/tool-layout";
 import { CATEGORIES, categoryGates, categoryHref, findCategory } from "@/lib/categories";
 import { FASHION_TOOLS } from "@/lib/fashion-tools";
+import { readThumbnailState } from "@/lib/server/thumbnail/settings";
+import { THUMBNAIL_PATH } from "@/lib/thumbnail/config";
 import { snapQuality, unitPrice, type GenModel } from "@/components/genv3/types";
 import {
   BEFORE_AFTER, CAROUSEL, FEATURED, INTEREST_GATES, INTEREST_KEYS, PROMO_BANNERS, SESSIONS, SHOWCASE,
@@ -134,7 +136,7 @@ export async function loadSellerHome(supabase: Client, user: {
   const [
     wallet, availability, isAdmin, catalogue, modelOptions, usable, engineRows, keyed,
     retouch, retouchConfigured, retouchOutputs, fashion, fashionAvail, planRow, activeSub,
-    generationCount, interestRows, surveyRow, bonusConfig, offer, campaignStart, banners, layout,
+    generationCount, interestRows, surveyRow, bonusConfig, offer, campaignStart, banners, layout, thumbnail,
   ] = await Promise.all([
     getWallet(supabase, workspace.id),
     getAvailabilityMap(supabase),
@@ -172,6 +174,9 @@ export async function loadSellerHome(supabase: Client, user: {
     // The switchboard's "Narzędzia" flag: an item an operator took off /tools
     // is not offered here either.
     getToolsLayout(supabase),
+    // Miniaturka runs its own pipeline: whether it can run, and the price of
+    // its composition (Retusz is an option the screen prices on its own).
+    readThumbnailState(supabase, { retouch: false }).catch(() => null),
   ]);
 
   /* ── per-item facts ─────────────────────────────────────────────────── */
@@ -225,7 +230,8 @@ export async function loadSellerHome(supabase: Client, user: {
       if (!menuVisible(availability, gates, isAdmin)) return null;
       const gate = cat.soon ? "soon" : statusOfBadge(menuBadge(availability, gates));
       // Something in the category must run — a managed preset or a Moda tool.
-      const anyTool = managedLive || (Boolean(fashion) && FASHION_TOOLS.some((f) => fashionOn.get(f.key)));
+      const anyTool = managedLive || Boolean(thumbnail?.ready)
+        || (Boolean(fashion) && FASHION_TOOLS.some((f) => fashionOn.get(f.key)));
       return { key, href: categoryHref(cat), status: status(gate, anyTool), credits: null };
     }
     const item = catalogItem(key);
@@ -239,6 +245,11 @@ export async function loadSellerHome(supabase: Client, user: {
     const href = item.href;
     if (href === "/retusz") {
       return { key, href, status: status(gate, Boolean(retouch) && retouchConfigured), credits: retouchCredits };
+    }
+    if (href === THUMBNAIL_PATH) {
+      // Its own price (the composition, Retusz off — the screen's default)
+      // and its own readiness: prompt approved, price set, OpenAI key.
+      return { key, href, status: status(gate, Boolean(thumbnail?.ready)), credits: thumbnail?.ready ? thumbnail.thumbnailCredits : null };
     }
     if (href.startsWith("/k/")) {
       const [, , cat, wf = ""] = href.split("/");

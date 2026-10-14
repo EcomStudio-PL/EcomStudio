@@ -7,7 +7,7 @@ import { GALLERY_PAGE_SIZE } from "@/lib/gallery-page";
 export const dynamic = "force-dynamic";
 
 /** Operations a client may filter by — never a free-text column value. */
-const OPERATIONS = new Set(["image_retouch", "none"]);
+const OPERATIONS = new Set(["image_retouch", "ecommerce_thumbnail", "none"]);
 
 /** Paginated generation gallery for the signed-in member's workspace.
  *  Everything sensitive is projected away server-side — see lib/server/gallery. */

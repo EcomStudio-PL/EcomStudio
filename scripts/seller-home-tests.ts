@@ -649,7 +649,10 @@ const ENGINE: readonly [string, string][] = [
   // Re-pinned by the photo-tools task: the white_bg / ai_* screens' own
   // switches also gate this endpoint.
   ["app/api/tools/run/route.ts", "8bf75acfde6ebcd36b3fbcb70318f3f081559b8c04b80ef434cb22fbe17114c6"],
-  ["components/genv3/uploader.tsx", "cc7d9dbe8305d1fbdef75ae4727b1fce5f0147b1ccc7cf4e9d6e0b6ddf4d8df2"],
+  // Re-pinned by the Miniaturka task: one OPT-IN prop (`onMove`, photo order
+  // arrows). No other caller passes it, so every other uploader renders and
+  // uploads exactly as before.
+  ["components/genv3/uploader.tsx", "38e173c9aaa9e6d18656bf56f550a66f46219d4b0f9b302a2aceacf498754053"],
   ["lib/images/file-intake.ts", "1dc99c83483f3fa80527e319501edb5a35b717d92771dd72c38eda17bd9acc29"],
   ["lib/services/images.ts", "e6adba31a68d9fa9afcfe69f242a63370032bd5ce31323cf1ef60236d2a3adcf"],
   ["lib/server/gallery.ts", "7ecaa2ce9b145c9c5d21eb39952b5746746ba33d8f06fd3f9959bca4f8cb1d37"],

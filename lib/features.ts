@@ -28,6 +28,9 @@ export const FEATURE_KEYS = [
   // Obraz — the six categories: each a section of /tools, its workflows under /k/<slug>
   "image_moda",
   "image_ecommerce",
+  // Miniaturka — the e-commerce tool with its own pipeline (Retusz →
+  // Sunburst → 2560×2560), its own prompt, price and switch.
+  "ecommerce_thumbnail",
   "image_social",
   "image_mailing",
   "image_inne",
@@ -139,6 +142,12 @@ export const FEATURE_REGISTRY: readonly FeatureDescriptor[] = [
   { key: "fashion_change_person", nameKey: "wf.moda.changePerson.name", path: "/k/moda/changePerson", group: "image", defaultStatus: "COMING_SOON" },
   { key: "fashion_change_face", nameKey: "wf.moda.changeFace.name", path: "/k/moda/changeFace", group: "image", defaultStatus: "COMING_SOON" },
   { key: "image_ecommerce", nameKey: "cats.ecommerce", path: "/k/ecommerce", group: "image" },
+  // MINIATURKA. Its own entry for the same reason as the Moda tools: its own
+  // status, its own admin page, its own API guard. ACTIVE by default, as the
+  // screen always was — whether it can RUN (prompt published and approved,
+  // price set, OpenAI key) is a separate, honest "unavailable" state on the
+  // screen itself, never a button that fails.
+  { key: "ecommerce_thumbnail", nameKey: "wf.ecommerce.thumbnail.name", path: "/k/ecommerce/thumbnail", group: "image" },
   // COMING_SOON in the registry because that is what they are. The operator
   // row in feature_availability already says so and wins whenever it is read —
   // so this changes nothing in normal operation. It changes the ONE case that
