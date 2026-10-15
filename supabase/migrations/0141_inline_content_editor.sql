@@ -28,18 +28,19 @@
 --    writer leaves history — the editor, Admin → Media's save / clear /
 --    "replace everywhere", or anything else.
 -- 3. media_slots.crop + media_slots.alt_i18n, a trigger that drops a crop
---    framed for a different picture, and media_slots_resolve re-created with
---    both (same body, same 200-key bound, same grants).
+--    framed for a different picture, and media_slots_resolve_v2 — the same
+--    resolver plus the new columns. media_slots_resolve itself is left exactly
+--    as it is (the running code keeps calling it until the new code ships).
 -- 4. media_slots_write(jsonb) — every slot of a pair or a bulk upload in ONE
 --    transaction, each compare-and-set on updated_at. RLS still decides who
 --    writes (invoker), plus an explicit role check.
 -- 5. cms_inline_patch(...) — one field of one published CMS block (definer,
 --    explicit role check: it also writes the history row).
 --
--- ADDITIVE: no table, column, row, policy or grant that exists today is
--- dropped or rewritten, apart from media_slots_resolve (re-created, same
--- contract plus two columns). No storage object, bucket or storage policy is
--- touched.
+-- PURELY ADDITIVE: no DROP of any kind. No table, column, row, policy,
+-- function or grant that exists today is dropped or rewritten. Re-runnable:
+-- every object is created only when missing (or created-or-replaced). No
+-- storage object, bucket or storage policy is touched.
 --
 -- APPLY BEFORE THE CODE DEPLOY that uses it (the editor reads the new columns
 -- directly). The pages themselves treat a missing function as "no overrides".
@@ -54,10 +55,15 @@
 --   drop function if exists public.content_overrides_published();
 --   drop function if exists public.content_versions_record();
 --   drop function if exists public.media_slots_crop_reset();
---   drop function if exists public.media_slots_resolve(text[]);   -- then re-run 0091's create + grants
+--   drop function if exists public.media_slots_resolve_v2(text[]);
+--   alter table public.media_slots drop constraint if exists media_slots_crop_check,
+--     drop constraint if exists media_slots_alt_i18n_check;
 --   alter table public.media_slots drop column if exists crop, drop column if exists alt_i18n;
+--   drop function if exists public.media_crop_ok(jsonb);
+--   drop function if exists public.media_alt_i18n_ok(jsonb);
 --   drop table if exists public.content_versions;
 --   drop table if exists public.content_overrides;
+--   drop function if exists public.content_text_ok(text);
 
 set local lock_timeout = '3s';
 
@@ -91,10 +97,14 @@ create table if not exists public.content_overrides (
 
 alter table public.content_overrides enable row level security;
 
-drop policy if exists content_overrides_admin_read on public.content_overrides;
-create policy content_overrides_admin_read on public.content_overrides
-  for select to authenticated
-  using ((select public.is_admin()));
+do $policy$ begin
+  if not exists (select 1 from pg_policies
+                 where schemaname = 'public' and tablename = 'content_overrides' and policyname = 'content_overrides_admin_read') then
+    create policy content_overrides_admin_read on public.content_overrides
+      for select to authenticated
+      using ((select public.is_admin()));
+  end if;
+end $policy$;
 -- No INSERT / UPDATE / DELETE policy: the write function below is the only door.
 
 create or replace function public.content_overrides_published()
@@ -130,10 +140,14 @@ create index if not exists content_versions_recent_idx
 
 alter table public.content_versions enable row level security;
 
-drop policy if exists content_versions_admin_read on public.content_versions;
-create policy content_versions_admin_read on public.content_versions
-  for select to authenticated
-  using ((select public.is_admin()));
+do $policy$ begin
+  if not exists (select 1 from pg_policies
+                 where schemaname = 'public' and tablename = 'content_versions' and policyname = 'content_versions_admin_read') then
+    create policy content_versions_admin_read on public.content_versions
+      for select to authenticated
+      using ((select public.is_admin()));
+  end if;
+end $policy$;
 -- No INSERT / UPDATE / DELETE policy: rows come from the triggers and
 -- functions below (definer), never from a client.
 
@@ -182,8 +196,7 @@ $$;
 
 revoke all on function public.content_versions_record() from public, anon, authenticated;
 
-drop trigger if exists content_overrides_history on public.content_overrides;
-create trigger content_overrides_history
+create or replace trigger content_overrides_history
   after insert or update or delete on public.content_overrides
   for each row execute function public.content_versions_record();
 
@@ -229,10 +242,14 @@ as $$
   );
 $$;
 
-alter table public.media_slots drop constraint if exists media_slots_crop_check;
-alter table public.media_slots add constraint media_slots_crop_check check (public.media_crop_ok(crop));
-alter table public.media_slots drop constraint if exists media_slots_alt_i18n_check;
-alter table public.media_slots add constraint media_slots_alt_i18n_check check (public.media_alt_i18n_ok(alt_i18n));
+do $constraint$ begin
+  if not exists (select 1 from pg_constraint where conrelid = 'public.media_slots'::regclass and conname = 'media_slots_crop_check') then
+    alter table public.media_slots add constraint media_slots_crop_check check (public.media_crop_ok(crop));
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid = 'public.media_slots'::regclass and conname = 'media_slots_alt_i18n_check') then
+    alter table public.media_slots add constraint media_slots_alt_i18n_check check (public.media_alt_i18n_ok(alt_i18n));
+  end if;
+end $constraint$;
 
 -- A crop is framed for one picture. When a writer swaps the picture without
 -- choosing a new frame (Admin → Media's save, "replace everywhere"), the old
@@ -258,18 +275,19 @@ begin
 end;
 $$;
 
-drop trigger if exists media_slots_crop_reset on public.media_slots;
-create trigger media_slots_crop_reset
+create or replace trigger media_slots_crop_reset
   before update on public.media_slots
   for each row execute function public.media_slots_crop_reset();
 
-drop trigger if exists media_slots_history on public.media_slots;
-create trigger media_slots_history
+create or replace trigger media_slots_history
   after insert or update or delete on public.media_slots
   for each row execute function public.content_versions_record();
 
-drop function if exists public.media_slots_resolve(text[]);
-create function public.media_slots_resolve(p_keys text[])
+-- The resolver the pages read through, with the editor's columns. A new
+-- name rather than a re-created media_slots_resolve: changing a function's
+-- result columns needs a DROP, and the code running today keeps calling the
+-- old one untouched (lib/server/media-slots.ts tries v2, then v1).
+create or replace function public.media_slots_resolve_v2(p_keys text[])
 returns table (
   slot_key text,
   media_type text,
@@ -330,8 +348,8 @@ as $$
     and (d.storage_path is not null or d.external_url is not null);
 $$;
 
-revoke all on function public.media_slots_resolve(text[]) from public, anon, authenticated;
-grant execute on function public.media_slots_resolve(text[]) to anon, authenticated;
+revoke all on function public.media_slots_resolve_v2(text[]) from public, anon, authenticated;
+grant execute on function public.media_slots_resolve_v2(text[]) to anon, authenticated;
 
 -- 1 (continued) — the only writer of content_overrides ──────────────────────
 -- p_value null = back to the dictionary's own text. p_base = the updated_at

@@ -243,7 +243,7 @@ alter table public.media_slots enable row level security;
 create policy "media_slots_admin" on public.media_slots for all
   to authenticated using (public.is_admin()) with check (public.is_admin());
 
--- ── media_slots_resolve as 0091 left it — 0141 drops and re-creates it ─────
+-- ── media_slots_resolve as 0091 left it — 0141 must leave it EXACTLY so ──
 create or replace function public.media_slots_resolve(p_keys text[])
 returns table (
   slot_key text, media_type text, alt_text text, object_fit text, object_position text,
@@ -473,6 +473,20 @@ scoreboard() {
   fi
 }
 
+# The 0091 resolver, as production runs it today: its body, its result type
+# and who may call it. 0141 adds media_slots_resolve_v2 next to it and must
+# not change a byte of this (M8a).
+"${PSQL[@]}" >/dev/null <<'SQL'
+insert into public.t_vars
+select 'v1_before', md5(p.prosrc || '|' || pg_get_function_result(p.oid) || '|' || coalesce(p.proacl::text, '')
+                        || '|' || p.prosecdef::text || '|' || p.provolatile::text || '|' || coalesce(array_to_string(p.proconfig, ','), ''))
+  from pg_proc p where p.oid = 'public.media_slots_resolve(text[])'::regprocedure;
+SQL
+if grep -qiE '^[[:space:]]*drop[[:space:]]' "$MIGRATION"; then
+  record 'M0  0141 is purely additive: not one DROP statement in the file' false "$(grep -inE '^[[:space:]]*drop[[:space:]]' "$MIGRATION" | head -3 | tr '\n' ' ')"
+else
+  record 'M0  0141 is purely additive: not one DROP statement in the file' true ''
+fi
 if apply_migration; then
   record 'M1  0141 applies to the pre-0141 schema in one transaction' true ''
 else
@@ -524,19 +538,36 @@ select public.t_true(
      and crop is null and alt_i18n is null
     from public.media_slots where slot_key = 'global.legacy.hero' $q$);
 select public.t_true(
-  'M7  and still resolves for an anonymous visitor through the re-created resolver',
+  'M7  and still resolves for an anonymous visitor, through v1 and through v2',
   'anon', $q$
-  select count(*) = 1 and bool_and(desktop_path = 'media/hero.jpg' and alt_text = 'Legacy' and crop is null)
-    from public.media_slots_resolve(array['global.legacy.hero']) $q$);
+  select (select count(*) = 1 and bool_and(desktop_path = 'media/hero.jpg' and alt_text = 'Legacy')
+            from public.media_slots_resolve(array['global.legacy.hero']))
+     and (select count(*) = 1 and bool_and(desktop_path = 'media/hero.jpg' and alt_text = 'Legacy' and crop is null)
+            from public.media_slots_resolve_v2(array['global.legacy.hero'])) $q$);
 select public.t_true(
-  'M8  the resolver keeps 0091''s 20 columns in order and appends exactly crop, alt_i18n, mobile_variants',
+  'M8  v2 keeps 0091''s 20 columns in order and appends exactly crop, alt_i18n, mobile_variants',
   'postgres', $q$
-  select pg_get_function_result('public.media_slots_resolve(text[])'::regprocedure) =
+  select pg_get_function_result('public.media_slots_resolve_v2(text[])'::regprocedure) =
     'TABLE(slot_key text, media_type text, alt_text text, object_fit text, object_position text, '
     'autoplay boolean, muted boolean, loop boolean, controls boolean, desktop_path text, desktop_url text, '
     'desktop_width integer, desktop_height integer, desktop_variants jsonb, tablet_path text, tablet_url text, '
     'mobile_path text, mobile_url text, poster_path text, poster_url text, crop jsonb, alt_i18n jsonb, '
     'mobile_variants jsonb)' $q$);
+select public.t_true(
+  'M8a the 0091 resolver is untouched: same body, result type, definer, volatility, search_path and grants',
+  'postgres', $q$
+  select md5(p.prosrc || '|' || pg_get_function_result(p.oid) || '|' || coalesce(p.proacl::text, '')
+             || '|' || p.prosecdef::text || '|' || p.provolatile::text || '|' || coalesce(array_to_string(p.proconfig, ','), ''))
+         = public.t_var('v1_before')
+    from pg_proc p where p.oid = 'public.media_slots_resolve(text[])'::regprocedure $q$);
+select public.t_true(
+  'M8b v2 is a definer function with a pinned search_path, callable by anon and authenticated only',
+  'postgres', $q$
+  select p.prosecdef and p.provolatile = 's' and p.proconfig = '{search_path=public}'
+     and has_function_privilege('anon', p.oid, 'execute')
+     and has_function_privilege('authenticated', p.oid, 'execute')
+     and not exists (select 1 from aclexplode(p.proacl) a where a.grantee = 0 and a.privilege_type = 'EXECUTE')
+    from pg_proc p where p.oid = 'public.media_slots_resolve_v2(text[])'::regprocedure $q$);
 select public.t_true(
   'M9  the existing CMS rows were not touched by the apply',
   'postgres', $q$
@@ -1222,22 +1253,22 @@ select public.t_true(
        and mobile_variants = '{"480":"https://cdn.test/hero-mobile_w480.webp"}'
        and mobile_path = 'media/hero-mobile.jpg' and desktop_path = 'media/hero.jpg'
        and desktop_variants ? '640' and desktop_width = 1600)
-    from public.media_slots_resolve(array['global.ice.show']) $q$);
+    from public.media_slots_resolve_v2(array['global.ice.show']) $q$);
 select public.t_true(
   'C64 a slot whose desktop file has neither a path nor a URL is not returned',
-  'anon', $q$ select count(*) = 0 from public.media_slots_resolve(array['global.ice.empty']) $q$);
+  'anon', $q$ select count(*) = 0 from public.media_slots_resolve_v2(array['global.ice.empty']) $q$);
 select public.t_true(
   'C65 a switched-off slot is not returned',
-  'anon', $q$ select count(*) = 0 from public.media_slots_resolve(array['global.ice.off']) $q$);
+  'anon', $q$ select count(*) = 0 from public.media_slots_resolve_v2(array['global.ice.off']) $q$);
 select public.t_true(
   'C66 201 keys return nothing at all, even the valid one',
   'anon', $q$
-  select count(*) = 0 from public.media_slots_resolve(
+  select count(*) = 0 from public.media_slots_resolve_v2(
     array['global.ice.show'] || array(select 'global.pad.k' || g from generate_series(1, 200) g)) $q$);
 select public.t_true(
   'C67 200 keys still resolve (the bound is inclusive)',
   'anon', $q$
-  select count(*) = 1 from public.media_slots_resolve(
+  select count(*) = 1 from public.media_slots_resolve_v2(
     array['global.ice.show'] || array(select 'global.pad.k' || g from generate_series(1, 199) g)) $q$);
 select public.t_true(
   'C68 the anonymous visitor still cannot read media_slots or media_assets directly',
@@ -1251,7 +1282,7 @@ select public.t_true(
   'C70 (… with desktop_url set and desktop_path null)',
   'anon', $q$
   select count(*) = 1 and bool_and(desktop_url = 'https://cdn.test/ext.jpg' and desktop_path is null)
-    from public.media_slots_resolve(array['global.ice.off']) $q$);
+    from public.media_slots_resolve_v2(array['global.ice.off']) $q$);
 SQL
 
 # ── D. cms_inline_patch — one field of one PUBLISHED block ──────────────────
@@ -1595,6 +1626,7 @@ select public.t_true(
   'postgres', $q$
   select has_function_privilege('anon', 'public.content_overrides_published()', 'execute')
      and has_function_privilege('anon', 'public.media_slots_resolve(text[])', 'execute')
+     and has_function_privilege('anon', 'public.media_slots_resolve_v2(text[])', 'execute')
      and not has_function_privilege('anon', 'public.content_override_write(text, text, text, timestamptz, text)', 'execute')
      and not has_function_privilege('anon', 'public.media_slots_write(jsonb, text)', 'execute')
      and not has_function_privilege('anon', 'public.cms_inline_patch(uuid, text[], text, text, text, timestamptz, text)', 'execute')
@@ -1605,10 +1637,17 @@ select public.t_raises(
   'anon', $q$ select public.content_override_write('home.hero.title', 'pl', 'Hacked', null, 'save') $q$,
   'permission denied for function content_override_write');
 select public.t_true(
-  'M14 and the resolver still answers with the frame',
+  'M14 and v2 still answers with the frame',
   'anon', $q$
   select count(*) = 1 and bool_and(crop = '{"x":30,"y":70,"zoom":1.4}')
-    from public.media_slots_resolve(array['global.ice.show']) $q$);
+    from public.media_slots_resolve_v2(array['global.ice.show']) $q$);
+select public.t_true(
+  'M15 and the 0091 resolver is still byte for byte what it was before the first apply',
+  'postgres', $q$
+  select md5(p.prosrc || '|' || pg_get_function_result(p.oid) || '|' || coalesce(p.proacl::text, '')
+             || '|' || p.prosecdef::text || '|' || p.provolatile::text || '|' || coalesce(array_to_string(p.proconfig, ','), ''))
+         = public.t_var('v1_before')
+    from pg_proc p where p.oid = 'public.media_slots_resolve(text[])'::regprocedure $q$);
 SQL
 
 scoreboard

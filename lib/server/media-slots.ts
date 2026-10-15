@@ -196,7 +196,15 @@ export async function loadSlots(_supabase: Client, keys: readonly string[]): Pro
 const readSlots = unstable_cache(
   async (keys: string[]): Promise<Record<string, ResolvedSlot>> => {
     const anon = createAnonClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    const { data, error } = await anon.rpc("media_slots_resolve", { p_keys: keys });
+    // media_slots_resolve_v2 (0141) is v1 plus the editor's crop, per-locale
+    // alt and the phone file's widths; v1 is left exactly as 0091 made it.
+    // Until 0141 is applied the v2 name does not exist (PGRST202 from
+    // PostgREST, 42883 from Postgres) and the read falls back to v1 — the
+    // slots then render as they always did, just without a chosen frame.
+    let { data, error } = await anon.rpc("media_slots_resolve_v2", { p_keys: keys });
+    if (error && (error.code === "PGRST202" || error.code === "42883")) {
+      ({ data, error } = await anon.rpc("media_slots_resolve", { p_keys: keys }));
+    }
     // A screen whose slots cannot be read still renders — every surface has a
     // fallback, so the worst case is the interface it had before this feature.
     if (error || !data) return {};

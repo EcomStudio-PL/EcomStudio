@@ -7685,6 +7685,31 @@ export type Database = {
           slot_key: string
           tablet_path: string
           tablet_url: string
+        }[]
+      }
+      media_slots_resolve_v2: {
+        Args: { p_keys: string[] }
+        Returns: {
+          alt_text: string
+          autoplay: boolean
+          controls: boolean
+          desktop_height: number
+          desktop_path: string
+          desktop_url: string
+          desktop_variants: Json
+          desktop_width: number
+          loop: boolean
+          media_type: string
+          mobile_path: string
+          mobile_url: string
+          muted: boolean
+          object_fit: string
+          object_position: string
+          poster_path: string
+          poster_url: string
+          slot_key: string
+          tablet_path: string
+          tablet_url: string
           crop: Json | null
           alt_i18n: Json | null
           mobile_variants: Json | null

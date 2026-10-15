@@ -22,8 +22,9 @@ import type { ResolvedSlot, SlotMap } from "@/lib/server/media-slots";
  * even handed a map.
  */
 
-/** media_slots_resolve answers at most this many keys per call (0091, 0141):
- *  past it the function returns NO rows at all, for any key. */
+/** media_slots_resolve (0091) and media_slots_resolve_v2 (0141) answer at
+ *  most this many keys per call: past it they return NO rows at all, for any
+ *  key. */
 export const SLOT_READ_CAP = 200;
 
 /** Every /home section slot the editor lists (entity "global"), in registry

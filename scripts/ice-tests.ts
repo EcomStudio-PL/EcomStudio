@@ -232,8 +232,18 @@ async function sectionA() {
   const cardKeys = new Set(cardSlots.map((s) => s.key));
   const sql = readFileSync("supabase/migrations/0141_inline_content_editor.sql", "utf8");
   const bound = Number(/array_length\(p_keys, 1\) <= (\d+)/.exec(sql)?.[1] ?? NaN);
-  check(`A7j global slots + card slots on /home ≤ media_slots_resolve's bound (${new Set(globalKeys).size} + ${cardKeys.size} ≤ ${bound})`,
+  check(`A7j global slots + card slots on /home ≤ media_slots_resolve_v2's bound (${new Set(globalKeys).size} + ${cardKeys.size} ≤ ${bound})`,
     Number.isFinite(bound) && new Set(globalKeys).size + cardKeys.size <= bound);
+  // 0141 is additive: v1 stays as 0091 made it, the app reads v2 and falls
+  // back to v1 only while v2 does not exist yet (code shipped before the SQL).
+  const reader = readFileSync("lib/server/media-slots.ts", "utf8");
+  const v2At = reader.indexOf('rpc("media_slots_resolve_v2"');
+  const v1At = reader.indexOf('rpc("media_slots_resolve",');
+  check("A7r readSlots asks media_slots_resolve_v2 first and v1 only after, on PGRST202/42883 (function missing)",
+    v2At > 0 && v1At > v2At && /error\.code === "PGRST202" \|\| error\.code === "42883"/.test(reader.slice(v2At, v1At)));
+  check("A7s the migration creates media_slots_resolve_v2 and never touches media_slots_resolve(text[])",
+    /create or replace function public\.media_slots_resolve_v2\(p_keys text\[\]\)/.test(sql)
+      && !/^(?!\s*--).*public\.media_slots_resolve\(/m.test(sql));
 
   const configKeys = new Set(assetList().map((r) => r.media.configKey));
   const tileKeys = new Set([...CAROUSEL, ...FEATURED].map((t) => t.media.configKey));
