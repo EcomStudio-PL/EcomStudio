@@ -59,9 +59,11 @@ export function sniff(bytes: Uint8Array): IceMime | null {
   return null;
 }
 
-/** A safe object name: letters, digits, dot, dash, underscore; ≤ 80. */
+/** A safe object name: letters, digits, dot, dash, underscore; starts with a
+ *  letter or digit; ≤ 80 characters (the tail is kept — it has the
+ *  extension). Trimmed AFTER the cut, so the cut can never leave a leading
+ *  separator. */
 export function safeName(name: string): string {
-  const base = name.normalize("NFKD").replace(/[^\x20-\x7e]/g, "").replace(/[^a-zA-Z0-9._-]+/g, "_")
-    .replace(/^[._]+/, "").slice(-80);
-  return base || "plik";
+  const base = name.normalize("NFKD").replace(/[^\x20-\x7e]/g, "").replace(/[^a-zA-Z0-9._-]+/g, "_");
+  return base.slice(-80).replace(/^[^a-zA-Z0-9]+/, "") || "plik";
 }

@@ -145,41 +145,44 @@ export class FakeDb {
   }
 
   client() {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const db = this;
-    return {
-      get user() { return db.user; },
-      auth: {
-        async getUser() {
-          db.calls.push({ kind: "auth" });
-          return { data: { user: db.user }, error: null };
-        },
-      },
-      from(table: string) {
-        const call: Extract<DbCall, { kind: "from" }> = { kind: "from", table, op: "select", ops: [] };
-        db.calls.push(call);
-        return new Query(db, table, call);
-      },
-      async rpc(name: string, args: Record<string, unknown> = {}) {
-        db.calls.push({ kind: "rpc", name, args });
-        const fn = db.rpcs[name];
-        if (!fn) return { data: null, error: { message: `function ${name} not scripted`, code: "PGRST202" } };
-        return fn(args);
-      },
-      storage: {
-        from(bucket: string) {
-          return {
-            getPublicUrl(path: string) {
-              db.calls.push({ kind: "storage", bucket, op: "getPublicUrl", arg: path });
-              return { data: { publicUrl: encodeURI(`${STORAGE_PUBLIC}/${bucket}/${path.replace(/^\/+/, "")}`) } };
-            },
-            async remove(paths: string[]) {
-              db.calls.push({ kind: "storage", bucket, op: "remove", arg: paths });
-              return { data: paths.map((name) => ({ name })), error: null };
-            },
-          };
-        },
-      },
-    };
+    return fakeClient(this);
   }
+}
+
+/** The client object over one FakeDb (what createClient() hands out). */
+function fakeClient(db: FakeDb) {
+  return {
+    get user() { return db.user; },
+    auth: {
+      async getUser() {
+        db.calls.push({ kind: "auth" });
+        return { data: { user: db.user }, error: null };
+      },
+    },
+    from(table: string) {
+      const call: Extract<DbCall, { kind: "from" }> = { kind: "from", table, op: "select", ops: [] };
+      db.calls.push(call);
+      return new Query(db, table, call);
+    },
+    async rpc(name: string, args: Record<string, unknown> = {}) {
+      db.calls.push({ kind: "rpc", name, args });
+      const fn = db.rpcs[name];
+      if (!fn) return { data: null, error: { message: `function ${name} not scripted`, code: "PGRST202" } };
+      return fn(args);
+    },
+    storage: {
+      from(bucket: string) {
+        return {
+          getPublicUrl(path: string) {
+            db.calls.push({ kind: "storage", bucket, op: "getPublicUrl", arg: path });
+            return { data: { publicUrl: encodeURI(`${STORAGE_PUBLIC}/${bucket}/${path.replace(/^\/+/, "")}`) } };
+          },
+          async remove(paths: string[]) {
+            db.calls.push({ kind: "storage", bucket, op: "remove", arg: paths });
+            return { data: paths.map((name) => ({ name })), error: null };
+          },
+        };
+      },
+    },
+  };
 }

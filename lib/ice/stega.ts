@@ -57,9 +57,15 @@ export function stegaLocate(text: string): StegaHit[] {
         for (let b = 0; b < 7; b++) code = (code << 1) | (bits[c + b] === ONE ? 1 : 0);
         payload += String.fromCharCode(code);
       }
-      if (PAYLOAD.test(payload)) found.push({ payload, at: i, end: end + MARK_END.length });
+      if (PAYLOAD.test(payload)) {
+        found.push({ payload, at: i, end: end + MARK_END.length });
+        i = text.indexOf(MARK_START, end + MARK_END.length);
+        continue;
+      }
     }
-    i = text.indexOf(MARK_START, end + MARK_END.length);
+    // Not a marker (a stray start, or a broken one): look again from the
+    // next character, so a real marker after it is still found.
+    i = text.indexOf(MARK_START, i + 1);
   }
   return found;
 }

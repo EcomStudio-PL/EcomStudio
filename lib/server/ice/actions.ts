@@ -637,8 +637,7 @@ export function uploadTicket(input: { name: string; size: number; type: string }
     await requireIceAdmin();
     if (!input || !isIceMime(input.type)) throw new IceRefusal("format");
     if (typeof input.size !== "number" || input.size <= 0 || input.size > maxBytesFor(input.type)) throw new IceRefusal("too_large");
-    const name = safeName(String(input.name ?? ""));
-    return { path: `ice/${crypto.randomUUID()}/${/^[a-zA-Z0-9]/.test(name) ? name : `f${name}`}` };
+    return { path: `ice/${crypto.randomUUID()}/${safeName(String(input.name ?? ""))}` };
   });
 }
 
@@ -660,7 +659,20 @@ export function registerUpload(input: { path: string; name: string }): Promise<I
     const res = await fetch(url, { headers: { Range: "bytes=0-63" }, cache: "no-store" });
     if (!res.ok) throw new IceRefusal("upload_missing");
     const head = new Uint8Array(await res.arrayBuffer()).subarray(0, 64);
-    const total = Number(/\/(\d+)$/.exec(res.headers.get("content-range") ?? "")?.[1] ?? res.headers.get("content-length") ?? NaN);
+    // The stored size: a 206's Content-Range total, a 200's (Range ignored)
+    // Content-Length, else Storage's own record of the object. Never a 206's
+    // Content-Length — that is the length of the range.
+    let total = res.status === 206
+      ? Number(/\/(\d+)$/.exec(res.headers.get("content-range") ?? "")?.[1] ?? NaN)
+      : Number(res.headers.get("content-length") ?? NaN);
+    if (!Number.isFinite(total) || total <= 0) {
+      try {
+        const { data: info } = await supabase.storage.from("media").info(path);
+        total = Number(info?.size ?? NaN);
+      } catch {
+        total = NaN;
+      }
+    }
     const mime = sniff(head);
 
     const refuse = async (code: string): Promise<never> => {

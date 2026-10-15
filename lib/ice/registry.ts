@@ -77,8 +77,10 @@ function cardSlot(item: string): IceSlotSpec {
     sharedWith: "/tools",
     frames: [{ label: "tools", ratio: ratioOf(TOOL_TILE) }],
     entityType: category ? "category" : workflow ? "workflow" : "tool",
-    entityId: category ? item.slice(4) : workflow ? cat : item,
-    slotName: category || workflow ? "card" : "card",
+    // The same entity columns Admin → Media writes (lib/media-slots.ts): a
+    // workflow is `<category>.<workflow>`.
+    entityId: category ? item.slice(4) : workflow ? `${cat}.${wf}` : item,
+    slotName: "card",
   };
 }
 
@@ -285,7 +287,7 @@ function catalogueSlot(item: (typeof CATALOG_ITEMS)[number]): IceSlotSpec {
     sharedWith: "/home",
     frames: [{ label: "tools", ratio: ratioOf(TOOL_TILE) }],
     entityType: item.workflow ? "workflow" : isCategory ? "category" : "tool",
-    entityId: item.workflow ? item.workflow.category : item.key,
+    entityId: item.workflow ? `${item.workflow.category}.${item.workflow.key}` : item.key,
     slotName: "card",
   };
 }
