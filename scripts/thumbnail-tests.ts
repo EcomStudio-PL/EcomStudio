@@ -1292,6 +1292,8 @@ async function sectionH() {
   check("H2 credits: 2 × 7 (Retusz) + 20 (composition)", rB.credits === 34 && db().wallet.balance === 1000 - 20);
   // What the CUSTOMER is told about this run (read now, before the next setup).
   const view = await readThumbnailRun(SUPA, String(rB.id)) as Record<string, unknown>;
+  const retouchPathsB = [0, 1].map((i) => String((db().steps.find((x) => x.run_id === rB.id && x.position === 1 && x.item_index === i)!.output as Row).path));
+  const finalPathB = String((db().steps.find((x) => x.run_id === rB.id && x.position === 3)!.output as Row).path);
 
   // H3 — a Retusz result that is not the file its job recorded: refused before any charge.
   setupEnv();
@@ -1331,8 +1333,8 @@ async function sectionH() {
     ...depsFor(rec, retouch4b),
     runRetouch: async (...a) => {
       const out = await retouch4b(...a);
-      const job = tableRows("generation_jobs").at(-1)!;
-      ((job.settings as Row).provider_output as Row[])[0].stored_sha256 = undefined;
+      const job = out.ok && "jobId" in out ? tableRows("generation_jobs").find((j) => j.id === out.jobId) : undefined;
+      if (job) ((job.settings as Row).provider_output as Row[])[0].stored_sha256 = undefined;
       return out;
     },
   });
@@ -1355,7 +1357,9 @@ async function sectionH() {
   check("H6 the customer's view has only: id, status, error, cancelling, driving, retouch, photos, retouchedCount, result, dates",
     view && JSON.stringify(Object.keys(view).sort()) === JSON.stringify(["cancelling", "createdAt", "driving", "error", "finishedAt", "id", "photos", "result", "retouch", "retouchedCount", "status"]), JSON.stringify(view));
   check("H6 …no stage, step, model, provider, prompt, job or intermediate file in it",
-    !/stage|steps|sunburst|openai|gemini|prompt|job|retouch_|"\/[0-9a-f-]+\/0\.png/i.test(JSON.stringify({ ...view, retouch: undefined, retouchedCount: undefined })));
+    !/stage|steps|sunburst|openai|gemini|prompt|job|retouch_/i.test(JSON.stringify({ ...view, retouch: undefined, retouchedCount: undefined }))
+    && retouchPathsB.length === 2 && retouchPathsB.every((p) => p.length > 0 && !JSON.stringify(view).includes(p))
+    && (view.result as Row)?.path === finalPathB);
   check("H6 …the finished file signed, 2 Retusz results counted for a retry", (view.result as Row)?.url !== "" && view.retouchedCount === 2);
 
   // H7 — the panel shows no workflow.
