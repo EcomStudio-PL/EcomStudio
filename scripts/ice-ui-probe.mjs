@@ -55,7 +55,7 @@ import pl from "@/lib/i18n/dictionaries/pl.json";
 import en from "@/lib/i18n/dictionaries/en.json";
 import de from "@/lib/i18n/dictionaries/de.json";
 import { ProbeEditor } from "./probe-editor";
-import { Counter } from "./counter";
+import { Counter, Overlay, Pills, RailArrow } from "./counter";
 
 export const dynamic = "force-dynamic";
 
@@ -240,14 +240,16 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
       </section>
 
       <section className="p-sec" aria-label="Upload">
-        <div className="p-pills">
-          {UPLOAD_TOOLS.map((u) => <button key={u.key} type="button" className="p-pill" id={"p-pill-" + u.key}>{tx(u.pillKey)}</button>)}
-        </div>
+        <Pills items={UPLOAD_TOOLS.map((u) => ({ key: u.key, label: tx(u.pillKey) }))} />
         {/* An outlined button with an icon: a press on the icon opens its text. */}
         <button type="button" className="p-cta" id="p-icon-btn" style={{ marginTop: 10, gap: 8, alignItems: "center" }}>
           <svg id="p-icon-svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
           {tx("sellerHome.upload.create")}
         </button>
+        <details id="p-details" style={{ marginTop: 10 }}>
+          <summary id="p-summary" style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid rgb(var(--line))", cursor: "pointer" }}>{tx("sellerHome.upload.opensTool")}</summary>
+          <p className="p-line">Odpowiedź (nieedytowalna).</p>
+        </details>
         <p className="p-line" style={{ marginTop: 10 }}>{tx("sellerHome.samples")}</p>
         <div className="p-samples">
           {thumbTool.samples.map((s, i) => (i < 2
@@ -286,10 +288,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
       <section className="p-sec" aria-label="Galeria">
         <div className="p-grid4">
           {SHOWCASE.gallery.slice(0, 4).map((m, i) => (
-            <span key={m.configKey} data-config-key={m.configKey} className="p-frame" style={{ aspectRatio: "4/3" }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              {i === 0 ? <img src="/showcase/tool-relight.webp" alt="" /> : <span className="p-empty">{"Galeria " + (i + 1)}</span>}
-            </span>
+            <div key={m.configKey} style={{ position: "relative" }}>
+              <span data-config-key={m.configKey} className="p-frame" style={{ aspectRatio: "4/3" }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {i === 0 ? <img src="/showcase/tool-relight.webp" alt="" /> : <span className="p-empty">{"Galeria " + (i + 1)}</span>}
+              </span>
+              {i === 0 && <RailArrow />}
+            </div>
           ))}
         </div>
         <a href="/retusz" className="p-cta">{tx(SHOWCASE.ctaKey)}</a>
@@ -359,6 +364,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
           <input name="q" id="p-input" defaultValue="" aria-label="Szukaj" className="p-input" />
           <button type="submit" id="p-submit" className="p-pill">Wyślij formularz</button>
         </form>
+        <div className="p-pills" style={{ marginTop: 10 }}><Overlay /></div>
       </section>
 
       <Dock />
@@ -395,6 +401,51 @@ export function Counter() {
       </span>
       <button type="button" id="p-toggle" aria-pressed={on} className="p-pill" onClick={() => setOn((v) => !v)}>Tylko nowe</button>
     </div>
+  );
+}
+
+/** Tool pills as a radio group whose labels are editable texts. */
+export function Pills({ items }: { items: { key: string; label: string }[] }) {
+  const [on, setOn] = useState(items[0]?.key ?? "");
+  return (
+    <div role="radiogroup" aria-label="Narzędzie" className="p-pills">
+      {items.map((it) => (
+        <button key={it.key} type="button" role="radio" aria-checked={on === it.key} id={"p-pill-" + it.key}
+          className="p-pill" style={{ padding: "9px 18px" }} onClick={() => setOn(it.key)}>{it.label}</button>
+      ))}
+    </div>
+  );
+}
+
+/** A carousel arrow laid over a media frame (absolutely positioned). */
+export function RailArrow() {
+  const [n, setN] = useState(0);
+  return (
+    <>
+      <button type="button" data-rail-next="" id="p-arrow-over" aria-label="Dalej (nad zdjęciem)" onClick={() => setN((v) => v + 1)}
+        style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", width: 36, height: 36, borderRadius: 99, zIndex: 2,
+          border: "1px solid rgb(var(--line-strong))", background: "rgb(var(--surface))", color: "rgb(var(--ink))" }}>›</button>
+      <output id="p-arrow-count" hidden>{n}</output>
+    </>
+  );
+}
+
+/** A page overlay (a phone menu) opened by an aria-expanded trigger. */
+export function Overlay() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" id="p-overlay-open" className="p-pill" aria-expanded={open} aria-controls="p-overlay" onClick={() => setOpen((v) => !v)}>Menu strony</button>
+      {open && (
+        <div role="dialog" aria-modal="true" aria-label="Menu strony" id="p-overlay"
+          style={{ position: "fixed", left: 16, right: 16, top: "35%", zIndex: 60, padding: 16, borderRadius: 16, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center",
+            background: "rgb(var(--surface))", border: "1px solid rgb(var(--line-strong))", boxShadow: "0 20px 60px rgb(0 0 0 / .35)" }}>
+          <strong style={{ flexBasis: "100%" }}>Menu strony (probe)</strong>
+          <a href="/menu-link" id="p-overlay-link">Link w menu</a>
+          <button type="button" id="p-overlay-close" className="p-pill" onClick={() => setOpen(false)}>Zamknij</button>
+        </div>
+      )}
+    </>
   );
 }
 `;
@@ -758,11 +809,14 @@ const THEMES = ["light", "dark"];
 const CHECKS = [
   ["1", "edit-mode chrome"], ["2", "hover frame"], ["3", "text panel"], ["3b", "re-open in re-scan window"],
   ["4", "media panel"], ["5", "pair panel"], ["6", "samples panel"], ["7", "bulk upload"],
-  ["8", "links / forms / buttons"], ["9", "Elementy / Historia / Esc"], ["10", "mobile sheet + tap"],
+  ["8", "links / forms / buttons"], ["8b", "view controls & overlays"], ["9", "Elementy / Historia / Esc"], ["10", "mobile sheet + tap"],
   ["11", "CMS mode"], ["12", "Zakończ edycję"], ["13", "console clean"], ["L", "launcher vs dock"],
 ];
 /** Console lines that come from this sandbox (no Supabase, dev tooling), not the editor. */
-const ENV_NOISE = [/content-overrides: read failed/, /fetch failed/, /redirects/i, /Download the React DevTools/, /\[Fast Refresh\]/, /\[HMR\]/];
+const ENV_NOISE = [/content-overrides: read failed/, /fetch failed/, /redirects/i, /Download the React DevTools/, /\[Fast Refresh\]/, /\[HMR\]/,
+  // `next dev` stamps its CSS with ?v=<time>; every router.refresh (after a
+  // save) preloads a "new" file — production URLs are content hashes.
+  /_next\/static\/css\/.*\?v=\d+ was preloaded using link preload but not used/];
 const isNoise = (text) => ENV_NOISE.some((r) => r.test(text));
 
 /** check id → combo → { ok, fails[] } */
@@ -1273,12 +1327,11 @@ async function runHome(vp, theme) {
     // not a page control).
     const nToasts = await page.locator("[data-sonner-toast]").count();
     const closeBtn = page.locator("[data-sonner-toast] button[data-close-button]").first();
-    // Mouse only: a touch on the toaster expands the stack and pauses its
-    // timers (sonner's mouseenter), and it then stays over a phone's panel.
-    if (!vp.touch && await closeBtn.count()) {
+    if (await closeBtn.count()) {
       const cb = await closeBtn.boundingBox();
       // Straight at the ×: press() would wait for the toast to go away first.
-      await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
+      if (vp.touch) await page.touchscreen.tap(cb.x + cb.width / 2, cb.y + cb.height / 2);
+      else await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
       await page.waitForTimeout(800);
       const after = await page.locator("[data-sonner-toast]").count();
       const held = await page.locator("[data-sonner-toast]", { hasText: "są wstrzymane" }).count();
@@ -1525,7 +1578,7 @@ async function runHome(vp, theme) {
   /* 8 ─ links, forms, plain buttons */
   await step(8, async () => {
     const url = page.url();
-    await page.waitForTimeout(2700); // the link toast is rate-limited to one per 2.5 s
+    await page.waitForTimeout(8100); // the held-control toast shows at most once per 8 s
     await press(page, vp, await textPoint(page, "#p-plain-link"));
     await page.waitForTimeout(500);
     check(combo, 8, "a plain link does not navigate", page.url() === url, page.url());
@@ -1540,8 +1593,8 @@ async function runHome(vp, theme) {
     await page.keyboard.press("Enter");
     await page.waitForTimeout(500);
     check(combo, 8, "Enter in a form field is blocked too", page.url() === url, page.url());
-    // A plain page button is held, with the same toast (rate-limited to 2.5 s).
-    await page.waitForTimeout(2700);
+    // A plain page button is held, with the same toast (at most once per 8 s).
+    await page.waitForTimeout(8100);
     const toastsBefore = await page.locator("[data-sonner-toast]", { hasText: "są wstrzymane" }).count();
     const p0 = await page.locator("#p-plain-count").textContent();
     await press(page, vp, await boxPoint(page, "#p-plain-btn"));
@@ -1663,6 +1716,77 @@ async function runHome(vp, theme) {
     }
   });
 
+  /* 8b ─ controls that only move the page's view, and the page's own overlays */
+  await step("8b", async () => {
+    const url = page.url();
+    const none = async () => ((await sheet(page).count()) ? await sheet(page).getAttribute("aria-label") : null);
+    // An arrow laid over a media frame scrolls (acts) — the frame does not open.
+    const ap = await boxPoint(page, "#p-arrow-over");
+    const over = await page.evaluate(({ x, y }) => document.elementsFromPoint(x, y).some((e) => e.matches('[data-config-key="homeMedia.showcase.gallery.1"]')), ap);
+    const a0 = Number(await page.locator("#p-arrow-count").textContent());
+    await press(page, vp, ap);
+    await page.waitForTimeout(400);
+    check(combo, "8b", "an arrow (data-rail-next) over a media frame acts, the frame's panel does not open",
+      over && Number(await page.locator("#p-arrow-count").textContent()) === a0 + 1 && (await none()) === null, { overFrame: over, panel: await none() });
+    await closeAll(page);
+    // A radio pill whose label is an editable text (the pill on the right
+    // edge of its label is not the checked one).
+    const checked0 = await page.locator('[role="radio"][aria-checked="true"]').getAttribute("id");
+    await press(page, vp, await textPoint(page, "#p-pill-thumbnail"));
+    await page.waitForTimeout(500);
+    const checked1 = await page.locator('[role="radio"][aria-checked="true"]').getAttribute("id");
+    check(combo, "8b", "radio pill: pressing its label text opens the text panel (the pill does not switch)",
+      (await none()) === "Etykieta narzędzia" && checked1 === checked0, { panel: await none(), checked0, checked1 });
+    await closeAll(page);
+    await page.waitForTimeout(SETTLE);
+    const pad = await page.evaluate(() => {
+      const b = document.querySelector("#p-pill-outdoor");
+      b.scrollIntoView({ block: "center" });
+      const r = b.getBoundingClientRect();
+      return { x: r.left + 5, y: r.top + r.height / 2 };
+    });
+    await press(page, vp, pad);
+    await page.waitForTimeout(400);
+    check(combo, "8b", "radio pill: pressing its padding switches the pill, no panel",
+      (await page.locator("#p-pill-outdoor").getAttribute("aria-checked")) === "true" && (await none()) === null,
+      { checked: await page.locator("#p-pill-outdoor").getAttribute("aria-checked"), panel: await none() });
+    await closeAll(page);
+    // <details><summary> with a marked question.
+    const open0 = await page.evaluate(() => document.querySelector("#p-details").open);
+    const sp = await page.evaluate(() => {
+      const sm = document.querySelector("#p-summary");
+      sm.scrollIntoView({ block: "center" });
+      const r = sm.getBoundingClientRect();
+      return { x: r.left + 6, y: r.top + r.height / 2 };
+    });
+    await press(page, vp, sp);
+    await page.waitForTimeout(400);
+    const open1 = await page.evaluate(() => document.querySelector("#p-details").open);
+    check(combo, "8b", "summary: pressing its marker/padding toggles the details, no panel", open1 !== open0 && (await none()) === null, { open0, open1, panel: await none() });
+    await closeAll(page);
+    await press(page, vp, await textPoint(page, "#p-summary"));
+    await page.waitForTimeout(500);
+    const open2 = await page.evaluate(() => document.querySelector("#p-details").open);
+    check(combo, "8b", "summary: pressing exactly its text opens the text panel (details unchanged)",
+      (await none()) === "Podpowiedź" && open2 === open1, { panel: await none(), open1, open2 });
+    await closeAll(page);
+    await page.waitForTimeout(SETTLE);
+    // The page's own overlay: the aria-expanded trigger opens it, its close button closes it, its link is held.
+    await press(page, vp, await boxPoint(page, "#p-overlay-open"));
+    await page.waitForTimeout(400);
+    const opened = await page.locator("#p-overlay").count();
+    check(combo, "8b", "an aria-expanded trigger opens the page's overlay (role=dialog)", opened === 1 && (await none()) === null);
+    if (opened) {
+      await shot(page, combo, "08b-page-overlay");
+      await press(page, vp, await textPoint(page, "#p-overlay-link"));
+      await page.waitForTimeout(400);
+      check(combo, "8b", "a link inside the overlay is still held", page.url() === url && (await page.locator("#p-overlay").count()) === 1, page.url());
+      await press(page, vp, await boxPoint(page, "#p-overlay-close"));
+      await page.waitForTimeout(400);
+      check(combo, "8b", "the overlay's plain close button closes it", (await page.locator("#p-overlay").count()) === 0 && (await none()) === null);
+    }
+  });
+
   /* 9 ─ Elementy / Historia / Escape */
   await step(9, async () => {
     await bar(page).getByRole("button", { name: "Elementy" }).click();
@@ -1762,10 +1886,17 @@ async function runHome(vp, theme) {
     await dlg.locator("input:not([type])").first().fill("Nowy podtytuł");
     await page.waitForTimeout(150);
     check(combo, "3b", "…and the second previews exactly", (await visText(page, "#p-ba-sub")) === "Nowy podtytuł", await visText(page, "#p-ba-sub"));
-    // The same element pressed again while it previews.
+    // The same element pressed again while it previews: panel and draft stay.
     await page.waitForTimeout(SETTLE);
     await press(page, vp, await textPoint(page, "#p-ba-sub"));
     await page.waitForTimeout(500);
+    const kept = {
+      panel: await dlg.getAttribute("aria-label").catch(() => null),
+      draft: await dlg.locator("input:not([type])").first().inputValue().catch(() => null),
+      page: await visText(page, "#p-ba-sub"),
+    };
+    check(combo, "3b", "pressing the open element again keeps its panel, the draft and the preview",
+      kept.panel === "Podtytuł" && kept.draft === "Nowy podtytuł" && kept.page === "Nowy podtytuł", kept);
     await page.keyboard.press("Escape");
     await page.waitForTimeout(SETTLE);
     check(combo, "3b", "pressing the same element again, then Esc, leaves it exactly as it was",
