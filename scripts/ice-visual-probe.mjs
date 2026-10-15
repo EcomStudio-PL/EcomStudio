@@ -3,27 +3,41 @@
  *
  * A visual-regression run of two builds of the app side by side: OLD (the
  * release before the editor) and NEW (with it). Every page below is
- * screenshotted full-page at a phone, a tablet and a desktop width, in the
- * light and the dark theme, twice per side (the second time to measure the
- * noise floor), and OLD is pixel-diffed against NEW. The one intended change
- * is /home's before/after section, now 1:1 (1080×1080) instead of 4:5: for
- * that page the diff is ALSO taken region by region — above the section,
- * the section, and below it re-aligned on the section's bottom edge — so
- * "everything below moved up by exactly the height the section lost, and is
- * otherwise identical" is a measured statement, not a guess.
+ * screenshotted whole at a phone, a tablet and a desktop width, in the light
+ * and the dark theme, twice per side (fresh loads — the second pair measures
+ * the noise floor), and OLD is pixel-diffed against NEW: every differing
+ * pixel, and those differing by more than --tol (24) in a channel, which
+ * separates a real change from anti-aliasing. The one intended change is
+ * /home's before/after section, now 1:1 (1080×1080) instead of 4:5. For that
+ * page the diff is also taken region by region — above the section, and
+ * below it re-aligned on its bottom edge — and once more with the section's
+ * outer height PINNED to the same value on both sides (--pin, 600 px), so
+ * "nothing outside the section changed" is a measured, shift-free statement.
+ *
+ * HOW A PAGE IS CAPTURED. Reduced motion, CSS animations finished/cancelled,
+ * no caret; scrolled through once (lazy pictures, reveal-on-scroll), images
+ * decoded, fonts ready. Then the VIEWPORT is grown to the page's own height
+ * and an ordinary viewport capture is taken: Playwright's fullPage capture
+ * resizes Chromium's frame mid-capture, which re-anchored /home's looping
+ * tool carousel one card along on some loads (see capture()).
  *
  * Next to the pixels, it checks what a visitor DOWNLOADS:
- *   a) the CSS files /plany and / load, OLD vs NEW, byte for byte (the
- *      editor's CSS module must never reach a visitor);
- *   b) the anonymous HTML of /plany, / and /regulamin, OLD vs NEW, after
- *      normalising build ids and chunk hashes;
+ *   a) the CSS files /plany, / and /regulamin load, OLD vs NEW, byte for
+ *      byte; where a file changed, rule by rule (old rules kept, in order?),
+ *      and whether any ADDED selector matches anything on any page; the
+ *      editor's CSS module ("hoverLabel") must never be loaded;
+ *   b) the anonymous HTML of /plany, / and /regulamin, OLD vs NEW: the markup
+ *      (scripts out, build id / chunk names / React useIds normalised — a
+ *      useId is renamed by order of appearance, so only a pure renaming
+ *      passes) and the RSC flight payload, rows named by content so an
+ *      inserted row disturbs nothing else; every remaining difference listed;
  *   c) on NEW, forged editor cookies (gb_ice=1 and gb_ice_e_*=nonce~/path,
- *      no session) change nothing: no launcher, no invisible markers, no
- *      `ice` namespace, same HTML as without them;
- *   d) every JS/CSS request of /plany and / on OLD vs NEW — the editor chunk
- *      (the one holding "data-ice-target") and its CSS ("hoverLabel") are
- *      never requested; additions are listed with their sizes and the root
- *      layout chunk is measured OLD vs NEW;
+ *      with a wrong and with a correctly hashed name, no session): no
+ *      launcher, no invisible markers, no `ice` namespace, same markup;
+ *   d) every JS/CSS request of /plany, / and /regulamin on OLD vs NEW — the
+ *      editor chunk (the one holding "data-ice-target") and its CSS are
+ *      never requested, with or without the forged cookies; the root layout
+ *      chunk OLD vs NEW, and every webpack module a visitor gains or loses;
  *   e) no horizontal overflow on any NEW page at 390 px.
  *
  * THE HARNESS. /home and /tools sit behind sign-in, and a CMS page needs the
@@ -47,12 +61,18 @@
  *   node scripts/ice-visual-probe.mjs --fake-supabase <file.cjs>  (optional, see below)
  *   (cd <checkout> && npx next build && [NODE_OPTIONS="--require <file.cjs>"] npx next start -p <port>)   (each side)
  *   node scripts/ice-visual-probe.mjs <old-base-url> <new-base-url> <out-dir> \
- *        [--old-dir=<old checkout>] [--new-dir=<new checkout>] [--pages=home,plany] [--reps=2]
+ *        [--old-dir=<old checkout>] [--new-dir=<new checkout>] [--pages=home,plany] \
+ *        [--reps=2] [--tol=24] [--pin=600] [--skip-shots]
  *   node scripts/ice-visual-probe.mjs --clean <checkout-dir>
  *
- * --old-dir/--new-dir let the network check find the editor's chunk and CSS
- * by content in NEW's .next/static. Output: <out-dir>/shots/<page>-<w>-<theme>-{old,new,diff}.png
- * (plus -old2/-new2 for the noise run), <out-dir>/results.json, and a table on stdout.
+ * --old-dir/--new-dir give the build ids (normalised out of the HTML) and let
+ * the network check find the editor's chunk and CSS by content in NEW's
+ * .next/static. Output: <out-dir>/shots/<page>-<w>-<theme>-{old,new,diff}.png,
+ * -old2/-new2 and -noise-{old,new} (when not identical) for the noise run,
+ * -{old,new,diff}-pinned for /home; diff images are the old page in grey with
+ * red = real difference, orange = anti-aliasing level, magenta = rows only one
+ * side has. Plus <out-dir>/results.json, the normalised markup of each HTML
+ * page, and a table on stdout.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -511,11 +531,11 @@ const measure = (page, focus) => page.evaluate((sel) => {
  * the page settles at that size, and the capture is an ordinary viewport
  * capture with nothing resized under it.
  */
-async function capture(page, file) {
+async function capture(page, file, minHeight = 0) {
   const width = page.viewportSize().width;
   let H = 0, grown = true;
   for (let k = 0; k < 6; k++) {
-    H = await page.evaluate(() => Math.ceil(document.documentElement.scrollHeight));
+    H = Math.max(minHeight, await page.evaluate(() => Math.ceil(document.documentElement.scrollHeight)));
     if (H === page.viewportSize().height) break;
     if (H > MAX_H) { grown = false; break; }
     await page.setViewportSize({ width, height: H });
@@ -528,7 +548,12 @@ async function capture(page, file) {
   return { height: H, grown };
 }
 
-async function shoot(base, pageDef, vp, theme, file, { pin = false } = {}) {
+/** `minHeight`: capture at (at least) this viewport height — the two sides
+ *  of a pair are captured at the SAME height, so nothing that paints relative
+ *  to the viewport (the page background, a fixed dock) differs merely because
+ *  one page is shorter. A shorter page's `min-h-dvh` wrapper then simply
+ *  extends below its content. */
+async function shoot(base, pageDef, vp, theme, file, { pin = false, minHeight = 0 } = {}) {
   const { ctx, external } = await openContext(base, { width: vp[0], height: vp[1], theme });
   const page = await ctx.newPage();
   const errors = [];
@@ -543,7 +568,7 @@ async function shoot(base, pageDef, vp, theme, file, { pin = false } = {}) {
     await page.waitForTimeout(300);
     m.pinned = (await measure(page, pageDef.focus)).focus;
   }
-  const cap = await capture(page, file);
+  const cap = await capture(page, file, minHeight);
   await ctx.close();
   return { status: resp?.status() ?? null, ...m, capture: cap, external: [...external], errors };
 }
@@ -649,17 +674,22 @@ console.log("\n0. THEME: what decides light/dark");
 /* ── 1. screenshots and pixel diffs ────────────────────────────────────── */
 
 console.log("\n1. SCREENSHOTS, OLD vs NEW (and the noise floor)");
-for (const pg of PAGES) {
+if (argv.includes("--skip-shots")) console.log("  skipped (--skip-shots)");
+for (const pg of argv.includes("--skip-shots") ? [] : PAGES) {
   for (const vp of VIEWPORTS) {
     for (const theme of THEMES) {
       const tag = `${pg.id}-${vp[0]}-${theme}`;
       const f = (s) => path.join(SHOTS, `${tag}-${s}.png`);
-      const mo = await shoot(OLD, pg, vp, theme, f("old"));
-      const mn = await shoot(NEW, pg, vp, theme, f("new"));
+      let mo = await shoot(OLD, pg, vp, theme, f("old"));
+      let mn = await shoot(NEW, pg, vp, theme, f("new"));
+      // Different page heights: the shorter side again, at the taller one's.
+      const H = Math.max(mo.capture.height, mn.capture.height);
+      if (mo.capture.height < H) mo = await shoot(OLD, pg, vp, theme, f("old"), { minHeight: H });
+      if (mn.capture.height < H) mn = await shoot(NEW, pg, vp, theme, f("new"), { minHeight: H });
       const noise = {};
       if (REPS > 1) {
-        const mo2 = await shoot(OLD, pg, vp, theme, f("old2"));
-        const mn2 = await shoot(NEW, pg, vp, theme, f("new2"));
+        const mo2 = await shoot(OLD, pg, vp, theme, f("old2"), { minHeight: H });
+        const mn2 = await shoot(NEW, pg, vp, theme, f("new2"), { minHeight: H });
         const no = await diffFiles(f("old"), f("old2"), f("noise-old"));
         const nn = await diffFiles(f("new"), f("new2"), f("noise-new"));
         noise.old = slim(no); noise.new = slim(nn);
@@ -1038,7 +1068,9 @@ for (const p of ["/plany", "/", "/regulamin"]) {
 }
 // Does any added selector match anything on any page? (pseudo-elements dropped)
 if (addedCss.size > 0) {
-  const sels = [...new Set([...addedCss.values()].map((e) => e.selector.replace(/::?-webkit-[\w-]+|::[\w-]+/g, "")))];
+  // Pseudo-elements cannot be queried: drop them — only the real (unescaped)
+  // ones; `\:\:` inside an escaped class name is part of the name.
+  const sels = [...new Set([...addedCss.values()].map((e) => e.selector.replace(/(?<!\\)::?-webkit-[\w-]+|(?<!\\)::[\w-]+/g, "")))];
   const matches = {};
   for (const pg of PAGES) {
     for (const [w, h] of [[390, 844], [1440, 900]]) {
@@ -1129,15 +1161,32 @@ for (const p of ["/plany", "/", "/regulamin"]) {
   // Module accounting across every JS file of the visit.
   const mods = (l) => { const m = new Map(); for (const x of l) if (x.type === "js" && x.body) for (const [id, body] of modulesOf(x.body.toString("utf8"))) m.set(id, { body, file: x.path }); return m; };
   const MO = mods(o.list), MN = mods(n.list);
-  const addedMods = [...MN].filter(([id]) => !MO.has(id)).map(([id, v]) => ({ id, bytes: v.body.length, file: stripHash(v.file), tell: tellOf(v.body) }));
-  const removedMods = [...MO].filter(([id]) => !MN.has(id)).map(([id, v]) => ({ id, bytes: v.body.length, file: stripHash(v.file), tell: tellOf(v.body) }));
+  let addedMods = [...MN].filter(([id]) => !MO.has(id)).map(([id, v]) => ({ id, bytes: v.body.length, file: stripHash(v.file), tell: tellOf(v.body), body: v.body }));
+  let removedMods = [...MO].filter(([id]) => !MN.has(id)).map(([id, v]) => ({ id, bytes: v.body.length, file: stripHash(v.file), tell: tellOf(v.body), body: v.body }));
+  // A module whose id changed but whose code did not: server-action ids are
+  // regenerated by every build, and a client module importing an action is
+  // renamed with them; an export webpack can no longer mangle (`.s` →
+  // `.useI18n`, once a lazily loaded chunk imports the same module) grows
+  // every caller by a few bytes. Paired when it sits in the same file, its
+  // string literals (action ids aside) are the same, and its size is within
+  // 1% / 80 bytes.
+  const literals = (b) => (b.match(/"(?:[^"\\]|\\.)*"/g) ?? []).filter((s) => !/^"[0-9a-f]{40,44}"$/.test(s)).sort().join("\u0000");
+  const renamed = [];
+  for (const a of [...addedMods]) {
+    const k = removedMods.findIndex((r) => r.file === a.file && literals(r.body) === literals(a.body)
+      && Math.abs(r.body.length - a.body.length) <= Math.max(80, r.body.length / 100));
+    if (k >= 0) { renamed.push({ from: removedMods[k].id, to: a.id, bytes: `${removedMods[k].bytes}→${a.bytes}`, file: a.file }); removedMods.splice(k, 1); addedMods = addedMods.filter((x) => x !== a); }
+  }
   const resized = [...MN].filter(([id, v]) => MO.has(id) && MO.get(id).body.length !== v.body.length).map(([id, v]) => ({ id, from: MO.get(id).body.length, to: v.body.length, file: stripHash(v.file) }));
+  // What is left after the renamings: modules a visitor really gains / loses
+  // (a "changed" pair is the same file's module whose code differs).
+  addedMods = addedMods.map(({ body, ...m }) => m); removedMods = removedMods.map(({ body, ...m }) => m);
   results.checks[`d ${p}`] = {
     pass: requestedEditor.length === 0 && forged.dom.iceLaunch === 0 && n.dom.iceLaunch === 0,
     requests: { old: o.list.length, new: n.list.length, newWithForgedCookies: forged.list.length },
     totals: { oldBytes: total(o.list, "bytes"), newBytes: total(n.list, "bytes"), oldGzip: total(o.list, "gzip"), newGzip: total(n.list, "gzip") },
     layoutChunk: { old: lo && { path: lo.path, bytes: lo.bytes, gzip: lo.gzip }, new: ln && { path: ln.path, bytes: ln.bytes, gzip: ln.gzip } },
-    requestedEditor, modules: { added: addedMods, removed: removedMods, resized },
+    requestedEditor, modules: { added: addedMods, removed: removedMods, renamed, resized },
     dom: { new: n.dom, forged: forged.dom },
     files: { old: o.list.map((x) => `${stripHash(x.path)} ${x.bytes}`), new: n.list.map((x) => `${stripHash(x.path)} ${x.bytes}`) },
   };
@@ -1145,6 +1194,8 @@ for (const p of ["/plany", "/", "/regulamin"]) {
   console.log(`  ${p}: ${o.list.length} JS/CSS requests old, ${n.list.length} new (${forged.list.length} with forged cookies), same files by name: ${sameNames}; editor requested: ${requestedEditor.length ? requestedEditor.join(",") : "never"}`);
   console.log(`    all JS+CSS: ${total(o.list, "bytes")} → ${total(n.list, "bytes")} B (${total(n.list, "bytes") - total(o.list, "bytes") >= 0 ? "+" : ""}${total(n.list, "bytes") - total(o.list, "bytes")}), gzip ${total(o.list, "gzip")} → ${total(n.list, "gzip")} B (${total(n.list, "gzip") - total(o.list, "gzip") >= 0 ? "+" : ""}${total(n.list, "gzip") - total(o.list, "gzip")})`);
   if (lo && ln) console.log(`    app/layout chunk: ${lo.bytes} → ${ln.bytes} B (+${ln.bytes - lo.bytes}), gzip ${lo.gzip} → ${ln.gzip} B (+${ln.gzip - lo.gzip})`);
+  console.log(`    modules: ${addedMods.length} gained, ${removedMods.length} lost, ${renamed.length} renamed (same code and literals, new id), ${resized.length} same id with a different size`);
+  for (const m of renamed) console.log(`    module = ${m.from} → ${m.to} (${m.bytes} B) in ${m.file}`);
   for (const m of addedMods) console.log(`    module + ${m.id} ${m.bytes} B in ${m.file}: ${m.tell}`);
   for (const m of removedMods) console.log(`    module - ${m.id} ${m.bytes} B in ${m.file}: ${m.tell}`);
   for (const m of resized) console.log(`    module ~ ${m.id} ${m.from} → ${m.to} B in ${m.file}`);

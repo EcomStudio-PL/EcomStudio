@@ -19,8 +19,8 @@
  *                                 form, a carousel arrow and the phone dock
  *   /probe-tmp/ice?mode=cms       three CMS blocks (hero, 2-paragraph text,
  *                                 media) marked by lib/server/ice/cms.ts
- *   …&conflict=1                  the next save answers "conflict"
- *                                 (window.__iceConflictNext does the same)
+ *   …&conflict=1                  the next save answers "conflict" — one
+ *                                 shot (window.__iceConflictNext = true too)
  *   /probe-tmp/ice/launcher       the „Edytuj stronę” button over the dock
  *
  * Run it in a throwaway worktree so the repo's own .next stays untouched:
@@ -31,7 +31,7 @@
  *   (cd <dir> && node <repo>/scripts/ice-ui-probe.mjs --clean)
  *
  * Env: ICE_PROBE_SHOTS (screenshot dir), ICE_PROBE_CHROME (browser binary),
- * ICE_PROBE_ONLY (e.g. "390-dark" — run one viewport/theme).
+ * ICE_PROBE_ONLY (e.g. "390-dark" or "834-light,390-dark" — only those).
  */
 import fs from "node:fs";
 import { chromium } from "playwright";
@@ -49,7 +49,7 @@ import { stegaMark } from "@/lib/ice/stega";
 import { blockFields, markBlocks, type CmsBlockLike } from "@/lib/server/ice/cms";
 import type { IceLocale, IcePageInfo } from "@/lib/ice/types";
 import {
-  BEFORE_AFTER, CAROUSEL, INTEREST_KEYS, PROMO_BANNERS, SESSIONS, SHOWCASE, THUMBNAILS, UPLOAD_TOOLS,
+  BEFORE_AFTER, CAROUSEL, FEATURED, INTEREST_KEYS, PROMO_BANNERS, SESSIONS, SHOWCASE, THUMBNAILS, UPLOAD_TOOLS,
 } from "@/lib/seller-home-config";
 import pl from "@/lib/i18n/dictionaries/pl.json";
 import en from "@/lib/i18n/dictionaries/en.json";
@@ -143,17 +143,24 @@ const BLOCKS: CmsBlockLike[] = [
   },
 ];
 
+/** ?fixedcta=1: a "sticky_cta" block painted as a fixed bar over the page. */
+const FIXED_CTA: CmsBlockLike = {
+  id: "d4e5f6a7-4444-4444-8444-444444444444", type: "sticky_cta",
+  content: { title: { pl: "Pierwsze 10 zdjęć gratis" }, ctaLabel: { pl: "Odbierz" }, ctaHref: "/register" },
+};
+
 export default async function Page({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const q = await searchParams;
   const conflict = q.conflict === "1";
   const { dict } = await getScopedDictionary("ice");
 
   if (q.mode === "cms") {
+    const blocks = q.fixedcta === "1" ? [...BLOCKS, FIXED_CTA] : BLOCKS;
     const info: IcePageInfo = {
       kind: "cms",
-      cms: { pageId: PAGE_ID, slug: "probe", path: "/probe", title: "Probe", launch: false, fields: BLOCKS.flatMap((b) => blockFields(b, BASE_AT)) },
+      cms: { pageId: PAGE_ID, slug: "probe", path: "/probe", title: "Probe", launch: false, fields: blocks.flatMap((b) => blockFields(b, BASE_AT)) },
     };
-    const [hero, text, media] = markBlocks(BLOCKS, "pl", NONCE);
+    const [hero, text, media, fixed] = markBlocks(blocks, "pl", NONCE);
     const c = (b: CmsBlockLike) => (b.content ?? {}) as Record<string, unknown>;
     return (
       <main className="probe">
@@ -174,6 +181,18 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img id="c-media-img" src={String(c(media).mediaUrl)} alt="" style={{ width: "100%", maxWidth: 420, borderRadius: 12, display: "block" }} />
         </section>
+        {fixed && (
+          <section data-cms-section={fixed.id} id="c-fixed" style={{
+            position: "fixed", left: 16, right: 16, top: 220, zIndex: 30, display: "flex", alignItems: "center", gap: 12,
+            padding: 12, borderRadius: 14, background: "rgb(var(--surface))", border: "1px solid rgb(var(--line-strong))",
+          }}>
+            <strong id="c-fixed-title">{lt(c(fixed).title)}</strong>
+            <span id="c-fixed-gap" style={{ flex: 1, alignSelf: "stretch", minWidth: 40 }} />
+            <a href="/register" className="p-cta">{lt(c(fixed).ctaLabel)}</a>
+          </section>
+        )}
+        {/* Room to scroll any block under the fixed bar. */}
+        <div aria-hidden="true" style={{ height: "100dvh" }} />
         <Dock />
         <I18nScope dict={dict}>
           <ProbeEditor mode="cms" path="/probe" info={info} defaults={{}} conflict={conflict} />
@@ -239,7 +258,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
 
       <section className="p-sec" aria-label="Przed / po">
         <h2 id="p-ba-title">{tx("sellerHome.ba.title")}</h2>
-        <p>{tx("sellerHome.ba.sub")}</p>
+        <p id="p-ba-sub">{tx("sellerHome.ba.sub")}</p>
         <article data-ba-card={ba.key} className="p-ba">
           <div data-before-after="" className="p-frame" style={{ aspectRatio: "1/1" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -288,7 +307,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
       </section>
 
       <section className="p-sec" aria-label="Sesje">
-        <h2>{tx(SESSIONS.titleKey)}</h2>
+        {/* Sticky below the admin bar: editable content inside a sticky box. */}
+        <h2 id="p-sessions-title" style={{ position: "sticky", top: 150, zIndex: 1 }}>{tx(SESSIONS.titleKey)}</h2>
         <p>{tx(SESSIONS.subKey)}</p>
         <div className="p-grid4">
           {SESSIONS.tiles.slice(0, 2).map((tile) => (
@@ -303,11 +323,25 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
       <section className="p-sec" aria-label="Polecane">
         <h2>{tx("sellerHome.featured.title")}</h2>
         <p>{tx("sellerHome.featured.sub")}</p>
+        {/* Cards whose whole surface is a transparent link stretched over them:
+            1 — the link comes after the texts (on top by order); 2 — first, on
+            top by z-index. */}
+        <div className="p-row">
+          {FEATURED.slice(0, 2).map((f, i) => (
+            <div key={f.item} className="p-card" style={{ position: "relative" }} data-p-overlay-card={i + 1}>
+              {i === 1 && <a href={"/tool/" + f.item} aria-label={"Otwórz " + f.item} style={{ position: "absolute", inset: 0, zIndex: 1, borderRadius: 14 }} />}
+              <strong className="p-name" id={"p-feat-" + (i + 1)}>{tx(f.nameKey)}</strong>
+              <span className="p-line">{tx(f.subKey)}</span>
+              <span style={{ display: "block", height: 44 }} />
+              {i === 0 && <a href={"/tool/" + f.item} aria-label={"Otwórz " + f.item} style={{ position: "absolute", inset: 0, borderRadius: 14 }} />}
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="p-sec" aria-label="Nadchodzi">
         <h2 id="p-soon-title">{tx("sellerHome.soon.title")}</h2>
-        <p>{tx("sellerHome.soon.sub")}</p>
+        <p id="p-soon-sub">{tx("sellerHome.soon.sub")}</p>
         <div className="p-pills">
           {INTEREST_KEYS.map((k) => <button key={k} type="button" className="p-pill" data-chip={k}>{tx("sellerHome.soon." + k)}</button>)}
           <button type="button" className="p-cta">{tx("sellerHome.soon.notify")}</button>
@@ -625,15 +659,20 @@ export function ProbeEditor({ mode, path, info, defaults, conflict }: {
   mode: "home" | "cms"; path: string; info: IcePageInfo; defaults: Defaults; conflict: boolean;
 }) {
   const [transport] = useState(() => makeTransport(info, defaults));
+  // ?conflict=1 arms ONE conflict, once per page load: a later re-render with
+  // new props (router.refresh) must not arm it again.
+  useEffect(() => {
+    (window as ProbeWindow).__iceConflictNext = conflict;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     const pw = window as ProbeWindow;
     pw.__iceCalls ??= [];
-    pw.__iceConflictNext = conflict;
     pw.__iceProbe = {
       mode, path, nonce: NONCE, textKeys: info.kind === "registry" ? info.textKeys : [],
       assets: SEED_ASSETS.map((a) => ({ id: a.id, title: a.title })),
     };
-  }, [conflict, info, mode, path]);
+  }, [info, mode, path]);
   return <Editor session={{ nonce: NONCE, path }} path={path} transport={transport} />;
 }
 `;
@@ -688,7 +727,7 @@ if (process.argv.includes("--clean")) {
 const BASE = (process.argv[2] ?? "http://127.0.0.1:3311").replace(/\/$/, "");
 const SHOTS = process.env.ICE_PROBE_SHOTS ?? null;
 const CHROME = process.env.ICE_PROBE_CHROME ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
-const ONLY = process.env.ICE_PROBE_ONLY ?? null;
+const ONLY = process.env.ICE_PROBE_ONLY ? process.env.ICE_PROBE_ONLY.split(",") : null;
 if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
 
 const VIEWPORTS = [
@@ -746,17 +785,80 @@ const allCalls = (page) => page.evaluate(() => window.__iceCalls ?? []);
 const callsSince = async (page, from, method) => (await allCalls(page)).slice(from).filter((c) => !method || c.method === method);
 const mark = async (page) => (await allCalls(page)).length;
 
+/** Is the toast carrying `text` visible — on top at its own centre? */
+const toastOnTop = (page, text) => page.evaluate((text) => {
+  const t = [...document.querySelectorAll("[data-sonner-toast]")].find((x) => x.textContent.includes(text));
+  if (!t) return { toast: false, onTop: false };
+  const r = t.getBoundingClientRect();
+  const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  const by = top && !t.contains(top) ? (top.closest("[data-ice-ui]") ? "editor UI" : top.tagName) : null;
+  return { toast: true, onTop: Boolean(top && t.contains(top)), rect: [r.left, r.top, r.width, r.height].map(Math.round), coveredBy: by };
+}, text);
+
+/** One finger: down at (x, y), moved by dy in steps, up — real touch events. */
+async function swipe(ctx, page, x, y, dy) {
+  const cdp = await ctx.newCDPSession(page);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+  for (let i = 1; i <= 8; i++) await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y + (dy * i) / 8 }] });
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await cdp.detach();
+}
+
 async function shot(page, combo, name) {
   if (!SHOTS) return;
   await page.screenshot({ path: `${SHOTS}/${combo}-${name}.png` }).catch(() => {});
 }
 
+/** In the page: scroll `el` so `rectOf()` sits in the part of the screen no
+ *  editor layer or dock covers (below the admin bar, above an open bottom
+ *  sheet and the phone dock). */
+const PLACE = `(el, rectOf) => {
+  el.scrollIntoView({ block: "center" });
+  const band = (x) => {
+    let top = 0, bottom = innerHeight;
+    const bar = document.querySelector('[role="toolbar"][data-ice-ui]');
+    if (bar) top = bar.getBoundingClientRect().bottom + 4;
+    const sh = document.querySelector('[role="dialog"][data-ice-ui]');
+    if (sh) { const r = sh.getBoundingClientRect(); if (x >= r.left && x <= r.right) bottom = Math.min(bottom, r.top - 4); }
+    const dock = document.querySelector('nav[aria-label="Dock (probe)"] .dock');
+    if (dock && dock.getBoundingClientRect().height > 0) bottom = Math.min(bottom, dock.getBoundingClientRect().top - 4);
+    return { top, bottom };
+  };
+  let r = rectOf();
+  if (!r) return;
+  const b = band(r.left + Math.min(r.width / 2, 30));
+  if (r.top < b.top || r.bottom > b.bottom) window.scrollBy(0, (r.top + r.bottom) / 2 - (b.top + b.bottom) / 2);
+}`;
+
+/** Until the page has stopped scrolling (the editor scrolls smoothly when a
+ *  panel opens below 1024px). */
+const settleScroll = (page) => page.evaluate(async () => {
+  let last = -1;
+  let same = 0;
+  for (let i = 0; i < 120 && same < 5; i++) {
+    await new Promise((r) => requestAnimationFrame(r));
+    if (scrollY === last) same++; else { same = 0; last = scrollY; }
+  }
+});
+
 /** Where to press on an element's visible text (its first painted line). */
-function textPoint(page, selector, nth = 0) {
-  return page.evaluate(({ sel, nth }) => {
+async function textPoint(page, selector, nth = 0) {
+  await settleScroll(page);
+  return page.evaluate(({ sel, nth, place }) => {
     const el = document.querySelectorAll(sel)[nth];
     if (!el) return null;
-    el.scrollIntoView({ block: "center" });
+    const firstRect = () => {
+      const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let n = w.nextNode(); n; n = w.nextNode()) {
+        if (!n.data.replace(/[\u200c\u200d\u2060]/g, "").trim()) continue;
+        const rg = document.createRange();
+        rg.selectNodeContents(n);
+        const x = [...rg.getClientRects()].find((q) => q.width > 2 && q.height > 2);
+        if (x) return x;
+      }
+      return null;
+    };
+    (0, eval)(place)(el, firstRect);
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     for (let n = walker.nextNode(); n; n = walker.nextNode()) {
       if (!n.data.replace(/[\u200c\u200d\u2060]/g, "").trim()) continue;
@@ -769,16 +871,21 @@ function textPoint(page, selector, nth = 0) {
       }
     }
     return null;
-  }, { sel: selector, nth });
+  }, { sel: selector, nth, place: PLACE });
 }
-function boxPoint(page, selector) {
-  return page.evaluate((sel) => {
+async function boxPoint(page, selector) {
+  await settleScroll(page);
+  return page.evaluate(({ sel, place }) => {
     const el = document.querySelector(sel);
     if (!el) return null;
-    el.scrollIntoView({ block: "center" });
+    (0, eval)(place)(el, () => {
+      const r = el.getBoundingClientRect();
+      // A box taller than the free band: aim at its middle 40px.
+      return { left: r.left, width: r.width, top: r.top + r.height / 2 - 20, bottom: r.top + r.height / 2 + 20 };
+    });
     const r = el.getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2, box: r.toJSON() };
-  }, selector);
+  }, { sel: selector, place: PLACE });
 }
 const rawText = (page, selector) => page.evaluate((sel) => document.querySelector(sel)?.textContent ?? null, selector);
 const visText = async (page, selector) => (await rawText(page, selector))?.replace(ZW, "") ?? null;
@@ -904,6 +1011,8 @@ async function runHome(vp, theme) {
       return {
         vw, sw: document.documentElement.scrollWidth, bar: { left: r.left, right: r.right, width: r.width, top: r.top },
         barText: barEl.textContent, btns, barClips: barEl.scrollWidth > barEl.clientWidth + 1,
+        title: (() => { const t = barEl.querySelector("strong").getBoundingClientRect(); return { w: Math.round(t.width), left: Math.round(t.left), right: Math.round(t.right) }; })(),
+        barH: Math.round(r.height),
         marked: markedParents.size, markedTagged: [...markedParents].filter((e) => e.getAttribute("data-ice-target") === "text").length,
         media: media.length, mediaTagged: media.filter((e) => e.getAttribute("data-ice-target") === "media").length,
       };
@@ -915,6 +1024,7 @@ async function runHome(vp, theme) {
     check(combo, 1, "no horizontal page overflow", m.sw <= m.vw, `${m.sw} > ${m.vw}`);
     check(combo, 1, "every bar button is on screen (reachable)", m.btns.every((b) => b.left >= 0 && b.right <= m.vw), m.btns);
     check(combo, 1, "the bar's content fits the bar (nothing clipped)", !m.barClips, m.bar);
+    check(combo, 1, "the page name is visible in the bar", m.title.w > 40 && m.title.left >= 0 && m.title.right <= m.vw, { title: m.title, barH: m.barH });
     if (vp.width >= 1440) check(combo, 1, "the bar does not span the whole width", m.bar.width < m.vw - 200, m.bar);
   });
 
@@ -957,16 +1067,25 @@ async function runHome(vp, theme) {
     const input = dlg.locator("input:not([type])").first();
     await input.waitFor({ state: "visible", timeout: 5000 });
     check(combo, 3, "the input holds the current (default) text", (await input.inputValue()) === "Miniaturki", await input.inputValue());
+    await page.waitForTimeout(200);
+    const focusedOnOpen = await page.evaluate(() => {
+      const a = document.activeElement;
+      return a ? `${a.tagName.toLowerCase()}${a.getAttribute("type") ? `[type=${a.getAttribute("type")}]` : ""} "${(a.textContent || "").trim().slice(0, 20)}"` : null;
+    });
+    check(combo, 3, "the text field has focus once the panel has loaded (type at once)", focusedOnOpen?.startsWith("input "), focusedOnOpen);
     const cur = await dlg.evaluate((d) => [...d.querySelectorAll("p")].map((x) => x.textContent));
     check(combo, 3, "„Aktualny tekst” shows the default", cur.includes("Miniaturki"), cur);
     await phoneSheetCheck(page, vp, combo, "text panel");
-    if (vp.touch) {
+    if (vp.width < 1024) {
+      await page.waitForTimeout(900); // the editor scrolls the element up (smooth)
       const cover = await page.evaluate(() => {
         const h = document.querySelector("#p-thumbs-title").getBoundingClientRect();
         const s = document.querySelector('[role="dialog"][data-ice-ui]').getBoundingClientRect();
-        return { headingBottom: Math.round(h.bottom), sheetTop: Math.round(s.top) };
+        const b = document.querySelector('[role="toolbar"][data-ice-ui]').getBoundingClientRect();
+        return { headingTop: Math.round(h.top), headingBottom: Math.round(h.bottom), barBottom: Math.round(b.bottom), sheetTop: Math.round(s.top) };
       });
-      check(combo, 10, "the edited heading stays visible above the sheet (live preview can be seen)", cover.headingBottom <= cover.sheetTop, cover);
+      check(combo, 10, "the edited heading is in view between the admin bar and the sheet (live preview visible)",
+        cover.headingTop >= cover.barBottom && cover.headingBottom <= cover.sheetTop, cover);
     }
     await shot(page, combo, "03-text-open");
 
@@ -1080,9 +1199,21 @@ async function runHome(vp, theme) {
     const dlg = sheet(page);
     await dlg.waitFor({ state: "visible", timeout: 5000 });
     check(combo, 4, "a thumbnail opens the media panel", (await dlg.getAttribute("aria-label")) === "Miniaturka 1", await dlg.getAttribute("aria-label"));
+    // An error raised while a panel is open must be readable: the toast above it.
+    const gif = (name) => ({ name, mimeType: "image/gif", buffer: Buffer.from("GIF89a") });
+    await dlg.locator('input[type="file"]').first().setInputFiles(gif("animacja.gif"));
+    await page.waitForTimeout(700);
+    let tt = await toastOnTop(page, "animacja.gif");
+    check(combo, 4, "an upload error toast shows ABOVE the open panel", tt.toast && tt.onTop, tt);
+    await shot(page, combo, "04-toast-over-sheet");
     await dlg.getByRole("button", { name: "Wybierz z biblioteki" }).first().click();
     const lib = library(page);
     await lib.waitFor({ state: "visible", timeout: 5000 });
+    await lib.locator('input[type="file"]').setInputFiles(gif("biblioteka.gif"));
+    await page.waitForTimeout(700);
+    tt = await toastOnTop(page, "biblioteka.gif");
+    check(combo, 4, "an upload error toast shows ABOVE the library modal", tt.toast && tt.onTop, tt);
+    await shot(page, combo, "04-toast-over-library");
     await lib.getByRole("button", { name: /hero-dino\.webp/ }).first().click();
     await page.waitForTimeout(200);
     await shot(page, combo, "04-library");
@@ -1094,25 +1225,42 @@ async function runHome(vp, theme) {
     check(combo, 4, "the preview shows the picked file", (src ?? "").includes("hero-dino"), src);
     await phoneSheetCheck(page, vp, combo, "media panel");
     const cross = () => frame.evaluate((fr) => { const c = fr.querySelector("span"); return { left: c.style.left, top: c.style.top }; });
-    const before = await cross();
-    await frame.scrollIntoViewIfNeeded();
-    const fb = await frame.boundingBox();
-    const cx = fb.x + fb.width / 2;
-    const cy = fb.y + fb.height / 2;
+    const bodyTop = () => dlg.evaluate((d) => d.children[1].scrollTop);
     if (vp.touch) {
-      const cdp = await ctx.newCDPSession(page);
-      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: cx, y: cy }] });
-      for (let i = 1; i <= 6; i++) await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: cx - i * 12, y: cy }] });
-      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      // One finger on the frame scrolls the sheet and leaves the frame alone.
+      await dlg.evaluate((d) => { d.children[1].scrollTop = 0; });
+      await page.waitForTimeout(100);
+      const before = await cross();
+      const s0 = await bodyTop();
+      const fb = await frame.boundingBox();
+      await swipe(ctx, page, fb.x + fb.width / 2, fb.y + fb.height * 0.8, -160);
+      await page.waitForTimeout(500);
+      const after = await cross();
+      const s1 = await bodyTop();
+      check(combo, 4, "touch: a swipe on the crop frame scrolls the sheet", s1 > s0 + 20, { s0, s1 });
+      check(combo, 4, "touch: …and leaves the crop as it was", after.left === before.left && after.top === before.top, { before, after });
     } else {
+      await frame.scrollIntoViewIfNeeded();
+      const before = await cross();
+      const fb = await frame.boundingBox();
+      const cx = fb.x + fb.width / 2;
+      const cy = fb.y + fb.height / 2;
       await page.mouse.move(cx, cy);
       await page.mouse.down();
       await page.mouse.move(cx - 70, cy, { steps: 6 });
       await page.mouse.up();
+      await page.waitForTimeout(150);
+      const after = await cross();
+      check(combo, 4, "mouse: dragging the frame moves the focal point", after.left !== before.left, { before, after });
     }
+    // The focal-point sliders (the way to frame a picture on a touch screen).
+    await dlg.getByLabel("Poziomo", { exact: true }).focus();
+    await page.keyboard.press("Home");
+    await dlg.getByLabel("Pionowo", { exact: true }).focus();
+    await page.keyboard.press("End");
     await page.waitForTimeout(150);
-    const after = await cross();
-    check(combo, 4, `dragging the frame moves the focal point (${vp.touch ? "touch" : "mouse"})`, after.left !== before.left, { before, after });
+    const sl = await cross();
+    check(combo, 4, "the Poziomo/Pionowo sliders move the focal point (0% / 100%)", sl.left === "0%" && sl.top === "100%", sl);
     const zoom = dlg.locator('input[type="range"]').first();
     await zoom.focus();
     await page.keyboard.press("End");
@@ -1126,10 +1274,10 @@ async function runHome(vp, theme) {
     await dlg.waitFor({ state: "detached", timeout: 5000 });
     const saves = await callsSince(page, from, "slotSave");
     const w = saves[0]?.args?.writes?.[0];
-    check(combo, 4, "Zapisz sends ONE slotSave with one write: the asset, a crop, base null",
+    check(combo, 4, "Zapisz sends ONE slotSave with one write: the asset, crop {x:0, y:100, zoom:1.5}, base null",
       saves.length === 1 && saves[0].args.action === "save" && saves[0].args.writes.length === 1
       && w.key === "homeMedia.thumbnails.1" && w.mediaId === "a55e7000-0000-4000-8000-000000000001"
-      && w.crop && typeof w.crop.x === "number" && w.crop.zoom > 1 && w.base === null, saves.map((c) => c.args));
+      && w.crop && w.crop.x === 0 && w.crop.y === 100 && w.crop.zoom === 1.5 && w.base === null, saves.map((c) => c.args));
 
     // Clear it again.
     await press(page, vp, await boxPoint(page, '[data-config-key="homeMedia.thumbnails.1"]'));
@@ -1166,6 +1314,19 @@ async function runHome(vp, theme) {
     await pick("Po", "grovshot-studio.webp");
     await page.waitForTimeout(150);
     await phoneSheetCheck(page, vp, combo, "pair panel");
+    if (vp.touch) {
+      const fr = dlg.locator('[role="group"][aria-label="Kadr: Przed"]');
+      await fr.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(150);
+      const s0 = await dlg.evaluate((d) => d.children[1].scrollTop);
+      const c0 = await fr.evaluate((f) => f.querySelector("span").style.top);
+      const fb = await fr.boundingBox();
+      await swipe(ctx, page, fb.x + fb.width / 2, fb.y + fb.height * 0.75, -160);
+      await page.waitForTimeout(500);
+      const s1 = await dlg.evaluate((d) => d.children[1].scrollTop);
+      const c1 = await fr.evaluate((f) => f.querySelector("span").style.top);
+      check(combo, 5, "touch: a swipe on a pair crop frame scrolls the sheet, the crop stays", s1 > s0 + 20 && c1 === c0, { s0, s1, c0, c1 });
+    }
     await shot(page, combo, "05-pair");
     // First save: somebody else wrote "before" meanwhile → conflict, nothing saved.
     await page.evaluate(() => { window.__iceConflictNext = true; });
@@ -1309,11 +1470,70 @@ async function runHome(vp, theme) {
     await press(page, vp, await boxPoint(page, "#p-next"));
     await page.waitForTimeout(200);
     check(combo, 8, "a non-link button keeps working (counter +1)", Number(await page.locator("#p-count").textContent()) === Number(n0) + 1);
-    // The dock's links are held as well.
+    // The dock's links are held as well — also with an editable element under the tab.
     if (vp.width < 1024) {
-      await press(page, vp, await boxPoint(page, 'nav[aria-label="Dock (probe)"] a'));
+      for (const [sel, what] of [['[data-ba-card="ba1"] [data-before-after]', "the before/after card"], ["#p-thumbs-title", "a marked heading"]]) {
+        const pos = await page.evaluate((s) => {
+          const el = document.querySelector(s);
+          const tab = document.querySelector('nav[aria-label="Dock (probe)"] a');
+          const r = el.getBoundingClientRect();
+          const t = tab.getBoundingClientRect();
+          window.scrollBy(0, r.top + Math.min(r.height / 2, 14) - (t.top + t.height / 2));
+          const t2 = tab.getBoundingClientRect();
+          const x = t2.left + t2.width / 2;
+          const y = t2.top + t2.height / 2;
+          return { x, y, under: document.elementsFromPoint(x, y).some((e) => e === el || el.contains(e)) };
+        }, sel);
+        await press(page, vp, pos);
+        await page.waitForTimeout(400);
+        const opened = (await sheet(page).count()) ? await sheet(page).getAttribute("aria-label") : null;
+        check(combo, 8, `a tap on a dock link over ${what} is held (no panel, no navigation)`, pos.under && opened === null && page.url() === url,
+          { underTab: pos.under, opened, url: page.url() });
+        await closeAll(page);
+        await page.waitForTimeout(SETTLE);
+      }
+    }
+    // Cards covered by a transparent full-size link: the marked text still opens.
+    for (const i of [1, 2]) {
+      await press(page, vp, await textPoint(page, `#p-feat-${i}`));
       await page.waitForTimeout(400);
-      check(combo, 8, "the dock's links are held too", page.url() === url, page.url());
+      const opened = (await sheet(page).count()) ? await sheet(page).getAttribute("aria-label") : null;
+      check(combo, 8, `card under a full-size link overlay (${i === 1 ? "later in the DOM" : "z-index"}): its marked name opens`,
+        opened === `Nazwa narzędzia ${i}` && page.url() === url, { opened, url: page.url() });
+      await closeAll(page);
+      await page.waitForTimeout(SETTLE);
+      const pad = await page.evaluate((s) => {
+        const c = document.querySelector(s);
+        c.scrollIntoView({ block: "center" });
+        const r = c.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.bottom - 16 };
+      }, `[data-p-overlay-card="${i}"]`);
+      await press(page, vp, pad);
+      await page.waitForTimeout(400);
+      check(combo, 8, `…a press elsewhere on that card is held (no panel, no navigation)`, (await sheet(page).count()) === 0 && page.url() === url, page.url());
+      await closeAll(page);
+    }
+    // A marked heading inside a position:sticky box (pinnedBox treats it as a
+    // bar of its own). The fixed-bar case is the CMS run's ?fixedcta=1.
+    for (const stuck of [false]) {
+      const pt = await page.evaluate((stuck) => {
+        const h = document.querySelector("#p-sessions-title");
+        h.parentElement.scrollIntoView({ block: "center" });
+        // Natural top 100px → stuck at 150px (below the admin bar on every width).
+        if (stuck) window.scrollBy(0, h.getBoundingClientRect().top - 100);
+        const r = document.createRange();
+        r.selectNodeContents(h.firstChild);
+        const t = r.getClientRects()[0];
+        return { x: t.left + Math.min(20, t.width / 2), y: t.top + t.height / 2, top: Math.round(h.getBoundingClientRect().top) };
+      }, stuck);
+      await press(page, vp, pt);
+      await page.waitForTimeout(400);
+      const opened = (await sheet(page).count()) ? await sheet(page).getAttribute("aria-label") : null;
+      const crumbs = opened ? await sheet(page).locator("p").first().textContent() : null;
+      check(combo, 8, `a marked heading in a sticky box opens (${stuck ? "stuck at 150px" : "at rest"})`,
+        opened === "Tytuł" && (crumbs ?? "").includes("Sesje zdjęciowe") && (!stuck || Math.abs(pt.top - 150) <= 2), { opened, crumbs, top: pt.top });
+      await closeAll(page);
+      await page.waitForTimeout(SETTLE);
     }
     // Pressing beside a heading, inside its dashed outline.
     const g = await textPoint(page, "#p-soon-title");
@@ -1362,6 +1582,22 @@ async function runHome(vp, theme) {
     check(combo, 9, "Escape closes it", (await sheet(page).count()) === 0);
   });
 
+  /* 10 ─ the page's LAST section on a bottom sheet: the page cannot scroll it up */
+  if (vp.width < 1024) await step(10, async () => {
+    await press(page, vp, await textPoint(page, "#p-soon-title"));
+    await sheet(page).waitFor({ state: "visible", timeout: 5000 });
+    await page.waitForTimeout(900);
+    const g = await page.evaluate(() => {
+      const h = document.querySelector("#p-soon-title").getBoundingClientRect();
+      const sh = document.querySelector('[role="dialog"][data-ice-ui]').getBoundingClientRect();
+      const b = document.querySelector('[role="toolbar"][data-ice-ui]').getBoundingClientRect();
+      return { headingTop: Math.round(h.top), headingBottom: Math.round(h.bottom), barBottom: Math.round(b.bottom), sheetTop: Math.round(sh.top),
+        atPageEnd: Math.abs(scrollY - (document.documentElement.scrollHeight - innerHeight)) < 2 };
+    });
+    await shot(page, combo, "10-last-section");
+    check(combo, 10, "the LAST section's heading is in view above the sheet (live preview visible)", g.headingTop >= g.barBottom && g.headingBottom <= g.sheetTop, g);
+  });
+
   /* 3b ─ a panel opened right after another closed (inside the editor's 200 ms
           re-scan debounce) must still preview on the right characters */
   await step("3b", async () => {
@@ -1393,6 +1629,32 @@ async function runHome(vp, theme) {
     await dlg.getByRole("button", { name: "Anuluj", exact: true }).click();
     await page.waitForTimeout(SETTLE);
     check(combo, "3b", "Anuluj puts the heading back exactly", (await rawText(page, sel)) === before, JSON.stringify(await visText(page, sel)));
+
+    // Another element pressed while a preview shows: the first is put back,
+    // the second opens and previews on the right characters.
+    const baT = await rawText(page, "#p-ba-title");
+    const baS = await rawText(page, "#p-ba-sub");
+    await press(page, vp, await textPoint(page, "#p-ba-title"));
+    await dlg.waitFor({ state: "visible", timeout: 5000 });
+    await dlg.locator("input:not([type])").first().fill("Przed / po XYZ");
+    await page.waitForTimeout(SETTLE);
+    const subPt = await textPoint(page, "#p-ba-sub");
+    await press(page, vp, subPt);
+    await page.waitForTimeout(500);
+    const now = await dlg.getAttribute("aria-label").catch(() => null);
+    check(combo, "3b", "pressing another element while previewing: the first is put back exactly, the second opens",
+      (await rawText(page, "#p-ba-title")) === baT && now === "Podtytuł", { title: await visText(page, "#p-ba-title"), panel: now, pressedAt: subPt });
+    await dlg.locator("input:not([type])").first().fill("Nowy podtytuł");
+    await page.waitForTimeout(150);
+    check(combo, "3b", "…and the second previews exactly", (await visText(page, "#p-ba-sub")) === "Nowy podtytuł", await visText(page, "#p-ba-sub"));
+    // The same element pressed again while it previews.
+    await page.waitForTimeout(SETTLE);
+    await press(page, vp, await textPoint(page, "#p-ba-sub"));
+    await page.waitForTimeout(500);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(SETTLE);
+    check(combo, "3b", "pressing the same element again, then Esc, leaves it exactly as it was",
+      (await rawText(page, "#p-ba-sub")) === baS && (await sheet(page).count()) === 0, JSON.stringify(await visText(page, "#p-ba-sub")));
   });
 
   /* 12 ─ leave */
@@ -1529,6 +1791,49 @@ async function runCms(vp, theme) {
     await shot(page, combo, "err-11");
   }
   await ctx.close();
+
+  // A fixed bar with editable copy (a sticky_cta block) over the page.
+  const second = await newPage(vp, theme);
+  wireConsole(second.page, combo);
+  try {
+    const pg = second.page;
+    const dlg = sheet(pg);
+    await pg.goto(`${BASE}/probe-tmp/ice?mode=cms&fixedcta=1`, { waitUntil: "networkidle", timeout: 120000 });
+    await pg.waitForFunction(() => document.querySelectorAll("[data-ice-target]").length >= 6, null, { timeout: 30000 });
+    const tp = await pg.evaluate(() => {
+      const r = document.createRange();
+      r.selectNodeContents(document.querySelector("#c-fixed-title").firstChild);
+      const q = r.getClientRects()[0];
+      return { x: q.left + Math.min(20, q.width / 2), y: q.top + q.height / 2 };
+    });
+    await press(pg, vp, tp);
+    await pg.waitForTimeout(500);
+    check(combo, 11, "fixed bar: its marked title opens", (await dlg.count() ? await dlg.getAttribute("aria-label") : null) === "Przypięte wezwanie · Tytuł",
+      await dlg.getAttribute("aria-label").catch(() => null));
+    await closeAll(pg);
+    await pg.waitForTimeout(SETTLE);
+    // Scroll a marked heading under the bar's empty middle, then press there.
+    const gp = await pg.evaluate(() => {
+      const gap = document.querySelector("#c-fixed-gap").getBoundingClientRect();
+      const h = document.querySelector("#c-text-title");
+      const r = document.createRange();
+      r.selectNodeContents(h.firstChild);
+      const q = r.getClientRects()[0];
+      window.scrollBy(0, q.top + q.height / 2 - (gap.top + gap.height / 2));
+      const q2 = r.getClientRects()[0];
+      const x = Math.max(gap.left + 4, Math.min(q2.left + q2.width / 2, gap.right - 4));
+      const y = gap.top + gap.height / 2;
+      return { x, y, under: document.elementsFromPoint(x, y).some((e) => e === h) };
+    });
+    await press(pg, vp, gp);
+    await pg.waitForTimeout(500);
+    check(combo, 11, "fixed bar: a press on its empty part does not open the heading underneath",
+      gp.under && (await dlg.count()) === 0, { headingUnderBar: gp.under, opened: await dlg.getAttribute("aria-label").catch(() => null) });
+    await shot(pg, combo, "11-cms-fixed-bar");
+  } catch (e) {
+    check(combo, 11, "CMS fixed-bar run threw", false, String(e?.message ?? e).split("\n")[0]);
+  }
+  await second.ctx.close();
 }
 
 /* ── the launcher ──────────────────────────────────────────────────────── */
@@ -1583,7 +1888,7 @@ async function runLauncher(vp, theme) {
 for (const vp of VIEWPORTS) {
   for (const theme of THEMES) {
     const combo = `${vp.name}-${theme}`;
-    if (ONLY && ONLY !== combo) continue;
+    if (ONLY && !ONLY.includes(combo)) continue;
     console.log(`\n── ${combo} ──`);
     await runHome(vp, theme);
     await runCms(vp, theme);
@@ -1597,7 +1902,7 @@ await browser.close();
 
 /* ── report ───────────────────────────────────────────────────────────── */
 
-const combos = VIEWPORTS.flatMap((vp) => THEMES.map((th) => `${vp.name}-${th}`)).filter((c) => !ONLY || c === ONLY);
+const combos = VIEWPORTS.flatMap((vp) => THEMES.map((th) => `${vp.name}-${th}`)).filter((c) => !ONLY || ONLY.includes(c));
 console.log("\nRESULTS (✓ pass · ✗ fail · – not run)");
 console.log(["check".padEnd(30), ...combos.map((c) => c.padEnd(11))].join(""));
 for (const [id, label] of CHECKS) {
