@@ -45,25 +45,15 @@
 -- APPLY BEFORE THE CODE DEPLOY that uses it (the editor reads the new columns
 -- directly). The pages themselves treat a missing function as "no overrides".
 --
--- ROLLBACK (manual, in this order):
---   drop trigger if exists content_overrides_history on public.content_overrides;
---   drop trigger if exists media_slots_history on public.media_slots;
---   drop trigger if exists media_slots_crop_reset on public.media_slots;
---   drop function if exists public.cms_inline_patch(uuid, text[], text, text, text, timestamptz, text);
---   drop function if exists public.media_slots_write(jsonb, text);
---   drop function if exists public.content_override_write(text, text, text, timestamptz, text);
---   drop function if exists public.content_overrides_published();
---   drop function if exists public.content_versions_record();
---   drop function if exists public.media_slots_crop_reset();
---   drop function if exists public.media_slots_resolve_v2(text[]);
---   alter table public.media_slots drop constraint if exists media_slots_crop_check,
---     drop constraint if exists media_slots_alt_i18n_check;
---   alter table public.media_slots drop column if exists crop, drop column if exists alt_i18n;
---   drop function if exists public.media_crop_ok(jsonb);
---   drop function if exists public.media_alt_i18n_ok(jsonb);
---   drop table if exists public.content_versions;
---   drop table if exists public.content_overrides;
---   drop function if exists public.content_text_ok(text);
+-- ROLLBACK (manual, in this order): remove the triggers content_overrides_history,
+-- media_slots_history and media_slots_crop_reset; the functions cms_inline_patch,
+-- media_slots_write, content_override_write, content_overrides_published,
+-- content_versions_record, media_slots_crop_reset and media_slots_resolve_v2;
+-- the media_slots constraints media_slots_crop_check and
+-- media_slots_alt_i18n_check, then its columns crop and alt_i18n; the functions
+-- media_crop_ok and media_alt_i18n_ok; the tables content_versions and
+-- content_overrides; finally content_text_ok. media_slots_resolve is not
+-- touched by this migration and needs nothing.
 
 set local lock_timeout = '3s';
 
