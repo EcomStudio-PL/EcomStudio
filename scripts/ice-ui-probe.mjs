@@ -243,6 +243,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
         <div className="p-pills">
           {UPLOAD_TOOLS.map((u) => <button key={u.key} type="button" className="p-pill" id={"p-pill-" + u.key}>{tx(u.pillKey)}</button>)}
         </div>
+        {/* An outlined button with an icon: a press on the icon opens its text. */}
+        <button type="button" className="p-cta" id="p-icon-btn" style={{ marginTop: 10, gap: 8, alignItems: "center" }}>
+          <svg id="p-icon-svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          {tx("sellerHome.upload.create")}
+        </button>
         <p className="p-line" style={{ marginTop: 10 }}>{tx("sellerHome.samples")}</p>
         <div className="p-samples">
           {thumbTool.samples.map((s, i) => (i < 2
@@ -368,13 +373,27 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
 const COUNTER_SRC = `"use client";
 import { useState } from "react";
 
-/** A plain button (a carousel arrow): must keep working in edit mode. */
+/**
+ * Page controls under the edit-mode click policy: a plain button is held;
+ * a carousel arrow (data-rail-next), tabs (role=tab) and a toggle
+ * (aria-pressed) only move the page's own view and keep working.
+ */
 export function Counter() {
   const [n, setN] = useState(0);
+  const [plain, setPlain] = useState(0);
+  const [tab, setTab] = useState<"a" | "b">("a");
+  const [on, setOn] = useState(false);
   return (
-    <div className="p-counter">
-      <button type="button" id="p-next" className="p-pill" aria-label="Następne narzędzia" onClick={() => setN((v) => v + 1)}>›</button>
+    <div className="p-counter" style={{ flexWrap: "wrap" }}>
+      <button type="button" id="p-next" data-rail-next="" className="p-pill" aria-label="Następne narzędzia" onClick={() => setN((v) => v + 1)}>›</button>
       <span>Przewinięto: <output id="p-count">{n}</output></span>
+      <button type="button" id="p-plain-btn" className="p-pill" onClick={() => setPlain((v) => v + 1)}>Zwykły przycisk</button>
+      <output id="p-plain-count">{plain}</output>
+      <span role="tablist" aria-label="Widok" className="p-pills">
+        <button type="button" role="tab" id="p-tab-a" aria-selected={tab === "a"} className="p-pill" onClick={() => setTab("a")}>Siatka</button>
+        <button type="button" role="tab" id="p-tab-b" aria-selected={tab === "b"} className="p-pill" onClick={() => setTab("b")}>Lista</button>
+      </span>
+      <button type="button" id="p-toggle" aria-pressed={on} className="p-pill" onClick={() => setOn((v) => !v)}>Tylko nowe</button>
     </div>
   );
 }
@@ -1455,7 +1474,7 @@ async function runHome(vp, theme) {
     await press(page, vp, await textPoint(page, "#p-plain-link"));
     await page.waitForTimeout(500);
     check(combo, 8, "a plain link does not navigate", page.url() === url, page.url());
-    const toasts = await page.locator("[data-sonner-toast]", { hasText: "linki i formularze są wstrzymane" }).count();
+    const toasts = await page.locator("[data-sonner-toast]", { hasText: "są wstrzymane" }).count();
     check(combo, 8, "…and says why (toast)", toasts > 0);
     await shot(page, combo, "08-link-toast");
     await press(page, vp, await boxPoint(page, "#p-submit"));
@@ -1466,10 +1485,36 @@ async function runHome(vp, theme) {
     await page.keyboard.press("Enter");
     await page.waitForTimeout(500);
     check(combo, 8, "Enter in a form field is blocked too", page.url() === url, page.url());
+    // A plain page button is held, with the same toast (rate-limited to 2.5 s).
+    await page.waitForTimeout(2700);
+    const toastsBefore = await page.locator("[data-sonner-toast]", { hasText: "są wstrzymane" }).count();
+    const p0 = await page.locator("#p-plain-count").textContent();
+    await press(page, vp, await boxPoint(page, "#p-plain-btn"));
+    await page.waitForTimeout(500);
+    const toastsAfter = await page.locator("[data-sonner-toast]", { hasText: "są wstrzymane" }).count();
+    check(combo, 8, "a plain page button is held (its handler does not run)", (await page.locator("#p-plain-count").textContent()) === p0 && page.url() === url);
+    check(combo, 8, "…with the „są wstrzymane” toast", toastsAfter > toastsBefore || toastsAfter > 0, { toastsBefore, toastsAfter });
+    // View controls keep working.
     const n0 = await page.locator("#p-count").textContent();
     await press(page, vp, await boxPoint(page, "#p-next"));
     await page.waitForTimeout(200);
-    check(combo, 8, "a non-link button keeps working (counter +1)", Number(await page.locator("#p-count").textContent()) === Number(n0) + 1);
+    check(combo, 8, "a carousel arrow (data-rail-next) keeps working (counter +1)", Number(await page.locator("#p-count").textContent()) === Number(n0) + 1);
+    await press(page, vp, await boxPoint(page, "#p-tab-b"));
+    await page.waitForTimeout(200);
+    check(combo, 8, "a role=tab button keeps working", (await page.locator("#p-tab-b").getAttribute("aria-selected")) === "true"
+      && (await page.locator("#p-tab-a").getAttribute("aria-selected")) === "false");
+    await press(page, vp, await boxPoint(page, "#p-toggle"));
+    await page.waitForTimeout(200);
+    check(combo, 8, "an aria-pressed toggle keeps working", (await page.locator("#p-toggle").getAttribute("aria-pressed")) === "true");
+    // The icon inside an outlined button opens that button's text.
+    await press(page, vp, await boxPoint(page, "#p-icon-svg"));
+    await page.waitForTimeout(500);
+    const iconOpened = (await sheet(page).count()) ? await sheet(page).getAttribute("aria-label") : null;
+    const iconCrumbs = iconOpened ? await sheet(page).locator("p").first().textContent() : null;
+    check(combo, 8, "a press on the icon inside an outlined button opens its text panel",
+      iconOpened === "Przycisk" && (iconCrumbs ?? "").includes("Wgraj zdjęcie") && page.url() === url, { iconOpened, iconCrumbs });
+    await closeAll(page);
+    await page.waitForTimeout(SETTLE);
     // The dock's links are held as well — also with an editable element under the tab.
     if (vp.width < 1024) {
       for (const [sel, what] of [['[data-ba-card="ba1"] [data-before-after]', "the before/after card"], ["#p-thumbs-title", "a marked heading"]]) {
@@ -1732,6 +1777,24 @@ async function runCms(vp, theme) {
     check(combo, 11, "subtitle: cmsSave path [subtitle] closes the panel",
       saves.length === 1 && saves[0].args.path.join() === "subtitle" && saves[0].args.expected === "Wgraj jedno zdjęcie — resztę zrobi GrovBase." && (await dlg.count()) === 0,
       saves.map((c) => c.args));
+    await closeAll(page);
+    await page.waitForTimeout(SETTLE);
+    // "Cofnij ostatnią zmianę" while that change is what the page shows.
+    await press(page, vp, await textPoint(page, "#c-hero-sub"));
+    await dlg.waitFor({ state: "visible", timeout: 5000 });
+    await page.waitForTimeout(400);
+    const undo = dlg.getByRole("button", { name: "Cofnij ostatnią zmianę" });
+    const hasUndo = (await undo.count()) === 1;
+    check(combo, 11, "CMS undo is offered while the last change is live", hasUndo);
+    if (hasUndo) {
+      from = await mark(page);
+      await undo.click();
+      await page.waitForTimeout(500);
+      saves = await callsSince(page, from, "cmsSave");
+      check(combo, 11, "CMS undo restores the previous value (action restore, expected = live)",
+        saves.length === 1 && saves[0].args.action === "restore" && saves[0].args.value === "Wgraj jedno zdjęcie — resztę zrobi GrovBase."
+        && saves[0].args.expected === "Jedno zdjęcie wystarczy.", saves.map((c) => c.args));
+    }
     await closeAll(page);
 
     // Two paragraphs, one field.
