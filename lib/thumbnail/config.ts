@@ -283,7 +283,12 @@ export const THUMBNAIL_STAGES = ["prepare", "retouch", "compose", "finish", "don
 export type ThumbnailStage = (typeof THUMBNAIL_STAGES)[number];
 
 /** Step positions in ai_engine_step_runs. */
-export const STEP = { retouch: 1, compose: 2, finish: 3 } as const;
+export const STEP = {
+  retouch: 1, compose: 2, finish: 3,
+  /** Admin-only diagnostics of a composition call that failed (a failed
+   *  step keeps no output, so its request record lives here). */
+  diagnostics: 9,
+} as const;
 
 /** Statuses of a run as the panel reads them. */
 export type ThumbnailRunStatus = "queued" | "running" | "ok" | "failed";

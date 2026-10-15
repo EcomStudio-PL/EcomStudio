@@ -560,7 +560,14 @@ async function retouchAssetPath(ctx: Ctx, jobId: string): Promise<string | null 
 
 type ComposeOutcome = "ok" | "failed" | "busy" | "late" | "lost" | "again" | "retry";
 
-type PreparedInput = { bytes: Buffer; mime: EditMime; filename: string; source: string; transform: string; sourceSha: string };
+type PreparedInput = {
+  bytes: Buffer; mime: EditMime; filename: string; source: string; transform: string; sourceSha: string;
+  /** Retusz ON: the Retusz job this input is the result of, and what that
+   *  job recorded for its stored file. verified: true = the bytes hash to
+   *  that file; null = the job recorded no hash (photo and path checked). */
+  retouch: { jobId: string; storedSha256: string | null; verified: boolean | null } | null;
+};
+type Source = { bucket: "product-images" | "generation-assets"; path: string; retouchJobId: string | null };
 type Prepared = { images: PreparedInput[]; paths: string[] } | { error: string };
 
 /**
@@ -629,11 +636,14 @@ async function inLane(ctx: Ctx, prep: Prepared): Promise<Sent> {
  */
 async function preparePhotos(ctx: Ctx, steps: StepRunRow[]): Promise<Prepared> {
   const { input } = ctx;
-  const sources = input.photos.map((photo, i) => {
-    if (!input.retouch) return { bucket: "product-images" as const, path: photo };
+  const sources: (Source | null)[] = input.photos.map((photo, i) => {
+    if (!input.retouch) return { bucket: "product-images", path: photo, retouchJobId: null };
+    // Retusz ON: exactly the result of THIS photo's Retusz pass — never the
+    // original in its place, never a preview derivative.
     const st = steps.find((x) => x.position === STEP.retouch && x.item_index === i && x.status === "succeeded");
-    const p = outputOf(st).path;
-    return typeof p === "string" ? { bucket: "generation-assets" as const, path: p } : null;
+    const o = outputOf(st);
+    return typeof o.path === "string" && typeof o.job_id === "string"
+      ? { bucket: "generation-assets", path: o.path, retouchJobId: o.job_id } : null;
   });
   if (sources.some((x) => x === null || !x.path.startsWith(`${ctx.workspaceId}/`))) return { error: "source_unavailable" };
   const images: PreparedInput[] = new Array(sources.length);
@@ -652,23 +662,63 @@ async function preparePhotos(ctx: Ctx, steps: StepRunRow[]): Promise<Prepared> {
   return { images, paths: sources.map((x) => x!.path) };
 }
 
-async function prepareOne(ctx: Ctx, src: { bucket: "product-images" | "generation-assets"; path: string }, i: number): Promise<PreparedInput | string> {
+async function prepareOne(ctx: Ctx, src: Source, i: number): Promise<PreparedInput | string> {
   try {
+    // Retusz ON: the job that produced this file must be the pass of THIS
+    // photo, and its file must be the one it recorded (read before the bytes).
+    const record = src.retouchJobId ? await retouchRecord(ctx, src.retouchJobId) : null;
+    if (record === "unknown") return "source_unavailable";
+    if (src.retouchJobId && (!record || record.reference !== ctx.input.photos[i]
+      || (record.storedPath !== null && record.storedPath !== src.path))) {
+      return "retouch_output_mismatch";
+    }
     const { data: blob } = await ctx.supabase.storage.from(src.bucket).download(src.path);
     if (!blob) return "source_unavailable";
+    const raw = Buffer.from(await blob.arrayBuffer());
+    const rawSha = sha256(raw);
+    if (record?.storedSha256 && record.storedSha256 !== rawSha) return "retouch_output_mismatch";
     // The stored bytes as-is for PNG/JPEG/WebP — except a photo carrying an
     // EXIF orientation flag, which is turned upright the way the customer saw
     // it in the uploader; anything else (AVIF) becomes a PNG. Both recorded
     // per photo (the platform's rule outside Retusz).
-    const prepared = await prepareReferenceImage(Buffer.from(await blob.arrayBuffer()), src.path);
+    const prepared = await prepareReferenceImage(raw, src.path);
     const mime = prepared.mime as EditMime;
     if (!(EDIT_MIMES as readonly string[]).includes(mime)) return "source_unsupported";
     const bytes = Buffer.from(prepared.base64, "base64");
     if (bytes.length > OPENAI_EDIT_MAX_IMAGE_BYTES) return "source_too_large";
-    return { bytes, mime, filename: editFilename(i, mime), source: src.path, transform: prepared.transform, sourceSha: prepared.sourceSha256 };
+    return {
+      bytes, mime, filename: editFilename(i, mime), source: src.path, transform: prepared.transform, sourceSha: rawSha,
+      retouch: src.retouchJobId && record
+        ? { jobId: src.retouchJobId, storedSha256: record.storedSha256, verified: record.storedSha256 ? true : null }
+        : null,
+    };
   } catch {
     return "source_unsupported";
   }
+}
+
+/**
+ * What a Retusz job recorded about itself (written by the unchanged Retusz
+ * path): the photo it retouched and its stored file with that file's hash.
+ * null when it is not a Retusz job of this workspace; "unknown" when it
+ * could not be read.
+ */
+async function retouchRecord(ctx: Ctx, jobId: string):
+  Promise<{ reference: string | null; storedPath: string | null; storedSha256: string | null } | null | "unknown"> {
+  const { data, error } = await ctx.supabase.from("generation_jobs")
+    .select("id, workspace_id, settings").eq("id", jobId).maybeSingle();
+  if (error) return "unknown";
+  if (!data || data.workspace_id !== ctx.workspaceId) return null;
+  const st = (data.settings ?? {}) as { operation?: unknown; reference_paths?: unknown; provider_output?: unknown };
+  if (st.operation !== "image_retouch") return null;
+  const refs = Array.isArray(st.reference_paths) ? st.reference_paths : [];
+  const out = (Array.isArray(st.provider_output) ? st.provider_output[0] : null) as { stored_path?: unknown; stored_sha256?: unknown } | null;
+  return {
+    reference: typeof refs[0] === "string" ? refs[0] : null,
+    // Older Retusz records may not carry these: then the asset row decides.
+    storedPath: typeof out?.stored_path === "string" ? out.stored_path : null,
+    storedSha256: typeof out?.stored_sha256 === "string" ? out.stored_sha256 : null,
+  };
 }
 
 type Called = {
@@ -798,13 +848,20 @@ async function recordAndDeliver(ctx: Ctx, c: Called): Promise<ComposeOutcome> {
     index: i, source_path: img.source, transform: img.transform, source_sha256: img.sourceSha,
     sent_sha256: sha256(img.bytes), mime: img.mime, bytes: img.bytes.length,
   }));
-  // ADMIN-ONLY record (the step output): the full request, plain hashes.
+  // ADMIN-ONLY record (the step output): the full request, plain hashes, and
+  // per input the Retusz job it came from with that job's recorded hash.
+  const adminInputs = c.images.map((img, i) => ({
+    ...sentImages[i],
+    retouch_job_id: img.retouch?.jobId ?? null,
+    retouch_stored_sha256: img.retouch?.storedSha256 ?? null,
+    retouch_verified: img.retouch ? img.retouch.verified : null,
+  }));
   const adminRequest: Record<string, Json> = {
     provider: "openai", endpoint: "images.edits", model: input.config.model, size: input.config.size,
     quality: input.config.quality, background: "opaque", output_format: "png", n: 1,
     prompt_version: input.prompt.version, prompt_sha256: c.promptSha256, prompt_digest: input.prompt.digest,
     photos: input.photos.length, retouched: input.retouch,
-    boundary: (outcome.boundary ?? null) as unknown as Json, inputs: sentImages as unknown as Json,
+    boundary: (outcome.boundary ?? null) as unknown as Json, inputs: adminInputs as unknown as Json,
   };
   // The job row is readable by the workspace: no provider, model or
   // endpoint, no plain prompt hash, no request-body hash — the keyed digest
@@ -822,6 +879,13 @@ async function recordAndDeliver(ctx: Ctx, c: Called): Promise<ComposeOutcome> {
     });
     if (!outcome.notSent) await recordCall(ctx, c.eventId, c.jobId, outcome, cost);
     await jobFailed(ctx, c.jobId, outcome.error, { provider_request: jobRequest });
+    // A failed step keeps no output: the admin's record of this call goes to
+    // its own diagnostics step.
+    await saveDiagnostics(ctx, {
+      stage: "compose", status: "failed", error: outcome.error, not_sent: Boolean(outcome.notSent),
+      request: adminRequest, http_status: outcome.httpStatus ?? null, provider_code: outcome.providerCode ?? null,
+      request_id: outcome.requestId ?? null, usage: (outcome.usage ?? null) as unknown as Json, cost_usd_micros: costMicros ?? null,
+    });
     await finishStep(supabase, runId, owner, STEP.compose, -1, {
       status: "failed", attempts: 1, providerSlug: "openai", model: input.config.model,
       cost: { basis: "unknown" }, errorCode: outcome.error, durationMs: ctx.deps.now() - c.t0,
@@ -1193,6 +1257,20 @@ async function storeNew(ctx: Ctx, jobId: string, ext: string, bytes: Buffer, mim
     tried.push(path);
   }
   return null;
+}
+
+/** An admin-only record of what happened at a stage, as a step row of its
+ *  own (best effort). */
+async function saveDiagnostics(ctx: Ctx, data: Record<string, Json>): Promise<void> {
+  try {
+    const b = await beginStep(ctx.supabase, ctx.runId, ctx.owner, STEP.diagnostics, 0, "diagnostics", "tool", 30);
+    if (b.state !== "run") return;
+    await finishStep(ctx.supabase, ctx.runId, ctx.owner, STEP.diagnostics, 0, {
+      status: "succeeded", attempts: b.attempts + 1, cost: { basis: "estimated", usdMicros: 0 }, output: data, durationMs: 0,
+    });
+  } catch {
+    // Diagnostics never decide a run.
+  }
 }
 
 /** Remove the job's library rows (generation + its assets) through the

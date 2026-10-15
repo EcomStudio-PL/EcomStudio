@@ -33,6 +33,7 @@ import {
 } from "@/lib/thumbnail/config";
 import { estimateSunburstCost, marginOf, sunburstCost } from "@/lib/thumbnail/cost";
 import { advanceThumbnailRun, startThumbnailRun, validPhotoPath, type ThumbnailDeps } from "@/lib/server/thumbnail/run";
+import { readThumbnailRun } from "@/lib/server/thumbnail/status";
 import type { RetouchInput, RetouchResult } from "@/lib/server/retouch";
 import { baselineThumbnailBody } from "./thumbnail-baseline";
 import { db, freshDb, id, iso, type Row } from "./stubs/thumb-db";
@@ -138,6 +139,21 @@ const client = {
       });
       return { data: { id: runId, created: true, status: "queued" }, error: null };
     }
+    if (name === "thumbnail_run_status") {
+      // The 0140 shape (supabase/migrations/0140_miniaturka_v2.sql).
+      const r = d.runs.get(String(args.p_run_id));
+      if (!r || r.user_id !== USER) return { data: null, error: null };
+      const fin = d.steps.find((x) => x.run_id === r.id && x.position === 3 && x.status === "succeeded");
+      const fo = (fin?.output ?? {}) as Row;
+      const inp = r.input as Row;
+      return { data: {
+        id: r.id, status: r.status, error: r.error, created_at: r.created_at, finished_at: r.finished_at,
+        driving: typeof r.locked_until === "number" && (r.locked_until as number) > d.now,
+        photos: inp.photos, retouch: inp.retouch,
+        retouched_count: d.steps.filter((x) => x.run_id === r.id && x.position === 1 && x.status === "succeeded").length,
+        result: r.status === "ok" ? { path: fo.path ?? ((r.outputs as Row[])?.[0] ?? {}).path, width: fo.width, height: fo.height } : null,
+      }, error: null };
+    }
     if (name === "delete_generation") {
       const gid = String(args.gen_id);
       const assets = tableRows("generation_assets");
@@ -191,6 +207,7 @@ const client = {
           return b ? { data: new Blob([new Uint8Array(b)]), error: null } : { data: null, error: { message: "not found" } };
         },
         async createSignedUrls(paths: string[]) { return { data: paths.map((p) => ({ path: p, signedUrl: `https://signed/${p}` })), error: null }; },
+        async createSignedUrl(p: string) { return { data: { signedUrl: `https://signed/${bucket}/${p}` }, error: null }; },
       };
     },
   },
@@ -216,7 +233,8 @@ async function fakeRetouchFactory(rec: Recorder) {
     const path = `${ws}/${jobId}/0.png`;
     db().storage.set(`generation-assets:${path}`, out);
     tableRows("generation_jobs").push({ id: jobId, workspace_id: ws, user_id: userId, status: "completed", credits_charged: 7,
-      created_at: iso(db().now), settings: { operation: "image_retouch", reference_paths: [input.sourcePath] } });
+      created_at: iso(db().now), settings: { operation: "image_retouch", reference_paths: [input.sourcePath],
+        provider_output: [{ stored_path: path, stored_sha256: createHash("sha256").update(out).digest("hex") }] } });
     const genId = id("gen");
     tableRows("generations").push({ id: genId, job_id: jobId, workspace_id: ws });
     tableRows("generation_assets").push({ id: id("asset"), generation_id: genId, storage_path: path });
@@ -1228,6 +1246,142 @@ async function sectionE() {
   check("E15 at most two open runs per member", a.ok && b.ok && !c.ok && c.error === "too_many_runs");
 }
 
+/* ══ H · V2 — the Retusz hand-off, admin diagnostics, the customer's view ═*/
+
+async function sectionH() {
+  console.log("\nH. V2 — Retusz → Sunburst hand-off, stage diagnostics, what the customer is told");
+  const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+
+  // H1 (TEST A) — Retusz OFF, 2 photos.
+  setupEnv();
+  let rec: Recorder = { retouch: [], sunburst: [] };
+  let photos = await seedPhotos(2);
+  const sA = await start(photos, false);
+  const rA = await driveToEnd((sA as { runId: string }).runId, depsFor(rec, await fakeRetouchFactory(rec)));
+  const origA = photos.map((p) => sha(db().storage.get(`product-images:${p}`)!));
+  check("H1 Retusz OFF: 0 Retusz calls, 1 Sunburst request with exactly the 2 originals, in order",
+    rA.status === "ok" && rec.retouch.length === 0 && rec.sunburst.length === 1
+    && JSON.stringify(rec.sunburst[0].expectedImageSha256) === JSON.stringify(origA));
+  check("H1 the provider's raw image is stored nowhere (no customer copy, no extra bucket) — only the delivered file",
+    ![...db().storage.keys()].some((k) => k.includes("sunburst-"))
+    && [...db().storage.keys()].every((k) => k.startsWith("product-images:") || k.startsWith("generation-assets:")));
+  const composeA = db().steps.find((x) => x.run_id === rA.id && x.position === 2)!.output as Row;
+  check("H1 admin record: provider, endpoint, model, photo count, input hashes; the response's size and hash, no raw path",
+    (composeA.request as Row).provider === "openai" && (composeA.request as Row).endpoint === "images.edits"
+    && (composeA.request as Row).model === "gpt-image-2.5-sunburst" && (composeA.request as Row).photos === 2
+    && ((composeA.request as Row).inputs as Row[]).map((x) => x.sent_sha256).join() === origA.join()
+    && !("raw_path" in composeA) && /^[0-9a-f]{64}$/.test(String((composeA.response as Row).sha256)) && typeof (composeA.response as Row).width === "number");
+
+  // H2 (TEST B) — Retusz ON, 2 photos.
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  photos = await seedPhotos(2);
+  const sB = await start(photos, true);
+  const rB = await driveToEnd((sB as { runId: string }).runId, depsFor(rec, await fakeRetouchFactory(rec)));
+  check("H2 Retusz ON: 2 independent Retusz calls, one photo each, in order", rB.status === "ok" && rec.retouch.length === 2
+    && rec.retouch.map((x) => x.sourcePath).join() === photos.join());
+  const retouchFiles = [0, 1].map((i) => {
+    const st = db().steps.find((x) => x.run_id === rB.id && x.position === 1 && x.item_index === i)!.output as Row;
+    return sha(db().storage.get(`generation-assets:${st.path}`)!);
+  });
+  check("H2 ONE Sunburst request with exactly those 2 Retusz results (hash for hash, in order) — no originals",
+    rec.sunburst.length === 1 && JSON.stringify(rec.sunburst[0].expectedImageSha256) === JSON.stringify(retouchFiles)
+    && !rec.sunburst[0].expectedImageSha256.some((h) => photos.some((p) => sha(db().storage.get(`product-images:${p}`)!) === h)));
+  const inputsB = ((db().steps.find((x) => x.run_id === rB.id && x.position === 2)!.output as Row).request as Row).inputs as Row[];
+  check("H2 each input checked against the hash its Retusz job recorded", inputsB.every((x) => x.retouch_verified === true && typeof x.retouch_job_id === "string"));
+  check("H2 credits: 2 × 7 (Retusz) + 20 (composition)", rB.credits === 34 && db().wallet.balance === 1000 - 20);
+  // What the CUSTOMER is told about this run (read now, before the next setup).
+  const view = await readThumbnailRun(SUPA, String(rB.id)) as Record<string, unknown>;
+
+  // H3 — a Retusz result that is not the file its job recorded: refused before any charge.
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  photos = await seedPhotos(2);
+  const retouch3 = await fakeRetouchFactory(rec);
+  const r3 = await driveToEnd((await start(photos, true) as { runId: string }).runId, {
+    ...depsFor(rec, retouch3),
+    runRetouch: async (...a) => {
+      const out = await retouch3(...a);
+      if (out.ok && "path" in out) db().storage.set(`generation-assets:${out.path}`, await png(10, 10, [1, 1, 1]));
+      return out;
+    },
+  });
+  check("H3 Retusz file ≠ the one its job recorded → retouch_output_mismatch, no Sunburst request, no charge",
+    r3.status === "failed" && r3.error === "retouch_output_mismatch" && rec.sunburst.length === 0 && thumbStarts().length === 0);
+
+  // H4 — a Retusz job of ANOTHER photo cannot stand in for this one.
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  photos = await seedPhotos(2);
+  const retouch4 = await fakeRetouchFactory(rec);
+  const r4 = await driveToEnd((await start(photos, true) as { runId: string }).runId, {
+    ...depsFor(rec, retouch4),
+    runRetouch: async (s, u, w, inp) => retouch4(s, u, w, { ...inp, sourcePath: inp.sourcePath === photos[1] ? photos[0] : inp.sourcePath }),
+  });
+  check("H4 a result belonging to another photo → retouch_output_mismatch, nothing sent", r4.status === "failed"
+    && r4.error === "retouch_output_mismatch" && rec.sunburst.length === 0);
+
+  // H4b — an older Retusz record without a file hash: photo + path still
+  // checked, delivered, and the admin sees "not checkable" (null), not "no".
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  photos = await seedPhotos(2);
+  const retouch4b = await fakeRetouchFactory(rec);
+  const r4b = await driveToEnd((await start(photos, true) as { runId: string }).runId, {
+    ...depsFor(rec, retouch4b),
+    runRetouch: async (...a) => {
+      const out = await retouch4b(...a);
+      const job = tableRows("generation_jobs").at(-1)!;
+      ((job.settings as Row).provider_output as Row[])[0].stored_sha256 = undefined;
+      return out;
+    },
+  });
+  const inputs4b = ((db().steps.find((x) => x.run_id === r4b.id && x.position === 2)!.output as Row).request as Row).inputs as Row[];
+  check("H4b a Retusz record without a hash → delivered; admin sees retouch_verified null (not checkable), never false",
+    r4b.status === "ok" && rec.sunburst.length === 1 && inputs4b.every((x) => x.retouch_verified === null && typeof x.retouch_job_id === "string"));
+
+  // H5 — a failed composition: its request is kept for the admin.
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  rec.sunburstOutcome = async (input) => callSunburst({ ...input, fetchImpl: (async () => new Response(JSON.stringify({ error: { code: "server_error" } }), { status: 502 })) as unknown as typeof fetch });
+  photos = await seedPhotos(2);
+  const r5 = await driveToEnd((await start(photos, false) as { runId: string }).runId, depsFor(rec, await fakeRetouchFactory(rec)));
+  const diag5 = db().steps.find((x) => x.run_id === r5.id && x.position === 9)?.output as Row | undefined;
+  check("H5 failed call → admin diagnostics step with provider, model, endpoint, inputs, HTTP status, error",
+    r5.status === "failed" && diag5?.status === "failed" && diag5?.error === "provider_error" && diag5?.http_status === 502
+    && (diag5?.request as Row)?.model === "gpt-image-2.5-sunburst" && ((diag5?.request as Row)?.inputs as Row[])?.length === 2);
+
+  // H6 — what the CUSTOMER is told (the route's view, H2's run): outcome only.
+  check("H6 the customer's view has only: id, status, error, cancelling, driving, retouch, photos, retouchedCount, result, dates",
+    view && JSON.stringify(Object.keys(view).sort()) === JSON.stringify(["cancelling", "createdAt", "driving", "error", "finishedAt", "id", "photos", "result", "retouch", "retouchedCount", "status"]), JSON.stringify(view));
+  check("H6 …no stage, step, model, provider, prompt, job or intermediate file in it",
+    !/stage|steps|sunburst|openai|gemini|prompt|job|retouch_|"\/[0-9a-f-]+\/0\.png/i.test(JSON.stringify({ ...view, retouch: undefined, retouchedCount: undefined })));
+  check("H6 …the finished file signed, 2 Retusz results counted for a retry", (view.result as Row)?.url !== "" && view.retouchedCount === 2);
+
+  // H7 — the panel shows no workflow.
+  const ui = readFileSync("components/thumbnail/workspace.tsx", "utf8");
+  const pl = JSON.parse(readFileSync("lib/i18n/dictionaries/pl.json", "utf8")) as { thumb: Row };
+  check("H7 no 'Jak powstaje miniaturka' tile, no stage list, no intermediate Retusz grid in the panel",
+    !/thumb\.cardTitle|thumb\.cardBody|thumb\.cardHint|thumb\.stage\.|data-thumbnail-stages|data-thumbnail-retouched|thumb\.runTitle|function Stages/.test(ui)
+    && !("cardTitle" in pl.thumb) && !("stage" in pl.thumb) && !("retouched" in pl.thumb));
+  check("H7 one calm working state: 'Tworzymy Twoją miniaturkę…' with a spinner, no fake percentage",
+    String(pl.thumb.working) === "Tworzymy Twoją miniaturkę…" && /data-thumbnail-working/.test(ui) && /t\("thumb\.working"\)/.test(ui) && !/%\s*<|progress=|percent/i.test(ui));
+  check("H7 the Retusz toggle keeps its cost notice; the price summary stays",
+    /thumb\.retouchBody/.test(ui) && /thumb\.retouchPrice/.test(ui) && /data-thumbnail-summary/.test(ui));
+
+  // H8 — the server-side guard (0140): the RPC no longer returns the workflow.
+  const sql = readFileSync("supabase/migrations/0140_miniaturka_v2.sql", "utf8");
+  const fn = sql.slice(sql.indexOf("create or replace function public.thumbnail_run_status"), sql.indexOf("revoke all on function public.thumbnail_run_status"));
+  check("H8 thumbnail_run_status (0140) returns no steps, progress, job id or outputs",
+    fn.length > 0 && !/'steps'|'progress'|'job_id'|'outputs'|'quote'|'credits'/.test(fn) && /'retouched_count'/.test(fn) && /auth\.uid\(\)/.test(fn));
+  const body = sql.replace(/--.*$/gm, "");
+  check("H8 0140 replaces ONE function and touches nothing else: no table, policy, bucket or storage object",
+    (body.match(/create or replace function/g) ?? []).length === 1
+    && !/create table|alter table|create policy|drop policy|storage\.|insert into|update public|delete from/i.test(body)
+    && /security definer/.test(fn) && /revoke all on function public\.thumbnail_run_status\(uuid\) from public, anon/.test(body)
+    && /grant execute on function public\.thumbnail_run_status\(uuid\) to authenticated/.test(body));
+}
+
 /* ══ F · the real prompt (optional) ══════════════════════════════════════*/
 
 function sectionF() {
@@ -1295,6 +1449,7 @@ async function main() {
   await sectionC();
   sectionD();
   await sectionE();
+  await sectionH();
   sectionF();
   sectionG();
   clearInterval(keepAlive);

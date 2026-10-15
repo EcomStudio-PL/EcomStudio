@@ -44,7 +44,8 @@ import { AiBackgroundPresetsEditor } from "@/components/admin/ai-background-pres
 import { parsePresets } from "@/lib/images/ai-background-presets";
 import type { PhotoToolSlug } from "@/lib/images/tools";
 import { readThumbnailAdmin } from "@/lib/server/thumbnail/admin";
-import { ThumbnailEconomics, ThumbnailPathCard, ThumbnailReadiness, ThumbnailRuns } from "@/components/admin/thumbnail-panel";
+import { ThumbnailDiagnosticsCard, ThumbnailEconomics, ThumbnailPathCard, ThumbnailReadiness, ThumbnailRuns } from "@/components/admin/thumbnail-panel";
+import { readThumbnailDiagnostics } from "@/lib/server/thumbnail/diagnostics";
 import { ThumbnailPromptApproval, ThumbnailSettingsForm } from "@/components/admin/thumbnail-settings";
 import { THUMBNAIL_TOOL_KEY } from "@/lib/thumbnail/config";
 
@@ -62,10 +63,10 @@ const WINDOWS = [7, 30, 90] as const;
 
 export default async function ToolWorkspace({ params, searchParams }: {
   params: Promise<{ tool: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; diag?: string }>;
 }) {
   const { tool } = await params;
-  const { tab: tabParam } = await searchParams;
+  const { tab: tabParam, diag } = await searchParams;
   if (!isAiToolKey(tool)) notFound();
 
   const supabase = await createClient();
@@ -139,7 +140,7 @@ export default async function ToolWorkspace({ params, searchParams }: {
       {tab === "basics" && <BasicsTab supabase={supabase} t={t} row={row} config={config} />}
       {tab === "engine" && <EngineTab supabase={supabase} t={t} row={row} config={config} locale={locale} />}
       {tab === "workflow" && <WorkflowTab supabase={supabase} t={t} row={row} locale={locale} />}
-      {tab === "models" && <ModelsTab supabase={supabase} t={t} row={row} config={config} locale={locale} />}
+      {tab === "models" && <ModelsTab supabase={supabase} t={t} row={row} config={config} locale={locale} diag={diag} />}
       {tab === "knowledge" && <KnowledgeTab supabase={supabase} t={t} row={row} locale={locale} />}
     </div>
   );
@@ -392,12 +393,15 @@ async function WorkflowTab({ supabase, t, row, locale }: Ctx & { locale: string 
 
 /* ── MODELE, API I KOSZTY ─────────────────────────────────────────────────*/
 
-async function ModelsTab({ supabase, t, row, config, locale }: WithConfig & { locale: string }) {
+async function ModelsTab({ supabase, t, row, config, locale, diag }: WithConfig & { locale: string; diag?: string }) {
   const photo = PHOTO_TOOL_KEYS.includes(row.key);
-  const [pickable, path, exec, unit, thumb] = await Promise.all([
+  const thumbTool = row.key === THUMBNAIL_TOOL_KEY;
+  const [pickable, path, exec, unit, thumb, thumbDiag] = await Promise.all([
     readPickableModels(supabase), readToolApiPath(supabase, row.key), readExecutionSummary(supabase, row.key),
     photo ? readPhotoToolUnit(supabase, row.key.replace(/^tool_/, "") as PhotoToolSlug) : Promise.resolve(null),
-    row.key === THUMBNAIL_TOOL_KEY ? readThumbnailAdmin(supabase) : Promise.resolve(null),
+    thumbTool ? readThumbnailAdmin(supabase) : Promise.resolve(null),
+    // One run, stage by stage (admin session).
+    thumbTool && diag ? readThumbnailDiagnostics(supabase, diag) : Promise.resolve(null),
   ]);
   // The picker is offered only where the runtime READS it. Elsewhere the
   // model comes from another source and is shown as such, read-only.
@@ -416,6 +420,16 @@ async function ModelsTab({ supabase, t, row, config, locale }: WithConfig & { lo
             <CardHeader title={t("aicc.thumb.econTitle")} sub={t("aicc.thumb.econSub")} />
             <div className="pt-4"><ThumbnailEconomics data={thumb} t={t} locale={locale} /></div>
           </Card>
+          {thumbDiag && (
+            <Card className="p-5" id="diagnostics">
+              <CardHeader title={t("aicc.thumb.diag.title")} sub={t("aicc.thumb.diag.sub")} />
+              <div className="pt-4">
+                {thumbDiag === "unavailable"
+                  ? <p className="text-[12.5px] text-danger">{t("aicc.thumb.diag.unavailable")}</p>
+                  : <ThumbnailDiagnosticsCard d={thumbDiag} t={t} locale={locale} />}
+              </div>
+            </Card>
+          )}
           <Card className="p-5">
             <CardHeader title={t("aicc.thumb.runsTitle")} sub={t("aicc.thumb.runsSub")} />
             <div className="pt-4"><ThumbnailRuns data={thumb} t={t} locale={locale} /></div>

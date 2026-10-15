@@ -3,6 +3,7 @@ import { CheckCircle2, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import type { ThumbnailAdmin } from "@/lib/server/thumbnail/admin";
+import type { DiagImage, ThumbnailDiagnostics } from "@/lib/server/thumbnail/diagnostics";
 import { THUMBNAIL_SERVICE, innerPx, marginPx } from "@/lib/thumbnail/config";
 
 type T = (key: string, values?: Record<string, string | number>) => string;
@@ -135,6 +136,8 @@ export function ThumbnailRuns({ data, t, locale }: { data: ThumbnailAdmin; t: T;
               {r.retouch && <Badge tone="info">{t("aicc.thumb.runRetouch")}</Badge>}
               {r.model && <Badge tone="neutral">{r.model}</Badge>}
               <span className="ml-auto text-xs text-faint">{formatDate(r.createdAt, locale)}</span>
+              <Link href={`/admin/ai/ecommerce_thumbnail?tab=models&diag=${r.id}#diagnostics`} data-thumbnail-diag-link
+                className="text-xs font-semibold text-accent hover:opacity-75">{t("aicc.thumb.diag.open")}</Link>
             </div>
             <p className="break-words text-xs text-muted">
               {[
@@ -162,6 +165,156 @@ function Fact({ label, value, hint }: { label: string; value: React.ReactNode; h
       <dt className="text-xs text-muted">{label}</dt>
       <dd className="min-w-0 break-words font-medium">{value}</dd>
       {hint && <dd className="text-[11px] text-faint">{hint}</dd>}
+    </div>
+  );
+}
+
+/**
+ * ONE RUN, STAGE BY STAGE (admin only): the real images in and out of every
+ * stage and the real requests — to see WHERE a product changed. Hashes,
+ * versions and ids only; never a key or prompt text.
+ */
+export function ThumbnailDiagnosticsCard({ d, t, locale }: { d: ThumbnailDiagnostics; t: T; locale: string }) {
+  const yes = (v: boolean | null) => (v === null ? "—" : v ? t("aicc.thumb.diag.yes") : t("aicc.thumb.diag.no"));
+  const short = (v: string | null) => (v ? `${v.slice(0, 12)}…` : "—");
+  return (
+    <div className="space-y-5 text-[12.5px]" data-thumbnail-diagnostics={d.id}>
+      <p className="flex flex-wrap items-center gap-1.5">
+        <Badge tone={d.status === "ok" ? "success" : d.status === "failed" ? "danger" : "accent"}>{t(`aicc.runs.status.${d.status}`)}</Badge>
+        {d.retouch && <Badge tone="info">{t("aicc.thumb.runRetouch")}</Badge>}
+        <span className="text-xs text-faint">{formatDate(d.createdAt, locale)}</span>
+        {d.error && <span className="text-xs text-danger">{t("aicc.runs.error")} {d.error}</span>}
+        <span className="ml-auto font-mono text-[11px] text-faint">{d.id}</span>
+      </p>
+      {d.incomplete && <p className="text-xs text-danger" data-thumbnail-diag-incomplete>{t("aicc.thumb.diag.incomplete")}</p>}
+
+      <DiagSection title={t("aicc.thumb.diag.inputs")}>
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+          {d.photos.map((p, i) => <DiagThumb key={p.path} img={p} label={`#${i + 1}`} />)}
+        </div>
+      </DiagSection>
+
+      {d.retouch && (
+        <DiagSection title={t("aicc.thumb.diag.retouch")}>
+          <ul className="space-y-3">
+            {d.retouchStages.map((r) => (
+              <li key={r.index} className="rounded-xl border border-line p-3">
+                <p className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
+                  <span className="font-semibold">#{r.index + 1}</span>
+                  <Badge tone={r.status === "succeeded" ? "success" : r.status === "failed" ? "danger" : "neutral"}>{r.status}</Badge>
+                  {r.reused && <Badge tone="neutral">{t("aicc.thumb.diag.reused")}</Badge>}
+                  {r.recovered && <Badge tone="neutral">{t("aicc.thumb.diag.recovered")}</Badge>}
+                  {r.error && <span className="text-danger">{r.error}</span>}
+                </p>
+                <div className="grid grid-cols-2 gap-2 sm:max-w-md">
+                  <DiagThumb img={r.original} label={t("aicc.thumb.diag.original")} />
+                  {r.output ? <DiagThumb img={r.output} label={t("aicc.thumb.diag.retouched")} /> : <span className="text-xs text-faint">—</span>}
+                </div>
+                {r.request ? (
+                  <dl className="mt-2 grid gap-x-4 gap-y-1 text-[11.5px] sm:grid-cols-2">
+                    <DiagFact k={t("aicc.thumb.diag.provider")} v={`${r.request.provider ?? "—"} · ${r.request.model ?? "—"}`} />
+                    <DiagFact k={t("aicc.thumb.diag.endpoint")} v={`${r.request.method ?? ""} ${r.request.endpoint ?? "—"}`} mono />
+                    <DiagFact k={t("aicc.thumb.diag.fields")} v={r.request.fields.join(", ") || "—"} mono />
+                    <DiagFact k={t("aicc.thumb.diag.order")} v={r.request.inputOrder.join(" → ") || "—"} />
+                    <DiagFact k="store" v={String(r.request.store)} mono />
+                    <DiagFact k={t("aicc.thumb.diag.http")} v={`${r.request.httpRequests ?? "—"} · fallback ${r.request.fallback ?? "—"} · ${t("aicc.thumb.diag.history")} ${r.request.historyCount ?? "—"}`} />
+                    <DiagFact k={t("aicc.thumb.diag.sizeRatio")} v={`${r.request.imageSize ?? "—"} / ${r.request.aspectRatio ?? "—"}`} />
+                    <DiagFact k={t("aicc.thumb.diag.extras")} v={`system ${yes(r.request.systemInstruction)} · config ${yes(r.request.generationConfig)} · ${t("aicc.thumb.diag.contract")} ${yes(r.request.contractOk)}`} />
+                    <DiagFact k={t("aicc.thumb.diag.prompt")} v={`v${r.request.promptVersion ?? "—"} · ${short(r.request.promptSha256)} · ${t("aicc.thumb.diag.publishedEq")} ${yes(r.request.publishedEqualsProvider)}`} mono />
+                    <DiagFact k={t("aicc.thumb.diag.input")} v={`${short(r.request.inputSha256)} · ${r.request.inputBytes ?? "—"} B · ${r.request.inputTransform ?? "—"} · ${t("aicc.thumb.diag.asOriginal")} ${yes(r.request.inputEqualsOriginal)}`} mono />
+                    <DiagFact k={t("aicc.thumb.diag.body")} v={short(r.request.bodySha256)} mono />
+                    {r.delivered && (
+                      <DiagFact k={t("aicc.thumb.diag.delivered")}
+                        v={`${r.delivered.providerWidth ?? "—"}×${r.delivered.providerHeight ?? "—"} → ${r.delivered.storedWidth ?? "—"}×${r.delivered.storedHeight ?? "—"} · ${r.delivered.postprocess ?? "—"} · ${short(r.delivered.storedSha256)}`} mono />
+                    )}
+                  </dl>
+                ) : (
+                  <p className="mt-2 text-[11.5px] text-faint">{t("aicc.thumb.diag.noBoundary")}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </DiagSection>
+      )}
+
+      {d.compose && (
+        <DiagSection title={t("aicc.thumb.diag.compose")}>
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,220px)_1fr]">
+            <p className="text-[11.5px] text-faint">{t("aicc.thumb.diag.noRaw")}</p>
+            <dl className="grid content-start gap-x-4 gap-y-1 text-[11.5px] sm:grid-cols-2">
+              <DiagFact k={t("aicc.thumb.diag.provider")} v={`${d.compose.provider ?? "—"} · ${d.compose.model ?? "—"}`} />
+              <DiagFact k={t("aicc.thumb.diag.endpoint")} v={`${d.compose.method ?? ""} ${d.compose.endpoint ?? "—"}`} mono />
+              <DiagFact k={t("aicc.thumb.diag.params")} v={`${d.compose.size ?? "—"} · ${d.compose.quality ?? "—"} · n=${d.compose.n ?? "—"} · ${d.compose.background ?? "—"} · ${d.compose.outputFormat ?? "—"}`} />
+              <DiagFact k={t("aicc.thumb.diag.fields")} v={d.compose.fields.join(", ") || "—"} mono />
+              <DiagFact k={t("aicc.thumb.diag.prompt")} v={`v${d.compose.promptVersion ?? "—"} · ${short(d.compose.promptSha256)}`} mono />
+              <DiagFact k={t("aicc.thumb.diag.status")} v={`${d.compose.status ?? "—"}${d.compose.error ? ` · ${d.compose.error}` : ""} · HTTP ${d.compose.httpStatus ?? "—"} · ${t("aicc.thumb.diag.contract")} ${d.compose.contract ?? "—"}`} />
+              <DiagFact k="request_id" v={d.compose.requestId ?? "—"} mono />
+              {d.compose.response && (
+                <DiagFact k={t("aicc.thumb.diag.response")} v={`${d.compose.response.width ?? "—"}×${d.compose.response.height ?? "—"} · data ${d.compose.response.dataCount ?? "—"} · ${d.compose.response.durationMs !== null ? `${(d.compose.response.durationMs / 1000).toFixed(1)} s` : "—"} · ${short(d.compose.response.sha256)}`} mono />
+              )}
+              <DiagFact k={t("aicc.thumb.diag.usage")} v={d.compose.usage ? JSON.stringify(d.compose.usage) : "—"} mono />
+              <DiagFact k={t("aicc.thumb.diag.cost")} v={d.compose.costUsdMicros !== null ? `$${(d.compose.costUsdMicros / 1_000_000).toFixed(4)}` : t("aicc.thumb.costUnknown")} />
+            </dl>
+          </div>
+          <ul className="mt-2 space-y-0.5 font-mono text-[11px] text-muted">
+            {d.compose.inputs.map((x) => (
+              <li key={x.index} className="break-all">
+                image[{x.index}] {short(x.sentSha256)} · {x.bytes ?? "—"} B · {x.mime ?? "—"} · {x.transform ?? "—"}
+                {x.retouchJobId && <> · Retusz {short(x.retouchJobId)} · {t("aicc.thumb.diag.verified")} {yes(x.retouchVerified)}</>}
+              </li>
+            ))}
+          </ul>
+        </DiagSection>
+      )}
+
+      {d.finish && (
+        <DiagSection title={t("aicc.thumb.diag.finish")}>
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,220px)_1fr]">
+            <div>{d.finish.image ? <DiagThumb img={d.finish.image} label={t("aicc.thumb.diag.final")} /> : <span className="text-xs text-faint">—</span>}</div>
+            <dl className="grid content-start gap-x-4 gap-y-1 text-[11.5px] sm:grid-cols-2">
+              <DiagFact k={t("aicc.thumb.diag.status")} v={d.finish.status ?? "—"} />
+              <DiagFact k={t("aicc.thumb.diag.size")} v={`${d.finish.width ?? "—"}×${d.finish.height ?? "—"} · ${t("aicc.thumb.diag.margin")} ${d.finish.marginPx ?? "—"} px`} />
+              <DiagFact k={t("aicc.thumb.diag.inner")} v={d.finish.inner ? JSON.stringify(d.finish.inner) : "—"} mono />
+              <DiagFact k={t("aicc.thumb.diag.checks")} v={d.finish.checks ? JSON.stringify(d.finish.checks) : "—"} mono />
+              <DiagFact k={t("aicc.thumb.diag.postprocess")} v={d.finish.postprocess.join(" → ") || "—"} />
+            </dl>
+          </div>
+        </DiagSection>
+      )}
+    </div>
+  );
+}
+
+function DiagSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <p className="mb-2 text-[12px] font-semibold text-muted">{title}</p>
+      {children}
+    </section>
+  );
+}
+
+function DiagThumb({ img, label }: { img: DiagImage; label: string }) {
+  return (
+    <figure className="min-w-0">
+      {img.url ? (
+        <a href={img.url} target="_blank" rel="noreferrer" className="block aspect-square overflow-hidden rounded-lg bg-white ring-1 ring-line">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={img.url} alt="" className="h-full w-full object-contain" loading="lazy" />
+        </a>
+      ) : (
+        <span className="flex aspect-square items-center justify-center rounded-lg bg-raised text-[11px] text-faint ring-1 ring-line">—</span>
+      )}
+      <figcaption className="mt-1 truncate text-[10.5px] text-faint" title={img.path}>{label}</figcaption>
+    </figure>
+  );
+}
+
+function DiagFact({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
+  return (
+    <div className="flex min-w-0 gap-1.5">
+      <dt className="shrink-0 text-muted">{k}</dt>
+      <dd className={`min-w-0 break-all ${mono ? "font-mono text-[11px]" : ""}`}>{v}</dd>
     </div>
   );
 }

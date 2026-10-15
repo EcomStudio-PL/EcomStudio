@@ -2,9 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  CheckCircle2, Circle, Download, ImageIcon, Loader2, Maximize2, RefreshCw, Sparkles, Wand2, XCircle,
-} from "lucide-react";
+import { Download, ImageIcon, Loader2, Maximize2, RefreshCw, Sparkles, Wand2 } from "lucide-react";
 import { toast } from "@/lib/notify";
 import { useI18n } from "@/lib/i18n/provider";
 import { createClient } from "@/lib/supabase/client";
@@ -14,7 +12,6 @@ import { PhotoUploader, DropOverlay, useFileDrop } from "@/components/genv3/uplo
 import { GenerationGallery } from "@/components/genv3/gallery";
 import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { Switch } from "@/components/ui/record";
-import { InfoHint } from "@/components/ui/hint";
 import { cn } from "@/lib/utils";
 import { humanizeKey } from "@/lib/i18n/t";
 import { THUMBNAIL_OPERATION, THUMBNAIL_UPLOAD_MAX_BYTES, quoteTotal } from "@/lib/thumbnail/config";
@@ -32,7 +29,8 @@ const TERMINAL = new Set(["ok", "failed"]);
  *      the same file twice is two photos)
  *   B  Retusz AI per photo — off by default, priced at Retusz's own price
  *   C  what it will cost, from the live prices (the server re-checks)
- *   D  one button; then the REAL stages the server reports — never a timer
+ *   D  one button; then one calm "working" state — how the thumbnail is
+ *      made (its steps, models, intermediate files) is never shown here
  *   E  the finished 2560×2560 file: preview, zoom, download, in the library
  *
  * The run lives on the server (lib/server/thumbnail/run.ts): this screen
@@ -209,10 +207,10 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
   const start = useCallback(async (opts?: { reuseFrom: ThumbnailRunView }) => {
     if (busy || driving.current) return;
     const source = opts?.reuseFrom;
-    const paths = source ? source.photos.map((p) => p.path) : photos.map((p) => p.path);
+    const paths = source ? source.photos : photos.map((p) => p.path);
     const withRetouch = source ? source.retouch : retouchOn;
     if (paths.length === 0) return;
-    const reused = source ? source.photos.filter((p) => p.retouch?.status === "succeeded").length : 0;
+    const reused = source && source.retouch ? source.retouchedCount : 0;
     const total = quoteTotal({
       photos: paths.length, retouch: withRetouch, retouchUnit: data.retouch.unit,
       thumbnailCredits: data.thumbnailCredits ?? 0, reused,
@@ -267,11 +265,10 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
 
   const canRun = data.ready && !busy && !active && !uploading && photos.length > 0 && missing === 0
     && (!retouch || data.retouch.available);
-  const retouchedOf = (r: ThumbnailRunView) => r.photos.filter((p) => p.retouch?.status === "succeeded" && p.retouch.url);
   const reusedCredits = run && run.status === "failed" && run.error !== "cancelled"
     ? quoteTotal({
         photos: run.photos.length, retouch: run.retouch, retouchUnit: data.retouch.unit,
-        thumbnailCredits: data.thumbnailCredits ?? 0, reused: run.photos.filter((p) => p.retouch?.status === "succeeded").length,
+        thumbnailCredits: data.thumbnailCredits ?? 0, reused: run.retouch ? run.retouchedCount : 0,
       }).total
     : null;
 
@@ -321,15 +318,6 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
               <Switch checked={retouchOn} onChange={setRetouch} label={t("thumb.retouchTitle")}
                 disabled={!data.retouch.available || active || busy} />
             </div>
-          </section>
-
-          <section className="rounded-xl border border-[rgb(var(--accent)/0.3)] bg-accent-soft/25 p-3">
-            <p className="flex items-center gap-1.5 text-[13px] font-semibold tracking-tight">
-              <Sparkles size={14} aria-hidden className="text-accent" />
-              {t("thumb.cardTitle")}
-              <InfoHint text={t("thumb.cardHint", { n: data.target })} />
-            </p>
-            <p className="mt-1 text-[11.5px] leading-relaxed text-muted">{t("thumb.cardBody", { n: data.target })}</p>
           </section>
 
           {/* C */}
@@ -391,15 +379,19 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
       <div className="thin-scroll min-w-0 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pb-4 lg:pr-1">
         {run && (
           <section className="panel mb-3 rounded-2xl p-4 sm:p-5" data-thumbnail-run={run.status}>
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="min-w-0 flex-1 text-[14px] font-semibold tracking-tight">{t("thumb.runTitle")}</p>
-              {!TERMINAL.has(run.status) && (
+            {/* Working: one calm state — never how the thumbnail is made. */}
+            {!TERMINAL.has(run.status) && (
+              <div className="flex flex-wrap items-center gap-3" data-thumbnail-working>
+                <Loader2 size={18} className="shrink-0 animate-spin text-accent" aria-hidden />
+                <p className="min-w-0 flex-1 text-[14px] font-semibold tracking-tight" role="status" aria-live="polite">
+                  {t("thumb.working")}
+                </p>
                 <button type="button" onClick={() => void cancel()} disabled={run.cancelling} data-thumbnail-cancel
                   className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12px] font-semibold text-muted transition-colors hover:bg-raised hover:text-ink disabled:opacity-60">
                   {run.cancelling ? t("thumb.cancelling") : t("thumb.cancel")}
                 </button>
-              )}
-            </div>
+              </div>
+            )}
 
             {stalled === run.id && !TERMINAL.has(run.status) && (
               <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-raised px-3 py-2 text-[12.5px]" data-thumbnail-stalled>
@@ -411,27 +403,8 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
               </div>
             )}
 
-            <Stages run={run} t={t} />
-
-            {run.retouch && retouchedOf(run).length > 0 && (
-              <div className="mt-4" data-thumbnail-retouched>
-                <p className="mb-2 text-[12px] font-semibold text-muted">{t("thumb.retouched")}</p>
-                <div className="grid grid-cols-5 gap-2 sm:grid-cols-6">
-                  {retouchedOf(run).map((p, i, list) => (
-                    <button key={p.index} type="button"
-                      onClick={() => setView({ images: list.map((x) => ({ key: `r${x.index}`, src: x.retouch!.url! })), index: i })}
-                      aria-label={t("genv3.thumbAria", { n: p.index + 1 })}
-                      className="aspect-square overflow-hidden rounded-lg ring-1 ring-line">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={p.retouch!.url!} alt="" className="h-full w-full object-cover" loading="lazy" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {run.status === "ok" && run.result && (
-              <div className="mt-4" data-thumbnail-result>
+              <div data-thumbnail-result>
                 <button type="button" onClick={() => setView({ images: [{ key: "result", src: run.result!.url }], index: 0 })}
                   className="group relative block w-full max-w-[560px] overflow-hidden rounded-xl bg-white ring-1 ring-line"
                   aria-label={t("thumb.zoom")}>
@@ -469,12 +442,12 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
             )}
 
             {run.status === "failed" && (
-              <div className="mt-4 rounded-xl bg-[rgb(var(--danger)/0.06)] px-3.5 py-3" data-thumbnail-error>
+              <div className="rounded-xl bg-[rgb(var(--danger)/0.06)] px-3.5 py-3" data-thumbnail-error>
                 <p className="text-[12.5px] font-semibold text-danger">
                   {run.error === "cancelled" ? t("thumb.cancelled") : errText(run.error)}
                 </p>
-                {run.retouch && retouchedOf(run).length > 0 && (
-                  <p className="mt-1 text-[11.5px] text-muted">{t("thumb.retouchKept", { n: retouchedOf(run).length })}</p>
+                {run.retouch && run.retouchedCount > 0 && (
+                  <p className="mt-1 text-[11.5px] text-muted">{t("thumb.retouchKept", { n: run.retouchedCount })}</p>
                 )}
                 <div className="mt-2.5 flex flex-wrap gap-2">
                   {reusedCredits !== null && data.ready && (
@@ -522,37 +495,5 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
       <dt className={cn("min-w-0 text-muted", strong && "font-semibold text-ink")}>{label}</dt>
       <dd className={cn("shrink-0 tabular-nums", strong ? "text-[13.5px] font-semibold text-accent" : "font-medium")}>{value}</dd>
     </div>
-  );
-}
-
-/** The stages the server reports, in order — each one a real step. */
-function Stages({ run, t }: { run: ThumbnailRunView; t: (k: string, v?: Record<string, string | number>) => string }) {
-  const order = ["prepare", ...(run.retouch ? ["retouch"] : []), "compose", "finish", "done"];
-  const doneRetouch = run.photos.filter((p) => p.retouch?.status === "succeeded").length;
-  // Where the run is (or stopped): failed runs are placed by their last step.
-  const at = run.status === "ok" ? order.length - 1
-    : run.status === "failed"
-      ? Math.max(0, order.indexOf(run.composeStatus === "succeeded" ? "finish" : run.composeStatus ? "compose" : run.retouch && doneRetouch < run.photos.length ? "retouch" : "prepare"))
-      : Math.max(0, order.indexOf(run.stage));
-  return (
-    <ol className="mt-3 space-y-1.5" data-thumbnail-stages>
-      {order.map((s, i) => {
-        const state = run.status === "ok" || i < at ? "done" : i === at ? (run.status === "failed" ? "failed" : "active") : "todo";
-        return (
-          <li key={s} data-stage={s} data-state={state} className="flex items-center gap-2 text-[12.5px]">
-            {state === "done" ? <CheckCircle2 size={15} className="shrink-0 text-success" aria-hidden />
-              : state === "active" ? <Loader2 size={15} className="shrink-0 animate-spin text-accent" aria-hidden />
-                : state === "failed" ? <XCircle size={15} className="shrink-0 text-danger" aria-hidden />
-                  : <Circle size={15} className="shrink-0 text-faint" aria-hidden />}
-            <span className={cn(state === "todo" ? "text-faint" : "text-ink", state === "active" && "font-semibold")}>
-              {t(`thumb.stage.${s}`)}
-            </span>
-            {s === "retouch" && (
-              <span className="text-[11.5px] tabular-nums text-muted">{t("thumb.retouchProgress", { done: doneRetouch, total: run.photos.length })}</span>
-            )}
-          </li>
-        );
-      })}
-    </ol>
   );
 }
