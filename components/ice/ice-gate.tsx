@@ -1,11 +1,7 @@
 import { getScopedDictionary } from "@/lib/i18n/server";
 import { I18nScope } from "@/lib/i18n/provider";
-import dynamic from "next/dynamic";
 import { iceGateData } from "@/lib/server/ice/gate";
-
-// Code-split: the launcher's JavaScript is fetched only when this gate
-// renders it (an admin's page), never as part of every visitor's root chunk.
-const IceLauncher = dynamic(() => import("./launcher").then((m) => m.IceLauncher));
+import { IceLauncherLazy } from "./launcher-lazy";
 
 /**
  * THE VISUAL EDITOR'S DOOR, mounted by the root layout only when the browser
@@ -19,7 +15,7 @@ export async function IceGate() {
   const { dict } = await getScopedDictionary("ice");
   return (
     <I18nScope dict={dict}>
-      <IceLauncher sessions={data.sessions} supported={data.supported} />
+      <IceLauncherLazy sessions={data.sessions} supported={data.supported} />
     </I18nScope>
   );
 }
