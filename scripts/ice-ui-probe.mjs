@@ -1277,7 +1277,8 @@ async function runHome(vp, theme) {
     // timers (sonner's mouseenter), and it then stays over a phone's panel.
     if (!vp.touch && await closeBtn.count()) {
       const cb = await closeBtn.boundingBox();
-      await press(page, vp, { x: cb.x + cb.width / 2, y: cb.y + cb.height / 2 });
+      // Straight at the ×: press() would wait for the toast to go away first.
+      await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
       await page.waitForTimeout(800);
       const after = await page.locator("[data-sonner-toast]").count();
       const held = await page.locator("[data-sonner-toast]", { hasText: "są wstrzymane" }).count();

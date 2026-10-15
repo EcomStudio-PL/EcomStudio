@@ -242,7 +242,9 @@ export default function Editor({ session, path, transport = actionsTransport }: 
     const ui = (e: Event) => (e.target instanceof Element ? Boolean(e.target.closest(`[${UI_ATTR}], [data-sonner-toaster]`)) : false);
     const keep = (e: Event) => (e.target instanceof Element ? e.target.closest(KEEP_WORKING) !== null : false);
     const warnLink = () => {
-      if (Date.now() - lastWarn < 2500) return;
+      // Once in a while, not on every press: on a phone a stack of toasts
+      // would cover the page being edited.
+      if (Date.now() - lastWarn < 8000) return;
       lastWarn = Date.now();
       notify.message(t("ice.blockedLink"));
     };
