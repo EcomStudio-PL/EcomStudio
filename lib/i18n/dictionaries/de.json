@@ -8578,6 +8578,8 @@
     "runTitle": "Dein Vorschaubild",
     "cancel": "Abbrechen",
     "cancelling": "Stoppt nach dem aktuellen Schritt…",
+    "connectionLost": "Die Verbindung wurde unterbrochen — dein Thumbnail wartet auf die Fertigstellung. Nichts wird doppelt berechnet.",
+    "resume": "Fortsetzen",
     "cancelled": "Abgebrochen.",
     "retouched": "Fotos nach der KI-Retusche",
     "resultSize": "{w}×{h} px",

@@ -28,6 +28,8 @@ export async function startUsage(_s: unknown, input: {
 export async function completeUsage(_s: unknown, serverToken: string | null, eventId: string, resultCount: number, cost?: Record<string, unknown>) {
   const d = db();
   d.usageCalls.push({ kind: "complete", args: { eventId, resultCount, ...(cost ?? {}) } });
+  // The real completeUsage swallows its RPC errors: a failed close is silent.
+  if (d.faults.has("usage:complete")) return;
   const e = d.events.find((x) => x.id === eventId);
   if (!serverToken || !e || e.status !== "pending") return;
   e.status = "succeeded";

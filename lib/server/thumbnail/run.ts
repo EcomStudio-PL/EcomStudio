@@ -177,6 +177,7 @@ export async function startThumbnailRun(
   if (quote.total !== quotedTotal) return { ok: false, error: "price_changed", quote };
 
   const balance = await freshBalance(supabase, workspaceId);
+  if (balance === null) return { ok: false, error: "unavailable", quote };
   if (balance < quote.total) return { ok: false, error: "insufficient_credits", quote, missingCredits: quote.total - balance };
 
   const input: StoredInput = {
@@ -213,9 +214,11 @@ export async function startThumbnailRun(
   return { ok: true, runId: out.id, created: Boolean(out.created), quote };
 }
 
-/** The balance as stored now (not the per-request memo the layout uses). */
-async function freshBalance(supabase: Client, workspaceId: string): Promise<number> {
-  const { data } = await supabase.from("credit_wallets").select("balance").eq("workspace_id", workspaceId).maybeSingle();
+/** The balance as stored now (not the per-request memo the layout uses);
+ *  null when it could not be read — never mistaken for an empty wallet. */
+async function freshBalance(supabase: Client, workspaceId: string): Promise<number | null> {
+  const { data, error } = await supabase.from("credit_wallets").select("balance").eq("workspace_id", workspaceId).maybeSingle();
+  if (error) return null;
   return data?.balance ?? 0;
 }
 
@@ -590,21 +593,25 @@ async function inLane(ctx: Ctx, prep: Prepared): Promise<Sent> {
   const waitMs = ctx.deadlineAt - ctx.deps.now() - callBudgetMs(ctx.input) - FINISH_RESERVE_MS;
   if (waitMs <= 0) return { kind: "late" };
   let started = false;
-  let gaveUp = false;
+  // What the turn needs, dropped when it is given up: a turn still queued
+  // in the lane must not keep the prepared photos (or the run) in memory.
+  let held: { ctx: Ctx; prep: Prepared } | null = { ctx, prep };
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<Sent>((resolve) => {
     timer = setTimeout(() => {
       if (started) return;
-      gaveUp = true;
+      held = null;
       resolve({ kind: "late" });
     }, waitMs);
     (timer as { unref?: () => void }).unref?.();
   });
   const turn = withProviderLimit(LANE, async (): Promise<Sent> => {
-    if (gaveUp) return { kind: "late" };
+    const work = held;
+    if (!work) return { kind: "late" };
     started = true;
+    held = null;
     clearTimeout(timer);
-    return chargeAndCall(ctx, prep);
+    return chargeAndCall(work.ctx, work.prep);
   });
   // A turn given up still settles later; it must never surface as an
   // unhandled rejection (the race below sees any error of a turn that ran).
@@ -710,8 +717,11 @@ async function chargeAndCall(ctx: Ctx, prep: Prepared): Promise<Sent> {
   // …and once more now that the step is begun: a cancel that landed in
   // between is still honoured; from here on a cancel waits for the
   // composition to settle (thumbnail_run_cancel sees the step running).
-  const begun = await readRunRow(supabase, runId);
-  if (begun !== "unknown" && begun?.error === "cancel_requested") return stepFail("cancelled");
+  let begun = await readRunRow(supabase, runId);
+  if (begun === "unknown" || !begun) begun = await readRunRow(supabase, runId);
+  // Still unreadable: not charged on a guess — the step fails free.
+  if (begun === "unknown" || !begun) return stepFail("unavailable");
+  if (begun.error === "cancel_requested") return stepFail("cancelled");
   if ("error" in prep) return stepFail(prep.error);
 
   // Everything that can refuse does so BEFORE anything is charged.
@@ -722,6 +732,7 @@ async function chargeAndCall(ctx: Ctx, prep: Prepared): Promise<Sent> {
   const cred = await openaiCredential(supabase);
   if (!cred) return stepFail("provider_unavailable");
   const balance = await freshBalance(supabase, ctx.workspaceId);
+  if (balance === null) return stepFail("unavailable");
   if (balance < input.quote.thumbnailCredits) return stepFail("insufficient_credits");
   const wallet = (await walletId(supabase, ctx.workspaceId)) ?? "";
 
@@ -953,8 +964,11 @@ async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
   const begun = b.state === "run";
   const attempts = b.state === "run" ? b.attempts : 0;
   const fail = async (code: string): Promise<ComposeOutcome> => {
-    // Nothing paid for stays readable: the files go first; if they cannot,
-    // nothing is refunded yet and the next call releases both.
+    // Nothing refunded stays in the library or readable: its library rows go
+    // first (a row left behind would later count as a delivery), then its
+    // files; if either cannot, nothing is refunded yet and the next call
+    // releases all of it.
+    if (!(await removeLibraryRows(ctx, d.jobId))) return "busy";
     if (!(await removeJobFiles(ctx, d.jobId))) return "busy";
     await failUsage(supabase, {
       serverToken: dispatchToken(), eventId: d.eventId, walletId: d.wallet, error: code, apiCostUsdMicros: d.costMicros ?? undefined,
@@ -1034,6 +1048,10 @@ async function deliver(ctx: Ctx, d: Delivery): Promise<ComposeOutcome> {
       retouched: input.retouch, credits: input.quote.thumbnailCredits, run_id: runId,
     },
   });
+  // The run closes only once the charge is SEEN closed: otherwise the next
+  // call closes it from the delivered mark (never the reconciler deciding
+  // from library rows a member can delete).
+  if (!(await chargeClosed(ctx, d.jobId))) return "busy";
   const delivered = {
     path, job_id: d.jobId, generation_id: gen.id, asset_id: asset.id,
     width: fin.width, height: fin.height, mime: fin.mime, bytes: fin.bytes.length, sha256: fin.sha256,
@@ -1081,6 +1099,7 @@ async function resumeFinish(ctx: Ctx, compose: StepRunRow): Promise<ComposeOutco
       await completeUsage(supabase, dispatchToken(), event.id, 1, {
         apiCostUsdMicros: costMicros ?? undefined, executor: { providerSlug: "openai", modelSlug: ctx.input.config.model },
       });
+      if (!(await chargeClosed(ctx, jobId))) return "busy";
     }
     const delivered = {
       path: asset?.path ?? mark?.path ?? "", job_id: jobId, width: asset?.width ?? null, height: asset?.height ?? null, recovered: true,
@@ -1176,8 +1195,32 @@ async function storeNew(ctx: Ctx, jobId: string, ext: string, bytes: Buffer, mim
   return null;
 }
 
-/** Remove every object in the job's folder (the delivered file, its
- *  derivatives, the raw answer). True only when the folder is known empty. */
+/** Remove the job's library rows (generation + its assets) through the
+ *  library's own delete. True only when none are left. */
+async function removeLibraryRows(ctx: Ctx, jobId: string): Promise<boolean> {
+  const list = async (): Promise<string[] | null> => {
+    const { data, error } = await ctx.supabase.from("generations").select("id").eq("job_id", jobId).limit(20);
+    return error || !data ? null : data.map((g) => g.id);
+  };
+  const ids = await list();
+  if (ids === null) return false;
+  if (ids.length === 0) return true;
+  for (const genId of ids) {
+    const { error } = await ctx.supabase.rpc("delete_generation", { gen_id: genId });
+    if (error) return false;
+  }
+  const left = await list();
+  return left !== null && left.length === 0;
+}
+
+/** Whether the composition's charge is SEEN closed (not pending, readable). */
+async function chargeClosed(ctx: Ctx, jobId: string): Promise<boolean> {
+  const event = await eventOfJob(ctx, jobId);
+  return event !== "unknown" && event?.status !== "pending";
+}
+
+/** Remove every object in the job's folder (the delivered file and its
+ *  derivatives). True only when the folder is known empty. */
 async function removeJobFiles(ctx: Ctx, jobId: string): Promise<boolean> {
   const bucket = ctx.supabase.storage.from("generation-assets");
   const folder = `${ctx.workspaceId}/${jobId}`;
@@ -1234,8 +1277,8 @@ async function close(ctx: Ctx, status: "ok" | "failed", error: string | null, ex
   const steps = await readSteps(ctx.supabase, ctx.runId);
   await patchRun(ctx.supabase, ctx.runId, ctx.owner, {
     status, error: error ?? "",
-    // Unreadable steps: the credits already kept up to date stay as they are.
-    ...(steps ? { credits: retouchCredits(steps) + (status === "ok" ? ctx.input?.quote.thumbnailCredits ?? 0 : 0) } : {}),
+    // Unreadable steps: the Retusz credits already kept up to date stand in.
+    credits: (steps ? retouchCredits(steps) : ctx.run.credits ?? 0) + (status === "ok" ? ctx.input?.quote.thumbnailCredits ?? 0 : 0),
     progress: { ...(progressOf(ctx.run)), stage: status === "ok" ? "done" : "failed" },
     duration_ms: Math.max(0, Date.now() - Date.parse(ctx.run.created_at)),
     ...extra,
@@ -1312,11 +1355,19 @@ async function eventOfJob(ctx: Ctx, jobId: string): Promise<{ id: string; status
 }
 
 async function jobFailed(ctx: Ctx, jobId: string, code: string, settingsExtra: Record<string, Json> = {}): Promise<void> {
-  const { data: row } = await ctx.supabase.from("generation_jobs").select("settings").eq("id", jobId).maybeSingle();
+  // Settings are merged only into settings actually READ (tried twice): an
+  // unreadable row is never rewritten from nothing.
+  let settings: Record<string, Json> | null = null;
+  if (Object.keys(settingsExtra).length > 0) {
+    for (let attempt = 0; attempt < 2 && settings === null; attempt++) {
+      const { data: row, error } = await ctx.supabase.from("generation_jobs").select("settings").eq("id", jobId).maybeSingle();
+      if (!error && row) settings = { ...((row.settings ?? {}) as Record<string, Json>), ...settingsExtra };
+    }
+  }
   await ctx.supabase.from("generation_jobs").update({
     status: "failed", error_message: code.slice(0, 200), error_class: code.slice(0, 80), completed_at: new Date().toISOString(),
     credits_charged: 0,
-    ...(Object.keys(settingsExtra).length ? { settings: { ...((row?.settings ?? {}) as Record<string, Json>), ...settingsExtra } as Json } : {}),
+    ...(settings ? { settings: settings as Json } : {}),
   }).eq("id", jobId);
 }
 

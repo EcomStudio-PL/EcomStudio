@@ -8578,6 +8578,8 @@
     "runTitle": "Your thumbnail",
     "cancel": "Cancel",
     "cancelling": "Stopping after the current step…",
+    "connectionLost": "The connection was interrupted — your thumbnail is waiting to be finished. Nothing will be charged twice.",
+    "resume": "Resume",
     "cancelled": "Cancelled.",
     "retouched": "Photos after AI Retouch",
     "resultSize": "{w}×{h} px",

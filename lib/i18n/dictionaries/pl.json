@@ -8578,6 +8578,8 @@
     "runTitle": "Twoja miniaturka",
     "cancel": "Anuluj",
     "cancelling": "Zatrzymuję po bieżącym kroku…",
+    "connectionLost": "Połączenie zostało przerwane — miniaturka czeka na dokończenie. Nic nie zostanie pobrane dwa razy.",
+    "resume": "Wznów",
     "cancelled": "Anulowano.",
     "retouched": "Zdjęcia po Retuszu AI",
     "resultSize": "{w}×{h} px",

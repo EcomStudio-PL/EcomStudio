@@ -52,6 +52,9 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
   const [retouch, setRetouch] = useState(false);
   const [balance, setBalance] = useState(credits);
   const [run, setRun] = useState<ThumbnailRunView | null>(null);
+  // The run whose driving stopped before it finished (connection lost):
+  // shown with a way to resume, never as a silent spinner.
+  const [stalled, setStalled] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [freshItems, setFreshItems] = useState<GalleryItem[]>([]);
   const [view, setView] = useState<{ images: { key: string; src: string }[]; index: number } | null>(null);
@@ -145,6 +148,7 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
     if (driving.current === runId) return;
     driving.current = runId;
     setBusy(true);
+    setStalled(null);
     let stop = false;
     const poll = setInterval(async () => {
       if (stop) return;
@@ -184,6 +188,7 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
       setBusy(false);
     }
     if (!last) { toast.error(t("common.error")); return; }
+    if (!TERMINAL.has(last.status)) { setStalled(runId); return; }
     if (last.status === "ok") {
       toast.success(t("thumb.done"));
       await absorb(1);
@@ -243,6 +248,14 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
       const res = await fetch(`/api/thumbnail/runs/${run.id}/cancel`, { method: "POST" });
       const json = await res.json() as { ok: boolean; state?: string };
       if (json.ok && json.state === "requested") setRun((r) => r ? { ...r, cancelling: true } : r);
+      // Closed at once (nobody was driving it): show its final state now.
+      if (json.ok && (json.state === "cancelled" || json.state === "finished")) {
+        const fresh = await fetch(`/api/thumbnail/runs/${run.id}`, { cache: "no-store" });
+        const view = await fresh.json() as { ok: boolean; run?: ThumbnailRunView };
+        if (view.ok && view.run) setRun(view.run);
+        setStalled(null);
+        router.refresh();
+      }
     } catch { /* the next poll shows the state */ }
   }
 
@@ -387,6 +400,16 @@ export function ThumbnailWorkspace({ workspaceId, credits, data }: {
                 </button>
               )}
             </div>
+
+            {stalled === run.id && !TERMINAL.has(run.status) && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-raised px-3 py-2 text-[12.5px]" data-thumbnail-stalled>
+                <span className="min-w-0 flex-1 text-muted">{t("thumb.connectionLost")}</span>
+                <button type="button" onClick={() => void drive(run.id)}
+                  className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12px] font-semibold transition-colors hover:bg-surface">
+                  {t("thumb.resume")}
+                </button>
+              </div>
+            )}
 
             <Stages run={run} t={t} />
 

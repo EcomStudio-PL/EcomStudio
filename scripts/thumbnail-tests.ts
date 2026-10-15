@@ -84,6 +84,8 @@ function from(name: string) {
     if (op === "insert") {
       const list = (Array.isArray(payload) ? payload : [payload!]).map((p) => ({ id: id(name.slice(0, 4)), created_at: iso(db().now), ...p }));
       rows.push(...list);
+      // Committed, but the answer never arrived.
+      if (db().faults.delete(`${name}:insert:lost`)) return { data: null, error: { message: "lost" } };
       return { data: one ? list[0] : list, error: null };
     }
     let hit = rows.filter((r) => filters.every((f) => f(r)));
@@ -135,6 +137,14 @@ const client = {
         credits: run.credits, error: null, created_at: iso(d.now), finished_at: null, locked_until: null, lease_owner: null, invocations: 0,
       });
       return { data: { id: runId, created: true, status: "queued" }, error: null };
+    }
+    if (name === "delete_generation") {
+      const gid = String(args.gen_id);
+      const assets = tableRows("generation_assets");
+      const paths = assets.filter((a) => a.generation_id === gid).map((a) => String(a.storage_path));
+      d.tables.generation_assets = assets.filter((a) => a.generation_id !== gid);
+      d.tables.generations = tableRows("generations").filter((g) => g.id !== gid);
+      return { data: paths, error: null };
     }
     // The driver's own tri-state reads (the run, its steps): same rows as
     // the workflow-store stub, plus transient faults.
@@ -1122,6 +1132,71 @@ async function sectionE() {
   const r32 = await driveToEnd(runId32, depsFor(rec, await fakeRetouchFactory(rec)));
   check("E32 library item deleted before the charge closed → still charged as delivered (no refund)", r32.status === "ok"
     && db().wallet.balance === 980 && db().events.every((e) => e.status === "succeeded") && charges().filter((c) => c.kind === "fail").length === 0);
+
+  // E33 — the library asset row is written but its answer is lost: the
+  // refund first removes the library rows, then the file — nothing left
+  // that could later count as a delivery.
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  photos = await seedPhotos(1);
+  const s33 = await start(photos, false);
+  db().faults.add("generation_assets:insert:lost");
+  const r33 = await driveToEnd((s33 as { runId: string }).runId, depsFor(rec, await fakeRetouchFactory(rec)));
+  const j33 = tableRows("generation_jobs").find((j) => (j.settings as Row)?.operation === "ecommerce_thumbnail")!;
+  check("E33 asset row committed, answer lost → rows removed, file removed, refunded once", r33.status === "failed" && r33.error === "library_failed"
+    && tableRows("generation_assets").length === 0 && !tableRows("generations").some((g) => g.job_id === j33.id)
+    && ![...db().storage.keys()].some((k) => k.startsWith(`generation-assets:${WS}/${j33.id}/`))
+    && db().wallet.balance === 1000 && charges().filter((c) => c.kind === "fail").length === 1);
+
+  // E34 — the charge cannot be closed right after the delivery: the run
+  // stays open (no reconciler deciding from library rows); the next call
+  // closes it from the delivered mark — charged once.
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  photos = await seedPhotos(1);
+  const s34 = await start(photos, false);
+  const runId34 = (s34 as { runId: string }).runId;
+  db().faults.add("usage:complete");
+  const a34 = await advanceThumbnailRun(SUPA, USER, WS, runId34, { deadlineAt: db().now + 270_000, deps: depsFor(rec, await fakeRetouchFactory(rec)) });
+  check("E34 charge not closed after delivery → run kept open ('busy'), event pending", a34 === "busy"
+    && db().runs.get(runId34)!.status === "running" && db().events.every((e) => e.status === "pending"));
+  db().faults.delete("usage:complete");
+  // Meanwhile the member deletes the delivered item from the library.
+  for (const g of [...tableRows("generations")]) await client.rpc("delete_generation", { gen_id: g.id });
+  const r34 = await driveToEnd(runId34, depsFor(rec, await fakeRetouchFactory(rec)), 30);
+  check("E34 then closed as delivered from the mark: charged once, no refund, no second request", r34.status === "ok"
+    && db().wallet.balance === 980 && db().events.every((e) => e.status === "succeeded") && rec.sunburst.length === 1);
+
+  // E35 — the run cannot be re-read once the composition step is begun: no
+  // charge on a guess; the step fails free ('unavailable').
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  photos = await seedPhotos(1);
+  const s35 = await start(photos, false);
+  const from35 = client.storage.from;
+  client.storage.from = (bucket: string) => {
+    const b = from35(bucket);
+    if (bucket !== "product-images") return b;
+    return { ...b, async download(p: string) { db().afterRunRead = () => { db().faults.add("rpc:ai_engine_run_read"); }; return b.download(p); } };
+  };
+  const a35 = await advanceThumbnailRun(SUPA, USER, WS, (s35 as { runId: string }).runId, { deadlineAt: db().now + 270_000, deps: depsFor(rec, await fakeRetouchFactory(rec)) });
+  client.storage.from = from35;
+  db().faults.delete("rpc:ai_engine_run_read");
+  const r35 = db().runs.get((s35 as { runId: string }).runId)!;
+  check("E35 unreadable run after the step began → failed 'unavailable', nothing charged or sent", a35 === "finished" && r35.status === "failed"
+    && r35.error === "unavailable" && thumbStarts().length === 0 && rec.sunburst.length === 0);
+
+  // E36 — the wallet cannot be read at the composition: not "empty" — the
+  // step fails free as 'unavailable' (never 'insufficient_credits').
+  setupEnv();
+  rec = { retouch: [], sunburst: [] };
+  photos = await seedPhotos(1);
+  const s36 = await start(photos, false);
+  db().faults.add("credit_wallets:select");
+  const r36 = await driveToEnd((s36 as { runId: string }).runId, depsFor(rec, await fakeRetouchFactory(rec)));
+  db().faults.delete("credit_wallets:select");
+  check("E36 unreadable wallet → 'unavailable', nothing charged or sent", r36.status === "failed" && r36.error === "unavailable"
+    && thumbStarts().length === 0 && rec.sunburst.length === 0);
 
   // E15 — the start refuses what it must.
   setupEnv();
