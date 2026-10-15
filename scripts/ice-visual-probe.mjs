@@ -382,19 +382,27 @@ const OLD_DIR = flag("old-dir");
 const NEW_DIR = flag("new-dir");
 const REPS = Number(flag("reps") ?? 2);
 const ONLY = flag("pages")?.split(",") ?? null;
+/** The height both sides' focus section is pinned to for the shift-free capture. */
+const PIN = Number(flag("pin") ?? 600);
+/** A channel difference above this is a real change; at or below it, anti-aliasing. */
+const TOL = Number(flag("tol") ?? 24);
+/** Tallest viewport the capture grows to (Chromium's texture limit is 16384). */
+const MAX_H = 16000;
 fs.mkdirSync(SHOTS, { recursive: true });
 
 /** Each page: the address a customer types, and — for the signed-in or
  *  CMS-backed ones — the harness page the browser is given instead. `focus`
  *  names the one element whose change is intended. */
+const HARNESS_URL = `/${HARNESS_DIR.replace(/^app\//, "")}`;
 const PAGES = [
   { id: "plany", path: "/plany" },
   { id: "landing", path: "/" },
   { id: "regulamin", path: "/regulamin" },
-  { id: "home", path: "/home", harness: `/${HARNESS_DIR.replace(/^app\//, "")}/home`, focus: "[data-seller-before-after]" },
-  { id: "tools", path: "/tools", harness: `/${HARNESS_DIR.replace(/^app\//, "")}/tools` },
-  { id: "cms", path: "/o-nas", harness: `/${HARNESS_DIR.replace(/^app\//, "")}/cms` },
+  { id: "home", path: "/home", harness: `${HARNESS_URL}/home`, focus: "[data-seller-before-after]" },
+  { id: "tools", path: "/tools", harness: `${HARNESS_URL}/tools` },
+  { id: "cms", path: "/o-nas", harness: `${HARNESS_URL}/cms` },
 ].filter((p) => !ONLY || ONLY.includes(p.id));
+const ALL_PAGES = PAGES;
 const VIEWPORTS = [[390, 844], [834, 1112], [1440, 900]];
 const THEMES = ["light", "dark"];
 
@@ -407,7 +415,7 @@ function executablePath() {
 
 const browser = await chromium.launch({ executablePath: executablePath() });
 const sha = (buf) => createHash("sha256").update(buf).digest("hex");
-const results = { old: OLD, new: NEW, startedAt: new Date().toISOString(), theme: null, shots: [], checks: {} };
+const results = { old: OLD, new: NEW, startedAt: new Date().toISOString(), tol: TOL, pin: PIN, theme: null, shots: [], checks: {} };
 
 /** A browser context in which `base` serves the page, the signed-in /
  *  CMS addresses are answered by the harness, and nothing leaves localhost
@@ -426,7 +434,7 @@ async function openContext(base, { width, height, theme, cookies = [] }) {
   await ctx.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (url.origin !== origin) { external.add(url.host); return route.abort().catch(() => {}); }
-    const page = PAGES.find((p) => p.harness && p.path === url.pathname);
+    const page = ALL_PAGES.find((p) => p.harness && p.path === url.pathname);
     if (page) {
       url.pathname = page.harness;
       try {
@@ -458,7 +466,7 @@ async function settlePage(page) {
   await page.waitForTimeout(400);
 }
 
-/** Geometry and overflow, on the settled page. */
+/** Geometry and overflow, on the settled page, at the real viewport. */
 const measure = (page, focus) => page.evaluate((sel) => {
   const doc = document.documentElement;
   const vw = doc.clientWidth;
@@ -477,30 +485,67 @@ const measure = (page, focus) => page.evaluate((sel) => {
       escapees.push(`${el.tagName.toLowerCase()}.${String(el.className).slice(0, 50)} [${Math.round(r.left)},${Math.round(r.right)}]`);
     }
   }
+  const r2 = (v) => Math.round(v * 100) / 100;
   const f = sel ? document.querySelector(sel) : null;
   const fr = f?.getBoundingClientRect();
   const frame = f?.querySelector("[data-ba-card] .overflow-hidden")?.getBoundingClientRect();
   return {
     dark: doc.classList.contains("dark"), vw, scrollWidth: doc.scrollWidth, height: doc.scrollHeight,
     escapees: escapees.slice(0, 8), escapeCount: escapees.length,
-    focus: fr ? { top: Math.round(fr.top + scrollY), bottom: Math.round(fr.bottom + scrollY), height: Math.round(fr.height) } : null,
-    baFrame: frame ? { w: Math.round(frame.width * 10) / 10, h: Math.round(frame.height * 10) / 10 } : null,
+    focus: fr ? { top: r2(fr.top + scrollY), bottom: r2(fr.bottom + scrollY), height: r2(fr.height) } : null,
+    baFrame: frame ? { w: r2(frame.width), h: r2(frame.height) } : null,
+    baCards: f ? f.querySelectorAll("[data-ba-card]").length : null,
     brokenImages: [...document.images].filter((i) => i.complete && i.naturalWidth === 0).map((i) => i.currentSrc || i.src).slice(0, 5),
     iceLaunch: document.querySelectorAll("[data-ice-launch]").length,
   };
 }, focus ?? null);
 
-async function shoot(base, pageDef, vp, theme, file) {
+/**
+ * THE CAPTURE. Playwright's fullPage capture on Chromium renders "beyond the
+ * viewport" by resizing the frame for the duration of the capture — which
+ * wakes ResizeObservers mid-capture (the /home tool carousel re-anchors on
+ * every width change and was caught one card further along, and consecutive
+ * captures of one load differed). So the viewport itself is grown to the
+ * page's own height first (repeated until the height holds; the pages only
+ * use viewport height for `min-h-dvh` wrappers, which then equal the content),
+ * the page settles at that size, and the capture is an ordinary viewport
+ * capture with nothing resized under it.
+ */
+async function capture(page, file) {
+  const width = page.viewportSize().width;
+  let H = 0, grown = true;
+  for (let k = 0; k < 6; k++) {
+    H = await page.evaluate(() => Math.ceil(document.documentElement.scrollHeight));
+    if (H === page.viewportSize().height) break;
+    if (H > MAX_H) { grown = false; break; }
+    await page.setViewportSize({ width, height: H });
+    await page.waitForTimeout(400);
+  }
+  await page.waitForFunction(() => [...document.images].every((i) => i.complete), null, { timeout: 10000 }).catch(() => {});
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: file, fullPage: !grown, animations: "disabled", caret: "hide" });
+  return { height: H, grown };
+}
+
+async function shoot(base, pageDef, vp, theme, file, { pin = false } = {}) {
   const { ctx, external } = await openContext(base, { width: vp[0], height: vp[1], theme });
   const page = await ctx.newPage();
   const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message.slice(0, 200)));
+  page.on("pageerror", (e) => errors.push(e.message.slice(0, 160)));
   const resp = await page.goto(base + pageDef.path, { waitUntil: "load", timeout: 60000 });
   await settlePage(page);
   const m = await measure(page, pageDef.focus);
-  await page.screenshot({ path: file, fullPage: true, animations: "disabled", caret: "hide" });
+  if (pin && pageDef.focus) {
+    // The same outer height on both sides: everything after the section sits
+    // at the same place, so any pixel outside it that differs is a real change.
+    await page.addStyleTag({ content: `${pageDef.focus}{height:${PIN}px!important;min-height:0!important;max-height:none!important;overflow:hidden!important}` });
+    await page.waitForTimeout(300);
+    m.pinned = (await measure(page, pageDef.focus)).focus;
+  }
+  const cap = await capture(page, file);
   await ctx.close();
-  return { status: resp?.status() ?? null, ...m, external: [...external], errors };
+  return { status: resp?.status() ?? null, ...m, capture: cap, external: [...external], errors };
 }
 
 /* ── pixel diff (sharp raw buffers) ────────────────────────────────────── */
@@ -511,22 +556,29 @@ async function raw(file) {
 }
 
 /** Compare rows [ya, ya+rows) of A with rows [yb, yb+rows) of B over the
- *  common width; returns the count and bounding box (in A's coordinates). */
+ *  common width: every differing pixel (`count`), those differing by more than
+ *  TOL in some channel (`tolCount`), the largest channel difference, and the
+ *  bounding boxes (in A's coordinates). */
 function compareRegion(A, B, ya, yb, rows) {
   const w = Math.min(A.w, B.w);
-  let count = 0, x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
+  rows = Math.max(0, Math.min(rows, A.h - ya, B.h - yb));
+  let count = 0, tolCount = 0, maxDelta = 0;
+  const box = () => ({ x0: Infinity, y0: Infinity, x1: -1, y1: -1 });
+  const all = box(), big = box();
+  const grow = (b, x, y) => { if (x < b.x0) b.x0 = x; if (x > b.x1) b.x1 = x; if (y < b.y0) b.y0 = y; if (y > b.y1) b.y1 = y; };
   for (let r = 0; r < rows; r++) {
     const ra = (ya + r) * A.w * 4, rb = (yb + r) * B.w * 4;
     for (let x = 0; x < w; x++) {
       const ia = ra + x * 4, ib = rb + x * 4;
-      if (A.data[ia] !== B.data[ib] || A.data[ia + 1] !== B.data[ib + 1] || A.data[ia + 2] !== B.data[ib + 2] || A.data[ia + 3] !== B.data[ib + 3]) {
-        count++;
-        if (x < x0) x0 = x; if (x > x1) x1 = x;
-        if (ya + r < y0) y0 = ya + r; if (ya + r > y1) y1 = ya + r;
+      const d = Math.max(Math.abs(A.data[ia] - B.data[ib]), Math.abs(A.data[ia + 1] - B.data[ib + 1]), Math.abs(A.data[ia + 2] - B.data[ib + 2]), Math.abs(A.data[ia + 3] - B.data[ib + 3]));
+      if (d) {
+        count++; if (d > maxDelta) maxDelta = d; grow(all, x, ya + r);
+        if (d > TOL) { tolCount++; grow(big, x, ya + r); }
       }
     }
   }
-  return { pixels: w * rows, count, bbox: count ? { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 } : null };
+  const out = (b) => (b.x1 < 0 ? null : { x: b.x0, y: b.y0, w: b.x1 - b.x0 + 1, h: b.y1 - b.y0 + 1 });
+  return { rows, pixels: w * rows, count, tolCount, maxDelta, bbox: out(all), tolBbox: out(big) };
 }
 
 /** Whole-image diff, top-aligned; rows only one image has count as differing. */
@@ -534,32 +586,40 @@ async function diffFiles(fa, fb, outFile) {
   const A = await raw(fa), B = await raw(fb);
   const W = Math.max(A.w, B.w), H = Math.max(A.h, B.h);
   const common = compareRegion(A, B, 0, 0, Math.min(A.h, B.h));
-  const extraRows = H - Math.min(A.h, B.h);
-  const count = common.count + extraRows * W + (A.w !== B.w ? Math.abs(A.w - B.w) * Math.min(A.h, B.h) : 0);
+  const extra = (H - Math.min(A.h, B.h)) * W + (A.w !== B.w ? Math.abs(A.w - B.w) * Math.min(A.h, B.h) : 0);
+  const count = common.count + extra, tolCount = common.tolCount + extra;
   let bbox = common.bbox;
-  if (extraRows > 0) {
+  if (extra > 0) {
     const y = Math.min(A.h, B.h);
-    bbox = bbox ? { x: 0, y: bbox.y, w: W, h: H - bbox.y } : { x: 0, y, w: W, h: extraRows };
+    bbox = bbox ? { x: 0, y: bbox.y, w: W, h: H - bbox.y } : { x: 0, y, w: W, h: H - y };
   }
-  if (outFile) {
-    // The old picture, faded to grey; differing pixels red, rows only one side has magenta.
+  if (outFile && count > 0) {
+    // The old picture faded to grey; red = a real difference (> TOL), orange =
+    // anti-aliasing-level (≤ TOL), magenta = rows only one side has.
     const out = Buffer.alloc(W * H * 4);
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const o = (y * W + x) * 4;
-      const inA = x < A.w && y < A.h, inB = x < B.w && y < B.h;
-      if (!inA || !inB) { out[o] = 255; out[o + 1] = 0; out[o + 2] = 255; out[o + 3] = 255; continue; }
+      if (!(x < A.w && y < A.h && x < B.w && y < B.h)) { out[o] = 255; out[o + 1] = 0; out[o + 2] = 255; out[o + 3] = 255; continue; }
       const ia = (y * A.w + x) * 4, ib = (y * B.w + x) * 4;
-      const same = A.data[ia] === B.data[ib] && A.data[ia + 1] === B.data[ib + 1] && A.data[ia + 2] === B.data[ib + 2];
-      if (same) {
+      const d = Math.max(Math.abs(A.data[ia] - B.data[ib]), Math.abs(A.data[ia + 1] - B.data[ib + 1]), Math.abs(A.data[ia + 2] - B.data[ib + 2]));
+      if (d === 0) {
         const g = Math.round(0.3 * A.data[ia] + 0.59 * A.data[ia + 1] + 0.11 * A.data[ia + 2]);
         const v = Math.round(200 + g * 55 / 255);
-        out[o] = v; out[o + 1] = v; out[o + 2] = v; out[o + 3] = 255;
-      } else { out[o] = 255; out[o + 1] = 0; out[o + 2] = 0; out[o + 3] = 255; }
+        out[o] = v; out[o + 1] = v; out[o + 2] = v;
+      } else if (d > TOL) { out[o] = 255; out[o + 1] = 0; out[o + 2] = 0; }
+      else { out[o] = 255; out[o + 1] = 150; out[o + 2] = 0; }
+      out[o + 3] = 255;
     }
     await sharp(out, { raw: { width: W, height: H, channels: 4 } }).png().toFile(outFile);
   }
-  return { a: { w: A.w, h: A.h }, b: { w: B.w, h: B.h }, count, pct: (100 * count) / (W * H), bbox, A, B };
+  return {
+    a: { w: A.w, h: A.h }, b: { w: B.w, h: B.h }, count, tolCount, maxDelta: common.maxDelta,
+    pct: (100 * count) / (W * H), tolPct: (100 * tolCount) / (W * H), bbox, tolBbox: common.tolBbox, A, B,
+  };
 }
+
+const slim = (d) => ({ count: d.count, tolCount: d.tolCount, maxDelta: d.maxDelta, pct: d.pct, bbox: d.bbox, tolBbox: d.tolBbox });
+const verdictOf = (d) => (d.count === 0 ? "identical" : d.tolCount === 0 ? `anti-aliasing only (max Δ${d.maxDelta})` : "DIFFERS");
 
 /* ── 0. which theme switch works ───────────────────────────────────────── */
 
@@ -567,20 +627,21 @@ console.log("\n0. THEME: what decides light/dark");
 {
   const out = {};
   for (const [label, scheme, stored] of [
-    ["prefers light, no stored theme", "light", null],
-    ["prefers dark, no stored theme", "dark", null],
-    ["stored theme=light (prefers light)", "light", "light"],
-    ["stored theme=dark (prefers light)", "light", "dark"],
-    ["stored theme=system (prefers light)", "light", "system"],
+    ["prefers light, nothing stored", "light", null],
+    ["prefers dark, nothing stored", "dark", null],
+    ["localStorage theme=light (prefers dark)", "dark", "light"],
+    ["localStorage theme=dark (prefers light)", "light", "dark"],
+    ["localStorage theme=system, prefers light", "light", "system"],
+    ["localStorage theme=system, prefers dark", "dark", "system"],
   ]) {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, colorScheme: scheme });
     if (stored) await ctx.addInitScript((t) => localStorage.setItem("theme", t), stored);
     await ctx.route("**/*", (r) => (new URL(r.request().url()).origin === new URL(NEW).origin ? r.continue() : r.abort()));
     const p = await ctx.newPage();
-    await p.goto(`${NEW}/plany`, { waitUntil: "load" });
+    await p.goto(`${NEW}/regulamin`, { waitUntil: "load" });
     out[label] = (await p.evaluate(() => document.documentElement.classList.contains("dark"))) ? "dark" : "light";
     await ctx.close();
-    console.log(`  ${label}: html is ${out[label]}`);
+    console.log(`  ${label}: <html> is ${out[label]}`);
   }
   results.theme = out;
 }
@@ -597,20 +658,20 @@ for (const pg of PAGES) {
       const mn = await shoot(NEW, pg, vp, theme, f("new"));
       const noise = {};
       if (REPS > 1) {
-        await shoot(OLD, pg, vp, theme, f("old2"));
-        await shoot(NEW, pg, vp, theme, f("new2"));
-        const no = await diffFiles(f("old"), f("old2"), null);
-        const nn = await diffFiles(f("new"), f("new2"), null);
-        noise.old = { count: no.count, pct: no.pct, bbox: no.bbox };
-        noise.new = { count: nn.count, pct: nn.pct, bbox: nn.bbox };
+        const mo2 = await shoot(OLD, pg, vp, theme, f("old2"));
+        const mn2 = await shoot(NEW, pg, vp, theme, f("new2"));
+        const no = await diffFiles(f("old"), f("old2"), f("noise-old"));
+        const nn = await diffFiles(f("new"), f("new2"), f("noise-new"));
+        noise.old = slim(no); noise.new = slim(nn);
+        noise.heights = { old: [mo.capture.height, mo2.capture.height], new: [mn.capture.height, mn2.capture.height] };
       }
       const d = await diffFiles(f("old"), f("new"), f("diff"));
       const row = {
         page: pg.id, path: pg.path, width: vp[0], theme, tag,
         status: { old: mo.status, new: mn.status },
         darkApplied: { old: mo.dark, new: mn.dark },
-        size: { old: d.a, new: d.b },
-        diff: { count: d.count, pct: d.pct, bbox: d.bbox },
+        size: { old: d.a, new: d.b }, capture: { old: mo.capture, new: mn.capture },
+        diff: slim(d), verdict: verdictOf(d),
         noise,
         overflow: { old: { sw: mo.scrollWidth, vw: mo.vw, escapes: mo.escapeCount, list: mo.escapees }, new: { sw: mn.scrollWidth, vw: mn.vw, escapes: mn.escapeCount, list: mn.escapees } },
         brokenImages: { old: mo.brokenImages, new: mn.brokenImages },
@@ -619,65 +680,228 @@ for (const pg of PAGES) {
         iceLaunch: { old: mo.iceLaunch, new: mn.iceLaunch },
       };
       if (pg.focus && mo.focus && mn.focus) {
-        // Above the intended change, the change, and below it re-aligned on its bottom edge.
-        const above = compareRegion(d.A, d.B, 0, 0, Math.min(mo.focus.top, mn.focus.top));
-        const belowRowsOld = d.A.h - mo.focus.bottom, belowRowsNew = d.B.h - mn.focus.bottom;
-        const below = compareRegion(d.A, d.B, mo.focus.bottom, mn.focus.bottom, Math.min(belowRowsOld, belowRowsNew));
+        // NATURAL: above the section, then below it re-aligned on its bottom
+        // edge — at the best whole-pixel offset (the height change can be
+        // fractional, and then nothing below can be bit-identical).
+        const above = compareRegion(d.A, d.B, 0, 0, Math.floor(Math.min(mo.focus.top, mn.focus.top)));
+        const startOld = Math.ceil(mo.focus.bottom);
+        const shift = mn.focus.bottom - mo.focus.bottom;
+        let below = null;
+        for (const s of [Math.floor(shift), Math.ceil(shift), Math.round(shift) - 1, Math.round(shift) + 1]) {
+          const c = compareRegion(d.A, d.B, startOld, startOld + s, d.A.h - startOld);
+          if (!below || c.count < below.count) below = { ...c, offset: s };
+        }
+        // PINNED: both sides' section forced to the same outer height.
+        const po = await shoot(OLD, pg, vp, theme, f("old-pinned"), { pin: true });
+        const pn = await shoot(NEW, pg, vp, theme, f("new-pinned"), { pin: true });
+        const pd = await diffFiles(f("old-pinned"), f("new-pinned"), f("diff-pinned"));
+        const top = Math.floor(Math.min(po.pinned.top, pn.pinned.top));
+        const bottom = Math.ceil(Math.max(po.pinned.bottom, pn.pinned.bottom));
+        const pAbove = compareRegion(pd.A, pd.B, 0, 0, top);
+        const pInside = compareRegion(pd.A, pd.B, top, top, bottom - top);
+        const pBelow = compareRegion(pd.A, pd.B, bottom, bottom, pd.A.h - bottom);
         row.focus = {
-          selector: pg.focus, old: mo.focus, new: mn.focus, heightDelta: mn.focus.height - mo.focus.height,
-          pageHeightDelta: d.b.h - d.a.h, baFrame: { old: mo.baFrame, new: mn.baFrame },
-          above: { rows: Math.min(mo.focus.top, mn.focus.top), count: above.count, bbox: above.bbox },
-          below: { rowsOld: belowRowsOld, rowsNew: belowRowsNew, count: below.count, bbox: below.bbox },
+          selector: pg.focus, old: mo.focus, new: mn.focus,
+          heightDelta: Math.round((mn.focus.height - mo.focus.height) * 100) / 100,
+          pageHeightDelta: mn.height - mo.height, baFrame: { old: mo.baFrame, new: mn.baFrame }, baCards: { old: mo.baCards, new: mn.baCards },
+          natural: { above: { rows: above.rows, ...slim(above) }, below: { offset: below.offset, rows: below.rows, ...slim(below) } },
+          pinned: {
+            height: PIN, sizes: { old: pd.a, new: pd.b }, section: { top, bottom },
+            whole: slim(pd), above: slim(pAbove), inside: slim(pInside), below: slim(pBelow),
+          },
         };
+        delete pd.A; delete pd.B;
       }
       results.shots.push(row);
-      const verdict = d.count === 0 ? "IDENTICAL" : `DIFFERS ${d.pct.toFixed(3)}% bbox ${JSON.stringify(d.bbox)}`;
-      const nz = REPS > 1 ? ` | noise old ${noise.old.count}px new ${noise.new.count}px` : "";
-      console.log(`  ${tag}: ${verdict} (${d.a.w}×${d.a.h} → ${d.b.w}×${d.b.h})${nz}${row.focus ? ` | BA ${row.focus.old.height}→${row.focus.new.height}px, above ${row.focus.above.count}px, below(re-aligned) ${row.focus.below.count}px` : ""}`);
+      const nz = REPS > 1 ? ` | noise old ${noise.old.count}px(${noise.old.tolCount}>Δ${TOL}) new ${noise.new.count}px(${noise.new.tolCount}>Δ${TOL})` : "";
+      console.log(`  ${tag}: ${row.verdict} ${d.count}px (${d.tolCount} >Δ${TOL}) bbox ${JSON.stringify(d.bbox)} (${d.a.w}×${d.a.h} → ${d.b.w}×${d.b.h})${nz}`);
+      if (row.focus) {
+        const fx = row.focus;
+        console.log(`    BA section ${fx.old.height}→${fx.new.height}px (Δ${fx.heightDelta}), frame ${JSON.stringify(fx.baFrame.old)}→${JSON.stringify(fx.baFrame.new)}, page ${mo.height}→${mn.height}`);
+        console.log(`    natural: above ${fx.natural.above.count}px; below re-aligned (offset ${fx.natural.below.offset}) ${fx.natural.below.count}px, ${fx.natural.below.tolCount} >Δ${TOL}, max Δ${fx.natural.below.maxDelta}`);
+        console.log(`    pinned ${PIN}px: above ${fx.pinned.above.count}px, inside ${fx.pinned.inside.count}px, below ${fx.pinned.below.count}px (sizes ${JSON.stringify(fx.pinned.sizes)})`);
+      }
       delete d.A; delete d.B;
     }
   }
 }
 
-/* ── helpers for the HTML and network checks ───────────────────────────── */
+/* ── HTML: markup and flight payload, normalised ───────────────────────── */
 
 async function getHtml(base, p, cookie) {
   const res = await fetch(base + p, { headers: { ...(cookie ? { cookie } : {}), "accept-language": "pl" }, redirect: "manual" });
   return { status: res.status, html: await res.text() };
 }
 
-/** Build ids, chunk hashes, nonces and per-request ids out of the way. */
-function normalise(html, buildId) {
-  let s = html;
-  if (buildId) s = s.split(buildId).join("BUILD_ID");
-  return s
-    .replace(/\/_next\/static\/chunks\/([\w\-\/\[\]().%@]+?)-[0-9a-f]{8,20}\.js/g, "/_next/static/chunks/$1-HASH.js")
-    .replace(/\/_next\/static\/chunks\/[0-9a-f]{8,20}\.js/g, "/_next/static/chunks/HASH.js")
-    .replace(/\/_next\/static\/css\/[0-9a-f]{8,20}\.css/g, "/_next/static/css/HASH.css")
-    .replace(/\/_next\/static\/media\/([\w\-.]+?)\.[0-9a-f]{8,20}\.(\w+)/g, "/_next/static/media/$1.HASH.$2")
-    .replace(/nonce="[^"]*"/g, 'nonce="NONCE"')
-    .replace(/"b":"[^"]+"/g, '"b":"BUILD"')
-    .replace(/\\"b\\":\\"[^"\\]+\\"/g, '\\"b\\":\\"BUILD\\"');
-}
-
-/** Lines to diff: one tag or one flight chunk per line. */
-const lines = (s) => s.replace(/></g, ">\n<").replace(/\\n/g, "\\n\n").split("\n");
-
-function lineDiff(a, b) {
-  const A = lines(a), B = lines(b);
-  const setA = new Map(), setB = new Map();
-  for (const l of A) setA.set(l, (setA.get(l) ?? 0) + 1);
-  for (const l of B) setB.set(l, (setB.get(l) ?? 0) + 1);
-  const onlyA = [], onlyB = [];
-  for (const [l, n] of setA) { const m = setB.get(l) ?? 0; if (n > m) onlyA.push(l); }
-  for (const [l, n] of setB) { const m = setA.get(l) ?? 0; if (n > m) onlyB.push(l); }
-  return { onlyOld: onlyA, onlyNew: onlyB };
-}
-
 const buildIdOf = (dir) => {
   try { return dir ? fs.readFileSync(path.join(dir, ".next/BUILD_ID"), "utf8").trim() : null; } catch { return null; }
 };
 const OLD_BUILD = buildIdOf(OLD_DIR), NEW_BUILD = buildIdOf(NEW_DIR);
+
+/** Asset names without content hashes or webpack's numeric chunk ids. */
+function normAssets(s) {
+  return s
+    .replace(/static\/chunks\/\d+-[0-9a-f]{8,}\.js/g, "static/chunks/N.js")
+    .replace(/static\/chunks\/([\w\-/[\]().%@]+?)-[0-9a-f]{8,}\.js/g, "static/chunks/$1.js")
+    .replace(/static\/chunks\/[0-9a-f]{8,}\.js/g, "static/chunks/H.js")
+    .replace(/static\/css\/[0-9a-f]{8,}\.css/g, "static/css/H.css")
+    .replace(/static\/media\/([\w\-.]+?)\.[0-9a-f]{8,}\.(\w+)/g, "static/media/$1.$2")
+    .replace(/nonce="[^"]*"/g, 'nonce="N"');
+}
+
+/** Every distinct React useId renamed by order of first appearance — a pure
+ *  renaming leaves the text equal; anything else does not. */
+function renameIds(s) {
+  const map = new Map();
+  return s.replace(/_R_[0-9A-Za-z]+_/g, (m) => {
+    if (!map.has(m)) map.set(m, `_R_${map.size + 1}_`);
+    return map.get(m);
+  });
+}
+
+/** The page's markup (inline flight scripts taken out) and its flight payload. */
+function splitHtml(html, buildId) {
+  const parts = [];
+  let markup = html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/g, (all, attrs, body) => {
+    const m = /^\s*self\.__next_f\.push\((\[[\s\S]*\])\)\s*;?\s*$/.exec(body);
+    if (!m) return all;
+    try {
+      const arr = JSON.parse(m[1]);
+      parts.push(arr[0] === 1 && typeof arr[1] === "string" ? arr[1] : `\n[[push ${JSON.stringify(arr).slice(0, 60)}]]\n`);
+    } catch { parts.push("\n[[unparsed push]]\n"); }
+    return `<script${attrs}>FLIGHT</script>`;
+  });
+  if (buildId) markup = markup.split(buildId).join("BUILD");
+  // Next splits the payload into scripts at arbitrary byte offsets: how MANY
+  // scripts there are says nothing about the page.
+  markup = markup.replace(/(<script>FLIGHT<\/script>)+/g, "<script>FLIGHT…</script>");
+  let flight = parts.join("");
+  if (buildId) flight = flight.split(buildId).join("BUILD");
+  return { markup: renameIds(normAssets(markup)), flight };
+}
+
+/** Flight rows (`<hex id>:<row>\n`, text rows `<id>:T<hex byte length>,<text>`). */
+function parseRows(payload) {
+  const buf = Buffer.from(payload, "utf8");
+  const rows = [];
+  let i = 0;
+  while (i < buf.length) {
+    let j = i;
+    while (j < buf.length && buf[j] !== 0x3a && buf[j] !== 0x0a) j++;
+    const id = buf.subarray(i, j).toString();
+    if (buf[j] !== 0x3a || !/^[0-9a-f]+$/.test(id)) {
+      let k = buf.indexOf(0x0a, i); if (k < 0) k = buf.length;
+      rows.push({ id: null, body: buf.subarray(i, k).toString() }); i = k + 1; continue;
+    }
+    j++;
+    if (buf[j] === 0x54 /* T */) {
+      let k = j + 1; while (k < buf.length && buf[k] !== 0x2c) k++;
+      const len = parseInt(buf.subarray(j + 1, k).toString(), 16);
+      rows.push({ id, body: "T" + buf.subarray(k + 1, k + 1 + len).toString() });
+      i = k + 1 + len; continue;
+    }
+    let k = buf.indexOf(0x0a, j); if (k < 0) k = buf.length;
+    rows.push({ id, body: buf.subarray(j, k).toString() });
+    i = k + 1;
+  }
+  return rows;
+}
+
+/**
+ * Rows renamed by CONTENT: a row's name is the hash of its normalised body,
+ * with every reference to another row replaced by that row's name. An
+ * inserted or renumbered row then disturbs nothing else; a changed row
+ * changes its own name and, through it, its ancestors' (reported as
+ * "propagated").
+ */
+function canonicalFlight(payload) {
+  const rows = parseRows(payload);
+  const byId = new Map(rows.filter((r) => r.id).map((r) => [r.id, r]));
+  const REF = /"\$([A-Za-z@]?)([0-9a-f]+)((?::[^"]*)?)"/g;
+  const norm = (b) => renameIds(normAssets(b))
+    .replace(/^I\[\d+,/, "I[M,")
+    .replace(/"\d+","static\/chunks\//g, '"C","static/chunks/')
+    .replace(/"[0-9a-f]{40,44}"/g, '"ACTION_ID"');
+  const memo = new Map(), visiting = new Set();
+  const canon = (id) => {
+    if (memo.has(id)) return memo.get(id);
+    if (visiting.has(id)) return "cycle";
+    visiting.add(id);
+    const r = byId.get(id);
+    const body = norm(r.body).replace(REF, (m, t, rid, rest) => (byId.has(rid) ? `"$${t}<${canon(rid)}>${rest}"` : m));
+    r.canon = body;
+    const name = sha(body).slice(0, 10);
+    visiting.delete(id); memo.set(id, name);
+    return name;
+  };
+  for (const r of rows) if (r.id) canon(r.id);
+  return rows.map((r) => (r.id ? r.canon : `RAW ${norm(r.body)}`)).filter((s) => s !== "RAW ");
+}
+
+function multisetDiff(a, b) {
+  const count = (l) => { const m = new Map(); for (const x of l) m.set(x, (m.get(x) ?? 0) + 1); return m; };
+  const A = count(a), B = count(b);
+  const onlyA = [], onlyB = [];
+  for (const [x, n] of A) for (let k = B.get(x) ?? 0; k < n; k++) onlyA.push(x);
+  for (const [x, n] of B) for (let k = A.get(x) ?? 0; k < n; k++) onlyB.push(x);
+  return { onlyA, onlyB };
+}
+
+/** The changed window of two similar strings. */
+function windowDiff(a, b) {
+  let p = 0; while (p < a.length && p < b.length && a[p] === b[p]) p++;
+  let s = 0; while (s < a.length - p && s < b.length - p && a[a.length - 1 - s] === b[b.length - 1 - s]) s++;
+  const from = Math.max(0, p - 60);
+  return { at: p, old: a.slice(from, a.length - s + 30), new: b.slice(from, b.length - s + 30) };
+}
+
+/** Pair up rows only one side has: same shape apart from child-row names =
+ *  "propagated"; otherwise the changed window; unpaired = added / removed. */
+function explainRows(onlyA, onlyB) {
+  const shape = (s) => s.replace(/<[0-9a-f]{10}>|<cycle>/g, "<*>");
+  const out = [];
+  const restB = [...onlyB];
+  for (const a of onlyA) {
+    let best = -1, bestP = -1;
+    restB.forEach((b, k) => {
+      if (shape(a) === shape(b)) { if (bestP < Infinity) { best = k; bestP = Infinity; } return; }
+      let p = 0; while (p < a.length && p < b.length && a[p] === b[p]) p++;
+      if (p > bestP && p >= Math.min(12, a.length)) { best = k; bestP = p; }
+    });
+    if (best < 0) { out.push({ kind: "only-old", row: a.slice(0, 300) }); continue; }
+    const b = restB.splice(best, 1)[0];
+    if (shape(a) === shape(b)) out.push({ kind: "propagated", row: shape(a).slice(0, 120) });
+    else out.push({ kind: "changed", ...windowDiff(a, b) });
+  }
+  for (const b of restB) out.push({ kind: "only-new", row: b.slice(0, 300) });
+  return out;
+}
+
+/** Markup lines (one tag per line) and flight rows that differ. */
+function compareHtml(htmlA, buildA, htmlB, buildB) {
+  const A = splitHtml(htmlA, buildA), B = splitHtml(htmlB, buildB);
+  const lines = (s) => s.replace(/></g, ">\n<").split("\n");
+  const md = multisetDiff(lines(A.markup), lines(B.markup));
+  const fd = multisetDiff(canonicalFlight(A.flight), canonicalFlight(B.flight));
+  return {
+    markupIdentical: A.markup === B.markup,
+    markup: { onlyOld: md.onlyA.map((l) => l.slice(0, 300)), onlyNew: md.onlyB.map((l) => l.slice(0, 300)) },
+    flightIdentical: fd.onlyA.length === 0 && fd.onlyB.length === 0,
+    flight: explainRows(fd.onlyA, fd.onlyB),
+    markupA: A.markup, markupB: B.markup,
+  };
+}
+
+function printCompare(c) {
+  for (const l of c.markup.onlyOld.slice(0, 8)) console.log(`      markup - ${l.slice(0, 200)}`);
+  for (const l of c.markup.onlyNew.slice(0, 8)) console.log(`      markup + ${l.slice(0, 200)}`);
+  for (const r of c.flight.slice(0, 12)) {
+    if (r.kind === "changed") console.log(`      flight ~ …${r.old.slice(0, 220)}…\n             → …${r.new.slice(0, 220)}…`);
+    else console.log(`      flight ${r.kind}: ${r.row.slice(0, 220)}`);
+  }
+}
+
+/* ── network helpers ───────────────────────────────────────────────────── */
 
 /** Files in a build's .next/static that contain a marker. */
 function staticFilesWith(dir, marker, ext) {
@@ -721,46 +945,135 @@ async function assets(base, p, cookies = []) {
   return { list: got, dom };
 }
 
-const stripHash = (p) => p.replace(/-[0-9a-f]{8,20}(\.js|\.css)$/, "$1").replace(/\/[0-9a-f]{8,20}(\.js|\.css)$/, "/HASH$1");
+const stripHash = (p) => p.replace(/\/\d+-[0-9a-f]{8,}\.js$/, "/N.js").replace(/-[0-9a-f]{8,}(\.js|\.css)$/, "$1").replace(/\/[0-9a-f]{8,}(\.js|\.css)$/, "/HASH$1");
+
+/** Webpack module bodies of a chunk (Next's production chunk format). */
+function modulesOf(src) {
+  const out = new Map();
+  const at = src.indexOf("push([[");
+  if (at < 0) return out;
+  let i = src.indexOf("{", at) + 1;
+  while (i > 0 && i < src.length) {
+    const m = /^\s*(\d+):/.exec(src.slice(i, i + 24));
+    if (!m) break;
+    let j = i + m[0].length, depth = 0, inStr = null, began = false;
+    for (; j < src.length; j++) {
+      const c = src[j];
+      if (inStr) { if (c === "\\") { j++; continue; } if (c === inStr) inStr = null; continue; }
+      if (c === '"' || c === "'" || c === "`") { inStr = c; continue; }
+      if (c === "{" || c === "(" || c === "[") { depth++; began = true; }
+      else if (c === "}" || c === ")" || c === "]") { if (depth === 0) break; depth--; }
+      else if (c === "," && depth === 0 && began) break;
+    }
+    out.set(m[1], src.slice(i + m[0].length, j));
+    if (src[j] === "}") break;
+    i = j + 1;
+  }
+  return out;
+}
+const tellOf = (body) => (body.match(/"[^"\\]{5,48}"/g) ?? []).filter((s) => s !== '"use strict"').slice(0, 4).join(" ");
+
+/** Top-level CSS rules, `@media … :: selector{decls}`, one per selector. */
+function cssEntries(css) {
+  const out = [];
+  let start = 0; const prefix = [];
+  for (let i = 0; i < css.length; i++) {
+    const c = css[i];
+    if (c === "{") {
+      const head = css.slice(start, i).trim();
+      if (/^@(media|supports|container|layer)/.test(head)) { prefix.push(head); start = i + 1; continue; }
+      let d = 1, j = i + 1; for (; j < css.length && d; j++) { if (css[j] === "{") d++; else if (css[j] === "}") d--; }
+      const decls = css.slice(i + 1, j - 1);
+      // Split the selector list at top-level commas.
+      const sels = []; let depth = 0, s0 = 0;
+      for (let k = 0; k < head.length; k++) {
+        const ch = head[k];
+        if (ch === "\\") { k++; continue; }
+        if (ch === "(" || ch === "[") depth++; else if (ch === ")" || ch === "]") depth--;
+        else if (ch === "," && depth === 0) { sels.push(head.slice(s0, k)); s0 = k + 1; }
+      }
+      sels.push(head.slice(s0));
+      for (const s of sels) out.push({ media: prefix.join(" "), selector: s.trim(), decls, key: `${prefix.join(" ")} :: ${s.trim()}{${decls}}` });
+      i = j - 1; start = j;
+    } else if (c === "}") { prefix.pop(); start = i + 1; }
+  }
+  return out;
+}
 
 /* ── a) CSS a visitor loads ────────────────────────────────────────────── */
 
 console.log("\na) CSS FILES A VISITOR LOADS, OLD vs NEW");
 const net = {};
-for (const p of ["/plany", "/"]) {
+const addedCss = new Map();
+for (const p of ["/plany", "/", "/regulamin"]) {
   const o = await assets(OLD, p), n = await assets(NEW, p);
   net[p] = { o, n };
   const cssO = o.list.filter((x) => x.type === "css"), cssN = n.list.filter((x) => x.type === "css");
-  const shaO = cssO.map((x) => x.sha).sort(), shaN = cssN.map((x) => x.sha).sort();
-  const same = JSON.stringify(shaO) === JSON.stringify(shaN);
+  const same = JSON.stringify(cssO.map((x) => x.sha).sort()) === JSON.stringify(cssN.map((x) => x.sha).sort());
   const hover = cssN.filter((x) => x.body.toString("utf8").includes("hoverLabel")).map((x) => x.path);
+  // Rule-level diff of the files that changed.
+  const shasN = new Set(cssN.map((x) => x.sha)), shasO = new Set(cssO.map((x) => x.sha));
+  const changedO = cssO.filter((x) => !shasN.has(x.sha)), changedN = cssN.filter((x) => !shasO.has(x.sha));
+  const eO = changedO.flatMap((x) => cssEntries(x.body.toString("utf8"))), eN = changedN.flatMap((x) => cssEntries(x.body.toString("utf8")));
+  const kO = new Set(eO.map((e) => e.key)), kN = new Set(eN.map((e) => e.key));
+  const added = eN.filter((e) => !kO.has(e.key)), removed = eO.filter((e) => !kN.has(e.key));
+  const orderKept = JSON.stringify(eO.map((e) => e.key).filter((k) => kN.has(k))) === JSON.stringify(eN.map((e) => e.key).filter((k) => kO.has(k)));
+  for (const e of added) addedCss.set(e.key, e);
   results.checks[`a ${p}`] = {
-    pass: same && hover.length === 0,
+    pass: hover.length === 0 && removed.length === 0 && orderKept,
+    identicalBytes: same,
     old: cssO.map(({ path: q, bytes, sha: h }) => ({ path: q, bytes, sha: h.slice(0, 16) })),
     new: cssN.map(({ path: q, bytes, sha: h }) => ({ path: q, bytes, sha: h.slice(0, 16) })),
     newCssWithHoverLabel: hover,
+    rulesAdded: added.map((e) => e.key), rulesRemoved: removed.map((e) => e.key), commonRulesInSameOrder: orderKept,
   };
-  console.log(`  ${p}: ${cssO.length} CSS old / ${cssN.length} new — ${same ? "byte-identical set" : "DIFFERENT"}; editor CSS loaded: ${hover.length ? hover.join(",") : "no"}`);
+  console.log(`  ${p}: ${cssO.length} CSS old / ${cssN.length} new — ${same ? "byte-identical" : "NOT byte-identical"}; editor CSS (hoverLabel) loaded: ${hover.length ? hover.join(",") : "no"}`);
   for (const x of cssO) console.log(`    old ${x.path} ${x.bytes} B sha ${x.sha.slice(0, 16)}`);
   for (const x of cssN) console.log(`    new ${x.path} ${x.bytes} B sha ${x.sha.slice(0, 16)}`);
+  if (!same) {
+    console.log(`    rule-level: ${added.length} selector rule(s) added, ${removed.length} removed, every old rule kept in its order: ${orderKept}`);
+    for (const e of added) console.log(`      + ${e.key.slice(0, 200)}`);
+    for (const e of removed) console.log(`      - ${e.key.slice(0, 200)}`);
+  }
+}
+// Does any added selector match anything on any page? (pseudo-elements dropped)
+if (addedCss.size > 0) {
+  const sels = [...new Set([...addedCss.values()].map((e) => e.selector.replace(/::?-webkit-[\w-]+|::[\w-]+/g, "")))];
+  const matches = {};
+  for (const pg of PAGES) {
+    for (const [w, h] of [[390, 844], [1440, 900]]) {
+      const { ctx } = await openContext(NEW, { width: w, height: h, theme: "light" });
+      const page = await ctx.newPage();
+      await page.goto(NEW + pg.path, { waitUntil: "load" });
+      await settlePage(page);
+      matches[`${pg.id}@${w}`] = await page.evaluate((list) => Object.fromEntries(list.map((s) => {
+        try { return [s, document.querySelectorAll(s).length]; } catch { return [s, "invalid"]; }
+      })), sels);
+      await ctx.close();
+    }
+  }
+  const hits = Object.entries(matches).flatMap(([k, v]) => Object.entries(v).filter(([, n]) => n !== 0).map(([s, n]) => `${k} ${s} → ${n}`));
+  results.checks["a added-selectors-match-nothing"] = { pass: hits.length === 0, selectors: sels, hits, matches };
+  console.log(`  added selectors matched on NEW pages (all 6 pages, 390 and 1440): ${hits.length ? hits.join("; ") : "none — every added rule is inert on these pages"}`);
 }
 
 /* ── b) anonymous HTML ─────────────────────────────────────────────────── */
 
-console.log("\nb) ANONYMOUS HTML, OLD vs NEW (normalised)");
+console.log("\nb) ANONYMOUS HTML, OLD vs NEW (build ids, chunk names, useIds normalised)");
 for (const p of ["/plany", "/", "/regulamin"]) {
   const o = await getHtml(OLD, p), n = await getHtml(NEW, p);
-  const no = normalise(o.html, OLD_BUILD), nn = normalise(n.html, NEW_BUILD);
-  const d = lineDiff(no, nn);
+  const c = compareHtml(o.html, OLD_BUILD, n.html, NEW_BUILD);
+  const rawUseIds = { old: new Set(o.html.match(/_R_[0-9A-Za-z]+_/g) ?? []).size, new: new Set(n.html.match(/_R_[0-9A-Za-z]+_/g) ?? []).size };
   results.checks[`b ${p}`] = {
-    pass: no === nn, status: { old: o.status, new: n.status }, bytes: { old: o.html.length, new: n.html.length },
-    onlyOld: d.onlyOld.slice(0, 40), onlyNew: d.onlyNew.slice(0, 40),
+    pass: c.markupIdentical && c.flightIdentical,
+    status: { old: o.status, new: n.status }, bytes: { old: o.html.length, new: n.html.length }, distinctUseIds: rawUseIds,
+    markupIdentical: c.markupIdentical, markup: c.markup, flightIdentical: c.flightIdentical, flight: c.flight,
   };
-  fs.writeFileSync(path.join(OUT, `html${p === "/" ? "-landing" : p.replace(/\//g, "-")}-old.norm.html`), no);
-  fs.writeFileSync(path.join(OUT, `html${p === "/" ? "-landing" : p.replace(/\//g, "-")}-new.norm.html`), nn);
-  console.log(`  ${p}: ${no === nn ? "IDENTICAL after normalisation" : `${d.onlyOld.length} line(s) only in OLD, ${d.onlyNew.length} only in NEW`} (${o.html.length} → ${n.html.length} bytes raw)`);
-  for (const l of d.onlyOld.slice(0, 6)) console.log(`    - ${l.slice(0, 220)}`);
-  for (const l of d.onlyNew.slice(0, 6)) console.log(`    + ${l.slice(0, 220)}`);
+  const stem = p === "/" ? "landing" : p.slice(1);
+  fs.writeFileSync(path.join(OUT, `html-${stem}-old.markup.html`), c.markupA);
+  fs.writeFileSync(path.join(OUT, `html-${stem}-new.markup.html`), c.markupB);
+  console.log(`  ${p}: markup ${c.markupIdentical ? "IDENTICAL" : "DIFFERS"}; flight ${c.flightIdentical ? "IDENTICAL" : `${c.flight.length} row(s) differ`} (${o.html.length} → ${n.html.length} bytes raw; ${rawUseIds.old}/${rawUseIds.new} distinct useIds)`);
+  printCompare(c);
 }
 
 /* ── c) forged editor cookies on NEW ───────────────────────────────────── */
@@ -771,23 +1084,26 @@ const fnv = (s) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h 
 for (const p of ["/plany", "/", "/regulamin"]) {
   const plain = await getHtml(NEW, p);
   const variants = {
-    "gb_ice=1 + gb_ice_e_deadbeef (wrong name)": `gb_ice=1; gb_ice_e_deadbeef=abcdefgh~${p}`,
-    "gb_ice=1 + gb_ice_e_<fnv(path)> (name passes the check)": `gb_ice=1; gb_ice_e_${fnv(p)}=abcdefgh~${p}`,
+    "gb_ice=1 + gb_ice_e_deadbeef=abcdefgh~path": `gb_ice=1; gb_ice_e_deadbeef=abcdefgh~${p}`,
+    "gb_ice=1 + gb_ice_e_<fnv(path)>=abcdefgh~path": `gb_ice=1; gb_ice_e_${fnv(p)}=abcdefgh~${p}`,
   };
   for (const [label, cookie] of Object.entries(variants)) {
     const forged = await getHtml(NEW, p, cookie);
     const h = forged.html;
     const launcher = h.includes("data-ice-launch");
     const markers = /\u2060[\u200c\u200d]/.test(h) || /\\u2060\\u200[cdCD]/.test(h);
+    const anyInvisible = (h.match(/[\u2060\u200c\u200d]/g) ?? []).length;
     const iceNs = /"ice":\{/.test(h) || /\\"ice\\":\{/.test(h);
-    const same = normalise(h, NEW_BUILD) === normalise(plain.html, NEW_BUILD);
-    const d = same ? null : lineDiff(normalise(plain.html, NEW_BUILD), normalise(h, NEW_BUILD));
+    const c = compareHtml(plain.html, NEW_BUILD, h, NEW_BUILD);
+    const markupDelta = [...c.markup.onlyOld.map((l) => `- ${l}`), ...c.markup.onlyNew.map((l) => `+ ${l}`)];
+    const onlySuspense = c.markup.onlyOld.length === 0 && c.markup.onlyNew.every((l) => l === "<!--$-->" || l === "<!--/$-->");
     results.checks[`c ${p} ${label}`] = {
-      pass: !launcher && !markers && !iceNs && same, status: forged.status, launcher, markers, iceNamespace: iceNs, sameAsWithout: same,
-      ...(d ? { onlyWithout: d.onlyOld.slice(0, 20), onlyWith: d.onlyNew.slice(0, 20) } : {}),
+      pass: forged.status === plain.status && !launcher && !markers && !iceNs && onlySuspense,
+      status: forged.status, launcher, markers, invisibleChars: anyInvisible, iceNamespace: iceNs,
+      markupIdentical: c.markupIdentical, markupDelta, flightIdentical: c.flightIdentical, flight: c.flight,
     };
-    console.log(`  ${p} [${label}]: launcher ${launcher ? "PRESENT" : "none"}, markers ${markers ? "PRESENT" : "none"}, "ice" ns ${iceNs ? "PRESENT" : "none"}, HTML ${same ? "same as without cookies" : "DIFFERS"}`);
-    if (d) { for (const l of d.onlyOld.slice(0, 6)) console.log(`    - ${l.slice(0, 220)}`); for (const l of d.onlyNew.slice(0, 6)) console.log(`    + ${l.slice(0, 220)}`); }
+    console.log(`  ${p} [${label}]: status ${forged.status}; launcher ${launcher ? "PRESENT" : "none"}; markers ${markers ? "PRESENT" : "none"} (${anyInvisible} U+2060/200C/200D chars); "ice" namespace ${iceNs ? "PRESENT" : "none"}; markup ${c.markupIdentical ? "identical" : `differs by ${markupDelta.join(" ")}`}; flight ${c.flightIdentical ? "identical" : `${c.flight.length} row(s) differ`}`);
+    if (!c.flightIdentical) printCompare({ markup: { onlyOld: [], onlyNew: [] }, flight: c.flight });
   }
 }
 
@@ -796,38 +1112,42 @@ for (const p of ["/plany", "/", "/regulamin"]) {
 console.log("\nd) NETWORK: JS/CSS REQUESTED BY A VISITOR, OLD vs NEW");
 const editorJs = staticFilesWith(NEW_DIR, "data-ice-target", ".js");
 const editorCss = staticFilesWith(NEW_DIR, "hoverLabel", ".css");
-const oldEditorJs = staticFilesWith(OLD_DIR, "data-ice-target", ".js");
-console.log(`  editor chunk(s) in NEW build (contain "data-ice-target"): ${editorJs.join(", ") || "none found"}`);
-console.log(`  editor CSS in NEW build (contain "hoverLabel"): ${editorCss.join(", ") || "none found"}`);
-console.log(`  (OLD build files with "data-ice-target": ${oldEditorJs.length})`);
-results.checks.editorFiles = { js: editorJs, css: editorCss, oldJsWithMarker: oldEditorJs };
+console.log(`  editor chunk(s) in the NEW build (contain "data-ice-target"): ${editorJs.join(", ") || "none found"}`);
+console.log(`  editor CSS in the NEW build (contains "hoverLabel"): ${editorCss.join(", ") || "none found"}`);
+console.log(`  OLD build files containing "data-ice-target": ${staticFilesWith(OLD_DIR, "data-ice-target", ".js").length}`);
+results.checks.editorFiles = { js: editorJs, css: editorCss };
 const editorPaths = new Set([...editorJs, ...editorCss].map((f) => "/_next/" + f));
-for (const p of ["/plany", "/"]) {
+for (const p of ["/plany", "/", "/regulamin"]) {
   const { o, n } = net[p];
   // A forged-cookie visit too: the cookies must not pull the editor in either.
   const forged = await assets(NEW, p, [{ name: "gb_ice", value: "1" }, { name: `gb_ice_e_${fnv(p)}`, value: `abcdefgh~${p}` }]);
-  const requestedEditor = [...n.list, ...forged.list].filter((x) => editorPaths.has(x.path) || (x.body && x.body.toString("utf8").includes("data-ice-target"))).map((x) => x.path);
-  const oldShas = new Set(o.list.map((x) => x.sha));
-  const oldByName = new Map(o.list.map((x) => [stripHash(x.path), x]));
-  const added = n.list.filter((x) => !oldShas.has(x.sha)).map((x) => {
-    const twin = oldByName.get(stripHash(x.path));
-    return { path: x.path, bytes: x.bytes, gzip: x.gzip, oldTwin: twin ? { path: twin.path, bytes: twin.bytes, gzip: twin.gzip } : null };
-  });
-  const newShas = new Set(n.list.map((x) => x.sha));
-  const removed = o.list.filter((x) => !newShas.has(x.sha)).map((x) => ({ path: x.path, bytes: x.bytes, gzip: x.gzip }));
+  const requestedEditor = [...n.list, ...forged.list]
+    .filter((x) => editorPaths.has(x.path) || (x.type === "js" && x.body && x.body.toString("utf8").includes("data-ice-target"))).map((x) => x.path);
   const total = (l, k) => l.reduce((s, x) => s + (x[k] ?? 0), 0);
+  const layout = (l) => l.find((x) => /\/chunks\/app\/layout-[0-9a-f]+\.js$/.test(x.path));
+  const lo = layout(o.list), ln = layout(n.list);
+  // Module accounting across every JS file of the visit.
+  const mods = (l) => { const m = new Map(); for (const x of l) if (x.type === "js" && x.body) for (const [id, body] of modulesOf(x.body.toString("utf8"))) m.set(id, { body, file: x.path }); return m; };
+  const MO = mods(o.list), MN = mods(n.list);
+  const addedMods = [...MN].filter(([id]) => !MO.has(id)).map(([id, v]) => ({ id, bytes: v.body.length, file: stripHash(v.file), tell: tellOf(v.body) }));
+  const removedMods = [...MO].filter(([id]) => !MN.has(id)).map(([id, v]) => ({ id, bytes: v.body.length, file: stripHash(v.file), tell: tellOf(v.body) }));
+  const resized = [...MN].filter(([id, v]) => MO.has(id) && MO.get(id).body.length !== v.body.length).map(([id, v]) => ({ id, from: MO.get(id).body.length, to: v.body.length, file: stripHash(v.file) }));
   results.checks[`d ${p}`] = {
-    pass: requestedEditor.length === 0,
-    requests: { old: o.list.length, new: n.list.length, forgedNew: forged.list.length },
-    totalBytes: { old: total(o.list, "bytes"), new: total(n.list, "bytes"), oldGzip: total(o.list, "gzip"), newGzip: total(n.list, "gzip") },
-    requestedEditor, added, removed,
+    pass: requestedEditor.length === 0 && forged.dom.iceLaunch === 0 && n.dom.iceLaunch === 0,
+    requests: { old: o.list.length, new: n.list.length, newWithForgedCookies: forged.list.length },
+    totals: { oldBytes: total(o.list, "bytes"), newBytes: total(n.list, "bytes"), oldGzip: total(o.list, "gzip"), newGzip: total(n.list, "gzip") },
+    layoutChunk: { old: lo && { path: lo.path, bytes: lo.bytes, gzip: lo.gzip }, new: ln && { path: ln.path, bytes: ln.bytes, gzip: ln.gzip } },
+    requestedEditor, modules: { added: addedMods, removed: removedMods, resized },
     dom: { new: n.dom, forged: forged.dom },
-    allOld: o.list.map((x) => `${x.path} ${x.bytes}`), allNew: n.list.map((x) => `${x.path} ${x.bytes}`),
+    files: { old: o.list.map((x) => `${stripHash(x.path)} ${x.bytes}`), new: n.list.map((x) => `${stripHash(x.path)} ${x.bytes}`) },
   };
-  console.log(`  ${p}: ${o.list.length} JS/CSS requests old, ${n.list.length} new (${forged.list.length} with forged cookies); editor requested: ${requestedEditor.length ? requestedEditor.join(",") : "never"}`);
-  console.log(`    total ${total(o.list, "bytes")} → ${total(n.list, "bytes")} B raw, ${total(o.list, "gzip")} → ${total(n.list, "gzip")} B gzip`);
-  for (const a of added) console.log(`    changed/added: ${a.path} ${a.bytes} B (gz ${a.gzip})${a.oldTwin ? ` ← was ${a.oldTwin.path} ${a.oldTwin.bytes} B (gz ${a.oldTwin.gzip}): ${a.bytes - a.oldTwin.bytes >= 0 ? "+" : ""}${a.bytes - a.oldTwin.bytes} B raw, ${a.gzip - a.oldTwin.gzip >= 0 ? "+" : ""}${a.gzip - a.oldTwin.gzip} B gz` : " (no OLD twin)"}`);
-  for (const r of removed) console.log(`    gone from OLD: ${r.path} ${r.bytes} B`);
+  const sameNames = JSON.stringify(o.list.map((x) => stripHash(x.path)).sort()) === JSON.stringify(n.list.map((x) => stripHash(x.path)).sort());
+  console.log(`  ${p}: ${o.list.length} JS/CSS requests old, ${n.list.length} new (${forged.list.length} with forged cookies), same files by name: ${sameNames}; editor requested: ${requestedEditor.length ? requestedEditor.join(",") : "never"}`);
+  console.log(`    all JS+CSS: ${total(o.list, "bytes")} → ${total(n.list, "bytes")} B (${total(n.list, "bytes") - total(o.list, "bytes") >= 0 ? "+" : ""}${total(n.list, "bytes") - total(o.list, "bytes")}), gzip ${total(o.list, "gzip")} → ${total(n.list, "gzip")} B (${total(n.list, "gzip") - total(o.list, "gzip") >= 0 ? "+" : ""}${total(n.list, "gzip") - total(o.list, "gzip")})`);
+  if (lo && ln) console.log(`    app/layout chunk: ${lo.bytes} → ${ln.bytes} B (+${ln.bytes - lo.bytes}), gzip ${lo.gzip} → ${ln.gzip} B (+${ln.gzip - lo.gzip})`);
+  for (const m of addedMods) console.log(`    module + ${m.id} ${m.bytes} B in ${m.file}: ${m.tell}`);
+  for (const m of removedMods) console.log(`    module - ${m.id} ${m.bytes} B in ${m.file}: ${m.tell}`);
+  for (const m of resized) console.log(`    module ~ ${m.id} ${m.from} → ${m.to} B in ${m.file}`);
   console.log(`    DOM (new): ${JSON.stringify(n.dom)}; with forged cookies: ${JSON.stringify(forged.dom)}`);
 }
 
@@ -846,12 +1166,13 @@ await browser.close();
 
 const strip = (o) => JSON.parse(JSON.stringify(o, (k, v) => (k === "body" ? undefined : v)));
 fs.writeFileSync(path.join(OUT, "results.json"), JSON.stringify(strip(results), null, 2));
-console.log("\nSUMMARY");
-console.log("page        width theme  result       %px      bbox                         noise(old/new px)");
+console.log("\nSUMMARY (counts in pixels; >Δ = channel difference above the tolerance)");
+console.log("page       width theme  verdict                       px        >Δ        bbox                       noise old/new px");
 for (const r of results.shots) {
-  const res = r.diff.count === 0 ? "identical" : "differs";
-  console.log(`${r.page.padEnd(11)} ${String(r.width).padEnd(5)} ${r.theme.padEnd(6)} ${res.padEnd(12)} ${r.diff.pct.toFixed(3).padStart(7)}  ${(r.diff.bbox ? `${r.diff.bbox.x},${r.diff.bbox.y} ${r.diff.bbox.w}×${r.diff.bbox.h}` : "-").padEnd(28)} ${r.noise.old ? `${r.noise.old.count}/${r.noise.new.count}` : "-"}`);
+  const b = r.diff.bbox ? `${r.diff.bbox.x},${r.diff.bbox.y} ${r.diff.bbox.w}×${r.diff.bbox.h}` : "-";
+  const nz = r.noise.old ? `${r.noise.old.count}/${r.noise.new.count}` : "-";
+  console.log(`${r.page.padEnd(10)} ${String(r.width).padEnd(5)} ${r.theme.padEnd(6)} ${r.verdict.padEnd(29)} ${String(r.diff.count).padStart(8)}  ${String(r.diff.tolCount).padStart(8)}  ${b.padEnd(26)} ${nz}`);
 }
 const failedChecks = Object.entries(results.checks).filter(([, v]) => v && v.pass === false).map(([k]) => k);
-console.log(`\nchecks: ${failedChecks.length === 0 ? "all pass" : "FAILED: " + failedChecks.join("; ")}`);
+console.log(`\nchecks: ${failedChecks.length === 0 ? "all pass" : "NOT PASSING: " + failedChecks.join("; ")}`);
 console.log(`results: ${path.join(OUT, "results.json")}`);
