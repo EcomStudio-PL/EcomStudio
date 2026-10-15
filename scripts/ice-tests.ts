@@ -1165,7 +1165,6 @@ async function sectionI() {
     ["crop with an unknown field", [write(T1, { crop: { x: 50, y: 50, zoom: 1, z: 1 } as unknown as IceSlotWrite["crop"] })], "crop"],
     ["crop `m` without a mobile file", [write(P1, { mediaType: "video", mediaId: VID, crop: { x: 1, y: 2, zoom: 1, m: { x: 3, y: 4, zoom: 1.5 } }, base: BASE_TS })], "crop"],
     ["crop `m` on a slot with no mobile file allowed", [write(T1, { crop: { x: 1, y: 2, zoom: 1, m: { x: 3, y: 4, zoom: 1.5 } } })], "crop"],
-    ["a mobile file on a slot without one", [write(T1, { mobileMediaId: IMG })], "no_mobile_here"],
     ["a poster on an image", [write(T1, { posterMediaId: POSTER })], "poster"],
     ["alt with '<'", [write(T1, { altI18n: { pl: "a<b" } })], "alt_markup"],
     ["alt with an invisible char", [write(T1, { altI18n: { en: "a\u200Bb" } })], "alt_invisible"],
@@ -1177,6 +1176,18 @@ async function sectionI() {
   for (const [what, writes, code] of SLOT_REFUSALS) {
     const x = await slotRun(writes);
     check(`I10 slotSave refuses ${what} → ${code}, no RPC`, refusedNoRpc(x, code), JSON.stringify(x.r).slice(0, 120));
+  }
+  {
+    // A slot the editor frames without a phone file keeps whatever phone file
+    // Admin → Media gave it; a phone file sent by the client is ignored.
+    const x = await slotRun([write(T1, { mobileMediaId: IMG, base: BASE_TS })], "save", (db) => {
+      (db.tables.media_slots as Row[]).push({ slot_key: T1, media_type: "image", media_id: IMG, tablet_media_id: null, mobile_media_id: POSTER, poster_media_id: null,
+        alt_text: null, alt_i18n: null, object_fit: "cover", object_position: "center center", crop: null, enabled: true, updated_at: BASE_TS });
+    });
+    const p = x.payload?.[0];
+    check("I10a a phone file sent for a slot without one is ignored; the stored one (Admin → Media's) is kept", x.r.ok && p?.mobile_media_id === POSTER, JSON.stringify(p));
+    const y = await slotRun([write(T1, { mobileMediaId: IMG })]);
+    check("I10a' … and with no stored row the slot gets none", y.r.ok && y.payload?.[0]?.mobile_media_id === null, JSON.stringify(y.payload?.[0]));
   }
   {
     const x = await slotRun([write(T1)], "delete" as "save");

@@ -50,9 +50,10 @@ export function draftOf(st: IceSlotState): Draft {
     media: st.media,
     mobile: st.mobile,
     poster: st.poster,
-    // A row written before per-language alts has only the single legacy alt,
-    // which is the Polish one (slotSave writes it so).
-    alt: { pl: st.altI18n.pl ?? st.alt ?? "", en: st.altI18n.en ?? "", de: st.altI18n.de ?? "" },
+    // The Polish alt is the single legacy alt_text whenever there is one: the
+    // editor writes both equal, and Admin → Media updates only alt_text — so
+    // when they differ, alt_text is the newer one.
+    alt: { pl: st.alt ?? st.altI18n.pl ?? "", en: st.altI18n.en ?? "", de: st.altI18n.de ?? "" },
     position: st.position,
     crop: st.crop ? plain(st.crop) : CENTER,
     cropM: st.crop?.m ? plain(st.crop.m) : CENTER,
@@ -138,8 +139,9 @@ export function readSnapshot(v: unknown): Snap | null {
       if (a) altI18n[l] = a;
     }
   }
+  // As in draftOf: the legacy alt_text is the Polish alt when present.
   const legacy = str(o.alt_text);
-  if (!altI18n.pl && legacy) altI18n.pl = legacy;
+  if (legacy) altI18n.pl = legacy;
   const main = cropValue(o.crop);
   const m = main ? cropValue((o.crop as Record<string, unknown>).m) : null;
   return {
@@ -280,10 +282,15 @@ export function useSlotWriter(ctx: EditorCtx, reload: () => Promise<void>, done:
       setProblem(errorText(t, bad.error));
       return;
     }
+    // "The last change" of a pair or a bulk is ONE write: every slot it
+    // changed got a history row with the same time (one transaction). A slot
+    // whose newest row is older was not part of it and is left as it is —
+    // rolling it back too would undo an earlier, unrelated change.
+    const newest = res.map((r) => (r.ok ? r.data[0] : undefined));
+    const last = newest.reduce<string | null>((m, v) => (v && (!m || v.createdAt > m) ? v.createdAt : m), null);
     const items = slots.flatMap((x, i) => {
-      const r = res[i];
-      const v = r.ok ? r.data[0] : undefined;
-      return v ? [{ ...x, snap: readSnapshot(v.before) }] : [];
+      const v = newest[i];
+      return v && v.createdAt === last ? [{ ...x, snap: readSnapshot(v.before) }] : [];
     });
     if (items.length === 0) {
       setBusy(false);

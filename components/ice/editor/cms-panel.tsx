@@ -79,6 +79,9 @@ export function CmsTextPanel({ ctx, target, onClose }: { ctx: EditorCtx; target:
   const preview = useMemo(() => livePreview(target.runs), [target]);
   const saved = useRef(false);
   const versions = useHistory(ctx, historyKey(ctx, field, tab));
+  // Chosen once: switching between <input> and <textarea> while typing would
+  // remount the control and lose the caret.
+  const [wide] = useState(() => field.multiline || Object.values(field.values).some((v) => (v ?? "").length > 120));
 
   useEffect(() => () => {
     if (!saved.current) preview.restore();
@@ -118,7 +121,13 @@ export function CmsTextPanel({ ctx, target, onClose }: { ctx: EditorCtx; target:
     onClose();
   };
 
-  const first = versions && versions.length ? versions[versions.length - 1] : null;
+  // The editor's history only knows the editor's own changes (a publish from
+  // Strony WWW writes none). "Undo" is offered only while the newest of them
+  // is still what the page shows; "original" only when the whole history is
+  // in hand (fewer rows than were asked for).
+  const latest = versions?.[0];
+  const undoTo = latest && valueOf(latest.after) === live ? valueOf(latest.before) : null;
+  const first = versions && versions.length && versions.length < 20 ? versions[versions.length - 1] : null;
   const original = first ? valueOf(first.before) : null;
 
   return (
@@ -131,8 +140,8 @@ export function CmsTextPanel({ ctx, target, onClose }: { ctx: EditorCtx; target:
           </Btn>
           <Btn onClick={() => { preview.restore(); onClose(); }}>{t("ice.cancel")}</Btn>
           <span className={s.grow} />
-          {versions && versions[0] && valueOf(versions[0].before) && (
-            <Btn kind="ghost" small disabled={busy} onClick={() => void write(valueOf(versions[0].before)!, "restore")}>{t("ice.text.undo")}</Btn>
+          {undoTo && (
+            <Btn kind="ghost" small disabled={busy} onClick={() => void write(undoTo, "restore")}>{t("ice.text.undo")}</Btn>
           )}
           {original && original !== live && (
             <Btn kind="ghost" small disabled={busy} onClick={() => void write(original, "restore")}>{t("ice.cms.original")}</Btn>
@@ -148,7 +157,7 @@ export function CmsTextPanel({ ctx, target, onClose }: { ctx: EditorCtx; target:
       </div>
       <label className={s.field}>
         <span className={s.label}>{t("ice.text.new")}</span>
-        {field.multiline || clean.length > 120 ? (
+        {wide ? (
           <textarea className={s.textarea} value={draft}
             onChange={(e) => setDrafts({ ...drafts, [tab]: field.multiline ? e.target.value : e.target.value.replace(/[\r\n]+/g, " ") })} />
         ) : (
@@ -237,7 +246,7 @@ export function CmsMediaPanel({ ctx, target, onClose }: { ctx: EditorCtx; target
             </Btn>
             <Btn onClick={onClose}>{t("ice.cancel")}</Btn>
             <span className={s.grow} />
-            {versions && versions[0] && valueOf(versions[0].before) && (
+            {versions && versions[0] && valueOf(versions[0].after) === (live || null) && valueOf(versions[0].before) && (
               <Btn kind="ghost" small disabled={busy} onClick={() => void write(valueOf(versions[0].before)!, "restore")}>{t("ice.media.restorePrev")}</Btn>
             )}
           </>

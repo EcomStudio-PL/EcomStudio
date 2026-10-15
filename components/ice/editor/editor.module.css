@@ -7,6 +7,8 @@
 .on :global([data-ice-target]) {
   outline: 1px dashed rgb(var(--accent) / 0.55);
   outline-offset: 2px;
+  /* Also what makes iOS Safari deliver a tap on a plain heading as a click. */
+  cursor: pointer;
 }
 
 .on :global([data-ice-target="media"]) {
@@ -1063,6 +1065,17 @@
 
   .barTitle {
     flex: 1 1 calc(100% - 24px);
+  }
+
+  /* Two rows on a phone: the page name, then the four buttons compact. */
+  .barTitle span {
+    display: none;
+  }
+
+  .bar .btn {
+    min-height: 30px;
+    padding: 4px 8px;
+    font-size: 12px;
   }
 }
 

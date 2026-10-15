@@ -64,8 +64,10 @@ set local lock_timeout = '3s';
 -- shared: what no edited text may contain ───────────────────────────────────
 -- Invisible and direction-changing characters (zero-width, joiners, bidi
 -- embeddings, isolates and the Arabic letter mark, word joiner, BOM, soft
--- hyphen, Unicode TAG characters), line/paragraph separators, C0/C1 controls
--- other than a newline, and markup brackets.
+-- hyphen, the combining grapheme joiner, Hangul and halfwidth fillers, Khmer
+-- inherent vowels, the Mongolian vowel separator, Unicode TAG characters),
+-- line/paragraph separators, C0/C1 controls other than a newline, and markup
+-- brackets.
 create or replace function public.content_text_ok(p text)
 returns boolean
 language sql
@@ -73,7 +75,7 @@ immutable
 set search_path = public
 as $$
   select p is not null
-    and p !~ '[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u00AD\u061C\u200B-\u200F\u2028-\u202E\u2060-\u2064\u2066-\u2069\uFEFF<>]'
+    and p !~ '[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180E\u200B-\u200F\u2028-\u202E\u2060-\u2064\u2066-\u2069\u3164\uFEFF\uFFA0<>]'
     and p !~ '[\U000E0000-\U000E007F]';
 $$;
 
@@ -488,7 +490,6 @@ declare
   v_idx int;
   v_snap jsonb;
   v_live text;
-  v_draft text;
   v_version int;
   v_now timestamptz := clock_timestamp();
 begin
@@ -518,8 +519,14 @@ begin
 
   v_live := v_page.published_snapshot -> v_idx -> 'content' #>> p_path;
   if v_live is distinct from p_expected then raise exception 'conflict'; end if;
-  v_draft := v_block.content #>> p_path;
-  if v_draft is distinct from v_live then raise exception 'draft_diverged'; end if;
+  -- The block's draft must hold exactly what is published. Any unpublished
+  -- change in this block — an edited text, items reordered, added or removed
+  -- — means a path may not name the same thing in both, and writing it into
+  -- the draft would mix the two: refused, to be published or discarded in
+  -- Strony WWW first.
+  if v_block.content is distinct from (v_page.published_snapshot -> v_idx -> 'content') then
+    raise exception 'draft_diverged';
+  end if;
   if p_value = coalesce(v_live, '') then raise exception 'noop'; end if;
 
   v_snap := jsonb_set(v_page.published_snapshot, array[v_idx::text, 'content'] || p_path, to_jsonb(p_value), true);

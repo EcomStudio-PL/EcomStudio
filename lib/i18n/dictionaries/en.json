@@ -8682,7 +8682,7 @@
     "saved": "Saved — the change is live on the page",
     "restored": "Previous version restored",
     "loading": "Loading…",
-    "blockedLink": "Links and forms are paused while editing. Finish editing to continue.",
+    "blockedLink": "While editing, the page's links, buttons and forms are paused (carousels and toggles still work). Finish editing to use them.",
     "locale": {
       "label": "Language",
       "pl": "Polish",

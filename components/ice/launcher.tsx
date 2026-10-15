@@ -68,7 +68,7 @@ export function IceLauncher({ sessions, supported }: { sessions: Session[]; supp
   if (session) {
     return (
       <Suspense fallback={null}>
-        <Editor session={session} path={path} />
+        <Editor key={path} session={session} path={path} />
       </Suspense>
     );
   }

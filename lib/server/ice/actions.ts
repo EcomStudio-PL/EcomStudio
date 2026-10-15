@@ -454,13 +454,12 @@ export function slotSave(input: { writes: IceSlotWrite[]; action: "save" | "rest
       if (!isObjectPosition(w.position)) throw new IceRefusal("position");
       const clear = input.action === "clear" || w.mediaId === null;
       const mediaId = clear ? null : w.mediaId;
-      const mobileId = clear ? null : w.mobileMediaId ?? null;
+      // A slot the editor frames without a phone file (a shared tool card)
+      // may still have one from Admin → Media: kept, like the tablet file.
+      const mobileId = clear ? null : spec.mobile ? w.mobileMediaId ?? null : current.get(w.key)?.mobile_media_id ?? null;
       const posterId = clear ? null : w.posterMediaId ?? null;
       if (mediaId !== null) checkAsset(assets.get(mediaId), mediaType, Boolean(spec.sample));
-      if (mobileId !== null) {
-        if (!spec.mobile) throw new IceRefusal("no_mobile_here");
-        checkAsset(assets.get(mobileId), mediaType, false);
-      }
+      if (mobileId !== null && spec.mobile) checkAsset(assets.get(mobileId), mediaType, false);
       if (posterId !== null) {
         if (mediaType !== "video") throw new IceRefusal("poster");
         checkAsset(assets.get(posterId), "image", false);

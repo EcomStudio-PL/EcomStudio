@@ -85,13 +85,15 @@ export function stegaStrip(text: string): string {
  * zero-width and joiner characters (U+200B–U+200F), bidi embeddings and
  * isolates and the Arabic letter mark (U+202A–U+202E, U+2066–U+2069,
  * U+061C), line and paragraph separators (U+2028, U+2029), the soft hyphen
- * (U+00AD), word joiner and invisible
+ * (U+00AD), the combining grapheme joiner (U+034F), Hangul and halfwidth
+ * fillers (U+115F, U+1160, U+3164, U+FFA0), Khmer inherent vowels (U+17B4,
+ * U+17B5), the Mongolian vowel separator (U+180E), word joiner and invisible
  * operators (U+2060–U+2064), the BOM, Unicode TAG characters, and C0/C1
  * controls other than a newline. Refused on every save, and dropped again
  * when an override is applied, whoever wrote it.
  */
 // eslint-disable-next-line no-control-regex
-const INVISIBLE = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u00AD\u061C\u200B-\u200F\u2028-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]|[\u{E0000}-\u{E007F}]/u;
+const INVISIBLE = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180E\u200B-\u200F\u2028-\u202E\u2060-\u2064\u2066-\u2069\u3164\uFEFF\uFFA0]|[\u{E0000}-\u{E007F}]/u;
 
 export function hasInvisible(text: string): boolean {
   return INVISIBLE.test(text);

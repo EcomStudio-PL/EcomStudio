@@ -1345,6 +1345,26 @@ select public.t_true(
   with u as (update public.cms_blocks set content = jsonb_set(content, '{title,pl}', '"Nowy"')
               where id = 'b0000000-0000-0000-0000-000000000001' returning 1)
   select count(*) = 1 from u $q$);
+-- The guard is the WHOLE block, not the one path: any unpublished change in
+-- the block (another field, items reordered) means a path may not name the
+-- same thing in the draft and the live copy.
+select public.t_true(
+  'D14b (an unrelated field of the same block changes in the draft, unpublished)',
+  'authenticated', $q$
+  with u as (update public.cms_blocks set content = content || '{"x_unpublished": {"pl": "Szkic"}}'::jsonb
+              where id = 'b0000000-0000-0000-0000-000000000001' returning 1)
+  select count(*) = 1 from u $q$);
+select public.t_raises(
+  'D14c … then even the untouched title is draft_diverged (the block has unpublished changes)',
+  'authenticated', $q$ select public.cms_inline_patch('b0000000-0000-0000-0000-000000000001',
+      array['title', 'pl'], 'Trzeci', 'Nowy', null, null, 'save') $q$,
+  'draft_diverged');
+select public.t_true(
+  'D14d (the unpublished change is discarded again)',
+  'authenticated', $q$
+  with u as (update public.cms_blocks set content = content - 'x_unpublished'
+              where id = 'b0000000-0000-0000-0000-000000000001' returning 1)
+  select count(*) = 1 from u $q$);
 select public.t_raises(
   'D15 a page that is not published (draft, old snapshot still on it) is not_published',
   'authenticated', $q$ select public.cms_inline_patch('b0000000-0000-0000-0000-000000000005',

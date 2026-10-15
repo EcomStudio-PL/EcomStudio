@@ -31,7 +31,6 @@ import type { IceElement, IcePage, IceSection, IceSlotSpec } from "./types";
 const SHORT = 60;   // a label, a button, a badge
 const TITLE = 120;  // a heading
 const LINE = 240;   // a one-line description
-const PARA = 900;   // an FAQ answer
 
 const text = (key: string, role: string, maxLength: number, index?: number): IceElement => ({
   id: key, kind: "text", role, text: { key, maxLength }, ...(index !== undefined ? { index } : {}),
@@ -111,7 +110,6 @@ function homePage(): IcePage {
         text("sellerHome.upload.opensTool", "hint", LINE),
         ...UPLOAD_TOOLS.map((u) => text(u.pillKey, "pill", SHORT)),
         text("sellerHome.samples", "caption", LINE),
-        text("sellerHome.samplesSoon", "caption", SHORT),
         ...UPLOAD_TOOLS.map((u): IceElement => ({
           id: `samples:${u.key}`, kind: "samples", role: `samples.${u.key}`,
           slots: u.samples.map((s) => homeSlot(s, { sample: true, video: false })),
@@ -229,9 +227,10 @@ function homePage(): IcePage {
 /* ── /plany (and /plan) ──────────────────────────────────────────────────── */
 
 const PLAN_TIERS = ["starter", "pro", "business"] as const;
-// Answers about refunds, payment methods and renewal are commercial promises:
-// they stay with whoever owns those terms, not the visual editor.
-const FAQ_EDITABLE = ["credits", "topups", "howMany", "change"] as const;
+// Only presentation copy. Everything that states what credits are, cost or
+// buy, how a subscription changes, or how payment works (the sub-headline,
+// the top-up section, every FAQ answer) is a commercial statement owned by
+// whoever owns those terms — never the visual editor.
 
 function plansPage(): IcePage {
   return {
@@ -239,7 +238,7 @@ function plansPage(): IcePage {
     path: "/plany",
     type: "public",
     sections: [
-      { key: "plansHero", elements: [text("pricing.title", "title", TITLE), text("pricing.sub", "sub", LINE)] },
+      { key: "plansHero", elements: [text("pricing.title", "title", TITLE)] },
       {
         key: "planCards",
         elements: PLAN_TIERS.flatMap((tier, i) => [
@@ -252,17 +251,7 @@ function plansPage(): IcePage {
         elements: ["highlights", "tools", "output", "team", "support"].map((g) => text(`pricing.group.${g}`, "groupTitle", SHORT)),
       },
       { key: "compare", elements: [text("pricing.compare.title", "title", TITLE)] },
-      { key: "topups", elements: [text("pricing.topups.title", "title", TITLE), text("pricing.topups.sub", "sub", LINE)] },
-      {
-        key: "faq",
-        elements: [
-          text("pricing.faq.overline", "overline", SHORT),
-          ...FAQ_EDITABLE.flatMap((q, i) => [
-            text(`pricing.faq.${q}.q`, "question", TITLE, i + 1),
-            text(`pricing.faq.${q}.a`, "answer", PARA, i + 1),
-          ]),
-        ],
-      },
+      { key: "faq", elements: [text("pricing.faq.overline", "overline", SHORT)] },
     ],
   };
 }
@@ -332,8 +321,12 @@ function toolPages(): IcePage[] {
     type: "tool",
     sections: [{
       key: "toolHeader",
+      // A photo tool's page title is its own key (photoTool.name.*), not the
+      // catalogue name the /tools card shows: editing it here would make the
+      // tool two names. The catalogue name stays the one place it is edited
+      // (on /tools); the page keeps its description.
       elements: photo.has(t.slug)
-        ? [text(`photoTool.name.${t.slug}`, "title", TITLE), text(`photoTool.body.${t.slug}`, "sub", LINE)]
+        ? [text(`photoTool.body.${t.slug}`, "sub", LINE)]
         : [text(`tools.${t.slug}.name`, "title", TITLE), text(`tools.${t.slug}.body`, "sub", LINE)],
     }],
   }));

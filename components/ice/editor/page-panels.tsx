@@ -96,7 +96,13 @@ export function PageHistoryPanel({ ctx, onOpen, onClose }: { ctx: EditorCtx; onO
   const cmsField = (key: string): IceCmsField | undefined => {
     if (info.kind !== "cms") return undefined;
     const [, blockId, path] = key.split(":");
-    return info.cms.fields.find((f) => f.blockId === blockId && path.startsWith(f.path.join(".")));
+    // Exact: the field's path, or the field's path plus a language. A prefix
+    // match would take hero.h1Accent for hero.h1.
+    return info.cms.fields.find((f) => {
+      if (f.blockId !== blockId) return false;
+      const own = f.path.join(".");
+      return path === own || ["pl", "en", "de"].some((l) => path === `${own}.${l}`);
+    });
   };
 
   const labelOf = (v: PageVersion) => {
@@ -179,7 +185,7 @@ export function BulkGroupsPanel({ ctx, onPick, onClose }: { ctx: EditorCtx; onPi
         {groups.map((g) => (
           <li key={g.key}>
             <button type="button" className={s.btn} style={{ width: "100%", justifyContent: "space-between" }} onClick={() => onPick(g.key)}>
-              <span>{t(`ice.bulk.group.${g.key.split(".")[0]}`)}{g.key.includes(".") ? ` · ${g.key.split(".")[1]}` : ""}</span>
+              <span>{t(`ice.bulk.group.${g.key.split(".")[0]}`)}{g.key.includes(".") ? ` · ${t(`ice.bulk.tool.${g.key.split(".")[1]}`)}` : ""}</span>
               <span className={s.chip}>{g.pairs ? t("ice.bulk.pairsCount", { n: g.slots.length / 2 }) : t("ice.bulk.slotsCount", { n: g.slots.length })}</span>
             </button>
           </li>

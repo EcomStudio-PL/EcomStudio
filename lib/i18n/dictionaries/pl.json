@@ -8682,7 +8682,7 @@
     "saved": "Zapisano — zmiana jest już widoczna na stronie",
     "restored": "Przywrócono poprzednią wersję",
     "loading": "Wczytywanie…",
-    "blockedLink": "W trybie edycji linki i formularze są wstrzymane. Zakończ edycję, aby przejść dalej.",
+    "blockedLink": "W trybie edycji linki, przyciski i formularze strony są wstrzymane (karuzele i przełączniki działają). Zakończ edycję, aby z nich skorzystać.",
     "locale": {
       "label": "Język",
       "pl": "Polski",

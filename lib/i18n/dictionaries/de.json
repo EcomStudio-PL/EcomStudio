@@ -8682,7 +8682,7 @@
     "saved": "Gespeichert — die Änderung ist auf der Seite sichtbar",
     "restored": "Vorherige Version wiederhergestellt",
     "loading": "Wird geladen…",
-    "blockedLink": "Links und Formulare sind im Bearbeitungsmodus pausiert. Beende die Bearbeitung, um fortzufahren.",
+    "blockedLink": "Im Bearbeitungsmodus sind Links, Schaltflächen und Formulare der Seite pausiert (Karussells und Umschalter funktionieren). Beende die Bearbeitung, um sie zu nutzen.",
     "locale": {
       "label": "Sprache",
       "pl": "Polnisch",

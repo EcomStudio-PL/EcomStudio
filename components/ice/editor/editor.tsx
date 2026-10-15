@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/provider";
 import { notify } from "@/lib/notify";
-import type { IceLocale, IcePageInfo, IceTransport } from "@/lib/ice/types";
+import type { IceLocale, IcePageInfo, IceResult, IceTransport } from "@/lib/ice/types";
 import { UI_ATTR, hitTest, scanPage, targetElements, unionBox, type Target } from "./scan";
 import { actionsTransport } from "./transport";
 import { Btn, call, cls, errorText, pageLabel, roleLabel, sectionLabel, type EditorCtx, type T } from "./shared";
@@ -42,6 +42,9 @@ function labelOf(t: T, info: IcePageInfo, target: Target): string {
   const section = sectionLabel(t, info, target.element.id);
   return section ? `${section} · ${roleLabel(t, target.element)}` : roleLabel(t, target.element);
 }
+
+/** Controls that only move the page's own view, kept working in edit mode. */
+const KEEP_WORKING = "[data-rail-prev], [data-rail-next], [role='tab'], [role='radio'], [aria-pressed], [aria-expanded], [aria-selected]";
 
 function detachedTarget(info: IcePageInfo, uid: string): Target | null {
   if (info.kind === "registry") {
@@ -157,16 +160,27 @@ export default function Editor({ session, path, transport = actionsTransport }: 
       chosen = fresh.find((x) => x.uid === target.uid) ?? target;
     }
     setOpen({ kind: "target", target: chosen });
-    // A phone: the panel is a bottom sheet — bring the element to the top of
-    // the screen so its live preview stays in view above the sheet.
-    if (window.matchMedia("(max-width: 1023.98px)").matches) {
-      const el = targetElements(chosen)[0];
-      if (el) {
-        const top = el.getBoundingClientRect().top;
-        window.scrollBy({ top: top - 76, behavior: "smooth" });
-      }
-    }
   }, [info, session.nonce]);
+
+  // A phone or tablet: the panel is a bottom sheet. While one is open the page
+  // gets room at its end (so even the last section can rise above the sheet),
+  // and the element being edited is brought just below the admin bar, where
+  // its live preview stays in view.
+  useEffect(() => {
+    if (open?.kind !== "target" || !window.matchMedia("(max-width: 1023.98px)").matches) return;
+    const body = document.body;
+    const before = body.style.paddingBottom;
+    body.style.paddingBottom = "80dvh";
+    const id = requestAnimationFrame(() => {
+      const el = targetElements(open.target)[0];
+      const bar = document.querySelector(`.${s.bar}`)?.getBoundingClientRect().bottom ?? 0;
+      if (el) window.scrollBy({ top: el.getBoundingClientRect().top - bar - 12, behavior: "smooth" });
+    });
+    return () => {
+      cancelAnimationFrame(id);
+      body.style.paddingBottom = before;
+    };
+  }, [open]);
 
   const select = useCallback((target: Target) => {
     setHover(null);
@@ -256,9 +270,31 @@ export default function Editor({ session, path, transport = actionsTransport }: 
         return;
       }
       const el = e.target instanceof Element ? e.target : null;
-      if (el?.closest("a[href], [role='link']")) {
+      const hold = () => {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
+      };
+      // An icon or the padding inside an outlined element: that element.
+      const marked = el?.closest("[data-ice-target]");
+      const owner = marked ? targetsRef.current.find((x) => targetElements(x).includes(marked)) : undefined;
+      if (owner) {
+        hold();
+        select(owner);
+        return;
+      }
+      // Nothing the page does runs while editing: links, and every control
+      // that might navigate or act in code (router.push, a server action) are
+      // held. What only moves the page's own view keeps working — carousel
+      // arrows, tabs, toggles and pills — so every element can be reached.
+      if (el?.closest("a[href], [role='link']")) {
+        hold();
+        warnLink();
+        return;
+      }
+      const control = el?.closest("button, [role='button'], input, select, label, summary");
+      if (control && !control.closest(KEEP_WORKING)) {
+        hold();
         warnLink();
       }
     };
@@ -288,8 +324,27 @@ export default function Editor({ session, path, transport = actionsTransport }: 
     };
   }, [info, select, t]);
 
+  // Every successful write is followed by a fresh render of the page. The
+  // render that comes back with a server action's answer is made without the
+  // edit markers (a server action never gets them — what it builds may be
+  // stored or sent), so without this every text would stop being clickable
+  // after the first save.
+  const tx = useMemo<IceTransport>(() => {
+    const after = <R,>(p: Promise<IceResult<R>>): Promise<IceResult<R>> =>
+      p.then((r) => {
+        if (r.ok) router.refresh();
+        return r;
+      });
+    return {
+      ...transport,
+      textSave: (input) => after(transport.textSave(input)),
+      slotSave: (input) => after(transport.slotSave(input)),
+      cmsSave: (input) => after(transport.cmsSave(input)),
+    };
+  }, [router, transport]);
+
   const ctx: EditorCtx | null = useMemo(() => info && ({
-    transport,
+    transport: tx,
     path,
     locale: locale as IceLocale,
     info,
@@ -299,7 +354,7 @@ export default function Editor({ session, path, transport = actionsTransport }: 
       await loadInfo();
     },
     openBulk: (group: string) => setOpen({ kind: "bulk", group }),
-  }), [info, loadInfo, locale, path, t, transport]);
+  }), [info, loadInfo, locale, path, t, tx]);
 
   const leave = async () => {
     setLeaving(true);

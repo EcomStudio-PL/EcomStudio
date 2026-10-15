@@ -70,16 +70,24 @@ export function Sheet({ title, crumbs, onClose, children, footer, wide, t }: {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  // Focus the panel's first text field once, when it opens (else its first
-  // control) — never again while the admin is typing.
+  // Focus: the dialog itself as it opens (a keyboard user is inside it at
+  // once), then its first text field as soon as one appears (most panels
+  // load their state first) — once, and only while focus is still on the
+  // dialog itself, never taken from where the admin is typing.
+  const fieldFocused = useRef(false);
+  useEffect(() => {
+    ref.current?.focus({ preventScroll: true });
+  }, []);
   useEffect(() => {
     const root = ref.current;
-    const first = root?.querySelector<HTMLElement>("input:not([type=range]):not([type=file]), textarea")
-      ?? root?.querySelector<HTMLElement>("button:not([data-close])");
-    first?.focus({ preventScroll: true });
-  }, []);
+    if (fieldFocused.current || !root) return;
+    const field = root.querySelector<HTMLElement>("input:not([type=range]):not([type=file]):not(:disabled), textarea:not(:disabled)");
+    if (!field) return;
+    fieldFocused.current = true;
+    if (document.activeElement === root || document.activeElement === document.body) field.focus({ preventScroll: true });
+  });
   return (
-    <div ref={ref} className={wide ? s.sheetWide : s.sheet} role="dialog" aria-label={title} {...{ [UI_ATTR]: "" }}>
+    <div ref={ref} tabIndex={-1} className={wide ? s.sheetWide : s.sheet} role="dialog" aria-label={title} {...{ [UI_ATTR]: "" }}>
       <div className={s.sheetHead}>
         <div style={{ minWidth: 0 }}>
           <h2>{title}</h2>
