@@ -1,3 +1,4 @@
+import { MARK_START } from "@/lib/ice/stega";
 import type { TextRun } from "./scan";
 
 /**
@@ -9,7 +10,11 @@ import type { TextRun } from "./scan";
  * back — on cancel, or when the panel closes without a save. After a save the
  * page re-renders and React writes the saved text over the node anyway.
  */
-export function livePreview(runs: TextRun[]) {
+export function livePreview(all: TextRun[]) {
+  // Only runs that still end exactly at their marker: a run measured on an
+  // older text (the page changed since it was found) is left alone rather
+  // than spliced at the wrong place — which could cut into the marker.
+  const runs = all.filter((r) => r.node.isConnected && r.node.data.startsWith(MARK_START, r.end));
   const original = new Map<Text, string>();
   for (const r of runs) if (!original.has(r.node)) original.set(r.node, r.node.data);
   const shown = new Map<Text, string>();

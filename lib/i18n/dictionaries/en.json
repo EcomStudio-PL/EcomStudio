@@ -9122,7 +9122,9 @@
         "leftBottom": "Bottom left",
         "centerBottom": "Bottom centre",
         "rightBottom": "Bottom right"
-      }
+      },
+      "x": "Horizontal",
+      "y": "Vertical"
     },
     "pair": {
       "title": "Edit comparison",

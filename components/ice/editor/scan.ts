@@ -164,15 +164,48 @@ export function targetElements(t: Target): Element[] {
   return t.els;
 }
 
+/** The fixed or sticky box an element sits in (a dock, a top bar), if any.
+ *  `seen` memoises the walk for one hit test. */
+function pinnedBox(el: Element, seen: Map<Element, Element | null>): Element | null {
+  const path: Element[] = [];
+  let found: Element | null = null;
+  for (let cur: Element | null = el; cur && cur !== document.body; cur = cur.parentElement) {
+    if (seen.has(cur)) {
+      found = seen.get(cur) ?? null;
+      break;
+    }
+    path.push(cur);
+    const pos = getComputedStyle(cur).position;
+    if (pos === "fixed" || pos === "sticky") {
+      found = cur;
+      break;
+    }
+  }
+  for (const p of path) seen.set(p, found);
+  return found;
+}
+
 /**
  * What the pointer is on. Texts before pictures: walk the elements under the
  * point from the top; a text whose run is under the point wins, else the
  * first media frame in that stack. A text under something that takes no
  * pointer events (an overlay with pointer-events: none) is found by its
  * rects as a last resort.
+ *
+ * WHAT IS ON TOP DECIDES WHICH LAYER COUNTS. When the topmost element is
+ * part of a fixed or sticky bar (the phone dock, a sticky header), only
+ * elements of that bar are considered — a tap on the dock never opens the
+ * heading scrolled underneath it. When the top is page content, the bars are
+ * left out instead; a transparent link stretched over a card still lets the
+ * card's own texts through.
  */
 export function hitTest(targets: Target[], x: number, y: number): { target: Target; rects: DOMRect[] } | null {
-  const stack = document.elementsFromPoint(x, y).filter((el) => !el.closest(`[${UI_ATTR}]`)).slice(0, 16);
+  const all = document.elementsFromPoint(x, y).filter((el) => !el.closest(`[${UI_ATTR}]`)).slice(0, 16);
+  if (all.length === 0) return null;
+  const seen = new Map<Element, Element | null>();
+  const topBox = pinnedBox(all[0], seen);
+  const allowed = (el: Element) => (topBox ? topBox.contains(el) : pinnedBox(el, seen) === null);
+  const stack = all.filter(allowed);
   const textByParent = new Map<Element, Target[]>();
   const mediaByEl = new Map<Element, Target>();
   for (const t of targets) {
@@ -192,9 +225,22 @@ export function hitTest(targets: Target[], x: number, y: number): { target: Targ
       }
     }
   }
+  // The pointer on the outlined box of a text (its padding, the empty end of
+  // a full-width heading) — only when that box is what is directly under the
+  // pointer and it carries exactly one editable text, so a button or a link
+  // inside a larger box is never taken over this way.
+  const direct = stack[0] === all[0] ? textByParent.get(all[0]) : undefined;
+  if (direct && direct.length === 1) {
+    const t = direct[0];
+    if (t.kind === "text" || t.kind === "cms") {
+      const run = t.runs.find((r) => r.node.parentElement === all[0]);
+      if (run) return { target: t, rects: [all[0].getBoundingClientRect()] };
+    }
+  }
   for (const t of targets) {
     if (t.kind !== "text" && t.kind !== "cms") continue;
     for (const run of t.runs) {
+      if (!run.node.parentElement || !allowed(run.node.parentElement)) continue;
       const rects = runRects(run);
       if (rects.some((r) => inside(r, x, y, 0))) return { target: t, rects };
     }

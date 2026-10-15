@@ -19,7 +19,7 @@
 
 .hover {
   position: fixed;
-  z-index: 2147482990;
+  z-index: 999999980;
   pointer-events: none;
   border: 2px solid rgb(var(--accent));
   border-radius: 6px;
@@ -51,7 +51,7 @@
 
 .bar {
   position: fixed;
-  z-index: 2147483000;
+  z-index: 999999990;
   top: calc(8px + env(safe-area-inset-top));
   left: 50%;
   transform: translateX(-50%);
@@ -104,7 +104,7 @@
 
 .sheet {
   position: fixed;
-  z-index: 2147483001;
+  z-index: 999999991;
   display: flex;
   flex-direction: column;
   background: rgb(var(--surface));
@@ -316,7 +316,7 @@
   background: rgb(var(--bg));
   color: rgb(var(--ink));
   padding: 9px 11px;
-  font: 400 15px/1.45 var(--font-body);
+  font: 400 16px/1.45 var(--font-body);
 }
 
 .textarea {
@@ -531,7 +531,7 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  z-index: 2147483002;
+  z-index: 999999992;
   background: rgb(0 0 0 / 0.5);
   display: grid;
   place-items: center;
@@ -1040,4 +1040,40 @@
 .pairHead {
   margin: 0;
   font: 650 13px/1.3 var(--font-display);
+}
+
+/* ── fixes from the browser probe ──────────────────────────────────────── */
+
+/* The app's toaster (sonner) sits at z-index 999999999: the editor's own
+   layers stay just below it, so an error toast is never hidden under a
+   panel. */
+
+/* A phone: the bar spans the width and wraps its buttons under the title,
+   so "Zakończ edycję" is always on screen. */
+@media (max-width: 639px) {
+  .bar {
+    left: 8px;
+    right: 8px;
+    transform: none;
+    max-width: none;
+    flex-wrap: wrap;
+    row-gap: 6px;
+    justify-content: flex-end;
+  }
+
+  .barTitle {
+    flex: 1 1 calc(100% - 24px);
+  }
+}
+
+/* One finger on a crop frame scrolls the sheet (the frame is half the
+   screen); the sliders below it move the frame on a touch screen. */
+.cropFrame {
+  touch-action: pan-y pinch-zoom;
+}
+
+/* The empty-frame note stays legible over the checkerboard in both themes. */
+.frameEmpty {
+  background: rgb(var(--surface) / 0.72);
+  color: rgb(var(--ink));
 }

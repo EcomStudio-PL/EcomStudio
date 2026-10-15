@@ -46,6 +46,13 @@ function localProblem(value: string, multiline: boolean): string | null {
   return null;
 }
 
+/** The field as the page definition holds it NOW: after a save or a
+ *  conflict the editor reloads the definition, and the panel must compare
+ *  against that fresh value and base — never the one it was opened with. */
+function liveField(ctx: EditorCtx, opened: IceCmsField): IceCmsField {
+  return (ctx.info.kind === "cms" ? ctx.info.cms.fields.find((f) => f.id === opened.id) : undefined) ?? opened;
+}
+
 function useHistory(ctx: EditorCtx, key: string) {
   const [versions, setVersions] = useState<IceVersion[] | null>(null);
   useEffect(() => {
@@ -63,7 +70,7 @@ function useHistory(ctx: EditorCtx, key: string) {
 
 export function CmsTextPanel({ ctx, target, onClose }: { ctx: EditorCtx; target: CmsText; onClose: () => void }) {
   const { t, transport } = ctx;
-  const field = target.field;
+  const field = liveField(ctx, target.field);
   const [tab, setTab] = useState<IceLocale>(ctx.locale);
   const [drafts, setDrafts] = useState<Partial<Record<IceLocale, string>>>(() => ({ ...field.values }));
   const [error, setError] = useState<string | null>(null);
@@ -184,7 +191,7 @@ export function CmsTextPanel({ ctx, target, onClose }: { ctx: EditorCtx; target:
 
 export function CmsMediaPanel({ ctx, target, onClose }: { ctx: EditorCtx; target: CmsMedia; onClose: () => void }) {
   const { t, transport } = ctx;
-  const field = target.field;
+  const field = liveField(ctx, target.field);
   const [picked, setPicked] = useState<IceAsset | null>(null);
   const [library, setLibrary] = useState(false);
   const [busy, setBusy] = useState(false);

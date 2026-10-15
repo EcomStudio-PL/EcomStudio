@@ -9122,7 +9122,9 @@
         "leftBottom": "Lewy dolny róg",
         "centerBottom": "Środek u dołu",
         "rightBottom": "Prawy dolny róg"
-      }
+      },
+      "x": "Poziomo",
+      "y": "Pionowo"
     },
     "pair": {
       "title": "Edytuj porównanie",

@@ -58,15 +58,26 @@ export function Sheet({ title, crumbs, onClose, children, footer, wide, t }: {
   title: string; crumbs?: string; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean; t: T;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  // The latest onClose, read by a listener that is installed ONCE: callers
+  // pass an inline function, and re-running a focus effect on every render
+  // pulled the caret out of the field after the first keystroke.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !document.querySelector(`.${s.backdrop}`)) onClose();
+      if (e.key === "Escape" && !document.querySelector(`.${s.backdrop}`)) closeRef.current();
     };
     window.addEventListener("keydown", onKey);
-    const first = ref.current?.querySelector<HTMLElement>("input, textarea, button:not([data-close])");
-    first?.focus({ preventScroll: true });
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, []);
+  // Focus the panel's first text field once, when it opens (else its first
+  // control) — never again while the admin is typing.
+  useEffect(() => {
+    const root = ref.current;
+    const first = root?.querySelector<HTMLElement>("input:not([type=range]):not([type=file]), textarea")
+      ?? root?.querySelector<HTMLElement>("button:not([data-close])");
+    first?.focus({ preventScroll: true });
+  }, []);
   return (
     <div ref={ref} className={wide ? s.sheetWide : s.sheet} role="dialog" aria-label={title} {...{ [UI_ATTR]: "" }}>
       <div className={s.sheetHead}>

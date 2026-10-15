@@ -146,10 +146,39 @@ export default function Editor({ session, path, transport = actionsTransport }: 
     return () => els.forEach((el) => el.removeAttribute("data-ice-selected"));
   }, [open]);
 
+  const openTarget = useCallback((target: Target) => {
+    // Re-read the page NOW: the scan after a change is debounced, and a panel
+    // opened from a stale scan would measure text that has moved since (a
+    // preview just restored, a re-render after a save).
+    let chosen = target;
+    if (info) {
+      const fresh = scanPage(info, session.nonce);
+      setTargets(fresh);
+      chosen = fresh.find((x) => x.uid === target.uid) ?? target;
+    }
+    setOpen({ kind: "target", target: chosen });
+    // A phone: the panel is a bottom sheet — bring the element to the top of
+    // the screen so its live preview stays in view above the sheet.
+    if (window.matchMedia("(max-width: 1023.98px)").matches) {
+      const el = targetElements(chosen)[0];
+      if (el) {
+        const top = el.getBoundingClientRect().top;
+        window.scrollBy({ top: top - 76, behavior: "smooth" });
+      }
+    }
+  }, [info, session.nonce]);
+
   const select = useCallback((target: Target) => {
     setHover(null);
-    setOpen({ kind: "target", target });
-  }, []);
+    // Another panel is open: close it first (it puts its preview back), and
+    // only then measure the page for the new one.
+    if (openRef.current?.kind === "target") {
+      setOpen(null);
+      window.setTimeout(() => openTarget(target), 0);
+      return;
+    }
+    openTarget(target);
+  }, [openTarget]);
 
   // From the list (or the history): the element on the page if it is
   // painted, else a target with nothing on the page — every panel works from

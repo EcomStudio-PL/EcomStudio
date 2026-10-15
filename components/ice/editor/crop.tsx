@@ -92,6 +92,8 @@ export function CropEditor({ asset, crop, onChange, ratio, fit = "cover", t, max
   const [natural, setNatural] = useState<{ id: string; w: number; h: number } | null>(null);
   const hintId = useId();
   const zoomId = useId();
+  const xId = useId();
+  const yId = useId();
   const cap = clamp(Math.max(maxZoom, crop.zoom), 1, MAX_ZOOM);
   const size = natural?.id === asset.id ? natural
     : asset.width && asset.height ? { id: asset.id, w: asset.width, h: asset.height } : null;
@@ -100,6 +102,9 @@ export function CropEditor({ asset, crop, onChange, ratio, fit = "cover", t, max
 
   const down = (e: PointerEvent<HTMLDivElement>) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
+    // A finger scrolls the sheet (the frame fills half a phone screen); the
+    // sliders below move the frame on a touch screen.
+    if (e.pointerType === "touch") return;
     e.currentTarget.setPointerCapture(e.pointerId);
     e.currentTarget.focus({ preventScroll: true });
     drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, from: crop };
@@ -162,6 +167,14 @@ export function CropEditor({ asset, crop, onChange, ratio, fit = "cover", t, max
         <button type="button" className={cls(s.btn, s.small)} disabled={isCenter(crop)} onClick={() => onChange(CENTER)}>
           {t("ice.crop.center")}
         </button>
+      </div>
+      <div className={s.cropTools}>
+        <label className={s.label} htmlFor={xId}>{t("ice.crop.x")}</label>
+        <input id={xId} type="range" className={s.zoomRange} min={0} max={100} step={1} value={crop.x}
+          aria-valuetext={`${Math.round(crop.x)}%`} onChange={(e) => emit({ ...crop, x: Number(e.target.value) })} />
+        <label className={s.label} htmlFor={yId}>{t("ice.crop.y")}</label>
+        <input id={yId} type="range" className={s.zoomRange} min={0} max={100} step={1} value={crop.y}
+          aria-valuetext={`${Math.round(crop.y)}%`} onChange={(e) => emit({ ...crop, y: Number(e.target.value) })} />
       </div>
       {cap <= 1 && <p className={s.meta}>{t("ice.crop.noZoom")}</p>}
     </div>
