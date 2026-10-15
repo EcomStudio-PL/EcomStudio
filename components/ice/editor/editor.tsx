@@ -44,7 +44,13 @@ function labelOf(t: T, info: IcePageInfo, target: Target): string {
 }
 
 /** Controls that only move the page's own view, kept working in edit mode. */
-const KEEP_WORKING = "[data-rail-prev], [data-rail-next], [role='tab'], [role='radio'], [aria-pressed], [aria-expanded], [aria-selected]";
+const KEEP_WORKING = [
+  "[data-rail-prev]", "[data-rail-next]", "[role='tab']", "[role='radio']", "[aria-pressed]", "[aria-expanded]",
+  "[aria-selected]", "summary",
+  // The page's own open overlays (a phone menu, a dialog): what opened them
+  // keeps working, so what closes them must too. Their links stay held.
+  "[role='dialog']", "[aria-modal='true']", "[role='menu']", "[role='listbox']",
+].join(", ");
 
 function detachedTarget(info: IcePageInfo, uid: string): Target | null {
   if (info.kind === "registry") {
@@ -184,6 +190,8 @@ export default function Editor({ session, path, transport = actionsTransport }: 
 
   const select = useCallback((target: Target) => {
     setHover(null);
+    // The element already open: keep its panel (and the unsaved draft).
+    if (openRef.current?.kind === "target" && openRef.current.target.uid === target.uid) return;
     // Another panel is open: close it first (it puts its preview back), and
     // only then measure the page for the new one.
     if (openRef.current?.kind === "target") {
@@ -229,7 +237,10 @@ export default function Editor({ session, path, transport = actionsTransport }: 
     if (!info) return;
     let frame = 0;
     let lastWarn = 0;
-    const ui = (e: Event) => (e.target instanceof Element ? Boolean(e.target.closest(`[${UI_ATTR}]`)) : false);
+    // The editor's own UI, and the app's toaster (its close button is not the
+    // page's): never held, never hit-tested.
+    const ui = (e: Event) => (e.target instanceof Element ? Boolean(e.target.closest(`[${UI_ATTR}], [data-sonner-toaster]`)) : false);
+    const keep = (e: Event) => (e.target instanceof Element ? e.target.closest(KEEP_WORKING) !== null : false);
     const warnLink = () => {
       if (Date.now() - lastWarn < 2500) return;
       lastWarn = Date.now();
@@ -253,7 +264,7 @@ export default function Editor({ session, path, transport = actionsTransport }: 
       if (ui(e)) return;
       const p = "touches" in e ? e.touches[0] : e;
       if (!p) return;
-      if (hitTest(targetsRef.current, p.clientX, p.clientY)) {
+      if (hitTest(targetsRef.current, p.clientX, p.clientY, { exactTextOnly: keep(e) })) {
         e.stopPropagation();
         // A slider would start dragging, a text would start a selection.
         if (e.type === "mousedown" || (e.type === "pointerdown" && (e as PointerEvent).pointerType === "mouse")) e.preventDefault();
@@ -261,7 +272,9 @@ export default function Editor({ session, path, transport = actionsTransport }: 
     };
     const onClick = (e: MouseEvent) => {
       if (ui(e)) return;
-      const hit = e.detail === 0 && e.clientX === 0 && e.clientY === 0 ? null : hitTest(targetsRef.current, e.clientX, e.clientY);
+      const kept = keep(e);
+      const hit = e.detail === 0 && e.clientX === 0 && e.clientY === 0 ? null
+        : hitTest(targetsRef.current, e.clientX, e.clientY, { exactTextOnly: kept });
       if (hit) {
         e.preventDefault();
         e.stopPropagation();
@@ -275,6 +288,8 @@ export default function Editor({ session, path, transport = actionsTransport }: 
         e.stopPropagation();
         e.stopImmediatePropagation();
       };
+      // A control that only moves the page's view: let it work.
+      if (kept && !el?.closest("a[href], [role='link']")) return;
       // An icon or the padding inside an outlined element: that element.
       const marked = el?.closest("[data-ice-target]");
       const owner = marked ? targetsRef.current.find((x) => targetElements(x).includes(marked)) : undefined;
@@ -292,8 +307,8 @@ export default function Editor({ session, path, transport = actionsTransport }: 
         warnLink();
         return;
       }
-      const control = el?.closest("button, [role='button'], input, select, label, summary");
-      if (control && !control.closest(KEEP_WORKING)) {
+      const control = el?.closest("button, [role='button'], input, select, label");
+      if (control) {
         hold();
         warnLink();
       }
@@ -340,6 +355,9 @@ export default function Editor({ session, path, transport = actionsTransport }: 
       textSave: (input) => after(transport.textSave(input)),
       slotSave: (input) => after(transport.slotSave(input)),
       cmsSave: (input) => after(transport.cmsSave(input)),
+      // Registering an upload revalidates too (the library screen), and any
+      // revalidation re-renders this page inside the action — unmarked.
+      registerUpload: (input) => after(transport.registerUpload(input)),
     };
   }, [router, transport]);
 

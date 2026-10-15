@@ -1186,6 +1186,16 @@ async function sectionI() {
     });
     const p = x.payload?.[0];
     check("I10a a phone file sent for a slot without one is ignored; the stored one (Admin → Media's) is kept", x.r.ok && p?.mobile_media_id === POSTER, JSON.stringify(p));
+    const z = await slotRun([write(T1, { mediaId: NEWIMG, mobileMediaId: IMG, base: BASE_TS })], "save", (db) => {
+      (db.tables.media_slots as Row[]).push({ slot_key: T1, media_type: "image", media_id: IMG, tablet_media_id: TABLET, mobile_media_id: POSTER, poster_media_id: null,
+        alt_text: null, alt_i18n: null, object_fit: "cover", object_position: "center center", crop: null, enabled: true, updated_at: BASE_TS });
+    });
+    check("I10a2 a NEW main file drops the old phone and tablet files (made for the old picture)",
+      z.r.ok && z.payload?.[0]?.mobile_media_id === null && z.payload?.[0]?.tablet_media_id === null, JSON.stringify(z.payload?.[0]));
+    const rs = await slotRun([write(T1, { mobileMediaId: POSTER })], "restore");
+    check("I10a3 a restore puts back the snapshot's own phone file, checked like any file", rs.r.ok && rs.payload?.[0]?.mobile_media_id === POSTER, JSON.stringify(rs.payload?.[0]));
+    const rbad = await slotRun([write(T1, { mobileMediaId: VID })], "restore");
+    check("I10a4 … and refuses a snapshot phone file of the wrong kind", !rbad.r.ok && rbad.r.error === "asset_kind", JSON.stringify(rbad.r));
     const y = await slotRun([write(T1, { mobileMediaId: IMG })]);
     check("I10a' … and with no stored row the slot gets none", y.r.ok && y.payload?.[0]?.mobile_media_id === null, JSON.stringify(y.payload?.[0]));
   }
@@ -1203,8 +1213,10 @@ async function sectionI() {
     const p = x.payload?.[0];
     check("I11 the media_slots_write payload: entity_type/entity_id/slot_name from the registry, never the client",
       x.r.ok && p?.entity_type === "global" && p?.entity_id === "sellerHome" && p?.slot_name === "promo.1" && p?.key === P1, JSON.stringify(p));
-    check("I11b … keeps the existing tablet_media_id, alt_text = the Polish alt, alt_i18n without empties",
-      p?.tablet_media_id === TABLET && p?.alt_text === "Opis banera" && same(p?.alt_i18n, { pl: "Opis banera", en: "Banner" }));
+    check("I11b … a new main file drops the old tablet file (made for the old picture); alt_text = the Polish alt, alt_i18n without empties",
+      p?.tablet_media_id === null && p?.alt_text === "Opis banera" && same(p?.alt_i18n, { pl: "Opis banera", en: "Banner" }));
+    const keepT = await slotRun([write(P1, { mediaId: IMG, base: BASE_TS, crop: { x: 20, y: 20, zoom: 1 } })]);
+    check("I11b' … the same main file (a frame edit) keeps the tablet file", keepT.r.ok && keepT.payload?.[0]?.tablet_media_id === TABLET, JSON.stringify(keepT.payload?.[0]));
     check("I11c … video + mobile + poster + rounded crop with m + fit/position + base, p_action save",
       p?.media_type === "video" && p?.media_id === VID && p?.mobile_media_id === VIDM && p?.poster_media_id === POSTER
       && same(p?.crop, { x: 10.12, y: 20, zoom: 1.235, m: { x: 30, y: 40, zoom: 2 } }) && p?.object_fit === "contain" && p?.object_position === "left top"

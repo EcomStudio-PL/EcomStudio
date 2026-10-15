@@ -60,9 +60,9 @@ function frameOf(crop: IceCrop | undefined, position: string): Frame {
 
 /** The alt text in the viewer's language, else the slot's, else the page's. */
 export function slotAlt(slot: ResolvedSlot, locale: string, fallback?: string): string {
-  // Polish: the legacy alt first — Admin → Media updates only that one, so it
-  // is the newer whenever the two differ (the editor writes them equal).
-  if (locale === "pl") return slot.alt || slot.altI18n?.pl || fallback || "";
+  // Polish: alt_text is the authority — the editor writes it equal to the
+  // Polish alt, and Admin → Media writes (or clears) only that one.
+  if (locale === "pl") return slot.alt || fallback || "";
   return slot.altI18n?.[locale as IceLocale] || slot.alt || fallback || "";
 }
 

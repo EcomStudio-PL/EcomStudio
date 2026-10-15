@@ -53,7 +53,9 @@ export function draftOf(st: IceSlotState): Draft {
     // The Polish alt is the single legacy alt_text whenever there is one: the
     // editor writes both equal, and Admin → Media updates only alt_text — so
     // when they differ, alt_text is the newer one.
-    alt: { pl: st.alt ?? st.altI18n.pl ?? "", en: st.altI18n.en ?? "", de: st.altI18n.de ?? "" },
+    // For an existing row alt_text is the Polish alt even when empty (Admin →
+    // Media clearing it must not bring the editor's old one back).
+    alt: { pl: st.exists ? st.alt ?? "" : st.altI18n.pl ?? "", en: st.altI18n.en ?? "", de: st.altI18n.de ?? "" },
     position: st.position,
     crop: st.crop ? plain(st.crop) : CENTER,
     cropM: st.crop?.m ? plain(st.crop.m) : CENTER,
@@ -139,9 +141,10 @@ export function readSnapshot(v: unknown): Snap | null {
       if (a) altI18n[l] = a;
     }
   }
-  // As in draftOf: the legacy alt_text is the Polish alt when present.
+  // As in draftOf: alt_text is the Polish alt (an empty one included).
   const legacy = str(o.alt_text);
   if (legacy) altI18n.pl = legacy;
+  else delete altI18n.pl;
   const main = cropValue(o.crop);
   const m = main ? cropValue((o.crop as Record<string, unknown>).m) : null;
   return {
@@ -162,7 +165,10 @@ export function readSnapshot(v: unknown): Snap | null {
 export function snapshotWrite(spec: IceSlotSpec, snap: Snap | null, st: IceSlotState): IceSlotWrite {
   const mediaId = snap?.mediaId ?? null;
   const video = mediaId !== null && snap?.mediaType === "video";
-  const mobile = mediaId && spec.mobile ? snap?.mobileId ?? null : null;
+  // The snapshot's own phone file, also for a slot the editor frames without
+  // one (a tool card's file from Admin → Media); its crop.m only where the
+  // editor frames phone files.
+  const mobile = mediaId ? snap?.mobileId ?? null : null;
   const altI18n = { ...(snap?.altI18n ?? {}) };
   const c = snap?.crop ?? null;
   return {
@@ -176,7 +182,7 @@ export function snapshotWrite(spec: IceSlotSpec, snap: Snap | null, st: IceSlotS
     fit: snap?.fit ?? st.fit,
     position: isPosition(snap?.position) ? snap.position : st.position,
     // crop.m is only accepted together with a phone file.
-    crop: !mediaId || spec.positionOnly || !c ? null : mobile ? c : plain(c),
+    crop: !mediaId || spec.positionOnly || !c ? null : mobile && spec.mobile ? c : plain(c),
     base: st.updatedAt,
   };
 }

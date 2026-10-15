@@ -199,7 +199,13 @@ function pinnedBox(el: Element, seen: Map<Element, Element | null>): Element | n
  * left out instead; a transparent link stretched over a card still lets the
  * card's own texts through.
  */
-export function hitTest(targets: Target[], x: number, y: number): { target: Target; rects: DOMRect[] } | null {
+export function hitTest(
+  targets: Target[], x: number, y: number,
+  /** Inside a control that keeps working (an arrow, a pill, a tab): only a
+   *  press exactly on an editable text counts — the rest of the control does
+   *  its own job, and nothing under it is taken. */
+  opts: { exactTextOnly?: boolean } = {},
+): { target: Target; rects: DOMRect[] } | null {
   const all = document.elementsFromPoint(x, y).filter((el) => !el.closest(`[${UI_ATTR}]`)).slice(0, 16);
   if (all.length === 0) return null;
   const seen = new Map<Element, Element | null>();
@@ -229,6 +235,7 @@ export function hitTest(targets: Target[], x: number, y: number): { target: Targ
   // a full-width heading) — only when that box is what is directly under the
   // pointer and it carries exactly one editable text, so a button or a link
   // inside a larger box is never taken over this way.
+  if (opts.exactTextOnly) return null;
   const direct = stack[0] === all[0] ? textByParent.get(all[0]) : undefined;
   if (direct && direct.length === 1) {
     const t = direct[0];

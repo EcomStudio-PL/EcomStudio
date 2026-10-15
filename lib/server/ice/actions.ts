@@ -455,11 +455,18 @@ export function slotSave(input: { writes: IceSlotWrite[]; action: "save" | "rest
       const clear = input.action === "clear" || w.mediaId === null;
       const mediaId = clear ? null : w.mediaId;
       // A slot the editor frames without a phone file (a shared tool card)
-      // may still have one from Admin → Media: kept, like the tablet file.
-      const mobileId = clear ? null : spec.mobile ? w.mobileMediaId ?? null : current.get(w.key)?.mobile_media_id ?? null;
+      // may still have one from Admin → Media, and a tablet file: both are
+      // kept while the main file stays the same (a frame or alt edit) —
+      // they were made for THAT picture — and dropped with it. A restore
+      // puts back the snapshot's own phone file.
+      const cur = current.get(w.key);
+      const sameMain = Boolean(cur) && cur?.media_id === mediaId;
+      const mobileId = clear ? null
+        : spec.mobile || input.action === "restore" ? w.mobileMediaId ?? null
+        : sameMain ? cur?.mobile_media_id ?? null : null;
       const posterId = clear ? null : w.posterMediaId ?? null;
       if (mediaId !== null) checkAsset(assets.get(mediaId), mediaType, Boolean(spec.sample));
-      if (mobileId !== null && spec.mobile) checkAsset(assets.get(mobileId), mediaType, false);
+      if (mobileId !== null && (spec.mobile || input.action === "restore")) checkAsset(assets.get(mobileId), mediaType, false);
       if (posterId !== null) {
         if (mediaType !== "video") throw new IceRefusal("poster");
         checkAsset(assets.get(posterId), "image", false);
@@ -480,8 +487,8 @@ export function slotSave(input: { writes: IceSlotWrite[]; action: "save" | "rest
         slot_name: spec.slotName,
         media_type: mediaType,
         media_id: mediaId,
-        // The tablet file is managed in Admin → Media; the editor keeps it.
-        tablet_media_id: clear ? null : current.get(w.key)?.tablet_media_id ?? null,
+        // The tablet file is managed in Admin → Media; kept with its picture.
+        tablet_media_id: clear || !sameMain ? null : cur?.tablet_media_id ?? null,
         mobile_media_id: mobileId,
         poster_media_id: posterId,
         // The single alt the shared renderers read: the Polish one.

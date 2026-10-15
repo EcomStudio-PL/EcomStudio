@@ -823,6 +823,24 @@ async function swipe(ctx, page, x, y, dy) {
   await cdp.detach();
 }
 
+/** What covers the page (a failed press): big fixed/absolute layers and the
+ *  element chain at a point. */
+const coverReport = (page, x, y) => page.evaluate(({ x, y }) => {
+  const name = (c) => c.tagName.toLowerCase() + (c.id ? "#" + c.id : "") + (c.className && typeof c.className === "string" ? "." + c.className.split(" ")[0].slice(0, 30) : "")
+    + ["data-ice-ui", "data-sonner-toaster", "data-sonner-toast", "data-dock"].filter((a) => c.hasAttribute(a)).map((a) => `[${a}]`).join("");
+  const at = document.elementFromPoint(x ?? innerWidth / 2, y ?? innerHeight / 2);
+  const chain = [];
+  for (let c = at; c && chain.length < 6; c = c.parentElement) chain.push(name(c));
+  const big = [...document.querySelectorAll("body *")].filter((e) => {
+    const st = getComputedStyle(e);
+    if (st.position !== "fixed" && st.position !== "absolute") return false;
+    if (st.display === "none" || st.visibility === "hidden" || st.pointerEvents === "none") return false;
+    const r = e.getBoundingClientRect();
+    return r.width * r.height > innerWidth * innerHeight * 0.3 && r.bottom > 0 && r.top < innerHeight;
+  }).slice(0, 6).map((e) => { const r = e.getBoundingClientRect(); return `${name(e)} [${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}×${Math.round(r.height)}] z=${getComputedStyle(e).zIndex} op=${getComputedStyle(e).opacity}`; });
+  return { at: chain.join(" < "), big };
+}, { x, y });
+
 async function shot(page, combo, name) {
   if (!SHOTS) return;
   await page.screenshot({ path: `${SHOTS}/${combo}-${name}.png` }).catch(() => {});
@@ -910,6 +928,14 @@ const rawText = (page, selector) => page.evaluate((sel) => document.querySelecto
 const visText = async (page, selector) => (await rawText(page, selector))?.replace(ZW, "") ?? null;
 
 async function press(page, vp, p) {
+  // A toast over the point would take the press: move the (emulated) mouse
+  // off the toaster — a hovered stack stays expanded with its timers paused —
+  // and let it go first. How high the stack reaches is check 8's business.
+  await page.mouse.move(1, Math.round(vp.height / 2)).catch(() => {});
+  await page.waitForFunction(({ x, y }) => {
+    const e = document.elementFromPoint(x, y);
+    return !e || !e.closest("[data-sonner-toaster]");
+  }, { x: p.x, y: p.y }, { timeout: 9000 }).catch(() => {});
   if (vp.touch) await page.touchscreen.tap(p.x, p.y);
   else await page.mouse.click(p.x, p.y);
 }
@@ -971,12 +997,19 @@ async function newPage(vp, theme) {
   // `next dev` paints its tools bubble bottom-left above everything, over the
   // phone sheet's first footer button; production has none.
   await ctx.addInitScript(() => {
+    // On <html> (a refresh re-renders <head>), and put back if removed.
     const hide = () => {
+      if (document.getElementById("probe-hide-next-dev")) return;
       const st = document.createElement("style");
-      st.textContent = "nextjs-portal{display:none!important}";
-      document.head.appendChild(st);
+      st.id = "probe-hide-next-dev";
+      st.textContent = "nextjs-portal{display:none!important;pointer-events:none!important}";
+      document.documentElement.appendChild(st);
     };
-    if (document.head) hide(); else document.addEventListener("DOMContentLoaded", hide);
+    const arm = () => {
+      hide();
+      new MutationObserver(hide).observe(document.documentElement, { childList: true });
+    };
+    if (document.documentElement) arm(); else document.addEventListener("DOMContentLoaded", arm);
   });
   const page = await ctx.newPage();
   return { ctx, page };
@@ -1001,7 +1034,10 @@ async function runHome(vp, theme) {
 
   const step = async (id, fn) => {
     note(combo, id);
-    try { await fn(); } catch (e) { check(combo, id, "step threw", false, String(e?.message ?? e).split("\n")[0]); await shot(page, combo, `err-${id}`); }
+    try { await fn(); } catch (e) {
+      check(combo, id, "step threw", false, `${String(e?.message ?? e).split("\n")[0]} | cover: ${JSON.stringify(await coverReport(page).catch(() => null))}`);
+      await shot(page, combo, `err-${id}`);
+    }
     await closeAll(page);
     await page.waitForTimeout(SETTLE);
   };
@@ -1233,6 +1269,24 @@ async function runHome(vp, theme) {
     tt = await toastOnTop(page, "biblioteka.gif");
     check(combo, 4, "an upload error toast shows ABOVE the library modal", tt.toast && tt.onTop, tt);
     await shot(page, combo, "04-toast-over-library");
+    // The toast's own × must still close it in edit mode (it is app chrome,
+    // not a page control).
+    const nToasts = await page.locator("[data-sonner-toast]").count();
+    const closeBtn = page.locator("[data-sonner-toast] button[data-close-button]").first();
+    // Mouse only: a touch on the toaster expands the stack and pauses its
+    // timers (sonner's mouseenter), and it then stays over a phone's panel.
+    if (!vp.touch && await closeBtn.count()) {
+      const cb = await closeBtn.boundingBox();
+      await press(page, vp, { x: cb.x + cb.width / 2, y: cb.y + cb.height / 2 });
+      await page.waitForTimeout(800);
+      const after = await page.locator("[data-sonner-toast]").count();
+      const held = await page.locator("[data-sonner-toast]", { hasText: "są wstrzymane" }).count();
+      check(combo, 8, "a toast's × closes it in edit mode (not held as a page control)", after < nToasts && held === 0, { before: nToasts, after, heldToasts: held });
+    }
+    // Toasts sit over the lower part of a phone's panels: let them go before
+    // pressing what they cover (a hovered toaster pauses them: move away).
+    await page.mouse.move(1, Math.round(vp.height / 2));
+    await page.waitForFunction(() => document.querySelectorAll("[data-sonner-toast]").length === 0, null, { timeout: 15000 }).catch(() => {});
     await lib.getByRole("button", { name: /hero-dino\.webp/ }).first().click();
     await page.waitForTimeout(200);
     await shot(page, combo, "04-library");
@@ -1494,6 +1548,11 @@ async function runHome(vp, theme) {
     const toastsAfter = await page.locator("[data-sonner-toast]", { hasText: "są wstrzymane" }).count();
     check(combo, 8, "a plain page button is held (its handler does not run)", (await page.locator("#p-plain-count").textContent()) === p0 && page.url() === url);
     check(combo, 8, "…with the „są wstrzymane” toast", toastsAfter > toastsBefore || toastsAfter > 0, { toastsBefore, toastsAfter });
+    const stack = await page.evaluate(() => {
+      const ts = [...document.querySelectorAll("[data-sonner-toast]")].map((t) => t.getBoundingClientRect()).filter((r) => r.height > 0 && r.bottom > 0);
+      return { toasts: ts.length, top: ts.length ? Math.round(Math.min(...ts.map((r) => r.top))) : null, frontHeight: ts.length ? Math.round(ts[0].height) : null, vh: innerHeight };
+    });
+    check(combo, 8, "held-control toasts stay in the bottom quarter of the screen", stack.top === null || stack.top >= stack.vh * 0.75, stack);
     // View controls keep working.
     const n0 = await page.locator("#p-count").textContent();
     await press(page, vp, await boxPoint(page, "#p-next"));
@@ -1584,11 +1643,21 @@ async function runHome(vp, theme) {
     const g = await textPoint(page, "#p-soon-title");
     const inOutline = { x: Math.min(g.box.right - 12, g.text.right + 60), y: g.text.top + g.text.height / 2 };
     if (inOutline.x > g.text.right + 4) {
+      const topAtPress = await page.evaluate(({ x, y }) => {
+        const e = document.elementFromPoint(x, y);
+        return e ? `${e.tagName.toLowerCase()}${e.id ? "#" + e.id : ""}` : null;
+      }, inOutline);
       await press(page, vp, inOutline);
       await page.waitForTimeout(300);
+      const textAfter = await page.evaluate(() => {
+        const r = document.createRange();
+        r.selectNodeContents(document.querySelector("#p-soon-title").firstChild);
+        const q = r.getClientRects()[0];
+        return { top: Math.round(q.top), scrollY: Math.round(scrollY), pad: document.body.style.paddingBottom };
+      });
       const opened = await sheet(page).count() ? await sheet(page).getAttribute("aria-label") : null;
       check(combo, 8, "a press inside a heading's dashed outline (beside the words) opens it", opened === "Tytuł",
-        { opened, outline: g.box, text: g.text, pressedAt: inOutline });
+        { opened, topAtPress, textAfter, pressedAt: inOutline, textBefore: Math.round(g.text.top), cover: await coverReport(page, inOutline.x, inOutline.y) });
       await closeAll(page);
     }
   });
