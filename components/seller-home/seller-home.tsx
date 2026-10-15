@@ -62,6 +62,10 @@ export function SellerHomeView({ data, t, locale }: {
   locale: string;
 }) {
   const defaultTool = defaultUploadTool(data.channel, data.uploadTools);
+  // The section slots an admin filled in the visual editor, with the
+  // language their alt text is read in. Nothing filled → undefined, and every
+  // section renders exactly what it rendered before the editor existed.
+  const home = data.homeSlots ? { slots: data.homeSlots, locale } : undefined;
 
   return (
     <div data-seller-home
@@ -70,20 +74,20 @@ export function SellerHomeView({ data, t, locale }: {
 
       <ToolCarousel data={data} t={t} />
       <UploadTile tools={data.uploadTools} defaultTool={defaultTool} balance={data.balance} pro={data.pro} />
-      <BeforeAfterRow items={data.items} t={t} />
+      <BeforeAfterRow items={data.items} t={t} home={home} />
 
       {/* An admin-scheduled campaign for this placement, when there is one —
           in the banner zone, never above the carousel. */}
       {data.banners.length > 0 && (
         <div className="relative"><DashboardBanner banners={data.banners} slots={data.slots} locale={locale} /></div>
       )}
-      <PromoBanner def={PROMO_BANNERS.first} items={data.items} t={t} />
-      <Showcase items={data.items} t={t} />
-      <PromoBanner def={PROMO_BANNERS.second} items={data.items} t={t} />
-      <ThumbnailsSection items={data.items} t={t} />
-      <SessionsSection items={data.items} t={t} />
+      <PromoBanner def={PROMO_BANNERS.first} items={data.items} t={t} home={home} />
+      <Showcase items={data.items} t={t} home={home} />
+      <PromoBanner def={PROMO_BANNERS.second} items={data.items} t={t} home={home} />
+      <ThumbnailsSection items={data.items} t={t} home={home} />
+      <SessionsSection items={data.items} t={t} home={home} />
       <FeaturedTools data={data} t={t} />
-      <PromoBanner def={PROMO_BANNERS.third} items={data.items} t={t} />
+      <PromoBanner def={PROMO_BANNERS.third} items={data.items} t={t} home={home} />
       <ComingSoon keys={data.soon} saved={data.interests} />
 
       <SellerChannelModal ask={data.askChannel} />

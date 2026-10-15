@@ -226,8 +226,10 @@ export type BeforeAfterDef = {
   media: MediaPair;
 };
 
-/** 4:5 portrait — a product photo, not a banner. */
-export const BEFORE_AFTER_SIZE = PORTRAIT_4_5;
+/** 1:1 square, 1080×1080 — a product photo as a marketplace shows it, not a
+ *  banner. Every before/after frame, its empty-state size hint and the
+ *  editor's recommended file size (lib/ice/registry.ts) derive from this. */
+export const BEFORE_AFTER_SIZE = SQUARE;
 
 const ba = (n: number, item: string, name: string, industry: Industry): BeforeAfterDef => ({
   key: `ba${n}`, item, nameKey: toolName(name), industry,

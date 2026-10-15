@@ -60,6 +60,11 @@ const SLOT: ResolvedSlot = {
   tablet: "https://example.supabase.co/storage/v1/object/public/media/a-t.webp",
   mobile: "https://example.supabase.co/storage/v1/object/public/media/a-m.webp",
   poster: "https://example.supabase.co/storage/v1/object/public/media/a-p.webp",
+  // The visual editor's fields (0141): plain numbers, strings and records,
+  // so they must come back from a cache hit exactly as they went in.
+  crop: { x: 30, y: 40, zoom: 1.5, m: { x: 60, y: 45, zoom: 2 } },
+  altI18n: { pl: "Kubek", en: "Mug" },
+  mobileVariants: { "640": "https://example.supabase.co/storage/v1/object/public/media/a-m-640.webp" },
 };
 
 // THE MAP IS THE BUG. Kept as a live demonstration so the reason this file
@@ -87,6 +92,7 @@ const back = rebuilt.get(SLOT.key)!;
 for (const field of [
   "key", "mediaType", "alt", "fit", "position", "autoplay", "muted", "loop",
   "controls", "desktop", "desktopWidth", "desktopHeight", "tablet", "mobile", "poster",
+  "crop", "altI18n", "mobileVariants",
 ] as const) {
   check(`…${field} survives`, JSON.stringify(back[field]) === JSON.stringify(SLOT[field]),
     `${JSON.stringify(back[field])} vs ${JSON.stringify(SLOT[field])}`);

@@ -1,5 +1,6 @@
 import { CATEGORIES, offeredWorkflows } from "./categories";
 import { TOOL_CARDS, isVideoCard } from "./tool-cards";
+import { ICE_LOCALES, type IceCrop, type IceLocale } from "./ice/types";
 
 /**
  * EVERY PLACE IN GROVBASE WHERE AN ADMIN MAY PUT A PICTURE.
@@ -349,3 +350,39 @@ export const isObjectPosition = (v: unknown): v is ObjectPosition =>
 export type SlotMediaType = "image" | "video";
 export const isSlotMediaType = (v: unknown): v is SlotMediaType =>
   v === "image" || v === "video";
+
+/* ── THE VISUAL EDITOR'S FRAME AND ALT TEXT (0141) ───────────────────────
+ *
+ * Read back from `media_slots.crop` / `.alt_i18n` by the slot reader. The
+ * database CHECKs (media_crop_ok, media_alt_i18n_ok) already hold the shape;
+ * both are checked again here because a crop becomes CSS (object-position,
+ * a transform) and a value that is not a finite number in range must never
+ * reach a style attribute.
+ */
+
+/** A crop, or undefined. A bad phone frame drops only `m`; a bad main frame
+ *  drops the whole crop (the slot then paints with its position alone). */
+export function slotCrop(value: unknown): (IceCrop & { m?: IceCrop }) | undefined {
+  const one = (v: unknown): IceCrop | null => {
+    if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+    const { x, y, zoom } = v as Record<string, unknown>;
+    const within = (n: unknown, lo: number, hi: number): n is number =>
+      typeof n === "number" && Number.isFinite(n) && n >= lo && n <= hi;
+    return within(x, 0, 100) && within(y, 0, 100) && within(zoom, 1, 2.5) ? { x, y, zoom } : null;
+  };
+  const main = one(value);
+  if (!main) return undefined;
+  const m = one((value as Record<string, unknown>).m);
+  return m ? { ...main, m } : main;
+}
+
+/** `{ pl, en, de }` → its non-blank strings; nothing usable → undefined. */
+export function slotAltI18n(value: unknown): Partial<Record<IceLocale, string>> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const out: Partial<Record<IceLocale, string>> = {};
+  for (const locale of ICE_LOCALES) {
+    const text = (value as Record<string, unknown>)[locale];
+    if (typeof text === "string" && text.trim() !== "") out[locale] = text;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}

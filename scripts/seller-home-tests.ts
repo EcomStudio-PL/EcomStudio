@@ -21,8 +21,8 @@ import { execFileSync } from "node:child_process";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
-  BANNER_FRAME, BEFORE_AFTER, CAROUSEL, CHANNEL_DEFAULT_TOOL, DEFAULT_UPLOAD_TOOL, FEATURED, HANDOFF_ROUTES, INDUSTRIES,
-  INTEREST_KEYS, PROMO_BANNERS, SECTION_COPY, SELLER_CHANNELS, SESSIONS, SHIPPED_TOOL_PHOTO, SHOWCASE, THUMBNAILS,
+  BANNER_FRAME, BEFORE_AFTER, BEFORE_AFTER_SIZE, CAROUSEL, CHANNEL_DEFAULT_TOOL, DEFAULT_UPLOAD_TOOL, FEATURED, HANDOFF_ROUTES, INDUSTRIES,
+  INTEREST_KEYS, PORTRAIT_4_5, PROMO_BANNERS, SECTION_COPY, SELLER_CHANNELS, SESSIONS, SHIPPED_TOOL_PHOTO, SHOWCASE, SQUARE, THUMBNAILS,
   TOOL_TILE, UPLOAD_LEAD_DEFAULT, UPLOAD_TOOLS, assetList, isInterestKey, isSellerChannel, ratioOf,
   type MediaSrc,
 } from "@/lib/seller-home-config";
@@ -38,10 +38,17 @@ import { PHOTO_THUMB_RATIO } from "@/components/tools/tool-thumb";
 import { EmptyArt, MediaSlot } from "@/components/seller-home/media-slot";
 import { BeforeAfter } from "@/components/seller-home/before-after";
 import { GalleryCta, StatusBadge, ToolLink, TryLink } from "@/components/seller-home/parts";
-import { PromoBanner, SessionsSection, ThumbnailsSection } from "@/components/seller-home/sections";
+import { BeforeAfterRow, PromoBanner, SessionsSection, Showcase, ThumbnailsSection } from "@/components/seller-home/sections";
+import type { HomeSlots } from "@/components/seller-home/ice-slot-image";
 import { ToolCarousel } from "@/components/seller-home/tool-carousel";
 import { findCategory } from "@/lib/categories";
-import type { SlotMap } from "@/lib/server/media-slots";
+import { allElements, cardSlotKey, icePageFor } from "@/lib/ice/registry";
+import { slotAltI18n, slotCrop } from "@/lib/media-slots";
+import { SUPABASE_URL } from "@/lib/supabase/config";
+import {
+  HOME_SECTION_SLOT_KEYS, SAMPLE_MAX_WIDTH, SLOT_READ_CAP, filledHomeSlots, sampleSource, sellerHomeSlotKeys, withSampleSlots,
+} from "@/lib/server/seller-home-slots";
+import type { ResolvedSlot, SlotMap } from "@/lib/server/media-slots";
 import type { Client } from "@/lib/services/workspace";
 
 async function main() {
@@ -72,6 +79,7 @@ const LIVE: Record<string, ItemState> = {
 const SH_FILES = [
   "seller-home.tsx", "tool-carousel.tsx", "upload-tile.tsx", "sections.tsx", "rail.tsx", "loop-rail.tsx", "parts.tsx",
   "coming-soon.tsx", "seller-modal.tsx", "no-credits-modal.tsx", "media-slot.tsx", "before-after.tsx", "task-store.ts",
+  "ice-slot-image.tsx",
 ];
 const SH = SH_FILES.map((f) => code(`components/seller-home/${f}`)).join("\n");
 const body = code("components/seller-home/seller-home.tsx");
@@ -334,9 +342,14 @@ check("…`fit: \"contain\"` shows the whole file instead of cropping it", /obje
 check("MediaSlot reuses the existing SlotMedia / SlotVideo — no second media system",
   /from "@\/components\/media\/slot-media"/.test(code("components/seller-home/media-slot.tsx"))
   && /from "@\/components\/media\/slot-video"/.test(code("components/seller-home/media-slot.tsx")));
+// Fixture changed by the inline-editor task: PRZED/PO became 1:1, so the
+// frame and hint handed to the slider here follow BEFORE_AFTER_SIZE
+// (1080×1080) instead of the old literal 4:5 (1080/1350). Nothing asserted
+// below reads them — the checks are about the range and the pointer.
 const ba = html(createElement(BeforeAfter, {
-  pair: BEFORE_AFTER[0].media, ratio: "1080/1350", sizes: "1px",
-  labels: { before: "Przed", after: "Po", slider: "Porównanie", emptyBefore: "Zdjęcie przed", emptyAfter: "Efekt po", hint: "1080×1350 px" },
+  pair: BEFORE_AFTER[0].media, ratio: ratioOf(BEFORE_AFTER_SIZE), sizes: "1px",
+  labels: { before: "Przed", after: "Po", slider: "Porównanie", emptyBefore: "Zdjęcie przed", emptyAfter: "Efekt po",
+    hint: `${BEFORE_AFTER_SIZE.width}×${BEFORE_AFTER_SIZE.height} px` },
 }));
 check("before/after: a labelled native range for the keyboard and screen readers",
   /type="range"/.test(ba) && /aria-label="Porównanie"/.test(ba) && /aria-valuetext="50%"/.test(ba));
@@ -505,10 +518,22 @@ check("…the last row melts into the page — a mask (the real background in ei
     /id="seller-thumbs-title"[^>]*>sellerHome\.thumbs\.title</.test(thumbs) && />sellerHome\.thumbs\.sub</.test(thumbs) && /sellerHome\.thumbs\.try/.test(thumbs)
     && /absolute inset-x-0 bottom-\[5%\] z-\[1\] flex justify-center[^>]*>[\s\S]*sellerHome\.thumbs\.cta/.test(thumbs));
 }
-check("no other slot changed format: every slot outside Miniaturki is byte-for-byte the last release's (key, kind, size)",
-  createHash("sha256").update(JSON.stringify(assetList().filter((r) => !r.section.startsWith("7 "))
-    .map((r) => [r.section, r.media.configKey, r.media.kind, r.media.width, r.media.height]))).digest("hex")
-    === "cfb689940af98baa584c3234ef80c7fa1d5bdec89dc4661aba02901956eb68ca");
+// Re-scoped by the inline-editor task: PRZED/PO became 1:1 (BEFORE_AFTER_SIZE
+// = SQUARE, 1080×1080) — the one intended format change. The pin itself is
+// KEPT: undo exactly that (the twelve "3 Przed / po" rows back at the old
+// 1080×1350) and the list must hash to the last release's digest, so no other
+// slot's key, kind or size can move under cover of this change; the BA rows
+// must really be 1080×1080 for the undo to apply.
+{
+  const baRows = assetList().filter((r) => r.section.startsWith("3 "));
+  const undo = (r: (typeof baRows)[number]) => r.section.startsWith("3 ") && r.media.width === 1080 && r.media.height === 1080
+    ? [1080, 1350] : [r.media.width, r.media.height];
+  check("no other slot changed format: outside Miniaturki every slot is the last release's (key, kind, size) — only PRZED/PO became 1:1",
+    baRows.length === 12 && baRows.every((r) => r.media.width === 1080 && r.media.height === 1080)
+    && createHash("sha256").update(JSON.stringify(assetList().filter((r) => !r.section.startsWith("7 "))
+      .map((r) => [r.section, r.media.configKey, r.media.kind, ...undo(r)]))).digest("hex")
+      === "cfb689940af98baa584c3234ef80c7fa1d5bdec89dc4661aba02901956eb68ca");
+}
 check("fading galleries: a fixed window (no layout shift) and a mask, CSS columns (nothing stretched)",
   /\[mask-image:linear-gradient\(to_bottom,black_72%,transparent_99%\)\]/.test(sections) && /break-inside-avoid/.test(sections));
 const shapes = new Set(SESSIONS.tiles.map((t) => `${t.media.width}/${t.media.height}`));
@@ -745,6 +770,232 @@ check("the upload tile's default sentence is the spec's", dicts.pl.sellerHome.up
 check("the removed sections' copy is gone from the dictionaries",
   (["pl", "en", "de"] as const).every((l) => ["hero", "task", "anchor", "recent", "gallery", "press", "credits", "tools", "group"].every((g) => !(g in dicts[l].sellerHome))));
 check("the probe route is not committed", !existsSync("app/probe-tmp"));
+
+/* ── 14. the visual editor's /home slots ──────────────────────────────────*/
+
+section("14. THE VISUAL EDITOR'S /home SLOTS — PAINTED WHEN FILLED, NOTHING DIFFERENT WHEN NOT");
+{
+  const storage = (p: string) => `${SUPABASE_URL}/storage/v1/object/public/media/${p}`;
+  /** A filled slot as the reader returns it: a stored 2400px JPEG with
+   *  Admin → Media's three WebP copies (the original is its own width key). */
+  const filled = (key: string, extra: Partial<ResolvedSlot> = {}): ResolvedSlot => ({
+    key, mediaType: "image", alt: "", fit: "cover", position: "center center",
+    autoplay: true, muted: true, loop: true, controls: false,
+    desktop: storage(`home/${key}.jpg`), desktopWidth: 2400, desktopHeight: 2400,
+    variants: {
+      "640": storage(`home/${key}_w640.webp`), "1024": storage(`home/${key}_w1024.webp`),
+      "1600": storage(`home/${key}_w1600.webp`), "2400": storage(`home/${key}.jpg`),
+    },
+    ...extra,
+  });
+  const homeOf = (slots: Record<string, ResolvedSlot>, locale = "pl"): HomeSlots => ({ slots, locale });
+  const tagOf = (out: string, tag: string) => out.match(new RegExp(`<${tag}\\b[^>]*>`))?.[0] ?? "";
+  // Every item any section references, live — so every section renders.
+  const REFERENCED = [...new Set([
+    ...CAROUSEL.map((c) => c.item), ...UPLOAD_TOOLS.map((u) => u.item), ...BEFORE_AFTER.map((b) => b.item),
+    ...Object.values(PROMO_BANNERS).map((b) => b.item as string), SHOWCASE.item, THUMBNAILS.item,
+    SESSIONS.studio.item, SESSIONS.outdoor.item, ...FEATURED.map((f) => f.item),
+  ])];
+  const ALL = Object.fromEntries(REFERENCED.map((k) => [k, S(k, `/t/${k}`, "live", 4)]));
+  const icePage = icePageFor("/home");
+  const globalSpecs = icePage ? allElements(icePage).flatMap((e) => e.slots ?? []).filter((s) => s.entityType === "global") : [];
+
+  // (e) — which keys, and how they are read.
+  const expected = [
+    ...UPLOAD_TOOLS.flatMap((u) => u.samples), ...BEFORE_AFTER.flatMap((b) => [b.media.before, b.media.after]),
+    ...Object.values(PROMO_BANNERS).map((b) => b.media), SHOWCASE.visual, ...SHOWCASE.gallery,
+    ...THUMBNAILS.tiles.map((x) => x.media), ...SESSIONS.tiles.map((x) => x.media),
+  ].map((m) => m.configKey);
+  check("(e) the section slots /home reads are the editor registry's „global” ones: 79 = samples 15 + before/after 12 + banners 3 + showcase 13 + Miniaturki 20 + Sesje 16",
+    HOME_SECTION_SLOT_KEYS.length === 79 && expected.length === 79 && new Set(HOME_SECTION_SLOT_KEYS).size === 79
+    && expected.every((k) => HOME_SECTION_SLOT_KEYS.includes(k)) && globalSpecs.length === 79
+    && globalSpecs.every((s) => HOME_SECTION_SLOT_KEYS.includes(s.key) && s.entityId === "sellerHome"),
+    String(HOME_SECTION_SLOT_KEYS.length));
+  check("…not the carousel or featured tiles — they keep the tool-card slot they share with /tools",
+    [...CAROUSEL, ...FEATURED].every((c) => !HOME_SECTION_SLOT_KEYS.includes(c.media.configKey)));
+  const cardKeys = REFERENCED.map(cardSlotKey);
+  const readKeys = sellerHomeSlotKeys(cardKeys, ["banner.a.media", "banner.b.media", "banner.c.media"]);
+  check("…ONE batched read: every tool card, the 3 campaign banners and all 79 section slots, ≤ 200 keys (the resolver's bound)",
+    SLOT_READ_CAP === 200 && readKeys.length <= SLOT_READ_CAP && new Set(readKeys).size === readKeys.length
+    && HOME_SECTION_SLOT_KEYS.every((k) => readKeys.includes(k)) && cardKeys.every((k) => readKeys.includes(k))
+    && /array_length\(p_keys, 1\) <= 200/.test(read("supabase/migrations/0141_inline_content_editor.sql")), String(readKeys.length));
+  check("…the loader still makes exactly one loadSlots call, with that list",
+    (loader.match(/loadSlots\(/g) ?? []).length === 1 && /loadSlots\(supabase, sellerHomeSlotKeys\(/.test(loader));
+  {
+    const quiet = console.error;
+    console.error = () => {};
+    const over = sellerHomeSlotKeys(Array.from({ length: 150 }, (_, i) => `tool.x${i}.card`), []);
+    console.error = quiet;
+    check("…past the bound the section slots are left out, never the cards (a read past 200 returns nothing at all)",
+      over.length === 150 && !over.some((k) => HOME_SECTION_SLOT_KEYS.includes(k)));
+  }
+
+  // (a) — nothing filled, nothing different.
+  const sectionsOf = (home?: HomeSlots) => [
+    html(createElement(BeforeAfterRow, { items: ALL, t: T, ...(home ? { home } : {}) })),
+    ...Object.values(PROMO_BANNERS).map((def) => html(createElement(PromoBanner, { def, items: ALL, t: T, ...(home ? { home } : {}) }))),
+    html(createElement(Showcase, { items: ALL, t: T, ...(home ? { home } : {}) })),
+    html(createElement(ThumbnailsSection, { items: ALL, t: T, ...(home ? { home } : {}) })),
+    html(createElement(SessionsSection, { items: ALL, t: T, ...(home ? { home } : {}) })),
+  ].join("\n");
+  const bare = sectionsOf();
+  check("(a) no slot filled: every section's markup is identical with no map, an empty map, or a map of other keys",
+    bare.length > 10000 && sectionsOf(homeOf({})) === bare
+    && sectionsOf(homeOf({ "tools.retouch.card": filled("tools.retouch.card") })) === bare && !/data-media-slot="global"/.test(bare));
+  check("…and the page is handed nothing new: homeSlots absent (not {}), the pills resolveUploadTools' own, `home` undefined",
+    filledHomeSlots(new Map()) === undefined
+    && filledHomeSlots(new Map([["tools.retouch.card", filled("tools.retouch.card")]]) as SlotMap) === undefined
+    && withSampleSlots(tools, undefined) === tools && /\.\.\.\(homeSlots \? \{ homeSlots \} : \{\}\)/.test(loader)
+    && /const home = data\.homeSlots \? \{ slots: data\.homeSlots, locale \} : undefined;/.test(body));
+  check("…the slider (a client component) is handed `before` / `after` only when filled — its props are otherwise the same",
+    /\{\.\.\.\(before \? \{ before \} : \{\}\)\} \{\.\.\.\(after \? \{ after \} : \{\}\)\}/.test(sections));
+
+  // (b) — a filled slot.
+  const tile = THUMBNAILS.tiles[0].media;
+  const tileProps = { media: tile, ratio: "1/1", label: "Miniaturka 01", hint: "1200×1200 px", sizes: "19vw" };
+  const zoomed = filled(tile.configKey, { crop: { x: 30, y: 40, zoom: 1.5 }, alt: "Kubek", altI18n: { en: "Mug" } });
+  const filledOut = html(createElement(MediaSlot, { ...tileProps, home: homeOf({ [tile.configKey]: zoomed }, "en") }));
+  const emptyOut = html(createElement(MediaSlot, tileProps));
+  const imgTag = tagOf(filledOut, "img");
+  check("(b) a filled slot paints in the SAME frame element (classes, aspect-ratio, data-config-key), marked data-media-slot=\"global\"",
+    /data-media-slot="global"/.test(tagOf(filledOut, "span")) && /data-media-slot="empty"/.test(tagOf(emptyOut, "span"))
+    && tagOf(filledOut, "span").replace('data-media-slot="global"', "") === tagOf(emptyOut, "span").replace('data-media-slot="empty"', "")
+    && /isolate overflow-hidden/.test(tagOf(filledOut, "span")));
+  check("…an <img>: the crop's focal point as object-position, scale(zoom) around it, cover — never `fill`",
+    /object-position:30% 40%/.test(imgTag) && /transform:scale\(1\.5\)/.test(imgTag) && /transform-origin:30% 40%/.test(imgTag)
+    && /object-fit:cover/.test(imgTag) && /width:100%;height:100%/.test(imgTag) && imgTag.includes(`src="${zoomed.desktop}"`)
+    && !/object-fit:\s*fill|objectFit: "fill"|object-fill/.test(filledOut + code("components/seller-home/ice-slot-image.tsx")));
+  check("…srcset from the recorded variants (narrowest first) with sizes; lazy, async, the file's own width/height",
+    /srcset="[^"]*_w640\.webp 640w, [^"]*_w1024\.webp 1024w, [^"]*_w1600\.webp 1600w, [^"]*\.jpg 2400w"/i.test(imgTag) && /sizes="19vw"/.test(imgTag)
+    && /loading="lazy"/.test(imgTag) && /decoding="async"/.test(imgTag) && /width="2400"/.test(imgTag) && /height="2400"/.test(imgTag));
+  const altIn = (slot: ResolvedSlot, locale: string, media: MediaSrc = tile) =>
+    tagOf(html(createElement(MediaSlot, { ...tileProps, media, home: homeOf({ [media.configKey]: slot }, locale) })), "img").match(/alt="([^"]*)"/)?.[1];
+  check("…alt in the viewer's language, else the slot's own, else the page's",
+    altIn(zoomed, "en") === "Mug" && altIn(zoomed, "de") === "Kubek"
+    && altIn(filled(tile.configKey), "pl", { ...tile, alt: "Z konfiguracji" }) === "Z konfiguracji" && altIn(filled(tile.configKey), "pl") === "");
+  const flat = tagOf(html(createElement(MediaSlot, { ...tileProps, home: homeOf({ [tile.configKey]: filled(tile.configKey, { crop: { x: 10, y: 90, zoom: 1 } }) }) })), "img");
+  const plain = tagOf(html(createElement(MediaSlot, { ...tileProps, home: homeOf({ [tile.configKey]: filled(tile.configKey, { position: "left top" }) }) })), "img");
+  const whole = tagOf(html(createElement(MediaSlot, { ...tileProps, home: homeOf({ [tile.configKey]: filled(tile.configKey, { fit: "contain" }) }) })), "img");
+  check("…zoom 1: the focal point only, no transform; no crop: the slot's own position; `contain` shows the whole file",
+    /object-position:10% 90%/.test(flat) && !/transform/.test(flat) && /object-position:left top/.test(plain) && !/transform/.test(plain)
+    && /object-fit:contain/.test(whole));
+  const banner = PROMO_BANNERS.second.media;
+  const phoneOut = html(createElement(MediaSlot, {
+    media: banner, fill: true, label: "B", hint: "", sizes: "100vw",
+    home: homeOf({ [banner.configKey]: filled(banner.configKey, {
+      mobile: storage("home/square.jpg"), mobileVariants: { "640": storage("home/square_w640.webp") },
+      crop: { x: 20, y: 50, zoom: 1.2, m: { x: 60, y: 40, zoom: 2 } },
+    }) }),
+  }));
+  check("…a phone file: <picture> with a (max-width: 639px) source, its own frame (crop.m) in force below 640px",
+    /<picture><source media="\(max-width: 639px\)" srcset="[^"]*square_w640\.webp 640w"/i.test(phoneOut)
+    && /object-position:20% 50%/.test(phoneOut) && /--ice-phone-pos:60% 40%/.test(phoneOut) && /--ice-phone-transform:scale\(2\)/.test(phoneOut)
+    && /max-sm:!\[object-position:var\(--ice-phone-pos\)\]/.test(phoneOut));
+  const clipOut = html(createElement(MediaSlot, {
+    media: SHOWCASE.visual, fill: true, label: "Showcase", hint: "", sizes: "40vw",
+    home: homeOf({ [SHOWCASE.visual.configKey]: filled(SHOWCASE.visual.configKey, {
+      mediaType: "video", desktop: storage("home/clip.mp4"), poster: storage("home/clip.webp"), variants: undefined,
+      crop: { x: 50, y: 20, zoom: 1.25 },
+    }) }),
+  }));
+  check("…a clip: the shared SlotVideo (poster first, nothing fetched until near), zoomed by a wrapper the frame clips",
+    /<video/.test(clipOut) && /poster="[^"]*clip\.webp"/.test(clipOut) && /preload="none"/.test(clipOut) && !/clip\.mp4/.test(clipOut)
+    && /object-position:50% 20%/.test(clipOut) && /transform:scale\(1\.25\)/.test(clipOut) && /playsinline/i.test(clipOut)
+    && /from "@\/components\/media\/slot-video"/.test(code("components/seller-home/ice-slot-image.tsx")));
+  check("…authority: a config file still wins over a filled slot; a filled slot wins over the admin's card picture",
+    /data-media-slot="image"/.test(html(createElement(MediaSlot, { media: img("/home/a.webp"), label: "x", hint: "y", sizes: "1px", home: homeOf({ "homeMedia.test": filled("homeMedia.test") }) })))
+    && /data-media-slot="global"/.test(html(createElement(MediaSlot, { media: img(null), label: "x", hint: "y", sizes: "1px",
+      home: homeOf({ "homeMedia.test": filled("homeMedia.test") }), admin: { slot: "tools.retouch.card", slots } }))));
+
+  // (c) — a banner.
+  {
+    const def = PROMO_BANNERS.third;
+    const items = { [def.item ?? ""]: S(def.item ?? "", "/x", "live", 4) };
+    const withSlot = html(createElement(PromoBanner, { def, items, t: T, home: homeOf({ [def.media.configKey]: filled(def.media.configKey) }) }));
+    const without = html(createElement(PromoBanner, { def, items, t: T }));
+    check("(c) a banner whose slot is filled (no config file) shows it: picture, scrim, white copy — not the empty banner",
+      def.media.src === null && /data-media-slot="global"/.test(withSlot) && /<img/.test(withSlot) && !/data-media-slot="empty"/.test(withSlot)
+      && /text-white/.test(withSlot) && /rgb\(0_0_0\/0\.42\)/.test(withSlot) && !/bg-surface/.test(withSlot)
+      && /data-media-slot="empty"/.test(without) && !/text-white/.test(without) && /data-promo="promo3"/.test(withSlot));
+  }
+
+  // (d) — PRZED/PO is square.
+  check("(d) PRZED/PO is 1:1, 1080×1080 — the constant, every pair's slots, the editor's spec",
+    BEFORE_AFTER_SIZE === SQUARE && SQUARE.width === 1080 && SQUARE.height === 1080 && ratioOf(BEFORE_AFTER_SIZE) === "1080/1080"
+    && BEFORE_AFTER.every((b) => [b.media.before, b.media.after].every((m) => m.width === 1080 && m.height === 1080))
+    && globalSpecs.filter((s) => s.key.startsWith("homeMedia.beforeAfter.")).length === 12
+    && globalSpecs.filter((s) => s.key.startsWith("homeMedia.beforeAfter.")).every((s) => s.ratio === "1080/1080" && s.width === 1080 && s.height === 1080));
+  const baRow = html(createElement(BeforeAfterRow, { items: ALL, t: T }));
+  const baFrames = baRow.match(/<div[^>]*\sdata-before-after="true"[^>]*>/g) ?? [];
+  check("…rendered: six frames, every one aspect-ratio 1080/1080, every empty half's hint 1080×1080 — all derived, no 4:5 left",
+    baFrames.length === 6 && baFrames.every((f) => /aspect-ratio:1080\/1080/.test(f)) && !/1080\/1350|1080,1350/.test(baRow)
+    && (baRow.match(/sellerHome\.slot\.size\(1080,1080\)/g) ?? []).length === 12, `${baFrames.length}`);
+  check("…the showcase and Sesje keep their own formats (4:5 visual and phone frame, the five session shapes)",
+    SHOWCASE.visual.width === PORTRAIT_4_5.width && SHOWCASE.visual.height === PORTRAIT_4_5.height && ratioOf(SHOWCASE.frame.phone) === "1080/1350"
+    && SESSIONS.tiles.filter((x) => x.media.height === 1350).length === 3);
+  check("…each card is the editor's target as the registry names it: [data-ba-card=\"<key>\"] [data-before-after]",
+    icePage !== null && allElements(icePage).filter((e) => e.kind === "pair").every((e, i) => e.dom === `[data-ba-card="${BEFORE_AFTER[i].key}"] [data-before-after]`)
+    && BEFORE_AFTER.every((b) => new RegExp(`data-ba-card="${b.key}"[^>]*>(?:(?!data-ba-card=)[\\s\\S])*?data-before-after`).test(baRow)));
+  {
+    const first = BEFORE_AFTER[0];
+    const cut = (row: string) => row.slice(row.indexOf(`data-ba-card="${first.key}"`), row.indexOf(`data-ba-card="${BEFORE_AFTER[1].key}"`));
+    const half = filled(first.media.before.configKey, { crop: { x: 25, y: 75, zoom: 2 } });
+    const row = html(createElement(BeforeAfterRow, { items: ALL, t: T, home: homeOf({ [first.media.before.configKey]: half }) }));
+    const card = cut(row);
+    const pic = tagOf(card, "img");
+    check("a filled before/after half paints the library picture (its crop, not draggable); the other half keeps its placeholder",
+      pic.includes(`src="${half.desktop}"`) && /draggable="false"/.test(pic) && /object-position:25% 75%/.test(pic) && /transform:scale\(2\)/.test(pic)
+      && !/sellerHome\.slot\.before/.test(card) && /sellerHome\.slot\.after/.test(card));
+    check("…the slider itself is unchanged (range, grip, badges) and every other card is byte-identical",
+      /type="range"/.test(card) && /data-before-after-grip/.test(card) && /data-before-after-range/.test(card)
+      && row.replace(card, "") === baRow.replace(cut(baRow), ""));
+    check("…a clip assigned to a half is not painted (the slider compares two stills)",
+      html(createElement(BeforeAfterRow, { items: ALL, t: T, home: homeOf({ [first.media.before.configKey]: filled(first.media.before.configKey, { mediaType: "video" }) }) })) === baRow);
+  }
+
+  // (f) — upload samples.
+  {
+    const key = UPLOAD_TOOLS.find((u) => u.key === "thumbnail")!.samples[1].configKey;
+    const one = (variants: Record<string, string> | undefined, extra: Partial<ResolvedSlot> = {}) => filled(key, { variants, ...extra });
+    check("(f) a sample is the largest WebP derivative ≤ 1600 px (not the 2400px original)",
+      SAMPLE_MAX_WIDTH === 1600
+      && sampleSource(one({ "640": storage("a_w640.webp"), "1024": storage("a_w1024.webp"), "1600": storage("a_w1600.webp"), "2400": storage("a.jpg") })) === storage("a_w1600.webp"));
+    check("…wider files and non-WebP ones are skipped; nothing fits → the original",
+      sampleSource(one({ "640": storage("a_w640.webp"), "1024": storage("a_w1024.webp"), "1200": storage("a.png") })) === storage("a_w1024.webp")
+      && sampleSource(one({ "2400": storage("a_w2400.webp") })) === one(undefined).desktop && sampleSource(one(undefined)) === one(undefined).desktop);
+    check("…a clip is never a sample; a file the tile could not fetch (off the Supabase project — the CSP's connect-src) stays a placeholder",
+      sampleSource(one(undefined, { mediaType: "video" })) === null && sampleSource(one(undefined, { desktop: "https://cdn.example.com/a.jpg" })) === null);
+    const config = JSON.stringify(UPLOAD_TOOLS);
+    const thumbDef = UPLOAD_TOOLS.find((u) => u.key === "thumbnail")!;
+    const pills = withSampleSlots(tools, { [key]: one({ "1024": storage("b_w1024.webp") }) });
+    const pill = pills.find((x) => x.key === "thumbnail")!;
+    const orig = tools.find((x) => x.key === "thumbnail")!;
+    check("…handed to the tile as per-request COPIES: the filled sample gets the URL, the config's shared objects are untouched",
+      pill !== orig && pill.samples !== orig.samples && pill.samples[1].src === storage("b_w1024.webp") && pill.samples[1] !== orig.samples[1]
+      && pill.samples[0] === orig.samples[0] && orig.samples === thumbDef.samples && thumbDef.samples[1].src === null
+      && JSON.stringify(UPLOAD_TOOLS) === config && pills.find((x) => x.key === "retouch") === tools.find((x) => x.key === "retouch"));
+    check("…a sample the config already names keeps its own file",
+      withSampleSlots([{ ...orig, samples: orig.samples.map((m, i) => (i === 1 ? { ...m, src: "/home/own.webp" } : m)) }], { [key]: one(undefined) })[0].samples[1].src === "/home/own.webp");
+    check("…the loader builds the pills after the one read", /const uploadTools = withSampleSlots\(resolveUploadTools\(items\), homeSlots\);/.test(loader)
+      && loader.indexOf("withSampleSlots(") > loader.indexOf("loadSlots("));
+  }
+
+  // The reader's half: what a row's 0141 columns may become.
+  check("the slot reader keeps a crop only in range (x, y 0–100, zoom 1–2.5); a bad phone frame drops only `m`",
+    JSON.stringify(slotCrop({ x: 30, y: 40, zoom: 1.5 })) === '{"x":30,"y":40,"zoom":1.5}'
+    && JSON.stringify(slotCrop({ x: 0, y: 100, zoom: 2.5, m: { x: 1, y: 2, zoom: 1 } })) === '{"x":0,"y":100,"zoom":2.5,"m":{"x":1,"y":2,"zoom":1}}'
+    && JSON.stringify(slotCrop({ x: 30, y: 40, zoom: 1.5, m: { x: 1, y: 2, zoom: 9 } })) === '{"x":30,"y":40,"zoom":1.5}'
+    && [null, undefined, "x", [], { x: 30, y: 40 }, { x: -1, y: 40, zoom: 1 }, { x: 30, y: 101, zoom: 1 }, { x: 30, y: 40, zoom: 0.5 },
+      { x: 30, y: 40, zoom: 3 }, { x: "30", y: 40, zoom: 1 }, { x: Number.NaN, y: 40, zoom: 1 }].every((v) => slotCrop(v) === undefined));
+  check("…alt per language: pl / en / de only, non-blank strings only; nothing usable → absent",
+    JSON.stringify(slotAltI18n({ pl: "Kubek", en: " ", de: 3, fr: "Tasse" })) === '{"pl":"Kubek"}'
+    && slotAltI18n({}) === undefined && slotAltI18n(null) === undefined && slotAltI18n(["pl"]) === undefined);
+  const reader = code("lib/server/media-slots.ts");
+  check("…and toSlot spreads the three 0141 fields in only when present — a row without the columns reads exactly as before",
+    /crop\?: unknown;/.test(reader) && /alt_i18n\?: unknown;/.test(reader) && /mobile_variants\?: unknown;/.test(reader)
+    && /\.\.\.\(crop \? \{ crop \} : \{\}\)/.test(reader) && /\.\.\.\(altI18n \? \{ altI18n \} : \{\}\)/.test(reader)
+    && /\.\.\.\(mobileVariants \? \{ mobileVariants \} : \{\}\)/.test(reader));
+}
 
 console.log(`\n${failed === 0 ? `All seller-home tests passed (${passed} checks).` : `${failed} SELLER-HOME TEST(S) FAILED`}`);
 if (failed > 0) process.exit(1);

@@ -3915,12 +3915,74 @@ export type Database = {
           },
         ]
       }
+      content_overrides: {
+        Row: {
+          key: string
+          locale: string
+          updated_at: string
+          updated_by: string | null
+          value: string
+        }
+        Insert: {
+          key: string
+          locale: string
+          updated_at?: string
+          updated_by?: string | null
+          value: string
+        }
+        Update: {
+          key?: string
+          locale?: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: string
+        }
+        Relationships: []
+      }
+      content_versions: {
+        Row: {
+          action: string
+          after: Json | null
+          before: Json | null
+          created_at: string
+          created_by: string | null
+          id: string
+          key: string
+          locale: string | null
+          target: string
+        }
+        Insert: {
+          action: string
+          after?: Json | null
+          before?: Json | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          key: string
+          locale?: string | null
+          target: string
+        }
+        Update: {
+          action?: string
+          after?: Json | null
+          before?: Json | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          key?: string
+          locale?: string | null
+          target?: string
+        }
+        Relationships: []
+      }
       media_slots: {
         Row: {
+          alt_i18n: Json | null
           alt_text: string | null
           autoplay: boolean
           controls: boolean
           created_at: string
+          crop: Json | null
           enabled: boolean
           entity_id: string
           entity_type: string
@@ -3940,10 +4002,12 @@ export type Database = {
           updated_by: string | null
         }
         Insert: {
+          alt_i18n?: Json | null
           alt_text?: string | null
           autoplay?: boolean
           controls?: boolean
           created_at?: string
+          crop?: Json | null
           enabled?: boolean
           entity_id: string
           entity_type: string
@@ -3963,10 +4027,12 @@ export type Database = {
           updated_by?: string | null
         }
         Update: {
+          alt_i18n?: Json | null
           alt_text?: string | null
           autoplay?: boolean
           controls?: boolean
           created_at?: string
+          crop?: Json | null
           enabled?: boolean
           entity_id?: string
           entity_type?: string
@@ -7619,7 +7685,31 @@ export type Database = {
           slot_key: string
           tablet_path: string
           tablet_url: string
+          crop: Json | null
+          alt_i18n: Json | null
+          mobile_variants: Json | null
         }[]
+      }
+      content_overrides_published: {
+        Args: Record<PropertyKey, never>
+        Returns: { key: string; locale: string; value: string }[]
+      }
+      content_override_write: {
+        Args: { p_key: string; p_locale: string; p_value: string | null; p_base: string | null; p_action: string }
+        Returns: string | null
+      }
+      media_slots_write: { Args: { p_writes: Json; p_action: string }; Returns: Json }
+      cms_inline_patch: {
+        Args: {
+          p_block_id: string
+          p_path: string[]
+          p_value: string
+          p_expected: string | null
+          p_label: string
+          p_base: string | null
+          p_action?: string
+        }
+        Returns: string
       }
       submit_contact_message: {
         Args: {

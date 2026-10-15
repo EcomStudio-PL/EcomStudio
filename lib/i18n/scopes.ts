@@ -122,6 +122,7 @@ const admin = [
   "grovnewsAdm",
   "health",
   "history",
+  "iceAdmin",
   "insp",
   "launchAdmin",
   "loginSec",
@@ -138,5 +139,16 @@ const admin = [
   "time",
 ] as const;
 
-export const SCOPES = { root, app, admin };
+/** Added by components/ice/ice-gate.tsx — the visual editor, admins only. */
+const ice = [
+  "compress",
+  "dashboard",
+  "editor",
+  "generator",
+  "ice",
+  "media",
+  "resize",
+] as const;
+
+export const SCOPES = { root, app, admin, ice };
 export type Scope = keyof typeof SCOPES;

@@ -4,9 +4,10 @@ import { createClient as createAnonClient } from "@supabase/supabase-js";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase/config";
 import type { Client } from "@/lib/services/workspace";
 import {
-  isObjectFit, isObjectPosition, isSlotMediaType,
+  isObjectFit, isObjectPosition, isSlotMediaType, slotAltI18n, slotCrop,
   type ObjectFit, type ObjectPosition, type SlotMediaType,
 } from "@/lib/media-slots";
+import type { IceCrop, IceLocale } from "@/lib/ice/types";
 
 /**
  * READING A SCREEN'S MEDIA SLOTS.
@@ -54,6 +55,19 @@ export type ResolvedSlot = {
   tablet?: string;
   mobile?: string;
   poster?: string;
+  /**
+   * THE FRAME AN ADMIN CHOSE IN THE VISUAL EDITOR (0141) — a focal point in
+   * percent of the file and a zoom (1–2.5), applied when the picture is
+   * painted, never to the file; `m` is the same for the phone file. Absent
+   * when none was chosen, when the value is out of range, or when the code
+   * runs against a database without the column — the slot then paints with
+   * `position` alone, exactly as before.
+   */
+  crop?: IceCrop & { m?: IceCrop };
+  /** Alt text per language (0141); absent = `alt` for every language. */
+  altI18n?: Partial<Record<IceLocale, string>>;
+  /** width → url of the PHONE file's derivatives, for its own srcset. */
+  mobileVariants?: Record<string, string>;
 };
 
 export type SlotMap = Map<string, ResolvedSlot>;
@@ -89,7 +103,23 @@ type Row = {
   mobile_url: string | null;
   poster_path: string | null;
   poster_url: string | null;
+  // Added by 0141. OPTIONAL on purpose: until the migration is applied the
+  // function does not return them, and the slot must read exactly as before.
+  crop?: unknown;
+  alt_i18n?: unknown;
+  mobile_variants?: unknown;
 };
+
+/** `{ "640": "https://…", … }` → only the https entries; empty → undefined. */
+function httpsVariants(value: unknown): Record<string, string> | undefined {
+  const variants = value && typeof value === "object" && !Array.isArray(value)
+    ? Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+          .filter(([, v]) => typeof v === "string" && /^https:\/\//i.test(v)) as [string, string][],
+      )
+    : undefined;
+  return variants && Object.keys(variants).length > 0 ? variants : undefined;
+}
 
 function toSlot(row: Row): ResolvedSlot | null {
   const desktop = publicUrl(row.desktop_path, row.desktop_url);
@@ -98,14 +128,12 @@ function toSlot(row: Row): ResolvedSlot | null {
   // its fallback exactly as it did before anyone touched it.
   if (!desktop) return null;
 
-  const variants = row.desktop_variants
-    && typeof row.desktop_variants === "object"
-    && !Array.isArray(row.desktop_variants)
-    ? Object.fromEntries(
-        Object.entries(row.desktop_variants as Record<string, unknown>)
-          .filter(([, v]) => typeof v === "string" && /^https:\/\//i.test(v)) as [string, string][],
-      )
-    : undefined;
+  const variants = httpsVariants(row.desktop_variants);
+  // The 0141 fields are spread in only when present, so a row without them
+  // (or a database without the columns) yields the very object it always did.
+  const crop = slotCrop(row.crop);
+  const altI18n = slotAltI18n(row.alt_i18n);
+  const mobileVariants = httpsVariants(row.mobile_variants);
 
   return {
     key: row.slot_key,
@@ -122,10 +150,13 @@ function toSlot(row: Row): ResolvedSlot | null {
     desktop,
     desktopWidth: row.desktop_width ?? undefined,
     desktopHeight: row.desktop_height ?? undefined,
-    variants: variants && Object.keys(variants).length > 0 ? variants : undefined,
+    variants,
     tablet: publicUrl(row.tablet_path, row.tablet_url) ?? undefined,
     mobile: publicUrl(row.mobile_path, row.mobile_url) ?? undefined,
     poster: publicUrl(row.poster_path, row.poster_url) ?? undefined,
+    ...(crop ? { crop } : {}),
+    ...(altI18n ? { altI18n } : {}),
+    ...(mobileVariants ? { mobileVariants } : {}),
   };
 }
 

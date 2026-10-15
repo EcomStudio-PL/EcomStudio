@@ -6,6 +6,7 @@ import { SlotVideo } from "@/components/media/slot-video";
 import { WholeImage } from "@/components/home/card-art";
 import type { SlotMap } from "@/lib/server/media-slots";
 import { ratioOf, type MediaSrc } from "@/lib/seller-home-config";
+import { IceSlotImage, homeSlot, type HomeSlots } from "./ice-slot-image";
 
 /**
  * MEDIA SLOT — the one picture frame /home uses everywhere.
@@ -15,10 +16,14 @@ import { ratioOf, type MediaSrc } from "@/lib/seller-home-config";
  *               image, lazy unless `priority`) or a clip (SlotVideo: fetched
  *               only near the viewport, muted, looping, paused off-screen,
  *               poster for reduced motion);
- *   2. ADMIN    the picture an admin put on this TOOL's card in Admin → Media
+ *   2. GLOBAL   the library picture or clip an admin assigned to THIS
+ *               position in the visual editor (a media_slots row keyed by the
+ *               config's `configKey`), framed with the editor's crop
+ *               (./ice-slot-image.tsx) — only when the page is handed one;
+ *   3. ADMIN    the picture an admin put on this TOOL's card in Admin → Media
  *               (the existing media-slot system), for tool tiles;
- *   3. SHIPPED  the example photograph shipped for a live tool, shown whole;
- *   4. EMPTY    a quiet brand-gradient surface with the slot's name and the
+ *   4. SHIPPED  the example photograph shipped for a live tool, shown whole;
+ *   5. EMPTY    a quiet brand-gradient surface with the slot's name and the
  *               size the file should be — finished-looking, never a grey hole,
  *               and never pretending to be a result.
  *
@@ -41,6 +46,9 @@ type Props = {
   tone?: number;
   sizes: string;
   priority?: boolean;
+  /** The /home section slots filled in the visual editor (looked up by
+   *  `media.configKey`) and the viewer's language. Absent = none filled. */
+  home?: HomeSlots | null;
   /** An admin-filled media slot for this tool (tiles only). */
   admin?: { slot: string; slots: SlotMap } | null;
   /** A shipped example photo (live tools only). */
@@ -54,7 +62,7 @@ type Props = {
 
 export function MediaSlot({
   media, ratio, fill = false, label, hint, tone = 0, sizes, priority = false,
-  admin = null, shipped = null, dim = false, bare = false, className,
+  home = null, admin = null, shipped = null, dim = false, bare = false, className,
 }: Props) {
   const shape = ratio ?? ratioOf(media);
   const frame = cn(
@@ -75,6 +83,18 @@ export function MediaSlot({
               label={media.alt || label || undefined} />
           )
           : <ConfigImage media={media} sizes={sizes} priority={priority} />}
+      </span>
+    );
+  }
+
+  // The same frame element as every other state (the frame already clips, so
+  // the editor's zoom never spills out); only `data-media-slot` says which.
+  const assigned = homeSlot(home, media.configKey);
+  if (assigned && home) {
+    return (
+      <span className={frame} style={style} data-media-slot="global" data-config-key={media.configKey}>
+        <IceSlotImage slot={assigned} locale={home.locale} alt={media.alt} label={label || undefined}
+          sizes={sizes} priority={priority} />
       </span>
     );
   }

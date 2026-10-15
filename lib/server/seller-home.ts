@@ -9,6 +9,7 @@ import { fashionModel, fashionPrice, fashionToolAvailable } from "@/lib/server/f
 import { engineOutputsPerRun, engineToolConfigured } from "@/lib/server/engine/tool-run";
 import { RETOUCH_DEFAULT_RESOLUTION, retouchModel, retouchPrice, retouchWorkflowSize } from "@/lib/server/retouch";
 import { loadBanners, loadSlots, type LiveBanner, type SlotMap } from "@/lib/server/media-slots";
+import { filledHomeSlots, sellerHomeSlotKeys, withSampleSlots, type HomeSlotMap } from "@/lib/server/seller-home-slots";
 import { bannerSlotKey, categorySlotKey, toolSlotKey, workflowSlotKey } from "@/lib/media-slots";
 import { getBonusConfig, getCampaignStart, readOffer, toView } from "@/lib/server/welcome-bonus";
 import { paymentsEnabled } from "@/lib/stripe/config";
@@ -83,6 +84,10 @@ export type SellerHomeData = {
   pro: ProOffer | null;
   banners: LiveBanner[];
   slots: SlotMap;
+  /** /home's own section slots an admin filled in the visual editor
+   *  (lib/server/seller-home-slots.ts) — ABSENT, not empty, while none is,
+   *  so the page is handed nothing it did not get before. */
+  homeSlots?: HomeSlotMap;
   isAdmin: boolean;
 };
 
@@ -287,7 +292,6 @@ export async function loadSellerHome(supabase: Client, user: {
     // A customer never sees a switched-off item; an admin sees it, marked.
     if (s && (s.status !== "disabled" || isAdmin)) items[k] = s;
   }
-  const uploadTools = resolveUploadTools(items);
 
   /* ── admin card pictures for the tools on the page ──────────────────── */
 
@@ -296,9 +300,16 @@ export async function loadSellerHome(supabase: Client, user: {
     const slot = adminSlotKey(k);
     if (slot) wanted[k] = slot;
   }
-  const slots = await loadSlots(supabase, [...Object.values(wanted), ...banners.map((b) => bannerSlotKey(b.key))]);
+  // ONE read for every picture the page may paint: the tool cards, the
+  // campaign banners, and /home's own section slots (the visual editor's) —
+  // never one per section.
+  const slots = await loadSlots(supabase, sellerHomeSlotKeys(Object.values(wanted), banners.map((b) => bannerSlotKey(b.key))));
   // Only the slots an admin actually filled.
   const toolSlots = Object.fromEntries(Object.entries(wanted).filter(([, slot]) => slots.has(slot)));
+  const homeSlots = filledHomeSlots(slots);
+  // A filled sample slot reaches the upload tile as a per-request copy of
+  // its pill; with none filled the pills are resolveUploadTools' own.
+  const uploadTools = withSampleSlots(resolveUploadTools(items), homeSlots);
 
   /* ── the seller ─────────────────────────────────────────────────────── */
 
@@ -348,6 +359,7 @@ export async function loadSellerHome(supabase: Client, user: {
     pro,
     banners,
     slots,
+    ...(homeSlots ? { homeSlots } : {}),
     isAdmin,
   };
 }

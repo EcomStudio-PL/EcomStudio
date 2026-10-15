@@ -8,6 +8,8 @@ import { AdminShell } from "@/components/layout/admin-mobile";
 import { AdminSidebar } from "@/components/layout/admin-sidebar";
 import { adminBusinessStats } from "@/lib/services/admin";
 import { enforceLoginSecurity } from "@/lib/server/login-security";
+import { iceHintMissing } from "@/lib/server/ice/gate";
+import { IceHint } from "@/components/ice/ice-hint";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -29,8 +31,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   if (gate) redirect(gate);
   if (profile?.role !== "admin") redirect("/dashboard");
 
-  const [{ dict }, { dict: adminDict }, stats] = await Promise.all([
-    getDictionary(), getScopedDictionary("admin"), adminBusinessStats(supabase),
+  const [{ dict }, { dict: adminDict }, stats, hintMissing] = await Promise.all([
+    getDictionary(), getScopedDictionary("admin"), adminBusinessStats(supabase), iceHintMissing(),
   ]);
   const t = makeT(dict);
 
@@ -49,6 +51,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </main>
       </div>
     </div>
+    {/* Marks this browser as an admin's for the visual editor's launcher. */}
+    {hintMissing && <IceHint />}
     </I18nScope>
   );
 }

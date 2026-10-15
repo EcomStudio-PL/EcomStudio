@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import "@fontsource-variable/inter";
 import "@fontsource-variable/space-grotesk";
 import { ThemeProvider } from "next-themes";
@@ -9,6 +10,8 @@ import { SITE_ORIGIN } from "@/lib/site";
 import { AuthModalMount } from "@/components/auth/auth-modal-mount";
 import { ViewportLock } from "@/components/layout/viewport-lock";
 import { GoogleAnalytics } from "@/components/analytics/google-analytics";
+import { IceGate } from "@/components/ice/ice-gate";
+import { iceCookies } from "@/lib/server/ice/session";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -107,6 +110,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // app and /admin add their own namespaces from their own layouts — see
   // lib/i18n/scopes.ts.
   const { locale, dict } = await getScopedDictionary("root");
+  // The visual editor's launcher is looked for only when the browser carries
+  // one of its cookies (an admin's) — a visitor's page is rendered exactly as
+  // before, with no auth call and no editor code.
+  const ice = await iceCookies();
   return (
     <html lang={locale} suppressHydrationWarning>
       <body className="font-sans">
@@ -130,6 +137,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 Last in the tree because it is the only child here that is
                 purely a side effect. */}
             <GoogleAnalytics />
+            {(ice.hint || ice.edits.length > 0) && (
+              <Suspense fallback={null}>
+                <IceGate />
+              </Suspense>
+            )}
           </I18nProvider>
         </ThemeProvider>
       </body>

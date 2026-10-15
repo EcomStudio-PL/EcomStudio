@@ -1,5 +1,7 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
+import { layerDictionary } from "@/lib/server/ice/dictionary";
 import { DEFAULT_LOCALE, LOCALE_COOKIE, isLocale, type Locale } from "./config";
 import { SCOPES, type Scope } from "./scopes";
 import pl from "./dictionaries/pl.json";
@@ -9,6 +11,14 @@ import de from "./dictionaries/de.json";
 export type Dictionary = typeof pl;
 const dictionaries: Record<Locale, Dictionary> = { pl, en: en as Dictionary, de: de as Dictionary };
 
+/**
+ * The dictionary a request renders with: the shipped JSON, plus whatever an
+ * admin changed in the visual editor (lib/server/ice/dictionary.ts). Once per
+ * request and locale; with nothing changed it is the shipped object itself.
+ */
+const layered = cache(async (locale: Locale): Promise<Dictionary> =>
+  (await layerDictionary(locale, dictionaries[locale])) as Dictionary);
+
 export async function getLocale(): Promise<Locale> {
   const store = await cookies();
   const v = store.get(LOCALE_COOKIE)?.value;
@@ -17,7 +27,7 @@ export async function getLocale(): Promise<Locale> {
 
 export async function getDictionary(): Promise<{ locale: Locale; dict: Dictionary }> {
   const locale = await getLocale();
-  return { locale, dict: dictionaries[locale] };
+  return { locale, dict: await layered(locale) };
 }
 
 /**

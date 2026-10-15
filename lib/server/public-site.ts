@@ -136,7 +136,22 @@ function isLive(row: { status: string; scheduled_at?: string | null }): boolean 
  * page should not cost a database round trip per visit.
  */
 export async function getPublishedPage(_supabase: Client, slug: string): Promise<PublicPage | null> {
-  return readPublishedPage(slug);
+  const page = await readPublishedPage(slug);
+  // An admin editing this page in the visual editor gets its copy marked;
+  // everybody else gets the cached page itself (lib/server/ice/cms.ts).
+  return page ? markForEditor(page) : page;
+}
+
+async function markForEditor(page: PublicPage): Promise<PublicPage> {
+  try {
+    const { markPublishedPage } = await import("@/lib/server/ice/cms");
+    return await markPublishedPage(page, {
+      locale: async () => (await import("@/lib/i18n/server")).getLocale(),
+      homeSlug: async () => (await (await import("@/lib/server/homepage")).getActiveHomepage())?.slug ?? null,
+    });
+  } catch {
+    return page;
+  }
 }
 
 const readPublishedPage = unstable_cache(

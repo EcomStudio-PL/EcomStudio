@@ -251,13 +251,44 @@ const APP_SCOPED_SUBTREES = [
   join(ROOT, "components/plan/pricing-surface.tsx"),
 ];
 
-const rootClosure = closure(rootEntries, new Set(APP_SCOPED_SUBTREES));
-const appClosure = closure([...appEntries, ...APP_SCOPED_SUBTREES, join(ROOT, "app/layout.tsx")]);
-const adminClosure = closure([...adminEntries, join(ROOT, "app/layout.tsx")]);
+/**
+ * SERVER-ONLY MODULES THAT HOLD KEYS AS DATA, NOT AS COPY TO SEND.
+ *
+ * lib/i18n/server.ts lays the visual editor's overrides over the dictionary
+ * (lib/server/ice/dictionary.ts), and that layer reads the editor's registry —
+ * hundreds of key literals that decide which keys may be overridden, not which
+ * namespaces any client receives. A server-only module renders nothing and
+ * ships nothing, so the walk stops at it; section G proves each entry really
+ * is server-only, so this list cannot become a way to hide a component.
+ */
+const SERVER_ONLY_BOUNDARIES = readdirSync(join(ROOT, "lib/server/ice"))
+  .filter((f) => f.endsWith(".ts"))
+  .sort()
+  .map((f) => join(ROOT, "lib/server/ice", f));
+
+/**
+ * THE VISUAL EDITOR'S OWN SUBTREE.
+ *
+ * The root layout mounts the editor's gate for admins only; the gate wraps its
+ * subtree in <I18nScope> with the `ice` scope, and the editor itself is a lazy
+ * chunk below it. Its namespaces therefore belong to no customer surface: the
+ * root, app and admin walks all stop at the gate, and the ice walk starts
+ * there. Section D proves the gate wraps itself.
+ */
+const ICE_SCOPED_SUBTREES = [
+  join(ROOT, "components/ice/ice-gate.tsx"),
+];
+
+const BOUNDARIES = new Set([...SERVER_ONLY_BOUNDARIES, ...ICE_SCOPED_SUBTREES]);
+const rootClosure = closure(rootEntries, new Set([...APP_SCOPED_SUBTREES, ...BOUNDARIES]));
+const appClosure = closure([...appEntries, ...APP_SCOPED_SUBTREES, join(ROOT, "app/layout.tsx")], BOUNDARIES);
+const adminClosure = closure([...adminEntries, join(ROOT, "app/layout.tsx")], BOUNDARIES);
+const iceClosure = closure([...ICE_SCOPED_SUBTREES], new Set(SERVER_ONLY_BOUNDARIES));
 
 const needRoot = [...rootClosure.namespaces].sort();
 const needApp = [...appClosure.namespaces].filter((n) => !needRoot.includes(n)).sort();
 const needAdmin = [...adminClosure.namespaces].filter((n) => !needRoot.includes(n)).sort();
+const needIce = [...iceClosure.namespaces].filter((n) => !needRoot.includes(n)).sort();
 
 /* ── report, then enforce ──────────────────────────────────────────────── */
 
@@ -273,6 +304,7 @@ row("whole dictionary (before)", Object.keys(dict));
 row("public pages carry", needRoot);
 row("+ signed-in app adds", needApp);
 row("+ /admin adds", needAdmin);
+row("+ visual editor (admins) adds", needIce);
 row("app surface total", [...needRoot, ...needApp]);
 row("admin surface total", [...needRoot, ...needAdmin]);
 
@@ -299,7 +331,7 @@ for (const [label, src, expected] of FIXTURES) {
 console.log("\nB. THE COMMITTED MANIFEST IS WHAT THE CODE NEEDS");
 
 if (WRITE) {
-  writeFileSync(join(ROOT, "lib/i18n/scopes.ts"), render(needRoot, needApp, needAdmin));
+  writeFileSync(join(ROOT, "lib/i18n/scopes.ts"), render(needRoot, needApp, needAdmin, needIce));
   console.log("  (rewrote lib/i18n/scopes.ts — re-run without --write to verify)");
 }
 
@@ -310,6 +342,7 @@ const exported = {
   root: [...COMMITTED.root] as string[],
   app: [...COMMITTED.app] as string[],
   admin: [...COMMITTED.admin] as string[],
+  ice: [...(COMMITTED as { ice?: readonly string[] }).ice ?? []] as string[],
 };
 const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 const diff = (want: string[], got: string[]) => {
@@ -323,6 +356,7 @@ const diff = (want: string[], got: string[]) => {
 check("root scope matches the public surface", same(needRoot, exported.root), diff(needRoot, exported.root));
 check("app scope matches the signed-in surface", same(needApp, exported.app), diff(needApp, exported.app));
 check("admin scope matches the admin surface", same(needAdmin, exported.admin), diff(needAdmin, exported.admin));
+check("ice scope matches the visual editor's subtree", same(needIce, exported.ice), diff(needIce, exported.ice));
 
 const coverage = (surface: string, need: string[], scope: string[]) => {
   const uncovered = need.filter((n) => !exported.root.includes(n) && !scope.includes(n));
@@ -331,11 +365,12 @@ const coverage = (surface: string, need: string[], scope: string[]) => {
 coverage("public surface", [...rootClosure.namespaces], []);
 coverage("signed-in app", [...appClosure.namespaces], exported.app);
 coverage("/admin", [...adminClosure.namespaces], exported.admin);
+coverage("visual editor", [...iceClosure.namespaces], exported.ice);
 
 console.log("\nC. NOTHING IS SENT TWICE, AND NOTHING NAMED IS IMAGINARY");
-const dup = [...exported.app, ...exported.admin].filter((n) => exported.root.includes(n));
+const dup = [...exported.app, ...exported.admin, ...exported.ice].filter((n) => exported.root.includes(n));
 check("no namespace is serialised by two scopes", dup.length === 0, dup.join(", "));
-const ghosts = [...exported.root, ...exported.app, ...exported.admin].filter((n) => !known(n));
+const ghosts = [...exported.root, ...exported.app, ...exported.admin, ...exported.ice].filter((n) => !known(n));
 check("every namespace in the manifest exists in the dictionary", ghosts.length === 0, ghosts.join(", "));
 
 console.log("\nD. EACH LAYOUT ASKS FOR ITS OWN SCOPE AND WRAPS ITS OWN SUBTREE");
@@ -353,6 +388,8 @@ const WIRING: Array<[string, string, string]> = [
   // is the check that makes the promise enforceable.
   ...APP_SCOPED_SUBTREES.map((f): [string, string, string] =>
     [relative(ROOT, f), "app", "I18nScope"]),
+  ...ICE_SCOPED_SUBTREES.map((f): [string, string, string] =>
+    [relative(ROOT, f), "ice", "I18nScope"]),
 ];
 for (const [file, scope, component] of WIRING) {
   let src = "";
@@ -366,7 +403,7 @@ for (const [file, scope, component] of WIRING) {
 }
 
 console.log("\nE. EVERY KEY'S NAMESPACE IS STILL VISIBLE TO THIS ANALYSIS");
-const interpolated = [...new Set([...rootClosure.interpolated, ...appClosure.interpolated, ...adminClosure.interpolated])].sort();
+const interpolated = [...new Set([...rootClosure.interpolated, ...appClosure.interpolated, ...adminClosure.interpolated, ...iceClosure.interpolated])].sort();
 const unexpected = interpolated.filter((f) => !INTERPOLATED_ALLOWED.has(f));
 check("no new file builds a key from a namespace held in a variable",
   unexpected.length === 0,
@@ -417,7 +454,18 @@ for (const [key, scope, where, what] of VALUE_KEYS) {
     `${scoped === undefined ? "nothing (t() would humanise the key)" : JSON.stringify(scoped)}`);
 }
 
-function render(rootNs: string[], appNs: string[], adminNs: string[]): string {
+console.log("\nG. A SERVER-ONLY BOUNDARY IS REALLY SERVER-ONLY");
+for (const f of SERVER_ONLY_BOUNDARIES) {
+  const src = readFileSync(f, "utf8");
+  check(`${relative(ROOT, f)} imports "server-only"`, /^import "server-only";/m.test(src));
+  // A `.ts` file cannot hold JSX at all (the compiler refuses it), so the
+  // extension is the proof that it renders nothing; a markup regex would
+  // mistake TypeScript generics (`Promise<X>`) for elements.
+  check(`${relative(ROOT, f)} is not a client module and renders nothing`,
+    !/["']use client["']/.test(src) && f.endsWith(".ts") && !f.endsWith(".d.ts"));
+}
+
+function render(rootNs: string[], appNs: string[], adminNs: string[], iceNs: string[]): string {
   const list = (ns: string[]) => ns.map((n) => `  "${n}",`).join("\n");
   return `// GENERATED — npm run test:i18n:scopes -- --write
 //
@@ -458,7 +506,12 @@ const admin = [
 ${list(adminNs)}
 ] as const;
 
-export const SCOPES = { root, app, admin };
+/** Added by components/ice/ice-gate.tsx — the visual editor, admins only. */
+const ice = [
+${list(iceNs)}
+] as const;
+
+export const SCOPES = { root, app, admin, ice };
 export type Scope = keyof typeof SCOPES;
 `;
 }

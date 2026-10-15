@@ -4,6 +4,7 @@ import { ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MediaPair, MediaSrc } from "@/lib/seller-home-config";
 import { EmptyArt } from "./media-slot";
+import { IcePicture, type IceImage } from "./ice-slot-image";
 
 /**
  * BEFORE / AFTER WITH A DRAGGABLE DIVIDER.
@@ -24,14 +25,22 @@ import { EmptyArt } from "./media-slot";
  *
  * Empty sides render the quiet brand placeholder, so the comparison works
  * (and can be tried) before any picture exists.
+ *
+ * A side is, in order: the config's file, the library picture an admin
+ * assigned in the visual editor (`before` / `after`, framed with its crop —
+ * passed only when filled), the placeholder. Each fills the whole frame, so
+ * the divider compares the two at the same place.
  */
-export function BeforeAfter({ pair, ratio, labels, sizes, tone = 0 }: {
+export function BeforeAfter({ pair, ratio, labels, sizes, tone = 0, before, after }: {
   pair: MediaPair;
-  /** CSS aspect-ratio of the frame ("1080/1350"). */
+  /** CSS aspect-ratio of the frame ("1080/1080" — BEFORE_AFTER_SIZE). */
   ratio: string;
   labels: { before: string; after: string; slider: string; emptyBefore: string; emptyAfter: string; hint: string };
   sizes: string;
   tone?: number;
+  /** The visual editor's picture for each half, when an admin assigned one. */
+  before?: IceImage;
+  after?: IceImage;
 }) {
   const [pos, setPos] = useState(50);
   const frame = useRef<HTMLDivElement>(null);
@@ -60,13 +69,15 @@ export function BeforeAfter({ pair, ratio, labels, sizes, tone = 0 }: {
       <div className="absolute inset-0">
         {pair.after.src
           ? <Picture media={pair.after} sizes={sizes} />
-          : <EmptyHalf tone={tone + 1} at="right" label={labels.emptyAfter} hint={labels.hint} />}
+          : after
+            ? <IcePicture image={after} sizes={sizes} draggable={false} />
+            : <EmptyHalf tone={tone + 1} at="right" label={labels.emptyAfter} hint={labels.hint} />}
       </div>
       {/* BEFORE — the same frame, clipped to the divider. */}
       <div className="absolute inset-0" style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }}>
         {pair.before.src
           ? <Picture media={pair.before} sizes={sizes} />
-          : (
+          : before ? <IcePicture image={before} sizes={sizes} draggable={false} /> : (
             <span className="absolute inset-0 block grayscale-[.85]">
               <EmptyHalf tone={tone} at="left" label={labels.emptyBefore} hint={labels.hint} />
             </span>

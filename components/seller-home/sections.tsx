@@ -5,11 +5,12 @@ import { cn } from "@/lib/utils";
 import {
   BEFORE_AFTER, BEFORE_AFTER_SIZE, BANNER_FRAME, FEATURED, SECTION_COPY, SESSIONS, SHOWCASE, THUMBNAILS, TOOL_TILE,
   industryKey, ratioOf,
-  type GalleryTileDef, type PromoBannerDef,
+  type GalleryTileDef, type MediaSrc, type PromoBannerDef,
 } from "@/lib/seller-home-config";
 import type { ItemStates } from "@/lib/seller-home-model";
 import type { SellerHomeData } from "@/lib/server/seller-home";
 import { BeforeAfter } from "./before-after";
+import { homeSlot, iceImage, type HomeSlots, type IceImage } from "./ice-slot-image";
 import { MediaSlot } from "./media-slot";
 import { Rail } from "./rail";
 import { GalleryCta, SectionHead, StatusBadge, ToolLink, TryLink } from "./parts";
@@ -26,11 +27,20 @@ const size = (t: T, w: number, h: number) => t("sellerHome.slot.size", { w, h })
  * the picture; the CAPTION under it is the link to the tool, so dragging the
  * divider can never navigate. A tool that does not run keeps its card, and
  * its caption is plain text with a badge.
+ *
+ * A half an admin filled in the visual editor reaches the slider as a plain
+ * <img> description (`before` / `after`, only when filled — an unfilled card
+ * is handed exactly the props it always was); a config file still wins.
  */
-export function BeforeAfterRow({ items, t }: { items: ItemStates; t: T }) {
+export function BeforeAfterRow({ items, t, home }: { items: ItemStates; t: T; home?: HomeSlots }) {
   const cards = BEFORE_AFTER.filter((b) => items[b.item]);
   if (cards.length === 0) return null;
   const hint = size(t, BEFORE_AFTER_SIZE.width, BEFORE_AFTER_SIZE.height);
+  /** A filled half (images only — the slider compares two stills). */
+  const half = (media: MediaSrc): IceImage | undefined => {
+    const slot = media.src ? undefined : homeSlot(home, media.configKey);
+    return slot && home && slot.mediaType === "image" ? iceImage(slot, home.locale, media.alt) : undefined;
+  };
   return (
     <section className="relative" aria-labelledby="seller-ba-title" data-seller-before-after>
       <SectionHead id="seller-ba-title" title={t(SECTION_COPY.beforeAfter.titleKey)} sub={t(SECTION_COPY.beforeAfter.subKey)} />
@@ -40,10 +50,13 @@ export function BeforeAfterRow({ items, t }: { items: ItemStates; t: T }) {
         {cards.map((card, i) => {
           const state = items[card.item];
           const name = t(card.nameKey);
+          const before = half(card.media.before);
+          const after = half(card.media.after);
           return (
             <article key={card.key} className="min-w-0" data-ba-card={card.key}>
               <div className="overflow-hidden rounded-xl ring-1 ring-inset ring-[rgb(var(--glass-border)/0.14)]">
                 <BeforeAfter pair={card.media} ratio={ratioOf(BEFORE_AFTER_SIZE)} tone={i * 2}
+                  {...(before ? { before } : {})} {...(after ? { after } : {})}
                   sizes="(max-width: 639px) 76vw, (max-width: 1023px) 40vw, 20vw"
                   labels={{
                     before: t("sellerHome.before"), after: t("sellerHome.after"),
@@ -87,15 +100,17 @@ const BANNER_TONES: readonly string[] = [
  *
  * With media the copy is white over a scrim; with none yet the banner is the
  * old GrovBase banner — the surface lit by brand light, a gradient title —
- * finished, quiet, and never louder than a real picture would be.
+ * finished, quiet, and never louder than a real picture would be. "Media" is
+ * the config's file OR the picture / clip an admin assigned in the visual
+ * editor (MediaSlot paints whichever wins).
  */
-export function PromoBanner({ def, items, t }: { def: PromoBannerDef; items: ItemStates; t: T }) {
+export function PromoBanner({ def, items, t, home }: { def: PromoBannerDef; items: ItemStates; t: T; home?: HomeSlots }) {
   const state = def.item ? items[def.item] : null;
   // A banner about a tool this viewer may not see (switched off, off /tools)
   // is not drawn at all — it would advertise something that is not there.
   if (def.item && !state) return null;
   const live = state?.status === "live";
-  const hasMedia = Boolean(def.media.src);
+  const hasMedia = Boolean(def.media.src) || Boolean(homeSlot(home, def.media.configKey));
   const title = def.titleKey ? t(def.titleKey) : null;
   return (
     <section className="relative" aria-label={title ?? t("sellerHome.promo.label")} data-promo={def.key}>
@@ -107,7 +122,7 @@ export function PromoBanner({ def, items, t }: { def: PromoBannerDef; items: Ite
       } as CSSProperties}>
         {hasMedia ? (
           <>
-            <MediaSlot media={def.media} fill sizes="100vw" label={title ?? t("sellerHome.promo.label")} hint="" />
+            <MediaSlot media={def.media} fill sizes="100vw" label={title ?? t("sellerHome.promo.label")} hint="" home={home} />
             {/* Legibility: darker at the edges and behind the centred copy. */}
             <span aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_90%_at_50%_50%,rgb(0_0_0/0.42),rgb(0_0_0/0.18)_70%,rgb(0_0_0/0.35))]" />
           </>
@@ -179,7 +194,7 @@ export function PromoBanner({ def, items, t }: { def: PromoBannerDef; items: Ite
  * mask, and one button can sit centred on that fade. CSS columns keep every
  * tile in its own shape — nothing is stretched or cropped to fit a grid.
  */
-function FadeGallery({ tiles, label, cols, window: frame, cta, sizes, toneOffset = 0, t }: {
+function FadeGallery({ tiles, label, cols, window: frame, cta, sizes, toneOffset = 0, home, t }: {
   tiles: readonly GalleryTileDef[];
   /** Name of a tile in the empty state ("Miniaturka", "Sesja"). */
   label: string;
@@ -190,6 +205,8 @@ function FadeGallery({ tiles, label, cols, window: frame, cta, sizes, toneOffset
   cta?: React.ReactNode;
   sizes: string;
   toneOffset?: number;
+  /** Tiles filled in the visual editor (absent = none). */
+  home?: HomeSlots;
   t: T;
 }) {
   return (
@@ -198,7 +215,7 @@ function FadeGallery({ tiles, label, cols, window: frame, cta, sizes, toneOffset
         <div className={cn("absolute inset-x-0 top-0 gap-2 sm:gap-2.5", cols)}>
           {tiles.map((tile, i) => (
             <div key={tile.media.configKey} className="mb-2 break-inside-avoid overflow-hidden rounded-xl sm:mb-2.5">
-              <MediaSlot media={tile.media} tone={i + toneOffset} sizes={sizes}
+              <MediaSlot media={tile.media} tone={i + toneOffset} sizes={sizes} home={home}
                 label={`${label} ${String(i + 1).padStart(2, "0")}`} hint={size(t, tile.media.width, tile.media.height)} />
             </div>
           ))}
@@ -216,7 +233,7 @@ function FadeGallery({ tiles, label, cols, window: frame, cta, sizes, toneOffset
  * twelve of its results on the right fading into the panel, one button. No
  * heading, no paragraph — the pictures make the case.
  */
-export function Showcase({ items, t }: { items: ItemStates; t: T }) {
+export function Showcase({ items, t, home }: { items: ItemStates; t: T; home?: HomeSlots }) {
   const state = items[SHOWCASE.item];
   if (!state) return null;
   const visual = SHOWCASE.visual;
@@ -226,13 +243,13 @@ export function Showcase({ items, t }: { items: ItemStates; t: T }) {
       <div className="grid gap-2 sm:gap-2.5 lg:grid-cols-[2fr_3fr]">
         <div className="relative aspect-[var(--ar-phone)] overflow-hidden rounded-2xl sm:aspect-[var(--ar-tablet)] lg:aspect-auto"
           style={{ "--ar-phone": ratioOf(SHOWCASE.frame.phone), "--ar-tablet": ratioOf(SHOWCASE.frame.tablet) } as CSSProperties}>
-          <MediaSlot media={visual} fill tone={2} sizes="(max-width: 1023px) 100vw, 40vw"
+          <MediaSlot media={visual} fill tone={2} sizes="(max-width: 1023px) 100vw, 40vw" home={home}
             label={t("sellerHome.slot.showcase")} hint={size(t, visual.width, visual.height)} />
           <StatusBadge status={state.status} t={t} className="absolute left-3 top-3" />
         </div>
         <FadeGallery tiles={SHOWCASE.gallery.map((media) => ({ media }))} label={t("sellerHome.slot.result")}
           cols="columns-2 sm:columns-3" window="aspect-[2/2.4] sm:aspect-[3/2.7]"
-          sizes="(max-width: 639px) 46vw, (max-width: 1023px) 31vw, 19vw" toneOffset={3} t={t}
+          sizes="(max-width: 639px) 46vw, (max-width: 1023px) 31vw, 19vw" toneOffset={3} home={home} t={t}
           cta={<GalleryCta state={state} label={t(SHOWCASE.ctaKey)} />} />
       </div>
     </section>
@@ -251,10 +268,12 @@ export function Showcase({ items, t }: { items: ItemStates; t: T }) {
  * behind the section — a mask, so it is the real page background in either
  * theme — and the button sits on that fade.
  */
-function SquareGallery({ tiles, label, cta, t }: {
+function SquareGallery({ tiles, label, cta, home, t }: {
   tiles: readonly GalleryTileDef[];
   label: string;
   cta: React.ReactNode;
+  /** Tiles filled in the visual editor (absent = none). */
+  home?: HomeSlots;
   t: T;
 }) {
   return (
@@ -270,7 +289,7 @@ function SquareGallery({ tiles, label, cta, t }: {
         <div className="grid grid-cols-[repeat(var(--sq-cols),minmax(0,1fr))] gap-[var(--sq-gap)]">
           {tiles.map((tile, i) => (
             <div key={tile.media.configKey} className="overflow-hidden rounded-xl" data-square-tile>
-              <MediaSlot media={tile.media} ratio="1/1" tone={i}
+              <MediaSlot media={tile.media} ratio="1/1" tone={i} home={home}
                 sizes="(max-width: 639px) 46vw, (max-width: 1023px) 31vw, 19vw"
                 label={`${label} ${String(i + 1).padStart(2, "0")}`} hint={size(t, tile.media.width, tile.media.height)} />
             </div>
@@ -282,7 +301,7 @@ function SquareGallery({ tiles, label, cta, t }: {
   );
 }
 
-export function ThumbnailsSection({ items, t }: { items: ItemStates; t: T }) {
+export function ThumbnailsSection({ items, t, home }: { items: ItemStates; t: T; home?: HomeSlots }) {
   const state = items[THUMBNAILS.item];
   // The section is the thumbnail tool's: gone when the viewer may not see it.
   if (!state) return null;
@@ -290,7 +309,7 @@ export function ThumbnailsSection({ items, t }: { items: ItemStates; t: T }) {
     <section className="relative" aria-labelledby="seller-thumbs-title" data-seller-thumbnails>
       <SectionHead id="seller-thumbs-title" title={t(THUMBNAILS.titleKey)} sub={t(THUMBNAILS.subKey)}
         action={<TryLink state={state} label={t(THUMBNAILS.tryKey)} />} />
-      <SquareGallery tiles={THUMBNAILS.tiles} label={t("sellerHome.slot.thumbnail")} t={t}
+      <SquareGallery tiles={THUMBNAILS.tiles} label={t("sellerHome.slot.thumbnail")} home={home} t={t}
         cta={<GalleryCta state={state} label={t(THUMBNAILS.ctaKey)} />} />
     </section>
   );
@@ -298,7 +317,7 @@ export function ThumbnailsSection({ items, t }: { items: ItemStates; t: T }) {
 
 /* ── 8. Sesje produktowe ──────────────────────────────────────────────────*/
 
-export function SessionsSection({ items, t }: { items: ItemStates; t: T }) {
+export function SessionsSection({ items, t, home }: { items: ItemStates; t: T; home?: HomeSlots }) {
   const studio = items[SESSIONS.studio.item];
   const outdoor = items[SESSIONS.outdoor.item];
   // Both tools out of this viewer's reach: the section has nothing to open.
@@ -347,7 +366,7 @@ export function SessionsSection({ items, t }: { items: ItemStates; t: T }) {
       <div className="relative">
         <FadeGallery tiles={SESSIONS.tiles} label={t("sellerHome.slot.session")}
           cols="columns-2 sm:columns-3 lg:columns-4" window="aspect-[2/2.9] sm:aspect-[3/3] lg:aspect-[4/2.75]"
-          sizes="(max-width: 639px) 46vw, (max-width: 1023px) 31vw, 24vw" toneOffset={1} t={t} />
+          sizes="(max-width: 639px) 46vw, (max-width: 1023px) 31vw, 24vw" toneOffset={1} home={home} t={t} />
       </div>
     </section>
   );
