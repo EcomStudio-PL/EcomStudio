@@ -193,8 +193,11 @@ const TG = (l, k) => DICT[l].toolGuide[k];
 const fill = (s, vars) => s.replace(/\{(\w+)\}/g, (_, k) => String(vars[k]));
 
 const VP = {
+  320: { name: "320", width: 320, height: 640, touch: true },
   390: { name: "390", width: 390, height: 844, touch: true },
   834: { name: "834", width: 834, height: 1112, touch: false },
+  1024: { name: "1024", width: 1024, height: 768, touch: false },
+  1180: { name: "1180", width: 1180, height: 820, touch: false },
   1440: { name: "1440", width: 1440, height: 900, touch: false },
 };
 const WIDTHS = [390, 834, 1440];
@@ -257,6 +260,8 @@ function guideFor(tool, locale = "pl", o = {}) {
     seen: o.seen ?? 0,
     live: o.live ?? true,
     hasResults: o.hasResults === undefined ? false : o.hasResults,
+    // Has THIS user finished something in the tool? Decides the v1 auto-open.
+    usedBefore: o.usedBefore === undefined ? false : o.usedBefore,
   };
 }
 
@@ -701,19 +706,26 @@ if (run("1")) {
 /* ── 2. auto-open rules ────────────────────────────────────────────────── */
 if (run("2")) {
   section("2");
+  // The v1 auto-open follows `usedBefore` (this user's own use of the tool),
+  // not `hasResults` (the workspace's gallery, which only drives the starter).
   const cases = [
     { name: "live=false", o: { live: false }, open: false, button: false },
-    { name: "hasResults=true, version 1, seen 0", o: { hasResults: true }, open: false, button: true },
-    { name: "hasResults=null, version 1, seen 0", o: { hasResults: null }, open: false, button: true },
+    { name: "usedBefore=true, version 1, seen 0", o: { usedBefore: true }, open: false, button: true },
+    { name: "usedBefore=null, version 1, seen 0", o: { usedBefore: null }, open: false, button: true },
+    { name: "usedBefore=true + hasResults=false, version 1, seen 0", o: { usedBefore: true, hasResults: false }, open: false, button: true },
+    { name: "usedBefore=false + hasResults=true, version 1, seen 0 (hasResults no longer gates)", o: { usedBefore: false, hasResults: true }, open: true, button: true },
+    { name: "usedBefore field missing from the answer (→ null), version 1", o: { usedBefore: "omit" }, open: false, button: true },
     { name: "seen 1 ≥ version 1", o: { seen: 1 }, open: false, button: true },
-    { name: "seen 3 ≥ version 2 (hasResults=false)", o: { seen: 3, version: 2 }, open: false, button: true },
+    { name: "seen 3 ≥ version 2", o: { seen: 3, version: 2 }, open: false, button: true },
     { name: "tutorial=null", o: { noTutorial: true }, open: false, button: false },
-    { name: "guide=null", o: { noGuide: true }, open: false, button: false },
-    { name: "hasResults=true, version 2, seen 1", o: { hasResults: true, version: 2, seen: 1 }, open: true, button: true },
-    { name: "hasResults=null, version 2, seen 1", o: { hasResults: null, version: 2, seen: 1 }, open: true, button: true },
+    { name: "guide=null (published guides unreadable)", o: { noGuide: true }, open: false, button: false },
+    { name: "usedBefore=true, version 2, seen 1", o: { usedBefore: true, version: 2, seen: 1 }, open: true, button: true },
+    { name: "usedBefore=null, version 2, seen 1", o: { usedBefore: null, version: 2, seen: 1 }, open: true, button: true },
   ];
   for (const c of cases) {
-    const P = await openPage({ url: URLS.retouch, guide: guideFor("retouch", "pl", c.o) });
+    const body = guideFor("retouch", "pl", c.o);
+    if (c.o.usedBefore === "omit") delete body.usedBefore;
+    const P = await openPage({ url: URLS.retouch, guide: body });
     if (c.open) {
       const opened = await waitDialog(P);
       await sleep(800);
@@ -844,6 +856,54 @@ if (run("4")) {
     check(4, `[${l}] "${TG(l, "start")}" closes the dialog`, await waitClosed(P));
     await closeP(P);
   }
+  // The window key handler: shortcuts, already-handled keys and keys aimed at
+  // something outside the dialog are not the tutorial's; <body> still is.
+  {
+    const P = await openPage({ url: URLS.retouch, guide: guideFor("retouch", "pl", { seen: 1 }) });
+    await P.page.locator(GUIDE_BTN).click();
+    await waitDialog(P);
+    for (const combo of ["Control+ArrowRight", "Alt+ArrowRight", "Meta+ArrowRight"]) {
+      await P.page.keyboard.press(combo);
+      await sleep(200);
+      check(4, `${combo} is ignored (still "1 z 4")`, (await counterText(P)) === "1 z 4", await counterText(P));
+    }
+    for (const combo of ["Control+Escape", "Alt+Escape", "Meta+Escape"]) {
+      await P.page.keyboard.press(combo);
+      await sleep(200);
+      check(4, `${combo} does not close the dialog`, (await dialogCount(P)) === 1);
+    }
+    // Already handled: a capture-phase listener earlier in the chain prevents it.
+    await P.page.evaluate(() => {
+      window.__probeEat = (e) => { if (e.key === "ArrowRight" || e.key === "Escape") e.preventDefault(); };
+      document.addEventListener("keydown", window.__probeEat, true);
+    });
+    await P.page.keyboard.press("ArrowRight");
+    await P.page.keyboard.press("Escape");
+    await sleep(200);
+    check(4, "a key already defaultPrevented elsewhere is ignored (→ and Escape do nothing)", (await counterText(P)) === "1 z 4" && (await dialogCount(P)) === 1, await counterText(P));
+    await P.page.evaluate(() => document.removeEventListener("keydown", window.__probeEat, true));
+    // Aimed at something stacked above the dialog (a search palette).
+    await P.page.evaluate(() => {
+      const i = document.createElement("input");
+      i.id = "probe-palette"; i.value = "kubek";
+      i.style.cssText = "position:fixed;left:10px;top:10px;z-index:70;width:200px;height:32px;font-size:16px";
+      document.body.appendChild(i);
+      i.focus();
+    });
+    await P.page.keyboard.press("ArrowRight");
+    await P.page.keyboard.press("Escape");
+    await sleep(200);
+    check(4, "keys typed into an input outside the dialog are ignored (→, Escape)", (await counterText(P)) === "1 z 4" && (await dialogCount(P)) === 1,
+      { counter: await counterText(P), open: await dialogCount(P), focus: await P.page.evaluate(() => document.activeElement?.id) });
+    await P.page.evaluate(() => { document.getElementById("probe-palette")?.remove(); document.activeElement?.blur?.(); });
+    const onBody = await P.page.evaluate(() => document.activeElement === document.body);
+    await P.page.keyboard.press("ArrowRight");
+    await sleep(250);
+    check(4, "focus on <body>: → still moves the tutorial", onBody && (await counterText(P)) === "2 z 4", { onBody, counter: await counterText(P) });
+    await P.page.keyboard.press("Escape");
+    check(4, "focus on <body>: Escape still closes it", await waitClosed(P));
+    await closeP(P);
+  }
 }
 
 /* ── 5. closing ────────────────────────────────────────────────────────── */
@@ -906,9 +966,12 @@ if (run("6")) {
   });
   for (const w of [1440, 834]) {
     const P = await openPage({ vp: VP[w], url: URLS.retouch, guide: guideFor("retouch", "pl", { seen: 1 }) });
+    const mounted = () => P.page.locator("[data-tool-tutorial]").count();
+    check(6, `[${w}] closed: no [data-tool-tutorial] anywhere in the DOM`, (await mounted()) === 0, await mounted());
     const b = P.page.locator(GUIDE_BTN);
     await b.click();
     await waitDialog(P);
+    check(6, `[${w}] open: exactly one [data-tool-tutorial]`, (await mounted()) === 1, await mounted());
     await P.page.locator("[data-guide-next]").click();
     await P.page.locator("[data-guide-next]").click();
     await sleep(300);
@@ -930,6 +993,7 @@ if (run("6")) {
     await waitClosed(P);
     await sleep(100);
     check(6, `[${w}] after Escape, focus is back on the visible Samouczek button`, await focusedOnVisibleButton(P));
+    check(6, `[${w}] closed again: [data-tool-tutorial] unmounted`, (await mounted()) === 0, await mounted());
     await closeP(P);
   }
 }
@@ -1147,6 +1211,42 @@ if (run("9")) {
     await shot(P.page, `tut-${combo}-step2`);
     for (let s = 3; s <= 4; s++) { await press(P, P.page.locator("[data-guide-next]")); await sleep(400); hs.push(await dlgHeight(P)); }
     check(8, `[${combo}] same height on steps 1–4 (default copy)`, Math.max(...hs) - Math.min(...hs) <= 1, hs.map((h) => Math.round(h * 10) / 10));
+    await closeP(P);
+  }
+}
+
+/* ── 9b. 320×640 German: the narrowest phone, the longest labels ───────── */
+if (run("9")) {
+  for (const theme of THEMES) {
+    const combo = `320-${theme}-de`;
+    const P = await openPage({ vp: VP[320], theme, locale: "de", url: URLS.retouch, guide: guideFor("retouch", "de", { seen: 0 }) });
+    if (!check(9, `[${combo}] dialog opened`, await waitDialog(P))) { await closeP(P); continue; }
+    for (let s = 1; s <= 4; s++) {
+      if (s > 1) { await press(P, P.page.locator("[data-guide-next]")); await sleep(450); }
+      const g = await dialogGeom(P);
+      const fails = [];
+      if (g.rect.top < -0.5 || g.rect.left < -0.5 || g.rect.right > g.vw + 0.5 || g.rect.bottom > g.vh + 0.5) fails.push(`dialog outside viewport ${JSON.stringify(g.rect)}`);
+      if (g.docScrollW > g.vw) fails.push(`page scrollWidth ${g.docScrollW} > ${g.vw}`);
+      if (g.dlgOverflowX || g.scrollerOverflowX) fails.push("horizontal overflow inside the dialog");
+      for (const b of g.btns.filter((x) => x.vis === "visible")) {
+        if (!b.inView || !b.inDialog || !b.hit) fails.push(`${b.k} not fully visible/clickable ${JSON.stringify(b)}`);
+        if (b.clipped) fails.push(`${b.k} text clipped "${b.text}"`);
+      }
+      for (const t of g.texts) if (t.clipped || t.outside) fails.push(`${t.tag} clipped "${t.text}"`);
+      const footer = g.btns.filter((x) => x.k !== "data-guide-close").map((b) => `${b.k}${b.vis === "visible" ? "" : "(hidden)"} "${b.text}"`);
+      check(9, `[${combo}] step ${s}: dialog inside the viewport, every footer button fully visible and unclipped`, fails.length === 0, fails.length ? fails : footer);
+      if (s === 1) {
+        const back = await P.page.evaluate(() => {
+          const b = document.querySelector("[data-guide-back]");
+          const label = b.querySelector("span");
+          const r = label?.getBoundingClientRect();
+          return { aria: b.getAttribute("aria-label"), text: b.textContent.trim(), labelSrOnly: Boolean(label && r.width <= 1 && r.height <= 1), width: Math.round(b.getBoundingClientRect().width) };
+        });
+        check(9, `[${combo}] back button is its arrow alone (label sr-only below 381px) and keeps aria-label "${TG("de", "back")}"`, back.aria === TG("de", "back") && back.labelSrOnly && back.text === TG("de", "back"), back);
+        info(9, `[${combo}] footer: ${footer.join(" · ")}; step body ${g.scrollerScrollsY ? "scrolls inside the dialog" : "fits"} (dialog ${Math.round(g.rect.height)} of ${g.vh}px)`);
+      }
+      if (s === 2 || s === 4) await shot(P.page, `tut-${combo}-step${s}`);
+    }
     await closeP(P);
   }
 }
@@ -1384,9 +1484,16 @@ if (run("12")) {
 /* ── 13. the gallery toolbar ───────────────────────────────────────────── */
 if (run("13")) {
   section("13");
-  const tools = [["retouch", URLS.retouch, "retouch", true], ["flat lay", URLS.flatlay, "fashion_flat_lay", true], ["generator", URLS.generator, "generator", false]];
+  // Where the button lives: above the gallery below the switch point, in the
+  // toolbar's left group from it — `xl` (1280) for a tool's gallery (it has an
+  // operation and a narrower column), `lg` (1024) for the generators.
+  const tools = [
+    ["retouch", URLS.retouch, "retouch", true, [390, 834, 1024, 1180, 1440]],
+    ["flat lay", URLS.flatlay, "fashion_flat_lay", true, WIDTHS],
+    ["generator", URLS.generator, "generator", false, [390, 834, 1024, 1180, 1440]],
+  ];
   const preexisting = [];
-  for (const [name, url, key, toolGallery] of tools) for (const w of WIDTHS) for (const l of LOCALES) {
+  for (const [name, url, key, toolGallery, widths] of tools) for (const w of widths) for (const l of LOCALES) {
     const combo = `${name} ${w}-${l}`;
     // The same screen twice: with the guide (live, button shown) and with
     // guide=null (no button anywhere) — only differences are this feature's.
@@ -1412,6 +1519,12 @@ if (run("13")) {
       preexisting.push(`[${combo}] ${fmtOverlaps(t)}; right-group overflow ${t.rightOverflowPx}px${same ? " — identical without the guide" : ""}`);
       info(13, `[${combo}] toolbar has overlaps/overflow: ${fmtOverlaps(t)}, right-group overflow ${t.rightOverflowPx}px (baseline: ${fmtOverlaps(b)}, ${b.rightOverflowPx}px) → ${same ? "PRE-EXISTING, not counted" : "REGRESSION"}`);
     }
+    if (toolGallery && (w === 1024 || w === 1180)) {
+      // Asked for outright at the two tablet-landscape widths: no overlap, no
+      // overflow at all (not merely "no worse than without the guide").
+      check(13, `[${combo}] no overlapping controls, no horizontal overflow (absolute)`, clean,
+        { overlaps: fmtOverlaps(t), rightOverflowPx: t.rightOverflowPx, toolbarOverflowPx: t.toolbarOverflowPx, outside: t.outside });
+    }
     if (toolGallery) {
       check(13, `[${combo}] tool gallery: one row ≤56px (baseline: ${b.rows} row, ${b.h}px)`, t.rows === 1 && t.h <= 56, { h: t.h, rows: t.rows });
     } else if (t.rows !== 1 || t.h > 56) {
@@ -1419,11 +1532,13 @@ if (run("13")) {
     }
     // Where the button is.
     const g = t.guide;
-    if (w < 1024) {
-      check(13, `[${combo}] <lg: one visible guide button, ABOVE the toolbar, not overlapping it, right-aligned, unclipped`,
+    const switchAt = toolGallery ? 1280 : 1024;
+    const bp = toolGallery ? "xl" : "lg";
+    if (w < switchAt) {
+      check(13, `[${combo}] <${bp}: one visible guide button, ABOVE the toolbar, not overlapping it, right-aligned, unclipped`,
         g.shown === 1 && !g.inToolbar && g.above && !g.overlapsToolbar && Math.abs(g.rightGap) <= 1 && !g.clipped && g.inView, g);
     } else {
-      check(13, `[${combo}] ≥lg: one visible guide button, the first control of the toolbar's left group, unclipped`,
+      check(13, `[${combo}] ≥${bp}: one visible guide button, the first control of the toolbar's left group, unclipped`,
         g.shown === 1 && g.inToolbar && g.firstInLeft && !g.clipped, g);
     }
     if (l === "pl" || regression.length) await shot(P.page, `toolbar-${name.replace(" ", "")}-${w}-${l}`);
@@ -1506,6 +1621,34 @@ if (run("P")) {
     });
     check("P", "guide button above the gallery", above === true, above);
     await shot(P.page, "starter-photo-remove_bg-1440-light");
+    await closeP(P);
+  }
+  // The empty right column at 1440×900: the button row plus the empty state
+  // must fit the column (photo-tool.tsx wraps them in one flex column).
+  const column = (P) => P.page.evaluate(() => {
+    const grid = document.querySelector("[data-photo-tool]");
+    const c = grid && [...grid.children].find((x) => x.classList.contains("thin-scroll"));
+    if (!c) return null;
+    return {
+      scrollH: c.scrollHeight, clientH: c.clientHeight, overflowY: getComputedStyle(c).overflowY,
+      button: [...c.querySelectorAll("[data-guide-open]")].some((b) => b.getBoundingClientRect().width > 0),
+      starter: Boolean(c.querySelector("[data-starter-gallery]")),
+    };
+  });
+  for (const [name, o, wantButton] of [["empty, guide button shown (hasResults=true)", { hasResults: true }, true], ["empty, no guide (guide=null)", { noGuide: true }, false]]) {
+    const P = await openPage({ vp: VP[1440], url: URLS.photo, guide: guideFor("tool_remove_bg", "pl", { seen: 1, ...o }) });
+    await sleep(500);
+    const col = await column(P);
+    check("P", `[1440×900] ${name}: right column does not overflow (scrollHeight ≤ clientHeight + 1)`,
+      col && col.scrollH <= col.clientH + 1 && col.button === wantButton && !col.starter, col);
+    if (wantButton) await shot(P.page, "photo-remove_bg-1440-empty-with-button");
+    await closeP(P);
+  }
+  {
+    const P = await openPage({ vp: VP[1440], url: URLS.photo, guide: guideFor("tool_remove_bg", "pl", { seen: 1 }) });
+    await starterReady(P);
+    const col = await column(P);
+    info("P", `[1440×900] with the starter (image=wide 1808×1152): column scrollHeight ${col?.scrollH} vs clientHeight ${col?.clientH} (${col && col.scrollH > col.clientH + 1 ? "scrolls inside the column" : "fits"})`);
     await closeP(P);
   }
   for (const [name, url] of [["available=0", URLS.photo + "&available=0"], ["cursor=c1 (more to load)", URLS.photo + "&cursor=c1"]]) {

@@ -64,6 +64,13 @@ export function defaultGuideContent(tool: GuideToolKey): GuideContent {
   };
 }
 
+/** The tutorial's and starter gallery's own words (`toolGuide`: "1 z 4",
+ *  "Dalej", "Przykładowe efekty"…) in every language — so the admin preview
+ *  of an English guide reads exactly like an English customer's screen. */
+export function guideChrome(): Record<Locale, Dict> {
+  return Object.fromEntries(LOCALES.map((l) => [l, (SHIPPED[l].toolGuide ?? SHIPPED.pl.toolGuide ?? {}) as Dict])) as Record<Locale, Dict>;
+}
+
 /* ── RESOLVING ONE TOOL'S GUIDE FOR ONE LANGUAGE ───────────────────────── */
 
 /** The admin's text in this language, else their Polish, else the shipped

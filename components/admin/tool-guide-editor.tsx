@@ -6,7 +6,7 @@ import {
   ArrowDown, ArrowUp, BookOpen, Eye, EyeOff, ImageIcon, Monitor, Plus, RotateCcw, Smartphone, Trash2,
 } from "lucide-react";
 import { toast } from "@/lib/notify";
-import { useI18n } from "@/lib/i18n/provider";
+import { I18nScope, useI18n } from "@/lib/i18n/provider";
 import { LOCALES, type Locale } from "@/lib/i18n/config";
 import { normaliseText } from "@/lib/ice/validate";
 import { hasInvisible } from "@/lib/ice/stega";
@@ -102,6 +102,9 @@ export type ToolGuideEditorProps = {
   /** What the starter shows with no picture chosen: the tool's catalogue
    *  picture, resolved server-side; null = the drawn showcase. */
   catalogueImage: GuideImage | null;
+  /** The tutorial's and starter's own words (`toolGuide`) per language, so
+   *  a preview reads like the customer's screen in the language shown. */
+  chrome: Record<Locale, Record<string, unknown>>;
 };
 
 /** Every code saveToolGuideAction can answer with — each has its own
@@ -208,7 +211,7 @@ function starterArt(tool: GuideToolKey): GuideArt {
 
 /* ── THE EDITOR ────────────────────────────────────────────────────────── */
 
-export function ToolGuideEditor({ tool, defaults, initial, library, catalogueImage }: ToolGuideEditorProps) {
+export function ToolGuideEditor({ tool, defaults, initial, library, catalogueImage, chrome }: ToolGuideEditorProps) {
   const { t } = useI18n();
   const router = useRouter();
   const ids = useId();
@@ -332,6 +335,9 @@ export function ToolGuideEditor({ tool, defaults, initial, library, catalogueIma
       }),
     };
   }, [form, defaults, lang, items]);
+
+  // The preview's own words in the language being previewed.
+  const previewWords = useMemo(() => ({ toolGuide: chrome[lang] }), [chrome, lang]);
 
   // As resolveGuide: the chosen picture, else the tool's catalogue picture,
   // else (null) the drawn showcase.
@@ -582,10 +588,14 @@ export function ToolGuideEditor({ tool, defaults, initial, library, catalogueIma
             <p className="mb-3 text-[11.5px] text-muted">{t("aicc.guide.preview.locale", { lang: L })}</p>
             <div className="grid gap-4 [&>*]:min-w-0 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
               <DeviceFrame width={720} label={t("aicc.guide.preview.desktop")} icon={Monitor}>
-                <StarterGallery title={previewStarter.title} body={previewStarter.body} image={previewStarter.image} fallbackArt={starterArt(tool)} />
+                <I18nScope dict={previewWords}>
+                  <StarterGallery title={previewStarter.title} body={previewStarter.body} image={previewStarter.image} fallbackArt={starterArt(tool)} />
+                </I18nScope>
               </DeviceFrame>
               <DeviceFrame width={360} label={t("aicc.guide.preview.mobile")} icon={Smartphone}>
-                <StarterGallery title={previewStarter.title} body={previewStarter.body} image={previewStarter.image} fallbackArt={starterArt(tool)} />
+                <I18nScope dict={previewWords}>
+                  <StarterGallery title={previewStarter.title} body={previewStarter.body} image={previewStarter.image} fallbackArt={starterArt(tool)} />
+                </I18nScope>
               </DeviceFrame>
             </div>
           </div>
@@ -643,7 +653,9 @@ export function ToolGuideEditor({ tool, defaults, initial, library, catalogueIma
       <AssetPicker open={picker !== null} onClose={() => setPicker(null)} onPick={onPick} library={library}
         kind="image" portal
         title={pickerItem ? `${t("aicc.guide.pickTitle")} · ${t("aicc.guide.step.label", { n: form.steps.indexOf(pickerItem) + 1 })}` : t("aicc.guide.pickTitle")} />
-      <TutorialModal open={tutorialOpen} onClose={() => setTutorialOpen(false)} tutorial={previewTutorial} />
+      <I18nScope dict={previewWords}>
+        <TutorialModal open={tutorialOpen} onClose={() => setTutorialOpen(false)} tutorial={previewTutorial} />
+      </I18nScope>
       <ConfirmModal open={confirmReset} onClose={() => setConfirmReset(false)} onConfirm={resetToDefaults} portal
         title={t("aicc.guide.resetConfirmTitle")} body={t("aicc.guide.resetConfirmBody")} confirmLabel={t("aicc.guide.resetConfirm")} />
     </div>
@@ -732,7 +744,8 @@ function PhotoControl({ label, imageId, item, onPick, onClear, emptyText }: {
           )}
         </span>
         <span className="min-w-0 flex-1 basis-32">
-          <span className="block truncate text-[12.5px] font-medium">
+          {/* A file name may be cut; the "no photo" sentence is read whole. */}
+          <span className={cn("block text-[12.5px] font-medium", item ? "truncate" : "break-words")}>
             {item ? item.title ?? t("aicc.guide.untitled") : imageId ? t("aicc.guide.unknownPhoto") : emptyText}
           </span>
           {item?.width && item.height ? (

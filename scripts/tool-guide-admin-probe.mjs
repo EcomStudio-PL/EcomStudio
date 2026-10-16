@@ -39,9 +39,9 @@
  *   tar -C <repo> --exclude=./node_modules --exclude=./.next --exclude=./.git -cf - . | tar -C $SCRATCH/copy -xf -
  *   ln -s <repo>/node_modules $SCRATCH/copy/node_modules
  *   (cd $SCRATCH/copy && node <repo>/scripts/tool-guide-admin-probe.mjs --harness)
- *   (cd $SCRATCH/copy && npx next dev -p 3331) &              # remember the PID
+ *   (cd $SCRATCH/copy && setsid npx next dev -p 3331 > $SCRATCH/dev.log 2>&1 & echo $! > $SCRATCH/dev.pid)
  *   TGA_PROBE_SRC=$SCRATCH/copy TGA_PROBE_SHOTS=$SCRATCH/shots node <repo>/scripts/tool-guide-admin-probe.mjs http://127.0.0.1:3331
- *   kill <PID>
+ *   kill -- -$(cat $SCRATCH/dev.pid)     # the whole group: killing npx's PID alone orphans next-server
  *
  * Env: TGA_PROBE_SHOTS (screenshot dir), TGA_PROBE_CHROME (browser binary),
  * TGA_PROBE_ONLY (comma list of check groups, e.g. "1,4,7"), TGA_PROBE_SRC
@@ -1613,9 +1613,15 @@ async function measure(P) {
       const inFrame = Boolean(el.closest("[data-preview-frame] > div"));
       const r = el.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) continue;
-      if (!inFrame && el.clientWidth > 0 && !["SELECT", "INPUT", "TEXTAREA"].includes(el.tagName)) {
-        if (el.scrollWidth > el.clientWidth + 1) out.clipped.push(`${desc(el)} w ${el.scrollWidth}>${el.clientWidth}`);
-        if (el.tagName === "BUTTON" && el.scrollHeight > el.clientHeight + 2) out.clipped.push(`${desc(el)} h ${el.scrollHeight}>${el.clientHeight}`);
+      if (!inFrame && el.clientWidth > 0 && !["SELECT", "INPUT", "TEXTAREA"].includes(el.tagName) && cs.textOverflow !== "ellipsis") {
+        // The laid-out CONTENT against the element's box. scrollWidth/Height
+        // would also count decorative pseudo-elements (the switch's 44 px
+        // ::after touch area, .cta's ::before light), which clip nothing.
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const cr2 = range.getBoundingClientRect();
+        if (cr2.width > 0 && (cr2.right > r.right + 1 || cr2.left < r.left - 1)) out.clipped.push(`${desc(el)} content x [${Math.round(cr2.left)},${Math.round(cr2.right)}] box [${Math.round(r.left)},${Math.round(r.right)}]`);
+        if (el.tagName === "BUTTON" && cr2.height > 0 && (cr2.bottom > r.bottom + 1 || cr2.top < r.top - 1)) out.clipped.push(`${desc(el)} content y [${Math.round(cr2.top)},${Math.round(cr2.bottom)}] box [${Math.round(r.top)},${Math.round(r.bottom)}]`);
       }
       if (!inFrame && (r.right > cr.right + 1 || r.left < cr.left - 1 || r.right > vw + 1)) out.outside.push(`${desc(el)} [${Math.round(r.left)},${Math.round(r.right)}] card [${Math.round(cr.left)},${Math.round(cr.right)}]`);
     }

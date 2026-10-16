@@ -5,7 +5,7 @@ import { makeT } from "@/lib/i18n/t";
 import type { Client } from "@/lib/services/workspace";
 import { listLibrary, type LibraryItem } from "@/lib/services/media-slots";
 import { readGuideRow, readGuideSlots } from "@/lib/services/tool-guides";
-import { defaultGuideContent } from "@/lib/server/tool-guides";
+import { defaultGuideContent, guideChrome } from "@/lib/server/tool-guides";
 import { loadSlots } from "@/lib/server/media-slots";
 import {
   GUIDE_MAX_STEPS, guideSlotKey, normalizeGuideContent,
@@ -90,6 +90,7 @@ export async function ToolGuideSection({ tool, supabase }: { tool: GuideToolKey;
         <ToolGuideEditor
           tool={tool}
           defaults={defaults}
+          chrome={guideChrome()}
           initial={{
             tutorialEnabled: row ? row.tutorial_enabled : true,
             starterEnabled: row ? row.starter_enabled : true,
