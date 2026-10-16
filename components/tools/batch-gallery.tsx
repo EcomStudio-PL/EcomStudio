@@ -105,7 +105,7 @@ export function applyBatchFilter<T extends BatchItem>(
 /* ── the toolbar ────────────────────────────────────────────────────────── */
 
 export function BatchGalleryToolbar({
-  items, view, onView, zoom, onZoom, filter, onFilter, selecting, onSelecting, disabled = false,
+  items, view, onView, zoom, onZoom, filter, onFilter, selecting, onSelecting, disabled = false, extra,
 }: {
   /** The WHOLE queue, so the filters can offer only values that exist in it. */
   items: readonly BatchItem[];
@@ -125,6 +125,9 @@ export function BatchGalleryToolbar({
    * first photo will land, and they still take effect.
    */
   disabled?: boolean;
+  /** A control that belongs above the gallery but not to the batch (the
+   *  tool's "Samouczek" button), at the end of the row. */
+  extra?: React.ReactNode;
 }) {
   const { t } = useI18n();
 
@@ -246,6 +249,8 @@ export function BatchGalleryToolbar({
         <option value="name">{t("batch.sort.name")}</option>
         <option value="size">{t("batch.sort.size")}</option>
       </select>
+
+      {extra && <div className="ml-auto flex shrink-0 items-center">{extra}</div>}
     </div>
   );
 }

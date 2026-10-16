@@ -9281,5 +9281,442 @@
       "title": "Edytor wizualny jest jeszcze niedostępny",
       "body": "Baza danych nie ma jeszcze tabel edytora (migracja 0141). Strony działają bez zmian; edytor włączy się sam po wdrożeniu migracji — bez ponownego wdrażania aplikacji."
     }
+  },
+  "toolGuide": {
+    "open": "Samouczek",
+    "openAria": "Otwórz samouczek tego narzędzia",
+    "overline": "Samouczek",
+    "close": "Zamknij samouczek",
+    "progress": "Postęp samouczka",
+    "counter": "{n} z {total}",
+    "stepLabel": "Krok {n}",
+    "back": "Wstecz",
+    "next": "Dalej",
+    "start": "Rozpocznij",
+    "skip": "Pomiń",
+    "starterBadge": "Przykładowe efekty",
+    "starterNote": "To przykład możliwości narzędzia — nie Twoja generacja."
+  },
+  "toolGuideDefaults": {
+    "prompts": {
+      "tutorial": {
+        "title": "Jak stworzyć sesję zdjęć produktu",
+        "body": "Dodaj zdjęcia produktu, wybierz typ sesji i ustawienia, a GrovBase zaprojektuje ujęcia za Ciebie. Każde ujęcie pokazuje Twój produkt w nowej scenerii.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcia produktu",
+            "body": "Kliknij „Import” i dodaj od 1 do 10 zdjęć produktu albo przeciągnij je na stronę lub wklej (Ctrl/Cmd+V). Jeśli zdjęcia są już dodane, sprawdź je przed generowaniem."
+          },
+          "s2": {
+            "title": "Wybierz typ sesji",
+            "body": "„Sesja reklamowa” to profesjonalne ujęcia produktowe w dopracowanej scenerii, a „Sesja lifestyle” to naturalne ujęcia w codziennym otoczeniu."
+          },
+          "s3": {
+            "title": "Ustaw format, rozdzielczość i model",
+            "body": "W „Ustawienia generowania” ustaw: „Format”, „Rozdzielczość”, „Liczba ujęć”. Na niektórych ekranach format i liczba ujęć są już ustawione — możesz je zmienić. Niżej wybierz „Model AI”."
+          },
+          "s4": {
+            "title": "Opisz ujęcia (opcjonalnie)",
+            "body": "W „Opisz ujęcie” dopisz, co ma się znaleźć na danym ujęciu, i wybierz dla niego zdjęcie referencyjne. „Zachowaj kadr referencyjny” zachowa kadr i kompozycję tego zdjęcia — zmieni się tylko sceneria."
+          },
+          "s5": {
+            "title": "Generuj i sprawdź wyniki",
+            "body": "Sprawdź koszt w podsumowaniu i kliknij „Generuj”. Gotowe zdjęcia pojawią się w galerii z oznaczeniem „NOWE” — możesz je pobrać, dodać do ulubionych albo użyć „Wygeneruj ponownie”."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz, co możesz stworzyć",
+        "body": "Z Twoich zdjęć produktu powstaje seria nowych ujęć: Twój produkt w dopracowanej scenerii albo w codziennym otoczeniu. Dodaj zdjęcia i kliknij „Generuj”."
+      }
+    },
+    "generator": {
+      "tutorial": {
+        "title": "Jak działa Własny prompt",
+        "body": "Opisujesz scenę własnymi słowami, a AI umieszcza w niej produkt z Twoich zdjęć. Masz pełną kontrolę nad sceną, światłem i stylem.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcia produktu",
+            "body": "Kliknij „Import” i dodaj do 10 zdjęć produktu albo przeciągnij je na stronę lub wklej (Ctrl/Cmd+V). To z nich AI odwzorowuje wygląd produktu."
+          },
+          "s2": {
+            "title": "Dodaj inspirację (opcjonalnie)",
+            "body": "W „Inspiracja” dodaj do 5 zdjęć, np. przez „Własna inspiracja”. AI weźmie z nich otoczenie, światło, kolorystykę lub nastrój — nie produkt. Nie każdy silnik AI obsługuje inspiracje."
+          },
+          "s3": {
+            "title": "Napisz prompt",
+            "body": "Otwórz pole „Kliknij, aby wpisać prompt” i opisz dokładnie scenę, światło, otoczenie i styl zdjęcia. Bez promptu nie wygenerujesz obrazów."
+          },
+          "s4": {
+            "title": "Ustaw format i silnik AI",
+            "body": "W „Ustawienia generowania” ustaw: „Format”, „Rozdzielczość”, „Liczba zdjęć”, a niżej wybierz „Silnik AI”. Dostępne opcje zależą od wybranego silnika."
+          },
+          "s5": {
+            "title": "Generuj",
+            "body": "Sprawdź koszt i kliknij „Generuj”. Gotowe obrazy pojawią się w galerii z oznaczeniem „NOWE” i zostaną zapisane w Bibliotece."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz, co możesz stworzyć",
+        "body": "Z Twoich zdjęć produktu i Twojego opisu powstają nowe obrazy: produkt w scenie, którą sam opiszesz. Dodaj zdjęcia, wpisz prompt i kliknij „Generuj”."
+      }
+    },
+    "retouch": {
+      "tutorial": {
+        "title": "Jak działa Retusz zdjęć",
+        "body": "AI poprawia oświetlenie, czystość, materiały i prezentację produktu, zachowując jego rzeczywisty wygląd. Każde zdjęcie jest retuszowane osobno.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcia",
+            "body": "Kliknij „Import” i dodaj do 10 zdjęć produktu albo przeciągnij je na stronę lub wklej (Ctrl/Cmd+V)."
+          },
+          "s2": {
+            "title": "Wybierz rozdzielczość",
+            "body": "W „Rozdzielczość” wybierz 2K albo 4K. Od tego zależy wielkość gotowego pliku i koszt retuszu."
+          },
+          "s3": {
+            "title": "Wybierz format",
+            "body": "„Oryginalny” zachowuje kadr zdjęcia. Gdy wybierzesz proporcje, całe zdjęcie zostanie umieszczone na białym tle w tym formacie — nic nie zostanie przycięte."
+          },
+          "s4": {
+            "title": "Retuszuj i pobierz",
+            "body": "Sprawdź „Koszt 1 zdjęcia” i „Łączny koszt”, a potem kliknij „Retuszuj”. Każde zdjęcie retuszuje się osobno i trafia do galerii — możesz je pobrać, dodać do ulubionych lub usunąć."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz efekt retuszu",
+        "body": "Z Twojego zdjęcia produktu powstaje dopracowana wersja: lepsze światło, czystsza prezentacja, ten sam produkt. Dodaj zdjęcia i kliknij „Retuszuj”."
+      }
+    },
+    "ecommerce_thumbnail": {
+      "tutorial": {
+        "title": "Jak działa Miniaturka",
+        "body": "Z Twoich zdjęć produktu (od 1 do 10) AI tworzy jedną kwadratową miniaturkę na pierwsze zdjęcie oferty. Kolejność zdjęć ma znaczenie.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcia we właściwej kolejności",
+            "body": "Kliknij „Import” i dodaj od 1 do 10 zdjęć produktu. Trafią do miniaturki w tej kolejności — zmienisz ją strzałkami przy podglądach zdjęć."
+          },
+          "s2": {
+            "title": "Retusz AI (opcjonalnie)",
+            "body": "Włącz „Retusz AI”, jeśli AI ma najpierw poprawić każde zdjęcie osobno. Dopłata za każde zdjęcie jest pokazana przy przełączniku i w podsumowaniu."
+          },
+          "s3": {
+            "title": "Stwórz miniaturkę",
+            "body": "Sprawdź „Podsumowanie” i kliknij „Stwórz miniaturkę”. W trakcie zobaczysz „Tworzymy Twoją miniaturkę…”. Nie zamykaj strony — jeśli ją opuścisz, praca zostanie wznowiona, gdy wrócisz."
+          },
+          "s4": {
+            "title": "Sprawdź i pobierz",
+            "body": "Dostajesz jeden kwadratowy plik PNG 2560×2560 px, zapisany też w Bibliotece. Użyj „Powiększ” i „Pobierz”. Obejrzyj miniaturkę przed publikacją — AI może zmienić lub pominąć szczegóły produktu."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz, jak wygląda miniaturka",
+        "body": "Z Twoich zdjęć produktu powstaje jedna kwadratowa miniaturka na pierwsze zdjęcie oferty. Dodaj zdjęcia i kliknij „Stwórz miniaturkę”."
+      }
+    },
+    "fashion_ghost_mannequin": {
+      "tutorial": {
+        "title": "Jak działa Niewidzialny manekin",
+        "body": "Ze zdjęcia ubrania AI tworzy profesjonalne zdjęcie produktu bez widocznego modela. Każde dodane zdjęcie daje jeden wynik.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcia ubrania",
+            "body": "Kliknij „Import” i dodaj zdjęcia ubrania, np. na manekinie lub na wieszaku. Możesz dodać do 200 zdjęć, przeciągnąć je na stronę lub wkleić."
+          },
+          "s2": {
+            "title": "Ustaw rozdzielczość i format",
+            "body": "Wybierz „Rozdzielczość” i „Format”. Domyślny format to 1:1, a „Auto” zachowa kadr zdjęcia."
+          },
+          "s3": {
+            "title": "Dodaj wskazówkę (opcjonalnie)",
+            "body": "W polu „Wskazówka dla AI” możesz krótko doprecyzować efekt, np. oświetlenie lub szczegóły. Wierność produktu obowiązuje niezależnie od tego, co wpiszesz."
+          },
+          "s4": {
+            "title": "Generuj",
+            "body": "Sprawdź koszt i kliknij „Generuj”. Każde zdjęcie daje jeden wynik w galerii — możesz go pobrać, dodać do ulubionych lub usunąć."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz, co możesz stworzyć",
+        "body": "Ze zdjęć Twojego ubrania powstają profesjonalne zdjęcia produktu bez widocznego modela. Dodaj zdjęcia i kliknij „Generuj”."
+      }
+    },
+    "fashion_flat_lay": {
+      "tutorial": {
+        "title": "Jak działa Leżący produkt",
+        "body": "Ze zdjęcia produktu AI tworzy estetyczne ujęcie w formie flat lay. Każde dodane zdjęcie daje jeden wynik.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcia produktu",
+            "body": "Kliknij „Import” i dodaj zdjęcia ubrania lub produktu. Możesz dodać do 200 zdjęć, przeciągnąć je na stronę lub wkleić."
+          },
+          "s2": {
+            "title": "Ustaw opcje",
+            "body": "Wybierz „Rozdzielczość” i „Format” (domyślnie 1:1, „Auto” zachowa kadr zdjęcia). W polu „Wskazówka dla AI” możesz opcjonalnie doprecyzować efekt."
+          },
+          "s3": {
+            "title": "Generuj",
+            "body": "Sprawdź koszt i kliknij „Generuj”. Każde zdjęcie daje jeden wynik w galerii: produkt ułożony estetycznie w formie flat lay."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz, co możesz stworzyć",
+        "body": "Ze zdjęć Twojego produktu powstają estetyczne ujęcia w formie flat lay. Dodaj zdjęcia i kliknij „Generuj”."
+      }
+    },
+    "fashion_iron": {
+      "tutorial": {
+        "title": "Jak działa „Wyprasuj”",
+        "body": "AI wygładza zagniecenia na zdjęciu ubrania i poprawia jego prezentację. Każde dodane zdjęcie daje jeden wynik.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcia ubrania",
+            "body": "Kliknij „Import” i dodaj zdjęcia pogniecionego ubrania. Możesz dodać do 200 zdjęć, przeciągnąć je na stronę lub wkleić."
+          },
+          "s2": {
+            "title": "Ustaw rozdzielczość i format",
+            "body": "Wybierz „Rozdzielczość” i „Format”. Domyślny format to 1:1, a „Auto” zachowa kadr zdjęcia."
+          },
+          "s3": {
+            "title": "Generuj",
+            "body": "Sprawdź koszt i kliknij „Generuj”. Na wyniku zagniecenia są wygładzone, a kolor i krój ubrania mają pozostać bez zmian — obejrzyj go przed publikacją."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz, co możesz stworzyć",
+        "body": "Ze zdjęć Twoich ubrań powstają wersje bez zagnieceń, z lepszą prezentacją. Dodaj zdjęcia i kliknij „Generuj”."
+      }
+    },
+    "fashion_change_person": {
+      "tutorial": {
+        "title": "Jak działa Zmiana postaci",
+        "body": "AI przenosi ubranie lub stylizację ze zdjęcia referencyjnego na osobę ze zdjęcia modela.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcie ubrania",
+            "body": "W „Zdjęcie referencyjne” dodaj zdjęcie ubrania lub stylizacji, którą chcesz przenieść. Możesz dodać do 10 zdjęć."
+          },
+          "s2": {
+            "title": "Dodaj zdjęcie modela",
+            "body": "W „Zdjęcie modela” dodaj zdjęcie osoby, która ma nosić to ubranie. Możesz dodać do 10 zdjęć. Oba rodzaje zdjęć są wymagane."
+          },
+          "s3": {
+            "title": "Wybierz format",
+            "body": "Wybierz „Format”. „Auto” zachowa kadr zdjęcia."
+          },
+          "s4": {
+            "title": "Generuj",
+            "body": "Sprawdź koszt i kliknij „Generuj”. Zdjęcia łączą się w pary w kolejności dodania — np. 1 ubranie i 3 modeli dają 3 wyniki w galerii."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz, co możesz stworzyć",
+        "body": "Z Twojego zdjęcia ubrania i zdjęcia wybranej osoby powstaje zdjęcie tej osoby w tym ubraniu. Dodaj oba zdjęcia i kliknij „Generuj”."
+      }
+    },
+    "fashion_change_face": {
+      "tutorial": {
+        "title": "Jak działa Zmiana twarzy modela",
+        "body": "AI podmienia twarz modela na zdjęciu. Ubranie, poza, tło i reszta zdjęcia zostają bez zmian.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcie referencyjne",
+            "body": "Pod „Dodaj zdjęcie referencyjne” wgraj zdjęcie, na którym ubranie, poza i tło mają zostać takie same."
+          },
+          "s2": {
+            "title": "Dodaj zdjęcie twarzy",
+            "body": "Pod „Dodaj zdjęcie twarzy” wgraj zdjęcie osoby, której twarz ma się znaleźć na zdjęciu referencyjnym."
+          },
+          "s3": {
+            "title": "Wybierz format",
+            "body": "Wybierz „Format”. „Auto” zachowa kadr zdjęcia. AI dopasuje twarz do oświetlenia, perspektywy i kadru."
+          },
+          "s4": {
+            "title": "Zmień twarz",
+            "body": "Sprawdź koszt i kliknij „Zmień twarz”. Przy kilku zdjęciach pary łączą się w kolejności dodania. Wyniki pojawią się w galerii — obejrzyj je przed publikacją."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz, co możesz stworzyć",
+        "body": "Z Twojego zdjęcia i zdjęcia twarzy powstaje to samo zdjęcie z nową twarzą modela. Dodaj oba zdjęcia i kliknij „Zmień twarz”."
+      }
+    },
+    "tool_remove_bg": {
+      "tutorial": {
+        "title": "Jak działa „Usuń tło”",
+        "body": "Narzędzie wycina produkt z tła i zapisuje plik z przezroczystym tłem. Produkt zostaje nietknięty — nic nie jest generowane.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcia",
+            "body": "Kliknij „Import” i dodaj do 10 zdjęć produktu (maks. 10 MB każde) albo przeciągnij je na stronę lub wklej."
+          },
+          "s2": {
+            "title": "Wybierz format pliku",
+            "body": "W „Format pliku” wybierz PNG albo WebP — oba zachowują przezroczystość tła."
+          },
+          "s3": {
+            "title": "Usuń tło",
+            "body": "Sprawdź koszt i kliknij „Usuń tło”. Postęp widzisz przy każdym zdjęciu."
+          },
+          "s4": {
+            "title": "Porównaj i pobierz",
+            "body": "Kliknij wynik, aby otworzyć „Porównaj przed / po”, i użyj „Pobierz”. Każdy wynik zapisuje się też automatycznie w Bibliotece."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz, co możesz stworzyć",
+        "body": "Z Twojego zdjęcia powstaje ten sam produkt na przezroczystym tle, gotowy do wstawienia w dowolne miejsce. Dodaj zdjęcia i kliknij „Usuń tło”."
+      }
+    },
+    "tool_white_bg": {
+      "tutorial": {
+        "title": "Jak działa „Zmień kolor tła”",
+        "body": "Narzędzie kładzie produkt na jednolitym kolorze: białym, czarnym, szarym, pastelowym albo własnym HEX.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcia",
+            "body": "Kliknij „Import” i dodaj do 10 zdjęć produktu (maks. 10 MB każde) albo przeciągnij je na stronę lub wklej."
+          },
+          "s2": {
+            "title": "Wybierz kolor tła",
+            "body": "W „Kolor tła” wybierz kolor z palety albo wpisz własny w „Własny kolor (HEX)”. Zdjęcia, które mają już przezroczyste tło (np. z „Usuń tło”), są za darmo."
+          },
+          "s3": {
+            "title": "Zmień kolor tła",
+            "body": "Wybierz „Format pliku”, sprawdź koszt i kliknij „Zmień kolor tła”. Postęp widzisz przy każdym zdjęciu."
+          },
+          "s4": {
+            "title": "Porównaj i pobierz",
+            "body": "Kliknij wynik, aby otworzyć „Porównaj przed / po”, i użyj „Pobierz”. Każdy wynik zapisuje się też automatycznie w Bibliotece."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz, co możesz stworzyć",
+        "body": "Z Twojego zdjęcia powstaje ten sam produkt na jednolitym tle w wybranym kolorze. Dodaj zdjęcia, wybierz kolor i kliknij „Zmień kolor tła”."
+      }
+    },
+    "tool_ai_background": {
+      "tutorial": {
+        "title": "Jak działa „Dodaj tło AI”",
+        "body": "AI generuje nową scenę wokół produktu, a sam produkt zostaje taki, jak na zdjęciu.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcia",
+            "body": "Kliknij „Import” i dodaj do 10 zdjęć produktu (maks. 10 MB każde) albo przeciągnij je na stronę lub wklej."
+          },
+          "s2": {
+            "title": "Wybierz scenę",
+            "body": "W „Scena” wybierz gotową scenę albo kliknij „Własny opis” i w „Opis tła” opisz samo tło, nie produkt — np. jasny marmurowy blat i miękkie poranne światło."
+          },
+          "s3": {
+            "title": "Dodaj inspirację (opcjonalnie)",
+            "body": "Dodaj „Zdjęcie inspiracji”, a AI weźmie z niego klimat, kolory i światło tła. Suwakiem „Siła inspiracji” ustawisz, jak mocno ma wpłynąć na wynik."
+          },
+          "s4": {
+            "title": "Generuj i porównaj",
+            "body": "Wybierz „Format pliku” i kliknij „Generuj tło”. Otwórz wynik, użyj „Porównaj przed / po” i „Pobierz”. Wyniki są też w Bibliotece."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz, co możesz stworzyć",
+        "body": "Z Twojego zdjęcia powstaje ten sam produkt w nowej scenie: gotowej albo opisanej przez Ciebie. Dodaj zdjęcia, wybierz scenę i kliknij „Generuj tło”."
+      }
+    },
+    "tool_ai_shadow": {
+      "tutorial": {
+        "title": "Jak działa „Dodaj cień”",
+        "body": "Narzędzie dodaje realistyczny cień pod produktem — bez nowej sceny i bez zmiany światła.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcia",
+            "body": "Kliknij „Import” i dodaj do 10 zdjęć produktu (maks. 10 MB każde) albo przeciągnij je na stronę lub wklej."
+          },
+          "s2": {
+            "title": "Wybierz rodzaj cienia",
+            "body": "W „Rodzaj cienia” wybierz „Miękki” (rozproszony, jak w studiu), „Mocny” (wyraźny, jak w pełnym słońcu) albo „Unoszący się” (produkt lekko nad podłożem)."
+          },
+          "s3": {
+            "title": "Wybierz tło",
+            "body": "W „Tło” wybierz „Białe”, „Przezroczyste” albo „Własny kolor”. Przy przezroczystym tle wybierz PNG lub WebP — JPG nie ma przezroczystości."
+          },
+          "s4": {
+            "title": "Dodaj cień i porównaj",
+            "body": "Kliknij „Dodaj cień”. Otwórz wynik, użyj „Porównaj przed / po” i „Pobierz”. Wyniki zapisują się też automatycznie w Bibliotece."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz, co możesz stworzyć",
+        "body": "Z Twojego zdjęcia powstaje ten sam produkt z realistycznym cieniem na białym, przezroczystym lub wybranym tle. Dodaj zdjęcia i kliknij „Dodaj cień”."
+      }
+    },
+    "resize": {
+      "tutorial": {
+        "title": "Jak działa Zmiana rozmiaru",
+        "body": "Dopasuj wiele zdjęć naraz do wybranej rozdzielczości lub własnego rozmiaru. Zmieniają się tylko wymiary — nic nie jest przycinane ani generowane.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcia",
+            "body": "Kliknij „Import” albo przeciągnij zdjęcia na stronę. Możesz dodać do 200 zdjęć naraz."
+          },
+          "s2": {
+            "title": "Wybierz rozmiar",
+            "body": "W „Rozdzielczość” wybierz 2K albo 4K lub zaznacz „Własny rozmiar (px)” i wpisz szerokość. Gdy „Zachowaj proporcje” jest włączone, wysokość dopasuje się sama."
+          },
+          "s3": {
+            "title": "Zmień rozmiar",
+            "body": "Kliknij „Zmień rozmiar”. Każde zdjęcie mieści się w nowym rozmiarze w całości — nic nie zostaje przycięte. Zdjęcia mniejsze od wybranego rozmiaru nie są powiększane."
+          },
+          "s4": {
+            "title": "Pobierz wyniki",
+            "body": "Pobierz zdjęcia przez „Pobierz” albo wszystkie naraz jako ZIP. Lista pokazuje tylko zdjęcia z bieżącej sesji — pobierz je, zanim opuścisz stronę."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz, co możesz zrobić",
+        "body": "Twoje zdjęcia dopasowane do 2K, 4K albo własnego rozmiaru w pikselach, zawsze w całości i bez przycinania. Dodaj zdjęcia i kliknij „Zmień rozmiar”."
+      }
+    },
+    "compress": {
+      "tutorial": {
+        "title": "Jak działa Kompresja",
+        "body": "Zmniejsz wagę wielu zdjęć naraz. Siła kompresji decyduje, ile jakości oddajesz za mniejszy plik.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcia",
+            "body": "Kliknij „Import” albo przeciągnij zdjęcia na stronę. Możesz dodać do 200 zdjęć naraz."
+          },
+          "s2": {
+            "title": "Ustaw kompresję",
+            "body": "W „Siła kompresji” wybierz „Niska”, „Średnia” albo „Wysoka” — im mocniej, tym mniejszy plik i mniej szczegółów. W „Format” wybierz nowy format albo „Bez zmian”."
+          },
+          "s3": {
+            "title": "Kompresuj",
+            "body": "Kliknij „Kompresuj”. Każde zdjęcie jest kompresowane osobno, a postęp widzisz na przycisku."
+          },
+          "s4": {
+            "title": "Sprawdź i pobierz",
+            "body": "W „Podsumowanie kompresji” zobaczysz wagę „Przed”, „Po” i ile „Oszczędzono”. Pobierz pliki przez „Pobierz” lub jako ZIP. Lista pokazuje tylko bieżącą sesję — pobierz wyniki przed wyjściem."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz, co możesz zrobić",
+        "body": "Twoje zdjęcia w lżejszych plikach, w tym samym albo nowym formacie. Siłę kompresji wybierasz sam. Dodaj zdjęcia i kliknij „Kompresuj”."
+      }
+    }
   }
 }

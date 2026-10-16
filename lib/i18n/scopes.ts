@@ -96,6 +96,7 @@ const app = [
   "studio",
   "support",
   "thumb",
+  "toolGuide",
   "toolsearch",
   "vc",
 ] as const;

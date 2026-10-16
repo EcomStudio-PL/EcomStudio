@@ -21,6 +21,9 @@ import { InfoHint } from "@/components/ui/hint";
 import { CostIsland, GroupLabel, RadioRows, type RadioRow } from "@/components/tools/panel-parts";
 import { Compare } from "@/components/tools/compare";
 import type { UploadedRef } from "@/components/genv3/types";
+import { starterVisible, type GuideToolKey } from "@/lib/tool-guides";
+import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
+import { StarterGallery } from "@/components/tool-guide/starter-gallery";
 
 /** Photos running at once — Retusz's figure: a batch, not ten simultaneous
  *  requests from one seller (Photoroom's own default is 60 a minute). */
@@ -115,6 +118,8 @@ export function PhotoToolWorkspace({
 }) {
   const { t, locale } = useI18n();
   const n = (v: number) => new Intl.NumberFormat(locale).format(v);
+  // The tool's guide: tutorial button, first-visit dialog, example effects.
+  const guide = useToolGuide(`tool_${tool}` as GuideToolKey);
 
   // ── photos ────────────────────────────────────────────────────────────
   const [photos, setPhotos] = useState<UploadedRef[]>([]);
@@ -646,18 +651,36 @@ export function PhotoToolWorkspace({
         )}
 
         {items.length === 0 ? (
-          <div className="flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-line px-6 py-10 text-center lg:h-full">
-            <Sparkles size={20} aria-hidden className="text-faint" />
-            <p className="mt-2 text-[14px] font-semibold">{t("photoTool.emptyTitle")}</p>
-            <p className="mt-1 max-w-sm text-[12px] leading-relaxed text-muted">{t("photoTool.emptyBody")}</p>
-          </div>
+          <>
+            {/* The tutorial's way back in, above the gallery even before
+                there is a first result. */}
+            {guide.button && <div className="mb-2 flex justify-end">{guide.button}</div>}
+            {starterVisible({
+              response: guide.response, itemCount: items.length, pendingCount: pending.length,
+              loading: false, filtered: false, moreToLoad: cursor !== null, madeHere: false,
+            }) && available && guide.response?.guide?.starter ? (
+              <StarterGallery title={guide.response.guide.starter.title} body={guide.response.guide.starter.body}
+                image={guide.response.guide.starter.image} fallbackArt="compare" />
+            ) : (
+              <div aria-hidden={guide.pending ? true : undefined}
+                className={cn("flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-line px-6 py-10 text-center lg:h-full",
+                  guide.pending && "invisible")}>
+                <Sparkles size={20} aria-hidden className="text-faint" />
+                <p className="mt-2 text-[14px] font-semibold">{t("photoTool.emptyTitle")}</p>
+                <p className="mt-1 max-w-sm text-[12px] leading-relaxed text-muted">{t("photoTool.emptyBody")}</p>
+              </div>
+            )}
+          </>
         ) : (
           <>
             <div className="mb-2 flex items-center justify-between gap-2 px-0.5">
               <h2 className="text-[13px] font-semibold">{t("photoTool.results")}</h2>
-              <Link href="/library?tab=tools" className="flex items-center gap-1 text-[12px] font-medium text-muted hover:text-ink">
-                <Library size={13} aria-hidden />{t("photoTool.inLibrary")}
-              </Link>
+              <div className="flex items-center gap-2">
+                {guide.button}
+                <Link href="/library?tab=tools" className="flex items-center gap-1 text-[12px] font-medium text-muted hover:text-ink">
+                  <Library size={13} aria-hidden />{t("photoTool.inLibrary")}
+                </Link>
+              </div>
             </div>
             <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-4" data-photo-results>
               {items.map((item) => (
@@ -713,6 +736,7 @@ export function PhotoToolWorkspace({
           </div>
         )}
       </Modal>
+      {guide.dialog}
     </div>
   );
 }

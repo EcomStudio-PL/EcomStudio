@@ -31,7 +31,7 @@ import { cn } from "@/lib/utils";
 type Kind = "image" | "video" | "all";
 
 export function AssetPicker({
-  open, onClose, onPick, library, kind = "all", title,
+  open, onClose, onPick, library, kind = "all", title, portal,
 }: {
   open: boolean;
   onClose: () => void;
@@ -40,6 +40,11 @@ export function AssetPicker({
   /** Narrow the library to what this slot can hold. */
   kind?: Kind;
   title: string;
+  /** Render the dialog at <body> (Modal's `portal`). Needed whenever the
+   *  picker is opened from inside a Card: `.panel` carries a backdrop-filter,
+   *  which turns a fixed dialog into one fixed to the card instead of the
+   *  viewport. Off by default so the existing callers render exactly as before. */
+  portal?: boolean;
 }) {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
@@ -98,7 +103,7 @@ export function AssetPicker({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={title} wide>
+    <Modal open={open} onClose={onClose} title={title} wide portal={portal}>
       <div
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}

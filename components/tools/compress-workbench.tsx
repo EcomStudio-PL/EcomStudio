@@ -27,6 +27,9 @@ import { cn, formatBytes } from "@/lib/utils";
 import { batchTotals, reduction, signedPercent, sizeDelta, signedBytes as withSign } from "@/lib/images/weight";
 import { acceptFiles, type IntakeLimits } from "@/lib/images/file-intake";
 import { FileDropOverlay, useFileDrop } from "@/components/ui/file-drop";
+import { starterVisible } from "@/lib/tool-guides";
+import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
+import { StarterGallery } from "@/components/tool-guide/starter-gallery";
 
 /**
  * COMPRESS — the batch screen, and the only screen in the app whose subject is
@@ -146,6 +149,8 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
   balance: number;
 }) {
   const { t } = useI18n();
+  // The tool's guide: tutorial button, first-visit dialog, example effects.
+  const guide = useToolGuide("compress");
   const inputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [levelKey, setLevelKey] = useState(LEVELS[1].key);
@@ -552,6 +557,7 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
           items={cards} view={view} onView={setView} zoom={zoom} onZoom={setZoom}
           filter={filter} onFilter={setFilter}
           disabled={items.length === 0}
+          extra={guide.button}
           selecting={selecting}
           onSelecting={(on) => {
             setSelecting(on);
@@ -560,7 +566,20 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
         />
 
         {items.length === 0 ? (
-          <EmptyState icon={Gauge} title={t("compress.emptyTitle")} body={t("compress.emptyBody")} />
+          // An empty queue: the tool's example effects when it has some
+          // (this gallery is the session's batch, so "no results" is simply
+          // an empty queue), otherwise the screen's own empty state.
+          starterVisible({
+            response: guide.response, itemCount: 0, pendingCount: 0, loading: false,
+            filtered: false, moreToLoad: false, madeHere: false,
+          }) && guide.response?.guide?.starter ? (
+            <StarterGallery title={guide.response.guide.starter.title} body={guide.response.guide.starter.body}
+              image={guide.response.guide.starter.image} fallbackArt="compress" />
+          ) : (
+            <div className={guide.pending ? "invisible" : undefined} aria-hidden={guide.pending ? true : undefined}>
+              <EmptyState icon={Gauge} title={t("compress.emptyTitle")} body={t("compress.emptyBody")} />
+            </div>
+          )
         ) : (
         <>
           <Panel className="min-w-0 rounded-2xl p-3 sm:p-4">
@@ -665,6 +684,7 @@ export function CompressWorkbench({ available, credits, reason, balance }: {
         </>
         )}
       </div>
+      {guide.dialog}
     </div>
   );
 }

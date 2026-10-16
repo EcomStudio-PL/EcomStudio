@@ -15,6 +15,10 @@ import type { GalleryItem, GallerySessionType, GenModel } from "@/components/gen
 import { ImageDetails } from "@/components/genv3/image-details";
 import { saveBlob, saveImageFrom, stamp } from "@/lib/save-image";
 import { RegenerateModal } from "@/components/genv3/regenerate";
+import { usePathname } from "next/navigation";
+import { guideToolForOperation, guideToolForPath, starterVisible, type GuideToolKey } from "@/lib/tool-guides";
+import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
+import { StarterGallery } from "@/components/tool-guide/starter-gallery";
 
 type Filter = { session: GallerySessionType | "all"; fav: boolean; q: string; order: "desc" | "asc" };
 
@@ -55,7 +59,7 @@ const DENSITY_KEY = "grovbase.gallery.density";
  */
 export function GenerationGallery({
   initialItems, initialCursor, freshItems, onFresh, pendingCount, pendingRatio,
-  models, balance, onBalance, onAbsorb, operation, emptyTitle, emptyBody,
+  models, balance, onBalance, onAbsorb, operation, emptyTitle, emptyBody, guideTool,
 }: {
   initialItems: GalleryItem[];
   initialCursor: string | null;
@@ -73,6 +77,10 @@ export function GenerationGallery({
   /** Copy for the empty state, so a tool can say what IT is waiting for. */
   emptyTitle?: string;
   emptyBody?: string;
+  /** The tool this gallery belongs to, for its tutorial and starter gallery.
+   *  Rarely needed: a tool's gallery already says so through `operation`, and
+   *  the generators' galleries are known by their route (guideToolForPath). */
+  guideTool?: GuideToolKey;
   /*
    * `fillEmpty` used to be here: it let the empty state stretch to the
    * column's height and centre itself in it, so a tool page's two columns
@@ -123,6 +131,15 @@ export function GenerationGallery({
   const fetchSeq = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDefault = filter.session === "all" && !filter.fav && !filter.q && filter.order === "desc";
+
+  // THE TOOL'S GUIDE: its tutorial (button + first-visit dialog) and the
+  // example effects that stand in for an empty gallery. Asked for after this
+  // gallery has painted; until it answers, nothing here changes.
+  const pathname = usePathname();
+  const guide = useToolGuide(
+    guideTool ?? (operation ? guideToolForOperation(operation) : guideToolForPath(pathname)),
+    { compactLabel: !operation },
+  );
 
   const buildUrl = useCallback((f: Filter, cur: string | null) => {
     const p = new URLSearchParams();
@@ -443,6 +460,7 @@ export function GenerationGallery({
           being squeezed. */}
       <div data-gallery-toolbar className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="thin-scroll -mx-1 order-2 flex min-w-0 items-center gap-1.5 overflow-x-auto px-1 pb-0.5 lg:order-1">
+          {guide.button}
           {/* Session chips belong to the generator: a retouch has no session
               type, so a tool's gallery does not offer two dead filters. */}
           {!operation && chips.map((c) => {
@@ -625,7 +643,21 @@ export function GenerationGallery({
       )}
 
       {merged.length === 0 && pendingCount === 0 && !loading ? (
-        <div data-gallery-empty className="panel rounded-2xl px-6 py-14 text-center">
+        // Nothing to show. On a tool with a guide, and only when there truly
+        // are no results (not a filter hiding them, not a failed read, not a
+        // page still to load), the tool's example effects take this place.
+        // While the guide is still being asked for, the space is held rather
+        // than flashing one empty state and then the other.
+        starterVisible({
+          response: guide.response, itemCount: merged.length, pendingCount, loading,
+          filtered: filter.session !== "all" || filter.fav || filter.q.trim() !== "",
+          moreToLoad: cursor !== null, madeHere: freshItems.length > 0,
+        }) && guide.response?.guide?.starter ? (
+          <StarterGallery title={guide.response.guide.starter.title} body={guide.response.guide.starter.body}
+            image={guide.response.guide.starter.image} />
+        ) : (
+        <div data-gallery-empty aria-hidden={guide.pending && isDefault ? true : undefined}
+          className={cn("panel rounded-2xl px-6 py-14 text-center", guide.pending && isDefault && "invisible")}>
           <Sparkles size={22} aria-hidden className="mx-auto mb-3 text-faint" />
           <p className="font-display text-[15px] font-semibold">
             {isDefault ? emptyTitle ?? t("genv3.emptyTitle") : t("genv3.emptyFiltered")}
@@ -634,6 +666,7 @@ export function GenerationGallery({
             {isDefault ? emptyBody ?? t("genv3.emptyBody") : t("genv3.emptyFilteredBody")}
           </p>
         </div>
+        )
       ) : view === "grid" ? (
         // Density is a REAL layout change, not a transform: the tracks are
         // auto-filled from a minimum card width, so the column count follows
@@ -755,6 +788,8 @@ export function GenerationGallery({
           }}
         />
       )}
+
+      {guide.dialog}
     </div>
   );
 }

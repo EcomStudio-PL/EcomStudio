@@ -9281,5 +9281,442 @@
       "title": "The visual editor isn’t available yet",
       "body": "The database doesn’t have the editor’s tables yet (migration 0141). Pages work as before; the editor turns on by itself once the migration is applied — no redeploy needed."
     }
+  },
+  "toolGuide": {
+    "open": "Tutorial",
+    "openAria": "Open this tool’s tutorial",
+    "overline": "Tutorial",
+    "close": "Close the tutorial",
+    "progress": "Tutorial progress",
+    "counter": "{n} of {total}",
+    "stepLabel": "Step {n}",
+    "back": "Back",
+    "next": "Next",
+    "start": "Get started",
+    "skip": "Skip",
+    "starterBadge": "Example effects",
+    "starterNote": "An example of what this tool can do — not your own result."
+  },
+  "toolGuideDefaults": {
+    "prompts": {
+      "tutorial": {
+        "title": "How to create a product photo session",
+        "body": "Add product photos, pick a session type and settings, and GrovBase designs the shots for you. Each shot shows your product in new scenery.",
+        "steps": {
+          "s1": {
+            "title": "Add product photos",
+            "body": "Click “Import” and add 1 to 10 product photos, or drag them onto the page or paste them (Ctrl/Cmd+V). If photos are already added, check them before you generate."
+          },
+          "s2": {
+            "title": "Pick a session type",
+            "body": "“Advertising session” gives professional product shots in polished scenery; “Lifestyle session” gives natural shots in everyday surroundings."
+          },
+          "s3": {
+            "title": "Set format, resolution and model",
+            "body": "In “Generation settings” set “Format”, “Resolution” and “Number of shots”. On some screens the format and number of shots are preset — you can change them. Below, pick the “AI model”."
+          },
+          "s4": {
+            "title": "Describe the shots (optional)",
+            "body": "In “Describe the shot” add what a given shot should show and pick a reference photo for it. “Keep reference framing” keeps that photo's framing and composition — only the scenery changes."
+          },
+          "s5": {
+            "title": "Generate and review",
+            "body": "Check the cost in the summary and click “Generate”. Finished photos appear in the gallery marked “NEW” — you can download them, mark them as favourites or use “Generate again”."
+          }
+        }
+      },
+      "starter": {
+        "title": "See what you can create",
+        "body": "Your product photos become a series of new shots: your product in polished scenery or in everyday surroundings. Add photos and click “Generate”."
+      }
+    },
+    "generator": {
+      "tutorial": {
+        "title": "How “Own prompt” works",
+        "body": "You describe the scene in your own words, and the AI places the product from your photos in it. You have full control over the scene, light and style.",
+        "steps": {
+          "s1": {
+            "title": "Add product photos",
+            "body": "Click “Import” and add up to 10 product photos, or drag them onto the page or paste them (Ctrl/Cmd+V). The AI takes the product's look from these photos."
+          },
+          "s2": {
+            "title": "Add inspiration (optional)",
+            "body": "In “Inspiration” add up to 5 photos, e.g. via “Your own inspiration”. The AI takes surroundings, light, colours or mood from them — not the product. Not every AI engine supports inspiration."
+          },
+          "s3": {
+            "title": "Write your prompt",
+            "body": "Open the “Click to write your prompt” field and describe the scene, light, surroundings and style in detail. Without a prompt you cannot generate images."
+          },
+          "s4": {
+            "title": "Set format and AI engine",
+            "body": "In “Generation settings” set “Format”, “Resolution” and “Number of images”, then pick the “AI engine” below. The available options depend on the selected engine."
+          },
+          "s5": {
+            "title": "Generate",
+            "body": "Check the cost and click “Generate”. Finished images appear in the gallery marked “NEW” and are saved to your Library."
+          }
+        }
+      },
+      "starter": {
+        "title": "See what you can create",
+        "body": "Your product photos and your description become new images: your product in the scene you describe. Add photos, write a prompt and click “Generate”."
+      }
+    },
+    "retouch": {
+      "tutorial": {
+        "title": "How Photo retouch works",
+        "body": "The AI improves lighting, cleanliness, materials and presentation while keeping the product's real look. Each photo is retouched separately.",
+        "steps": {
+          "s1": {
+            "title": "Add photos",
+            "body": "Click “Import” and add up to 10 product photos, or drag them onto the page or paste them (Ctrl/Cmd+V)."
+          },
+          "s2": {
+            "title": "Pick the resolution",
+            "body": "In “Resolution” pick 2K or 4K. It sets the size of the finished file and the cost of the retouch."
+          },
+          "s3": {
+            "title": "Pick the format",
+            "body": "“Original” keeps the photo's framing. If you pick an aspect ratio, the whole photo is placed on a white background in that format — nothing is cropped."
+          },
+          "s4": {
+            "title": "Retouch and download",
+            "body": "Check “Cost per photo” and “Total cost”, then click “Retouch”. Each photo is retouched separately and lands in the gallery — you can download it, mark it as a favourite or delete it."
+          }
+        }
+      },
+      "starter": {
+        "title": "See the retouch effect",
+        "body": "Your product photo becomes a polished version: better light, cleaner presentation, the same product. Add photos and click “Retouch”."
+      }
+    },
+    "ecommerce_thumbnail": {
+      "tutorial": {
+        "title": "How the Thumbnail tool works",
+        "body": "From your product photos (1 to 10), the AI creates one square thumbnail for the first image of your listing. The order of the photos matters.",
+        "steps": {
+          "s1": {
+            "title": "Add photos in the right order",
+            "body": "Click “Import” and add 1 to 10 product photos. They go into the thumbnail in this order — change it with the arrows on the photo previews."
+          },
+          "s2": {
+            "title": "AI Retouch (optional)",
+            "body": "Turn on “AI Retouch” if the AI should first improve each photo separately. The surcharge per photo is shown next to the switch and in the summary."
+          },
+          "s3": {
+            "title": "Create the thumbnail",
+            "body": "Check the “Summary” and click “Create thumbnail”. While it works you will see “Creating your thumbnail…”. Keep the page open — if you leave, the work resumes when you come back."
+          },
+          "s4": {
+            "title": "Check and download",
+            "body": "You get one square 2560×2560 px PNG file, also saved to your Library. Use “Zoom” and “Download”. Check the thumbnail before publishing — AI may change or omit product details."
+          }
+        }
+      },
+      "starter": {
+        "title": "See what a thumbnail looks like",
+        "body": "Your product photos become one square thumbnail for the first image of your listing. Add photos and click “Create thumbnail”."
+      }
+    },
+    "fashion_ghost_mannequin": {
+      "tutorial": {
+        "title": "How “Invisible mannequin” works",
+        "body": "From a garment photo, the AI creates a professional product photo with no visible model. Each photo you add gives one result.",
+        "steps": {
+          "s1": {
+            "title": "Add garment photos",
+            "body": "Click “Import” and add photos of the garment, e.g. on a mannequin or a hanger. You can add up to 200 photos, drag them onto the page or paste them."
+          },
+          "s2": {
+            "title": "Set resolution and format",
+            "body": "Pick the “Resolution” and “Format”. The default format is 1:1; “Auto” keeps the photo's framing."
+          },
+          "s3": {
+            "title": "Add a hint (optional)",
+            "body": "In “Hint for the AI” you can briefly refine the result, e.g. the lighting or details. Product fidelity applies whatever you write here."
+          },
+          "s4": {
+            "title": "Generate",
+            "body": "Check the cost and click “Generate”. Each photo gives one result in the gallery — you can download it, mark it as a favourite or delete it."
+          }
+        }
+      },
+      "starter": {
+        "title": "See what you can create",
+        "body": "Photos of your garment become professional product photos with no visible model. Add photos and click “Generate”."
+      }
+    },
+    "fashion_flat_lay": {
+      "tutorial": {
+        "title": "How “Flat lay” works",
+        "body": "From a product photo, the AI creates a neat flat-lay shot. Each photo you add gives one result.",
+        "steps": {
+          "s1": {
+            "title": "Add product photos",
+            "body": "Click “Import” and add photos of the garment or product. You can add up to 200 photos, drag them onto the page or paste them."
+          },
+          "s2": {
+            "title": "Set the options",
+            "body": "Pick the “Resolution” and “Format” (default 1:1; “Auto” keeps the photo's framing). In “Hint for the AI” you can optionally refine the result."
+          },
+          "s3": {
+            "title": "Generate",
+            "body": "Check the cost and click “Generate”. Each photo gives one result in the gallery: the product neatly arranged as a flat lay."
+          }
+        }
+      },
+      "starter": {
+        "title": "See what you can create",
+        "body": "Photos of your product become neat flat-lay shots. Add photos and click “Generate”."
+      }
+    },
+    "fashion_iron": {
+      "tutorial": {
+        "title": "How “Iron” works",
+        "body": "The AI smooths out creases in a garment photo and improves how the garment looks. Each photo you add gives one result.",
+        "steps": {
+          "s1": {
+            "title": "Add garment photos",
+            "body": "Click “Import” and add photos of the creased garment. You can add up to 200 photos, drag them onto the page or paste them."
+          },
+          "s2": {
+            "title": "Set resolution and format",
+            "body": "Pick the “Resolution” and “Format”. The default format is 1:1; “Auto” keeps the photo's framing."
+          },
+          "s3": {
+            "title": "Generate",
+            "body": "Check the cost and click “Generate”. In the result the creases are smoothed out, while the colour and cut of the garment are meant to stay the same — check it before publishing."
+          }
+        }
+      },
+      "starter": {
+        "title": "See what you can create",
+        "body": "Photos of your garments become crease-free versions with a better presentation. Add photos and click “Generate”."
+      }
+    },
+    "fashion_change_person": {
+      "tutorial": {
+        "title": "How “Change person” works",
+        "body": "The AI moves the garment or styling from the reference photo onto the person in the model photo.",
+        "steps": {
+          "s1": {
+            "title": "Add the garment photo",
+            "body": "In “Reference photo” add a photo of the garment or styling you want to move. You can add up to 10 photos."
+          },
+          "s2": {
+            "title": "Add the model photo",
+            "body": "In “Model photo” add a photo of the person who should wear it. You can add up to 10 photos. Both kinds of photo are required."
+          },
+          "s3": {
+            "title": "Pick the format",
+            "body": "Pick the “Format”. “Auto” keeps the photo's framing."
+          },
+          "s4": {
+            "title": "Generate",
+            "body": "Check the cost and click “Generate”. Photos are paired in the order you added them — e.g. 1 garment and 3 models give 3 results in the gallery."
+          }
+        }
+      },
+      "starter": {
+        "title": "See what you can create",
+        "body": "A photo of your garment and a photo of a chosen person become a photo of that person wearing that garment. Add both photos and click “Generate”."
+      }
+    },
+    "fashion_change_face": {
+      "tutorial": {
+        "title": "How to change the model's face",
+        "body": "The AI swaps the model's face in a photo. The outfit, the pose, the background and the rest of the photo stay as they are.",
+        "steps": {
+          "s1": {
+            "title": "Add the reference photo",
+            "body": "Under “Add a reference photo” upload the photo whose outfit, pose and background should stay the same."
+          },
+          "s2": {
+            "title": "Add the face photo",
+            "body": "Under “Add a face photo” upload a photo of the person whose face should appear in the reference photo."
+          },
+          "s3": {
+            "title": "Pick the format",
+            "body": "Pick the “Format”. “Auto” keeps the photo's framing. The AI fits the face to the photo's lighting, perspective and framing."
+          },
+          "s4": {
+            "title": "Change the face",
+            "body": "Check the cost and click “Change face”. With several photos, pairs are matched in the order you added them. Results appear in the gallery — check them before publishing."
+          }
+        }
+      },
+      "starter": {
+        "title": "See what you can create",
+        "body": "Your photo and a face photo become the same photo with the model's new face. Add both photos and click “Change face”."
+      }
+    },
+    "tool_remove_bg": {
+      "tutorial": {
+        "title": "How “Remove background” works",
+        "body": "The tool cuts the product out of its background and saves a file with a transparent background. The product is untouched — nothing is generated.",
+        "steps": {
+          "s1": {
+            "title": "Add photos",
+            "body": "Click “Import” and add up to 10 product photos (max. 10 MB each), or drag them onto the page or paste them."
+          },
+          "s2": {
+            "title": "Pick the file format",
+            "body": "In “File format” pick PNG or WebP — both keep the background transparent."
+          },
+          "s3": {
+            "title": "Remove the background",
+            "body": "Check the cost and click “Remove background”. You can follow the progress for each photo."
+          },
+          "s4": {
+            "title": "Compare and download",
+            "body": "Click a result to open “Compare before / after”, then use “Download”. Every result is also saved to your Library automatically."
+          }
+        }
+      },
+      "starter": {
+        "title": "See what you can create",
+        "body": "Your photo becomes the same product on a transparent background, ready to place anywhere. Add photos and click “Remove background”."
+      }
+    },
+    "tool_white_bg": {
+      "tutorial": {
+        "title": "How “Change background colour” works",
+        "body": "The tool places the product on a solid colour: white, black, grey, a pastel or your own HEX.",
+        "steps": {
+          "s1": {
+            "title": "Add photos",
+            "body": "Click “Import” and add up to 10 product photos (max. 10 MB each), or drag them onto the page or paste them."
+          },
+          "s2": {
+            "title": "Pick the background colour",
+            "body": "In “Background colour” pick a colour from the palette or enter your own in “Custom colour (HEX)”. Photos that already have a transparent background (e.g. from “Remove background”) are free."
+          },
+          "s3": {
+            "title": "Change the colour",
+            "body": "Pick the “File format”, check the cost and click “Change colour”. You can follow the progress for each photo."
+          },
+          "s4": {
+            "title": "Compare and download",
+            "body": "Click a result to open “Compare before / after”, then use “Download”. Every result is also saved to your Library automatically."
+          }
+        }
+      },
+      "starter": {
+        "title": "See what you can create",
+        "body": "Your photo becomes the same product on a solid background in the colour you pick. Add photos, pick a colour and click “Change colour”."
+      }
+    },
+    "tool_ai_background": {
+      "tutorial": {
+        "title": "How “Add AI background” works",
+        "body": "The AI generates a new scene around the product, while the product itself stays exactly as photographed.",
+        "steps": {
+          "s1": {
+            "title": "Add photos",
+            "body": "Click “Import” and add up to 10 product photos (max. 10 MB each), or drag them onto the page or paste them."
+          },
+          "s2": {
+            "title": "Pick a scene",
+            "body": "In “Scene” pick a ready-made scene, or click “Own description” and describe only the background in “Background description”, not the product — e.g. a light marble countertop and soft morning light."
+          },
+          "s3": {
+            "title": "Add inspiration (optional)",
+            "body": "Add an “Inspiration photo” and the AI takes the mood, colours and light of the background from it. The “Inspiration strength” slider sets how much it affects the result."
+          },
+          "s4": {
+            "title": "Generate and compare",
+            "body": "Pick the “File format” and click “Generate background”. Open a result, use “Compare before / after” and “Download”. Results are also in your Library."
+          }
+        }
+      },
+      "starter": {
+        "title": "See what you can create",
+        "body": "Your photo becomes the same product in a new scene: a ready-made one or one you describe. Add photos, pick a scene and click “Generate background”."
+      }
+    },
+    "tool_ai_shadow": {
+      "tutorial": {
+        "title": "How “Add shadow” works",
+        "body": "The tool adds a realistic shadow under the product — no new scene and no change to the lighting.",
+        "steps": {
+          "s1": {
+            "title": "Add photos",
+            "body": "Click “Import” and add up to 10 product photos (max. 10 MB each), or drag them onto the page or paste them."
+          },
+          "s2": {
+            "title": "Pick the shadow type",
+            "body": "In “Shadow type” pick “Soft” (diffused, like in a studio), “Hard” (crisp, like in full sun) or “Floating” (product slightly above the ground)."
+          },
+          "s3": {
+            "title": "Pick the background",
+            "body": "In “Background” pick “White”, “Transparent” or “Custom colour”. With a transparent background choose PNG or WebP — JPG has no transparency."
+          },
+          "s4": {
+            "title": "Add the shadow and compare",
+            "body": "Click “Add shadow”. Open a result, use “Compare before / after” and “Download”. Results are also saved to your Library automatically."
+          }
+        }
+      },
+      "starter": {
+        "title": "See what you can create",
+        "body": "Your photo becomes the same product with a realistic shadow on a white, transparent or chosen background. Add photos and click “Add shadow”."
+      }
+    },
+    "resize": {
+      "tutorial": {
+        "title": "How “Resize” works",
+        "body": "Fit many photos at once to a chosen resolution or your own size. Only the dimensions change — nothing is cropped or generated.",
+        "steps": {
+          "s1": {
+            "title": "Add photos",
+            "body": "Click “Import” or drag photos onto the page. You can add up to 200 photos at once."
+          },
+          "s2": {
+            "title": "Pick the size",
+            "body": "In “Resolution” pick 2K or 4K, or tick “Custom size (px)” and enter a width. While “Keep proportions” is on, the height follows automatically."
+          },
+          "s3": {
+            "title": "Resize",
+            "body": "Click “Resize”. Each photo fits into the new size in full — nothing is cropped. Photos smaller than the chosen size are not enlarged."
+          },
+          "s4": {
+            "title": "Download the results",
+            "body": "Download photos with “Download” or all at once as a ZIP. The list only shows photos from the current session — download them before you leave the page."
+          }
+        }
+      },
+      "starter": {
+        "title": "See what you can do",
+        "body": "Your photos fitted to 2K, 4K or your own size in pixels, always whole and never cropped. Add photos and click “Resize”."
+      }
+    },
+    "compress": {
+      "tutorial": {
+        "title": "How Compression works",
+        "body": "Make many photos lighter at once. The compression strength decides how much quality you trade for a smaller file.",
+        "steps": {
+          "s1": {
+            "title": "Add photos",
+            "body": "Click “Import” or drag photos onto the page. You can add up to 200 photos at once."
+          },
+          "s2": {
+            "title": "Set the compression",
+            "body": "In “Compression strength” pick “Low”, “Medium” or “High” — the stronger, the smaller the file and the fewer the details. In “Format” pick a new format or “Keep”."
+          },
+          "s3": {
+            "title": "Compress",
+            "body": "Click “Compress”. Each photo is compressed separately and the button shows the progress."
+          },
+          "s4": {
+            "title": "Check and download",
+            "body": "The “Compression summary” shows the size “Before” and “After” and how much was “Saved”. Download files with “Download” or as a ZIP. The list only shows the current session — download before you leave."
+          }
+        }
+      },
+      "starter": {
+        "title": "See what you can do",
+        "body": "Your photos as lighter files, in the same or a new format. You choose the compression strength. Add photos and click “Compress”."
+      }
+    }
   }
 }

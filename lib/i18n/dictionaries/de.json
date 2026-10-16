@@ -9281,5 +9281,442 @@
       "title": "Der visuelle Editor ist noch nicht verfügbar",
       "body": "Der Datenbank fehlen noch die Tabellen des Editors (Migration 0141). Die Seiten funktionieren unverändert; der Editor schaltet sich nach der Migration von selbst ein — ohne erneutes Deployment."
     }
+  },
+  "toolGuide": {
+    "open": "Anleitung",
+    "openAria": "Anleitung zu diesem Tool öffnen",
+    "overline": "Anleitung",
+    "close": "Anleitung schließen",
+    "progress": "Fortschritt der Anleitung",
+    "counter": "{n} von {total}",
+    "stepLabel": "Schritt {n}",
+    "back": "Zurück",
+    "next": "Weiter",
+    "start": "Los geht’s",
+    "skip": "Überspringen",
+    "starterBadge": "Beispieleffekte",
+    "starterNote": "Ein Beispiel dafür, was dieses Tool kann — nicht dein eigenes Ergebnis."
+  },
+  "toolGuideDefaults": {
+    "prompts": {
+      "tutorial": {
+        "title": "So erstellst du ein Produkt-Fotoshooting",
+        "body": "Füge Produktfotos hinzu, wähle Sessiontyp und Einstellungen, und GrovBase entwirft die Aufnahmen für dich. Jede Aufnahme zeigt dein Produkt in einer neuen Szenerie.",
+        "steps": {
+          "s1": {
+            "title": "Produktfotos hinzufügen",
+            "body": "Klicke auf „Import“ und füge 1 bis 10 Produktfotos hinzu, oder ziehe sie auf die Seite bzw. füge sie ein (Strg/Cmd+V). Sind schon Fotos hinzugefügt, prüfe sie vor dem Generieren."
+          },
+          "s2": {
+            "title": "Sessiontyp wählen",
+            "body": "„Werbesession“ liefert professionelle Produktaufnahmen in edler Szenerie, „Lifestyle-Session“ natürliche Aufnahmen im Alltagsumfeld."
+          },
+          "s3": {
+            "title": "Format, Auflösung und Modell",
+            "body": "Lege in „Generierungseinstellungen“ „Format“, „Auflösung“ und „Anzahl Aufnahmen“ fest. Auf manchen Seiten sind Format und Anzahl schon voreingestellt — du kannst sie ändern. Wähle darunter das „KI-Modell“."
+          },
+          "s4": {
+            "title": "Aufnahmen beschreiben (optional)",
+            "body": "Schreibe unter „Aufnahme beschreiben“, was eine Aufnahme zeigen soll, und wähle ein Referenzfoto dafür. „Referenzbildausschnitt beibehalten“ behält Ausschnitt und Komposition — nur die Szenerie ändert sich."
+          },
+          "s5": {
+            "title": "Generieren und prüfen",
+            "body": "Prüfe die Kosten in der Übersicht und klicke auf „Generieren“. Fertige Fotos erscheinen in der Galerie mit „NEU“ — du kannst sie herunterladen, als Favorit markieren oder „Erneut generieren“."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh, was du erstellen kannst",
+        "body": "Aus deinen Produktfotos entsteht eine Serie neuer Aufnahmen: dein Produkt in edler Szenerie oder im Alltagsumfeld. Füge Fotos hinzu und klicke auf „Generieren“."
+      }
+    },
+    "generator": {
+      "tutorial": {
+        "title": "So funktioniert „Eigener Prompt“",
+        "body": "Du beschreibst die Szene mit eigenen Worten, und die KI setzt das Produkt aus deinen Fotos hinein. Du hast volle Kontrolle über Szene, Licht und Stil.",
+        "steps": {
+          "s1": {
+            "title": "Produktfotos hinzufügen",
+            "body": "Klicke auf „Import“ und füge bis zu 10 Produktfotos hinzu, oder ziehe sie auf die Seite bzw. füge sie ein (Strg/Cmd+V). Aus diesen Fotos übernimmt die KI das Aussehen des Produkts."
+          },
+          "s2": {
+            "title": "Inspiration hinzufügen (optional)",
+            "body": "Füge unter „Inspiration“ bis zu 5 Fotos hinzu, z. B. über „Eigene Inspiration“. Die KI übernimmt daraus Umgebung, Licht, Farben oder Stimmung — nicht das Produkt. Nicht jede KI-Engine unterstützt Inspiration."
+          },
+          "s3": {
+            "title": "Prompt schreiben",
+            "body": "Öffne das Feld „Klicken, um den Prompt einzugeben“ und beschreibe Szene, Licht, Umgebung und Stil im Detail. Ohne Prompt kannst du keine Bilder generieren."
+          },
+          "s4": {
+            "title": "Format und KI-Engine",
+            "body": "Lege in „Generierungseinstellungen“ „Format“, „Auflösung“ und „Anzahl Bilder“ fest und wähle darunter die „KI-Engine“. Die verfügbaren Optionen hängen von der gewählten Engine ab."
+          },
+          "s5": {
+            "title": "Generieren",
+            "body": "Prüfe die Kosten und klicke auf „Generieren“. Fertige Bilder erscheinen in der Galerie mit „NEU“ und werden in deiner Bibliothek gespeichert."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh, was du erstellen kannst",
+        "body": "Aus deinen Produktfotos und deiner Beschreibung entstehen neue Bilder: dein Produkt in der Szene, die du beschreibst. Füge Fotos hinzu, schreibe einen Prompt und klicke auf „Generieren“."
+      }
+    },
+    "retouch": {
+      "tutorial": {
+        "title": "So funktioniert die Foto-Retusche",
+        "body": "Die KI verbessert Licht, Sauberkeit, Materialien und Präsentation und behält das echte Aussehen des Produkts bei. Jedes Foto wird einzeln retuschiert.",
+        "steps": {
+          "s1": {
+            "title": "Fotos hinzufügen",
+            "body": "Klicke auf „Import“ und füge bis zu 10 Produktfotos hinzu, oder ziehe sie auf die Seite bzw. füge sie ein (Strg/Cmd+V)."
+          },
+          "s2": {
+            "title": "Auflösung wählen",
+            "body": "Wähle unter „Auflösung“ 2K oder 4K. Davon hängen die Größe der fertigen Datei und die Kosten der Retusche ab."
+          },
+          "s3": {
+            "title": "Format wählen",
+            "body": "„Original“ behält den Bildausschnitt des Fotos. Wählst du ein Seitenverhältnis, wird das ganze Foto in diesem Format auf weißen Hintergrund gesetzt — nichts wird beschnitten."
+          },
+          "s4": {
+            "title": "Retuschieren und herunterladen",
+            "body": "Prüfe „Kosten pro Foto“ und „Gesamtkosten“ und klicke auf „Retuschieren“. Jedes Foto wird einzeln retuschiert und landet in der Galerie — du kannst es herunterladen, als Favorit markieren oder löschen."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh dir den Retusche-Effekt an",
+        "body": "Aus deinem Produktfoto wird eine ausgearbeitete Version: besseres Licht, sauberere Präsentation, dasselbe Produkt. Füge Fotos hinzu und klicke auf „Retuschieren“."
+      }
+    },
+    "ecommerce_thumbnail": {
+      "tutorial": {
+        "title": "So funktioniert das Thumbnail",
+        "body": "Aus deinen Produktfotos (1 bis 10) erstellt die KI ein quadratisches Vorschaubild für das erste Bild deines Angebots. Die Reihenfolge der Fotos zählt.",
+        "steps": {
+          "s1": {
+            "title": "Fotos in der richtigen Reihenfolge",
+            "body": "Klicke auf „Import“ und füge 1 bis 10 Produktfotos hinzu. Sie gehen in dieser Reihenfolge in das Vorschaubild ein — ändere sie mit den Pfeilen an den Fotovorschauen."
+          },
+          "s2": {
+            "title": "KI-Retusche (optional)",
+            "body": "Schalte „KI-Retusche“ ein, wenn die KI zuerst jedes Foto einzeln verbessern soll. Der Aufpreis pro Foto steht neben dem Schalter und in der Übersicht."
+          },
+          "s3": {
+            "title": "Vorschaubild erstellen",
+            "body": "Prüfe die „Übersicht“ und klicke auf „Vorschaubild erstellen“. Währenddessen siehst du „Wir erstellen dein Thumbnail…“. Lass die Seite offen — verlässt du sie, geht es weiter, sobald du zurückkommst."
+          },
+          "s4": {
+            "title": "Prüfen und herunterladen",
+            "body": "Du erhältst eine quadratische PNG-Datei mit 2560×2560 px, die auch in deiner Bibliothek gespeichert wird. Nutze „Vergrößern“ und „Herunterladen“. Prüfe das Bild vor der Veröffentlichung — die KI kann Produktdetails verändern oder weglassen."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh, wie ein Vorschaubild aussieht",
+        "body": "Aus deinen Produktfotos entsteht ein quadratisches Vorschaubild für das erste Bild deines Angebots. Füge Fotos hinzu und klicke auf „Vorschaubild erstellen“."
+      }
+    },
+    "fashion_ghost_mannequin": {
+      "tutorial": {
+        "title": "So funktioniert „Unsichtbare Puppe“",
+        "body": "Aus einem Kleidungsfoto erstellt die KI ein professionelles Produktfoto ohne sichtbares Model. Jedes hinzugefügte Foto ergibt ein Ergebnis.",
+        "steps": {
+          "s1": {
+            "title": "Kleidungsfotos hinzufügen",
+            "body": "Klicke auf „Import“ und füge Fotos des Kleidungsstücks hinzu, z. B. an einer Schaufensterpuppe oder auf einem Bügel. Du kannst bis zu 200 Fotos hinzufügen, hineinziehen oder einfügen."
+          },
+          "s2": {
+            "title": "Auflösung und Format",
+            "body": "Wähle „Auflösung“ und „Format“. Standardformat ist 1:1; „Auto“ behält den Bildausschnitt des Fotos."
+          },
+          "s3": {
+            "title": "Hinweis hinzufügen (optional)",
+            "body": "Unter „Hinweis für die KI“ kannst du das Ergebnis kurz präzisieren, z. B. Licht oder Details. Die Produkttreue gilt unabhängig davon, was du hier schreibst."
+          },
+          "s4": {
+            "title": "Generieren",
+            "body": "Prüfe die Kosten und klicke auf „Generieren“. Jedes Foto ergibt ein Ergebnis in der Galerie — du kannst es herunterladen, als Favorit markieren oder löschen."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh, was du erstellen kannst",
+        "body": "Aus Fotos deines Kleidungsstücks entstehen professionelle Produktfotos ohne sichtbares Model. Füge Fotos hinzu und klicke auf „Generieren“."
+      }
+    },
+    "fashion_flat_lay": {
+      "tutorial": {
+        "title": "So funktioniert „Liegendes Produkt“",
+        "body": "Aus einem Produktfoto erstellt die KI eine ästhetische Flat-Lay-Aufnahme. Jedes hinzugefügte Foto ergibt ein Ergebnis.",
+        "steps": {
+          "s1": {
+            "title": "Produktfotos hinzufügen",
+            "body": "Klicke auf „Import“ und füge Fotos des Kleidungsstücks oder Produkts hinzu. Du kannst bis zu 200 Fotos hinzufügen, hineinziehen oder einfügen."
+          },
+          "s2": {
+            "title": "Optionen festlegen",
+            "body": "Wähle „Auflösung“ und „Format“ (Standard 1:1; „Auto“ behält den Bildausschnitt). Unter „Hinweis für die KI“ kannst du das Ergebnis optional präzisieren."
+          },
+          "s3": {
+            "title": "Generieren",
+            "body": "Prüfe die Kosten und klicke auf „Generieren“. Jedes Foto ergibt ein Ergebnis in der Galerie: das Produkt ästhetisch als Flat Lay arrangiert."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh, was du erstellen kannst",
+        "body": "Aus Fotos deines Produkts entstehen ästhetische Flat-Lay-Aufnahmen. Füge Fotos hinzu und klicke auf „Generieren“."
+      }
+    },
+    "fashion_iron": {
+      "tutorial": {
+        "title": "So funktioniert „Bügeln“",
+        "body": "Die KI glättet Falten auf dem Foto eines Kleidungsstücks und verbessert seine Präsentation. Jedes hinzugefügte Foto ergibt ein Ergebnis.",
+        "steps": {
+          "s1": {
+            "title": "Kleidungsfotos hinzufügen",
+            "body": "Klicke auf „Import“ und füge Fotos des zerknitterten Kleidungsstücks hinzu. Du kannst bis zu 200 Fotos hinzufügen, hineinziehen oder einfügen."
+          },
+          "s2": {
+            "title": "Auflösung und Format",
+            "body": "Wähle „Auflösung“ und „Format“. Standardformat ist 1:1; „Auto“ behält den Bildausschnitt des Fotos."
+          },
+          "s3": {
+            "title": "Generieren",
+            "body": "Prüfe die Kosten und klicke auf „Generieren“. Im Ergebnis sind die Falten geglättet, Farbe und Schnitt sollen unverändert bleiben — prüfe es vor der Veröffentlichung."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh, was du erstellen kannst",
+        "body": "Aus Fotos deiner Kleidung entstehen faltenfreie Versionen mit besserer Präsentation. Füge Fotos hinzu und klicke auf „Generieren“."
+      }
+    },
+    "fashion_change_person": {
+      "tutorial": {
+        "title": "So funktioniert „Person wechseln“",
+        "body": "Die KI überträgt das Kleidungsstück oder Styling vom Referenzfoto auf die Person aus dem Modelfoto.",
+        "steps": {
+          "s1": {
+            "title": "Kleidungsfoto hinzufügen",
+            "body": "Füge unter „Referenzfoto“ ein Foto des Kleidungsstücks oder Stylings hinzu, das du übertragen willst. Du kannst bis zu 10 Fotos hinzufügen."
+          },
+          "s2": {
+            "title": "Modelfoto hinzufügen",
+            "body": "Füge unter „Modelfoto“ ein Foto der Person hinzu, die es tragen soll. Du kannst bis zu 10 Fotos hinzufügen. Beide Fotoarten sind erforderlich."
+          },
+          "s3": {
+            "title": "Format wählen",
+            "body": "Wähle das „Format“. „Auto“ behält den Bildausschnitt des Fotos."
+          },
+          "s4": {
+            "title": "Generieren",
+            "body": "Prüfe die Kosten und klicke auf „Generieren“. Fotos werden in der Reihenfolge des Hinzufügens zu Paaren — z. B. ergeben 1 Kleidungsstück und 3 Models 3 Ergebnisse in der Galerie."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh, was du erstellen kannst",
+        "body": "Aus einem Foto deines Kleidungsstücks und dem Foto einer gewählten Person entsteht ein Foto dieser Person in diesem Kleidungsstück. Füge beide Fotos hinzu und klicke auf „Generieren“."
+      }
+    },
+    "fashion_change_face": {
+      "tutorial": {
+        "title": "So änderst du das Gesicht des Models",
+        "body": "Die KI tauscht das Gesicht des Models auf einem Foto aus. Outfit, Pose, Hintergrund und der Rest des Bildes bleiben unverändert.",
+        "steps": {
+          "s1": {
+            "title": "Referenzfoto hinzufügen",
+            "body": "Lade unter „Referenzfoto hinzufügen“ das Foto hoch, dessen Outfit, Pose und Hintergrund gleich bleiben sollen."
+          },
+          "s2": {
+            "title": "Gesichtsfoto hinzufügen",
+            "body": "Lade unter „Gesichtsfoto hinzufügen“ ein Foto der Person hoch, deren Gesicht im Referenzfoto erscheinen soll."
+          },
+          "s3": {
+            "title": "Format wählen",
+            "body": "Wähle das „Format“. „Auto“ behält den Bildausschnitt des Fotos. Die KI passt das Gesicht an Licht, Perspektive und Bildausschnitt an."
+          },
+          "s4": {
+            "title": "Gesicht ändern",
+            "body": "Prüfe die Kosten und klicke auf „Gesicht ändern“. Bei mehreren Fotos werden Paare in der Reihenfolge des Hinzufügens gebildet. Ergebnisse erscheinen in der Galerie — prüfe sie vor der Veröffentlichung."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh, was du erstellen kannst",
+        "body": "Aus deinem Foto und einem Gesichtsfoto entsteht dasselbe Foto mit dem neuen Gesicht des Models. Füge beide Fotos hinzu und klicke auf „Gesicht ändern“."
+      }
+    },
+    "tool_remove_bg": {
+      "tutorial": {
+        "title": "So funktioniert „Hintergrund entfernen“",
+        "body": "Das Werkzeug stellt das Produkt frei und speichert eine Datei mit transparentem Hintergrund. Das Produkt bleibt unverändert — nichts wird generiert.",
+        "steps": {
+          "s1": {
+            "title": "Fotos hinzufügen",
+            "body": "Klicke auf „Import“ und füge bis zu 10 Produktfotos hinzu (je max. 10 MB), oder ziehe sie auf die Seite bzw. füge sie ein."
+          },
+          "s2": {
+            "title": "Dateiformat wählen",
+            "body": "Wähle unter „Dateiformat“ PNG oder WebP — beide behalten den transparenten Hintergrund."
+          },
+          "s3": {
+            "title": "Hintergrund entfernen",
+            "body": "Prüfe die Kosten und klicke auf „Hintergrund entfernen“. Den Fortschritt siehst du bei jedem Foto."
+          },
+          "s4": {
+            "title": "Vergleichen und herunterladen",
+            "body": "Klicke auf ein Ergebnis, um „Vorher / Nachher vergleichen“ zu öffnen, und nutze „Herunterladen“. Jedes Ergebnis wird auch automatisch in der Bibliothek gespeichert."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh, was du erstellen kannst",
+        "body": "Aus deinem Foto wird dasselbe Produkt auf transparentem Hintergrund, bereit für jeden Einsatz. Füge Fotos hinzu und klicke auf „Hintergrund entfernen“."
+      }
+    },
+    "tool_white_bg": {
+      "tutorial": {
+        "title": "So funktioniert „Hintergrundfarbe ändern“",
+        "body": "Das Werkzeug setzt das Produkt auf eine einheitliche Farbe: Weiß, Schwarz, Grau, einen Pastellton oder einen eigenen HEX-Wert.",
+        "steps": {
+          "s1": {
+            "title": "Fotos hinzufügen",
+            "body": "Klicke auf „Import“ und füge bis zu 10 Produktfotos hinzu (je max. 10 MB), oder ziehe sie auf die Seite bzw. füge sie ein."
+          },
+          "s2": {
+            "title": "Hintergrundfarbe wählen",
+            "body": "Wähle unter „Hintergrundfarbe“ eine Farbe aus der Palette oder gib unter „Eigene Farbe (HEX)“ eine eigene ein. Fotos mit bereits transparentem Hintergrund (z. B. aus „Hintergrund entfernen“) sind kostenlos."
+          },
+          "s3": {
+            "title": "Farbe ändern",
+            "body": "Wähle das „Dateiformat“, prüfe die Kosten und klicke auf „Farbe ändern“. Den Fortschritt siehst du bei jedem Foto."
+          },
+          "s4": {
+            "title": "Vergleichen und herunterladen",
+            "body": "Klicke auf ein Ergebnis, um „Vorher / Nachher vergleichen“ zu öffnen, und nutze „Herunterladen“. Jedes Ergebnis wird auch automatisch in der Bibliothek gespeichert."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh, was du erstellen kannst",
+        "body": "Aus deinem Foto wird dasselbe Produkt auf einheitlichem Hintergrund in der gewählten Farbe. Füge Fotos hinzu, wähle eine Farbe und klicke auf „Farbe ändern“."
+      }
+    },
+    "tool_ai_background": {
+      "tutorial": {
+        "title": "So funktioniert „KI-Hintergrund hinzufügen“",
+        "body": "Die KI generiert eine neue Szene um das Produkt, das Produkt selbst bleibt genau wie auf dem Foto.",
+        "steps": {
+          "s1": {
+            "title": "Fotos hinzufügen",
+            "body": "Klicke auf „Import“ und füge bis zu 10 Produktfotos hinzu (je max. 10 MB), oder ziehe sie auf die Seite bzw. füge sie ein."
+          },
+          "s2": {
+            "title": "Szene wählen",
+            "body": "Wähle unter „Szene“ eine fertige Szene, oder klicke auf „Eigene Beschreibung“ und beschreibe unter „Hintergrundbeschreibung“ nur den Hintergrund, nicht das Produkt — z. B. heller Marmortisch, weiches Morgenlicht."
+          },
+          "s3": {
+            "title": "Inspiration hinzufügen (optional)",
+            "body": "Füge ein „Inspirationsfoto“ hinzu, und die KI übernimmt daraus Stimmung, Farben und Licht des Hintergrunds. Mit „Stärke der Inspiration“ legst du fest, wie stark es wirkt."
+          },
+          "s4": {
+            "title": "Generieren und vergleichen",
+            "body": "Wähle das „Dateiformat“ und klicke auf „Hintergrund generieren“. Öffne ein Ergebnis, nutze „Vorher / Nachher vergleichen“ und „Herunterladen“. Ergebnisse sind auch in der Bibliothek."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh, was du erstellen kannst",
+        "body": "Aus deinem Foto wird dasselbe Produkt in einer neuen Szene: einer fertigen oder einer, die du beschreibst. Füge Fotos hinzu, wähle eine Szene und klicke auf „Hintergrund generieren“."
+      }
+    },
+    "tool_ai_shadow": {
+      "tutorial": {
+        "title": "So funktioniert „Schatten hinzufügen“",
+        "body": "Das Werkzeug fügt einen realistischen Schatten unter dem Produkt hinzu — ohne neue Szene und ohne Lichtänderung.",
+        "steps": {
+          "s1": {
+            "title": "Fotos hinzufügen",
+            "body": "Klicke auf „Import“ und füge bis zu 10 Produktfotos hinzu (je max. 10 MB), oder ziehe sie auf die Seite bzw. füge sie ein."
+          },
+          "s2": {
+            "title": "Schattenart wählen",
+            "body": "Wähle unter „Schattenart“ „Weich“ (diffus, wie im Studio), „Kräftig“ (klar, wie in praller Sonne) oder „Schwebend“ (Produkt leicht über dem Boden)."
+          },
+          "s3": {
+            "title": "Hintergrund wählen",
+            "body": "Wähle unter „Hintergrund“ „Weiß“, „Transparent“ oder „Eigene Farbe“. Wähle bei transparentem Hintergrund PNG oder WebP — JPG hat keine Transparenz."
+          },
+          "s4": {
+            "title": "Schatten hinzufügen und vergleichen",
+            "body": "Klicke auf „Schatten hinzufügen“. Öffne ein Ergebnis, nutze „Vorher / Nachher vergleichen“ und „Herunterladen“. Ergebnisse werden auch automatisch in der Bibliothek gespeichert."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh, was du erstellen kannst",
+        "body": "Aus deinem Foto wird dasselbe Produkt mit realistischem Schatten auf weißem, transparentem oder gewähltem Hintergrund. Füge Fotos hinzu und klicke auf „Schatten hinzufügen“."
+      }
+    },
+    "resize": {
+      "tutorial": {
+        "title": "So funktioniert „Größe ändern“",
+        "body": "Passe viele Fotos auf einmal an eine gewählte Auflösung oder eine eigene Größe an. Nur die Abmessungen ändern sich — nichts wird beschnitten oder generiert.",
+        "steps": {
+          "s1": {
+            "title": "Fotos hinzufügen",
+            "body": "Klicke auf „Import“ oder ziehe Fotos auf die Seite. Du kannst bis zu 200 Fotos auf einmal hinzufügen."
+          },
+          "s2": {
+            "title": "Größe wählen",
+            "body": "Wähle unter „Auflösung“ 2K oder 4K, oder aktiviere „Eigene Größe (px)“ und gib eine Breite ein. Ist „Proportionen beibehalten“ an, passt sich die Höhe automatisch an."
+          },
+          "s3": {
+            "title": "Größe ändern",
+            "body": "Klicke auf „Größe ändern“. Jedes Foto passt vollständig in die neue Größe — nichts wird beschnitten. Fotos, die kleiner als die gewählte Größe sind, werden nicht vergrößert."
+          },
+          "s4": {
+            "title": "Ergebnisse herunterladen",
+            "body": "Lade Fotos mit „Herunterladen“ oder alle auf einmal als ZIP. Die Liste zeigt nur Fotos der aktuellen Sitzung — lade sie herunter, bevor du die Seite verlässt."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh, was du machen kannst",
+        "body": "Deine Fotos angepasst an 2K, 4K oder eine eigene Größe in Pixeln, immer vollständig und nie beschnitten. Füge Fotos hinzu und klicke auf „Größe ändern“."
+      }
+    },
+    "compress": {
+      "tutorial": {
+        "title": "So funktioniert die Kompression",
+        "body": "Mach viele Fotos auf einmal leichter. Die Kompressionsstärke bestimmt, wie viel Qualität du für eine kleinere Datei eintauschst.",
+        "steps": {
+          "s1": {
+            "title": "Fotos hinzufügen",
+            "body": "Klicke auf „Import“ oder ziehe Fotos auf die Seite. Du kannst bis zu 200 Fotos auf einmal hinzufügen."
+          },
+          "s2": {
+            "title": "Kompression einstellen",
+            "body": "Wähle unter „Kompressionsstärke“ „Niedrig“, „Mittel“ oder „Hoch“ — je stärker, desto kleiner die Datei und desto weniger Details. Wähle unter „Format“ ein neues Format oder „Unverändert“."
+          },
+          "s3": {
+            "title": "Komprimieren",
+            "body": "Klicke auf „Komprimieren“. Jedes Foto wird einzeln komprimiert, den Fortschritt zeigt die Schaltfläche."
+          },
+          "s4": {
+            "title": "Prüfen und herunterladen",
+            "body": "Die „Zusammenfassung der Kompression“ zeigt die Größe „Vorher“, „Nachher“ und was „Gespart“ wurde. Lade Dateien mit „Herunterladen“ oder als ZIP. Die Liste zeigt nur die aktuelle Sitzung — lade vorher herunter."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh, was du machen kannst",
+        "body": "Deine Fotos als leichtere Dateien, im selben oder einem neuen Format. Die Kompressionsstärke wählst du selbst. Füge Fotos hinzu und klicke auf „Komprimieren“."
+      }
+    }
   }
 }

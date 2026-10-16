@@ -6007,6 +6007,36 @@ export type Database = {
           },
         ]
       }
+      tool_guides: {
+        Row: {
+          content: Json | null
+          starter_enabled: boolean
+          tool_key: string
+          tutorial_enabled: boolean
+          tutorial_version: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          content?: Json | null
+          starter_enabled?: boolean
+          tool_key: string
+          tutorial_enabled?: boolean
+          tutorial_version?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          content?: Json | null
+          starter_enabled?: boolean
+          tool_key?: string
+          tutorial_enabled?: boolean
+          tutorial_version?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       tool_results: {
         Row: {
           created_at: string
@@ -7654,6 +7684,21 @@ export type Database = {
           usage_kind: string
           usage_label: string
         }[]
+      }
+      tool_guides_published: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          tool_key: string
+          tutorial_enabled: boolean
+          starter_enabled: boolean
+          tutorial_version: number
+          tutorial: Json | null
+          starter: Json | null
+        }[]
+      }
+      mark_tool_tutorial_seen: {
+        Args: { p_tool_key: string; p_version: number }
+        Returns: undefined
       }
       tool_search_tags: {
         Args: never
