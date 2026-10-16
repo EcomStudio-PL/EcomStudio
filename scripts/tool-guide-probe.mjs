@@ -511,7 +511,15 @@ const dialogGeom = (P) => P.page.evaluate(() => {
     rect: { top: r.top, bottom: r.bottom, left: r.left, right: r.right, height: r.height, width: r.width },
     vw: innerWidth, vh: innerHeight,
     docScrollW: document.documentElement.scrollWidth, docClientW: document.documentElement.clientWidth,
-    dlgOverflowX: d.scrollWidth > d.clientWidth + 1,
+    // NOT d.scrollWidth: the two decorative light washes (aria-hidden,
+    // absolutely placed -right-24 / -left-24) are meant to bleed out and are
+    // clipped by the dialog's overflow-hidden. What counts is content: the
+    // header, the step scroller and the footer, each inside the dialog and
+    // none wider than itself.
+    dlgOverflowX: [...d.children].filter((c) => c.getAttribute("aria-hidden") !== "true").some((c) => {
+      const cr = c.getBoundingClientRect();
+      return cr.left < r.left - 0.5 || cr.right > r.right + 0.5 || c.scrollWidth > c.clientWidth + 1;
+    }) || getComputedStyle(d).overflowX === "visible" && d.scrollWidth > d.clientWidth + 1,
     scrollerOverflowX: scroller ? scroller.scrollWidth > scroller.clientWidth + 1 : null,
     scrollerScrollsY: scroller ? scroller.scrollHeight > scroller.clientHeight + 1 : null,
     scrollerOverflowY: scroller ? getComputedStyle(scroller).overflowY : null,
@@ -967,17 +975,21 @@ if (run("7")) {
     const P = await openPage({ vp: VP[834], url: URLS.retouch, guide: guideFor("retouch", "pl", { seen: 0 }) });
     await waitDialog(P);
     const y0 = await P.page.evaluate(() => scrollY);
+    const room = await P.page.evaluate(() => document.documentElement.scrollHeight - innerHeight);
     await P.page.mouse.move(10, 20);
     await P.page.mouse.wheel(0, 500);
     await sleep(500);
     const y1 = await P.page.evaluate(() => scrollY);
+    const lock = await P.page.evaluate(() => ({ html: getComputedStyle(document.documentElement).overflowX + "/" + getComputedStyle(document.documentElement).overflowY, body: getComputedStyle(document.body).overflow }));
     await P.page.keyboard.press("Escape");
     await waitClosed(P);
+    await P.page.evaluate(() => window.scrollTo(0, 0));
     await P.page.mouse.move(10, 400);
     await P.page.mouse.wheel(0, 500);
     await sleep(500);
     const y2 = await P.page.evaluate(() => scrollY);
-    check(7, "[834] wheel over the scrim does not scroll the page while open; does after close", y1 === y0 && y2 > y1, { y0, whileOpen: y1, afterClose: y2 });
+    check(7, "[834] page scrollable at all (control: wheel scrolls it once the dialog is closed)", room > 0 && y2 > 0, { room, afterClose: y2 });
+    check(7, "[834] wheel over the scrim does NOT scroll the page while the dialog is open", y1 === y0, { room, y0, whileOpen: y1, overflow: lock });
     await closeP(P);
   }
 }
