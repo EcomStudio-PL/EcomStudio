@@ -463,7 +463,10 @@ export function GenerationGallery({
           line. Below `lg` the two groups wrap onto their own rows instead of
           being squeezed. */}
       <div data-gallery-toolbar className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <div className="thin-scroll -mx-1 order-2 flex min-w-0 items-center gap-1.5 overflow-x-auto px-1 pb-0.5 lg:order-1">
+        {/* On a tool's gallery the button is this group's only control from
+            `xl` up: no scroll to make room for, so no extra 2px either. */}
+        <div className={cn("thin-scroll -mx-1 order-2 flex min-w-0 items-center gap-1.5 overflow-x-auto px-1 pb-0.5 lg:order-1",
+          operation && guide.button ? "xl:pb-0" : null)}>
           {guide.button && <span className={operation ? "hidden xl:contents" : "hidden lg:contents"}>{guide.button}</span>}
           {/* Session chips belong to the generator: a retouch has no session
               type, so a tool's gallery does not offer two dead filters. */}
