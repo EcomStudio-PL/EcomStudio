@@ -651,10 +651,12 @@ export function PhotoToolWorkspace({
         )}
 
         {items.length === 0 ? (
-          <>
+          // One column: the button row takes its height, the empty state the
+          // rest — never the full height on top of the row.
+          <div className="flex flex-col lg:h-full lg:min-h-0">
             {/* The tutorial's way back in, above the gallery even before
                 there is a first result. */}
-            {guide.button && <div className="mb-2 flex justify-end">{guide.button}</div>}
+            {guide.button && <div className="mb-2 flex shrink-0 justify-end">{guide.button}</div>}
             {starterVisible({
               response: guide.response, itemCount: items.length, pendingCount: pending.length,
               loading: false, filtered: false, moreToLoad: cursor !== null, madeHere: false,
@@ -663,14 +665,14 @@ export function PhotoToolWorkspace({
                 image={guide.response.guide.starter.image} fallbackArt="compare" />
             ) : (
               <div aria-hidden={guide.pending ? true : undefined}
-                className={cn("flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-line px-6 py-10 text-center lg:h-full",
+                className={cn("flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-line px-6 py-10 text-center lg:flex-1",
                   guide.pending && "invisible")}>
                 <Sparkles size={20} aria-hidden className="text-faint" />
                 <p className="mt-2 text-[14px] font-semibold">{t("photoTool.emptyTitle")}</p>
                 <p className="mt-1 max-w-sm text-[12px] leading-relaxed text-muted">{t("photoTool.emptyBody")}</p>
               </div>
             )}
-          </>
+          </div>
         ) : (
           <>
             <div className="mb-2 flex items-center justify-between gap-2 px-0.5">

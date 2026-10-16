@@ -44,7 +44,9 @@ export function useToolGuide(tool: GuideToolKey | null, opts: { compactLabel?: b
       .then((r) => (r.ok ? r.json() : null))
       .then((json: (GuideResponse & { ok?: boolean }) | null) => {
         if (!alive) return;
-        if (json?.ok) setResponse({ guide: json.guide, seen: json.seen, live: json.live, hasResults: json.hasResults });
+        if (json?.ok) {
+          setResponse({ guide: json.guide, seen: json.seen, live: json.live, hasResults: json.hasResults, usedBefore: json.usedBefore ?? null });
+        }
       })
       .catch(() => { /* no guide: the screen stays exactly as it was */ })
       .finally(() => { if (alive) setPending(false); });
@@ -57,8 +59,7 @@ export function useToolGuide(tool: GuideToolKey | null, opts: { compactLabel?: b
   // another dialog or the visual editor; it waits for them to close instead.
   useEffect(() => {
     if (!tool || !response || autoDone.current) return;
-    const firstTime = response.hasResults === false || (response.guide?.version ?? 1) > 1;
-    if (!firstTime || !shouldAutoOpen(response, false)) return;
+    if (!shouldAutoOpen(response, false)) return;
     autoDone.current = true;
     let tries = 0;
     const blocked = () => Boolean(document.querySelector('[role="dialog"][aria-modal="true"], [data-ice-ui]'));
@@ -101,7 +102,8 @@ export function useToolGuide(tool: GuideToolKey | null, opts: { compactLabel?: b
     </button>
   ) : null;
 
-  const dialog = tutorial ? <TutorialModal open={open} onClose={close} tutorial={tutorial} /> : null;
+  // Mounted only while open: nothing of it sits in the page otherwise.
+  const dialog = tutorial && open ? <TutorialModal open onClose={close} tutorial={tutorial} /> : null;
 
   return { response, pending, button, dialog };
 }

@@ -10,9 +10,9 @@ import { guideState } from "./guide-state";
  * or the network.
  */
 
-export async function toolCatalogue(_supabase: unknown, opts: { admin: boolean }): Promise<{ slug: string; available: boolean }[]> {
+export async function toolCatalogue(_supabase: unknown, opts: { admin?: boolean } = {}): Promise<{ slug: string; available: boolean }[]> {
   guideState.liveCalls.push("toolCatalogue");
-  guideState.catalogueAdmin.push(opts.admin);
+  guideState.catalogueAdmin.push(opts.admin ?? false);
   return guideState.catalogue;
 }
 

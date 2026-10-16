@@ -93,6 +93,9 @@ export type ToolGuideEditorProps = {
     starterImage: string | null;
     /** updated_at of the row the form was opened on; null = no row yet. */
     base: string | null;
+    /** Per picture slot key, its updated_at when the form opened (null = no
+     *  slot yet) — the pictures' own compare-and-set base. */
+    imageBases: Record<string, string | null>;
     version: number;
   };
   library: LibraryItem[];
@@ -214,6 +217,7 @@ export function ToolGuideEditor({ tool, defaults, initial, library, catalogueIma
   const [form, setForm] = useState<Form>(() => initialForm(initial, defaults));
   const [saved, setSaved] = useState<string>(() => snapshot(initialForm(initial, defaults)));
   const [base, setBase] = useState<string | null>(initial.base);
+  const [imageBases, setImageBases] = useState(initial.imageBases);
   const [version, setVersion] = useState(initial.version);
   const [lang, setLang] = useState<Locale>("pl");
   const [error, setError] = useState<string | null>(null);
@@ -227,25 +231,21 @@ export function ToolGuideEditor({ tool, defaults, initial, library, catalogueIma
   const fresh = () => `n${++seq.current}`;
 
   /**
-   * THE COMPARE-AND-SET BASE AFTER A SAVE. A success answers with the row's
-   * own time (and the action compares instants, not spellings); the refreshed
-   * server props confirm it. A failure that had already written the row
-   * before its pictures failed answers with no time at all, so the base is
-   * the first row stamped after the one we sent. State, not a ref, so it
-   * holds whichever arrives first — the refreshed props or the action's answer.
+   * THE COMPARE-AND-SET BASES AFTER A SAVE. A success answers with the row's
+   * own time and the pictures' (the action compares instants, not
+   * spellings); the refreshed server props confirm them. A failed save wrote
+   * nothing, so the bases stay. State, not a ref, so it holds whichever
+   * arrives first — the refreshed props or the action's answer.
    */
-  const [adoptWant, setAdoptWant] = useState<{ at: string } | { after: string | null } | null>(null);
+  const [adoptWant, setAdoptWant] = useState<{ at: string } | null>(null);
   useEffect(() => {
     if (!adoptWant || !initial.base) return;
-    const now = Date.parse(initial.base);
-    const match = "at" in adoptWant
-      ? now === Date.parse(adoptWant.at)
-      : adoptWant.after === null || now !== Date.parse(adoptWant.after);
-    if (!match) return;
+    if (Date.parse(initial.base) !== Date.parse(adoptWant.at)) return;
     setAdoptWant(null);
     setBase(initial.base);
+    setImageBases(initial.imageBases);
     setVersion(initial.version);
-  }, [adoptWant, initial.base, initial.version]);
+  }, [adoptWant, initial.base, initial.imageBases, initial.version]);
 
   const dirty = snapshot(form) !== saved;
   const items = useMemo(() => new Map([...library, ...picked].map((a) => [a.id, a])), [library, picked]);
@@ -315,7 +315,8 @@ export function ToolGuideEditor({ tool, defaults, initial, library, catalogueIma
     const shippedSteps = defaults.tutorial.steps;
     return {
       title: pick(custom ? form.tutorial.title : undefined, defaults.tutorial.title, lang),
-      body: pick(custom ? form.tutorial.body : undefined, defaults.tutorial.body, lang),
+      // An intro the admin left empty stays empty, as resolveGuide does.
+      body: pick(custom ? form.tutorial.body : undefined, custom ? {} : defaults.tutorial.body, lang),
       steps: form.steps.map((s, i) => {
         // As resolveGuide: the admin's steps fall back to their own Polish,
         // never to whichever shipped step sat at that position; only a title
@@ -336,7 +337,7 @@ export function ToolGuideEditor({ tool, defaults, initial, library, catalogueIma
   // else (null) the drawn showcase.
   const previewStarter: Starter = {
     title: pick(form.useDefault ? undefined : form.starter.title, defaults.starter.title, lang),
-    body: pick(form.useDefault ? undefined : form.starter.body, defaults.starter.body, lang),
+    body: pick(form.useDefault ? undefined : form.starter.body, form.useDefault ? defaults.starter.body : {}, lang),
     image: guideImage(itemOf(form.starter.imageId)) ?? catalogueImage,
   };
 
@@ -371,6 +372,7 @@ export function ToolGuideEditor({ tool, defaults, initial, library, catalogueIma
         content,
         images: { steps: sent.steps.map((s) => s.imageId), starter: sent.starter.imageId },
         base: sentBase,
+        imageBases,
         showAgain: sent.showAgain,
       });
       if (res.ok) {
@@ -381,6 +383,7 @@ export function ToolGuideEditor({ tool, defaults, initial, library, catalogueIma
         setConflict(false);
         if (res.data) {
           setBase(res.data.updatedAt);
+          setImageBases(res.data.imageBases);
           setVersion(res.data.version);
           setAdoptWant({ at: res.data.updatedAt });
         }
@@ -395,14 +398,8 @@ export function ToolGuideEditor({ tool, defaults, initial, library, catalogueIma
         toast.error(errorText("conflict"), { action: { label: t("aicc.guide.reload"), onClick: reload } });
         return;
       }
-      if (res.error === "images_failed" || res.error === "conflict_images") {
-        // The row (texts, switches, version) WAS written before the pictures
-        // failed. The form stays dirty so "Zapisz" retries the pictures; the
-        // version bump, if any, has already happened.
-        setForm((f) => ({ ...f, showAgain: false }));
-        setAdoptWant({ after: sentBase });
-        router.refresh();
-      }
+      // Every other failure wrote nothing: the form stays as it is, dirty,
+      // so "Zapisz i opublikuj" simply tries again.
       setError(errorText(res.error));
       toast.error(errorText(res.error), res.error === "conflict_images"
         ? { action: { label: t("aicc.guide.reload"), onClick: reload } } : undefined);

@@ -45,6 +45,29 @@ export async function hasToolResults(supabase: Client, workspaceId: string, tool
   return error ? null : (data ?? []).length > 0;
 }
 
+/**
+ * Has THIS USER finished something in this tool before — their own jobs,
+ * not their workspace's (a new teammate is new to the tool even when the
+ * gallery is full)? Decides only whether the FIRST version of a tutorial
+ * opens by itself: someone who already uses the tool knows it. The
+ * generators count jobs no feature claimed. `null` when the read fails.
+ */
+export async function hasUsedTool(supabase: Client, workspaceId: string, userId: string, tool: GuideToolKey): Promise<boolean | null> {
+  const surface = guideSurface(tool);
+  if (surface === "batch") return false;
+  if (surface === "photo") {
+    const { data, error } = await supabase.from("tool_results").select("id")
+      .eq("workspace_id", workspaceId).eq("user_id", userId).eq("tool_slug", photoSlugOf(tool)!).limit(1);
+    return error ? null : (data ?? []).length > 0;
+  }
+  let q = supabase.from("generation_jobs").select("id")
+    .eq("workspace_id", workspaceId).eq("user_id", userId).eq("status", "completed");
+  const op = operationOf(tool);
+  q = op ? q.eq("settings->>operation", op) : q.is("settings->>operation", null);
+  const { data, error } = await q.limit(1);
+  return error ? null : (data ?? []).length > 0;
+}
+
 /** The highest tutorial version this user has seen (0 = none). Their own
  *  preferences row, by RLS (prefs_all_own). */
 export async function readSeenVersion(supabase: Client, userId: string, tool: GuideToolKey): Promise<number> {

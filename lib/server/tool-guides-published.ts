@@ -31,7 +31,7 @@ export type PublishedGuide = {
  * in a shared cache entry, and the table itself is admin-only.
  *
  * A FAILED READ IS THROWN, NEVER CACHED (the content-overrides rule): the
- * caller then serves the shipped guides for that one request. The function
+ * caller then shows no guide for that one request. The function
  * not existing yet (code before 0142) is the one stable answer worth caching.
  */
 const readPublished = unstable_cache(
@@ -58,11 +58,14 @@ const readPublished = unstable_cache(
   { revalidate: 300, tags: [TOOL_GUIDES_TAG] },
 );
 
-export async function publishedGuide(tool: GuideToolKey): Promise<PublishedGuide | null> {
+/** One tool's saved guide: null = never saved (the shipped one applies),
+ *  "failed" = the read failed — NOT the same thing: the shipped guide would
+ *  switch back on a tutorial or starter an admin turned off. */
+export async function publishedGuide(tool: GuideToolKey): Promise<PublishedGuide | null | "failed"> {
   try {
     return (await readPublished())[tool] ?? null;
   } catch (e) {
-    console.warn("tool-guides: read failed, using the shipped guide", e instanceof Error ? e.message : e);
-    return null;
+    console.warn("tool-guides: read failed, showing no guide", e instanceof Error ? e.message : e);
+    return "failed";
   }
 }

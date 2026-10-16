@@ -71,6 +71,12 @@ export function TutorialModal({ open, onClose, tutorial }: {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
+      // Not a shortcut, not handled already, not aimed at something stacked
+      // above this dialog (a search palette, say). Focus on the page itself
+      // (after a click on the picture) still counts as ours.
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+      const target = e.target as Node | null;
+      if (target && target !== document.body && dialogRef.current && !dialogRef.current.contains(target)) return;
       if (e.key === "Escape") { e.preventDefault(); onClose(); }
       else if (e.key === "ArrowRight") { e.preventDefault(); next(); }
       else if (e.key === "ArrowLeft") { e.preventDefault(); back(); }
@@ -195,17 +201,19 @@ export function TutorialModal({ open, onClose, tutorial }: {
         {/* FOOTER — skip, back, next / start. */}
         <div className="relative flex items-center justify-between gap-2 border-t border-line/70 px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3.5 sm:px-7 sm:pb-5">
           <button type="button" onClick={onClose} data-guide-skip
-            className={cn("h-10 rounded-xl px-3 text-[13px] font-semibold text-muted transition-colors hover:bg-raised hover:text-ink",
+            className={cn("h-10 min-w-0 truncate rounded-xl px-3 text-[13px] font-semibold text-muted transition-colors hover:bg-raised hover:text-ink",
               last && "invisible")}>
             {t("toolGuide.skip")}
           </button>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={back} disabled={step === 0} data-guide-back
-              className="flex h-10 items-center gap-1.5 rounded-xl border border-line px-3.5 text-[13px] font-semibold text-ink transition-colors hover:bg-raised disabled:cursor-not-allowed disabled:opacity-40">
-              <ArrowLeft size={14} aria-hidden />{t("toolGuide.back")}
+            {/* On a narrow phone "Wstecz" is its arrow alone (named for
+                screen readers), so the primary button never gets clipped. */}
+            <button type="button" onClick={back} disabled={step === 0} data-guide-back aria-label={t("toolGuide.back")}
+              className="flex h-10 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] font-semibold text-ink transition-colors hover:bg-raised disabled:cursor-not-allowed disabled:opacity-40 sm:px-3.5">
+              <ArrowLeft size={14} aria-hidden /><span className="max-[380px]:sr-only">{t("toolGuide.back")}</span>
             </button>
             <button ref={primaryRef} type="button" onClick={last ? onClose : next} data-guide-next={last ? "start" : "next"}
-              className="cta flex h-10 min-w-[7.5rem] items-center justify-center gap-1.5 rounded-xl px-4 text-[13px] font-semibold">
+              className="cta flex h-10 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-4 text-[13px] font-semibold sm:min-w-[7.5rem]">
               {last ? <><Check size={14} aria-hidden />{t("toolGuide.start")}</> : <>{t("toolGuide.next")}<ArrowRight size={14} aria-hidden /></>}
             </button>
           </div>

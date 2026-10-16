@@ -4813,8 +4813,8 @@
     "guide.error.invalid_image": "Die gewählte Datei ist kein Bild aus der Bibliothek — wähle eine andere.",
     "guide.error.migration_pending": "Nicht gespeichert — der Datenbank fehlt noch Migration 0142.",
     "guide.error.conflict": "Jemand anderes hat diese Anleitung inzwischen gespeichert. Lade die aktuelle Version und nimm deine Änderungen erneut vor.",
-    "guide.error.conflict_images": "Texte gespeichert, aber die Fotos haben sich inzwischen geändert. Lade die Seite neu und wähle die Fotos noch einmal.",
-    "guide.error.images_failed": "Texte gespeichert, aber die Fotos konnten nicht gespeichert werden. Klicke erneut auf „Speichern und veröffentlichen“.",
+    "guide.error.conflict_images": "Die Fotos haben sich inzwischen geändert – nichts wurde gespeichert. Lade die Seite neu.",
+    "guide.error.images_failed": "Die Fotos konnten nicht gespeichert werden – nichts wurde geändert. Versuche es noch einmal.",
     "guide.error.unauthenticated": "Sitzung abgelaufen — melde dich erneut an.",
     "guide.error.not_admin": "Nur Administratoren können Anleitungen ändern.",
     "guide.error.step_up_required": "Bestätige deine Identität auf diesem Gerät, um Änderungen im Panel zu speichern.",
@@ -9778,7 +9778,7 @@
     "resize": {
       "tutorial": {
         "title": "So funktioniert „Größe ändern“",
-        "body": "Passe viele Fotos auf einmal an eine gewählte Auflösung oder eine eigene Größe an. Nur die Abmessungen ändern sich — nichts wird beschnitten oder generiert.",
+        "body": "Passe viele Fotos auf einmal an eine gewählte Auflösung oder eine eigene Größe an. Die Abmessungen ändern sich — nichts wird beschnitten oder generiert (AVIF-Fotos werden als WebP gespeichert).",
         "steps": {
           "s1": {
             "title": "Fotos hinzufügen",

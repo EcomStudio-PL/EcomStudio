@@ -4813,8 +4813,8 @@
     "guide.error.invalid_image": "Wybrany plik nie jest obrazem z biblioteki — wybierz inny.",
     "guide.error.migration_pending": "Nie zapisano — baza danych czeka na migrację 0142.",
     "guide.error.conflict": "Ktoś inny zapisał ten samouczek w międzyczasie. Wczytaj aktualną wersję i wprowadź zmiany ponownie.",
-    "guide.error.conflict_images": "Teksty zapisane, ale zdjęcia zmieniły się w międzyczasie. Wczytaj stronę ponownie i wybierz zdjęcia jeszcze raz.",
-    "guide.error.images_failed": "Teksty zapisane, ale zdjęć nie udało się zapisać. Kliknij „Zapisz i opublikuj” ponownie.",
+    "guide.error.conflict_images": "Zdjęcia zmieniły się w międzyczasie — nic nie zostało zapisane. Wczytaj stronę ponownie.",
+    "guide.error.images_failed": "Nie udało się zapisać zdjęć — nic nie zostało zmienione. Spróbuj ponownie.",
     "guide.error.unauthenticated": "Sesja wygasła — zaloguj się ponownie.",
     "guide.error.not_admin": "Tylko administrator może zmieniać samouczki.",
     "guide.error.step_up_required": "Potwierdź tożsamość na tym urządzeniu, aby zapisywać zmiany w panelu.",
@@ -9778,7 +9778,7 @@
     "resize": {
       "tutorial": {
         "title": "Jak działa Zmiana rozmiaru",
-        "body": "Dopasuj wiele zdjęć naraz do wybranej rozdzielczości lub własnego rozmiaru. Zmieniają się tylko wymiary — nic nie jest przycinane ani generowane.",
+        "body": "Dopasuj wiele zdjęć naraz do wybranej rozdzielczości lub własnego rozmiaru. Zmieniają się wymiary — nic nie jest przycinane ani generowane (zdjęcia AVIF zapisujemy jako WebP).",
         "steps": {
           "s1": {
             "title": "Dodaj zdjęcia",

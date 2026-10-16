@@ -45,19 +45,28 @@ export type SaveToolGuideInput = {
   images: { steps: (string | null)[]; starter: string | null };
   /** updated_at of the row the form was opened on; null = there was none. */
   base: string | null;
+  /** Per picture slot, the updated_at the form was opened on (null = no
+   *  slot yet) — a picture changed elsewhere since then (e.g. Media →
+   *  "Zamień wszędzie") is a conflict, not something to write back over. */
+  imageBases?: Record<string, string | null>;
   /** Raise the version so everyone sees the tutorial once more. */
   showAgain: boolean;
 };
 
+type Saved = { updatedAt: string; version: number; imageBases: Record<string, string | null> };
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Save and publish one tool's guide. Compare-and-set on updated_at, so two
- * admins editing the same tool cannot overwrite each other silently; the
- * pictures go through media_slots_write (admin check, all-or-nothing,
- * compare-and-set per slot) like every other slot in the product.
+ * Save and publish one tool's guide — all or nothing. Compare-and-set on the
+ * row and on every picture against what the form was opened on, so neither
+ * another admin nor a library-wide replace is overwritten silently. The
+ * pictures (media_slots_write: admin check, all-or-nothing, compare-and-set
+ * per slot, like every other slot in the product) go first, the row second;
+ * if the row then loses a race, the pictures are put back, so customers never
+ * see new pictures beside old steps.
  */
-export async function saveToolGuideAction(input: SaveToolGuideInput): Promise<Result<{ updatedAt: string; version: number }>> {
+export async function saveToolGuideAction(input: SaveToolGuideInput): Promise<Result<Saved>> {
   try {
     const { supabase, adminId } = await requireAdmin();
     if (!isGuideTool(input.tool)) return { ok: false, error: "unknown_tool" };
@@ -90,18 +99,43 @@ export async function saveToolGuideAction(input: SaveToolGuideInput): Promise<Re
       if (ids.some((id) => !ok.has(id))) return { ok: false, error: "invalid_image" };
     }
 
-    // The pictures as they are now — read BEFORE anything is written, so a
-    // failed read stops the save instead of turning removals into no-ops.
+    // The pictures as they are now — read BEFORE anything is written. A
+    // failed read stops the save with nothing written (it must not turn a
+    // removal into a no-op).
     const slots = await readGuideSlots(supabase, [...wanted.keys()]);
-    if (!slots) return { ok: false, error: "images_failed" };
+    if (!slots) return { ok: false, error: "generic" };
+    const instant = (v: string | null | undefined) => (v ? Date.parse(v) : null);
+    if (input.imageBases) {
+      for (const key of wanted.keys()) {
+        if (instant(slots.get(key)?.updatedAt) !== instant(input.imageBases[key] ?? null)) {
+          return { ok: false, error: "conflict_images" };
+        }
+      }
+    }
 
-    // The row, compare-and-set.
+    // The row, compare-and-set — checked before anything is written.
     const current = await readGuideRow(supabase, tool);
     if (current === "unavailable") return { ok: false, error: "migration_pending" };
     // Instants, not spellings: Postgres and JavaScript write the same moment
     // differently, and the form may hand back either.
-    const instant = (v: string | null | undefined) => (v ? Date.parse(v) : null);
     if (instant(current?.updated_at) !== instant(input.base)) return { ok: false, error: "conflict" };
+
+    // 1. The pictures that changed, in one all-or-nothing call.
+    const writes = [...wanted.entries()].flatMap(([key, mediaId]) => {
+      const cur = slots.get(key);
+      if ((cur?.mediaId ?? null) === mediaId) return [];
+      if (!cur && mediaId === null) return [];
+      return [slotWrite(tool, key, mediaId, cur?.updatedAt ?? "")];
+    });
+    let written: Record<string, string> = {};
+    if (writes.length > 0) {
+      const { data, error } = await supabase.rpc("media_slots_write", { p_writes: writes as unknown as Json, p_action: "save" });
+      if (error) return { ok: false, error: /conflict/.test(error.message) ? "conflict_images" : "images_failed" };
+      written = (data ?? {}) as Record<string, string>;
+      revalidateTag(MEDIA_SLOT_TAG);
+    }
+
+    // 2. The row.
     const now = new Date().toISOString();
     const version = (current?.tutorial_version ?? 1) + (input.showAgain ? 1 : 0);
     const values = {
@@ -112,39 +146,30 @@ export async function saveToolGuideAction(input: SaveToolGuideInput): Promise<Re
       updated_at: now,
       updated_by: adminId,
     };
-    let savedAt = now;
+    let savedAt: string | null = null;
+    let rowError = "generic";
     if (current) {
       const { data, error } = await supabase.from("tool_guides").update(values)
         .eq("tool_key", tool).eq("updated_at", current.updated_at).select("updated_at");
-      if (error) return { ok: false, error: "generic" };
-      if ((data ?? []).length === 0) return { ok: false, error: "conflict" };
-      savedAt = data![0].updated_at;
+      if (!error && (data ?? []).length > 0) savedAt = data![0].updated_at;
+      else if (!error) rowError = "conflict";
     } else {
       const { data, error } = await supabase.from("tool_guides").insert({ tool_key: tool, ...values }).select("updated_at");
-      if (error) return { ok: false, error: error.code === "23505" ? "conflict" : "generic" };
-      savedAt = data?.[0]?.updated_at ?? now;
+      if (!error) savedAt = data?.[0]?.updated_at ?? now;
+      else if (error.code === "23505") rowError = "conflict";
+    }
+    if (savedAt === null) {
+      // The row lost a race after the pictures went in: put them back, so
+      // nothing of this save stays visible. Best effort — a failure here
+      // leaves pictures the next save shows as changed.
+      const undo = writes.filter((w) => written[w.key]).map((w) =>
+        slotWrite(tool, w.key, slots.get(w.key)?.mediaId ?? null, written[w.key]));
+      if (undo.length > 0) {
+        await supabase.rpc("media_slots_write", { p_writes: undo as unknown as Json, p_action: "restore" });
+      }
+      return { ok: false, error: rowError };
     }
 
-    // The pictures that changed, in one all-or-nothing call.
-    const writes = [...wanted.entries()].flatMap(([key, mediaId]) => {
-      const cur = slots.get(key);
-      if ((cur?.mediaId ?? null) === mediaId) return [];
-      if (!cur && mediaId === null) return [];
-      return [{
-        key, entity_type: "tool", entity_id: tool, slot_name: key.split(".").slice(2).join("."),
-        media_type: "image", media_id: mediaId ?? "", tablet_media_id: "", mobile_media_id: "", poster_media_id: "",
-        alt_text: "", object_fit: "cover", object_position: "center center", base: cur?.updatedAt ?? "",
-      }];
-    });
-    let imageError: "conflict_images" | "images_failed" | null = null;
-    if (writes.length > 0) {
-      const { error } = await supabase.rpc("media_slots_write", { p_writes: writes as unknown as Json, p_action: "save" });
-      if (error) imageError = /conflict/.test(error.message) ? "conflict_images" : "images_failed";
-      else revalidateTag(MEDIA_SLOT_TAG);
-    }
-
-    // The row IS written even when its pictures failed: audit it and let
-    // customers see it either way. The form keeps the pictures to retry.
     await logAudit(supabase, {
       actorId: adminId,
       action: "ai_tool.guide_saved",
@@ -152,16 +177,25 @@ export async function saveToolGuideAction(input: SaveToolGuideInput): Promise<Re
       entityId: tool,
       after: {
         tutorialEnabled: values.tutorial_enabled, starterEnabled: values.starter_enabled,
-        version: values.tutorial_version, customContent: content !== null,
-        images: imageError ? 0 : writes.length, ...(imageError ? { imageError } : {}),
+        version: values.tutorial_version, customContent: content !== null, images: writes.length,
       },
     });
     revalidateTag(TOOL_GUIDES_TAG);
     revalidatePath(`/admin/ai/${tool}`);
-    if (imageError) return { ok: false, error: imageError };
-    return { ok: true, data: { updatedAt: savedAt, version: values.tutorial_version } };
+    const imageBases = Object.fromEntries([...wanted.keys()].map((key) =>
+      [key, written[key] ?? slots.get(key)?.updatedAt ?? null]));
+    return { ok: true, data: { updatedAt: savedAt, version: values.tutorial_version, imageBases } };
   } catch (e) {
     const code = e instanceof Error ? e.message : "";
     return { ok: false, error: ["unauthenticated", "not_admin", "step_up_required"].includes(code) ? code : "generic" };
   }
+}
+
+/** One media_slots_write entry for a guide picture (null = no picture). */
+function slotWrite(tool: GuideToolKey, key: string, mediaId: string | null, base: string) {
+  return {
+    key, entity_type: "tool", entity_id: tool, slot_name: key.split(".").slice(2).join("."),
+    media_type: "image", media_id: mediaId ?? "", tablet_media_id: "", mobile_media_id: "", poster_media_id: "",
+    alt_text: "", object_fit: "cover", object_position: "center center", base,
+  };
 }

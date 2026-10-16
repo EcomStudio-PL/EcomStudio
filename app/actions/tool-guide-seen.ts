@@ -18,6 +18,8 @@ export async function markToolTutorialSeenAction(tool: string): Promise<Result> 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "unauthenticated" };
-  const version = (await publishedGuide(tool))?.version ?? 1;
-  return (await markSeen(supabase, tool, version)) ? { ok: true } : { ok: false, error: "generic" };
+  const saved = await publishedGuide(tool);
+  // Unknown version: mark nothing rather than guess one.
+  if (saved === "failed") return { ok: false, error: "generic" };
+  return (await markSeen(supabase, tool, saved?.version ?? 1)) ? { ok: true } : { ok: false, error: "generic" };
 }

@@ -560,6 +560,10 @@ const starterGeom = (P) => P.page.evaluate(() => {
     body: s.querySelector("h2 + p")?.textContent.trim() ?? null,
     note: s.querySelector("figcaption")?.textContent.trim() ?? null,
     boxW: br?.width ?? 0, boxH: br?.height ?? 0,
+    // the frame's border-box vs the room it has (the figure's content box)
+    figW: fig ? fig.clientWidth : 0,
+    boxLeftGap: br && fig ? Math.round((br.left - fig.getBoundingClientRect().left) * 10) / 10 : null,
+    boxRightGap: br && fig ? Math.round((fig.getBoundingClientRect().right - br.right) * 10) / 10 : null,
     maxH: Math.min(innerHeight * 0.62, 560), vw: innerWidth,
     svg: Boolean(box?.querySelector("svg")), img: im, interactive,
     docOverflow: document.documentElement.scrollWidth > innerWidth,
@@ -968,8 +972,10 @@ if (run("7")) {
       return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
     });
     await P.page.mouse.click(pic.x, pic.y);
+    const afterPic = await P.page.evaluate(() => document.activeElement?.getAttribute("role"));
     path = await walk("Shift+Tab", 2);
-    check(7, "after a click on the illustration, Shift+Tab stays inside", path.every((s) => s.startsWith("in:")), path);
+    check(7, "after a click on the illustration (focus on the dialog box), Shift+Tab wraps to the LAST control and stays inside",
+      afterPic === "dialog" && path[0] === "in:data-guide-next" && path.every((s) => s.startsWith("in:")), { focusAfterClick: afterPic, path });
     await P.page.mouse.click(pic.x, pic.y);
     path = await walk("Tab", 2);
     check(7, "after a click on the illustration, Tab stays inside", path.every((s) => s.startsWith("in:")), path);
@@ -996,22 +1002,41 @@ if (run("7")) {
   {
     // A step without a body: describedby must not dangle.
     const P = await openPage({ url: URLS.retouch, guide: guideFor("retouch", "pl", { seen: 1, emptyBody: 1 }) });
-    await P.page.locator("[data-guide-open]").click();
+    await P.page.locator(GUIDE_BTN).click();
     await waitDialog(P);
-    await P.page.locator("[data-guide-next]").click();
-    await sleep(300);
-    const a = await P.page.evaluate(() => {
+    const describe = () => P.page.evaluate(() => {
       const d = document.querySelector('[data-tool-tutorial] [role="dialog"]');
       const id = d.getAttribute("aria-describedby");
-      return { id, resolves: Boolean(id && document.getElementById(id)) };
+      const el = id ? document.getElementById(id) : null;
+      return { id, text: el?.textContent.trim().slice(0, 40) ?? null, inCurrent: Boolean(el?.closest('section[aria-hidden="false"]')) };
     });
-    check(7, "step with an empty body: aria-describedby does not point at a missing element", a.resolves || !a.id, a);
+    await P.page.locator("[data-guide-next]").click();
+    await sleep(300);
+    const a = await describe();
+    check(7, "step with an empty body: aria-describedby is not set (nothing dangles)", a.id === null, a);
+    await P.page.locator("[data-guide-next]").click();
+    await sleep(300);
+    const b3 = await describe();
+    check(7, "… next step (with a body): aria-describedby is back and resolves to that step's text", Boolean(b3.id && b3.text && b3.inCurrent), b3);
     await closeP(P);
   }
   {
-    // Real scrolling: 834 is below lg, so the page itself scrolls.
-    const P = await openPage({ vp: VP[834], url: URLS.retouch, guide: guideFor("retouch", "pl", { seen: 0 }) });
+    // Real scrolling: 834 is below lg, so the page itself scrolls. Opened by
+    // hand so the inline styles can be read before the lock goes on.
+    const P = await openPage({ vp: VP[834], url: URLS.retouch, guide: guideFor("retouch", "pl", { seen: 1 }) });
+    const styles = () => P.page.evaluate(() => ({
+      html: document.documentElement.style.overflow, gutter: document.documentElement.style.scrollbarGutter,
+      body: document.body.style.overflow, scrollbar: innerWidth - document.documentElement.clientWidth,
+    }));
+    const before = await styles();
+    const tbX0 = await P.page.evaluate(() => document.querySelector("[data-gallery-toolbar]").getBoundingClientRect().left);
+    await P.page.locator(GUIDE_BTN).click();
     await waitDialog(P);
+    const during = await styles();
+    const tbX1 = await P.page.evaluate(() => document.querySelector("[data-gallery-toolbar]").getBoundingClientRect().left);
+    check(7, "[834] while open: <html> and <body> inline overflow hidden; scrollbar-gutter stable iff a classic scrollbar was showing",
+      during.html === "hidden" && during.body === "hidden" && (before.scrollbar > 0 ? during.gutter === "stable" : during.gutter === before.gutter), { before, during });
+    check(7, "[834] opening does not shift the page sideways (toolbar x unchanged)", Math.abs(tbX1 - tbX0) < 0.5, { before: tbX0, open: tbX1 });
     const y0 = await P.page.evaluate(() => scrollY);
     const room = await P.page.evaluate(() => document.documentElement.scrollHeight - innerHeight);
     await P.page.mouse.move(10, 20);
@@ -1021,6 +1046,9 @@ if (run("7")) {
     const lock = await P.page.evaluate(() => ({ html: getComputedStyle(document.documentElement).overflowX + "/" + getComputedStyle(document.documentElement).overflowY, body: getComputedStyle(document.body).overflow }));
     await P.page.keyboard.press("Escape");
     await waitClosed(P);
+    const after = await styles();
+    check(7, "[834] after close: html overflow, html scrollbar-gutter and body overflow inline styles back to their previous values",
+      after.html === before.html && after.gutter === before.gutter && after.body === before.body, { before, after });
     await P.page.evaluate(() => window.scrollTo(0, 0));
     await P.page.mouse.move(10, 400);
     await P.page.mouse.wheel(0, 500);
@@ -1028,7 +1056,44 @@ if (run("7")) {
     const y2 = await P.page.evaluate(() => scrollY);
     check(7, "[834] page scrollable at all (control: wheel scrolls it once the dialog is closed)", room > 0 && y2 > 0, { room, afterClose: y2 });
     check(7, "[834] wheel over the scrim does NOT scroll the page while the dialog is open", y1 === y0, { room, y0, whileOpen: y1, overflow: lock });
+    info(7, `[834] scrollbar width in this browser: ${before.scrollbar}px (headless Chromium hides scrollbars — the classic case runs below)`);
     await closeP(P);
+  }
+  {
+    // A CLASSIC scrollbar: Playwright launches headless Chromium with
+    // --hide-scrollbars; without it the page has a real 15px scrollbar, which
+    // is what the scrollbar-gutter branch of the lock is for.
+    const classic = await chromium.launch({ executablePath: CHROME, args: ["--no-sandbox"], ignoreDefaultArgs: ["--hide-scrollbars"] });
+    const ctx = await classic.newContext({ viewport: { width: 834, height: 1112 }, colorScheme: "light", bypassCSP: true, deviceScaleFactor: 1 });
+    await ctx.addCookies([{ name: "ecs_locale", value: "pl", url: BASE }]);
+    await ctx.addInitScript(() => { try { localStorage.setItem("theme", "light"); } catch { /* private mode */ } });
+    await ctx.addInitScript(INIT);
+    const P = await openPage({ ctx, vp: VP[834], url: URLS.retouch, guide: guideFor("retouch", "pl", { seen: 1 }) });
+    P.ownCtx = true;
+    const styles = () => P.page.evaluate(() => ({
+      html: document.documentElement.style.overflow, gutter: document.documentElement.style.scrollbarGutter,
+      body: document.body.style.overflow, scrollbar: innerWidth - document.documentElement.clientWidth,
+      tbX: Math.round(document.querySelector("[data-gallery-toolbar]").getBoundingClientRect().left * 10) / 10,
+      tbW: Math.round(document.querySelector("[data-gallery-toolbar]").getBoundingClientRect().width * 10) / 10,
+    }));
+    const before = await styles();
+    await P.page.locator(GUIDE_BTN).click();
+    await waitDialog(P);
+    const during = await styles();
+    await P.page.mouse.move(10, 20);
+    await P.page.mouse.wheel(0, 500);
+    await sleep(500);
+    const y1 = await P.page.evaluate(() => scrollY);
+    await P.page.keyboard.press("Escape");
+    await waitClosed(P);
+    const after = await styles();
+    check(7, `[834, classic ${before.scrollbar}px scrollbar] while open: scrollbar-gutter stable, overflow hidden, page width unchanged (no shift)`,
+      before.scrollbar > 0 && during.gutter === "stable" && during.html === "hidden" && during.tbX === before.tbX && during.tbW === before.tbW, { before, during });
+    check(7, `[834, classic scrollbar] wheel over the scrim does not scroll the page`, y1 === 0, { whileOpen: y1 });
+    check(7, `[834, classic scrollbar] after close: inline html/body styles restored, layout unchanged`,
+      after.html === before.html && after.gutter === before.gutter && after.body === before.body && after.tbX === before.tbX && after.tbW === before.tbW, { before, after });
+    await P.ctx.close().catch(() => {});
+    await classic.close();
   }
 }
 
@@ -1147,7 +1212,17 @@ function starterChecks(id, label, s, l, expectImg) {
       if (Math.abs(painted / nat - 1) > 0.02) fails.push(`painted aspect ${painted.toFixed(3)} vs natural ${nat.toFixed(3)}`);
     }
   } else if (!s.svg || s.img) fails.push(`expected the SVG art, got ${s.img ? "an <img>" : "nothing"}`);
-  return check(id, `${label}: badge/note from dictionary, ${expectImg ? "picture contained at its natural aspect" : "SVG art"}, ≤ min(62vh,560px), zero controls`, fails.length === 0, fails);
+  // THE FRAME (starter-gallery.tsx): width = min(100%, cap × ratio), so the
+  // frame has the picture's own shape — no bands — and a picture whose capped
+  // height still fills the width uses the full width.
+  const ratio = s.img ? s.img.nw / s.img.nh : 16 / 10;
+  const frameAspect = s.boxW / s.boxH;
+  const wantW = Math.min(s.figW, s.maxH * ratio);
+  if (Math.abs(frameAspect / ratio - 1) > 0.02) fails.push(`frame aspect ${frameAspect.toFixed(3)} vs picture ${ratio.toFixed(3)} (bands)`);
+  if (Math.abs(s.boxW - wantW) > 2) fails.push(`frame width ${s.boxW.toFixed(1)} vs expected min(${s.figW}, ${(s.maxH * ratio).toFixed(1)})`);
+  if (s.img && Math.abs(s.img.paintedW - s.img.elW) > 1.5 && Math.abs(s.img.paintedH - s.img.elH) > 1.5) fails.push("picture smaller than its frame on both axes");
+  if (Math.abs(s.boxLeftGap - s.boxRightGap) > 1) fails.push(`frame not centred (${s.boxLeftGap} / ${s.boxRightGap})`);
+  return check(id, `${label}: badge/note from dictionary, ${expectImg ? "picture contained at its natural aspect" : "SVG art"}, frame = picture shape (±2%), width min(100%, cap×ratio), ≤ min(62vh,560px), zero controls`, fails.length === 0, fails);
 }
 if (run("11") || run("15")) {
   section("11");
@@ -1161,7 +1236,7 @@ if (run("11") || run("15")) {
       check(11, `[${w}-${theme}] title/body are the guide's`, s.title === g.guide.starter.title && s.body === g.guide.starter.body, { title: s.title, body: s.body?.slice(0, 40) });
       starterChecks(11, `[${w}-${theme}] landscape 1808×1152`, s, "pl", true);
       const boxAspect = s.boxW / s.boxH;
-      info(11, `[${w}-${theme}] picture box ${Math.round(s.boxW)}×${Math.round(s.boxH)} (box aspect ${boxAspect.toFixed(3)} vs 1.569)`);
+      info(11, `[${w}-${theme}] frame ${Math.round(s.boxW)}×${Math.round(s.boxH)} of ${s.figW}px available (aspect ${boxAspect.toFixed(3)} vs 1.569)${s.boxW < s.figW - 2 ? " — height cap reached, frame narrower than the column" : " — full width"}`);
       check(11, `[${w}-${theme}] [data-gallery-empty] is not rendered alongside`, (await emptyState(P)) === null);
       await shot(P.page, `starter-retouch-${w}-${theme}`);
       check(15, `[${w}-${theme}] starter screenshot`, !SHOTS || fs.existsSync(`${SHOTS}/starter-retouch-${w}-${theme}.png`));
@@ -1178,15 +1253,23 @@ if (run("11") || run("15")) {
     await closeP(P);
   }
   for (const [name, image] of [["portrait 340×425", IMG.tall], ["banner 922×200", IMG.banner], ["square 1024×1024", IMG.square], ["image=null", null]]) {
-    for (const w of [1440, 390]) {
+    for (const w of [1440, 834, 390]) {
       const P = await openPage({ vp: VP[w], url: URLS.retouch, guide: guideFor("retouch", "pl", { seen: 1, starterImage: image }) });
       if (check(11, `[${w}] ${name}: starter visible`, await starterReady(P))) {
         const s = await starterGeom(P);
         starterChecks(11, `[${w}] ${name}`, s, "pl", Boolean(image));
         if (image) {
           const boxAspect = s.boxW / s.boxH, nat = image.width / image.height;
-          info(11, `[${w}] ${name}: box ${Math.round(s.boxW)}×${Math.round(s.boxH)} (aspect ${boxAspect.toFixed(3)}), painted ${Math.round(s.img.paintedW)}×${Math.round(s.img.paintedH)}, max ${Math.round(s.maxH)}`
-            + (Math.abs(boxAspect / nat - 1) > 0.02 ? " → the box is letterboxed (height capped, width kept at 100%)" : ""));
+          info(11, `[${w}] ${name}: frame ${Math.round(s.boxW)}×${Math.round(s.boxH)} of ${s.figW}px (aspect ${boxAspect.toFixed(3)} vs ${nat.toFixed(3)}), painted ${Math.round(s.img.paintedW)}×${Math.round(s.img.paintedH)}, cap ${Math.round(s.maxH)}`
+            + (Math.abs(boxAspect / nat - 1) > 0.02 ? " → BANDS: frame not the picture's shape" : ""));
+          if (w === 1440 && name.startsWith("portrait")) {
+            check(11, "[1440] portrait 340×425: painted ≈445×556, frame hugs it (no side bands: frame width − painted width ≤ 3px)",
+              Math.abs(s.img.paintedW - 445) <= 3 && Math.abs(s.img.paintedH - 556) <= 3 && s.boxW - s.img.paintedW <= 3,
+              { painted: [Math.round(s.img.paintedW), Math.round(s.img.paintedH)], frame: [Math.round(s.boxW), Math.round(s.boxH)] });
+          }
+          if (name.startsWith("banner")) {
+            check(11, `[${w}] banner 922×200 (wide): frame uses the full column width`, Math.abs(s.boxW - s.figW) <= 1, { frameW: s.boxW, figW: s.figW });
+          }
         }
         if (w === 1440 && (name.startsWith("portrait") || name === "image=null")) await shot(P.page, `starter-retouch-1440-light-${name.split(" ")[0].replace("=", "-")}`);
       }
@@ -1301,23 +1384,54 @@ if (run("12")) {
 /* ── 13. the gallery toolbar ───────────────────────────────────────────── */
 if (run("13")) {
   section("13");
-  const tools = [["retouch", URLS.retouch, "retouch"], ["flat lay", URLS.flatlay, "fashion_flat_lay"], ["generator", URLS.generator, "generator"]];
-  for (const [name, url, key] of tools) for (const w of WIDTHS) for (const l of LOCALES) {
+  const tools = [["retouch", URLS.retouch, "retouch", true], ["flat lay", URLS.flatlay, "fashion_flat_lay", true], ["generator", URLS.generator, "generator", false]];
+  const preexisting = [];
+  for (const [name, url, key, toolGallery] of tools) for (const w of WIDTHS) for (const l of LOCALES) {
     const combo = `${name} ${w}-${l}`;
+    // The same screen twice: with the guide (live, button shown) and with
+    // guide=null (no button anywhere) — only differences are this feature's.
     const P = await openPage({ vp: VP[w], locale: l, url, guide: guideFor(key, l, { seen: 1, hasResults: true }) });
+    const B = await openPage({ vp: VP[w], locale: l, url, guide: guideFor(key, l, { seen: 1, hasResults: true, noGuide: true }) });
     const t = await toolbarGeom(P);
-    const ok = t && t.rows === 1 && t.h <= 56 && t.overlaps.length === 0 && t.outside.length === 0 && t.guideVisible && !t.guideClipped && !t.docOverflow;
-    check(13, `[${combo}] one row, ≤56px, no collisions, guide button visible`, ok, t && { h: t.h, rows: t.rows, groupTops: t.groupTops, overlaps: t.overlaps, outside: t.outside, guideVisible: t.guideVisible, rightOverflowPx: t.rightOverflowPx });
-    check(13, `[${combo}] guide button is the first child of the left group`, t?.guideFirst);
-    if (!ok && t) {
-      const B = await openPage({ vp: VP[w], locale: l, url, guide: guideFor(key, l, { seen: 1, hasResults: true, live: false }) });
-      const b = await toolbarGeom(B);
-      info(13, `[${combo}] baseline WITHOUT the guide button: h ${b.h}px, rows ${b.rows}, overlaps ${b.overlaps.length ? b.overlaps.join("; ") : "none"} (with button: h ${t.h}px, rows ${t.rows}, overlaps ${t.overlaps.length ? t.overlaps.join("; ") : "none"})`);
-      await shot(P.page, `toolbar-${name.replace(" ", "")}-${w}-${l}`);
-      await closeP(B);
+    const b = await toolbarGeom(B);
+    if (!t || !b) { check(13, `[${combo}] toolbar rendered`, false, { t: Boolean(t), b: Boolean(b) }); await closeP(P); await closeP(B); continue; }
+    const fresh = newOverlaps(t, b);
+    const regression = [];
+    if (Math.abs(t.h - b.h) > 1) regression.push(`height ${t.h} vs baseline ${b.h}`);
+    if (t.rows !== b.rows) regression.push(`rows ${t.rows} vs baseline ${b.rows}`);
+    if (fresh.length) regression.push(`new overlaps: ${fresh.map((o) => `${o.pair} (${o.px}px)`).join("; ")}`);
+    if (t.rightOverflowPx > b.rightOverflowPx + 1) regression.push(`right group overflow ${t.rightOverflowPx}px vs baseline ${b.rightOverflowPx}px`);
+    if (t.toolbarOverflowPx > b.toolbarOverflowPx + 1) regression.push(`toolbar overflow ${t.toolbarOverflowPx}px vs baseline ${b.toolbarOverflowPx}px`);
+    if (t.outside.some((n) => !b.outside.includes(n))) regression.push(`controls outside the toolbar: ${t.outside.join(", ")}`);
+    if (t.docOverflow && !b.docOverflow) regression.push("page scrolls sideways");
+    check(13, `[${combo}] toolbar identical to the no-guide baseline (height, rows, no new overlap or overflow)`, regression.length === 0,
+      { regression, with: { h: t.h, rows: t.rows, overlaps: fmtOverlaps(t) }, baseline: { h: b.h, rows: b.rows, overlaps: fmtOverlaps(b) } });
+    const clean = t.overlaps.length === 0 && t.rightOverflowPx === 0 && t.toolbarOverflowPx === 0 && t.outside.length === 0 && !t.docOverflow;
+    if (!clean) {
+      const same = regression.length === 0;
+      preexisting.push(`[${combo}] ${fmtOverlaps(t)}; right-group overflow ${t.rightOverflowPx}px${same ? " — identical without the guide" : ""}`);
+      info(13, `[${combo}] toolbar has overlaps/overflow: ${fmtOverlaps(t)}, right-group overflow ${t.rightOverflowPx}px (baseline: ${fmtOverlaps(b)}, ${b.rightOverflowPx}px) → ${same ? "PRE-EXISTING, not counted" : "REGRESSION"}`);
     }
+    if (toolGallery) {
+      check(13, `[${combo}] tool gallery: one row ≤56px (baseline: ${b.rows} row, ${b.h}px)`, t.rows === 1 && t.h <= 56, { h: t.h, rows: t.rows });
+    } else if (t.rows !== 1 || t.h > 56) {
+      info(13, `[${combo}] generator: ${t.rows} rows / ${t.h}px — baseline ${b.rows} rows / ${b.h}px (pre-existing wrap${t.rows === b.rows ? ", unchanged" : ", CHANGED"})`);
+    }
+    // Where the button is.
+    const g = t.guide;
+    if (w < 1024) {
+      check(13, `[${combo}] <lg: one visible guide button, ABOVE the toolbar, not overlapping it, right-aligned, unclipped`,
+        g.shown === 1 && !g.inToolbar && g.above && !g.overlapsToolbar && Math.abs(g.rightGap) <= 1 && !g.clipped && g.inView, g);
+    } else {
+      check(13, `[${combo}] ≥lg: one visible guide button, the first control of the toolbar's left group, unclipped`,
+        g.shown === 1 && g.inToolbar && g.firstInLeft && !g.clipped, g);
+    }
+    if (l === "pl" || regression.length) await shot(P.page, `toolbar-${name.replace(" ", "")}-${w}-${l}`);
+    if (regression.length) await shot(B.page, `toolbar-BASELINE-noguide-${name.replace(" ", "")}-${w}-${l}`);
     await closeP(P);
+    await closeP(B);
   }
+  if (preexisting.length) info(13, `toolbars with overlaps/overflow (${preexisting.length}): ${preexisting.join(" | ")}`);
 }
 
 /* ── 14. compress / resize ─────────────────────────────────────────────── */
@@ -1399,6 +1513,101 @@ if (run("P")) {
     await sleep(500);
     const plain = await P.page.getByText(DICT.pl.photoTool.emptyTitle).isVisible().catch(() => false);
     check("P", `${name} → no starter, own empty state visible`, (await starterCount(P)) === 0 && plain, { starter: await starterCount(P), plain });
+    await closeP(P);
+  }
+}
+
+/* ── X. open → step 3 → Escape: nothing behind it moved ────────────────── */
+/** Compare two equally sized PNG crops: pixels with ANY channel difference,
+ *  and with a difference above 8/255 (sub-pixel anti-aliasing noise), plus a
+ *  red-on-grey mask of the changed pixels and their bounding box. */
+async function pixelDiff(a, b, maskPath, exclude = null) {
+  const [ra, rb] = await Promise.all([a, b].map((x) => sharp(x).removeAlpha().raw().toBuffer({ resolveWithObject: true })));
+  if (ra.info.width !== rb.info.width || ra.info.height !== rb.info.height) return { sizeMismatch: [ra.info, rb.info].map((i) => `${i.width}×${i.height}`) };
+  const { width, height } = ra.info, n = width * height;
+  const mask = Buffer.alloc(n * 3);
+  let any = 0, over8 = 0, outside = 0, x1 = width, y1 = height, x2 = -1, y2 = -1;
+  for (let i = 0; i < n; i++) {
+    let m = 0;
+    for (let c = 0; c < 3; c++) m = Math.max(m, Math.abs(ra.data[i * 3 + c] - rb.data[i * 3 + c]));
+    const grey = Math.round((ra.data[i * 3] + ra.data[i * 3 + 1] + ra.data[i * 3 + 2]) / 9) + 150;
+    if (m > 0) {
+      any++;
+      const x = i % width, y = Math.floor(i / width);
+      x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); y2 = Math.max(y2, y);
+      if (!exclude || x < exclude[0] || x > exclude[2] || y < exclude[1] || y > exclude[3]) outside++;
+      mask[i * 3] = 255; mask[i * 3 + 1] = 0; mask[i * 3 + 2] = 0;
+    } else { mask[i * 3] = mask[i * 3 + 1] = mask[i * 3 + 2] = Math.min(255, grey); }
+    if (m > 8) over8++;
+  }
+  if (maskPath) await sharp(mask, { raw: { width, height, channels: 3 } }).png().toFile(maskPath).then(() => shots.push(maskPath)).catch(() => {});
+  return { pixels: n, any, over8, outside, pctAny: (any / n) * 100, pctOver8: (over8 / n) * 100, box: any ? [x1, y1, x2, y2] : null };
+}
+if (run("X")) {
+  section("X");
+  for (const w of WIDTHS) for (const theme of THEMES) {
+    const combo = `${w}-${theme}`;
+    const P = await openPage({ vp: VP[w], theme, url: URLS.retouch, guide: guideFor("retouch", "pl", { seen: 1 }) });
+    await P.page.waitForFunction(() => {
+      const img = document.querySelector("[data-starter-gallery] figure img");
+      return Boolean(img && img.complete && img.naturalWidth > 0);
+    }, null, { timeout: 15000 }).catch(() => {});
+    const btn = P.page.locator(GUIDE_BTN);
+    await btn.scrollIntoViewIfNeeded();
+    if (!P.vp.touch) await P.page.mouse.move(2, 2);
+    await sleep(500);
+    const state = () => P.page.evaluate(() => {
+      const p = document.querySelector("[data-gallery-panel]").getBoundingClientRect();
+      return {
+        y: scrollY, col: document.querySelector("[data-probe-right]")?.scrollTop ?? null,
+        panel: [p.left, p.top, p.width, p.height].map((v) => Math.round(v * 10) / 10), vw: innerWidth, vh: innerHeight,
+      };
+    });
+    const before = await state();
+    const shotA = await P.page.screenshot({ animations: "disabled" });
+    await press(P, btn);
+    await waitDialog(P);
+    await press(P, P.page.locator("[data-guide-next]"));
+    await press(P, P.page.locator("[data-guide-next]"));
+    await sleep(400);
+    const at = await counterText(P);
+    await P.page.keyboard.press("Escape");
+    const closed = await waitClosed(P);
+    if (!P.vp.touch) await P.page.mouse.move(2, 2);
+    await sleep(700);
+    const after = await state();
+    const shotB = await P.page.screenshot({ animations: "disabled" });
+    check("X", `[${combo}] opened, reached step 3 ("${at}"), Escape closed it`, at === "3 z 4" && closed, { at, closed });
+    check("X", `[${combo}] page did not scroll (window scrollY, gallery column scrollTop) and the gallery did not move`,
+      before.y === after.y && before.col === after.col && JSON.stringify(before.panel) === JSON.stringify(after.panel), { before, after });
+    // The gallery panel's visible part (toolbar + starter), identical crop on both shots.
+    const [px, py, pw, ph] = before.panel;
+    const left = Math.max(0, Math.floor(px)), top = Math.max(0, Math.floor(py));
+    const width = Math.min(before.vw, Math.ceil(px + pw)) - left, height = Math.min(before.vh, Math.ceil(py + ph)) - top;
+    const crop = (buf) => sharp(buf).extract({ left, top, width, height }).png().toBuffer();
+    const [ca, cb] = await Promise.all([crop(shotA), crop(shotB)]);
+    if (SHOTS) {
+      for (const [name, buf] of [[`X-${combo}-before`, ca], [`X-${combo}-after`, cb]]) {
+        fs.writeFileSync(`${SHOTS}/${name}.png`, buf);
+        shots.push(`${SHOTS}/${name}.png`);
+      }
+    }
+    const focus = await P.page.evaluate(() => {
+      const a = document.activeElement;
+      if (!a?.hasAttribute("data-guide-open")) return null;
+      const r = a.getBoundingClientRect();
+      return { focusVisible: a.matches(":focus-visible"), rect: [r.left, r.top, r.right, r.bottom].map(Math.round) };
+    });
+    // The returning focus ring is expected; count what changed outside it too.
+    const ring = focus ? [focus.rect[0] - left - 5, focus.rect[1] - top - 5, focus.rect[2] - left + 5, focus.rect[3] - top + 5] : null;
+    const d = await pixelDiff(ca, cb, SHOTS ? `${SHOTS}/X-${combo}-diff.png` : null, ring);
+    // Criterion: pixels whose colour moved by more than 8/255 on any channel.
+    // A strict any-difference count is logged too: once in four runs a single
+    // raster tile of the dark starter gradient came back re-dithered by ≤8/255
+    // (4.2% of the panel, nothing moved), which is GPU noise, not a change.
+    check("X", `[${combo}] gallery panel (${width}×${height}) unchanged: ≤0.5% of pixels differ by more than 8/255`,
+      !d.sizeMismatch && d.pctOver8 <= 0.5, d.sizeMismatch ? d : { over8: d.over8, pct: d.pctOver8.toFixed(3) + "%", strictAny: d.any, box: d.box });
+    info("X", `[${combo}] ${d.any ?? "?"} of ${d.pixels ?? "?"} px differ (${d.pctAny?.toFixed(3)}%; ${d.over8} above 8/255; ${d.outside} outside the button's focus ring = ${(d.outside / d.pixels * 100).toFixed(3)}%) in box ${JSON.stringify(d.box)}; focus back on the button: ${JSON.stringify(focus)} (panel origin ${left},${top})`);
     await closeP(P);
   }
 }

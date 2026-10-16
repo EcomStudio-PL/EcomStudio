@@ -132,10 +132,12 @@ export function resolveGuide(tool: GuideToolKey, locale: Locale, saved: Publishe
   };
 }
 
-/** One tool's guide for one language: the published row and its pictures. */
-export async function loadGuide(supabase: Client, tool: GuideToolKey, locale: Locale): Promise<ResolvedGuide> {
+/** One tool's guide for one language: the published row and its pictures.
+ *  null when the saved guides could not be read — no guide beats a guide the
+ *  admin may have switched off. */
+export async function loadGuide(supabase: Client, tool: GuideToolKey, locale: Locale): Promise<ResolvedGuide | null> {
   const [saved, slots] = await Promise.all([publishedGuide(tool), loadSlots(supabase, guideImageKeys(tool))]);
-  return resolveGuide(tool, locale, saved, slots);
+  return saved === "failed" ? null : resolveGuide(tool, locale, saved, slots);
 }
 
 /* ── IS THE TOOL LIVE FOR THIS VIEWER? ─────────────────────────────────── */
@@ -171,9 +173,14 @@ export async function toolIsLive(supabase: Client, tool: GuideToolKey, opts: { a
       case "ecommerce_thumbnail":
         return (await readThumbnailState(supabase)).ready;
       case "resize":
-      case "compress":
-        // Local tools: nothing to be unavailable.
-        return true;
+      case "compress": {
+        // Local tools, but still switchable in the service catalogue —
+        // the same entry, read the same way, as their pages (resize is
+        // "format" there).
+        const slug = tool === "resize" ? "format" : "compress";
+        const entry = (await toolCatalogue(supabase)).find((c) => c.slug === slug);
+        return Boolean(entry?.available);
+      }
       case "tool_remove_bg":
       case "tool_white_bg":
       case "tool_ai_background":

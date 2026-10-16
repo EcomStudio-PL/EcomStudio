@@ -48,7 +48,7 @@ import {
 import { STARTER_FALLBACK_SLOTS, guideImageKeys } from "@/lib/tool-guide-slots";
 import { TOOL_GUIDES_TAG, publishedGuide, type PublishedGuide } from "@/lib/server/tool-guides-published";
 import { defaultGuideContent, loadGuide, resolveGuide, toolIsLive } from "@/lib/server/tool-guides";
-import { hasToolResults, markSeen, readGuideRow, readGuideSlots, readSeenVersion } from "@/lib/services/tool-guides";
+import { hasToolResults, hasUsedTool, markSeen, readGuideRow, readGuideSlots, readSeenVersion } from "@/lib/services/tool-guides";
 import { GET } from "@/app/api/tool-guides/route";
 import { markToolTutorialSeenAction } from "@/app/actions/tool-guide-seen";
 import { saveToolGuideAction, type SaveToolGuideInput } from "@/app/actions/tool-guides";
@@ -763,7 +763,7 @@ function guideFixture(o: { version?: number; steps?: number; tutorial?: boolean;
 function sectionE() {
   console.log("\nE. DECISIONS — shouldAutoOpen and starterVisible truth tables");
   const resp = (o: Partial<GuideResponse> = {}, g: Parameters<typeof guideFixture>[0] = {}): GuideResponse =>
-    ({ guide: guideFixture(g), seen: 1, live: true, hasResults: false, ...o });
+    ({ guide: guideFixture(g), seen: 1, live: true, hasResults: false, usedBefore: false, ...o });
 
   check("E1 shouldAutoOpen: live, tutorial with steps, seen 1 < version 2, not blocked → true", shouldAutoOpen(resp(), false));
   check("E2 shouldAutoOpen: no response → false", !shouldAutoOpen(null, false));
@@ -777,16 +777,25 @@ function sectionE() {
   check("E10 shouldAutoOpen: blocked (another dialog / the visual editor) → false", !shouldAutoOpen(resp(), true));
   check("E11 shouldAutoOpen does not depend on hasResults or the starter (true / false / null; starter off)",
     [true, false, null].every((h) => shouldAutoOpen(resp({ hasResults: h }), false)) && shouldAutoOpen(resp({}, { starter: false }), false));
+  check("E11b version 1 opens only for someone new to the tool (usedBefore false); used before or unknown → false",
+    shouldAutoOpen(resp({ seen: 0, usedBefore: false }, { version: 1 }), false)
+      && !shouldAutoOpen(resp({ seen: 0, usedBefore: true }, { version: 1 }), false)
+      && !shouldAutoOpen(resp({ seen: 0, usedBefore: null }, { version: 1 }), false));
+  check("E11c a version an admin raised (> 1) opens for everyone who has not seen it, used before or not",
+    [true, false, null].every((u) => shouldAutoOpen(resp({ seen: 1, usedBefore: u }, { version: 2 }), false)));
   let trueCount = 0; let wrong = 0;
+  let combos = 0;
   for (const live of [true, false]) for (const hasGuide of [true, false]) for (const tut of [true, false]) for (const steps of [0, 1])
-    for (const seen of [0, 1, 2, 3]) for (const blocked of [true, false]) {
-      const r: GuideResponse = { guide: hasGuide ? guideFixture({ tutorial: tut, steps, version: 2 }) : null, seen, live, hasResults: false };
-      const want = live && hasGuide && tut && steps > 0 && seen < 2 && !blocked;
+    for (const seen of [0, 1, 2, 3]) for (const blocked of [true, false]) for (const version of [1, 2]) for (const usedBefore of [false, true, null]) {
+      const r: GuideResponse = { guide: hasGuide ? guideFixture({ tutorial: tut, steps, version }) : null, seen, live, hasResults: false, usedBefore };
+      const want = live && hasGuide && tut && steps > 0 && seen < version && !blocked && (usedBefore === false || version > 1);
       const got = shouldAutoOpen(r, blocked);
+      combos++;
       if (got) trueCount++;
       if (got !== want) wrong++;
     }
-  check(`E12 shouldAutoOpen exhaustively (256 combinations) matches the specification — true only when every condition holds (${trueCount}×)`, wrong === 0 && trueCount === 2);
+  // true only at: version 1 + seen 0 + usedBefore false (1×), version 2 + seen 0/1 + any usedBefore (6×)
+  check(`E12 shouldAutoOpen exhaustively (${combos} combinations) matches the specification — true only when every condition holds (${trueCount}×)`, wrong === 0 && trueCount === 7);
 
   const base: Parameters<typeof starterVisible>[0] = { response: resp(), itemCount: 0, pendingCount: 0, loading: false, filtered: false, moreToLoad: false, madeHere: false };
   check("E13 starterVisible: live, starter, server says no results, empty idle unfiltered gallery → true", starterVisible(base));
@@ -829,7 +838,7 @@ async function sectionF() {
   setAnon({ published: [pubRow("retouch", { tutorial_enabled: false, starter_enabled: true, tutorial_version: 4, tutorial: null, starter: { title: { pl: "P" }, body: {} } })] });
   const p1 = await publishedGuide("retouch");
   check("F1 publishedGuide maps the definer function's row (switches, version, copy)",
-    !!p1 && p1.tutorialEnabled === false && p1.starterEnabled && p1.version === 4 && p1.tutorial === null && same(p1.starter, { title: { pl: "P" }, body: {} }));
+    !!p1 && p1 !== "failed" && p1.tutorialEnabled === false && p1.starterEnabled && p1.version === 4 && p1.tutorial === null && same(p1.starter, { title: { pl: "P" }, body: {} }));
   check("F1b … read with the ANONYMOUS client, the one shared-cache reader", iceState.anonCalls.includes("tool_guides_published"));
   check("F2 a tool with no saved row → null (the shipped default)", (await publishedGuide("compress")) === null);
   for (const code of ["PGRST202", "42883"]) {
@@ -839,7 +848,7 @@ async function sectionF() {
   }
   baseDb(); setAnon({ published: { code: "XX000", message: "boom" } });
   quiet(); const pf = await publishedGuide("retouch"); loud();
-  check("F4 any other read error → null (shipped guide for this request) and a warning, never a throw", pf === null && captured.some((c) => c.includes("tool-guides")));
+  check("F4 any other read error → \"failed\" (no guide for this request — never the shipped one, which could re-enable a switched-off part) and a warning, never a throw", pf === "failed" && captured.some((c) => c.includes("tool-guides")));
   const ppSrc = read("lib/server/tool-guides-published.ts");
   check("F4b the published read is cached under the tool-guides tag and an error is THROWN inside the cache (never cached)",
     /unstable_cache\(/.test(ppSrc) && /tags:\s*\[TOOL_GUIDES_TAG\]/.test(ppSrc) && /throw new Error\(`tool_guides_published/.test(ppSrc) && TOOL_GUIDES_TAG === "tool-guides");
@@ -856,8 +865,11 @@ async function sectionF() {
   }
   check("F5b a tool missing from the availability map → not live", (await live("compress", () => { delete guideState.availability.compress; })).r === false);
   check("F5c the availability read throws → not live (the cautious answer)", (await live("generator", () => { guideState.availabilityThrow = true; })).r === false);
-  const local = await Promise.all((["resize", "compress", "generator"] as GuideToolKey[]).map((t) => live(t)));
-  check("F6 resize, compress and generator are live as soon as they are ACTIVE (nothing else to be unavailable)", local.every((x) => x.r === true));
+  check("F6 generator is live as soon as it is ACTIVE (the gallery only mounts with a usable model)", (await live("generator")).r === true);
+  const batchCat = () => { guideState.catalogue = [{ slug: "format", available: true }, { slug: "compress", available: false }]; };
+  check("F6b resize/compress: live iff their service-catalogue entry (\"format\" / \"compress\") is available — read like their pages, without the admin flag",
+    (await live("resize", batchCat, true)).r === true && (await live("compress", batchCat, true)).r === false
+      && guideState.catalogueAdmin.every((a) => a === false));
   const planners = (db: FakeDb, keyed: string[]) => {
     db.tables.ai_providers = [{ id: "p-openai", slug: "openai", active: true }, { id: "p-google", slug: "google", active: false }, { id: "p-room", slug: "photoroom", active: true }];
     db.rpcs.providers_with_credentials = () => ({ data: keyed, error: null });
@@ -958,14 +970,53 @@ async function sectionF() {
       slots !== null && slots.size === 1 && same(slots.get(guideSlotKey("retouch", "tutorial", 1)), { mediaId: IMG1, updatedAt: T_A }));
   }
 
+  // ── hasUsedTool (THIS user's own jobs) ─────────────────────────────────
+  {
+    const db = baseDb();
+    db.tables.generation_jobs = [
+      { id: "j1", workspace_id: WS, user_id: ADMIN, status: "completed", settings: { operation: "image_retouch" } },
+      { id: "j2", workspace_id: WS, user_id: CUSTOMER, status: "failed", settings: { operation: "ecommerce_thumbnail" } },
+      { id: "j3", workspace_id: WS, user_id: ADMIN, status: "completed", settings: {} },
+      { id: "j4", workspace_id: OTHER_WS, user_id: CUSTOMER, status: "completed", settings: { operation: "fashion_iron" } },
+    ];
+    db.tables.tool_results = [{ id: "r1", workspace_id: WS, user_id: ADMIN, tool_slug: "remove_bg" }];
+    const svc = asSvc(db);
+    const got = {
+      teammateRetouch: await hasUsedTool(svc, WS, CUSTOMER, "retouch"),
+      ownRetouch: await hasUsedTool(svc, WS, ADMIN, "retouch"),
+      failedThumb: await hasUsedTool(svc, WS, CUSTOMER, "ecommerce_thumbnail"),
+      generatorOwn: await hasUsedTool(svc, WS, ADMIN, "generator"),
+      generatorFromToolOnly: await hasUsedTool(svc, WS, CUSTOMER, "prompts"),
+      otherWorkspace: await hasUsedTool(svc, WS, CUSTOMER, "fashion_iron"),
+      photoOwn: await hasUsedTool(svc, WS, ADMIN, "tool_remove_bg"),
+      photoTeammate: await hasUsedTool(svc, WS, CUSTOMER, "tool_remove_bg"),
+      batch: await hasUsedTool(svc, WS, ADMIN, "compress"),
+    };
+    check("F19c hasUsedTool: only THIS user's finished jobs in THIS tool (a teammate's results, a failed job, another workspace or another tool's job do not count; the generators count unclaimed jobs)",
+      same(got, { teammateRetouch: false, ownRetouch: true, failedThumb: false, generatorOwn: true, generatorFromToolOnly: false,
+        otherWorkspace: false, photoOwn: true, photoTeammate: false, batch: false }), JSON.stringify(got));
+    const only = baseDb();
+    only.tables.generation_jobs = [{ id: "j1", workspace_id: WS, user_id: ADMIN, status: "completed", settings: { operation: "image_retouch" } }];
+    check("F19c2 hasUsedTool: a user whose only finished job is a Retusz one is NEW to the generators (operation IS NULL)",
+      (await hasUsedTool(asSvc(only), WS, ADMIN, "generator")) === false && (await hasUsedTool(asSvc(only), WS, ADMIN, "retouch")) === true);
+    db.tableErrors.generation_jobs = { message: "boom", code: "XX000" };
+    check("F19d hasUsedTool: a failed read → null (no auto-open on a guess)", (await hasUsedTool(asSvc(db), WS, ADMIN, "retouch")) === null);
+  }
+
   // ── loadGuide ──────────────────────────────────────────────────────────
   {
     const db = baseDb();
     setAnon({ published: [pubRow("retouch", { tutorial_version: 5 })], slots: [resolveRow(guideSlotKey("retouch", "tutorial", 2)), resolveRow("tools.retouch.card", { desktop_url: "https://cdn.test/card.png" })] });
     const g = await loadGuide(asClient(db), "retouch", "en");
     check("F20 loadGuide: published version + pictures resolved through media_slots_resolve_v2 in ONE call for all guideImageKeys",
-      g.version === 5 && g.tutorial?.steps[1].image?.url === `https://cdn.test/${guideSlotKey("retouch", "tutorial", 2)}.png`
+      g !== null && g.version === 5 && g.tutorial?.steps[1].image?.url === `https://cdn.test/${guideSlotKey("retouch", "tutorial", 2)}.png`
         && g.starter?.image?.url === "https://cdn.test/card.png" && anonKeys.length === 1 && same(anonKeys[0], [...guideImageKeys("retouch")].sort()));
+  }
+  {
+    const db = baseDb();
+    setAnon({ published: { code: "XX000", message: "boom" }, slots: [] });
+    quiet(); const g = await loadGuide(asClient(db), "retouch", "pl"); loud();
+    check("F20b loadGuide: the saved guides could not be read → null (no guide), never the shipped one", g === null);
   }
 
   // ── GET /api/tool-guides ───────────────────────────────────────────────
@@ -1002,11 +1053,11 @@ async function sectionF() {
     iceState.cookies.set("ecs_locale", "en");
     const { res, body } = await get("?tool=retouch");
     const guide = body.guide as ResolvedGuide | undefined;
-    check("F23 signed in → 200 { ok, guide, seen, live, hasResults } and nothing else", res.status === 200 && same(Object.keys(body).sort(), ["guide", "hasResults", "live", "ok", "seen"]) && body.ok === true);
+    check("F23 signed in → 200 { ok, guide, seen, live, hasResults, usedBefore } and nothing else", res.status === 200 && same(Object.keys(body).sort(), ["guide", "hasResults", "live", "ok", "seen", "usedBefore"]) && body.ok === true);
     check("F24 … with Cache-Control: no-store (a per-user answer)", res.headers.get("cache-control") === "no-store");
     check("F25 … the guide in the viewer's locale cookie (en)", guide?.tutorial?.title === lookup(DICTS.en, "toolGuideDefaults.retouch.tutorial.title") && guide?.tool === "retouch");
     check("F26 … seen = this user's mark for THIS tool (3, not prompts' 9); live true; hasResults false", body.seen === 3 && body.live === true && body.hasResults === false);
-    const allowed = new Set(["workspace_members", "user_preferences", "generations", "tool_results", "ai_providers"]);
+    const allowed = new Set(["workspace_members", "user_preferences", "generations", "generation_jobs", "tool_results", "ai_providers"]);
     const strays = db.tablesTouched().filter((t) => !allowed.has(t));
     check("F27 the route only READS: workspace, preferences and results tables; no write, no rpc beyond provider keys", strays.length === 0
       && db.writes().every((c) => c.kind === "rpc" && c.name === "providers_with_credentials"), `${short(strays)} ${short(db.writes().map((c) => c.kind === "rpc" ? c.name : c.kind))}`);
@@ -1049,7 +1100,7 @@ async function sectionF() {
   {
     routeDb(); setAnon({ published: { code: "XX000", message: "down" } });
     const { res, body } = await get("?tool=retouch");
-    check("F34 the published read fails → still 200 with the SHIPPED guide (version 1)", res.status === 200 && (body.guide as ResolvedGuide).version === 1);
+    check("F34 the published read fails → still 200, with NO guide (no button, no auto-open, no starter) — never the shipped one", res.status === 200 && body.guide === null);
   }
   {
     routeDb(); iceState.viewerAdmin = true; guideState.catalogue = [{ slug: "ai_shadow", available: true }];
@@ -1104,8 +1155,9 @@ async function sectionG() {
   }
   {
     const db = seenDb({ code: "XX000", message: "down" });
-    quiet(); await markToolTutorialSeenAction("retouch"); loud();
-    check("G5 seen: the published read fails → version 1, still marked (the route showed the shipped v1 too)", db.rpcCalls("mark_tool_tutorial_seen")[0]?.args.p_version === 1);
+    quiet(); const r = await markToolTutorialSeenAction("retouch"); loud();
+    check("G5 seen: the published read fails → nothing is marked (the version is unknown; the route showed no guide either)",
+      !r.ok && db.rpcCalls("mark_tool_tutorial_seen").length === 0);
   }
   {
     const db = seenDb();
@@ -1360,6 +1412,50 @@ async function sectionG() {
     check("G36c the compare-and-set compares INSTANTS: the same moment spelt the JavaScript way is not a conflict", third.ok, third.ok ? "" : third.error);
   }
   {
+    // The pictures' own compare-and-set, against what the FORM was opened on.
+    const bases: Record<string, string | null> = { [K(1)]: T_A, [K(2)]: T_B, [K(3)]: null, [K(4)]: null, [K(5)]: T_C, [K(6)]: T_D, [KS]: T_D };
+    const imgs = { steps: [IMG1, IMG3, null, null], starter: IMG7 };
+    const db = adminDb(); withSlots(db);
+    const r = await save(saveInput({ content: validContent(4), images: imgs, imageBases: { ...bases, [K(2)]: "2026-01-01T00:00:00+00:00" } }));
+    check("G37 a picture changed elsewhere since the form opened (e.g. Media → \"Zamień wszędzie\") → conflict_images, NOTHING written",
+      !r.ok && r.error === "conflict_images" && db.rpcCalls("media_slots_write").length === 0 && (db.tables.tool_guides ?? []).length === 0
+        && iceState.audits.length === 0);
+    const db2 = adminDb(); withSlots(db2);
+    const r2 = await save(saveInput({ content: validContent(4), images: imgs, imageBases: { ...bases, [K(3)]: T_A } }));
+    check("G37b a slot that appeared since the form opened (form: none, now: a row) is a conflict too", !r2.ok && r2.error === "conflict_images");
+    const db3 = adminDb(); withSlots(db3);
+    const ok = await save(saveInput({ content: validContent(4), images: imgs, imageBases: bases }));
+    const nb = ok.ok ? ok.data?.imageBases ?? {} : {};
+    check("G38 matching bases → saved; the answer carries every slot's next base (written = the write's time, untouched = as they were, none = null)",
+      ok.ok && Object.keys(nb).length === 7 && nb[K(2)] === NOW_TS && nb[K(5)] === NOW_TS && nb[K(1)] === T_A && nb[K(3)] === null && nb[KS] === T_D,
+      JSON.stringify(nb));
+  }
+  {
+    const db = adminDb(); withSlots(db); existing(db);
+    db.beforeUpdate = (table, rows) => { if (table === "tool_guides") rows[0].updated_at = "2026-10-11T00:00:00+00:00"; };
+    const r = await save(saveInput({ base: ROW_TS, content: validContent(4), images: { steps: [IMG1, IMG3, null, null], starter: IMG7 } }));
+    const calls = db.rpcCalls("media_slots_write");
+    const undo = new Map(((calls[1]?.args.p_writes as Row[] | undefined) ?? []).map((w) => [w.key as string, w]));
+    check("G39 the row loses a race AFTER the pictures went in → the pictures are put back (restore: previous media, base = the write's own time); conflict; no audit",
+      !r.ok && r.error === "conflict" && calls.length === 2 && calls[0].args.p_action === "save" && calls[1].args.p_action === "restore"
+        && undo.size === 2 && undo.get(K(2))?.media_id === IMG2 && undo.get(K(5))?.media_id === IMG4 && undo.get(K(2))?.base === NOW_TS
+        && iceState.audits.length === 0 && !iceState.revalidated.includes(`tag:${TOOL_GUIDES_TAG}`));
+  }
+  {
+    const db = adminDb(); withSlots(db); existing(db);
+    db.rpcs.media_slots_write = () => ({ data: null, error: { message: "boom" } });
+    const r = await save(saveInput({ base: ROW_TS, tutorialEnabled: false, content: validContent(4), images: { steps: [IMG1, IMG3, null, null], starter: IMG7 } }));
+    check("G40 the pictures fail → NOTHING is written: the row keeps its switches and time, no audit, no guide-cache revalidation",
+      !r.ok && r.error === "images_failed" && db.tables.tool_guides[0].tutorial_enabled === true && db.tables.tool_guides[0].updated_at === ROW_TS
+        && db.fromCalls("tool_guides", "update").length === 0 && iceState.audits.length === 0 && !iceState.revalidated.includes(`tag:${TOOL_GUIDES_TAG}`));
+  }
+  {
+    const db = adminDb(); withSlots(db); existing(db); db.tableErrors.media_slots = { message: "timeout", code: "57014" };
+    const r = await save(saveInput({ base: ROW_TS, showAgain: true, images: { steps: [null, null, null, null], starter: null } }));
+    check("G41 the current pictures cannot be read → \"generic\" (not images_failed: nothing was written, the version was NOT raised)",
+      !r.ok && r.error === "generic" && db.tables.tool_guides[0].tutorial_version === 3 && db.fromCalls("tool_guides", "update").length === 0);
+  }
+  {
     const db = adminDb();
     const big = mut((c) => { for (const s of c.tutorial.steps) { s.title.pl = "T".repeat(80); s.body.pl = "B".repeat(400); } }, 6);
     const r = await save(saveInput({ content: big }));
@@ -1544,8 +1640,9 @@ function sectionH() {
   check("H32b … and every one of them is a \"use client\" module", clientNoDirective.length === 0, short(clientNoDirective));
   if (existsSync("components/tool-guide/lazy.tsx")) {
     const lazy = code(read("components/tool-guide/lazy.tsx"));
-    check("H32c lazy.tsx: the dialog and the starter gallery are client-only chunks (next/dynamic, ssr: false)",
-      /dynamic\(\(\) => import\("\.\/tutorial-modal"\)[^;]*\{ ssr: false \}/.test(lazy) && /dynamic\(\(\) => import\("\.\/starter-gallery"\)[^;]*\{ ssr: false \}/.test(lazy));
+    check("H32c lazy.tsx: the dialog and the starter gallery are client-only chunks (next/dynamic, ssr: false) that render nothing if the chunk fails to load",
+      /dynamic\(\s*\(\) => import\("\.\/tutorial-modal"\)[^;]*\.catch\(\(\) => nothing\)[^;]*\{ ssr: false \}/.test(lazy)
+        && /dynamic\(\s*\(\) => import\("\.\/starter-gallery"\)[^;]*\.catch\(\(\) => nothing\)[^;]*\{ ssr: false \}/.test(lazy));
   }
   const serverFiles = ["lib/server/tool-guides.ts", "lib/server/tool-guides-published.ts"];
   check("H33 lib/server/tool-guides*.ts both import \"server-only\"", serverFiles.every((f) => /^\s*import\s+["']server-only["'];?/m.test(read(f))));

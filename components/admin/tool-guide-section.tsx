@@ -97,6 +97,7 @@ export async function ToolGuideSection({ tool, supabase }: { tool: GuideToolKey;
             stepImages,
             starterImage,
             base: row?.updated_at ?? null,
+            imageBases: Object.fromEntries([...stepKeys, starterKey].map((k) => [k, slots.get(k)?.updatedAt ?? null])),
             version: row?.tutorial_version ?? 1,
           }}
           library={[...library, ...extra]}

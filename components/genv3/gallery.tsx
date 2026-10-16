@@ -454,16 +454,17 @@ export function GenerationGallery({
     // a titled block inside a page, and dropping the title lets its toolbar
     // start on the same line as the configuration panel opposite.
     <div data-gallery-panel className="min-w-0">
-      {/* The tutorial button sits above the gallery below `lg`: the toolbar
-          row there has no room left, and it must stay one row. */}
-      {guide.button && <div className="mb-2 flex justify-end lg:hidden">{guide.button}</div>}
+      {/* The tutorial button sits above the gallery until the toolbar row has
+          room for it — `lg` on the generators, `xl` on a tool's narrower
+          gallery column — because that row must stay one row. */}
+      {guide.button && <div className={cn("mb-2 flex justify-end", operation ? "xl:hidden" : "lg:hidden")}>{guide.button}</div>}
       {/* ONE toolbar row: session chips on the left, view/search/filter/sort
           on the right, every control the same 36px height on a shared centre
           line. Below `lg` the two groups wrap onto their own rows instead of
           being squeezed. */}
       <div data-gallery-toolbar className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="thin-scroll -mx-1 order-2 flex min-w-0 items-center gap-1.5 overflow-x-auto px-1 pb-0.5 lg:order-1">
-          {guide.button && <span className="hidden lg:contents">{guide.button}</span>}
+          {guide.button && <span className={operation ? "hidden xl:contents" : "hidden lg:contents"}>{guide.button}</span>}
           {/* Session chips belong to the generator: a retouch has no session
               type, so a tool's gallery does not offer two dead filters. */}
           {!operation && chips.map((c) => {

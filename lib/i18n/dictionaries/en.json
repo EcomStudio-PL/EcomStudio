@@ -4813,8 +4813,8 @@
     "guide.error.invalid_image": "The chosen file is not an image from the library — choose another one.",
     "guide.error.migration_pending": "Not saved — the database is still missing migration 0142.",
     "guide.error.conflict": "Someone else saved this tutorial in the meantime. Reload the current version and make your changes again.",
-    "guide.error.conflict_images": "Texts saved, but the photos changed in the meantime. Reload the page and choose the photos again.",
-    "guide.error.images_failed": "Texts saved, but the photos could not be saved. Click “Save and publish” again.",
+    "guide.error.conflict_images": "The photos changed in the meantime — nothing was saved. Reload the page.",
+    "guide.error.images_failed": "Could not save the photos — nothing was changed. Try again.",
     "guide.error.unauthenticated": "Your session has expired — sign in again.",
     "guide.error.not_admin": "Only an administrator can change tutorials.",
     "guide.error.step_up_required": "Confirm your identity on this device to save changes in the panel.",
@@ -9778,7 +9778,7 @@
     "resize": {
       "tutorial": {
         "title": "How “Resize” works",
-        "body": "Fit many photos at once to a chosen resolution or your own size. Only the dimensions change — nothing is cropped or generated.",
+        "body": "Fit many photos at once to a chosen resolution or your own size. The dimensions change — nothing is cropped or generated (AVIF photos are saved as WebP).",
         "steps": {
           "s1": {
             "title": "Add photos",

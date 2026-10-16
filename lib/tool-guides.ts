@@ -272,16 +272,22 @@ export type GuideResponse = {
   /** Does this workspace already have results in the gallery this tool
    *  shows? null = unknown (the read failed) → the gallery stays as it is. */
   hasResults: boolean | null;
+  /** Has this user finished something in this tool before (their own
+   *  jobs)? null = unknown. */
+  usedBefore: boolean | null;
 };
 
 /* ── THE TWO DECISIONS ─────────────────────────────────────────────────── */
 
 /** Open the tutorial by itself? Only on a live tool, only for a version this
- *  user has not seen, never over another dialog or the visual editor. */
+ *  user has not seen, never over another dialog or the visual editor — and
+ *  the first version only for someone new to the tool (a seller who already
+ *  made something here knows it); a version an admin raised, for everyone. */
 export function shouldAutoOpen(r: GuideResponse | null, blocked: boolean): boolean {
   return Boolean(
     r && r.live && r.guide?.tutorial && r.guide.tutorial.steps.length > 0
-    && r.seen < r.guide.version && !blocked,
+    && r.seen < r.guide.version && !blocked
+    && (r.usedBefore === false || r.guide.version > 1),
   );
 }
 
