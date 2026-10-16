@@ -9206,7 +9206,8 @@
       "unsupported": "Diese Seite kann im visuellen Editor nicht geöffnet werden.",
       "not_admin": "Der visuelle Editor ist nur für Administratoren verfügbar.",
       "unauthenticated": "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
-      "generic": "Der visuelle Editor konnte nicht geöffnet werden. Bitte versuche es erneut."
+      "generic": "Der visuelle Editor konnte nicht geöffnet werden. Bitte versuche es erneut.",
+      "unavailable": "Der visuelle Editor ist noch nicht verfügbar — die Datenbank wartet auf Migration 0141."
     },
     "reason": {
       "workflow": "Assistenten-Bildschirm – sein Inhalt ergibt sich aus der Konfiguration des Assistenten, nicht aus Seitentexten.",
@@ -9275,6 +9276,10 @@
       "cardBody": "Kartenbeschreibung",
       "cardImage": "Kartenbild"
     },
-    "nav": "Visueller Editor"
+    "nav": "Visueller Editor",
+    "unavailable": {
+      "title": "Der visuelle Editor ist noch nicht verfügbar",
+      "body": "Der Datenbank fehlen noch die Tabellen des Editors (Migration 0141). Die Seiten funktionieren unverändert; der Editor schaltet sich nach der Migration von selbst ein — ohne erneutes Deployment."
+    }
   }
 }

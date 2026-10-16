@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
  */
 
 /** The refusals setEdit names; anything else reads as the generic one. */
-const KNOWN_ERRORS = new Set(["step_up_required", "unsupported", "not_admin", "unauthenticated"]);
+const KNOWN_ERRORS = new Set(["step_up_required", "unsupported", "not_admin", "unauthenticated", "unavailable"]);
 
 /**
  * "Edytuj wizualnie": starts an edit session for `path` (a path-scoped

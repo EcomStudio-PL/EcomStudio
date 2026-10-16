@@ -9206,7 +9206,8 @@
       "unsupported": "This page can’t be opened in the visual editor.",
       "not_admin": "The visual editor is available to admins only.",
       "unauthenticated": "Your session has expired. Please sign in again.",
-      "generic": "Couldn’t open the visual editor. Please try again."
+      "generic": "Couldn’t open the visual editor. Please try again.",
+      "unavailable": "The visual editor isn’t available yet — the database is waiting for migration 0141."
     },
     "reason": {
       "workflow": "Wizard screen — its content comes from the wizard’s configuration, not from page copy.",
@@ -9275,6 +9276,10 @@
       "cardBody": "Card description",
       "cardImage": "Card image"
     },
-    "nav": "Visual editor"
+    "nav": "Visual editor",
+    "unavailable": {
+      "title": "The visual editor isn’t available yet",
+      "body": "The database doesn’t have the editor’s tables yet (migration 0141). Pages work as before; the editor turns on by itself once the migration is applied — no redeploy needed."
+    }
   }
 }

@@ -686,6 +686,8 @@ function freshDb(): FakeDb {
     { id: B_DRAFT, page_id: DRAFT_ID, updated_at: "2026-10-01T10:00:03.000Z" },
     { id: B_HOME, page_id: HOMEPAGE_ID, updated_at: "2026-10-01T10:00:04.000Z" },
   ];
+  // 0141 is in the database unless a test says otherwise (iceDbReady).
+  db.rpcs.content_overrides_published = () => ({ data: [], error: null });
   iceState.client = db.client();
   iceState.viewerAdmin = true;
   return db;
@@ -923,6 +925,17 @@ async function sectionH() {
   check("H7c gate: an admin on an unverified device → null", (await iceGateData()) === null);
   freshDb(); iceState.cookies.set(ICE_HINT_COOKIE, "1"); iceState.viewerAdmin = false;
   check("H7d gate: a non-admin with the hint → null", (await iceGateData()) === null);
+  {
+    const db = freshDb(); iceState.cookies.set(ICE_HINT_COOKIE, "1");
+    delete db.rpcs.content_overrides_published; // 0141 not applied: PGRST202
+    check("H7e gate: an admin with the hint while the database lacks 0141 (PGRST202) → null, no launcher", (await iceGateData()) === null);
+    db.rpcs.content_overrides_published = () => ({ data: null, error: { message: "function does not exist", code: "42883" } });
+    check("H7f … the same for Postgres's own 42883", (await iceGateData()) === null);
+    db.rpcs.content_overrides_published = () => ({ data: null, error: { message: "timeout", code: "57014" } });
+    const g2 = await iceGateData();
+    check("H7g … but any OTHER failure of the probe does not hide the editor (only a missing function means 'not ready')",
+      g2 !== null && g2.supported.includes("/home"));
+  }
 }
 
 /* ══ I. ACTIONS ════════════════════════════════════════════════════════════ */
@@ -1006,7 +1019,7 @@ async function sectionI() {
     ["registerUpload", () => actions.registerUpload({ path: uploadPath(), name: "a.png" })],
     ["cmsSave", () => actions.cmsSave({ blockId: B_HERO, path: ["title"], locale: "pl", value: "Nowy", expected: "Stary tytuł", base: null })],
   ];
-  const exported = Object.entries(actions).filter(([, v]) => typeof v === "function").map(([k]) => k).filter((k) => k !== "iceSupportedPaths");
+  const exported = Object.entries(actions).filter(([, v]) => typeof v === "function").map(([k]) => k).filter((k) => k !== "iceSupportedPaths" && k !== "iceDbReady");
   const covered = new Set(CALLS.map(([n]) => n.replace(/\(.*\)$/, "")));
   check(`I0 the gate table covers every exported action (${exported.length})`, exported.every((n) => covered.has(n)), short(exported.filter((n) => !covered.has(n))));
   const MODES: [string, (db: FakeDb) => void, string][] = [
@@ -1472,6 +1485,12 @@ async function sectionI() {
     const c2Db = freshDb(); void c2Db;
     const c2 = await actions.setEdit(true, "/");
     check("I21g … and accepts a published CMS page and the CMS homepage at /", c1.ok && c2.ok && iceState.cookieWrites[0].opts.path === "/");
+    const missing = freshDb(); delete missing.rpcs.content_overrides_published;
+    const u = await actions.setEdit(true, "/home");
+    check("I21h setEdit(true) while the database lacks 0141 → unavailable, no cookie (no edit session, no markers)",
+      !u.ok && u.error === "unavailable" && iceState.cookieWrites.length === 0);
+    const off2 = await actions.setEdit(false, "/home");
+    check("I21i … while switching edit mode OFF still works (clears the cookie)", off2.ok && iceState.cookieWrites.length === 1);
   }
   {
     freshDb();

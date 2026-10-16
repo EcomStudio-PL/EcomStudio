@@ -9206,7 +9206,8 @@
       "unsupported": "Tej strony nie można otworzyć w edytorze wizualnym.",
       "not_admin": "Edytor wizualny jest dostępny tylko dla administratorów.",
       "unauthenticated": "Twoja sesja wygasła. Zaloguj się ponownie.",
-      "generic": "Nie udało się otworzyć edytora wizualnego. Spróbuj ponownie."
+      "generic": "Nie udało się otworzyć edytora wizualnego. Spróbuj ponownie.",
+      "unavailable": "Edytor wizualny nie jest jeszcze dostępny — baza danych czeka na migrację 0141."
     },
     "reason": {
       "workflow": "Ekran kreatora — jego treść wynika z konfiguracji kreatora, a nie z tekstów strony.",
@@ -9275,6 +9276,10 @@
       "cardBody": "Opis karty",
       "cardImage": "Zdjęcie karty"
     },
-    "nav": "Edytor wizualny"
+    "nav": "Edytor wizualny",
+    "unavailable": {
+      "title": "Edytor wizualny jest jeszcze niedostępny",
+      "body": "Baza danych nie ma jeszcze tabel edytora (migracja 0141). Strony działają bez zmian; edytor włączy się sam po wdrożeniu migracji — bez ponownego wdrażania aplikacji."
+    }
   }
 }

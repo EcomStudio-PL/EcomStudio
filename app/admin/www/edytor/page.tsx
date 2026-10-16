@@ -7,6 +7,7 @@ import { RelativeTime } from "@/components/ui/relative-time";
 import { CmsNav } from "@/components/admin/cms/cms-nav";
 import { IceEditButton, IceFind, type IceFindItem, type IceFindPage } from "@/components/admin/cms/visual-editor";
 import { iceAdminOverview, type IceAdminElement, type IceAdminPage } from "@/lib/server/ice/admin";
+import { iceDbReady } from "@/lib/server/ice/actions";
 
 /**
  * CMS → EDYTOR WIZUALNY — the way into the inline editor from the admin panel.
@@ -21,7 +22,7 @@ import { iceAdminOverview, type IceAdminElement, type IceAdminPage } from "@/lib
  */
 export default async function VisualEditorRoute() {
   const supabase = await createClient();
-  const [{ dict, locale }, overview] = await Promise.all([getDictionary(), iceAdminOverview(supabase)]);
+  const [{ dict, locale }, overview, ready] = await Promise.all([getDictionary(), iceAdminOverview(supabase), iceDbReady(supabase)]);
   const t = makeT(dict);
 
   const pageName = (p: IceAdminPage): string => {
@@ -63,6 +64,13 @@ export default async function VisualEditorRoute() {
       <CmsNav />
 
       <div className="space-y-8" data-ice-admin>
+        {/* Code live before 0141: said plainly, instead of buttons that fail. */}
+        {!ready && (
+          <div role="status" className="panel rounded-2xl px-4 py-3.5" data-ice-unavailable>
+            <p className="text-sm font-semibold">{t("iceAdmin.unavailable.title")}</p>
+            <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{t("iceAdmin.unavailable.body")}</p>
+          </div>
+        )}
         <IceFind pages={findPages} items={findItems} />
 
         <section data-ice-supported>

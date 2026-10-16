@@ -144,6 +144,19 @@ async function cmsPageInfo(supabase: Client, row: CmsPageRow, path: string): Pro
   };
 }
 
+/**
+ * WHETHER THE DATABASE HAS THE EDITOR (0141). The code can be live before the
+ * migration is: until then nobody is offered the editor — no launcher, no edit
+ * session — and every page renders exactly as it did. Only "the function does
+ * not exist" counts as not ready; any other failure is left to the editor's
+ * own error handling. Turns on by itself once 0141 lands, no redeploy.
+ */
+export async function iceDbReady(supabase: Client): Promise<boolean> {
+  // A handful of rows at most (one per edited text and language).
+  const { error } = await supabase.rpc("content_overrides_published");
+  return !(error && (error.code === "PGRST202" || error.code === "42883"));
+}
+
 export function setEdit(on: boolean, rawPath: string): Promise<IceResult<{ nonce: string | null }>> {
   return run(async () => {
     const { supabase } = await requireIceAdmin();
@@ -155,6 +168,7 @@ export function setEdit(on: boolean, rawPath: string): Promise<IceResult<{ nonce
       store.set(name, "", { path, maxAge: 0, httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" });
       return { nonce: null };
     }
+    if (!(await iceDbReady(supabase))) throw new IceRefusal("unavailable");
     if (!icePageFor(path) && !(await cmsPageAt(supabase, path))) throw new IceRefusal("unsupported");
     const nonce = newNonce();
     // No Max-Age: a session cookie, gone when the browser closes. Path-scoped:
