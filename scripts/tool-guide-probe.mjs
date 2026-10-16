@@ -297,10 +297,11 @@ const GROUPS = [
   ["10", "independent state per tool, right tool key per mount"],
   ["11", "starter gallery: content, picture geometry, no controls"],
   ["12", "starter gallery: every case it must stay hidden"],
-  ["13", "[data-gallery-toolbar] one row ≤56px with the guide button"],
+  ["13", "[data-gallery-toolbar] vs the no-guide baseline; guide button placement"],
   ["14", "Compress / Resize workbench"],
   ["15", "starter screenshots light/dark × 3 widths"],
   ["P", "PhotoToolWorkspace (tool_remove_bg)"],
+  ["X", "open → step 3 → Escape: page did not scroll, gallery pixels unchanged"],
   ["N", "network: nothing written, nothing reaches Supabase from the browser"],
   ["C", "console: no unexpected errors / page errors"],
 ];
@@ -581,7 +582,11 @@ const emptyState = (P) => P.page.evaluate(() => {
   const e = document.querySelector("[data-gallery-empty]");
   return e ? { visible: getComputedStyle(e).visibility !== "hidden", text: e.textContent.trim().slice(0, 80) } : null;
 });
-const guideBtnCount = (P) => P.page.locator("[data-guide-open]").count();
+/** The Samouczek button the customer can see. A gallery renders it twice —
+ *  above the gallery below `lg` (…lg:hidden) and inside the toolbar from `lg`
+ *  up (span.hidden.lg:contents) — so every action targets the visible one. */
+const GUIDE_BTN = "[data-guide-open]:visible";
+const guideBtnCount = (P) => P.page.locator(GUIDE_BTN).count();
 
 /** The gallery toolbar's rows, height, and whether any two controls collide. */
 const toolbarGeom = (P) => P.page.evaluate(() => {
@@ -607,26 +612,44 @@ const toolbarGeom = (P) => P.page.evaluate(() => {
   for (let i = 0; i < ctrls.length; i++) for (let j = i + 1; j < ctrls.length; j++) {
     const a = ctrls[i], b = ctrls[j];
     const ox = Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1), oy = Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1);
-    if (ox > 1 && oy > 1) overlaps.push(`${a.n} × ${b.n} (${Math.round(ox)}px)`);
+    if (ox > 1 && oy > 1) overlaps.push({ pair: `${a.n} × ${b.n}`, px: Math.round(ox) });
   }
   const rows = [];
   for (const c of ctrls) if (!rows.some((y) => Math.abs(y - c.cy) < 6)) rows.push(c.cy);
-  const btn = tb.querySelector("[data-guide-open]");
+  // The guide button(s): the one the customer sees, wherever it is.
+  const panel = tb.closest("[data-gallery-panel]") ?? document;
+  const all = [...panel.querySelectorAll("[data-guide-open]")];
+  const shown = all.filter(vis);
+  const btn = shown[0] ?? null;
   const bb = btn?.getBoundingClientRect();
+  const firstCtl = [...left.querySelectorAll("button, input, select")].find(vis) ?? null;
   return {
     h: Math.round(r.height * 10) / 10, w: Math.round(r.width), rows: rows.length,
     groupTops: [left, right].map((g) => Math.round(g.getBoundingClientRect().top - r.top)),
+    overlaps,
     // 4.5px: the left group bleeds 4px each side on purpose (-mx-1 px-1, room
     // for focus rings in its scroller).
-    overlaps, outside: ctrls.filter((c) => c.x2 > r.right + 4.5 || c.x1 < r.left - 4.5).map((c) => c.n),
-    guideFirst: Boolean(left.firstElementChild?.hasAttribute("data-guide-open")),
-    guideVisible: Boolean(btn && vis(btn) && bb.left >= lr.left - 1 && bb.right <= lr.right + 1),
-    guideClipped: btn ? btn.scrollWidth > btn.clientWidth + 1 : null,
+    outside: ctrls.filter((c) => c.x2 > r.right + 4.5 || c.x1 < r.left - 4.5).map((c) => c.n),
     rightOverflowPx: Math.max(0, Math.round(right.scrollWidth - right.clientWidth)),
+    toolbarOverflowPx: Math.max(0, Math.round(tb.scrollWidth - tb.clientWidth - 4)),
     leftScrolls: left.scrollWidth > left.clientWidth + 1,
     docOverflow: document.documentElement.scrollWidth > innerWidth,
+    guide: btn ? {
+      inDom: all.length, shown: shown.length,
+      inToolbar: tb.contains(btn),
+      firstInLeft: firstCtl === btn,
+      above: bb.bottom <= r.top + 0.5,
+      overlapsToolbar: !(bb.bottom <= r.top + 0.5 || bb.top >= r.bottom - 0.5 || bb.right <= r.left || bb.left >= r.right),
+      rightGap: Math.round((r.right - bb.right) * 10) / 10,
+      clipped: btn.scrollWidth > btn.clientWidth + 1,
+      inView: bb.left >= -0.5 && bb.right <= innerWidth + 0.5,
+    } : { inDom: all.length, shown: 0 },
   };
 });
+/** Overlaps of `t` that the no-guide baseline `b` does not have (or has
+ *  smaller by more than 1px) — the only ones this feature is answerable for. */
+const newOverlaps = (t, b) => t.overlaps.filter((o) => !b.overlaps.some((x) => x.pair === o.pair && o.px <= x.px + 1));
+const fmtOverlaps = (t) => (t.overlaps.length ? t.overlaps.map((o) => `${o.pair} (${o.px}px)`).join("; ") : "none");
 
 const run = (id) => !ONLY || ONLY.has(id);
 const section = (id) => console.log(`\n── ${id}. ${GROUPS.find((g) => g[0] === id)[1]} ──`);
@@ -752,14 +775,20 @@ if (run("3")) {
     });
     release();
     await guideSettled(P);
-    await P.page.locator("[data-guide-open]").click();
+    await sleep(1500);
+    check(3, "precondition: auto-open is waiting behind the blocker (no dialog, no POST)", (await dialogCount(P)) === 0 && P.rec.actions.length === 0);
+    await P.page.locator(GUIDE_BTN).click();
     await waitDialog(P);
+    await sleep(300);
+    check(3, "manual open while the auto-open waits → exactly one POST, sent at that open", P.rec.actions.length === 1 && P.rec.actions[0].body.includes('"retouch"'), P.rec.actions.map((a) => a.body));
     await P.page.locator("[data-guide-close]").click();
     await waitClosed(P);
+    await sleep(2500);
+    check(3, "… closed, blocker still there → nothing reopens", (await dialogCount(P)) === 0 && (await opens(P)) === 1, { opens: await opens(P) });
     await P.page.evaluate(() => document.getElementById("probe-blocker")?.remove());
     await sleep(3000);
     const n = await opens(P);
-    check(3, "manual open + close while the auto-open was deferred → it does not reopen by itself", (await dialogCount(P)) === 0 && n === 1,
+    check(3, "… blocker removed → it does not reopen by itself (1 open, 1 POST in total)", (await dialogCount(P)) === 0 && n === 1 && P.rec.actions.length === 1,
       { opensTotal: n, dialogOpenNow: await dialogCount(P), posts: P.rec.actions.length });
     await closeP(P);
   }
@@ -820,7 +849,7 @@ if (run("5")) {
     const P = await openPage({ vp: VP[w], url: URLS.retouch, guide: guideFor("retouch", "pl", { seen: 0 }) });
     await waitDialog(P);
     const reopen = async () => {
-      const b = P.page.locator("[data-guide-open]");
+      const b = P.page.locator(GUIDE_BTN);
       await b.scrollIntoViewIfNeeded();
       await press(P, b);
       return waitDialog(P);
@@ -866,32 +895,39 @@ if (run("5")) {
 /* ── 6. manual reopen ──────────────────────────────────────────────────── */
 if (run("6")) {
   section("6");
-  const P = await openPage({ url: URLS.retouch, guide: guideFor("retouch", "pl", { seen: 1 }) });
-  const b = P.page.locator("[data-guide-open]");
-  await b.click();
-  await waitDialog(P);
-  await P.page.locator("[data-guide-next]").click();
-  await P.page.locator("[data-guide-next]").click();
-  await sleep(300);
-  const at3 = await counterText(P);
-  await P.page.locator("[data-guide-close]").click();
-  await waitClosed(P);
-  await b.click();
-  await waitDialog(P);
-  check(6, "reopen starts at step 1", at3 === "3 z 4" && (await counterText(P)) === "1 z 4", { before: at3, now: await counterText(P) });
-  check(6, "manual opens make NO server-action POST", P.rec.actions.length === 0, P.rec.actions.length);
-  await P.page.locator("[data-guide-close]").click();
-  await waitClosed(P);
-  await sleep(100);
-  check(6, "after X, focus is back on the Samouczek button", await P.page.evaluate(() => document.activeElement?.hasAttribute("data-guide-open")),
-    await P.page.evaluate(() => document.activeElement?.outerHTML.slice(0, 80)));
-  await b.click();
-  await waitDialog(P);
-  await P.page.keyboard.press("Escape");
-  await waitClosed(P);
-  await sleep(100);
-  check(6, "after Escape, focus is back on the Samouczek button", await P.page.evaluate(() => document.activeElement?.hasAttribute("data-guide-open")));
-  await closeP(P);
+  // 1440: the button is in the toolbar; 834: below lg, above the gallery.
+  const focusedOnVisibleButton = (P) => P.page.evaluate(() => {
+    const a = document.activeElement;
+    return Boolean(a?.hasAttribute("data-guide-open") && a.getBoundingClientRect().width > 0 && getComputedStyle(a).visibility !== "hidden");
+  });
+  for (const w of [1440, 834]) {
+    const P = await openPage({ vp: VP[w], url: URLS.retouch, guide: guideFor("retouch", "pl", { seen: 1 }) });
+    const b = P.page.locator(GUIDE_BTN);
+    await b.click();
+    await waitDialog(P);
+    await P.page.locator("[data-guide-next]").click();
+    await P.page.locator("[data-guide-next]").click();
+    await sleep(300);
+    const at3 = await counterText(P);
+    await P.page.locator("[data-guide-close]").click();
+    await waitClosed(P);
+    await b.click();
+    await waitDialog(P);
+    check(6, `[${w}] reopen starts at step 1`, at3 === "3 z 4" && (await counterText(P)) === "1 z 4", { before: at3, now: await counterText(P) });
+    check(6, `[${w}] manual opens make NO server-action POST`, P.rec.actions.length === 0, P.rec.actions.length);
+    await P.page.locator("[data-guide-close]").click();
+    await waitClosed(P);
+    await sleep(100);
+    check(6, `[${w}] after X, focus is back on the visible Samouczek button`, await focusedOnVisibleButton(P),
+      await P.page.evaluate(() => document.activeElement?.outerHTML.slice(0, 80)));
+    await b.click();
+    await waitDialog(P);
+    await P.page.keyboard.press("Escape");
+    await waitClosed(P);
+    await sleep(100);
+    check(6, `[${w}] after Escape, focus is back on the visible Samouczek button`, await focusedOnVisibleButton(P));
+    await closeP(P);
+  }
 }
 
 /* ── 7. focus, aria, scroll lock ───────────────────────────────────────── */
@@ -900,7 +936,7 @@ if (run("7")) {
   {
     const P = await openPage({ url: URLS.retouch, guide: guideFor("retouch", "pl", { seen: 1 }) });
     const bodyBefore = await P.page.evaluate(() => ({ inline: document.body.style.overflow, computed: getComputedStyle(document.body).overflow }));
-    await P.page.locator("[data-guide-open]").click();
+    await P.page.locator(GUIDE_BTN).click();
     await waitDialog(P);
     check(7, "on open, focus is on the primary button inside the dialog",
       await P.page.evaluate(() => document.activeElement?.hasAttribute("data-guide-next") && Boolean(document.activeElement.closest('[role="dialog"]'))));
