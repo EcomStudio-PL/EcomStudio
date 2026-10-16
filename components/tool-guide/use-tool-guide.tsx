@@ -5,7 +5,7 @@ import { useI18n } from "@/lib/i18n/provider";
 import { cn } from "@/lib/utils";
 import { markToolTutorialSeenAction } from "@/app/actions/tool-guide-seen";
 import { shouldAutoOpen, type GuideResponse, type GuideToolKey } from "@/lib/tool-guides";
-import { TutorialModal } from "./tutorial-modal";
+import { TutorialModal, preloadGuideChunks } from "./lazy";
 
 /**
  * ONE TOOL'S GUIDE ON ITS SCREEN — fetched after the gallery has painted, so
@@ -33,6 +33,7 @@ export function useToolGuide(tool: GuideToolKey | null, opts: { compactLabel?: b
 
   useEffect(() => {
     if (!tool) { setPending(false); return; }
+    preloadGuideChunks();
     let alive = true;
     setPending(true);
     setResponse(null);

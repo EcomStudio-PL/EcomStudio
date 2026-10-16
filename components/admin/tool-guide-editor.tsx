@@ -227,14 +227,12 @@ export function ToolGuideEditor({ tool, defaults, initial, library, catalogueIma
   const fresh = () => `n${++seq.current}`;
 
   /**
-   * THE COMPARE-AND-SET BASE AFTER A SAVE. The action answers with the time it
-   * wrote (JavaScript's spelling of it), while the next save is compared with
-   * the database's own text of that time — the same instant, spelled
-   * differently. So the base is taken from the refreshed server props: the
-   * row stamped at the instant we wrote (after a success), or the first row
-   * stamped after the one we sent (after a failure that had already written
-   * the row before its pictures failed). State, not a ref, so it holds
-   * whichever arrives first — the refreshed props or the action's answer.
+   * THE COMPARE-AND-SET BASE AFTER A SAVE. A success answers with the row's
+   * own time (and the action compares instants, not spellings); the refreshed
+   * server props confirm it. A failure that had already written the row
+   * before its pictures failed answers with no time at all, so the base is
+   * the first row stamped after the one we sent. State, not a ref, so it
+   * holds whichever arrives first — the refreshed props or the action's answer.
    */
   const [adoptWant, setAdoptWant] = useState<{ at: string } | { after: string | null } | null>(null);
   useEffect(() => {
@@ -354,7 +352,9 @@ export function ToolGuideEditor({ tool, defaults, initial, library, catalogueIma
     if (!form.useDefault) {
       const n = normalizeGuideContent(contentOf(form));
       if (!n.ok) {
-        setError(errorText(`invalid_${n.problem}`));
+        const where = badLocales.length > 0
+          ? ` ${t("aicc.guide.fixErrors", { langs: badLocales.map((l) => l.toUpperCase()).join(", ") })}` : "";
+        setError(`${errorText(`invalid_${n.problem}`)}${where}`);
         // Put the admin where the problem is.
         if (badLocales.length > 0 && !badLocales.includes(lang)) setLang(badLocales[0]);
         return;
@@ -392,7 +392,6 @@ export function ToolGuideEditor({ tool, defaults, initial, library, catalogueIma
         // Nothing was written: someone else saved first. Their version is
         // only one reload away; overwriting it silently is not an option.
         setConflict(true);
-        setError(errorText("conflict"));
         toast.error(errorText("conflict"), { action: { label: t("aicc.guide.reload"), onClick: reload } });
         return;
       }
@@ -418,13 +417,6 @@ export function ToolGuideEditor({ tool, defaults, initial, library, catalogueIma
 
   return (
     <div className="space-y-6" data-tool-guide-editor={tool}>
-      {conflict && (
-        <div role="alert" className="flex flex-col gap-3 rounded-xl border border-[rgb(var(--warning)/0.4)] bg-[rgb(var(--warning)/0.08)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[13px] text-ink">{errorText("conflict")}</p>
-          <Button size="sm" variant="secondary" onClick={reload}>{t("aicc.guide.reload")}</Button>
-        </div>
-      )}
-
       {/* STATE — whose copy this is and which tutorial version is live. */}
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={form.useDefault ? "neutral" : "accent"}>
@@ -524,7 +516,7 @@ export function ToolGuideEditor({ tool, defaults, initial, library, catalogueIma
                           <span className="w-20 shrink-0 overflow-hidden rounded-lg border border-line bg-raised/60">
                             <GuideArtwork art={s.art} className="block aspect-[16/10] h-auto w-full" />
                           </span>
-                          <Select id={`${ids}-${s.uid}-art`} value={s.art} className="min-w-0 flex-1 py-2.5"
+                          <Select id={`${ids}-${s.uid}-art`} value={s.art} className="min-w-0 flex-1"
                             onChange={(e) => { const v = e.target.value; if (isGuideArt(v)) patchStep(s.uid, (x) => ({ ...x, art: v })); }}>
                             {GUIDE_ARTS.map((a) => <option key={a} value={a}>{t(`aicc.guide.art.${a}`)}</option>)}
                           </Select>
@@ -621,10 +613,17 @@ export function ToolGuideEditor({ tool, defaults, initial, library, catalogueIma
 
       {/* ── SAVE ──────────────────────────────────────────────────────── */}
       <div className="space-y-3 border-t border-line pt-5">
-        {error && (
+        {conflict ? (
+          // Beside the button that hit it: someone else's version is one
+          // reload away, and this form must not overwrite it.
+          <div role="alert" data-guide-conflict
+            className="flex flex-col gap-3 rounded-xl border border-[rgb(var(--warning)/0.4)] bg-[rgb(var(--warning)/0.08)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[13px] text-ink">{errorText("conflict")}</p>
+            <Button size="sm" variant="secondary" onClick={reload} className="shrink-0">{t("aicc.guide.reload")}</Button>
+          </div>
+        ) : error && (
           <p role="alert" className="rounded-xl bg-[rgb(var(--danger)/0.08)] px-3.5 py-2.5 text-[12.5px] text-danger" data-guide-error>
             {error}
-            {badLocales.length > 0 && <> {t("aicc.guide.fixErrors", { langs: badLocales.map((l) => l.toUpperCase()).join(", ") })}</>}
           </p>
         )}
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -697,9 +696,11 @@ function TextField({ id, label, lang, required, value, max, multiline, rows, pro
   return (
     <div>
       <Label htmlFor={id} hint={hint}>{label}</Label>
+      {/* No size override: the fields keep their 16 px on touch screens,
+          below which iOS Safari zooms into the focused field. */}
       {multiline
-        ? <Textarea {...shared} rows={rows ?? 3} className="min-h-0 text-[13px]" onChange={(e) => onChange(e.target.value)} />
-        : <Input {...shared} className="text-[13px]" onChange={(e) => onChange(e.target.value)} />}
+        ? <Textarea {...shared} rows={rows ?? 3} onChange={(e) => onChange(e.target.value)} />
+        : <Input {...shared} onChange={(e) => onChange(e.target.value)} />}
       <p id={metaId} className="mt-1 flex justify-between gap-2 text-[11px]">
         <span className="text-danger">{problem ? t(`aicc.guide.problem.${problem}`, { max }) : ""}</span>
         <span className={cn("shrink-0 tabular-nums", length > max ? "text-danger" : "text-faint")}>
@@ -766,11 +767,12 @@ function IconButton({ label, onClick, disabled, children }: {
 }
 
 /**
- * A screen of a given width, drawn at that width and scaled down to fit the
- * column — the gallery lays itself out exactly as it would at 720 or 360 px
- * (its own breakpoints are viewport-based, so the frame shows its content at
- * the frame's size, not a squeezed copy of the admin's layout). The frame's
- * height follows the scaled content, so nothing scrolls sideways.
+ * A screen of a given width: the content is laid out at exactly that width
+ * (its wrapping, its picture's proportions) and then scaled down to fit the
+ * column, rather than squeezed into whatever the admin's column happens to
+ * be. The frame's height follows the scaled content, and the frame clips, so
+ * the page never scrolls sideways. (The gallery's few `sm:` paddings follow
+ * the admin's viewport, not the frame — a pixel or two, not the layout.)
  */
 function DeviceFrame({ width, label, icon: Icon, children }: {
   width: number; label: string; icon: LucideIcon; children: ReactNode;

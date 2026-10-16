@@ -72,8 +72,10 @@ export async function readGuideRow(supabase: Client, tool: GuideToolKey): Promis
 }
 
 /** The pictures currently assigned to a guide's slots: key → asset id and the
- *  row's updated_at (the base a compare-and-set write needs). */
-export async function readGuideSlots(supabase: Client, keys: string[]): Promise<Map<string, { mediaId: string | null; updatedAt: string }>> {
-  const { data } = await supabase.from("media_slots").select("slot_key, media_id, updated_at").in("slot_key", keys);
+ *  row's updated_at (the base a compare-and-set write needs). `null` when the
+ *  read fails — "no slots" would turn a removal into a silent no-op. */
+export async function readGuideSlots(supabase: Client, keys: string[]): Promise<Map<string, { mediaId: string | null; updatedAt: string }> | null> {
+  const { data, error } = await supabase.from("media_slots").select("slot_key, media_id, updated_at").in("slot_key", keys);
+  if (error) return null;
   return new Map((data ?? []).map((r) => [r.slot_key, { mediaId: r.media_id, updatedAt: r.updated_at }]));
 }

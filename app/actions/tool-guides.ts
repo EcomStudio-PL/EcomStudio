@@ -4,11 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/services/audit";
 import { enforceLoginSecurity } from "@/lib/server/login-security";
 import { MEDIA_SLOT_TAG } from "@/lib/server/media-slots";
-import { defaultGuideContent } from "@/lib/server/tool-guides";
 import { TOOL_GUIDES_TAG } from "@/lib/server/tool-guides-published";
 import { readGuideRow, readGuideSlots } from "@/lib/services/tool-guides";
 import {
-  GUIDE_MAX_STEPS, guideSlotKey, isGuideTool, normalizeGuideContent, type GuideToolKey,
+  DEFAULT_STEP_ARTS, GUIDE_MAX_STEPS, guideSlotKey, isGuideTool, normalizeGuideContent, type GuideToolKey,
 } from "@/lib/tool-guides";
 import type { Json } from "@/lib/database.types";
 
@@ -65,7 +64,8 @@ export async function saveToolGuideAction(input: SaveToolGuideInput): Promise<Re
     const tool: GuideToolKey = input.tool;
 
     let content: Json | null = null;
-    let stepCount = defaultGuideContent(tool).tutorial.steps.length;
+    // The shipped tutorial has one step per default illustration.
+    let stepCount = DEFAULT_STEP_ARTS[tool].length;
     if (input.content !== null) {
       const n = normalizeGuideContent(input.content);
       if (!n.ok) return { ok: false, error: `invalid_${n.problem}` };
@@ -90,10 +90,18 @@ export async function saveToolGuideAction(input: SaveToolGuideInput): Promise<Re
       if (ids.some((id) => !ok.has(id))) return { ok: false, error: "invalid_image" };
     }
 
+    // The pictures as they are now — read BEFORE anything is written, so a
+    // failed read stops the save instead of turning removals into no-ops.
+    const slots = await readGuideSlots(supabase, [...wanted.keys()]);
+    if (!slots) return { ok: false, error: "images_failed" };
+
     // The row, compare-and-set.
     const current = await readGuideRow(supabase, tool);
     if (current === "unavailable") return { ok: false, error: "migration_pending" };
-    if ((current?.updated_at ?? null) !== (input.base ?? null)) return { ok: false, error: "conflict" };
+    // Instants, not spellings: Postgres and JavaScript write the same moment
+    // differently, and the form may hand back either.
+    const instant = (v: string | null | undefined) => (v ? Date.parse(v) : null);
+    if (instant(current?.updated_at) !== instant(input.base)) return { ok: false, error: "conflict" };
     const now = new Date().toISOString();
     const version = (current?.tutorial_version ?? 1) + (input.showAgain ? 1 : 0);
     const values = {
@@ -104,18 +112,20 @@ export async function saveToolGuideAction(input: SaveToolGuideInput): Promise<Re
       updated_at: now,
       updated_by: adminId,
     };
+    let savedAt = now;
     if (current) {
       const { data, error } = await supabase.from("tool_guides").update(values)
-        .eq("tool_key", tool).eq("updated_at", current.updated_at).select("tool_key");
+        .eq("tool_key", tool).eq("updated_at", current.updated_at).select("updated_at");
       if (error) return { ok: false, error: "generic" };
       if ((data ?? []).length === 0) return { ok: false, error: "conflict" };
+      savedAt = data![0].updated_at;
     } else {
-      const { error } = await supabase.from("tool_guides").insert({ tool_key: tool, ...values });
+      const { data, error } = await supabase.from("tool_guides").insert({ tool_key: tool, ...values }).select("updated_at");
       if (error) return { ok: false, error: error.code === "23505" ? "conflict" : "generic" };
+      savedAt = data?.[0]?.updated_at ?? now;
     }
 
     // The pictures that changed, in one all-or-nothing call.
-    const slots = await readGuideSlots(supabase, [...wanted.keys()]);
     const writes = [...wanted.entries()].flatMap(([key, mediaId]) => {
       const cur = slots.get(key);
       if ((cur?.mediaId ?? null) === mediaId) return [];
@@ -126,12 +136,15 @@ export async function saveToolGuideAction(input: SaveToolGuideInput): Promise<Re
         alt_text: "", object_fit: "cover", object_position: "center center", base: cur?.updatedAt ?? "",
       }];
     });
+    let imageError: "conflict_images" | "images_failed" | null = null;
     if (writes.length > 0) {
       const { error } = await supabase.rpc("media_slots_write", { p_writes: writes as unknown as Json, p_action: "save" });
-      if (error) return { ok: false, error: /conflict/.test(error.message) ? "conflict_images" : "images_failed" };
-      revalidateTag(MEDIA_SLOT_TAG);
+      if (error) imageError = /conflict/.test(error.message) ? "conflict_images" : "images_failed";
+      else revalidateTag(MEDIA_SLOT_TAG);
     }
 
+    // The row IS written even when its pictures failed: audit it and let
+    // customers see it either way. The form keeps the pictures to retry.
     await logAudit(supabase, {
       actorId: adminId,
       action: "ai_tool.guide_saved",
@@ -139,12 +152,14 @@ export async function saveToolGuideAction(input: SaveToolGuideInput): Promise<Re
       entityId: tool,
       after: {
         tutorialEnabled: values.tutorial_enabled, starterEnabled: values.starter_enabled,
-        version: values.tutorial_version, customContent: content !== null, images: writes.length,
+        version: values.tutorial_version, customContent: content !== null,
+        images: imageError ? 0 : writes.length, ...(imageError ? { imageError } : {}),
       },
     });
     revalidateTag(TOOL_GUIDES_TAG);
     revalidatePath(`/admin/ai/${tool}`);
-    return { ok: true, data: { updatedAt: now, version: values.tutorial_version } };
+    if (imageError) return { ok: false, error: imageError };
+    return { ok: true, data: { updatedAt: savedAt, version: values.tutorial_version } };
   } catch (e) {
     const code = e instanceof Error ? e.message : "";
     return { ok: false, error: ["unauthenticated", "not_admin", "step_up_required"].includes(code) ? code : "generic" };

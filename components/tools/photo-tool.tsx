@@ -23,7 +23,7 @@ import { Compare } from "@/components/tools/compare";
 import type { UploadedRef } from "@/components/genv3/types";
 import { starterVisible, type GuideToolKey } from "@/lib/tool-guides";
 import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
-import { StarterGallery } from "@/components/tool-guide/starter-gallery";
+import { StarterGallery } from "@/components/tool-guide/lazy";
 
 /** Photos running at once — Retusz's figure: a batch, not ten simultaneous
  *  requests from one seller (Photoroom's own default is 60 a minute). */

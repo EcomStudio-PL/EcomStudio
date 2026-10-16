@@ -8,9 +8,10 @@ import { readGuideRow, readGuideSlots } from "@/lib/services/tool-guides";
 import { defaultGuideContent } from "@/lib/server/tool-guides";
 import { loadSlots } from "@/lib/server/media-slots";
 import {
-  GUIDE_MAX_STEPS, STARTER_FALLBACK_SLOTS, guideSlotKey, normalizeGuideContent,
+  GUIDE_MAX_STEPS, guideSlotKey, normalizeGuideContent,
   type GuideImage, type GuideToolKey,
 } from "@/lib/tool-guides";
+import { STARTER_FALLBACK_SLOTS } from "@/lib/tool-guide-slots";
 import { ToolGuideEditor } from "./tool-guide-editor";
 
 /**
@@ -48,6 +49,17 @@ export async function ToolGuideSection({ tool, supabase }: { tool: GuideToolKey;
       <Card className="p-5" data-tool-guide-admin="unavailable">
         {header}
         <p className="mt-4 rounded-xl bg-raised px-4 py-3 text-[13px] text-muted">{t("aicc.guide.migrationPending")}</p>
+      </Card>
+    );
+  }
+
+  // The pictures could not be read: a form showing "no picture" would remove
+  // the real ones on the next save. Say so instead.
+  if (slots === null) {
+    return (
+      <Card className="p-5" data-tool-guide-admin="error">
+        {header}
+        <p className="mt-4 rounded-xl bg-raised px-4 py-3 text-[13px] text-muted">{t("aicc.guide.loadFailed")}</p>
       </Card>
     );
   }

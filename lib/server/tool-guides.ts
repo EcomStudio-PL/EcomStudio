@@ -16,9 +16,10 @@ import { publishedGuide, type PublishedGuide } from "@/lib/server/tool-guides-pu
 
 export { TOOL_GUIDES_TAG } from "@/lib/server/tool-guides-published";
 import {
-  DEFAULT_STEP_ARTS, STARTER_FALLBACK_SLOTS, guideImageKeys, guideSlotKey, isGuideArt, photoSlugOf,
+  DEFAULT_STEP_ARTS, guideSlotKey, isGuideArt, photoSlugOf,
   type GuideContent, type GuideImage, type GuideToolKey, type LocaleText, type ResolvedGuide,
 } from "@/lib/tool-guides";
+import { STARTER_FALLBACK_SLOTS, guideImageKeys } from "@/lib/tool-guide-slots";
 
 /**
  * TOOL GUIDES, SERVER SIDE — what a customer's screen is sent, and whether the
@@ -105,7 +106,9 @@ export function resolveGuide(tool: GuideToolKey, locale: Locale, saved: Publishe
     version: saved?.version ?? 1,
     tutorial: tutorialOn ? {
       title: pick(tut?.title, def.tutorial.title, locale),
-      body: pick(tut?.body, def.tutorial.body, locale),
+      // Once the admin wrote the tutorial, an intro they left empty stays
+      // empty — the shipped one would not describe their steps.
+      body: pick(tut?.body, tut ? {} : def.tutorial.body, locale),
       steps: (steps ?? def.tutorial.steps).map((s, i) => {
         // The admin's steps are their own: their copy falls back to their
         // Polish, never to the shipped step that happened to sit at the same
@@ -123,7 +126,7 @@ export function resolveGuide(tool: GuideToolKey, locale: Locale, saved: Publishe
     } : null,
     starter: starterOn ? {
       title: pick(saved?.starter?.title, def.starter.title, locale),
-      body: pick(saved?.starter?.body, def.starter.body, locale),
+      body: pick(saved?.starter?.body, saved?.starter ? {} : def.starter.body, locale),
       image: starterImage,
     } : null,
   };

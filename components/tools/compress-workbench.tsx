@@ -29,7 +29,7 @@ import { acceptFiles, type IntakeLimits } from "@/lib/images/file-intake";
 import { FileDropOverlay, useFileDrop } from "@/components/ui/file-drop";
 import { starterVisible } from "@/lib/tool-guides";
 import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
-import { StarterGallery } from "@/components/tool-guide/starter-gallery";
+import { StarterGallery } from "@/components/tool-guide/lazy";
 
 /**
  * COMPRESS — the batch screen, and the only screen in the app whose subject is

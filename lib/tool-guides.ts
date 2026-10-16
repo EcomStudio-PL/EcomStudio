@@ -1,7 +1,6 @@
 import type { AiToolKey } from "@/lib/services/ai-tools";
 import type { Locale } from "@/lib/i18n/config";
 import { LOCALES } from "@/lib/i18n/config";
-import { toolSlotKey, workflowSlotKey } from "@/lib/media-slots";
 import { hasInvisible } from "@/lib/ice/stega";
 import { normaliseText } from "@/lib/ice/validate";
 
@@ -124,30 +123,6 @@ export const DEFAULT_STEP_ARTS: Record<GuideToolKey, readonly GuideArt[]> = {
   compress: ["upload", "compress", "generate", "download"],
 };
 
-/**
- * The picture a starter gallery shows when the admin chose none: the tool's
- * own catalogue picture — the one already approved for the /tools card — so
- * the default is a real, signed-off image and never a stock photo claiming an
- * output. A tool whose card has no picture falls back to the drawn showcase.
- */
-export const STARTER_FALLBACK_SLOTS: Record<GuideToolKey, readonly string[]> = {
-  prompts: [toolSlotKey("generator")],
-  generator: [toolSlotKey("custom")],
-  retouch: [toolSlotKey("retouch")],
-  ecommerce_thumbnail: [workflowSlotKey("ecommerce", "thumbnail")],
-  fashion_ghost_mannequin: [workflowSlotKey("moda", "ghostMannequin")],
-  fashion_flat_lay: [workflowSlotKey("moda", "flatlay")],
-  fashion_iron: [workflowSlotKey("moda", "iron")],
-  fashion_change_person: [workflowSlotKey("moda", "changePerson")],
-  fashion_change_face: [workflowSlotKey("moda", "changeFace")],
-  tool_remove_bg: [toolSlotKey("remove_bg")],
-  tool_white_bg: [toolSlotKey("background"), toolSlotKey("white_bg")],
-  tool_ai_background: [toolSlotKey("ai_background")],
-  tool_ai_shadow: [toolSlotKey("shadow"), toolSlotKey("ai_shadow")],
-  resize: [toolSlotKey("resize")],
-  compress: [toolSlotKey("compress")],
-};
-
 /* ── PICTURES: media slots, keyed by position ──────────────────────────── */
 
 /**
@@ -164,20 +139,10 @@ export function guideSlotKey(tool: GuideToolKey, kind: "tutorial" | "starter", n
 }
 
 export function isGuideSlotKey(key: string): boolean {
-  const m = /^guide\.([a-z_]+)\.(tutorial|starter)\.(\d+)$/.exec(key);
+  const m = /^guide\.([a-z_]+)\.(tutorial|starter)\.([1-9]\d*)$/.exec(key);
   if (!m || !isGuideTool(m[1])) return false;
   const n = Number(m[3]);
   return m[2] === "starter" ? n === 1 : n >= 1 && n <= GUIDE_MAX_STEPS;
-}
-
-/** Every picture key one tool's guide can read (≤ 7, far below the
- *  resolver's 200-key bound), plus the starter's catalogue fallback. */
-export function guideImageKeys(tool: GuideToolKey): string[] {
-  return [
-    ...Array.from({ length: GUIDE_MAX_STEPS }, (_, i) => guideSlotKey(tool, "tutorial", i + 1)),
-    guideSlotKey(tool, "starter", 1),
-    ...STARTER_FALLBACK_SLOTS[tool],
-  ];
 }
 
 /* ── CONTENT ───────────────────────────────────────────────────────────── */

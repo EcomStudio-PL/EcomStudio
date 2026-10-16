@@ -18,7 +18,7 @@ import { RegenerateModal } from "@/components/genv3/regenerate";
 import { usePathname } from "next/navigation";
 import { guideToolForOperation, guideToolForPath, starterVisible, type GuideToolKey } from "@/lib/tool-guides";
 import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
-import { StarterGallery } from "@/components/tool-guide/starter-gallery";
+import { StarterGallery } from "@/components/tool-guide/lazy";
 
 type Filter = { session: GallerySessionType | "all"; fav: boolean; q: string; order: "desc" | "asc" };
 

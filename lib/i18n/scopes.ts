@@ -138,6 +138,8 @@ const admin = [
   "svc",
   "thumb",
   "time",
+  "toolGuide",
+  "toolGuideDefaults",
 ] as const;
 
 /** Added by components/ice/ice-gate.tsx — the visual editor, admins only. */

@@ -48,6 +48,8 @@ import { ThumbnailDiagnosticsCard, ThumbnailEconomics, ThumbnailPathCard, Thumbn
 import { readThumbnailDiagnostics } from "@/lib/server/thumbnail/diagnostics";
 import { ThumbnailPromptApproval, ThumbnailSettingsForm } from "@/components/admin/thumbnail-settings";
 import { THUMBNAIL_TOOL_KEY } from "@/lib/thumbnail/config";
+import { ToolGuideSection } from "@/components/admin/tool-guide-section";
+import { isGuideTool } from "@/lib/tool-guides";
 
 export const dynamic = "force-dynamic";
 
@@ -235,6 +237,7 @@ async function BasicsTab({ supabase, t, row, config }: WithConfig) {
         </Link>
       </Card>
     </div>
+    {isGuideTool(row.key) && <ToolGuideSection tool={row.key} supabase={supabase} />}
     </div>
   );
 }
