@@ -42,8 +42,10 @@ export function StarterGallery({ title, body, image, fallbackArt = "result", cla
           {body && <p className="mt-1 max-w-xl text-[12.5px] leading-relaxed text-muted">{body}</p>}
         </div>
         <figure className="relative mt-3.5">
-          <div className="mx-auto w-full overflow-hidden rounded-xl border border-line bg-raised/70"
-            style={{ aspectRatio: ratio, maxHeight: "min(62vh, 560px)", maxWidth: "100%" }}>
+          {/* Width follows the capped height, so a tall picture gets a frame of
+              its own shape rather than bands beside it. */}
+          <div className="mx-auto overflow-hidden rounded-xl border border-line bg-raised/70"
+            style={{ aspectRatio: ratio, maxHeight: "min(62vh, 560px)", width: `min(100%, calc(min(62vh, 560px) * ${ratio}))` }}>
             {image ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={image.url} srcSet={image.srcSet} sizes="(max-width: 1024px) 92vw, 60vw"

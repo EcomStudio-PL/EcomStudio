@@ -616,7 +616,9 @@ const toolbarGeom = (P) => P.page.evaluate(() => {
   return {
     h: Math.round(r.height * 10) / 10, w: Math.round(r.width), rows: rows.length,
     groupTops: [left, right].map((g) => Math.round(g.getBoundingClientRect().top - r.top)),
-    overlaps, outside: ctrls.filter((c) => c.x2 > r.right + 1 || c.x1 < r.left - 1).map((c) => c.n),
+    // 4.5px: the left group bleeds 4px each side on purpose (-mx-1 px-1, room
+    // for focus rings in its scroller).
+    overlaps, outside: ctrls.filter((c) => c.x2 > r.right + 4.5 || c.x1 < r.left - 4.5).map((c) => c.n),
     guideFirst: Boolean(left.firstElementChild?.hasAttribute("data-guide-open")),
     guideVisible: Boolean(btn && vis(btn) && bb.left >= lr.left - 1 && bb.right <= lr.right + 1),
     guideClipped: btn ? btn.scrollWidth > btn.clientWidth + 1 : null,

@@ -1465,11 +1465,14 @@ function sectionH() {
     /role="dialog"/.test(mc) && /aria-modal="true"/.test(mc) && /aria-labelledby=\{titleId\}/.test(mc) && /<h2 id=\{titleId\}/.test(mc));
   check("H11 … Escape closes it (keydown listener while open, removed on close)",
     /e\.key === "Escape"\) \{ e\.preventDefault\(\); onClose\(\);/.test(mc) && /addEventListener\("keydown", onKey\)/.test(mc) && /removeEventListener\("keydown", onKey\)/.test(mc));
-  check("H12 … Tab is trapped inside (focusable list, first ↔ last wrap with and without Shift)",
-    /e\.key !== "Tab"/.test(mc) && /querySelectorAll<HTMLElement>\(FOCUSABLE\)/.test(mc) && /e\.shiftKey && document\.activeElement === first\) \{ e\.preventDefault\(\); end\.focus\(\)/.test(mc)
-      && /!e\.shiftKey && document\.activeElement === end\) \{ e\.preventDefault\(\); first\.focus\(\)/.test(mc));
+  check("H12 … Tab is trapped inside (focusable list, first ↔ last wrap with and without Shift, Shift+Tab from the dialog box itself)",
+    /e\.key !== "Tab"/.test(mc) && /querySelectorAll<HTMLElement>\(FOCUSABLE\)/.test(mc)
+      && /e\.shiftKey && \(active === first \|\| active === dialogRef\.current\)\) \{ e\.preventDefault\(\); end\.focus\(\)/.test(mc)
+      && /!e\.shiftKey && active === end\) \{ e\.preventDefault\(\); first\.focus\(\)/.test(mc));
   check("H13 … focus goes to the primary button on open and BACK to the opener on close; page scroll is locked and restored",
-    /primaryRef\.current\?\.focus\(\)/.test(mc) && /opener\.current = document\.activeElement/.test(mc) && /back\.focus\(\)/.test(mc) && /document\.body\.style\.overflow = prev/.test(mc));
+    /primaryRef\.current\?\.focus\(\)/.test(mc) && /opener\.current = document\.activeElement/.test(mc) && /back\.focus\(\)/.test(mc) && /document\.body\.style\.overflow = prev/.test(mc)
+      // <html> is locked too: globals.css clips it horizontally, so a lock on <body> alone never reaches the viewport.
+      && /root\.style\.overflow = "hidden"/.test(mc) && /root\.style\.overflow = prev\.html/.test(mc));
   check("H14 … rendered in a portal on <body>, with a labelled progressbar and polite live regions",
     /createPortal\([\s\S]*document\.body,\s*\)/.test(mc) && /role="progressbar"/.test(mc) && /aria-live="polite"/.test(mc));
   const ssr = renderToStaticMarkup(createElement(TutorialModal, { open: true, onClose: () => {}, tutorial: { title: "T", body: "", steps: [{ title: "S", body: "", art: "upload", image: null }] } }));

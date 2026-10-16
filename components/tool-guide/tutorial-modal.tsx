@@ -43,12 +43,21 @@ export function TutorialModal({ open, onClose, tutorial }: {
     if (!open) return;
     opener.current = document.activeElement;
     setStep(0);
-    const prev = document.body.style.overflow;
+    // The page behind stays put. The lock goes on <html>: the stylesheet
+    // clips it horizontally, so a lock on <body> alone never reaches the
+    // viewport. A classic scrollbar keeps its gutter, so nothing shifts.
+    const root = document.documentElement;
+    const gutter = window.innerWidth - root.clientWidth;
+    const prev = { html: root.style.overflow, body: document.body.style.overflow, gutter: root.style.scrollbarGutter };
+    if (gutter > 0) root.style.scrollbarGutter = "stable";
+    root.style.overflow = "hidden";
     document.body.style.overflow = "hidden";
     const id = window.requestAnimationFrame(() => primaryRef.current?.focus());
     return () => {
       window.cancelAnimationFrame(id);
-      document.body.style.overflow = prev;
+      root.style.overflow = prev.html;
+      document.body.style.overflow = prev.body;
+      root.style.scrollbarGutter = prev.gutter;
       const back = opener.current;
       if (back instanceof HTMLElement && back.isConnected) back.focus();
     };
@@ -76,8 +85,11 @@ export function TutorialModal({ open, onClose, tutorial }: {
     const nodes = [...dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((n) => n.offsetParent !== null);
     if (nodes.length === 0) return;
     const first = nodes[0], end = nodes[nodes.length - 1];
-    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); end.focus(); }
-    else if (!e.shiftKey && document.activeElement === end) { e.preventDefault(); first.focus(); }
+    // From the first control — or from the dialog box itself, which a click
+    // on the picture focuses — Shift+Tab wraps to the last one.
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || active === dialogRef.current)) { e.preventDefault(); end.focus(); }
+    else if (!e.shiftKey && active === end) { e.preventDefault(); first.focus(); }
   };
 
   if (!open || typeof document === "undefined") return null;
@@ -87,7 +99,7 @@ export function TutorialModal({ open, onClose, tutorial }: {
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" data-tool-tutorial>
       <div className="scrim animate-fade absolute inset-0 backdrop-blur-[3px]" onClick={onClose} aria-hidden />
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={bodyId}
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={current?.body ? bodyId : undefined}
         tabIndex={-1} onKeyDown={onKeyDown}
         className={cn(
           "overlay animate-sheet relative flex w-full flex-col overflow-hidden outline-none",

@@ -30,6 +30,8 @@ export function useToolGuide(tool: GuideToolKey | null, opts: { compactLabel?: b
   const [pending, setPending] = useState(Boolean(tool));
   const [open, setOpen] = useState(false);
   const autoDone = useRef(false);
+  /** An auto-open still waiting for another dialog to close. */
+  const waiting = useRef<number | null>(null);
 
   useEffect(() => {
     if (!tool) { setPending(false); return; }
@@ -67,19 +69,31 @@ export function useToolGuide(tool: GuideToolKey | null, opts: { compactLabel?: b
       void markToolTutorialSeenAction(tool).catch(() => undefined);
     };
     if (!blocked()) { go(); return; }
+    const stop = () => { window.clearInterval(id); if (waiting.current === id) waiting.current = null; };
     const id = window.setInterval(() => {
       tries++;
-      if (!blocked()) { window.clearInterval(id); go(); }
-      else if (tries > 90) window.clearInterval(id);
+      if (!blocked()) { stop(); go(); }
+      else if (tries > 90) stop();
     }, 1000);
-    return () => window.clearInterval(id);
+    waiting.current = id;
+    return stop;
   }, [tool, response]);
 
   const close = useCallback(() => setOpen(false), []);
+  // Opened by hand while an auto-open was still waiting: that one is
+  // dropped (it would open again after this closes) and the visit counts.
+  const openByHand = useCallback(() => {
+    if (waiting.current !== null && tool) {
+      window.clearInterval(waiting.current);
+      waiting.current = null;
+      void markToolTutorialSeenAction(tool).catch(() => undefined);
+    }
+    setOpen(true);
+  }, [tool]);
   const tutorial = response?.live ? response.guide?.tutorial ?? null : null;
 
   const button = tutorial && tutorial.steps.length > 0 ? (
-    <button type="button" data-guide-open onClick={() => setOpen(true)}
+    <button type="button" data-guide-open onClick={openByHand}
       aria-label={t("toolGuide.openAria")} title={t("toolGuide.openAria")} aria-haspopup="dialog"
       className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-line px-3 text-[12.5px] font-semibold text-muted transition-colors duration-200 hover:bg-raised hover:text-ink">
       <BookOpen size={14} aria-hidden className="text-accent" />
