@@ -576,6 +576,8 @@ async function handle(P, route) {
     }
     if (u.origin !== ORIGIN) { P.rec.external.push(`${req.method()} ${u.href}`); return await route.abort(); }
     if (req.method() === "POST" && req.headers()["next-action"]) P.rec.actions.push(u.pathname + u.search);
+    // router.refresh() = a GET for the RSC payload of the page.
+    if (req.method() === "GET" && req.headers()["rsc"] === "1") P.rec.rsc.push(u.pathname + u.search);
     return await route.fallback();
   } catch { /* page closed */ }
 }
@@ -589,7 +591,7 @@ async function openEditor(o = {}) {
   const page = await ctx.newPage();
   const P = {
     ctx, page, sid, vp, theme, locale, tool: o.tool ?? "retouch", row: o.row ?? "none", cat: o.cat !== false,
-    rec: { supabase: [], external: [], actions: [], console: [], errors: [] },
+    rec: { supabase: [], external: [], actions: [], rsc: [], console: [], errors: [] },
   };
   allPages.push(P);
   page.on("console", (m) => { if (m.type() === "error" || m.type() === "warning") P.rec.console.push(`${m.type()}: ${m.text().slice(0, 300)}`); });
@@ -607,6 +609,8 @@ async function goEditor(P) {
 async function hydrated(P) {
   await P.page.waitForSelector(ED, { timeout: 240000 });
   await P.page.waitForFunction(() => window.__probeHydrated, null, { timeout: 120000 });
+  // `next dev`'s tools bubble again, after hydration (it covers corner buttons in screenshots).
+  await P.page.addStyleTag({ content: "nextjs-portal{display:none!important;pointer-events:none!important}" }).catch(() => {});
   await sleep(150);
 }
 async function close(P) { await P.ctx.close().catch(() => {}); }
@@ -790,6 +794,7 @@ async function dialogState(P) {
     const own = (el) => [...el.childNodes].filter((x) => x.nodeType === 3).map((x) => x.textContent).join("").trim();
     return {
       title: d.querySelector("h2")?.textContent?.trim() ?? null,
+      intro: d.querySelector("h2 + p")?.textContent?.trim() ?? null,
       counter: d.querySelector("[data-guide-counter]")?.textContent?.trim() ?? null,
       steps: [...d.querySelectorAll("[data-guide-step]")].map((s) => ({
         title: own(s.querySelector("h3")),
@@ -1215,6 +1220,22 @@ async function group6() {
   check(6, "step 2 shows the chosen library photo (B); the others their drawn art",
     d?.steps?.[1]?.img === LIB.B.url && d.steps.filter((_, i) => i !== 1).every((s) => s.img === null && s.art), d?.steps);
   await shot(P, "6-tutorial-preview-1440-light-pl");
+  // Keys aimed at something outside the dialog are not the dialog's.
+  await P.page.evaluate(() => {
+    const input = document.querySelector("[data-guide-tutorial-form] > div.grid input");
+    for (const key of ["ArrowRight", "Escape"]) input.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+  });
+  await sleep(150);
+  d = await dialogState(P);
+  check(6, "keydown ArrowRight/Escape aimed at an editor field outside the preview are ignored (still open, still step 1)",
+    d !== null && d.counter === TG(l, "counter", { n: 1, total: N }), d?.counter ?? "dialog closed");
+  await P.page.keyboard.press("ArrowRight");
+  await sleep(150);
+  const c2 = (await dialogState(P))?.counter;
+  await P.page.keyboard.press("ArrowLeft");
+  await sleep(150);
+  check(6, "→ / ← with focus in the dialog move a step forward and back",
+    c2 === TG(l, "counter", { n: 2, total: N }) && (await dialogState(P))?.counter === TG(l, "counter", { n: 1, total: N }), c2);
   for (let i = 1; i < N; i++) await P.page.locator(`${DLG} [data-guide-next]`).click();
   d = await dialogState(P);
   check(6, `next ×${N - 1} → "${TG(l, "counter", { n: N, total: N })}", primary = "${TG(l, "start")}"`,
@@ -1285,6 +1306,52 @@ async function group6() {
   check(6, "…and both frames draw the showcase (no <img>)", art.length === 2 && art.every((a) => !a.img && a.svg), art);
   await close(Q);
 
+  // Own copy: an EMPTY intro / starter description stays empty in the preview
+  // (no shipped fallback), as resolveGuide does on the customer side.
+  {
+    const tool2 = "ecommerce_thumbnail";
+    const S = await openEditor({ tool: tool2, row: "none" });
+    const K = L(S);
+    const frameBodies = () => S.page.evaluate(() => [...document.querySelectorAll("[data-preview-frame] [data-starter-gallery]")]
+      .map((g) => g.querySelector("h2 + p")?.textContent?.trim() ?? null));
+    await K.previewTut.click();
+    await K.dialog.waitFor();
+    let d2 = await dialogState(S);
+    check(6, "shipped copy: the preview intro is the shipped tutorial body", d2?.intro === shipped("pl", tool2, "tutorial.body"), d2?.intro);
+    await S.page.keyboard.press("Escape");
+    await K.dialog.waitFor({ state: "detached" });
+    await K.previewSta.click();
+    await K.starterPreview.waitFor();
+    let fb = await frameBodies();
+    check(6, "shipped copy: both frames show the shipped starter description",
+      fb.length === 2 && fb.every((b) => b === shipped("pl", tool2, "starter.body")), fb);
+    for (const code of LOCALES) { await K.lang(code).click(); await K.tutBody.fill(""); }
+    await K.lang("pl").click();
+    await K.starterBody.fill("");
+    check(6, "emptying the texts switches to own copy (badge)", (await K.card.textContent()).includes(A(S.locale, "usingCustom")));
+    fb = await frameBodies();
+    check(6, "own copy, PL starter description empty → both frames show NO description (no shipped fallback)",
+      fb.length === 2 && fb.every((b) => b === null), fb);
+    await K.previewTut.click();
+    await K.dialog.waitFor();
+    d2 = await dialogState(S);
+    check(6, "own copy, intro empty in every language → the preview has NO intro", d2?.intro === null && d2?.title === shipped("pl", tool2, "tutorial.title"), d2?.intro);
+    await S.page.keyboard.press("Escape");
+    await K.dialog.waitFor({ state: "detached" });
+    await K.lang("en").click();
+    fb = await frameBodies();
+    check(6, "own copy in EN: the EN starter description still in the form is shown (PL emptiness does not leak)",
+      fb.length === 2 && fb.every((b) => b === shipped("en", tool2, "starter.body")), fb);
+    await K.lang("pl").click();
+    const q = await save(S);
+    check(6, "payload: tutorial.body = {} and starter.body without pl",
+      JSON.stringify(q.call?.content?.tutorial?.body) === "{}" && q.call?.content?.starter?.body && !("pl" in q.call.content.starter.body)
+      && q.call.content.starter.body.en === shipped("en", tool2, "starter.body"),
+      { tb: q.call?.content?.tutorial?.body, sb: q.call?.content?.starter?.body });
+    await shot(S, "6-empty-intro-own-copy-1440-light-pl", { fullPage: true });
+    await close(S);
+  }
+
   // Phone width: preview open, no sideways page scroll.
   const R = await openEditor({ tool: "fashion_flat_lay", row: "custom", vp: VP[390], locale: "de" });
   const H = L(R);
@@ -1308,6 +1375,34 @@ async function group6() {
     && d390?.steps?.[0]?.title === "Własny krok 1", d390);
   await shot(R, "6-tutorial-preview-390-light-de");
   await close(R);
+
+  // The preview's footer on narrow phones: "Back" is its arrow alone below
+  // 381 px (named for screen readers); nothing in the footer is clipped.
+  const footer = (P) => P.page.evaluate((sel) => {
+    const d = document.querySelector(sel);
+    const dr = d.getBoundingClientRect();
+    const back = d.querySelector("[data-guide-back]");
+    const label = back.querySelector("span");
+    const ls = getComputedStyle(label);
+    const btns = [...d.querySelectorAll("[data-guide-skip], [data-guide-back], [data-guide-next]")].map((b) => {
+      const r = b.getBoundingClientRect();
+      return { k: b.getAttribute("data-guide-next") ?? (b.hasAttribute("data-guide-back") ? "back" : "skip"),
+        clipped: b.scrollWidth > b.clientWidth + 1, inside: r.left >= dr.left - 0.5 && r.right <= dr.right + 0.5 };
+    });
+    return { backName: back.getAttribute("aria-label"), labelSrOnly: ls.position === "absolute" && parseFloat(ls.width) <= 1, btns };
+  }, DLG);
+  for (const [w, sr] of [[375, true], [390, false]]) {
+    const T = await openEditor({ tool: "retouch", row: "none", vp: { width: w, height: 812, touch: true }, locale: "de" });
+    await L(T).previewTut.click();
+    await L(T).dialog.waitFor();
+    await sleep(400);
+    const f = await footer(T);
+    check(6, `${w} px (DE): Back label ${sr ? "is screen-reader-only (arrow alone)" : "is visible"}; the button keeps its name "${TG("de", "back")}"`,
+      f.labelSrOnly === sr && f.backName === TG("de", "back"), f);
+    check(6, `${w} px (DE): skip/back/next not clipped and inside the sheet`, f.btns.every((b) => !b.clipped && b.inside), f.btns);
+    await shot(T, `6-tutorial-footer-${w}-light-de`);
+    await close(T);
+  }
 }
 
 /* ── 7. SAVE & PUBLISH ─────────────────────────────────────────────────── */
@@ -1330,6 +1425,7 @@ async function group7() {
     && JSON.stringify(Object.keys(r.call?.imageBases ?? {}).sort()) === JSON.stringify([...slotKeys].sort())
     && Object.values(r.call?.imageBases ?? {}).every((v) => v === null), r.call);
   const firstBases = r.answer?.data?.imageBases;
+  check(7, "a successful save refreshes the page (RSC refetch observed — the control for the 'no refresh' checks)", P.rec.rsc.length > 0, P.rec.rsc);
   check(7, "after success: not dirty, save disabled, success toast",
     !(await isDirty(P)) && (await E.save.isDisabled()) && (await P.page.locator("[data-sonner-toast]").filter({ hasText: A(l, "saved") }).count()) >= 1,
     { status: await statusText(P) });
@@ -1386,8 +1482,10 @@ async function group7() {
   await pick(P, L(P).stepPick(1), "B");
   await api(P.sid, { force: "images_failed" });
   const rowBefore = (await api(P.sid)).rows[tool];
+  const rscBefore = P.rec.rsc.length;
   r = await save(P, { waitRefresh: false });
-  await sleep(300);
+  await sleep(800);
+  check(7, "images_failed: the editor does not refresh the page (no RSC refetch)", P.rec.rsc.length === rscBefore, P.rec.rsc.slice(rscBefore));
   check(7, "images_failed → its sentence shown under the form + an error toast", r.answer?.error === "images_failed"
     && (await L(P).error.textContent()) === A(l, "error.images_failed")
     && (await P.page.locator("[data-sonner-toast]").filter({ hasText: A(l, "error.images_failed") }).count()) >= 1,
@@ -1405,8 +1503,10 @@ async function group7() {
   await api(P.sid, { slotbump: `guide.${tool}.tutorial.1`, media: LIB.C.id });
   await L(P).tutBody.fill("Po podmianie w mediach (probe)");
   const rowCi = (await api(P.sid)).rows[tool];
+  const rscCi = P.rec.rsc.length;
   r = await save(P, { waitRefresh: false });
-  await sleep(300);
+  await sleep(800);
+  check(7, "conflict_images: no refresh either (no RSC refetch)", P.rec.rsc.length === rscCi, P.rec.rsc.slice(rscCi));
   check(7, "picture replaced elsewhere → conflict_images: its sentence + a toast with 'reload', nothing written, still dirty",
     r.answer?.error === "conflict_images" && (await L(P).error.textContent()) === A(l, "error.conflict_images")
     && (await P.page.locator("[data-sonner-toast]").filter({ hasText: A(l, "error.conflict_images") }).locator("button").filter({ hasText: A(l, "reload") }).count()) >= 1
