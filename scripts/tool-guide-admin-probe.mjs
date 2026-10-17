@@ -3,14 +3,24 @@
  * /admin/ai/[tool] → Samouczek, ?tab=guide), DRIVEN IN A REAL BROWSER AGAINST
  * STUBBED ACTIONS.
  *
- * The editor (components/admin/tool-guide-editor.tsx) reaches the server one
- * way only: saveToolGuideAction (app/actions/tool-guides.ts). In a THROWAWAY
- * COPY of the working tree this probe replaces that file with a "use server"
- * stub of the same signature that answers like the real action would for an
- * in-memory row (compare-and-set on updated_at, version bump, pictures by
- * position, normalizeGuideContent) and records every call, so the checks can
- * assert the exact payloads. Nothing talks to Supabase; nothing is written
- * anywhere but the dev server's memory.
+ * The editor (components/admin/tool-guide-editor.tsx) reaches the server two
+ * ways: saveToolGuideAction ("Zapisz i opublikuj") and showToolGuideAgainAction
+ * ("Pokaż ponownie wszystkim", a confirmed version bump), both in
+ * app/actions/tool-guides.ts. In a THROWAWAY COPY of the working tree this
+ * probe replaces that file with a "use server" stub of the same exports that
+ * answers like the real actions would for an in-memory row (compare-and-set
+ * on updated_at, version bump, pictures by position, normalizeGuideContent)
+ * and records every call, so the checks can assert the exact payloads.
+ * Nothing talks to Supabase; nothing is written anywhere but the dev
+ * server's memory.
+ *
+ * The v2 UI it holds the editor to: a status block (saved / never saved,
+ * version, last saved at/by, live for customers), "Pokaż ponownie wszystkim"
+ * as a button + confirm (disabled while the form is dirty), step cards with
+ * the current illustration and one "Zmień ilustrację" chooser (library photo
+ * or a drawing), delete-with-confirm, a per-step preview, and NO starter
+ * controls for the four tools without a results gallery (editor,
+ * tool_upscale, tool_expand, tool_watermark).
  *
  * THE HARNESS (written by `--harness` into the CURRENT directory, which must
  * NOT be the repository — the script refuses):
@@ -25,8 +35,9 @@
  *                                            button (what ToolConfigForm does after its own save)
  *   app/probe-tmp/admin-guide/calls/route.ts GET ?sid=…[&force=a,b][&bump=<tool>][&reset=1]
  *                                            → { calls, answers, rows, slots }
- *   Query: ?tool=retouch|ecommerce_thumbnail|compress|fashion_flat_lay
- *          &row=none|custom|off   (saved-row variant, seeded once per sid+tool)
+ *   Query: ?tool=<any guide tool: retouch, compress, editor, tool_upscale, …>
+ *          &row=none|custom|off|max   (saved-row variant, seeded once per sid+tool;
+ *                                  max = tutorial_version at the 1000000 bound)
  *          &cat=0                 (no catalogue picture → the drawn showcase)
  *          &live=0                (the status block's "not live for customers" state)
  *   Locale = the ecs_locale cookie, theme = next-themes' localStorage.
@@ -147,6 +158,8 @@ export function seed(s: ProbeSession, tool: string, variant: string) {
     s.slots["guide." + tool + ".starter.1"] = { mediaId: LIBRARY[2].id, updatedAt: "2026-10-01T07:59:00.100003+00:00" };
   } else if (variant === "off") {
     s.rows[tool] = { tutorial_enabled: false, starter_enabled: false, tutorial_version: 2, content: null, updated_at: "2026-10-02T09:30:00.222222+00:00" };
+  } else if (variant === "max") {
+    s.rows[tool] = { tutorial_enabled: true, starter_enabled: true, tutorial_version: 1000000, content: null, updated_at: "2026-10-03T10:00:00.333333+00:00" };
   } else {
     s.rows[tool] = null;
   }

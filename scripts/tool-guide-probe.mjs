@@ -24,7 +24,19 @@
  *   …&items=3 | …&cursor=c1                           initial items | a page left to load
  *   /probe-tmp/guide?kind=compress | ?kind=resize     the batch workbenches
  *   /probe-tmp/guide?kind=photo&photo=remove_bg       PhotoToolWorkspace
+ *   /probe-tmp/guide?kind=editor                      ImageEditor (available, no initial image) —
+ *                                                     the guide "editor", button at the end of the
+ *                                                     timeline strip (Cofnij · Ponów · Historia zmian)
+ *   /probe-tmp/guide?kind=workbench&slug=upscale      ToolWorkbench — slugs upscale / expand /
+ *                                                     watermark (guides tool_upscale / tool_expand /
+ *                                                     tool_watermark, button in the "Ustawienia"
+ *                                                     header) and relight (no guide: no button, no request)
  *   …&available=0                                     the tool cannot run
+ *
+ * The editor and the workbenches are v2 surfaces ('editor' / 'workbench'):
+ * no results gallery, so no starter gallery — groups E, W and S hold them to
+ * that, to their placement against a no-guide baseline, and to the shipped
+ * step counts (DEFAULT_STEP_ARTS, read from lib/tool-guides.ts itself).
  *
  * The feature may be uncommitted, so COPY the working tree (no worktree):
  *   SCRATCH=<dir>; mkdir -p $SCRATCH/tgprobe
@@ -69,6 +81,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
         cursor={q.cursor ?? null}
         available={q.available !== "0"}
         photo={q.photo ?? "remove_bg"}
+        slug={q.slug ?? "upscale"}
       />
     </I18nScope>
   );
@@ -81,9 +94,12 @@ import { GenerationGallery } from "@/components/genv3/gallery";
 import { CompressWorkbench } from "@/components/tools/compress-workbench";
 import { ResizeWorkbench } from "@/components/tools/resize-workbench";
 import { PhotoToolWorkspace } from "@/components/tools/photo-tool";
+import { ImageEditor } from "@/components/editor/image-editor";
+import { ToolWorkbench } from "@/components/tools/workbench";
+import { PageHeader } from "@/components/ui/page-header";
 import type { GalleryItem } from "@/components/genv3/types";
 import type { GuideToolKey } from "@/lib/tool-guides";
-import type { PhotoToolSlug } from "@/lib/images/tools";
+import type { PhotoToolSlug, ToolSlug } from "@/lib/images/tools";
 import { cn } from "@/lib/utils";
 
 /** Each tool page's own column split (components/retouch/workspace.tsx,
@@ -107,27 +123,53 @@ function item(i: number, op: string | null): GalleryItem {
 }
 
 /** The (app) shell's frame: app/(app)/layout.tsx main + the tool page's
- *  workspace ground (app/(app)/retusz/page.tsx). */
-function Shell({ children }: { children: ReactNode }) {
+ *  workspace ground (app/(app)/retusz/page.tsx). \`bare\`: a page that renders
+ *  straight into <main> (app/(app)/tools/[slug]/page.tsx for a workbench). */
+function Shell({ children, bare }: { children: ReactNode; bare?: boolean }) {
   return (
     <div className="app-shell flex min-h-dvh w-full min-w-0 flex-col" data-probe-shell>
       <header className="flex shrink-0 items-center border-b border-line px-4 text-[13px] font-semibold" style={{ height: "var(--header-h)" }}>
         GrovBase · probe
       </header>
       <main className="mx-auto w-full min-w-0 max-w-[var(--content-max)] flex-1 px-[var(--page-x)] pt-4 pb-[var(--page-bottom)] sm:px-6 sm:pt-5 lg:px-8 lg:pb-14 lg:pt-6 xl:px-10">
-        <div className="workspace workspace-page gen-shell pt-1">{children}</div>
+        {bare ? children : <div className="workspace workspace-page gen-shell pt-1">{children}</div>}
       </main>
     </div>
   );
 }
 
-export function Harness({ kind, op, guideTool, items, cursor, available, photo }: {
+export function Harness({ kind, op, guideTool, items, cursor, available, photo, slug }: {
   kind: string; op: string | null; guideTool: string | null; items: number;
-  cursor: string | null; available: boolean; photo: string;
+  cursor: string | null; available: boolean; photo: string; slug: string;
 }) {
   const [fresh, setFresh] = useState<GalleryItem[]>([]);
   const [balance, setBalance] = useState(100);
   const [initial] = useState(() => Array.from({ length: items }, (_, i) => item(i + 1, op)));
+
+  // app/(app)/tools/editor/page.tsx: the back link + title row, then the editor.
+  if (kind === "editor") {
+    return (
+      <Shell>
+        <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1" data-probe-editor-head>
+          <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted">← Wszystkie narzędzia (probe)</span>
+          <h1 className="font-display text-[17px] font-semibold tracking-tight">Edycja obrazu (probe)</h1>
+        </div>
+        <ImageEditor entry={null} initialImage={null} available={available} reason={available ? "ok" : "maintenance"}
+          cutout={{ available: false, credits: 0, reason: "no_provider" }} balance={100} />
+      </Shell>
+    );
+  }
+  // app/(app)/tools/[slug]/page.tsx: back link, PageHeader, the workbench.
+  if (kind === "workbench") {
+    return (
+      <Shell bare>
+        <span className="mb-2 inline-flex items-center gap-1.5 text-[13px] font-medium text-muted">← Wszystkie narzędzia (probe)</span>
+        <PageHeader overline="1 kredyt (probe)" title={"Narzędzie " + slug + " (probe)"} sub="Opis narzędzia (probe)." />
+        <ToolWorkbench tool={slug as ToolSlug} available={available} credits={1} providerLabel={null}
+          reason={available ? "ok" : "maintenance"} balance={100} />
+      </Shell>
+    );
+  }
 
   if (kind === "compress") return <Shell><CompressWorkbench available={available} credits={1} reason="ok" balance={100} /></Shell>;
   if (kind === "resize") return <Shell><ResizeWorkbench available={available} credits={1} reason="ok" balance={100} /></Shell>;
@@ -194,6 +236,7 @@ const fill = (s, vars) => s.replace(/\{(\w+)\}/g, (_, k) => String(vars[k]));
 
 const VP = {
   320: { name: "320", width: 320, height: 640, touch: true },
+  360: { name: "360", width: 360, height: 780, touch: true },
   390: { name: "390", width: 390, height: 844, touch: true },
   834: { name: "834", width: 834, height: 1112, touch: false },
   1024: { name: "1024", width: 1024, height: 768, touch: false },
@@ -203,16 +246,19 @@ const VP = {
 const WIDTHS = [390, 834, 1440];
 const THEMES = ["light", "dark"];
 
-/** lib/tool-guides.ts DEFAULT_STEP_ARTS (the tools this probe mounts). */
-const ARTS = {
-  generator: ["upload", "inspiration", "prompt", "settings", "result"],
-  retouch: ["upload", "settings", "format", "result"],
-  ecommerce_thumbnail: ["order", "retouch", "generate", "result"],
-  fashion_flat_lay: ["garment", "settings", "result"],
-  tool_remove_bg: ["upload", "background", "generate", "compare"],
-  resize: ["upload", "resize", "generate", "download"],
-  compress: ["upload", "compress", "generate", "download"],
+/** lib/tool-guides.ts DEFAULT_STEP_ARTS, read from the file itself (every
+ *  guide tool) so the probe cannot drift from the contract. */
+const TG_SRC = fs.readFileSync(new URL("../lib/tool-guides.ts", import.meta.url), "utf8");
+const ARTS = Object.fromEntries([.../DEFAULT_STEP_ARTS[^=]*= \{([\s\S]*?)\n\};/.exec(TG_SRC)[1].matchAll(/(\w+): \[([^\]]*)\]/g)]
+  .map((m) => [m[1], m[2].split(",").map((s) => s.trim().replace(/"/g, "")).filter(Boolean)]));
+/** The v2 tools: their surface, the URL that mounts them, and no starter. */
+const V2 = {
+  editor: { url: "/probe-tmp/guide?kind=editor", name: "editor" },
+  tool_upscale: { url: "/probe-tmp/guide?kind=workbench&slug=upscale", name: "upscale" },
+  tool_expand: { url: "/probe-tmp/guide?kind=workbench&slug=expand", name: "expand" },
+  tool_watermark: { url: "/probe-tmp/guide?kind=workbench&slug=watermark", name: "watermark" },
 };
+const WORKBENCH_TOOLS = ["tool_upscale", "tool_expand", "tool_watermark"];
 const IMG = {
   wide: { url: "/launch/hero-dino.webp", width: 1808, height: 1152, alt: "" },
   tall: { url: "/showcase/moda-ghost.webp", width: 340, height: 425, alt: "" },
@@ -274,6 +320,11 @@ const URLS = {
   compress: "/probe-tmp/guide?kind=compress",
   resize: "/probe-tmp/guide?kind=resize",
   photo: "/probe-tmp/guide?kind=photo&photo=remove_bg",
+  editor: V2.editor.url,
+  upscale: V2.tool_upscale.url,
+  expand: V2.tool_expand.url,
+  watermark: V2.tool_watermark.url,
+  relight: "/probe-tmp/guide?kind=workbench&slug=relight",
 };
 
 const DLG = '[data-tool-tutorial] [role="dialog"]';
@@ -306,6 +357,9 @@ const GROUPS = [
   ["14", "Compress / Resize workbench"],
   ["15", "starter screenshots light/dark × 3 widths"],
   ["P", "PhotoToolWorkspace (tool_remove_bg)"],
+  ["E", "editor: button ends the timeline strip (icon below sm), no wrap vs baseline, auto-open, steps, no starter"],
+  ["W", "workbenches: button in the Ustawienia header, panel height vs baseline, auto-open, steps, no starter; relight none"],
+  ["S", "editor + workbench: PL/EN/DE × light/dark (label, aria, dialog layout, screenshots)"],
   ["X", "open → step 3 → Escape: page did not scroll, gallery pixels unchanged"],
   ["N", "network: nothing written, nothing reaches Supabase from the browser"],
   ["C", "console: no unexpected errors / page errors"],
@@ -671,7 +725,23 @@ const pngBuf = await sharp({ create: { width: 640, height: 480, channels: 3, bac
   const ok = await P.page.locator("[data-gallery-toolbar]").count();
   console.log(`warm-up: toolbar ${ok ? "rendered" : "MISSING"}; guide requests ${JSON.stringify(P.rec.guideReqs)}`);
   for (const u of [URLS.compress, URLS.resize, URLS.photo]) await go(P, u);
+  P.guide = (t) => guideFor(t, "pl", { seen: 1, noStarter: true });
+  for (const u of [URLS.editor, URLS.upscale]) await go(P, u);
+  await go(P, URLS.relight, false);
+  await P.page.locator("p.overline").first().waitFor({ timeout: 120000 }).catch(() => {});
+  console.log(`warm-up: v2 screens compiled; guide requests ${JSON.stringify(P.rec.guideReqs)}`);
   await closeP(P);
+}
+// The contract this probe reads: every guide tool's shipped copy has exactly
+// one dictionary step per DEFAULT_STEP_ARTS entry, in every language.
+{
+  const bad = [];
+  for (const [tool, arts] of Object.entries(ARTS)) for (const l of LOCALES) {
+    const steps = Object.keys(DICT[l].toolGuideDefaults?.[tool]?.tutorial?.steps ?? {});
+    if (steps.length !== arts.length) bad.push(`${tool}/${l}: ${steps.length} dictionary steps vs ${arts.length} arts`);
+  }
+  console.log(`contract: ${Object.keys(ARTS).length} guide tools in DEFAULT_STEP_ARTS${bad.length ? `; MISMATCH ${bad.join("; ")}` : "; dictionary step counts match in pl/en/de"}`);
+  if (bad.length) results.get("E").fail.push(`dictionary step counts ≠ DEFAULT_STEP_ARTS: ${bad.join("; ")}`);
 }
 
 /* ── 1. first visit ────────────────────────────────────────────────────── */
@@ -1258,6 +1328,8 @@ if (run("10")) {
     ["retouch", URLS.retouch, "retouch"], ["thumbnail", URLS.thumbnail, "ecommerce_thumbnail"],
     ["flat lay", URLS.flatlay, "fashion_flat_lay"], ["generator (guideTool prop)", URLS.generator, "generator"],
     ["compress", URLS.compress, "compress"], ["resize", URLS.resize, "resize"], ["photo tool remove_bg", URLS.photo, "tool_remove_bg"],
+    ["editor", URLS.editor, "editor"], ["workbench upscale", URLS.upscale, "tool_upscale"],
+    ["workbench expand", URLS.expand, "tool_expand"], ["workbench watermark", URLS.watermark, "tool_watermark"],
   ];
   for (const [name, url, key] of mounts) {
     const P = await openPage({ url, guide: (t) => guideFor(t in ARTS ? t : "retouch", "pl", { seen: 1, hasResults: true }) });
@@ -1656,6 +1728,385 @@ if (run("P")) {
     await sleep(500);
     const plain = await P.page.getByText(DICT.pl.photoTool.emptyTitle).isVisible().catch(() => false);
     check("P", `${name} → no starter, own empty state visible`, (await starterCount(P)) === 0 && plain, { starter: await starterCount(P), plain });
+    await closeP(P);
+  }
+}
+
+/* ── E / W / S. the v2 screens: the editor and the workbenches ─────────── */
+
+const r1 = (v) => Math.round(v * 10) / 10;
+/** The editor's timeline strip (Cofnij · Ponów · Historia zmian [· Samouczek]):
+ *  rows, height, collisions, truncation, and the guide button inside it. */
+const stripGeom = (P) => P.page.evaluate((undoLabel) => {
+  const undo = [...document.querySelectorAll("button")].find((b) => b.textContent.trim() === undoLabel);
+  const strip = undo?.parentElement ?? null;
+  if (!strip) return null;
+  const r = strip.getBoundingClientRect();
+  const vis = (el) => { const b = el.getBoundingClientRect(); return b.width > 0 && b.height > 0 && getComputedStyle(el).visibility !== "hidden"; };
+  const kids = [...strip.children].filter(vis);
+  const rows = [];
+  for (const c of kids) { const t = Math.round(c.getBoundingClientRect().top); if (!rows.some((y) => Math.abs(y - t) < 4)) rows.push(t); }
+  const boxes = kids.map((c) => { const b = c.getBoundingClientRect(); return { n: (c.getAttribute("aria-label") || c.textContent.trim()).slice(0, 24), x1: b.left, x2: b.right, y1: b.top, y2: b.bottom }; });
+  const overlaps = [];
+  for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+    const a = boxes[i], b = boxes[j];
+    const ox = Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1), oy = Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1);
+    if (ox > 1 && oy > 1) overlaps.push(`${a.n} × ${b.n} (${Math.round(ox)}px)`);
+  }
+  const truncated = [...strip.querySelectorAll("span")]
+    .filter((s) => getComputedStyle(s).textOverflow === "ellipsis" && s.scrollWidth > s.clientWidth + 1).map((s) => s.textContent.trim());
+  const outside = boxes.filter((b) => b.x2 > r.right + 0.5 || b.x1 < r.left - 0.5).map((b) => b.n);
+  const btn = strip.querySelector("[data-guide-open]");
+  let guide = null;
+  if (btn) {
+    const bb = btn.getBoundingClientRect();
+    const ub = undo.getBoundingClientRect();
+    const label = btn.querySelector("span");
+    const lr = label?.getBoundingClientRect();
+    const ls = label ? getComputedStyle(label) : null;
+    const at = document.elementFromPoint(bb.left + bb.width / 2, bb.top + bb.height / 2);
+    guide = {
+      lastChild: Boolean(strip.lastElementChild?.contains(btn)),
+      rightGap: Math.round((r.right - bb.right) * 10) / 10,
+      sameRowAsUndo: Math.abs((bb.top + bb.bottom) / 2 - (ub.top + ub.bottom) / 2) <= 2,
+      w: Math.round(bb.width), h: Math.round(bb.height),
+      labelSrOnly: Boolean(label && ls.position === "absolute" && lr.width <= 1 && lr.height <= 1),
+      labelText: label?.textContent.trim() ?? null,
+      aria: btn.getAttribute("aria-label"), title: btn.getAttribute("title"), haspopup: btn.getAttribute("aria-haspopup"),
+      clipped: btn.scrollWidth > btn.clientWidth + 1,
+      inView: bb.left >= -0.5 && bb.right <= innerWidth + 0.5,
+      hit: Boolean(at && btn.contains(at)),
+    };
+  }
+  return {
+    h: Math.round(r.height * 10) / 10, w: Math.round(r.width), rows: rows.length, count: kids.length, overlaps, truncated, outside, guide,
+    inDom: document.querySelectorAll("[data-guide-open]").length,
+    docOverflow: document.documentElement.scrollWidth > innerWidth,
+  };
+}, DICT[P.locale].editor.undo);
+
+/** The workbench's settings panel: its "Ustawienia" header row and the guide button in it. */
+const settingsGeom = (P) => P.page.evaluate((label) => {
+  const ov = [...document.querySelectorAll("p.overline")].find((p) => p.textContent.trim() === label);
+  const head = ov?.parentElement ?? null;
+  const panel = head?.parentElement ?? null;
+  if (!ov || !panel) return null;
+  const pr = panel.getBoundingClientRect(), hr = head.getBoundingClientRect(), or = ov.getBoundingClientRect();
+  const next = head.nextElementSibling?.getBoundingClientRect() ?? null;
+  const btn = document.querySelector("[data-guide-open]");
+  let guide = null;
+  if (btn) {
+    const bb = btn.getBoundingClientRect();
+    const at = document.elementFromPoint(bb.left + bb.width / 2, bb.top + bb.height / 2);
+    guide = {
+      inHeader: head.contains(btn), inPanel: panel.contains(btn),
+      sameRow: Math.abs((bb.top + bb.bottom) / 2 - (or.top + or.bottom) / 2) <= 2.5,
+      rightGap: Math.round((hr.right - bb.right) * 10) / 10,
+      insidePanelBox: bb.left >= pr.left - 0.5 && bb.right <= pr.right + 0.5 && bb.top >= pr.top - 0.5 && bb.bottom <= pr.bottom + 0.5,
+      overlapsOverline: !(bb.left >= or.right || bb.right <= or.left || bb.top >= or.bottom || bb.bottom <= or.top),
+      text: btn.textContent.trim(), aria: btn.getAttribute("aria-label"),
+      clipped: btn.scrollWidth > btn.clientWidth + 1, w: Math.round(bb.width), h: Math.round(bb.height),
+      hit: Boolean(at && btn.contains(at)),
+    };
+  }
+  const R = (v) => Math.round(v * 10) / 10;
+  return {
+    panelH: R(pr.height), panelW: R(pr.width), headH: R(hr.height), headTop: R(hr.top - pr.top),
+    nextTop: next ? R(next.top - pr.top) : null, guide,
+    inDom: document.querySelectorAll("[data-guide-open]").length,
+    docOverflow: document.documentElement.scrollWidth > innerWidth,
+  };
+}, DICT[P.locale].tools.settings);
+
+/** The open tutorial's steps: count, titles (own text), art/picture per step. */
+const tutorialSteps = (P) => P.page.evaluate(() => {
+  const d = document.querySelector('[data-tool-tutorial] [role="dialog"]');
+  if (!d) return null;
+  const own = (el) => (el ? [...el.childNodes].filter((x) => x.nodeType === 3).map((x) => x.textContent).join("").trim() : null);
+  return {
+    title: d.querySelector("h2")?.textContent.trim() ?? null,
+    counter: d.querySelector("[data-guide-counter]")?.textContent.trim() ?? null,
+    max: d.querySelector('[role="progressbar"]')?.getAttribute("aria-valuemax") ?? null,
+    steps: [...d.querySelectorAll("[data-guide-step]")].map((s) => ({
+      n: s.getAttribute("data-guide-step"), title: own(s.querySelector("h3")),
+      svg: Boolean(s.querySelector("svg")), img: Boolean(s.querySelector("img")),
+    })),
+  };
+});
+/** No starter gallery was ever painted, and none is in the DOM now. */
+const noStarterEver = async (P) => (await starterCount(P)) === 0 && (await P.page.evaluate(() => window.__tg.starterAt)) === null;
+
+/** Auto-open rules on one v2 screen, at one width (the shared part of E and W). */
+async function autoOpenRules(id, tool, url, w) {
+  const key = `"${tool}"`;
+  const P = await openPage({ vp: VP[w], url, guide: guideFor(tool, "pl", { seen: 0, noStarter: true }) });
+  const opened = await waitDialog(P);
+  await sleep(1200);
+  check(id, `[${tool} ${w}] seen 0 / v1 / usedBefore false / live → auto-opens exactly once`, opened && (await opens(P)) === 1, { opens: await opens(P) });
+  check(id, `[${tool} ${w}] … exactly ONE server-action POST, naming ${key}`, P.rec.actions.length === 1 && P.rec.actions[0].body.includes(key), P.rec.actions.map((a) => a.body));
+  const st = await tutorialSteps(P);
+  check(id, `[${tool} ${w}] … the ${tool} tutorial ("${DICT.pl.toolGuideDefaults[tool].tutorial.title}", ${ARTS[tool].length} steps)`,
+    st?.title === DICT.pl.toolGuideDefaults[tool].tutorial.title && st?.steps.length === ARTS[tool].length, st && { title: st.title, steps: st.steps.length });
+  await P.page.keyboard.press("Escape");
+  await waitClosed(P);
+  await sleep(2500);
+  check(id, `[${tool} ${w}] closed and nothing reopened in 2.5 s`, (await dialogCount(P)) === 0 && (await opens(P)) === 1, { opens: await opens(P) });
+  const reload = async (o) => {
+    P.guide = guideFor(tool, "pl", { noStarter: true, ...o });
+    await P.page.reload({ waitUntil: "domcontentloaded" });
+    await guideSettled(P);
+    await sleep(1800);
+  };
+  let before = P.rec.actions.length;
+  await reload({ seen: 1 });
+  check(id, `[${tool} ${w}] reload, seen 1 = v1 → no auto-open, no POST, button there`,
+    (await opens(P)) === 0 && P.rec.actions.length === before && (await guideBtnCount(P)) === 1, { opens: await opens(P), posts: P.rec.actions.length - before, buttons: await guideBtnCount(P) });
+  before = P.rec.actions.length;
+  await reload({ seen: 1, version: 2, usedBefore: true });
+  const reopened = await waitDialog(P, 3000);
+  await sleep(600);
+  check(id, `[${tool} ${w}] new version 2 (seen 1, usedBefore true) → auto-opens once again, one more POST`,
+    reopened && (await opens(P)) === 1 && P.rec.actions.length === before + 1, { opens: await opens(P), posts: P.rec.actions.length - before });
+  await P.page.keyboard.press("Escape");
+  await waitClosed(P);
+  before = P.rec.actions.length;
+  await reload({ seen: 2, version: 2 });
+  check(id, `[${tool} ${w}] reload, seen 2 = v2 → no auto-open, no POST`, (await opens(P)) === 0 && P.rec.actions.length === before, { opens: await opens(P), posts: P.rec.actions.length - before });
+  check(id, `[${tool} ${w}] no starter gallery was ever painted on this screen`, await noStarterEver(P));
+  await closeP(P);
+}
+async function negativeRules(id, tool, url) {
+  const cases = [
+    ["usedBefore=true, v1, seen 0", { usedBefore: true }, false, true],
+    ["usedBefore=null, v1, seen 0", { usedBefore: null }, false, true],
+    ["live=false", { live: false }, false, false],
+    ["tutorial=null", { noTutorial: true }, false, false],
+    ["guide=null", { noGuide: true }, false, false],
+  ];
+  for (const [name, o, , button] of cases) {
+    const P = await openPage({ url, guide: guideFor(tool, "pl", { seen: 0, noStarter: true, ...o }) });
+    await sleep(2200);
+    check(id, `[${tool}] ${name} → no auto-open, no POST, button ${button ? "present" : "absent"}`,
+      (await opens(P)) === 0 && P.rec.actions.length === 0 && (await guideBtnCount(P)) === (button ? 1 : 0),
+      { opens: await opens(P), posts: P.rec.actions.length, buttons: await guideBtnCount(P) });
+    await closeP(P);
+  }
+  {
+    const P = await openPage({ url, guide: guideFor(tool, "pl", { seen: 0 }), guideStatus: 500 });
+    await sleep(1500);
+    check(id, `[${tool}] guide request HTTP 500 → no button, no dialog, no POST`, (await guideBtnCount(P)) === 0 && (await opens(P)) === 0 && P.rec.actions.length === 0);
+    await closeP(P);
+  }
+  // The server sends starter: null for these tools; even one sent anyway
+  // (with hasResults false) has nowhere to appear on a screen with no gallery.
+  for (const [name, o] of [["starter=null (what the server sends)", { noStarter: true }], ["a starter sent anyway, hasResults=false", { hasResults: false }], ["a starter sent anyway, hasResults=null", { hasResults: null }]]) {
+    const P = await openPage({ url, guide: guideFor(tool, "pl", { seen: 1, ...o }) });
+    await sleep(1800);
+    check(id, `[${tool}] ${name} → no starter gallery in the DOM, none ever painted`, await noStarterEver(P), { now: await starterCount(P) });
+    await closeP(P);
+  }
+}
+/** Open by hand and walk every step: count, titles, art, last step, focus back. */
+async function stepsWalk(id, tool, url, l = "pl") {
+  const P = await openPage({ locale: l, url, guide: guideFor(tool, l, { seen: 1, noStarter: true, noStepImages: true }) });
+  const N = ARTS[tool].length;
+  const d = DICT[l].toolGuideDefaults[tool].tutorial;
+  const b = P.page.locator(GUIDE_BTN);
+  await b.click();
+  await waitDialog(P);
+  const st = await tutorialSteps(P);
+  const wantTitles = Array.from({ length: N }, (_, i) => d.steps[`s${i + 1}`].title);
+  check(id, `[${tool}/${l}] ${N} steps = DEFAULT_STEP_ARTS.${tool}.length; progressbar max ${N}; counter "${fill(TG(l, "counter"), { n: 1, total: N })}"`,
+    st?.steps.length === N && st?.max === String(N) && st?.counter === fill(TG(l, "counter"), { n: 1, total: N }), st && { steps: st.steps.length, max: st.max, counter: st.counter });
+  check(id, `[${tool}/${l}] step titles = the shipped copy s1…s${N}; every step draws its art (no picture)`,
+    JSON.stringify(st?.steps.map((s) => s.title)) === JSON.stringify(wantTitles) && st.steps.every((s) => s.svg && !s.img), st?.steps);
+  for (let i = 1; i < N; i++) { await P.page.locator("[data-guide-next]").click(); await sleep(120); }
+  await sleep(250);
+  check(id, `[${tool}/${l}] last step "${fill(TG(l, "counter"), { n: N, total: N })}", primary "${TG(l, "start")}"`,
+    (await counterText(P)) === fill(TG(l, "counter"), { n: N, total: N }) && (await P.page.locator('[data-guide-next="start"]').textContent())?.trim() === TG(l, "start"),
+    { counter: await counterText(P) });
+  await P.page.locator('[data-guide-next="start"]').click();
+  await waitClosed(P);
+  await sleep(120);
+  check(id, `[${tool}/${l}] "${TG(l, "start")}" closes; focus back on the guide button; no POST (manual open)`,
+    (await dialogCount(P)) === 0 && (await P.page.evaluate(() => Boolean(document.activeElement?.hasAttribute("data-guide-open")))) && P.rec.actions.length === 0);
+  await closeP(P);
+}
+
+if (run("E")) {
+  section("E");
+  // E1. Where the button is, and the strip against a no-guide baseline.
+  const pre = [];
+  for (const w of [320, 360, 390, 834, 1440]) for (const l of LOCALES) {
+    const combo = `${w}-${l}`;
+    const P = await openPage({ vp: VP[w], locale: l, url: URLS.editor, guide: guideFor("editor", l, { seen: 1, noStarter: true }) });
+    const B = await openPage({ vp: VP[w], locale: l, url: URLS.editor, guide: guideFor("editor", l, { seen: 1, noGuide: true }) });
+    const t = await stripGeom(P), b = await stripGeom(B);
+    if (!check("E", `[${combo}] timeline strip rendered (with and without the guide)`, Boolean(t && b), { t: Boolean(t), b: Boolean(b) })) { await closeP(P); await closeP(B); continue; }
+    const g = t.guide;
+    check("E", `[${combo}] the guide button is the LAST item of the timeline strip, right-aligned (ml-auto), clickable, unclipped`,
+      Boolean(g && g.lastChild && Math.abs(g.rightGap) <= 1 && g.hit && !g.clipped && g.inView && t.inDom === 1), g ?? { inDom: t.inDom });
+    const small = w < 640;
+    check("E", `[${combo}] ${small ? "below sm: icon only (label sr-only)" : "sm and up: label visible"}; aria-label "${TG(l, "openAria")}", aria-haspopup dialog`,
+      Boolean(g && g.labelSrOnly === small && g.labelText === TG(l, "open") && g.aria === TG(l, "openAria") && g.haspopup === "dialog"), g);
+    check("E", `[${combo}] baseline (guide=null): no button anywhere`, b.inDom === 0, b.inDom);
+    const reg = [];
+    if (t.rows !== b.rows) reg.push(`rows ${t.rows} vs baseline ${b.rows}`);
+    if (Math.abs(t.h - b.h) > 1) reg.push(`height ${t.h} vs baseline ${b.h}`);
+    if (t.overlaps.length) reg.push(`overlaps: ${t.overlaps.join("; ")}`);
+    if (t.outside.length) reg.push(`outside the strip: ${t.outside.join(", ")}`);
+    if (t.truncated.length > b.truncated.length) reg.push(`truncated labels: ${t.truncated.join(", ")}`);
+    if (t.docOverflow && !b.docOverflow) reg.push("page scrolls sideways");
+    if (g && !g.sameRowAsUndo) reg.push("button not on Cofnij's row");
+    check("E", `[${combo}] strip vs no-guide baseline: same rows and height (±1px), no overlap/overflow/truncation, button on Cofnij's row`, reg.length === 0,
+      { reg, with: { rows: t.rows, h: t.h, n: t.count }, baseline: { rows: b.rows, h: b.h, n: b.count } });
+    if (b.rows === 1) check("E", `[${combo}] strip is ONE row with the button (baseline: 1 row, ${b.h}px)`, t.rows === 1, { rows: t.rows, h: t.h });
+    else { pre.push(`${combo}: baseline already ${b.rows} rows`); info("E", `[${combo}] baseline strip already wraps (${b.rows} rows, ${b.h}px) — PRE-EXISTING; with the guide ${t.rows} rows, ${t.h}px`); }
+    info("E", `[${combo}] strip ${t.w}px wide, ${t.rows} row(s) ${t.h}px, ${t.count} items; button ${g?.w}×${g?.h}`);
+    if (l === "pl" || reg.length) await shot(P.page, `editor-strip-${w}-${l}`);
+    if (reg.length) await shot(B.page, `editor-strip-BASELINE-noguide-${w}-${l}`);
+    await closeP(P);
+    await closeP(B);
+  }
+  if (pre.length) info("E", `pre-existing wraps: ${pre.join(" | ")}`);
+  // E2. Auto-open once per version; the rules that keep it closed.
+  for (const w of [1440, 390]) await autoOpenRules("E", "editor", URLS.editor, w);
+  await negativeRules("E", "editor", URLS.editor);
+  // E3. The steps are the shipped ones (DEFAULT_STEP_ARTS.editor).
+  for (const l of LOCALES) await stepsWalk("E", "editor", URLS.editor, l);
+  // E4. One request, for "editor".
+  {
+    const P = await openPage({ url: URLS.editor, guide: guideFor("editor", "pl", { seen: 1, noStarter: true }) });
+    check("E", "the editor asks /api/tool-guides for tool=editor only", [...new Set(P.rec.guideReqs)].join() === "editor", P.rec.guideReqs);
+    await closeP(P);
+  }
+}
+
+if (run("W")) {
+  section("W");
+  // W1. The button in the "Ustawienia" header; the panel's height against a no-guide baseline.
+  const matrix = [
+    ...[320, 390, 834, 1440].flatMap((w) => LOCALES.map((l) => ["tool_upscale", w, l])),
+    ...["tool_expand", "tool_watermark"].flatMap((tool) => [390, 1440].flatMap((w) => LOCALES.map((l) => [tool, w, l]))),
+  ];
+  for (const [tool, w, l] of matrix) {
+    const combo = `${V2[tool].name} ${w}-${l}`;
+    const P = await openPage({ vp: VP[w], locale: l, url: V2[tool].url, guide: guideFor(tool, l, { seen: 1, noStarter: true }) });
+    const B = await openPage({ vp: VP[w], locale: l, url: V2[tool].url, guide: guideFor(tool, l, { seen: 1, noGuide: true }) });
+    const t = await settingsGeom(P), b = await settingsGeom(B);
+    if (!check("W", `[${combo}] settings panel rendered (with and without the guide)`, Boolean(t && b), { t: Boolean(t), b: Boolean(b) })) { await closeP(P); await closeP(B); continue; }
+    const g = t.guide;
+    check("W", `[${combo}] the guide button sits in the "${DICT[l].tools.settings}" header: same row, right-aligned, inside the panel, clickable, label "${TG(l, "open")}"`,
+      Boolean(g && g.inHeader && g.sameRow && Math.abs(g.rightGap) <= 1 && g.insidePanelBox && !g.overlapsOverline && g.hit && !g.clipped
+        && g.text === TG(l, "open") && g.aria === TG(l, "openAria") && t.inDom === 1), g ?? { inDom: t.inDom });
+    check("W", `[${combo}] settings panel height = baseline ±1px (${b.panelH}px), header row and the content under it unmoved`,
+      Math.abs(t.panelH - b.panelH) <= 1 && Math.abs(t.headH - b.headH) <= 1 && t.nextTop !== null && Math.abs(t.nextTop - b.nextTop) <= 1 && t.panelW === b.panelW && !t.docOverflow,
+      { with: { panelH: t.panelH, headH: t.headH, nextTop: t.nextTop, w: t.panelW }, baseline: { panelH: b.panelH, headH: b.headH, nextTop: b.nextTop, w: b.panelW }, docOverflow: t.docOverflow });
+    check("W", `[${combo}] baseline (guide=null): no button anywhere`, b.inDom === 0, b.inDom);
+    if (l === "pl" && (w === 390 || w === 1440)) await shot(P.page, `workbench-${V2[tool].name}-${w}-pl`);
+    await closeP(P);
+    await closeP(B);
+  }
+  // W2. relight is not a guide tool: no request, no button, nothing posted.
+  for (const w of [1440, 390]) {
+    const P = await openPage({ vp: VP[w], url: URLS.relight, guide: guideFor("retouch", "pl", { seen: 0 }), waitGuide: false });
+    const shown = await P.page.locator("p.overline").filter({ hasText: DICT.pl.tools.settings }).first().waitFor({ timeout: 60000 }).then(() => true).catch(() => false);
+    await sleep(3000);
+    check("W", `[relight ${w}] workbench rendered, NO /api/tool-guides request, no button, no dialog, no POST`,
+      shown && P.rec.guideReqs.length === 0 && (await P.page.locator("[data-guide-open]").count()) === 0 && (await opens(P)) === 0 && P.rec.actions.length === 0,
+      { shown, reqs: P.rec.guideReqs, buttons: await P.page.locator("[data-guide-open]").count(), posts: P.rec.actions.length });
+    check("W", `[relight ${w}] no starter gallery`, await noStarterEver(P));
+    await closeP(P);
+  }
+  // W3. Auto-open once per version; W4. the rules that keep it closed; W5. steps.
+  for (const tool of WORKBENCH_TOOLS) await autoOpenRules("W", tool, V2[tool].url, tool === "tool_upscale" ? 1440 : 390);
+  await autoOpenRules("W", "tool_upscale", V2.tool_upscale.url, 390);
+  for (const tool of WORKBENCH_TOOLS) await negativeRules("W", tool, V2[tool].url);
+  for (const tool of WORKBENCH_TOOLS) await stepsWalk("W", tool, V2[tool].url, "pl");
+  for (const l of ["en", "de"]) await stepsWalk("W", "tool_watermark", V2.tool_watermark.url, l);
+  // W6. A workbench that cannot run (available=false): its own unavailable panel, no button.
+  {
+    const P = await openPage({ url: URLS.upscale + "&available=0", guide: guideFor("tool_upscale", "pl", { seen: 1, live: false, noStarter: true }) });
+    await sleep(800);
+    const panel = await P.page.getByText(DICT.pl.tools.unavailableTitle).isVisible().catch(() => false);
+    check("W", "[upscale available=0, live=false] the unavailable panel, no button, no dialog, no POST",
+      panel && (await guideBtnCount(P)) === 0 && (await opens(P)) === 0 && P.rec.actions.length === 0, { panel, buttons: await guideBtnCount(P) });
+    await closeP(P);
+  }
+  {
+    // Not a state the server produces (toolIsLive reads the same catalogue
+    // entry as the page) — logged, not counted: what the hook does if the two
+    // ever disagreed for one render.
+    const P = await openPage({ url: URLS.upscale + "&available=0", guide: guideFor("tool_upscale", "pl", { seen: 0, live: true, noStarter: true }) });
+    await sleep(2500);
+    info("W", `[upscale available=0 but live=true, seen 0 — inconsistent answer] dialog mounted ${await dialogCount(P)}, mark-seen POSTs ${P.rec.actions.length}${P.rec.actions.length && !(await dialogCount(P)) ? " (marked seen without being shown: the unavailable panel renders no guide.dialog)" : ""}`);
+    await closeP(P);
+  }
+}
+
+if (run("S")) {
+  section("S");
+  // Every v2 screen in each language and theme: the button's words, the
+  // dialog's layout at a phone and a desktop width, screenshots.
+  for (const tool of ["editor", "tool_upscale"]) for (const w of [390, 1440]) for (const theme of THEMES) for (const l of LOCALES) {
+    const combo = `${V2[tool].name}-${w}-${theme}-${l}`;
+    const P = await openPage({ vp: VP[w], theme, locale: l, url: V2[tool].url, guide: guideFor(tool, l, { seen: 1, noStarter: true }) });
+    const themeOk = await P.page.evaluate((th) => document.documentElement.classList.contains("dark") === (th === "dark"), theme);
+    const btn = await P.page.evaluate(() => {
+      const b = document.querySelector("[data-guide-open]");
+      const s = b?.querySelector("span");
+      return b ? { aria: b.getAttribute("aria-label"), title: b.getAttribute("title"), label: s?.textContent.trim(), srOnly: s ? s.getBoundingClientRect().width <= 1 : null } : null;
+    });
+    const iconOnly = tool === "editor" && w < 640;
+    check("S", `[${combo}] theme applied; button aria/title "${TG(l, "openAria")}", label "${TG(l, "open")}"${iconOnly ? " (sr-only)" : ""}`,
+      themeOk && btn && btn.aria === TG(l, "openAria") && btn.title === TG(l, "openAria") && btn.label === TG(l, "open") && btn.srOnly === iconOnly, { themeOk, btn });
+    await shot(P.page, `v2-${combo}`);
+    const b = P.page.locator(GUIDE_BTN);
+    await b.scrollIntoViewIfNeeded();
+    await press(P, b);
+    if (!check("S", `[${combo}] tutorial opens from the button`, await waitDialog(P))) { await closeP(P); continue; }
+    const N = ARTS[tool].length;
+    const hs = [await dlgHeight(P)];
+    await press(P, P.page.locator("[data-guide-next]"));
+    await sleep(450);
+    const g = await dialogGeom(P);
+    hs.push(g.rect.height);
+    const fails = [];
+    if (g.counter !== fill(TG(l, "counter"), { n: 2, total: N })) fails.push(`counter "${g.counter}"`);
+    if (g.rect.top < -0.5 || g.rect.left < -0.5 || g.rect.right > g.vw + 0.5 || g.rect.bottom > g.vh + 0.5) fails.push(`dialog outside viewport ${JSON.stringify(g.rect)}`);
+    if (g.docScrollW > g.vw) fails.push(`page scrollWidth ${g.docScrollW} > ${g.vw}`);
+    if (g.dlgOverflowX || g.scrollerOverflowX) fails.push("horizontal overflow inside the dialog");
+    for (const x of g.btns.filter((y) => y.vis === "visible")) {
+      if (!x.inView || !x.inDialog || !x.hit) fails.push(`button ${x.k} not fully visible/clickable ${JSON.stringify(x)}`);
+      if (x.clipped) fails.push(`button ${x.k} text clipped "${x.text}"`);
+    }
+    for (const x of g.texts) if (x.clipped || x.outside) fails.push(`${x.tag} clipped "${x.text}"`);
+    check("S", `[${combo}] dialog inside the viewport, no horizontal overflow, footer visible, nothing clipped`, fails.length === 0, fails);
+    await shot(P.page, `v2-${combo}-tutorial-step2`);
+    for (let s = 3; s <= N; s++) { await press(P, P.page.locator("[data-guide-next]")); await sleep(350); hs.push(await dlgHeight(P)); }
+    check("S", `[${combo}] same dialog height on all ${N} steps`, Math.max(...hs) - Math.min(...hs) <= 1, hs.map(r1));
+    await P.page.keyboard.press("Escape");
+    check("S", `[${combo}] Escape closes`, await waitClosed(P));
+    await closeP(P);
+  }
+  // The narrowest phone in German, and the other two workbenches once each.
+  for (const theme of THEMES) {
+    const P = await openPage({ vp: VP[320], theme, locale: "de", url: URLS.editor, guide: guideFor("editor", "de", { seen: 1, noStarter: true }) });
+    await shot(P.page, `v2-editor-320-${theme}-de`);
+    await P.page.locator(GUIDE_BTN).tap();
+    if (await waitDialog(P)) {
+      const g = await dialogGeom(P);
+      const bad = g.btns.filter((x) => x.vis === "visible" && (!x.inView || !x.inDialog || !x.hit || x.clipped));
+      check("S", `[editor-320-${theme}-de] dialog fits, every footer button visible and unclipped`,
+        g.rect.left >= -0.5 && g.rect.right <= g.vw + 0.5 && g.rect.bottom <= g.vh + 0.5 && g.docScrollW <= g.vw && bad.length === 0, { rect: g.rect, bad });
+      await shot(P.page, `v2-editor-320-${theme}-de-tutorial`);
+    } else check("S", `[editor-320-${theme}-de] tutorial opens`, false);
+    await closeP(P);
+  }
+  for (const tool of ["tool_expand", "tool_watermark"]) for (const theme of THEMES) {
+    const P = await openPage({ theme, url: V2[tool].url, guide: guideFor(tool, "pl", { seen: 1, noStarter: true }) });
+    await shot(P.page, `v2-${V2[tool].name}-1440-${theme}-pl`);
+    check("S", `[${V2[tool].name}-1440-${theme}-pl] screenshot`, !SHOTS || fs.existsSync(`${SHOTS}/v2-${V2[tool].name}-1440-${theme}-pl.png`));
     await closeP(P);
   }
 }
