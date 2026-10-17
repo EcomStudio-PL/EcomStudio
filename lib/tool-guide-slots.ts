@@ -30,6 +30,12 @@ export const STARTER_FALLBACK_SLOTS: Record<GuideToolKey, readonly string[]> = {
   tool_ai_shadow: [toolSlotKey("shadow"), toolSlotKey("ai_shadow")],
   resize: [toolSlotKey("resize")],
   compress: [toolSlotKey("compress")],
+  // No starter gallery on these screens (guideHasStarter); listed so every
+  // guide key has its catalogue picture on record.
+  editor: [toolSlotKey("editor"), toolSlotKey("adjust")],
+  tool_upscale: [toolSlotKey("upscale")],
+  tool_expand: [toolSlotKey("expand")],
+  tool_watermark: [toolSlotKey("watermark")],
 };
 
 /** Every picture key one tool's guide can read (≤ 7, far below the

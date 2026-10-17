@@ -16,7 +16,7 @@ import { publishedGuide, type PublishedGuide } from "@/lib/server/tool-guides-pu
 
 export { TOOL_GUIDES_TAG } from "@/lib/server/tool-guides-published";
 import {
-  DEFAULT_STEP_ARTS, guideSlotKey, isGuideArt, photoSlugOf,
+  DEFAULT_STEP_ARTS, guideHasStarter, guideSlotKey, isGuideArt, photoSlugOf,
   type GuideContent, type GuideImage, type GuideToolKey, type LocaleText, type ResolvedGuide,
 } from "@/lib/tool-guides";
 import { STARTER_FALLBACK_SLOTS, guideImageKeys } from "@/lib/tool-guide-slots";
@@ -102,7 +102,8 @@ function imageOf(slot: ResolvedSlot | undefined, locale: Locale): GuideImage | n
 export function resolveGuide(tool: GuideToolKey, locale: Locale, saved: PublishedGuide | null, slots: SlotMap): ResolvedGuide {
   const def = defaultGuideContent(tool);
   const tutorialOn = saved ? saved.tutorialEnabled : true;
-  const starterOn = saved ? saved.starterEnabled : true;
+  // A screen with no results gallery has nothing a starter could stand in for.
+  const starterOn = guideHasStarter(tool) && (saved ? saved.starterEnabled : true);
   const tut = saved?.tutorial ?? null;
   const steps = tut && Array.isArray(tut.steps) && tut.steps.length > 0 ? tut.steps : null;
   const starterImage = imageOf(slots.get(guideSlotKey(tool, "starter", 1)), locale)
@@ -195,10 +196,29 @@ export async function toolIsLive(supabase: Client, tool: GuideToolKey, opts: { a
         const entry = (await toolCatalogue(supabase, { admin: opts.admin })).find((c) => c.slug === photoSlugOf(tool));
         return Boolean(entry?.available);
       }
-      default: {
-        // Moda.
+      case "editor":
+      case "tool_upscale":
+      case "tool_expand":
+      case "tool_watermark": {
+        // The catalogue entry their pages read, read the same way (no admin
+        // flag: app/(app)/tools/editor and /tools/[slug] pass none). The
+        // editor's paid cut-out has its own entry and does not decide.
+        const slug = tool === "editor" ? "editor" : tool.slice("tool_".length);
+        const entry = (await toolCatalogue(supabase)).find((c) => c.slug === slug);
+        return Boolean(entry?.available);
+      }
+      case "fashion_ghost_mannequin":
+      case "fashion_flat_lay":
+      case "fashion_iron":
+      case "fashion_change_person":
+      case "fashion_change_face": {
         const [model, configured] = await Promise.all([fashionModel(supabase), fashionToolAvailable(supabase, tool)]);
         return Boolean(model) && configured;
+      }
+      default: {
+        // Every guide tool has its own case above; a new one must too.
+        const unhandled: never = tool;
+        return Boolean(unhandled) && false;
       }
     }
   } catch {

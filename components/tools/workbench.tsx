@@ -21,6 +21,8 @@ import { createZip, outputName } from "@/lib/images/zip";
 import { cn, formatBytes } from "@/lib/utils";
 import { acceptFiles, type IntakeLimits } from "@/lib/images/file-intake";
 import { FileDropOverlay, useFileDrop } from "@/components/ui/file-drop";
+import { guideToolForWorkbench } from "@/lib/tool-guides";
+import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
 
 /** What the batch tools take — one object, used by the picker, the drop and
  *  the validator, so the three can never disagree. */
@@ -76,6 +78,9 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
   const [running, setRunning] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const cancelled = useRef(false);
+  // The tool's tutorial (upscale, expand, watermark; the other slugs this
+  // screen serves have none): its first-visit dialog and its button.
+  const guide = useToolGuide(guideToolForWorkbench(tool));
 
   /**
    * Object URLs are the only thing here that leaks, and they must outlive
@@ -383,7 +388,12 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
         "lg:order-none lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:sticky lg:top-4 lg:self-start",
       )}>
         <Panel className="space-y-4 rounded-2xl p-4">
-          <p className="overline">{t("tools.settings")}</p>
+          {/* The tutorial's way back in sits on the settings heading; its
+              negative margin keeps the heading row exactly as tall as before. */}
+          <div className="flex items-center justify-between gap-2">
+            <p className="overline">{t("tools.settings")}</p>
+            {guide.button && <span className="-my-2.5 shrink-0">{guide.button}</span>}
+          </div>
 
           {tool === "watermark" && (
             <div className="space-y-2">
@@ -429,6 +439,7 @@ export function ToolWorkbench({ tool, available, credits, providerLabel, reason,
         </ActionBar>
       </div>
 
+      {guide.dialog}
     </div>
   );
 }

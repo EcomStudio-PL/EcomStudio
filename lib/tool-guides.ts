@@ -19,17 +19,19 @@ import { normaliseText } from "@/lib/ice/validate";
  */
 
 /**
- * The tools that have a guide: every tool whose screen has a RESULTS GALLERY
- * (the tutorial's button sits above it, the starter gallery replaces its empty
- * state). Tools without a gallery — the one-shot workbenches (upscale, expand,
- * watermark), the editor, video — are deliberately absent: a guide there would
- * need a gallery the screen does not have.
+ * The tools that have a guide: every tool a customer can open and run. Where
+ * the screen has a RESULTS GALLERY the tutorial's button sits above it and the
+ * starter gallery replaces its empty state; the one-shot workbenches (upscale,
+ * expand, watermark) and the editor have no gallery, so they get the tutorial
+ * alone, its button in their settings / timeline strip. Video is absent: it is
+ * not released and has nothing to explain yet.
  */
 export const GUIDE_TOOL_KEYS = [
   "prompts", "generator", "retouch", "ecommerce_thumbnail",
   "fashion_ghost_mannequin", "fashion_flat_lay", "fashion_iron", "fashion_change_person", "fashion_change_face",
   "tool_remove_bg", "tool_white_bg", "tool_ai_background", "tool_ai_shadow",
   "resize", "compress",
+  "editor", "tool_upscale", "tool_expand", "tool_watermark",
 ] as const satisfies readonly AiToolKey[];
 export type GuideToolKey = (typeof GUIDE_TOOL_KEYS)[number];
 
@@ -38,13 +40,35 @@ export function isGuideTool(value: unknown): value is GuideToolKey {
 }
 
 /** The gallery a tool's screen shows — which decides how "no results yet" is
- *  known (see starterVisible). */
-export type GuideSurface = "generations" | "photo" | "batch";
+ *  known (see starterVisible) — or, for the screens without one, what they
+ *  are: a session workbench or the editor. */
+export type GuideSurface = "generations" | "photo" | "batch" | "workbench" | "editor";
+
+const PHOTO_TOOLS: readonly GuideToolKey[] = ["tool_remove_bg", "tool_white_bg", "tool_ai_background", "tool_ai_shadow"];
+const WORKBENCH_TOOLS: readonly GuideToolKey[] = ["tool_upscale", "tool_expand", "tool_watermark"];
 
 export function guideSurface(tool: GuideToolKey): GuideSurface {
   if (tool === "resize" || tool === "compress") return "batch";
-  if (tool.startsWith("tool_")) return "photo";
+  if (tool === "editor") return "editor";
+  if (WORKBENCH_TOOLS.includes(tool)) return "workbench";
+  if (PHOTO_TOOLS.includes(tool)) return "photo";
   return "generations";
+}
+
+/** Does the tool's screen have a results gallery whose empty state a starter
+ *  gallery can stand in for? The workbenches and the editor do not. */
+export function guideHasStarter(tool: GuideToolKey): boolean {
+  const surface = guideSurface(tool);
+  return surface === "generations" || surface === "photo" || surface === "batch";
+}
+
+/** The ToolWorkbench slug a guide belongs to (one component serves seven
+ *  slugs; only these three are guide tools). */
+export function guideToolForWorkbench(slug: string): GuideToolKey | null {
+  if (slug === "upscale") return "tool_upscale";
+  if (slug === "expand") return "tool_expand";
+  if (slug === "watermark") return "tool_watermark";
+  return null;
 }
 
 /**
@@ -56,7 +80,7 @@ export function guideSurface(tool: GuideToolKey): GuideSurface {
 export function guideToolForOperation(operation: string | undefined): GuideToolKey | null {
   if (!operation) return null;
   if (operation === "image_retouch") return "retouch";
-  return isGuideTool(operation) ? operation : null;
+  return isGuideTool(operation) && guideSurface(operation) === "generations" ? operation : null;
 }
 
 /**
@@ -93,6 +117,7 @@ export const GUIDE_ARTS = [
   "retouch", "generate", "result", "compare", "download",
   "background", "color", "scene", "shadow",
   "garment", "person", "face", "resize", "compress",
+  "adjust", "upscale", "expand", "watermark",
 ] as const;
 export type GuideArt = (typeof GUIDE_ARTS)[number];
 
@@ -121,6 +146,10 @@ export const DEFAULT_STEP_ARTS: Record<GuideToolKey, readonly GuideArt[]> = {
   tool_ai_shadow: ["upload", "shadow", "background", "compare"],
   resize: ["upload", "resize", "generate", "download"],
   compress: ["upload", "compress", "generate", "download"],
+  editor: ["upload", "background", "shadow", "format", "adjust", "download"],
+  tool_upscale: ["upload", "upscale", "generate", "compare", "download"],
+  tool_expand: ["upload", "expand", "generate", "compare", "download"],
+  tool_watermark: ["upload", "watermark", "settings", "generate", "download"],
 };
 
 /* ── PICTURES: media slots, keyed by position ──────────────────────────── */

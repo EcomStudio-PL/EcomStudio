@@ -41,7 +41,7 @@ import { SCOPES } from "@/lib/i18n/scopes";
 import { I18nProvider } from "@/lib/i18n/provider";
 import {
   DEFAULT_STEP_ARTS, GUIDE_ARTS, GUIDE_LIMITS, GUIDE_MAX_STEPS, GUIDE_TOOL_KEYS,
-  guideSlotKey, guideSurface, guideToolForOperation, guideToolForPath, isGuideArt, isGuideSlotKey,
+  guideHasStarter, guideSlotKey, guideSurface, guideToolForOperation, guideToolForPath, guideToolForWorkbench, isGuideArt, isGuideSlotKey,
   isGuideTool, normalizeGuideContent, photoSlugOf, shouldAutoOpen, starterVisible,
   type GuideResponse, type GuideToolKey, type ResolvedGuide,
 } from "@/lib/tool-guides";
@@ -298,17 +298,17 @@ const asSvc = (db: FakeDb) => db.client() as unknown as SvcClient;
 
 /* ══ A. REGISTRY ═══════════════════════════════════════════════════════════ */
 
-const EXCLUDED = ["editor", "tool_upscale", "tool_expand", "tool_watermark", "video"];
+const EXCLUDED = ["video"];
 
 function sectionA() {
   console.log("\nA. REGISTRY — guide tools, illustrations, fallbacks, mapping, slot keys");
 
-  check(`A1 GUIDE_TOOL_KEYS lists 15 distinct tools (${TOOLS.length})`, TOOLS.length === 15 && new Set(TOOLS).size === 15);
+  check(`A1 GUIDE_TOOL_KEYS lists 19 distinct tools (${TOOLS.length})`, TOOLS.length === 19 && new Set(TOOLS).size === 19);
   const aiKeys: readonly string[] = AI_TOOL_KEYS;
   const notAi = TOOLS.filter((k) => !aiKeys.includes(k));
   check("A2 every guide tool is an admin tool key (GUIDE_TOOL_KEYS ⊂ AI_TOOL_KEYS)", notAi.length === 0, short(notAi));
   const rest = aiKeys.filter((k) => !isGuideTool(k)).sort();
-  check(`A3 the admin tools WITHOUT a guide are exactly the gallery-less ones (${EXCLUDED.join(", ")})`,
+  check(`A3 the only admin tool WITHOUT a guide is the unreleased one (${EXCLUDED.join(", ")})`,
     same(rest, [...EXCLUDED].sort()), rest.join(", "));
   for (const k of EXCLUDED) check(`A4 isGuideTool("${k}") is false`, !isGuideTool(k));
   const junk: unknown[] = [undefined, null, "", "Prompts", " prompts", "prompts ", "image_retouch", "__proto__", "toString", 42, {}, ["prompts"]];
@@ -355,9 +355,10 @@ function sectionA() {
   check(`A16 THUMBNAIL_OPERATION ("${THUMBNAIL_OPERATION}") maps to the ecommerce_thumbnail guide`, guideToolForOperation(THUMBNAIL_OPERATION) === "ecommerce_thumbnail");
   const fashionBad = FASHION_TOOLS.filter((t) => t.operation !== t.toolKey || guideToolForOperation(t.operation) !== t.toolKey || !isGuideTool(t.toolKey)).map((t) => t.toolKey);
   check(`A17 every Moda tool's operation (= its admin toolKey) maps to its own guide (${FASHION_TOOLS.length} tools)`, FASHION_TOOLS.length === 5 && fashionBad.length === 0, short(fashionBad));
-  const noOp: (string | undefined)[] = [undefined, "", "none", "foo", "tool_upscale", "editor", "video", "IMAGE_RETOUCH", "image_retouch "];
+  const noOp: (string | undefined)[] = [undefined, "", "none", "foo", "tool_upscale", "tool_expand", "tool_watermark", "editor", "resize", "compress",
+    "tool_remove_bg", "video", "IMAGE_RETOUCH", "image_retouch "];
   const leaked = noOp.filter((o) => guideToolForOperation(o) !== null).map(String);
-  check("A18 an unknown, empty, 'none' or gallery-less operation maps to no guide", leaked.length === 0, short(leaked));
+  check("A18 an unknown, empty, 'none' or non-generations tool's operation maps to no guide (only GenerationGallery hosts go through operations)", leaked.length === 0, short(leaked));
 
   const paths: [string | null | undefined, GuideToolKey | null][] = [
     ["/generator", "generator"], ["/generator/", "generator"], ["/generator//", "generator"],
@@ -378,6 +379,14 @@ function sectionA() {
   check("A21 guideSurface: resize/compress are the browser-side batch", same(surf("batch"), ["compress", "resize"]));
   check("A21b guideSurface: the four tool_* photo tools are 'photo'", same(surf("photo"), ["tool_ai_background", "tool_ai_shadow", "tool_remove_bg", "tool_white_bg"]));
   check("A21c guideSurface: every other guide tool lists generations (9)", surf("generations").length === 9 && surf("generations").every((t) => !t.startsWith("tool_")));
+  check("A21d guideSurface: upscale/expand/watermark are the session 'workbench'; the editor is 'editor' (not 'photo' — the tool_ prefix is not the rule)",
+    same(surf("workbench"), ["tool_expand", "tool_upscale", "tool_watermark"]) && same(surf("editor"), ["editor"]));
+  const noStarter = TOOLS.filter((t) => !guideHasStarter(t)).sort();
+  check("A21e guideHasStarter: false exactly for the screens without a results gallery (workbenches, editor)",
+    same(noStarter, ["editor", "tool_expand", "tool_upscale", "tool_watermark"]));
+  const wb: [string, GuideToolKey | null][] = [["upscale", "tool_upscale"], ["expand", "tool_expand"], ["watermark", "tool_watermark"],
+    ["relight", null], ["beautify", null], ["uncrop", null], ["ghost_mannequin", null], ["editor", null], ["", null], ["tool_upscale", null]];
+  check("A21f guideToolForWorkbench maps exactly the three guided ToolWorkbench slugs", wb.every(([slug, want]) => guideToolForWorkbench(slug) === want));
   const photoBad = PHOTO_TOOLS.filter((s) => {
     const key = `tool_${s}`;
     return !isGuideTool(key) || photoSlugOf(key) !== s;
@@ -393,7 +402,7 @@ function sectionA() {
   check(`A25 isGuideSlotKey accepts tutorial.1..6 and starter.1 of every guide tool (${all.length} keys)`, all.every(isGuideSlotKey), short(all.filter((k) => !isGuideSlotKey(k))));
   const rejects = [
     "guide.retouch.tutorial.0", "guide.retouch.tutorial.7", "guide.retouch.tutorial.10", "guide.retouch.starter.0", "guide.retouch.starter.2",
-    "guide.editor.tutorial.1", "guide.video.starter.1", "guide.tool_upscale.tutorial.1", "guide.retouch.hero.1", "guide.retouch.tutorial",
+    "guide.video.tutorial.1", "guide.video.starter.1", "guide.tool_relight.tutorial.1", "guide.retouch.hero.1", "guide.retouch.tutorial",
     "guide.retouch.tutorial.1.x", "guide..tutorial.1", "tools.retouch.card", "Guide.retouch.tutorial.1", "guide.retouch.tutorial.-1",
     "guide.retouch.tutorial.1 ", " guide.retouch.tutorial.1", "guide.retouch.tutorial.1.5", "guide.Retouch.tutorial.1", "",
   ];
@@ -565,7 +574,7 @@ function sectionC() {
   check("C2 every tool × locale has exactly steps s1..sN, N = DEFAULT_STEP_ARTS length", stepMismatch.length === 0, short(stepMismatch, 4));
   check("C3 every shipped step has a non-empty title AND body in every locale", emptyStep.length === 0, short(emptyStep));
   const nsTools = LOCALES.map((l) => Object.keys((DICTS[l].toolGuideDefaults as Dict | undefined) ?? {}).sort());
-  check("C4 toolGuideDefaults holds exactly the 15 guide tools in pl, en and de", nsTools.every((ks) => same(ks, [...TOOLS].sort())));
+  check("C4 toolGuideDefaults holds exactly the 19 guide tools in pl, en and de", nsTools.every((ks) => same(ks, [...TOOLS].sort())));
 
   const LIMIT_OF: [RegExp, number][] = [
     [/\.tutorial\.title$/, GUIDE_LIMITS.tutorialTitle], [/\.tutorial\.body$/, GUIDE_LIMITS.tutorialBody],
@@ -645,6 +654,11 @@ function sectionD() {
   check("D4 starter switched off → starter null, tutorial still present", sOff.starter === null && !!sOff.tutorial);
   const both = resolveGuide("retouch", "pl", pub({ tutorialEnabled: false, starterEnabled: false }), slotMap(rslot(guideSlotKey("retouch", "starter", 1))));
   check("D4b both off → both null (no picture leaks through either)", both.tutorial === null && both.starter === null);
+  const noStarterTools: GuideToolKey[] = ["editor", "tool_upscale", "tool_expand", "tool_watermark"];
+  const starterLeak = noStarterTools.filter((t) => resolveGuide(t, "pl", null, EMPTY).starter !== null
+    || resolveGuide(t, "pl", pub({ starterEnabled: true }), slotMap(rslot(guideSlotKey(t, "starter", 1)))).starter !== null);
+  check("D4c a screen without a results gallery never gets a starter — not by default, not when a row says on, not with a picture set",
+    starterLeak.length === 0 && noStarterTools.every((t) => !!resolveGuide(t, "pl", null, EMPTY).tutorial), short(starterLeak));
   check("D5 the version is the published one", resolveGuide("retouch", "pl", pub({ version: 7 }), EMPTY).version === 7);
   const swOnly = resolveGuide("retouch", "en", pub({ version: 2 }), EMPTY);
   check("D6 a row with switches but no copy (content null) → the shipped copy in the requested locale",
@@ -870,6 +884,18 @@ async function sectionF() {
   check("F6b resize/compress: live iff their service-catalogue entry (\"format\" / \"compress\") is available — read like their pages, without the admin flag",
     (await live("resize", batchCat, true)).r === true && (await live("compress", batchCat, true)).r === false
       && guideState.catalogueAdmin.every((a) => a === false));
+  const newCat = () => { guideState.catalogue = [{ slug: "editor", available: true }, { slug: "upscale", available: false }, { slug: "expand", available: true }, { slug: "watermark", available: false }, { slug: "remove_bg", available: false }]; };
+  guideState.catalogueAdmin = [];
+  const nl = {
+    editor: (await live("editor", newCat, true)).r, tool_upscale: (await live("tool_upscale", newCat, true)).r,
+    tool_expand: (await live("tool_expand", newCat, true)).r, tool_watermark: (await live("tool_watermark", newCat, true)).r,
+  };
+  check("F6c editor / upscale / expand / watermark: live iff their own catalogue entry is available (the editor's paid cut-out does not decide), read without the admin flag",
+    same(nl, { editor: true, tool_upscale: false, tool_expand: true, tool_watermark: false }) && guideState.catalogueAdmin.every((a) => a === false), JSON.stringify(nl));
+  for (const status of ["COMING_SOON", "DISABLED"]) {
+    const { r } = await live("tool_expand", () => { newCat(); guideState.availability.tool_expand = { status }; });
+    check(`F6d tool_expand ${status} in the switchboard → not live even with an available catalogue entry`, r === false);
+  }
   const planners = (db: FakeDb, keyed: string[]) => {
     db.tables.ai_providers = [{ id: "p-openai", slug: "openai", active: true }, { id: "p-google", slug: "google", active: false }, { id: "p-room", slug: "photoroom", active: true }];
     db.rpcs.providers_with_credentials = () => ({ data: keyed, error: null });
@@ -910,6 +936,11 @@ async function sectionF() {
     const db = resDb();
     const r = await hasToolResults(asSvc(db), WS, "resize");
     check("F12 batch tools (queue lives in the browser) → false without asking the database", r === false && db.calls.length === 0);
+  }
+  {
+    const db = resDb();
+    const rs = await Promise.all((["editor", "tool_upscale", "tool_expand", "tool_watermark"] as GuideToolKey[]).map((t) => hasToolResults(asSvc(db), WS, t)));
+    check("F12b the workbenches and the editor have no stored gallery → hasToolResults false without asking the database", rs.every((r) => r === false) && db.calls.length === 0);
   }
   {
     const db = resDb();
@@ -1001,6 +1032,27 @@ async function sectionF() {
       (await hasUsedTool(asSvc(only), WS, ADMIN, "generator")) === false && (await hasUsedTool(asSvc(only), WS, ADMIN, "retouch")) === true);
     db.tableErrors.generation_jobs = { message: "boom", code: "XX000" };
     check("F19d hasUsedTool: a failed read → null (no auto-open on a guess)", (await hasUsedTool(asSvc(db), WS, ADMIN, "retouch")) === null);
+    const ue = baseDb();
+    ue.tables.usage_events = [
+      { id: "u1", workspace_id: WS, user_id: ADMIN, service_slug: "tool_editor", status: "succeeded" },
+      { id: "u2", workspace_id: WS, user_id: CUSTOMER, service_slug: "tool_upscale", status: "refunded" },
+      { id: "u3", workspace_id: WS, user_id: ADMIN, service_slug: "tool_expand", status: "succeeded" },
+      { id: "u4", workspace_id: WS, user_id: CUSTOMER, service_slug: "tool_remove_bg", status: "succeeded" },
+      { id: "u5", workspace_id: OTHER_WS, user_id: CUSTOMER, service_slug: "tool_watermark", status: "succeeded" },
+    ];
+    const used = {
+      editorOwn: await hasUsedTool(asSvc(ue), WS, ADMIN, "editor"),
+      editorTeammate: await hasUsedTool(asSvc(ue), WS, CUSTOMER, "editor"),
+      upscaleRefunded: await hasUsedTool(asSvc(ue), WS, CUSTOMER, "tool_upscale"),
+      expandOwn: await hasUsedTool(asSvc(ue), WS, ADMIN, "tool_expand"),
+      expandTeammate: await hasUsedTool(asSvc(ue), WS, CUSTOMER, "tool_expand"),
+      cutoutIsNotEditor: await hasUsedTool(asSvc(ue), WS, CUSTOMER, "editor"),
+      watermarkOtherWs: await hasUsedTool(asSvc(ue), WS, CUSTOMER, "tool_watermark"),
+    };
+    check("F19e hasUsedTool for the editor and the workbenches: this user's own SUCCEEDED usage_events of the tool's service (a refund, a teammate, another workspace or the editor's remove_bg cut-out do not count)",
+      same(used, { editorOwn: true, editorTeammate: false, upscaleRefunded: false, expandOwn: true, expandTeammate: false, cutoutIsNotEditor: false, watermarkOtherWs: false }), JSON.stringify(used));
+    ue.tableErrors.usage_events = { message: "boom", code: "XX000" };
+    check("F19f … a failed usage_events read → null", (await hasUsedTool(asSvc(ue), WS, ADMIN, "tool_watermark")) === null);
   }
 
   // ── loadGuide ──────────────────────────────────────────────────────────
@@ -1037,7 +1089,7 @@ async function sectionF() {
     db.tables.generations = o.results ? [{ id: "g1", workspace_id: WS, generation_jobs: { status: "completed", settings: { operation: "image_retouch" } } }] : [];
     return db;
   };
-  for (const qs of ["?tool=editor", "?tool=", "", "?tool=__proto__", "?tool=image_retouch", "?tool=RETOUCH"]) {
+  for (const qs of ["?tool=video", "?tool=", "", "?tool=__proto__", "?tool=image_retouch", "?tool=RETOUCH"]) {
     resetIceState(); iceState.clientThrow = true; setAnon();
     const { res, body } = await get(qs);
     check(`F21 GET ${qs || "(no tool)"} → 400 unknown_tool, before any client is even created`, res.status === 400 && body.error === "unknown_tool" && iceState.anonCalls.length === 0);
@@ -1132,7 +1184,7 @@ async function sectionG() {
   };
   {
     const db = seenDb();
-    const r = await markToolTutorialSeenAction("editor");
+    const r = await markToolTutorialSeenAction("video");
     check("G1 seen: an unknown tool → unknown_tool, before the session is even read", !r.ok && r.error === "unknown_tool" && db.calls.length === 0);
   }
   {
@@ -1199,7 +1251,7 @@ async function sectionG() {
   }
   {
     const db = adminDb();
-    const r = await save(saveInput({ tool: "editor" }));
+    const r = await save(saveInput({ tool: "video" }));
     check("G11 save: an unknown tool → unknown_tool, nothing beyond the profile", !r.ok && r.error === "unknown_tool" && same(db.tablesTouched(), ["profiles"]) && nothingDone(db));
   }
   const badContent: [string, unknown][] = [

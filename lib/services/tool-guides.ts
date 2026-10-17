@@ -12,6 +12,13 @@ type Client = SupabaseClient<Database>;
  * so RLS — not this file — decides who may do what.
  */
 
+/** The usage_events service of the screens without a stored gallery: every
+ *  run there (a bake in the editor, a processed photo in a workbench) books
+ *  one event under it (lib/server/image-tools.ts). */
+const SERVICE_OF: Partial<Record<GuideToolKey, string>> = {
+  editor: "tool_editor", tool_upscale: "tool_upscale", tool_expand: "tool_expand", tool_watermark: "tool_watermark",
+};
+
 /** The `operation` a tool's generations carry (lib/server/gallery.ts filters
  *  by it). The generators list the whole workspace: no filter. */
 function operationOf(tool: GuideToolKey): string | null {
@@ -30,7 +37,8 @@ function operationOf(tool: GuideToolKey): string | null {
  */
 export async function hasToolResults(supabase: Client, workspaceId: string, tool: GuideToolKey): Promise<boolean | null> {
   const surface = guideSurface(tool);
-  if (surface === "batch") return false;
+  // No stored gallery on these screens: nothing for a starter to stand in for.
+  if (surface === "batch" || surface === "workbench" || surface === "editor") return false;
   if (surface === "photo") {
     const { data, error } = await supabase.from("tool_results").select("id")
       .eq("workspace_id", workspaceId).eq("tool_slug", photoSlugOf(tool)!).limit(1);
@@ -55,6 +63,14 @@ export async function hasToolResults(supabase: Client, workspaceId: string, tool
 export async function hasUsedTool(supabase: Client, workspaceId: string, userId: string, tool: GuideToolKey): Promise<boolean | null> {
   const surface = guideSurface(tool);
   if (surface === "batch") return false;
+  const service = SERVICE_OF[tool];
+  if (service) {
+    // This user's own finished runs of this service (a refunded one did not
+    // run). The editor's cut-out books under tool_remove_bg, never here.
+    const { data, error } = await supabase.from("usage_events").select("id")
+      .eq("workspace_id", workspaceId).eq("user_id", userId).eq("service_slug", service).eq("status", "succeeded").limit(1);
+    return error ? null : (data ?? []).length > 0;
+  }
   if (surface === "photo") {
     const { data, error } = await supabase.from("tool_results").select("id")
       .eq("workspace_id", workspaceId).eq("user_id", userId).eq("tool_slug", photoSlugOf(tool)!).limit(1);

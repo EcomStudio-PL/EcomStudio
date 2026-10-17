@@ -25,6 +25,7 @@ import { acceptFiles, type IntakeLimits } from "@/lib/images/file-intake";
 import { FileDropOverlay, useImageDrop } from "@/components/ui/file-drop";
 import { outputName } from "@/lib/images/zip";
 import { cn, formatBytes } from "@/lib/utils";
+import { useToolGuide } from "@/components/tool-guide/use-tool-guide";
 
 /**
  * The canvas and the five control panels are the two heaviest things on this
@@ -140,6 +141,9 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
    *  sheet. On phones `sheet === "history"` still does the work. */
   const [historyOpen, setHistoryOpen] = useState(false);
   const [resetKey, setResetKey] = useState(0);
+  // The editor's tutorial: its first-visit dialog and, at the end of the
+  // timeline strip, its button (an icon on a phone, so the strip never wraps).
+  const guide = useToolGuide("editor", { iconOnPhone: true });
 
   // Mirrors for the async paths: a fetch that resolves two seconds later must
   // read the state as it is NOW, not as it was when the closure was made.
@@ -599,6 +603,7 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
               if (window.matchMedia("(min-width: 1024px)").matches) setHistoryOpen((open) => !open);
               else setSheet((current) => (current === "history" ? null : "history"));
             }} />
+          {guide.button && <span className="ml-auto">{guide.button}</span>}
         </div>
 
         {/* The history list opens IN PLACE on desktop and as a sheet on a
@@ -736,6 +741,7 @@ export function ImageEditor({ entry, initialImage, available, reason, cutout, ba
         <HistoryList entries={timeline.entries} cursor={timeline.cursor}
           onRestore={(index) => { goTo(index); setSheet(null); }} />
       </BottomSheet>
+      {guide.dialog}
     </div>
   );
 }
