@@ -22,10 +22,13 @@ const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select
  * move between steps, Tab stays inside, and focus returns to whatever opened
  * it. Rendered at <body>: no card around it can trap or clip it.
  */
-export function TutorialModal({ open, onClose, tutorial }: {
+export function TutorialModal({ open, onClose, tutorial, initialStep = 0 }: {
   open: boolean;
   onClose: () => void;
   tutorial: Tutorial;
+  /** Where an opening starts (0-based). Only the admin's per-step preview
+   *  passes one; every customer screen leaves it out and starts at step 1. */
+  initialStep?: number;
 }) {
   const { t } = useI18n();
   const [step, setStep] = useState(0);
@@ -37,12 +40,19 @@ export function TutorialModal({ open, onClose, tutorial }: {
   const swipe = useRef<{ x: number; y: number } | null>(null);
   const total = tutorial.steps.length;
   const last = step === total - 1;
+  // Kept current for the opening below (declared first, so it runs first)
+  // without making the opening re-run when it changes.
+  const startAt = useRef(0);
+  useEffect(() => {
+    startAt.current = Number.isInteger(initialStep) ? Math.min(Math.max(0, initialStep), Math.max(0, total - 1)) : 0;
+  });
 
-  // Every opening starts at the first step and remembers who opened it.
+  // Every opening starts at the first step (or the one asked for) and
+  // remembers who opened it.
   useEffect(() => {
     if (!open) return;
     opener.current = document.activeElement;
-    setStep(0);
+    setStep(startAt.current);
     // The page behind stays put. The lock goes on <html>: the stylesheet
     // clips it horizontally, so a lock on <body> alone never reaches the
     // viewport. A classic scrollbar keeps its gutter, so nothing shifts.

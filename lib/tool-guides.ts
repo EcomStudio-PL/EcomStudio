@@ -146,10 +146,10 @@ export const DEFAULT_STEP_ARTS: Record<GuideToolKey, readonly GuideArt[]> = {
   tool_ai_shadow: ["upload", "shadow", "background", "compare"],
   resize: ["upload", "resize", "generate", "download"],
   compress: ["upload", "compress", "generate", "download"],
-  editor: ["upload", "background", "shadow", "format", "adjust", "download"],
+  editor: ["upload", "color", "shadow", "format", "adjust", "download"],
   tool_upscale: ["upload", "upscale", "generate", "compare", "download"],
   tool_expand: ["upload", "expand", "generate", "compare", "download"],
-  tool_watermark: ["upload", "watermark", "settings", "generate", "download"],
+  tool_watermark: ["upload", "watermark", "adjust", "generate", "download"],
 };
 
 /* ── PICTURES: media slots, keyed by position ──────────────────────────── */

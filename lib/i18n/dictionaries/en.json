@@ -9830,6 +9830,138 @@
         "title": "See what you can do",
         "body": "Your photos as lighter files, in the same or a new format. You choose the compression strength. Add photos and click “Compress”."
       }
+    },
+    "editor": {
+      "tutorial": {
+        "title": "How Image editing works",
+        "body": "Polish one photo in five sections: Background, Shadow, Format, Adjustments and Framing. Undo any change with “Undo” or “Change history”. Only “Remove background” costs credits — everything else is free.",
+        "steps": {
+          "s1": {
+            "title": "Add a photo",
+            "body": "Click “Choose a file” or drag a photo onto the page. You edit one photo at a time (PNG, JPG or WEBP, max. 15 MB) — the sections unlock once it has loaded. A new photo starts the edit from scratch."
+          },
+          "s2": {
+            "title": "Remove or change the background",
+            "body": "In “Background” click “Remove background” to cut the product out — it is the only paid step, and the tile shows its cost (or “Unavailable”). Then pick “White background”, a colour from the palette, “Transparent” or enter a “Custom colour (HEX)”. “AI background” and “My background” are not available yet."
+          },
+          "s3": {
+            "title": "Add a shadow",
+            "body": "In “Shadow” pick “Soft”, “Strong”, “Floating” or “Wall” (“None” turns it off). The “Advanced” switch reveals opacity, blur, offset and shadow colour. A shadow needs the product on a transparent background — if the photo has none, use “Remove background” first."
+          },
+          "s4": {
+            "title": "Pick the format",
+            "body": "In “Format” pick “Original”, 1:1, 4:5, 3:4, 16:9, 9:16 or “Custom” and enter a width if you need one. While “Keep proportions” is on, the height follows automatically. Changing the ratio never crops — the whole photo stays in and the background fills the free space."
+          },
+          "s5": {
+            "title": "Fix colours and framing",
+            "body": "In “Adjustments” set brightness, contrast, saturation, temperature and sharpness — “Reset” undoes all of them. In “Framing” you rotate, flip, scale and move the photo."
+          },
+          "s6": {
+            "title": "Download or save",
+            "body": "Click “Download”, “Save to the library” or “Copy URL” (saves the file and copies a link valid for 7 days). The file is rendered on the server at full resolution: PNG with a transparent background, otherwise JPG. Changes are not saved by themselves — download or save before you leave."
+          }
+        }
+      },
+      "starter": {
+        "title": "See what you can do",
+        "body": "One photo, five sections: a new background, a shadow, a format, colour adjustments and framing — with a preview before you download. Add a photo and start with “Background”."
+      }
+    },
+    "tool_upscale": {
+      "tutorial": {
+        "title": "How Upscale works",
+        "body": "Enlarge many photos at once, 2× or 4×. The enlargement is done by AI, so the tool is paid — you see the total cost before you start.",
+        "steps": {
+          "s1": {
+            "title": "Add photos",
+            "body": "Click the photo box or drag photos onto the page. You can add up to 100 files at once: JPG, PNG, WebP or AVIF, max. 15 MB each."
+          },
+          "s2": {
+            "title": "Pick the scale",
+            "body": "In “Scale” pick 2× or 4×. A photo whose side would exceed 8000 px after enlarging is refused with “The image is too large.” — at no cost."
+          },
+          "s3": {
+            "title": "Start",
+            "body": "Check the total cost above the button and click “Process”. Photos run three at a time and the button shows the progress. If a photo fails, its credits come back; if you run out of credits, processing stops."
+          },
+          "s4": {
+            "title": "Compare",
+            "body": "In “Result” drag the slider between “Before” and “After” to compare the first photo with the original. The “Queue” list shows the dimensions and size of each file."
+          },
+          "s5": {
+            "title": "Download the results",
+            "body": "Click “Download” (“Download ZIP” for several files) or “Save” to add the results to your Library. Re-run failed photos with “Retry failed”. The list only shows the current session — download the results before you leave."
+          }
+        }
+      },
+      "starter": {
+        "title": "See what you can do",
+        "body": "Your photos enlarged 2× or 4×, ready to download or save to your Library. Add photos and click “Process”."
+      }
+    },
+    "tool_expand": {
+      "tutorial": {
+        "title": "How “AI expand” works",
+        "body": "Change the aspect ratio of many photos at once without cropping: AI paints the frame outwards around the photo. The tool is paid — you see the total cost before you start.",
+        "steps": {
+          "s1": {
+            "title": "Add photos",
+            "body": "Click the photo box or drag photos onto the page. You can add up to 100 files at once: JPG, PNG, WebP or AVIF, max. 15 MB each."
+          },
+          "s2": {
+            "title": "Pick the aspect ratio",
+            "body": "In “Aspect ratio” pick 1:1, 4:5, 9:16 or 16:9. The frame is painted outwards — nothing is ever cropped. A photo that already has that ratio gets “The photo already has that ratio.” and costs nothing."
+          },
+          "s3": {
+            "title": "Start",
+            "body": "Check the total cost above the button and click “Process”. Photos run three at a time and the button shows the progress. If a photo fails, its credits come back; if you run out of credits, processing stops."
+          },
+          "s4": {
+            "title": "Compare",
+            "body": "In “Result” drag the slider between “Before” and “After” to see what the AI added to the first photo. Check the edges — the added parts are created by AI. The “Queue” list shows the dimensions of each file."
+          },
+          "s5": {
+            "title": "Download the results",
+            "body": "Click “Download” (“Download ZIP” for several files) or “Save” to add the results to your Library. Re-run failed photos with “Retry failed”. The list only shows the current session — download the results before you leave."
+          }
+        }
+      },
+      "starter": {
+        "title": "See what you can do",
+        "body": "Your photos in 1:1, 4:5, 9:16 or 16:9, with the frame painted outwards and nothing cropped. Add photos and click “Process”."
+      }
+    },
+    "tool_watermark": {
+      "tutorial": {
+        "title": "How Watermark works",
+        "body": "Place your logo on many photos at once — on one of nine anchors or as a repeating pattern. The mark is applied without AI and for free.",
+        "steps": {
+          "s1": {
+            "title": "Add photos",
+            "body": "Click the photo box or drag photos onto the page. You can add up to 100 files at once: JPG, PNG, WebP or AVIF, max. 15 MB each."
+          },
+          "s2": {
+            "title": "Add a logo and pick the spot",
+            "body": "Click “Choose a logo (PNG)” — PNG, WebP and SVG are accepted, ideally with a transparent background. In “Position” click one of the nine grid cells, or “Repeating pattern” to tile the mark across the whole photo. Swap the logo with “Change logo”."
+          },
+          "s3": {
+            "title": "Fine-tune the mark",
+            "body": "Set “Mark size” (a share of the photo's width), “Opacity” and “Edge margin”; for the pattern, “Rotation” and “Spacing”. The preview in “Settings” shows the placement on the first photo — the final file is rendered on the server."
+          },
+          "s4": {
+            "title": "Apply the mark",
+            "body": "Click “Process” — photos run three at a time and the button shows the progress. Without a logo you will see “Upload a logo first.”"
+          },
+          "s5": {
+            "title": "Download the results",
+            "body": "In “Result” compare the first photo with the “Before” and “After” slider. Click “Download” (“Download ZIP” for several files) or “Save” to add the results to your Library. The file keeps the photo's format (AVIF is saved as JPG). The list only shows the current session — download before you leave."
+          }
+        }
+      },
+      "starter": {
+        "title": "See what you can do",
+        "body": "Your photos with your logo in the spot you pick or as a repeating pattern — for free. Add photos and a logo, then click “Process”."
+      }
     }
   }
 }

@@ -80,6 +80,50 @@ function Checker({ x, y, w, h }: { x: number; y: number; w: number; h: number })
   return <g>{cells}</g>;
 }
 
+const round = (n: number) => Math.round(n * 100) / 100;
+
+/** One correction dial: its glyph (light, contrast, colour), the track and the
+ *  knob at `at` — the editor's "Korekta" rows, drawn. */
+function Dial({ y, kind, at }: { y: number; kind: "light" | "contrast" | "colour"; at: number }) {
+  const x = 172;
+  const track = { x: 186, w: 66 };
+  return (
+    <g>
+      {kind === "light" && (
+        <>
+          <circle cx={x} cy={y} r={3} style={{ fill: c.muted }} />
+          <path d={[0, 1, 2, 3, 4, 5, 6, 7].map((k) => {
+            const a = (k * Math.PI) / 4;
+            return `M${round(x + Math.cos(a) * 5.2)} ${round(y + Math.sin(a) * 5.2)} L${round(x + Math.cos(a) * 7.2)} ${round(y + Math.sin(a) * 7.2)}`;
+          }).join(" ")} style={stroke(c.muted, 1.4)} />
+        </>
+      )}
+      {kind === "contrast" && (
+        <>
+          <circle cx={x} cy={y} r={6} style={{ fill: "none", stroke: c.muted, strokeWidth: 1.4 }} />
+          <path d={`M${x} ${y - 6} a6 6 0 0 1 0 12 z`} style={{ fill: c.muted }} />
+        </>
+      )}
+      {kind === "colour" && (
+        <path d={`M${x} ${y - 7} q6 7 6 10 a6 6 0 0 1 -12 0 q0 -3 6 -10 z`} style={{ fill: c.muted }} />
+      )}
+      <rect x={track.x} y={y - 3} width={track.w} height={6} rx={3} style={{ fill: c.line }} />
+      <rect x={track.x} y={y - 3} width={at - track.x} height={6} rx={3} style={accentFill} />
+      <circle cx={at} cy={y} r={7} style={{ fill: c.surface, stroke: c.accent, strokeWidth: 2 }} />
+    </g>
+  );
+}
+
+/** An enlargement factor — "2×" or "4×" — drawn as strokes rather than set as
+ *  text, so the drawing carries no characters a language would have to own.
+ *  (x, y) is the top-left of a 13 × 9 glyph. */
+function Factor({ x, y, n, on = false }: { x: number; y: number; n: 2 | 4; on?: boolean }) {
+  const digit = n === 2
+    ? `M${x} ${y + 2.5} q0 -2.5 3 -2.5 q3 0 3 2.5 q0 1.6 -1.6 3 L${x} ${y + 9} h6`
+    : `M${x + 4.5} ${y + 9} V${y} L${x} ${y + 6} h6.5`;
+  return <path d={`${digit} M${x + 9} ${y + 3} l4 4 m0 -4 l-4 4`} style={stroke(on ? c.accent : c.muted, 1.6)} />;
+}
+
 const SCENES: Record<GuideArt, () => ReactNode> = {
   upload: () => (
     <>
@@ -314,6 +358,63 @@ const SCENES: Record<GuideArt, () => ReactNode> = {
       <rect x={200} y={138} width={30} height={8} rx={4} style={accentFill} />
       <path d="M200 50 a26 26 0 0 1 50 0" style={stroke(c.line, 5)} />
       <path d="M200 50 a26 26 0 0 1 36 -18" style={stroke(c.accent, 5)} />
+    </>
+  ),
+  adjust: () => (
+    <>
+      <rect x={52} y={34} width={216} height={132} rx={16} style={card} />
+      <rect x={64} y={46} width={84} height={108} rx={10} style={softFill} />
+      <Product x={106} y={112} s={0.9} />
+      <Dial y={66} kind="light" at={232} />
+      <Dial y={100} kind="contrast" at={204} />
+      <Dial y={134} kind="colour" at={222} />
+    </>
+  ),
+  upscale: () => (
+    <>
+      <path d="M102 60 L156 36 M102 116 L156 164" style={{ ...stroke(c.faint, 1.2), strokeDasharray: "4 4" }} />
+      <rect x={46} y={60} width={56} height={56} rx={9} style={raised} />
+      <rect x={50} y={64} width={48} height={48} rx={6} style={{ fill: c.line, opacity: 0.45 }} />
+      <Product x={74} y={96} s={0.5} tone={c.muted} />
+      <path d="M62 64 v48 M74 64 v48 M86 64 v48 M50 76 h48 M50 88 h48 M50 100 h48" style={{ stroke: c.surface, strokeWidth: 1, opacity: 0.55 }} />
+      <rect x={156} y={36} width={128} height={128} rx={14} style={card} />
+      <rect x={164} y={44} width={112} height={112} rx={9} style={softFill} />
+      <Product x={220} y={112} s={1.2} />
+      <Sparkle x={264} y={58} r={7} />
+      <Pill x={46} y={144} w={36} on />
+      <Factor x={57.5} y={150.5} n={2} on />
+      <Pill x={88} y={144} w={36} />
+      <Factor x={99.5} y={150.5} n={4} />
+    </>
+  ),
+  expand: () => (
+    <>
+      <rect x={56} y={40} width={208} height={120} rx={14} style={{ fill: c.soft, stroke: c.accent, strokeWidth: 1.6, strokeDasharray: "6 6" }} />
+      <rect x={122} y={44} width={76} height={112} rx={8} style={{ fill: c.surface, stroke: c.accent, strokeWidth: 1.8 }} />
+      <path d="M57 137 h206" style={stroke(c.line, 1.4)} />
+      <Product x={160} y={114} s={0.9} />
+      <path d="M116 86 h-40 m7 -7 l-7 7 l7 7 M204 86 h40 m-7 -7 l7 7 l-7 7" style={stroke(c.accent, 2.2)} />
+      <Sparkle x={90} y={60} r={6} />
+      <Sparkle x={238} y={148} r={5} />
+    </>
+  ),
+  watermark: () => (
+    <>
+      <rect x={52} y={34} width={150} height={132} rx={14} style={card} />
+      <rect x={60} y={42} width={134} height={116} rx={9} style={{ fill: c.violet, opacity: 0.35 }} />
+      <Product x={120} y={118} s={1} />
+      <g style={{ opacity: 0.8 }}>
+        <rect x={160} y={130} width={30} height={22} rx={6} style={{ fill: c.surface, stroke: c.accent, strokeWidth: 1.4 }} />
+        <circle cx={169} cy={141} r={4.5} style={accentFill} />
+        <rect x={176} y={138.5} width={10} height={5} rx={2.5} style={{ fill: c.accent, opacity: 0.7 }} />
+      </g>
+      <rect x={214} y={60} width={64} height={64} rx={12} style={{ fill: c.sunken, stroke: c.line, strokeWidth: 1 }} />
+      {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+        <rect key={i} x={218 + (i % 3) * 20} y={64 + Math.floor(i / 3) * 20} width={16} height={16} rx={4}
+          style={i === 8 ? accentFill : { fill: c.surface, opacity: 0.8 }} />
+      ))}
+      <Pill x={214} y={136} w={64} />
+      {[0, 1, 2].map((i) => <circle key={i} cx={232 + i * 14} cy={147} r={3} style={{ fill: c.muted, opacity: 0.6 }} />)}
     </>
   ),
 };

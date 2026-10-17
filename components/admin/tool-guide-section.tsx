@@ -5,21 +5,24 @@ import { makeT } from "@/lib/i18n/t";
 import type { Client } from "@/lib/services/workspace";
 import { listLibrary, type LibraryItem } from "@/lib/services/media-slots";
 import { readGuideRow, readGuideSlots } from "@/lib/services/tool-guides";
-import { defaultGuideContent, guideChrome } from "@/lib/server/tool-guides";
+import { defaultGuideContent, guideChrome, toolIsLive } from "@/lib/server/tool-guides";
+import { getAvailabilityMap } from "@/lib/server/feature-availability";
 import { loadSlots } from "@/lib/server/media-slots";
 import {
-  GUIDE_MAX_STEPS, guideSlotKey, normalizeGuideContent,
+  GUIDE_MAX_STEPS, guideHasStarter, guideSlotKey, normalizeGuideContent,
   type GuideImage, type GuideToolKey,
 } from "@/lib/tool-guides";
 import { STARTER_FALLBACK_SLOTS } from "@/lib/tool-guide-slots";
 import { ToolGuideEditor } from "./tool-guide-editor";
 
 /**
- * "SAMOUCZEK I GALERIA STARTOWA" on a tool's Podstawowe tab.
+ * "SAMOUCZEK I GALERIA STARTOWA" — the whole of a tool's Samouczek tab
+ * (/admin/ai/[tool]?tab=guide).
  *
  * The server half: every read the editor needs, made once here with the
  * admin's own client (RLS decides), and handed down as plain data. The editor
- * itself never reads the database — it only calls saveToolGuideAction.
+ * itself never reads the database — it only calls saveToolGuideAction and
+ * showToolGuideAgainAction.
  *
  * Presentation only, like the feature it edits: nothing read or written here
  * reaches a model, a provider, a price or the ledger.
@@ -27,8 +30,11 @@ import { ToolGuideEditor } from "./tool-guide-editor";
 export async function ToolGuideSection({ tool, supabase }: { tool: GuideToolKey; supabase: Client }) {
   const stepKeys = Array.from({ length: GUIDE_MAX_STEPS }, (_, i) => guideSlotKey(tool, "tutorial", i + 1));
   const starterKey = guideSlotKey(tool, "starter", 1);
+  // A screen with no results gallery (the workbenches, the editor) has no
+  // starter gallery: no catalogue fallback to read for it.
+  const hasStarter = guideHasStarter(tool);
 
-  const [{ dict }, row, slots, library, fallbackSlots] = await Promise.all([
+  const [{ dict }, row, slots, library, fallbackSlots, live, availability] = await Promise.all([
     getDictionary(),
     readGuideRow(supabase, tool),
     readGuideSlots(supabase, [...stepKeys, starterKey]),
@@ -36,7 +42,12 @@ export async function ToolGuideSection({ tool, supabase }: { tool: GuideToolKey;
     // The starter's catalogue fallback, read through the SAME resolver the
     // customer's screen uses — so the preview shows the picture a customer
     // would really get when no starter image is chosen, not a guess at it.
-    loadSlots(supabase, STARTER_FALLBACK_SLOTS[tool]),
+    hasStarter ? loadSlots(supabase, STARTER_FALLBACK_SLOTS[tool]) : Promise.resolve(null),
+    // What a CUSTOMER gets right now (no admin sandbox): the same answer the
+    // customer's screen is given, so "published" never hides "nobody sees it".
+    toolIsLive(supabase, tool, { admin: false }),
+    // The page read it already — React's cache makes this the same answer.
+    getAvailabilityMap(supabase),
   ]);
   const t = makeT(dict);
 
@@ -81,7 +92,14 @@ export async function ToolGuideSection({ tool, supabase }: { tool: GuideToolKey;
   const listed = new Set(library.map((a) => a.id));
   const missing = [...new Set([...stepImages, starterImage])]
     .filter((id): id is string => id !== null && !listed.has(id));
-  const extra = missing.length > 0 ? await assetsById(supabase, missing) : [];
+  const [extra, savedBy] = await Promise.all([
+    missing.length > 0 ? assetsById(supabase, missing) : Promise.resolve([] as LibraryItem[]),
+    row?.updated_by ? authorName(supabase, row.updated_by) : Promise.resolve(null),
+  ]);
+
+  // Why a tool is not live: its switchboard status when that is not ACTIVE
+  // ("Wkrótce", maintenance…); null = ACTIVE but unable to run right now.
+  const status = availability[tool]?.status ?? "ACTIVE";
 
   return (
     <Card className="p-5" data-tool-guide-admin={tool}>
@@ -93,7 +111,8 @@ export async function ToolGuideSection({ tool, supabase }: { tool: GuideToolKey;
           chrome={guideChrome()}
           initial={{
             tutorialEnabled: row ? row.tutorial_enabled : true,
-            starterEnabled: row ? row.starter_enabled : true,
+            // No row = the shipped default: on wherever a starter can exist.
+            starterEnabled: row ? row.starter_enabled : hasStarter,
             content,
             stepImages,
             starterImage,
@@ -101,8 +120,13 @@ export async function ToolGuideSection({ tool, supabase }: { tool: GuideToolKey;
             imageBases: Object.fromEntries([...stepKeys, starterKey].map((k) => [k, slots.get(k)?.updatedAt ?? null])),
             version: row?.tutorial_version ?? 1,
           }}
+          status={{
+            live,
+            availability: status === "ACTIVE" ? null : t(`featAdm.status.${status}`),
+            savedBy,
+          }}
           library={[...library, ...extra]}
-          catalogueImage={firstImage(STARTER_FALLBACK_SLOTS[tool], fallbackSlots)}
+          catalogueImage={fallbackSlots ? firstImage(STARTER_FALLBACK_SLOTS[tool], fallbackSlots) : null}
         />
       </div>
     </Card>
@@ -118,6 +142,14 @@ function firstImage(keys: readonly string[], slots: Awaited<ReturnType<typeof lo
     return { url: slot.desktop, width: slot.desktopWidth, height: slot.desktopHeight, alt: slot.alt ?? "" };
   }
   return null;
+}
+
+/** Who saved the guide last, as the admin panel names people elsewhere (full
+ *  name, else e-mail). Admin RLS reads any profile; anything else → omitted. */
+async function authorName(supabase: Client, id: string): Promise<string | null> {
+  const { data, error } = await supabase.from("profiles").select("full_name, email").eq("id", id).maybeSingle();
+  if (error || !data) return null;
+  return data.full_name?.trim() || data.email || null;
 }
 
 /** A handful of library rows by id, in the picker's own shape (listLibrary's

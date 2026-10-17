@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { STATELESS_TOOL_KEYS } from "@/lib/ai/prompt-variables";
 import type { Database } from "@/lib/database.types";
+import { isGuideTool } from "@/lib/tool-guides";
 import {
   FEATURE_REGISTRY, type FeatureKey, type FeatureStatus, type FeatureDescriptor,
 } from "@/lib/features";
@@ -205,7 +206,7 @@ export const MODEL_PRICED: readonly AiToolKey[] = [
   "fashion_change_face",
 ];
 
-export const TOOL_TABS = ["basics", "engine", "workflow", "models", "knowledge"] as const;
+export const TOOL_TABS = ["basics", "engine", "workflow", "models", "knowledge", "guide"] as const;
 export type ToolTab = (typeof TOOL_TABS)[number];
 
 /** Links from before the tabs were folded keep landing somewhere sensible:
@@ -228,6 +229,10 @@ export function toolTabs(row: { key: AiToolKey; engineMode: EngineMode; serviceS
   if (modelDriven || row.serviceSlug) tabs.push("models");
   // A stateless tool (Retusz) takes no knowledge/examples — no tab for them.
   if (row.engineMode !== "off" && !STATELESS_TOOL_KEYS.has(row.key)) tabs.push("knowledge");
+  // SAMOUCZEK, always last: the tool's tutorial and starter gallery. Decided
+  // by the tool having a guide (lib/tool-guides.ts), not by AI — presentation
+  // only, so it never brings an engine or model control with it.
+  if (isGuideTool(row.key)) tabs.push("guide");
   return tabs;
 }
 

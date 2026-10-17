@@ -13,6 +13,7 @@ import { costOf, summarise, groupBy, periodStart, monthStart, type UsageEventRow
 import { DEFAULT_BILLING } from "@/lib/images/pricing";
 import { FEATURE_KEYS } from "@/lib/features";
 import { isNavActive } from "@/lib/nav-active";
+import { GUIDE_TOOL_KEYS, isGuideTool } from "@/lib/tool-guides";
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = "") {
@@ -74,12 +75,55 @@ console.log("B. a tool only gets the tabs it can answer for");
   const retouchTabs = toolTabs({ key: "retouch", engineMode: "grovbase", serviceSlug: "image_generation" });
   check("a workflow-capable tool gets the WORKFLOW tab", retouchTabs.includes("workflow"));
   // Retusz is stateless (STATELESS_TOOL_KEYS): no knowledge tab. A Moda tool
-  // shows the full order.
-  check("Retusz: Podstawowe · Silnik · Workflow · Modele, API i koszty — no Wiedza (stateless)",
-    JSON.stringify(retouchTabs) === JSON.stringify(["basics", "engine", "workflow", "models"]));
+  // shows the full order. Both have a tutorial: Samouczek comes last.
+  check("Retusz: Podstawowe · Silnik · Workflow · Modele, API i koszty · Samouczek — no Wiedza (stateless)",
+    JSON.stringify(retouchTabs) === JSON.stringify(["basics", "engine", "workflow", "models", "guide"]), retouchTabs.join(","));
   const flatLayTabs = toolTabs({ key: "fashion_flat_lay", engineMode: "grovbase", serviceSlug: "image_generation" });
-  check("the tab order is Podstawowe · Silnik · Workflow · Modele, API i koszty · Wiedza",
-    JSON.stringify(flatLayTabs) === JSON.stringify(["basics", "engine", "workflow", "models", "knowledge"]), flatLayTabs.join(","));
+  check("the tab order is Podstawowe · Silnik · Workflow · Modele, API i koszty · Wiedza · Samouczek",
+    JSON.stringify(flatLayTabs) === JSON.stringify(["basics", "engine", "workflow", "models", "knowledge", "guide"]), flatLayTabs.join(","));
+}
+
+console.log("B2. SAMOUCZEK: exactly the tools with a guide, always the last tab, never an AI control");
+{
+  // Every guide tool, under every engine mode and with or without a service:
+  // one "guide", at the end, and the tabs before it exactly what the tool had
+  // without one (the tab adds no engine, workflow, model or knowledge tab).
+  const bad: string[] = [];
+  for (const key of AI_TOOL_KEYS) {
+    for (const engineMode of ENGINE_MODES) {
+      for (const serviceSlug of [null, "svc"]) {
+        const tabs = toolTabs({ key, engineMode, serviceSlug });
+        const guides = tabs.filter((x) => x === "guide").length;
+        if (isGuideTool(key)) {
+          if (guides !== 1 || tabs[tabs.length - 1] !== "guide") bad.push(`${key}/${engineMode}/${serviceSlug}: ${tabs.join(",")}`);
+        } else if (guides !== 0) bad.push(`${key}/${engineMode}/${serviceSlug} must have no guide: ${tabs.join(",")}`);
+        if (tabs[0] !== "basics") bad.push(`${key}/${engineMode}/${serviceSlug} does not open on basics`);
+      }
+    }
+  }
+  check(`every GUIDE_TOOL_KEY (${GUIDE_TOOL_KEYS.length}) gets exactly one trailing "guide" tab; every other key none`, bad.length === 0, bad.slice(0, 4).join(" | "));
+  check("every guide key is a tool key", GUIDE_TOOL_KEYS.every((k) => (AI_TOOL_KEYS as readonly string[]).includes(k)));
+  check("video has no tutorial (not a guide tool) and so no Samouczek tab",
+    !isGuideTool("video") && !toolTabs({ key: "video", engineMode: "off", serviceSlug: "video_generation" }).includes("guide"));
+  for (const [key, slug] of [["resize", "tool_format"], ["compress", "tool_compress"], ["editor", "tool_editor"], ["tool_watermark", "tool_watermark"]] as const) {
+    const tabs = toolTabs({ key, engineMode: "off", serviceSlug: slug });
+    check(`a non-AI tool (${key}) gets Podstawowe · Modele, API i koszty · Samouczek and no AI tab`,
+      JSON.stringify(tabs) === JSON.stringify(["basics", "models", "guide"]), tabs.join(","));
+  }
+  const photo = toolTabs({ key: "tool_remove_bg", engineMode: "off", serviceSlug: "tool_remove_bg" });
+  check("a photo tool gets Podstawowe · Modele, API i koszty · Samouczek",
+    JSON.stringify(photo) === JSON.stringify(["basics", "models", "guide"]), photo.join(","));
+
+  const page = read("app/admin/ai/[tool]/page.tsx");
+  const mounts = page.match(/<ToolGuideSection\b/g) ?? [];
+  check("the page mounts ToolGuideSection exactly once, on the guide tab only",
+    mounts.length === 1 && /\{tab === "guide" && isGuideTool\(row\.key\) && <ToolGuideSection tool=\{row\.key\} supabase=\{supabase\} \/>\}/.test(page));
+  const basics = page.slice(page.indexOf("async function BasicsTab"), page.indexOf("function Fact("));
+  check("Podstawowe carries nothing of the tutorial any more", basics.length > 0 && !/ToolGuide|isGuideTool|guide/i.test(basics));
+  const dicts = (["pl", "en", "de"] as const).map((l) => [l, JSON.parse(read(`lib/i18n/dictionaries/${l}.json`)) as { aicc?: Record<string, unknown> }] as const);
+  const missing = dicts.filter(([, d]) => typeof d.aicc?.["tab.guide"] !== "string").map(([l]) => l);
+  // The tab bar reads aicc.tab.${key}: an interpolated key no i18n check sees.
+  check("aicc.tab.guide is translated in pl, en and de", missing.length === 0, missing.join(", "));
 }
 
 console.log("C. the hidden prompt stays on the server");

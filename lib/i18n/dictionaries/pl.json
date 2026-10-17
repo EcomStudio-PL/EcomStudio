@@ -9830,6 +9830,138 @@
         "title": "Zobacz, co możesz zrobić",
         "body": "Twoje zdjęcia w lżejszych plikach, w tym samym albo nowym formacie. Siłę kompresji wybierasz sam. Dodaj zdjęcia i kliknij „Kompresuj”."
       }
+    },
+    "editor": {
+      "tutorial": {
+        "title": "Jak działa Edycja obrazu",
+        "body": "Dopracuj jedno zdjęcie w pięciu sekcjach: Tło, Cień, Format, Korekta i Kadr. Każdą zmianę cofniesz przez „Cofnij” albo „Historia zmian”. Kredyty kosztuje tylko „Usuń tło” — resztę robisz za darmo.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcie",
+            "body": "Kliknij „Wybierz plik” albo przeciągnij zdjęcie na stronę. Edytujesz jedno zdjęcie naraz (PNG, JPG lub WEBP, maks. 15 MB) — sekcje odblokują się, gdy się wczyta. Nowe zdjęcie zaczyna edycję od początku."
+          },
+          "s2": {
+            "title": "Usuń lub zmień tło",
+            "body": "W „Tło” kliknij „Usuń tło”, by wyciąć produkt — to jedyny płatny krok, a kafelek pokazuje jego koszt (albo „Niedostępne”). Potem wybierz „Białe tło”, kolor z palety, „Przezroczyste” albo wpisz „Własny kolor (HEX)”. „Tło AI” i „Moje tło” są jeszcze niedostępne."
+          },
+          "s3": {
+            "title": "Dodaj cień",
+            "body": "W „Cień” wybierz „Delikatny”, „Mocny”, „Lewitujący” albo „Ściana” („Brak” wyłącza cień). Przełącznik „Zaawansowany” odsłania krycie, rozmycie, przesunięcie i kolor cienia. Cień potrzebuje produktu na przezroczystym tle — jeśli zdjęcie go nie ma, najpierw użyj „Usuń tło”."
+          },
+          "s4": {
+            "title": "Wybierz format",
+            "body": "W „Format” wybierz „Oryginalny”, 1:1, 4:5, 3:4, 16:9, 9:16 albo „Własny” i w razie potrzeby wpisz szerokość. Przy włączonym „Zachowaj proporcje” wysokość dopasuje się sama. Zmiana proporcji niczego nie przycina — zdjęcie zostaje w całości, a wolne miejsce wypełnia tło."
+          },
+          "s5": {
+            "title": "Popraw kolory i kadr",
+            "body": "W „Korekta” ustaw jasność, kontrast, nasycenie, temperaturę i ostrość — „Resetuj” cofa wszystkie korekty. W „Kadr” obrócisz, odbijesz, przeskalujesz i przesuniesz zdjęcie."
+          },
+          "s6": {
+            "title": "Pobierz lub zapisz",
+            "body": "Kliknij „Pobierz”, „Zapisz w bibliotece” albo „Kopiuj URL” (zapisuje plik i kopiuje link ważny 7 dni). Plik renderujemy na serwerze w pełnej rozdzielczości: PNG przy przezroczystym tle, w innym razie JPG. Zmiany nie zapisują się same — pobierz lub zapisz plik, zanim wyjdziesz."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz, co możesz zrobić",
+        "body": "Jedno zdjęcie, pięć sekcji: nowe tło, cień, format, korekta kolorów i kadr — z podglądem przed pobraniem. Dodaj zdjęcie i zacznij od sekcji „Tło”."
+      }
+    },
+    "tool_upscale": {
+      "tutorial": {
+        "title": "Jak działa Upscale",
+        "body": "Powiększ wiele zdjęć naraz 2× albo 4×. Powiększenie wykonuje AI, dlatego narzędzie jest płatne — łączny koszt widzisz przed uruchomieniem.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcia",
+            "body": "Kliknij pole ze zdjęciami albo przeciągnij zdjęcia na stronę. Dodasz do 100 plików naraz: JPG, PNG, WebP lub AVIF, maks. 15 MB każdy."
+          },
+          "s2": {
+            "title": "Wybierz powiększenie",
+            "body": "W „Powiększenie” wybierz 2× albo 4×. Zdjęcie, którego bok po powiększeniu przekroczyłby 8000 px, zostanie odrzucone z komunikatem „Zdjęcie jest za duże.” — bez opłaty."
+          },
+          "s3": {
+            "title": "Uruchom",
+            "body": "Sprawdź łączny koszt nad przyciskiem i kliknij „Przetwórz”. Zdjęcia idą po trzy naraz, a postęp widzisz na przycisku. Jeśli zdjęcie się nie uda, kredyty za nie wracają; gdy zabraknie kredytów, przetwarzanie się zatrzyma."
+          },
+          "s4": {
+            "title": "Porównaj",
+            "body": "W „Wynik” przesuń suwak między „Przed” i „Po”, by porównać pierwsze zdjęcie z oryginałem. Wymiary i wagę każdego pliku widzisz na liście „Kolejka”."
+          },
+          "s5": {
+            "title": "Pobierz wyniki",
+            "body": "Kliknij „Pobierz” (przy kilku plikach „Pobierz ZIP”) albo „Zapisz”, by dodać wyniki do Biblioteki. Nieudane zdjęcia uruchomisz ponownie przez „Ponów nieudane”. Lista pokazuje tylko bieżącą sesję — pobierz wyniki przed wyjściem."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz, co możesz zrobić",
+        "body": "Twoje zdjęcia powiększone 2× albo 4×, gotowe do pobrania albo zapisania w Bibliotece. Dodaj zdjęcia i kliknij „Przetwórz”."
+      }
+    },
+    "tool_expand": {
+      "tutorial": {
+        "title": "Jak działa „Rozszerz kadr AI”",
+        "body": "Zmień proporcje wielu zdjęć naraz bez przycinania: AI dorysowuje kadr na zewnątrz zdjęcia. Narzędzie jest płatne — łączny koszt widzisz przed uruchomieniem.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcia",
+            "body": "Kliknij pole ze zdjęciami albo przeciągnij zdjęcia na stronę. Dodasz do 100 plików naraz: JPG, PNG, WebP lub AVIF, maks. 15 MB każdy."
+          },
+          "s2": {
+            "title": "Wybierz proporcje",
+            "body": "W „Proporcje” wybierz 1:1, 4:5, 9:16 albo 16:9. Kadr jest dorysowywany na zewnątrz — nic nie zostaje przycięte. Zdjęcie, które ma już te proporcje, dostanie komunikat „Zdjęcie ma już te proporcje.” i nic nie kosztuje."
+          },
+          "s3": {
+            "title": "Uruchom",
+            "body": "Sprawdź łączny koszt nad przyciskiem i kliknij „Przetwórz”. Zdjęcia idą po trzy naraz, a postęp widzisz na przycisku. Jeśli zdjęcie się nie uda, kredyty za nie wracają; gdy zabraknie kredytów, przetwarzanie się zatrzyma."
+          },
+          "s4": {
+            "title": "Porównaj",
+            "body": "W „Wynik” przesuń suwak między „Przed” i „Po”, by zobaczyć, co AI dorysowało na pierwszym zdjęciu. Obejrzyj brzegi — dorysowane fragmenty tworzy AI. Wymiary każdego pliku widzisz na liście „Kolejka”."
+          },
+          "s5": {
+            "title": "Pobierz wyniki",
+            "body": "Kliknij „Pobierz” (przy kilku plikach „Pobierz ZIP”) albo „Zapisz”, by dodać wyniki do Biblioteki. Nieudane zdjęcia uruchomisz ponownie przez „Ponów nieudane”. Lista pokazuje tylko bieżącą sesję — pobierz wyniki przed wyjściem."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz, co możesz zrobić",
+        "body": "Twoje zdjęcia w proporcjach 1:1, 4:5, 9:16 albo 16:9, z kadrem dorysowanym na zewnątrz i bez przycinania. Dodaj zdjęcia i kliknij „Przetwórz”."
+      }
+    },
+    "tool_watermark": {
+      "tutorial": {
+        "title": "Jak działa Watermark",
+        "body": "Nałóż swoje logo na wiele zdjęć naraz — w jednym z dziewięciu miejsc albo jako powtarzany wzór. Znak nakładamy bez AI i za darmo.",
+        "steps": {
+          "s1": {
+            "title": "Dodaj zdjęcia",
+            "body": "Kliknij pole ze zdjęciami albo przeciągnij zdjęcia na stronę. Dodasz do 100 plików naraz: JPG, PNG, WebP lub AVIF, maks. 15 MB każdy."
+          },
+          "s2": {
+            "title": "Dodaj logo i wybierz miejsce",
+            "body": "Kliknij „Wybierz logo (PNG)” — przyjmujemy PNG, WebP i SVG, najlepiej z przezroczystym tłem. W „Pozycja” kliknij jedno z dziewięciu pól siatki albo „Powtarzany wzór”, by pokryć znakiem całe zdjęcie. Logo podmienisz przez „Zmień logo”."
+          },
+          "s3": {
+            "title": "Dopasuj znak",
+            "body": "Ustaw „Wielkość znaku” (procent szerokości zdjęcia), „Krycie” i „Odstęp od krawędzi”, a przy wzorze „Obrót” i „Odstęp między znakami”. Podgląd w „Ustawienia” pokazuje rozmieszczenie na pierwszym zdjęciu — gotowy plik renderuje serwer."
+          },
+          "s4": {
+            "title": "Nałóż znak",
+            "body": "Kliknij „Przetwórz” — zdjęcia idą po trzy naraz, a postęp widzisz na przycisku. Bez logo zobaczysz komunikat „Najpierw wgraj logo.”"
+          },
+          "s5": {
+            "title": "Pobierz wyniki",
+            "body": "W „Wynik” porównasz pierwsze zdjęcie suwakiem „Przed” i „Po”. Kliknij „Pobierz” (przy kilku plikach „Pobierz ZIP”) albo „Zapisz”, by dodać wyniki do Biblioteki. Plik ma format zdjęcia (AVIF zapisujemy jako JPG). Lista pokazuje tylko bieżącą sesję — pobierz wyniki przed wyjściem."
+          }
+        }
+      },
+      "starter": {
+        "title": "Zobacz, co możesz zrobić",
+        "body": "Twoje zdjęcia z logo w wybranym miejscu albo jako powtarzany wzór — za darmo. Dodaj zdjęcia i logo, a potem kliknij „Przetwórz”."
+      }
     }
   }
 }

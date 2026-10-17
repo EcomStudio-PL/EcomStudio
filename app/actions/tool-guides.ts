@@ -7,13 +7,13 @@ import { MEDIA_SLOT_TAG } from "@/lib/server/media-slots";
 import { TOOL_GUIDES_TAG } from "@/lib/server/tool-guides-published";
 import { readGuideRow, readGuideSlots } from "@/lib/services/tool-guides";
 import {
-  DEFAULT_STEP_ARTS, GUIDE_MAX_STEPS, guideSlotKey, isGuideTool, normalizeGuideContent, type GuideToolKey,
+  DEFAULT_STEP_ARTS, GUIDE_MAX_STEPS, guideHasStarter, guideSlotKey, isGuideTool, normalizeGuideContent, type GuideToolKey,
 } from "@/lib/tool-guides";
 import type { Json } from "@/lib/database.types";
 
 /**
- * TOOL GUIDES — the admin's save (the customer's one write, "I have seen this
- * tutorial", is app/actions/tool-guide-seen.ts). Thin wrappers: who is asking → validate → one write path
+ * TOOL GUIDES — the admin's save and "show again" (the customer's one write,
+ * "I have seen this tutorial", is app/actions/tool-guide-seen.ts). Thin wrappers: who is asking → validate → one write path
  * (an RPC or RLS-guarded rows) → audit → the one cache tag the change makes
  * stale. Nothing here reaches a model, a provider, a price or the ledger.
  */
@@ -49,7 +49,9 @@ export type SaveToolGuideInput = {
    *  slot yet) — a picture changed elsewhere since then (e.g. Media →
    *  "Zamień wszędzie") is a conflict, not something to write back over. */
   imageBases?: Record<string, string | null>;
-  /** Raise the version so everyone sees the tutorial once more. */
+  /** Raise the version so everyone sees the tutorial once more. Still
+   *  honoured for older callers; the admin editor always sends false and uses
+   *  showToolGuideAgainAction instead, which publishes nothing else. */
   showAgain: boolean;
 };
 
@@ -185,6 +187,71 @@ export async function saveToolGuideAction(input: SaveToolGuideInput): Promise<Re
     const imageBases = Object.fromEntries([...wanted.keys()].map((key) =>
       [key, written[key] ?? slots.get(key)?.updatedAt ?? null]));
     return { ok: true, data: { updatedAt: savedAt, version: values.tutorial_version, imageBases } };
+  } catch (e) {
+    const code = e instanceof Error ? e.message : "";
+    return { ok: false, error: ["unauthenticated", "not_admin", "step_up_required"].includes(code) ? code : "generic" };
+  }
+}
+
+export type ShowToolGuideAgainInput = {
+  tool: string;
+  /** updated_at of the row the editor was opened on (or last saved to);
+   *  null = there was none. */
+  base: string | null;
+};
+
+type Shown = { updatedAt: string; version: number };
+
+/**
+ * "Pokaż ponownie wszystkim": raise ONE tool's tutorial version, so every
+ * user sees it once more on their next visit (seen-state is "highest version
+ * seen", so nothing anyone stored is deleted). Only the version and the stamp
+ * change — copy, switches and pictures stay exactly as published, and nothing
+ * the admin has not saved yet goes out with it. Compare-and-set on updated_at
+ * like the save, so an increment never lands on a row someone else just wrote.
+ * No row yet = the shipped default, both parts as they ship → kept, at v2.
+ */
+export async function showToolGuideAgainAction(input: ShowToolGuideAgainInput): Promise<Result<Shown>> {
+  try {
+    const { supabase, adminId } = await requireAdmin();
+    if (!input || !isGuideTool(input.tool)) return { ok: false, error: "unknown_tool" };
+    const tool: GuideToolKey = input.tool;
+
+    const current = await readGuideRow(supabase, tool);
+    if (current === "unavailable") return { ok: false, error: "migration_pending" };
+    const instant = (v: string | null | undefined) => (v ? Date.parse(v) : null);
+    if (instant(current?.updated_at) !== instant(input.base ?? null)) return { ok: false, error: "conflict" };
+
+    const before = current?.tutorial_version ?? 1;
+    const version = before + 1;
+    const now = new Date().toISOString();
+    const values = { tutorial_version: Math.min(version, 1000000), updated_at: now, updated_by: adminId };
+    let savedAt: string;
+    if (current) {
+      const { data, error } = await supabase.from("tool_guides").update(values)
+        .eq("tool_key", tool).eq("updated_at", current.updated_at).select("updated_at");
+      if (error) return { ok: false, error: "generic" };
+      if (!data || data.length === 0) return { ok: false, error: "conflict" };
+      savedAt = data[0].updated_at;
+    } else {
+      const { data, error } = await supabase.from("tool_guides").insert({
+        tool_key: tool, tutorial_enabled: true, starter_enabled: guideHasStarter(tool), content: null, ...values,
+      }).select("updated_at");
+      if (error) return { ok: false, error: error.code === "23505" ? "conflict" : "generic" };
+      savedAt = data?.[0]?.updated_at ?? now;
+    }
+
+    await logAudit(supabase, {
+      actorId: adminId,
+      action: "ai_tool.guide_show_again",
+      entityType: "tool_guide",
+      entityId: tool,
+      before: { version: before },
+      after: { version: values.tutorial_version },
+    });
+    revalidateTag(TOOL_GUIDES_TAG);
+    revalidatePath(`/admin/ai/${tool}`);
+    return { ok: true, data: { updatedAt: savedAt, version: values.tutorial_version } };
   } catch (e) {
     const code = e instanceof Error ? e.message : "";
     return { ok: false, error: ["unauthenticated", "not_admin", "step_up_required"].includes(code) ? code : "generic" };

@@ -9830,6 +9830,138 @@
         "title": "Sieh, was du machen kannst",
         "body": "Deine Fotos als leichtere Dateien, im selben oder einem neuen Format. Die Kompressionsstärke wählst du selbst. Füge Fotos hinzu und klicke auf „Komprimieren“."
       }
+    },
+    "editor": {
+      "tutorial": {
+        "title": "So funktioniert die Bildbearbeitung",
+        "body": "Bearbeite ein Foto in fünf Abschnitten: Hintergrund, Schatten, Format, Korrektur und Ausschnitt. Jede Änderung nimmst du mit „Rückgängig“ oder „Änderungsverlauf“ zurück. Credits kostet nur „Hintergrund entfernen“ — alles andere ist kostenlos.",
+        "steps": {
+          "s1": {
+            "title": "Foto hinzufügen",
+            "body": "Klicke auf „Datei wählen“ oder ziehe ein Foto auf die Seite. Du bearbeitest ein Foto auf einmal (PNG, JPG oder WEBP, max. 15 MB) — die Abschnitte werden freigeschaltet, sobald es geladen ist. Ein neues Foto startet die Bearbeitung von vorn."
+          },
+          "s2": {
+            "title": "Hintergrund entfernen oder ändern",
+            "body": "Klicke unter „Hintergrund“ auf „Hintergrund entfernen“, um das Produkt freizustellen — der einzige kostenpflichtige Schritt; die Kachel zeigt seine Kosten (oder „Nicht verfügbar“). Wähle dann „Weißer Hintergrund“, eine Farbe aus der Palette, „Transparent“ oder gib eine „Eigene Farbe (HEX)“ ein. „KI-Hintergrund“ und „Mein Hintergrund“ sind noch nicht verfügbar."
+          },
+          "s3": {
+            "title": "Schatten hinzufügen",
+            "body": "Wähle unter „Schatten“ „Weich“, „Stark“, „Schwebend“ oder „Wand“ („Keiner“ schaltet ihn aus). Der Schalter „Erweitert“ zeigt Deckkraft, Weichzeichnen, Versatz und Schattenfarbe. Ein Schatten braucht das Produkt auf transparentem Hintergrund — hat das Foto keinen, nutze zuerst „Hintergrund entfernen“."
+          },
+          "s4": {
+            "title": "Format wählen",
+            "body": "Wähle unter „Format“ „Original“, 1:1, 4:5, 3:4, 16:9, 9:16 oder „Eigene“ und gib bei Bedarf eine Breite ein. Ist „Proportionen beibehalten“ an, passt sich die Höhe automatisch an. Ein neues Seitenverhältnis beschneidet nichts — das ganze Foto bleibt erhalten, freie Fläche füllt der Hintergrund."
+          },
+          "s5": {
+            "title": "Farben und Ausschnitt anpassen",
+            "body": "Stelle unter „Korrektur“ Helligkeit, Kontrast, Sättigung, Temperatur und Schärfe ein — „Zurücksetzen“ nimmt alle Korrekturen zurück. Unter „Ausschnitt“ drehst, spiegelst, skalierst und verschiebst du das Foto."
+          },
+          "s6": {
+            "title": "Herunterladen oder speichern",
+            "body": "Klicke auf „Herunterladen“, „In der Bibliothek speichern“ oder „URL kopieren“ (speichert die Datei und kopiert einen 7 Tage gültigen Link). Der Server rendert die Datei in voller Auflösung: PNG bei transparentem Hintergrund, sonst JPG. Änderungen werden nicht automatisch gespeichert — lade vorher herunter oder speichere."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh, was du machen kannst",
+        "body": "Ein Foto, fünf Abschnitte: neuer Hintergrund, Schatten, Format, Farbkorrektur und Ausschnitt — mit Vorschau vor dem Herunterladen. Füge ein Foto hinzu und beginne mit „Hintergrund“."
+      }
+    },
+    "tool_upscale": {
+      "tutorial": {
+        "title": "So funktioniert Upscale",
+        "body": "Vergrößere viele Fotos auf einmal 2× oder 4×. Die Vergrößerung übernimmt eine KI, daher ist das Werkzeug kostenpflichtig — die Gesamtkosten siehst du vor dem Start.",
+        "steps": {
+          "s1": {
+            "title": "Fotos hinzufügen",
+            "body": "Klicke auf das Fotofeld oder ziehe Fotos auf die Seite. Du kannst bis zu 100 Dateien auf einmal hinzufügen: JPG, PNG, WebP oder AVIF, je max. 15 MB."
+          },
+          "s2": {
+            "title": "Vergrößerung wählen",
+            "body": "Wähle unter „Vergrößerung“ 2× oder 4×. Ein Foto, dessen Seite nach dem Vergrößern über 8000 px läge, wird mit „Das Bild ist zu groß.“ abgelehnt — ohne Kosten."
+          },
+          "s3": {
+            "title": "Starten",
+            "body": "Prüfe die Gesamtkosten über der Schaltfläche und klicke auf „Verarbeiten“. Es laufen drei Fotos gleichzeitig, den Fortschritt zeigt die Schaltfläche. Schlägt ein Foto fehl, bekommst du die Credits zurück; reichen die Credits nicht, stoppt die Verarbeitung."
+          },
+          "s4": {
+            "title": "Vergleichen",
+            "body": "Ziehe unter „Ergebnis“ den Regler zwischen „Vorher“ und „Nachher“, um das erste Foto mit dem Original zu vergleichen. Die Liste „Warteschlange“ zeigt Abmessungen und Größe jeder Datei."
+          },
+          "s5": {
+            "title": "Ergebnisse herunterladen",
+            "body": "Klicke auf „Herunterladen“ (bei mehreren Dateien „ZIP laden“) oder auf „Speichern“, um die Ergebnisse in der Bibliothek abzulegen. Fehlgeschlagene Fotos startest du mit „Fehlgeschlagene wiederholen“ neu. Die Liste zeigt nur die aktuelle Sitzung — lade vorher herunter."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh, was du machen kannst",
+        "body": "Deine Fotos 2× oder 4× vergrößert, bereit zum Herunterladen oder Speichern in der Bibliothek. Füge Fotos hinzu und klicke auf „Verarbeiten“."
+      }
+    },
+    "tool_expand": {
+      "tutorial": {
+        "title": "So funktioniert die KI-Erweiterung",
+        "body": "Ändere das Seitenverhältnis vieler Fotos auf einmal ohne Beschnitt: Die KI malt den Rahmen nach außen weiter. Das Werkzeug ist kostenpflichtig — die Gesamtkosten siehst du vor dem Start.",
+        "steps": {
+          "s1": {
+            "title": "Fotos hinzufügen",
+            "body": "Klicke auf das Fotofeld oder ziehe Fotos auf die Seite. Du kannst bis zu 100 Dateien auf einmal hinzufügen: JPG, PNG, WebP oder AVIF, je max. 15 MB."
+          },
+          "s2": {
+            "title": "Seitenverhältnis wählen",
+            "body": "Wähle unter „Seitenverhältnis“ 1:1, 4:5, 9:16 oder 16:9. Der Rahmen wird nach außen gemalt — nichts wird beschnitten. Ein Foto, das dieses Verhältnis schon hat, bekommt „Das Foto hat dieses Verhältnis bereits.“ und kostet nichts."
+          },
+          "s3": {
+            "title": "Starten",
+            "body": "Prüfe die Gesamtkosten über der Schaltfläche und klicke auf „Verarbeiten“. Es laufen drei Fotos gleichzeitig, den Fortschritt zeigt die Schaltfläche. Schlägt ein Foto fehl, bekommst du die Credits zurück; reichen die Credits nicht, stoppt die Verarbeitung."
+          },
+          "s4": {
+            "title": "Vergleichen",
+            "body": "Ziehe unter „Ergebnis“ den Regler zwischen „Vorher“ und „Nachher“, um zu sehen, was die KI am ersten Foto ergänzt hat. Prüfe die Ränder — die ergänzten Teile erzeugt die KI. Die Liste „Warteschlange“ zeigt die Abmessungen jeder Datei."
+          },
+          "s5": {
+            "title": "Ergebnisse herunterladen",
+            "body": "Klicke auf „Herunterladen“ (bei mehreren Dateien „ZIP laden“) oder auf „Speichern“, um die Ergebnisse in der Bibliothek abzulegen. Fehlgeschlagene Fotos startest du mit „Fehlgeschlagene wiederholen“ neu. Die Liste zeigt nur die aktuelle Sitzung — lade vorher herunter."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh, was du machen kannst",
+        "body": "Deine Fotos in 1:1, 4:5, 9:16 oder 16:9, mit nach außen gemaltem Rahmen und ohne Beschnitt. Füge Fotos hinzu und klicke auf „Verarbeiten“."
+      }
+    },
+    "tool_watermark": {
+      "tutorial": {
+        "title": "So funktioniert das Wasserzeichen",
+        "body": "Setze dein Logo auf viele Fotos auf einmal — an einen von neun Ankern oder als wiederholtes Muster. Das Zeichen wird ohne KI und kostenlos aufgebracht.",
+        "steps": {
+          "s1": {
+            "title": "Fotos hinzufügen",
+            "body": "Klicke auf das Fotofeld oder ziehe Fotos auf die Seite. Du kannst bis zu 100 Dateien auf einmal hinzufügen: JPG, PNG, WebP oder AVIF, je max. 15 MB."
+          },
+          "s2": {
+            "title": "Logo hinzufügen und Platz wählen",
+            "body": "Klicke auf „Logo wählen (PNG)“ — wir nehmen PNG, WebP und SVG, am besten mit transparentem Hintergrund. Klicke unter „Position“ auf eines der neun Rasterfelder oder auf „Wiederholtes Muster“, um das ganze Foto zu bedecken. Austauschen kannst du das Logo mit „Logo ändern“."
+          },
+          "s3": {
+            "title": "Zeichen anpassen",
+            "body": "Stelle „Zeichengröße“ (Anteil an der Fotobreite), „Deckkraft“ und „Randabstand“ ein, beim Muster „Drehung“ und „Abstand“. Die Vorschau unter „Einstellungen“ zeigt die Position auf dem ersten Foto — die finale Datei rendert der Server."
+          },
+          "s4": {
+            "title": "Zeichen aufbringen",
+            "body": "Klicke auf „Verarbeiten“ — es laufen drei Fotos gleichzeitig, den Fortschritt zeigt die Schaltfläche. Ohne Logo siehst du „Zuerst ein Logo hochladen.“"
+          },
+          "s5": {
+            "title": "Ergebnisse herunterladen",
+            "body": "Vergleiche unter „Ergebnis“ das erste Foto mit dem Regler „Vorher“ / „Nachher“. Klicke auf „Herunterladen“ (bei mehreren Dateien „ZIP laden“) oder auf „Speichern“, um die Ergebnisse in der Bibliothek abzulegen. Die Datei behält das Format des Fotos (AVIF wird als JPG gespeichert). Die Liste zeigt nur die aktuelle Sitzung — lade vorher herunter."
+          }
+        }
+      },
+      "starter": {
+        "title": "Sieh, was du machen kannst",
+        "body": "Deine Fotos mit deinem Logo an der gewählten Stelle oder als wiederholtes Muster — kostenlos. Füge Fotos und ein Logo hinzu und klicke auf „Verarbeiten“."
+      }
     }
   }
 }

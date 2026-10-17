@@ -3,8 +3,9 @@ import { cn } from "@/lib/utils";
 
 /**
  * A tool's tab bar: PODSTAWOWE · SILNIK · WORKFLOW · MODELE, API I KOSZTY ·
- * WIEDZA. Labels are never squeezed or truncated — on a phone the bar scrolls
- * sideways (with a visible thin scrollbar and snap points) instead.
+ * WIEDZA · SAMOUCZEK (each only where the tool has it — lib/services/ai-tools.ts
+ * toolTabs). Labels are never squeezed or truncated — on a phone the bar
+ * scrolls sideways (with a visible thin scrollbar and snap points) instead.
  */
 export function ToolTabs({ toolKey, tabs, active, label, t }: {
   toolKey: string; tabs: readonly string[]; active: string; label: string;

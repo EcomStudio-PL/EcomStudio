@@ -144,6 +144,7 @@ export default async function ToolWorkspace({ params, searchParams }: {
       {tab === "workflow" && <WorkflowTab supabase={supabase} t={t} row={row} locale={locale} />}
       {tab === "models" && <ModelsTab supabase={supabase} t={t} row={row} config={config} locale={locale} diag={diag} />}
       {tab === "knowledge" && <KnowledgeTab supabase={supabase} t={t} row={row} locale={locale} />}
+      {tab === "guide" && isGuideTool(row.key) && <ToolGuideSection tool={row.key} supabase={supabase} />}
     </div>
   );
 }
@@ -237,7 +238,6 @@ async function BasicsTab({ supabase, t, row, config }: WithConfig) {
         </Link>
       </Card>
     </div>
-    {isGuideTool(row.key) && <ToolGuideSection tool={row.key} supabase={supabase} />}
     </div>
   );
 }

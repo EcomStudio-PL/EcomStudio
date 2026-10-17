@@ -1,7 +1,7 @@
 /**
  * TOOL GUIDES — THE ADMIN EDITOR ("Samouczek i galeria startowa" on
- * /admin/ai/[tool] → Podstawowe), DRIVEN IN A REAL BROWSER AGAINST A STUBBED
- * SAVE ACTION.
+ * /admin/ai/[tool] → Samouczek, ?tab=guide), DRIVEN IN A REAL BROWSER AGAINST
+ * STUBBED ACTIONS.
  *
  * The editor (components/admin/tool-guide-editor.tsx) reaches the server one
  * way only: saveToolGuideAction (app/actions/tool-guides.ts). In a THROWAWAY
@@ -28,6 +28,7 @@
  *   Query: ?tool=retouch|ecommerce_thumbnail|compress|fashion_flat_lay
  *          &row=none|custom|off   (saved-row variant, seeded once per sid+tool)
  *          &cat=0                 (no catalogue picture → the drawn showcase)
+ *          &live=0                (the status block's "not live for customers" state)
  *   Locale = the ecs_locale cookie, theme = next-themes' localStorage.
  *   Forced answers (one-shot, queued): conflict, images_failed (row written,
  *   pictures not), images_failed_early (nothing written — the real action's
@@ -173,7 +174,7 @@ export function slotBump(s: ProbeSession, key: string, mediaId: string | null) {
 const ACTION_SRC = `"use server";
 import { cookies } from "next/headers";
 import {
-  DEFAULT_STEP_ARTS, GUIDE_MAX_STEPS, guideSlotKey, isGuideTool, normalizeGuideContent,
+  DEFAULT_STEP_ARTS, GUIDE_MAX_STEPS, guideHasStarter, guideSlotKey, isGuideTool, normalizeGuideContent,
   type GuideContent, type GuideToolKey,
 } from "@/lib/tool-guides";
 import { LIBRARY, session, stamp, type ProbeSession } from "@/app/probe-tmp/admin-guide/store";
@@ -273,6 +274,37 @@ function answer(s: ProbeSession, input: SaveToolGuideInput): Result<Saved> {
   wanted.forEach((_, key) => { imageBases[key] = written[key] ?? s.slots[key]?.updatedAt ?? null; });
   return { ok: true, data: { updatedAt, version, imageBases } };
 }
+
+export type ShowToolGuideAgainInput = { tool: string; base: string | null };
+
+/** "Pokaż ponownie wszystkim" (showToolGuideAgainAction): the version and the
+ *  stamp only, compare-and-set on updated_at; no row yet = the shipped
+ *  default kept, at v2 (starter on only where a starter exists). Recorded in
+ *  calls as { showAgainAction: true, tool, base }. */
+export async function showToolGuideAgainAction(input: ShowToolGuideAgainInput): Promise<Result<{ updatedAt: string; version: number }>> {
+  const jar = await cookies();
+  const s = session(jar.get("tgp_sid")?.value ?? "default");
+  s.calls.push({ showAgainAction: true, ...JSON.parse(JSON.stringify(input)) });
+  const res = again(s, input);
+  s.answers.push(res);
+  return res;
+}
+
+function again(s: ProbeSession, input: ShowToolGuideAgainInput): Result<{ updatedAt: string; version: number }> {
+  const forced = s.force.shift() ?? null;
+  if (forced) return { ok: false, error: forced };
+  if (!input || !isGuideTool(input.tool)) return { ok: false, error: "unknown_tool" };
+  const tool: GuideToolKey = input.tool;
+  const instant = (v: string | null | undefined) => (v ? Date.parse(v) : null);
+  const current = s.rows[tool] ?? null;
+  if (instant(current?.updated_at) !== instant(input.base)) return { ok: false, error: "conflict" };
+  const version = Math.min((current?.tutorial_version ?? 1) + 1, 1000000);
+  const updatedAt = stamp();
+  s.rows[tool] = current
+    ? { ...current, tutorial_version: version, updated_at: updatedAt }
+    : { tutorial_enabled: true, starter_enabled: guideHasStarter(tool), tutorial_version: version, content: null, updated_at: updatedAt };
+  return { ok: true, data: { updatedAt, version } };
+}
 `;
 
 const ROUTE_SRC = `import { NextResponse } from "next/server";
@@ -328,8 +360,8 @@ import { getDictionary, getScopedDictionary } from "@/lib/i18n/server";
 import { I18nScope } from "@/lib/i18n/provider";
 import { makeT } from "@/lib/i18n/t";
 import { Card, CardHeader } from "@/components/ui/card";
-import { defaultGuideContent } from "@/lib/server/tool-guides";
-import { GUIDE_MAX_STEPS, guideSlotKey, isGuideTool, normalizeGuideContent, type GuideToolKey } from "@/lib/tool-guides";
+import { defaultGuideContent, guideChrome } from "@/lib/server/tool-guides";
+import { GUIDE_MAX_STEPS, guideHasStarter, guideSlotKey, isGuideTool, normalizeGuideContent, type GuideToolKey } from "@/lib/tool-guides";
 import { ToolGuideEditor } from "@/components/admin/tool-guide-editor";
 import { CATALOGUE, LIBRARY, seed, session } from "./store";
 import { ProbeTools } from "./probe-tools";
@@ -373,9 +405,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
                   <ToolGuideEditor
                     tool={tool}
                     defaults={defaults}
+                    chrome={guideChrome()}
+                    status={{ live: q.live !== "0", availability: q.live === "0" ? "Wkrótce" : null, savedBy: row ? "Probe Admin" : null }}
                     initial={{
                       tutorialEnabled: row ? row.tutorial_enabled : true,
-                      starterEnabled: row ? row.starter_enabled : true,
+                      starterEnabled: row ? row.starter_enabled : guideHasStarter(tool),
                       content,
                       stepImages,
                       starterImage,
